@@ -7,7 +7,11 @@ import {
   customCoverToRequest,
 } from './cover-candidates';
 
-const current: AlbumCoverCandidate = { source: 'current', url: '/api/cover/album-1', label: 'Current' };
+const current: AlbumCoverCandidate = {
+  source: 'current',
+  url: '/api/cover/album-1',
+  label: 'Current',
+};
 const lidarr: AlbumCoverCandidate = { source: 'lidarr', url: 'https://img/x.jpg', label: 'X' };
 const file: AlbumCoverCandidate = {
   source: 'file',

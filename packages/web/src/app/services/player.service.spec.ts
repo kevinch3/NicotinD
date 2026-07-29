@@ -463,7 +463,12 @@ describe('PlayerService', () => {
 
   describe('clearQueue()', () => {
     it('empties the queue without affecting currentTrack, history, or context', () => {
-      const ctx: PlayContext = { type: 'album', id: 'a1', name: 'A', originalOrder: [track1, track2, track3] };
+      const ctx: PlayContext = {
+        type: 'album',
+        id: 'a1',
+        name: 'A',
+        originalOrder: [track1, track2, track3],
+      };
       service.play(track1);
       service.queue.set([track2, track3]);
       service.history.set([track3]);

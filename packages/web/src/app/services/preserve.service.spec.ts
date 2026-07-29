@@ -287,9 +287,21 @@ describe('PreserveService', () => {
       // The fake ignores the blob args; they're passed only to satisfy the real
       // PreserveStore signature that `store` is typed against.
       const blob = new Blob();
-      store.preserve({ id: 'u1', size: 100, lastAccessedAt: 0, source: 'user' } as never, blob, null);
-      store.preserve({ id: 'a1', size: 100, lastAccessedAt: 0, source: 'auto' } as never, blob, null);
-      store.preserve({ id: 'a2', size: 100, lastAccessedAt: 0, source: 'auto' } as never, blob, null);
+      store.preserve(
+        { id: 'u1', size: 100, lastAccessedAt: 0, source: 'user' } as never,
+        blob,
+        null,
+      );
+      store.preserve(
+        { id: 'a1', size: 100, lastAccessedAt: 0, source: 'auto' } as never,
+        blob,
+        null,
+      );
+      store.preserve(
+        { id: 'a2', size: 100, lastAccessedAt: 0, source: 'auto' } as never,
+        blob,
+        null,
+      );
       await svc.refreshList();
 
       const removed = await svc.removeAllAutoPreserved();

@@ -80,8 +80,19 @@ export class AutoHuntService {
         message: `Search failed for "${album.title}"`,
         kind: 'error',
         actions: [
-          { label: 'Dismiss', callback: () => { this.toasts.dismiss(searchErrId); } },
-          { label: 'Find Manually', callback: () => { this.toasts.dismiss(searchErrId); openManual(); } },
+          {
+            label: 'Dismiss',
+            callback: () => {
+              this.toasts.dismiss(searchErrId);
+            },
+          },
+          {
+            label: 'Find Manually',
+            callback: () => {
+              this.toasts.dismiss(searchErrId);
+              openManual();
+            },
+          },
         ],
       });
       return;
@@ -94,8 +105,19 @@ export class AutoHuntService {
         message: `No confident match found for "${album.title}"`,
         kind: 'error',
         actions: [
-          { label: 'Dismiss', callback: () => { this.toasts.dismiss(noMatchId); } },
-          { label: 'Find Manually', callback: () => { this.toasts.dismiss(noMatchId); openManual(); } },
+          {
+            label: 'Dismiss',
+            callback: () => {
+              this.toasts.dismiss(noMatchId);
+            },
+          },
+          {
+            label: 'Find Manually',
+            callback: () => {
+              this.toasts.dismiss(noMatchId);
+              openManual();
+            },
+          },
         ],
       });
       return;
@@ -109,15 +131,22 @@ export class AutoHuntService {
       actions: [
         {
           label: 'Download Now',
-          callback: () => { void this._download(toastId, album, candidates, openManual); },
+          callback: () => {
+            void this._download(toastId, album, candidates, openManual);
+          },
         },
         {
           label: 'Cancel',
-          callback: () => { this.toasts.dismiss(toastId); },
+          callback: () => {
+            this.toasts.dismiss(toastId);
+          },
         },
         {
           label: 'Choose Manually',
-          callback: () => { this.toasts.dismiss(toastId); openManual(); },
+          callback: () => {
+            this.toasts.dismiss(toastId);
+            openManual();
+          },
         },
       ],
     });
@@ -132,7 +161,8 @@ export class AutoHuntService {
     this.toasts.dismiss(countdownToastId);
 
     const [best, ...rest] = candidates;
-    const toFiles = (c: FolderCandidate) => c.files.map((f) => ({ filename: f.filename, size: f.size }));
+    const toFiles = (c: FolderCandidate) =>
+      c.files.map((f) => ({ filename: f.filename, size: f.size }));
 
     try {
       const res = await firstValueFrom(
@@ -180,8 +210,19 @@ export class AutoHuntService {
           message: `Download failed for "${album.title}"`,
           kind: 'error',
           actions: [
-            { label: 'Dismiss', callback: () => { this.toasts.dismiss(dlErrId); } },
-            { label: 'Find Manually', callback: () => { this.toasts.dismiss(dlErrId); openManual(); } },
+            {
+              label: 'Dismiss',
+              callback: () => {
+                this.toasts.dismiss(dlErrId);
+              },
+            },
+            {
+              label: 'Find Manually',
+              callback: () => {
+                this.toasts.dismiss(dlErrId);
+                openManual();
+              },
+            },
           ],
         });
       }

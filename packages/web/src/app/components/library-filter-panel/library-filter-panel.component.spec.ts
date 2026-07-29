@@ -157,7 +157,9 @@ describe('LibraryFilterPanelComponent', () => {
       const fixture = setup();
       openPanel(fixture);
       const keyBtn = fixture.debugElement.query(By.css('[data-testid="library-filter-key-8A"]'));
-      const moodBtn = fixture.debugElement.query(By.css('[data-testid="library-filter-mood-happy"]'));
+      const moodBtn = fixture.debugElement.query(
+        By.css('[data-testid="library-filter-mood-happy"]'),
+      );
       expect(cls(keyBtn)).toContain('rounded-full');
       expect(cls(keyBtn)).toContain('px-2');
       // Mood chips are the established baseline.

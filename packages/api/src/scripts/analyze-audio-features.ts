@@ -141,7 +141,14 @@ async function main(): Promise<void> {
         if (apply) {
           db.run(
             `UPDATE library_songs SET danceability = ?, valence = ?, acousticness = ?, instrumental = ?, mood = ? WHERE id = ?`,
-            [tags.danceability!, tags.valence!, tags.acousticness!, tags.instrumental!, tags.mood!, song.id],
+            [
+              tags.danceability!,
+              tags.valence!,
+              tags.acousticness!,
+              tags.instrumental!,
+              tags.mood!,
+              song.id,
+            ],
           );
           appendFileSync(logPath, `${new Date().toISOString()}\ttag\t${tags.mood}\t${label}\n`);
         }
@@ -216,9 +223,7 @@ async function main(): Promise<void> {
     for (const s of samples) console.log(s);
   }
   if (!apply) {
-    console.log(
-      '\nDry run only. Re-run with --apply to write features to the DB and file tags.\n',
-    );
+    console.log('\nDry run only. Re-run with --apply to write features to the DB and file tags.\n');
   } else {
     console.log(`\n✅ Done. Log: ${logPath}\n`);
   }

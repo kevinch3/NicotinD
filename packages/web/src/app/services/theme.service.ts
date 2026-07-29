@@ -1,13 +1,7 @@
 import { Injectable, signal } from '@angular/core';
 
 export type ThemeId =
-  | 'midnight'
-  | 'daylight'
-  | 'warm-paper'
-  | 'oled'
-  | 'twilight'
-  | 'forest'
-  | 'eink';
+  'midnight' | 'daylight' | 'warm-paper' | 'oled' | 'twilight' | 'forest' | 'eink';
 
 export interface ThemePreset {
   id: ThemeId;

@@ -79,7 +79,9 @@ describe('licenceFromTags (pure)', () => {
 
   it('returns undefined for no tags or an unrecognised copyright notice', () => {
     expect(licenceFromTags(undefined)).toBeUndefined();
-    expect(licenceFromTags({ vorbis: [{ id: 'COPYRIGHT', value: '© 2020 Artist' }] })).toBeUndefined();
+    expect(
+      licenceFromTags({ vorbis: [{ id: 'COPYRIGHT', value: '© 2020 Artist' }] }),
+    ).toBeUndefined();
   });
 });
 

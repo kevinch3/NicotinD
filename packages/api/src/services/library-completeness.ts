@@ -23,10 +23,9 @@ function matchingLocalAlbums(
 ): Array<{ id: string; name: string; song_count: number }> {
   const targetName = normalizeForGrouping(title);
   const rows = db
-    .query<
-      { id: string; name: string; song_count: number },
-      [string]
-    >(`SELECT id, name, song_count FROM library_albums WHERE artist_id = ?`)
+    .query<{ id: string; name: string; song_count: number }, [string]>(
+      `SELECT id, name, song_count FROM library_albums WHERE artist_id = ?`,
+    )
     .all(artistIdFor(artist));
   return rows.filter((r) => normalizeForGrouping(r.name) === targetName);
 }
@@ -76,7 +75,12 @@ function titlesForAlbumId(db: Database, albumId: string): string[] {
  * edition-stripped title match (`matchingLocalAlbums`), so a partial album under a
  * divergent id/edition still counts — not only an exact `albumIdFor` hit.
  */
-function onDiskTitles(db: Database, artist: string, title: string, localAlbumId?: string): string[] {
+function onDiskTitles(
+  db: Database,
+  artist: string,
+  title: string,
+  localAlbumId?: string,
+): string[] {
   if (localAlbumId) {
     const titles = titlesForAlbumId(db, localAlbumId);
     if (titles.length > 0) return titles;

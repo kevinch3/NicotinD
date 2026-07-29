@@ -15,7 +15,11 @@ beforeEach(() => {
   );
 });
 
-function seedSong(id: string, path: string, cols: { genre?: string | null; year?: number | null } = {}): void {
+function seedSong(
+  id: string,
+  path: string,
+  cols: { genre?: string | null; year?: number | null } = {},
+): void {
   db.run(
     `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, genre, year, synced_at)
      VALUES (?, 'al', 'T', 'Bowie', 'art', 0, ?, 10, '2024-01-01', ?, ?, 1)`,
@@ -56,11 +60,15 @@ describe('applyJobMetadataPrefill', () => {
   it('fills empty genre + year from the job metadata and writes the file tag', async () => {
     seedSong('s1', 'B/H/01.opus');
     const writeTags = mock(async () => true);
-    await applyJobMetadataPrefill(db, [fileWithMeta('B/H/01.opus', { genres: ['Rock', 'Art Rock'], year: 2002 })], {
-      musicDir: '/music',
-      writeTags,
-      fileExists: () => true,
-    });
+    await applyJobMetadataPrefill(
+      db,
+      [fileWithMeta('B/H/01.opus', { genres: ['Rock', 'Art Rock'], year: 2002 })],
+      {
+        musicDir: '/music',
+        writeTags,
+        fileExists: () => true,
+      },
+    );
 
     expect(song('s1')).toEqual({ genre: 'Rock', year: 2002 });
     // Full multi-genre set lands in the join table (position 0 = primary).
@@ -81,11 +89,15 @@ describe('applyJobMetadataPrefill', () => {
   it('never overwrites an existing genre or year (fill-only-empty)', async () => {
     seedSong('s1', 'B/H/01.opus', { genre: 'Jazz', year: 1999 });
     const writeTags = mock(async () => true);
-    await applyJobMetadataPrefill(db, [fileWithMeta('B/H/01.opus', { genres: ['Rock'], year: 2002 })], {
-      musicDir: '/music',
-      writeTags,
-      fileExists: () => true,
-    });
+    await applyJobMetadataPrefill(
+      db,
+      [fileWithMeta('B/H/01.opus', { genres: ['Rock'], year: 2002 })],
+      {
+        musicDir: '/music',
+        writeTags,
+        fileExists: () => true,
+      },
+    );
     expect(song('s1')).toEqual({ genre: 'Jazz', year: 1999 });
     expect(writeTags).not.toHaveBeenCalled();
   });
@@ -119,9 +131,7 @@ describe('applyJobMetadataPrefill', () => {
       fileExists: () => true,
     });
     // Nothing thrown, nothing written.
-    const count = db
-      .query<{ n: number }, []>('SELECT COUNT(*) n FROM library_song_genres')
-      .get();
+    const count = db.query<{ n: number }, []>('SELECT COUNT(*) n FROM library_song_genres').get();
     expect(count?.n).toBe(0);
   });
 });

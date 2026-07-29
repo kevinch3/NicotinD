@@ -144,9 +144,7 @@ async function main(): Promise<void> {
           song.id,
         ]);
         if (source === 'analyzed')
-          await writeAudioTags(abs, { energy, loudness: loudness ?? undefined }).catch(
-            () => false,
-          );
+          await writeAudioTags(abs, { energy, loudness: loudness ?? undefined }).catch(() => false);
         appendFileSync(
           logPath,
           `${new Date().toISOString()}\t${source}\t${energy}\t${loudness}\t${label}\n`,

@@ -13,7 +13,13 @@ import type { AcquisitionCandidate } from '@nicotind/core';
 
 const lidarr = () =>
   ({
-    album: { get: mock(async () => ({ id: 1, title: 'Porfiado', artist: { artistName: 'El Cuarteto de Nos' } })) },
+    album: {
+      get: mock(async () => ({
+        id: 1,
+        title: 'Porfiado',
+        artist: { artistName: 'El Cuarteto de Nos' },
+      })),
+    },
   }) as unknown as Lidarr;
 
 const hunter = (id: string, out: AcquisitionCandidate[]): SourceHunter => ({
@@ -62,7 +68,10 @@ const post = (app: Hono<AuthEnv>) =>
 describe('POST /albums/:id/hunt/sources', () => {
   it('returns a blended candidate list from enabled sources', async () => {
     const orch = new AlbumHuntOrchestrator(
-      [hunter('archive', [cand('archive', 'u1', 40)]), hunter('spotify', [cand('spotify', 'u2', 90)])],
+      [
+        hunter('archive', [cand('archive', 'u1', 40)]),
+        hunter('spotify', [cand('spotify', 'u2', 90)]),
+      ],
       () => true,
     );
     const res = await post(makeApp(orch));
@@ -73,7 +82,10 @@ describe('POST /albums/:id/hunt/sources', () => {
   });
 
   it('returns an empty blend (not an error) when all sources are disabled', async () => {
-    const orch = new AlbumHuntOrchestrator([hunter('archive', [cand('archive', 'u1', 40)])], () => false);
+    const orch = new AlbumHuntOrchestrator(
+      [hunter('archive', [cand('archive', 'u1', 40)])],
+      () => false,
+    );
     const res = await post(makeApp(orch));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { candidates: AcquisitionCandidate[]; sources: string[] };

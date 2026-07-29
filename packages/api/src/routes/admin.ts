@@ -367,7 +367,9 @@ export function adminRoutes(deps: AdminRoutesDeps) {
   app.put('/acquisition', async (c) => {
     const t = deps.acquisition;
     if (!t) return c.json({ error: 'Acquisition toggle not wired' }, 503);
-    const body = await c.req.json<{ enabled?: unknown }>().catch(() => ({}) as { enabled?: unknown });
+    const body = await c.req
+      .json<{ enabled?: unknown }>()
+      .catch(() => ({}) as { enabled?: unknown });
     if (typeof body.enabled !== 'boolean') {
       return c.json({ error: 'enabled must be a boolean' }, 400);
     }

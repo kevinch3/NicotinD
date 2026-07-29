@@ -107,7 +107,10 @@ describe('GET /albums/:id/cover-candidates', () => {
       label: 'Current',
     });
     // Two hits share https://img/drukqs.jpg → one entry; SAW is the second.
-    expect(body.lidarr.map((l) => l.url)).toEqual(['https://img/drukqs.jpg', 'https://img/saw.jpg']);
+    expect(body.lidarr.map((l) => l.url)).toEqual([
+      'https://img/drukqs.jpg',
+      'https://img/saw.jpg',
+    ]);
     expect(body.lidarr[0].label).toContain('Drukqs');
     // No real files on disk under /music → no embedded-file candidates.
     expect(body.files).toEqual([]);
@@ -216,7 +219,10 @@ describe('POST /albums/:id/cover — cover route reflects the change immediately
     dataDir = mkdtempSync(join(tmpdir(), 'nd-cover-cache-'));
     clearCoverNegativeCache(); // isolate from other suites' module-level negative cache
     globalThis.fetch = (async (_input: RequestInfo | URL) =>
-      new Response(PNG_BYTES, { status: 200, headers: { 'content-type': 'image/png' } })) as typeof fetch;
+      new Response(PNG_BYTES, {
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+      })) as typeof fetch;
   });
   afterEach(() => {
     testDb.close();

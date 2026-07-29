@@ -17,12 +17,11 @@ const noopSourceHunt = {
 
 const mockLidarr = () =>
   ({
-    album: { get: mock(async () => ({ id: 1, title: 'So Good', artist: { artistName: 'Zara Larsson' } })) },
+    album: {
+      get: mock(async () => ({ id: 1, title: 'So Good', artist: { artistName: 'Zara Larsson' } })),
+    },
     track: {
-      listByAlbum: mock(async () => [
-        { title: 'Lush Life' },
-        { title: 'Never Forget You' },
-      ]),
+      listByAlbum: mock(async () => [{ title: 'Lush Life' }, { title: 'Never Forget You' }]),
     },
   }) as unknown as Lidarr;
 
@@ -99,9 +98,10 @@ describe('POST /albums/:id/hunt-tracks', () => {
     expect(job.album_title).toBe('So Good');
     expect(job.lidarr_album_id).toBe(1);
 
-    const item = db
-      .query(`SELECT transfer_key, track_title FROM acquisition_job_items`)
-      .get() as { transfer_key: string; track_title: string };
+    const item = db.query(`SELECT transfer_key, track_title FROM acquisition_job_items`).get() as {
+      transfer_key: string;
+      track_title: string;
+    };
     expect(item.transfer_key).toBe('p::x\\Lush Life.flac');
     expect(item.track_title).toBe('Lush Life');
   });

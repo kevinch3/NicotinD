@@ -39,7 +39,12 @@ function fakeLidarr(
 
 describe('optimizeAlbum', () => {
   it('overwrites cover, year and release type on a confident match', async () => {
-    seedAlbum({ id: 'alb-1', name: 'Drukqs', artist: 'Aphex Twin', year: null as unknown as number });
+    seedAlbum({
+      id: 'alb-1',
+      name: 'Drukqs',
+      artist: 'Aphex Twin',
+      year: null as unknown as number,
+    });
     const lidarr = fakeLidarr([
       {
         title: 'Drukqs',
@@ -99,7 +104,9 @@ describe('optimizeAlbum', () => {
 
   it('returns unmatched when no Lidarr release-group matches', async () => {
     seedAlbum({ id: 'alb-1', name: 'Drukqs', artist: 'Aphex Twin' });
-    const lidarr = fakeLidarr([{ title: 'Completely Different', artist: { artistName: 'Someone' } }]);
+    const lidarr = fakeLidarr([
+      { title: 'Completely Different', artist: { artistName: 'Someone' } },
+    ]);
     const r = await optimizeAlbum(db, lidarr, 'alb-1', { apply: true });
     expect(r.matched).toBe(false);
   });

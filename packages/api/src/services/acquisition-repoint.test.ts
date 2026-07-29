@@ -21,8 +21,11 @@ function addAcq(db: Database, path: string, method = 'slskd'): void {
   ]);
 }
 function acqPaths(db: Database): string[] {
-  return (db.query('SELECT relative_path p FROM acquisitions ORDER BY relative_path').all() as
-    Array<{ p: string }>).map((r) => r.p);
+  return (
+    db.query('SELECT relative_path p FROM acquisitions ORDER BY relative_path').all() as Array<{
+      p: string;
+    }>
+  ).map((r) => r.p);
 }
 
 describe('repointOrphanedAcquisitions (issue #313)', () => {

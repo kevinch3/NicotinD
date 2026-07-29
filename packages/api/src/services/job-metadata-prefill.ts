@@ -43,10 +43,9 @@ export async function applyJobMetadataPrefill(
 
     try {
       const song = db
-        .query<
-          { id: string; genre: string | null; year: number | null },
-          [string]
-        >('SELECT id, genre, year FROM library_songs WHERE path = ?')
+        .query<{ id: string; genre: string | null; year: number | null }, [string]>(
+          'SELECT id, genre, year FROM library_songs WHERE path = ?',
+        )
         .get(file.relativePath);
       if (!song) continue;
 

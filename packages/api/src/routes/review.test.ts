@@ -18,7 +18,11 @@ function makeAdminUser(): JwtPayload {
 }
 
 function makeApp(
-  subFns?: Parameters<typeof reviewRoutes>[1] extends infer T ? (T extends { subFns?: infer S } ? S : never) : never,
+  subFns?: Parameters<typeof reviewRoutes>[1] extends infer T
+    ? T extends { subFns?: infer S }
+      ? S
+      : never
+    : never,
   deps?: Parameters<typeof reviewRoutes>[1],
   role: 'admin' | 'user' = 'admin',
 ) {
@@ -32,9 +36,22 @@ function makeApp(
 }
 
 const emptyMetrics: MetricsSnapshot = {
-  hardware: { cpuModel: 'Test', cores: 4, arch: 'x64', platform: 'linux', totalMemoryBytes: 8000, gpuDetected: null },
+  hardware: {
+    cpuModel: 'Test',
+    cores: 4,
+    arch: 'x64',
+    platform: 'linux',
+    totalMemoryBytes: 8000,
+    gpuDetected: null,
+  },
   cpu: { percent: 25, cores: 4, model: 'Test' },
-  memory: { totalBytes: 8000, usedBytes: 4000, freeBytes: 4000, processRssBytes: 1000, processHeapBytes: 500 },
+  memory: {
+    totalBytes: 8000,
+    usedBytes: 4000,
+    freeBytes: 4000,
+    processRssBytes: 1000,
+    processHeapBytes: 500,
+  },
   gpu: null,
 };
 
@@ -48,7 +65,13 @@ describe('GET /api/admin/review', () => {
   it('returns the full ServiceReview shape with all sub-fetches happy', async () => {
     const subFns = {
       collectMetrics: mock(async () => emptyMetrics),
-      systemStatus: mock(async () => ({ healthy: true, connected: true, username: 'me', version: '0.25.1', uptime: 60 })),
+      systemStatus: mock(async () => ({
+        healthy: true,
+        connected: true,
+        username: 'me',
+        version: '0.25.1',
+        uptime: 60,
+      })),
       scanStatus: mock(async () => ({ scanning: false, count: 1234 })),
       indexSongCount: mock(() => 1234),
       updateCheck: mock(async () => ({
@@ -59,7 +82,15 @@ describe('GET /api/admin/review', () => {
         releaseUrl: 'https://x',
         versionHistory: [{ version: '0.1.234', firstSeenAt: 1 }],
       })),
-      backupsList: mock(() => [{ name: 'n1', createdAt: 1, sizeBytes: 1024, files: ['db'] }] as unknown as Array<{ name: string; createdAt: number; sizeBytes: number; files: string[] }>),
+      backupsList: mock(
+        () =>
+          [{ name: 'n1', createdAt: 1, sizeBytes: 1024, files: ['db'] }] as unknown as Array<{
+            name: string;
+            createdAt: number;
+            sizeBytes: number;
+            files: string[];
+          }>,
+      ),
       processingSummary: mock(() => ({
         phase: 'idle' as const,
         currentTask: null,
@@ -68,8 +99,32 @@ describe('GET /api/admin/review', () => {
         total: 0,
         skipped: 0,
         quarantined: 0,
-        taskPending: { bpm: 0, genre: 0, key: 0, energy: 0, 'audio-features': 0, 'artist-image': 0, 'artist-info': 0, 'artist-identity': 0, licence: 0, 'genre-audio': 0, 'genre-discogs': 0 },
-        availability: { bpm: true as const, genre: true as const, key: true as const, energy: true as const, 'audio-features': true as const, 'artist-image': true as const, 'artist-info': true as const, 'artist-identity': true as const, licence: true as const, 'genre-audio': true as const, 'genre-discogs': true as const },
+        taskPending: {
+          bpm: 0,
+          genre: 0,
+          key: 0,
+          energy: 0,
+          'audio-features': 0,
+          'artist-image': 0,
+          'artist-info': 0,
+          'artist-identity': 0,
+          licence: 0,
+          'genre-audio': 0,
+          'genre-discogs': 0,
+        },
+        availability: {
+          bpm: true as const,
+          genre: true as const,
+          key: true as const,
+          energy: true as const,
+          'audio-features': true as const,
+          'artist-image': true as const,
+          'artist-info': true as const,
+          'artist-identity': true as const,
+          licence: true as const,
+          'genre-audio': true as const,
+          'genre-discogs': true as const,
+        },
         startedAt: null,
         updatedAt: null,
       })),
@@ -172,7 +227,15 @@ describe('GET /api/admin/review', () => {
       scanStatus: mock(async () => ({ scanning: false, count: 0 })),
       indexSongCount: mock(() => 0),
       updateCheck: mock(async () => null),
-      backupsList: mock(() => [] as unknown as Array<{ name: string; createdAt: number; sizeBytes: number; files: string[] }>),
+      backupsList: mock(
+        () =>
+          [] as unknown as Array<{
+            name: string;
+            createdAt: number;
+            sizeBytes: number;
+            files: string[];
+          }>,
+      ),
       processingSummary: mock(() => null),
       incompleteJobCount: mock(() => 0),
       untrackedCount: mock(() => 0),
@@ -192,12 +255,24 @@ describe('GET /api/admin/review', () => {
 
   it('hides the GPU snapshot when the probe returns null', async () => {
     const subFns = {
-      collectMetrics: mock(async (): Promise<MetricsSnapshot> => ({ ...emptyMetrics, gpu: null, hardware: { ...emptyMetrics.hardware, gpuDetected: null } })),
+      collectMetrics: mock(async (): Promise<MetricsSnapshot> => ({
+        ...emptyMetrics,
+        gpu: null,
+        hardware: { ...emptyMetrics.hardware, gpuDetected: null },
+      })),
       systemStatus: mock(async () => ({ healthy: false, connected: false })),
       scanStatus: mock(async () => ({ scanning: false, count: 0 })),
       indexSongCount: mock(() => 0),
       updateCheck: mock(async () => null),
-      backupsList: mock(() => [] as unknown as Array<{ name: string; createdAt: number; sizeBytes: number; files: string[] }>),
+      backupsList: mock(
+        () =>
+          [] as unknown as Array<{
+            name: string;
+            createdAt: number;
+            sizeBytes: number;
+            files: string[];
+          }>,
+      ),
       processingSummary: mock(() => null),
       incompleteJobCount: mock(() => 0),
       untrackedCount: mock(() => 0),

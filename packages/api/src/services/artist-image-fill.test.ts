@@ -251,4 +251,3 @@ describe('artistImageCoverage', () => {
     expect(artistImageCoverage(db).missing).toBe(countArtistsNeedingPortrait(db));
   });
 });
-

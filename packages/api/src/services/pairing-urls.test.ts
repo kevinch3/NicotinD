@@ -109,9 +109,7 @@ describe('RemoteAccess — needs-operator state', () => {
   it('surfaces the guided one-time command when funnel arming is operator-denied', async () => {
     const db = new Database(':memory:');
     applySchema(db);
-    db.run(
-      `INSERT INTO app_settings (key, value) VALUES ('remote_access', '{"enabled":true}')`,
-    );
+    db.run(`INSERT INTO app_settings (key, value) VALUES ('remote_access', '{"enabled":true}')`);
 
     const runner = async (args: string[]): Promise<ExecResult> => {
       if (args[0] === 'funnel') {
@@ -133,8 +131,6 @@ describe('RemoteAccess — needs-operator state', () => {
     const { state } = await remote.status();
 
     expect(state.kind).toBe('needs-operator');
-    expect((state as { command: string }).command).toMatch(
-      /^sudo tailscale set --operator=\S+$/,
-    );
+    expect((state as { command: string }).command).toMatch(/^sudo tailscale set --operator=\S+$/);
   });
 });

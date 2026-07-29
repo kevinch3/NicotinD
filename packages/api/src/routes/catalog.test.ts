@@ -138,7 +138,11 @@ describe('catalog routes', () => {
     const res = await app.request('/resolve', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ foreignAlbumId: 'rg', artistName: 'Shaggy', albumTitle: 'The Best of Shaggy' }),
+      body: JSON.stringify({
+        foreignAlbumId: 'rg',
+        artistName: 'Shaggy',
+        albumTitle: 'The Best of Shaggy',
+      }),
     });
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: string; code?: string };

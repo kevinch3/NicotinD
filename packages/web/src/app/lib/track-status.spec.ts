@@ -16,9 +16,7 @@ describe('currentAndNextTracks', () => {
   });
 
   it('leaves current undefined when nothing is downloading (never falls back to a stale status)', () => {
-    const result = currentAndNextTracks(
-      tracks(['A', 'done'], ['B', 'pending'], ['C', 'pending']),
-    );
+    const result = currentAndNextTracks(tracks(['A', 'done'], ['B', 'pending'], ['C', 'pending']));
     expect(result.current).toBeUndefined();
     expect(result.next).toEqual(['B', 'C']);
   });

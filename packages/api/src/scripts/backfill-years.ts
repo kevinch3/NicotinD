@@ -71,10 +71,9 @@ function main(): void {
   }
 
   const albums = db
-    .query<
-      { id: string; name: string; artist: string },
-      []
-    >('SELECT id, name, artist FROM library_albums WHERE hidden = 0 AND (year IS NULL OR year <= 1)')
+    .query<{ id: string; name: string; artist: string }, []>(
+      'SELECT id, name, artist FROM library_albums WHERE hidden = 0 AND (year IS NULL OR year <= 1)',
+    )
     .all();
 
   const bySource = new Map<YearSource, number>();
@@ -82,12 +81,13 @@ function main(): void {
 
   for (const a of albums) {
     const songs = db
-      .query<
-        { title: string; year: number | null; path: string },
-        [string]
-      >('SELECT title, year, path FROM library_songs WHERE album_id = ?')
+      .query<{ title: string; year: number | null; path: string }, [string]>(
+        'SELECT title, year, path FROM library_songs WHERE album_id = ?',
+      )
       .all(a.id);
-    const tagYears = songs.map((s) => s.year).filter((y): y is number => typeof y === 'number' && y > 1);
+    const tagYears = songs
+      .map((s) => s.year)
+      .filter((y): y is number => typeof y === 'number' && y > 1);
     const folder = (songs[0]?.path ?? '').split('/')[1] ?? '';
     const mbYears: number[] = [];
     for (const s of songs) {
@@ -97,7 +97,12 @@ function main(): void {
     const pick = pickAlbumYear({ tagYears, folderYear: folderYear(folder), mbYears });
     if (!pick) continue;
     bySource.set(pick.source, (bySource.get(pick.source) ?? 0) + 1);
-    picks.push({ id: a.id, label: `${a.artist} — ${a.name}`, year: pick.year, source: pick.source });
+    picks.push({
+      id: a.id,
+      label: `${a.artist} — ${a.name}`,
+      year: pick.year,
+      source: pick.source,
+    });
   }
 
   console.log(

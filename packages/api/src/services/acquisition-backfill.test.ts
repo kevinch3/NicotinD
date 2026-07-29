@@ -43,7 +43,9 @@ describe('backfillAcquisitions', () => {
 
   it('resolves a URL acquisition to its plugin backend', () => {
     seedSong(db, 's2', 'Artist/EP/02.mp3');
-    db.run(`INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('job9', 'ytdlp', 'u', 'done')`);
+    db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('job9', 'ytdlp', 'u', 'done')`,
+    );
     seedDownload(db, 'k2', 'acquire:job9', 'Artist/EP/02.mp3');
 
     backfillAcquisitions(db, { force: true });

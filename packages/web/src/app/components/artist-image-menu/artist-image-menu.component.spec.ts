@@ -63,8 +63,7 @@ function make(opts: { albums?: unknown[]; getArtistFails?: boolean } = {}) {
   return { c, calls };
 }
 
-const fileEvent = (files: File[]) =>
-  ({ target: { files, value: 'x' } }) as unknown as Event;
+const fileEvent = (files: File[]) => ({ target: { files, value: 'x' } }) as unknown as Event;
 
 describe('ArtistImageMenuComponent', () => {
   let m: ReturnType<typeof make>;

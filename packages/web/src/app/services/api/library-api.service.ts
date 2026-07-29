@@ -143,10 +143,7 @@ export class LibraryApiService {
    * override", so it can't thrash or clobber a curator upload.
    */
   autoFetchArtistImage(id: string) {
-    return this.http.post<{ filled: boolean }>(
-      `/api/library/artists/${id}/auto-fetch-image`,
-      {},
-    );
+    return this.http.post<{ filled: boolean }>(`/api/library/artists/${id}/auto-fetch-image`, {});
   }
   /** Remove the manual artist-image override → revert to auto/placeholder (admin). */
   resetArtistImage(id: string) {

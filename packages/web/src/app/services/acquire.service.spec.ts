@@ -92,7 +92,9 @@ describe('AcquireService', () => {
     it('toasts error when a done job carries a partial-download warning', async () => {
       await svc.refresh();
 
-      get.mockReturnValue(of([job({ id: 'j1', state: 'done', error: 'only 2 of 3 tracks matched' })]));
+      get.mockReturnValue(
+        of([job({ id: 'j1', state: 'done', error: 'only 2 of 3 tracks matched' })]),
+      );
       await svc.refresh();
 
       expect(show).toHaveBeenCalledWith(

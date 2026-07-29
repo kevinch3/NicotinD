@@ -217,10 +217,9 @@ export async function backfillArtwork(
       if (
         poster &&
         !db
-          .query<
-            { id: string },
-            [string]
-          >(`SELECT id FROM library_artwork WHERE id = ? AND kind = 'artist'`)
+          .query<{ id: string }, [string]>(
+            `SELECT id FROM library_artwork WHERE id = ? AND kind = 'artist'`,
+          )
           .get(album.artist_id)
       ) {
         if (opts.apply) setArtwork(db, album.artist_id, 'artist', poster, opts.coverCacheDir);

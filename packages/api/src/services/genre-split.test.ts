@@ -42,9 +42,9 @@ describe('splitGenres', () => {
   it('never splits on "&"', () => {
     expect(splitGenres('Drum & Bass', ctx())).toEqual(['Drum & Bass']);
     expect(splitGenres('Contemporary R&B', ctx())).toEqual(['Contemporary R&B']);
-    expect(
-      splitGenres('Melodic House & Techno', ctx({ known: known('House', 'Techno') })),
-    ).toEqual(['Melodic House & Techno']);
+    expect(splitGenres('Melodic House & Techno', ctx({ known: known('House', 'Techno') }))).toEqual(
+      ['Melodic House & Techno'],
+    );
   });
 
   it('splits on "/" only when every side is a known genre', () => {
@@ -257,7 +257,13 @@ describe('proposeGenreAliases', () => {
 
   it('proposes dropping known junk values', async () => {
     const { proposeGenreAliases } = await import('./genre-split.js');
-    const out = proposeGenreAliases(vocab([['Other', 255], ['<Desconocido>', 3], ['Rock', 800]]));
+    const out = proposeGenreAliases(
+      vocab([
+        ['Other', 255],
+        ['<Desconocido>', 3],
+        ['Rock', 800],
+      ]),
+    );
     expect(out).toContainEqual({ alias: 'Other', canonical: '', kind: 'junk', count: 255 });
     expect(out).toContainEqual({ alias: '<Desconocido>', canonical: '', kind: 'junk', count: 3 });
     expect(out.find((p) => p.alias === 'Rock')).toBeUndefined();
@@ -265,17 +271,41 @@ describe('proposeGenreAliases', () => {
 
   it('proposes punctuation/casing variant merges onto the most common form', async () => {
     const { proposeGenreAliases } = await import('./genre-split.js');
-    const out = proposeGenreAliases(vocab([['Hip Hop', 105], ['Hip-Hop', 4]]));
-    expect(out).toContainEqual({ alias: 'Hip-Hop', canonical: 'Hip Hop', kind: 'variant', count: 4 });
+    const out = proposeGenreAliases(
+      vocab([
+        ['Hip Hop', 105],
+        ['Hip-Hop', 4],
+      ]),
+    );
+    expect(out).toContainEqual({
+      alias: 'Hip-Hop',
+      canonical: 'Hip Hop',
+      kind: 'variant',
+      count: 4,
+    });
     expect(out.find((p) => p.alias === 'Hip Hop')).toBeUndefined();
   });
 
   it('proposes case-boundary segmentations only when every segment is known', async () => {
     const { proposeGenreAliases } = await import('./genre-split.js');
     const out = proposeGenreAliases(
-      vocab([['RockPunk', 3], ['LatinPopLatin Pop', 20], ['BritPop', 2], ['Rock', 800], ['Punk', 30], ['Latin', 600], ['Pop', 1200], ['Latin Pop', 111]]),
+      vocab([
+        ['RockPunk', 3],
+        ['LatinPopLatin Pop', 20],
+        ['BritPop', 2],
+        ['Rock', 800],
+        ['Punk', 30],
+        ['Latin', 600],
+        ['Pop', 1200],
+        ['Latin Pop', 111],
+      ]),
     );
-    expect(out).toContainEqual({ alias: 'RockPunk', canonical: 'Rock;Punk', kind: 'concat', count: 3 });
+    expect(out).toContainEqual({
+      alias: 'RockPunk',
+      canonical: 'Rock;Punk',
+      kind: 'concat',
+      count: 3,
+    });
     // Longest-known-segment first: "LatinPop" resolves to the more specific
     // "Latin Pop" rather than "Latin" + "Pop", and the duplicate collapses.
     expect(out).toContainEqual({
@@ -292,7 +322,12 @@ describe('proposeGenreAliases', () => {
 
   it('proposes keeping only the known sides of an unresolved "/" join', async () => {
     const { proposeGenreAliases } = await import('./genre-split.js');
-    const out = proposeGenreAliases(vocab([['Deep House / Vinyl', 1], ['Deep House', 71]]));
+    const out = proposeGenreAliases(
+      vocab([
+        ['Deep House / Vinyl', 1],
+        ['Deep House', 71],
+      ]),
+    );
     expect(out).toContainEqual({
       alias: 'Deep House / Vinyl',
       canonical: 'Deep House',
@@ -344,8 +379,9 @@ describe('setSongGenres', () => {
     // Empty set clears the primary and the join rows.
     setSongGenres(db, 's1', []);
     expect(
-      db.query<{ genre: string | null }, [string]>(`SELECT genre FROM library_songs WHERE id = ?`).get('s1')
-        ?.genre,
+      db
+        .query<{ genre: string | null }, [string]>(`SELECT genre FROM library_songs WHERE id = ?`)
+        .get('s1')?.genre,
     ).toBeNull();
     expect(loadGenreSets(db, ['s1']).get('s1')).toBeUndefined();
   });
@@ -390,8 +426,9 @@ describe('backfillGenresFromAliases', () => {
     expect(loadGenreSets(db, ['s1']).get('s1')).toEqual(['Latin', 'World']);
     // The garbage primary is REPLACED, not appended to.
     expect(
-      db.query<{ genre: string | null }, [string]>(`SELECT genre FROM library_songs WHERE id = ?`).get('s1')
-        ?.genre,
+      db
+        .query<{ genre: string | null }, [string]>(`SELECT genre FROM library_songs WHERE id = ?`)
+        .get('s1')?.genre,
     ).toBe('Latin');
     // Untouched songs are left alone (and not counted).
     expect(loadGenreSets(db, ['s2']).get('s2')).toEqual(['Folk']);
@@ -442,8 +479,9 @@ describe('appendSongGenres', () => {
     expect(loadGenreSets(db, ['s1']).get('s1')).toEqual(['House', 'Techno', 'Deep House']);
     // Primary (position 0) is unchanged by an append.
     expect(
-      db.query<{ genre: string | null }, [string]>(`SELECT genre FROM library_songs WHERE id = ?`).get('s1')
-        ?.genre,
+      db
+        .query<{ genre: string | null }, [string]>(`SELECT genre FROM library_songs WHERE id = ?`)
+        .get('s1')?.genre,
     ).toBe('House');
   });
 

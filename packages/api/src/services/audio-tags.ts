@@ -394,7 +394,8 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
     const v = tags[field];
     if (v !== undefined) userText.push({ description: key, value: formatFeature(field, v) });
   }
-  if (tags.mood !== undefined) userText.push({ description: FEATURE_TAG_KEYS.mood, value: tags.mood });
+  if (tags.mood !== undefined)
+    userText.push({ description: FEATURE_TAG_KEYS.mood, value: tags.mood });
   // Written to a LICENSE TXXX frame only — never the native copyright frame, so
   // an existing "© …" notice on the file is preserved.
   if (tags.licence !== undefined) userText.push({ description: 'LICENSE', value: tags.licence });
@@ -442,8 +443,7 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
     const v = tags[field];
     if (v !== undefined) metaArgs.push('-metadata', `${key}=${formatFeature(field, v)}`);
   }
-  if (tags.mood !== undefined)
-    metaArgs.push('-metadata', `${FEATURE_TAG_KEYS.mood}=${tags.mood}`);
+  if (tags.mood !== undefined) metaArgs.push('-metadata', `${FEATURE_TAG_KEYS.mood}=${tags.mood}`);
   if (tags.licence !== undefined) metaArgs.push('-metadata', `LICENSE=${tags.licence}`);
   if (tags.compilation) metaArgs.push('-metadata', 'COMPILATION=1');
   if (tags.acoustIdId) metaArgs.push('-metadata', `ACOUSTID_ID=${tags.acoustIdId}`);

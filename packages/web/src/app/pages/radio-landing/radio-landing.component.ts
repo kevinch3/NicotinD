@@ -23,14 +23,24 @@ const VIBE_PRESETS: readonly VibePreset[] = [
   { id: 'happy', label: 'vibe.happy', emoji: '😊', filter: { moods: ['happy'] } },
   { id: 'chill', label: 'vibe.chill', emoji: '😌', filter: { moods: ['relaxed'] } },
   { id: 'party', label: 'vibe.party', emoji: '🎉', filter: { moods: ['party'] } },
-  { id: 'energetic', label: 'vibe.energetic', emoji: '⚡', filter: { buckets: { energy: ['high'] } } },
+  {
+    id: 'energetic',
+    label: 'vibe.energetic',
+    emoji: '⚡',
+    filter: { buckets: { energy: ['high'] } },
+  },
   {
     id: 'danceable',
     label: 'vibe.danceable',
     emoji: '💃',
     filter: { buckets: { danceability: ['high'] } },
   },
-  { id: 'uplifting', label: 'vibe.uplifting', emoji: '☀️', filter: { buckets: { valence: ['high'] } } },
+  {
+    id: 'uplifting',
+    label: 'vibe.uplifting',
+    emoji: '☀️',
+    filter: { buckets: { valence: ['high'] } },
+  },
   { id: 'fast', label: 'vibe.fast', emoji: '🏃', filter: { bpmMin: 120 } },
   {
     id: 'acoustic',

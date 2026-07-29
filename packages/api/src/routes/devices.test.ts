@@ -225,12 +225,10 @@ describe('GET /api/devices + DELETE /api/devices/:id', () => {
       headers: { Authorization: `Bearer ${await userToken()}` },
     });
     expect(del.status).toBe(200);
-    expect(
-      testDb.query('SELECT id FROM paired_devices WHERE id = ?').get(deviceId),
-    ).toBeNull();
+    expect(testDb.query('SELECT id FROM paired_devices WHERE id = ?').get(deviceId)).toBeNull();
   });
 
-  it('cannot revoke another user\'s device (404)', async () => {
+  it("cannot revoke another user's device (404)", async () => {
     testDb.run(
       "INSERT INTO users (id, username, password_hash, role) VALUES ('u2', 'bob', 'hash', 'user')",
     );

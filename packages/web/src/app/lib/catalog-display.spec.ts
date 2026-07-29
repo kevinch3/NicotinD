@@ -31,7 +31,11 @@ describe('shouldOpenDirectSearch', () => {
   it('opens when an artist matched but has no album cards (§A6)', () => {
     expect(
       shouldOpenDirectSearch(
-        result({ artists: [{ mbid: 'm', name: 'Zara Larsson' }], albums: [], discographyUnavailable: true }),
+        result({
+          artists: [{ mbid: 'm', name: 'Zara Larsson' }],
+          albums: [],
+          discographyUnavailable: true,
+        }),
       ),
     ).toBe(true);
   });
@@ -39,7 +43,19 @@ describe('shouldOpenDirectSearch', () => {
   it('stays closed when there are actionable album cards', () => {
     expect(
       shouldOpenDirectSearch(
-        result({ albums: [{ foreignAlbumId: 'a', title: 'X', artistName: 'Y', artistMbid: 'm', albumType: 'Album', secondaryTypes: [], trackCount: 1 }] }),
+        result({
+          albums: [
+            {
+              foreignAlbumId: 'a',
+              title: 'X',
+              artistName: 'Y',
+              artistMbid: 'm',
+              albumType: 'Album',
+              secondaryTypes: [],
+              trackCount: 1,
+            },
+          ],
+        }),
       ),
     ).toBe(false);
   });
@@ -48,8 +64,12 @@ describe('shouldOpenDirectSearch', () => {
 describe('discographyFallbackNote', () => {
   it('explains the network fallback when an artist matched with no albums', () => {
     expect(
-      discographyFallbackNote(result({ scopedArtist: 'Zara Larsson', discographyUnavailable: true })),
-    ).toBe("We couldn't load Zara Larsson's albums from the catalog — showing network results below.");
+      discographyFallbackNote(
+        result({ scopedArtist: 'Zara Larsson', discographyUnavailable: true }),
+      ),
+    ).toBe(
+      "We couldn't load Zara Larsson's albums from the catalog — showing network results below.",
+    );
   });
 
   it('is null when albums are present or no artist was scoped', () => {

@@ -14,11 +14,7 @@
 
 /** Fold accents + lowercase for keyword matching (keeps a normalized word form). */
 function fold(s: string): string {
-  return s
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .trim();
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 }
 
 /**

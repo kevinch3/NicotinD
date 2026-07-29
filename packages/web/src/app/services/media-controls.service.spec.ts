@@ -185,12 +185,14 @@ describe('MediaControlsService — web (@jofr) path', () => {
         this._src = val;
         if (this.onload) this.onload();
       }
-      get src() { return this._src; }
+      get src() {
+        return this._src;
+      }
     } as any;
 
     new MediaControlsService().setMetadata(META);
     await flush();
-    
+
     expect(jofr.session.setMetadata).toHaveBeenCalledWith({ ...META, artwork: [] });
     expect(jofr.session.setMetadata).toHaveBeenCalledWith(META);
     expect(jofr.thenProbe).not.toHaveBeenCalled();

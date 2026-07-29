@@ -11,7 +11,9 @@ import type { Database } from 'bun:sqlite';
 export function pruneOrphanArtist(db: Database, artistId: string): void {
   const remainingAlbums =
     db
-      .query<{ c: number }, [string]>('SELECT COUNT(*) AS c FROM library_albums WHERE artist_id = ?')
+      .query<{ c: number }, [string]>(
+        'SELECT COUNT(*) AS c FROM library_albums WHERE artist_id = ?',
+      )
       .get(artistId)?.c ?? 0;
   const remainingSongs =
     db

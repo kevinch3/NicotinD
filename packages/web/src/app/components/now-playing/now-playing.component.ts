@@ -76,7 +76,9 @@ export class NowPlayingComponent {
   /** Parsed synced LRC lines (empty when the lyrics are plain-only). */
   readonly lyricLines = computed(() => parseLrc(this.lyrics()?.synced));
   /** Index of the line to highlight for the current playback position. */
-  readonly activeLine = computed(() => findActiveLine(this.lyricLines(), this.displayTime() * 1000));
+  readonly activeLine = computed(() =>
+    findActiveLine(this.lyricLines(), this.displayTime() * 1000),
+  );
   /** Plain text fallback when there are no synced lines. */
   readonly plainLyrics = computed(() => this.lyrics()?.plain ?? '');
 

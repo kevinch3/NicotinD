@@ -19,9 +19,11 @@ import {
 
 describe('dedupeCoverUrls', () => {
   it('drops blanks and duplicates, preserving first-seen order', () => {
-    expect(
-      dedupeCoverUrls(['a', null, 'b', undefined, 'a', '', 'c', 'b']),
-    ).toEqual(['a', 'b', 'c']);
+    expect(dedupeCoverUrls(['a', null, 'b', undefined, 'a', '', 'c', 'b'])).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
   });
 });
 
@@ -74,12 +76,9 @@ describe('selectDistinctEmbeddedCovers', () => {
   });
 
   it('treats an extractor throw as no art', async () => {
-    const out = await selectDistinctEmbeddedCovers(
-      [{ id: 's1', absPath: '/x' }],
-      async () => {
-        throw new Error('boom');
-      },
-    );
+    const out = await selectDistinctEmbeddedCovers([{ id: 's1', absPath: '/x' }], async () => {
+      throw new Error('boom');
+    });
     expect(out).toEqual([]);
   });
 });

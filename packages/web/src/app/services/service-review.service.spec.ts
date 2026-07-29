@@ -10,10 +10,23 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     collectedAt: 1_700_000_000_000,
     version: '0.1.234',
     uptimeMs: 60_000,
-    hardware: { cpuModel: 'Test CPU', cores: 4, arch: 'x64', platform: 'linux', totalMemoryBytes: 8000, gpuDetected: null },
+    hardware: {
+      cpuModel: 'Test CPU',
+      cores: 4,
+      arch: 'x64',
+      platform: 'linux',
+      totalMemoryBytes: 8000,
+      gpuDetected: null,
+    },
     load: {
       cpu: { percent: 25, cores: 4, model: 'Test CPU' },
-      memory: { totalBytes: 8000, usedBytes: 4000, freeBytes: 4000, processRssBytes: 100, processHeapBytes: 50 },
+      memory: {
+        totalBytes: 8000,
+        usedBytes: 4000,
+        freeBytes: 4000,
+        processRssBytes: 100,
+        processHeapBytes: 50,
+      },
       gpu: null,
     },
     services: {

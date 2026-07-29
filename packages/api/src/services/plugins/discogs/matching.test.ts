@@ -155,7 +155,11 @@ describe('mapArtistInfo', () => {
     expect(
       mapArtistInfo({
         profile: '  A great artist.  ',
-        urls: ['https://en.wikipedia.org/wiki/X', 'https://en.wikipedia.org/wiki/X', 'https://x.com'],
+        urls: [
+          'https://en.wikipedia.org/wiki/X',
+          'https://en.wikipedia.org/wiki/X',
+          'https://x.com',
+        ],
       }),
     ).toEqual({
       bio: 'A great artist.',

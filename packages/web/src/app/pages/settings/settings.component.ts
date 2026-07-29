@@ -18,11 +18,7 @@ import {
 } from '../../services/media-controls.service';
 import { isIosNative, isElectron, isNativePlatform } from '../../lib/platform';
 import { ServerConfigService } from '../../services/server-config.service';
-import {
-  pickDirectory,
-  setMusicDir,
-  revealLogs,
-} from '../../services/native/native-capabilities';
+import { pickDirectory, setMusicDir, revealLogs } from '../../services/native/native-capabilities';
 import { ConfirmService } from '../../services/confirm.service';
 import { UpdateService } from '../../services/update.service';
 import { ToastService } from '../../services/toast.service';
@@ -280,7 +276,8 @@ export class SettingsComponent {
         this.musicDirChosen.set(path);
       } else {
         this.musicDirError.set(
-          result.error ?? 'Failed to restart with the new music folder. The previous folder is still in use.',
+          result.error ??
+            'Failed to restart with the new music folder. The previous folder is still in use.',
         );
       }
     } finally {

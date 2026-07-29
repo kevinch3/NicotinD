@@ -155,7 +155,8 @@ describe('orderTracks — energy-arc', () => {
     expect(peakIdx).toBeGreaterThan(0);
     expect(peakIdx).toBeLessThan(energies.length - 1);
     // Non-decreasing up to the peak, non-increasing after it.
-    for (let i = 1; i <= peakIdx; i++) expect(energies[i]!).toBeGreaterThanOrEqual(energies[i - 1]!);
+    for (let i = 1; i <= peakIdx; i++)
+      expect(energies[i]!).toBeGreaterThanOrEqual(energies[i - 1]!);
     for (let i = peakIdx + 1; i < energies.length; i++)
       expect(energies[i]!).toBeLessThanOrEqual(energies[i - 1]!);
   });

@@ -27,10 +27,7 @@ import type { Database } from 'bun:sqlite';
 export const ACQUISITION_SETTING_KEY = 'acquisition_enabled';
 
 /** Pure precedence rule, so the asymmetry is testable on its own. */
-export function resolveAcquisitionEnabled(
-  envEnabled: boolean,
-  stored: boolean | null,
-): boolean {
+export function resolveAcquisitionEnabled(envEnabled: boolean, stored: boolean | null): boolean {
   if (!envEnabled) return false; // hard floor
   return stored ?? true; // unset → on, matching the pre-#235 default
 }

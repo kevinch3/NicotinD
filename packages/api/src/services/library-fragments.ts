@@ -46,7 +46,6 @@ import { checkMisSplitAlbums, type AuditFinding } from './library-audit.js';
 import { contradictsTrackCount } from './library-curator.js';
 import type { ReleaseType } from './release-meta-store.js';
 
-
 /**
  * Alnum-only, diacritic-stripped, lowercased artist key. Collapses the
  * punctuation/spacing spelling variants the scanner keeps distinct

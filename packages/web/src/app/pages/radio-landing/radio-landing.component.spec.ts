@@ -28,7 +28,9 @@ const SONG: Song = {
 
 function setup(overrides: { getFilterRadio?: () => unknown; getGenres?: () => unknown } = {}) {
   const getFilterRadio = vi.fn(overrides.getFilterRadio ?? (() => of([SONG])));
-  const getGenres = vi.fn(overrides.getGenres ?? (() => of([{ value: 'Rock' }, { value: 'Jazz' }])));
+  const getGenres = vi.fn(
+    overrides.getGenres ?? (() => of([{ value: 'Rock' }, { value: 'Jazz' }])),
+  );
   const toastShow = vi.fn();
 
   TestBed.configureTestingModule({
@@ -69,7 +71,12 @@ describe('RadioLandingComponent', () => {
   it('starting a preset fetches filter radio and hands it to the player', async () => {
     const { component, player, getFilterRadio } = setup();
     const start = vi.spyOn(player, 'startRadioWithFilter');
-    component.startPreset({ id: 'happy', label: 'Happy', emoji: '😊', filter: { moods: ['happy'] } });
+    component.startPreset({
+      id: 'happy',
+      label: 'Happy',
+      emoji: '😊',
+      filter: { moods: ['happy'] },
+    });
     await Promise.resolve();
     expect(getFilterRadio).toHaveBeenCalledWith({ moods: ['happy'] }, [], 20);
     expect(start).toHaveBeenCalledOnce();

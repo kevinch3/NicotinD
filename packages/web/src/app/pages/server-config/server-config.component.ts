@@ -49,7 +49,9 @@ export class ServerConfigComponent {
   readonly servers = this.server.servers;
   readonly currentUrl = this.server.baseUrl;
   /** True when the picker was opened from a configured app (shows Back). */
-  readonly canGoBack = computed(() => !this.server.needsConfiguration() && this.auth.isAuthenticated());
+  readonly canGoBack = computed(
+    () => !this.server.needsConfiguration() && this.auth.isAuthenticated(),
+  );
   readonly showAddForm = signal(false);
 
   /** The add-server form is shown directly when there's nothing saved yet. */
@@ -129,7 +131,9 @@ export class ServerConfigComponent {
     const outcome = await scanBarcode();
     if (outcome.status === 'cancelled' || outcome.status === 'unavailable') return;
     if (outcome.status === 'denied') {
-      this.error.set('Camera access is denied — allow it in your phone settings, or type the URL and code instead');
+      this.error.set(
+        'Camera access is denied — allow it in your phone settings, or type the URL and code instead',
+      );
       return;
     }
     if (outcome.status === 'error') {

@@ -171,7 +171,8 @@ async function main(): Promise<void> {
     if (merged.length === before) continue; // nothing new — skip tag rewrite
     if (musicDir) {
       const abs = resolveSongAbsPath(musicDir, a.song.path);
-      if (existsSync(abs)) await writeAudioTags(abs, { genre: merged.join('; ') }).catch(() => false);
+      if (existsSync(abs))
+        await writeAudioTags(abs, { genre: merged.join('; ') }).catch(() => false);
     }
     appendFileSync(
       logPath,

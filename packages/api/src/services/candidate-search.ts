@@ -39,7 +39,10 @@ export class CandidateSearchAggregator {
     const lists = await Promise.all(
       active.map((s) =>
         s.search(query).catch((err) => {
-          log.warn({ source: s.id, err: err instanceof Error ? err.message : String(err) }, 'candidate source failed');
+          log.warn(
+            { source: s.id, err: err instanceof Error ? err.message : String(err) },
+            'candidate source failed',
+          );
           return [] as AcquisitionCandidate[];
         }),
       ),

@@ -3,16 +3,19 @@ import { TrackStatsBarsComponent } from './track-stats-bars.component';
 import { setInputValue } from '../../../testing/signal-input';
 
 describe('TrackStatsBarsComponent — badges', () => {
-  function setup(overrides: {
-    bpm?: number | null;
-    genre?: string | null;
-    key?: string | null;
-    mood?: string | null;
-  } = {}) {
+  function setup(
+    overrides: {
+      bpm?: number | null;
+      genre?: string | null;
+      key?: string | null;
+      mood?: string | null;
+    } = {},
+  ) {
     TestBed.configureTestingModule({ imports: [TrackStatsBarsComponent] });
     const fixture = TestBed.createComponent(TrackStatsBarsComponent);
     if (overrides.bpm !== undefined) setInputValue(fixture.componentInstance.bpm, overrides.bpm);
-    if (overrides.genre !== undefined) setInputValue(fixture.componentInstance.genre, overrides.genre);
+    if (overrides.genre !== undefined)
+      setInputValue(fixture.componentInstance.genre, overrides.genre);
     if (overrides.key !== undefined) setInputValue(fixture.componentInstance.key, overrides.key);
     if (overrides.mood !== undefined) setInputValue(fixture.componentInstance.mood, overrides.mood);
     fixture.detectChanges();
@@ -67,20 +70,27 @@ describe('TrackStatsBarsComponent — badges', () => {
 });
 
 describe('TrackStatsBarsComponent — bars', () => {
-  function setup(overrides: {
-    energy?: number | null;
-    valence?: number | null;
-    danceability?: number | null;
-    acousticness?: number | null;
-    instrumental?: number | null;
-  } = {}) {
+  function setup(
+    overrides: {
+      energy?: number | null;
+      valence?: number | null;
+      danceability?: number | null;
+      acousticness?: number | null;
+      instrumental?: number | null;
+    } = {},
+  ) {
     TestBed.configureTestingModule({ imports: [TrackStatsBarsComponent] });
     const fixture = TestBed.createComponent(TrackStatsBarsComponent);
-    if (overrides.energy !== undefined) setInputValue(fixture.componentInstance.energy, overrides.energy);
-    if (overrides.valence !== undefined) setInputValue(fixture.componentInstance.valence, overrides.valence);
-    if (overrides.danceability !== undefined) setInputValue(fixture.componentInstance.danceability, overrides.danceability);
-    if (overrides.acousticness !== undefined) setInputValue(fixture.componentInstance.acousticness, overrides.acousticness);
-    if (overrides.instrumental !== undefined) setInputValue(fixture.componentInstance.instrumental, overrides.instrumental);
+    if (overrides.energy !== undefined)
+      setInputValue(fixture.componentInstance.energy, overrides.energy);
+    if (overrides.valence !== undefined)
+      setInputValue(fixture.componentInstance.valence, overrides.valence);
+    if (overrides.danceability !== undefined)
+      setInputValue(fixture.componentInstance.danceability, overrides.danceability);
+    if (overrides.acousticness !== undefined)
+      setInputValue(fixture.componentInstance.acousticness, overrides.acousticness);
+    if (overrides.instrumental !== undefined)
+      setInputValue(fixture.componentInstance.instrumental, overrides.instrumental);
     fixture.detectChanges();
     return fixture;
   }
@@ -144,7 +154,13 @@ describe('TrackStatsBarsComponent — bars', () => {
   });
 
   it('renders bar labels with expected metric names', () => {
-    const fixture = setup({ energy: 0.5, valence: 0.6, danceability: 0.7, acousticness: 0.1, instrumental: 0.8 });
+    const fixture = setup({
+      energy: 0.5,
+      valence: 0.6,
+      danceability: 0.7,
+      acousticness: 0.1,
+      instrumental: 0.8,
+    });
     const labels = (fixture.nativeElement as HTMLElement).querySelectorAll('.bar-label');
     const names = Array.from(labels).map((l) => l.textContent?.trim() ?? '');
     expect(names).toEqual(['Energy', 'Valence', 'Dance', 'Acoustic', 'Instrumental']);

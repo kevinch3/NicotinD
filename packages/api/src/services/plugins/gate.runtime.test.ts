@@ -17,7 +17,9 @@ function appWith(gate: ReturnType<typeof requireAcquisitionEnabledMiddleware>) {
 
 describe('requireAcquisitionEnabledMiddleware', () => {
   it('still accepts a plain boolean (existing callers)', async () => {
-    expect((await appWith(requireAcquisitionEnabledMiddleware(true)).request('/')).status).toBe(200);
+    expect((await appWith(requireAcquisitionEnabledMiddleware(true)).request('/')).status).toBe(
+      200,
+    );
     expect((await appWith(requireAcquisitionEnabledMiddleware(false)).request('/')).status).toBe(
       404,
     );

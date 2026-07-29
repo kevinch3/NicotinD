@@ -48,8 +48,7 @@ describe('route-utils', () => {
     });
 
     it('resolves by name when no id is present and the artist exists locally', async () => {
-      const lookup = (name: string) =>
-        Promise.resolve(name === 'La Portuaria' ? 'art-lp' : null);
+      const lookup = (name: string) => Promise.resolve(name === 'La Portuaria' ? 'art-lp' : null);
       expect(await resolveArtistTarget({ artist: 'La Portuaria' }, lookup)).toEqual([
         '/library',
         'artists',
@@ -58,9 +57,9 @@ describe('route-utils', () => {
     });
 
     it('falls back to /library when the name does not resolve', async () => {
-      expect(await resolveArtistTarget({ artist: 'Unknown Band' }, () => Promise.resolve(null))).toEqual(
-        ['/library'],
-      );
+      expect(
+        await resolveArtistTarget({ artist: 'Unknown Band' }, () => Promise.resolve(null)),
+      ).toEqual(['/library']);
     });
 
     it('falls back to /library when there is neither id nor name', async () => {

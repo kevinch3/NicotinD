@@ -67,7 +67,10 @@ export function rememberServer(
     lastUsedAt: now(),
   };
   const rest = servers.filter((s) => s.url !== entry.url);
-  return persist(storage, [updated, ...rest].sort((a, b) => b.lastUsedAt - a.lastUsedAt));
+  return persist(
+    storage,
+    [updated, ...rest].sort((a, b) => b.lastUsedAt - a.lastUsedAt),
+  );
 }
 
 /** Remove a server and its stashed session. */
@@ -96,7 +99,10 @@ export function readStashedSession(storage: StringStorage, url: string): Stashed
       return {
         token: (parsed as StashedSession).token,
         username: (parsed as StashedSession).username,
-        role: typeof (parsed as StashedSession).role === 'string' ? (parsed as StashedSession).role : 'user',
+        role:
+          typeof (parsed as StashedSession).role === 'string'
+            ? (parsed as StashedSession).role
+            : 'user',
       };
     }
     return null;

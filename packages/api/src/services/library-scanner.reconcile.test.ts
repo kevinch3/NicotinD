@@ -33,9 +33,7 @@ describe('reconcileAlbums', () => {
     await scanner.reconcileAlbums([albumDir]);
 
     // The album must exist in the DB after the first reconcile
-    const albumRow = db
-      .query<{ id: string }, []>('SELECT id FROM library_albums LIMIT 1')
-      .get();
+    const albumRow = db.query<{ id: string }, []>('SELECT id FROM library_albums LIMIT 1').get();
     expect(albumRow).not.toBeNull();
     const albumId = albumRow!.id;
 
@@ -75,9 +73,7 @@ describe('reconcileAlbums', () => {
     const scanner = new LibraryScanner(musicDir, db);
     await scanner.reconcileAlbums([albumDir]);
 
-    const albumId = db
-      .query<{ id: string }, []>('SELECT id FROM library_albums LIMIT 1')
-      .get()!.id;
+    const albumId = db.query<{ id: string }, []>('SELECT id FROM library_albums LIMIT 1').get()!.id;
 
     // Orphan row
     db.run(

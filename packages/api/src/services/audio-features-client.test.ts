@@ -169,7 +169,10 @@ describe('AudioFeaturesClient.analyze', () => {
   });
 
   it('genre with no style (bare Discogs genre) parses style as null', async () => {
-    const withGenre = { ...GOOD_PAYLOAD, genre: { genre: 'Ambient', style: null, confidence: 0.6 } };
+    const withGenre = {
+      ...GOOD_PAYLOAD,
+      genre: { genre: 'Ambient', style: null, confidence: 0.6 },
+    };
     const c = clientWith(() => jsonResponse(withGenre));
     const res = await c.analyze('x.opus');
     expect(res?.genre).toEqual({ label: 'Ambient', style: null, confidence: 0.6 });

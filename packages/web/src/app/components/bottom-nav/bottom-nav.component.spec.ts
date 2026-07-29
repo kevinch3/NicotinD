@@ -37,7 +37,10 @@ function setup(opts: { offline?: boolean; active?: number; canAcquire?: boolean 
   return { fixture, isOffline, activeDownloadCount, router };
 }
 
-function linkFor(fixture: { nativeElement: Document | HTMLElement }, to: string): HTMLAnchorElement | null {
+function linkFor(
+  fixture: { nativeElement: Document | HTMLElement },
+  to: string,
+): HTMLAnchorElement | null {
   const anchors = Array.from(fixture.nativeElement.querySelectorAll('a')) as HTMLAnchorElement[];
   return anchors.find((a) => a.getAttribute('href') === to) ?? null;
 }
@@ -152,9 +155,7 @@ describe('BottomNavComponent', () => {
       // stylesheet was attached and references --theme-accent (full color
       // resolution is e2e-tested in mobile-ux.spec.ts).
       const styles = Array.from(document.querySelectorAll('style')).map((s) => s.textContent ?? '');
-      const painted = styles.some(
-        (s) => s.includes('.is-active') && s.includes('--theme-accent'),
-      );
+      const painted = styles.some((s) => s.includes('.is-active') && s.includes('--theme-accent'));
       expect(painted, 'is-active uses --theme-accent').toBe(true);
     });
   });

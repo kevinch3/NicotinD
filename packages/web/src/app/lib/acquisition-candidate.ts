@@ -42,7 +42,8 @@ const LOSSLESS_FORMAT_BONUS = 30;
 /** Soulseek song → candidate. Score rewards lossless + an available peer slot. */
 export function songResultToCandidate(s: SongResult): BlendedCandidate {
   const ext = fileExt(s.best.filename);
-  const lossless = ext === 'flac' || ext === 'wav' || ext === 'aiff' || ext === 'ape' || ext === 'wv';
+  const lossless =
+    ext === 'flac' || ext === 'wav' || ext === 'aiff' || ext === 'ape' || ext === 'wv';
   const hasSlot = (s.best.freeUploadSlots ?? 0) > 0;
   const score = 50 + (lossless ? LOSSLESS_FORMAT_BONUS : 0) + (hasSlot ? 15 : 0);
   const subtitle = [s.artist, formatBadge(s.best)].filter(Boolean).join(' · ');

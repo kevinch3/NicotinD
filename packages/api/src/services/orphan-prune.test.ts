@@ -305,4 +305,3 @@ describe('scan_cache orphan pruning (path-keyed)', () => {
     expect(row).toEqual({ table: 'scan_cache', rows: 2, orphans: 1 });
   });
 });
-

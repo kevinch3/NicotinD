@@ -71,7 +71,10 @@ const cand = (source: string, url: string, score: number): AcquisitionCandidate 
 describe('AlbumHuntOrchestrator', () => {
   it('blends enabled hunters best-first', async () => {
     const orch = new AlbumHuntOrchestrator(
-      [hunter('archive', [cand('archive', 'u1', 40)]), hunter('spotify', [cand('spotify', 'u2', 90)])],
+      [
+        hunter('archive', [cand('archive', 'u1', 40)]),
+        hunter('spotify', [cand('spotify', 'u2', 90)]),
+      ],
       () => true,
     );
     const res = await orch.hunt('a', 'b');
@@ -80,7 +83,10 @@ describe('AlbumHuntOrchestrator', () => {
 
   it('skips disabled hunters', async () => {
     const orch = new AlbumHuntOrchestrator(
-      [hunter('archive', [cand('archive', 'u1', 40)]), hunter('spotify', [cand('spotify', 'u2', 90)])],
+      [
+        hunter('archive', [cand('archive', 'u1', 40)]),
+        hunter('spotify', [cand('spotify', 'u2', 90)]),
+      ],
       (id) => id === 'archive',
     );
     const res = await orch.hunt('a', 'b');
@@ -99,7 +105,10 @@ describe('AlbumHuntOrchestrator', () => {
   });
 
   it('returns empty when nothing is enabled', async () => {
-    const orch = new AlbumHuntOrchestrator([hunter('archive', [cand('archive', 'u1', 40)])], () => false);
+    const orch = new AlbumHuntOrchestrator(
+      [hunter('archive', [cand('archive', 'u1', 40)])],
+      () => false,
+    );
     expect(await orch.hunt('a', 'b')).toEqual([]);
   });
 });

@@ -30,7 +30,10 @@ describe('escapeXml', () => {
 });
 
 describe('playlistCoverSvg', () => {
-  const svg = playlistCoverSvg({ title: 'Latin Beats', palette: { from: '#ff2d73', to: '#ff8a3d' } });
+  const svg = playlistCoverSvg({
+    title: 'Latin Beats',
+    palette: { from: '#ff2d73', to: '#ff8a3d' },
+  });
 
   it('embeds both palette stops', () => {
     expect(svg).toContain('#ff2d73');
@@ -53,9 +56,9 @@ describe('playlistCoverSvg', () => {
   });
 
   it('is deterministic for the same input', () => {
-    expect(playlistCoverSvg({ title: 'Latin Beats', palette: { from: '#ff2d73', to: '#ff8a3d' } })).toBe(
-      svg,
-    );
+    expect(
+      playlistCoverSvg({ title: 'Latin Beats', palette: { from: '#ff2d73', to: '#ff8a3d' } }),
+    ).toBe(svg);
   });
 });
 

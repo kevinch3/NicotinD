@@ -25,12 +25,16 @@ describe('parseEbur128Output', () => {
   it('ignores the periodic per-frame lines and only reads the Summary', () => {
     // The per-frame line above carries I: -9.3 too, but a doctored frame value
     // must not win over the summary.
-    const doctored = SUMMARY.replace('t: 212.8      TARGET:-23 LUFS    M: -10.4 S: -10.1     I:  -9.3', 't: 212.8 I: -3.0');
+    const doctored = SUMMARY.replace(
+      't: 212.8      TARGET:-23 LUFS    M: -10.4 S: -10.1     I:  -9.3',
+      't: 212.8 I: -3.0',
+    );
     expect(parseEbur128Output(doctored)?.integratedLufs).toBe(-9.3);
   });
 
   it('maps -inf (silence) to the silence floor', () => {
-    const silent = 'Summary:\n  Integrated loudness:\n    I:   -inf LUFS\n  Loudness range:\n    LRA: 0.0 LU\n';
+    const silent =
+      'Summary:\n  Integrated loudness:\n    I:   -inf LUFS\n  Loudness range:\n    LRA: 0.0 LU\n';
     expect(parseEbur128Output(silent)).toEqual({ integratedLufs: -70, loudnessRange: 0 });
   });
 

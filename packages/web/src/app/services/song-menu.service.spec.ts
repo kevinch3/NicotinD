@@ -14,7 +14,10 @@ import { asRole, canCurate as canCurateRole, type Role } from '../../types/core'
 import type { BaseSong } from '../lib/track-utils';
 
 const song = (over: Partial<BaseSong> = {}): BaseSong => ({
-  id: 's1', title: 'Toxic', artist: 'Britney', ...over,
+  id: 's1',
+  title: 'Toxic',
+  artist: 'Britney',
+  ...over,
 });
 
 function setup(role: Role = 'user') {
@@ -31,8 +34,14 @@ function setup(role: Role = 'user') {
       { provide: Router, useValue: router },
       { provide: AuthService, useValue: auth },
       { provide: PlaylistService, useValue: { openPicker: vi.fn() } },
-      { provide: PreserveService, useValue: { isPreserved: () => false, isPreserving: () => false } },
-      { provide: LibraryApiService, useValue: { deleteSongs: vi.fn(() => ({ subscribe: vi.fn() })) } },
+      {
+        provide: PreserveService,
+        useValue: { isPreserved: () => false, isPreserving: () => false },
+      },
+      {
+        provide: LibraryApiService,
+        useValue: { deleteSongs: vi.fn(() => ({ subscribe: vi.fn() })) },
+      },
       { provide: TransferService, useValue: { addDeletedIds: vi.fn() } },
       { provide: TrackInfoService, useValue: { open: vi.fn() } },
       { provide: ConfirmService, useValue: { ask: vi.fn(async () => true) } },
@@ -49,8 +58,15 @@ describe('SongMenuService.build', () => {
   it('emits the common actions in order when data allows (Like leads)', () => {
     const { svc } = setup();
     expect(labels(song({ artistId: 'ar1', albumId: 'al1' }), svc)).toEqual([
-      'Like', 'Add to queue', 'Play next', 'Start radio', 'Go to artist',
-      'Go to album', 'Add to playlist', 'Save offline', 'Song info',
+      'Like',
+      'Add to queue',
+      'Play next',
+      'Start radio',
+      'Go to artist',
+      'Go to album',
+      'Add to playlist',
+      'Save offline',
+      'Song info',
     ]);
   });
 
@@ -64,8 +80,14 @@ describe('SongMenuService.build', () => {
         { provide: Router, useValue: router },
         { provide: AuthService, useValue: { role: () => 'user', canCurate: () => false } },
         { provide: PlaylistService, useValue: { openPicker: vi.fn() } },
-        { provide: PreserveService, useValue: { isPreserved: () => false, isPreserving: () => false } },
-        { provide: LibraryApiService, useValue: { deleteSongs: vi.fn(() => ({ subscribe: vi.fn() })) } },
+        {
+          provide: PreserveService,
+          useValue: { isPreserved: () => false, isPreserving: () => false },
+        },
+        {
+          provide: LibraryApiService,
+          useValue: { deleteSongs: vi.fn(() => ({ subscribe: vi.fn() })) },
+        },
         { provide: TransferService, useValue: { addDeletedIds: vi.fn() } },
         { provide: TrackInfoService, useValue: { open: vi.fn() } },
         { provide: ConfirmService, useValue: { ask: vi.fn(async () => true) } },
@@ -90,17 +112,26 @@ describe('SongMenuService.build', () => {
   it('respects hideGoToArtist / hideGoToAlbum', () => {
     const { svc } = setup();
     const out = labels(song({ artistId: 'ar1', albumId: 'al1' }), svc, {
-      hideGoToArtist: true, hideGoToAlbum: true,
+      hideGoToArtist: true,
+      hideGoToAlbum: true,
     });
     expect(out).not.toContain('Go to artist');
     expect(out).not.toContain('Go to album');
   });
 
   it('adds Remove from library only for curators (refiner/admin) + removable', () => {
-    expect(labels(song(), setup('listener').svc, { removable: true })).not.toContain('Remove from library');
-    expect(labels(song(), setup('user').svc, { removable: true })).not.toContain('Remove from library');
-    expect(labels(song(), setup('refiner').svc, { removable: true })).toContain('Remove from library');
-    expect(labels(song(), setup('admin').svc, { removable: true })).toContain('Remove from library');
+    expect(labels(song(), setup('listener').svc, { removable: true })).not.toContain(
+      'Remove from library',
+    );
+    expect(labels(song(), setup('user').svc, { removable: true })).not.toContain(
+      'Remove from library',
+    );
+    expect(labels(song(), setup('refiner').svc, { removable: true })).toContain(
+      'Remove from library',
+    );
+    expect(labels(song(), setup('admin').svc, { removable: true })).toContain(
+      'Remove from library',
+    );
   });
 
   it('appends onRemoveFromPlaylist and extraActions last', () => {

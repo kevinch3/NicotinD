@@ -10,9 +10,7 @@ applySchema(testDb);
 testDb.run(
   "INSERT INTO users (id, username, password_hash, role) VALUES ('user-123', 'testuser', 'hash', 'user')",
 );
-testDb.run(
-  "INSERT INTO user_settings (user_id) VALUES ('user-123')",
-);
+testDb.run("INSERT INTO user_settings (user_id) VALUES ('user-123')");
 
 mock.module('../db.js', () => ({
   getDatabase: () => testDb,
@@ -73,7 +71,11 @@ describe('POST /refresh', () => {
       "INSERT INTO users (id, username, password_hash, role) VALUES ('promote-me', 'promoted', 'hash', 'user')",
     );
     // Token was minted while they were a plain user…
-    const token = await signJwt({ sub: 'promote-me', username: 'promoted', role: 'user' }, SECRET, '1h');
+    const token = await signJwt(
+      { sub: 'promote-me', username: 'promoted', role: 'user' },
+      SECRET,
+      '1h',
+    );
     // …then an admin promoted them.
     testDb.run("UPDATE users SET role = 'refiner' WHERE id = 'promote-me'");
 

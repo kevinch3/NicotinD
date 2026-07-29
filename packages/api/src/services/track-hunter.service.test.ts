@@ -43,10 +43,10 @@ describe('TrackHunterService.huntAndDownload', () => {
       'Zara Larsson Obscure B-side': [], // no peer has it
     });
 
-    const result = await new TrackHunterService(slskd, { pollMs: 1, timeoutMs: 10 }).huntAndDownload(
-      'Zara Larsson',
-      ['Lush Life', 'Never Forget You', 'Obscure B-side'],
-    );
+    const result = await new TrackHunterService(slskd, {
+      pollMs: 1,
+      timeoutMs: 10,
+    }).huntAndDownload('Zara Larsson', ['Lush Life', 'Never Forget You', 'Obscure B-side']);
 
     expect(result.requested).toBe(3);
     expect(result.enqueued).toBe(2);
@@ -68,10 +68,10 @@ describe('TrackHunterService.huntAndDownload', () => {
       enqueue,
     );
 
-    const result = await new TrackHunterService(slskd, { pollMs: 1, timeoutMs: 10 }).huntAndDownload(
-      'A',
-      ['T1', 'T2'],
-    );
+    const result = await new TrackHunterService(slskd, {
+      pollMs: 1,
+      timeoutMs: 10,
+    }).huntAndDownload('A', ['T1', 'T2']);
 
     // good peer enqueued (1), bad peer threw → counted as not enqueued.
     expect(result.enqueued).toBe(1);
@@ -86,10 +86,10 @@ describe('TrackHunterService.huntAndDownload', () => {
       'Cuando reina el Amor': [resp('peerA', ['x\\Cuando reina el Amor.flac'])],
     });
 
-    const result = await new TrackHunterService(slskd, { pollMs: 1, timeoutMs: 10 }).huntAndDownload(
-      'Bahiano',
-      ['Cuando reina el Amor'],
-    );
+    const result = await new TrackHunterService(slskd, {
+      pollMs: 1,
+      timeoutMs: 10,
+    }).huntAndDownload('Bahiano', ['Cuando reina el Amor']);
 
     expect(result.enqueued).toBe(1);
     expect(result.misses).toEqual([]);
@@ -98,10 +98,10 @@ describe('TrackHunterService.huntAndDownload', () => {
 
   it('returns all misses when no peer responds', async () => {
     const { slskd, enqueue } = makeSlskd({});
-    const result = await new TrackHunterService(slskd, { pollMs: 1, timeoutMs: 10 }).huntAndDownload(
-      'A',
-      ['T1', 'T2'],
-    );
+    const result = await new TrackHunterService(slskd, {
+      pollMs: 1,
+      timeoutMs: 10,
+    }).huntAndDownload('A', ['T1', 'T2']);
     expect(result.enqueued).toBe(0);
     expect(result.misses).toEqual(['T1', 'T2']);
     expect(enqueue).not.toHaveBeenCalled();

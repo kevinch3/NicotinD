@@ -55,12 +55,15 @@ export function getOverride(db: Database, rawAlbumId: string): MetadataOverrideV
  */
 export function findByCorrectedId(db: Database, albumId: string): MetadataOverrideRow | null {
   const row = db
-    .query<DbRow, [string]>(
-      'SELECT * FROM library_metadata_overrides WHERE corrected_album_id = ?',
-    )
+    .query<DbRow, [string]>('SELECT * FROM library_metadata_overrides WHERE corrected_album_id = ?')
     .get(albumId);
   return row
-    ? { rawAlbumId: row.raw_album_id, correctedAlbumId: row.corrected_album_id, source: row.source, ...toValue(row) }
+    ? {
+        rawAlbumId: row.raw_album_id,
+        correctedAlbumId: row.corrected_album_id,
+        source: row.source,
+        ...toValue(row),
+      }
     : null;
 }
 

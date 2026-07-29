@@ -509,12 +509,7 @@ export function createApp({
   // Public routes
   app.route(
     '/api/auth',
-    authRoutes(
-      config.jwt.secret,
-      config.jwt.expiresIn,
-      config.registrationEnabled,
-      acquisitionOn,
-    ),
+    authRoutes(config.jwt.secret, config.jwt.expiresIn, config.registrationEnabled, acquisitionOn),
   );
   app.route(
     '/api/setup',

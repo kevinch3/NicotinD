@@ -48,6 +48,13 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      # Formatting drift is normally harmless; here it wasn't. The repo had
+      # drifted to 218 files, so the documented `bun run format` produced a
+      # 218-file diff on top of any real change and could not safely be run
+      # (#272). A gate keeps it that way. Fix locally with `bun run format`.
+      - name: Format check
+        run: bun run format:check
+
       # The pip plugin and the companion PO-token service must be the same
       # version; a mismatch silently breaks YouTube downloads (issue #238).
       - name: Check bgutil provider/plugin version pairing

@@ -47,13 +47,7 @@ import {
 export type { AlbumListType };
 
 type LibraryMode =
-  | 'albums'
-  | 'compilations'
-  | 'singles'
-  | 'artists'
-  | 'genre'
-  | 'songs'
-  | 'playlists';
+  'albums' | 'compilations' | 'singles' | 'artists' | 'genre' | 'songs' | 'playlists';
 
 interface AlbumTypeOption {
   value: AlbumListType;
@@ -405,9 +399,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
     // Shared filter from the URL; a legacy `type=starred` (URL or persisted
     // state) folds into it as the starred filter with a `newest` ordering.
     const qp = this.route.snapshot.queryParamMap;
-    const urlFilter = parseLibraryFilter(
-      Object.fromEntries(qp.keys.map((k) => [k, qp.getAll(k)])),
-    );
+    const urlFilter = parseLibraryFilter(Object.fromEntries(qp.keys.map((k) => [k, qp.getAll(k)])));
     const initialType = this.resolveInitialType();
     const split = splitAlbumListType(initialType);
     this.albumSort.set(split.sort);

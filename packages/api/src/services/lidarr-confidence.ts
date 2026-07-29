@@ -145,7 +145,6 @@ export function corroboratesLidarrHit(query: string, hit: LidarrHitLike): boolea
   // rather than rejecting them against themselves.
   if (!q || !h) return foldLoose(query) === foldLoose(hit.artistName) && query.trim() !== '';
 
-
   if (q === h) return true;
 
   const longer = Math.max(q.length, h.length);

@@ -254,7 +254,9 @@ describe('SpotifySearchService', () => {
 
   it('searchArtistImage queries type=artist and returns the portrait url', async () => {
     const { fn, calls } = fetchMock({
-      searchBody: { artists: { items: [{ id: 'x', name: 'A', images: [{ url: 'https://p.jpg' }] }] } },
+      searchBody: {
+        artists: { items: [{ id: 'x', name: 'A', images: [{ url: 'https://p.jpg' }] }] },
+      },
     });
     const out = await new SpotifySearchService(() => creds(), fn).searchArtistImage('A');
     expect(out).toBe('https://p.jpg');

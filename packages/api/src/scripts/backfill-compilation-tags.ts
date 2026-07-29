@@ -59,7 +59,9 @@ async function main(): Promise<void> {
     .query<
       { username: string; directory: string; filename: string; relative_path: string | null },
       []
-    >('SELECT username, directory, filename, relative_path FROM completed_downloads ORDER BY directory')
+    >(
+      'SELECT username, directory, filename, relative_path FROM completed_downloads ORDER BY directory',
+    )
     .all();
 
   if (rows.length === 0) {

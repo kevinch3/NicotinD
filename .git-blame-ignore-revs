@@ -1,0 +1,13 @@
+# Revisions to skip when running `git blame`.
+#
+# Usage (one-time, per clone):
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub honours this file automatically in its blame view.
+#
+# Only ever add commits that are provably behaviour-neutral — a formatting or
+# rename pass whose diff nobody wrote by hand. A real change listed here would
+# be invisible to the main tool people use to find out why a line exists.
+
+# style: one-time repo-wide prettier pass (issue #272)
+a8da071a4f1aff22b3ced8a7586ba1e9c7665d48

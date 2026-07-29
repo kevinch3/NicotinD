@@ -2,10 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { sourcesRoutes } from './sources.js';
-import {
-  CandidateSearchAggregator,
-  type CandidateSource,
-} from '../services/candidate-search.js';
+import { CandidateSearchAggregator, type CandidateSource } from '../services/candidate-search.js';
 import type { AcquisitionCandidate } from '@nicotind/core';
 
 const cand = (source: string, url: string, score: number): AcquisitionCandidate => ({
@@ -47,7 +44,10 @@ describe('GET /api/sources/search', () => {
   });
 
   it('returns an empty blend when sources are disabled', async () => {
-    const app = mount([{ id: 'archive', search: async () => [cand('archive', 'u1', 40)] }], () => false);
+    const app = mount(
+      [{ id: 'archive', search: async () => [cand('archive', 'u1', 40)] }],
+      () => false,
+    );
     const res = await app.request('/api/sources/search?q=x');
     const body = (await res.json()) as { candidates: AcquisitionCandidate[]; sources: string[] };
     expect(body.candidates).toEqual([]);

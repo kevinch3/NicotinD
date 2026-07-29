@@ -67,7 +67,8 @@ bun run check:shipped-issues # open issues a shipped commit referenced (report, 
 bun run check:json       # duplicate keys in JSON configs (JSON.parse keeps the last silently)
 bun run check:shared-helpers # a shared helper re-implemented locally instead of imported (CI gate)
 bun run check:isolated-specs # find specs that only pass inside the full suite (slow; not a CI gate)
-bun run format           # Prettier formatting
+bun run format           # Prettier — safe to run repo-wide (see docs/design-patterns.md)
+bun run format:check     # CI gate: fails on any unformatted file
 bun run test             # Vitest across packages/ + src/ (excludes web/, e2e/, desktop/test/)
 bun run test:web         # Angular component tests (vitest — see docs/web-ui.md "Web test harness")
 bun run typecheck:web-spec # Type-check the web specs (vitest does NOT type-check them)

@@ -27,7 +27,6 @@ const mockSlskdRef = { current: null };
 const mockWatcherRef = { current: null };
 const mockMakeWatcher = mock(() => null);
 
-
 function buildApp() {
   const app = new Hono();
   app.route(
@@ -56,7 +55,9 @@ describe('GET /api/setup/status', () => {
   });
 
   it('returns needsSetup: false when users exist', async () => {
-    testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('u1', 'admin', 'hash', 'admin')");
+    testDb.run(
+      "INSERT INTO users (id, username, password_hash, role) VALUES ('u1', 'admin', 'hash', 'admin')",
+    );
     const app = buildApp();
     const res = await app.request('/api/setup/status');
     expect(res.status).toBe(200);
@@ -96,7 +97,9 @@ describe('POST /api/setup/complete', () => {
       }),
     });
     expect(mockServiceManager.updateConfig).toHaveBeenCalled();
-    const updatedConfig = (mockServiceManager.updateConfig as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0];
+    const updatedConfig = (
+      mockServiceManager.updateConfig as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls[0]?.[0];
     expect(updatedConfig).toBeDefined();
     const config = updatedConfig as unknown as { musicDir: string };
     expect(config.musicDir).toBe('/mnt/music');
@@ -112,7 +115,8 @@ describe('POST /api/setup/complete', () => {
         transcodeLossless: { enabled: true, bitRate: 256 },
       }),
     });
-    const row = testDb.query('SELECT value FROM app_settings WHERE key = ?').get('streaming') as { value: string } | undefined;
+    const row = testDb.query('SELECT value FROM app_settings WHERE key = ?').get('streaming') as
+      { value: string } | undefined;
     expect(row).toBeTruthy();
     const settings = JSON.parse(row!.value);
     expect(settings.transcodeEnabled).toBe(true);
@@ -146,7 +150,9 @@ describe('POST /api/setup/complete', () => {
       }),
     });
     expect(mockServiceManager.updateConfig).toHaveBeenCalled();
-    const updatedConfig = (mockServiceManager.updateConfig as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0];
+    const updatedConfig = (
+      mockServiceManager.updateConfig as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls[0]?.[0];
     expect(updatedConfig).toBeDefined();
     const config = updatedConfig as unknown as { lidarr: { url: string; apiKey: string } };
     expect(config.lidarr.url).toBe('http://localhost:9999');
@@ -180,7 +186,9 @@ describe('POST /api/setup/complete', () => {
   });
 
   it('rejects when users already exist', async () => {
-    testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('u1', 'admin', 'hash', 'admin')");
+    testDb.run(
+      "INSERT INTO users (id, username, password_hash, role) VALUES ('u1', 'admin', 'hash', 'admin')",
+    );
     const app = buildApp();
     const res = await app.request('/api/setup/complete', {
       method: 'POST',

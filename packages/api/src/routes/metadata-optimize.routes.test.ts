@@ -64,7 +64,10 @@ describe('POST /albums/:id/optimize-metadata', () => {
   });
 
   it('optimizes an album for an admin', async () => {
-    const app = authed(new Hono<AuthEnv>().route('/', libraryRoutes('/music', { lidarr })), 'admin');
+    const app = authed(
+      new Hono<AuthEnv>().route('/', libraryRoutes('/music', { lidarr })),
+      'admin',
+    );
     const res = await app.request('/albums/alb-1/optimize-metadata', { method: 'POST' });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { matched: boolean; coverUpdated: boolean };
