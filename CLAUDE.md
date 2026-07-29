@@ -617,10 +617,14 @@ Add detail there, not here.
   stored) reachable from login + Settings; opt-in remote access publishes the loopback-bound backend
   at a public HTTPS URL via `tailscale funnel` behind a guided admin state machine. →
   [docs/device-pairing.md](docs/device-pairing.md)
-- **Observability (Sentry, opt-in)**: web `initSentry` (empty DSN = off, prod-only, versioned + low
+- **Observability (Sentry, opt-in)**: web `loadSentry` (empty DSN = off, prod-only, versioned + low
   sampling) + API `initServerSentry` (`NICOTIND_SENTRY_DSN` empty = off) reporting only unknown 500s
   from the Hono `errorHandler` (4xx/connectivity skipped), plus `captureProcessingFailure` for
-  aggregated, fingerprint-grouped library-enrichment failures. →
+  aggregated, fingerprint-grouped library-enrichment failures. **The web SDK loads lazily (issue
+  #285)** — it was 42% of the initial chunk (272 kB, Session Replay 124 kB) and eager to catch
+  startup failures; now reached only via `import('@sentry/angular')` (own lazy chunk) while
+  startup-error capture is preserved by a synchronous `error-buffer.ts` + `BufferingErrorHandler`
+  (replaces `Sentry.createErrorHandler`/`TraceService`) that replays into the SDK on connect. →
   [docs/observability.md](docs/observability.md)
 - **OAuth authentication (proposed — not yet implemented)**: Google + Microsoft login as `auth` kind
   plugins with `oauth` capability; auto-creates users by email (no validation); auto-enables when
@@ -782,8 +786,8 @@ Add detail there, not here.
   the app-shell offline banner (inline in `layout.component.html`, `data-testid="offline-banner"`)
   all react to connectivity flips **both ways** with no reload, and `check()` skips the boot HTTP
   probe when already offline (kills the multi-second blank-screen boot behind the ANR). Native
-  Sentry drops Session Replay + tracing (release-only ANR suspect; `initSentry` also
-  try/catch-wrapped); mid-use hardening = player skips a doomed offline stream (toast, not infinite
+  Sentry drops Session Replay + tracing (release-only ANR suspect; `loadSentry` also
+  try/catch-wrapped at its call site); mid-use hardening = player skips a doomed offline stream (toast, not infinite
   spinner), `preserveCollection` swallows offline fetch rejects, GET requests get a 30s interceptor
   timeout. → [docs/mobile-app.md](docs/mobile-app.md), [docs/web-ui.md](docs/web-ui.md),
   [docs/observability.md](docs/observability.md)

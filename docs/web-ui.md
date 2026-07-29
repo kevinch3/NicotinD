@@ -457,16 +457,21 @@ Two things that decide the question:
 1. **The budget measures raw bytes; users pay transfer.** 735 kB raw is 188 kB over the wire,
    which is unremarkable for an app of this scope. "47 % over budget" was measuring the wrong
    number against a threshold nobody chose.
-2. **42 % of the initial chunk is Sentry, and it is eager on purpose.** `main.ts` calls
-   `initSentry` *before* `bootstrapApplication` specifically to catch startup failures (the
-   Android ANR investigation), and `environment.prod.ts` ships a hardcoded DSN, so it is active
-   in every production build — not dead weight. `app.config.ts` additionally needs it
-   statically for the `ErrorHandler` and `TraceService` providers. Deferring it is a real
-   product trade (lose startup-error capture), not a cleanup, so it is **not** done here.
+2. **42 % of the initial chunk was Sentry — now lazy-loaded (issue #285, resolved).** When #256
+   raised the budget, Sentry was eager: `main.ts` called `initSentry` *before*
+   `bootstrapApplication` to catch startup failures, and `app.config.ts` needed it statically
+   for the `ErrorHandler` + `TraceService` providers. #285 removed all three static references —
+   the SDK is reached only via `import('@sentry/angular')` inside `loadSentry`, so esbuild splits
+   its ~272 kB into a lazy chunk. Startup-error capture is preserved by a synchronous
+   `error-buffer.ts` + `BufferingErrorHandler` that replay into the SDK once it connects, so the
+   property that motivated the eager init survives without the first-paint weight. `TraceService`
+   was dropped (only Angular-router spans lost). See [docs/observability.md](observability.md).
 
-So the budget was raised to **780 kB** — current + ~6 % headroom, tight enough that real growth
-trips it. Verified it still fires: set to 700 kB, the build correctly warns. `maximumError`
-stays at 1 MB.
+The budget was raised to **780 kB** (current + ~6 % headroom, tight enough that real growth trips
+it — verified it still fires: set to 700 kB, the build correctly warns; `maximumError` stays at
+1 MB). It is deliberately **left at 780 kB** even though #285 freed ~272 kB of raw initial: the
+budget is a ceiling with headroom, and lowering it to hug the post-#285 figure would just re-trip
+on the next feature. The win is a smaller *actual* initial chunk, not a tighter budget.
 
 **`qrcode` is now lazy.** It was a static import in `devices.component.ts`; it is now
 `await import('qrcode')` inside `renderQr`, which took the devices route chunk from **38.9 kB
