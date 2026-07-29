@@ -51,6 +51,7 @@ import { SourceChipComponent } from '../../components/source-chip/source-chip.co
 import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import {
   shouldOpenDirectSearch,
   discographyFallbackNote,
@@ -198,6 +199,7 @@ function escapeHtml(text: string): string {
     AlbumHuntModalComponent,
     SourceChipComponent,
     CoverArtComponent,
+    TranslatePipe,
   ],
   templateUrl: './search.component.html',
 })

@@ -74,6 +74,20 @@ test.describe('i18n (#236)', () => {
     await expect(tabs).not.toContainText('library.tab.');
   });
 
+  test('translates the Acquire page (extraction pass, #236)', async ({ page }) => {
+    // The Acquire page (renamed from Search, #227) is a high-traffic surface
+    // whose primary copy was extracted into `acquire.*` keys this pass.
+    await page.addInitScript(() => localStorage.setItem('nicotind-lang', 'es'));
+    await page.goto('/acquire');
+
+    // The submit button + idle empty state render translated copy on one build.
+    await expect(page.getByTestId('search-submit')).toHaveText(/Buscar/i);
+    await expect(page.locator('body')).toContainText('Busca música para empezar');
+    // A key that failed to resolve renders as its dotted key — assert none leak.
+    await expect(page.locator('body')).not.toContainText('acquire.placeholder');
+    await expect(page.locator('body')).not.toContainText('acquire.emptyTitle');
+  });
+
   test('translates the home page vibe presets', async ({ page }) => {
     // The post-login home route, and the last of the always-on-screen surfaces.
     await page.addInitScript(() => localStorage.setItem('nicotind-lang', 'es'));
