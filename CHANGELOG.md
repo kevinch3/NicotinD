@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.280](https://github.com/kevinch3/NicotinD/compare/v0.1.279...v0.1.280) (2026-07-29)
+
+### Features
+
+* **admin:** surface GPU VRAM used/total in the metric pill ([#224](https://github.com/kevinch3/NicotinD/issues/224)) ([17f1492](https://github.com/kevinch3/NicotinD/commit/17f149200d6806c187ae6b08e926d6a4cfa24f11))
+* **enrichment:** popularity/hotness signal per song via ListenBrainz ([#220](https://github.com/kevinch3/NicotinD/issues/220)) ([3c85785](https://github.com/kevinch3/NicotinD/commit/3c85785586c5f43a3849f1e339d009e96843f823))
+* **i18n:** translate the Acquire page + complete Spanish parity ([#236](https://github.com/kevinch3/NicotinD/issues/236)) ([6f8331e](https://github.com/kevinch3/NicotinD/commit/6f8331ee7e61b445e26202be615b7eb2f94ef995)), references [#227](https://github.com/kevinch3/NicotinD/issues/227)
+* **library:** prune orphaned download provenance rows ([#319](https://github.com/kevinch3/NicotinD/issues/319)) ([0215635](https://github.com/kevinch3/NicotinD/commit/0215635064576fd0df208fee07bfcbe8c426c3b6))
+* **mcp:** agent tokens + MCP endpoint for refiner-level curation ([#232](https://github.com/kevinch3/NicotinD/issues/232)) ([5cc58db](https://github.com/kevinch3/NicotinD/commit/5cc58db09f4f27a8f0ed63787a076cedab9198b7))
+* **web:** rename Search to Acquire, route /search → /acquire ([#227](https://github.com/kevinch3/NicotinD/issues/227)) ([5ff7541](https://github.com/kevinch3/NicotinD/commit/5ff75411c8c3a8b3d5d7d542a36cc86a9db06cda))
+
+### Bug Fixes
+
+* **library:** album genre = most-common primary, not scan order ([#222](https://github.com/kevinch3/NicotinD/issues/222)) ([f1a25fb](https://github.com/kevinch3/NicotinD/commit/f1a25fb8d6f118e833de8b7f1b132ba1ff9daced))
+
+### Performance
+
+* **enrichment:** drop the 0%-yield MusicBrainz licence lookup ([#329](https://github.com/kevinch3/NicotinD/issues/329)) ([fefc0fc](https://github.com/kevinch3/NicotinD/commit/fefc0fc5ea315a46a206fcf531b8b784c6bb0b92))
+* **web:** lazy-load the Sentry SDK, keep startup capture ([#285](https://github.com/kevinch3/NicotinD/issues/285)) ([9cef10b](https://github.com/kevinch3/NicotinD/commit/9cef10bcca3566f6249ecacf822305642776a294))
 ## [0.1.279](https://github.com/kevinch3/NicotinD/compare/v0.1.278...v0.1.279) (2026-07-29)
 
 ### Features
