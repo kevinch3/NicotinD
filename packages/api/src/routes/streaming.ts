@@ -16,6 +16,10 @@ import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js'
 import { bucketCoverSize, resizeCover } from '../services/cover-thumbnail.js';
 import { readArtistImageOverride } from '../services/artist-image-override.js';
 import { remoteCoverCacheKey, resolveRemoteCoverUrl } from '../services/remote-cover.js';
+import {
+  isKnownUntranscodable,
+  rememberTranscodeFailure,
+} from '../services/transcode-failures.js';
 
 const log = createLogger('streaming');
 
@@ -114,7 +118,13 @@ export function streamingRoutes(
         (settings.transcodeEnabled &&
           (settings.forceTranscode || (reqFormat && reqFormat !== 'raw') || reqBitRate != null)));
 
-    if (wantsTranscode) {
+    // A file that already produced an unusable transcode is served straight from
+    // the original — re-running the doomed ffmpeg pass on every play was the
+    // whole of issue #317. The key includes size+mtime, so a repaired
+    // re-download transcodes normally again with no manual eviction.
+    if (wantsTranscode && isKnownUntranscodable(abs)) {
+      log.debug({ abs }, 'skipping transcode: known-unusable output for this file');
+    } else if (wantsTranscode) {
       const format =
         reqFormat && reqFormat !== 'raw' && reqFormat !== 'original'
           ? (reqFormat as 'mp3' | 'opus' | 'aac')
@@ -134,6 +144,8 @@ export function streamingRoutes(
         const release = pinTranscodeCacheFile(cached);
         return serveFileWithRange(cached, range, transcodeContentType(format), release);
       } catch (err) {
+        // Remember the verdict so the next play skips straight to the fallback.
+        rememberTranscodeFailure(abs, err);
         log.error({ err, abs }, 'transcode failed; falling back to original');
         // fall through to passthrough
       }

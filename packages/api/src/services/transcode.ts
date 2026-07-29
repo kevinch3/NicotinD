@@ -142,7 +142,7 @@ export function transcodeToFile(
         if (!ok) {
           cleanupTmp(tmp);
           reject(
-            new Error(
+            new TranscodeOutputRejectedError(
               `transcode output failed duration check: source ${absPath} produced suspiciously short output at ${tmp}`,
             ),
           );
@@ -178,6 +178,21 @@ export function transcodeToFile(
  * source is 238 s short, way outside the tolerance).
  */
 export const TRANSCODE_DURATION_TOLERANCE_SEC = 1.0;
+
+/**
+ * The output was produced successfully but is too short to serve. Distinct
+ * from a bare `Error` because this verdict is **deterministic** — the same
+ * source, flags and encoder will fail the same way every time — which is what
+ * lets the caller cache it (issue #317). Every other throw here (ffmpeg exit
+ * != 0, a killed process, a failed rename, a full disk) may be transient and
+ * must stay retryable.
+ */
+export class TranscodeOutputRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TranscodeOutputRejectedError';
+  }
+}
 
 export function transcodeOutputIsAcceptable(
   sourceSec: number | null,
