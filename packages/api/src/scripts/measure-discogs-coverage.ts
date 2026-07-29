@@ -36,7 +36,7 @@ import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { normalizeArtistForGrouping, albumGroupKey } from '../services/album-grouping.js';
 import { getMbid } from '../services/mbid-store.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 export const DISCOGS_API = 'https://api.discogs.com';
 export const MB_API = 'https://musicbrainz.org/ws/2';

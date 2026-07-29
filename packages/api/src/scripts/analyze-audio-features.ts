@@ -24,7 +24,7 @@ import { Database } from 'bun:sqlite';
 import { AudioFeaturesClient, AudioFileRejectedError } from '../services/audio-features-client.js';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { resolveSongAbsPath } from '../services/track-backfill.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadConfig(): { dataDir: string; musicDir: string; analysisUrl: string } {
   let fileConfig: Record<string, unknown> = {};

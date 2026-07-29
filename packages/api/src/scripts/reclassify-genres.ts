@@ -17,7 +17,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 import {
   proposeGenreAliases,
   buildKnownFromRaw,

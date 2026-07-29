@@ -52,7 +52,7 @@ import { dupKey, pickKeeper, type DupFile } from '../services/album-dedupe.js';
 import { AUDIO_EXTS } from '../services/audio-tags.js';
 import { albumGroupKey, normalizeForGrouping } from '../services/album-grouping.js';
 import { normalizeTitle, titlesOverlap } from '../services/album-hunter.service.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 export interface FolderEntry {
   artist: string;

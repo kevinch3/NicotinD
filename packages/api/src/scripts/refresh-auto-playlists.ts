@@ -19,7 +19,7 @@ import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { refreshAutoPlaylists } from '../services/auto-playlists.service.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadDataDir(): string {
   let fileConfig: Record<string, unknown> = {};

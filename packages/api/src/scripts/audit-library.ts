@@ -24,7 +24,7 @@ import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { auditLibrary, summarize, type AuditFinding, type AuditSeverity } from '../services/library-audit.js';
 import { scanMusicDir, diskFindings } from '../services/library-disk-audit.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadConfig(): { dataDir: string; musicDir: string } {
   let fileConfig: Record<string, unknown> = {};

@@ -28,7 +28,7 @@ import { Database } from 'bun:sqlite';
 import { collectRetagTargets } from '../services/library-retag.js';
 import { applyMetadataFix } from '../services/metadata-fix.js';
 import { auditLibrary } from '../services/library-audit.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadDataDir(): string {
   let fileConfig: Record<string, unknown> = {};

@@ -34,7 +34,7 @@ import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { pruneOrphanArtist } from '../services/library-aggregates.js';
 import { scanMusicDir } from '../services/library-disk-audit.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 import {
   auditLibrary,
   selectPollutionTargets,

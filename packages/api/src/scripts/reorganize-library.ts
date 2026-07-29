@@ -21,7 +21,7 @@ import { parse } from 'yaml';
 import { LibraryOrganizer } from '../services/library-organizer.js';
 import { AcoustIdLookup } from '../services/acoustid-lookup.js';
 import { AUDIO_EXTS } from '../services/audio-tags.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 interface LoadedConfig {
   dataDir: string;

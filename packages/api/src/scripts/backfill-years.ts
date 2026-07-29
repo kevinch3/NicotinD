@@ -26,7 +26,7 @@ import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { applyMetadataFix } from '../services/metadata-fix.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 import {
   pickAlbumYear,
   folderYear,
