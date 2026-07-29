@@ -692,11 +692,20 @@ export function applySchema(db: Database): void {
     // enrichment task (WHERE licence IS NULL) keeps trying to resolve it.
     'licence TEXT',
     'licence_source TEXT',
+    // Extrinsic popularity (issue #220): a 0–1 scalar derived from a global
+    // listen count, + its provenance. Unlike genre/bpm/licence this is NOT read
+    // from file tags — it is a network-only signal — so the scanner never writes
+    // it and it survives rescans by simply being absent from the upsert. Filled
+    // by the `popularity` enrichment task (`popularity_source` ∈ {listenbrainz});
+    // a NULL means unknown, so the task (WHERE popularity IS NULL) keeps trying.
+    'popularity REAL',
+    'popularity_source TEXT',
   ]) {
     const [name, ...decl] = col.split(' ');
     addColumnIfMissing(db, 'library_songs', name, decl.join(' '));
   }
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_licence ON library_songs(licence)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_popularity ON library_songs(popularity)`);
   // "Landed" timestamp (epoch ms) — NULL means the song is *quarantined*: it has
   // been scanned into the DB (so the windowed enrichment tasks can operate on it)
   // but is hidden from every library listing until its required processing steps

@@ -422,6 +422,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     { id: 'licence', label: 'Licence / rights (from file tags)' },
     { id: 'genre-discogs', label: 'Genre (Discogs)' },
     { id: 'genre-audio', label: 'Genre (audio fallback)' },
+    { id: 'popularity', label: 'Popularity (ListenBrainz)' },
   ];
 
   /** Whether a task is required to finish before a download lands in the library. */

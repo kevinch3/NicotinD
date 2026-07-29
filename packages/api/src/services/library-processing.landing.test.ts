@@ -59,6 +59,7 @@ function fakeCtx(opts: { bpmResult?: number | null; sidecar?: boolean } = {}) {
     lookupGenreForRelease: null,
     resolveArtistIdentity: null,
     lookupLicence: async () => null,
+    lookupPopularity: async () => new Map(),
     fileExists: () => true,
   });
 }

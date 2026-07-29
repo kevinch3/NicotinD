@@ -185,6 +185,7 @@ export class LibraryProcessingService extends EventEmitter {
           lookupArtistInfo: this.lookupArtistInfo,
           lookupGenreForRelease: this.lookupGenreForRelease,
           audioFeaturesClient: this.audioFeaturesClient,
+          dataDir: this.dataDir,
         }));
     this.logToFile = deps.logToFile ?? true;
     this.reportFailure = deps.reportFailure ?? captureProcessingFailure;
@@ -649,6 +650,7 @@ export class LibraryProcessingService extends EventEmitter {
         licence: 0,
         'genre-audio': 0,
         'genre-discogs': 0,
+        popularity: 0,
       },
       availability: {
         bpm: 'unknown',
@@ -662,6 +664,7 @@ export class LibraryProcessingService extends EventEmitter {
         licence: 'unknown',
         'genre-audio': 'unknown',
         'genre-discogs': 'unknown',
+        popularity: 'unknown',
       },
       skipped: 0,
       quarantined: 0,

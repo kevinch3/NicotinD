@@ -28,6 +28,7 @@ function pending(counts: Partial<Record<ProcessingTaskId, number>>): {
     'licence',
     'genre-audio',
     'genre-discogs',
+    'popularity',
   ];
   const taskPending = Object.fromEntries(ids.map((id) => [id, counts[id] ?? 0])) as Record<
     ProcessingTaskId,

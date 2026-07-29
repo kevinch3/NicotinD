@@ -17,7 +17,8 @@ export type ProcessingTaskId =
   | 'artist-identity'
   | 'licence'
   | 'genre-audio'
-  | 'genre-discogs';
+  | 'genre-discogs'
+  | 'popularity';
 
 /** Daily time window during which background enrichment may run (server-local). */
 export interface ProcessingWindow {

@@ -46,6 +46,10 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
     // Off by default (needs the consent-gated Discogs extension configured) and
     // never a gate (a metadata source must not strand a fresh download).
     'genre-discogs': false,
+    // Extrinsic popularity from ListenBrainz (issue #220) — a 0–1 hotness scalar
+    // keyed on the recording MBID. No creds, MBID-native. Default-on, never a
+    // gate (an extrinsic network signal must never strand a fresh download).
+    popularity: true,
   },
   // Steps that must finish before a fresh download is added to the library.
   // Fast, offline, no-sidecar analysis (bpm/key/energy) plus genre are gated by

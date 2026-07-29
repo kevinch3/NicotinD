@@ -189,6 +189,19 @@ Add detail there, not here.
   code (`unanimousLicence`, else NULL) computed in the scanner reduce, so Albums/Compilations filter
   to "entirely Public Domain" (artists stay any-track) + an album-page badge. →
   [docs/music-licence.md](docs/music-licence.md)
+- **Popularity / hotness per song (issue #220)**: the first *extrinsic* signal — a normalized 0–1
+  `library_songs.popularity` (+ `popularity_source`) from **ListenBrainz** (`ListenBrainzClient`,
+  `POST /1/popularity/recording`, MBID-native + credential-free — chosen over Spotify's 0–100 which
+  needs creds + an id hop). `normalizePopularity` log-scales a global listen count
+  (`POPULARITY_REFERENCE`=1e6 ≈ 1.0; a documented, tunable constant). The recording MBID comes from
+  the file's `mbRecordingId` tag (tags-first, no fuzzy name search) — a song without one is a
+  confident miss. The default-on, never-a-gate `popularity` enrichment task (`makePopularityLookup`)
+  **batches** all pending MBIDs into one call and distinguishes three misses: no-MBID + LB-confirmed-
+  no-data are ledgered-not-tallied, a transient 429/outage is **not** ledgered (retries, like the
+  sidecar 404/503 rule). **Not tag-mirrored** (extrinsic + drifts), so the scanner omits it from its
+  upsert and it survives rescans untouched. `backfill-popularity.ts` is the bulk tool. Consumers
+  (radio scoring axis, album/artist aggregate, local-play-count axis, an MBID-mapper coverage
+  fallback) are deliberately **left as follow-ups**. → [docs/popularity.md](docs/popularity.md)
 - **Multi-genre support (primary + extras)**: `splitGenres` parses full tag frames (`;`/`,`/`|`
   split; `&` never; `/` only when every side is a known genre) into `library_song_genres` (position
   0 = primary, mirrored into `library_songs.genre`); the human-gated `library_genre_aliases` side
