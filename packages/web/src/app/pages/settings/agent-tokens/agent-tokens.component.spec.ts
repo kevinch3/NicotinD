@@ -1,0 +1,119 @@
+import { TestBed } from '@angular/core/testing';
+import { describe, it, expect } from 'vitest';
+import { of, throwError } from 'rxjs';
+import { provideRouter } from '@angular/router';
+import { AgentTokensComponent } from './agent-tokens.component';
+import { AgentTokensApiService } from '../../../services/api/agent-tokens-api.service';
+import type { AgentTokenMintResponse, AgentTokenRow } from '../../../services/api/api-types';
+
+const TOKENS: AgentTokenRow[] = [
+  {
+    id: 't1',
+    userId: 'u1',
+    name: 'Claude Desktop',
+    scope: 'refiner:curate',
+    createdAt: Date.now(),
+    lastUsedAt: null,
+    expiresAt: null,
+    revokedAt: null,
+  },
+];
+
+const MINT: AgentTokenMintResponse = {
+  id: 't2',
+  name: 'New agent',
+  scope: 'refiner:curate',
+  expiresAt: null,
+  token: 'nca_secret',
+};
+
+function setup(overrides: Partial<Record<keyof AgentTokensApiService, unknown>> = {}) {
+  TestBed.resetTestingModule();
+  TestBed.configureTestingModule({
+    imports: [AgentTokensComponent],
+    providers: [
+      provideRouter([]),
+      {
+        provide: AgentTokensApiService,
+        useValue: {
+          listTokens: () => of({ tokens: TOKENS }),
+          mintToken: () => of(MINT),
+          revokeToken: () => of({ ok: true }),
+          ...overrides,
+        },
+      },
+    ],
+  });
+  const fixture = TestBed.createComponent(AgentTokensComponent);
+  fixture.detectChanges();
+  return fixture;
+}
+
+describe('AgentTokensComponent', () => {
+  it('loads tokens on init', () => {
+    const fixture = setup();
+    expect(fixture.componentInstance.tokens()).toEqual(TOKENS);
+  });
+
+  it('surfaces a load error', () => {
+    const fixture = setup({ listTokens: () => throwError(() => new Error('boom')) });
+    expect(fixture.componentInstance.error()).toBe('Could not load agent tokens');
+  });
+
+  it('mints a token, shows the once-only secret, and clears the name field', () => {
+    const fixture = setup();
+    const c = fixture.componentInstance;
+    c.name = 'New agent';
+    c.mint();
+    expect(c.minted()).toEqual(MINT);
+    expect(c.name).toBe('');
+  });
+
+  it('does not mint with an empty/whitespace name', () => {
+    let called = false;
+    const fixture = setup({
+      mintToken: () => {
+        called = true;
+        return of(MINT);
+      },
+    });
+    const c = fixture.componentInstance;
+    c.name = '   ';
+    c.mint();
+    expect(called).toBe(false);
+  });
+
+  it('surfaces a mint error', () => {
+    const fixture = setup({ mintToken: () => throwError(() => new Error('boom')) });
+    const c = fixture.componentInstance;
+    c.name = 'New agent';
+    c.mint();
+    expect(c.error()).toBe('Could not create a token');
+    expect(c.busy()).toBe(false);
+  });
+
+  it('revokes a token, removing it from the list optimistically', () => {
+    const fixture = setup();
+    const c = fixture.componentInstance;
+    c.revoke(TOKENS[0]!);
+    expect(c.tokens()).toEqual([]);
+  });
+
+  it('surfaces a revoke error without mutating the list', () => {
+    const fixture = setup({ revokeToken: () => throwError(() => new Error('boom')) });
+    const c = fixture.componentInstance;
+    c.revoke(TOKENS[0]!);
+    expect(c.error()).toBe('Could not revoke token');
+    expect(c.tokens()).toEqual(TOKENS);
+  });
+
+  it('dismissMinted clears the shown secret', () => {
+    const fixture = setup();
+    const c = fixture.componentInstance;
+    c.name = 'New agent';
+    c.mint();
+    expect(c.minted()).not.toBeNull();
+    c.dismissMinted();
+    expect(c.minted()).toBeNull();
+  });
+});

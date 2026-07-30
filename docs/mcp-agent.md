@@ -2,8 +2,9 @@
 
 Lets an external MCP-speaking LLM/agent connect to a user's own NicotinD install
 and **organize / curate** the library on their behalf, authorized at the
-**`refiner`** level — library curation, never server admin. v1 is the secure
-backend + a working MCP endpoint; the Settings UI to mint tokens is a follow-up.
+**`refiner`** level — library curation, never server admin. The secure backend,
+the MCP endpoint, destructive delete tools, and the Settings UI to mint tokens
+are all shipped.
 
 ## Why refiner
 
@@ -57,7 +58,7 @@ dependency discipline and the small tool surface.
 in the blanket-auth list. Each POST reads `Authorization: Bearer nca_…`, verifies
 it, and runs capped at refiner. An invalid/revoked token → 401.
 
-## Tool surface (v1: read + safe-curation)
+## Tool surface (read + safe-curation + destructive delete)
 
 `MCP_TOOLS` is the registry; each tool declares `access: 'read' | 'curate'` and
 an optional `destructive` flag. `checkToolAccess` (pure, unit-tested) is the
@@ -65,38 +66,49 @@ guard: a `curate` tool needs the `:curate` scope (a `refiner:read` token is
 refused), and a `destructive` tool needs `args.confirm === true`. `dispatchTool`
 applies it, then runs the handler; every write is audit-logged.
 
-Shipped in v1:
-
 | tool | access | fronts |
 | --- | --- | --- |
 | `search_library` | read | library artists/albums/songs by name |
 | `get_artist` | read | one artist + their albums |
 | `get_album_tracks` | read | an album's songs (genre, licence) |
 | `set_song_licence` | curate | the same UPDATE + `song.licence` audit as the route |
+| `delete_song` | curate, **destructive** | `services/library-deletion.ts` `deleteOne` + `song.delete` audit |
+| `delete_album` | curate, **destructive** | `services/library-deletion.ts` `deleteAlbum` + `album.delete` audit |
 
-### Why destructive + acquisition tools are NOT in v1 (despite the go-ahead)
+### Destructive deletion: the extraction that unblocked it
 
-The decision was "include destructive behind a confirm flag" and "allow
-acquisition." The **mechanism** for both is in place — the `destructive` flag +
-`confirm` gate + `recordAudit` + the refiner cap — so adding those tools is a
-small, safe step. They are held back one slice for a concrete engineering
-reason, not a policy one: album/song **deletion is currently inline in
-`routes/library.ts`** (folder-first `rmSync` + row delete), and fronting a
-file-deleting operation to an LLM safely wants that logic **extracted into a
-shared, tested service first**. Wiring `rmSync` to an agent by copy-paste under
-one PR is exactly the kind of thing this project extracts-and-tests before
-shipping. Acquisition tools (watchlist/hunt) are the natural next additions once
-that pattern is set. This is called out so the scope is explicit, not silently
-narrowed.
+The delete path used to be inline in `routes/library.ts` (folder-first `rmSync`
++ row delete) — fronting that to an LLM safely needed the logic **extracted
+into a shared, tested service first**, which is now `services/library-deletion.ts`
+(`deleteOne`, `deleteAlbum`, plus the path-resolution/fuzzy-match/cleanup
+helpers they need). Both the HTTP routes (`DELETE /albums/:id`, `DELETE
+/songs/:id`, `POST /songs/bulk-delete`) and the two MCP tools above call the
+**same** functions — `db`, `musicDir`, and a `ShareRescanScheduler` instance are
+explicit params rather than closures, so each caller wires its own dependencies
+(`mcpRoutes(musicDir, slskdRef)` constructs its own debounced scheduler,
+mirroring the one `libraryRoutes` already builds). `delete_album`/`delete_song`
+reuse the exact `recordAudit` action names (`album.delete`, `song.delete`) the
+HTTP routes use, with a `(via MCP agent)` suffix on the detail string so an
+audit-log reader can tell the two apart. Merge tools remain unbuilt — merge has
+no equivalent shared service yet.
+
+## Settings UI
+
+`pages/settings/agent-tokens/` (`AgentTokensComponent` +
+`AgentTokensApiService`, mirroring the paired-devices settings page) mints
+(shown once, with a copy affordance), lists, and revokes tokens against the
+already-wired `/api/agent-tokens` routes. Reachable from Settings → Account
+→ "Agent tokens →", gated on `auth.canCurate()` client-side (a new
+`curatorGuard` in `guards/auth.guard.ts`, mirroring `adminGuard`) to match the
+server's `requireCurator` gate on the same routes.
 
 ## Left as follow-ups
 
-- **Settings → Agents UI** — a page to mint (show-once), list, and revoke tokens,
-  gated on `canCurate()`. The backend is fully usable via `/api/agent-tokens`
-  today; the UI is additive and non-security-critical.
-- **Extract the album/song delete + artist-merge logic into shared services**,
-  then register `delete_album` / `merge_artist` as `destructive` tools and
-  `add_to_watchlist` / `acquire_album` acquisition tools.
+- **Merge tools** — `merge_artist` needs its own shared-service extraction the
+  way deletion got one; not started.
+- **Acquisition tools** (`add_to_watchlist` / `acquire_album`) — the mechanism
+  (`destructive` flag + `confirm` gate + `recordAudit` + the refiner cap) is
+  proven by the delete tools above, so adding these is the same shape of work.
 - **Reuse existing routes via internal dispatch** — as the tool surface grows,
   fronting the real Hono routes (with a short-lived internal refiner token)
   instead of re-implementing each write keeps the MCP surface from drifting.
@@ -106,6 +118,10 @@ narrowed.
 `services`/`routes`: `routes/agent-tokens.test.ts` (mint/verify/list/revoke,
 hash-only storage, expiry, revocation scoping, curator-gating, mint-once) and
 `routes/mcp.test.ts` (401 without a token, initialize/tools-list/tools-call, a
-read tool, the audited curate write, read-only-token refusal, unknown-method
-JSON-RPC error, and `checkToolAccess` covering the scope + confirm gates with
-synthetic tools).
+read tool, the audited curate write, read-only-token refusal,
+`delete_song`/`delete_album` against a real temp-dir music folder — confirm
+gate, scope gate, and the audited happy path — unknown-method JSON-RPC error,
+and `checkToolAccess` covering the scope + confirm gates with synthetic tools).
+`services/library-deletion.test.ts` covers `deleteOne`/`deleteAlbum` directly
+(not just through the HTTP route), the test surface the MCP tools needed.
+`AgentTokensComponent`'s spec covers mint/list/revoke and their error paths.

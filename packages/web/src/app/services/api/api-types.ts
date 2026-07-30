@@ -454,6 +454,31 @@ export interface PairedDevice {
   current: boolean;
 }
 
+// ── MCP agent tokens (issue #232) ──────────────────────────────────────────
+
+export type AgentScope = 'refiner:read' | 'refiner:curate';
+
+/** A minted token row as listed — never carries the secret. */
+export interface AgentTokenRow {
+  id: string;
+  userId: string;
+  name: string;
+  scope: AgentScope;
+  createdAt: number;
+  lastUsedAt: number | null;
+  expiresAt: number | null;
+  revokedAt: number | null;
+}
+
+/** Response to a mint call — `token` is the raw secret, shown exactly once. */
+export interface AgentTokenMintResponse {
+  id: string;
+  name: string;
+  scope: AgentScope;
+  expiresAt: number | null;
+  token: string;
+}
+
 // ── Library fragmentation diagnostic (admin) ──────────────────────────────
 //
 // `GET /api/library/fragments` reports the three defect classes that turn

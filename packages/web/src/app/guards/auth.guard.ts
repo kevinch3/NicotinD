@@ -28,6 +28,14 @@ export const adminGuard: CanActivateFn = () => {
   return auth.isAdmin() || router.createUrlTree(['/']);
 };
 
+// Library curation surfaces (e.g. minting an MCP agent token, issue #232) are
+// refiner+ — mirrors the server's requireCurator gate on the same routes.
+export const curatorGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  return auth.canCurate() || router.createUrlTree(['/']);
+};
+
 // Acquisition surfaces (e.g. /downloads) are hidden from listeners; bounce them
 // home so a bookmarked/deep-linked URL can't reach the acquisition UI.
 export const acquireGuard: CanActivateFn = () => {

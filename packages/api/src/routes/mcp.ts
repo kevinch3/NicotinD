@@ -8,6 +8,9 @@ import {
   type AgentIdentity,
 } from '../services/agent-tokens.js';
 import { recordAudit } from '../services/audit-log.js';
+import { deleteAlbum, deleteOne } from '../services/library-deletion.js';
+import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
+import type { SlskdRef } from '../index.js';
 
 /**
  * MCP server for external LLM/agents (issue #232), served **inside the Hono app**
@@ -21,17 +24,22 @@ import { recordAudit } from '../services/audit-log.js';
  * works and server-admin does not. Every write tool is audit-logged; destructive
  * tools additionally require an explicit `confirm: true` argument.
  *
- * **v1 tool surface is read + safe-curation.** Destructive tools (delete/merge)
- * and acquisition tools are intentionally NOT registered yet: the delete path is
- * currently inline in routes (folder-first `rmSync`), and fronting it to an LLM
- * safely wants that logic extracted into a shared, tested service first. The
- * confirm-gate + audit + refiner-cap *mechanism* is in place (see `dispatchTool`
- * and the `destructive` flag), so adding those tools is a small, safe step.
+ * **v1 tool surface was read + safe-curation only; destructive tools now ship
+ * too** (`delete_album`/`delete_song`): the deletion path used to be inline in
+ * routes/library.ts (folder-first `rmSync`), extracted into
+ * `services/library-deletion.ts` so both the HTTP routes and this MCP surface
+ * call the same tested implementation. Each is `access: 'curate'` +
+ * `destructive: true`, so `checkToolAccess` already enforces the
+ * refiner-scope + `confirm: true` gate before the handler runs, and each
+ * writes the same `recordAudit` action name the HTTP route uses. Merge tools
+ * remain unbuilt — merge has no equivalent shared service yet.
  */
 
 export interface McpToolContext {
   db: Database;
   identity: AgentIdentity;
+  /** Deletion dependencies (issue #232) — musicDir + a debounced share rescan. */
+  deletion: { musicDir?: string; shareRescan: ShareRescanScheduler };
 }
 
 export interface McpTool {
@@ -185,6 +193,68 @@ export const MCP_TOOLS: McpTool[] = [
       return JSON.stringify({ ok: true, licence: value });
     },
   },
+  {
+    name: 'delete_song',
+    description:
+      'Permanently delete one song file from disk and the library (destructive). Requires confirm: true.',
+    access: 'curate',
+    destructive: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        songId: { type: 'string' },
+        confirm: { type: 'boolean', description: 'Must be true to proceed.' },
+      },
+      required: ['songId', 'confirm'],
+    },
+    handler: async ({ db, identity, deletion }, args) => {
+      const songId = str(args.songId);
+      const result = await deleteOne(db, songId, deletion);
+      if (!result.ok) return JSON.stringify({ error: result.error });
+      recordAudit(
+        db,
+        { sub: identity.userId, username: `agent:${identity.tokenId}` },
+        'song.delete',
+        { targetKind: 'song', targetId: songId, detail: '(via MCP agent)' },
+      );
+      return JSON.stringify({ ok: true });
+    },
+  },
+  {
+    name: 'delete_album',
+    description:
+      'Permanently delete an album (all its songs) from disk and the library (destructive). Requires confirm: true.',
+    access: 'curate',
+    destructive: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        albumId: { type: 'string' },
+        confirm: { type: 'boolean', description: 'Must be true to proceed.' },
+      },
+      required: ['albumId', 'confirm'],
+    },
+    handler: async ({ db, identity, deletion }, args) => {
+      const albumId = str(args.albumId);
+      const result = await deleteAlbum(db, albumId, deletion);
+      if (!result) return JSON.stringify({ error: 'album not found' });
+      recordAudit(
+        db,
+        { sub: identity.userId, username: `agent:${identity.tokenId}` },
+        'album.delete',
+        {
+          targetKind: 'album',
+          targetId: albumId,
+          detail: `${result.albumRow ? `${result.albumRow.artist} — ${result.albumRow.name}, ` : ''}${result.deletedCount} song(s) deleted (via MCP agent)`,
+        },
+      );
+      return JSON.stringify({
+        ok: result.ok,
+        deletedCount: result.deletedCount,
+        failedCount: result.failedCount,
+      });
+    },
+  },
 ];
 
 const TOOL_BY_NAME = new Map(MCP_TOOLS.map((t) => [t.name, t]));
@@ -253,8 +323,14 @@ interface JsonRpcRequest {
 const SERVER_INFO = { name: 'nicotind-mcp', version: '1' };
 const PROTOCOL_VERSION = '2024-11-05';
 
-export function mcpRoutes() {
+export function mcpRoutes(musicDir?: string, slskdRef?: SlskdRef) {
   const app = new Hono();
+  // Debounced the same way the HTTP delete routes are (share-rescan-scheduler.ts):
+  // a burst of MCP deletes triggers one slskd rescan, not one per file.
+  const shareRescan = new ShareRescanScheduler(async () => {
+    const slskd = slskdRef?.current;
+    if (slskd) await slskd.shares.rescan();
+  });
 
   app.post('/', async (c) => {
     // Agent-token auth — NOT the app JWT. Capped at refiner.
@@ -297,7 +373,11 @@ export function mcpRoutes() {
         const params = body.params ?? {};
         const name = str(params.name);
         const args = (params.arguments as Record<string, unknown>) ?? {};
-        const result = await dispatchTool({ db: getDatabase(), identity }, name, args);
+        const result = await dispatchTool(
+          { db: getDatabase(), identity, deletion: { musicDir, shareRescan } },
+          name,
+          args,
+        );
         return reply(result);
       }
       default:

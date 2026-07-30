@@ -575,21 +575,25 @@ Add detail there, not here.
   `requireAdmin`→`requireCurator` on library.ts edit/merge/delete routes); **admin** adds server
   admin. Guards `requireAcquirer`/`requireCurator`/`requireAdmin`; search suppresses only its
   network fan-out for listeners (library results always return). → [docs/roles.md](docs/roles.md)
-- **MCP agent access (issue #232, v1 backend)**: an external LLM/agent can curate a user's library
-  via `/api/mcp`, authorized by a scoped, revocable `agent_tokens` bearer **capped at `refiner`**
+- **MCP agent access (issue #232)**: an external LLM/agent can curate a user's library via
+  `/api/mcp`, authorized by a scoped, revocable `agent_tokens` bearer **capped at `refiner`**
   (`AGENT_EFFECTIVE_ROLE` — an admin who mints one does not get an admin agent). Opaque token
   (`nca_…`), only its **sha256 hash stored** (a table leak leaks nothing live), revoked by stamping
   the row (`verifyAgentToken` checks every call). `services/agent-tokens.ts` = `mintAgentToken`
   (secret returned once) / `verifyAgentToken` / `listAgentTokens` / `revokeAgentToken` (owner-scoped);
   managed by a curator via `/api/agent-tokens` (`agentTokensRoutes`, JWT+`requireCurator`, audit-
-  logged). The MCP endpoint (`mcpRoutes`, hand-rolled JSON-RPC `initialize`/`tools/list`/`tools/call`,
-  no SDK dep) authenticates with the **agent token, not the JWT**. `checkToolAccess` (pure, tested) is
-  the guard: a `curate` tool needs the `:curate` scope, a `destructive` tool needs `args.confirm ===
-  true`; `dispatchTool` applies it and every write is `recordAudit`-ed. **v1 tools = read +
-  safe-curation** (`search_library`/`get_artist`/`get_album_tracks`/`set_song_licence`); destructive
-  (delete/merge) + acquisition tools are held one slice — the mechanism (confirm+audit+cap) is in
-  place, but deletion is inline `rmSync` in routes and must be **extracted into a shared service**
-  before an LLM fronts it. Settings-UI to mint tokens is a follow-up. → [docs/mcp-agent.md](docs/mcp-agent.md)
+  logged) or the **`pages/settings/agent-tokens/` Settings UI** (mint shown-once + copy, list,
+  revoke; a new `curatorGuard` route guard mirrors the server's `requireCurator`). The MCP endpoint
+  (`mcpRoutes`, hand-rolled JSON-RPC `initialize`/`tools/list`/`tools/call`, no SDK dep) authenticates
+  with the **agent token, not the JWT**. `checkToolAccess` (pure, tested) is the guard: a `curate`
+  tool needs the `:curate` scope, a `destructive` tool needs `args.confirm === true`; `dispatchTool`
+  applies it and every write is `recordAudit`-ed. **Tools = read + safe-curation + destructive
+  delete** (`search_library`/`get_artist`/`get_album_tracks`/`set_song_licence`/`delete_song`/
+  `delete_album`) — deletion was inline `rmSync` in routes; it is now `services/library-deletion.ts`
+  (`deleteOne`/`deleteAlbum`, `db`/`musicDir`/`ShareRescanScheduler` as explicit params, not
+  closures), the **one** implementation both the HTTP delete routes and the two MCP tools call, so
+  wiring `rmSync` to an agent never became a second copy. Merge tools remain unbuilt (no shared
+  service yet). → [docs/mcp-agent.md](docs/mcp-agent.md)
 - **Presence tracking (admin-only, ephemeral)**: in-memory `PresenceService` tracks `isConnected` /
   `amountOfDevices` / `amountOfSessions` per user via 60s HTTP heartbeats + stale cleanup; merged
   into `GET /api/admin/users`. → [docs/presence-tracking.md](docs/presence-tracking.md)
