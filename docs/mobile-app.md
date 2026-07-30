@@ -122,11 +122,53 @@ The fix has four parts:
   `navigator.onLine` + window `online`/`offline` events on web/Electron. The Android WebView's
   `navigator.onLine` is unreliable (often stuck `true`), which is why native must use the plugin.
   `@capacitor/network` is a `packages/mobile` dependency (ships in the APK, self-registers).
+  - **The native seed is asynchronous, so the service also exposes `whenReady()`** — a promise that
+    resolves once the *initial* `online` value is known. On web/Electron (and when the plugin is
+    missing) the seed is synchronous, so `whenReady()` is already-resolved; on native it settles after
+    the plugin's `getStatus()` promise resolves **or rejects** (a failed/hung seed must never leave
+    `whenReady()` pending forever — it would hang bootstrap, worse than the ANR it guards). This seam
+    exists purely because `SetupService.check()` runs synchronously in the app initializer while the
+    native seed is a promise — see the next bullet.
 - **`SetupService.isOffline` is now a `computed`** (`!network.online() || serverUnreachable`) instead of
   a boot-only writable signal, so every existing consumer (library source swap, nav gating, redirects,
   the new banner) reacts to connectivity flips in **both** directions with no reload. `check()` **skips
   the HTTP probe entirely when the device already reports offline** — the fast path that removes the
   blank-screen boot wait (and the flurry of failing offline requests) behind the ANR.
+  - **The fast path only works if the seed has landed.** `check()` **`await`s `network.whenReady()`
+    first** (bounded by `NETWORK_SEED_TIMEOUT_MS` = 1500 ms so a broken/absent plugin whose
+    `getStatus()` never resolves can't hang boot — it falls through to the probe instead). Without this
+    await the bug was still live: at the instant `check()` runs, the native `online()` signal is still
+    its optimistic `true` (the `getStatus()` promise hasn't resolved yet), so the offline fast path was
+    *silently skipped* on a real offline launch and bootstrap blocked on the 3 s HTTP probe — the exact
+    ANR/crash-on-blink the whole section exists to prevent. The seed is a *local* OS query
+    (ConnectivityManager), so the await normally costs a few ms, and on web it's already-resolved so
+    the e2e suite / browser boot are unaffected.
+- **The offline switch is automatic in both directions** (the app *detects* offline and enters/leaves
+  that mode by itself, mid-session included):
+  - **Enter**: the device signal covers radio-level drops instantly; for the "device network fine,
+    server gone" case the `authInterceptor` reports any **status-0** (no-HTTP-response) failure on an
+    `/api`/`/rest` path to `SetupService.reportServerFailure()`, which runs a **verification probe**
+    before flipping the app offline — one flaky request must never bounce the whole UI. Reports are
+    single-flight and ignored while already flagged (the recovery poll owns retries, so N failing
+    background polls can't turn into N probes). Any HTTP status ≥ 1 means the server answered and is
+    never reported.
+  - **Leave**: while flagged unreachable, `SERVER_RECOVERY_POLL_MS` (20 s) re-probes — the only state
+    in which the app generates background probe traffic — and a **reconnect fast path** (an `effect`
+    on the offline→online transition of the network signal) probes *immediately*, so leaving airplane
+    mode / regaining Wi-Fi restores online mode in one round-trip instead of a poll-interval wait.
+    The reconnect probe also fires when `status` is still `null` — i.e. an offline **launch** skipped
+    the boot probe entirely, so the app has never learned the server's setup state and must catch up
+    now. A healthy already-probed session reconnecting after a tunnel/elevator blip adds **no**
+    probe (unit-tested), preserving the zero-extra-traffic property.
+    `SetupService.verify()` is the single writer of `serverUnreachable` in both directions, so every
+    trigger (boot, interceptor report, poll, reconnect) shares one decision path.
+  - **Offline keeps the session**: the boot `refreshToken`/`getMe` chain (now the exported
+    `refreshSession` in `app.config.ts`) runs *after* `check()` and only when online — an offline
+    launch keeps the stored JWT so the on-device library stays usable, instead of burning doomed
+    auth requests (part of the old offline boot flurry). When the app later returns online, a
+    one-shot self-destroying `effect` runs the deferred refresh so roles/flags re-sync without a
+    reload — **without** the autoplay resume (`withAutoplay: false`): music suddenly starting
+    minutes after launch because connectivity returned would be a surprise, not a restore.
 - **Native Sentry is trimmed** (`observability/sentry.ts` `nativeShell` arg on `loadSentry`, passed
   from `main.ts`, whose call site is try/catch-wrapped): Session Replay (rrweb DOM recording) +
   browser tracing (wrapping every fetch/XHR) run on the WebView main thread and churned on the

@@ -6,6 +6,8 @@ import {
   isDevMode,
   InjectionToken,
   ErrorHandler,
+  Injector,
+  effect,
 } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
@@ -26,6 +28,46 @@ import { switchMap } from 'rxjs/operators';
 import { TranslateService } from './services/translate.service';
 
 export const APP_VERSION = new InjectionToken<string>('APP_VERSION');
+
+/**
+ * Refresh the stored session and sync the per-user profile flags. Runs after the
+ * boot connectivity check (online boot), or on the first return to online after
+ * an offline launch (see the initializer below). `withAutoplay` is true only on
+ * the boot-time path: resuming playback is a *restore* right after launch, but a
+ * surprise if it fires minutes later when connectivity happens to return.
+ */
+export function refreshSession(
+  api: AuthApiService,
+  auth: AuthService,
+  player: PlayerService,
+  withAutoplay: boolean,
+): void {
+  api
+    .refreshToken()
+    .pipe(
+      switchMap((res) => {
+        auth.setToken(res.token);
+        return api.getMe();
+      }),
+    )
+    .subscribe({
+      next: (profile) => {
+        // Sync role from the (DB-backed) refreshed session so a role change
+        // an admin made takes effect on this load, not only on re-login.
+        auth.setRole(profile.role);
+        auth.welcomeDismissed.set(profile.welcomeDismissed);
+        auth.autoplayOnLoad.set(profile.autoplayOnLoad);
+        auth.feedbackCapture.set(profile.feedbackCapture);
+        // Deployment-wide acquisition kill-switch (#235): default to enabled
+        // when an older server omits the field.
+        auth.serverAcquisitionEnabled.set(profile.acquisitionEnabled ?? true);
+        // Resume a previously playing session if the user opted in to
+        // autoplay-on-load. See PlayerService.maybeResumeAutoplay.
+        if (withAutoplay) player.maybeResumeAutoplay(profile.autoplayOnLoad);
+      },
+      error: () => {},
+    });
+}
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -55,33 +97,6 @@ export const appConfig: ApplicationConfig = {
       theme.apply();
       preserve.init();
       player.restoreState();
-      if (auth.isAuthenticated()) {
-        api
-          .refreshToken()
-          .pipe(
-            switchMap((res) => {
-              auth.setToken(res.token);
-              return api.getMe();
-            }),
-          )
-          .subscribe({
-            next: (profile) => {
-              // Sync role from the (DB-backed) refreshed session so a role change
-              // an admin made takes effect on this load, not only on re-login.
-              auth.setRole(profile.role);
-              auth.welcomeDismissed.set(profile.welcomeDismissed);
-              auth.autoplayOnLoad.set(profile.autoplayOnLoad);
-              auth.feedbackCapture.set(profile.feedbackCapture);
-              // Deployment-wide acquisition kill-switch (#235): default to enabled
-              // when an older server omits the field.
-              auth.serverAcquisitionEnabled.set(profile.acquisitionEnabled ?? true);
-              // Resume a previously playing session if the user opted in to
-              // autoplay-on-load. See PlayerService.maybeResumeAutoplay.
-              player.maybeResumeAutoplay(profile.autoplayOnLoad);
-            },
-            error: () => {},
-          });
-      }
       // AutoPreserveCoordinator wires the player queue → IndexedDB. Cheap while
       // autoPreserveMode is "off" (default — returns immediately on every effect
       // tick), so it ships in dev too: the gate originally mirrored the SW's
@@ -89,7 +104,33 @@ export const appConfig: ApplicationConfig = {
       // coordinator has no equivalent concern. Native apps default to "off" and
       // the only effect cost is reading two signals.
       inject(AutoPreserveCoordinator);
-      return setup.check();
+      // Captured here because the .then() below runs outside the injection
+      // context (needed for the deferred-refresh effect).
+      const injector = inject(Injector);
+      // The session refresh runs AFTER the connectivity check, and only when the
+      // app is actually online: on an offline launch the refresh/`/me` pair is
+      // doomed (part of the failing-request flurry behind the Android offline
+      // ANR), and skipping it deliberately KEEPS the stored token — the offline
+      // library must stay usable with the last known session rather than
+      // churning on auth requests that can't succeed.
+      return setup.check().then(() => {
+        if (!auth.isAuthenticated()) return;
+        if (!setup.isOffline()) {
+          refreshSession(api, auth, player, true);
+          return;
+        }
+        // Offline launch with a stored session: refresh it automatically the
+        // FIRST time the app returns online (one-shot — the effect destroys
+        // itself), so roles/flags re-sync without a reload. No autoplay here.
+        const ref = effect(
+          () => {
+            if (setup.isOffline()) return;
+            ref.destroy();
+            if (auth.isAuthenticated()) refreshSession(api, auth, player, false);
+          },
+          { injector },
+        );
+      });
     }),
     provideServiceWorker('ngsw-worker.js', {
       enabled: serviceWorkerEnabled(isDevMode(), isNativeShell()),

@@ -822,7 +822,17 @@ Add detail there, not here.
   a `computed` (`!online || serverUnreachable`) so the library source swap, nav gating, redirect +
   the app-shell offline banner (inline in `layout.component.html`, `data-testid="offline-banner"`)
   all react to connectivity flips **both ways** with no reload, and `check()` skips the boot HTTP
-  probe when already offline (kills the multi-second blank-screen boot behind the ANR). Native
+  probe when already offline (kills the multi-second blank-screen boot behind the ANR). **The native
+  seed is async**, so `check()` first `await`s `NetworkStatusService.whenReady()` (bounded by
+  `NETWORK_SEED_TIMEOUT_MS`) — otherwise `online()` is still its optimistic `true` when `check()`
+  runs and the offline fast path is silently skipped, so an offline Android launch still blocked on
+  the 3 s probe (the ANR persisted despite the fast path existing). **The switch is automatic both
+  ways mid-session too**: the interceptor reports status-0 API failures → `reportServerFailure()`
+  verification-probes before flipping offline (never on one flaky request); once unreachable a
+  `SERVER_RECOVERY_POLL_MS` poll + an instant device-reconnect re-probe restore online mode without
+  a reload, and the boot `refreshToken` chain (`refreshSession`) is deferred until after `check()` —
+  offline keeps the stored session, and the first return to online runs the deferred refresh
+  (autoplay suppressed). Native
   Sentry drops Session Replay + tracing (release-only ANR suspect; `loadSentry` also
   try/catch-wrapped at its call site); mid-use hardening = player skips a doomed offline stream (toast, not infinite
   spinner), `preserveCollection` swallows offline fetch rejects, GET requests get a 30s interceptor

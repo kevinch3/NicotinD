@@ -41,6 +41,25 @@ export class NetworkStatusService {
   // never wrongly shows the offline surface before the seed resolves.
   readonly online = signal(true);
 
+  // Resolves once the INITIAL connectivity status is known. On web/Electron the
+  // seed is synchronous, so this is already-resolved; on native it settles after
+  // the Capacitor plugin's async `getStatus()` resolves (or rejects). The whole
+  // point: `SetupService.check()` runs synchronously in the app initializer, but
+  // the native seed is a promise — so without awaiting this, `online()` is still
+  // the optimistic `true` on an OFFLINE launch, the probe-skipping fast path is
+  // missed, and bootstrap blocks on the multi-second HTTP probe (the Android
+  // ANR/crash-on-blink this whole service exists to prevent). `whenReady()` is
+  // that await seam; it is settled exactly once by whichever init path runs.
+  private resolveReady!: () => void;
+  private readonly readyPromise = new Promise<void>((resolve) => {
+    this.resolveReady = resolve;
+  });
+
+  /** A promise that resolves once the initial `online` value has been seeded. */
+  whenReady(): Promise<void> {
+    return this.readyPromise;
+  }
+
   constructor() {
     if (isNativePlatform()) {
       this.initNative();
@@ -54,7 +73,8 @@ export class NetworkStatusService {
     if (!plugin) {
       // Plugin missing (e.g. an older shell without @capacitor/network) — fall
       // back to the web listeners so we can still detect drops rather than being
-      // stuck reporting "online" forever.
+      // stuck reporting "online" forever. initWeb() seeds synchronously and
+      // resolves `readyPromise` itself.
       this.initWeb();
       return;
     }
@@ -62,7 +82,11 @@ export class NetworkStatusService {
       .then((s) => this.online.set(s.connected))
       .catch(() => {
         /* keep optimistic default */
-      });
+      })
+      // Mark ready whether the seed resolved or threw — a failed seed leaves the
+      // optimistic default, and blocking `whenReady()` forever would be worse
+      // (bootstrap would hang) than proceeding with a best-guess value.
+      .finally(() => this.resolveReady());
     void Promise.resolve(
       plugin.addListener('networkStatusChange', (s) => this.online.set(s.connected)),
     ).catch(() => {
@@ -74,5 +98,7 @@ export class NetworkStatusService {
     this.online.set(navigator.onLine);
     window.addEventListener('online', () => this.online.set(true));
     window.addEventListener('offline', () => this.online.set(false));
+    // navigator.onLine is synchronous, so the seed is already correct here.
+    this.resolveReady();
   }
 }
