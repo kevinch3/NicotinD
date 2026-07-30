@@ -41,4 +41,32 @@ test.describe('offline network detection', () => {
     await expect(page.getByTestId('offline-banner')).toBeVisible();
     await expect(page).toHaveURL(/\/library/);
   });
+
+  test('switches into offline mode by itself when the server dies mid-session, and recovers', async ({
+    page,
+    context,
+  }) => {
+    // Mid-session server loss: the device network stays up (navigator.onLine is
+    // true throughout) but the API stops answering. The next API call fails at
+    // the network level → the interceptor reports it → SetupService verifies
+    // with a probe → the app flips itself into offline mode: banner shown and
+    // the shell redirected to the offline-capable Library. No reload involved.
+    await page.goto('/library');
+    await expect(page.getByTestId('offline-banner')).toHaveCount(0);
+
+    await page.route('**/api/**', (route) => route.abort());
+    // Trigger an API call by navigating to Home (radio landing fetches data).
+    await page.getByTestId('desktop-nav').getByRole('link').first().click();
+
+    await expect(page.getByTestId('offline-banner')).toBeVisible();
+    await expect(page).toHaveURL(/\/library/);
+
+    // Server comes back + a device online event fires (the reconnect fast path):
+    // the app re-probes immediately and leaves offline mode on its own.
+    await page.unroute('**/api/**');
+    await context.setOffline(true);
+    await context.setOffline(false);
+
+    await expect(page.getByTestId('offline-banner')).toHaveCount(0);
+  });
 });

@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { catchError, throwError, timeout } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 import { ServerConfigService } from '../services/server-config.service';
+import { SetupService } from '../services/setup.service';
 
 // Read requests that hang against an unreachable host (common in the native
 // WebView when connectivity drops) are bounded so they fail fast instead of
@@ -17,6 +18,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
   const server = inject(ServerConfigService);
   const router = inject(Router);
+  const setup = inject(SetupService);
   const token = auth.token();
 
   // Rewrite relative /api|/rest paths to the configured server (no-op on web,
@@ -32,6 +34,16 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return bounded.pipe(
     catchError((err: HttpErrorResponse) => {
+      // A network-level failure (status 0 = the request died with no HTTP
+      // response: server down, DNS/connection refused, dropped mid-flight) on an
+      // API path is the mid-session "server became unreachable" signal. Report it
+      // so the app can VERIFY and switch itself into offline mode — the report
+      // triggers a single reachability probe rather than trusting one flaky
+      // request (see SetupService.reportServerFailure). Any HTTP status ≥ 1
+      // means the server answered, i.e. it is reachable — never reported.
+      if (err.status === 0 && (req.url.startsWith('/api') || req.url.startsWith('/rest'))) {
+        setup.reportServerFailure();
+      }
       if (err.status === 401) {
         auth.logout();
         // Router (not window.location) — a hard navigation breaks in the native
