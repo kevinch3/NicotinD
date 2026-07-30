@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.282](https://github.com/kevinch3/NicotinD/compare/v0.1.281...v0.1.282) (2026-07-30)
+
+### Bug Fixes
+
+* **mobile:** offline mode is detected and switched automatically, both ways ([3874740](https://github.com/kevinch3/NicotinD/commit/38747405cc7ac1815714e05e4d3b4334ac69e273))
 ## [0.1.281](https://github.com/kevinch3/NicotinD/compare/v0.1.280...v0.1.281) (2026-07-30)
 
 ### Features
