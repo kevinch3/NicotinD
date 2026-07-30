@@ -18,6 +18,7 @@ import { SeekBarComponent } from '../seek-bar/seek-bar.component';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { ArtistLinksComponent } from '../artist-links/artist-links.component';
 import { ServerConfigService } from '../../services/server-config.service';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import {
   computePaletteFromPixels,
   scrollToActiveLine,
@@ -40,6 +41,7 @@ function formatTime(s: number): string {
     SeekBarComponent,
     CoverArtComponent,
     ArtistLinksComponent,
+    TranslatePipe,
   ],
   templateUrl: './now-playing.component.html',
 })

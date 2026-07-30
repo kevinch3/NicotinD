@@ -1,10 +1,10 @@
 
     <div class="max-w-2xl mx-auto px-4 py-5 md:px-6 md:py-8">
-      <h1 class="text-xl font-bold text-theme-primary mb-8">Settings</h1>
+      <h1 class="text-xl font-bold text-theme-primary mb-8">{{ 'settings.title' | t }}</h1>
 
       <!-- Appearance -->
       <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
-        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Appearance</h2>
+        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.appearance' | t }}</h2>
 
         <!-- Language (issue #236). Per-device, not per-user: login/setup/share
              pages render before any user exists, and a per-user setting would
@@ -29,8 +29,8 @@
             <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (themeService.systemTheme() ? 'translate-x-4' : 'translate-x-0')"></span>
           </button>
           <div>
-            <p class="text-sm text-theme-primary">Follow system theme</p>
-            <p class="text-xs text-theme-muted mt-0.5">Automatically use light or dark based on your OS setting.</p>
+            <p class="text-sm text-theme-primary">{{ 'settings.followSystemTheme' | t }}</p>
+            <p class="text-xs text-theme-muted mt-0.5">{{ 'settings.followSystemThemeHint' | t }}</p>
           </div>
         </div>
 
@@ -39,7 +39,7 @@
             <button (click)="themeService.setTheme(preset.id)"
               [attr.data-theme]="preset.id"
               [class]="'rounded-lg overflow-hidden border-2 transition-all text-left ' + (themeService.theme() === preset.id ? 'border-theme-accent' : 'border-transparent hover:border-theme')"
-              [attr.aria-label]="'Switch to ' + preset.name + ' theme'">
+              [attr.aria-label]="'settings.switchToTheme' | t: { name: preset.name }">
               <div class="h-10 flex flex-col gap-1 p-1.5" style="background: var(--theme-bg, #09090b)">
                 <div class="h-2 rounded-sm w-full" style="background: var(--theme-surface, #18181b)"></div>
                 <div class="h-1.5 rounded-sm w-3/4" style="background: var(--theme-surface-2, #27272a)"></div>
@@ -57,11 +57,10 @@
 
       <!-- Offline storage -->
       <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
-        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Offline storage</h2>
+        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.offlineStorage' | t }}</h2>
 
         <p class="text-xs text-theme-muted mb-3">
-          Maximum space used to keep downloaded tracks for offline playback. Downloading a
-          collection fills up to this limit, then stops.
+          {{ 'settings.offlineStorageHint' | t }}
         </p>
 
         <div class="grid grid-cols-5 gap-2 mb-4">
@@ -77,16 +76,16 @@
           <div class="h-full bg-emerald-500 transition-all" [style.width.%]="usagePercent()"></div>
         </div>
         <p class="text-xs text-theme-muted">
-          {{ formatStorage(preserve.totalUsage()) }} of {{ formatStorage(preserve.budget()) }} used
-          · {{ preserve.preservedTracks().length }} track{{ preserve.preservedTracks().length === 1 ? '' : 's' }} saved
+          {{ 'settings.storageUsed' | t: { used: formatStorage(preserve.totalUsage()), total: formatStorage(preserve.budget()) } }}
+          · {{ (preserve.preservedTracks().length === 1 ? 'settings.trackSavedOne' : 'settings.trackSavedOther') | t: { count: preserve.preservedTracks().length } }}
         </p>
 
         <!-- Auto-preserve queue: keep the next N queued tracks on disk so playback
              keeps going when the screen is locked or the network drops (web/PWA). -->
         <div class="mt-6 pt-6 border-t border-theme">
-          <h3 class="text-sm font-semibold text-theme-primary mb-1">Auto-preserve queue</h3>
+          <h3 class="text-sm font-semibold text-theme-primary mb-1">{{ 'settings.autoPreserveTitle' | t }}</h3>
           <p class="text-xs text-theme-muted mb-3">
-            Keep upcoming queue tracks saved on this device so playback continues even when the screen is locked or the network drops.
+            {{ 'settings.autoPreserveHint' | t }}
           </p>
           <div class="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Auto-preserve window">
             @for (opt of autoPreserveOptions; track opt.value) {
@@ -106,7 +105,7 @@
 
       <!-- Playback -->
       <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
-        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Playback</h2>
+        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.playback' | t }}</h2>
 
         <div class="flex items-start gap-3">
           <button role="switch" [attr.aria-checked]="auth.autoplayOnLoad()"
@@ -116,8 +115,8 @@
             <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (auth.autoplayOnLoad() ? 'translate-x-4' : 'translate-x-0')"></span>
           </button>
           <div>
-            <p class="text-sm text-theme-primary">Resume playback when opening the app</p>
-            Continue from where you left off when you load the page. Off by default so the app doesn't surprise you with audio.
+            <p class="text-sm text-theme-primary">{{ 'settings.resumePlayback' | t }}</p>
+            {{ 'settings.resumePlaybackHint' | t }}
           </div>
         </div>
       </section>
@@ -125,7 +124,7 @@
       <!-- Developer (admin-only): feedback capture -->
       @if (auth.isAdmin()) {
         <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="developer-section">
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Developer</h2>
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.developer' | t }}</h2>
 
           <div class="flex items-start gap-3">
             <button role="switch" [attr.aria-checked]="auth.feedbackCapture()"
@@ -135,9 +134,9 @@
               <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (auth.feedbackCapture() ? 'translate-x-4' : 'translate-x-0')"></span>
             </button>
             <div>
-              <p class="text-sm text-theme-primary">Capture generation feedback</p>
+              <p class="text-sm text-theme-primary">{{ 'settings.generationFeedback' | t }}</p>
               <p class="text-xs text-theme-muted mt-1">
-                After an album hunt, show a 👍/👎 toast to grade whether the recognizer picked the right release. Graded results become replayable test fixtures. Off by default.
+                {{ 'settings.generationFeedbackHint' | t }}
               </p>
             </div>
           </div>
@@ -147,7 +146,7 @@
       <!-- Remote Playback -->
       <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
         <div class="flex items-center gap-3 mb-6">
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary">Remote Playback</h2>
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary">{{ 'settings.remotePlayback' | t }}</h2>
         </div>
 
         <div class="space-y-5">
@@ -159,10 +158,10 @@
               <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (remote.remoteEnabled() ? 'translate-x-4' : 'translate-x-0')"></span>
             </button>
             <div>
-              <p class="text-sm text-theme-primary">Make this device available as an audio output</p>
-              <p class="text-xs text-theme-muted mt-0.5">When enabled, other devices on your account can cast audio to this device.</p>
+              <p class="text-sm text-theme-primary">{{ 'settings.makeAvailable' | t }}</p>
+              <p class="text-xs text-theme-muted mt-0.5">{{ 'settings.makeAvailableHint' | t }}</p>
               @if (!remote.remoteEnabled()) {
-                <p class="text-xs text-status-warn mt-1">This device is hidden from the device selector on other devices.</p>
+                <p class="text-xs text-status-warn mt-1">{{ 'settings.hiddenFromSelector' | t }}</p>
               }
             </div>
           </div>
@@ -172,28 +171,28 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0 mt-0.5">
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
               </svg>
-              <span>Remote playback was automatically disabled: {{ remote.disabledReason() }}</span>
+              <span>{{ 'settings.autoDisabled' | t: { reason: remote.disabledReason() ?? '' } }}</span>
             </div>
           }
 
           <div>
-            <label class="block text-sm text-theme-secondary mb-1.5">This device's name</label>
+            <label class="block text-sm text-theme-secondary mb-1.5">{{ 'settings.deviceName' | t }}</label>
             <div class="flex gap-2">
               <input type="text" [ngModel]="deviceName()" (ngModelChange)="deviceName.set($event); deviceNameSaved.set(false)"
-                placeholder="e.g. Living Room TV"
+                [attr.placeholder]="'settings.deviceNamePlaceholder' | t"
                 class="flex-1 px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
               <button (click)="saveDeviceName()" [disabled]="!deviceName().trim() || deviceNameSaved()"
                 class="px-4 py-2.5 rounded-lg bg-theme-hover text-theme-primary text-sm font-medium hover:bg-theme-hover transition disabled:opacity-50">
-                {{ deviceNameSaved() ? 'Saved' : 'Save' }}
+                {{ (deviceNameSaved() ? 'settings.saved' : 'settings.save') | t }}
               </button>
             </div>
-            <p class="text-xs text-theme-muted mt-1">Shown to other users when they switch playback devices.</p>
+            <p class="text-xs text-theme-muted mt-1">{{ 'settings.deviceNameHint' | t }}</p>
           </div>
 
           <div>
-            <p class="text-sm text-theme-secondary mb-2">Connected devices</p>
+            <p class="text-sm text-theme-secondary mb-2">{{ 'settings.connectedDevices' | t }}</p>
             @if (remote.devices().length === 0) {
-              <p class="text-sm text-theme-muted">No devices online</p>
+              <p class="text-sm text-theme-muted">{{ 'settings.noDevicesOnline' | t }}</p>
             } @else {
               <ul class="space-y-1">
                 @for (device of remote.devices(); track device.id) {
@@ -201,10 +200,10 @@
                     <span>{{ getDeviceEmoji(device) }}</span>
                     <span [class]="device.id === myDeviceId ? 'text-theme-primary' : 'text-theme-secondary'">{{ device.name }}</span>
                     @if (device.id === myDeviceId) {
-                      <span class="text-xs text-theme-muted">(this device)</span>
+                      <span class="text-xs text-theme-muted">{{ 'settings.thisDevice' | t }}</span>
                     }
                     @if (device.id === remote.activeDeviceId()) {
-                      <span class="ml-auto text-xs font-semibold tracking-wide px-1.5 py-0.5 rounded status-done">HOST</span>
+                      <span class="ml-auto text-xs font-semibold tracking-wide px-1.5 py-0.5 rounded status-done">{{ 'settings.host' | t }}</span>
                     }
                   </li>
                 }
@@ -217,32 +216,32 @@
       <!-- Server (native mobile app only) -->
       @if (isNativeApp) {
         <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="settings-server-section">
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Server</h2>
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.server' | t }}</h2>
           <p class="text-sm text-theme-muted mb-4">
-            Connected to
+            {{ 'settings.connectedTo' | t }}
             <span class="text-theme-primary font-medium break-all">{{ serverConfig.baseUrl() }}</span>
           </p>
           <a routerLink="/server" data-testid="settings-switch-server"
-             class="block text-sm text-theme-secondary hover:text-theme-primary transition">Switch server →</a>
+             class="block text-sm text-theme-secondary hover:text-theme-primary transition">{{ 'settings.switchServer' | t }}</a>
         </section>
       }
 
       <!-- Account -->
       <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
-        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Account</h2>
-        <p class="text-sm text-theme-muted mb-4">Signed in as <span class="text-theme-primary font-medium">{{ auth.username() }}</span></p>
+        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.account' | t }}</h2>
+        <p class="text-sm text-theme-muted mb-4">{{ 'settings.signedInAs' | t: { username: auth.username() ?? '' } }}</p>
         <a routerLink="/settings/devices" data-testid="settings-devices-link"
-           class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">Devices →</a>
+           class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.devices' | t }}</a>
         @if (auth.canCurate()) {
           <a routerLink="/settings/agent-tokens" data-testid="settings-agent-tokens-link"
-             class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">Agent tokens →</a>
+             class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.agentTokens' | t }}</a>
         }
         @if (isAdmin()) {
-          <a routerLink="/admin" class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">Admin panel →</a>
+          <a routerLink="/admin" class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.adminPanel' | t }}</a>
           <a routerLink="/settings/plugins" data-testid="settings-extensions-link"
-             class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-4">Extensions →</a>
+             class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-4">{{ 'settings.extensions' | t }}</a>
         }
-        <button (click)="logout()" class="text-sm text-status-error hover:text-status-error transition">Sign out</button>
+        <button (click)="logout()" class="text-sm text-status-error hover:text-status-error transition">{{ 'settings.signOut' | t }}</button>
         @if (update.checkAvailable()) {
           <button
             type="button"
@@ -251,7 +250,7 @@
             data-testid="settings-check-update"
             class="text-xs text-theme-secondary hover:text-theme-primary transition cursor-pointer block mt-4 disabled:opacity-50 disabled:cursor-wait"
           >
-            {{ update.searching() ? 'Checking for updates…' : 'Check for updates' }}
+            {{ (update.searching() ? 'settings.checkingForUpdates' : 'settings.checkForUpdates') | t }}
           </button>
         }
         <button
@@ -266,9 +265,9 @@
       <!-- Desktop (Electron only) -->
       @if (isElectron) {
         <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="settings-desktop-section">
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Desktop</h2>
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.desktop' | t }}</h2>
           @if (musicDirChosen()) {
-            <p class="text-sm text-theme-muted mb-4">Music folder: <span class="text-theme-primary font-medium">{{ musicDirChosen() }}</span></p>
+            <p class="text-sm text-theme-muted mb-4">{{ 'settings.musicFolder' | t: { path: musicDirChosen() ?? '' } }}</p>
           }
           @if (musicDirError()) {
             <p class="text-sm text-status-error mb-4" data-testid="settings-change-folder-error">{{ musicDirError() }}</p>
@@ -281,7 +280,7 @@
               data-testid="settings-change-folder"
               class="text-sm text-theme-secondary hover:text-theme-primary transition disabled:opacity-50"
             >
-              {{ musicDirChanging() ? 'Restarting…' : 'Change music folder…' }}
+              {{ (musicDirChanging() ? 'settings.restarting' : 'settings.changeMusicFolder') | t }}
             </button>
             <!-- Mirrors the tray icon's "Reveal Logs" entry; without this
                  the global app menu is gone (dropped with `buildMenu`),
@@ -293,7 +292,7 @@
               data-testid="settings-reveal-logs"
               class="text-sm text-theme-secondary hover:text-theme-primary transition"
             >
-              Reveal logs…
+              {{ 'settings.revealLogs' | t }}
             </button>
           </div>
         </section>
@@ -303,13 +302,13 @@
            plugin is registered, owns the audio session, and has metadata set. -->
       @if (isNativeIos) {
         <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="now-playing-diagnostics">
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Now Playing (iOS)</h2>
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.nowPlayingIos' | t }}</h2>
           <button
             (click)="refreshNowPlayingDiagnostics()"
             [disabled]="nowPlayingDiagLoading()"
             class="text-sm text-theme-secondary hover:text-theme-primary transition mb-4"
           >
-            {{ nowPlayingDiagLoading() ? 'Checking…' : 'Run diagnostics' }}
+            {{ (nowPlayingDiagLoading() ? 'settings.checking' : 'settings.runDiagnostics') | t }}
           </button>
           @if (nowPlayingDiag(); as d) {
             <dl class="text-xs text-theme-muted space-y-1 font-mono">
@@ -323,7 +322,7 @@
             </dl>
           } @else if (!nowPlayingDiagLoading()) {
             <p class="text-xs text-theme-muted/70">
-              Native plugin unavailable — the lock-screen card won’t show metadata.
+              {{ 'settings.nativePluginUnavailable' | t }}
             </p>
           }
         </section>
@@ -336,7 +335,7 @@
       @if (showLogoutDialog()) {
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div class="bg-theme-surface border border-theme rounded-xl p-6 max-w-sm w-full shadow-2xl">
-            <h3 class="text-lg font-semibold text-theme-primary mb-4">Sign out?</h3>
+            <h3 class="text-lg font-semibold text-theme-primary mb-4">{{ 'settings.signOutConfirmTitle' | t }}</h3>
             <label class="flex items-start gap-3 mb-6 cursor-pointer">
               <input
                 type="checkbox"
@@ -345,7 +344,7 @@
                 class="mt-0.5 rounded border-theme-muted bg-theme-base text-theme-accent focus:ring-theme-accent focus:ring-offset-0"
               />
               <span class="text-sm text-theme-secondary">
-                Remove downloaded music from this device
+                {{ 'settings.signOutConfirm' | t }}
                 <span class="text-theme-muted">({{ formatStorage(preserve.totalUsage()) }})</span>
               </span>
             </label>
@@ -354,13 +353,13 @@
                 (click)="showLogoutDialog.set(false)"
                 class="px-4 py-2 text-sm font-medium text-theme-secondary hover:text-theme-primary transition"
               >
-                Cancel
+                {{ 'settings.cancel' | t }}
               </button>
               <button
                 (click)="confirmLogout()"
                 class="px-4 py-2 text-sm font-medium text-status-error hover:opacity-80 transition"
               >
-                Sign out
+                {{ 'settings.signOut' | t }}
               </button>
             </div>
           </div>

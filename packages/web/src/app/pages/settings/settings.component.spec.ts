@@ -18,6 +18,7 @@ import { pickDirectory, setMusicDir, revealLogs } from '../../services/native/na
 import { ToastService } from '../../services/toast.service';
 import { UpdateService } from '../../services/update.service';
 import type { CheckUpdateOutcome } from '../../services/update.service';
+import BASE_CATALOG from '../../../../public/i18n/en.json';
 
 vi.mock('../../lib/platform', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/platform')>();
@@ -96,6 +97,7 @@ function makeProviders(role: 'admin' | 'user', updateOverrides: UpdateOverrides 
           username: signal('kev'),
           role: signal(role),
           isAdmin: () => role === 'admin',
+          canCurate: () => role === 'admin',
           welcomeDismissed: signal(false),
           autoplayOnLoad: signal(false),
           feedbackCapture: signal(false),
@@ -161,10 +163,20 @@ describe('SettingsComponent (universal prefs only)', () => {
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('Appearance');
-    expect(text).toContain('Offline storage');
-    expect(text).toContain('Remote Playback');
-    expect(text).toContain('Resume playback when opening the app');
+    // Section headers/copy are i18n keys now (issue #236); the raw key renders
+    // since no catalog is loaded in this harness.
+    expect(text).toContain('settings.appearance');
+    expect(text).toContain('settings.offlineStorage');
+    expect(text).toContain('settings.remotePlayback');
+    expect(text).toContain('settings.resumePlayback');
+    for (const key of [
+      'settings.appearance',
+      'settings.offlineStorage',
+      'settings.remotePlayback',
+      'settings.resumePlayback',
+    ]) {
+      expect(BASE_CATALOG, `missing catalog key: ${key}`).toHaveProperty([key]);
+    }
     expect(text).not.toContain('Soulseek');
     expect(text).not.toContain('Shared Folders');
     expect(text).not.toContain('Library processing');
@@ -187,7 +199,10 @@ describe('SettingsComponent (universal prefs only)', () => {
     expect(
       fixture.nativeElement.querySelector('[data-testid="settings-extensions-link"]'),
     ).toBeTruthy();
-    expect(fixture.nativeElement.textContent).toContain('Admin panel');
+    // `settings.adminPanel` is an i18n key now (issue #236); the raw key renders
+    // since no catalog is loaded in this harness — assert it resolves too.
+    expect(fixture.nativeElement.textContent).toContain('settings.adminPanel');
+    expect(BASE_CATALOG).toHaveProperty(['settings.adminPanel']);
     fixture.destroy();
   });
 
@@ -438,7 +453,9 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     offBtn.click();
     await fixture.whenStable();
     expect(confirmAsk).toHaveBeenCalledOnce();
-    expect(confirmAsk.mock.calls[0]?.[0]).toContain('7');
+    // The message is now an i18n key (issue #236); count > 1 picks the plural key.
+    expect(confirmAsk.mock.calls[0]?.[0]).toBe('settings.removeAutoSavedOther');
+    expect(BASE_CATALOG).toHaveProperty(['settings.removeAutoSavedOther']);
     expect(removeAllAutoPreserved).toHaveBeenCalled();
     expect(setAutoPreserveMode).toHaveBeenCalledWith('off');
     fixture.destroy();
@@ -472,7 +489,9 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     const explain = fixture.nativeElement.querySelector(
       '[data-testid="auto-preserve-explain"]',
     ) as HTMLElement;
-    expect(explain.textContent).toContain('200');
+    // i18n key now (issue #236); 'full' mode picks the explain-full key.
+    expect(explain.textContent).toContain('settings.autoPreserveExplainFull');
+    expect(BASE_CATALOG).toHaveProperty(['settings.autoPreserveExplainFull']);
     fixture.destroy();
   });
 });
@@ -533,7 +552,11 @@ describe('SettingsComponent (manual PWA update check)', () => {
     expect(update.checkForUpdate).toHaveBeenCalledTimes(1);
     expect(toast.show).toHaveBeenCalledTimes(1);
     expect(toast.show.mock.calls[0][0].kind).toBe('success');
-    expect(toast.show.mock.calls[0][0].message).toContain('9.9.9');
+    // i18n key now (issue #236) — the raw key renders since no catalog is
+    // loaded in this harness; the version param only interpolates once a
+    // real catalog resolves the template (covered by translate.service specs).
+    expect(toast.show.mock.calls[0][0].message).toBe('settings.updateUpToDate');
+    expect(BASE_CATALOG).toHaveProperty(['settings.updateUpToDate']);
     btn.textContent = 'Check for updates';
     fixture.destroy();
   });
@@ -550,10 +573,13 @@ describe('SettingsComponent (manual PWA update check)', () => {
     await fixture.componentInstance.searchForUpdates();
     expect(toast.show).toHaveBeenCalledTimes(1);
     expect(toast.show.mock.calls[0][0].kind).toBe('info');
+    // i18n keys now (issue #236).
     expect(toast.show.mock.calls[0][0].actions?.map((a: { label: string }) => a.label)).toEqual([
-      'Reload',
-      'Later',
+      'settings.reload',
+      'settings.later',
     ]);
+    expect(BASE_CATALOG).toHaveProperty(['settings.reload']);
+    expect(BASE_CATALOG).toHaveProperty(['settings.later']);
     toast.show.mock.calls[0][0].actions![0].callback();
     expect(update.applyUpdate).toHaveBeenCalledTimes(1);
     fixture.destroy();
@@ -586,7 +612,9 @@ describe('SettingsComponent (manual PWA update check)', () => {
     fixture.detectChanges();
     await fixture.componentInstance.searchForUpdates();
     expect(toast.show.mock.calls[0][0].kind).toBe('error');
-    expect(toast.show.mock.calls[0][0].message).toContain("Couldn't check");
+    // i18n key now (issue #236).
+    expect(toast.show.mock.calls[0][0].message).toBe('settings.updateCheckFailed');
+    expect(BASE_CATALOG).toHaveProperty(['settings.updateCheckFailed']);
     fixture.destroy();
   });
 
@@ -612,13 +640,17 @@ describe('SettingsComponent (manual PWA update check)', () => {
       '[data-testid="settings-check-update"]',
     ) as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
-    expect(btn.textContent?.trim()).toBe('Checking for updates…');
+    // i18n key now (issue #236).
+    expect(btn.textContent?.trim()).toBe('settings.checkingForUpdates');
+    expect(BASE_CATALOG).toHaveProperty(['settings.checkingForUpdates']);
     update.searching.set(false);
     resolveCheck('up-to-date');
     await inFlight;
     fixture.detectChanges();
     expect(btn.disabled).toBe(false);
-    expect(btn.textContent?.trim()).toBe('Check for updates');
+    // i18n key now (issue #236).
+    expect(btn.textContent?.trim()).toBe('settings.checkForUpdates');
+    expect(BASE_CATALOG).toHaveProperty(['settings.checkForUpdates']);
     fixture.destroy();
   });
 });

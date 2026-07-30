@@ -150,7 +150,7 @@ describe('POST /api/devices/claim', () => {
     expect(res.status).toBe(410);
   });
 
-  it('returns 404 for an unknown token and 400 for an empty body', async () => {
+  it('returns 404 for an unknown token and 400 for an empty body, with stable codes (#236)', async () => {
     const app = buildApp();
     const unknown = await app.request('/api/devices/claim', {
       method: 'POST',
@@ -158,12 +158,14 @@ describe('POST /api/devices/claim', () => {
       body: JSON.stringify({ token: 'nope' }),
     });
     expect(unknown.status).toBe(404);
+    expect(((await unknown.json()) as { code: string }).code).toBe('PAIRING_NOT_FOUND');
     const empty = await app.request('/api/devices/claim', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
     expect(empty.status).toBe(400);
+    expect(((await empty.json()) as { code: string }).code).toBe('VALIDATION_ERROR');
   });
 
   it('rate-limits repeated failed guesses with 429', async () => {
@@ -192,6 +194,7 @@ describe('POST /api/devices/claim', () => {
         body: JSON.stringify({ token: minted.token }),
       });
       expect(res.status).toBe(403);
+      expect(((await res.json()) as { code: string }).code).toBe('ACCOUNT_DISABLED');
     } finally {
       testDb.run("UPDATE users SET status = 'active' WHERE id = 'u1'");
     }

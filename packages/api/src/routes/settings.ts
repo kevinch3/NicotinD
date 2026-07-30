@@ -82,7 +82,10 @@ export function settingsRoutes(
   app.put('/streaming', async (c) => {
     const user = c.get('user');
     if (user.role !== 'admin') {
-      return c.json({ error: 'Only administrators can change streaming settings' }, 403);
+      return c.json(
+        { error: 'Only administrators can change streaming settings', code: 'FORBIDDEN' },
+        403,
+      );
     }
     const body = await c.req.json<Partial<StreamingSettings>>();
     const patch: Partial<StreamingSettings> = {};
@@ -158,7 +161,10 @@ export function settingsRoutes(
   app.put('/soulseek', async (c) => {
     const user = c.get('user');
     if (user.role !== 'admin') {
-      return c.json({ error: 'Only administrators can change Soulseek settings' }, 403);
+      return c.json(
+        { error: 'Only administrators can change Soulseek settings', code: 'FORBIDDEN' },
+        403,
+      );
     }
 
     const { username, password, listeningPort, enableUPnP } = await c.req.json<{
@@ -169,7 +175,7 @@ export function settingsRoutes(
     }>();
 
     if (!username?.trim()) {
-      return c.json({ error: 'Username is required' }, 400);
+      return c.json({ error: 'Username is required', code: 'VALIDATION_ERROR' }, 400);
     }
 
     // 1. Persist to secrets.json
@@ -211,7 +217,7 @@ export function settingsRoutes(
             stdio: 'inherit',
           });
         } catch {
-          return c.json({ error: 'Failed to download slskd binary' }, 500);
+          return c.json({ error: 'Failed to download slskd binary', code: 'INTERNAL_ERROR' }, 500);
         }
       }
     }
@@ -229,13 +235,13 @@ export function settingsRoutes(
         }
         const slskdPassword = password?.trim() || config.soulseek.password;
         if (!slskdPassword) {
-          return c.json({ error: 'Soulseek password is required' }, 400);
+          return c.json({ error: 'Soulseek password is required', code: 'VALIDATION_ERROR' }, 400);
         }
         await updateExternalSoulseekCredentials(slskd, username.trim(), slskdPassword);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return c.json({ error: `Failed to update slskd: ${msg}` }, 500);
+      return c.json({ error: `Failed to update slskd: ${msg}`, code: 'INTERNAL_ERROR' }, 500);
     }
 
     // 5. (Re)create download watcher
@@ -271,18 +277,24 @@ export function settingsRoutes(
   app.post('/soulseek/toggle', async (c) => {
     const user = c.get('user');
     if (user.role !== 'admin') {
-      return c.json({ error: 'Only administrators can toggle the Soulseek connection' }, 403);
+      return c.json(
+        { error: 'Only administrators can toggle the Soulseek connection', code: 'FORBIDDEN' },
+        403,
+      );
     }
 
     if (!slskdRef.current) {
-      return c.json({ error: 'Soulseek is not configured' }, 503);
+      return c.json({ error: 'Soulseek is not configured', code: 'SERVICE_UNAVAILABLE' }, 503);
     }
 
     let state;
     try {
       state = await slskdRef.current.server.getState();
     } catch {
-      return c.json({ error: 'Could not reach Soulseek service' }, 503);
+      return c.json(
+        { error: 'Could not reach Soulseek service', code: 'SERVICE_UNAVAILABLE' },
+        503,
+      );
     }
 
     if (state.isConnected) {
@@ -298,11 +310,11 @@ export function settingsRoutes(
   app.get('/shares', async (c) => {
     const user = c.get('user');
     if (user.role !== 'admin') {
-      return c.json({ error: 'Only administrators can manage shares' }, 403);
+      return c.json({ error: 'Only administrators can manage shares', code: 'FORBIDDEN' }, 403);
     }
 
     if (!slskdRef.current) {
-      return c.json({ error: 'Soulseek is not configured' }, 503);
+      return c.json({ error: 'Soulseek is not configured', code: 'SERVICE_UNAVAILABLE' }, 503);
     }
 
     const dirs = await slskdRef.current.shares.list();
@@ -313,16 +325,16 @@ export function settingsRoutes(
   app.post('/shares', async (c) => {
     const user = c.get('user');
     if (user.role !== 'admin') {
-      return c.json({ error: 'Only administrators can manage shares' }, 403);
+      return c.json({ error: 'Only administrators can manage shares', code: 'FORBIDDEN' }, 403);
     }
 
     if (!slskdRef.current) {
-      return c.json({ error: 'Soulseek is not configured' }, 503);
+      return c.json({ error: 'Soulseek is not configured', code: 'SERVICE_UNAVAILABLE' }, 503);
     }
 
     const { path } = await c.req.json<{ path: string }>();
     if (!path?.trim()) {
-      return c.json({ error: 'path is required' }, 400);
+      return c.json({ error: 'path is required', code: 'VALIDATION_ERROR' }, 400);
     }
 
     await slskdRef.current.shares.add(path.trim());
@@ -333,11 +345,11 @@ export function settingsRoutes(
   app.delete('/shares/:path{.+}', async (c) => {
     const user = c.get('user');
     if (user.role !== 'admin') {
-      return c.json({ error: 'Only administrators can manage shares' }, 403);
+      return c.json({ error: 'Only administrators can manage shares', code: 'FORBIDDEN' }, 403);
     }
 
     if (!slskdRef.current) {
-      return c.json({ error: 'Soulseek is not configured' }, 503);
+      return c.json({ error: 'Soulseek is not configured', code: 'SERVICE_UNAVAILABLE' }, 503);
     }
 
     const path = decodeURIComponent(c.req.param('path'));
@@ -349,11 +361,11 @@ export function settingsRoutes(
   app.post('/shares/rescan', async (c) => {
     const user = c.get('user');
     if (user.role !== 'admin') {
-      return c.json({ error: 'Only administrators can manage shares' }, 403);
+      return c.json({ error: 'Only administrators can manage shares', code: 'FORBIDDEN' }, 403);
     }
 
     if (!slskdRef.current) {
-      return c.json({ error: 'Soulseek is not configured' }, 503);
+      return c.json({ error: 'Soulseek is not configured', code: 'SERVICE_UNAVAILABLE' }, 503);
     }
 
     await slskdRef.current.shares.rescan();
