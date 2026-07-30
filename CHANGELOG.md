@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.281](https://github.com/kevinch3/NicotinD/compare/v0.1.280...v0.1.281) (2026-07-30)
+
+### Features
+
+* **genre:** listener-facing genre distribution strip + primary-only filter ([d7c322a](https://github.com/kevinch3/NicotinD/commit/d7c322a2aee7937eb0d84d3e5f6464986206d3ee)), closes [#222](https://github.com/kevinch3/NicotinD/issues/222), references [#222](https://github.com/kevinch3/NicotinD/issues/222)
 ## [0.1.280](https://github.com/kevinch3/NicotinD/compare/v0.1.279...v0.1.280) (2026-07-29)
 
 ### Features
