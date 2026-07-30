@@ -38,11 +38,13 @@ export function agentTokensRoutes() {
       .catch(() => ({}) as { name?: string; scope?: string; expiresInDays?: number });
 
     const name = (body.name ?? '').trim();
-    if (!name) return c.json({ error: 'name is required' }, 400);
-    if (name.length > MAX_NAME_LEN) return c.json({ error: 'name too long' }, 400);
+    if (!name) return c.json({ error: 'name is required', code: 'VALIDATION_ERROR' }, 400);
+    if (name.length > MAX_NAME_LEN)
+      return c.json({ error: 'name too long', code: 'VALIDATION_ERROR' }, 400);
 
     const scope = (body.scope ?? 'refiner:curate') as AgentScope;
-    if (!VALID_SCOPES.includes(scope)) return c.json({ error: 'invalid scope' }, 400);
+    if (!VALID_SCOPES.includes(scope))
+      return c.json({ error: 'invalid scope', code: 'VALIDATION_ERROR' }, 400);
 
     const now = Date.now();
     const days = body.expiresInDays;
@@ -71,7 +73,7 @@ export function agentTokensRoutes() {
     const id = c.req.param('id');
     const db = getDatabase();
     const ok = revokeAgentToken(db, user.sub, id);
-    if (!ok) return c.json({ error: 'Token not found' }, 404);
+    if (!ok) return c.json({ error: 'Token not found', code: 'NOT_FOUND' }, 404);
     recordAudit(db, user, 'agent-token.revoke', { targetKind: 'agent-token', targetId: id });
     return c.json({ ok: true });
   });

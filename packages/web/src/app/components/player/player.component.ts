@@ -28,6 +28,8 @@ import * as db from '../../lib/preserve-store';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { miniPlayerSlideClass } from '../../lib/player-chrome';
 import { SeekBarComponent } from '../seek-bar/seek-bar.component';
+import { TranslateService } from '../../services/translate.service';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -91,7 +93,13 @@ export function browserDurationIsAcceptable(knownSec: number, nativeSec: number)
 
 @Component({
   selector: 'app-player',
-  imports: [CoverArtComponent, DeviceSwitcherComponent, SeekBarComponent, ArtistLinksComponent],
+  imports: [
+    CoverArtComponent,
+    DeviceSwitcherComponent,
+    SeekBarComponent,
+    ArtistLinksComponent,
+    TranslatePipe,
+  ],
   templateUrl: './player.component.html',
 })
 export class PlayerComponent implements AfterViewInit, OnDestroy {
@@ -105,6 +113,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private mediaControls = inject(MediaControlsService);
   private network = inject(NetworkStatusService);
   private toast = inject(ToastService);
+  private i18n = inject(TranslateService);
 
   private audioElA = viewChild<ElementRef<HTMLAudioElement>>('audioElA');
   private audioElB = viewChild<ElementRef<HTMLAudioElement>>('audioElB');
@@ -262,7 +271,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
           audio.src = '';
           this.player.setBuffering(false);
           this.player.setBufferedRanges([]);
-          this.toast.show({ message: `"${track.title}" isn't available offline`, kind: 'error' });
+          this.toast.show({
+            message: this.i18n.t('player.unavailableOffline', { title: track.title }),
+            kind: 'error',
+          });
         } else {
           audio.src = this.server.streamUrl(track.id, token);
           // See the preserve branch above for why play() is gated here.
@@ -495,7 +507,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     audio.src = '';
     this.player.setBuffering(false);
     this.player.setBufferedRanges([]);
-    this.toast.show({ message: `"${title}" isn't available offline`, kind: 'error' });
+    this.toast.show({
+      message: this.i18n.t('player.unavailableOffline', { title }),
+      kind: 'error',
+    });
   }
 
   private async acquireWakeLock(): Promise<void> {

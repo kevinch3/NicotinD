@@ -27,7 +27,7 @@
                 <path d="M6 9l6 6 6-6" />
               </svg>
             </button>
-            <span class="text-xs text-zinc-500 uppercase tracking-wider">Now Playing</span>
+            <span class="text-xs text-zinc-500 uppercase tracking-wider">{{ 'nowPlaying.title' | t }}</span>
             <div class="absolute right-0">
               @if (remote.remoteEnabled()) {
                 <app-device-switcher placement="down" />
@@ -69,8 +69,8 @@
             <button
               (click)="onOpenTrackInfo(track.id)"
               data-testid="now-playing-info"
-              aria-label="Track info"
-              title="Track info"
+              [attr.aria-label]="'nowPlaying.trackInfo' | t"
+              [attr.title]="'nowPlaying.trackInfo' | t"
               class="shrink-0 text-zinc-500 hover:text-zinc-200 transition"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -83,8 +83,8 @@
             <button
               (click)="toggleLyrics()"
               data-testid="now-playing-lyrics-toggle"
-              aria-label="Lyrics"
-              title="Lyrics"
+              [attr.aria-label]="'nowPlaying.lyrics' | t"
+              [attr.title]="'nowPlaying.lyrics' | t"
               [attr.aria-pressed]="lyricsOpen()"
               [class]="'shrink-0 transition ' + (lyricsOpen() ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-200')"
             >
@@ -129,7 +129,7 @@
               (click)="unblockAutoplay()"
               class="px-4 py-2 bg-amber-500/20 border border-amber-500/40 rounded-lg text-amber-300 text-sm"
             >
-              Tap to start playback
+              {{ 'nowPlaying.tapToStart' | t }}
             </button>
           </div>
         }
@@ -230,7 +230,7 @@
               <circle cx="12" cy="12" r="2" />
               <path d="M4.93 19.07a10 10 0 010-14.14M7.76 16.24a6 6 0 010-8.48M16.24 7.76a6 6 0 010 8.48M19.07 4.93a10 10 0 010 14.14" />
             </svg>
-            Radio{{ player.radio() ? ' on' : '' }}
+            {{ (player.radio() ? 'nowPlaying.radioOn' : 'nowPlaying.radio') | t }}
           </button>
         </div>
 
@@ -251,8 +251,8 @@
             <button
               (click)="toggleKaraokeFullscreen()"
               data-testid="now-playing-karaoke-toggle"
-              aria-label="Fullscreen lyrics"
-              title="Fullscreen lyrics"
+              [attr.aria-label]="'nowPlaying.fullscreenLyrics' | t"
+              [attr.title]="'nowPlaying.fullscreenLyrics' | t"
               class="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-zinc-800/60 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/80 transition"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -263,7 +263,7 @@
               </svg>
             </button>
             @if (lyricsLoading()) {
-              <p class="text-sm text-zinc-500 px-2">Loading lyrics…</p>
+              <p class="text-sm text-zinc-500 px-2">{{ 'nowPlaying.loadingLyrics' | t }}</p>
             } @else if (lyricLines().length > 0) {
               <div
                 #lyricsScroll
@@ -301,13 +301,13 @@
                 </svg>
                 @if (lyricsError()) {
                   <div class="space-y-1">
-                    <p class="text-sm font-medium text-zinc-300">Couldn't reach the lyrics source</p>
-                    <p class="text-xs text-zinc-500">The source may be busy — try again in a moment.</p>
+                    <p class="text-sm font-medium text-zinc-300">{{ 'nowPlaying.lyricsErrorTitle' | t }}</p>
+                    <p class="text-xs text-zinc-500">{{ 'nowPlaying.lyricsErrorHint' | t }}</p>
                   </div>
                 } @else {
                   <div class="space-y-1">
-                    <p class="text-sm font-medium text-zinc-300">No lyrics found</p>
-                    <p class="text-xs text-zinc-500">We couldn't find lyrics for this track.</p>
+                    <p class="text-sm font-medium text-zinc-300">{{ 'nowPlaying.lyricsEmptyTitle' | t }}</p>
+                    <p class="text-xs text-zinc-500">{{ 'nowPlaying.lyricsEmptyHint' | t }}</p>
                   </div>
                 }
                 <button
@@ -318,9 +318,9 @@
                 >
                   @if (fetchingLyrics()) {
                     <span class="w-3 h-3 rounded-full border-2 border-zinc-400 border-t-transparent animate-spin"></span>
-                    <span>Fetching…</span>
+                    <span>{{ 'nowPlaying.fetching' | t }}</span>
                   } @else {
-                    <span>{{ lyricsError() ? 'Try again' : 'Fetch lyrics' }}</span>
+                    <span>{{ (lyricsError() ? 'nowPlaying.tryAgain' : 'nowPlaying.fetchLyrics') | t }}</span>
                   }
                 </button>
               </div>
@@ -336,7 +336,7 @@
             data-testid="now-playing-queue-resize"
             role="separator"
             aria-orientation="horizontal"
-            aria-label="Resize queue"
+            [attr.aria-label]="'nowPlaying.resizeQueue' | t"
             class="group flex-shrink-0 flex justify-center items-center py-2 -mt-1 cursor-ns-resize touch-none select-none"
           >
             <span
@@ -345,10 +345,10 @@
             ></span>
           </div>
           @if (player.context() && player.context()!.type !== 'adhoc') {
-            <p class="text-xs text-zinc-500 px-2 mb-1">Next from: {{ player.context()!.name }}</p>
+            <p class="text-xs text-zinc-500 px-2 mb-1">{{ 'nowPlaying.nextFrom' | t: { name: player.context()!.name ?? '' } }}</p>
           }
           <div class="flex items-center gap-2 mb-3 px-2">
-            <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Next up</span>
+            <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">{{ 'nowPlaying.nextUp' | t }}</span>
             <span class="text-xs text-zinc-600">{{ player.queue().length }} tracks</span>
             @if (player.queue().length > 0) {
               <button
@@ -357,14 +357,14 @@
                 data-testid="queue-clear"
                 class="ml-auto text-xs text-zinc-500 hover:text-zinc-200 transition"
               >
-                Clear
+                {{ 'nowPlaying.clear' | t }}
               </button>
             }
           </div>
 
           @if (player.queue().length === 0) {
             <div class="flex-1 flex items-center justify-center">
-              <p class="text-sm text-zinc-600">Queue is empty</p>
+              <p class="text-sm text-zinc-600">{{ 'nowPlaying.queueEmpty' | t }}</p>
             </div>
           } @else {
             <div class="flex-1 overflow-y-auto pb-4">
@@ -402,8 +402,8 @@
                     type="button"
                     (click)="removeFromQueue($index)"
                     data-testid="queue-remove"
-                    title="Remove"
-                    aria-label="Remove from queue"
+                    [attr.title]="'nowPlaying.remove' | t"
+                    [attr.aria-label]="'nowPlaying.removeFromQueue' | t"
                     class="p-1 mr-1 text-zinc-600 group-hover:text-zinc-400 hover:!text-red-400 transition flex-shrink-0"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -450,7 +450,7 @@
               <button
                 (click)="toggleKaraokeFullscreen()"
                 class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition rounded-full hover:bg-white/10"
-                aria-label="Exit fullscreen"
+                [attr.aria-label]="'nowPlaying.exitFullscreen' | t"
               >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M18 6L6 18" />
@@ -465,7 +465,7 @@
                 (click)="player.toggleVocalMute()"
                 class="w-10 h-10 flex items-center justify-center transition rounded-full hover:bg-white/10"
                 [class]="player.vocalsMuted() ? 'text-red-400' : 'text-white/60 hover:text-white'"
-                [attr.aria-label]="player.vocalsMuted() ? 'Unmute vocals' : 'Mute vocals'"
+                [attr.aria-label]="(player.vocalsMuted() ? 'nowPlaying.unmuteVocals' : 'nowPlaying.muteVocals') | t"
                 data-testid="vocal-mute-toggle"
               >
                 @if (player.vocalsMuted()) {
@@ -488,7 +488,7 @@
             <!-- Lyrics body -->
             <div class="relative z-10 flex-1 min-h-0 flex flex-col items-center justify-center px-4 overflow-hidden">
               @if (lyricsLoading()) {
-                <p class="text-lg text-white/40">Loading lyrics…</p>
+                <p class="text-lg text-white/40">{{ 'nowPlaying.loadingLyrics' | t }}</p>
               } @else if (lyricLines().length > 0) {
                 <div
                   #lyricsScroll
@@ -514,8 +514,8 @@
                 <pre class="max-w-xl text-center text-lg text-white/70 whitespace-pre-wrap break-words font-sans overflow-y-auto overflow-x-hidden px-4 pb-4">{{ plainLyrics() }}</pre>
               } @else {
                 <div class="text-center">
-                  <p class="text-xl text-white/30 mb-2">No lyrics available</p>
-                  <p class="text-sm text-white/15">Lyrics will appear here when synced lyrics are found</p>
+                  <p class="text-xl text-white/30 mb-2">{{ 'nowPlaying.noLyricsAvailable' | t }}</p>
+                  <p class="text-sm text-white/15">{{ 'nowPlaying.noLyricsAvailableHint' | t }}</p>
                 </div>
               }
             </div>

@@ -123,7 +123,7 @@ export class SettingsComponent {
     } catch {
       if (this.updateToastId()) this.toast.dismiss(this.updateToastId()!);
       const id = this.toast.show({
-        message: "Couldn't check for updates — try again later.",
+        message: this.i18n.t('settings.updateCheckFailed'),
         kind: 'error',
         duration: 4,
       });
@@ -139,18 +139,18 @@ export class SettingsComponent {
   private showUpdateToast(outcome: 'available' | 'up-to-date'): string {
     if (outcome === 'available') {
       const id = this.toast.show({
-        message: 'A new version is downloading — reload when it\u2019s ready.',
+        message: this.i18n.t('settings.updateAvailable'),
         kind: 'info',
         duration: 8,
         actions: [
-          { label: 'Reload', callback: () => this.reloadToUpdate() },
-          { label: 'Later', callback: () => this.toast.dismiss(id) },
+          { label: this.i18n.t('settings.reload'), callback: () => this.reloadToUpdate() },
+          { label: this.i18n.t('settings.later'), callback: () => this.toast.dismiss(id) },
         ],
       });
       return id;
     }
     return this.toast.show({
-      message: `You\u2019re on v${this.version}.`,
+      message: this.i18n.t('settings.updateUpToDate', { version: this.version }),
       kind: 'success',
       duration: 3,
     });
@@ -187,7 +187,12 @@ export class SettingsComponent {
       const count = this.preserve.autoPreservedCount();
       if (count > 0) {
         const ok = await this.confirm.ask(
-          `Remove ${count} auto-saved track${count === 1 ? '' : 's'} from offline storage?`,
+          this.i18n.t(
+            count === 1 ? 'settings.removeAutoSavedOne' : 'settings.removeAutoSavedOther',
+            {
+              count,
+            },
+          ),
         );
         if (!ok) return;
         await this.preserve.removeAllAutoPreserved();
@@ -200,13 +205,13 @@ export class SettingsComponent {
   autoPreserveExplain(): string {
     switch (this.preserve.autoPreserveMode()) {
       case 'off':
-        return 'Off — tracks play over the network. Locked-screen or flaky network may interrupt playback.';
+        return this.i18n.t('settings.autoPreserveExplainOff');
       case '5':
-        return 'Saves the current track + next 4 queued tracks (~40 MB).';
+        return this.i18n.t('settings.autoPreserveExplain5');
       case '20':
-        return 'Saves the current track + next 19 queued tracks (~160 MB).';
+        return this.i18n.t('settings.autoPreserveExplain20');
       case 'full':
-        return 'Saves the entire queue (up to 200 tracks).';
+        return this.i18n.t('settings.autoPreserveExplainFull');
     }
   }
 
@@ -275,10 +280,7 @@ export class SettingsComponent {
       if (result.ok) {
         this.musicDirChosen.set(path);
       } else {
-        this.musicDirError.set(
-          result.error ??
-            'Failed to restart with the new music folder. The previous folder is still in use.',
-        );
+        this.musicDirError.set(result.error ?? this.i18n.t('settings.musicDirRestartFailed'));
       }
     } finally {
       this.musicDirChanging.set(false);

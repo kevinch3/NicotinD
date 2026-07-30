@@ -170,7 +170,7 @@ describe('POST /soulseek/toggle', () => {
     expect(slskdMock.server.connect).toHaveBeenCalled();
   });
 
-  it('returns 403 for non-admin', async () => {
+  it('returns 403 for non-admin, with a stable code (#236)', async () => {
     const app = buildApp(slskdMock);
     const token = await userToken();
     const res = await app.request('/soulseek/toggle', {
@@ -178,9 +178,10 @@ describe('POST /soulseek/toggle', () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe('FORBIDDEN');
   });
 
-  it('returns 503 when slskdRef is null', async () => {
+  it('returns 503 when slskdRef is null, with a stable code (#236)', async () => {
     const app = buildApp(null);
     const token = await adminToken();
     const res = await app.request('/soulseek/toggle', {
@@ -188,6 +189,7 @@ describe('POST /soulseek/toggle', () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(503);
+    expect(((await res.json()) as { code: string }).code).toBe('SERVICE_UNAVAILABLE');
   });
 });
 
@@ -212,22 +214,24 @@ describe('GET /shares', () => {
     expect(data.directories).toEqual(['/data/music', '/data/other']);
   });
 
-  it('returns 403 for non-admin', async () => {
+  it('returns 403 for non-admin, with a stable code (#236)', async () => {
     const app = buildApp(slskdMock);
     const token = await userToken();
     const res = await app.request('/shares', {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe('FORBIDDEN');
   });
 
-  it('returns 503 when slskdRef is null', async () => {
+  it('returns 503 when slskdRef is null, with a stable code (#236)', async () => {
     const app = buildApp(null);
     const token = await adminToken();
     const res = await app.request('/shares', {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(503);
+    expect(((await res.json()) as { code: string }).code).toBe('SERVICE_UNAVAILABLE');
   });
 });
 

@@ -1143,8 +1143,15 @@ args, so a language switch never re-invokes `transform` and the UI keeps the old
 spec asserts the switch reaches the DOM. Language is **per-device** (localStorage), because login /
 setup / share render before any user exists. Converted so far: login page + Settings picker + app
 shell (navs/offline) + library tabs/sort + home vibes + the **Acquire page** primary copy
-(`acquire.*`); **es.json is at full parity** with the base. Extraction is a phased pass (the deep
-Advanced/folder-browser strings on Acquire are a later slice). → [docs/i18n.md](docs/i18n.md)
+(`acquire.*`) + **Player/Now-Playing/Settings** (`player.*`/`nowPlaying.*`/`settings.*` — the phase-2
+high-traffic slice, incl. the first TS-side `this.i18n.t(key, params)` call sites for toasts/dialogs
+built outside a template); **es.json is at full parity** with the base. Extraction is a phased pass
+(the deep Advanced/folder-browser strings on Acquire, plus admin/onboarding, are later slices). **API
+error `code` fields (started, client mapping deferred)**: `NicotinDError`'s existing `code` extended
+onto the inline `c.json({ error })` responses in `routes/auth.ts`/`devices.ts`/`settings.ts`/
+`agent-tokens.ts` — additive `{ error, code }`, the ~24 other route files untouched, and the web side
+does nothing with `code` yet (deliberately, until a toast consumer needs it).
+→ [docs/i18n.md](docs/i18n.md)
 **Bundle budget**: `angular.json` carried the untouched Angular scaffold defaults (500 kB/1 MB), so
 the build warned on every run and the next real regression was invisible. Measured before deciding
 (issue #256): initial is 735 kB **raw** but **188 kB transfer**, and **42 % is Sentry** — eager on
