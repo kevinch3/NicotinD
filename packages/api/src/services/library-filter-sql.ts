@@ -98,14 +98,22 @@ export function songFilterWheres(f: LibraryFilter, alias = 's'): FilterSqlFragme
     params.push(f.yearMax);
   }
   if (f.genres?.length) {
-    // Match the FULL genre set via the join table so a track filed under
-    // "Electronic; House" matches a House filter; the primary-column IN keeps
-    // pre-first-rescan rows (join table not yet populated) filterable.
     const marks = placeholders(f.genres.length);
-    wheres.push(
-      `(${alias}.genre IN (${marks}) OR EXISTS (SELECT 1 FROM library_song_genres sg WHERE sg.song_id = ${alias}.id AND sg.genre IN (${marks})))`,
-    );
-    params.push(...f.genres, ...f.genres);
+    if (f.primaryGenreOnly) {
+      // Opt-in (issue #222): `${alias}.genre` already stores exactly the
+      // primary genre (position 0), so skip the join-table half entirely —
+      // an extra/secondary genre must not match.
+      wheres.push(`${alias}.genre IN (${marks})`);
+      params.push(...f.genres);
+    } else {
+      // Match the FULL genre set via the join table so a track filed under
+      // "Electronic; House" matches a House filter; the primary-column IN keeps
+      // pre-first-rescan rows (join table not yet populated) filterable.
+      wheres.push(
+        `(${alias}.genre IN (${marks}) OR EXISTS (SELECT 1 FROM library_song_genres sg WHERE sg.song_id = ${alias}.id AND sg.genre IN (${marks})))`,
+      );
+      params.push(...f.genres, ...f.genres);
+    }
   }
   if (f.licences?.length) {
     const lic = licenceWheres(f.licences, `${alias}.licence`);

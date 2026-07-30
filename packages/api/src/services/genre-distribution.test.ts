@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
-import { artistGenreDistribution, MAX_AXES } from './genre-distribution.js';
+import { albumGenreDistribution, artistGenreDistribution, MAX_AXES } from './genre-distribution.js';
 
 function db(): Database {
   const d = new Database(':memory:');
@@ -120,6 +120,31 @@ describe('artistGenreDistribution', () => {
 
   it('returns an empty distribution for an artist with no landed tracks', () => {
     expect(artistGenreDistribution(db(), 'a1')).toEqual({
+      trackCount: 0,
+      genreCount: 0,
+      slices: [],
+    });
+  });
+});
+
+describe('albumGenreDistribution', () => {
+  it('scopes to one album, not the whole artist', () => {
+    const d = db();
+    d.run(`INSERT INTO library_songs
+             (id, title, artist, artist_id, album_id, path, landed_at, synced_at)
+           VALUES ('s3', 's3', 'Test', 'a1', 'al2', '/m/s3.flac', 1, 1)`);
+    d.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES ('s3', 'Jazz', 0)`);
+    song(d, 's1', ['Cumbia']);
+    song(d, 's2', ['Cumbia']);
+
+    const dist = albumGenreDistribution(d, 'al1');
+
+    expect(dist.trackCount).toBe(2);
+    expect(dist.slices).toEqual([{ genre: 'Cumbia', count: 2, weight: 1 }]);
+  });
+
+  it('returns an empty distribution for an album with no landed tracks', () => {
+    expect(albumGenreDistribution(db(), 'al1')).toEqual({
       trackCount: 0,
       genreCount: 0,
       slices: [],

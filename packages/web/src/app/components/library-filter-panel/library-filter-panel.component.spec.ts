@@ -81,6 +81,15 @@ describe('LibraryFilterPanelComponent', () => {
     expect(emitted()?.genres).toEqual(['Rock']);
   });
 
+  it('toggles primaryGenreOnly (issue #222) and clears it when genres empties', () => {
+    const fixture = setup({ genres: ['Rock'] });
+    const emitted = lastEmitted(fixture);
+    fixture.componentInstance.togglePrimaryGenreOnly();
+    expect(emitted()?.primaryGenreOnly).toBe(true);
+    fixture.componentInstance.toggleGenre('Rock');
+    expect(emitted()).toEqual({});
+  });
+
   it('toggles licences immutably from the input, dropping the key when it empties', () => {
     const fixture = setup({ licences: ['public-domain'] });
     const emitted = lastEmitted(fixture);

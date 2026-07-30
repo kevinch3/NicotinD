@@ -43,6 +43,8 @@ export interface LibraryFilter {
   yearMin?: number;
   yearMax?: number;
   genres?: string[];
+  /** Opt-in (issue #222): match only a track's primary genre, not its extras. */
+  primaryGenreOnly?: boolean;
   /** Licence codes from LICENCE_VOCAB; 'unknown' matches SQL-NULL (un-licenced) rows. */
   licences?: string[];
   /** Entity-level starred (album/artist/song starred, not any-track). */
@@ -134,7 +136,10 @@ export function serializeLibraryFilter(f: LibraryFilter): Record<string, string 
   }
   if (f.yearMin !== undefined) q['yearMin'] = String(f.yearMin);
   if (f.yearMax !== undefined) q['yearMax'] = String(f.yearMax);
-  if (f.genres?.length) q['genre'] = [...f.genres];
+  if (f.genres?.length) {
+    q['genre'] = [...f.genres];
+    if (f.primaryGenreOnly) q['primaryOnly'] = 'true';
+  }
   if (f.licences?.length) q['licence'] = f.licences.join(',');
   if (f.starred) q['starred'] = 'true';
   if (f.durationMin !== undefined) q['durMin'] = String(f.durationMin);
@@ -201,7 +206,10 @@ export function parseLibraryFilter(
   const genres = (Array.isArray(genreRaw) ? genreRaw : genreRaw !== undefined ? [genreRaw] : [])
     .map((g) => g.trim())
     .filter(Boolean);
-  if (genres.length) f.genres = [...new Set(genres)];
+  if (genres.length) {
+    f.genres = [...new Set(genres)];
+    if (first(query['primaryOnly']) === 'true') f.primaryGenreOnly = true;
+  }
 
   const licences = list(query['licence'])
     .map((l) => l.toLowerCase())
@@ -230,6 +238,7 @@ export const LIBRARY_FILTER_PARAM_KEYS: readonly string[] = [
   'yearMin',
   'yearMax',
   'genre',
+  'primaryOnly',
   'licence',
   'starred',
   'durMin',

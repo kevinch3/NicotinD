@@ -1072,6 +1072,57 @@ describe('album deletion', () => {
   });
 });
 
+describe('genre-distribution routes (issue #222)', () => {
+  let app: Hono<AuthEnv>;
+
+  beforeEach(() => {
+    app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'test-user', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route('/', libraryRoutes('/home/kevinch3/Music'));
+    sharedDb.run(`DELETE FROM library_albums WHERE id = 'gd-album'`);
+    sharedDb.run(`DELETE FROM library_songs WHERE album_id = 'gd-album'`);
+    sharedDb.run(`DELETE FROM library_song_genres WHERE song_id = 'gd-song'`);
+    sharedDb.run(
+      `INSERT OR REPLACE INTO library_artists (id, name, album_count, synced_at) VALUES ('gd-art', 'GD Artist', 1, 1)`,
+    );
+    sharedDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('gd-album', 'GD Album', 'GD Artist', 'gd-art', 1, 0, 1)`,
+    );
+    sharedDb.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, landed_at, synced_at)
+       VALUES ('gd-song', 'gd-album', 'GD Song', 'GD Artist', 'gd-art', 0, '/gd/song.mp3', 1000, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1, 1)`,
+    );
+    sharedDb.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES ('gd-song', 'Rock', 0)`,
+    );
+  });
+
+  it('GET /albums/:id/genre-distribution returns the album name + slices', async () => {
+    const res = await app.request('/albums/gd-album/genre-distribution');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { album: string; slices: unknown[] };
+    expect(body.album).toBe('GD Album');
+    expect(body.slices).toEqual([{ genre: 'Rock', count: 1, weight: 1 }]);
+  });
+
+  it('GET /albums/:id/genre-distribution 404s for an unknown album', async () => {
+    const res = await app.request('/albums/nonexistent/genre-distribution');
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /artists/:id/genre-distribution returns the artist name + slices', async () => {
+    const res = await app.request('/artists/gd-art/genre-distribution');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { artist: string; slices: unknown[] };
+    expect(body.artist).toBe('GD Artist');
+    expect(body.slices).toEqual([{ genre: 'Rock', count: 1, weight: 1 }]);
+  });
+});
+
 describe('singles & EPs presentation', () => {
   const testDb = new Database(':memory:');
   applySchema(testDb);

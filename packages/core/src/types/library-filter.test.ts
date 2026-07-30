@@ -21,6 +21,7 @@ const fullFilter: LibraryFilter = {
   yearMin: 1990,
   yearMax: 1999,
   genres: ['Rock', 'Hip-Hop, Rap'],
+  primaryGenreOnly: true,
   licences: ['public-domain', 'cc-by'],
   starred: true,
   durationMin: 120,
@@ -41,6 +42,7 @@ describe('serializeLibraryFilter / parseLibraryFilter', () => {
     expect(q.valence).toBe('mid');
     // genre is a repeated param (free text may contain commas)
     expect(q.genre).toEqual(['Rock', 'Hip-Hop, Rap']);
+    expect(q.primaryOnly).toBe('true');
     expect(q.licence).toBe('public-domain,cc-by');
     expect(q.starred).toBe('true');
     expect(q.durMin).toBe('120');
@@ -59,6 +61,19 @@ describe('serializeLibraryFilter / parseLibraryFilter', () => {
 
   it('parses a single genre string as a one-element list', () => {
     expect(parseLibraryFilter({ genre: 'Rock' })).toEqual({ genres: ['Rock'] });
+  });
+
+  it('primaryGenreOnly (issue #222) only serializes/parses alongside genres', () => {
+    expect(serializeLibraryFilter({ genres: ['Rock'], primaryGenreOnly: true })).toEqual({
+      genre: ['Rock'],
+      primaryOnly: 'true',
+    });
+    // A stray primaryOnly with no genre selected is meaningless — dropped.
+    expect(parseLibraryFilter({ primaryOnly: 'true' })).toEqual({});
+    expect(parseLibraryFilter({ genre: 'Rock', primaryOnly: 'true' })).toEqual({
+      genres: ['Rock'],
+      primaryGenreOnly: true,
+    });
   });
 
   it('leniently drops malformed and unknown values instead of throwing', () => {

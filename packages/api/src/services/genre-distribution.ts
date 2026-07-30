@@ -35,26 +35,50 @@ export interface GenreDistribution {
  * weighting the engine doesn't believe.
  */
 export function artistGenreDistribution(db: Database, artistId: string): GenreDistribution {
+  return genreDistribution(
+    db,
+    `(artist_id = ? OR album_artist_id = ?)`,
+    [artistId, artistId],
+    `(s.artist_id = ? OR s.album_artist_id = ?)`,
+    [artistId, artistId],
+  );
+}
+
+/**
+ * Same shape/fold logic as {@link artistGenreDistribution}, scoped to one album
+ * instead of everything by an artist — the album-page counterpart the artist
+ * radar/strip already has. See docs/genre-radar.md.
+ */
+export function albumGenreDistribution(db: Database, albumId: string): GenreDistribution {
+  return genreDistribution(db, `album_id = ?`, [albumId], `s.album_id = ?`, [albumId]);
+}
+
+function genreDistribution(
+  db: Database,
+  scopeWhere: string,
+  scopeParams: string[],
+  scopeWhereAliased: string,
+  scopeParamsAliased: string[],
+): GenreDistribution {
   const trackCount =
     db
-      .query<{ n: number }, [string, string]>(
-        `SELECT COUNT(*) AS n FROM library_songs
-          WHERE (artist_id = ? OR album_artist_id = ?) AND landed_at IS NOT NULL`,
+      .query<{ n: number }, string[]>(
+        `SELECT COUNT(*) AS n FROM library_songs WHERE ${scopeWhere} AND landed_at IS NOT NULL`,
       )
-      .get(artistId, artistId)?.n ?? 0;
+      .get(...scopeParams)?.n ?? 0;
 
   if (trackCount === 0) return { trackCount: 0, genreCount: 0, slices: [] };
 
   const rows = db
-    .query<{ genre: string; count: number }, [string, string]>(
+    .query<{ genre: string; count: number }, string[]>(
       `SELECT sg.genre AS genre, COUNT(DISTINCT s.id) AS count
          FROM library_song_genres sg
          JOIN library_songs s ON s.id = sg.song_id
-        WHERE (s.artist_id = ? OR s.album_artist_id = ?) AND s.landed_at IS NOT NULL
+        WHERE ${scopeWhereAliased} AND s.landed_at IS NOT NULL
         GROUP BY sg.genre
         ORDER BY count DESC, sg.genre ASC`,
     )
-    .all(artistId, artistId);
+    .all(...scopeParamsAliased);
 
   return {
     trackCount,

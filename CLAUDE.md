@@ -243,10 +243,13 @@ Add detail there, not here.
   **Album genre aggregate fixed** (intrinsic bug, not the UX question): `library_albums.genre` was
   `a.genres[0]` (first-processed track's first genre — a scan-order artifact); it is now
   `mostCommonGenre(a.primaryGenres)` in the scanner — the modal primary genre across the album's
-  tracks, deterministic ties, unit-tested. **Left open** (product decisions): a listener-facing
-  weighted genre-distribution strip on artist/album pages (Stage 1, reuses the endpoint), an album
-  distribution endpoint, and an opt-in primary-only genre filter — the "settle the multi-genre UX"
-  sub-goal. → [docs/genre-radar.md](docs/genre-radar.md)
+  tracks, deterministic ties, unit-tested. **The "settle the multi-genre UX" sub-goal is now
+  decided and shipped**: a read-only, listener-facing `GenreDistributionStripComponent` (plain CSS
+  bar-fill, not the SVG radar) on both artist and album pages, backed by a new
+  `albumGenreDistribution` + `GET /api/library/albums/:id/genre-distribution` mirroring the artist
+  one; and an opt-in `LibraryFilter.primaryGenreOnly` (only meaningful alongside `genres`) that
+  drops the join-table half of the genre SQL clause, matching `library_songs.genre` (the primary)
+  only. → [docs/genre-radar.md](docs/genre-radar.md)
 - **VA / compilation handling**: `resolveTags` separates `albumArtist` (grouping) from `trackArtist`
   (performer); `classifyFolder` detects compilations via COMPILATION flag, VA albumArtist, or ≥3
   artists sharing one album; dedicated Compilations tab, VA hidden from artists, "Appears On" on

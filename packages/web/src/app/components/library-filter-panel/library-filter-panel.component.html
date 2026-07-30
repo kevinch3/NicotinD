@@ -163,6 +163,14 @@
             </label>
           }
         </div>
+        @if (filter().genres?.length) {
+          <label class="flex items-center gap-2 text-theme-secondary cursor-pointer mt-1.5">
+            <input type="checkbox" class="accent-theme rounded"
+              [attr.data-testid]="testIdPrefix() + '-filter-genre-primary-only'"
+              [checked]="isPrimaryGenreOnlyActive()" (change)="togglePrimaryGenreOnly()" />
+            <span class="text-xs">Primary genre only</span>
+          </label>
+        }
       </div>
     }
 

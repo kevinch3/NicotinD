@@ -23,6 +23,10 @@ import { MetadataFixModalComponent } from '../../components/metadata-fix-modal/m
 import { ArtistLinksComponent } from '../../components/artist-links/artist-links.component';
 import { NavigationService } from '../../services/navigation.service';
 import { PreserveService } from '../../services/preserve.service';
+import {
+  GenreDistributionStripComponent,
+  type GenreSlice,
+} from '../../components/genre-distribution-strip/genre-distribution-strip.component';
 
 @Component({
   selector: 'app-album-detail',
@@ -35,6 +39,7 @@ import { PreserveService } from '../../services/preserve.service';
     IconComponent,
     MetadataFixModalComponent,
     ArtistLinksComponent,
+    GenreDistributionStripComponent,
   ],
   templateUrl: './album-detail.component.html',
 })
@@ -69,6 +74,13 @@ export class AlbumDetailComponent implements OnInit {
   readonly selectedAlbum = signal<AlbumDetail | null>(null);
   readonly deleting = signal(false);
   readonly deleteError = signal<string | null>(null);
+
+  // ─── Genre distribution strip (issue #222 sub-goal 2, listener-facing) ────
+  readonly genreDistribution = signal<{
+    slices: GenreSlice[];
+    trackCount: number;
+    genreCount: number;
+  } | null>(null);
 
   readonly detailSongs = computed(() => {
     const deleted = this.transferService.deletedSongIds();
@@ -123,8 +135,18 @@ export class AlbumDetailComponent implements OnInit {
       } finally {
         this.loadingAlbum.set(false);
       }
+      this.loadGenreDistribution(albumId);
     } else {
       this.loadingAlbum.set(false);
+    }
+  }
+
+  private async loadGenreDistribution(albumId: string): Promise<void> {
+    try {
+      const data = await firstValueFrom(this.api.albumGenreDistribution(albumId));
+      if (this.selectedAlbum()?.id === albumId) this.genreDistribution.set(data);
+    } catch {
+      /* no-op — an empty/failed distribution just hides the strip */
     }
   }
 
