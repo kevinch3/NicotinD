@@ -39,3 +39,17 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    # environment:
+    #   # Issue #224: TF_FORCE_GPU_ALLOW_GROWTH (baked into the image) stops the
+    #   # up-front grab but never releases the allocation afterward — measured
+    #   # on a shared P4000, the sidecar holds 7,631 MiB of 8,192 MiB while
+    #   # completely idle (docs/audio-ml-enrichment.md "Measured GPU behaviour").
+    #   # cuda_malloc_async is TF's stream-ordered allocator, which CAN return
+    #   # pages to the driver — uncomment to A/B it against the idle-release
+    #   # mechanism (ANALYSIS_IDLE_RELEASE_SEC, default 900s) below. Unverified
+    #   # on real hardware from this session; measure before relying on it.
+    #   TF_GPU_ALLOCATOR: cuda_malloc_async
+    #   # Seconds of no /analyze calls before the sidecar drops its warm-loaded
+    #   # models (reloaded lazily, multi-second cost, on the next call). 0 or
+    #   # negative disables release entirely.
+    #   ANALYSIS_IDLE_RELEASE_SEC: "900"

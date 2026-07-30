@@ -47,6 +47,7 @@ def test_health_reports_ok_with_versions(tmp_path: Path) -> None:
     assert body["status"] == "ok"
     assert body["device"] == "cpu"
     assert body["modelVersions"] == VERSIONS
+    assert body["loaded"] is True
 
 
 def test_health_reports_unavailable_without_models(tmp_path: Path) -> None:
@@ -54,6 +55,7 @@ def test_health_reports_unavailable_without_models(tmp_path: Path) -> None:
     body = client.get("/health").json()
     assert body["status"] == "unavailable"
     assert body["modelVersions"] == {}
+    assert body["loaded"] is False
 
 
 def test_analyze_contract(tmp_path: Path) -> None:
@@ -128,3 +130,47 @@ def test_analyze_genre_null_when_registry_has_none(tmp_path: Path) -> None:
     body = client.post("/analyze", json={"relPath": "song.opus"}).json()
     assert body["genre"] is None
     assert 0.0 <= body["features"]["danceability"] <= 1.0
+
+
+def test_idle_release_drops_and_reloads_the_registry(tmp_path: Path) -> None:
+    """Integration path for issue #224: an injected fake clock drives the idle
+    window (no real sleeps); the background sweep is simulated by calling
+    `release_if_idle()` directly (exactly what `_idle_watch_loop` calls),
+    rather than waiting on the real asyncio loop. Confirms /health + /analyze
+    both observe the release, then recover via the injected factory on the
+    next call."""
+    from app.main import create_app
+
+    (tmp_path / "song.opus").write_bytes(b"fake-audio")
+    original = FakeRegistry()
+    reloaded = FakeRegistry()
+    clock = {"t": 0.0}
+    app = create_app(
+        registry=original,
+        music_dir=str(tmp_path),
+        registry_factory=lambda: reloaded,
+        idle_release_sec=10.0,
+        now=lambda: clock["t"],
+    )
+    client = TestClient(app)
+    holder = app.state.registry_holder
+
+    assert client.get("/health").json()["loaded"] is True
+
+    # Not idle yet — a sweep must be a no-op.
+    clock["t"] += 5.0
+    assert holder.release_if_idle() is False
+    assert client.get("/health").json()["loaded"] is True
+
+    # Past the idle window — the next sweep releases it.
+    clock["t"] += 10.0
+    assert holder.release_if_idle() is True
+    assert client.get("/health").json()["loaded"] is False
+
+    # The next /analyze call reloads lazily via the factory (not the original
+    # registry) rather than 503ing — a release is not a permanent outage.
+    res = client.post("/analyze", json={"relPath": "song.opus"})
+    assert res.status_code == 200
+    assert reloaded.analyzed == [str(tmp_path / "song.opus")]
+    assert original.analyzed == []
+    assert client.get("/health").json()["loaded"] is True

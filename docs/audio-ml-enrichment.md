@@ -318,13 +318,36 @@ reports VRAM but no utilisation, the pill's fill bar falls back to the memory ra
 neutral-grey. This is the one part of the reduction goal that is a pure code change; it makes the
 problem legible but does not itself cap the allocation.
 
-### What would actually reduce it (not yet implemented)
+### The reduction, shipped: idle-release (not the `memory_limit` the issue assumed)
 
-A hard cap rather than allow-growth — TF's `memory_limit` logical-device configuration. Essentia
-drives TF through its own C++ API rather than the Python `tf.config` surface, so this needs
-experimentation inside the GPU image and cannot be verified without building it; it is deliberately
-**not** guessed at here. Restarting the sidecar releases the memory, so a pragmatic interim is
-restarting it after a processing window.
+The issue's stated fix — a hard `memory_limit` logical-device cap — turned out to have **no
+reachable surface**: Essentia constructs `TensorflowPredictEffnetDiscogs`/`TensorflowPredict2D`
+directly (`app/models.py`), never exposing a `ConfigProto`/`tf.config` the way plain
+`tensorflow.keras` code would. Patching Essentia's C++ to add one was out of scope for this pass.
+
+What *is* reachable, and ships here: **`app/idle_release.py`**'s `RegistryHolder` +
+`IdleReleaseGuard` drop the warm-loaded `ModelRegistry` after `ANALYSIS_IDLE_RELEASE_SEC` (default
+900s / 15min, `<= 0` disables) of no `/analyze` calls — a background asyncio task in `main.py`'s
+`lifespan` checks every 30s and calls `release_if_idle()`; `/health`'s new `loaded` field reports
+the current state. This is exactly "restarting the sidecar releases the memory" (the pragmatic
+interim this doc used to end on), automated and self-healing: the *next* `/analyze` call reloads
+the registry lazily (rather than 503ing), at the cost of the multi-second warm-load — acceptable
+per the flat-throughput measurement above (concurrency 1→8 makes no difference, so an occasional
+reload is cheap the same way). Both objects are decoupled from FastAPI/asyncio and take an
+injectable clock, mirroring `cuda_device_count`'s injectable-loader style, so
+`tests/test_idle_release.py` drives the idle→drop→reload cycle without real sleeps.
+
+A second, **unverified-on-hardware** lever also ships as an opt-in: `TF_GPU_ALLOCATOR=cuda_malloc_async`
+(TF's stream-ordered allocator, which — unlike the default BFC allocator under
+`TF_FORCE_GPU_ALLOW_GROWTH`— *can* return pages to the driver) is documented as a commented-out
+override in `docker-compose.gpu.yml`, not baked into the image, because there is no GPU in this
+session to confirm it actually shrinks the 7.6 GB allocation on this TF/CUDA combination. **Needs a
+`kpc` measurement** (repeat the `nvidia-smi` sampling from this section with the allocator flag on)
+before it's trusted as more than a documented experiment.
+
+Cross-tenant awareness (gating a window kick on Immich/Ollama's own GPU usage) remains unbuilt —
+self-throttling via idle-release was judged sufficient for now; revisit if the `kpc` measurement
+shows otherwise.
 
 ## 5. Rollout phases
 

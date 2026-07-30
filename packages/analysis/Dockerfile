@@ -76,7 +76,14 @@ RUN set -eux; \
 # happened AND a driver is visible). LD_LIBRARY_PATH exposes the pip CUDA libs
 # TF dlopens; the dirs simply don't exist in the CPU image, which is harmless.
 # TF_FORCE_GPU_ALLOW_GROWTH stops TF from grabbing all GPU memory up front
-# (the card may be shared with other workloads).
+# (the card may be shared with other workloads) — but it never releases the
+# allocation afterward (issue #224). Two runtime-adjustable mitigations, NOT
+# baked in here so an operator can flip them without a rebuild:
+#   TF_GPU_ALLOCATOR=cuda_malloc_async  — TF's allocator that CAN return pages
+#     to the driver; set via docker-compose.gpu.yml's commented-out override.
+#   ANALYSIS_IDLE_RELEASE_SEC (default 900, read by app/idle_release.py) —
+#     drops the warm-loaded registry after N idle seconds regardless of the
+#     allocator, reloaded lazily on the next /analyze call.
 ENV ANALYSIS_MODELS_DIR=/models \
     MUSIC_DIR=/data/music \
     ANALYSIS_GPU_BUILD=$GPU \

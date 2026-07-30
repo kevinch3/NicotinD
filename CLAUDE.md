@@ -473,8 +473,16 @@ Add detail there, not here.
   it can't protect a co-tenant from that *allocation*. **The Admin GPU pill now surfaces VRAM
   used/total** (`MetricPillComponent` `gpuMemoryLabel`, from `nvidia-smi memory.used/total` already
   collected in `system-metrics.ts`) so that 93 %-held allocation is *visible* even at ~0 %
-  utilisation — the one code-only piece of #224; the actual cap (a TF `memory_limit` in the GPU
-  image) stays a build/hardware change. →
+  utilisation — visible even at ~0 % utilisation. **The reduction itself now ships too**, correcting
+  the issue's own premise: Essentia exposes no `ConfigProto`/`memory_limit` surface (it constructs TF
+  predictors directly), so `packages/analysis/app/idle_release.py`'s `RegistryHolder` +
+  `IdleReleaseGuard` drop the warm-loaded registry after `ANALYSIS_IDLE_RELEASE_SEC` (default 900s, a
+  background asyncio task checks every 30s) and reload it lazily on the next `/analyze` call — both
+  objects take an injectable clock (mirrors `cuda_device_count`'s injectable-loader style) so
+  `test_idle_release.py` drives idle→drop→reload with no real sleeps; `/health` gained a `loaded`
+  field. A second, **unverified-on-hardware** lever — `TF_GPU_ALLOCATOR=cuda_malloc_async` — ships as
+  a commented-out `docker-compose.gpu.yml` override, not baked into the image, pending a `kpc`
+  measurement. →
   [docs/audio-ml-enrichment.md](docs/audio-ml-enrichment.md) "Measured GPU behaviour". A `paused` flag (+ `ProcessingPhase 'paused'`) is the temporary
   runtime halt distinct from `enabled: false`: it skips window/background enrichment but **still
   clears quarantine** (a pause must never leave new music invisible) and `runNow()` overrides it.
