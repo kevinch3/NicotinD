@@ -90,6 +90,14 @@
       </div>
     </div>
 
+    @if (genreDistribution(); as gd) {
+      <app-genre-distribution-strip
+        [slices]="gd.slices"
+        [trackCount]="gd.trackCount"
+        [genreCount]="gd.genreCount"
+      />
+    }
+
     @if (deleteError()) {
       <div class="mx-4 mb-4 px-4 py-2 rounded-lg status-error text-sm">
         {{ deleteError() }}

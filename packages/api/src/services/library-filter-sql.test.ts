@@ -46,6 +46,13 @@ describe('songFilterWheres', () => {
     });
   });
 
+  it('matches only the primary genre when primaryGenreOnly is set (issue #222)', () => {
+    expect(songFilterWheres({ genres: ['Rock', 'Cumbia'], primaryGenreOnly: true })).toEqual({
+      wheres: ['s.genre IN (?, ?)'],
+      params: ['Rock', 'Cumbia'],
+    });
+  });
+
   it('filters licences with an IN list', () => {
     expect(songFilterWheres({ licences: ['public-domain', 'cc-by'] })).toEqual({
       wheres: ['s.licence IN (?, ?)'],

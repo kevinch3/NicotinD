@@ -1,0 +1,18 @@
+@if (rows().length) {
+  <div class="strip" data-testid="genre-distribution-strip">
+    <div class="bar-list">
+      @for (r of rows(); track r.genre) {
+        <div class="bar-item" [attr.data-testid]="'genre-bar-' + r.genre.toLowerCase()">
+          <span class="bar-label" [title]="r.genre">{{ r.genre }}</span>
+          <div class="bar-track">
+            <div class="bar-fill" [style.--bar-current.%]="percent(r.weight)"></div>
+          </div>
+          <span class="bar-value">{{ percent(r.weight) }}%</span>
+        </div>
+      }
+    </div>
+    @if (hiddenCount() > 0) {
+      <p class="caption">+{{ hiddenCount() }} more genre{{ hiddenCount() === 1 ? '' : 's' }}</p>
+    }
+  </div>
+}

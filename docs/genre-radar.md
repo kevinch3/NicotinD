@@ -88,13 +88,28 @@ is covered there. That spec **creates its own genre data** via a curator overrid
 fixtures are silent FLACs with no genre tags, so without it the chart hides and every assertion
 passes vacuously.
 
-## Still open on #222
+## Everyday-UI decision: shipped (#222 sub-goal 2)
 
-The issue's second sub-goal — "settle the multi-genre UX" — is untouched: whether to surface a
-weighted multi-genre identity in the everyday UI, how that interacts with the genre filter, the
-genre landing chips and the Genres tab, and whether weighting should become position-aware. The
-before/after view for a *proposed* reclassification (two radars, or better, a dumbbell) is the
-natural next build now that the distribution endpoint exists.
+The issue's second sub-goal — "settle the multi-genre UX" — is decided: yes, a weighted multi-genre
+identity is now listener-facing. `GenreDistributionStripComponent`
+(`components/genre-distribution-strip/`) is a **read-only** bar-list strip (the plain CSS bar-fill
+pattern from `TrackStatsBarsComponent`, not the SVG radar — a strip is a linear form) rendered near
+the header on both the artist page (`artist-detail.component`) and the album page
+(`album-detail.component`). It has no interaction with `ArtistGenreModalComponent` or the
+reclassify/curation flow; the radar stays the curation review aid described above.
+
+The album side needed its own endpoint: `albumGenreDistribution` (`genre-distribution.ts`) and
+`GET /api/library/albums/:id/genre-distribution` mirror the artist function/route exactly (same
+`GenreSlice`/fold/`MAX_AXES` shape), scoped by `album_id` instead of `artist_id OR
+album_artist_id`.
+
+Position (primary vs extra) also entered the genre filter, as the opt-in the issue anticipated:
+`LibraryFilter.primaryGenreOnly` (only meaningful — and only ever serialized/parsed — alongside a
+non-empty `genres` list) drops the `OR EXISTS library_song_genres` half of `songFilterWheres`'
+genre clause, matching only `library_songs.genre` (already exactly the primary genre per
+`db.ts`'s schema comment). A checkbox in `library-filter-panel` next to the genre checklist wires
+it. The before/after reclassification view below already existed and is unaffected by this
+decision.
 
 ## Before/after reclassification view (issue #222)
 
@@ -134,9 +149,8 @@ first-seen genre so it stays deterministic. This is intrinsic to the album (not 
 to every library, and is unit-tested (`mostCommonGenre`), so it landed ahead of the product
 decisions below.
 
-**Still left open on #222** (product decisions, not visualization gaps): whether the everyday UI
-should surface a weighted multi-genre identity — a listener-facing genre-distribution *strip* on
-artist/album pages reusing the `genre-distribution` endpoint (the proposal's Stage 1), an album
-genre-distribution endpoint mirroring the artist one, and whether position (primary vs extra) should
-enter the genre filter as an opt-in "primary genre only" toggle. Each needs a call on
-listener-vs-admin framing and how it interacts with the genre filter, landing chips and Genres tab.
+**Shipped** (see "Everyday-UI decision" above): the listener-facing genre-distribution strip on
+artist/album pages, the album `genre-distribution` endpoint, and the opt-in "primary genre only"
+genre-filter toggle. **Still left open**: whether the genre landing chips and the Genres tab should
+also reflect the weighted identity — narrower, cosmetic follow-ups, not the product question #222
+was filed to resolve.

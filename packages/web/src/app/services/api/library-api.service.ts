@@ -210,6 +210,16 @@ export class LibraryApiService {
     }>(`/api/library/artists/${encodeURIComponent(id)}/genre-distribution`);
   }
 
+  /** Genre weight distribution for one album (issue #222 listener-facing strip). */
+  albumGenreDistribution(id: string) {
+    return this.http.get<{
+      album: string;
+      trackCount: number;
+      genreCount: number;
+      slices: Array<{ genre: string; count: number; weight: number }>;
+    }>(`/api/library/albums/${encodeURIComponent(id)}/genre-distribution`);
+  }
+
   /** Replace the primary genre for every track by this artist. Runs a sync rescan. */
   setArtistGenre(id: string, genres: string, mode?: 'replace' | 'append', note?: string) {
     return this.http

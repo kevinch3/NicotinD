@@ -43,7 +43,7 @@ import {
   ALLOWED_OVERRIDE_TYPES,
 } from '../services/artist-image-override.js';
 import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './streaming.js';
-import { artistGenreDistribution } from '../services/genre-distribution.js';
+import { albumGenreDistribution, artistGenreDistribution } from '../services/genre-distribution.js';
 import { upsertArtistIdentity, upsertArtistAlias } from '../services/artist-identity-store.js';
 import { recordAudit } from '../services/audit-log.js';
 import { artistIdFor } from '../services/library-scanner.js';
@@ -1702,6 +1702,17 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .get(id);
     if (!artist) return c.json({ error: 'Artist not found' }, 404);
     return c.json({ artist: artist.name, ...artistGenreDistribution(db, id) });
+  });
+
+  // Album-scoped counterpart of the above (issue #222 listener-facing strip).
+  app.get('/albums/:id/genre-distribution', (c) => {
+    const db = getDatabase();
+    const id = c.req.param('id');
+    const album = db
+      .query<{ name: string }, [string]>(`SELECT name FROM library_albums WHERE id = ?`)
+      .get(id);
+    if (!album) return c.json({ error: 'Album not found' }, 404);
+    return c.json({ album: album.name, ...albumGenreDistribution(db, id) });
   });
 
   app.post('/artists/:id/genre', async (c) => {

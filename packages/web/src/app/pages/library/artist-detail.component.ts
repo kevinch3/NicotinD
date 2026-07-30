@@ -42,6 +42,10 @@ import { ArtistIdentityModalComponent } from '../../components/artist-identity-m
 import { ArtistGenreModalComponent } from '../../components/artist-genre-modal/artist-genre-modal.component';
 import { ArtistInfoComponent } from '../../components/artist-info/artist-info.component';
 import {
+  GenreDistributionStripComponent,
+  type GenreSlice,
+} from '../../components/genre-distribution-strip/genre-distribution-strip.component';
+import {
   LIBRARY_FILTER_PARAM_KEYS,
   isEmptyLibraryFilter,
   parseLibraryFilter,
@@ -75,6 +79,7 @@ const SONGS_PAGE_SIZE = 60;
     ArtistIdentityModalComponent,
     ArtistGenreModalComponent,
     ArtistInfoComponent,
+    GenreDistributionStripComponent,
   ],
   templateUrl: './artist-detail.component.html',
 })
@@ -500,10 +505,28 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     // Load "appears on" compilations and discography in background
     this.loadAppearsOn(id);
     this.loadDiscography(id);
+    this.loadGenreDistribution(id);
   }
 
   ngOnDestroy(): void {
     this.songsObserver?.disconnect();
+  }
+
+  // ─── Genre distribution strip (issue #222 sub-goal 2, listener-facing) ────
+  readonly genreDistribution = signal<{
+    slices: GenreSlice[];
+    trackCount: number;
+    genreCount: number;
+  } | null>(null);
+
+  private async loadGenreDistribution(artistId: string): Promise<void> {
+    this.genreDistribution.set(null);
+    try {
+      const data = await firstValueFrom(this.api.artistGenreDistribution(artistId));
+      if (this.artistId === artistId) this.genreDistribution.set(data);
+    } catch {
+      /* no-op — an empty/failed distribution just hides the strip */
+    }
   }
 
   private async loadAppearsOn(artistId: string): Promise<void> {

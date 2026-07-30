@@ -103,6 +103,14 @@
       />
     }
 
+    @if (genreDistribution(); as gd) {
+      <app-genre-distribution-strip
+        [slices]="gd.slices"
+        [trackCount]="gd.trackCount"
+        [genreCount]="gd.genreCount"
+      />
+    }
+
     <!-- Only collapse to the "no releases" slate for release tabs; Songs and
              Appears On are valid destinations that must keep the tab bar rendered
              (an artist with only compilation appearances has no albums/singles). -->

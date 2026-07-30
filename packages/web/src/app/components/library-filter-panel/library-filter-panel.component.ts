@@ -99,11 +99,27 @@ export class LibraryFilterPanelComponent {
     const f = this.filter();
     const current = f.genres ?? [];
     const next = current.includes(genre) ? current.filter((g) => g !== genre) : [...current, genre];
-    this.emitFilter(next.length ? { ...f, genres: next } : this.without(f, 'genres'));
+    if (next.length) {
+      this.emitFilter({ ...f, genres: next });
+    } else {
+      // No genres left — primaryGenreOnly is meaningless without them.
+      this.emitFilter(this.without(this.without(f, 'genres'), 'primaryGenreOnly'));
+    }
   }
 
   isGenreActive(genre: string): boolean {
     return this.filter().genres?.includes(genre) ?? false;
+  }
+
+  togglePrimaryGenreOnly(): void {
+    const f = this.filter();
+    this.emitFilter(
+      f.primaryGenreOnly ? this.without(f, 'primaryGenreOnly') : { ...f, primaryGenreOnly: true },
+    );
+  }
+
+  isPrimaryGenreOnlyActive(): boolean {
+    return this.filter().primaryGenreOnly ?? false;
   }
 
   licenceLabel(code: string): string {
