@@ -1176,9 +1176,11 @@ pairing panel, paired-devices list, and the admin Tailscale Funnel state machine
 `agent-tokens`/`plugins` pages) + **onboarding/setup wizard** (`setup.*`, all five wizard steps,
 plus `common.back`/`common.next`) + **Admin panel** (issue #338, `admin.*` — 215 keys, every
 section; `processingTaskDefs` moved from a pre-translated `label` to a `labelKey` so the task list
-stays reactive to a live language switch, matching the rest of the page); **es.json is at full
-parity** with the base. Extraction is a phased pass (only the deep Advanced/folder-browser strings
-on Acquire remain — issue #338). **API
+stays reactive to a live language switch, matching the rest of the page) + **Acquire's Advanced
+disclosure** (issue #338, the raw Soulseek folder-browser section — closes the #338 long tail;
+deliberately leaves the shared `getFolderBtn`/`getSongBtn`/`getGroupFileBtn` download-status-label
+helpers untranslated since they're used by other components, not scoped to this one page); **es.json
+is at full parity** with the base. Extraction is a phased pass — **API
 error `code` fields (issue #337, client mapping started)**: `NicotinDError`'s existing `code` extended
 onto the inline `c.json({ error })` responses in `routes/auth.ts`/`devices.ts`/`settings.ts`/
 `agent-tokens.ts` — additive `{ error, code }`, the ~24 other route files untouched. The web client

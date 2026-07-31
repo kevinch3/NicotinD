@@ -442,7 +442,7 @@
                 @if (transcodeActive() && isLosslessCandidate(c)) {
                   <span
                     class="shrink-0 text-[10px] uppercase tracking-wide text-emerald-500/80"
-                    title="Lossless — stored as Opus to save space"
+                    [title]="'acquire.losslessOpusTooltip' | t"
                     data-testid="transcode-chip"
                   >
                     → Opus {{ transcodeBitRate() }}k
@@ -520,10 +520,13 @@
         data-testid="advanced-toggle"
         class="w-full flex items-center justify-between px-1 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-300 transition"
       >
-        <span>Advanced: browse Soulseek peers &amp; folders</span>
+        <span>{{ 'acquire.advancedToggle' | t }}</span>
         <span class="flex items-center gap-2 normal-case font-normal">
           @if (hasNetwork()) {
-            <span>{{ folderGroups().length }} folders · {{ flatNetwork().length }} tracks</span>
+            <span>{{
+              'acquire.advancedSummary'
+                | t: { folders: folderGroups().length, tracks: flatNetwork().length }
+            }}</span>
           }
           <span>{{ directSearchOpen() ? '▾' : '▸' }}</span>
         </span>
@@ -536,18 +539,18 @@
             <span
               class="inline-block w-3 h-3 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin"
             ></span>
-            Searching Soulseek...
+            {{ 'acquire.searchingSoulseek' | t }}
             @if (flatNetwork().length > 0) {
-              <span>{{ flatNetwork().length }} tracks</span>
+              <span>{{ 'acquire.tracksCount' | t: { count: flatNetwork().length } }}</span>
             } @else if (search.networkResponseCount() > 0) {
               <!-- §C2: show peer-response progress before files materialize. -->
-              <span>{{ search.networkResponseCount() }} peers responded</span>
+              <span>{{ 'acquire.peersResponded' | t: { count: search.networkResponseCount() } }}</span>
             }
             <button
               (click)="handleStopSearch()"
               class="text-zinc-500 hover:text-zinc-300 transition"
             >
-              Stop
+              {{ 'acquire.stop' | t }}
             </button>
           </div>
         }
@@ -555,7 +558,7 @@
         <!-- No direct results -->
         @if (!hasNetwork() && search.networkState() === 'complete') {
           <div class="text-center py-8">
-            <p class="text-zinc-500">No Soulseek results for "{{ search.query() }}"</p>
+            <p class="text-zinc-500">{{ 'acquire.noSoulseekResults' | t: { query: search.query() } }}</p>
           </div>
         }
 
@@ -572,7 +575,7 @@
                     : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200')
                 "
               >
-                Songs ({{ songResults().length }})
+                {{ 'acquire.songsCount' | t: { count: songResults().length } }}
               </button>
               <button
                 (click)="setNetworkView('folders')"
@@ -584,14 +587,14 @@
                     : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200')
                 "
               >
-                Folders ({{ folderGroups().length }})
+                {{ 'acquire.foldersCount' | t: { count: folderGroups().length } }}
               </button>
             </div>
             <button
               (click)="downloadAll()"
               class="px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition shrink-0"
             >
-              Download all ({{ flatNetwork().length }})
+              {{ 'acquire.downloadAllCount' | t: { count: flatNetwork().length } }}
             </button>
           </div>
 
@@ -650,7 +653,7 @@
                           color: var(--theme-status-done-text);
                         "
                       >
-                        Open
+                        {{ 'acquire.open' | t }}
                       </a>
                     } @else {
                       <button
@@ -669,7 +672,7 @@
                   </div>
                 </div>
               } @empty {
-                <p class="text-center py-6 text-zinc-500 text-sm">No individual songs matched.</p>
+                <p class="text-center py-6 text-zinc-500 text-sm">{{ 'acquire.noIndividualSongs' | t }}</p>
               }
             </div>
           } @else {
@@ -701,7 +704,7 @@
                           @if (fmt.lossless && transcodeActive()) {
                             <span
                               class="shrink-0 text-[10px] uppercase tracking-wide text-emerald-500/70"
-                              title="Lossless — stored as Opus to save space"
+                              [title]="'acquire.losslessOpusTooltip' | t"
                               data-testid="transcode-chip-folder"
                             >
                               → Opus {{ transcodeBitRate() }}k
@@ -721,9 +724,9 @@
                         {{ group.bitRate ? ' · ' + group.bitRate + ' kbps' : '' }}
                         ·
                         <span style="color: var(--theme-accent)">{{ formatPeerInfo(group) }}</span>
-                        · {{ group.files.length }} files
+                        · {{ 'acquire.filesCount' | t: { count: group.files.length } }}
                         @if (group.duplicatePeers) {
-                          · {{ group.duplicatePeers + 1 }} peers
+                          · {{ 'acquire.peersCount' | t: { count: group.duplicatePeers + 1 } }}
                         }
                       </p>
                     </div>
@@ -746,9 +749,9 @@
                         class="px-2 py-1 rounded text-xs text-zinc-500 hover:text-zinc-300 transition shrink-0"
                       >
                         {{
-                          search.openBrowserKey() === getFolderKey(group)
-                            ? 'Hide full tree'
-                            : 'Load full tree'
+                          (search.openBrowserKey() === getFolderKey(group)
+                            ? 'acquire.hideFullTree'
+                            : 'acquire.loadFullTree') | t
                         }}
                       </button>
                     }
@@ -815,7 +818,7 @@
                                 color: var(--theme-status-done-text);
                               "
                             >
-                              Open
+                              {{ 'acquire.open' | t }}
                             </a>
                           } @else {
                             <button
@@ -839,7 +842,7 @@
                               {{
                                 getGroupFileVariant(group, file) === 'progress'
                                   ? getGroupFileBtn(group, file).label
-                                  : 'Download'
+                                  : ('acquire.download' | t)
                               }}
                             </button>
                           }
