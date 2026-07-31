@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.284](https://github.com/kevinch3/NicotinD/compare/v0.1.283...v0.1.284) (2026-07-31)
+
+### Bug Fixes
+
+* **analysis:** /health healthcheck polling defeats idle-release ([fac87c6](https://github.com/kevinch3/NicotinD/commit/fac87c631974b3f97739874c57a0799436c37a02)), closes [#344](https://github.com/kevinch3/NicotinD/issues/344)
+* **library:** record an audit log entry on single-song delete ([200c50a](https://github.com/kevinch3/NicotinD/commit/200c50aeeaee6cd0131ad9e7ea1de02c04a89cdd)), closes [#336](https://github.com/kevinch3/NicotinD/issues/336), references [#232](https://github.com/kevinch3/NicotinD/issues/232)
 ## [0.1.283](https://github.com/kevinch3/NicotinD/compare/v0.1.282...v0.1.283) (2026-07-31)
 
 ### Features
