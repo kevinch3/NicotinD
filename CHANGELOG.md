@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.283](https://github.com/kevinch3/NicotinD/compare/v0.1.282...v0.1.283) (2026-07-31)
+
+### Features
+
+* **i18n:** translate player/now-playing/settings + add stable API error codes ([c72b8c0](https://github.com/kevinch3/NicotinD/commit/c72b8c03fccdae976598e5e282722c481005822b)), closes [#236](https://github.com/kevinch3/NicotinD/issues/236), references [#236](https://github.com/kevinch3/NicotinD/issues/236)
+* **mcp:** destructive delete tools + agent-token settings UI ([ff4f244](https://github.com/kevinch3/NicotinD/commit/ff4f2447782b4f11d649eafb1840821b4d57cba7)), closes [#232](https://github.com/kevinch3/NicotinD/issues/232)
+
+### Bug Fixes
+
+* **analysis:** idle-release the GPU model registry ([40e4b0d](https://github.com/kevinch3/NicotinD/commit/40e4b0d92c168e6b07430bbb5ae6a2ac82a41728)), references [#224](https://github.com/kevinch3/NicotinD/issues/224)
 ## [0.1.282](https://github.com/kevinch3/NicotinD/compare/v0.1.281...v0.1.282) (2026-07-30)
 
 ### Bug Fixes
