@@ -452,3 +452,34 @@
   display: none; /* Chrome/Safari */
 }
 
+/* Fullscreen 2-line auto-follow: replay on class-name change (see
+   karaokeLineAnimClass in now-playing.component.ts). Both classes are
+   identical — only the name differs, which is what forces the browser to
+   restart the animation on every line change. */
+@keyframes karaoke-line-in-a {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes karaoke-line-in-b {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.karaoke-line-anim-a {
+  animation: karaoke-line-in-a 400ms ease-out;
+}
+.karaoke-line-anim-b {
+  animation: karaoke-line-in-b 400ms ease-out;
+}
+

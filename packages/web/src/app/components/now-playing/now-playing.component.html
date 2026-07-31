@@ -525,7 +525,7 @@
                     <p
                       data-karaoke-line
                       data-testid="karaoke-fullscreen-line-current"
-                      class="break-words select-none text-3xl md:text-4xl font-bold text-white drop-shadow-lg"
+                      [class]="'break-words select-none text-3xl md:text-4xl font-bold text-white drop-shadow-lg ' + karaokeLineAnimClass()"
                     >
                       {{ currentLineText() || '♪' }}
                     </p>

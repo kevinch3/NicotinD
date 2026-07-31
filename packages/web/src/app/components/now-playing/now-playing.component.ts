@@ -100,6 +100,12 @@ export class NowPlayingComponent {
   private static readonly BROWSE_IDLE_MS = 4000;
   private browseIdleTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** Alternates on every activeLine change so the CSS keyframe animation
+   *  restarts (changing the class name is what forces a replay). */
+  readonly karaokeLineAnimClass = signal<'karaoke-line-anim-a' | 'karaoke-line-anim-b'>(
+    'karaoke-line-anim-a',
+  );
+
   // Fullscreen karaoke overlay (the in-place lyrics panel is always open when
   // lyricsOpen is true; this flag expands it to a gradient-covered immersive view).
   readonly karaokeFullscreen = signal(false);
@@ -280,6 +286,14 @@ export class NowPlayingComponent {
       const container = this.lyricsScrollRef()?.nativeElement;
       if (!container) return;
       scrollToActiveLine(container, active);
+    });
+
+    // Replay the fullscreen auto-follow line-change animation on every advance.
+    effect(() => {
+      this.activeLine();
+      this.karaokeLineAnimClass.update((c) =>
+        c === 'karaoke-line-anim-a' ? 'karaoke-line-anim-b' : 'karaoke-line-anim-a',
+      );
     });
   }
 

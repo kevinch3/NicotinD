@@ -351,6 +351,34 @@ describe('NowPlayingComponent', () => {
       expect(playerStub.seek).toHaveBeenCalledWith(10);
       expect(component.karaokeBrowsing()).toBe(false);
     });
+
+    it('alternates the line animation class each time activeLine changes', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      withSyncedLyrics(playerStub);
+      libraryStub.getLyrics.mockReturnValue(
+        of({
+          plain: null,
+          synced: '[00:00.00]a\n[00:05.00]b\n[00:10.00]c',
+          source: 'lrclib',
+          customized: false,
+          updatedAt: 0,
+        }),
+      );
+      component.toggleLyrics();
+      fixture.detectChanges();
+
+      const first = component.karaokeLineAnimClass();
+      playerStub.currentTime.set(5); // activeLine index 0 -> 1
+      fixture.detectChanges();
+      const second = component.karaokeLineAnimClass();
+      playerStub.currentTime.set(10); // activeLine index 1 -> 2
+      fixture.detectChanges();
+      const third = component.karaokeLineAnimClass();
+
+      expect(second).not.toBe(first);
+      expect(third).not.toBe(second);
+    });
   });
 
   describe('queue resize (drag handle)', () => {
