@@ -223,8 +223,8 @@ test.describe('player controls', () => {
 
     // Regression guard for the fullscreen lyrics-body restructure (2-line
     // auto-follow vs. browse-to-seek): with only plain-text lyrics available
-    // in e2e (no synced LRC seedable here — see docs/superpowers/plans, Global
-    // Constraints), the overlay must still render without the new
+    // in e2e (no synced LRC seedable here — see docs/design-patterns.md, the
+    // Lyrics bullet), the overlay must still render without the new
     // karaoke-fullscreen-follow block (that block only appears for synced
     // lines) and without throwing.
     await expect(page.getByTestId('karaoke-fullscreen-follow')).toHaveCount(0);

@@ -113,6 +113,9 @@ export class NowPlayingComponent {
   readonly coverColors = signal<CoverPalette>(DEFAULT_PALETTE);
   /** Reference to the lyrics scroll container for auto-scroll (in-place or fullscreen). */
   readonly lyricsScrollRef = viewChild<ElementRef<HTMLElement>>('lyricsScroll');
+  /** Fullscreen overlay root — focused on entry so ArrowUp/ArrowDown work
+   *  immediately for keyboard/TV-remote users with no prior click. */
+  readonly karaokeOverlayRef = viewChild<ElementRef<HTMLElement>>('karaokeOverlay');
   private colorExtractedForId: string | null = null;
 
   // Playback progress interpolation
@@ -321,6 +324,7 @@ export class NowPlayingComponent {
         const url = this.server.apiUrl(`/api/cover/${track.coverArt}?size=80&token=${token}`);
         this.extractColorsFromImage(url);
       }
+      setTimeout(() => this.karaokeOverlayRef()?.nativeElement.focus(), 0);
     }
   }
 
@@ -467,6 +471,17 @@ export class NowPlayingComponent {
     if (this.browseIdleTimer !== null) {
       clearTimeout(this.browseIdleTimer);
       this.browseIdleTimer = null;
+    }
+  }
+
+  /** Explicit toggle for the visible browse button and keyboard entry — flips
+   *  between the 2-line auto-follow view and the full browse list. */
+  toggleKaraokeBrowsing(): void {
+    if (this.karaokeBrowsing()) {
+      this.clearBrowseIdleTimer();
+      this.karaokeBrowsing.set(false);
+    } else {
+      this.onKaraokeInteraction();
     }
   }
 

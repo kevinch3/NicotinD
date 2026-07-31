@@ -379,6 +379,55 @@ describe('NowPlayingComponent', () => {
       expect(second).not.toBe(first);
       expect(third).not.toBe(second);
     });
+
+    it('toggleKaraokeBrowsing enters browsing mode from auto-follow', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.toggleKaraokeFullscreen();
+      expect(component.karaokeBrowsing()).toBe(false);
+
+      component.toggleKaraokeBrowsing();
+
+      expect(component.karaokeBrowsing()).toBe(true);
+    });
+
+    it('toggleKaraokeBrowsing exits browsing mode back to auto-follow', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.toggleKaraokeFullscreen();
+      component.onKaraokeInteraction();
+      expect(component.karaokeBrowsing()).toBe(true);
+
+      component.toggleKaraokeBrowsing();
+
+      expect(component.karaokeBrowsing()).toBe(false);
+    });
+
+    it('renders a visible browse-toggle button in the fullscreen header', () => {
+      const { fixture, playerStub } = setup();
+      const component = fixture.componentInstance;
+      playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
+      component.toggleKaraokeFullscreen();
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const btn = el.querySelector('[data-testid="karaoke-browse-toggle"]');
+      expect(btn).not.toBeNull();
+    });
+
+    it('ArrowDown on the overlay enters browsing mode', () => {
+      const { fixture, playerStub } = setup();
+      const component = fixture.componentInstance;
+      playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
+      component.toggleKaraokeFullscreen();
+      fixture.detectChanges();
+
+      const overlay = fixture.nativeElement.querySelector('[data-testid="karaoke-overlay"]');
+      overlay.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      fixture.detectChanges();
+
+      expect(component.karaokeBrowsing()).toBe(true);
+    });
   });
 
   describe('queue resize (drag handle)', () => {
