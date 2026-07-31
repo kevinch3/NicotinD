@@ -6,6 +6,7 @@ import {
   parsePairingPayload,
   probeCandidates,
   claimPairing,
+  PairingClaimError,
 } from './pairing';
 
 describe('buildPairingLink / parsePairingPayload (URL form)', () => {
@@ -155,5 +156,19 @@ describe('claimPairing', () => {
     await expect(
       claimPairing('https://desk.example', { code: 'ABC234' }, fetchImpl),
     ).rejects.toThrow('Pairing code has expired');
+  });
+
+  it('preserves the server code on a PairingClaimError, for i18n (issue #337)', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue({
+      ok: false,
+      json: () => Promise.resolve({ error: 'Pairing code has expired', code: 'PAIRING_EXPIRED' }),
+    } as Response);
+    try {
+      await claimPairing('https://desk.example', { code: 'ABC234' }, fetchImpl);
+      throw new Error('expected claimPairing to reject');
+    } catch (e) {
+      expect(e).toBeInstanceOf(PairingClaimError);
+      expect((e as PairingClaimError).code).toBe('PAIRING_EXPIRED');
+    }
   });
 });

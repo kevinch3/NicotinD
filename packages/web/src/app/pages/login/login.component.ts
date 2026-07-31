@@ -7,6 +7,8 @@ import { PasswordFieldComponent } from '../../components/password-field/password
 import { ServerConfigService } from '../../services/server-config.service';
 import { sanitizeReturnUrl } from '../../lib/return-url';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { TranslateService } from '../../services/translate.service';
+import { httpErrorMessageI18n } from '../../lib/http-error';
 
 @Component({
   selector: 'app-login',
@@ -19,6 +21,7 @@ export class LoginComponent implements OnInit {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private server = inject(ServerConfigService);
+  private i18n = inject(TranslateService);
 
   /** Sanitized post-login destination (issue #231), defaults to home. */
   private returnUrl = '/';
@@ -64,7 +67,7 @@ export class LoginComponent implements OnInit {
         void this.router.navigateByUrl(this.returnUrl);
       },
       error: (err) => {
-        this.error.set(err.error?.error ?? err.message ?? 'Something went wrong');
+        this.error.set(httpErrorMessageI18n(err, this.i18n, this.i18n.t('errors.generic')));
         this.loading.set(false);
       },
     });

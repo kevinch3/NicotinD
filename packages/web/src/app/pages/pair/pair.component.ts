@@ -1,7 +1,14 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
-import { parsePairingParams, claimPairing, describeBrowser } from '../../lib/pairing';
+import {
+  parsePairingParams,
+  claimPairing,
+  describeBrowser,
+  PairingClaimError,
+} from '../../lib/pairing';
+import { TranslateService } from '../../services/translate.service';
+import { errorMessageForCode } from '../../lib/http-error';
 
 /**
  * `/pair` — the landing page a pairing QR now points at. The QR encodes
@@ -20,6 +27,7 @@ import { parsePairingParams, claimPairing, describeBrowser } from '../../lib/pai
 export class PairComponent implements OnInit {
   private auth = inject(AuthService);
   private router = inject(Router);
+  private i18n = inject(TranslateService);
 
   readonly state = signal<'claiming' | 'done' | 'error'>('claiming');
   readonly error = signal('');
@@ -52,7 +60,9 @@ export class PairComponent implements OnInit {
       setTimeout(() => this.router.navigateByUrl('/'), 1200);
     } catch (e) {
       this.state.set('error');
-      this.error.set(e instanceof Error ? e.message : 'Pairing failed');
+      const fallback = e instanceof Error ? e.message : 'Pairing failed';
+      const code = e instanceof PairingClaimError ? e.code : undefined;
+      this.error.set(errorMessageForCode(code, this.i18n, fallback));
     }
   }
 }
