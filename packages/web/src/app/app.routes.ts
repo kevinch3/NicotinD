@@ -1,5 +1,11 @@
 import { Routes } from '@angular/router';
-import { authGuard, adminGuard, acquireGuard, serverGuard } from './guards/auth.guard';
+import {
+  authGuard,
+  adminGuard,
+  acquireGuard,
+  curatorGuard,
+  serverGuard,
+} from './guards/auth.guard';
 
 export const routes: Routes = [
   {
@@ -95,6 +101,14 @@ export const routes: Routes = [
         path: 'settings/devices',
         loadComponent: () =>
           import('./pages/settings/devices/devices.component').then((m) => m.DevicesComponent),
+      },
+      {
+        path: 'settings/agent-tokens',
+        loadComponent: () =>
+          import('./pages/settings/agent-tokens/agent-tokens.component').then(
+            (m) => m.AgentTokensComponent,
+          ),
+        canActivate: [curatorGuard],
       },
       {
         path: 'settings/plugins',

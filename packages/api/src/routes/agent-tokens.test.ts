@@ -133,19 +133,24 @@ describe('agent-tokens routes', () => {
     expect(res.status).toBe(403);
   });
 
-  it('rejects a missing name and an invalid scope', async () => {
-    expect((await req('refiner', '/', { method: 'POST', body: '{}' })).status).toBe(400);
+  it('rejects a missing name and an invalid scope, with stable codes (#236)', async () => {
+    const missingName = await req('refiner', '/', { method: 'POST', body: '{}' });
+    expect(missingName.status).toBe(400);
+    expect(((await missingName.json()) as { code: string }).code).toBe('VALIDATION_ERROR');
     const bad = await req('refiner', '/', {
       method: 'POST',
       body: JSON.stringify({ name: 'x', scope: 'admin:all' }),
     });
     expect(bad.status).toBe(400);
+    expect(((await bad.json()) as { code: string }).code).toBe('VALIDATION_ERROR');
   });
 
-  it('revokes a token and 404s an unknown id', async () => {
+  it('revokes a token and 404s an unknown id, with a stable code (#236)', async () => {
     const mint = await req('refiner', '/', { method: 'POST', body: JSON.stringify({ name: 'x' }) });
     const { id } = (await mint.json()) as { id: string };
     expect((await req('refiner', `/${id}`, { method: 'DELETE' })).status).toBe(200);
-    expect((await req('refiner', `/${id}`, { method: 'DELETE' })).status).toBe(404);
+    const notFound = await req('refiner', `/${id}`, { method: 'DELETE' });
+    expect(notFound.status).toBe(404);
+    expect(((await notFound.json()) as { code: string }).code).toBe('NOT_FOUND');
   });
 });

@@ -575,21 +575,25 @@ Add detail there, not here.
   `requireAdmin`→`requireCurator` on library.ts edit/merge/delete routes); **admin** adds server
   admin. Guards `requireAcquirer`/`requireCurator`/`requireAdmin`; search suppresses only its
   network fan-out for listeners (library results always return). → [docs/roles.md](docs/roles.md)
-- **MCP agent access (issue #232, v1 backend)**: an external LLM/agent can curate a user's library
-  via `/api/mcp`, authorized by a scoped, revocable `agent_tokens` bearer **capped at `refiner`**
+- **MCP agent access (issue #232)**: an external LLM/agent can curate a user's library via
+  `/api/mcp`, authorized by a scoped, revocable `agent_tokens` bearer **capped at `refiner`**
   (`AGENT_EFFECTIVE_ROLE` — an admin who mints one does not get an admin agent). Opaque token
   (`nca_…`), only its **sha256 hash stored** (a table leak leaks nothing live), revoked by stamping
   the row (`verifyAgentToken` checks every call). `services/agent-tokens.ts` = `mintAgentToken`
   (secret returned once) / `verifyAgentToken` / `listAgentTokens` / `revokeAgentToken` (owner-scoped);
   managed by a curator via `/api/agent-tokens` (`agentTokensRoutes`, JWT+`requireCurator`, audit-
-  logged). The MCP endpoint (`mcpRoutes`, hand-rolled JSON-RPC `initialize`/`tools/list`/`tools/call`,
-  no SDK dep) authenticates with the **agent token, not the JWT**. `checkToolAccess` (pure, tested) is
-  the guard: a `curate` tool needs the `:curate` scope, a `destructive` tool needs `args.confirm ===
-  true`; `dispatchTool` applies it and every write is `recordAudit`-ed. **v1 tools = read +
-  safe-curation** (`search_library`/`get_artist`/`get_album_tracks`/`set_song_licence`); destructive
-  (delete/merge) + acquisition tools are held one slice — the mechanism (confirm+audit+cap) is in
-  place, but deletion is inline `rmSync` in routes and must be **extracted into a shared service**
-  before an LLM fronts it. Settings-UI to mint tokens is a follow-up. → [docs/mcp-agent.md](docs/mcp-agent.md)
+  logged) or the **`pages/settings/agent-tokens/` Settings UI** (mint shown-once + copy, list,
+  revoke; a new `curatorGuard` route guard mirrors the server's `requireCurator`). The MCP endpoint
+  (`mcpRoutes`, hand-rolled JSON-RPC `initialize`/`tools/list`/`tools/call`, no SDK dep) authenticates
+  with the **agent token, not the JWT**. `checkToolAccess` (pure, tested) is the guard: a `curate`
+  tool needs the `:curate` scope, a `destructive` tool needs `args.confirm === true`; `dispatchTool`
+  applies it and every write is `recordAudit`-ed. **Tools = read + safe-curation + destructive
+  delete** (`search_library`/`get_artist`/`get_album_tracks`/`set_song_licence`/`delete_song`/
+  `delete_album`) — deletion was inline `rmSync` in routes; it is now `services/library-deletion.ts`
+  (`deleteOne`/`deleteAlbum`, `db`/`musicDir`/`ShareRescanScheduler` as explicit params, not
+  closures), the **one** implementation both the HTTP delete routes and the two MCP tools call, so
+  wiring `rmSync` to an agent never became a second copy. Merge tools remain unbuilt (no shared
+  service yet). → [docs/mcp-agent.md](docs/mcp-agent.md)
 - **Presence tracking (admin-only, ephemeral)**: in-memory `PresenceService` tracks `isConnected` /
   `amountOfDevices` / `amountOfSessions` per user via 60s HTTP heartbeats + stale cleanup; merged
   into `GET /api/admin/users`. → [docs/presence-tracking.md](docs/presence-tracking.md)
@@ -1149,8 +1153,15 @@ args, so a language switch never re-invokes `transform` and the UI keeps the old
 spec asserts the switch reaches the DOM. Language is **per-device** (localStorage), because login /
 setup / share render before any user exists. Converted so far: login page + Settings picker + app
 shell (navs/offline) + library tabs/sort + home vibes + the **Acquire page** primary copy
-(`acquire.*`); **es.json is at full parity** with the base. Extraction is a phased pass (the deep
-Advanced/folder-browser strings on Acquire are a later slice). → [docs/i18n.md](docs/i18n.md)
+(`acquire.*`) + **Player/Now-Playing/Settings** (`player.*`/`nowPlaying.*`/`settings.*` — the phase-2
+high-traffic slice, incl. the first TS-side `this.i18n.t(key, params)` call sites for toasts/dialogs
+built outside a template); **es.json is at full parity** with the base. Extraction is a phased pass
+(the deep Advanced/folder-browser strings on Acquire, plus admin/onboarding, are later slices). **API
+error `code` fields (started, client mapping deferred)**: `NicotinDError`'s existing `code` extended
+onto the inline `c.json({ error })` responses in `routes/auth.ts`/`devices.ts`/`settings.ts`/
+`agent-tokens.ts` — additive `{ error, code }`, the ~24 other route files untouched, and the web side
+does nothing with `code` yet (deliberately, until a toast consumer needs it).
+→ [docs/i18n.md](docs/i18n.md)
 **Bundle budget**: `angular.json` carried the untouched Angular scaffold defaults (500 kB/1 MB), so
 the build warned on every run and the next real regression was invisible. Measured before deciding
 (issue #256): initial is 735 kB **raw** but **188 kB transfer**, and **42 % is Sentry** — eager on

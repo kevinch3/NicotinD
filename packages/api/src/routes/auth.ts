@@ -31,6 +31,9 @@ const RefreshSuccessSchema = z
 const ErrorSchema = z
   .object({
     error: z.string(),
+    /** Stable machine-readable code (issue #236), so the client can localize
+     *  the message rather than showing the server's English string. */
+    code: z.string().optional(),
   })
   .openapi('Error');
 
@@ -126,14 +129,14 @@ export function authRoutes(
 
       // Block public registration when disabled (first-user setup always allowed)
       if (!registrationEnabled && role !== 'admin') {
-        return c.json({ error: 'Registration is disabled' }, 403);
+        return c.json({ error: 'Registration is disabled', code: 'REGISTRATION_DISABLED' }, 403);
       }
 
       const existing = db
         .query<{ id: string }, [string]>('SELECT id FROM users WHERE username = ?')
         .get(username);
       if (existing) {
-        return c.json({ error: 'Username already taken' }, 409);
+        return c.json({ error: 'Username already taken', code: 'USERNAME_TAKEN' }, 409);
       }
 
       const id = crypto.randomUUID();
@@ -208,11 +211,11 @@ export function authRoutes(
         .get(username);
 
       if (!user || !(await verifyPassword(password, user.password_hash))) {
-        return c.json({ error: 'Invalid credentials' }, 401);
+        return c.json({ error: 'Invalid credentials', code: 'INVALID_CREDENTIALS' }, 401);
       }
 
       if (user.status === 'disabled') {
-        return c.json({ error: 'Account disabled' }, 403);
+        return c.json({ error: 'Account disabled', code: 'ACCOUNT_DISABLED' }, 403);
       }
 
       const token = await signJwt(
@@ -257,7 +260,10 @@ export function authRoutes(
 
       // Share tokens are deliberately short-lived and read-only — never extend them.
       if (user.share === true) {
-        return c.json({ error: 'Share sessions cannot be refreshed' }, 403);
+        return c.json(
+          { error: 'Share sessions cannot be refreshed', code: 'SHARE_SESSION_NO_REFRESH' },
+          403,
+        );
       }
 
       // Re-read the role from the DB (not the old token) so an admin's role change
@@ -277,7 +283,7 @@ export function authRoutes(
           .query<{ id: string }, [string]>('SELECT id FROM paired_devices WHERE id = ?')
           .get(user.deviceId);
         if (!device) {
-          return c.json({ error: 'Device revoked' }, 403);
+          return c.json({ error: 'Device revoked', code: 'DEVICE_REVOKED' }, 403);
         }
         db.query('UPDATE paired_devices SET last_seen_at = ? WHERE id = ?').run(
           Date.now(),

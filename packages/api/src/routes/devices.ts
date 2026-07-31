@@ -119,13 +119,13 @@ export function devicesRoutes(options: DevicesRoutesOptions) {
   // normal sliding-session JWT bound to a revocable device row.
   app.post('/claim', async (c) => {
     if (!attemptLimiter.hit()) {
-      return c.json({ error: 'Too many attempts, try again later' }, 429);
+      return c.json({ error: 'Too many attempts, try again later', code: 'RATE_LIMITED' }, 429);
     }
 
     type ClaimBody = { token?: string; code?: string; deviceName?: string; platform?: string };
     const body = await c.req.json<ClaimBody>().catch(() => ({}) as ClaimBody);
     if (!body.token && !body.code) {
-      return c.json({ error: 'token or code is required' }, 400);
+      return c.json({ error: 'token or code is required', code: 'VALIDATION_ERROR' }, 400);
     }
 
     const db = getDatabase();
@@ -141,13 +141,13 @@ export function devicesRoutes(options: DevicesRoutesOptions) {
 
     if (!row) {
       if (!failureLimiter.hit()) {
-        return c.json({ error: 'Too many attempts, try again later' }, 429);
+        return c.json({ error: 'Too many attempts, try again later', code: 'RATE_LIMITED' }, 429);
       }
-      return c.json({ error: 'Unknown pairing code' }, 404);
+      return c.json({ error: 'Unknown pairing code', code: 'PAIRING_NOT_FOUND' }, 404);
     }
     const t = now();
     if (row.claimed_at !== null || row.expires_at < t) {
-      return c.json({ error: 'Pairing code has expired' }, 410);
+      return c.json({ error: 'Pairing code has expired', code: 'PAIRING_EXPIRED' }, 410);
     }
 
     const user = db
@@ -156,7 +156,7 @@ export function devicesRoutes(options: DevicesRoutesOptions) {
       )
       .get(row.user_id);
     if (!user || user.status === 'disabled') {
-      return c.json({ error: 'Account disabled' }, 403);
+      return c.json({ error: 'Account disabled', code: 'ACCOUNT_DISABLED' }, 403);
     }
 
     db.run('UPDATE pairing_tokens SET claimed_at = ? WHERE token = ?', [t, row.token]);
@@ -209,7 +209,7 @@ export function devicesRoutes(options: DevicesRoutesOptions) {
       c.req.param('id'),
       user.sub,
     ]);
-    if (result.changes === 0) return c.json({ error: 'Device not found' }, 404);
+    if (result.changes === 0) return c.json({ error: 'Device not found', code: 'NOT_FOUND' }, 404);
     return c.json({ ok: true });
   });
 

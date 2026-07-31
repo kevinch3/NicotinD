@@ -139,13 +139,22 @@ Returns `{ candidates, converted, skipped, failed, bytesReclaimed }`.
 
 ## Album deletion (reliability)
 
-`DELETE /api/library/albums/:id` (`packages/api/src/routes/library.ts`) is **folder-first**: `tryDeleteAlbumFolder` recursively removes the album's `<Artist>/<Album>` directory in one `rmSync` (taking cover art + sidecars with it) when all tracks share one album-specific folder, guarded against the music root, bare `<Artist>` roots, shared `Singles` folders, and folders holding foreign audio. Otherwise it falls back to the per-file `deleteOne` chain (which sources the path from `library_songs`, with stale-path/renamed-folder fuzzy recovery).
+`DELETE /api/library/albums/:id` (`packages/api/src/routes/library.ts`, delegating to
+`deleteAlbum` in `services/library-deletion.ts` — extracted in issue #232 so the MCP
+`delete_album` agent tool can call the same tested path instead of a third `rmSync` copy) is
+**folder-first**: `tryDeleteAlbumFolder` recursively removes the album's `<Artist>/<Album>`
+directory in one `rmSync` (taking cover art + sidecars with it) when all tracks share one
+album-specific folder, guarded against the music root, bare `<Artist>` roots, shared `Singles`
+folders, and folders holding foreign audio. Otherwise it falls back to the per-file `deleteOne`
+chain (which sources the path from `library_songs`, with stale-path/renamed-folder fuzzy
+recovery). `db`, `musicDir`, and the `ShareRescanScheduler` instance are explicit params to both
+functions rather than closures, so the HTTP route and the MCP tool each wire their own.
 
 It then **synchronously** deletes the canonical rows (`library_songs`, `library_albums`, `completed_downloads`) in one transaction. No tombstone/async-scan reconciliation needed: the native scanner reads disk directly and the files are gone, so a later rescan can't resurrect the album.
 
 The same transaction also **prunes the now-orphaned aggregate rows** so a deleted album doesn't linger until the next *full* scan: the `library_artists` row (deleted if no releases/songs remain, else its `album_count` corrected — via the shared `pruneOrphanArtist`, `services/library-aggregates.ts`, also reused by the metadata-fix re-point), the album's `library_artwork` row, and an emptied `library_genres` row. So deleting an artist's only release also removes the artist from search and the empty artist page immediately.
 
-**Keeping slskd's share index in sync.** Deleting a file from disk doesn't tell slskd — it keeps its own share index and only rebuilds it on an explicit `shares.rescan()` (otherwise a manual-only admin action, `POST /api/settings/shares/rescan`). Found in prod (2026-07-23): deleted tracks stayed in slskd's index indefinitely, so every peer download attempt against them failed with `File not shared`, spamming ERROR-level slskd logs with no way to stop except a manual rescan or restart. `ShareRescanScheduler` (`services/share-rescan-scheduler.ts`) debounces a `schedule()` call (default 5s) so an album/bulk delete coalesces into one rescan instead of one per file; `libraryRoutes` calls `.schedule()` from every `deleteOne` success path and the folder-fast-path in album delete — a no-op when no slskd client is configured. Scoped to the live API's delete routes only; the offline maintenance scripts (`repair-pollution.ts`, `reorganize-library.ts`, etc.) that also unlink files run outside the server process and are unaffected — rerun the manual rescan after using one of those.
+**Keeping slskd's share index in sync.** Deleting a file from disk doesn't tell slskd — it keeps its own share index and only rebuilds it on an explicit `shares.rescan()` (otherwise a manual-only admin action, `POST /api/settings/shares/rescan`). Found in prod (2026-07-23): deleted tracks stayed in slskd's index indefinitely, so every peer download attempt against them failed with `File not shared`, spamming ERROR-level slskd logs with no way to stop except a manual rescan or restart. `ShareRescanScheduler` (`services/share-rescan-scheduler.ts`) debounces a `schedule()` call (default 5s) so an album/bulk delete coalesces into one rescan instead of one per file; `libraryRoutes` (and `mcpRoutes`, since #232) call `.schedule()` from every `deleteOne` success path and the folder-fast-path in album delete — a no-op when no slskd client is configured. Scoped to the live API's delete routes + the MCP delete tools; the offline maintenance scripts (`repair-pollution.ts`, `reorganize-library.ts`, etc.) that also unlink files run outside the server process and are unaffected — rerun the manual rescan after using one of those.
 
 ---
 

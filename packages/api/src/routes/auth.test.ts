@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeAll, beforeEach, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import * as jose from 'jose';
+import { hashPassword } from '@nicotind/core';
 import { applySchema } from '../db.js';
 import { signJwt } from '../middleware/auth.js';
 
@@ -145,6 +146,47 @@ describe('POST /refresh', () => {
     } finally {
       testDb.run("DELETE FROM paired_devices WHERE id = 'dev-1'");
     }
+  });
+});
+
+describe('POST /login, /register — stable error codes (issue #236)', () => {
+  let app: Awaited<ReturnType<typeof makeApp>>;
+
+  async function makeApp() {
+    const { authRoutes } = await import('./auth.js');
+    return authRoutes(SECRET, '30d', true);
+  }
+
+  beforeAll(async () => {
+    app = await makeApp();
+    const realHash = await hashPassword('correcthorse');
+    testDb.run(
+      "INSERT INTO users (id, username, password_hash, role) VALUES ('user-login', 'loginuser', ?, 'user')",
+      [realHash],
+    );
+    testDb.run("INSERT INTO user_settings (user_id) VALUES ('user-login')");
+  });
+
+  it('login: wrong password returns INVALID_CREDENTIALS', async () => {
+    const res = await app.request('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'loginuser', password: 'wrong' }),
+    });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: string; code: string };
+    expect(body.code).toBe('INVALID_CREDENTIALS');
+  });
+
+  it('register: an already-taken username returns USERNAME_TAKEN', async () => {
+    const res = await app.request('/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'loginuser', password: 'whatever123' }),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; code: string };
+    expect(body.code).toBe('USERNAME_TAKEN');
   });
 });
 

@@ -1,7 +1,11 @@
-import { describe, expect, it, beforeEach, mock } from 'bun:test';
+import { describe, expect, it, beforeEach, afterAll, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { applySchema } from '../db.js';
 import { mintAgentToken } from '../services/agent-tokens.js';
+import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import { dispatchTool, checkToolAccess, type McpToolContext } from './mcp.js';
 
 const testDb = new Database(':memory:');
@@ -14,24 +18,28 @@ mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
 
 const { mcpRoutes } = await import('./mcp.js');
 
-function seedSong(id: string, title: string) {
+function seedSong(id: string, title: string, path = `p/${id}.opus`, albumId = 'al') {
   testDb.run(
     `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, synced_at, landed_at)
-     VALUES (?, 'al', ?, 'Artist', 'art', 0, ?, 1, '2024', 1, 1)`,
-    [id, title, `p/${id}.opus`],
+     VALUES (?, ?, ?, 'Artist', 'art', 0, ?, 1, '2024', 1, 1)`,
+    [id, albumId, title, path],
   );
 }
+
+const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-mcp-test-'));
+afterAll(() => rmSync(musicDir, { recursive: true, force: true }));
 
 beforeEach(() => {
   testDb.run('DELETE FROM agent_tokens');
   testDb.run('DELETE FROM library_songs');
+  testDb.run('DELETE FROM library_albums');
   testDb.run('DELETE FROM audit_log');
 });
 
 async function rpc(token: string | null, method: string, params?: unknown) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
-  return mcpRoutes().request('http://x/', {
+  return mcpRoutes(musicDir).request('http://x/', {
     method: 'POST',
     headers,
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
@@ -62,6 +70,8 @@ describe('MCP endpoint (issue #232)', () => {
     const names = body.result.tools.map((t) => t.name);
     expect(names).toContain('search_library');
     expect(names).toContain('set_song_licence');
+    expect(names).toContain('delete_song');
+    expect(names).toContain('delete_album');
     expect(body.result.tools[0]!.inputSchema).toBeDefined();
   });
 
@@ -111,6 +121,78 @@ describe('MCP endpoint (issue #232)', () => {
     expect(row?.licence).toBeNull();
   });
 
+  it('deletes a song file + row when confirmed with a curate token, and audit-logs it', async () => {
+    mkdirSync(join(musicDir, 'Artist', 'Album'), { recursive: true });
+    const filePath = join(musicDir, 'Artist', 'Album', 's1.opus');
+    writeFileSync(filePath, 'audio');
+    seedSong('s1', 'Song', 'Artist/Album/s1.opus');
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'delete_song',
+        arguments: { songId: 's1', confirm: true },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+
+    expect(body.result.content[0]!.text).toContain('"ok":true');
+    expect(existsSync(filePath)).toBe(false);
+    expect(testDb.query('SELECT id FROM library_songs WHERE id = ?').get('s1')).toBeNull();
+    const audit = testDb.query('SELECT action FROM audit_log').all() as Array<{ action: string }>;
+    expect(audit.map((a) => a.action)).toContain('song.delete');
+  });
+
+  it('refuses delete_song without confirm:true, even with a curate token', async () => {
+    seedSong('s1', 'Song');
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    const body = (await (
+      await rpc(token, 'tools/call', { name: 'delete_song', arguments: { songId: 's1' } })
+    ).json()) as { result: { isError: boolean; content: Array<{ text: string }> } };
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0]!.text).toContain('confirm');
+    expect(testDb.query('SELECT id FROM library_songs WHERE id = ?').get('s1')).not.toBeNull();
+  });
+
+  it('refuses delete_album for a read-only token even with confirm:true', async () => {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, synced_at) VALUES ('al1', 'Album', 'Artist', 'art', 1)`,
+    );
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:read' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'delete_album',
+        arguments: { albumId: 'al1', confirm: true },
+      })
+    ).json()) as { result: { isError: boolean; content: Array<{ text: string }> } };
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0]!.text).toContain('read-only');
+    expect(testDb.query('SELECT id FROM library_albums WHERE id = ?').get('al1')).not.toBeNull();
+  });
+
+  it('delete_album deletes every song on the album and audit-logs it', async () => {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, synced_at) VALUES ('al2', 'Album Two', 'Artist', 'art', 1)`,
+    );
+    mkdirSync(join(musicDir, 'Artist', 'Album Two'), { recursive: true });
+    writeFileSync(join(musicDir, 'Artist', 'Album Two', 't1.opus'), 'audio');
+    writeFileSync(join(musicDir, 'Artist', 'Album Two', 't2.opus'), 'audio');
+    seedSong('t1', 'Track 1', 'Artist/Album Two/t1.opus', 'al2');
+    seedSong('t2', 'Track 2', 'Artist/Album Two/t2.opus', 'al2');
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'delete_album',
+        arguments: { albumId: 'al2', confirm: true },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+
+    expect(body.result.content[0]!.text).toContain('"deletedCount":2');
+    expect(testDb.query('SELECT id FROM library_albums WHERE id = ?').get('al2')).toBeNull();
+    const audit = testDb.query('SELECT action FROM audit_log').all() as Array<{ action: string }>;
+    expect(audit.map((a) => a.action)).toContain('album.delete');
+  });
+
   it('unknown method → JSON-RPC -32601', async () => {
     const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
     const body = (await (await rpc(token, 'nonsense/method')).json()) as {
@@ -124,6 +206,7 @@ describe('dispatchTool guards', () => {
   const ctx = (scope: 'refiner:read' | 'refiner:curate'): McpToolContext => ({
     db: testDb,
     identity: { tokenId: 't', userId: 'u1', scope },
+    deletion: { musicDir, shareRescan: new ShareRescanScheduler(async () => {}) },
   });
 
   it('an unknown tool returns an error result, not a throw', async () => {

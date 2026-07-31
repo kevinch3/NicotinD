@@ -593,7 +593,7 @@ export function createApp({
   app.route('/api/feedback', feedbackRoutes());
   // MCP agent (issue #232): agent-token-authenticated (not JWT), refiner-capped.
   app.route('/api/agent-tokens', agentTokensRoutes());
-  app.route('/api/mcp', mcpRoutes());
+  app.route('/api/mcp', mcpRoutes(config.musicDir, slskdRef));
   app.route('/api/presence', presenceRoutes());
   app.route('/api/downloads', downloadRoutes(registry, slskdRef));
   app.route('/api/uploads', uploadRoutes(slskdRef));
