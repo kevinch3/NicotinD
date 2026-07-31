@@ -32,7 +32,7 @@ function makePlayerStub() {
     bufferingVisible: signal(false),
     bufferedRanges: signal([]),
     setNowPlayingOpen: () => {},
-    seek: () => {},
+    seek: vi.fn(),
   };
 }
 
@@ -158,6 +158,137 @@ describe('NowPlayingComponent', () => {
 
       expect(libraryStub.fetchLyrics).toHaveBeenCalledTimes(1);
       expect(component.fetchingLyrics()).toBe(true);
+    });
+  });
+
+  describe('karaoke fullscreen 2-line mode', () => {
+    function withSyncedLyrics(playerStub: ReturnType<typeof makePlayerStub>) {
+      playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
+    }
+
+    it('starts in auto-follow mode (not browsing) when fullscreen opens', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+
+      component.toggleKaraokeFullscreen();
+
+      expect(component.karaokeBrowsing()).toBe(false);
+    });
+
+    it('currentLineText/nextLineText read from lyricLines at activeLine', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      withSyncedLyrics(playerStub);
+      libraryStub.getLyrics.mockReturnValue(
+        of({
+          plain: null,
+          synced: '[00:00.00]first line\n[00:10.00]second line\n[00:20.00]third line',
+          source: 'lrclib',
+          customized: false,
+          updatedAt: 0,
+        }),
+      );
+      component.toggleLyrics();
+      fixture.detectChanges();
+      playerStub.currentTime.set(10); // activeLine -> index 1 ("second line")
+
+      expect(component.currentLineText()).toBe('second line');
+      expect(component.nextLineText()).toBe('third line');
+    });
+
+    it('nextLineText is null on the last line', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      withSyncedLyrics(playerStub);
+      libraryStub.getLyrics.mockReturnValue(
+        of({
+          plain: null,
+          synced: '[00:00.00]only line',
+          source: 'lrclib',
+          customized: false,
+          updatedAt: 0,
+        }),
+      );
+      component.toggleLyrics();
+      fixture.detectChanges();
+      playerStub.currentTime.set(0);
+
+      expect(component.currentLineText()).toBe('only line');
+      expect(component.nextLineText()).toBeNull();
+    });
+
+    it('onKaraokeInteraction enters browsing mode', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.toggleKaraokeFullscreen();
+
+      component.onKaraokeInteraction();
+
+      expect(component.karaokeBrowsing()).toBe(true);
+    });
+
+    it('onKaraokeInteraction auto-returns to auto-follow after the idle timeout', () => {
+      vi.useFakeTimers();
+      try {
+        const { fixture } = setup();
+        const component = fixture.componentInstance;
+        component.toggleKaraokeFullscreen();
+
+        component.onKaraokeInteraction();
+        expect(component.karaokeBrowsing()).toBe(true);
+
+        vi.advanceTimersByTime(4000);
+        expect(component.karaokeBrowsing()).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('seekToLine seeks to the line timestamp and exits browsing mode', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      withSyncedLyrics(playerStub);
+      libraryStub.getLyrics.mockReturnValue(
+        of({
+          plain: null,
+          synced: '[00:00.00]first line\n[00:12.50]second line',
+          source: 'lrclib',
+          customized: false,
+          updatedAt: 0,
+        }),
+      );
+      component.toggleLyrics();
+      fixture.detectChanges();
+      component.toggleKaraokeFullscreen();
+      component.onKaraokeInteraction();
+      expect(component.karaokeBrowsing()).toBe(true);
+
+      component.seekToLine(1);
+
+      expect(playerStub.seek).toHaveBeenCalledWith(12.5);
+      expect(component.karaokeBrowsing()).toBe(false);
+    });
+
+    it('seekToLine does nothing for an out-of-range index', () => {
+      const { fixture, playerStub } = setup();
+      const component = fixture.componentInstance;
+      withSyncedLyrics(playerStub);
+
+      component.seekToLine(99);
+
+      expect(playerStub.seek).not.toHaveBeenCalled();
+    });
+
+    it('exiting fullscreen resets browsing back to auto-follow', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.toggleKaraokeFullscreen();
+      component.onKaraokeInteraction();
+      expect(component.karaokeBrowsing()).toBe(true);
+
+      component.toggleKaraokeFullscreen(); // exits fullscreen
+
+      expect(component.karaokeBrowsing()).toBe(false);
     });
   });
 

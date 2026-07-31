@@ -84,6 +84,22 @@ export class NowPlayingComponent {
   /** Plain text fallback when there are no synced lines. */
   readonly plainLyrics = computed(() => this.lyrics()?.plain ?? '');
 
+  /** Current line's text for the fullscreen auto-follow (2-line) view. */
+  readonly currentLineText = computed(() => this.lyricLines()[this.activeLine()]?.text ?? '');
+  /** Next line's text, or null when the current line is the last one. */
+  readonly nextLineText = computed(() => {
+    const next = this.lyricLines()[this.activeLine() + 1];
+    return next ? next.text : null;
+  });
+
+  // Fullscreen lyrics has two views: a 2-line auto-follow view (default, fits a
+  // narrow TV/monitor without wrapping) and a manual-browse view (the full
+  // scrolling list) entered by scrolling/swiping; tapping a line there seeks
+  // and returns to auto-follow. `false` = auto-follow.
+  readonly karaokeBrowsing = signal(false);
+  private static readonly BROWSE_IDLE_MS = 4000;
+  private browseIdleTimer: ReturnType<typeof setTimeout> | null = null;
+
   // Fullscreen karaoke overlay (the in-place lyrics panel is always open when
   // lyricsOpen is true; this flag expands it to a gradient-covered immersive view).
   readonly karaokeFullscreen = signal(false);
@@ -278,6 +294,8 @@ export class NowPlayingComponent {
   toggleKaraokeFullscreen(): void {
     const entering = !this.karaokeFullscreen();
     this.karaokeFullscreen.set(entering);
+    this.clearBrowseIdleTimer();
+    this.karaokeBrowsing.set(false);
     if (entering) {
       // Ensure lyrics stay loaded
       if (!this.lyricsOpen()) this.lyricsOpen.set(true);
@@ -406,6 +424,35 @@ export class NowPlayingComponent {
     } else {
       this.ws.sendCommand('SEEK', { position: time });
       this.remote.setRemoteProgress(time, this.safeDuration());
+    }
+  }
+
+  /** Wheel/touch gesture on the fullscreen lyrics body enters browse mode. */
+  onKaraokeInteraction(): void {
+    this.karaokeBrowsing.set(true);
+    this.resetBrowseIdleTimer();
+  }
+
+  /** Tapping a line in browse mode seeks there and returns to auto-follow. */
+  seekToLine(index: number): void {
+    const line = this.lyricLines()[index];
+    if (!line) return;
+    this.clearBrowseIdleTimer();
+    this.onSeek(line.timeMs / 1000);
+    this.karaokeBrowsing.set(false);
+  }
+
+  private resetBrowseIdleTimer(): void {
+    this.clearBrowseIdleTimer();
+    this.browseIdleTimer = setTimeout(() => {
+      this.karaokeBrowsing.set(false);
+    }, NowPlayingComponent.BROWSE_IDLE_MS);
+  }
+
+  private clearBrowseIdleTimer(): void {
+    if (this.browseIdleTimer !== null) {
+      clearTimeout(this.browseIdleTimer);
+      this.browseIdleTimer = null;
     }
   }
 
