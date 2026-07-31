@@ -221,6 +221,14 @@ test.describe('player controls', () => {
     await page.getByTestId('now-playing-karaoke-toggle').click();
     await expect(page.getByTestId('karaoke-overlay')).toBeVisible();
 
+    // Regression guard for the fullscreen lyrics-body restructure (2-line
+    // auto-follow vs. browse-to-seek): with only plain-text lyrics available
+    // in e2e (no synced LRC seedable here — see docs/superpowers/plans, Global
+    // Constraints), the overlay must still render without the new
+    // karaoke-fullscreen-follow block (that block only appears for synced
+    // lines) and without throwing.
+    await expect(page.getByTestId('karaoke-fullscreen-follow')).toHaveCount(0);
+
     // Toggle vocal mute on, then off. Both should be position-stable.
     const toggle = page.getByTestId('vocal-mute-toggle');
     await toggle.click();
@@ -230,20 +238,26 @@ test.describe('player controls', () => {
     // Position should not have reset — restoredTime carries it across the src
     // reload. Allow a small advance for the audio continuing to play.
     await expect
-      .poll(async () => {
-        const t = await audioTime(page);
-        return t >= posBefore - 1 && t < posBefore + 5;
-      }, { timeout: 5_000 })
+      .poll(
+        async () => {
+          const t = await audioTime(page);
+          return t >= posBefore - 1 && t < posBefore + 5;
+        },
+        { timeout: 5_000 },
+      )
       .toBe(true);
 
     // Toggle off again — still no position reset.
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-label', /Mute vocals/);
     await expect
-      .poll(async () => {
-        const t = await audioTime(page);
-        return t >= posBefore - 1 && t < posBefore + 5;
-      }, { timeout: 5_000 })
+      .poll(
+        async () => {
+          const t = await audioTime(page);
+          return t >= posBefore - 1 && t < posBefore + 5;
+        },
+        { timeout: 5_000 },
+      )
       .toBe(true);
   });
 });
