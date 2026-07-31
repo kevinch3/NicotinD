@@ -137,6 +137,24 @@ access (the API's `audio-features` task tolerates the CPU fallback fine), simply
 CPU image and never asks the host for a GPU, so it isn't subject to the
 `nvidia-persistenced` runtime dance at all.
 
+#### Analysis sidecar runtime env vars (GPU memory, issue #224)
+
+Two env vars govern the sidecar's GPU-memory footprint at *runtime* (no rebuild
+needed, unlike `GPU=1`/`ANALYSIS_GPU_BUILD` which are build-time) — full
+rationale in [audio-ml-enrichment.md](audio-ml-enrichment.md) "Measured GPU
+behaviour":
+
+- **`ANALYSIS_IDLE_RELEASE_SEC`** (default `900`) — seconds of no `/analyze`
+  calls before the sidecar drops its warm-loaded models, reloading lazily
+  (multi-second cost) on the next call. `0` or negative disables release. Set
+  it on the `analysis` service's `environment:` in your override file.
+- **`TF_GPU_ALLOCATOR`** (unset by default) — set to `cuda_malloc_async` to try
+  TF's stream-ordered allocator, which unlike the default (under
+  `TF_FORCE_GPU_ALLOW_GROWTH=true`, already baked into the image) can return
+  memory to the driver. **Not verified on real hardware in this repo** — it's
+  a documented, commented-out override in `docker-compose.gpu.yml`; A/B it
+  against a plain restart before trusting it in production.
+
 ### Acquisition runtime toggle (issue #235)
 
 `config.acquisitionEnabled` shipped **env-only**, read once at boot, so turning

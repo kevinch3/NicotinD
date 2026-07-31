@@ -22,19 +22,26 @@ that doesn't exist, 503 while models are unavailable.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
-from collections.abc import AsyncIterator
+import time
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from .idle_release import IdleReleaseGuard, RegistryHolder
 from .models import ModelRegistry
 from .rhythm import RhythmAnalyzer
 
 log = logging.getLogger("analysis")
+
+# How often the background watcher checks for idleness — a small fraction of
+# the release window is plenty of resolution without busy-polling.
+_IDLE_CHECK_INTERVAL_SEC = 30.0
 
 
 class AnalyzeRequest(BaseModel):
@@ -64,44 +71,92 @@ def _load_real_rhythm() -> RhythmAnalyzer | None:
         return None
 
 
+async def _idle_watch_loop(holder: RegistryHolder[ModelRegistry]) -> None:
+    """Background task (issue #224): periodically release the registry once
+    idle. Cancelled at shutdown by the lifespan context manager."""
+    while True:
+        await asyncio.sleep(_IDLE_CHECK_INTERVAL_SEC)
+        if holder.release_if_idle():
+            log.info("registry idle-released — next /analyze call reloads it")
+
+
 def create_app(
     registry: ModelRegistry | None = None,
     music_dir: str | None = None,
     rhythm: RhythmAnalyzer | None = None,
+    registry_factory: Callable[[], ModelRegistry | None] | None = None,
+    idle_release_sec: float | None = None,
+    now: Callable[[], float] = time.monotonic,
 ) -> FastAPI:
     """Build the app. Tests inject a fake registry/rhythm analyzer; production
     passes None and the real Essentia implementations are loaded at startup
-    (warm, kept for the process lifetime)."""
-    state: dict[str, ModelRegistry | None] = {"registry": registry}
+    (warm, kept for the process lifetime).
+
+    `registry_factory` is how a released registry gets reloaded (issue #224) —
+    defaults to `_load_real_registry` unless a registry was injected (test
+    mode), in which case it defaults to a no-op (`lambda: None`) so existing
+    tests that inject a fake registry are unaffected unless they explicitly
+    pass their own factory to exercise the reload path. `idle_release_sec`
+    defaults to `ANALYSIS_IDLE_RELEASE_SEC` (900s / 15min); `<= 0` disables
+    release entirely. `now` is the injectable clock the idle guard reads —
+    tests pass a fake to drive the idle window without real sleeps.
+    """
     rhythm_state: dict[str, RhythmAnalyzer | None] = {"analyzer": rhythm}
     resolved_music_dir = Path(music_dir or os.environ.get("MUSIC_DIR", "/data/music")).resolve()
     injected = registry is not None or rhythm is not None
 
+    resolved_idle_release_sec = (
+        idle_release_sec
+        if idle_release_sec is not None
+        else float(os.environ.get("ANALYSIS_IDLE_RELEASE_SEC", "900"))
+    )
+    resolved_factory = registry_factory or (
+        (lambda: None) if injected else _load_real_registry
+    )
+    guard = IdleReleaseGuard(resolved_idle_release_sec, now=now)
+    holder: RegistryHolder[ModelRegistry] = RegistryHolder(registry, resolved_factory, guard)
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if not injected:  # pragma: no cover - real models load in the container only
-            state["registry"] = _load_real_registry()
+            holder.set(_load_real_registry())
             rhythm_state["analyzer"] = _load_real_rhythm()
-        yield
+        watcher = asyncio.create_task(_idle_watch_loop(holder))
+        try:
+            yield
+        finally:
+            watcher.cancel()
 
     app = FastAPI(title="nicotind-analysis", lifespan=lifespan)
+    # Exposed for tests: simulate the idle sweep firing without waiting on the
+    # real background task (`app.state.registry_holder.release_if_idle()`).
+    app.state.registry_holder = holder
 
     @app.get("/health")
     def health() -> dict[str, object]:
-        reg = state["registry"]
+        loaded = holder.is_loaded()
         rhythm_ok = rhythm_state["analyzer"] is not None
-        if reg is None:
-            return {"status": "unavailable", "device": None, "modelVersions": {}, "rhythm": rhythm_ok}
+        if not loaded:
+            return {
+                "status": "unavailable",
+                "device": None,
+                "modelVersions": {},
+                "rhythm": rhythm_ok,
+                "loaded": False,
+            }
+        reg = holder.get()
+        assert reg is not None
         return {
             "status": "ok",
             "device": reg.device(),
             "modelVersions": reg.versions(),
             "rhythm": rhythm_ok,
+            "loaded": True,
         }
 
     @app.post("/analyze")
     def analyze(body: AnalyzeRequest) -> dict[str, object]:
-        reg = state["registry"]
+        reg = holder.get()
         if reg is None:
             raise HTTPException(status_code=503, detail="models not loaded")
 
