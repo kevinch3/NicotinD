@@ -8,15 +8,19 @@ import { SetupService } from '../../services/setup.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 import { isElectron } from '../../lib/platform';
 import { pickDirectory, setMusicDir } from '../../services/native/native-capabilities';
+import { TranslateService } from '../../services/translate.service';
+import { TranslatePipe } from '../../pipes/translate.pipe';
+import { httpErrorMessageI18n } from '../../lib/http-error';
 
 type Step = 'admin' | 'library' | 'quality' | 'soulseek' | 'done';
 
 @Component({
   selector: 'app-setup',
-  imports: [FormsModule, PasswordFieldComponent],
+  imports: [FormsModule, PasswordFieldComponent, TranslatePipe],
   templateUrl: './setup.component.html',
 })
 export class SetupComponent {
+  readonly i18n = inject(TranslateService);
   private auth = inject(AuthService);
   private api = inject(SystemApiService);
   private setupService = inject(SetupService);
@@ -85,7 +89,7 @@ export class SetupComponent {
 
   soulseekButtonLabel(): string {
     const hasSlsk = this.slskUsername.trim() && this.slskPassword.trim();
-    return hasSlsk ? 'Complete Setup' : 'Skip & Complete';
+    return this.i18n.t(hasSlsk ? 'setup.completeSetup' : 'setup.skipAndComplete');
   }
 
   handleAdminNext(): void {
@@ -107,7 +111,7 @@ export class SetupComponent {
 
   handleSoulseekNext(): void {
     if (this.slskIsNewAccount() && this.slskPassword !== this.slskConfirmPassword) {
-      this.error.set('Passwords do not match');
+      this.error.set(this.i18n.t('setup.passwordsDoNotMatch'));
       return;
     }
     if (this.slskUsername.trim() && this.slskPassword.trim()) {
@@ -148,7 +152,7 @@ export class SetupComponent {
         this.loading.set(false);
       },
       error: (err) => {
-        this.error.set(err.error?.error ?? err.message ?? 'Setup failed');
+        this.error.set(httpErrorMessageI18n(err, this.i18n, this.i18n.t('setup.failed')));
         this.loading.set(false);
       },
     });
