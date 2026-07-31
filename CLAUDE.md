@@ -1120,8 +1120,11 @@ Add detail there, not here.
   a non-key constraint collision counted as `skip` rather than fatal. Distinct from the daily DB
   backup (whole-DB, same-host recovery). → [docs/config-export.md](docs/config-export.md)
 - **Admin audit log**: `audit_log` table + `recordAudit` called explicitly at destructive mutation
-  sites (album/bulk-song delete, artist identity, user management) — never a blanket middleware;
-  `GET /api/admin/audit` + Admin "Audit log" table; ledger failures never break the audited action.
+  sites (single/bulk song delete, album delete, artist identity, user management) — never a
+  blanket middleware; `GET /api/admin/audit` + Admin "Audit log" table; ledger failures never
+  break the audited action. **Single-song delete was a gap** (issue #336) — the deletion-extraction
+  refactor for #232 preserved it faithfully rather than silently changing audit semantics as a
+  side effect; now closed with the same `targetKind`/`targetId`/`detail` shape as album delete.
   → [docs/roles.md](docs/roles.md) "Audit log"
 - **Server update check + version history**: daily cached GitHub-releases poll (marker-guarded, 1h
   failure backoff, `NICOTIND_UPDATE_CHECK=off`; scheduled from main.ts — never the processor tick,
