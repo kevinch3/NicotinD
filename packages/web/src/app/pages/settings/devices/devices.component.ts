@@ -9,6 +9,8 @@ import type {
 } from '../../../services/api/api-types';
 import { buildPairingLink } from '../../../lib/pairing';
 import { isNativePlatform } from '../../../lib/platform';
+import { TranslateService } from '../../../services/translate.service';
+import { TranslatePipe } from '../../../pipes/translate.pipe';
 
 /**
  * "Link a device" — pair a phone to this server by QR (or manual URL + code)
@@ -18,10 +20,11 @@ import { isNativePlatform } from '../../../lib/platform';
  */
 @Component({
   selector: 'app-devices',
-  imports: [RouterLink],
+  imports: [RouterLink, TranslatePipe],
   templateUrl: './devices.component.html',
 })
 export class DevicesComponent implements OnInit, OnDestroy {
+  readonly i18n = inject(TranslateService);
   private api = inject(DevicesApiService);
   readonly auth = inject(AuthService);
 
@@ -71,7 +74,7 @@ export class DevicesComponent implements OnInit, OnDestroy {
         this.startCountdown(mint.expiresAt);
         void this.renderQr(mint);
       },
-      error: () => this.error.set('Could not create a pairing code'),
+      error: () => this.error.set(this.i18n.t('devices.errorCreatePairing')),
     });
   }
 
@@ -123,7 +126,7 @@ export class DevicesComponent implements OnInit, OnDestroy {
   revoke(device: PairedDevice): void {
     this.api.revokeDevice(device.id).subscribe({
       next: () => this.devices.update((list) => list.filter((d) => d.id !== device.id)),
-      error: () => this.error.set('Could not revoke device'),
+      error: () => this.error.set(this.i18n.t('devices.errorRevoke')),
     });
   }
 
@@ -151,7 +154,7 @@ export class DevicesComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.busy.set(false);
-        this.error.set('Could not update remote access');
+        this.error.set(this.i18n.t('devices.errorRemoteAccess'));
       },
     });
   }
