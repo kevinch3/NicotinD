@@ -36,6 +36,8 @@ import { PasswordFieldComponent } from '../../components/password-field/password
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { MetricPillComponent } from '../../components/metric-pill/metric-pill.component';
 import { DiscographyAlbum } from '../../services/api/api-types';
+import { TranslateService } from '../../services/translate.service';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 /** A copy in a duplicate group — shape returned by the maintenance duplicates API. */
 type DuplicateSong = {
@@ -52,7 +54,13 @@ type DuplicateSong = {
 
 @Component({
   selector: 'app-admin',
-  imports: [FormsModule, PasswordFieldComponent, AlbumHuntModalComponent, MetricPillComponent],
+  imports: [
+    FormsModule,
+    PasswordFieldComponent,
+    AlbumHuntModalComponent,
+    MetricPillComponent,
+    TranslatePipe,
+  ],
   templateUrl: './admin.component.html',
 })
 export class AdminComponent implements OnInit, OnDestroy {
@@ -62,6 +70,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   private auth = inject(AuthService);
   private server = inject(ServerConfigService);
   private toast = inject(ToastService);
+  readonly i18n = inject(TranslateService);
   /** One consolidated snapshot for every read-only Admin telemetry — replaces
    *  the per-section loaders the page used to manage (systemStatus, scanStatus,
    *  updateCheck, backups, auditLog, incompleteJobs, untracked, hardware metrics).
@@ -221,7 +230,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     try {
       this.autoPlaylists.set(await firstValueFrom(this.api.setAutoPlaylistCadence(cadence)));
     } catch {
-      this.autoPlaylistsMsg.set('Could not save cadence — see server logs.');
+      this.autoPlaylistsMsg.set(this.i18n.t('admin.cadenceSaveFailed'));
     }
   }
 
@@ -233,16 +242,23 @@ export class AdminComponent implements OnInit, OnDestroy {
       const res = await firstValueFrom(this.api.refreshAutoPlaylists());
       const made = res.shelves.filter((s) => s.count > 0).length;
       this.autoPlaylists.set({ cadence: res.cadence, lastRefreshedAt: res.lastRefreshedAt });
-      this.autoPlaylistsMsg.set(`Regenerated ${made} shelf${made === 1 ? '' : 'es'}.`);
+      this.autoPlaylistsMsg.set(
+        this.i18n.t(
+          made === 1 ? 'admin.regeneratedShelfSingular' : 'admin.regeneratedShelfPlural',
+          {
+            count: made,
+          },
+        ),
+      );
     } catch {
-      this.autoPlaylistsMsg.set('Refresh failed — see server logs.');
+      this.autoPlaylistsMsg.set(this.i18n.t('admin.refreshFailed'));
     } finally {
       this.autoPlaylistsBusy.set(false);
     }
   }
 
   formatRefreshedAt(ms: number | null): string {
-    return ms ? new Date(ms).toLocaleString() : 'never';
+    return ms ? new Date(ms).toLocaleString() : this.i18n.t('admin.never');
   }
 
   // --- Streaming ---
@@ -284,9 +300,9 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.streamingMessage.set(null);
     try {
       this.streaming.set(await firstValueFrom(this.api.saveStreamingSettings(patch)));
-      this.streamingMessage.set({ type: 'success', text: 'Streaming settings saved' });
+      this.streamingMessage.set({ type: 'success', text: this.i18n.t('admin.streamingSaved') });
     } catch {
-      this.streamingMessage.set({ type: 'error', text: 'Failed to save streaming settings' });
+      this.streamingMessage.set({ type: 'error', text: this.i18n.t('admin.streamingSaveFailed') });
     } finally {
       this.streamingSaving.set(false);
     }
@@ -371,9 +387,12 @@ export class AdminComponent implements OnInit, OnDestroy {
       const data = await firstValueFrom(this.api.saveProcessing(patch));
       this.processing.set(data.settings);
       this.processingStatus.set(data.status);
-      this.processingMessage.set({ type: 'success', text: 'Processing settings saved' });
+      this.processingMessage.set({ type: 'success', text: this.i18n.t('admin.processingSaved') });
     } catch {
-      this.processingMessage.set({ type: 'error', text: 'Failed to save processing settings' });
+      this.processingMessage.set({
+        type: 'error',
+        text: this.i18n.t('admin.processingSaveFailed'),
+      });
     } finally {
       this.processingSaving.set(false);
     }
@@ -413,16 +432,19 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   /** Per-song enrichment tasks shown in the panel (artist-image is per-artist and
    *  not a landing gate, so it's excluded here). Order matches the run order. */
-  readonly processingTaskDefs: { id: ProcessingTaskId; label: string }[] = [
-    { id: 'bpm', label: 'BPM analysis' },
-    { id: 'genre', label: 'Genre' },
-    { id: 'key', label: 'Musical key' },
-    { id: 'energy', label: 'Energy & loudness' },
-    { id: 'audio-features', label: 'Audio features (mood, valence, danceability)' },
-    { id: 'licence', label: 'Licence / rights (from file tags)' },
-    { id: 'genre-discogs', label: 'Genre (Discogs)' },
-    { id: 'genre-audio', label: 'Genre (audio fallback)' },
-    { id: 'popularity', label: 'Popularity (ListenBrainz)' },
+  /** `labelKey` (not a pre-translated `label`) so the template's `| t` pipe
+   *  keeps these reactive to a live language switch, matching every other
+   *  label on this page. */
+  readonly processingTaskDefs: { id: ProcessingTaskId; labelKey: string }[] = [
+    { id: 'bpm', labelKey: 'admin.taskBpm' },
+    { id: 'genre', labelKey: 'admin.taskGenre' },
+    { id: 'key', labelKey: 'admin.taskKey' },
+    { id: 'energy', labelKey: 'admin.taskEnergy' },
+    { id: 'audio-features', labelKey: 'admin.taskAudioFeatures' },
+    { id: 'licence', labelKey: 'admin.taskLicence' },
+    { id: 'genre-discogs', labelKey: 'admin.taskGenreDiscogs' },
+    { id: 'genre-audio', labelKey: 'admin.taskGenreAudio' },
+    { id: 'popularity', labelKey: 'admin.taskPopularity' },
   ];
 
   /** Whether a task is required to finish before a download lands in the library. */
@@ -480,10 +502,10 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.sawRunning = false;
     try {
       await firstValueFrom(this.api.runProcessing());
-      this.toast.show({ message: 'Processing started', kind: 'info' });
+      this.toast.show({ message: this.i18n.t('admin.processingStarted'), kind: 'info' });
     } catch {
       this.awaitingRun = false;
-      this.toast.show({ message: 'Failed to start processing', kind: 'error' });
+      this.toast.show({ message: this.i18n.t('admin.processingStartFailed'), kind: 'error' });
     } finally {
       this.processingStarting.set(false);
     }
@@ -492,7 +514,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   async stopProcessing(): Promise<void> {
     try {
       await firstValueFrom(this.api.stopProcessing());
-      this.toast.show({ message: 'Stopping…', kind: 'info' });
+      this.toast.show({ message: this.i18n.t('admin.stopping'), kind: 'info' });
     } catch {
       /* ignore */
     }
@@ -508,7 +530,10 @@ export class AdminComponent implements OnInit, OnDestroy {
       const groups = await firstValueFrom(this.libraryApi.getDuplicates());
       this.duplicates.set(groups);
       if (groups.length === 0) {
-        this.duplicatesMessage.set({ type: 'success', text: 'No duplicates found' });
+        this.duplicatesMessage.set({
+          type: 'success',
+          text: this.i18n.t('admin.noDuplicatesFound'),
+        });
       } else {
         const toDelete = new Set<string>();
         for (const group of groups) {
@@ -519,7 +544,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     } catch (err) {
       this.duplicatesMessage.set({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to load duplicates',
+        text: err instanceof Error ? err.message : this.i18n.t('admin.loadDuplicatesFailed'),
       });
     } finally {
       this.duplicatesLoading.set(false);
@@ -546,13 +571,16 @@ export class AdminComponent implements OnInit, OnDestroy {
       const result = await firstValueFrom(this.libraryApi.deleteSongs(ids));
       this.duplicatesMessage.set({
         type: 'success',
-        text: `Deleted ${result.deletedCount} file${result.deletedCount !== 1 ? 's' : ''}`,
+        text: this.i18n.t(
+          result.deletedCount === 1 ? 'admin.deletedFilesSingular' : 'admin.deletedFilesPlural',
+          { count: result.deletedCount },
+        ),
       });
       await this.loadDuplicates();
     } catch (err) {
       this.duplicatesMessage.set({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to delete',
+        text: err instanceof Error ? err.message : this.i18n.t('admin.deleteFailed'),
       });
     } finally {
       this.deletingDuplicates.set(false);
@@ -603,10 +631,15 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.backupMsg.set(null);
     try {
       const info = await firstValueFrom(this.api.runBackup());
-      this.backupMsg.set(`Backup ${info.name} created (${this.formatBackupSize(info.sizeBytes)}).`);
+      this.backupMsg.set(
+        this.i18n.t('admin.backupCreated', {
+          name: info.name,
+          size: this.formatBackupSize(info.sizeBytes),
+        }),
+      );
       await this.reviewSvc.refresh();
     } catch {
-      this.backupMsg.set('Backup failed — see server logs.');
+      this.backupMsg.set(this.i18n.t('admin.backupFailed'));
     } finally {
       this.backingUp.set(false);
     }
@@ -635,12 +668,12 @@ export class AdminComponent implements OnInit, OnDestroy {
       a.click();
       URL.revokeObjectURL(url);
       this.configMsg.set(
-        this.configWithSecrets()
-          ? 'Exported with credentials — store it somewhere safe.'
-          : 'Exported with credentials redacted.',
+        this.i18n.t(
+          this.configWithSecrets() ? 'admin.exportedWithCredentials' : 'admin.exportedRedacted',
+        ),
       );
     } catch {
-      this.configMsg.set('Export failed — see server logs.');
+      this.configMsg.set(this.i18n.t('admin.exportFailed'));
     } finally {
       this.configBusy.set(false);
     }
@@ -664,9 +697,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       this.pendingBundle = bundle;
     } catch (err) {
       this.configMsg.set(
-        err instanceof SyntaxError
-          ? 'That file is not valid JSON.'
-          : 'This server rejected the bundle — it may be from a newer version.',
+        this.i18n.t(err instanceof SyntaxError ? 'admin.invalidJsonFile' : 'admin.bundleRejected'),
       );
     } finally {
       this.configBusy.set(false);
@@ -680,12 +711,12 @@ export class AdminComponent implements OnInit, OnDestroy {
     try {
       const res = await firstValueFrom(this.api.importConfig(bundle, false));
       const rows = res.plan.sections.reduce((n, s) => n + s.create + s.update, 0);
-      this.configMsg.set(`Imported ${rows} row(s). Restart the server to pick up plugin changes.`);
+      this.configMsg.set(this.i18n.t('admin.importedRows', { count: rows }));
       this.importPlan.set(null);
       this.pendingBundle = null;
       await this.reviewSvc.refresh();
     } catch {
-      this.configMsg.set('Import failed — nothing was applied.');
+      this.configMsg.set(this.i18n.t('admin.importFailed'));
     } finally {
       this.configBusy.set(false);
     }
@@ -714,7 +745,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       this.fragments.set(await firstValueFrom(this.libraryApi.getFragments()));
     } catch (err) {
       this.fragmentsError.set(
-        err instanceof Error ? err.message : 'Failed to load fragmentation report.',
+        err instanceof Error ? err.message : this.i18n.t('admin.fragmentsLoadFailed'),
       );
       this.fragments.set(null);
     } finally {
@@ -728,12 +759,10 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.syncMsg.set(null);
     try {
       await firstValueFrom(this.libraryApi.resyncLibrary());
-      this.syncMsg.set('Library rescan complete.');
+      this.syncMsg.set(this.i18n.t('admin.syncComplete'));
       await this.reviewSvc.refresh();
     } catch (err) {
-      this.syncMsg.set(
-        err instanceof Error ? err.message : 'Library rescan failed — is the server configured?',
-      );
+      this.syncMsg.set(err instanceof Error ? err.message : this.i18n.t('admin.syncFailed'));
     } finally {
       this.syncing.set(false);
     }
@@ -746,10 +775,14 @@ export class AdminComponent implements OnInit, OnDestroy {
     try {
       const r = await firstValueFrom(this.libraryApi.optimizeAllMetadata());
       this.optimizeMetadataMsg.set(
-        `Checked ${r.albums} album(s): ${r.coversUpdated} cover(s), ${r.yearsUpdated} year(s) updated.`,
+        this.i18n.t('admin.metadataOptimizeResult', {
+          albums: r.albums,
+          covers: r.coversUpdated,
+          years: r.yearsUpdated,
+        }),
       );
     } catch {
-      this.optimizeMetadataMsg.set('Failed — Lidarr unavailable or not configured.');
+      this.optimizeMetadataMsg.set(this.i18n.t('admin.metadataOptimizeFailed'));
     } finally {
       this.optimizingMetadata.set(false);
     }
@@ -830,7 +863,13 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (!status) return '—';
     const health = status.slskd;
     const connected = health.connected;
-    return connected ? 'Connected' : health.healthy ? 'Disconnected' : 'Unreachable';
+    return this.i18n.t(
+      connected
+        ? 'admin.connected'
+        : health.healthy
+          ? 'admin.disconnectedStatus'
+          : 'admin.unreachable',
+    );
   }
 
   readonly roles = ROLES;
@@ -845,7 +884,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       this.users.update((prev) =>
         prev.map((u) => (u.id === user.id ? { ...u, role: prevRole } : u)),
       );
-      this.error.set(err instanceof Error ? err.message : 'Failed to update role');
+      this.error.set(err instanceof Error ? err.message : this.i18n.t('admin.updateRoleFailed'));
     }
   }
 
@@ -857,7 +896,7 @@ export class AdminComponent implements OnInit, OnDestroy {
         prev.map((u) => (u.id === user.id ? { ...u, status: newStatus } : u)),
       );
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to update status');
+      this.error.set(err instanceof Error ? err.message : this.i18n.t('admin.updateStatusFailed'));
     }
   }
 
@@ -870,7 +909,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       this.resetTarget.set(null);
       this.newPassword.set('');
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to reset password');
+      this.error.set(err instanceof Error ? err.message : this.i18n.t('admin.resetPasswordFailed'));
     } finally {
       this.resetting.set(false);
     }
@@ -888,7 +927,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       this.newUsername.set('');
       this.newUserPassword.set('');
     } catch (err: any) {
-      this.error.set(err.error?.error ?? err.message ?? 'Failed to create user');
+      this.error.set(err.error?.error ?? err.message ?? this.i18n.t('admin.createUserFailed'));
     } finally {
       this.creating.set(false);
     }
@@ -903,7 +942,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       this.users.update((prev) => prev.filter((u) => u.id !== target.id));
       this.deleteTarget.set(null);
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to delete user');
+      this.error.set(err instanceof Error ? err.message : this.i18n.t('admin.deleteUserFailed'));
     } finally {
       this.deleting.set(false);
     }
@@ -915,7 +954,9 @@ export class AdminComponent implements OnInit, OnDestroy {
       await firstValueFrom(this.api.restartService(service));
       setTimeout(() => this.reviewSvc.refresh(), 3000);
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : `Failed to restart ${service}`);
+      this.error.set(
+        err instanceof Error ? err.message : this.i18n.t('admin.restartFailed', { service }),
+      );
     } finally {
       this.restarting.update((prev) => ({ ...prev, [service]: false }));
     }
@@ -991,7 +1032,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       const data = await firstValueFrom(this.api.getUsers());
       this.users.set(data);
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to load users');
+      this.error.set(err instanceof Error ? err.message : this.i18n.t('admin.loadUsersFailed'));
     } finally {
       this.loading.set(false);
     }
