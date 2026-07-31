@@ -33,6 +33,7 @@ function makePlayerStub() {
     bufferedRanges: signal([]),
     setNowPlayingOpen: () => {},
     seek: vi.fn(),
+    vocalsMuted: () => false,
   };
 }
 
@@ -288,6 +289,66 @@ describe('NowPlayingComponent', () => {
 
       component.toggleKaraokeFullscreen(); // exits fullscreen
 
+      expect(component.karaokeBrowsing()).toBe(false);
+    });
+
+    it('renders only current+next lines in auto-follow mode', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      withSyncedLyrics(playerStub);
+      libraryStub.getLyrics.mockReturnValue(
+        of({
+          plain: null,
+          synced: '[00:00.00]a\n[00:05.00]b\n[00:10.00]c\n[00:15.00]d',
+          source: 'lrclib',
+          customized: false,
+          updatedAt: 0,
+        }),
+      );
+      component.toggleLyrics();
+      fixture.detectChanges();
+      component.toggleKaraokeFullscreen();
+      playerStub.currentTime.set(5); // activeLine -> index 1 ("b")
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const current = el.querySelector('[data-testid="karaoke-fullscreen-line-current"]');
+      const next = el.querySelector('[data-testid="karaoke-fullscreen-line-next"]');
+      expect(current?.textContent?.trim()).toBe('b');
+      expect(next?.textContent?.trim()).toBe('c');
+      expect(el.querySelectorAll('[data-karaoke-line]').length).toBe(2);
+      expect(el.querySelector('[data-testid="karaoke-fullscreen-browse-list"]')).toBeNull();
+    });
+
+    it('shows the full list in browse mode and seeks on line click', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      withSyncedLyrics(playerStub);
+      libraryStub.getLyrics.mockReturnValue(
+        of({
+          plain: null,
+          synced: '[00:00.00]a\n[00:05.00]b\n[00:10.00]c',
+          source: 'lrclib',
+          customized: false,
+          updatedAt: 0,
+        }),
+      );
+      component.toggleLyrics();
+      fixture.detectChanges();
+      component.toggleKaraokeFullscreen();
+      component.onKaraokeInteraction();
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const list = el.querySelector('[data-testid="karaoke-fullscreen-browse-list"]');
+      expect(list).not.toBeNull();
+      const lines = Array.from(el.querySelectorAll('[data-karaoke-line]'));
+      expect(lines.length).toBe(3);
+
+      (lines[2] as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(playerStub.seek).toHaveBeenCalledWith(10);
       expect(component.karaokeBrowsing()).toBe(false);
     });
   });
