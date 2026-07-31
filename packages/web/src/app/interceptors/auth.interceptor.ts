@@ -5,6 +5,7 @@ import { catchError, throwError, timeout } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 import { ServerConfigService } from '../services/server-config.service';
 import { SetupService } from '../services/setup.service';
+import { httpErrorCode } from '../lib/http-error';
 
 // Read requests that hang against an unreachable host (common in the native
 // WebView when connectivity drops) are bounded so they fail fast instead of
@@ -51,8 +52,10 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         router.navigateByUrl('/login');
       }
       if (err.status === 403) {
-        const errorMsg = err.error?.error;
-        if (errorMsg === 'Account disabled') {
+        // Matches the stable `code` (issue #236), not the English `error`
+        // string — that string-match was silently untranslatable and would
+        // have broken the moment the server's message changed or localized.
+        if (httpErrorCode(err) === 'ACCOUNT_DISABLED') {
           auth.logout();
           router.navigateByUrl('/login');
         }

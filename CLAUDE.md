@@ -1168,11 +1168,16 @@ shell (navs/offline) + library tabs/sort + home vibes + the **Acquire page** pri
 high-traffic slice, incl. the first TS-side `this.i18n.t(key, params)` call sites for toasts/dialogs
 built outside a template); **es.json is at full parity** with the base. Extraction is a phased pass
 (the deep Advanced/folder-browser strings on Acquire, plus admin/onboarding, are later slices). **API
-error `code` fields (started, client mapping deferred)**: `NicotinDError`'s existing `code` extended
+error `code` fields (issue #337, client mapping started)**: `NicotinDError`'s existing `code` extended
 onto the inline `c.json({ error })` responses in `routes/auth.ts`/`devices.ts`/`settings.ts`/
-`agent-tokens.ts` — additive `{ error, code }`, the ~24 other route files untouched, and the web side
-does nothing with `code` yet (deliberately, until a toast consumer needs it).
-→ [docs/i18n.md](docs/i18n.md)
+`agent-tokens.ts` — additive `{ error, code }`, the ~24 other route files untouched. The web client
+now maps the subset of codes whose English message is stable across every call site
+(`lib/http-error.ts` `ERROR_CODE_I18N_KEYS` + `errorMessageForCode`/`httpErrorMessageI18n`) —
+generic per-site-varying codes (`VALIDATION_ERROR`/`FORBIDDEN`/`NOT_FOUND`/…) intentionally still
+fall through to the raw server string. Converted: login/register, the `/pair` claim flow
+(`claimPairing` now throws `PairingClaimError` carrying `code`), and `auth.interceptor.ts`'s
+force-logout check, which used to string-match the English `error` body and is now on the stable
+`code` instead. → [docs/i18n.md](docs/i18n.md)
 **Bundle budget**: `angular.json` carried the untouched Angular scaffold defaults (500 kB/1 MB), so
 the build warned on every run and the next real regression was invisible. Measured before deciding
 (issue #256): initial is 735 kB **raw** but **188 kB transfer**, and **42 % is Sentry** — eager on

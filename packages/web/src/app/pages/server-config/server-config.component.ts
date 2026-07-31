@@ -9,9 +9,16 @@ import {
   buildApiUrl,
   isHealthyResponse,
 } from '../../lib/server-url';
-import { parsePairingPayload, probeCandidates, claimPairing } from '../../lib/pairing';
+import {
+  parsePairingPayload,
+  probeCandidates,
+  claimPairing,
+  PairingClaimError,
+} from '../../lib/pairing';
 import { canScanBarcode, scanBarcode, platformId } from '../../services/native/native-capabilities';
 import type { SavedServer } from '../../lib/server-registry';
+import { TranslateService } from '../../services/translate.service';
+import { errorMessageForCode } from '../../lib/http-error';
 
 /**
  * Server-picker screen (native shell). Lets the user point the app at any
@@ -38,6 +45,7 @@ import type { SavedServer } from '../../lib/server-registry';
 export class ServerConfigComponent {
   private server = inject(ServerConfigService);
   private auth = inject(AuthService);
+  private i18n = inject(TranslateService);
   private router = inject(Router);
 
   url = '';
@@ -169,7 +177,9 @@ export class ServerConfigComponent {
     try {
       result = await claimPairing(serverUrl, { ...credential, platform: platformId() });
     } catch (e) {
-      throw new PairingError(e instanceof Error ? e.message : 'Pairing failed');
+      const fallback = e instanceof Error ? e.message : 'Pairing failed';
+      const code = e instanceof PairingClaimError ? e.code : undefined;
+      throw new PairingError(errorMessageForCode(code, this.i18n, fallback));
     }
     this.switchTo(serverUrl, serverName);
     this.auth.login(result.token, result.user.username, result.user.role);

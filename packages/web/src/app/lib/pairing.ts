@@ -127,6 +127,18 @@ export interface ClaimResult {
   user: { id: string; username: string; role: string };
 }
 
+/** Thrown by `claimPairing` on failure. Carries the server's stable `code`
+ * (issue #337) alongside the English `message` so callers can localize it —
+ * this bypasses HttpClient, so it can't reuse `httpErrorCode`/`httpErrorMessageI18n`. */
+export class PairingClaimError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message);
+  }
+}
+
 /** Exchange a pairing token/code for a session JWT. Runs pre-auth with raw
  * fetch (the HttpClient interceptor chain assumes an already-selected server). */
 export async function claimPairing(
@@ -139,9 +151,10 @@ export async function claimPairing(
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(body),
   });
-  const parsed = (await res.json().catch(() => null)) as (ClaimResult & { error?: string }) | null;
+  const parsed = (await res.json().catch(() => null)) as
+    (ClaimResult & { error?: string; code?: string }) | null;
   if (!res.ok || !parsed?.token) {
-    throw new Error(parsed?.error ?? 'Pairing failed');
+    throw new PairingClaimError(parsed?.error ?? 'Pairing failed', parsed?.code);
   }
   return parsed;
 }
