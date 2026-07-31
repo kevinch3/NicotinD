@@ -1174,9 +1174,11 @@ built outside a template) + **Devices/remote-access settings** (issue #338, `dev
 pairing panel, paired-devices list, and the admin Tailscale Funnel state machine; a shared
 `common.backToSettings` key was added for the "← Settings" back-link reused by still-untranslated
 `agent-tokens`/`plugins` pages) + **onboarding/setup wizard** (`setup.*`, all five wizard steps,
-plus `common.back`/`common.next`); **es.json is at full parity** with the base. Extraction is a
-phased pass (the Admin panel and the deep Advanced/folder-browser strings on Acquire are the
-remaining long-tail slices — issue #338). **API
+plus `common.back`/`common.next`) + **Admin panel** (issue #338, `admin.*` — 215 keys, every
+section; `processingTaskDefs` moved from a pre-translated `label` to a `labelKey` so the task list
+stays reactive to a live language switch, matching the rest of the page); **es.json is at full
+parity** with the base. Extraction is a phased pass (only the deep Advanced/folder-browser strings
+on Acquire remain — issue #338). **API
 error `code` fields (issue #337, client mapping started)**: `NicotinDError`'s existing `code` extended
 onto the inline `c.json({ error })` responses in `routes/auth.ts`/`devices.ts`/`settings.ts`/
 `agent-tokens.ts` — additive `{ error, code }`, the ~24 other route files untouched. The web client

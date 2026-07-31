@@ -16,6 +16,7 @@ import type {
 } from '../../services/api/api-types';
 import type { ProcessingSettings, ProcessingStatus } from '../../../types/core';
 import { AuthService } from '../../services/auth.service';
+import BASE_CATALOG from '../../../../public/i18n/en.json';
 
 function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
   return {
@@ -298,7 +299,13 @@ describe('AdminComponent (orphan side-table rows, #259)', () => {
     f.detectChanges();
     const el = f.nativeElement as HTMLElement;
 
-    expect(el.querySelector('[data-testid="orphan-rows-panel"]')?.textContent).toContain('1290');
+    // Raw i18n key in this harness (no real catalog loaded) — same convention
+    // as settings.component.spec.ts / setup.component.spec.ts. 1290 total
+    // orphans (1057 + 233) is plural, so the plural key renders.
+    expect(el.querySelector('[data-testid="orphan-rows-panel"]')?.textContent).toContain(
+      'admin.orphanRowsPlural',
+    );
+    expect(BASE_CATALOG).toHaveProperty(['admin.orphanRowsPlural']);
     const list = el.querySelector('[data-testid="orphan-rows-list"]')!;
     expect(list.querySelectorAll('li')).toHaveLength(2); // the zero-orphan table is skipped
     expect(list.textContent).toContain('library_embeddings');
@@ -365,13 +372,18 @@ describe('AdminComponent (artist portrait coverage, #250)', () => {
     const f = await mount({ visible: 1011, withPortrait: 923, missing: 88, manualOverride: 140 });
     const el = f.nativeElement as HTMLElement;
     const panel = el.querySelector('[data-testid="artist-images-panel"]')!;
-    expect(panel.textContent).toContain('923');
-    expect(panel.textContent).toContain('1011');
-    expect(panel.textContent).toContain('88');
+    // Raw i18n keys in this harness (no real catalog loaded) — same convention
+    // as settings.component.spec.ts / setup.component.spec.ts. missing=88 is
+    // plural, so the plural key renders.
+    expect(panel.textContent).toContain('admin.artistPortraitCoverage');
+    expect(panel.textContent).toContain('admin.artistPortraitMissingPlural');
+    expect(BASE_CATALOG).toHaveProperty(['admin.artistPortraitCoverage']);
+    expect(BASE_CATALOG).toHaveProperty(['admin.artistPortraitMissingPlural']);
     // Curator uploads are called out, because a fill will never touch them.
     expect(el.querySelector('[data-testid="artist-images-overrides"]')?.textContent).toContain(
-      '140',
+      'admin.artistImagesOverrides',
     );
+    expect(BASE_CATALOG).toHaveProperty(['admin.artistImagesOverrides']);
     f.destroy();
   });
 
@@ -481,10 +493,13 @@ describe('AdminComponent (acquisition kill-switch, #235)', () => {
     const box = toggle(f)!;
     expect(box.checked).toBe(false);
     expect(box.disabled).toBe(true);
+    // Raw i18n key in this harness (no real catalog loaded) — same convention
+    // as settings.component.spec.ts / setup.component.spec.ts.
     expect(
       (f.nativeElement as HTMLElement).querySelector('[data-testid="acquisition-env-locked"]')
         ?.textContent,
-    ).toContain('NICOTIND_ACQUISITION');
+    ).toContain('admin.acquisitionEnvLocked');
+    expect(BASE_CATALOG).toHaveProperty(['admin.acquisitionEnvLocked']);
 
     box.dispatchEvent(new Event('change'));
     expect(setAcquisition).not.toHaveBeenCalled();
@@ -584,7 +599,10 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
   it('syncLibrary calls resyncLibrary and reports success', async () => {
     const c = TestBed.createComponent(AdminComponent).componentInstance;
     await c.syncLibrary();
-    expect(c.syncMsg()).toBe('Library rescan complete.');
+    // Raw i18n key in this harness (no real catalog loaded) — same convention
+    // as settings.component.spec.ts / setup.component.spec.ts.
+    expect(c.syncMsg()).toBe('admin.syncComplete');
+    expect(BASE_CATALOG).toHaveProperty(['admin.syncComplete']);
   });
 
   it('syncLibrary surfaces an error message on failure', async () => {
