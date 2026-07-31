@@ -337,6 +337,19 @@ reload is cheap the same way). Both objects are decoupled from FastAPI/asyncio a
 injectable clock, mirroring `cuda_device_count`'s injectable-loader style, so
 `tests/test_idle_release.py` drives the idle→drop→reload cycle without real sleeps.
 
+**Verified on `kpc` (prod), and it exposed a real bug**: the first deployment (`docker inspect`)
+showed `/health`'s Docker healthcheck polling every 30s, and after the container had been idle for
+well over `ANALYSIS_IDLE_RELEASE_SEC` (900s default) with zero `/analyze` calls, `nvidia-smi` showed
+GPU memory still low but `/health` kept reporting `loaded: true` with **no** "registry idle-released"
+log line ever appearing. Root cause: `/health` read the registry via `holder.get()`, and `get()`
+touches the idle guard on every call — so the healthcheck itself, at 30s intervals, kept resetting
+the idle timer forever, silently defeating the entire mechanism in exactly the deployment it was
+built for. Fixed by adding `RegistryHolder.peek()` — reads the current value without touching the
+guard or reloading a dropped one — and switching `/health` to it; `get()` (which legitimately should
+count as activity) stays reserved for `/analyze`. `test_frequent_healthchecks_do_not_prevent_idle_release`
+(`test_api.py`) pins this down: polling `/health` every 3s across a 10s idle window must still let
+`release_if_idle()` fire.
+
 A second, **unverified-on-hardware** lever also ships as an opt-in: `TF_GPU_ALLOCATOR=cuda_malloc_async`
 (TF's stream-ordered allocator, which — unlike the default BFC allocator under
 `TF_FORCE_GPU_ALLOW_GROWTH`— *can* return pages to the driver) is documented as a commented-out

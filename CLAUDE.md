@@ -480,9 +480,13 @@ Add detail there, not here.
   background asyncio task checks every 30s) and reload it lazily on the next `/analyze` call — both
   objects take an injectable clock (mirrors `cuda_device_count`'s injectable-loader style) so
   `test_idle_release.py` drives idle→drop→reload with no real sleeps; `/health` gained a `loaded`
-  field. A second, **unverified-on-hardware** lever — `TF_GPU_ALLOCATOR=cuda_malloc_async` — ships as
-  a commented-out `docker-compose.gpu.yml` override, not baked into the image, pending a `kpc`
-  measurement. →
+  field. **Verified on `kpc` and it never actually released**: `/health`'s Docker healthcheck polls
+  every 30s and read the registry via `get()`, which touches the idle guard on every call — so the
+  healthcheck alone kept resetting the idle timer forever. Fixed with `RegistryHolder.peek()` (reads
+  without touching the guard or reloading), now used by `/health`; `get()` stays reserved for
+  `/analyze`, the one caller that should count as activity. A second, **unverified-on-hardware**
+  lever — `TF_GPU_ALLOCATOR=cuda_malloc_async` — ships as a commented-out `docker-compose.gpu.yml`
+  override, not baked into the image, pending a `kpc` measurement. →
   [docs/audio-ml-enrichment.md](docs/audio-ml-enrichment.md) "Measured GPU behaviour". A `paused` flag (+ `ProcessingPhase 'paused'`) is the temporary
   runtime halt distinct from `enabled: false`: it skips window/background enrichment but **still
   clears quarantine** (a pause must never leave new music invisible) and `runNow()` overrides it.

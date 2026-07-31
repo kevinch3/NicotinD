@@ -144,7 +144,10 @@ def create_app(
                 "rhythm": rhythm_ok,
                 "loaded": False,
             }
-        reg = holder.get()
+        # peek(), not get(): a health check must not count as activity, or the
+        # frequent Docker healthcheck poll (every 30s) keeps the registry "in
+        # use" forever and idle-release never fires (issue #224 follow-up).
+        reg = holder.peek()
         assert reg is not None
         return {
             "status": "ok",

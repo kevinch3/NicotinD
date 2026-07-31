@@ -105,3 +105,45 @@ def test_holder_set_replaces_the_value_directly() -> None:
     holder.set("loaded-at-boot")
     assert holder.is_loaded() is True
     assert holder.get() == "loaded-at-boot"
+
+
+def test_holder_peek_does_not_touch_the_guard() -> None:
+    """Regression (verified on prod host `kpc`): Docker's healthcheck polls
+    `/health` every 30s. `/health` used to call `get()`, which touches the
+    guard on every call — so with `ANALYSIS_IDLE_RELEASE_SEC=900` (the
+    default), the healthcheck alone kept the registry "in use" forever and it
+    never idle-released in production. `peek()` must not reset the timer."""
+    clock = FakeClock()
+    guard = IdleReleaseGuard(10.0, now=clock)
+    holder = RegistryHolder(initial="reg", factory=lambda: "reg", guard=guard)
+
+    # Simulate a healthcheck hitting /health every 3 "seconds" via peek() —
+    # far more often than the 10s idle window — right up to the boundary.
+    for _ in range(3):
+        clock.advance(3.0)
+        assert holder.peek() == "reg"
+
+    clock.advance(1.0)  # now at 10.0 total: past the idle window
+    assert holder.release_if_idle() is True
+
+
+def test_holder_peek_does_not_reload_an_idle_dropped_registry() -> None:
+    """Unlike `get()`, `peek()` must not resurrect a released registry — a
+    health check reading `None` back is correct ("unavailable"); reloading it
+    just to answer a health probe would undo the idle release immediately."""
+    clock = FakeClock()
+    guard = IdleReleaseGuard(10.0, now=clock)
+    calls = 0
+
+    def factory() -> str:
+        nonlocal calls
+        calls += 1
+        return "reloaded"
+
+    holder = RegistryHolder(initial="reg", factory=factory, guard=guard)
+    clock.advance(10.0)
+    assert holder.release_if_idle() is True
+
+    assert holder.peek() is None
+    assert calls == 0
+    assert holder.is_loaded() is False

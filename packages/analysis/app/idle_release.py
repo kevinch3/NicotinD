@@ -85,6 +85,18 @@ class RegistryHolder(Generic[T]):
     def is_loaded(self) -> bool:
         return self._value is not None
 
+    def peek(self) -> T | None:
+        """Read the current value WITHOUT touching the guard or reloading.
+
+        `/health` needs the loaded registry's `device()`/`versions()` but must
+        not count as activity — a Docker healthcheck polls `/health` every 30s
+        (measured on prod host `kpc`), far more often than any realistic
+        `idle_release_sec`. `get()` touching the guard on every call meant the
+        registry never went idle in practice: the healthcheck itself kept
+        resetting the idle timer forever, silently defeating the whole
+        mechanism in the exact deployment this was built for."""
+        return self._value
+
     def set(self, value: T | None) -> None:
         """Replace the held value directly — used for the initial boot load,
         which happens outside the drop/reload cycle this class otherwise owns."""
