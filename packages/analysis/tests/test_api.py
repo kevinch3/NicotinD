@@ -174,3 +174,36 @@ def test_idle_release_drops_and_reloads_the_registry(tmp_path: Path) -> None:
     assert reloaded.analyzed == [str(tmp_path / "song.opus")]
     assert original.analyzed == []
     assert client.get("/health").json()["loaded"] is True
+
+
+def test_frequent_healthchecks_do_not_prevent_idle_release(tmp_path: Path) -> None:
+    """Regression, verified on prod host `kpc`: Docker's healthcheck polls
+    `/health` every 30s (`docker inspect` confirmed), far more often than
+    ANALYSIS_IDLE_RELEASE_SEC's 900s default. `/health` used to read the
+    registry via `get()`, which touches the idle guard on every call — so the
+    healthcheck alone reset the idle timer every 30s and the registry never
+    went idle in production, silently defeating the whole mechanism. `/health`
+    must use `peek()` instead, which does not count as activity."""
+    from app.main import create_app
+
+    original = FakeRegistry()
+    clock = {"t": 0.0}
+    app = create_app(
+        registry=original,
+        music_dir=str(tmp_path),
+        registry_factory=lambda: FakeRegistry(),
+        idle_release_sec=10.0,
+        now=lambda: clock["t"],
+    )
+    client = TestClient(app)
+    holder = app.state.registry_holder
+
+    # Poll /health every 3s — well under the 10s idle window — for longer
+    # than the window itself. A `get()`-based /health would keep touching the
+    # guard and never go idle; `peek()` must leave it untouched.
+    for _ in range(5):
+        clock["t"] += 3.0
+        assert client.get("/health").json()["loaded"] is True
+
+    assert holder.release_if_idle() is True
+    assert client.get("/health").json()["loaded"] is False
