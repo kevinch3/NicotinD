@@ -1166,8 +1166,12 @@ setup / share render before any user exists. Converted so far: login page + Sett
 shell (navs/offline) + library tabs/sort + home vibes + the **Acquire page** primary copy
 (`acquire.*`) + **Player/Now-Playing/Settings** (`player.*`/`nowPlaying.*`/`settings.*` — the phase-2
 high-traffic slice, incl. the first TS-side `this.i18n.t(key, params)` call sites for toasts/dialogs
-built outside a template); **es.json is at full parity** with the base. Extraction is a phased pass
-(the deep Advanced/folder-browser strings on Acquire, plus admin/onboarding, are later slices). **API
+built outside a template) + **Devices/remote-access settings** (issue #338, `devices.*` — the
+pairing panel, paired-devices list, and the admin Tailscale Funnel state machine; a shared
+`common.backToSettings` key was added for the "← Settings" back-link reused by still-untranslated
+`agent-tokens`/`plugins` pages); **es.json is at full parity** with the base. Extraction is a phased
+pass (Admin panel, onboarding/setup wizard, and the deep Advanced/folder-browser strings on Acquire
+are the remaining long-tail slices — issue #338). **API
 error `code` fields (issue #337, client mapping started)**: `NicotinDError`'s existing `code` extended
 onto the inline `c.json({ error })` responses in `routes/auth.ts`/`devices.ts`/`settings.ts`/
 `agent-tokens.ts` — additive `{ error, code }`, the ~24 other route files untouched. The web client

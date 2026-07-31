@@ -1,10 +1,10 @@
 <div class="max-w-3xl mx-auto px-4 py-8">
   <div class="flex items-center gap-3 mb-1">
-    <a routerLink="/settings" class="text-theme-muted hover:text-theme-secondary text-sm">&larr; Settings</a>
+    <a routerLink="/settings" class="text-theme-muted hover:text-theme-secondary text-sm">{{ 'common.backToSettings' | t }}</a>
   </div>
-  <h1 class="text-2xl font-bold text-theme-primary mb-1">Devices</h1>
+  <h1 class="text-2xl font-bold text-theme-primary mb-1">{{ 'devices.title' | t }}</h1>
   <p class="text-sm text-theme-muted mb-8">
-    Link your phone by scanning the QR code — it connects and signs in as you in one step.
+    {{ 'devices.subtitle' | t }}
   </p>
 
   @if (error()) {
@@ -14,15 +14,14 @@
   @if (auth.isAdmin() && remote(); as r) {
     <section class="mb-10">
       <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
-        Remote access
+        {{ 'devices.remoteAccess' | t }}
       </h2>
       <div class="p-4 rounded-xl bg-theme-surface border border-theme">
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
-            <p class="font-medium text-theme-primary">Reachable from anywhere</p>
+            <p class="font-medium text-theme-primary">{{ 'devices.remoteAccessReachable' | t }}</p>
             <p class="text-sm text-theme-muted mt-1">
-              Publishes this server at a private-by-obscurity public HTTPS address via Tailscale
-              Funnel. Your login is the gate — use a strong password.
+              {{ 'devices.remoteAccessHint' | t }}
             </p>
           </div>
           <button
@@ -32,7 +31,7 @@
             class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition disabled:opacity-50"
             [class]="r.enabled ? 'bg-theme-accent text-white' : 'bg-theme-elevated text-theme-secondary'"
           >
-            {{ r.enabled ? 'On' : 'Off' }}
+            {{ (r.enabled ? 'devices.on' : 'devices.off') | t }}
           </button>
         </div>
 
@@ -40,28 +39,27 @@
           @switch (r.state.kind) {
             @case ('not-installed') {
               <p class="text-theme-muted">
-                Tailscale isn't installed on this machine.
+                {{ 'devices.tailscaleNotInstalled' | t }}
                 <a href="https://tailscale.com/download" target="_blank" rel="noopener"
-                   class="text-theme-accent hover:underline">Install Tailscale</a>
-                (free), then come back here.
+                   class="text-theme-accent hover:underline">{{ 'devices.installTailscale' | t }}</a>
+                {{ 'devices.installTailscaleSuffix' | t }}
               </p>
             }
             @case ('needs-login') {
               <p class="text-theme-muted">
-                Tailscale is installed but not signed in.
+                {{ 'devices.tailscaleNeedsLogin' | t }}
                 @if (r.state.authUrl) {
                   <a [href]="r.state.authUrl" target="_blank" rel="noopener"
-                     class="text-theme-accent hover:underline">Sign in to Tailscale</a>
+                     class="text-theme-accent hover:underline">{{ 'devices.signInTailscale' | t }}</a>
                 } @else {
-                  Open the Tailscale app and sign in, then toggle remote access again.
+                  {{ 'devices.tailscaleSignInManual' | t }}
                 }
               </p>
             }
             @case ('needs-operator') {
               <div class="text-theme-muted">
                 <p>
-                  One-time setup: Tailscale needs your permission to let NicotinD manage it
-                  without root. Run this once in a terminal, then retry:
+                  {{ 'devices.tailscaleNeedsOperator' | t }}
                 </p>
                 <div class="mt-2 flex items-center gap-2 flex-wrap">
                   <code
@@ -73,7 +71,7 @@
                     class="text-theme-accent hover:underline text-xs"
                     data-testid="operator-copy"
                   >
-                    {{ copied() ? 'Copied' : 'Copy' }}
+                    {{ (copied() ? 'devices.copied' : 'devices.copy') | t }}
                   </button>
                   <button
                     (click)="retryRemoteAccess()"
@@ -81,30 +79,29 @@
                     class="text-theme-accent hover:underline text-xs disabled:opacity-50"
                     data-testid="remote-access-retry"
                   >
-                    Retry
+                    {{ 'devices.retry' | t }}
                   </button>
                 </div>
               </div>
             }
             @case ('funnel-not-enabled') {
               <p class="text-theme-muted">
-                One more step: Tailscale needs your approval to publish this server.
+                {{ 'devices.funnelNotEnabled' | t }}
                 @if (r.state.enableUrl) {
                   <a [href]="r.state.enableUrl" target="_blank" rel="noopener"
-                     class="text-theme-accent hover:underline">Approve Funnel</a>, then toggle
-                  remote access off and on.
+                     class="text-theme-accent hover:underline">{{ 'devices.approveFunnel' | t }}</a>{{ 'devices.approveFunnelSuffix' | t }}
                 } @else {
-                  Approve Funnel in the Tailscale admin console, then toggle remote access again.
+                  {{ 'devices.approveFunnelManual' | t }}
                 }
               </p>
             }
             @case ('active') {
               <p class="status-done inline-block px-2 py-0.5 rounded">
-                Live at <span class="font-mono">{{ r.state.publicUrl }}</span>
+                {{ 'devices.remoteAccessLiveAt' | t }} <span class="font-mono">{{ r.state.publicUrl }}</span>
               </p>
             }
             @case ('inactive') {
-              <p class="text-theme-muted">Remote access is off — pairing works on this network only.</p>
+              <p class="text-theme-muted">{{ 'devices.remoteAccessInactive' | t }}</p>
             }
             @case ('error') {
               <p class="text-status-error">{{ r.state.detail }}</p>
@@ -124,7 +121,7 @@
         <rect x="3" y="14" width="7" height="7" rx="1"/>
         <path d="M14 14h3v3h-3zM21 14v.01M14 21v.01M17.5 17.5h3.5v3.5"/>
       </svg>
-      {{ onNativeApp ? 'Link another device' : 'Link a device' }}
+      {{ (onNativeApp ? 'devices.linkAnotherDevice' : 'devices.linkDevice') | t }}
     </h2>
     @if (!linkPanelOpen()) {
       <button
@@ -132,7 +129,7 @@
         data-testid="link-device-expand"
         class="w-full p-4 rounded-xl bg-theme-surface border border-theme text-left text-sm text-theme-secondary hover:border-zinc-500 transition"
       >
-        Show a QR code here for another phone or browser to scan.
+        {{ 'devices.showQrHint' | t }}
       </button>
     } @else {
     <div class="p-4 rounded-xl bg-theme-surface border border-theme">
@@ -142,7 +139,7 @@
             <div class="relative shrink-0">
               <img
                 [src]="qr"
-                alt="Pairing QR code"
+                [alt]="'devices.pairingQrAlt' | t"
                 data-testid="link-device-qr"
                 class="w-60 h-60 rounded-lg bg-white p-2"
                 [class.opacity-20]="secondsLeft() === 0"
@@ -154,45 +151,42 @@
                   data-testid="link-device-qr-expired"
                   class="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-lg text-sm font-medium text-theme-primary"
                 >
-                  <span>Code expired</span>
-                  <span class="text-theme-accent underline">Generate a new one</span>
+                  <span>{{ 'devices.codeExpired' | t }}</span>
+                  <span class="text-theme-accent underline">{{ 'devices.generateNewOne' | t }}</span>
                 </button>
               }
             </div>
           } @else {
             <div class="w-60 h-60 rounded-lg bg-theme-elevated flex items-center justify-center text-center text-sm text-theme-muted p-6 shrink-0"
                  data-testid="link-device-qr-unavailable">
-              This server has no address a phone can reach yet — enable remote access above.
+              {{ 'devices.noReachableAddress' | t }}
             </div>
           }
           <div class="min-w-0 text-sm">
             <p class="text-theme-secondary mb-2">
-              Scan with {{ onNativeApp ? "the other phone's" : "your phone's" }}
-              <span class="font-medium">camera</span> — or in the NicotinD app via
-              <span class="font-medium">Scan QR</span> on the server screen. Either way it connects
-              and signs in as you in one step.
+              {{ (onNativeApp ? 'devices.scanInstructionsOther' : 'devices.scanInstructionsYour') | t }}
             </p>
-            <p class="text-theme-muted mb-1">Or enter manually:</p>
+            <p class="text-theme-muted mb-1">{{ 'devices.orEnterManually' | t }}</p>
             @if (p.urls.length > 0) {
               <p class="font-mono text-theme-primary break-all">{{ p.urls[0] }}</p>
             }
             <p class="text-theme-muted mt-2">
-              Code:
+              {{ 'devices.code' | t }}
               <span class="font-mono text-lg tracking-widest text-theme-primary" data-testid="pairing-code">{{ p.code }}</span>
             </p>
             <p class="text-xs text-theme-muted mt-3">
               @if (secondsLeft() > 0) {
-                Expires in {{ secondsLeft() }}s ·
+                {{ 'devices.expiresIn' | t: { seconds: secondsLeft() } }}
               } @else {
-                Expired ·
+                {{ 'devices.expired' | t }}
               }
               <button (click)="regenerate()" data-testid="pairing-regenerate"
-                      class="text-theme-accent hover:underline">Generate new code</button>
+                      class="text-theme-accent hover:underline">{{ 'devices.generateNewCode' | t }}</button>
             </p>
           </div>
         </div>
       } @else {
-        <p class="text-sm text-theme-muted">Creating pairing code…</p>
+        <p class="text-sm text-theme-muted">{{ 'devices.creatingCode' | t }}</p>
       }
     </div>
     }
@@ -200,7 +194,7 @@
 
   <section>
     <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
-      Paired devices
+      {{ 'devices.pairedDevices' | t }}
     </h2>
     @for (d of devices(); track d.id) {
       <div class="mb-2 p-4 rounded-xl bg-theme-surface border border-theme flex items-center justify-between gap-4"
@@ -209,11 +203,11 @@
           <p class="font-medium text-theme-primary">
             {{ d.name }}
             @if (d.current) {
-              <span class="ml-2 text-xs px-1.5 py-0.5 rounded bg-theme-elevated text-theme-muted">This device</span>
+              <span class="ml-2 text-xs px-1.5 py-0.5 rounded bg-theme-elevated text-theme-muted">{{ 'devices.thisDevice' | t }}</span>
             }
           </p>
           <p class="text-xs text-theme-muted mt-0.5">
-            {{ d.platform }} · linked {{ formatWhen(d.createdAt) }} · last seen {{ formatWhen(d.lastSeenAt) }}
+            {{ 'devices.deviceMeta' | t: { platform: d.platform, linkedAt: formatWhen(d.createdAt), lastSeenAt: formatWhen(d.lastSeenAt) } }}
           </p>
         </div>
         <button
@@ -221,12 +215,12 @@
           data-testid="device-revoke"
           class="shrink-0 text-sm text-status-error hover:underline"
         >
-          Revoke
+          {{ 'devices.revoke' | t }}
         </button>
       </div>
     }
     @if (devices().length === 0) {
-      <p class="text-sm text-theme-muted" data-testid="devices-empty">No paired devices yet.</p>
+      <p class="text-sm text-theme-muted" data-testid="devices-empty">{{ 'devices.noPairedDevices' | t }}</p>
     }
   </section>
 </div>
