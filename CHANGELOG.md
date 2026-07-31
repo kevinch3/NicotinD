@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.288](https://github.com/kevinch3/NicotinD/compare/v0.1.287...v0.1.288) (2026-07-31)
+
+### Features
+
+* **mcp:** merge_artist destructive tool ([5bdfc4c](https://github.com/kevinch3/NicotinD/commit/5bdfc4ca510412d79c2f56854c50b2ce5c7a5094)), closes [#339](https://github.com/kevinch3/NicotinD/issues/339), references [#232](https://github.com/kevinch3/NicotinD/issues/232)
 ## [0.1.287](https://github.com/kevinch3/NicotinD/compare/v0.1.286...v0.1.287) (2026-07-31)
 ## [0.1.286](https://github.com/kevinch3/NicotinD/compare/v0.1.285...v0.1.286) (2026-07-31)
 ## [0.1.285](https://github.com/kevinch3/NicotinD/compare/v0.1.284...v0.1.285) (2026-07-31)
