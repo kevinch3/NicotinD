@@ -518,7 +518,9 @@ Add detail there, not here.
 - **Lyrics (on-demand, plugin-sourced, editable)**: new `metadata` plugin kind + `lyrics` capability
   (LRCLIB first source); stored in `library_lyrics` + file tag, user-editable. The now-playing
   lyrics toggle opens a karaoke-styled panel (synced line highlighting + auto-scroll) with a
-  fullscreen expand button; a centered styled empty state carries an inline Fetch button. Fetch is
+  fullscreen expand button — fullscreen defaults to a current+next-line-only auto-follow view
+  (narrow-screen/TV friendly) with a wheel/touch-gesture browse mode for tap-to-seek; a centered
+  styled empty state carries an inline Fetch button. Fetch is
   **reliable 1-click**: LRCLIB retries transient failures (404 stays no-match) and the route returns
   `502` for a source error vs `null` for a confident miss, so the first click doesn't
   false-negative. **Vocal mute** (`?vocals=off` → server-side ffmpeg center-channel cancellation
