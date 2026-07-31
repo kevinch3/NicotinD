@@ -34,6 +34,7 @@ beforeEach(() => {
   testDb.run('DELETE FROM library_songs');
   testDb.run('DELETE FROM library_albums');
   testDb.run('DELETE FROM audit_log');
+  testDb.run('DELETE FROM library_artist_aliases');
 });
 
 async function rpc(token: string | null, method: string, params?: unknown) {
@@ -193,6 +194,63 @@ describe('MCP endpoint (issue #232)', () => {
     expect(audit.map((a) => a.action)).toContain('album.delete');
   });
 
+  it('tools/list includes merge_artist', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+    const body = (await (await rpc(token, 'tools/list')).json()) as {
+      result: { tools: Array<{ name: string }> };
+    };
+    expect(body.result.tools.map((t) => t.name)).toContain('merge_artist');
+  });
+
+  it('merge_artist mints an alias, audit-logs it, and reports the target artist id', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'merge_artist',
+        arguments: { rawName: 'Ke Personajes', mergeInto: 'Ke Personaje', confirm: true },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+
+    expect(body.result.content[0]!.text).toContain('"kind":"merged"');
+    const alias = testDb
+      .query<{ canonical_name: string }, []>(`SELECT canonical_name FROM library_artist_aliases`)
+      .get();
+    expect(alias?.canonical_name).toBe('Ke Personaje');
+    const audit = testDb.query('SELECT action, detail FROM audit_log').all() as Array<{
+      action: string;
+      detail: string;
+    }>;
+    const entry = audit.find((a) => a.action === 'artist.identity');
+    expect(entry?.detail).toContain('merge → Ke Personaje');
+  });
+
+  it('refuses merge_artist without confirm:true, even with a curate token', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'merge_artist',
+        arguments: { rawName: 'A', mergeInto: 'B' },
+      })
+    ).json()) as { result: { isError: boolean; content: Array<{ text: string }> } };
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0]!.text).toContain('confirm');
+    expect(testDb.query('SELECT alias_norm FROM library_artist_aliases').get()).toBeNull();
+  });
+
+  it('refuses merge_artist for a read-only token even with confirm:true', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:read' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'merge_artist',
+        arguments: { rawName: 'A', mergeInto: 'B', confirm: true },
+      })
+    ).json()) as { result: { isError: boolean; content: Array<{ text: string }> } };
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0]!.text).toContain('read-only');
+    expect(testDb.query('SELECT alias_norm FROM library_artist_aliases').get()).toBeNull();
+  });
+
   it('unknown method → JSON-RPC -32601', async () => {
     const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
     const body = (await (await rpc(token, 'nonsense/method')).json()) as {
@@ -207,6 +265,7 @@ describe('dispatchTool guards', () => {
     db: testDb,
     identity: { tokenId: 't', userId: 'u1', scope },
     deletion: { musicDir, shareRescan: new ShareRescanScheduler(async () => {}) },
+    artistIdentity: { dataDir: undefined, runSync: undefined },
   });
 
   it('an unknown tool returns an error result, not a throw', async () => {

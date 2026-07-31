@@ -58,7 +58,7 @@ dependency discipline and the small tool surface.
 in the blanket-auth list. Each POST reads `Authorization: Bearer nca_…`, verifies
 it, and runs capped at refiner. An invalid/revoked token → 401.
 
-## Tool surface (read + safe-curation + destructive delete)
+## Tool surface (read + safe-curation + destructive writes)
 
 `MCP_TOOLS` is the registry; each tool declares `access: 'read' | 'curate'` and
 an optional `destructive` flag. `checkToolAccess` (pure, unit-tested) is the
@@ -74,23 +74,42 @@ applies it, then runs the handler; every write is audit-logged.
 | `set_song_licence` | curate | the same UPDATE + `song.licence` audit as the route |
 | `delete_song` | curate, **destructive** | `services/library-deletion.ts` `deleteOne` + `song.delete` audit |
 | `delete_album` | curate, **destructive** | `services/library-deletion.ts` `deleteAlbum` + `album.delete` audit |
+| `merge_artist` | curate, **destructive** | `services/artist-identity-mutate.ts` `mutateArtistIdentity` (merge mode) + `artist.identity` audit |
 
-### Destructive deletion: the extraction that unblocked it
+### Destructive writes: the extraction that unblocked each one
 
 The delete path used to be inline in `routes/library.ts` (folder-first `rmSync`
 + row delete) — fronting that to an LLM safely needed the logic **extracted
 into a shared, tested service first**, which is now `services/library-deletion.ts`
 (`deleteOne`, `deleteAlbum`, plus the path-resolution/fuzzy-match/cleanup
 helpers they need). Both the HTTP routes (`DELETE /albums/:id`, `DELETE
-/songs/:id`, `POST /songs/bulk-delete`) and the two MCP tools above call the
+/songs/:id`, `POST /songs/bulk-delete`) and the two MCP delete tools call the
 **same** functions — `db`, `musicDir`, and a `ShareRescanScheduler` instance are
 explicit params rather than closures, so each caller wires its own dependencies
-(`mcpRoutes(musicDir, slskdRef)` constructs its own debounced scheduler,
-mirroring the one `libraryRoutes` already builds). `delete_album`/`delete_song`
-reuse the exact `recordAudit` action names (`album.delete`, `song.delete`) the
-HTTP routes use, with a `(via MCP agent)` suffix on the detail string so an
-audit-log reader can tell the two apart. Merge tools remain unbuilt — merge has
-no equivalent shared service yet.
+(`mcpRoutes(musicDir, slskdRef, dataDir, runSync)` constructs its own debounced
+scheduler, mirroring the one `libraryRoutes` already builds). `delete_album`/
+`delete_song` reuse the exact `recordAudit` action names (`album.delete`,
+`song.delete`) the HTTP routes use, with a `(via MCP agent)` suffix on the
+detail string so an audit-log reader can tell the two apart.
+
+**`merge_artist` (issue #339) got the same treatment.** The rename/merge/
+one-act/split decision logic that used to live inline in
+`POST /api/library/artists/identity` is now `services/artist-identity-mutate.ts`
+`mutateArtistIdentity(db, { dataDir }, body)` — it mints the
+`library_artist_aliases` row (or the `library_artist_identity` row for
+single/split) and carries curation (`carryArtistCuration`) to the new artist id,
+but deliberately does **not** resync the library or `recordAudit` itself: those
+stay caller-side, same as `deleteOne`/`deleteAlbum`, since the HTTP route
+formats a richer audit detail string than the MCP tool needs. The MCP tool
+surface is narrower than the route's: only `merge_artist` (mergeInto) shipped —
+rename/single/split are exposed to the curator UI but not (yet) to an agent,
+since a merge is the one case with an unambiguous, single, LLM-describable
+target name; a split's member list or a same-normalized rename's intent is
+harder to hand to a tool call safely. `artistIdentity: { dataDir, runSync }` on
+`McpToolContext` is separate from `deletion` — a different HTTP route wires
+these in `index.ts` (`expandedDataDir`, `runSyncAndCurate`), so `mcpRoutes` now
+takes both pairs of deps explicitly rather than growing an implicit shared
+context object.
 
 ## Settings UI
 
@@ -104,8 +123,11 @@ server's `requireCurator` gate on the same routes.
 
 ## Left as follow-ups
 
-- **Merge tools** — `merge_artist` needs its own shared-service extraction the
-  way deletion got one; not started.
+- **Rename/single/split artist-identity tools** — `merge_artist` (issue #339)
+  shipped; the route's other three decision kinds (`rename`, `single`,
+  `split`) are exposed to `services/artist-identity-mutate.ts` already but have
+  no MCP tool wrapping them yet, since a merge is the one case with an
+  unambiguous single target name to hand an LLM.
 - **Acquisition tools** (`add_to_watchlist` / `acquire_album`) — the mechanism
   (`destructive` flag + `confirm` gate + `recordAudit` + the refiner cap) is
   proven by the delete tools above, so adding these is the same shape of work.

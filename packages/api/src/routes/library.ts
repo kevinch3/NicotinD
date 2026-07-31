@@ -45,9 +45,8 @@ import {
 } from '../services/artist-image-override.js';
 import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './streaming.js';
 import { albumGenreDistribution, artistGenreDistribution } from '../services/genre-distribution.js';
-import { upsertArtistIdentity, upsertArtistAlias } from '../services/artist-identity-store.js';
+import { mutateArtistIdentity } from '../services/artist-identity-mutate.js';
 import { recordAudit } from '../services/audit-log.js';
-import { artistIdFor } from '../services/library-scanner.js';
 import { appendSongGenres, loadGenreSets, setSongGenres } from '../services/genre-split.js';
 import {
   applyGenreOverride,
@@ -82,7 +81,6 @@ import {
   songFilterWheres,
 } from '../services/library-filter-sql.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../services/musicbrainz-client.js';
-import { carryArtistCuration } from '../services/artist-curation-carry.js';
 
 const log = createLogger('library');
 
@@ -1456,8 +1454,6 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         rename?: string;
       }>()
       .catch(() => null);
-    const rawName = body?.rawName?.trim();
-    if (!rawName) return c.json({ error: 'rawName required' }, 400);
     const db = getDatabase();
 
     // The artist the caller should land on after the resync, and what kind of
@@ -1466,86 +1462,8 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     // a split has no single destination). `artistId` is the deterministic id the
     // scanner will mint for the resulting name, since the web bundle can't run
     // `artistIdFor` itself. See docs/library-scanner.md "Admin identity fix".
-    let kind: 'renamed' | 'merged' | 'single' | 'split';
-    let resultArtistId: string | null;
-
-    if (body?.rename != null) {
-      // Rename this one artist to a corrected spelling/name. Unlike `mergeInto`
-      // this deliberately ALLOWS an equal-normalized target — a diacritic/case fix
-      // ("Los Áutenticos Decadentes" → "Los Auténticos Decadentes") keeps the same
-      // artist id and just corrects the display name via `aliasFix` on rescan. A
-      // different-normalized rename mints a new id (a full rename). Same alias write.
-      const rename = body.rename.trim();
-      if (!rename || rename === rawName) {
-        return c.json({ error: 'rename must be a non-empty, different name' }, 400);
-      }
-      upsertArtistAlias(db, {
-        aliasNorm: normalizeArtistForGrouping(rawName),
-        canonicalName: rename,
-        source: 'user',
-      });
-      // Whether the target is a new name or normalizes onto an existing artist
-      // (effectively a merge), the resulting page is the same: artistIdFor(rename).
-      kind = 'renamed';
-      resultArtistId = artistIdFor(rename);
-    } else if (body?.mergeInto != null) {
-      const mergeInto = body.mergeInto.trim();
-      if (
-        !mergeInto ||
-        normalizeArtistForGrouping(mergeInto) === normalizeArtistForGrouping(rawName)
-      ) {
-        return c.json({ error: 'mergeInto must be a different artist name' }, 400);
-      }
-      upsertArtistAlias(db, {
-        aliasNorm: normalizeArtistForGrouping(rawName),
-        canonicalName: mergeInto,
-        source: 'user',
-      });
-      kind = 'merged';
-      resultArtistId = artistIdFor(mergeInto);
-    } else if (body?.decision === 'single') {
-      upsertArtistIdentity(db, {
-        artistKey: artistIdFor(rawName),
-        rawName,
-        decision: 'single',
-        source: 'user',
-      });
-      kind = 'single';
-      resultArtistId = artistIdFor(rawName);
-    } else if (body?.decision === 'split') {
-      const members = (body.members ?? []).map((m) => m.trim()).filter(Boolean);
-      if (members.length < 2) {
-        return c.json({ error: 'split requires at least 2 member names' }, 400);
-      }
-      upsertArtistIdentity(db, {
-        artistKey: artistIdFor(rawName),
-        rawName,
-        decision: 'split',
-        members,
-        source: 'user',
-      });
-      // The compound is hidden after a split; there's no single artist to land on.
-      kind = 'split';
-      resultArtistId = null;
-    } else {
-      return c.json({ error: 'decision (single|split), mergeInto, or rename required' }, 400);
-    }
-
-    // A rename/merge re-mints the artist id, and every artist-scoped side table
-    // is keyed on the old one with no FK to notice — so the curator's portrait,
-    // uploaded image, bio and genre decision were silently detached by the very
-    // action meant to tidy their library (issue #305; prod had 88 dead artwork
-    // rows and 2 orphaned uploads). Carry them BEFORE the rescan re-buckets, and
-    // never clobber whatever the destination artist already has.
-    if (resultArtistId) {
-      const fromId = artistIdFor(rawName);
-      carryArtistCuration(db, dataDir, {
-        fromId,
-        toId: resultArtistId,
-        fromKey: normalizeArtistForGrouping(rawName),
-        toKey: normalizeArtistForGrouping(body?.rename ?? body?.mergeInto ?? rawName),
-      });
-    }
+    const result = mutateArtistIdentity(db, { dataDir }, body ?? {});
+    if (!result.ok) return c.json({ error: result.error }, result.status);
 
     // Re-bucket synchronously so the caller sees the change immediately (the UI
     // shows a spinner meanwhile). scan-cache skips unchanged files, so a no-op
@@ -1553,14 +1471,19 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (runSync) await runSync();
     recordAudit(db, c.get('user'), 'artist.identity', {
       targetKind: 'artist',
-      targetId: rawName,
+      targetId: body?.rawName?.trim() ?? '',
       detail: body?.rename
         ? `rename → ${body.rename.trim()}`
         : body?.mergeInto
           ? `merge → ${body.mergeInto.trim()}`
           : (body?.decision ?? ''),
     });
-    return c.json({ ok: true, resynced: Boolean(runSync), kind, artistId: resultArtistId });
+    return c.json({
+      ok: true,
+      resynced: Boolean(runSync),
+      kind: result.kind,
+      artistId: result.artistId,
+    });
   });
 
   // Artist-level genre override (issue #187 A3). This is the highest-leverage
