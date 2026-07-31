@@ -600,12 +600,18 @@ Add detail there, not here.
   with the **agent token, not the JWT**. `checkToolAccess` (pure, tested) is the guard: a `curate`
   tool needs the `:curate` scope, a `destructive` tool needs `args.confirm === true`; `dispatchTool`
   applies it and every write is `recordAudit`-ed. **Tools = read + safe-curation + destructive
-  delete** (`search_library`/`get_artist`/`get_album_tracks`/`set_song_licence`/`delete_song`/
-  `delete_album`) — deletion was inline `rmSync` in routes; it is now `services/library-deletion.ts`
-  (`deleteOne`/`deleteAlbum`, `db`/`musicDir`/`ShareRescanScheduler` as explicit params, not
-  closures), the **one** implementation both the HTTP delete routes and the two MCP tools call, so
-  wiring `rmSync` to an agent never became a second copy. Merge tools remain unbuilt (no shared
-  service yet). → [docs/mcp-agent.md](docs/mcp-agent.md)
+  writes** (`search_library`/`get_artist`/`get_album_tracks`/`set_song_licence`/`delete_song`/
+  `delete_album`/`merge_artist`) — deletion was inline `rmSync` in routes; it is now
+  `services/library-deletion.ts` (`deleteOne`/`deleteAlbum`, `db`/`musicDir`/`ShareRescanScheduler`
+  as explicit params, not closures), the **one** implementation both the HTTP delete routes and the
+  two MCP delete tools call, so wiring `rmSync` to an agent never became a second copy. **`merge_artist`
+  (issue #339) got the same extraction**: the rename/merge/single/split decision logic inline in
+  `POST /artists/identity` is now `services/artist-identity-mutate.ts` `mutateArtistIdentity(db,
+  {dataDir}, body)` — mints the alias/identity row + carries curation, but leaves the resync and
+  `recordAudit` to the caller (route vs. MCP tool), same split as the deletion service. Only the
+  merge mode is exposed as an MCP tool (`mergeInto`, an unambiguous single target name an LLM can
+  supply) — rename/single/split stay curator-UI-only for now. `mcpRoutes(musicDir, slskdRef, dataDir,
+  runSync)` wires both dependency pairs explicitly. → [docs/mcp-agent.md](docs/mcp-agent.md)
 - **Presence tracking (admin-only, ephemeral)**: in-memory `PresenceService` tracks `isConnected` /
   `amountOfDevices` / `amountOfSessions` per user via 60s HTTP heartbeats + stale cleanup; merged
   into `GET /api/admin/users`. → [docs/presence-tracking.md](docs/presence-tracking.md)

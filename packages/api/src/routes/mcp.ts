@@ -9,6 +9,7 @@ import {
 } from '../services/agent-tokens.js';
 import { recordAudit } from '../services/audit-log.js';
 import { deleteAlbum, deleteOne } from '../services/library-deletion.js';
+import { mutateArtistIdentity } from '../services/artist-identity-mutate.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import type { SlskdRef } from '../index.js';
 
@@ -25,14 +26,15 @@ import type { SlskdRef } from '../index.js';
  * tools additionally require an explicit `confirm: true` argument.
  *
  * **v1 tool surface was read + safe-curation only; destructive tools now ship
- * too** (`delete_album`/`delete_song`): the deletion path used to be inline in
- * routes/library.ts (folder-first `rmSync`), extracted into
+ * too** (`delete_album`/`delete_song`/`merge_artist`): the deletion path used
+ * to be inline in routes/library.ts (folder-first `rmSync`), extracted into
  * `services/library-deletion.ts` so both the HTTP routes and this MCP surface
- * call the same tested implementation. Each is `access: 'curate'` +
- * `destructive: true`, so `checkToolAccess` already enforces the
- * refiner-scope + `confirm: true` gate before the handler runs, and each
- * writes the same `recordAudit` action name the HTTP route uses. Merge tools
- * remain unbuilt — merge has no equivalent shared service yet.
+ * call the same tested implementation; the artist rename/merge/split decision
+ * logic (issue #339) got the same treatment into
+ * `services/artist-identity-mutate.ts`. Each destructive tool is
+ * `access: 'curate'` + `destructive: true`, so `checkToolAccess` already
+ * enforces the refiner-scope + `confirm: true` gate before the handler runs,
+ * and each writes the same `recordAudit` action name the HTTP route uses.
  */
 
 export interface McpToolContext {
@@ -40,6 +42,10 @@ export interface McpToolContext {
   identity: AgentIdentity;
   /** Deletion dependencies (issue #232) — musicDir + a debounced share rescan. */
   deletion: { musicDir?: string; shareRescan: ShareRescanScheduler };
+  /** Artist-identity dependencies (issue #339) — dataDir for curation-carry,
+   *  plus a library resync so a merge/rename takes effect immediately, same
+   *  as the HTTP route's `await runSync()`. */
+  artistIdentity: { dataDir?: string; runSync?: () => Promise<void> };
 }
 
 export interface McpTool {
@@ -255,6 +261,43 @@ export const MCP_TOOLS: McpTool[] = [
       });
     },
   },
+  {
+    name: 'merge_artist',
+    description:
+      'Merge one artist (by its current display name) into another, canonical artist name (destructive — re-buckets all their songs under the target name on the next library scan). Requires confirm: true.',
+    access: 'curate',
+    destructive: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        rawName: {
+          type: 'string',
+          description: 'The current display name of the artist to merge away.',
+        },
+        mergeInto: { type: 'string', description: 'The canonical artist name to merge into.' },
+        confirm: { type: 'boolean', description: 'Must be true to proceed.' },
+      },
+      required: ['rawName', 'mergeInto', 'confirm'],
+    },
+    handler: async ({ db, identity, artistIdentity }, args) => {
+      const rawName = str(args.rawName);
+      const mergeInto = str(args.mergeInto);
+      const result = mutateArtistIdentity(db, artistIdentity, { rawName, mergeInto });
+      if (!result.ok) return JSON.stringify({ error: result.error });
+      if (artistIdentity.runSync) await artistIdentity.runSync();
+      recordAudit(
+        db,
+        { sub: identity.userId, username: `agent:${identity.tokenId}` },
+        'artist.identity',
+        {
+          targetKind: 'artist',
+          targetId: rawName,
+          detail: `merge → ${mergeInto} (via MCP agent)`,
+        },
+      );
+      return JSON.stringify({ ok: true, kind: result.kind, artistId: result.artistId });
+    },
+  },
 ];
 
 const TOOL_BY_NAME = new Map(MCP_TOOLS.map((t) => [t.name, t]));
@@ -323,7 +366,12 @@ interface JsonRpcRequest {
 const SERVER_INFO = { name: 'nicotind-mcp', version: '1' };
 const PROTOCOL_VERSION = '2024-11-05';
 
-export function mcpRoutes(musicDir?: string, slskdRef?: SlskdRef) {
+export function mcpRoutes(
+  musicDir?: string,
+  slskdRef?: SlskdRef,
+  dataDir?: string,
+  runSync?: () => Promise<void>,
+) {
   const app = new Hono();
   // Debounced the same way the HTTP delete routes are (share-rescan-scheduler.ts):
   // a burst of MCP deletes triggers one slskd rescan, not one per file.
@@ -374,7 +422,12 @@ export function mcpRoutes(musicDir?: string, slskdRef?: SlskdRef) {
         const name = str(params.name);
         const args = (params.arguments as Record<string, unknown>) ?? {};
         const result = await dispatchTool(
-          { db: getDatabase(), identity, deletion: { musicDir, shareRescan } },
+          {
+            db: getDatabase(),
+            identity,
+            deletion: { musicDir, shareRescan },
+            artistIdentity: { dataDir, runSync },
+          },
           name,
           args,
         );
