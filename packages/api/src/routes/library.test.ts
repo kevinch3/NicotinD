@@ -102,6 +102,27 @@ describe('library routes', () => {
     expect(fsState.has('/home/kevinch3/Music/Artist/Album/song.mp3')).toBe(false);
   });
 
+  it('records an audit log entry on single-song delete (issue #336)', async () => {
+    sharedDb.run(`DELETE FROM audit_log`);
+    seedSong('song-audit', '/home/kevinch3/Music/Artist/Album/audit.mp3');
+    fsState.set('/home/kevinch3/Music/Artist/Album/audit.mp3', true);
+
+    const res = await app.request('/songs/song-audit', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+
+    const rows = sharedDb
+      .query<{ action: string; target_kind: string; target_id: string }, []>(
+        `SELECT action, target_kind, target_id FROM audit_log`,
+      )
+      .all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      action: 'song.delete',
+      target_kind: 'song',
+      target_id: 'song-audit',
+    });
+  });
+
   it('POST /artists/identity writes a user split decision and 200s', async () => {
     const res = await app.request('/artists/identity', {
       method: 'POST',

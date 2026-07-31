@@ -2360,10 +2360,22 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     requireCurator(c);
 
     const db = getDatabase();
-    const result = await deleteOne(db, c.req.param('id'), { musicDir, shareRescan });
+    const id = c.req.param('id');
+    const songRow = db
+      .query<{ artist: string; title: string }, [string]>(
+        `SELECT artist, title FROM library_songs WHERE id = ?`,
+      )
+      .get(id);
+    const result = await deleteOne(db, id, { musicDir, shareRescan });
     if (!result.ok) {
       return c.json({ error: result.error }, (result.status ?? 500) as 400 | 404 | 500);
     }
+
+    recordAudit(db, c.get('user'), 'song.delete', {
+      targetKind: 'song',
+      targetId: id,
+      detail: songRow ? `${songRow.artist} — ${songRow.title}` : undefined,
+    });
 
     if (runSync) void runSync();
 
