@@ -8,6 +8,7 @@ import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { isElectron } from '../../lib/platform';
 import { pickDirectory, setMusicDir } from '../../services/native/native-capabilities';
+import BASE_CATALOG from '../../../../public/i18n/en.json';
 
 vi.mock('../../lib/platform', async (importOriginal) => {
   // Preserve the real exports (isNativePlatform / getCapacitorPlugin are used by
@@ -71,7 +72,11 @@ describe('SetupComponent', () => {
 
   it('shows admin step by default', () => {
     const fixture = setup();
-    expect(fixture.nativeElement.textContent).toContain('Create Admin Account');
+    // The test harness doesn't load a real i18n catalog, so `| t` renders the
+    // raw key — assert that plus catalog membership, per the established
+    // convention (see settings.component.spec.ts).
+    expect(fixture.nativeElement.textContent).toContain('setup.createAdminAccount');
+    expect(BASE_CATALOG).toHaveProperty(['setup.createAdminAccount']);
   });
 
   it('navigates to library step after admin credentials', () => {
@@ -134,17 +139,30 @@ describe('SetupComponent', () => {
     expect(comp.step()).toBe('done');
   });
 
-  it('shows error on API failure', () => {
+  it('shows the server error message on API failure', () => {
     const comp = TestBed.createComponent(SetupComponent).componentInstance;
     (comp as any).adminData = { username: 'admin', password: 'password' };
 
     vi.spyOn(comp['api'], 'completeSetup').mockReturnValue(
-      throwError(() => ({ message: 'Server error' })),
+      throwError(() => ({ error: { error: 'Server error' } })),
     );
 
     comp.handleSoulseekNext();
 
     expect(comp.error()).toBe('Server error');
+  });
+
+  it('falls back to the translated generic message when the server sends no message', () => {
+    const comp = TestBed.createComponent(SetupComponent).componentInstance;
+    (comp as any).adminData = { username: 'admin', password: 'password' };
+
+    vi.spyOn(comp['api'], 'completeSetup').mockReturnValue(throwError(() => ({})));
+
+    comp.handleSoulseekNext();
+
+    // Raw key in this harness (no real catalog loaded) — same convention as above.
+    expect(comp.error()).toBe('setup.failed');
+    expect(BASE_CATALOG).toHaveProperty(['setup.failed']);
   });
 
   it('toggles lidarr panel visibility', () => {
