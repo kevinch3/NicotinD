@@ -279,22 +279,50 @@ song list built on it (library Songs tab, album/genre/artist/playlist detail pag
 applied**: settings/admin pages (Phase 5, narrower scope — native `<select>`/text-input handling);
 the full keyboard shortcut table (Phase 6) is also still just Space/K.
 
-**Implementation note (circular-import handling)**: `TvNavGroupDirective` and `TvNavItemDirective`
-have a mutual dependency — the group queries for items via `@ContentChildren(TvNavItemDirective)`,
-and items optionally `inject()` their parent group. The directive pair uses `forwardRef()` in the
-`@ContentChildren` decorator to defer the `TvNavItemDirective` reference until first use, so the
-directive is immune to which of the two a consumer imports first (e.g., a consumer importing
-`TrackRowComponent` reaches `TvNavItemDirective` before `TvNavGroupDirective`, and would otherwise
-cause a "query selector wasn't defined" error at JIT-compile time if `forwardRef` weren't used).
+**Items register via DI, never via `@ContentChildren` (the Phase 3 final-review fix)**: an Angular
+content query stops at a component's view boundary — a component's template is a black box to its
+ancestors. Phase 3 put `appTvNavItem` on the title button inside **`TrackRowComponent`'s own
+template** and wrapped `<app-track-row>` with `appTvNavGroup` in five consumer pages
+(album/genre/playlist detail, library-songs, artist-detail Songs), so the group's
+`@ContentChildren` query saw **zero** items on all five. That was worse than a silent no-op:
+`TvNavItemDirective`'s `inject(TvNavGroupDirective, {optional: true})` **does** cross a component
+boundary (DI walks the element-injector tree via TNode ancestry), so each item found the group,
+evaluated `items().indexOf(this) === activeIndex()` as `-1 === 0`, and pinned itself to
+`tabindex="-1"` — actively removing every song title from the keyboard Tab order for **all** users
+on **all** platforms, not just TV.
 
-The fix is one-sided because `TvNavItemDirective`'s `inject(TvNavGroupDirective, {optional: true})` 
-call is inert at module-load time — it only runs later when the directive instantiates — so it never 
-needed `forwardRef` protection. Only `@ContentChildren(TvNavItemDirective, …)`, which evaluates 
-eagerly at JIT-compile time, required it. By accident, `artist-detail.component.ts` imports 
-`AlbumHuntModalComponent` first, which itself imports `TvNavGroupDirective` before `artist-detail`'s 
-path reaches `TrackRowComponent`'s `TvNavItemDirective` import, establishing a safe evaluation order; 
-every other consumer (library-songs, album-detail, genre-detail, playlist-detail) lacked this 
-protection and would have failed without the fix.
+The fix inverts discovery: `TvNavItemDirective` calls `group.registerItem(this)` from its own
+constructor and `unregisterItem` from a `DestroyRef.onDestroy` — using the one lookup that provably
+crosses the boundary. This also removed the whole `forwardRef`/`QueryList`/`ngAfterContentInit`
+apparatus (and with it the circular-import hazard the earlier `forwardRef` in the
+`@ContentChildren` decorator existed to work around — there is no longer an eagerly-evaluated
+decorator argument referencing `TvNavItemDirective`).
+
+**`items()` sorts on read, not on registration** (measured, not assumed): registration order is
+meaningless, because Angular instantiates directives in whatever order the create pass reaches them
+and — critically — **the host element is not yet attached to the document at constructor time**
+(`isConnected === false` for anything inside an `@for`/embedded view or a nested component), so
+`compareDocumentPosition` there returns an arbitrary order. A first attempt that sorted inside
+`registerItem` reversed every group and failed 12 of the directive's 18 existing tests. `items()` is
+therefore a plain function that reads the registration signal (keeping it a reactive dependency for
+`tabIndex`/`effect` consumers) and sorts by `compareDocumentPosition` **on each call** — the
+earliest point at which the DOM is guaranteed live. It also means a pure reorder that adds or
+removes no item is still tracked.
+
+**ARIA**: the group host is `role="grid"` on the `grid` axis and `role="toolbar"` otherwise;
+`aria-orientation` only accepts `horizontal`/`vertical` per the ARIA spec, so it is bound to `null`
+(omitted) on the grid axis rather than emitting an invalid `aria-orientation="grid"`.
+
+**Test-quality note**: the Phase 3 consumer-page specs run with `NO_ERRORS_SCHEMA`, which renders an
+unrecognised attribute into the DOM verbatim — so an assertion that only checks for the *presence*
+of `appTvNavGroup`/`appTvNavItem` passes even if the directives were never imported. That gap is why
+the bug above survived three task reviews. Each of `library`, `artist-detail` and `search` now
+carries at least one **behavioral** test (focus the first item, dispatch a real `ArrowDown`/
+`ArrowRight` `KeyboardEvent`, assert `document.activeElement` moved), and
+`track-row.component.spec.ts` hosts two real `<app-track-row>` elements inside a real group to cover
+the cross-component-boundary case itself — the five consumer page specs cannot, since the JIT
+harness can't bind a nested component's signal inputs (see `src/testing/signal-input.ts`) and they
+stub the rows out.
 
 **Global keyboard shortcuts (Phase 2)**: `KeyboardShortcutsService`
 (`packages/web/src/app/services/keyboard-shortcuts.service.ts`, initialized once from `App`) — so
