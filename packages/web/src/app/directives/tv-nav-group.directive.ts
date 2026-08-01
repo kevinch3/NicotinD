@@ -1,4 +1,4 @@
-import { Directive, Input, effect, signal } from '@angular/core';
+import { DestroyRef, Directive, ElementRef, Input, effect, inject, signal } from '@angular/core';
 import { TvNavItemDirective } from './tv-nav-item.directive';
 import { inferColumnsPerRow } from '../lib/tv-nav-grid';
 
@@ -10,6 +10,18 @@ function byDomOrder(a: TvNavItemDirective, b: TvNavItemDirective): number {
   if (position & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
   if (position & Node.DOCUMENT_POSITION_PRECEDING) return 1;
   return 0;
+}
+
+/** Whether `items` is still sorted by document position — an O(n) adjacent-pair
+ *  scan (n-1 `compareDocumentPosition` calls, no allocation) used to validate a
+ *  memoized sort. Sortedness is transitive under document order, so checking
+ *  consecutive pairs is sufficient: any single element that moved breaks at
+ *  least one adjacency. */
+function isInDomOrder(items: readonly TvNavItemDirective[]): boolean {
+  for (let i = 1; i < items.length; i++) {
+    if (byDomOrder(items[i - 1]!, items[i]!) > 0) return false;
+  }
+  return true;
 }
 
 /**
@@ -78,14 +90,30 @@ export class TvNavGroupDirective {
    *  detached nodes returns an arbitrary order — sorting there reversed every
    *  group in practice.
    *
-   *  The sort is memoized per registration-order array, but ONLY once every
-   *  element is actually in the document; until then the computed order is
-   *  meaningless and must not be cached. That guard is what makes a
-   *  `computed()` unusable here: it would memoize the first (detached, wrong)
-   *  evaluation and hold it until the next registration. */
+   *  The sort is memoized, on two conditions that are both load-bearing:
+   *
+   *  1. The memo is only *stored* once every element is actually in the
+   *     document; until then the computed order is meaningless. This is what
+   *     makes a `computed()` unusable here — it would memoize the first
+   *     (detached, wrong) evaluation and hold it until the next registration.
+   *  2. The memo is only *reused* while the cached array is still in document
+   *     order (`isInDomOrder`, an O(n) adjacent-pair scan). Keying the memo on
+   *     the registration array's identity alone is NOT enough: a **pure
+   *     reorder** — the same item set re-rendered in a new order, e.g. an
+   *     `@for` tracked by a stable id when `ListControlsService.filtered()`
+   *     re-sorts a Library grid from the sort dropdown — moves the views
+   *     without any destroy/create, so no register/unregister fires and the
+   *     identity never changes. Without the check, `items()` returned the
+   *     stale order forever and the roving `tabindex="0"` landed on the wrong
+   *     card. The check costs n-1 `compareDocumentPosition` calls with no
+   *     allocation, versus a full re-sort's n·log n plus a copy, so the
+   *     common (nothing moved) case stays cheap. */
   readonly items = (): readonly TvNavItemDirective[] => {
+    // Read so a DOM-only reorder still invalidates the item `tabIndex`
+    // computeds — see `domVersion`.
+    this.domVersion();
     const raw = this.itemsSignal();
-    if (this.sortedFrom === raw) return this.sorted;
+    if (this.sortedFrom === raw && isInDomOrder(this.sorted)) return this.sorted;
     const next = [...raw].sort(byDomOrder);
     if (next.every((item) => item.nativeElement.isConnected)) {
       this.sortedFrom = raw;
@@ -93,6 +121,13 @@ export class TvNavGroupDirective {
     }
     return next;
   };
+
+  /** Bumped when the group's child list changes. A pure reorder writes to no
+   *  signal this directive owns, so without it the item `tabIndex` computeds
+   *  never re-evaluate and the rendered roving `tabindex="0"` stays on the
+   *  card that used to be first — `items()` returning the right answer is not
+   *  enough when nothing asks it again. */
+  private readonly domVersion = signal(0);
 
   readonly activeIndex = signal(0);
 
@@ -105,6 +140,33 @@ export class TvNavGroupDirective {
         this.activeIndex.set(len - 1);
       }
     });
+    this.watchDomOrder();
+  }
+
+  /** Angular moves views on a pure reorder without touching any signal this
+   *  directive owns, so the only reliable notification is the DOM itself.
+   *
+   *  `childList` **without `subtree`**: a reorder relocates the group's own
+   *  direct children (every current consumer repeats a direct child — an `<a>`
+   *  card, an `<li>`, a `<button>`, an `<app-track-row>`), so this catches all
+   *  of them while ignoring the far noisier churn deeper inside a row (a menu
+   *  opening, a cover-art placeholder swapping for an `<img>`). A future
+   *  consumer that repeats something nested deeper degrades gracefully rather
+   *  than breaking: `items()` still self-heals on read, so navigation stays
+   *  correct and only the rendered `tabindex` could lag.
+   *
+   *  The bump is unconditional rather than guarded on the cached order still
+   *  being stale, because `items()` self-heals and would silently repair the
+   *  cache before this callback runs, hiding the very change it must report. A
+   *  redundant bump is cheap and, without `subtree`, rare: this fires only when
+   *  items are actually added, removed or moved, and an unchanged `tabIndex`
+   *  result writes nothing to the DOM. */
+  private watchDomOrder(): void {
+    if (typeof MutationObserver === 'undefined') return;
+    const host = inject(ElementRef<HTMLElement>).nativeElement;
+    const observer = new MutationObserver(() => this.domVersion.update((v) => v + 1));
+    observer.observe(host, { childList: true });
+    inject(DestroyRef).onDestroy(() => observer.disconnect());
   }
 
   /** Called by a `TvNavItemDirective` from its own constructor. Registration

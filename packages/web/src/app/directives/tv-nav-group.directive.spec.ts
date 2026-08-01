@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { TvNavGroupDirective } from './tv-nav-group.directive';
 import { TvNavItemDirective } from './tv-nav-item.directive';
 
@@ -143,6 +144,73 @@ describe('TvNavGroupDirective + TvNavItemDirective', () => {
     const group: HTMLElement = fixture.nativeElement.querySelector('[appTvNavGroup]');
     expect(group.getAttribute('role')).toBe('toolbar');
     expect(group.getAttribute('aria-orientation')).toBe('vertical');
+  });
+
+  /**
+   * A **pure reorder**: `@for` tracked by a stable id, re-rendered with the
+   * same items in a new order. Angular moves the existing views, so no item is
+   * destroyed or created and no register/unregister fires — the registration
+   * array keeps its identity. This is what `ListControlsService.filtered()`
+   * does to every Library card grid when the user changes the sort dropdown
+   * (a plain client-side `[...items()].sort(...)`), so it is a production
+   * path, not a synthetic one. `items()` must re-derive the order rather than
+   * serve its memo.
+   */
+  it('a pure reorder (same items, new DOM order, no re-registration) is reflected on the next read', async () => {
+    TestBed.resetTestingModule();
+    @Component({
+      standalone: true,
+      imports: [TvNavGroupDirective, TvNavItemDirective],
+      template: `
+        <div appTvNavGroup axis="vertical">
+          @for (label of order(); track label) {
+            <button appTvNavItem>{{ label }}</button>
+          }
+        </div>
+      `,
+    })
+    class ReorderHost {
+      readonly order = signal(['a', 'b', 'c']);
+    }
+    TestBed.configureTestingModule({ imports: [ReorderHost] });
+    const fixture = TestBed.createComponent(ReorderHost);
+    fixture.detectChanges();
+    const read = (): HTMLButtonElement[] =>
+      Array.from(fixture.nativeElement.querySelectorAll('button'));
+    const group = fixture.debugElement
+      .query(By.directive(TvNavGroupDirective))
+      .injector.get(TvNavGroupDirective);
+
+    const [a, b, c] = read();
+    expect(group.items().map((i) => i.nativeElement.textContent?.trim())).toEqual(['a', 'b', 'c']);
+
+    fixture.componentInstance.order.set(['c', 'b', 'a']);
+    fixture.detectChanges();
+
+    // The SAME element objects, moved — proving Angular reordered rather than
+    // re-created them. A re-creation would fire unregister/register and
+    // invalidate the memo the easy way, making this test prove nothing.
+    expect(read()).toEqual([c, b, a]);
+    expect(group.items().length).toBe(3);
+
+    // items() is correct SYNCHRONOUSLY — the read-time order check, which is
+    // what onKeydown/notifyFocused rely on during a real interaction.
+    expect(group.items().map((i) => i.nativeElement.textContent?.trim())).toEqual(['c', 'b', 'a']);
+
+    // The rendered roving tabindex follows too, once the MutationObserver
+    // microtask has invalidated the item tabIndex computeds: activeIndex 0 is
+    // now `c`. (A pure reorder writes to no signal, so nothing else would ask
+    // items() again.)
+    await Promise.resolve();
+    fixture.detectChanges();
+    expect(c!.getAttribute('tabindex')).toBe('0');
+    expect(a!.getAttribute('tabindex')).toBe('-1');
+
+    // ...and so does arrow-key navigation.
+    c!.focus();
+    keydown(c!, 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(b);
   });
 
   it('an arrow key on a focusable descendant that is not an appTvNavItem does not move focus (stale-activeIndex guard)', () => {

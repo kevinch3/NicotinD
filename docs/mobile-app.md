@@ -305,9 +305,39 @@ and — critically — **the host element is not yet attached to the document at
 `compareDocumentPosition` there returns an arbitrary order. A first attempt that sorted inside
 `registerItem` reversed every group and failed 12 of the directive's 18 existing tests. `items()` is
 therefore a plain function that reads the registration signal (keeping it a reactive dependency for
-`tabIndex`/`effect` consumers) and sorts by `compareDocumentPosition` **on each call** — the
-earliest point at which the DOM is guaranteed live. It also means a pure reorder that adds or
-removes no item is still tracked.
+the `tabIndex`/`effect` consumers) and derives document order at read time — the earliest point at
+which the DOM is guaranteed live.
+
+**The sort is memoized, and both halves of its invalidation are load-bearing.** A full re-sort on
+every call is too expensive (each item's `tabIndex` computed calls `items()`, so it is O(n) reads per
+change-detection pass), so the sorted array is cached. The cache is only *stored* once every element
+`isConnected` — which is why it cannot be a `computed()`, as that would memoize the first, detached,
+wrong evaluation. And it is only *reused* subject to two checks:
+
+1. **`isInDomOrder` on read** — an O(n) adjacent-pair scan (sortedness is transitive under document
+   order, so consecutive pairs suffice) verifying the cached array is still in document order.
+   Keying the memo on the registration array's identity alone is **not** enough: a **pure reorder** —
+   the same item set re-rendered in a new order — moves the views without any destroy/create, so
+   nothing registers or unregisters and the identity never changes. This is a production path, not a
+   hypothetical: `ListControlsService.filtered()` does a plain client-side `[...items()].sort(...)`
+   whenever the user changes a Library grid's sort dropdown, and every one of those grids is an
+   `appTvNavGroup` whose `@for` tracks by a stable id. Without the check, `items()` served the stale
+   order forever.
+2. **A `MutationObserver` on the group host (`childList`, deliberately *without* `subtree`)** bumping
+   a `domVersion` signal that `items()` also reads. `items()` being correct is not sufficient when
+   nothing asks it again: a pure reorder writes to no signal, so the item `tabIndex` computeds never
+   re-evaluate and the rendered roving `tabindex="0"` stays on the card that used to be first. Every
+   current consumer repeats a *direct* child of the group (an `<a>` card, an `<li>`, a `<button>`, an
+   `<app-track-row>`), so omitting `subtree` catches every real reorder while ignoring the far
+   noisier churn deeper inside a row; a future consumer that repeats something nested deeper degrades
+   gracefully — `items()` still self-heals on read, so navigation stays correct and only the rendered
+   `tabindex` could lag. The bump is unconditional rather than guarded on the cache still being
+   stale, because `items()` self-heals and would otherwise silently repair the cache before the
+   callback runs, hiding the very change it exists to report.
+
+The directive spec's pure-reorder test drives exactly this (an `@for` over a signal, re-set to the
+reversed order, asserting the *same* element objects moved rather than being re-created), and
+removing either half of the invalidation makes it fail in a different way.
 
 **ARIA**: the group host is `role="grid"` on the `grid` axis and `role="toolbar"` otherwise;
 `aria-orientation` only accepts `horizontal`/`vertical` per the ARIA spec, so it is bound to `null`
