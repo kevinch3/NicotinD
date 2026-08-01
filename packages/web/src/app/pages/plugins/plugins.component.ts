@@ -1,13 +1,11 @@
 import { Component, inject, signal, effect, OnInit } from '@angular/core';
-import { NgTemplateOutlet } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { AuthService } from '../../services/auth.service';
 import { PluginService, type PluginInfo } from '../../services/plugin.service';
 import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/plugin-config';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
-import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
+import { PluginCardComponent } from './plugin-card.component';
 
 /**
  * Admin-only plugin management. Lists plugins grouped by kind (acquisition now;
@@ -29,14 +27,7 @@ const PLUGIN_DETAIL_ROUTES: Record<string, string> = {
 @Component({
   selector: 'app-plugins',
   standalone: true,
-  imports: [
-    RouterLink,
-    NgTemplateOutlet,
-    FormsModule,
-    ConfirmDialogComponent,
-    TvNavGroupDirective,
-    TvNavItemDirective,
-  ],
+  imports: [RouterLink, ConfirmDialogComponent, TvNavGroupDirective, PluginCardComponent],
   templateUrl: './plugins.component.html',
 })
 export class PluginsComponent implements OnInit {
@@ -80,8 +71,13 @@ export class PluginsComponent implements OnInit {
     return PLUGIN_DETAIL_ROUTES[pluginId] ?? null;
   }
 
-  draftValue(pluginId: string, key: string): string {
-    return this.configDraft()[pluginId]?.[key] ?? '';
+  /** This plugin's editable config values (empty when it has no config form).
+   *  A method, not an inline `configDraft()[id] ?? {}` in the template: the
+   *  index signature's type hides the `undefined` a missing key really returns,
+   *  so the `??` reads as removable to `ngc` (NG8102) while being load-bearing
+   *  at runtime. */
+  draftFor(pluginId: string): Record<string, string> {
+    return this.configDraft()[pluginId] ?? {};
   }
 
   setField(pluginId: string, key: string, value: string): void {
