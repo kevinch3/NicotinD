@@ -92,6 +92,10 @@ E2E_BASE_URL=… PLAYGROUND_USERNAME=… PLAYGROUND_PASSWORD=… \
 
 Shots land under `screenshots/mobile/<flow>/`; this run also emits the findings report.
 
+- For a change that only touched the Library/album/Now-Playing screens (the common case), running
+  `bun run --filter @nicotind/e2e screens:readme` alone is enough to refresh the README's images —
+  no need for the full live-screens pass unless the Acquire/Search UI itself changed.
+
 ### D. Monthly feedback-log rotation
 
 Rotate `docs/feedback-log-YYYY-MM.md`, carry forward open items, and promote recurring

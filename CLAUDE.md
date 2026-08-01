@@ -1275,7 +1275,10 @@ bundle and report pre-fix behaviour as the actual value (issue #253); `E2E_SKIP_
 fast path, and `E2E_BASE_URL` never builds. CI is split: `ci.yml`
 runs `ci` + `e2e` then a `release` job tags `vX.Y.Z`; that tag triggers `deploy.yml`. A gated
 **playground harness** (`PLAYGROUND=1`), the mutating **real round-trip** (`PLAYGROUND_REAL=1`), and
-**screenshot flows** are all out of CI. The flow catalogue + recurring routines live in
+**screenshot flows** are all out of CI. **The README's 3 locally-capturable screenshots refresh with
+one command** (`bun run --filter @nicotind/e2e screens:readme`, docs/e2e.md "Screenshot flows") — run
+it and commit any changed `docs/images/*.png` whenever a UI change touches the Library/album/Now-Playing
+screens. The flow catalogue + recurring routines live in
 [docs/testing-routines.md](docs/testing-routines.md). → See [docs/e2e.md](docs/e2e.md).
 
 **Real-use feedback log**: [docs/feedback-log-2026-07.md](docs/feedback-log-2026-07.md) is a

@@ -57,6 +57,13 @@ export default defineConfig({
       NICOTIND_LIDARR_URL: 'http://127.0.0.1:1',
       NICOTIND_DATA_DIR: dataDir,
       NICOTIND_MUSIC_DIR: resolve(__dirname, 'fixtures/music'),
+      // Bypass the process-before-landing gate (see playwright.config.ts's
+      // makeServer for the full rationale): the silent-FLAC fixtures can't
+      // yield a confident BPM/key, so without this the fixtures stay
+      // quarantined forever and every screen this harness captures is empty
+      // (issue #352 — this config was never updated when the landing gate
+      // shipped, unlike the main e2e config).
+      NICOTIND_DISABLE_LANDING_GATE: '1',
     },
   },
 });
