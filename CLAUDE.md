@@ -1089,7 +1089,12 @@ Add detail there, not here.
   `--follow-tags` push (a rejected branch update rejects the tag too) + self-healing orphan
   detection (a `vX` tag not reachable from master is deleted + re-cut, never silently skipped) —
   fixes the 2026-07-23 freeze where a non-atomic push orphaned `v0.1.244` and wedged every release
-  behind a green-but-silent "already published" skip. → [docs/deployment.md](docs/deployment.md)
+  behind a green-but-silent "already published" skip. **The workflow's own
+  `cancel-in-progress` concurrency guard no longer cancels itself (issue
+  #360)**: it's scoped off for `master` pushes, since the `release` job's
+  version-bump commit is itself a push to `master` that used to retrigger a
+  run in the same group and cancel the originating (already-succeeded) run
+  out from under itself. → [docs/deployment.md](docs/deployment.md)
 - **Measure prod before building (`prod-probe.ts`)**: several issues ask for a prod measurement
   first and it repeatedly **changed** the fix rather than confirming it (#262's stated root cause was
   wrong; #259's retention tension dissolved; #271's threshold was calibrated off 462 real jobs) — but
