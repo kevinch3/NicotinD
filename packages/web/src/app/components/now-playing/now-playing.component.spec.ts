@@ -34,7 +34,8 @@ function makePlayerStub() {
     bufferingVisible: signal(false),
     bufferedRanges: signal([]),
     setNowPlayingOpen: () => {},
-    seek: () => {},
+    seek: vi.fn(),
+    vocalsMuted: () => false,
   };
 }
 
@@ -57,9 +58,9 @@ function makeRemoteStub() {
 
 function makeLibraryStub() {
   return {
-    getLyrics: vi.fn(() => of(null)),
     // Typed to the real return so a test can mockReturnValue a populated DTO;
     // a bare `of(null)` infers Observable<null> and rejects every other shape.
+    getLyrics: vi.fn<(id: string) => Observable<LyricsDto | null>>(() => of(null)),
     fetchLyrics: vi.fn<(id: string, force?: boolean) => Observable<LyricsDto | null>>(() =>
       of(null),
     ),
@@ -160,6 +161,288 @@ describe('NowPlayingComponent', () => {
 
       expect(libraryStub.fetchLyrics).toHaveBeenCalledTimes(1);
       expect(component.fetchingLyrics()).toBe(true);
+    });
+  });
+
+  describe('karaoke fullscreen 2-line mode', () => {
+    function withSyncedLyrics(playerStub: ReturnType<typeof makePlayerStub>) {
+      playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
+    }
+
+    it('starts in auto-follow mode (not browsing) when fullscreen opens', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+
+      component.toggleKaraokeFullscreen();
+
+      expect(component.karaokeBrowsing()).toBe(false);
+    });
+
+    it('currentLineText/nextLineText read from lyricLines at activeLine', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      withSyncedLyrics(playerStub);
+      libraryStub.getLyrics.mockReturnValue(
+        of({
+          plain: null,
+          synced: '[00:00.00]first line\n[00:10.00]second line\n[00:20.00]third line',
+          source: 'lrclib',
+          customized: false,
+          updatedAt: 0,
+        }),
+      );
+      component.toggleLyrics();
+      fixture.detectChanges();
+      playerStub.currentTime.set(10); // activeLine -> index 1 ("second line")
+
+      expect(component.currentLineText()).toBe('second line');
+      expect(component.nextLineText()).toBe('third line');
+    });
+
+    it('nextLineText is null on the last line', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      withSyncedLyrics(playerStub);
+      libraryStub.getLyrics.mockReturnValue(
+        of({
+          plain: null,
+          synced: '[00:00.00]only line',
+          source: 'lrclib',
+          customized: false,
+          updatedAt: 0,
+        }),
+      );
+      component.toggleLyrics();
+      fixture.detectChanges();
+      playerStub.currentTime.set(0);
+
+      expect(component.currentLineText()).toBe('only line');
+      expect(component.nextLineText()).toBeNull();
+    });
+
+    it('onKaraokeInteraction enters browsing mode', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.toggleKaraokeFullscreen();
+
+      component.onKaraokeInteraction();
+
+      expect(component.karaokeBrowsing()).toBe(true);
+    });
+
+    it('onKaraokeInteraction auto-returns to auto-follow after the idle timeout', () => {
+      vi.useFakeTimers();
+      try {
+        const { fixture } = setup();
+        const component = fixture.componentInstance;
+        component.toggleKaraokeFullscreen();
+
+        component.onKaraokeInteraction();
+        expect(component.karaokeBrowsing()).toBe(true);
+
+        vi.advanceTimersByTime(4000);
+        expect(component.karaokeBrowsing()).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('seekToLine seeks to the line timestamp and exits browsing mode', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      withSyncedLyrics(playerStub);
+      libraryStub.getLyrics.mockReturnValue(
+        of({
+          plain: null,
+          synced: '[00:00.00]first line\n[00:12.50]second line',
+          source: 'lrclib',
+          customized: false,
+          updatedAt: 0,
+        }),
+      );
+      component.toggleLyrics();
+      fixture.detectChanges();
+      component.toggleKaraokeFullscreen();
+      component.onKaraokeInteraction();
+      expect(component.karaokeBrowsing()).toBe(true);
+
+      component.seekToLine(1);
+
+      expect(playerStub.seek).toHaveBeenCalledWith(12.5);
+      expect(component.karaokeBrowsing()).toBe(false);
+    });
+
+    it('seekToLine does nothing for an out-of-range index', () => {
+      const { fixture, playerStub } = setup();
+      const component = fixture.componentInstance;
+      withSyncedLyrics(playerStub);
+
+      component.seekToLine(99);
+
+      expect(playerStub.seek).not.toHaveBeenCalled();
+    });
+
+    it('exiting fullscreen resets browsing back to auto-follow', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.toggleKaraokeFullscreen();
+      component.onKaraokeInteraction();
+      expect(component.karaokeBrowsing()).toBe(true);
+
+      component.toggleKaraokeFullscreen(); // exits fullscreen
+
+      expect(component.karaokeBrowsing()).toBe(false);
+    });
+
+    it('renders only current+next lines in auto-follow mode', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      withSyncedLyrics(playerStub);
+      libraryStub.getLyrics.mockReturnValue(
+        of({
+          plain: null,
+          synced: '[00:00.00]a\n[00:05.00]b\n[00:10.00]c\n[00:15.00]d',
+          source: 'lrclib',
+          customized: false,
+          updatedAt: 0,
+        }),
+      );
+      component.toggleLyrics();
+      fixture.detectChanges();
+      component.toggleKaraokeFullscreen();
+      playerStub.currentTime.set(5); // activeLine -> index 1 ("b")
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const current = el.querySelector('[data-testid="karaoke-fullscreen-line-current"]');
+      const next = el.querySelector('[data-testid="karaoke-fullscreen-line-next"]');
+      expect(current?.textContent?.trim()).toBe('b');
+      expect(next?.textContent?.trim()).toBe('c');
+      expect(el.querySelectorAll('[data-karaoke-line]').length).toBe(2);
+      expect(el.querySelector('[data-testid="karaoke-fullscreen-browse-list"]')).toBeNull();
+    });
+
+    it('shows the full list in browse mode and seeks on line click', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      withSyncedLyrics(playerStub);
+      libraryStub.getLyrics.mockReturnValue(
+        of({
+          plain: null,
+          synced: '[00:00.00]a\n[00:05.00]b\n[00:10.00]c',
+          source: 'lrclib',
+          customized: false,
+          updatedAt: 0,
+        }),
+      );
+      component.toggleLyrics();
+      fixture.detectChanges();
+      component.toggleKaraokeFullscreen();
+      component.onKaraokeInteraction();
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const list = el.querySelector('[data-testid="karaoke-fullscreen-browse-list"]');
+      expect(list).not.toBeNull();
+      const lines = Array.from(el.querySelectorAll('[data-karaoke-line]'));
+      expect(lines.length).toBe(3);
+
+      (lines[2] as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(playerStub.seek).toHaveBeenCalledWith(10);
+      expect(component.karaokeBrowsing()).toBe(false);
+    });
+
+    it('alternates the line animation class each time activeLine changes', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      withSyncedLyrics(playerStub);
+      libraryStub.getLyrics.mockReturnValue(
+        of({
+          plain: null,
+          synced: '[00:00.00]a\n[00:05.00]b\n[00:10.00]c',
+          source: 'lrclib',
+          customized: false,
+          updatedAt: 0,
+        }),
+      );
+      component.toggleLyrics();
+      fixture.detectChanges();
+
+      const first = component.karaokeLineAnimClass();
+      playerStub.currentTime.set(5); // activeLine index 0 -> 1
+      fixture.detectChanges();
+      const second = component.karaokeLineAnimClass();
+      playerStub.currentTime.set(10); // activeLine index 1 -> 2
+      fixture.detectChanges();
+      const third = component.karaokeLineAnimClass();
+
+      expect(second).not.toBe(first);
+      expect(third).not.toBe(second);
+    });
+
+    it('toggleKaraokeBrowsing enters browsing mode from auto-follow', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.toggleKaraokeFullscreen();
+      expect(component.karaokeBrowsing()).toBe(false);
+
+      component.toggleKaraokeBrowsing();
+
+      expect(component.karaokeBrowsing()).toBe(true);
+    });
+
+    it('toggleKaraokeBrowsing exits browsing mode back to auto-follow', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.toggleKaraokeFullscreen();
+      component.onKaraokeInteraction();
+      expect(component.karaokeBrowsing()).toBe(true);
+
+      component.toggleKaraokeBrowsing();
+
+      expect(component.karaokeBrowsing()).toBe(false);
+    });
+
+    it('renders a visible browse-toggle button in the fullscreen header', () => {
+      const { fixture, playerStub } = setup();
+      const component = fixture.componentInstance;
+      playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
+      component.toggleKaraokeFullscreen();
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const btn = el.querySelector('[data-testid="karaoke-browse-toggle"]');
+      expect(btn).not.toBeNull();
+    });
+
+    it('ArrowDown on the overlay enters browsing mode', () => {
+      const { fixture, playerStub } = setup();
+      const component = fixture.componentInstance;
+      playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
+      component.toggleKaraokeFullscreen();
+      fixture.detectChanges();
+
+      const overlay = fixture.nativeElement.querySelector('[data-testid="karaoke-overlay"]');
+      overlay.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      fixture.detectChanges();
+
+      expect(component.karaokeBrowsing()).toBe(true);
+    });
+
+    it('ArrowUp on the overlay enters browsing mode', () => {
+      const { fixture, playerStub } = setup();
+      const component = fixture.componentInstance;
+      playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
+      component.toggleKaraokeFullscreen();
+      fixture.detectChanges();
+
+      const overlay = fixture.nativeElement.querySelector('[data-testid="karaoke-overlay"]');
+      overlay.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+      fixture.detectChanges();
+
+      expect(component.karaokeBrowsing()).toBe(true);
     });
   });
 
