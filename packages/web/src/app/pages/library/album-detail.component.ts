@@ -27,6 +27,7 @@ import {
   GenreDistributionStripComponent,
   type GenreSlice,
 } from '../../components/genre-distribution-strip/genre-distribution-strip.component';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 
 @Component({
   selector: 'app-album-detail',
@@ -40,6 +41,7 @@ import {
     MetadataFixModalComponent,
     ArtistLinksComponent,
     GenreDistributionStripComponent,
+    TvNavGroupDirective,
   ],
   templateUrl: './album-detail.component.html',
 })

@@ -289,7 +289,7 @@
             />
           }
 
-          <div class="space-y-0.5" data-testid="artist-songs-list">
+          <div class="space-y-0.5" data-testid="artist-songs-list" appTvNavGroup axis="vertical">
             @for (song of visibleSongs(); track song.id; let i = $index) {
               <app-track-row
                 [track]="toTrack(song)"
