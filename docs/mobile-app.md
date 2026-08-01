@@ -390,9 +390,13 @@ stub the rows out.
 (`packages/web/src/app/services/keyboard-shortcuts.service.ts`, initialized once from `App`) — so
 far just Space/K toggle play/pause app-wide. Space is suppressed when a focused `<button>`/`<a>`
 would otherwise handle it (native Space/Enter activation wins there — e.g. a focused queue row);
-K has no such native meaning so it always works outside a text field. **The full shortcut table**
-(next/prev, seek, volume, mute, search focus, Escape-as-back, etc.) is a tracked follow-up
-(Phase 6), not yet built.
+K has no such native meaning so it always works outside a text field. **The rest of the table now ships (Phase 5)**: `J`/`L` (previous/next track), `M` (toggle vocal
+mute), `N` (open Now Playing), `ArrowLeft`/`ArrowRight` (seek ±10s — deferring to a D-pad nav group
+that already claimed the keypress via `event.defaultPrevented`, so grid/list navigation and seeking
+never double-fire on the same arrow press), and `/` (navigate to Acquire). **Deliberately not
+built**: `Escape`-as-back (would need to arbitrate against 7+ existing per-component modal Escape
+handlers with no current shared "is a modal open" signal — real, separate work) and any
+volume shortcut (this app has no volume-level control to wire one to).
 
 ## OAuth login (proposed — not yet implemented)
 
