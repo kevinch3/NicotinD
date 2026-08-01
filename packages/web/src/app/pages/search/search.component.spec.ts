@@ -104,6 +104,7 @@ function setup(
   const fixture = TestBed.createComponent(SearchComponent);
   return {
     component: fixture.componentInstance,
+    fixture,
     search: TestBed.inject(SearchService),
     plugins: TestBed.inject(PluginService),
     acquireSubmit,
@@ -147,6 +148,21 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(component.hasCatalog()).toBe(true);
     expect(component.catalog()?.albums[0]?.title).toBe('The Dark Side of the Moon');
     expect(component.directSearchOpen()).toBe(false);
+  });
+
+  it('renders the catalog albums grid as an appTvNavGroup with grid axis', async () => {
+    const { component, search, fixture } = setup();
+    search.setQuery('pink floyd');
+
+    component.handleSearch(new Event('submit'));
+    await flush();
+    fixture.detectChanges();
+
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el
+      .querySelector('[data-testid="catalog-album-cover"]')
+      ?.closest('[appTvNavGroup]');
+    expect(group?.getAttribute('axis')).toBe('grid');
   });
 
   it('opens the direct-search fallback when catalog has no hits', async () => {

@@ -256,13 +256,15 @@
             >
               Choose a different source ({{ filteredCandidates().length }} found)
             </summary>
-            <ul class="divide-y divide-theme-surface-2">
+            <ul class="divide-y divide-theme-surface-2" appTvNavGroup axis="vertical">
               @for (
                 candidate of filteredCandidates();
                 track candidate.directory + candidate.username
               ) {
                 <li
+                  appTvNavItem
                   (click)="select(candidate)"
+                  (keydown.enter)="select(candidate)"
                   data-testid="hunt-candidate"
                   class="flex flex-col gap-1 px-5 py-4 cursor-pointer transition"
                   [class.bg-theme-surface-2]="isSelected(candidate)"

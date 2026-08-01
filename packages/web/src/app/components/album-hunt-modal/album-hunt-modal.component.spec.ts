@@ -66,7 +66,10 @@ describe('AlbumHuntModalComponent', () => {
         { provide: SearchApiService, useValue: { archiveSearchAlbum } },
         { provide: TransferService, useValue: { poll: vi.fn(), kickPoll: vi.fn() } },
         { provide: AcquireService, useValue: { submit: acquireSubmit } },
-        { provide: PluginService, useValue: { hasArchive: () => archiveEnabled } },
+        {
+          provide: PluginService,
+          useValue: { hasArchive: () => archiveEnabled, hasSpotify: () => false },
+        },
       ],
     }).compileComponents();
   });
@@ -284,6 +287,27 @@ describe('AlbumHuntModalComponent', () => {
 
     expect(acquireSubmit).toHaveBeenCalledWith('https://archive.org/details/a1');
     expect(c.isOtherSourceAcquired(candidate)).toBe(true);
+  });
+
+  it('seeks the candidate on Enter, matching the existing click behavior', async () => {
+    const fixture = TestBed.createComponent(AlbumHuntModalComponent);
+    const c = fixture.componentInstance;
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    (c as unknown as { artistName: () => string }).artistName = () => 'Test Artist';
+    const selectSpy = vi.spyOn(c, 'select');
+
+    fixture.detectChanges();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    c.candidates.set([candidate({ username: 'best' })]);
+    fixture.detectChanges();
+
+    const li: HTMLElement = fixture.nativeElement.querySelector('[data-testid="hunt-candidate"]');
+    expect(li).toBeTruthy();
+    li.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(selectSpy).toHaveBeenCalled();
   });
 
   it('passes the current skewSearch flag to the base hunt phase', async () => {
