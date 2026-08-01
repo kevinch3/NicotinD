@@ -4,6 +4,7 @@ import { SetupService } from './services/setup.service';
 import { AuthService } from './services/auth.service';
 import { RemotePlaybackService } from './services/remote-playback.service';
 import { PresenceService } from './services/presence.service';
+import { KeyboardShortcutsService } from './services/keyboard-shortcuts.service';
 import { ToastOutletComponent } from './components/toast-outlet/toast-outlet.component';
 import { DesktopTitleBarOverlayComponent } from './components/desktop-title-bar-overlay/desktop-title-bar-overlay.component';
 
@@ -20,6 +21,7 @@ export class App {
   private router = inject(Router);
   private remotePlayback = inject(RemotePlaybackService);
   private presence = inject(PresenceService);
+  private keyboardShortcuts = inject(KeyboardShortcutsService);
 
   constructor() {
     // Initialize remote playback WebSocket subscriptions
@@ -27,6 +29,9 @@ export class App {
 
     // Start presence heartbeats (admin-only visibility of who is active)
     this.presence.initialize();
+
+    // Global keyboard/TV-remote shortcuts (Space/K = play-pause for now).
+    this.keyboardShortcuts.initialize();
 
     // Redirect to setup if needed, or to the library (Songs → offline downloads)
     // when offline (runs after APP_INITIALIZER completes).
