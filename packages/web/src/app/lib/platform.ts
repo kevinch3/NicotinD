@@ -1,3 +1,5 @@
+import { environment } from '../../environments/environment';
+
 // Capacitor injects a global `Capacitor` object into the native WebView (Android
 // and iOS); it is absent in a normal browser. Detecting it here (instead of
 // importing @capacitor/core) keeps the web bundle free of native deps — the same
@@ -90,4 +92,15 @@ export function isNativeShell(): boolean {
  */
 export function serviceWorkerEnabled(devMode: boolean, nativeShell: boolean): boolean {
   return !devMode && !nativeShell;
+}
+
+/**
+ * True only in a build made with the Angular "tv" configuration
+ * (`ng build --configuration tv`), baked in via environment.tv.ts. Used to
+ * default TV-only behaviors (e.g. RemotePlaybackService's opt-in) without
+ * runtime Android UiModeManager detection, since sideload-only distribution
+ * doesn't need it.
+ */
+export function isTvBuild(): boolean {
+  return environment.tvBuild;
 }

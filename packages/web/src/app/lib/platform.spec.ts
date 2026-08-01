@@ -7,7 +7,9 @@ import {
   isElectron,
   isNativeShell,
   serviceWorkerEnabled,
+  isTvBuild,
 } from './platform';
+import { environment } from '../../environments/environment';
 
 type CapStub = {
   isNativePlatform?: () => boolean;
@@ -83,5 +85,17 @@ describe('platform helpers', () => {
     expect(serviceWorkerEnabled(false, false)).toBe(true);
     expect(serviceWorkerEnabled(false, true)).toBe(false);
     expect(serviceWorkerEnabled(true, false)).toBe(false);
+  });
+
+  it('isTvBuild reads environment.tvBuild', () => {
+    const original = environment.tvBuild;
+    try {
+      (environment as { tvBuild: boolean }).tvBuild = true;
+      expect(isTvBuild()).toBe(true);
+      (environment as { tvBuild: boolean }).tvBuild = false;
+      expect(isTvBuild()).toBe(false);
+    } finally {
+      (environment as { tvBuild: boolean }).tvBuild = original;
+    }
   });
 });
