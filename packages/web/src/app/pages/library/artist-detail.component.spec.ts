@@ -169,6 +169,7 @@ function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedC
   fixture.detectChanges();
   return {
     component: fixture.componentInstance,
+    fixture,
     playWithContextCalls,
     addToQueueCalls,
     getAlbumCalls,
@@ -549,6 +550,18 @@ describe('ArtistDetailComponent — onIdentitySaved navigation', () => {
     component.onIdentitySaved({ ok: true, resynced: true, kind: 'split', artistId: null });
 
     expect(nav).toHaveBeenCalledWith(['/library'], { queryParams: { type: 'artists' } });
+  });
+});
+
+describe('ArtistDetailComponent — TV D-pad nav (issue android-tv phase3)', () => {
+  it('renders the albums tab grid as one appTvNavGroup with grid axis', async () => {
+    const { component, fixture } = setup();
+    await fixture_stable();
+    component.setTab('albums');
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[appTvNavGroup][axis="grid"]');
+    expect(group).not.toBeNull();
   });
 });
 

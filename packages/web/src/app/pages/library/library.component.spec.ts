@@ -66,7 +66,10 @@ function setup(
           getGenres: () => of([]),
         },
       },
-      { provide: AuthService, useValue: { token: signal('tok'), role: () => 'user' } },
+      {
+        provide: AuthService,
+        useValue: { token: signal('tok'), role: () => 'user', canCurate: () => false },
+      },
       {
         provide: PlaylistService,
         useValue: {
@@ -240,6 +243,42 @@ describe('LibraryComponent — isXxxEmpty flash-prevention computeds', () => {
     component.loadingSingles.set(false);
     filteredItems.set([]);
     expect(component.isSinglesEmpty()).toBe(true);
+  });
+});
+
+describe('LibraryComponent — TV D-pad nav (issue android-tv phase3)', () => {
+  it('renders the albums grid as one appTvNavGroup with grid axis', () => {
+    const { fixture, filteredItems } = setup();
+    filteredItems.set([{ id: 'a1', name: 'Album One', artist: 'Artist' }] as never);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[data-testid="album-card"]')?.closest('[appTvNavGroup]');
+    expect(group?.getAttribute('axis')).toBe('grid');
+  });
+
+  it('renders the playlists list as one appTvNavGroup with vertical axis', () => {
+    const { component, fixture } = setup(
+      {},
+      {
+        playlists: [
+          {
+            id: 'u1',
+            name: 'My mix',
+            description: null,
+            songCount: 3,
+            coverArt: null,
+            kind: 'user',
+            createdAt: 0,
+            modifiedAt: 0,
+          },
+        ],
+      },
+    );
+    component.libraryMode.set('playlists');
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[data-testid="playlist-row"]')?.closest('[appTvNavGroup]');
+    expect(group?.getAttribute('axis')).toBe('vertical');
   });
 });
 
