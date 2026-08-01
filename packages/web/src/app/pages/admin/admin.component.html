@@ -143,26 +143,31 @@
                         <option [value]="r" [selected]="r === user.role">{{ r }}</option>
                       }
                     </select>
-                    <button
-                      (click)="toggleStatus(user)"
-                      [disabled]="user.id === currentUserId()"
-                      class="px-2 py-1 rounded text-xs text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2 transition disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      {{ (user.status === 'active' ? 'admin.disable' : 'admin.enable') | t }}
-                    </button>
-                    <button
-                      (click)="resetTarget.set(user); newPassword.set('')"
-                      class="px-2 py-1 rounded text-xs text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2 transition"
-                    >
-                      {{ 'admin.resetPw' | t }}
-                    </button>
-                    <button
-                      (click)="deleteTarget.set(user)"
-                      [disabled]="user.id === currentUserId()"
-                      class="px-2 py-1 rounded text-xs text-status-error hover:bg-theme-hover transition disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      {{ 'admin.delete' | t }}
-                    </button>
+                    <div appTvNavGroup axis="horizontal" class="flex items-center gap-1">
+                      <button
+                        appTvNavItem
+                        (click)="toggleStatus(user)"
+                        [disabled]="user.id === currentUserId()"
+                        class="px-2 py-1 rounded text-xs text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        {{ (user.status === 'active' ? 'admin.disable' : 'admin.enable') | t }}
+                      </button>
+                      <button
+                        appTvNavItem
+                        (click)="resetTarget.set(user); newPassword.set('')"
+                        class="px-2 py-1 rounded text-xs text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2 transition"
+                      >
+                        {{ 'admin.resetPw' | t }}
+                      </button>
+                      <button
+                        appTvNavItem
+                        (click)="deleteTarget.set(user)"
+                        [disabled]="user.id === currentUserId()"
+                        class="px-2 py-1 rounded text-xs text-status-error hover:bg-theme-hover transition disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        {{ 'admin.delete' | t }}
+                      </button>
+                    </div>
                   </div>
                 </td>
               </tr>

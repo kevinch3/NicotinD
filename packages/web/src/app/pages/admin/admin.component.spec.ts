@@ -747,4 +747,67 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     expect(groupsInside?.length ?? 0).toBe(0);
     fixture.destroy();
   });
+
+  it('excludes the role <select> from the user-row action button group', async () => {
+    TestBed.resetTestingModule();
+    const mocks = makeAdminMocks();
+    const testUser: AdminUser = {
+      id: 'u1',
+      username: 'alice',
+      role: 'user',
+      status: 'active',
+      created_at: new Date().toISOString(),
+      isConnected: false,
+      amountOfDevices: 0,
+      amountOfSessions: 0,
+    };
+    await TestBed.configureTestingModule({
+      imports: [AdminComponent],
+      providers: [
+        { provide: DownloadsApiService, useValue: {} },
+        {
+          provide: SystemApiService,
+          useValue: {
+            getUsers: vi.fn(() => of([testUser])),
+            getStreamingSettings: mocks.getStreaming,
+            saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getProcessing: mocks.getProcessing,
+            getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
+            setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
+            saveProcessing: vi.fn((p: unknown) => of(p as object)),
+          },
+        },
+        {
+          provide: LibraryApiService,
+          useValue: {
+            resyncLibrary: vi.fn(() => of({ ok: true })),
+            getFragments: vi.fn(() =>
+              of({
+                duplicateAlbums: [],
+                hiddenByClassification: [],
+                misSplitAlbums: [],
+                totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 },
+                ok: true,
+              } as LibraryFragmentReport),
+            ),
+          },
+        },
+        { provide: ServiceReviewService, useValue: mocks.reviewService },
+        { provide: AuthService, useValue: { token: () => null } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(AdminComponent);
+    fixture.componentInstance.loading.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const actionCell = el.querySelector('select')?.closest('td');
+    const group = actionCell?.querySelector('[appTvNavGroup]');
+    expect(group).not.toBeNull();
+    expect(group!.querySelector('select[appTvNavItem]')).toBeNull();
+    expect(group!.querySelectorAll('button[appTvNavItem]').length).toBeGreaterThan(0);
+    fixture.destroy();
+  });
 });
