@@ -739,3 +739,20 @@ describe('SettingsComponent (manual PWA update check)', () => {
     fixture.destroy();
   });
 });
+
+describe('SettingsComponent (device icon mapping)', () => {
+  it('maps device type/name to the right glyph', async () => {
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    const component = fixture.componentInstance;
+    expect(component.getDeviceIcon({ type: 'web', name: 'Chrome on Linux' })).toBe('monitor');
+    expect(component.getDeviceIcon({ type: 'web', name: 'Safari on iPhone' })).toBe('smartphone');
+    expect(component.getDeviceIcon({ type: 'web', name: 'Android Chrome' })).toBe('smartphone');
+    expect(component.getDeviceIcon({ type: 'cast', name: 'Living Room Speaker' })).toBe('speaker');
+    fixture.destroy();
+  });
+});
