@@ -277,6 +277,40 @@ albums/singles/appears-on grids, the Search page's catalog albums grid + artist 
 album-hunt-modal candidate list, and — via one shared change to `TrackRowComponent` itself — every
 song list built on it (library Songs tab, album/genre/artist/playlist detail pages). **Settings/Admin/Extensions coverage (Phase 4)**: applied to Settings' theme/budget/auto-preserve grids and account action list, the Devices/agent-tokens revoke lists, Admin's services grid, log-service buttons, processing-task checkboxes, and user-management action buttons, and the Extensions (plugins) page's enable/configure buttons per card. Forms stay Tab-order-only by design — native `<input>`/`<select>` elements are never wrapped in `appTvNavItem`, so arrow keys keep their native meaning inside them (caret movement, select-value change, number increment). **Not yet applied**: the Admin duplicates list (needs a `<label>`-activation passthrough, deferred) and the streaming-panel's mixed checkbox/select rows (same per-row-exclusion technique already established elsewhere in this phase, just not yet applied there). The full keyboard shortcut table (Phase 6) is also still just Space/K.
 
+**DI crosses a component boundary but NOT an `ngTemplateOutlet` one (the Phase 4 final-review
+fix)**: the Extensions page rendered every plugin card from a shared `<ng-template #card let-p>`
+declared as a **sibling** of its three `<section appTvNavGroup>` blocks and instantiated inside each
+with `<ng-container [ngTemplateOutlet]="card">`. An embedded view is created from its template's
+**declaration** context (`TemplateRef.createEmbeddedViewImpl` uses `_declarationLView` /
+`_declarationTContainer`), and the node injector walks that declaration ancestry — not the DOM
+position of the `<ng-container>` that instantiated it. So every `appTvNavItem` in the card resolved
+`inject(TvNavGroupDirective, {optional: true})` to `null`, `registerItem` never ran, all three
+groups held zero items, and D-pad navigation on the entire page was a **silent** no-op (`onKeydown`
+returns early on an empty group; an unmatched directive selector is not an Angular error). This is
+the second instance of the same class of bug as the Phase 3 `@ContentChildren` one, and it shipped
+through three task reviews for the same reason: the tests asserted `hasAttribute('appTvNavItem')`,
+and a directive-selector attribute stays in the rendered DOM whether or not the directive is
+imported, applied, or able to reach its group.
+
+`ngTemplateOutletInjector` does **not** fix it — it feeds `embeddedViewInjector`, part of the
+environment/provider fallback chain, not the node-injector chain this DI uses. The fix extracts the
+card into a real `PluginCardComponent` (`pages/plugins/plugin-card.component.*`), because DI *does*
+cross a real component's view boundary — the same mechanism `TrackRowComponent`'s title button
+relies on. **Every Phase 4 page therefore now carries at least one behavioural test** (a real
+`KeyboardEvent` moving `document.activeElement`, or an assertion on the group's registered
+`items()` where a page has structurally only one item, as Admin's one-element services grid does) —
+attribute assertions alone are treated as insufficient for this directive pair.
+
+Two smaller Phase 4 corrections shipped with it. Admin's **processing-task checkbox list is
+`axis="grid"`, not `vertical`**: each row lays its run + gate checkbox out side-by-side while DOM
+order is run₁, gate₁, run₂, gate₂ …, so on the vertical axis ArrowDown moved to the same row's gate
+box (visually to the *right*) and Left/Right did nothing; `inferColumnsPerRow` reads the two
+same-`offsetTop` checkboxes as 2 columns. And Settings' auto-preserve grid **no longer declares a
+static `role="radiogroup"`**: `TvNavGroupDirective` binds `[attr.role]` on every change-detection
+pass, so a hand-written role on the same element is silently overwritten (it rendered as
+`role="grid"`). The directive's role is authoritative — as it already is for every other group in
+the codebase, none of which declare their own.
+
 **Items register via DI, never via `@ContentChildren` (the Phase 3 final-review fix)**: an Angular
 content query stops at a component's view boundary — a component's template is a black box to its
 ancestors. Phase 3 put `appTvNavItem` on the title button inside **`TrackRowComponent`'s own
