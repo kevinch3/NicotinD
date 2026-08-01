@@ -231,6 +231,35 @@ and must work first try on device. Revisit if the plugin (or a equivalent) ships
 Still device-validated, not CI-validated: confirm on a physical device that playback continues
 backgrounded and the lock-screen controls/scrubber work.
 
+## Android TV support (sideload only)
+
+The Android APK is also usable on Android TV / TV boxes via direct sideload (no Play Store TV
+listing — no `LEANBACK_LAUNCHER` category, TV banner, or `android.software.leanback` feature
+declared). `AndroidManifest.xml` declares
+`<uses-feature android:name="android.hardware.touchscreen" android:required="false"/>` so the app
+isn't blocked/degraded on a touchscreen-less device.
+
+A separate Angular build configuration (`ng build --configuration tv`, `angular.json`) swaps in
+`environments/environment.tv.ts` (`tvBuild: true`, otherwise identical to the prod environment),
+exposed via `lib/platform.ts`'s `isTvBuild()`. This is a **build-time flag, not a runtime
+Android `UiModeManager` check** — simpler and sufficient for sideload-only distribution, at the
+cost of needing a separately-built bundle (`bunx cap sync android` after building with
+`--configuration tv`) rather than one universal APK auto-detecting TV at runtime.
+
+The only behavior this flag currently changes: `RemotePlaybackService.remoteEnabled` defaults to
+`true` on a TV build when the user has never explicitly toggled "Allow remote control" (an explicit
+choice, stored in `localStorage` under `nicotind_remote_enabled`, always wins) — so a TV instance is
+immediately controllable from a phone via the existing device-agnostic remote-playback relay
+(`docs/remote-playback.md`) with no setup. Hardware media-key handling (a TV remote's transport
+buttons) already worked with no changes needed — see "Background audio" above,
+`@jofr/capacitor-media-session` already runs a foreground service and wires
+play/pause/next/prev/seek action handlers.
+
+**Not yet built** (tracked as later phases): app-wide D-pad/spatial keyboard navigation (today only
+the now-playing karaoke overlay and a handful of modals handle arrow keys/Escape at all — most of
+the app, incl. every library/search grid, has no keyboard navigation beyond native Tab order), and
+a global keyboard shortcut set (Space=play/pause, etc.).
+
 ## OAuth login (proposed — not yet implemented)
 
 Google + Microsoft OAuth login is **proposed** for NicotinD as an `auth` plugin
