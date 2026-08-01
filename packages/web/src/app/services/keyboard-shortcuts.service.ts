@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { Subscription, fromEvent } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { PlayerService } from './player.service';
@@ -17,6 +18,7 @@ export class KeyboardShortcutsService {
   private static readonly SEEK_STEP_SECONDS = 10;
 
   private readonly player = inject(PlayerService);
+  private readonly router = inject(Router);
 
   initialize(): Subscription {
     return fromEvent<KeyboardEvent>(window, 'keydown')
@@ -75,6 +77,11 @@ export class KeyboardShortcutsService {
           ? KeyboardShortcutsService.SEEK_STEP_SECONDS
           : -KeyboardShortcutsService.SEEK_STEP_SECONDS;
       this.player.seek(Math.max(0, this.player.currentTime() + delta));
+      return;
+    }
+    if (event.key === '/') {
+      event.preventDefault();
+      void this.router.navigate(['/acquire']);
       return;
     }
   }

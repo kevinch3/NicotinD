@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Component, signal } from '@angular/core';
+import { Router, provideRouter } from '@angular/router';
 import type { Subscription } from 'rxjs';
 import { KeyboardShortcutsService } from './keyboard-shortcuts.service';
 import { PlayerService } from './player.service';
@@ -43,11 +44,16 @@ describe('KeyboardShortcutsService', () => {
       seek: vi.fn(),
     };
     TestBed.configureTestingModule({
-      providers: [KeyboardShortcutsService, { provide: PlayerService, useValue: playerStub }],
+      providers: [
+        provideRouter([]),
+        KeyboardShortcutsService,
+        { provide: PlayerService, useValue: playerStub },
+      ],
     });
     const service = TestBed.inject(KeyboardShortcutsService);
+    const router = TestBed.inject(Router);
     sub = service.initialize();
-    return service;
+    return { service, router };
   }
 
   afterEach(() => {
@@ -203,6 +209,23 @@ describe('KeyboardShortcutsService', () => {
     dispatchKeydown(input, 'ArrowLeft');
     expect(playerStub.seek).not.toHaveBeenCalled();
   });
+
+  it('/ navigates to the Acquire page', () => {
+    const { router } = setup(false);
+    const navigateSpy = vi.spyOn(router, 'navigate');
+    dispatchKeydown(window, '/');
+    expect(navigateSpy).toHaveBeenCalledWith(['/acquire']);
+  });
+
+  it('/ is ignored while a text input is focused (so typing a literal "/" in a field works normally)', () => {
+    const { router } = setup(false);
+    const navigateSpy = vi.spyOn(router, 'navigate');
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    dispatchKeydown(input, '/');
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
 });
 
 /**
@@ -237,7 +260,11 @@ describe('KeyboardShortcutsService + TvNavGroupDirective (cross-directive preced
     playerStub = { currentTime: signal(30), seek: vi.fn() };
     TestBed.configureTestingModule({
       imports: [IntegrationHost],
-      providers: [KeyboardShortcutsService, { provide: PlayerService, useValue: playerStub }],
+      providers: [
+        provideRouter([]),
+        KeyboardShortcutsService,
+        { provide: PlayerService, useValue: playerStub },
+      ],
     });
     const fixture = TestBed.createComponent(IntegrationHost);
     fixture.detectChanges();
