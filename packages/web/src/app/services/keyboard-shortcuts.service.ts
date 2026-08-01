@@ -5,13 +5,11 @@ import { filter } from 'rxjs/operators';
 import { PlayerService } from './player.service';
 
 /**
- * Global keyboard/TV-remote shortcuts. Space and K toggle play/pause; the
- * full shortcut set (next/prev, seek, volume, etc.) is a later phase. Space
- * is suppressed when a focused BUTTON/A/SELECT/SUMMARY element (or an
- * ARIA-role interactive element — button/switch/checkbox/menuitem/tab)
- * would otherwise handle it itself (native Space/Enter activation, or
- * opening a dropdown/toggling a disclosure) — K has no such native meaning
- * on any element so it always toggles play/pause outside a text field.
+ * Global keyboard/TV-remote shortcuts: Space/K (play/pause), J/L (prev/next),
+ * M (vocal mute), N (now-playing), ArrowLeft/Right (seek), / (Acquire).
+ * Escape-as-back is deferred (needs modal handler arbitration); volume shortcuts
+ * won't be added (no volume control in this app).
+ * Space is suppressed on natively-activatable elements; K always works outside text fields.
  */
 @Injectable({ providedIn: 'root' })
 export class KeyboardShortcutsService {
