@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.294](https://github.com/kevinch3/NicotinD/compare/v0.1.293...v0.1.294) (2026-08-01)
+
+### Bug Fixes
+
+* **web:** fix TV nav perf/desync, ARIA grid conformance, queue remove reachability ([08776cf](https://github.com/kevinch3/NicotinD/commit/08776cf9ff98c74e11b6e8d1a40290e5b8701080)), closes [#357](https://github.com/kevinch3/NicotinD/issues/357) [#358](https://github.com/kevinch3/NicotinD/issues/358) [#359](https://github.com/kevinch3/NicotinD/issues/359) [#356](https://github.com/kevinch3/NicotinD/issues/356), references [#351](https://github.com/kevinch3/NicotinD/issues/351)
+* **web:** stop changelog.json regeneration from dirtying the working tree ([927688b](https://github.com/kevinch3/NicotinD/commit/927688b718eae6c4b0024e9bf21f810110308192))
 ## [0.1.293](https://github.com/kevinch3/NicotinD/compare/v0.1.292...v0.1.293) (2026-08-01)
 
 ### Bug Fixes
