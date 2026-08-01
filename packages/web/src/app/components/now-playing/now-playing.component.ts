@@ -1,4 +1,13 @@
-import { Component, inject, signal, computed, effect, ElementRef, viewChild } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  effect,
+  ElementRef,
+  viewChild,
+  DestroyRef,
+} from '@angular/core';
 import { Router } from '@angular/router';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
@@ -54,6 +63,7 @@ export class NowPlayingComponent {
   private api = inject(LibraryApiService);
   private scrollLock = inject(ScrollLockService);
   private server = inject(ServerConfigService);
+  private destroyRef = inject(DestroyRef);
   readonly trackInfo = inject(TrackInfoService);
 
   // Context menu state
@@ -298,6 +308,9 @@ export class NowPlayingComponent {
         c === 'karaoke-line-anim-a' ? 'karaoke-line-anim-b' : 'karaoke-line-anim-a',
       );
     });
+
+    // Ensure the browse-idle timeout can never fire/leak past destruction.
+    this.destroyRef.onDestroy(() => this.clearBrowseIdleTimer());
   }
 
   toggleLyrics(): void {

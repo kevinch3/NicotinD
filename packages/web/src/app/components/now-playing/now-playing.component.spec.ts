@@ -428,6 +428,20 @@ describe('NowPlayingComponent', () => {
 
       expect(component.karaokeBrowsing()).toBe(true);
     });
+
+    it('ArrowUp on the overlay enters browsing mode', () => {
+      const { fixture, playerStub } = setup();
+      const component = fixture.componentInstance;
+      playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
+      component.toggleKaraokeFullscreen();
+      fixture.detectChanges();
+
+      const overlay = fixture.nativeElement.querySelector('[data-testid="karaoke-overlay"]');
+      overlay.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+      fixture.detectChanges();
+
+      expect(component.karaokeBrowsing()).toBe(true);
+    });
   });
 
   describe('queue resize (drag handle)', () => {
