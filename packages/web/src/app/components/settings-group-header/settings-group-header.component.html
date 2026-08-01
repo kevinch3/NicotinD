@@ -1,0 +1,12 @@
+<div class="flex items-center gap-3.5 mb-5">
+  <span
+    class="w-9 h-9 rounded-lg bg-theme-accent/15 text-theme-accent flex items-center justify-center flex-shrink-0"
+    aria-hidden="true"
+  >
+    <app-icon [name]="icon()" [size]="20" />
+  </span>
+  <div class="min-w-0">
+    <h2 class="text-sm font-semibold text-theme-primary">{{ title() }}</h2>
+    <p class="text-xs text-theme-muted">{{ description() }}</p>
+  </div>
+</div>
