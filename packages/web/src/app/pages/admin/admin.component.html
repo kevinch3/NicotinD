@@ -944,7 +944,14 @@
               </div>
             }
 
-            <div class="space-y-2" appTvNavGroup axis="vertical">
+            <!-- grid, not vertical: each row lays its run + gate checkbox out
+                 side-by-side (`flex`) while DOM order is run₁,gate₁,run₂,… — on
+                 the vertical axis ArrowDown from a run box landed on the SAME
+                 row's gate box (visually to its right) and Left/Right did
+                 nothing. `inferColumnsPerRow` reads the two same-`offsetTop`
+                 checkboxes as 2 columns, so Left/Right moves within a row and
+                 Up/Down across rows, matching the visual layout. -->
+            <div class="space-y-2" appTvNavGroup axis="grid">
               <div class="flex items-center justify-between gap-4 pb-1 border-b border-theme">
                 <span class="text-xs uppercase tracking-wider text-theme-muted">{{
                   'admin.step' | t

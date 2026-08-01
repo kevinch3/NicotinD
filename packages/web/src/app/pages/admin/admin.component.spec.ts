@@ -1,7 +1,9 @@
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { vi, beforeEach, describe, it, expect } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { AdminComponent } from './admin.component';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -714,6 +716,37 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     fixture.destroy();
   });
 
+  /**
+   * Behavioural counterpart to the attribute assertions in this block. A
+   * directive-selector attribute survives in the DOM whether or not the
+   * directive is imported, applied, or able to reach its group — which is
+   * exactly how the Extensions page shipped with every group registering zero
+   * items and D-pad nav a silent no-op. Only a real key event moving real
+   * focus proves the wiring.
+   *
+   * `AdminComponent.services` is the fixed one-element list `['slskd']`, so
+   * there is no second item to arrow onto — in production, not just in this
+   * fixture. The equivalent proof is registration: the group's `items()` must
+   * actually contain the restart button. That is precisely what was empty on
+   * the Extensions page.
+   */
+  it('the services grid group actually registers its restart button', async () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const host = el.querySelector('[appTvNavGroup][axis="grid"]')!;
+    const group = fixture.debugElement
+      .queryAll(By.directive(TvNavGroupDirective))
+      .find((de) => de.nativeElement === host)!
+      .injector.get(TvNavGroupDirective);
+    const items = group.items();
+    expect(items.length).toBeGreaterThan(0);
+    expect(items[0]!.nativeElement.textContent).toContain('admin.restart');
+    fixture.destroy();
+  });
+
   it('renders each log service selector button as an appTvNavItem in a horizontal group', async () => {
     const { fixture } = setup();
     fixture.detectChanges();
@@ -727,7 +760,32 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     fixture.destroy();
   });
 
-  it('renders each processing task row as two appTvNavItem checkboxes inside one vertical group', async () => {
+  it('ArrowRight moves focus between log service selector buttons', async () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[appTvNavGroup][axis="horizontal"]')!;
+    const buttons: HTMLElement[] = Array.from(group.querySelectorAll('button[appTvNavItem]'));
+    expect(buttons.length).toBeGreaterThan(1);
+    buttons[0]!.focus();
+    buttons[0]!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }),
+    );
+    expect(document.activeElement).toBe(buttons[1]);
+    fixture.destroy();
+  });
+
+  /**
+   * The run + gate checkboxes of one task sit side-by-side in a `flex` row
+   * while DOM order is run₁, gate₁, run₂, gate₂, … — so on the `vertical` axis
+   * this group used to send ArrowDown from a run box to the SAME row's gate box
+   * (visually to its right) and do nothing at all on Left/Right. The `grid`
+   * axis matches the real layout: `inferColumnsPerRow` sees the two
+   * same-`offsetTop` checkboxes as 2 columns.
+   */
+  it('renders each processing task row as two appTvNavItem checkboxes inside one grid group', async () => {
     const { fixture } = setup();
     fixture.detectChanges();
     await fixture.whenStable();
@@ -738,13 +796,57 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     const gateCheckbox = el.querySelector('[data-testid^="processing-gate-"]');
     expect(gateCheckbox?.hasAttribute('appTvNavItem')).toBe(true);
 
-    // Both checkboxes for every row live inside ONE shared vertical group, not
-    // a nested per-row group.
-    const verticalGroup = runCheckbox?.closest('[appTvNavGroup][axis="vertical"]');
-    expect(verticalGroup).not.toBeNull();
-    expect(gateCheckbox?.closest('[appTvNavGroup][axis="vertical"]')).toBe(verticalGroup);
-    const groupsInside = verticalGroup?.querySelectorAll('[appTvNavGroup]');
+    // Both checkboxes for every row live inside ONE shared group, not a nested
+    // per-row group.
+    const gridGroup = runCheckbox?.closest('[appTvNavGroup][axis="grid"]');
+    expect(gridGroup).not.toBeNull();
+    expect(gateCheckbox?.closest('[appTvNavGroup][axis="grid"]')).toBe(gridGroup);
+    const groupsInside = gridGroup?.querySelectorAll('[appTvNavGroup]');
     expect(groupsInside?.length ?? 0).toBe(0);
+    fixture.destroy();
+  });
+
+  /**
+   * Behavioural proof of the grid axis above (and that the group registers its
+   * items at all). jsdom computes no layout, so `offsetTop` is stubbed to put
+   * each task's two checkboxes on their own row — the shape
+   * `inferColumnsPerRow` reads as 2 columns in the browser.
+   */
+  it('ArrowRight crosses a processing row (run → gate) and ArrowDown jumps to the next task', async () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el
+      .querySelector('[data-testid^="processing-task-"]')!
+      .closest('[appTvNavGroup]')!;
+    const boxes: HTMLInputElement[] = Array.from(group.querySelectorAll('input[appTvNavItem]'));
+    // At least two task rows are needed for the ArrowDown half of this test.
+    expect(boxes.length).toBeGreaterThanOrEqual(4);
+    boxes.forEach((box, i) => {
+      Object.defineProperty(box, 'offsetTop', {
+        value: Math.floor(i / 2) * 100,
+        configurable: true,
+      });
+      // A gate box is disabled while its task is off, and a disabled input
+      // cannot take focus — irrelevant to what this test measures (the group's
+      // nav geometry), so un-disable them rather than depend on which tasks the
+      // fixture happens to enable.
+      box.disabled = false;
+    });
+
+    boxes[0]!.focus();
+    boxes[0]!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }),
+    );
+    expect(document.activeElement).toBe(boxes[1]); // same row's gate box
+
+    boxes[0]!.focus();
+    boxes[0]!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+    );
+    expect(document.activeElement).toBe(boxes[2]); // next task's run box
     fixture.destroy();
   });
 
@@ -803,11 +905,26 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     await fixture.whenStable();
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
-    const actionCell = el.querySelector('select')?.closest('td');
+    const selectEl = el.querySelector('select')!;
+    const actionCell = selectEl.closest('td');
     const group = actionCell?.querySelector('[appTvNavGroup]');
     expect(group).not.toBeNull();
-    expect(group!.querySelector('select[appTvNavItem]')).toBeNull();
+    // Structural, not attribute-absence: the point is that the <select> is
+    // OUTSIDE the group's subtree entirely, so its own Up/Down option cycling
+    // is never intercepted. Asserting only `select[appTvNavItem]` is null would
+    // still pass with the select nested inside the group.
+    expect(group!.contains(selectEl)).toBe(false);
+    expect(selectEl.closest('[appTvNavGroup]')).toBeNull();
     expect(group!.querySelectorAll('button[appTvNavItem]').length).toBeGreaterThan(0);
+
+    // ...and the group is genuinely wired: a real ArrowRight moves real focus.
+    const buttons: HTMLElement[] = Array.from(group!.querySelectorAll('button[appTvNavItem]'));
+    expect(buttons.length).toBeGreaterThan(1);
+    buttons[0]!.focus();
+    buttons[0]!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }),
+    );
+    expect(document.activeElement).toBe(buttons[1]);
     fixture.destroy();
   });
 });

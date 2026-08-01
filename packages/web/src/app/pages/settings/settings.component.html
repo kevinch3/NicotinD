@@ -87,7 +87,12 @@
           <p class="text-xs text-theme-muted mb-3">
             {{ 'settings.autoPreserveHint' | t }}
           </p>
-          <div appTvNavGroup axis="grid" class="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Auto-preserve window">
+          <!-- No static `role` here: `appTvNavGroup` binds `[attr.role]` on every
+               change-detection pass, so a hand-written one is silently
+               overwritten (this element used to declare `role="radiogroup"` and
+               render as `role="grid"`). The directive's role is authoritative,
+               as it already is for every other group in this codebase. -->
+          <div appTvNavGroup axis="grid" class="grid grid-cols-4 gap-2" aria-label="Auto-preserve window">
             @for (opt of autoPreserveOptions; track opt.value) {
               <button appTvNavItem type="button" (click)="onAutoPreserveClick(opt.value)"
                 [attr.data-testid]="'auto-preserve-' + opt.value"

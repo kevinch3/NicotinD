@@ -126,4 +126,27 @@ describe('AgentTokensComponent', () => {
     const group = button?.closest('[appTvNavGroup]');
     expect(group?.getAttribute('axis')).toBe('vertical');
   });
+
+  /**
+   * The assertion above is attribute-only, and a directive selector survives in
+   * the DOM whether or not the directive is imported, applied, or able to reach
+   * its group — which is how the Extensions page shipped with every group
+   * registering zero items. This is the behavioural proof: a real key event
+   * moving real focus.
+   */
+  it('ArrowDown moves focus from one token revoke button to the next', () => {
+    const fixture = setup({
+      listTokens: () => of({ tokens: [...TOKENS, { ...TOKENS[0]!, id: 't9', name: 'Second' }] }),
+    });
+    const el: HTMLElement = fixture.nativeElement;
+    const buttons: HTMLElement[] = Array.from(
+      el.querySelectorAll('[data-testid="agent-token-revoke"]'),
+    );
+    expect(buttons.length).toBe(2);
+    buttons[0]!.focus();
+    buttons[0]!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+    );
+    expect(document.activeElement).toBe(buttons[1]);
+  });
 });

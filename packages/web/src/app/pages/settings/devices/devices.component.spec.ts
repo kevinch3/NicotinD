@@ -56,33 +56,66 @@ const DEVICE: PairedDevice = {
   current: false,
 };
 
+const DEVICE_2: PairedDevice = {
+  id: 'd2',
+  name: 'Kitchen tablet',
+  platform: 'android',
+  createdAt: Date.now(),
+  lastSeenAt: Date.now(),
+  current: false,
+};
+
+function setupWithDevices(devices: PairedDevice[]) {
+  TestBed.resetTestingModule();
+  TestBed.configureTestingModule({
+    imports: [DevicesComponent],
+    providers: [
+      provideRouter([]),
+      {
+        provide: DevicesApiService,
+        useValue: {
+          mintPairing: () => of(MINT),
+          getDevices: () => of({ devices }),
+          getRemoteAccess: () => of(null),
+          setRemoteAccess: () => of(null),
+          revokeDevice: () => of(undefined),
+        },
+      },
+      { provide: AuthService, useValue: { isAdmin: () => false, user: () => null } },
+    ],
+  });
+  const fixture = TestBed.createComponent(DevicesComponent);
+  fixture.detectChanges();
+  return fixture;
+}
+
 describe('DevicesComponent — TV nav (Android TV phase 4)', () => {
   it('renders the devices list as an appTvNavGroup with each revoke button as appTvNavItem', () => {
-    TestBed.resetTestingModule();
-    TestBed.configureTestingModule({
-      imports: [DevicesComponent],
-      providers: [
-        provideRouter([]),
-        {
-          provide: DevicesApiService,
-          useValue: {
-            mintPairing: () => of(MINT),
-            getDevices: () => of({ devices: [DEVICE] }),
-            getRemoteAccess: () => of(null),
-            setRemoteAccess: () => of(null),
-            revokeDevice: () => of(undefined),
-          },
-        },
-        { provide: AuthService, useValue: { isAdmin: () => false, user: () => null } },
-      ],
-    });
-    const fixture = TestBed.createComponent(DevicesComponent);
-    fixture.detectChanges();
+    const fixture = setupWithDevices([DEVICE]);
     const el: HTMLElement = fixture.nativeElement;
     const button = el.querySelector('[data-testid="device-revoke"]');
     expect(button?.matches('[appTvNavItem]')).toBe(true);
     const group = button?.closest('[appTvNavGroup]');
     expect(group?.getAttribute('axis')).toBe('vertical');
+  });
+
+  /**
+   * The assertion above is attribute-only: a directive selector stays in the
+   * rendered DOM whether or not the directive is imported, applied, or able to
+   * reach its group (the Extensions page shipped exactly that way, with every
+   * group registering zero items and D-pad nav a silent no-op). This is the
+   * behavioural proof — a real key event moving real focus.
+   */
+  it('ArrowDown moves focus from one device revoke button to the next', () => {
+    const fixture = setupWithDevices([DEVICE, DEVICE_2]);
+    const el: HTMLElement = fixture.nativeElement;
+    const buttons: HTMLElement[] = Array.from(el.querySelectorAll('[data-testid="device-revoke"]'));
+    expect(buttons.length).toBe(2);
+    buttons[0]!.focus();
+    buttons[0]!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+    );
+    expect(document.activeElement).toBe(buttons[1]);
   });
 });
 
