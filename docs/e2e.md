@@ -275,6 +275,25 @@ helper (`shotPath`/`shot`, unit-tested in the `ci` job alongside `observe`/`repo
 | `playwright.hunt.config.ts`         | **live** (`E2E_BASE_URL`, Pixel 7)  | `hunt-mobile` + `network-album-download` — **mutates prod** (real downloads)            |
 | `playwright.live-screens.config.ts` | **live** (`E2E_BASE_URL`, Pixel 7)  | `player-analysis` + `downloads-acquire` — read-mostly; mutating sub-steps env-gated     |
 
+**Refreshing the README's screenshots**: `docs/images/{library,album,now-playing}.png` (3 of the
+README's 4 images) are curated copies of specific shots from `mobile-screenshots.screens.ts`, kept
+current via one command:
+
+```bash
+bun run --filter @nicotind/e2e screens:readme
+```
+
+This runs the flow above end-to-end and copies the 3 relevant PNGs into `docs/images/`, printing
+what changed. **`docs/images/search.png` is NOT covered by this script** — the Acquire page needs a
+real Lidarr/slskd to render anything worth screenshotting, which this fixture-based harness
+deliberately has neither of (`NICOTIND_LIDARR_URL`/`NICOTIND_SLSKD_URL` point at closed ports in
+`playwright.screenshots.config.ts`); that one image is refreshed via the live `screens:live` flow
+instead, by hand, when the Acquire UI changes materially enough to be worth a fresh live capture.
+
+**Known issue (issue #354)**: The `album.png` capture currently shows a broken duplicate player bar
+due to a fullPage screenshot + fixed/sticky bottom-chrome interaction; this is a known bug that
+should be visually checked before committing the image until #354 is resolved.
+
 The **live-screens** config doubles as a findings run: its two flows use the playground
 `obs` fixture, so the config also wires `playground/reporter.ts` and a single run emits
 both the per-flow screenshots **and** `playground-report/*.{md,json}` (timings, cover-art
