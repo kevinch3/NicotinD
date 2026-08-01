@@ -1,4 +1,4 @@
-import { Directive, ElementRef, computed, inject } from '@angular/core';
+import { DestroyRef, Directive, ElementRef, computed, inject } from '@angular/core';
 import { TvNavGroupDirective } from './tv-nav-group.directive';
 
 /**
@@ -21,6 +21,15 @@ import { TvNavGroupDirective } from './tv-nav-group.directive';
 export class TvNavItemDirective {
   private readonly el = inject(ElementRef<HTMLElement>);
   private readonly group = inject(TvNavGroupDirective, { optional: true });
+
+  constructor() {
+    // Register with the group through DI rather than letting the group find
+    // us with a content query: DI crosses a component's view boundary, a
+    // content query does not (see TvNavGroupDirective's class comment).
+    this.group?.registerItem(this);
+    const destroyRef = inject(DestroyRef);
+    destroyRef.onDestroy(() => this.group?.unregisterItem(this));
+  }
 
   readonly tabIndex = computed(() => {
     if (!this.group) return 0;

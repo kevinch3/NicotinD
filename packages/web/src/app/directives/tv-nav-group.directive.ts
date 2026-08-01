@@ -1,19 +1,16 @@
-import {
-  AfterContentInit,
-  ContentChildren,
-  Directive,
-  DestroyRef,
-  Input,
-  QueryList,
-  effect,
-  forwardRef,
-  inject,
-  signal,
-} from '@angular/core';
+import { Directive, Input, effect, signal } from '@angular/core';
 import { TvNavItemDirective } from './tv-nav-item.directive';
 import { inferColumnsPerRow } from '../lib/tv-nav-grid';
 
 export type TvNavAxis = 'vertical' | 'horizontal' | 'grid';
+
+/** Comparator ordering two items by their elements' real document position. */
+function byDomOrder(a: TvNavItemDirective, b: TvNavItemDirective): number {
+  const position = a.nativeElement.compareDocumentPosition(b.nativeElement);
+  if (position & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+  if (position & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+  return 0;
+}
 
 /**
  * Roving-tabindex D-pad/arrow-key navigation for a list/row of `appTvNavItem`
@@ -23,11 +20,19 @@ export type TvNavAxis = 'vertical' | 'horizontal' | 'grid';
  * jumping to the opposite end, so a future outer/global handler can still
  * react to it if needed.
  *
- * Implementation note (both deviate from the original spec's signal-API
- * sketch): `axis` is a classic `@Input()`, and `items` is read via
- * `@ContentChildren`/`QueryList` bridged into a `signal`, rather than the
- * newer `input()`/`contentChildren()` signal functions. Neither signal
- * function populates in this project's hand-rolled vitest+JIT TestBed
+ * Items are NOT discovered with `@ContentChildren`: an Angular content query
+ * stops at a component's view boundary, so an `appTvNavItem` marked inside a
+ * child component's own template (e.g. the title button in
+ * `TrackRowComponent`) is invisible to an ancestor group — and worse than a
+ * no-op, since `TvNavItemDirective`'s `inject(TvNavGroupDirective)` DOES
+ * cross that boundary, so such an item found the group, never appeared in
+ * `items()`, and pinned itself to `tabindex="-1"` (dropping out of the Tab
+ * order entirely). Items therefore register themselves with the group
+ * through DI instead — the one lookup that provably crosses the boundary.
+ *
+ * Implementation note (deviates from the original spec's signal-API sketch):
+ * `axis` is a classic `@Input()` rather than the newer `input()` signal
+ * function, which does not populate in this project's hand-rolled vitest+JIT TestBed
  * harness (no `@angular/build:unit-test`, no zone.js — see docs/web-ui.md
  * "Web test harness"): verified down to a minimal `viewChild()`/`input()`
  * sanity check on a bare component with no directives involved, so it isn't
@@ -35,32 +40,61 @@ export type TvNavAxis = 'vertical' | 'horizontal' | 'grid';
  * discovers `input()`-declared class fields as bindable properties (a
  * limitation of this project's JIT-based vitest test harness, not a general
  * Angular constraint), so every value stays at its default. The classic
- * decorator APIs query/bind the same descendants and work correctly under
- * the same harness, so they're what's used here.
+ * decorator API binds the same way and works correctly under the same
+ * harness, so it's what's used here.
  */
 @Directive({
   selector: '[appTvNavGroup]',
   standalone: true,
   host: {
     '(keydown)': 'onKeydown($event)',
-    role: 'toolbar',
-    '[attr.aria-orientation]': 'axis',
+    // `role="grid"` is the correct ARIA role for a 2-D grid of focusable
+    // items; `aria-orientation` only accepts "horizontal"/"vertical", so it
+    // is omitted (null) on the grid axis rather than emitting an invalid
+    // `aria-orientation="grid"`.
+    '[attr.role]': "axis === 'grid' ? 'grid' : 'toolbar'",
+    '[attr.aria-orientation]': "axis === 'grid' ? null : axis",
   },
 })
-export class TvNavGroupDirective implements AfterContentInit {
+export class TvNavGroupDirective {
   @Input() axis: TvNavAxis = 'vertical';
 
-  // forwardRef defers TvNavItemDirective resolution to avoid circular-import
-  // errors when consumers import TvNavItemDirective before TvNavGroupDirective
-  // (see docs/mobile-app.md for the full mechanics).
-  @ContentChildren(forwardRef(() => TvNavItemDirective), { descendants: true })
-  private readonly itemsQuery!: QueryList<TvNavItemDirective>;
-
   private readonly itemsSignal = signal<readonly TvNavItemDirective[]>([]);
-  readonly items = this.itemsSignal.asReadonly();
-  readonly activeIndex = signal(0);
 
-  private readonly destroyRef = inject(DestroyRef);
+  /** Registration-order array the last memoized sort was derived from, and
+   *  that sort. Not a `computed()` — see `items` for why memoizing
+   *  unconditionally would be wrong. */
+  private sortedFrom: readonly TvNavItemDirective[] | null = null;
+  private sorted: readonly TvNavItemDirective[] = [];
+
+  /** The group's items in real DOM order.
+   *
+   *  Reads the registration-order signal (so it stays a reactive dependency
+   *  for the `tabIndex`/`effect` consumers) and sorts by document position on
+   *  read rather than at registration: an item registers from its own
+   *  constructor, where its host element is NOT yet attached to the document
+   *  (`isConnected === false` for anything inside an `@for`/embedded view or
+   *  a nested component's template), and `compareDocumentPosition` on
+   *  detached nodes returns an arbitrary order — sorting there reversed every
+   *  group in practice.
+   *
+   *  The sort is memoized per registration-order array, but ONLY once every
+   *  element is actually in the document; until then the computed order is
+   *  meaningless and must not be cached. That guard is what makes a
+   *  `computed()` unusable here: it would memoize the first (detached, wrong)
+   *  evaluation and hold it until the next registration. */
+  readonly items = (): readonly TvNavItemDirective[] => {
+    const raw = this.itemsSignal();
+    if (this.sortedFrom === raw) return this.sorted;
+    const next = [...raw].sort(byDomOrder);
+    if (next.every((item) => item.nativeElement.isConnected)) {
+      this.sortedFrom = raw;
+      this.sorted = next;
+    }
+    return next;
+  };
+
+  readonly activeIndex = signal(0);
 
   constructor() {
     // Keep the roving index in range if items are added/removed (e.g. the
@@ -73,12 +107,15 @@ export class TvNavGroupDirective implements AfterContentInit {
     });
   }
 
-  ngAfterContentInit(): void {
-    this.itemsSignal.set(this.itemsQuery.toArray());
-    const sub = this.itemsQuery.changes.subscribe((ql: QueryList<TvNavItemDirective>) => {
-      this.itemsSignal.set(ql.toArray());
-    });
-    this.destroyRef.onDestroy(() => sub.unsubscribe());
+  /** Called by a `TvNavItemDirective` from its own constructor. Registration
+   *  order is not meaningful (see `items`) — `items()` re-derives DOM order
+   *  on read. */
+  registerItem(item: TvNavItemDirective): void {
+    this.itemsSignal.update((items) => [...items, item]);
+  }
+
+  unregisterItem(item: TvNavItemDirective): void {
+    this.itemsSignal.update((items) => items.filter((i) => i !== item));
   }
 
   /** Called by a `TvNavItemDirective` on `focusin` so a direct click/Tab into

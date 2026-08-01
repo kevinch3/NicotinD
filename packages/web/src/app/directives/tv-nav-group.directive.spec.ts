@@ -125,6 +125,9 @@ describe('TvNavGroupDirective + TvNavItemDirective', () => {
     const buttons: HTMLButtonElement[] = Array.from(
       fixture.nativeElement.querySelectorAll('button'),
     );
+    const group: HTMLElement = fixture.nativeElement.querySelector('[appTvNavGroup]');
+    expect(group.getAttribute('role')).toBe('toolbar');
+    expect(group.getAttribute('aria-orientation')).toBe('horizontal');
     buttons[0]!.focus();
     keydown(buttons[0]!, 'ArrowRight');
     fixture.detectChanges();
@@ -135,10 +138,11 @@ describe('TvNavGroupDirective + TvNavItemDirective', () => {
     expect(document.activeElement).toBe(buttons[1]);
   });
 
-  it('the group host carries role="toolbar" for assistive tech', () => {
+  it('a vertical group carries role="toolbar" + aria-orientation="vertical"', () => {
     const { fixture } = setup();
     const group: HTMLElement = fixture.nativeElement.querySelector('[appTvNavGroup]');
     expect(group.getAttribute('role')).toBe('toolbar');
+    expect(group.getAttribute('aria-orientation')).toBe('vertical');
   });
 
   it('an arrow key on a focusable descendant that is not an appTvNavItem does not move focus (stale-activeIndex guard)', () => {
@@ -192,6 +196,13 @@ describe('TvNavGroupDirective grid axis', () => {
     });
     return { fixture, buttons };
   }
+
+  it('carries role="grid" and omits aria-orientation (which only allows horizontal/vertical)', () => {
+    const { fixture } = setupGrid([3, 2]);
+    const group: HTMLElement = fixture.nativeElement.querySelector('[appTvNavGroup]');
+    expect(group.getAttribute('role')).toBe('grid');
+    expect(group.hasAttribute('aria-orientation')).toBe(false);
+  });
 
   it('ArrowRight moves within a row, clamped at the row end (no wrap to next row)', () => {
     const { fixture, buttons } = setupGrid([3, 2]);
