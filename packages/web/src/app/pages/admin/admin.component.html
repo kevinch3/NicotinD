@@ -231,7 +231,7 @@
         </app-metric-pill>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8" appTvNavGroup axis="grid">
         @for (svc of services; track svc) {
           <div
             class="rounded-xl border border-theme bg-theme-surface p-4 flex items-center justify-between gap-4"
@@ -244,6 +244,7 @@
               </span>
             </div>
             <button
+              appTvNavItem
               (click)="handleRestart(svc)"
               [disabled]="restarting()[svc]"
               class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
@@ -938,7 +939,7 @@
               </div>
             }
 
-            <div class="space-y-2">
+            <div class="space-y-2" appTvNavGroup axis="vertical">
               <div class="flex items-center justify-between gap-4 pb-1 border-b border-theme">
                 <span class="text-xs uppercase tracking-wider text-theme-muted">{{
                   'admin.step' | t
@@ -963,6 +964,7 @@
                   <div class="flex items-center gap-6">
                     <input
                       type="checkbox"
+                      appTvNavItem
                       [checked]="p.tasks[t.id]"
                       [disabled]="processingSaving()"
                       [attr.data-testid]="'processing-task-' + t.id"
@@ -972,6 +974,7 @@
                     />
                     <input
                       type="checkbox"
+                      appTvNavItem
                       [checked]="taskGated(t.id)"
                       [disabled]="processingSaving() || !!taskUnavailable(t.id) || !p.tasks[t.id]"
                       [attr.data-testid]="'processing-gate-' + t.id"
@@ -1068,9 +1071,10 @@
           'admin.logs' | t
         }}</span>
 
-        <div class="flex gap-2 mb-3 flex-wrap mt-3">
+        <div class="flex gap-2 mb-3 flex-wrap mt-3" appTvNavGroup axis="horizontal">
           @for (svc of logServiceOptions; track svc) {
             <button
+              appTvNavItem
               (click)="selectLogService(svc)"
               [class]="
                 selectedService() === svc

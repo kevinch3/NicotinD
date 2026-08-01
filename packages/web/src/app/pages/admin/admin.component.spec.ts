@@ -649,3 +649,102 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
     expect(c.syncMsg()).toBe('boom');
   });
 });
+
+/** Phase 4 (Android TV support) task 3: the same D-pad nav directives applied
+ *  to Settings/Devices in tasks 1-2 now cover the services grid, the log
+ *  service selector buttons, and the processing-task checkboxes. */
+describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () => {
+  beforeEach(async () => {
+    const mocks = makeAdminMocks();
+    await TestBed.configureTestingModule({
+      imports: [AdminComponent],
+      providers: [
+        { provide: DownloadsApiService, useValue: {} },
+        {
+          provide: SystemApiService,
+          useValue: {
+            getUsers: vi.fn(() => of([])),
+            getStreamingSettings: mocks.getStreaming,
+            saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getProcessing: mocks.getProcessing,
+            getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
+            setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
+            saveProcessing: vi.fn((p: unknown) => of(p as object)),
+          },
+        },
+        {
+          provide: LibraryApiService,
+          useValue: {
+            resyncLibrary: vi.fn(() => of({ ok: true })),
+            getFragments: vi.fn(() =>
+              of({
+                duplicateAlbums: [],
+                hiddenByClassification: [],
+                misSplitAlbums: [],
+                totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 },
+                ok: true,
+              } as LibraryFragmentReport),
+            ),
+          },
+        },
+        { provide: ServiceReviewService, useValue: mocks.reviewService },
+        { provide: AuthService, useValue: { token: () => null } },
+      ],
+    }).compileComponents();
+  });
+
+  function setup() {
+    const fixture = TestBed.createComponent(AdminComponent);
+    fixture.componentInstance.loading.set(false);
+    return { fixture };
+  }
+
+  it('renders the services grid as an appTvNavGroup with grid axis', async () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[appTvNavGroup][axis="grid"]');
+    expect(group).not.toBeNull();
+    // The button that actually gets nav focus is the inner restart button, not
+    // the row wrapper (which has no click handler).
+    const restartButton = group?.querySelector('button[appTvNavItem]');
+    expect(restartButton?.textContent).toContain('admin.restart');
+    fixture.destroy();
+  });
+
+  it('renders each log service selector button as an appTvNavItem in a horizontal group', async () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[appTvNavGroup][axis="horizontal"]');
+    expect(group).not.toBeNull();
+    const buttons = group?.querySelectorAll('button[appTvNavItem]');
+    expect(buttons?.length).toBeGreaterThan(0);
+    fixture.destroy();
+  });
+
+  it('renders each processing task row as two appTvNavItem checkboxes inside one vertical group', async () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const runCheckbox = el.querySelector('[data-testid^="processing-task-"]');
+    expect(runCheckbox?.hasAttribute('appTvNavItem')).toBe(true);
+    const gateCheckbox = el.querySelector('[data-testid^="processing-gate-"]');
+    expect(gateCheckbox?.hasAttribute('appTvNavItem')).toBe(true);
+
+    // Both checkboxes for every row live inside ONE shared vertical group, not
+    // a nested per-row group.
+    const verticalGroup = runCheckbox?.closest('[appTvNavGroup][axis="vertical"]');
+    expect(verticalGroup).not.toBeNull();
+    expect(gateCheckbox?.closest('[appTvNavGroup][axis="vertical"]')).toBe(verticalGroup);
+    const groupsInside = verticalGroup?.querySelectorAll('[appTvNavGroup]');
+    expect(groupsInside?.length ?? 0).toBe(0);
+    fixture.destroy();
+  });
+});
