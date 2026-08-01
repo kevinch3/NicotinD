@@ -1,8 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import type { Subscription } from 'rxjs';
 import { KeyboardShortcutsService } from './keyboard-shortcuts.service';
 import { PlayerService } from './player.service';
+import { TvNavGroupDirective } from '../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../directives/tv-nav-item.directive';
 
 function dispatchKeydown(target: EventTarget, key: string): KeyboardEvent {
   const event = new KeyboardEvent('keydown', {
@@ -200,5 +202,86 @@ describe('KeyboardShortcutsService', () => {
     dispatchKeydown(input, 'ArrowRight');
     dispatchKeydown(input, 'ArrowLeft');
     expect(playerStub.seek).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Cross-directive integration: a REAL `TvNavGroupDirective`/`TvNavItemDirective`
+ * pair alongside a REAL `KeyboardShortcutsService` both listening on the same
+ * real `window`, so the precedence between "D-pad moved focus" and "global
+ * seek shortcut" is exercised through actual event bubbling rather than each
+ * side's isolated unit test asserting its own half in a vacuum (the seam that
+ * has hidden real cross-directive bugs elsewhere in this effort).
+ */
+describe('KeyboardShortcutsService + TvNavGroupDirective (cross-directive precedence)', () => {
+  @Component({
+    standalone: true,
+    imports: [TvNavGroupDirective, TvNavItemDirective],
+    template: `
+      <div appTvNavGroup axis="horizontal">
+        <button appTvNavItem>one</button>
+        <button appTvNavItem>two</button>
+      </div>
+      <button class="outside">outside</button>
+    `,
+  })
+  class IntegrationHost {}
+
+  let playerStub: {
+    currentTime: ReturnType<typeof signal<number>>;
+    seek: ReturnType<typeof vi.fn>;
+  };
+  let sub: Subscription;
+
+  function setupIntegration() {
+    playerStub = { currentTime: signal(30), seek: vi.fn() };
+    TestBed.configureTestingModule({
+      imports: [IntegrationHost],
+      providers: [KeyboardShortcutsService, { provide: PlayerService, useValue: playerStub }],
+    });
+    const fixture = TestBed.createComponent(IntegrationHost);
+    fixture.detectChanges();
+    const service = TestBed.inject(KeyboardShortcutsService);
+    sub = service.initialize();
+    const buttons: HTMLButtonElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('button.outside, [appTvNavItem]'),
+    );
+    return { fixture, buttons };
+  }
+
+  afterEach(() => {
+    sub?.unsubscribe();
+  });
+
+  it('a real ArrowRight inside a nav group moves D-pad focus and the global seek shortcut defers', () => {
+    const { fixture, buttons } = setupIntegration();
+    const [first, second] = buttons;
+    first!.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      bubbles: true,
+      cancelable: true,
+    });
+    first!.dispatchEvent(event);
+    fixture.detectChanges();
+
+    // (a) the nav group's own D-pad handling still works.
+    expect(document.activeElement).toBe(second);
+    // (b) the global shortcut correctly deferred to the earlier handler.
+    expect(playerStub.seek).not.toHaveBeenCalled();
+  });
+
+  it('a real ArrowRight outside any nav group still triggers the global seek shortcut', () => {
+    const { buttons } = setupIntegration();
+    const outside = buttons.find((b) => b.classList.contains('outside'))!;
+    outside.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      bubbles: true,
+      cancelable: true,
+    });
+    outside.dispatchEvent(event);
+
+    expect(playerStub.seek).toHaveBeenCalledWith(40);
   });
 });
