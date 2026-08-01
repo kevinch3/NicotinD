@@ -143,26 +143,31 @@
                         <option [value]="r" [selected]="r === user.role">{{ r }}</option>
                       }
                     </select>
-                    <button
-                      (click)="toggleStatus(user)"
-                      [disabled]="user.id === currentUserId()"
-                      class="px-2 py-1 rounded text-xs text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2 transition disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      {{ (user.status === 'active' ? 'admin.disable' : 'admin.enable') | t }}
-                    </button>
-                    <button
-                      (click)="resetTarget.set(user); newPassword.set('')"
-                      class="px-2 py-1 rounded text-xs text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2 transition"
-                    >
-                      {{ 'admin.resetPw' | t }}
-                    </button>
-                    <button
-                      (click)="deleteTarget.set(user)"
-                      [disabled]="user.id === currentUserId()"
-                      class="px-2 py-1 rounded text-xs text-status-error hover:bg-theme-hover transition disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      {{ 'admin.delete' | t }}
-                    </button>
+                    <div appTvNavGroup axis="horizontal" class="flex items-center gap-1">
+                      <button
+                        appTvNavItem
+                        (click)="toggleStatus(user)"
+                        [disabled]="user.id === currentUserId()"
+                        class="px-2 py-1 rounded text-xs text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        {{ (user.status === 'active' ? 'admin.disable' : 'admin.enable') | t }}
+                      </button>
+                      <button
+                        appTvNavItem
+                        (click)="resetTarget.set(user); newPassword.set('')"
+                        class="px-2 py-1 rounded text-xs text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2 transition"
+                      >
+                        {{ 'admin.resetPw' | t }}
+                      </button>
+                      <button
+                        appTvNavItem
+                        (click)="deleteTarget.set(user)"
+                        [disabled]="user.id === currentUserId()"
+                        class="px-2 py-1 rounded text-xs text-status-error hover:bg-theme-hover transition disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        {{ 'admin.delete' | t }}
+                      </button>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -231,7 +236,7 @@
         </app-metric-pill>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8" appTvNavGroup axis="grid">
         @for (svc of services; track svc) {
           <div
             class="rounded-xl border border-theme bg-theme-surface p-4 flex items-center justify-between gap-4"
@@ -244,6 +249,7 @@
               </span>
             </div>
             <button
+              appTvNavItem
               (click)="handleRestart(svc)"
               [disabled]="restarting()[svc]"
               class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
@@ -938,7 +944,14 @@
               </div>
             }
 
-            <div class="space-y-2">
+            <!-- grid, not vertical: each row lays its run + gate checkbox out
+                 side-by-side (`flex`) while DOM order is run₁,gate₁,run₂,… — on
+                 the vertical axis ArrowDown from a run box landed on the SAME
+                 row's gate box (visually to its right) and Left/Right did
+                 nothing. `inferColumnsPerRow` reads the two same-`offsetTop`
+                 checkboxes as 2 columns, so Left/Right moves within a row and
+                 Up/Down across rows, matching the visual layout. -->
+            <div class="space-y-2" appTvNavGroup axis="grid">
               <div class="flex items-center justify-between gap-4 pb-1 border-b border-theme">
                 <span class="text-xs uppercase tracking-wider text-theme-muted">{{
                   'admin.step' | t
@@ -963,6 +976,7 @@
                   <div class="flex items-center gap-6">
                     <input
                       type="checkbox"
+                      appTvNavItem
                       [checked]="p.tasks[t.id]"
                       [disabled]="processingSaving()"
                       [attr.data-testid]="'processing-task-' + t.id"
@@ -972,6 +986,7 @@
                     />
                     <input
                       type="checkbox"
+                      appTvNavItem
                       [checked]="taskGated(t.id)"
                       [disabled]="processingSaving() || !!taskUnavailable(t.id) || !p.tasks[t.id]"
                       [attr.data-testid]="'processing-gate-' + t.id"
@@ -1068,9 +1083,10 @@
           'admin.logs' | t
         }}</span>
 
-        <div class="flex gap-2 mb-3 flex-wrap mt-3">
+        <div class="flex gap-2 mb-3 flex-wrap mt-3" appTvNavGroup axis="horizontal">
           @for (svc of logServiceOptions; track svc) {
             <button
+              appTvNavItem
               (click)="selectLogService(svc)"
               [class]="
                 selectedService() === svc

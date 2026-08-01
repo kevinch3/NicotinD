@@ -35,6 +35,13 @@
         </provider>
     </application>
 
+    <!-- Android TV / TV boxes have no touchscreen; without this the OS defaults
+         android.hardware.touchscreen to required=true, which blocks/degrades
+         install on some TV launchers even for a sideloaded APK. Sideload-only
+         support: no LEANBACK_LAUNCHER category, TV banner, or
+         android.software.leanback feature — see docs/mobile-app.md. -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />

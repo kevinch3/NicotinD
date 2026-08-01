@@ -70,7 +70,7 @@
         <!-- Controls — mobile: content-sized, sits at the right edge after the
              track-info column grows; desktop: flex-1 to host the progress bar. -->
         <div class="flex-none md:flex-1 flex flex-col items-center gap-1">
-          <div class="flex items-center gap-2 md:gap-3">
+          <div class="flex items-center gap-2 md:gap-3" appTvNavGroup axis="horizontal">
             <!-- Shuffle - desktop only -->
             <button
               (click)="player.toggleShuffle()"
@@ -90,6 +90,7 @@
 
             <!-- Previous -->
             <button
+              appTvNavItem
               (click)="handlePrev()"
               data-testid="player-prev"
               class="w-7 h-7 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition"
@@ -102,6 +103,7 @@
 
             <!-- Play/Pause -->
             <button
+              appTvNavItem
               (click)="handlePlayPause()"
               data-testid="player-playpause"
               [attr.data-playing]="showPlaying()"
@@ -124,6 +126,7 @@
 
             <!-- Next -->
             <button
+              appTvNavItem
               (click)="handleNext()"
               data-testid="player-next"
               class="w-7 h-7 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition"

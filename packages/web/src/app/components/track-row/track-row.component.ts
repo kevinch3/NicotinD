@@ -7,6 +7,7 @@ import { PlayerService, type Track } from '../../services/player.service';
 import { LikeService } from '../../services/like.service';
 import { rowPlaybackState } from '../../lib/row-playback-state';
 import type { ArtistCredit } from '../../services/api/api-types';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 
 export interface TrackAction {
   label: string;
@@ -24,7 +25,7 @@ function formatDuration(seconds?: number): string {
 
 @Component({
   selector: 'app-track-row',
-  imports: [CoverArtComponent, ArtistLinksComponent, MenuPanelComponent],
+  imports: [CoverArtComponent, ArtistLinksComponent, MenuPanelComponent, TvNavItemDirective],
   templateUrl: './track-row.component.html',
 })
 export class TrackRowComponent {

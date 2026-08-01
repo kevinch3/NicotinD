@@ -367,7 +367,7 @@
               <p class="text-sm text-zinc-600">{{ 'nowPlaying.queueEmpty' | t }}</p>
             </div>
           } @else {
-            <div class="flex-1 overflow-y-auto pb-4">
+            <div class="flex-1 overflow-y-auto pb-4" appTvNavGroup axis="vertical">
               @for (queueTrack of player.queue(); track queueTrack.id + '-' + $index) {
                 <div
                   class="flex items-center group"
@@ -381,6 +381,7 @@
                   [class.border-t-indigo-500]="dropTargetIndex() === $index && dropTargetIndex() !== dragSourceIndex()"
                 >
                   <button
+                    appTvNavItem
                     (click)="jumpToTrack($index)"
                     class="flex-1 flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-zinc-800/50 transition text-left"
                   >

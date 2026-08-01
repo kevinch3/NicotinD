@@ -23,7 +23,9 @@ function makePlayerStub() {
     repeat: signal('off'),
     radio: signal(false),
     toggleRadio: () => {},
-    queue: signal([]),
+    queue: signal<
+      { id: string; title: string; artist: string; coverArt?: string | null; album?: string }[]
+    >([]),
     history: signal([]),
     context: signal(null),
     currentTime: signal(0),
@@ -511,6 +513,50 @@ describe('NowPlayingComponent', () => {
 
       expect(candidate).toBeTruthy();
       expect((candidate as HTMLElement).className).toContain('safe-area-inset-top');
+    });
+  });
+
+  describe('queue D-pad navigation', () => {
+    it('renders the queue list as one appTvNavGroup with each row as appTvNavItem', () => {
+      const { fixture, playerStub } = setup();
+      playerStub.currentTrack.set({ id: 'now', title: 'Now Playing', artist: 'A' });
+      playerStub.queue.set([
+        { id: 't1', title: 'One', artist: 'A' },
+        { id: 't2', title: 'Two', artist: 'A' },
+      ]);
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const group = el.querySelector('[data-testid="now-playing-queue"] [appTvNavGroup]');
+      expect(group).not.toBeNull();
+      const items = group!.querySelectorAll('[appTvNavItem]');
+      expect(items.length).toBe(2);
+    });
+
+    // Phase 1/2's flagship consumer, re-asserted behaviorally after items
+    // moved from an @ContentChildren query to DI self-registration: this group
+    // has no component boundary, so its behaviour must be unchanged.
+    it('ArrowDown moves focus down the queue (unchanged by DI self-registration)', () => {
+      const { fixture, playerStub } = setup();
+      playerStub.currentTrack.set({ id: 'now', title: 'Now Playing', artist: 'A' });
+      playerStub.queue.set([
+        { id: 't1', title: 'One', artist: 'A' },
+        { id: 't2', title: 'Two', artist: 'A' },
+      ]);
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const group = el.querySelector('[data-testid="now-playing-queue"] [appTvNavGroup]')!;
+      const items: HTMLElement[] = Array.from(group.querySelectorAll('[appTvNavItem]'));
+      expect(items[0]!.getAttribute('tabindex')).toBe('0');
+      expect(items[1]!.getAttribute('tabindex')).toBe('-1');
+      items[0]!.focus();
+      items[0]!.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+      );
+      fixture.detectChanges();
+      expect(document.activeElement).toBe(items[1]);
+      expect(items[1]!.getAttribute('tabindex')).toBe('0');
     });
   });
 

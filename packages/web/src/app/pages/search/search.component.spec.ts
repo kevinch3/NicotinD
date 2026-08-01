@@ -104,6 +104,7 @@ function setup(
   const fixture = TestBed.createComponent(SearchComponent);
   return {
     component: fixture.componentInstance,
+    fixture,
     search: TestBed.inject(SearchService),
     plugins: TestBed.inject(PluginService),
     acquireSubmit,
@@ -147,6 +148,57 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(component.hasCatalog()).toBe(true);
     expect(component.catalog()?.albums[0]?.title).toBe('The Dark Side of the Moon');
     expect(component.directSearchOpen()).toBe(false);
+  });
+
+  it('renders the catalog albums grid as an appTvNavGroup with grid axis', async () => {
+    const { component, search, fixture } = setup();
+    search.setQuery('pink floyd');
+
+    component.handleSearch(new Event('submit'));
+    await flush();
+    fixture.detectChanges();
+
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el
+      .querySelector('[data-testid="catalog-album-cover"]')
+      ?.closest('[appTvNavGroup]');
+    expect(group?.getAttribute('axis')).toBe('grid');
+  });
+
+  // The assertion above only proves the ATTRIBUTE is in the DOM, which
+  // NO_ERRORS_SCHEMA would let pass even with the directives unimported. This
+  // one proves the group's item list is actually populated and navigable —
+  // the exact thing an empty items() (cross-component boundary bug) breaks.
+  it('ArrowRight moves focus across the catalog albums grid (real D-pad behaviour)', async () => {
+    const second: CatalogAlbum = {
+      ...CATALOG_ALBUM,
+      foreignAlbumId: 'wywh-rg',
+      title: 'Wish You Were Here',
+    };
+    const { component, search, fixture } = setup({
+      catalogSearch: () =>
+        of({ artists: [{ mbid: 'pf-mbid', name: 'Pink Floyd' }], albums: [CATALOG_ALBUM, second] }),
+    });
+    search.setQuery('pink floyd');
+
+    component.handleSearch(new Event('submit'));
+    await flush();
+    fixture.detectChanges();
+
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el
+      .querySelector('[data-testid="catalog-album-cover"]')!
+      .closest('[appTvNavGroup]')!;
+    const cards: HTMLElement[] = Array.from(group.querySelectorAll('[appTvNavItem]'));
+    expect(cards.length).toBe(2);
+    expect(cards[0]!.getAttribute('tabindex')).toBe('0');
+    expect(cards[1]!.getAttribute('tabindex')).toBe('-1');
+    cards[0]!.focus();
+    cards[0]!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }),
+    );
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(cards[1]);
   });
 
   it('opens the direct-search fallback when catalog has no hits', async () => {

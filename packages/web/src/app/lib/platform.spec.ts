@@ -7,7 +7,10 @@ import {
   isElectron,
   isNativeShell,
   serviceWorkerEnabled,
+  isTvBuild,
+  resolveTvDefaultedPreference,
 } from './platform';
+import { environment } from '../../environments/environment';
 
 type CapStub = {
   isNativePlatform?: () => boolean;
@@ -83,5 +86,35 @@ describe('platform helpers', () => {
     expect(serviceWorkerEnabled(false, false)).toBe(true);
     expect(serviceWorkerEnabled(false, true)).toBe(false);
     expect(serviceWorkerEnabled(true, false)).toBe(false);
+  });
+
+  it('isTvBuild reads environment.tvBuild', () => {
+    const original = environment.tvBuild;
+    try {
+      (environment as { tvBuild: boolean }).tvBuild = true;
+      expect(isTvBuild()).toBe(true);
+      (environment as { tvBuild: boolean }).tvBuild = false;
+      expect(isTvBuild()).toBe(false);
+    } finally {
+      (environment as { tvBuild: boolean }).tvBuild = original;
+    }
+  });
+
+  describe('resolveTvDefaultedPreference', () => {
+    it('defaults to true on a TV build with no stored preference', () => {
+      expect(resolveTvDefaultedPreference(null, true)).toBe(true);
+    });
+
+    it('does not default on a non-TV build with no stored preference', () => {
+      expect(resolveTvDefaultedPreference(null, false)).toBe(false);
+    });
+
+    it('an explicit stored "false" always wins over a TV-build default', () => {
+      expect(resolveTvDefaultedPreference('false', true)).toBe(false);
+    });
+
+    it('an explicit stored "true" wins on a non-TV build too', () => {
+      expect(resolveTvDefaultedPreference('true', false)).toBe(true);
+    });
   });
 });

@@ -37,7 +37,7 @@
         />
       }
       <div class="flex-1 min-w-0">
-        <button type="button" data-testid="track-row-title" (click)="play.emit()" class="w-full text-left">
+        <button type="button" appTvNavItem data-testid="track-row-title" (click)="play.emit()" class="w-full text-left">
           <p class="text-sm truncate" [class.text-theme-accent]="isCurrent()" [class.text-theme-primary]="!isCurrent()">{{ track().title }}</p>
         </button>
         @if (artists()?.length) {

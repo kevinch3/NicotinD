@@ -68,7 +68,7 @@
         }
       </div>
 
-      <div class="space-y-0.5" data-testid="library-songs-offline-list">
+      <div class="space-y-0.5" data-testid="library-songs-offline-list" appTvNavGroup axis="vertical">
         @for (t of offlineControls.filtered(); track t.id; let i = $index) {
           <app-track-row
             [track]="metaToTrack(t)"
@@ -152,7 +152,7 @@
       <p class="text-sm text-status-error mb-2">{{ deleteError() }}</p>
     }
 
-    <div class="space-y-0.5" data-testid="library-songs-list">
+    <div class="space-y-0.5" data-testid="library-songs-list" appTvNavGroup axis="vertical">
       @for (song of visibleSongs(); track song.id; let i = $index) {
         <app-track-row
           [track]="toTrack(song)"

@@ -23,6 +23,13 @@ const META: PluginInfo = {
   kind: 'metadata',
   name: 'Discogs',
   enabled: false,
+  configFields: [{ key: 'apiKey', label: 'API key', type: 'text' }],
+} as PluginInfo;
+const META2: PluginInfo = {
+  id: 'lrclib',
+  kind: 'metadata',
+  name: 'LRCLIB',
+  enabled: true,
 } as PluginInfo;
 
 function render(acquisitionEnabled: boolean): HTMLElement {
@@ -35,9 +42,9 @@ function render(acquisitionEnabled: boolean): HTMLElement {
         provide: PluginService,
         useValue: {
           refresh: () => Promise.resolve(),
-          plugins: signal([ACQ, META]),
+          plugins: signal([ACQ, META, META2]),
           acquisition: signal([ACQ]),
-          metadata: signal([META]),
+          metadata: signal([META, META2]),
           connectivity: signal([]),
         },
       },
@@ -78,5 +85,39 @@ describe('PluginsComponent — acquisition kill-switch (#235)', () => {
     // Metadata/connectivity have nothing to do with acquisition; hiding them
     // would make the switch look broader than it is.
     expect(render(false).textContent).toContain('Discogs');
+  });
+
+  it('renders each plugin card toggle button as an appTvNavItem, excluding inline config inputs', () => {
+    const el = render(true);
+    const toggle = el.querySelector('[data-testid="plugin-toggle"]');
+    expect(toggle?.hasAttribute('appTvNavItem')).toBe(true);
+    const configInput = el.querySelector('[data-testid="plugin-config-form"] input');
+    expect(configInput?.hasAttribute('appTvNavItem')).toBe(false);
+  });
+
+  /**
+   * The behavioural counterpart to the attribute assertion above, and the
+   * regression test for the bug it could not catch: the card used to live in a
+   * shared `<ng-template #card>` declared as a SIBLING of the three
+   * `<section appTvNavGroup>` blocks and instantiated with `ngTemplateOutlet`.
+   * An embedded view is created from its template's DECLARATION context, and
+   * the node injector walks the DECLARATION ancestry — so every
+   * `TvNavItemDirective` in the card resolved `inject(TvNavGroupDirective)` to
+   * `null`, registered with nothing, and D-pad navigation on this whole page
+   * was a silent no-op. The directive-selector attributes stayed in the DOM
+   * throughout, which is exactly why an attribute-only test stayed green.
+   */
+  it('ArrowDown moves focus between plugin cards inside a section group', () => {
+    const el = render(true);
+    const section = el.querySelector('[data-testid="extensions-metadata-section"]')!;
+    const items: HTMLElement[] = Array.from(section.querySelectorAll('[appTvNavItem]'));
+    // Two metadata plugins are seeded, each contributing a toggle + a Save
+    // button, so there is something to move to.
+    expect(items.length).toBeGreaterThan(1);
+    items[0]!.focus();
+    items[0]!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+    );
+    expect(document.activeElement).toBe(items[1]);
   });
 });

@@ -24,6 +24,8 @@ import { UpdateService } from '../../services/update.service';
 import { ToastService } from '../../services/toast.service';
 import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 
 const GB = 1024 * 1024 * 1024;
 
@@ -54,7 +56,14 @@ export const AUTO_PRESERVE_OPTIONS: { value: AutoPreserveMode; label: string }[]
  */
 @Component({
   selector: 'app-settings',
-  imports: [FormsModule, RouterLink, ChangelogModalComponent, TranslatePipe],
+  imports: [
+    FormsModule,
+    RouterLink,
+    ChangelogModalComponent,
+    TranslatePipe,
+    TvNavGroupDirective,
+    TvNavItemDirective,
+  ],
   templateUrl: './settings.component.html',
 })
 export class SettingsComponent {

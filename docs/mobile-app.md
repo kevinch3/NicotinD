@@ -11,7 +11,7 @@ NicotinD ships a native **Android app** that wraps the existing Angular web UI i
 Flutter app** and a SvelteKit web app that share only an **OpenAPI-generated API client**. We
 deliberately diverge: with a single maintainer, a second native codebase is double the work. Instead we
 **wrap the one Angular app** with Capacitor (Cordova's modern successor; Electron is desktop-only and
-can't target Android). What we *do* adopt from Immich is the **server-URL entry screen** for
+can't target Android). What we _do_ adopt from Immich is the **server-URL entry screen** for
 self-hosting. NicotinD already exposes `/openapi.json` + `/doc`, so a future native client remains
 possible without new server work — but it is explicitly out of scope here.
 
@@ -123,7 +123,7 @@ The fix has four parts:
   `navigator.onLine` is unreliable (often stuck `true`), which is why native must use the plugin.
   `@capacitor/network` is a `packages/mobile` dependency (ships in the APK, self-registers).
   - **The native seed is asynchronous, so the service also exposes `whenReady()`** — a promise that
-    resolves once the *initial* `online` value is known. On web/Electron (and when the plugin is
+    resolves once the _initial_ `online` value is known. On web/Electron (and when the plugin is
     missing) the seed is synchronous, so `whenReady()` is already-resolved; on native it settles after
     the plugin's `getStatus()` promise resolves **or rejects** (a failed/hung seed must never leave
     `whenReady()` pending forever — it would hang bootstrap, worse than the ANR it guards). This seam
@@ -139,11 +139,11 @@ The fix has four parts:
     `getStatus()` never resolves can't hang boot — it falls through to the probe instead). Without this
     await the bug was still live: at the instant `check()` runs, the native `online()` signal is still
     its optimistic `true` (the `getStatus()` promise hasn't resolved yet), so the offline fast path was
-    *silently skipped* on a real offline launch and bootstrap blocked on the 3 s HTTP probe — the exact
-    ANR/crash-on-blink the whole section exists to prevent. The seed is a *local* OS query
+    _silently skipped_ on a real offline launch and bootstrap blocked on the 3 s HTTP probe — the exact
+    ANR/crash-on-blink the whole section exists to prevent. The seed is a _local_ OS query
     (ConnectivityManager), so the await normally costs a few ms, and on web it's already-resolved so
     the e2e suite / browser boot are unaffected.
-- **The offline switch is automatic in both directions** (the app *detects* offline and enters/leaves
+- **The offline switch is automatic in both directions** (the app _detects_ offline and enters/leaves
   that mode by itself, mid-session included):
   - **Enter**: the device signal covers radio-level drops instantly; for the "device network fine,
     server gone" case the `authInterceptor` reports any **status-0** (no-HTTP-response) failure on an
@@ -154,7 +154,7 @@ The fix has four parts:
     never reported.
   - **Leave**: while flagged unreachable, `SERVER_RECOVERY_POLL_MS` (20 s) re-probes — the only state
     in which the app generates background probe traffic — and a **reconnect fast path** (an `effect`
-    on the offline→online transition of the network signal) probes *immediately*, so leaving airplane
+    on the offline→online transition of the network signal) probes _immediately_, so leaving airplane
     mode / regaining Wi-Fi restores online mode in one round-trip instead of a poll-interval wait.
     The reconnect probe also fires when `status` is still `null` — i.e. an offline **launch** skipped
     the boot probe entirely, so the app has never learned the server's setup state and must catch up
@@ -163,7 +163,7 @@ The fix has four parts:
     `SetupService.verify()` is the single writer of `serverUnreachable` in both directions, so every
     trigger (boot, interceptor report, poll, reconnect) shares one decision path.
   - **Offline keeps the session**: the boot `refreshToken`/`getMe` chain (now the exported
-    `refreshSession` in `app.config.ts`) runs *after* `check()` and only when online — an offline
+    `refreshSession` in `app.config.ts`) runs _after_ `check()` and only when online — an offline
     launch keeps the stored JWT so the on-device library stays usable, instead of burning doomed
     auth requests (part of the old offline boot flurry). When the app later returns online, a
     one-shot self-destroying `effect` runs the deferred refresh so roles/flags re-sync without a
@@ -174,7 +174,7 @@ The fix has four parts:
   browser tracing (wrapping every fetch/XHR) run on the WebView main thread and churned on the
   failing offline requests — the prime ANR suspect, active only in the release build. Error reporting
   is kept; replay/tracing are dropped on Capacitor/Electron. (Since #285 the SDK loads lazily on every
-  surface, so it no longer runs *before* bootstrap anywhere; the native trimming stays because the
+  surface, so it no longer runs _before_ bootstrap anywhere; the native trimming stays because the
   instrumentation is WebView-heavy once loaded.)
 - **Mid-use hardening**: the player skips a doomed network stream for a non-preserved track while offline
   (was a silent infinite spinner) and toasts instead (`player.component.ts` `stopForOffline`);
@@ -210,6 +210,7 @@ backgrounded); on web/iOS it's a thin wrapper over the Web API, so one code path
 > failure mode this guards against doesn't apply. See `docs/web-ui.md` §Auto-preserve queue.
 
 Wiring (so it stays maintainable and testable):
+
 - **`MediaControlsService`** (`packages/web/src/app/services/media-controls.service.ts`) wraps the plugin
   with guarded, best-effort calls (`setMetadata` / `setPlaybackState` / `setActionHandler` /
   `setPositionState`). The plugin is **lazily imported** (dynamic `import()`), so unit tests and the
@@ -230,6 +231,195 @@ and must work first try on device. Revisit if the plugin (or a equivalent) ships
 
 Still device-validated, not CI-validated: confirm on a physical device that playback continues
 backgrounded and the lock-screen controls/scrubber work.
+
+## Android TV support (sideload only)
+
+The Android APK is also usable on Android TV / TV boxes via direct sideload (no Play Store TV
+listing — no `LEANBACK_LAUNCHER` category, TV banner, or `android.software.leanback` feature
+declared). `AndroidManifest.xml` declares
+`<uses-feature android:name="android.hardware.touchscreen" android:required="false"/>` so the app
+isn't blocked/degraded on a touchscreen-less device.
+
+A separate Angular build configuration (`bun run --filter @nicotind/web build -- --configuration
+tv`, `angular.json`) swaps in `environments/environment.tv.ts` (`tvBuild: true`, otherwise
+identical to the prod environment), exposed via `lib/platform.ts`'s `isTvBuild()`. This is a
+**build-time flag, not a runtime Android `UiModeManager` check** — simpler and sufficient for
+sideload-only distribution, at the cost of needing a separately-built bundle (`bunx cap sync
+android` after building with `--configuration tv`) rather than one universal APK auto-detecting TV
+at runtime. Going through `bun run --filter @nicotind/web build` (rather than calling `ng build`
+directly) matters: it runs this package's `prebuild` script (generates `changelog.json`) first, the
+same as every other build of this package. The `tv` configuration deliberately **duplicates**
+`production`'s budgets/optimization/serviceWorker settings rather than extending it — Angular CLI
+configuration composition doesn't deep-merge array properties like `fileReplacements`, so `"tv"`
+can't just layer on top of `"production"` — which means the two must be kept in sync by hand;
+nothing currently enforces that automatically, so update both together if `production` changes.
+
+The only behavior this flag currently changes: `RemotePlaybackService.remoteEnabled` defaults to
+`true` on a TV build when the user has never explicitly toggled "Allow remote control" (an explicit
+choice, stored in `localStorage` under `nicotind_remote_enabled`, always wins — resolved by the one
+shared `resolveTvDefaultedPreference` helper in `lib/platform.ts`, used both by
+`RemotePlaybackService`'s signal and by the WS `REGISTER` payload in `playback-ws.service.ts`, so
+the two can't disagree about whether the TV is opted in) — so a TV instance is controllable from a
+phone via the existing device-agnostic remote-playback relay (`docs/remote-playback.md`) after
+signing in on the TV once (the existing QR-code device pairing flow, `docs/device-pairing.md`, is
+the practical way to do this without typing credentials via D-pad). Hardware media-key handling (a
+TV remote's transport buttons) is _expected_ to work unchanged — `@jofr/capacitor-media-session`
+already wires play/pause/next/prev/seek MediaSession action handlers — **but this is not yet
+device-verified on a TV remote** (matches the existing "still device-validated, not CI-validated"
+caveat elsewhere in this doc for background audio).
+
+**D-pad navigation (Phase 3 extends this to grids)**: a `'grid'` axis was added
+(`lib/tv-nav-grid.ts`'s `inferColumnsPerRow`, comparing rendered `offsetTop` across items — no
+`grid-template-columns` parsing, works across any responsive breakpoint) — ArrowLeft/Right move
+within a row (clamped, no wrap to the next row), ArrowUp/Down jump a full row landing on the same
+column, clamped into a shorter final row. Applied to every Library page card grid (albums,
+compilations, singles/EPs, artists, genres) + the Library playlists list, artist-detail's
+albums/singles/appears-on grids, the Search page's catalog albums grid + artist chips, the
+album-hunt-modal candidate list, and — via one shared change to `TrackRowComponent` itself — every
+song list built on it (library Songs tab, album/genre/artist/playlist detail pages). **Settings/Admin/Extensions coverage (Phase 4)**: applied to Settings' theme/budget/auto-preserve grids and account action list, the Devices/agent-tokens revoke lists, Admin's services grid, log-service buttons, processing-task checkboxes, and user-management action buttons, and the Extensions (plugins) page's enable/configure buttons per card. Forms stay Tab-order-only by design — native `<input>`/`<select>` elements are never wrapped in `appTvNavItem`, so arrow keys keep their native meaning inside them (caret movement, select-value change, number increment). **Not yet applied**: the Admin duplicates list (needs a `<label>`-activation passthrough, deferred) and the streaming-panel's mixed checkbox/select rows (same per-row-exclusion technique already established elsewhere in this phase, just not yet applied there). The full keyboard shortcut table (Phase 6) is also still just Space/K.
+
+**DI crosses a component boundary but NOT an `ngTemplateOutlet` one (the Phase 4 final-review
+fix)**: the Extensions page rendered every plugin card from a shared `<ng-template #card let-p>`
+declared as a **sibling** of its three `<section appTvNavGroup>` blocks and instantiated inside each
+with `<ng-container [ngTemplateOutlet]="card">`. An embedded view is created from its template's
+**declaration** context (`TemplateRef.createEmbeddedViewImpl` uses `_declarationLView` /
+`_declarationTContainer`), and the node injector walks that declaration ancestry — not the DOM
+position of the `<ng-container>` that instantiated it. So every `appTvNavItem` in the card resolved
+`inject(TvNavGroupDirective, {optional: true})` to `null`, `registerItem` never ran, all three
+groups held zero items, and D-pad navigation on the entire page was a **silent** no-op (`onKeydown`
+returns early on an empty group; an unmatched directive selector is not an Angular error). This is
+the second instance of the same class of bug as the Phase 3 `@ContentChildren` one, and it shipped
+through three task reviews for the same reason: the tests asserted `hasAttribute('appTvNavItem')`,
+and a directive-selector attribute stays in the rendered DOM whether or not the directive is
+imported, applied, or able to reach its group.
+
+`ngTemplateOutletInjector` does **not** fix it — it feeds `embeddedViewInjector`, part of the
+environment/provider fallback chain, not the node-injector chain this DI uses. The fix extracts the
+card into a real `PluginCardComponent` (`pages/plugins/plugin-card.component.*`), because DI _does_
+cross a real component's view boundary — the same mechanism `TrackRowComponent`'s title button
+relies on. **Every Phase 4 page therefore now carries at least one behavioural test** (a real
+`KeyboardEvent` moving `document.activeElement`, or an assertion on the group's registered
+`items()` where a page has structurally only one item, as Admin's one-element services grid does) —
+attribute assertions alone are treated as insufficient for this directive pair.
+
+Two smaller Phase 4 corrections shipped with it. Admin's **processing-task checkbox list is
+`axis="grid"`, not `vertical`**: each row lays its run + gate checkbox out side-by-side while DOM
+order is run₁, gate₁, run₂, gate₂ …, so on the vertical axis ArrowDown moved to the same row's gate
+box (visually to the _right_) and Left/Right did nothing; `inferColumnsPerRow` reads the two
+same-`offsetTop` checkboxes as 2 columns. And Settings' auto-preserve grid **no longer declares a
+static `role="radiogroup"`**: `TvNavGroupDirective` binds `[attr.role]` on every change-detection
+pass, so a hand-written role on the same element is silently overwritten (it rendered as
+`role="grid"`). The directive's role is authoritative — as it already is for every other group in
+the codebase, none of which declare their own.
+
+**Items register via DI, never via `@ContentChildren` (the Phase 3 final-review fix)**: an Angular
+content query stops at a component's view boundary — a component's template is a black box to its
+ancestors. Phase 3 put `appTvNavItem` on the title button inside **`TrackRowComponent`'s own
+template** and wrapped `<app-track-row>` with `appTvNavGroup` in five consumer pages
+(album/genre/playlist detail, library-songs, artist-detail Songs), so the group's
+`@ContentChildren` query saw **zero** items on all five. That was worse than a silent no-op:
+`TvNavItemDirective`'s `inject(TvNavGroupDirective, {optional: true})` **does** cross a component
+boundary (DI walks the element-injector tree via TNode ancestry), so each item found the group,
+evaluated `items().indexOf(this) === activeIndex()` as `-1 === 0`, and pinned itself to
+`tabindex="-1"` — actively removing every song title from the keyboard Tab order for **all** users
+on **all** platforms, not just TV.
+
+The fix inverts discovery: `TvNavItemDirective` calls `group.registerItem(this)` from its own
+constructor and `unregisterItem` from a `DestroyRef.onDestroy` — using the one lookup that provably
+crosses the boundary. This also removed the whole `forwardRef`/`QueryList`/`ngAfterContentInit`
+apparatus (and with it the circular-import hazard the earlier `forwardRef` in the
+`@ContentChildren` decorator existed to work around — there is no longer an eagerly-evaluated
+decorator argument referencing `TvNavItemDirective`).
+
+**`items()` sorts on read, not on registration** (measured, not assumed): registration order is
+meaningless, because Angular instantiates directives in whatever order the create pass reaches them
+and — critically — **the host element is not yet attached to the document at constructor time**
+(`isConnected === false` for anything inside an `@for`/embedded view or a nested component), so
+`compareDocumentPosition` there returns an arbitrary order. A first attempt that sorted inside
+`registerItem` reversed every group and failed 12 of the directive's 18 existing tests. `items()` is
+therefore a plain function that reads the registration signal (keeping it a reactive dependency for
+the `tabIndex`/`effect` consumers) and derives document order at read time — the earliest point at
+which the DOM is guaranteed live.
+
+**The sort is memoized, and both halves of its invalidation are load-bearing.** A full re-sort on
+every call is too expensive (each item's `tabIndex` computed calls `items()`, so it is O(n) reads per
+change-detection pass), so the sorted array is cached. The cache is only _stored_ once every element
+`isConnected` — which is why it cannot be a `computed()`, as that would memoize the first, detached,
+wrong evaluation. And it is only _reused_ subject to two checks:
+
+1. **`isInDomOrder` on read** — an O(n) adjacent-pair scan (sortedness is transitive under document
+   order, so consecutive pairs suffice) verifying the cached array is still in document order.
+   Keying the memo on the registration array's identity alone is **not** enough: a **pure reorder** —
+   the same item set re-rendered in a new order — moves the views without any destroy/create, so
+   nothing registers or unregisters and the identity never changes. This is a production path, not a
+   hypothetical: `ListControlsService.filtered()` does a plain client-side `[...items()].sort(...)`
+   whenever the user changes a Library grid's sort dropdown, and every one of those grids is an
+   `appTvNavGroup` whose `@for` tracks by a stable id. Without the check, `items()` served the stale
+   order forever.
+2. **A `MutationObserver` on the group host (`childList`, deliberately _without_ `subtree`)** bumping
+   a `domVersion` signal that `items()` also reads. `items()` being correct is not sufficient when
+   nothing asks it again: a pure reorder writes to no signal, so the item `tabIndex` computeds never
+   re-evaluate and the rendered roving `tabindex="0"` stays on the card that used to be first. Every
+   current consumer repeats a _direct_ child of the group (an `<a>` card, an `<li>`, a `<button>`, an
+   `<app-track-row>`), so omitting `subtree` catches every real reorder while ignoring the far
+   noisier churn deeper inside a row; a future consumer that repeats something nested deeper degrades
+   gracefully — `items()` still self-heals on read, so navigation stays correct and only the rendered
+   `tabindex` could lag. The bump is unconditional rather than guarded on the cache still being
+   stale, because `items()` self-heals and would otherwise silently repair the cache before the
+   callback runs, hiding the very change it exists to report.
+
+The directive spec's pure-reorder test drives exactly this (an `@for` over a signal, re-set to the
+reversed order, asserting the _same_ element objects moved rather than being re-created), and
+removing either half of the invalidation makes it fail in a different way.
+
+**ARIA**: the group host is `role="grid"` on the `grid` axis and `role="toolbar"` otherwise;
+`aria-orientation` only accepts `horizontal`/`vertical` per the ARIA spec, so it is bound to `null`
+(omitted) on the grid axis rather than emitting an invalid `aria-orientation="grid"`.
+
+**Test-quality note**: the Phase 3 consumer-page specs run with `NO_ERRORS_SCHEMA`, which renders an
+unrecognised attribute into the DOM verbatim — so an assertion that only checks for the _presence_
+of `appTvNavGroup`/`appTvNavItem` passes even if the directives were never imported. That gap is why
+the bug above survived three task reviews. Each of `library`, `artist-detail` and `search` now
+carries at least one **behavioral** test (focus the first item, dispatch a real `ArrowDown`/
+`ArrowRight` `KeyboardEvent`, assert `document.activeElement` moved), and
+`track-row.component.spec.ts` hosts two real `<app-track-row>` elements inside a real group to cover
+the cross-component-boundary case itself — the five consumer page specs cannot, since the JIT
+harness can't bind a nested component's signal inputs (see `src/testing/signal-input.ts`) and they
+stub the rows out.
+
+**Global keyboard shortcuts (Phase 2)**: `KeyboardShortcutsService`
+(`packages/web/src/app/services/keyboard-shortcuts.service.ts`, initialized once from `App`) — so
+far just Space/K toggle play/pause app-wide. Space is suppressed when a focused `<button>`/`<a>`
+would otherwise handle it (native Space/Enter activation wins there — e.g. a focused queue row);
+K has no such native meaning so it always works outside a text field. **The rest of the table now ships (Phase 5)**: `J`/`L` (previous/next track), `M` (toggle vocal
+mute), `N` (open Now Playing), `ArrowLeft`/`ArrowRight` (seek ±10s), and `/` (navigate to Acquire).
+
+Three guards make the arrow keys safe to own globally:
+
+1. **Never on a modifier chord** — `handle()` bails immediately on
+   `ctrlKey || metaKey || altKey`. Without it, `Alt+ArrowLeft`/`Alt+ArrowRight` (browser
+   Back/Forward) matched the seek branch and were `preventDefault`'d, silently breaking history
+   navigation app-wide, and `Ctrl+J`/`Ctrl+L`/`Ctrl+N`/`Cmd+M`/`Ctrl+K` each _also_ fired their
+   player action because `event.key` for a modifier chord is still the bare letter. `Shift` is
+   deliberately **not** in the guard (it only produces the uppercase `J`/`K`/`L`/`M`/`N` already
+   handled, and `Shift+/` → `'?'`, which matches nothing).
+2. **Never on a focused `<select>`** — a closed `<select>` changes its selected option on
+   ArrowLeft/ArrowRight, a preventable default the seek branch would otherwise steal (there are
+   `<select>`s in the Library sort dropdowns, Settings, Admin and the track-info sheet). The check
+   is narrower than the Space branch's `isNativelyActivatable()` on purpose:
+   `BUTTON`/`A`/`SUMMARY`/`role=button` have no arrow-key behaviour to protect, and excluding them
+   would kill seeking for the very common case of a focused button.
+3. **Never when a D-pad nav group already claimed the press** — `event.defaultPrevented`. Since
+   `TvNavGroupDirective` `preventDefault`s **every key its axis navigates by, including one clamped
+   at a group boundary** (see `tv-nav-group.directive.ts`), grid/list navigation and seeking never
+   double-fire on the same arrow press — an edge press is a true no-op rather than an unexpected
+   ±10s jump. A key the group's axis does _not_ navigate by (ArrowUp inside a `horizontal` group;
+   ArrowUp at a grid's first row, where there is no row to jump to) stays un-prevented and reaches
+   the global handler — neither is a seek key, so nothing leaks.
+
+**Deliberately not built**: `Escape`-as-back (would need to arbitrate against 7+ existing per-component modal Escape
+handlers with no current shared "is a modal open" signal — real, separate work) and any
+volume shortcut (this app has no volume-level control to wire one to).
 
 ## OAuth login (proposed — not yet implemented)
 
@@ -300,12 +490,12 @@ The QR device-pairing plugin (`@capacitor/barcode-scanner`) pulls its native lib
 
 - **An extra Maven repo.** Despite the `com.github.*` group name, osbarcode is **not** on JitPack,
   Google, or Maven Central — it lives on OutSystems' **Azure Artifacts** public feed. The plugin
-  declares that repo in *its own* `build.gradle`, but a subproject's repositories are **not**
+  declares that repo in _its own_ `build.gradle`, but a subproject's repositories are **not**
   consulted when `:app` resolves its transitive runtime classpath — only the root `allprojects`
   repos are. So `android/build.gradle`'s `allprojects.repositories` must mirror it (scoped with
   `content { includeGroup 'com.github.outsystems' }` so nothing else routes through Azure).
 - **`minSdkVersion = 26`.** osbarcode declares `minSdk 26`; with the Capacitor default of 22 the
-  manifest merger fails (*"minSdkVersion 22 cannot be smaller than version 26"*). Bumped in
+  manifest merger fails (_"minSdkVersion 22 cannot be smaller than version 26"_). Bumped in
   `variables.gradle` (drops Android < 8.0, forced by the merged QR feature).
 
 Both were verified locally by `./gradlew :app:assembleDebug` (unsigned; exercises the same

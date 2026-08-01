@@ -52,6 +52,8 @@ import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import {
   shouldOpenDirectSearch,
   discographyFallbackNote,
@@ -200,6 +202,8 @@ function escapeHtml(text: string): string {
     SourceChipComponent,
     CoverArtComponent,
     TranslatePipe,
+    TvNavGroupDirective,
+    TvNavItemDirective,
   ],
   templateUrl: './search.component.html',
 })

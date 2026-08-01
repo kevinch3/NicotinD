@@ -153,6 +153,77 @@ function makeProviders(role: 'admin' | 'user', updateOverrides: UpdateOverrides 
   };
 }
 
+describe('SettingsComponent (TV D-pad navigation)', () => {
+  it('renders the theme presets grid as an appTvNavGroup with grid axis', async () => {
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[appTvNavGroup][axis="grid"]');
+    expect(group).not.toBeNull();
+    expect(group!.querySelectorAll('[appTvNavItem]').length).toBeGreaterThan(0);
+    fixture.destroy();
+  });
+
+  /**
+   * The attribute assertion above cannot fail for a wiring bug — a directive
+   * selector stays in the rendered DOM whether or not the directive is
+   * imported, applied, or able to reach its group (exactly how the Extensions
+   * page shipped with every group registering zero items). This is the
+   * behavioural counterpart: a real key event must move real focus.
+   *
+   * jsdom computes no layout, so every `offsetTop` is 0 and
+   * `inferColumnsPerRow` reads the presets as a single row — which is why this
+   * uses ArrowRight (intra-row movement) rather than ArrowDown.
+   */
+  it('ArrowRight moves focus between theme preset buttons', async () => {
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[appTvNavGroup][axis="grid"]')!;
+    const presets: HTMLElement[] = Array.from(group.querySelectorAll('[appTvNavItem]'));
+    expect(presets.length).toBeGreaterThan(1);
+    presets[0]!.focus();
+    presets[0]!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }),
+    );
+    expect(document.activeElement).toBe(presets[1]);
+    fixture.destroy();
+  });
+
+  /**
+   * `TvNavGroupDirective` binds `[attr.role]` on every change-detection pass,
+   * so a hand-written `role` on the same element is silently overwritten. The
+   * auto-preserve group declared `role="radiogroup"` and rendered as
+   * `role="grid"`; the static one is gone and the directive's is authoritative.
+   */
+  it('the auto-preserve group carries only the nav group role, no stale radiogroup', async () => {
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el
+      .querySelector('[data-testid="auto-preserve-off"]')!
+      .closest('[appTvNavGroup]')!;
+    expect(group.getAttribute('role')).toBe('grid');
+    expect(el.querySelector('[role="radiogroup"]')).toBeNull();
+    fixture.destroy();
+  });
+});
+
 describe('SettingsComponent (universal prefs only)', () => {
   it('renders universal sections without any admin/extension coupling', async () => {
     const { list } = makeProviders('user');

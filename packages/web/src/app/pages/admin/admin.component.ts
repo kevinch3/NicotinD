@@ -38,6 +38,8 @@ import { MetricPillComponent } from '../../components/metric-pill/metric-pill.co
 import { DiscographyAlbum } from '../../services/api/api-types';
 import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 
 /** A copy in a duplicate group — shape returned by the maintenance duplicates API. */
 type DuplicateSong = {
@@ -60,6 +62,8 @@ type DuplicateSong = {
     AlbumHuntModalComponent,
     MetricPillComponent,
     TranslatePipe,
+    TvNavGroupDirective,
+    TvNavItemDirective,
   ],
   templateUrl: './admin.component.html',
 })
