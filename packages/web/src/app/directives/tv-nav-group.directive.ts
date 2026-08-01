@@ -41,6 +41,8 @@ export type TvNavAxis = 'vertical' | 'horizontal';
   standalone: true,
   host: {
     '(keydown)': 'onKeydown($event)',
+    role: 'toolbar',
+    '[attr.aria-orientation]': 'axis',
   },
 })
 export class TvNavGroupDirective implements AfterContentInit {
@@ -84,6 +86,14 @@ export class TvNavGroupDirective implements AfterContentInit {
   onKeydown(event: KeyboardEvent): void {
     const items = this.items();
     if (items.length === 0) return;
+    // The (keydown) host listener fires for any descendant's keydown,
+    // including focusable elements deliberately not marked appTvNavItem
+    // (e.g. a queue-remove button). Those never update activeIndex via
+    // TvNavItemDirective's focusin handler, so acting on the event here
+    // would move focus based on a stale activeIndex rather than where the
+    // user's focus actually is. Bail unless the event actually originated
+    // inside one of this group's own items.
+    if (!items.some((item) => item.containsEventTarget(event.target))) return;
     const forwardKey = this.axis === 'vertical' ? 'ArrowDown' : 'ArrowRight';
     const backwardKey = this.axis === 'vertical' ? 'ArrowUp' : 'ArrowLeft';
     let next: number | null = null;

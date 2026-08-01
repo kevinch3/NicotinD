@@ -85,4 +85,23 @@ describe('KeyboardShortcutsService', () => {
     dispatchKeydown(button, 'k');
     expect(playerStub.resume).toHaveBeenCalled();
   });
+
+  it('Space is ignored while a select is focused (lets its own dropdown-open win)', () => {
+    setup(false);
+    const select = document.createElement('select');
+    document.body.appendChild(select);
+    select.focus();
+    dispatchKeydown(select, ' ');
+    expect(playerStub.resume).not.toHaveBeenCalled();
+  });
+
+  it('Space is ignored while a role="switch" element is focused', () => {
+    setup(false);
+    const button = document.createElement('button');
+    button.setAttribute('role', 'switch');
+    document.body.appendChild(button);
+    button.focus();
+    dispatchKeydown(button, ' ');
+    expect(playerStub.resume).not.toHaveBeenCalled();
+  });
 });

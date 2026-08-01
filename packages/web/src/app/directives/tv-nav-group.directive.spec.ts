@@ -11,6 +11,7 @@ import { TvNavItemDirective } from './tv-nav-item.directive';
       @for (label of items; track label) {
         <button appTvNavItem>{{ label }}</button>
       }
+      <button class="plain-non-item">plain</button>
     </div>
   `,
 })
@@ -22,8 +23,12 @@ function setup() {
   TestBed.configureTestingModule({ imports: [TestHostComponent] });
   const fixture = TestBed.createComponent(TestHostComponent);
   fixture.detectChanges();
-  const buttons: HTMLButtonElement[] = Array.from(fixture.nativeElement.querySelectorAll('button'));
-  return { fixture, buttons };
+  const allButtons: HTMLButtonElement[] = Array.from(
+    fixture.nativeElement.querySelectorAll('button'),
+  );
+  const buttons = allButtons.filter((b) => !b.classList.contains('plain-non-item'));
+  const plainButton = allButtons.find((b) => b.classList.contains('plain-non-item'))!;
+  return { fixture, buttons, plainButton };
 }
 
 function keydown(el: HTMLElement, key: string): KeyboardEvent {
@@ -128,5 +133,28 @@ describe('TvNavGroupDirective + TvNavItemDirective', () => {
     keydown(buttons[1]!, 'ArrowDown');
     fixture.detectChanges();
     expect(document.activeElement).toBe(buttons[1]);
+  });
+
+  it('the group host carries role="toolbar" for assistive tech', () => {
+    const { fixture } = setup();
+    const group: HTMLElement = fixture.nativeElement.querySelector('[appTvNavGroup]');
+    expect(group.getAttribute('role')).toBe('toolbar');
+  });
+
+  it('an arrow key on a focusable descendant that is not an appTvNavItem does not move focus (stale-activeIndex guard)', () => {
+    const { fixture, buttons, plainButton } = setup();
+    // Move activeIndex to 1 first via a real item, then focus the plain
+    // non-item button and fire an arrow key on it — onKeydown must bail
+    // rather than acting on the now-stale activeIndex.
+    buttons[0]!.focus();
+    keydown(buttons[0]!, 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[1]);
+
+    plainButton.focus();
+    const event = keydown(plainButton, 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(plainButton);
+    expect(event.defaultPrevented).toBe(false);
   });
 });

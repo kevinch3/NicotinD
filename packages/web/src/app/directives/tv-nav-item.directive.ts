@@ -34,4 +34,11 @@ export class TvNavItemDirective {
   focusElement(): void {
     this.el.nativeElement.focus();
   }
+
+  /** Whether `target` is this item's element or a descendant of it — used by
+   *  the group's `onKeydown` to ignore arrow-key events that bubbled up from
+   *  a focusable descendant that isn't itself an `appTvNavItem`. */
+  containsEventTarget(target: EventTarget | null): boolean {
+    return target instanceof Node && this.el.nativeElement.contains(target);
+  }
 }

@@ -6,9 +6,11 @@ import { PlayerService } from './player.service';
 /**
  * Global keyboard/TV-remote shortcuts. Space and K toggle play/pause; the
  * full shortcut set (next/prev, seek, volume, etc.) is a later phase. Space
- * is suppressed when a focused BUTTON/A element would otherwise handle it
- * itself (native Space/Enter activation) — K has no such native meaning on
- * any element so it always toggles play/pause outside a text field.
+ * is suppressed when a focused BUTTON/A/SELECT/SUMMARY element (or an
+ * ARIA-role interactive element — button/switch/checkbox/menuitem/tab)
+ * would otherwise handle it itself (native Space/Enter activation, or
+ * opening a dropdown/toggling a disclosure) — K has no such native meaning
+ * on any element so it always toggles play/pause outside a text field.
  */
 @Injectable({ providedIn: 'root' })
 export class KeyboardShortcutsService {
@@ -27,9 +29,10 @@ export class KeyboardShortcutsService {
   }
 
   private isNativelyActivatable(target: EventTarget | null): boolean {
-    const el = target as HTMLElement | null;
-    if (!el) return false;
-    return el.tagName === 'BUTTON' || el.tagName === 'A';
+    if (!(target instanceof HTMLElement)) return false;
+    if (['BUTTON', 'A', 'SELECT', 'SUMMARY'].includes(target.tagName)) return true;
+    const role = target.getAttribute('role');
+    return role !== null && ['button', 'switch', 'checkbox', 'menuitem', 'tab'].includes(role);
   }
 
   private handle(event: KeyboardEvent): void {
