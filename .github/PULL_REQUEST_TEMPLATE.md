@@ -39,4 +39,6 @@ Gate 3: docs land in the SAME change as the code.
   - a one-line index entry in CLAUDE.md pointing at it
   - a `// why` comment for local rationale
 If a change made an existing doc statement wrong, say which one you fixed.
+  - if this PR visibly changes the Library, album, or Now Playing screens: run
+    `bun run --filter @nicotind/e2e screens:readme` and commit any changed `docs/images/*.png`
 -->

@@ -1,4 +1,13 @@
-import { Component, inject, signal, computed, effect, ElementRef, viewChild } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  effect,
+  ElementRef,
+  viewChild,
+  DestroyRef,
+} from '@angular/core';
 import { Router } from '@angular/router';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
@@ -58,6 +67,7 @@ export class NowPlayingComponent {
   private api = inject(LibraryApiService);
   private scrollLock = inject(ScrollLockService);
   private server = inject(ServerConfigService);
+  private destroyRef = inject(DestroyRef);
   readonly trackInfo = inject(TrackInfoService);
 
   // Context menu state
@@ -88,6 +98,28 @@ export class NowPlayingComponent {
   /** Plain text fallback when there are no synced lines. */
   readonly plainLyrics = computed(() => this.lyrics()?.plain ?? '');
 
+  /** Current line's text for the fullscreen auto-follow (2-line) view. */
+  readonly currentLineText = computed(() => this.lyricLines()[this.activeLine()]?.text ?? '');
+  /** Next line's text, or null when the current line is the last one. */
+  readonly nextLineText = computed(() => {
+    const next = this.lyricLines()[this.activeLine() + 1];
+    return next ? next.text : null;
+  });
+
+  // Fullscreen lyrics has two views: a 2-line auto-follow view (default, fits a
+  // narrow TV/monitor without wrapping) and a manual-browse view (the full
+  // scrolling list) entered by scrolling/swiping; tapping a line there seeks
+  // and returns to auto-follow. `false` = auto-follow.
+  readonly karaokeBrowsing = signal(false);
+  private static readonly BROWSE_IDLE_MS = 4000;
+  private browseIdleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Alternates on every activeLine change so the CSS keyframe animation
+   *  restarts (changing the class name is what forces a replay). */
+  readonly karaokeLineAnimClass = signal<'karaoke-line-anim-a' | 'karaoke-line-anim-b'>(
+    'karaoke-line-anim-a',
+  );
+
   // Fullscreen karaoke overlay (the in-place lyrics panel is always open when
   // lyricsOpen is true; this flag expands it to a gradient-covered immersive view).
   readonly karaokeFullscreen = signal(false);
@@ -95,6 +127,9 @@ export class NowPlayingComponent {
   readonly coverColors = signal<CoverPalette>(DEFAULT_PALETTE);
   /** Reference to the lyrics scroll container for auto-scroll (in-place or fullscreen). */
   readonly lyricsScrollRef = viewChild<ElementRef<HTMLElement>>('lyricsScroll');
+  /** Fullscreen overlay root — focused on entry so ArrowUp/ArrowDown work
+   *  immediately for keyboard/TV-remote users with no prior click. */
+  readonly karaokeOverlayRef = viewChild<ElementRef<HTMLElement>>('karaokeOverlay');
   private colorExtractedForId: string | null = null;
 
   // Playback progress interpolation
@@ -269,6 +304,17 @@ export class NowPlayingComponent {
       if (!container) return;
       scrollToActiveLine(container, active);
     });
+
+    // Replay the fullscreen auto-follow line-change animation on every advance.
+    effect(() => {
+      this.activeLine();
+      this.karaokeLineAnimClass.update((c) =>
+        c === 'karaoke-line-anim-a' ? 'karaoke-line-anim-b' : 'karaoke-line-anim-a',
+      );
+    });
+
+    // Ensure the browse-idle timeout can never fire/leak past destruction.
+    this.destroyRef.onDestroy(() => this.clearBrowseIdleTimer());
   }
 
   toggleLyrics(): void {
@@ -282,6 +328,8 @@ export class NowPlayingComponent {
   toggleKaraokeFullscreen(): void {
     const entering = !this.karaokeFullscreen();
     this.karaokeFullscreen.set(entering);
+    this.clearBrowseIdleTimer();
+    this.karaokeBrowsing.set(false);
     if (entering) {
       // Ensure lyrics stay loaded
       if (!this.lyricsOpen()) this.lyricsOpen.set(true);
@@ -293,6 +341,7 @@ export class NowPlayingComponent {
         const url = this.server.apiUrl(`/api/cover/${track.coverArt}?size=80&token=${token}`);
         this.extractColorsFromImage(url);
       }
+      setTimeout(() => this.karaokeOverlayRef()?.nativeElement.focus(), 0);
     }
   }
 
@@ -410,6 +459,46 @@ export class NowPlayingComponent {
     } else {
       this.ws.sendCommand('SEEK', { position: time });
       this.remote.setRemoteProgress(time, this.safeDuration());
+    }
+  }
+
+  /** Wheel/touch gesture on the fullscreen lyrics body enters browse mode. */
+  onKaraokeInteraction(): void {
+    this.karaokeBrowsing.set(true);
+    this.resetBrowseIdleTimer();
+  }
+
+  /** Tapping a line in browse mode seeks there and returns to auto-follow. */
+  seekToLine(index: number): void {
+    const line = this.lyricLines()[index];
+    if (!line) return;
+    this.clearBrowseIdleTimer();
+    this.onSeek(line.timeMs / 1000);
+    this.karaokeBrowsing.set(false);
+  }
+
+  private resetBrowseIdleTimer(): void {
+    this.clearBrowseIdleTimer();
+    this.browseIdleTimer = setTimeout(() => {
+      this.karaokeBrowsing.set(false);
+    }, NowPlayingComponent.BROWSE_IDLE_MS);
+  }
+
+  private clearBrowseIdleTimer(): void {
+    if (this.browseIdleTimer !== null) {
+      clearTimeout(this.browseIdleTimer);
+      this.browseIdleTimer = null;
+    }
+  }
+
+  /** Explicit toggle for the visible browse button and keyboard entry — flips
+   *  between the 2-line auto-follow view and the full browse list. */
+  toggleKaraokeBrowsing(): void {
+    if (this.karaokeBrowsing()) {
+      this.clearBrowseIdleTimer();
+      this.karaokeBrowsing.set(false);
+    } else {
+      this.onKaraokeInteraction();
     }
   }
 

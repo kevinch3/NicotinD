@@ -518,7 +518,9 @@ Add detail there, not here.
 - **Lyrics (on-demand, plugin-sourced, editable)**: new `metadata` plugin kind + `lyrics` capability
   (LRCLIB first source); stored in `library_lyrics` + file tag, user-editable. The now-playing
   lyrics toggle opens a karaoke-styled panel (synced line highlighting + auto-scroll) with a
-  fullscreen expand button; a centered styled empty state carries an inline Fetch button. Fetch is
+  fullscreen expand button — fullscreen defaults to a current+next-line-only auto-follow view
+  (narrow-screen/TV friendly) with a wheel/touch-gesture browse mode for tap-to-seek; a centered
+  styled empty state carries an inline Fetch button. Fetch is
   **reliable 1-click**: LRCLIB retries transient failures (404 stays no-match) and the route returns
   `502` for a source error vs `null` for a confident miss, so the first click doesn't
   false-negative. **Vocal mute** (`?vocals=off` → server-side ffmpeg center-channel cancellation
@@ -1087,7 +1089,12 @@ Add detail there, not here.
   `--follow-tags` push (a rejected branch update rejects the tag too) + self-healing orphan
   detection (a `vX` tag not reachable from master is deleted + re-cut, never silently skipped) —
   fixes the 2026-07-23 freeze where a non-atomic push orphaned `v0.1.244` and wedged every release
-  behind a green-but-silent "already published" skip. → [docs/deployment.md](docs/deployment.md)
+  behind a green-but-silent "already published" skip. **The workflow's own
+  `cancel-in-progress` concurrency guard no longer cancels itself (issue
+  #360)**: it's scoped off for `master` pushes, since the `release` job's
+  version-bump commit is itself a push to `master` that used to retrigger a
+  run in the same group and cancel the originating (already-succeeded) run
+  out from under itself. → [docs/deployment.md](docs/deployment.md)
 - **Measure prod before building (`prod-probe.ts`)**: several issues ask for a prod measurement
   first and it repeatedly **changed** the fix rather than confirming it (#262's stated root cause was
   wrong; #259's retention tension dissolved; #271's threshold was calibrated off 462 real jobs) — but
@@ -1268,7 +1275,10 @@ bundle and report pre-fix behaviour as the actual value (issue #253); `E2E_SKIP_
 fast path, and `E2E_BASE_URL` never builds. CI is split: `ci.yml`
 runs `ci` + `e2e` then a `release` job tags `vX.Y.Z`; that tag triggers `deploy.yml`. A gated
 **playground harness** (`PLAYGROUND=1`), the mutating **real round-trip** (`PLAYGROUND_REAL=1`), and
-**screenshot flows** are all out of CI. The flow catalogue + recurring routines live in
+**screenshot flows** are all out of CI. **The README's 3 locally-capturable screenshots refresh with
+one command** (`bun run --filter @nicotind/e2e screens:readme`, docs/e2e.md "Screenshot flows") — run
+it and commit any changed `docs/images/*.png` whenever a UI change touches the Library/album/Now-Playing
+screens. The flow catalogue + recurring routines live in
 [docs/testing-routines.md](docs/testing-routines.md). → See [docs/e2e.md](docs/e2e.md).
 
 **Real-use feedback log**: [docs/feedback-log-2026-07.md](docs/feedback-log-2026-07.md) is a
