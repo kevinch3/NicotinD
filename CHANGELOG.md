@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.292](https://github.com/kevinch3/NicotinD/compare/v0.1.291...v0.1.292) (2026-08-01)
+
+### Features
+
+* **e2e:** add a one-command README screenshot refresh ([1ee501f](https://github.com/kevinch3/NicotinD/commit/1ee501f66953229bd455aecc867109174f3e56cc))
+
+### Bug Fixes
+
+* **e2e:** bypass the landing gate in the screenshot harness config ([e7fa465](https://github.com/kevinch3/NicotinD/commit/e7fa465f138b5ff0e75ed11ef96af6a5bbbc65e9)), references [#352](https://github.com/kevinch3/NicotinD/issues/352)
+* **e2e:** disambiguate the "Track info" locator in the mobile screenshot flow ([22d4dd2](https://github.com/kevinch3/NicotinD/commit/22d4dd261e1688458f806c8ca659e4b925db54a1)), references [#353](https://github.com/kevinch3/NicotinD/issues/353)
+* **e2e:** report spawn errors and skip byte-identical copies in screens:readme ([d240607](https://github.com/kevinch3/NicotinD/commit/d2406074591f447087ceb94358125fb8ebb4eaf3)), references [#354](https://github.com/kevinch3/NicotinD/issues/354)
+* **e2e:** use viewport screenshots for README shots, closes duplicate player bar glitch ([0c71325](https://github.com/kevinch3/NicotinD/commit/0c7132554af6f67b91943f0b6eaf68a58d9373cc)), closes [#354](https://github.com/kevinch3/NicotinD/issues/354), references [#354](https://github.com/kevinch3/NicotinD/issues/354)
 ## [0.1.291](https://github.com/kevinch3/NicotinD/compare/v0.1.290...v0.1.291) (2026-08-01)
 
 ### Features
