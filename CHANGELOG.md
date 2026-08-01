@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.291](https://github.com/kevinch3/NicotinD/compare/v0.1.290...v0.1.291) (2026-08-01)
+
+### Features
+
+* **web:** add karaoke fullscreen browse-mode state and seek-to-line ([072fa05](https://github.com/kevinch3/NicotinD/commit/072fa059a2ee5b52990348f548287625a450bc54))
+* **web:** animate the fullscreen karaoke line change with a slide+crossfade ([aec187d](https://github.com/kevinch3/NicotinD/commit/aec187d79e8a72e628693f3a512a981a721150d0))
+* **web:** split fullscreen karaoke into 2-line auto-follow + browse-to-seek views ([bc6b67c](https://github.com/kevinch3/NicotinD/commit/bc6b67c8ed998223a6b9ec1390c8c5c3e0e24704))
+
+### Bug Fixes
+
+* **web:** clean up karaoke browse-idle timer on destroy, test ArrowUp ([7f28b59](https://github.com/kevinch3/NicotinD/commit/7f28b599259eea92fcc1efe7bbfaa6634b10abbb))
+* **web:** keyboard/TV-remote entry into karaoke browse mode, fix doc accuracy nits ([863fa2e](https://github.com/kevinch3/NicotinD/commit/863fa2e75b98d1d429ea642d8a00767541c246a4))
+* **web:** type getLyrics test stub to accept a populated LyricsDto ([9bd1db9](https://github.com/kevinch3/NicotinD/commit/9bd1db9883fbf8ffdb373cedfb30df1e09e7af2f))
 ## [0.1.290](https://github.com/kevinch3/NicotinD/compare/v0.1.289...v0.1.290) (2026-08-01)
 ## [0.1.289](https://github.com/kevinch3/NicotinD/compare/v0.1.288...v0.1.289) (2026-08-01)
 
