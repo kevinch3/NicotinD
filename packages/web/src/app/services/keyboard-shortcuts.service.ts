@@ -38,10 +38,32 @@ export class KeyboardShortcutsService {
   private handle(event: KeyboardEvent): void {
     const isSpace = event.code === 'Space';
     const isK = event.key === 'k' || event.key === 'K';
-    if (!isSpace && !isK) return;
-    if (isSpace && this.isNativelyActivatable(event.target)) return;
-    event.preventDefault();
-    if (this.player.isPlaying()) this.player.pause();
-    else this.player.resume();
+    if (isSpace || isK) {
+      if (isSpace && this.isNativelyActivatable(event.target)) return;
+      event.preventDefault();
+      if (this.player.isPlaying()) this.player.pause();
+      else this.player.resume();
+      return;
+    }
+    if (event.key === 'j' || event.key === 'J') {
+      event.preventDefault();
+      this.player.playPrev();
+      return;
+    }
+    if (event.key === 'l' || event.key === 'L') {
+      event.preventDefault();
+      this.player.playNext();
+      return;
+    }
+    if (event.key === 'm' || event.key === 'M') {
+      event.preventDefault();
+      this.player.toggleVocalMute();
+      return;
+    }
+    if (event.key === 'n' || event.key === 'N') {
+      event.preventDefault();
+      this.player.setNowPlayingOpen(true);
+      return;
+    }
   }
 }

@@ -18,6 +18,10 @@ describe('KeyboardShortcutsService', () => {
     isPlaying: ReturnType<typeof vi.fn>;
     pause: ReturnType<typeof vi.fn>;
     resume: ReturnType<typeof vi.fn>;
+    playPrev: ReturnType<typeof vi.fn>;
+    playNext: ReturnType<typeof vi.fn>;
+    toggleVocalMute: ReturnType<typeof vi.fn>;
+    setNowPlayingOpen: ReturnType<typeof vi.fn>;
   };
   let sub: Subscription;
 
@@ -26,6 +30,10 @@ describe('KeyboardShortcutsService', () => {
       isPlaying: vi.fn(() => initialIsPlaying),
       pause: vi.fn(),
       resume: vi.fn(),
+      playPrev: vi.fn(),
+      playNext: vi.fn(),
+      toggleVocalMute: vi.fn(),
+      setNowPlayingOpen: vi.fn(),
     };
     TestBed.configureTestingModule({
       providers: [KeyboardShortcutsService, { provide: PlayerService, useValue: playerStub }],
@@ -112,5 +120,43 @@ describe('KeyboardShortcutsService', () => {
     button.focus();
     dispatchKeydown(button, ' ');
     expect(playerStub.resume).not.toHaveBeenCalled();
+  });
+
+  it('J calls playPrev', () => {
+    setup(false);
+    dispatchKeydown(window, 'j');
+    expect(playerStub.playPrev).toHaveBeenCalled();
+  });
+
+  it('L calls playNext', () => {
+    setup(false);
+    dispatchKeydown(window, 'l');
+    expect(playerStub.playNext).toHaveBeenCalled();
+  });
+
+  it('M toggles vocal mute', () => {
+    setup(false);
+    dispatchKeydown(window, 'm');
+    expect(playerStub.toggleVocalMute).toHaveBeenCalled();
+  });
+
+  it('N opens Now Playing', () => {
+    setup(false);
+    dispatchKeydown(window, 'n');
+    expect(playerStub.setNowPlayingOpen).toHaveBeenCalledWith(true);
+  });
+
+  it('J/L/M/N are ignored while a text input is focused', () => {
+    setup(false);
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    for (const key of ['j', 'l', 'm', 'n']) {
+      dispatchKeydown(input, key);
+    }
+    expect(playerStub.playPrev).not.toHaveBeenCalled();
+    expect(playerStub.playNext).not.toHaveBeenCalled();
+    expect(playerStub.toggleVocalMute).not.toHaveBeenCalled();
+    expect(playerStub.setNowPlayingOpen).not.toHaveBeenCalled();
   });
 });
