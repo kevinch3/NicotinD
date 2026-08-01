@@ -39,7 +39,13 @@ test('capture mobile screens', async ({ page }) => {
   //    context menu ("Track info").
   const title = page.getByRole('heading', { name: 'Opening Static' });
   await title.click({ button: 'right' });
-  const trackInfo = page.getByRole('button', { name: 'Track info' });
+  // Scoped to the context menu: the mini-player also has an always-present
+  // "Track info" icon button (data-testid="now-playing-info"), so the bare
+  // role locator matches both and is a strict-mode violation once the menu
+  // renders (issue #353).
+  const trackInfo = page
+    .locator('app-track-context-menu')
+    .getByRole('button', { name: 'Track info' });
   await trackInfo.click();
   await page.waitForTimeout(800); // sheet open + acquisition/analysis fetches
   await page.screenshot({ path: `${OUT}/05-song-details.png`, fullPage: false });
