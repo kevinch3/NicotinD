@@ -68,6 +68,15 @@ describe('KeyboardShortcutsService', () => {
     expect(playerStub.resume).not.toHaveBeenCalled();
   });
 
+  it('K is ignored while a text input is focused', () => {
+    setup(false);
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    dispatchKeydown(input, 'k');
+    expect(playerStub.resume).not.toHaveBeenCalled();
+  });
+
   it('Space is ignored while a button is focused (lets its own activation win)', () => {
     setup(false);
     const button = document.createElement('button');

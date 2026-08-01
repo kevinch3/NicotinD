@@ -1,4 +1,5 @@
 import { Component, inject, effect } from '@angular/core';
+import type { Subscription } from 'rxjs';
 import { Router, RouterOutlet } from '@angular/router';
 import { SetupService } from './services/setup.service';
 import { AuthService } from './services/auth.service';
@@ -23,6 +24,12 @@ export class App {
   private presence = inject(PresenceService);
   private keyboardShortcuts = inject(KeyboardShortcutsService);
 
+  // `App` is the root component (mounted once, never destroyed), so this
+  // subscription outlives the app regardless — kept as a field rather than
+  // discarded so a future refactor needing cleanup has it structurally
+  // available without re-deriving it.
+  private readonly keyboardShortcutsSub: Subscription;
+
   constructor() {
     // Initialize remote playback WebSocket subscriptions
     this.remotePlayback.initialize();
@@ -31,7 +38,7 @@ export class App {
     this.presence.initialize();
 
     // Global keyboard/TV-remote shortcuts (Space/K = play-pause for now).
-    this.keyboardShortcuts.initialize();
+    this.keyboardShortcutsSub = this.keyboardShortcuts.initialize();
 
     // Redirect to setup if needed, or to the library (Songs → offline downloads)
     // when offline (runs after APP_INITIALIZER completes).

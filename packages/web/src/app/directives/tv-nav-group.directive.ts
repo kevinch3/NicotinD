@@ -1,4 +1,4 @@
-import { DestroyRef, Directive, ElementRef, Input, effect, inject, signal } from '@angular/core';
+import { DestroyRef, Directive, ElementRef, Input, inject, signal } from '@angular/core';
 import { TvNavItemDirective } from './tv-nav-item.directive';
 import { inferColumnsPerRow } from '../lib/tv-nav-grid';
 
@@ -132,15 +132,21 @@ export class TvNavGroupDirective {
   readonly activeIndex = signal(0);
 
   constructor() {
-    // Keep the roving index in range if items are added/removed (e.g. the
-    // queue shrinks after a track is removed).
-    effect(() => {
-      const len = this.items().length;
-      if (len > 0 && this.activeIndex() > len - 1) {
-        this.activeIndex.set(len - 1);
-      }
-    });
     this.watchDomOrder();
+  }
+
+  /** Keep the roving index in range after `itemsSignal` changes size (items
+   *  added/removed — e.g. the queue shrinks after a track is removed).
+   *  Called directly from `registerItem`/`unregisterItem` rather than a
+   *  reactive `effect()`: `itemsSignal` only ever changes via those two
+   *  methods, so a self-writing effect that re-triggers on every change is
+   *  strictly equivalent to — and less direct than — clamping at the two
+   *  call sites that can put it out of range. */
+  private clampActiveIndex(): void {
+    const len = this.itemsSignal().length;
+    if (len > 0 && this.activeIndex() > len - 1) {
+      this.activeIndex.set(len - 1);
+    }
   }
 
   /** Angular moves views on a pure reorder without touching any signal this
@@ -174,10 +180,12 @@ export class TvNavGroupDirective {
    *  on read. */
   registerItem(item: TvNavItemDirective): void {
     this.itemsSignal.update((items) => [...items, item]);
+    this.clampActiveIndex();
   }
 
   unregisterItem(item: TvNavItemDirective): void {
     this.itemsSignal.update((items) => items.filter((i) => i !== item));
+    this.clampActiveIndex();
   }
 
   /** Called by a `TvNavItemDirective` on `focusin` so a direct click/Tab into
