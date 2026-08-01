@@ -19,6 +19,8 @@ import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { ArtistLinksComponent } from '../artist-links/artist-links.component';
 import { ServerConfigService } from '../../services/server-config.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import {
   computePaletteFromPixels,
   scrollToActiveLine,
@@ -42,6 +44,8 @@ function formatTime(s: number): string {
     CoverArtComponent,
     ArtistLinksComponent,
     TranslatePipe,
+    TvNavGroupDirective,
+    TvNavItemDirective,
   ],
   templateUrl: './now-playing.component.html',
 })

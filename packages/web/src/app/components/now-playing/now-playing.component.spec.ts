@@ -231,6 +231,24 @@ describe('NowPlayingComponent', () => {
     });
   });
 
+  describe('queue D-pad navigation', () => {
+    it('renders the queue list as one appTvNavGroup with each row as appTvNavItem', () => {
+      const { fixture, playerStub } = setup();
+      playerStub.currentTrack.set({ id: 'now', title: 'Now Playing', artist: 'A' });
+      playerStub.queue.set([
+        { id: 't1', title: 'One', artist: 'A' },
+        { id: 't2', title: 'Two', artist: 'A' },
+      ]);
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const group = el.querySelector('[data-testid="now-playing-queue"] [appTvNavGroup]');
+      expect(group).not.toBeNull();
+      const items = group!.querySelectorAll('[appTvNavItem]');
+      expect(items.length).toBe(2);
+    });
+  });
+
   describe('drag-to-dismiss (live-follow)', () => {
     // jsdom has no PointerEvent constructor; MouseEvent carries clientY + button
     // and dispatches under any type string, driving the real document listeners.
