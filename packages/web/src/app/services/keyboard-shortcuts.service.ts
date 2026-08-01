@@ -38,6 +38,15 @@ export class KeyboardShortcutsService {
   }
 
   private handle(event: KeyboardEvent): void {
+    // Never claim a modifier chord: Ctrl/Cmd/Alt + a letter or arrow is a
+    // browser/OS shortcut (Alt+Arrow = Back/Forward, Ctrl+L = address bar,
+    // Cmd+N = new window …) and `event.key` is still the bare letter/arrow, so
+    // without this every one of them also fired a player action — and the
+    // seek branch's `preventDefault()` actively broke history navigation.
+    // Shift is deliberately NOT in the guard: it only uppercases the letter
+    // (J/K/L/M/N are already handled) and Shift+/ produces '?', which matches
+    // nothing.
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
     const isSpace = event.code === 'Space';
     const isK = event.key === 'k' || event.key === 'K';
     if (isSpace || isK) {
@@ -69,6 +78,16 @@ export class KeyboardShortcutsService {
     }
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
       if (event.defaultPrevented) return; // a D-pad nav group already handled this keypress
+      // A focused, closed `<select>` changes its selected option on
+      // ArrowLeft/ArrowRight — a preventable default we must not steal (there
+      // are `<select>`s in the Library sort dropdowns, Settings, Admin, the
+      // track-info sheet …). Deliberately narrower than
+      // `isNativelyActivatable`: BUTTON/A/SUMMARY/role=button have no native
+      // arrow-key behaviour to protect, and excluding them would disable
+      // seeking for the very common case of a focused button (D-pad items are
+      // buttons too — inside a nav group the group's own `preventDefault`
+      // already makes the branch above bail).
+      if (event.target instanceof HTMLElement && event.target.tagName === 'SELECT') return;
       event.preventDefault();
       const delta =
         event.key === 'ArrowRight'

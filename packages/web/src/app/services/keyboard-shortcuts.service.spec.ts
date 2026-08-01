@@ -7,11 +7,17 @@ import { PlayerService } from './player.service';
 import { TvNavGroupDirective } from '../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../directives/tv-nav-item.directive';
 
-function dispatchKeydown(target: EventTarget, key: string): KeyboardEvent {
+function dispatchKeydown(
+  target: EventTarget,
+  key: string,
+  modifiers: Partial<Pick<KeyboardEventInit, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>> = {},
+): KeyboardEvent {
   const event = new KeyboardEvent('keydown', {
     key,
     code: key === ' ' ? 'Space' : key,
     bubbles: true,
+    cancelable: true,
+    ...modifiers,
   });
   target.dispatchEvent(event);
   return event;
@@ -210,6 +216,64 @@ describe('KeyboardShortcutsService', () => {
     expect(playerStub.seek).not.toHaveBeenCalled();
   });
 
+  it('ArrowLeft/ArrowRight are ignored while a select is focused (native option change wins)', () => {
+    setup(false);
+    const select = document.createElement('select');
+    document.body.appendChild(select);
+    select.focus();
+    const right = dispatchKeydown(select, 'ArrowRight');
+    const left = dispatchKeydown(select, 'ArrowLeft');
+    expect(playerStub.seek).not.toHaveBeenCalled();
+    expect(right.defaultPrevented).toBe(false);
+    expect(left.defaultPrevented).toBe(false);
+  });
+
+  it('Alt+ArrowLeft/Right (browser Back/Forward) neither seeks nor preventDefaults', () => {
+    setup(false);
+    playerStub.currentTime.set(30);
+    const back = dispatchKeydown(window, 'ArrowLeft', { altKey: true });
+    const forward = dispatchKeydown(window, 'ArrowRight', { altKey: true });
+    expect(playerStub.seek).not.toHaveBeenCalled();
+    expect(back.defaultPrevented).toBe(false);
+    expect(forward.defaultPrevented).toBe(false);
+  });
+
+  it('Meta+ArrowLeft/Right (macOS back/forward) neither seeks nor preventDefaults', () => {
+    setup(false);
+    playerStub.currentTime.set(30);
+    dispatchKeydown(window, 'ArrowLeft', { metaKey: true });
+    dispatchKeydown(window, 'ArrowRight', { metaKey: true });
+    expect(playerStub.seek).not.toHaveBeenCalled();
+  });
+
+  it('Ctrl/Meta + a letter (reserved browser shortcuts) does not fire the player action', () => {
+    const { router } = setup(false);
+    const navigateSpy = vi.spyOn(router, 'navigate');
+    dispatchKeydown(window, 'l', { ctrlKey: true }); // Ctrl+L = address bar
+    dispatchKeydown(window, 'l', { metaKey: true });
+    dispatchKeydown(window, 'j', { ctrlKey: true }); // Ctrl+J = downloads
+    dispatchKeydown(window, 'n', { ctrlKey: true }); // Ctrl+N = new window
+    dispatchKeydown(window, 'm', { metaKey: true }); // Cmd+M = minimize
+    dispatchKeydown(window, 'k', { ctrlKey: true }); // Ctrl+K = omnibox
+    dispatchKeydown(window, ' ', { ctrlKey: true });
+    dispatchKeydown(window, '/', { ctrlKey: true });
+    expect(playerStub.playNext).not.toHaveBeenCalled();
+    expect(playerStub.playPrev).not.toHaveBeenCalled();
+    expect(playerStub.setNowPlayingOpen).not.toHaveBeenCalled();
+    expect(playerStub.toggleVocalMute).not.toHaveBeenCalled();
+    expect(playerStub.resume).not.toHaveBeenCalled();
+    expect(playerStub.pause).not.toHaveBeenCalled();
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
+  it('Shift is NOT part of the modifier guard (uppercase J/K/L/M/N still work)', () => {
+    setup(false);
+    dispatchKeydown(window, 'L', { shiftKey: true });
+    dispatchKeydown(window, 'J', { shiftKey: true });
+    expect(playerStub.playNext).toHaveBeenCalled();
+    expect(playerStub.playPrev).toHaveBeenCalled();
+  });
+
   it('/ navigates to the Acquire page', () => {
     const { router } = setup(false);
     const navigateSpy = vi.spyOn(router, 'navigate');
@@ -241,9 +305,15 @@ describe('KeyboardShortcutsService + TvNavGroupDirective (cross-directive preced
     standalone: true,
     imports: [TvNavGroupDirective, TvNavItemDirective],
     template: `
-      <div appTvNavGroup axis="horizontal">
+      <div appTvNavGroup axis="horizontal" class="row">
         <button appTvNavItem>one</button>
         <button appTvNavItem>two</button>
+      </div>
+      <div appTvNavGroup axis="grid" class="grid">
+        <button appTvNavItem>g1</button>
+        <button appTvNavItem>g2</button>
+        <button appTvNavItem>g3</button>
+        <button appTvNavItem>g4</button>
       </div>
       <button class="outside">outside</button>
     `,
@@ -270,10 +340,25 @@ describe('KeyboardShortcutsService + TvNavGroupDirective (cross-directive preced
     fixture.detectChanges();
     const service = TestBed.inject(KeyboardShortcutsService);
     sub = service.initialize();
-    const buttons: HTMLButtonElement[] = Array.from(
-      fixture.nativeElement.querySelectorAll('button.outside, [appTvNavItem]'),
-    );
-    return { fixture, buttons };
+    const q = (sel: string): HTMLButtonElement[] =>
+      Array.from(fixture.nativeElement.querySelectorAll(sel));
+    const row = q('.row [appTvNavItem]');
+    const grid = q('.grid [appTvNavItem]');
+    // 2x2: `inferColumnsPerRow` reads offsetTop, which jsdom always reports 0.
+    grid.forEach((el, i) => {
+      Object.defineProperty(el, 'offsetTop', {
+        value: Math.floor(i / 2) * 100,
+        configurable: true,
+      });
+    });
+    const outside = q('button.outside')[0]!;
+    return { fixture, row, grid, outside };
+  }
+
+  function arrowKeydown(target: HTMLElement, key: string): KeyboardEvent {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    target.dispatchEvent(event);
+    return event;
   }
 
   afterEach(() => {
@@ -281,33 +366,53 @@ describe('KeyboardShortcutsService + TvNavGroupDirective (cross-directive preced
   });
 
   it('a real ArrowRight inside a nav group moves D-pad focus and the global seek shortcut defers', () => {
-    const { fixture, buttons } = setupIntegration();
-    const [first, second] = buttons;
-    first!.focus();
-    const event = new KeyboardEvent('keydown', {
-      key: 'ArrowRight',
-      bubbles: true,
-      cancelable: true,
-    });
-    first!.dispatchEvent(event);
+    const { fixture, row } = setupIntegration();
+    row[0]!.focus();
+    arrowKeydown(row[0]!, 'ArrowRight');
     fixture.detectChanges();
 
     // (a) the nav group's own D-pad handling still works.
-    expect(document.activeElement).toBe(second);
+    expect(document.activeElement).toBe(row[1]);
     // (b) the global shortcut correctly deferred to the earlier handler.
     expect(playerStub.seek).not.toHaveBeenCalled();
   });
 
+  it('a real ArrowRight at a horizontal group EDGE is a true no-op — no focus move AND no seek', () => {
+    const { fixture, row } = setupIntegration();
+    row[1]!.focus(); // last item of the group
+    fixture.detectChanges();
+    arrowKeydown(row[1]!, 'ArrowRight');
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(row[1]); // no wrap
+    expect(playerStub.seek).not.toHaveBeenCalled(); // and no leak to the seek shortcut
+  });
+
+  it('a real ArrowRight inside a grid group navigates and the global seek shortcut defers', () => {
+    const { fixture, grid } = setupIntegration();
+    grid[0]!.focus();
+    arrowKeydown(grid[0]!, 'ArrowRight');
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(grid[1]);
+    expect(playerStub.seek).not.toHaveBeenCalled();
+  });
+
+  it('a real ArrowRight at a grid ROW edge is a true no-op — clamped focus AND no seek', () => {
+    const { fixture, grid } = setupIntegration();
+    grid[1]!.focus(); // last column of row 0 in a 2-column grid
+    fixture.detectChanges();
+    arrowKeydown(grid[1]!, 'ArrowRight');
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(grid[1]); // clamped, no wrap into row 1
+    expect(playerStub.seek).not.toHaveBeenCalled();
+  });
+
   it('a real ArrowRight outside any nav group still triggers the global seek shortcut', () => {
-    const { buttons } = setupIntegration();
-    const outside = buttons.find((b) => b.classList.contains('outside'))!;
+    const { outside } = setupIntegration();
     outside.focus();
-    const event = new KeyboardEvent('keydown', {
-      key: 'ArrowRight',
-      bubbles: true,
-      cancelable: true,
-    });
-    outside.dispatchEvent(event);
+    arrowKeydown(outside, 'ArrowRight');
 
     expect(playerStub.seek).toHaveBeenCalledWith(40);
   });
