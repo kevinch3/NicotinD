@@ -66,22 +66,33 @@ describe('TvNavGroupDirective + TvNavItemDirective', () => {
     expect(document.activeElement).toBe(buttons[1]);
   });
 
-  it('ArrowUp at the first item does not move focus and does not preventDefault (no wrap)', () => {
+  it('ArrowUp at the first item does not move focus (no wrap) but IS preventDefaulted', () => {
     const { fixture, buttons } = setup();
     buttons[0]!.focus();
     const event = keydown(buttons[0]!, 'ArrowUp');
     fixture.detectChanges();
     expect(document.activeElement).toBe(buttons[0]);
-    expect(event.defaultPrevented).toBe(false);
+    // The group navigates by ArrowUp on this axis, so it owns the press even
+    // at the edge — otherwise it leaks to the global seek shortcut.
+    expect(event.defaultPrevented).toBe(true);
   });
 
-  it('ArrowDown at the last item does not move focus and does not preventDefault (no wrap)', () => {
+  it('ArrowDown at the last item does not move focus (no wrap) but IS preventDefaulted', () => {
     const { fixture, buttons } = setup();
     buttons[2]!.focus();
     fixture.detectChanges();
     const event = keydown(buttons[2]!, 'ArrowDown');
     fixture.detectChanges();
     expect(document.activeElement).toBe(buttons[2]);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('a key this axis does not navigate by is left un-prevented and keeps bubbling', () => {
+    const { fixture, buttons } = setup();
+    buttons[0]!.focus();
+    const event = keydown(buttons[0]!, 'ArrowRight'); // vertical group: not a nav key
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[0]);
     expect(event.defaultPrevented).toBe(false);
   });
 
@@ -281,7 +292,9 @@ describe('TvNavGroupDirective grid axis', () => {
     const event = keydown(buttons[2]!, 'ArrowRight'); // idx 2 is the last item in row 0
     fixture.detectChanges();
     expect(document.activeElement).toBe(buttons[2]);
-    expect(event.defaultPrevented).toBe(false);
+    // Recognized grid nav key: owned (preventDefaulted) even when clamped, so
+    // it can't also reach the global seek shortcut.
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it('ArrowLeft moves within a row, clamped at the row start', () => {
@@ -293,7 +306,7 @@ describe('TvNavGroupDirective grid axis', () => {
     const event = keydown(buttons[0]!, 'ArrowLeft');
     fixture.detectChanges();
     expect(document.activeElement).toBe(buttons[0]);
-    expect(event.defaultPrevented).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it('ArrowDown jumps a full row, landing on the same column', () => {

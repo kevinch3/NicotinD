@@ -28,9 +28,14 @@ function isInDomOrder(items: readonly TvNavItemDirective[]): boolean {
  * Roving-tabindex D-pad/arrow-key navigation for a list/row of `appTvNavItem`
  * elements — one WAI-ARIA-pattern group per container (queue rows, a
  * transport-button row, a library grid row/column later). No wrap: an arrow
- * key at a group's edge is a no-op (not preventDefault'd) rather than
- * jumping to the opposite end, so a future outer/global handler can still
- * react to it if needed.
+ * key at a group's edge does not move focus rather than jumping to the
+ * opposite end — but it IS `preventDefault`'d, because the group recognized
+ * the key and owns the press. That makes an edge press a true no-op for D-pad
+ * users instead of leaking through to the global ArrowLeft/Right seek
+ * shortcut (`KeyboardShortcutsService`), which would otherwise jump the
+ * playing track ±10s every time focus hit a group boundary. A key this axis
+ * does NOT navigate by (e.g. ArrowUp inside a 'horizontal' group) is left
+ * un-prevented and keeps bubbling.
  *
  * Items are NOT discovered with `@ContentChildren`: an Angular content query
  * stops at a component's view boundary, so an `appTvNavItem` marked inside a
@@ -217,8 +222,18 @@ export class TvNavGroupDirective {
     else if (event.key === backwardKey) next = Math.max(this.activeIndex() - 1, 0);
     else if (event.key === 'Home') next = 0;
     else if (event.key === 'End') next = items.length - 1;
-    if (next === null || next === this.activeIndex()) return;
+    // `next === null` means the key isn't one this axis navigates by (e.g.
+    // ArrowUp inside a 'horizontal' group): the group has no opinion, so the
+    // event keeps bubbling un-prevented for whoever else wants it.
+    if (next === null) return;
+    // The group DID recognize this key, so it owns the press even when the
+    // result is clamped to where focus already is (an edge). preventDefault is
+    // therefore unconditional here: an edge press must be a true no-op for
+    // D-pad users, not something the global ArrowLeft/Right seek shortcut
+    // picks up and turns into a ±10s jump. Only the focus move stays gated —
+    // re-focusing the already-focused item would be pointless churn.
     event.preventDefault();
+    if (next === this.activeIndex()) return;
     this.activeIndex.set(next);
     items[next]!.focusElement();
   }
@@ -254,14 +269,16 @@ export class TvNavGroupDirective {
     } else if (event.key === 'Home') next = 0;
     else if (event.key === 'End') next = items.length - 1;
     // `next === null` means the key wasn't a grid nav key, or Up/Down hit the
-    // first/last row (nothing to jump to) — a true no-op, don't touch focus.
-    // A clamped Left/Right/Home/End resolves `next` to `idx` itself (already
-    // at the row/grid edge): still re-sync real DOM focus onto that resolved
-    // item (idempotent when it's already focused) so focus never drifts from
-    // the roving-tabindex-active item, but skip `preventDefault` since no
-    // actual navigation occurred.
+    // first/last row (nothing to jump to) — a true no-op; leave the event
+    // un-prevented so it keeps bubbling for whoever else wants it.
     if (next === null) return;
-    if (next !== idx) event.preventDefault();
+    // Otherwise the grid recognized and resolved the key, so it owns the press
+    // even when clamped to `idx` itself (already at a row/grid edge): an edge
+    // press must be a true no-op for D-pad users rather than something the
+    // global ArrowLeft/Right seek shortcut then turns into a ±10s jump. Focus
+    // is still re-synced onto the resolved item (idempotent when already
+    // focused) so it never drifts from the roving-tabindex-active item.
+    event.preventDefault();
     this.activeIndex.set(next);
     items[next]!.focusElement();
   }
