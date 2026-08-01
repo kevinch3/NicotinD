@@ -31,9 +31,10 @@ export type TvNavAxis = 'vertical' | 'horizontal';
  * sanity check on a bare component with no directives involved, so it isn't
  * specific to this directive pair. JIT compilation here just never
  * discovers `input()`-declared class fields as bindable properties (a
- * documented AOT-only limitation of that API), so every value stays at its
- * default. The classic decorator APIs query/bind the same descendants and
- * work correctly under the same harness, so they're what's used here.
+ * limitation of this project's JIT-based vitest test harness, not a general
+ * Angular constraint), so every value stays at its default. The classic
+ * decorator APIs query/bind the same descendants and work correctly under
+ * the same harness, so they're what's used here.
  */
 @Directive({
   selector: '[appTvNavGroup]',

@@ -1215,9 +1215,10 @@ lock-screen controls come from `@jofr/capacitor-media-session` on Android and an
 `@nicotind/capacitor-now-playing` Swift plugin (owns `MPNowPlayingInfoCenter` + `AVAudioSession` +
 transport). Android/iOS artifacts are built by tag-only best-effort CI jobs in `deploy.yml`. **The Android APK
 also supports sideload-only Android TV use** (manifest touchscreen fix + a `tv` Angular build
-configuration defaulting remote-control opt-in on; app-wide D-pad navigation is a tracked
-follow-up, not yet built). → See [docs/mobile-app.md](docs/mobile-app.md) and
-[docs/ios-app.md](docs/ios-app.md).
+configuration defaulting remote-control opt-in on; a roving-tabindex D-pad navigation directive
+pair + a global Space/K play-pause shortcut now cover the Now Playing queue/transport controls —
+full app coverage + the rest of the shortcut table are tracked follow-ups). → See
+[docs/mobile-app.md](docs/mobile-app.md) and [docs/ios-app.md](docs/ios-app.md).
 
 ## Desktop app (Electron)
 

@@ -267,10 +267,27 @@ already wires play/pause/next/prev/seek MediaSession action handlers — **but t
 device-verified on a TV remote** (matches the existing "still device-validated, not CI-validated"
 caveat elsewhere in this doc for background audio).
 
-**Not yet built** (tracked as later phases): app-wide D-pad/spatial keyboard navigation (today only
-the now-playing karaoke overlay and a handful of modals handle arrow keys/Escape at all — most of
-the app, incl. every library/search grid, has no keyboard navigation beyond native Tab order), and
-a global keyboard shortcut set (Space=play/pause, etc.).
+**D-pad navigation (Phase 2)**: `TvNavGroupDirective`/`TvNavItemDirective`
+(`packages/web/src/app/directives/`) implement roving-tabindex arrow-key navigation — one
+`appTvNavGroup` per list/row (`'vertical'` or `'horizontal'`), each focusable item marked
+`appTvNavItem`. Exactly one item is `tabindex="0"` at a time so Tab enters/exits the group in one
+stop; arrow keys move focus + the roving index (no wrap — an edge arrow press is a no-op); Home/End
+jump to the first/last item; a `(focusin)` handshake keeps the roving index in sync when focus
+arrives via click or Tab rather than an arrow key. Applied so far to the Now Playing queue list and
+the mini-player's previous/play-pause/next buttons — shuffle/repeat stay plain Tab-focusable for
+now. A global `:focus-visible` outline (`styles.css`) makes focus visible app-wide (the `.seek-range`
+slider thumb keeps its own pre-existing focus treatment, unaffected by CSS specificity). **Not yet
+applied**: library/search/acquire grids, artist/album/playlist pages, settings/admin (tracked
+phases 3-5); no `'grid'` axis exists yet (built when a real grid consumer needs column-wrap
+inference).
+
+**Global keyboard shortcuts (Phase 2)**: `KeyboardShortcutsService`
+(`packages/web/src/app/services/keyboard-shortcuts.service.ts`, initialized once from `App`) — so
+far just Space/K toggle play/pause app-wide. Space is suppressed when a focused `<button>`/`<a>`
+would otherwise handle it (native Space/Enter activation wins there — e.g. a focused queue row);
+K has no such native meaning so it always works outside a text field. **The full shortcut table**
+(next/prev, seek, volume, mute, search focus, Escape-as-back, etc.) is a tracked follow-up
+(Phase 6), not yet built.
 
 ## OAuth login (proposed — not yet implemented)
 
