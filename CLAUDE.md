@@ -1213,13 +1213,12 @@ build (no second UI codebase). The enabler is a runtime-configurable API base UR
 (`ServerConfigService` + a native-only server-picker + `nativeAppCors()`). Background audio +
 lock-screen controls come from `@jofr/capacitor-media-session` on Android and an iOS-only
 `@nicotind/capacitor-now-playing` Swift plugin (owns `MPNowPlayingInfoCenter` + `AVAudioSession` +
-transport). Android/iOS artifacts are built by tag-only best-effort CI jobs in `deploy.yml`. **The Android APK
-also supports sideload-only Android TV use** (manifest touchscreen fix + a `tv` Angular build
-configuration defaulting remote-control opt-in on; a roving-tabindex D-pad navigation directive
-pair — now including a `'grid'` axis — covers the Now Playing queue, transport controls, every
-Library card grid, Search's catalog grid, and every `TrackRowComponent`-based song list, plus a
-global Space/K play-pause shortcut; settings/admin coverage and the full shortcut table are
-tracked follow-ups). → See [docs/mobile-app.md](docs/mobile-app.md) and
+transport). Android/iOS artifacts are built by tag-only best-effort CI jobs in `deploy.yml`. **The Android APK also supports sideload-only Android TV use** (manifest touchscreen fix + a `tv`
+Angular build configuration defaulting remote-control opt-in on; a roving-tabindex D-pad
+navigation directive pair — vertical/horizontal/grid axes — covers the Now Playing queue,
+transport controls, every Library/Search/artist-detail grid, every `TrackRowComponent`-based song
+list, and Settings/Admin/Extensions button/toggle rows (forms stay Tab-order-only by design),
+plus a global Space/K play-pause shortcut; the rest of the shortcut table is a tracked follow-up). → See [docs/mobile-app.md](docs/mobile-app.md) and
 [docs/ios-app.md](docs/ios-app.md).
 
 ## Desktop app (Electron)

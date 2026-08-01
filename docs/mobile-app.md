@@ -275,9 +275,7 @@ column, clamped into a shorter final row. Applied to every Library page card gri
 compilations, singles/EPs, artists, genres) + the Library playlists list, artist-detail's
 albums/singles/appears-on grids, the Search page's catalog albums grid + artist chips, the
 album-hunt-modal candidate list, and — via one shared change to `TrackRowComponent` itself — every
-song list built on it (library Songs tab, album/genre/artist/playlist detail pages). **Not yet
-applied**: settings/admin pages (Phase 5, narrower scope — native `<select>`/text-input handling);
-the full keyboard shortcut table (Phase 6) is also still just Space/K.
+song list built on it (library Songs tab, album/genre/artist/playlist detail pages). **Settings/Admin/Extensions coverage (Phase 4)**: applied to Settings' theme/budget/auto-preserve grids and account action list, the Devices/agent-tokens revoke lists, Admin's services grid, log-service buttons, processing-task checkboxes, and user-management action buttons, and the Extensions (plugins) page's enable/configure buttons per card. Forms stay Tab-order-only by design — native `<input>`/`<select>` elements are never wrapped in `appTvNavItem`, so arrow keys keep their native meaning inside them (caret movement, select-value change, number increment). **Not yet applied**: the Admin duplicates list (needs a `<label>`-activation passthrough, deferred) and the streaming-panel's mixed checkbox/select rows (same per-row-exclusion technique already established elsewhere in this phase, just not yet applied there). The full keyboard shortcut table (Phase 6) is also still just Space/K.
 
 **Items register via DI, never via `@ContentChildren` (the Phase 3 final-review fix)**: an Angular
 content query stops at a component's view boundary — a component's template is a black box to its
