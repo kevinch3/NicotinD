@@ -290,10 +290,6 @@ deliberately has neither of (`NICOTIND_LIDARR_URL`/`NICOTIND_SLSKD_URL` point at
 `playwright.screenshots.config.ts`); that one image is refreshed via the live `screens:live` flow
 instead, by hand, when the Acquire UI changes materially enough to be worth a fresh live capture.
 
-**Known issue (issue #354)**: The `album.png` capture currently shows a broken duplicate player bar,
-suspected to involve a fullPage screenshot + fixed/sticky bottom-chrome interaction (unconfirmed);
-should be visually checked before committing the image until #354 is resolved.
-
 The **live-screens** config doubles as a findings run: its two flows use the playground
 `obs` fixture, so the config also wires `playground/reporter.ts` and a single run emits
 both the per-flow screenshots **and** `playground-report/*.{md,json}` (timings, cover-art

@@ -12,7 +12,7 @@
  * (invoked via the "screens:readme" package.json script from packages/e2e)
  */
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,6 +36,7 @@ function run(): void {
     { cwd: e2eRoot, stdio: 'inherit' },
   );
   if (result.status !== 0) {
+    if (result.error) console.error(result.error.message);
     console.error('\nScreenshot capture failed — docs/images/*.png left untouched.');
     process.exit(result.status ?? 1);
   }
@@ -50,9 +51,14 @@ function run(): void {
       console.error(`  missing expected capture: ${raw} (flow may have changed shot names)`);
       process.exit(1);
     }
+    const isUnchanged = existsSync(dest) && readFileSync(src).equals(readFileSync(dest));
     copyFileSync(src, dest);
-    console.log(`  docs/images/${curated}  <-  ${raw}`);
-    changed++;
+    if (isUnchanged) {
+      console.log(`  docs/images/${curated}  <-  ${raw}  (unchanged)`);
+    } else {
+      console.log(`  docs/images/${curated}  <-  ${raw}`);
+      changed++;
+    }
   }
 
   console.log(
