@@ -6,6 +6,8 @@ import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-
 import { AuthService } from '../../services/auth.service';
 import { PluginService, type PluginInfo } from '../../services/plugin.service';
 import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/plugin-config';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 
 /**
  * Admin-only plugin management. Lists plugins grouped by kind (acquisition now;
@@ -27,7 +29,14 @@ const PLUGIN_DETAIL_ROUTES: Record<string, string> = {
 @Component({
   selector: 'app-plugins',
   standalone: true,
-  imports: [RouterLink, NgTemplateOutlet, FormsModule, ConfirmDialogComponent],
+  imports: [
+    RouterLink,
+    NgTemplateOutlet,
+    FormsModule,
+    ConfirmDialogComponent,
+    TvNavGroupDirective,
+    TvNavItemDirective,
+  ],
   templateUrl: './plugins.component.html',
 })
 export class PluginsComponent implements OnInit {

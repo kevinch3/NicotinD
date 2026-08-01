@@ -23,6 +23,7 @@ const META: PluginInfo = {
   kind: 'metadata',
   name: 'Discogs',
   enabled: false,
+  configFields: [{ key: 'apiKey', label: 'API key', type: 'text' }],
 } as PluginInfo;
 
 function render(acquisitionEnabled: boolean): HTMLElement {
@@ -78,5 +79,13 @@ describe('PluginsComponent — acquisition kill-switch (#235)', () => {
     // Metadata/connectivity have nothing to do with acquisition; hiding them
     // would make the switch look broader than it is.
     expect(render(false).textContent).toContain('Discogs');
+  });
+
+  it('renders each plugin card toggle button as an appTvNavItem, excluding inline config inputs', () => {
+    const el = render(true);
+    const toggle = el.querySelector('[data-testid="plugin-toggle"]');
+    expect(toggle?.hasAttribute('appTvNavItem')).toBe(true);
+    const configInput = el.querySelector('[data-testid="plugin-config-form"] input');
+    expect(configInput?.hasAttribute('appTvNavItem')).toBe(false);
   });
 });

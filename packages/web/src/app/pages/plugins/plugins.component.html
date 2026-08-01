@@ -30,7 +30,7 @@
   }
 
   @if (acquisitionEnabled()) {
-    <section class="mb-10" data-testid="extensions-acquisition-section">
+    <section class="mb-10" data-testid="extensions-acquisition-section" appTvNavGroup axis="vertical">
       <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
         Acquisition
       </h2>
@@ -43,7 +43,7 @@
     </section>
   }
 
-  <section class="mb-10">
+  <section class="mb-10" appTvNavGroup axis="vertical">
     <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
       Metadata
     </h2>
@@ -55,7 +55,7 @@
     }
   </section>
 
-  <section>
+  <section appTvNavGroup axis="vertical">
     <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
       Connectivity
     </h2>
@@ -116,6 +116,7 @@
           <button
             (click)="toggle(p)"
             [disabled]="busy()"
+            appTvNavItem
             data-testid="plugin-toggle"
             class="px-3 py-1.5 rounded-lg text-sm font-medium transition disabled:opacity-50"
             [class]="
@@ -129,6 +130,7 @@
           @if (detailRoute(p.id); as route) {
             <a
               [routerLink]="route"
+              appTvNavItem
               data-testid="plugin-configure"
               class="text-xs text-theme-accent hover:underline"
               >Configure &rarr;</a
@@ -179,6 +181,7 @@
           <button
             type="submit"
             [disabled]="busy()"
+            appTvNavItem
             data-testid="plugin-config-save"
             class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-surface-2 text-theme-primary hover:bg-theme-hover disabled:opacity-50"
           >
