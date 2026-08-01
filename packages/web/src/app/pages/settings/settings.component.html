@@ -34,9 +34,9 @@
           </div>
         </div>
 
-        <div [class]="'grid grid-cols-3 gap-2 transition-opacity ' + (themeService.systemTheme() ? 'opacity-40 pointer-events-none' : '')">
+        <div appTvNavGroup axis="grid" [class]="'grid grid-cols-3 gap-2 transition-opacity ' + (themeService.systemTheme() ? 'opacity-40 pointer-events-none' : '')">
           @for (preset of themePresets; track preset.id) {
-            <button (click)="themeService.setTheme(preset.id)"
+            <button appTvNavItem (click)="themeService.setTheme(preset.id)"
               [attr.data-theme]="preset.id"
               [class]="'rounded-lg overflow-hidden border-2 transition-all text-left ' + (themeService.theme() === preset.id ? 'border-theme-accent' : 'border-transparent hover:border-theme')"
               [attr.aria-label]="'settings.switchToTheme' | t: { name: preset.name }">
@@ -63,9 +63,9 @@
           {{ 'settings.offlineStorageHint' | t }}
         </p>
 
-        <div class="grid grid-cols-5 gap-2 mb-4">
+        <div appTvNavGroup axis="grid" class="grid grid-cols-5 gap-2 mb-4">
           @for (opt of budgetOptions; track opt.bytes) {
-            <button (click)="preserve.setBudget(opt.bytes)"
+            <button appTvNavItem (click)="preserve.setBudget(opt.bytes)"
               [class]="'rounded-lg border-2 py-2 text-sm transition-all ' + (preserve.budget() === opt.bytes ? 'border-theme-accent text-theme-primary' : 'border-transparent bg-theme-surface-2 text-theme-muted hover:border-theme')">
               {{ opt.label }}
             </button>
@@ -87,9 +87,9 @@
           <p class="text-xs text-theme-muted mb-3">
             {{ 'settings.autoPreserveHint' | t }}
           </p>
-          <div class="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Auto-preserve window">
+          <div appTvNavGroup axis="grid" class="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Auto-preserve window">
             @for (opt of autoPreserveOptions; track opt.value) {
-              <button type="button" (click)="onAutoPreserveClick(opt.value)"
+              <button appTvNavItem type="button" (click)="onAutoPreserveClick(opt.value)"
                 [attr.data-testid]="'auto-preserve-' + opt.value"
                 [attr.aria-pressed]="preserve.autoPreserveMode() === opt.value"
                 [class]="'rounded-lg border-2 py-2 text-sm transition-all ' + (preserve.autoPreserveMode() === opt.value ? 'border-theme-accent text-theme-primary' : 'border-transparent bg-theme-surface-2 text-theme-muted hover:border-theme')">
@@ -230,36 +230,40 @@
       <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
         <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.account' | t }}</h2>
         <p class="text-sm text-theme-muted mb-4">{{ 'settings.signedInAs' | t: { username: auth.username() ?? '' } }}</p>
-        <a routerLink="/settings/devices" data-testid="settings-devices-link"
-           class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.devices' | t }}</a>
-        @if (auth.canCurate()) {
-          <a routerLink="/settings/agent-tokens" data-testid="settings-agent-tokens-link"
-             class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.agentTokens' | t }}</a>
-        }
-        @if (isAdmin()) {
-          <a routerLink="/admin" class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.adminPanel' | t }}</a>
-          <a routerLink="/settings/plugins" data-testid="settings-extensions-link"
-             class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-4">{{ 'settings.extensions' | t }}</a>
-        }
-        <button (click)="logout()" class="text-sm text-status-error hover:text-status-error transition">{{ 'settings.signOut' | t }}</button>
-        @if (update.checkAvailable()) {
+        <div appTvNavGroup axis="vertical">
+          <a appTvNavItem routerLink="/settings/devices" data-testid="settings-devices-link"
+             class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.devices' | t }}</a>
+          @if (auth.canCurate()) {
+            <a appTvNavItem routerLink="/settings/agent-tokens" data-testid="settings-agent-tokens-link"
+               class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.agentTokens' | t }}</a>
+          }
+          @if (isAdmin()) {
+            <a appTvNavItem routerLink="/admin" class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.adminPanel' | t }}</a>
+            <a appTvNavItem routerLink="/settings/plugins" data-testid="settings-extensions-link"
+               class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-4">{{ 'settings.extensions' | t }}</a>
+          }
+          <button appTvNavItem (click)="logout()" class="text-sm text-status-error hover:text-status-error transition">{{ 'settings.signOut' | t }}</button>
+          @if (update.checkAvailable()) {
+            <button
+              appTvNavItem
+              type="button"
+              (click)="searchForUpdates()"
+              [disabled]="update.searching()"
+              data-testid="settings-check-update"
+              class="text-xs text-theme-secondary hover:text-theme-primary transition cursor-pointer block mt-4 disabled:opacity-50 disabled:cursor-wait"
+            >
+              {{ (update.searching() ? 'settings.checkingForUpdates' : 'settings.checkForUpdates') | t }}
+            </button>
+          }
           <button
-            type="button"
-            (click)="searchForUpdates()"
-            [disabled]="update.searching()"
-            data-testid="settings-check-update"
-            class="text-xs text-theme-secondary hover:text-theme-primary transition cursor-pointer block mt-4 disabled:opacity-50 disabled:cursor-wait"
+            appTvNavItem
+            (click)="showChangelog.set(true)"
+            data-testid="version-changelog-settings"
+            class="text-xs text-theme-muted/50 mt-4 hover:text-theme-secondary transition cursor-pointer block"
           >
-            {{ (update.searching() ? 'settings.checkingForUpdates' : 'settings.checkForUpdates') | t }}
+            v{{ version }}
           </button>
-        }
-        <button
-          (click)="showChangelog.set(true)"
-          data-testid="version-changelog-settings"
-          class="text-xs text-theme-muted/50 mt-4 hover:text-theme-secondary transition cursor-pointer block"
-        >
-          v{{ version }}
-        </button>
+        </div>
       </section>
 
       <!-- Desktop (Electron only) -->
@@ -272,8 +276,9 @@
           @if (musicDirError()) {
             <p class="text-sm text-status-error mb-4" data-testid="settings-change-folder-error">{{ musicDirError() }}</p>
           }
-          <div class="flex flex-wrap gap-4">
+          <div appTvNavGroup axis="horizontal" class="flex flex-wrap gap-4">
             <button
+              appTvNavItem
               type="button"
               (click)="changeMusicFolder()"
               [disabled]="musicDirChanging()"
@@ -287,6 +292,7 @@
                  and a stuck acquisition / failed sidecar restart is otherwise
                  hard to diagnose from inside the app. -->
             <button
+              appTvNavItem
               type="button"
               (click)="revealLogs()"
               data-testid="settings-reveal-logs"

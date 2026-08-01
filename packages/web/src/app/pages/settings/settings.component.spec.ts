@@ -153,6 +153,23 @@ function makeProviders(role: 'admin' | 'user', updateOverrides: UpdateOverrides 
   };
 }
 
+describe('SettingsComponent (TV D-pad navigation)', () => {
+  it('renders the theme presets grid as an appTvNavGroup with grid axis', async () => {
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[appTvNavGroup][axis="grid"]');
+    expect(group).not.toBeNull();
+    expect(group!.querySelectorAll('[appTvNavItem]').length).toBeGreaterThan(0);
+    fixture.destroy();
+  });
+});
+
 describe('SettingsComponent (universal prefs only)', () => {
   it('renders universal sections without any admin/extension coupling', async () => {
     const { list } = makeProviders('user');
