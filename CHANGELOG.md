@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.293](https://github.com/kevinch3/NicotinD/compare/v0.1.292...v0.1.293) (2026-08-01)
+
+### Bug Fixes
+
+* **web:** stop changelog.json regeneration from dirtying the working tree ([4e4c9e8](https://github.com/kevinch3/NicotinD/commit/4e4c9e81356ae34a40d4150832ea32d542f781ae))
 ## [0.1.292](https://github.com/kevinch3/NicotinD/compare/v0.1.291...v0.1.292) (2026-08-01)
 
 ### Features
