@@ -158,3 +158,115 @@ describe('TvNavGroupDirective + TvNavItemDirective', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 });
+
+describe('TvNavGroupDirective grid axis', () => {
+  function setupGrid(rowSizes: number[]) {
+    @Component({
+      standalone: true,
+      imports: [TvNavGroupDirective, TvNavItemDirective],
+      template: `
+        <div appTvNavGroup axis="grid">
+          @for (label of items; track label) {
+            <button appTvNavItem>{{ label }}</button>
+          }
+        </div>
+      `,
+    })
+    class GridHost {
+      items = Array.from({ length: rowSizes.reduce((a, b) => a + b, 0) }, (_, i) => `item-${i}`);
+    }
+    TestBed.configureTestingModule({ imports: [GridHost] });
+    const fixture = TestBed.createComponent(GridHost);
+    fixture.detectChanges();
+    const buttons: HTMLButtonElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('button'),
+    );
+    // Stub offsetTop so buttons form rows of the given sizes (e.g. [3, 2] -> a
+    // 3-column grid, 5 items, 2 rows, the last row incomplete).
+    let idx = 0;
+    rowSizes.forEach((size, row) => {
+      for (let i = 0; i < size; i++) {
+        Object.defineProperty(buttons[idx]!, 'offsetTop', { value: row * 100, configurable: true });
+        idx++;
+      }
+    });
+    return { fixture, buttons };
+  }
+
+  it('ArrowRight moves within a row, clamped at the row end (no wrap to next row)', () => {
+    const { fixture, buttons } = setupGrid([3, 2]);
+    buttons[0]!.focus();
+    keydown(buttons[0]!, 'ArrowRight');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[1]);
+    const event = keydown(buttons[2]!, 'ArrowRight'); // idx 2 is the last item in row 0
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[2]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('ArrowLeft moves within a row, clamped at the row start', () => {
+    const { fixture, buttons } = setupGrid([3, 2]);
+    buttons[1]!.focus();
+    keydown(buttons[1]!, 'ArrowLeft');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[0]);
+    const event = keydown(buttons[0]!, 'ArrowLeft');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[0]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('ArrowDown jumps a full row, landing on the same column', () => {
+    const { fixture, buttons } = setupGrid([3, 2]);
+    buttons[0]!.focus();
+    keydown(buttons[0]!, 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[3]); // row 1, column 0
+  });
+
+  it('ArrowDown into a shorter final row clamps to its last item', () => {
+    const { fixture, buttons } = setupGrid([3, 2]);
+    buttons[2]!.focus(); // row 0, column 2 — row 1 only has columns 0-1
+    keydown(buttons[2]!, 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[4]); // clamped to the last item, not off the end
+  });
+
+  it('ArrowUp jumps back a full row, landing on the same column', () => {
+    const { fixture, buttons } = setupGrid([3, 2]);
+    buttons[4]!.focus(); // row 1, column 1
+    keydown(buttons[4]!, 'ArrowUp');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[1]); // row 0, column 1
+  });
+
+  it('ArrowUp at the first row does not move focus and does not preventDefault', () => {
+    const { fixture, buttons } = setupGrid([3, 2]);
+    buttons[1]!.focus();
+    const event = keydown(buttons[1]!, 'ArrowUp');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[1]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('ArrowDown at the last row does not move focus and does not preventDefault', () => {
+    const { fixture, buttons } = setupGrid([3, 2]);
+    buttons[3]!.focus();
+    const event = keydown(buttons[3]!, 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[3]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('Home/End still jump to the first/last item across the whole grid', () => {
+    const { fixture, buttons } = setupGrid([3, 2]);
+    buttons[1]!.focus();
+    keydown(buttons[1]!, 'End');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[4]);
+    keydown(buttons[4]!, 'Home');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[0]);
+  });
+});

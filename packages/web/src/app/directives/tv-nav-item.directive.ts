@@ -35,6 +35,12 @@ export class TvNavItemDirective {
     this.el.nativeElement.focus();
   }
 
+  /** The item's own element — used by the group's grid-axis handler to read
+   *  `offsetTop` for row inference (see `inferColumnsPerRow`). */
+  get nativeElement(): HTMLElement {
+    return this.el.nativeElement;
+  }
+
   /** Whether `target` is this item's element or a descendant of it — used by
    *  the group's `onKeydown` to ignore arrow-key events that bubbled up from
    *  a focusable descendant that isn't itself an `appTvNavItem`. */
