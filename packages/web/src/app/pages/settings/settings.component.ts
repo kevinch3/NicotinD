@@ -27,6 +27,8 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { chunk } from '../../lib/tv-nav-grid';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
+import { IconComponent, type IconName } from '../../components/icon/icon.component';
+import { SettingsGroupHeaderComponent } from '../../components/settings-group-header/settings-group-header.component';
 
 const GB = 1024 * 1024 * 1024;
 
@@ -64,6 +66,8 @@ export const AUTO_PRESERVE_OPTIONS: { value: AutoPreserveMode; label: string }[]
     TranslatePipe,
     TvNavGroupDirective,
     TvNavItemDirective,
+    IconComponent,
+    SettingsGroupHeaderComponent,
   ],
   templateUrl: './settings.component.html',
 })
@@ -304,8 +308,10 @@ export class SettingsComponent {
     await revealLogs();
   }
 
-  getDeviceEmoji(device: { type: string; name: string }): string {
-    if (device.type !== 'web') return '🎵';
-    return /iPhone|iPad|Android/i.test(device.name) ? '📱' : '🖥️';
+  /** Device-type glyph for the connected-devices list (issue: replace emoji
+   *  with the shared SVG icon set for consistency with the rest of the app). */
+  getDeviceIcon(device: { type: string; name: string }): IconName {
+    if (device.type !== 'web') return 'speaker';
+    return /iPhone|iPad|Android/i.test(device.name) ? 'smartphone' : 'monitor';
   }
 }

@@ -4,7 +4,11 @@
 
       <!-- Appearance -->
       <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
-        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.appearance' | t }}</h2>
+        <app-settings-group-header
+          icon="palette"
+          [title]="'settings.appearance' | t"
+          [description]="'settings.groupAppearanceDesc' | t"
+        />
 
         <!-- Language (issue #236). Per-device, not per-user: login/setup/share
              pages render before any user exists, and a per-user setting would
@@ -59,71 +63,16 @@
         </div>
       </section>
 
-      <!-- Offline storage -->
+      <!-- Playback & Offline -->
       <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
-        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.offlineStorage' | t }}</h2>
+        <app-settings-group-header
+          icon="headphones"
+          [title]="'settings.groupPlaybackTitle' | t"
+          [description]="'settings.groupPlaybackDesc' | t"
+        />
 
-        <p class="text-xs text-theme-muted mb-3">
-          {{ 'settings.offlineStorageHint' | t }}
-        </p>
-
-        <div appTvNavGroup axis="grid" #budgetGrid="appTvNavGroup" class="grid grid-cols-5 gap-2 mb-4">
-          @for (row of chunk(budgetOptions, budgetGrid.gridColumns()); track $index) {
-            <div role="row" style="display: contents">
-              @for (opt of row; track opt.bytes) {
-                <button appTvNavItem (click)="preserve.setBudget(opt.bytes)"
-                  [class]="'rounded-lg border-2 py-2 text-sm transition-all ' + (preserve.budget() === opt.bytes ? 'border-theme-accent text-theme-primary' : 'border-transparent bg-theme-surface-2 text-theme-muted hover:border-theme')">
-                  {{ opt.label }}
-                </button>
-              }
-            </div>
-          }
-        </div>
-
-        <div class="h-2 rounded-full bg-theme-hover overflow-hidden mb-1.5">
-          <div class="h-full bg-emerald-500 transition-all" [style.width.%]="usagePercent()"></div>
-        </div>
-        <p class="text-xs text-theme-muted">
-          {{ 'settings.storageUsed' | t: { used: formatStorage(preserve.totalUsage()), total: formatStorage(preserve.budget()) } }}
-          · {{ (preserve.preservedTracks().length === 1 ? 'settings.trackSavedOne' : 'settings.trackSavedOther') | t: { count: preserve.preservedTracks().length } }}
-        </p>
-
-        <!-- Auto-preserve queue: keep the next N queued tracks on disk so playback
-             keeps going when the screen is locked or the network drops (web/PWA). -->
-        <div class="mt-6 pt-6 border-t border-theme">
-          <h3 class="text-sm font-semibold text-theme-primary mb-1">{{ 'settings.autoPreserveTitle' | t }}</h3>
-          <p class="text-xs text-theme-muted mb-3">
-            {{ 'settings.autoPreserveHint' | t }}
-          </p>
-          <!-- No static `role` here: `appTvNavGroup` binds `[attr.role]` on every
-               change-detection pass, so a hand-written one is silently
-               overwritten (this element used to declare `role="radiogroup"` and
-               render as `role="grid"`). The directive's role is authoritative,
-               as it already is for every other group in this codebase. -->
-          <div appTvNavGroup axis="grid" #autoPreserveGrid="appTvNavGroup" class="grid grid-cols-4 gap-2" aria-label="Auto-preserve window">
-            @for (row of chunk(autoPreserveOptions, autoPreserveGrid.gridColumns()); track $index) {
-              <div role="row" style="display: contents">
-                @for (opt of row; track opt.value) {
-                  <button appTvNavItem type="button" (click)="onAutoPreserveClick(opt.value)"
-                    [attr.data-testid]="'auto-preserve-' + opt.value"
-                    [attr.aria-pressed]="preserve.autoPreserveMode() === opt.value"
-                    [class]="'rounded-lg border-2 py-2 text-sm transition-all ' + (preserve.autoPreserveMode() === opt.value ? 'border-theme-accent text-theme-primary' : 'border-transparent bg-theme-surface-2 text-theme-muted hover:border-theme')">
-                    {{ opt.label }}
-                  </button>
-                }
-              </div>
-            }
-          </div>
-          <p class="text-xs text-theme-muted mt-2" data-testid="auto-preserve-explain">
-            {{ autoPreserveExplain() }}
-          </p>
-        </div>
-      </section>
-
-      <!-- Playback -->
-      <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
-        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.playback' | t }}</h2>
-
+        <!-- Autoplay -->
+        <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.playback' | t }}</h3>
         <div class="flex items-start gap-3">
           <button role="switch" [attr.aria-checked]="auth.autoplayOnLoad()"
             (click)="toggleAutoplayOnLoad()"
@@ -136,118 +85,152 @@
             {{ 'settings.resumePlaybackHint' | t }}
           </div>
         </div>
-      </section>
 
-      <!-- Developer (admin-only): feedback capture -->
-      @if (auth.isAdmin()) {
-        <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="developer-section">
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.developer' | t }}</h2>
+        <!-- Remote cast -->
+        <div class="mt-6 pt-6 border-t border-theme">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.remotePlayback' | t }}</h3>
 
-          <div class="flex items-start gap-3">
-            <button role="switch" [attr.aria-checked]="auth.feedbackCapture()"
-              (click)="toggleFeedbackCapture()"
-              data-testid="feedback-capture-toggle"
-              [class]="'relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ' + (auth.feedbackCapture() ? 'bg-emerald-600' : 'bg-theme-hover')">
-              <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (auth.feedbackCapture() ? 'translate-x-4' : 'translate-x-0')"></span>
-            </button>
-            <div>
-              <p class="text-sm text-theme-primary">{{ 'settings.generationFeedback' | t }}</p>
-              <p class="text-xs text-theme-muted mt-1">
-                {{ 'settings.generationFeedbackHint' | t }}
-              </p>
+          <div class="space-y-5">
+            <div class="flex items-start gap-3">
+              <button role="switch" [attr.aria-checked]="remote.remoteEnabled()"
+                data-testid="remote-toggle"
+                (click)="toggleRemote()"
+                [class]="'relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ' + (remote.remoteEnabled() ? 'bg-emerald-600' : 'bg-theme-hover')">
+                <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (remote.remoteEnabled() ? 'translate-x-4' : 'translate-x-0')"></span>
+              </button>
+              <div>
+                <p class="text-sm text-theme-primary">{{ 'settings.makeAvailable' | t }}</p>
+                <p class="text-xs text-theme-muted mt-0.5">{{ 'settings.makeAvailableHint' | t }}</p>
+                @if (!remote.remoteEnabled()) {
+                  <p class="text-xs text-status-warn mt-1">{{ 'settings.hiddenFromSelector' | t }}</p>
+                }
+              </div>
             </div>
-          </div>
-        </section>
-      }
 
-      <!-- Remote Playback -->
-      <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
-        <div class="flex items-center gap-3 mb-6">
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary">{{ 'settings.remotePlayback' | t }}</h2>
-        </div>
+            @if (remote.disabledReason()) {
+              <div class="flex items-start gap-2 px-3 py-2.5 rounded-lg status-warn border border-theme text-xs">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0 mt-0.5">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <span>{{ 'settings.autoDisabled' | t: { reason: remote.disabledReason() ?? '' } }}</span>
+              </div>
+            }
 
-        <div class="space-y-5">
-          <div class="flex items-start gap-3">
-            <button role="switch" [attr.aria-checked]="remote.remoteEnabled()"
-              data-testid="remote-toggle"
-              (click)="toggleRemote()"
-              [class]="'relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ' + (remote.remoteEnabled() ? 'bg-emerald-600' : 'bg-theme-hover')">
-              <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (remote.remoteEnabled() ? 'translate-x-4' : 'translate-x-0')"></span>
-            </button>
             <div>
-              <p class="text-sm text-theme-primary">{{ 'settings.makeAvailable' | t }}</p>
-              <p class="text-xs text-theme-muted mt-0.5">{{ 'settings.makeAvailableHint' | t }}</p>
-              @if (!remote.remoteEnabled()) {
-                <p class="text-xs text-status-warn mt-1">{{ 'settings.hiddenFromSelector' | t }}</p>
+              <label class="block text-sm text-theme-secondary mb-1.5">{{ 'settings.deviceName' | t }}</label>
+              <div class="flex gap-2">
+                <input type="text" [ngModel]="deviceName()" (ngModelChange)="deviceName.set($event); deviceNameSaved.set(false)"
+                  [attr.placeholder]="'settings.deviceNamePlaceholder' | t"
+                  class="flex-1 px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
+                <button (click)="saveDeviceName()" [disabled]="!deviceName().trim() || deviceNameSaved()"
+                  class="px-4 py-2.5 rounded-lg bg-theme-hover text-theme-primary text-sm font-medium hover:bg-theme-hover transition disabled:opacity-50">
+                  {{ (deviceNameSaved() ? 'settings.saved' : 'settings.save') | t }}
+                </button>
+              </div>
+              <p class="text-xs text-theme-muted mt-1">{{ 'settings.deviceNameHint' | t }}</p>
+            </div>
+
+            <div>
+              <p class="text-sm text-theme-secondary mb-2">{{ 'settings.connectedDevices' | t }}</p>
+              @if (remote.devices().length === 0) {
+                <p class="text-sm text-theme-muted">{{ 'settings.noDevicesOnline' | t }}</p>
+              } @else {
+                <ul class="space-y-1">
+                  @for (device of remote.devices(); track device.id) {
+                    <li class="flex items-center gap-2 text-sm">
+                      <span class="text-theme-muted flex-shrink-0"><app-icon [name]="getDeviceIcon(device)" [size]="14" /></span>
+                      <span [class]="device.id === myDeviceId ? 'text-theme-primary' : 'text-theme-secondary'">{{ device.name }}</span>
+                      @if (device.id === myDeviceId) {
+                        <span class="text-xs text-theme-muted">{{ 'settings.thisDevice' | t }}</span>
+                      }
+                      @if (device.id === remote.activeDeviceId()) {
+                        <span class="ml-auto text-xs font-semibold tracking-wide px-1.5 py-0.5 rounded status-done">{{ 'settings.host' | t }}</span>
+                      }
+                    </li>
+                  }
+                </ul>
               }
             </div>
           </div>
+        </div>
 
-          @if (remote.disabledReason()) {
-            <div class="flex items-start gap-2 px-3 py-2.5 rounded-lg status-warn border border-theme text-xs">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0 mt-0.5">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              <span>{{ 'settings.autoDisabled' | t: { reason: remote.disabledReason() ?? '' } }}</span>
-            </div>
-          }
+        <!-- Offline storage -->
+        <div class="mt-6 pt-6 border-t border-theme">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.offlineStorage' | t }}</h3>
 
-          <div>
-            <label class="block text-sm text-theme-secondary mb-1.5">{{ 'settings.deviceName' | t }}</label>
-            <div class="flex gap-2">
-              <input type="text" [ngModel]="deviceName()" (ngModelChange)="deviceName.set($event); deviceNameSaved.set(false)"
-                [attr.placeholder]="'settings.deviceNamePlaceholder' | t"
-                class="flex-1 px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
-              <button (click)="saveDeviceName()" [disabled]="!deviceName().trim() || deviceNameSaved()"
-                class="px-4 py-2.5 rounded-lg bg-theme-hover text-theme-primary text-sm font-medium hover:bg-theme-hover transition disabled:opacity-50">
-                {{ (deviceNameSaved() ? 'settings.saved' : 'settings.save') | t }}
-              </button>
-            </div>
-            <p class="text-xs text-theme-muted mt-1">{{ 'settings.deviceNameHint' | t }}</p>
+          <p class="text-xs text-theme-muted mb-3">
+            {{ 'settings.offlineStorageHint' | t }}
+          </p>
+
+          <div appTvNavGroup axis="grid" #budgetGrid="appTvNavGroup" class="grid grid-cols-5 gap-2 mb-4">
+            @for (row of chunk(budgetOptions, budgetGrid.gridColumns()); track $index) {
+              <div role="row" style="display: contents">
+                @for (opt of row; track opt.bytes) {
+                  <button appTvNavItem (click)="preserve.setBudget(opt.bytes)"
+                    [class]="'rounded-lg border-2 py-2 text-sm transition-all ' + (preserve.budget() === opt.bytes ? 'border-theme-accent text-theme-primary' : 'border-transparent bg-theme-surface-2 text-theme-muted hover:border-theme')">
+                    {{ opt.label }}
+                  </button>
+                }
+              </div>
+            }
           </div>
 
-          <div>
-            <p class="text-sm text-theme-secondary mb-2">{{ 'settings.connectedDevices' | t }}</p>
-            @if (remote.devices().length === 0) {
-              <p class="text-sm text-theme-muted">{{ 'settings.noDevicesOnline' | t }}</p>
-            } @else {
-              <ul class="space-y-1">
-                @for (device of remote.devices(); track device.id) {
-                  <li class="flex items-center gap-2 text-sm">
-                    <span>{{ getDeviceEmoji(device) }}</span>
-                    <span [class]="device.id === myDeviceId ? 'text-theme-primary' : 'text-theme-secondary'">{{ device.name }}</span>
-                    @if (device.id === myDeviceId) {
-                      <span class="text-xs text-theme-muted">{{ 'settings.thisDevice' | t }}</span>
-                    }
-                    @if (device.id === remote.activeDeviceId()) {
-                      <span class="ml-auto text-xs font-semibold tracking-wide px-1.5 py-0.5 rounded status-done">{{ 'settings.host' | t }}</span>
-                    }
-                  </li>
-                }
-              </ul>
-            }
+          <div class="h-2 rounded-full bg-theme-hover overflow-hidden mb-1.5">
+            <div class="h-full bg-emerald-500 transition-all" [style.width.%]="usagePercent()"></div>
+          </div>
+          <p class="text-xs text-theme-muted">
+            {{ 'settings.storageUsed' | t: { used: formatStorage(preserve.totalUsage()), total: formatStorage(preserve.budget()) } }}
+            · {{ (preserve.preservedTracks().length === 1 ? 'settings.trackSavedOne' : 'settings.trackSavedOther') | t: { count: preserve.preservedTracks().length } }}
+          </p>
+
+          <!-- Auto-preserve queue: keep the next N queued tracks on disk so playback
+               keeps going when the screen is locked or the network drops (web/PWA). -->
+          <div class="mt-6 pt-6 border-t border-theme">
+            <h3 class="text-sm font-semibold text-theme-primary mb-1">{{ 'settings.autoPreserveTitle' | t }}</h3>
+            <p class="text-xs text-theme-muted mb-3">
+              {{ 'settings.autoPreserveHint' | t }}
+            </p>
+            <!-- No static `role` here: `appTvNavGroup` binds `[attr.role]` on every
+                 change-detection pass, so a hand-written one is silently
+                 overwritten (this element used to declare `role="radiogroup"` and
+                 render as `role="grid"`). The directive's role is authoritative,
+                 as it already is for every other group in this codebase. -->
+            <div appTvNavGroup axis="grid" #autoPreserveGrid="appTvNavGroup" class="grid grid-cols-4 gap-2" aria-label="Auto-preserve window">
+              @for (row of chunk(autoPreserveOptions, autoPreserveGrid.gridColumns()); track $index) {
+                <div role="row" style="display: contents">
+                  @for (opt of row; track opt.value) {
+                    <button appTvNavItem type="button" (click)="onAutoPreserveClick(opt.value)"
+                      [attr.data-testid]="'auto-preserve-' + opt.value"
+                      [attr.aria-pressed]="preserve.autoPreserveMode() === opt.value"
+                      [class]="'rounded-lg border-2 py-2 text-sm transition-all ' + (preserve.autoPreserveMode() === opt.value ? 'border-theme-accent text-theme-primary' : 'border-transparent bg-theme-surface-2 text-theme-muted hover:border-theme')">
+                      {{ opt.label }}
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+            <p class="text-xs text-theme-muted mt-2" data-testid="auto-preserve-explain">
+              {{ autoPreserveExplain() }}
+            </p>
           </div>
         </div>
       </section>
 
-      <!-- Server (native mobile app only) -->
-      @if (isNativeApp) {
-        <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="settings-server-section">
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.server' | t }}</h2>
-          <p class="text-sm text-theme-muted mb-4">
-            {{ 'settings.connectedTo' | t }}
-            <span class="text-theme-primary font-medium break-all">{{ serverConfig.baseUrl() }}</span>
-          </p>
-          <a routerLink="/server" data-testid="settings-switch-server"
-             class="block text-sm text-theme-secondary hover:text-theme-primary transition">{{ 'settings.switchServer' | t }}</a>
-        </section>
-      }
-
-      <!-- Account -->
+      <!-- Account & Devices -->
       <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
-        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.account' | t }}</h2>
+        <app-settings-group-header
+          icon="user"
+          [title]="'settings.groupAccountTitle' | t"
+          [description]="'settings.groupAccountDesc' | t"
+        />
+
+        <!-- Identity -->
+        <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.account' | t }}</h3>
         <p class="text-sm text-theme-muted mb-4">{{ 'settings.signedInAs' | t: { username: auth.username() ?? '' } }}</p>
+
         <div appTvNavGroup axis="vertical">
+          <!-- Links -->
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3 mt-6 pt-6 border-t border-theme">{{ 'settings.subLinks' | t }}</h3>
           <a appTvNavItem routerLink="/settings/devices" data-testid="settings-devices-link"
              class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.devices' | t }}</a>
           @if (auth.canCurate()) {
@@ -257,9 +240,12 @@
           @if (isAdmin()) {
             <a appTvNavItem routerLink="/admin" class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.adminPanel' | t }}</a>
             <a appTvNavItem routerLink="/settings/plugins" data-testid="settings-extensions-link"
-               class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-4">{{ 'settings.extensions' | t }}</a>
+               class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.extensions' | t }}</a>
           }
           <button appTvNavItem (click)="logout()" class="text-sm text-status-error hover:text-status-error transition">{{ 'settings.signOut' | t }}</button>
+
+          <!-- Updates -->
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3 mt-6 pt-6 border-t border-theme">{{ 'settings.subUpdates' | t }}</h3>
           @if (update.checkAvailable()) {
             <button
               appTvNavItem
@@ -267,7 +253,7 @@
               (click)="searchForUpdates()"
               [disabled]="update.searching()"
               data-testid="settings-check-update"
-              class="text-xs text-theme-secondary hover:text-theme-primary transition cursor-pointer block mt-4 disabled:opacity-50 disabled:cursor-wait"
+              class="text-xs text-theme-secondary hover:text-theme-primary transition cursor-pointer block disabled:opacity-50 disabled:cursor-wait"
             >
               {{ (update.searching() ? 'settings.checkingForUpdates' : 'settings.checkForUpdates') | t }}
             </button>
@@ -283,70 +269,115 @@
         </div>
       </section>
 
-      <!-- Desktop (Electron only) -->
-      @if (isElectron) {
-        <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="settings-desktop-section">
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.desktop' | t }}</h2>
-          @if (musicDirChosen()) {
-            <p class="text-sm text-theme-muted mb-4">{{ 'settings.musicFolder' | t: { path: musicDirChosen() ?? '' } }}</p>
-          }
-          @if (musicDirError()) {
-            <p class="text-sm text-status-error mb-4" data-testid="settings-change-folder-error">{{ musicDirError() }}</p>
-          }
-          <div appTvNavGroup axis="horizontal" class="flex flex-wrap gap-4">
-            <button
-              appTvNavItem
-              type="button"
-              (click)="changeMusicFolder()"
-              [disabled]="musicDirChanging()"
-              data-testid="settings-change-folder"
-              class="text-sm text-theme-secondary hover:text-theme-primary transition disabled:opacity-50"
-            >
-              {{ (musicDirChanging() ? 'settings.restarting' : 'settings.changeMusicFolder') | t }}
-            </button>
-            <!-- Mirrors the tray icon's "Reveal Logs" entry; without this
-                 the global app menu is gone (dropped with `buildMenu`),
-                 and a stuck acquisition / failed sidecar restart is otherwise
-                 hard to diagnose from inside the app. -->
-            <button
-              appTvNavItem
-              type="button"
-              (click)="revealLogs()"
-              data-testid="settings-reveal-logs"
-              class="text-sm text-theme-secondary hover:text-theme-primary transition"
-            >
-              {{ 'settings.revealLogs' | t }}
-            </button>
-          </div>
-        </section>
-      }
+      <!-- Advanced -->
+      @if (auth.isAdmin() || isNativeApp || isElectron || isNativeIos) {
+        <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
+          <app-settings-group-header
+            icon="sliders"
+            [title]="'settings.groupAdvancedTitle' | t"
+            [description]="'settings.groupAdvancedDesc' | t"
+          />
 
-      <!-- iOS Now Playing diagnostics (native iOS only) — confirms the lock-screen
-           plugin is registered, owns the audio session, and has metadata set. -->
-      @if (isNativeIos) {
-        <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="now-playing-diagnostics">
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">{{ 'settings.nowPlayingIos' | t }}</h2>
-          <button
-            (click)="refreshNowPlayingDiagnostics()"
-            [disabled]="nowPlayingDiagLoading()"
-            class="text-sm text-theme-secondary hover:text-theme-primary transition mb-4"
-          >
-            {{ (nowPlayingDiagLoading() ? 'settings.checking' : 'settings.runDiagnostics') | t }}
-          </button>
-          @if (nowPlayingDiag(); as d) {
-            <dl class="text-xs text-theme-muted space-y-1 font-mono">
-              <div>plugin registered: {{ d.pluginRegistered }}</div>
-              <div>session configured: {{ d.sessionConfigured }}</div>
-              <div>audio category: {{ d.audioCategory }}</div>
-              <div>other audio playing: {{ d.isOtherAudioPlaying }}</div>
-              <div>commands registered: {{ d.commandsRegistered }}</div>
-              <div>now-playing keys: {{ d.nowPlayingInfoKeys.length }}</div>
-              <div>artwork: {{ d.lastArtworkStatus }}</div>
-            </dl>
-          } @else if (!nowPlayingDiagLoading()) {
-            <p class="text-xs text-theme-muted/70">
-              {{ 'settings.nativePluginUnavailable' | t }}
-            </p>
+          <!-- Developer (admin-only): feedback capture -->
+          @if (auth.isAdmin()) {
+            <div data-testid="developer-section">
+              <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.developer' | t }}</h3>
+              <div class="flex items-start gap-3">
+                <button role="switch" [attr.aria-checked]="auth.feedbackCapture()"
+                  (click)="toggleFeedbackCapture()"
+                  data-testid="feedback-capture-toggle"
+                  [class]="'relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ' + (auth.feedbackCapture() ? 'bg-emerald-600' : 'bg-theme-hover')">
+                  <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (auth.feedbackCapture() ? 'translate-x-4' : 'translate-x-0')"></span>
+                </button>
+                <div>
+                  <p class="text-sm text-theme-primary">{{ 'settings.generationFeedback' | t }}</p>
+                  <p class="text-xs text-theme-muted mt-1">
+                    {{ 'settings.generationFeedbackHint' | t }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          }
+
+          <!-- Server (native mobile app only) -->
+          @if (isNativeApp) {
+            <div [class]="auth.isAdmin() ? 'mt-6 pt-6 border-t border-theme' : ''" data-testid="settings-server-section">
+              <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.server' | t }}</h3>
+              <p class="text-sm text-theme-muted mb-4">
+                {{ 'settings.connectedTo' | t }}
+                <span class="text-theme-primary font-medium break-all">{{ serverConfig.baseUrl() }}</span>
+              </p>
+              <a routerLink="/server" data-testid="settings-switch-server"
+                 class="block text-sm text-theme-secondary hover:text-theme-primary transition">{{ 'settings.switchServer' | t }}</a>
+            </div>
+          }
+
+          <!-- Desktop (Electron only) -->
+          @if (isElectron) {
+            <div [class]="(auth.isAdmin() || isNativeApp) ? 'mt-6 pt-6 border-t border-theme' : ''" data-testid="settings-desktop-section">
+              <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.desktop' | t }}</h3>
+              @if (musicDirChosen()) {
+                <p class="text-sm text-theme-muted mb-4">{{ 'settings.musicFolder' | t: { path: musicDirChosen() ?? '' } }}</p>
+              }
+              @if (musicDirError()) {
+                <p class="text-sm text-status-error mb-4" data-testid="settings-change-folder-error">{{ musicDirError() }}</p>
+              }
+              <div appTvNavGroup axis="horizontal" class="flex flex-wrap gap-4">
+                <button
+                  appTvNavItem
+                  type="button"
+                  (click)="changeMusicFolder()"
+                  [disabled]="musicDirChanging()"
+                  data-testid="settings-change-folder"
+                  class="text-sm text-theme-secondary hover:text-theme-primary transition disabled:opacity-50"
+                >
+                  {{ (musicDirChanging() ? 'settings.restarting' : 'settings.changeMusicFolder') | t }}
+                </button>
+                <!-- Mirrors the tray icon's "Reveal Logs" entry; without this
+                     the global app menu is gone (dropped with `buildMenu`),
+                     and a stuck acquisition / failed sidecar restart is otherwise
+                     hard to diagnose from inside the app. -->
+                <button
+                  appTvNavItem
+                  type="button"
+                  (click)="revealLogs()"
+                  data-testid="settings-reveal-logs"
+                  class="text-sm text-theme-secondary hover:text-theme-primary transition"
+                >
+                  {{ 'settings.revealLogs' | t }}
+                </button>
+              </div>
+            </div>
+          }
+
+          <!-- iOS Now Playing diagnostics (native iOS only) — confirms the lock-screen
+               plugin is registered, owns the audio session, and has metadata set. -->
+          @if (isNativeIos) {
+            <div [class]="(auth.isAdmin() || isNativeApp || isElectron) ? 'mt-6 pt-6 border-t border-theme' : ''" data-testid="now-playing-diagnostics">
+              <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.nowPlayingIos' | t }}</h3>
+              <button
+                (click)="refreshNowPlayingDiagnostics()"
+                [disabled]="nowPlayingDiagLoading()"
+                class="text-sm text-theme-secondary hover:text-theme-primary transition mb-4"
+              >
+                {{ (nowPlayingDiagLoading() ? 'settings.checking' : 'settings.runDiagnostics') | t }}
+              </button>
+              @if (nowPlayingDiag(); as d) {
+                <dl class="text-xs text-theme-muted space-y-1 font-mono">
+                  <div>plugin registered: {{ d.pluginRegistered }}</div>
+                  <div>session configured: {{ d.sessionConfigured }}</div>
+                  <div>audio category: {{ d.audioCategory }}</div>
+                  <div>other audio playing: {{ d.isOtherAudioPlaying }}</div>
+                  <div>commands registered: {{ d.commandsRegistered }}</div>
+                  <div>now-playing keys: {{ d.nowPlayingInfoKeys.length }}</div>
+                  <div>artwork: {{ d.lastArtworkStatus }}</div>
+                </dl>
+              } @else if (!nowPlayingDiagLoading()) {
+                <p class="text-xs text-theme-muted/70">
+                  {{ 'settings.nativePluginUnavailable' | t }}
+                </p>
+              }
+            </div>
           }
         </section>
       }

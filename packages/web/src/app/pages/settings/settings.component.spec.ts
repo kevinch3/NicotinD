@@ -236,7 +236,21 @@ describe('SettingsComponent (universal prefs only)', () => {
     const text = fixture.nativeElement.textContent as string;
     // Section headers/copy are i18n keys now (issue #236); the raw key renders
     // since no catalog is loaded in this harness.
-    expect(text).toContain('settings.appearance');
+    //
+    // 'settings.appearance' is no longer asserted here: the settings-page
+    // regroup (task 4) moved it from a literal h2 in this component's own
+    // template into a `[title]` binding on the nested, imported
+    // `app-settings-group-header` (Card 1's header). Per
+    // docs/web-ui.md "Testing input()-signal components (JIT vitest
+    // limitation)", this harness's JIT compiler never registers a template
+    // binding onto a *nested imported* standalone component's signal
+    // `input()` — the binding silently doesn't land, so the child renders its
+    // input's default rather than the passed value. That's a harness
+    // constraint on how a parent spec can observe a nested component's
+    // content, not a defect in the app: `settings-group-header.component.spec.ts`
+    // covers the header's own rendering directly (via the shared
+    // `setInputValue` helper), and `bun run typecheck`/`ng build` confirm the
+    // binding is real at compile time and runtime outside this harness.
     expect(text).toContain('settings.offlineStorage');
     expect(text).toContain('settings.remotePlayback');
     expect(text).toContain('settings.resumePlayback');
