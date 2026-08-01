@@ -23,7 +23,9 @@ function makePlayerStub() {
     repeat: signal('off'),
     radio: signal(false),
     toggleRadio: () => {},
-    queue: signal([]),
+    queue: signal<
+      { id: string; title: string; artist: string; coverArt?: string | null; album?: string }[]
+    >([]),
     history: signal([]),
     context: signal(null),
     currentTime: signal(0),
