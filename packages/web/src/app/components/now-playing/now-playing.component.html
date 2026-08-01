@@ -371,6 +371,8 @@
               @for (queueTrack of player.queue(); track queueTrack.id + '-' + $index) {
                 <div
                   class="flex items-center group"
+                  appTvNavGroup
+                  axis="horizontal"
                   draggable="true"
                   (dragstart)="onQueueDragStart($event, $index)"
                   (dragover)="onQueueDragOver($event, $index)"
@@ -401,6 +403,7 @@
                   </button>
                   <button
                     type="button"
+                    appTvNavItem
                     (click)="removeFromQueue($index)"
                     data-testid="queue-remove"
                     [attr.title]="'nowPlaying.remove' | t"

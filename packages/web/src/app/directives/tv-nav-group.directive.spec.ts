@@ -224,6 +224,32 @@ describe('TvNavGroupDirective + TvNavItemDirective', () => {
     expect(document.activeElement).toBe(b);
   });
 
+  it('indexOf returns the same answer as items().indexOf, via the memoized index map (issue #357)', () => {
+    const { fixture, buttons } = setup();
+    const group = fixture.debugElement
+      .query(By.directive(TvNavGroupDirective))
+      .injector.get(TvNavGroupDirective);
+    const items = group.items();
+    items.forEach((item, i) => {
+      expect(group.indexOf(item)).toBe(i);
+      expect(group.indexOf(item)).toBe(items.indexOf(item));
+    });
+  });
+
+  it('resolves the acting index from the keydown event target rather than a stale activeIndex (issue #358)', () => {
+    const { fixture, buttons } = setup();
+    const group = fixture.debugElement
+      .query(By.directive(TvNavGroupDirective))
+      .injector.get(TvNavGroupDirective);
+    // Simulate activeIndex having drifted from real DOM focus (e.g. a pure
+    // reorder moved the focused element to a new ordinal position before the
+    // next focusin resyncs it) — the keydown's own target should still win.
+    group.activeIndex.set(2);
+    keydown(buttons[0]!, 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[1]);
+  });
+
   it('an arrow key on a focusable descendant that is not an appTvNavItem does not move focus (stale-activeIndex guard)', () => {
     const { fixture, buttons, plainButton } = setup();
     // Move activeIndex to 1 first via a real item, then focus the plain
@@ -360,5 +386,125 @@ describe('TvNavGroupDirective grid axis', () => {
     keydown(buttons[4]!, 'Home');
     fixture.detectChanges();
     expect(document.activeElement).toBe(buttons[0]);
+  });
+});
+
+describe('TvNavGroupDirective nested child groups (issue #356)', () => {
+  // Mirrors the Now Playing queue: a vertical "rows" group nesting one
+  // horizontal group per row ([jump, remove]) — ArrowDown/Up move between
+  // rows, ArrowLeft/Right move within a row to reach Remove.
+  @Component({
+    standalone: true,
+    imports: [TvNavGroupDirective, TvNavItemDirective],
+    template: `
+      <div appTvNavGroup axis="vertical">
+        @for (row of rows; track row) {
+          <div appTvNavGroup axis="horizontal">
+            <button appTvNavItem class="jump">{{ row }}-jump</button>
+            <button appTvNavItem class="remove">{{ row }}-remove</button>
+          </div>
+        }
+      </div>
+    `,
+  })
+  class QueueHost {
+    rows = ['a', 'b', 'c'];
+  }
+
+  function setupQueue() {
+    TestBed.configureTestingModule({ imports: [QueueHost] });
+    const fixture = TestBed.createComponent(QueueHost);
+    fixture.detectChanges();
+    const jump = (i: number): HTMLButtonElement =>
+      fixture.nativeElement.querySelectorAll('.jump')[i];
+    const remove = (i: number): HTMLButtonElement =>
+      fixture.nativeElement.querySelectorAll('.remove')[i];
+    return { fixture, jump, remove };
+  }
+
+  it('only the first row default to tabindex 0 on its jump button; every remove button starts at -1', () => {
+    const { jump, remove } = setupQueue();
+    expect(jump(0).getAttribute('tabindex')).toBe('0');
+    expect(jump(1).getAttribute('tabindex')).toBe('-1');
+    expect(jump(2).getAttribute('tabindex')).toBe('-1');
+    expect(remove(0).getAttribute('tabindex')).toBe('-1');
+    expect(remove(1).getAttribute('tabindex')).toBe('-1');
+    expect(remove(2).getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('ArrowRight from jump moves within the row to remove (inner horizontal group)', () => {
+    const { fixture, jump, remove } = setupQueue();
+    jump(0).focus();
+    keydown(jump(0), 'ArrowRight');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(remove(0));
+    expect(remove(0).getAttribute('tabindex')).toBe('0');
+    expect(jump(0).getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('ArrowDown from jump moves to the next row (outer vertical group over child groups)', () => {
+    const { fixture, jump } = setupQueue();
+    jump(0).focus();
+    keydown(jump(0), 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(jump(1));
+  });
+
+  it("ArrowDown from a row whose remove button is focused lands on the next row's own active item, not necessarily the same column", () => {
+    const { fixture, jump, remove } = setupQueue();
+    // Move row 0 to remove, but never touch row 1 — row 1's own activeIndex
+    // stays at its default (jump).
+    jump(0).focus();
+    keydown(jump(0), 'ArrowRight');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(remove(0));
+    keydown(remove(0), 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(jump(1));
+  });
+
+  it("moving to a different row demotes the previous row's items and promotes the new row's (single Tab-stop invariant)", () => {
+    const { fixture, jump } = setupQueue();
+    jump(0).focus();
+    keydown(jump(0), 'ArrowDown');
+    fixture.detectChanges();
+    expect(jump(0).getAttribute('tabindex')).toBe('-1');
+    expect(jump(1).getAttribute('tabindex')).toBe('0');
+  });
+
+  it('ArrowUp moves back to the previous row', () => {
+    const { fixture, jump } = setupQueue();
+    jump(1).focus();
+    keydown(jump(1), 'ArrowUp');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(jump(0));
+  });
+
+  it('ArrowDown at the last row does not move focus (no wrap) but IS preventDefaulted', () => {
+    const { fixture, jump } = setupQueue();
+    jump(2).focus();
+    const event = keydown(jump(2), 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(jump(2));
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("Home/End jump to the first/last row's active item", () => {
+    const { fixture, jump } = setupQueue();
+    jump(1).focus();
+    keydown(jump(1), 'End');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(jump(2));
+    keydown(jump(2), 'Home');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(jump(0));
+  });
+
+  it("clicking directly into a different row's remove button re-syncs both levels of roving tabindex", () => {
+    const { fixture, jump, remove } = setupQueue();
+    remove(2).focus();
+    fixture.detectChanges();
+    expect(remove(2).getAttribute('tabindex')).toBe('0');
+    expect(jump(0).getAttribute('tabindex')).toBe('-1');
   });
 });

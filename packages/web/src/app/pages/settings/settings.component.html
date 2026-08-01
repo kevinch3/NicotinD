@@ -34,23 +34,27 @@
           </div>
         </div>
 
-        <div appTvNavGroup axis="grid" [class]="'grid grid-cols-3 gap-2 transition-opacity ' + (themeService.systemTheme() ? 'opacity-40 pointer-events-none' : '')">
-          @for (preset of themePresets; track preset.id) {
-            <button appTvNavItem (click)="themeService.setTheme(preset.id)"
-              [attr.data-theme]="preset.id"
-              [class]="'rounded-lg overflow-hidden border-2 transition-all text-left ' + (themeService.theme() === preset.id ? 'border-theme-accent' : 'border-transparent hover:border-theme')"
-              [attr.aria-label]="'settings.switchToTheme' | t: { name: preset.name }">
-              <div class="h-10 flex flex-col gap-1 p-1.5" style="background: var(--theme-bg, #09090b)">
-                <div class="h-2 rounded-sm w-full" style="background: var(--theme-surface, #18181b)"></div>
-                <div class="h-1.5 rounded-sm w-3/4" style="background: var(--theme-surface-2, #27272a)"></div>
-              </div>
-              <div class="px-2 py-1.5 flex items-center justify-between" style="background: var(--theme-surface, #18181b)">
-                <span class="text-xs font-semibold" style="color: var(--theme-text-primary, #f4f4f5)">{{ preset.name }}</span>
-                @if (themeService.theme() === preset.id) {
-                  <span class="text-theme-accent text-xs">✓</span>
-                }
-              </div>
-            </button>
+        <div appTvNavGroup axis="grid" #themeGrid="appTvNavGroup" [class]="'grid grid-cols-3 gap-2 transition-opacity ' + (themeService.systemTheme() ? 'opacity-40 pointer-events-none' : '')">
+          @for (row of chunk(themePresets, themeGrid.gridColumns()); track $index) {
+            <div role="row" style="display: contents">
+              @for (preset of row; track preset.id) {
+                <button appTvNavItem (click)="themeService.setTheme(preset.id)"
+                  [attr.data-theme]="preset.id"
+                  [class]="'rounded-lg overflow-hidden border-2 transition-all text-left ' + (themeService.theme() === preset.id ? 'border-theme-accent' : 'border-transparent hover:border-theme')"
+                  [attr.aria-label]="'settings.switchToTheme' | t: { name: preset.name }">
+                  <div class="h-10 flex flex-col gap-1 p-1.5" style="background: var(--theme-bg, #09090b)">
+                    <div class="h-2 rounded-sm w-full" style="background: var(--theme-surface, #18181b)"></div>
+                    <div class="h-1.5 rounded-sm w-3/4" style="background: var(--theme-surface-2, #27272a)"></div>
+                  </div>
+                  <div class="px-2 py-1.5 flex items-center justify-between" style="background: var(--theme-surface, #18181b)">
+                    <span class="text-xs font-semibold" style="color: var(--theme-text-primary, #f4f4f5)">{{ preset.name }}</span>
+                    @if (themeService.theme() === preset.id) {
+                      <span class="text-theme-accent text-xs">✓</span>
+                    }
+                  </div>
+                </button>
+              }
+            </div>
           }
         </div>
       </section>
@@ -63,12 +67,16 @@
           {{ 'settings.offlineStorageHint' | t }}
         </p>
 
-        <div appTvNavGroup axis="grid" class="grid grid-cols-5 gap-2 mb-4">
-          @for (opt of budgetOptions; track opt.bytes) {
-            <button appTvNavItem (click)="preserve.setBudget(opt.bytes)"
-              [class]="'rounded-lg border-2 py-2 text-sm transition-all ' + (preserve.budget() === opt.bytes ? 'border-theme-accent text-theme-primary' : 'border-transparent bg-theme-surface-2 text-theme-muted hover:border-theme')">
-              {{ opt.label }}
-            </button>
+        <div appTvNavGroup axis="grid" #budgetGrid="appTvNavGroup" class="grid grid-cols-5 gap-2 mb-4">
+          @for (row of chunk(budgetOptions, budgetGrid.gridColumns()); track $index) {
+            <div role="row" style="display: contents">
+              @for (opt of row; track opt.bytes) {
+                <button appTvNavItem (click)="preserve.setBudget(opt.bytes)"
+                  [class]="'rounded-lg border-2 py-2 text-sm transition-all ' + (preserve.budget() === opt.bytes ? 'border-theme-accent text-theme-primary' : 'border-transparent bg-theme-surface-2 text-theme-muted hover:border-theme')">
+                  {{ opt.label }}
+                </button>
+              }
+            </div>
           }
         </div>
 
@@ -92,14 +100,18 @@
                overwritten (this element used to declare `role="radiogroup"` and
                render as `role="grid"`). The directive's role is authoritative,
                as it already is for every other group in this codebase. -->
-          <div appTvNavGroup axis="grid" class="grid grid-cols-4 gap-2" aria-label="Auto-preserve window">
-            @for (opt of autoPreserveOptions; track opt.value) {
-              <button appTvNavItem type="button" (click)="onAutoPreserveClick(opt.value)"
-                [attr.data-testid]="'auto-preserve-' + opt.value"
-                [attr.aria-pressed]="preserve.autoPreserveMode() === opt.value"
-                [class]="'rounded-lg border-2 py-2 text-sm transition-all ' + (preserve.autoPreserveMode() === opt.value ? 'border-theme-accent text-theme-primary' : 'border-transparent bg-theme-surface-2 text-theme-muted hover:border-theme')">
-                {{ opt.label }}
-              </button>
+          <div appTvNavGroup axis="grid" #autoPreserveGrid="appTvNavGroup" class="grid grid-cols-4 gap-2" aria-label="Auto-preserve window">
+            @for (row of chunk(autoPreserveOptions, autoPreserveGrid.gridColumns()); track $index) {
+              <div role="row" style="display: contents">
+                @for (opt of row; track opt.value) {
+                  <button appTvNavItem type="button" (click)="onAutoPreserveClick(opt.value)"
+                    [attr.data-testid]="'auto-preserve-' + opt.value"
+                    [attr.aria-pressed]="preserve.autoPreserveMode() === opt.value"
+                    [class]="'rounded-lg border-2 py-2 text-sm transition-all ' + (preserve.autoPreserveMode() === opt.value ? 'border-theme-accent text-theme-primary' : 'border-transparent bg-theme-surface-2 text-theme-muted hover:border-theme')">
+                    {{ opt.label }}
+                  </button>
+                }
+              </div>
             }
           </div>
           <p class="text-xs text-theme-muted mt-2" data-testid="auto-preserve-explain">

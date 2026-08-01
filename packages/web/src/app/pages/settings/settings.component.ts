@@ -25,6 +25,7 @@ import { ToastService } from '../../services/toast.service';
 import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { chunk } from '../../lib/tv-nav-grid';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 
 const GB = 1024 * 1024 * 1024;
@@ -67,6 +68,7 @@ export const AUTO_PRESERVE_OPTIONS: { value: AutoPreserveMode; label: string }[]
   templateUrl: './settings.component.html',
 })
 export class SettingsComponent {
+  readonly chunk = chunk;
   readonly i18n = inject(TranslateService);
 
   /** Switch UI language. Persisted per-device by the service. */

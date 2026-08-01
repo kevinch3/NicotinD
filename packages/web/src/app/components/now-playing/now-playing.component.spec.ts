@@ -234,7 +234,24 @@ describe('NowPlayingComponent', () => {
   });
 
   describe('queue D-pad navigation', () => {
-    it('renders the queue list as one appTvNavGroup with each row as appTvNavItem', () => {
+    // Each row is now its own nested `axis="horizontal"` group of
+    // [jump, remove] (issue #356 — Remove is D-pad reachable via ArrowRight),
+    // so `[appTvNavItem]` under the outer rows group now matches 2 elements
+    // per row, not 1. `.jump`/`.remove`-style structure isn't in the DOM
+    // (there's no such class); use `[data-testid="queue-remove"]` and "the
+    // other button in the row" to distinguish them.
+    function queueRows(fixture: { nativeElement: HTMLElement }) {
+      const outerGroup = fixture.nativeElement.querySelector(
+        '[data-testid="now-playing-queue"] [appTvNavGroup]',
+      )!;
+      const rowGroups: HTMLElement[] = Array.from(outerGroup.querySelectorAll('[appTvNavGroup]'));
+      return rowGroups.map((row) => ({
+        jump: row.querySelector('[appTvNavItem]:not([data-testid="queue-remove"])') as HTMLElement,
+        remove: row.querySelector('[data-testid="queue-remove"]') as HTMLElement,
+      }));
+    }
+
+    it('renders the queue list as a rows group of nested [jump, remove] row groups', () => {
       const { fixture, playerStub } = setup();
       playerStub.currentTrack.set({ id: 'now', title: 'Now Playing', artist: 'A' });
       playerStub.queue.set([
@@ -243,17 +260,17 @@ describe('NowPlayingComponent', () => {
       ]);
       fixture.detectChanges();
 
-      const el: HTMLElement = fixture.nativeElement;
-      const group = el.querySelector('[data-testid="now-playing-queue"] [appTvNavGroup]');
-      expect(group).not.toBeNull();
-      const items = group!.querySelectorAll('[appTvNavItem]');
-      expect(items.length).toBe(2);
+      const rows = queueRows(fixture);
+      expect(rows.length).toBe(2);
+      expect(rows[0]!.jump).toBeTruthy();
+      expect(rows[0]!.remove).toBeTruthy();
     });
 
     // Phase 1/2's flagship consumer, re-asserted behaviorally after items
     // moved from an @ContentChildren query to DI self-registration: this group
-    // has no component boundary, so its behaviour must be unchanged.
-    it('ArrowDown moves focus down the queue (unchanged by DI self-registration)', () => {
+    // has no component boundary, so its behaviour must be unchanged. Now
+    // exercises the nested two-axis model (issue #356) instead of a flat list.
+    it("ArrowDown moves focus to the next row's jump button", () => {
       const { fixture, playerStub } = setup();
       playerStub.currentTrack.set({ id: 'now', title: 'Now Playing', artist: 'A' });
       playerStub.queue.set([
@@ -262,18 +279,31 @@ describe('NowPlayingComponent', () => {
       ]);
       fixture.detectChanges();
 
-      const el: HTMLElement = fixture.nativeElement;
-      const group = el.querySelector('[data-testid="now-playing-queue"] [appTvNavGroup]')!;
-      const items: HTMLElement[] = Array.from(group.querySelectorAll('[appTvNavItem]'));
-      expect(items[0]!.getAttribute('tabindex')).toBe('0');
-      expect(items[1]!.getAttribute('tabindex')).toBe('-1');
-      items[0]!.focus();
-      items[0]!.dispatchEvent(
+      const rows = queueRows(fixture);
+      expect(rows[0]!.jump.getAttribute('tabindex')).toBe('0');
+      expect(rows[1]!.jump.getAttribute('tabindex')).toBe('-1');
+      rows[0]!.jump.focus();
+      rows[0]!.jump.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
       );
       fixture.detectChanges();
-      expect(document.activeElement).toBe(items[1]);
-      expect(items[1]!.getAttribute('tabindex')).toBe('0');
+      expect(document.activeElement).toBe(rows[1]!.jump);
+      expect(rows[1]!.jump.getAttribute('tabindex')).toBe('0');
+    });
+
+    it("ArrowRight from the jump button reaches the row's Remove button (issue #356)", () => {
+      const { fixture, playerStub } = setup();
+      playerStub.currentTrack.set({ id: 'now', title: 'Now Playing', artist: 'A' });
+      playerStub.queue.set([{ id: 't1', title: 'One', artist: 'A' }]);
+      fixture.detectChanges();
+
+      const rows = queueRows(fixture);
+      rows[0]!.jump.focus();
+      rows[0]!.jump.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }),
+      );
+      fixture.detectChanges();
+      expect(document.activeElement).toBe(rows[0]!.remove);
     });
   });
 

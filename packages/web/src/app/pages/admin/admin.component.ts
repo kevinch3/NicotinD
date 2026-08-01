@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import type { ProcessingSettings, ProcessingStatus, ProcessingTaskId } from '../../../types/core';
 import { ROLES, type Role } from '../../../types/core';
 import { SystemApiService } from '../../services/api/system-api.service';
+import { chunk } from '../../lib/tv-nav-grid';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ServiceReviewService } from '../../services/service-review.service';
@@ -68,6 +69,7 @@ type DuplicateSong = {
   templateUrl: './admin.component.html',
 })
 export class AdminComponent implements OnInit, OnDestroy {
+  readonly chunk = chunk;
   private api = inject(SystemApiService);
   private downloadsApi = inject(DownloadsApiService);
   private libraryApi = inject(LibraryApiService);

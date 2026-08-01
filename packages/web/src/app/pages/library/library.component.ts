@@ -38,6 +38,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 import { ArtistImageMenuComponent } from '../../components/artist-image-menu/artist-image-menu.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
+import { chunk } from '../../lib/tv-nav-grid';
 import {
   LIBRARY_FILTER_PARAM_KEYS,
   isEmptyLibraryFilter,
@@ -120,6 +121,11 @@ function writePersistedState(state: PersistedLibraryState): void {
   templateUrl: './library.component.html',
 })
 export class LibraryComponent implements OnInit, OnDestroy {
+  /** Chunks a flat grid's items into `role="row"` slices for ARIA grid
+   *  conformance (issue #359) — templates can't call an imported free
+   *  function directly, so it's re-exposed as a class member. */
+  readonly chunk = chunk;
+
   private api = inject(LibraryApiService);
   readonly auth = inject(AuthService);
   readonly playlistService = inject(PlaylistService);
