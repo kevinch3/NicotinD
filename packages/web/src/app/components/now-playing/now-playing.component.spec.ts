@@ -56,9 +56,9 @@ function makeRemoteStub() {
 
 function makeLibraryStub() {
   return {
-    getLyrics: vi.fn(() => of(null)),
     // Typed to the real return so a test can mockReturnValue a populated DTO;
     // a bare `of(null)` infers Observable<null> and rejects every other shape.
+    getLyrics: vi.fn<(id: string) => Observable<LyricsDto | null>>(() => of(null)),
     fetchLyrics: vi.fn<(id: string, force?: boolean) => Observable<LyricsDto | null>>(() =>
       of(null),
     ),
