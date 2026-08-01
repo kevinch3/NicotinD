@@ -310,6 +310,46 @@ describe('SettingsComponent (universal prefs only)', () => {
     expect(auth.setAutoplayOnLoad).toHaveBeenCalledWith(true);
     fixture.destroy();
   });
+
+  it('renders the Advanced card with the Developer section for admins', async () => {
+    const { list } = makeProviders('admin');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="developer-section"]')).toBeTruthy();
+    fixture.destroy();
+  });
+
+  it('hides the Advanced card entirely for a plain web user', async () => {
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="developer-section"]')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('has catalog entries for the settings regroup i18n keys', () => {
+    for (const key of [
+      'settings.groupAppearanceDesc',
+      'settings.groupPlaybackTitle',
+      'settings.groupPlaybackDesc',
+      'settings.groupAccountTitle',
+      'settings.groupAccountDesc',
+      'settings.subLinks',
+      'settings.subUpdates',
+      'settings.groupAdvancedTitle',
+      'settings.groupAdvancedDesc',
+    ]) {
+      expect(BASE_CATALOG, `missing catalog key: ${key}`).toHaveProperty([key]);
+    }
+  });
 });
 
 describe('SettingsComponent (desktop music folder, Electron-gated)', () => {

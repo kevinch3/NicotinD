@@ -269,23 +269,34 @@
   }
 }
 
-/* Accent + auto-inverting neutral-button utilities. Defined with @utility (not
-   @layer) so variants like hover:/focus: work. `theme-accent` was previously
-   referenced (bg-theme-accent, focus:border-theme-accent) but never registered,
-   so those classes silently did nothing — accent-filled buttons had no fill.
-   `theme-inverse` is a neutral high-contrast fill (primary-text color as the
+/* `theme-accent` is registered as a Tailwind v4 theme color (not a static
+   @utility) specifically so opacity-modifier classes work: `bg-theme-accent/15`
+   etc. A *static* `@utility bg-theme-accent { background-color: ... }` block
+   (even written with the `--alpha()` function) cannot accept a `/<n>` modifier
+   at all — modifiers are only resolved for Tailwind's built-in functional
+   color matchers (`bg-*`/`text-*`/`border-*`/`ring-*`/...), which only see a
+   custom color when it's declared here. This was verified empirically by
+   building the compiled CSS both ways (see docs/web-ui.md): the `--alpha()`
+   static-utility form silently emitted zero `/15` rules, while this `@theme`
+   form emits `.bg-theme-accent\/15{background-color:color-mix(...)}` as
+   expected. `--color-theme-accent` aliases the runtime `--theme-accent`
+   custom property (set per `[data-theme="…"]` below), so theme switching
+   still works — `@theme` only wires up the *name*, not a fixed value.
+   `bg-theme-accent`/`text-theme-accent`/`border-theme-accent` (+ their
+   hover:/focus: variants, generated automatically, no separate @utility
+   needed) all resolve from this one token. */
+@theme {
+  --color-theme-accent: var(--theme-accent);
+}
+/* `theme-inverse` is a neutral high-contrast fill (primary-text color as the
    background, base bg as the text) that flips per theme: it keeps the dark-theme
    "white button" look while staying visible on light themes (where a hardcoded
-   bg-zinc-100 button was white-on-white). */
-@utility bg-theme-accent {
-  background-color: var(--theme-accent);
-}
-@utility text-theme-accent {
-  color: var(--theme-accent);
-}
-@utility border-theme-accent {
-  border-color: var(--theme-accent);
-}
+   bg-zinc-100 button was white-on-white). `bg-theme-inverse` and
+   `text-theme-inverse` intentionally read *different* source variables
+   (text-primary vs. base bg) to get that inversion, so they can't be folded
+   into one `@theme` color token the way `theme-accent` was — no current call
+   site uses either with an opacity modifier, so they stay as plain static
+   `@utility` declarations. */
 @utility bg-theme-inverse {
   background-color: var(--theme-text-primary);
 }
