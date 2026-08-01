@@ -7,6 +7,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 import { ServerConfigService } from './server-config.service';
+import { isTvBuild, resolveTvDefaultedPreference } from '../lib/platform';
 
 interface WsMessage {
   type: string;
@@ -155,7 +156,10 @@ export class PlaybackWsService {
           id: this.deviceId,
           name: this.deviceName,
           deviceType: 'web',
-          remoteEnabled: localStorage.getItem('nicotind_remote_enabled') === 'true',
+          remoteEnabled: resolveTvDefaultedPreference(
+            localStorage.getItem('nicotind_remote_enabled'),
+            isTvBuild(),
+          ),
         },
       });
       this.heartbeatTimer = setInterval(() => {

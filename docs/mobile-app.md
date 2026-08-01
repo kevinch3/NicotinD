@@ -239,21 +239,33 @@ declared). `AndroidManifest.xml` declares
 `<uses-feature android:name="android.hardware.touchscreen" android:required="false"/>` so the app
 isn't blocked/degraded on a touchscreen-less device.
 
-A separate Angular build configuration (`ng build --configuration tv`, `angular.json`) swaps in
-`environments/environment.tv.ts` (`tvBuild: true`, otherwise identical to the prod environment),
-exposed via `lib/platform.ts`'s `isTvBuild()`. This is a **build-time flag, not a runtime
-Android `UiModeManager` check** — simpler and sufficient for sideload-only distribution, at the
-cost of needing a separately-built bundle (`bunx cap sync android` after building with
-`--configuration tv`) rather than one universal APK auto-detecting TV at runtime.
+A separate Angular build configuration (`bun run --filter @nicotind/web build -- --configuration
+tv`, `angular.json`) swaps in `environments/environment.tv.ts` (`tvBuild: true`, otherwise
+identical to the prod environment), exposed via `lib/platform.ts`'s `isTvBuild()`. This is a
+**build-time flag, not a runtime Android `UiModeManager` check** — simpler and sufficient for
+sideload-only distribution, at the cost of needing a separately-built bundle (`bunx cap sync
+android` after building with `--configuration tv`) rather than one universal APK auto-detecting TV
+at runtime. Going through `bun run --filter @nicotind/web build` (rather than calling `ng build`
+directly) matters: it runs this package's `prebuild` script (generates `changelog.json`) first, the
+same as every other build of this package. The `tv` configuration deliberately **duplicates**
+`production`'s budgets/optimization/serviceWorker settings rather than extending it — Angular CLI
+configuration composition doesn't deep-merge array properties like `fileReplacements`, so `"tv"`
+can't just layer on top of `"production"` — which means the two must be kept in sync by hand;
+nothing currently enforces that automatically, so update both together if `production` changes.
 
 The only behavior this flag currently changes: `RemotePlaybackService.remoteEnabled` defaults to
 `true` on a TV build when the user has never explicitly toggled "Allow remote control" (an explicit
-choice, stored in `localStorage` under `nicotind_remote_enabled`, always wins) — so a TV instance is
-immediately controllable from a phone via the existing device-agnostic remote-playback relay
-(`docs/remote-playback.md`) with no setup. Hardware media-key handling (a TV remote's transport
-buttons) already worked with no changes needed — see "Background audio" above,
-`@jofr/capacitor-media-session` already runs a foreground service and wires
-play/pause/next/prev/seek action handlers.
+choice, stored in `localStorage` under `nicotind_remote_enabled`, always wins — resolved by the one
+shared `resolveTvDefaultedPreference` helper in `lib/platform.ts`, used both by
+`RemotePlaybackService`'s signal and by the WS `REGISTER` payload in `playback-ws.service.ts`, so
+the two can't disagree about whether the TV is opted in) — so a TV instance is controllable from a
+phone via the existing device-agnostic remote-playback relay (`docs/remote-playback.md`) after
+signing in on the TV once (the existing QR-code device pairing flow, `docs/device-pairing.md`, is
+the practical way to do this without typing credentials via D-pad). Hardware media-key handling (a
+TV remote's transport buttons) is *expected* to work unchanged — `@jofr/capacitor-media-session`
+already wires play/pause/next/prev/seek MediaSession action handlers — **but this is not yet
+device-verified on a TV remote** (matches the existing "still device-validated, not CI-validated"
+caveat elsewhere in this doc for background audio).
 
 **Not yet built** (tracked as later phases): app-wide D-pad/spatial keyboard navigation (today only
 the now-playing karaoke overlay and a handful of modals handle arrow keys/Escape at all — most of

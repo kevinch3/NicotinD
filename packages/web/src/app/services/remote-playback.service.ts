@@ -12,7 +12,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PlaybackWsService } from './playback-ws.service';
 import { PlayerService, Track } from './player.service';
 import { AuthService } from './auth.service';
-import { isTvBuild } from '../lib/platform';
+import { isTvBuild, resolveTvDefaultedPreference } from '../lib/platform';
 
 export interface RemoteDevice {
   id: string;
@@ -39,9 +39,7 @@ export class RemotePlaybackService {
    * TV instance is immediately controllable from a phone with zero setup.
    */
   readonly remoteEnabled = signal(
-    localStorage.getItem('nicotind_remote_enabled') !== null
-      ? localStorage.getItem('nicotind_remote_enabled') === 'true'
-      : isTvBuild(),
+    resolveTvDefaultedPreference(localStorage.getItem('nicotind_remote_enabled'), isTvBuild()),
   );
   /** Set when remote playback was automatically disabled due to connection failure */
   readonly disabledReason = signal<string | null>(null);
