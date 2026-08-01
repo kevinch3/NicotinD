@@ -287,6 +287,15 @@ directive is immune to which of the two a consumer imports first (e.g., a consum
 `TrackRowComponent` reaches `TvNavItemDirective` before `TvNavGroupDirective`, and would otherwise
 cause a "query selector wasn't defined" error at JIT-compile time if `forwardRef` weren't used).
 
+The fix is one-sided because `TvNavItemDirective`'s `inject(TvNavGroupDirective, {optional: true})` 
+call is inert at module-load time — it only runs later when the directive instantiates — so it never 
+needed `forwardRef` protection. Only `@ContentChildren(TvNavItemDirective, …)`, which evaluates 
+eagerly at JIT-compile time, required it. By accident, `artist-detail.component.ts` imports 
+`AlbumHuntModalComponent` first, which itself imports `TvNavGroupDirective` before `artist-detail`'s 
+path reaches `TrackRowComponent`'s `TvNavItemDirective` import, establishing a safe evaluation order; 
+every other consumer (library-songs, album-detail, genre-detail, playlist-detail) lacked this 
+protection and would have failed without the fix.
+
 **Global keyboard shortcuts (Phase 2)**: `KeyboardShortcutsService`
 (`packages/web/src/app/services/keyboard-shortcuts.service.ts`, initialized once from `App`) — so
 far just Space/K toggle play/pause app-wide. Space is suppressed when a focused `<button>`/`<a>`
