@@ -563,6 +563,29 @@ describe('ArtistDetailComponent — TV D-pad nav (issue android-tv phase3)', () 
     const group = el.querySelector('[appTvNavGroup][axis="grid"]');
     expect(group).not.toBeNull();
   });
+
+  // The assertion above only proves the ATTRIBUTE is in the DOM, which
+  // NO_ERRORS_SCHEMA would let pass even with the directives unimported. This
+  // one proves the group's item list is actually populated and navigable —
+  // the exact thing an empty items() (cross-component boundary bug) breaks.
+  it('ArrowRight moves focus across the albums grid (real D-pad behaviour)', async () => {
+    const { component, fixture } = setup();
+    await fixture_stable();
+    component.setTab('albums');
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[appTvNavGroup][axis="grid"]')!;
+    const cards: HTMLElement[] = Array.from(group.querySelectorAll('[appTvNavItem]'));
+    expect(cards.length).toBe(2);
+    expect(cards[0]!.getAttribute('tabindex')).toBe('0');
+    expect(cards[1]!.getAttribute('tabindex')).toBe('-1');
+    cards[0]!.focus();
+    cards[0]!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }),
+    );
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(cards[1]);
+  });
 });
 
 // Helper: lets Angular settle the ngOnInit promise (of() resolves synchronously as a microtask)
