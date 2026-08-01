@@ -13,7 +13,7 @@ test('capture mobile screens', async ({ page }) => {
   await page.goto('/library');
   await expect(page.getByTestId('album-card').first()).toBeVisible();
   await page.waitForTimeout(600); // let cover art settle
-  await page.screenshot({ path: `${OUT}/01-library-list.png`, fullPage: true });
+  await page.screenshot({ path: `${OUT}/01-library-list.png`, fullPage: false });
 
   // 2) Library album (detail + tracklist)
   await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).click();
@@ -21,7 +21,7 @@ test('capture mobile screens', async ({ page }) => {
   await expect(page.getByTestId('play-album')).toBeVisible();
   await expect(page.getByText('Opening Static')).toBeVisible();
   await page.waitForTimeout(400);
-  await page.screenshot({ path: `${OUT}/02-library-album.png`, fullPage: true });
+  await page.screenshot({ path: `${OUT}/02-library-album.png`, fullPage: false });
 
   // 3) Player — mini bar then full Now Playing
   await page.getByTestId('play-album').click();
