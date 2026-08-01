@@ -500,3 +500,21 @@ run: releases froze for a day (PRs #189/#196/#197 merged with green CI but shipp
 nothing) while every CI run looked healthy. Because `softprops/action-gh-release`
 merges into a tag's release and the `docker` job overwrites by tag, re-cutting
 a version is safe — so the self-heal simply deletes the orphan and re-releases.
+
+### A master push must never cancel another master push (issue #360)
+
+`ci.yml`'s top-level `concurrency: { group: ci-${{ github.ref }},
+cancel-in-progress: true }` exists so a superseded PR push cancels its
+predecessor's in-flight run. But the `release` job's own version-bump commit
+is itself a push to `master` — the same `github.ref` the currently-running
+workflow is on — so it starts a second run in the *same* group, and GitHub
+cancels the first (still-wrapping-up) run out from under itself, immediately
+after its `release` job already succeeded. Observed on PR #351: the
+originating run showed overall conclusion `cancelled` in the Actions UI while
+every one of its jobs, including `release`, reported `success` — the release
+itself (tag, GitHub Release, changelog) landed intact, but it read as "merged
+but produced no release" at a glance. Unlucky timing could cancel the
+`release` job mid-push instead of after, which would be a real failure, not
+a cosmetic one. Fixed by scoping `cancel-in-progress` off for `master`:
+pushes to `master` run sequentially and can never cancel each other, while a
+PR branch keeps the original supersede-and-cancel behavior.
