@@ -1,25 +1,27 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = resolve(import.meta.dir, '../../..');
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(SCRIPT_DIR, '../../..');
 const SOURCE = resolve(ROOT, 'CHANGELOG.md');
-const OUT = resolve(import.meta.dir, '../public/changelog.json');
+const OUT = resolve(SCRIPT_DIR, '../public/changelog.json');
 
 const MAX_VERSIONS = 50;
 
-interface ChangelogSection {
+export interface ChangelogSection {
   title: string;
   items: string[];
 }
 
-interface ChangelogEntry {
+export interface ChangelogEntry {
   version: string;
   date: string;
   compareUrl: string;
   sections: ChangelogSection[];
 }
 
-function parseChangelog(md: string): ChangelogEntry[] {
+export function parseChangelog(md: string): ChangelogEntry[] {
   const entries: ChangelogEntry[] = [];
   const headerRe = /^## \[([^\]]+)\]\(([^)]+)\)\s*(?:\(([^)]+)\))?/m;
   const blocks = md.split(/^## \[/m).slice(1);
@@ -54,19 +56,44 @@ function parseChangelog(md: string): ChangelogEntry[] {
   return entries;
 }
 
-function main() {
-  mkdirSync(dirname(OUT), { recursive: true });
+/** The exact bytes `main()` writes to `changelog.json` for a given `CHANGELOG.md` source
+ * (or `undefined` source, mirroring the "file not found" branch). Pure — no filesystem access. */
+export function buildChangelogJson(md: string | undefined): string {
+  if (md === undefined) return '[]\n';
+  const entries = parseChangelog(md).slice(0, MAX_VERSIONS);
+  return JSON.stringify(entries, null, 2) + '\n';
+}
 
-  if (!existsSync(SOURCE)) {
-    writeFileSync(OUT, '[]\n', 'utf8');
-    console.log('changelog.json: CHANGELOG.md not found, wrote empty array');
+/** Writes `content` to `outPath` only if it differs from what's already there (or nothing is
+ * there yet) — so a no-op regeneration (the common case: `CHANGELOG.md` unchanged since the file
+ * was last committed) doesn't touch mtime or dirty the git working tree. Returns whether it wrote. */
+export function writeIfChanged(outPath: string, content: string): boolean {
+  mkdirSync(dirname(outPath), { recursive: true });
+  if (existsSync(outPath) && readFileSync(outPath, 'utf8') === content) return false;
+  writeFileSync(outPath, content, 'utf8');
+  return true;
+}
+
+function main() {
+  const md = existsSync(SOURCE) ? readFileSync(SOURCE, 'utf8') : undefined;
+  const content = buildChangelogJson(md);
+  const wrote = writeIfChanged(OUT, content);
+
+  if (md === undefined) {
+    console.log(
+      wrote
+        ? 'changelog.json: CHANGELOG.md not found, wrote empty array'
+        : 'changelog.json: CHANGELOG.md not found, already an empty array — skipped write',
+    );
     return;
   }
 
-  const md = readFileSync(SOURCE, 'utf8');
-  const entries = parseChangelog(md).slice(0, MAX_VERSIONS);
-  writeFileSync(OUT, JSON.stringify(entries, null, 2) + '\n', 'utf8');
-  console.log(`changelog.json: ${entries.length} versions written`);
+  const versions = JSON.parse(content).length;
+  console.log(
+    wrote
+      ? `changelog.json: ${versions} versions written`
+      : `changelog.json: ${versions} versions, unchanged — skipped write`,
+  );
 }
 
-main();
+if (import.meta.main) main();

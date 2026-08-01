@@ -1,5 +1,177 @@
 [
   {
+    "version": "0.1.290",
+    "date": "2026-08-01",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.289...v0.1.290",
+    "sections": []
+  },
+  {
+    "version": "0.1.289",
+    "date": "2026-08-01",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.288...v0.1.289",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**mobile:** add Android TV touchscreen manifest fix and a tv build flag ([ce815a0](https://github.com/kevinch3/NicotinD/commit/ce815a054ac420c68a8fc7e7c8a1ed1aab8d1b15))",
+          "**web:** add / shortcut to navigate to the Acquire page ([ea6cb2d](https://github.com/kevinch3/NicotinD/commit/ea6cb2df9597ed52a17d184ab4c9cc1fefd73cc7))",
+          "**web:** add app-wide focus-visible ring, apply D-pad nav to the Now Playing queue ([df5f010](https://github.com/kevinch3/NicotinD/commit/df5f01038f4b85624c5c8b757559e9aae06cd43f))",
+          "**web:** add ArrowLeft/ArrowRight seek shortcut, deferring to D-pad nav groups ([2da4ebf](https://github.com/kevinch3/NicotinD/commit/2da4ebf1e3a039cd9ceb8af0e45f9dff15e3ae8a))",
+          "**web:** add global Space/K play-pause shortcut, D-pad nav on transport controls ([687dccd](https://github.com/kevinch3/NicotinD/commit/687dccd6d28fd2883b00fdf78ceba16a9207b669))",
+          "**web:** add grid-axis D-pad navigation to TvNavGroupDirective ([154e980](https://github.com/kevinch3/NicotinD/commit/154e98056b01d3a0679b4e4e32238929b4cf8b51))",
+          "**web:** add J/L/M/N keyboard shortcuts (prev/next/mute/now-playing) ([d04365d](https://github.com/kevinch3/NicotinD/commit/d04365d87313509190de312d3ee8333f7b1dcd44))",
+          "**web:** add roving-tabindex D-pad navigation directive pair ([6e17310](https://github.com/kevinch3/NicotinD/commit/6e17310dce1640fdca3193843ab39bc939accff3))",
+          "**web:** apply D-pad nav to Admin services grid, log buttons, processing tasks ([2631934](https://github.com/kevinch3/NicotinD/commit/2631934755794fd2cbfc433bd23bb42530cffa48))",
+          "**web:** apply D-pad nav to Admin user-management action buttons ([6cb19f8](https://github.com/kevinch3/NicotinD/commit/6cb19f8dba6616b7774d3d68aa9f24955b24f845))",
+          "**web:** apply D-pad nav to Extensions page plugin cards, excluding config inputs ([4d035b0](https://github.com/kevinch3/NicotinD/commit/4d035b0d0778c32d03138d1a4728c078c41e97f0))",
+          "**web:** apply D-pad nav to Search catalog grid/chips and hunt candidate list ([1322899](https://github.com/kevinch3/NicotinD/commit/1322899d3f9641192616652a3d32fae82272d47d))",
+          "**web:** apply D-pad nav to Settings page grids and action lists ([2d84e3c](https://github.com/kevinch3/NicotinD/commit/2d84e3c3685c87ca2d89a570eb036846465d8064))",
+          "**web:** apply D-pad nav to the devices and agent-tokens revoke lists ([835273f](https://github.com/kevinch3/NicotinD/commit/835273fe7073ec10d0336b328966bf480f580b85))",
+          "**web:** apply grid/vertical D-pad nav to Library and artist-detail card grids ([64843e4](https://github.com/kevinch3/NicotinD/commit/64843e4f8720809ef96d62e052649590cedcaa68))",
+          "**web:** d-pad nav for every track row song list (5 pages, 1 shared fix) ([e6724d8](https://github.com/kevinch3/NicotinD/commit/e6724d8a05098c149e9b64f7abeca62e69a49c76))",
+          "**web:** default remote-control opt-in on for TV builds ([a2568b9](https://github.com/kevinch3/NicotinD/commit/a2568b95a7bf0ea25c685daf003eafbc8b71c260))"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**web:** correct the Admin processing axis and Settings' overwritten role ([5233343](https://github.com/kevinch3/NicotinD/commit/523334378b07129432a29257f2cfc699431fcb16))",
+          "**web:** extract the plugin card into a component so D-pad nav reaches it ([06921b6](https://github.com/kevinch3/NicotinD/commit/06921b6f7a872b0bc428f5387dfb3358b11ba1f6))",
+          "**web:** fix TV nav a11y/cascade bugs from Phase 2 final review ([4c5fca2](https://github.com/kevinch3/NicotinD/commit/4c5fca247b0469e7db5fa383f7409144bcb2df14))",
+          "**web:** guard global shortcuts against modifier chords and focused selects ([962d42a](https://github.com/kevinch3/NicotinD/commit/962d42a4e2c14f2dadace150133941cbd313c1ac))",
+          "**web:** invalidate the TV nav item cache on a pure reorder ([377e723](https://github.com/kevinch3/NicotinD/commit/377e723fbe7fea961cb0a3395003f17ac0ca3e05))",
+          "**web:** preventDefault a recognized D-pad key even at a group boundary ([35117aa](https://github.com/kevinch3/NicotinD/commit/35117aa2b67477a4b3589942246fcaae7c6f9039))",
+          "**web:** register TV nav items via DI, not @ContentChildren ([28a48ff](https://github.com/kevinch3/NicotinD/commit/28a48ff03d42a303ae56772c73eeabe75b4b8663))",
+          "**web:** tidy up discarded subscription, inline activeIndex clamp, add missing K+input test ([a845ea4](https://github.com/kevinch3/NicotinD/commit/a845ea432ff7897dc6774ca7b714a42ecf0a1a53))",
+          "**web:** type the queue test stub so typecheck:spec passes ([41dd6dd](https://github.com/kevinch3/NicotinD/commit/41dd6dd99685fbeb926f8d3ac977ca9eae072cd6))",
+          "**web:** unify TV-defaulted remote-enabled preference across sites ([9df3b57](https://github.com/kevinch3/NicotinD/commit/9df3b57cace80e25649da4bcb40cc2ee264f7e46))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.288",
+    "date": "2026-07-31",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.287...v0.1.288",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**mcp:** merge_artist destructive tool ([5bdfc4c](https://github.com/kevinch3/NicotinD/commit/5bdfc4ca510412d79c2f56854c50b2ce5c7a5094)), closes [#339](https://github.com/kevinch3/NicotinD/issues/339), references [#232](https://github.com/kevinch3/NicotinD/issues/232)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.287",
+    "date": "2026-07-31",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.286...v0.1.287",
+    "sections": []
+  },
+  {
+    "version": "0.1.286",
+    "date": "2026-07-31",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.285...v0.1.286",
+    "sections": []
+  },
+  {
+    "version": "0.1.285",
+    "date": "2026-07-31",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.284...v0.1.285",
+    "sections": []
+  },
+  {
+    "version": "0.1.284",
+    "date": "2026-07-31",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.283...v0.1.284",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**analysis:** /health healthcheck polling defeats idle-release ([fac87c6](https://github.com/kevinch3/NicotinD/commit/fac87c631974b3f97739874c57a0799436c37a02)), closes [#344](https://github.com/kevinch3/NicotinD/issues/344)",
+          "**library:** record an audit log entry on single-song delete ([200c50a](https://github.com/kevinch3/NicotinD/commit/200c50aeeaee6cd0131ad9e7ea1de02c04a89cdd)), closes [#336](https://github.com/kevinch3/NicotinD/issues/336), references [#232](https://github.com/kevinch3/NicotinD/issues/232)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.283",
+    "date": "2026-07-31",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.282...v0.1.283",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**i18n:** translate player/now-playing/settings + add stable API error codes ([c72b8c0](https://github.com/kevinch3/NicotinD/commit/c72b8c03fccdae976598e5e282722c481005822b)), closes [#236](https://github.com/kevinch3/NicotinD/issues/236), references [#236](https://github.com/kevinch3/NicotinD/issues/236)",
+          "**mcp:** destructive delete tools + agent-token settings UI ([ff4f244](https://github.com/kevinch3/NicotinD/commit/ff4f2447782b4f11d649eafb1840821b4d57cba7)), closes [#232](https://github.com/kevinch3/NicotinD/issues/232)"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**analysis:** idle-release the GPU model registry ([40e4b0d](https://github.com/kevinch3/NicotinD/commit/40e4b0d92c168e6b07430bbb5ae6a2ac82a41728)), references [#224](https://github.com/kevinch3/NicotinD/issues/224)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.282",
+    "date": "2026-07-30",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.281...v0.1.282",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**mobile:** offline mode is detected and switched automatically, both ways ([3874740](https://github.com/kevinch3/NicotinD/commit/38747405cc7ac1815714e05e4d3b4334ac69e273))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.281",
+    "date": "2026-07-30",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.280...v0.1.281",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**genre:** listener-facing genre distribution strip + primary-only filter ([d7c322a](https://github.com/kevinch3/NicotinD/commit/d7c322a2aee7937eb0d84d3e5f6464986206d3ee)), closes [#222](https://github.com/kevinch3/NicotinD/issues/222), references [#222](https://github.com/kevinch3/NicotinD/issues/222)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.280",
+    "date": "2026-07-29",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.279...v0.1.280",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**admin:** surface GPU VRAM used/total in the metric pill ([#224](https://github.com/kevinch3/NicotinD/issues/224)) ([17f1492](https://github.com/kevinch3/NicotinD/commit/17f149200d6806c187ae6b08e926d6a4cfa24f11))",
+          "**enrichment:** popularity/hotness signal per song via ListenBrainz ([#220](https://github.com/kevinch3/NicotinD/issues/220)) ([3c85785](https://github.com/kevinch3/NicotinD/commit/3c85785586c5f43a3849f1e339d009e96843f823))",
+          "**i18n:** translate the Acquire page + complete Spanish parity ([#236](https://github.com/kevinch3/NicotinD/issues/236)) ([6f8331e](https://github.com/kevinch3/NicotinD/commit/6f8331ee7e61b445e26202be615b7eb2f94ef995)), references [#227](https://github.com/kevinch3/NicotinD/issues/227)",
+          "**library:** prune orphaned download provenance rows ([#319](https://github.com/kevinch3/NicotinD/issues/319)) ([0215635](https://github.com/kevinch3/NicotinD/commit/0215635064576fd0df208fee07bfcbe8c426c3b6))",
+          "**mcp:** agent tokens + MCP endpoint for refiner-level curation ([#232](https://github.com/kevinch3/NicotinD/issues/232)) ([5cc58db](https://github.com/kevinch3/NicotinD/commit/5cc58db09f4f27a8f0ed63787a076cedab9198b7))",
+          "**web:** rename Search to Acquire, route /search → /acquire ([#227](https://github.com/kevinch3/NicotinD/issues/227)) ([5ff7541](https://github.com/kevinch3/NicotinD/commit/5ff75411c8c3a8b3d5d7d542a36cc86a9db06cda))"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**library:** album genre = most-common primary, not scan order ([#222](https://github.com/kevinch3/NicotinD/issues/222)) ([f1a25fb](https://github.com/kevinch3/NicotinD/commit/f1a25fb8d6f118e833de8b7f1b132ba1ff9daced))"
+        ]
+      },
+      {
+        "title": "Performance",
+        "items": [
+          "**enrichment:** drop the 0%-yield MusicBrainz licence lookup ([#329](https://github.com/kevinch3/NicotinD/issues/329)) ([fefc0fc](https://github.com/kevinch3/NicotinD/commit/fefc0fc5ea315a46a206fcf531b8b784c6bb0b92))",
+          "**web:** lazy-load the Sentry SDK, keep startup capture ([#285](https://github.com/kevinch3/NicotinD/issues/285)) ([9cef10b](https://github.com/kevinch3/NicotinD/commit/9cef10bcca3566f6249ecacf822305642776a294))"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.279",
     "date": "2026-07-29",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.278...v0.1.279",
@@ -593,147 +765,5 @@
     "date": "2026-07-22",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.240...v0.1.241",
     "sections": []
-  },
-  {
-    "version": "0.1.240",
-    "date": "2026-07-22",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.239...v0.1.240",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**feedback:** capture album-hunt recognition feedback → replayable TDD fixtures ([65d2caf](https://github.com/kevinch3/NicotinD/commit/65d2caf1c6a08ee5684a088a0055b9136519af9c)), references [#1](https://github.com/kevinch3/NicotinD/issues/1)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.239",
-    "date": "2026-07-22",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.238...v0.1.239",
-    "sections": []
-  },
-  {
-    "version": "0.1.238",
-    "date": "2026-07-22",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.237...v0.1.238",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**library:** album/compilation licence rollup (entirely-Public-Domain) ([5f20492](https://github.com/kevinch3/NicotinD/commit/5f20492612a8fe3c2f1688d124fd20087359e14d))",
-          "**library:** music licence/rights per track (set, auto-retrieve, filter) ([b0de7e5](https://github.com/kevinch3/NicotinD/commit/b0de7e52158c658d27887445c402b22a24f0725c))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.237",
-    "date": "2026-07-22",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.236...v0.1.237",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**desktop:** pin executableName to fix electron-builder 26 Linux packaging failure ([ea5e63d](https://github.com/kevinch3/NicotinD/commit/ea5e63db6adefbb7de255ad7d36d4d2355febd44))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.236",
-    "date": "2026-07-22",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.235...v0.1.236",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**admin:** consolidate admin telemetry into one polled resource ([8b62e93](https://github.com/kevinch3/NicotinD/commit/8b62e93556c607580b7d7d6a74445987e7f7f416))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.235",
-    "date": "2026-07-21",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.234...v0.1.235",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "quality chip on download cards + spotDL credential/quality wiring ([0d5982a](https://github.com/kevinch3/NicotinD/commit/0d5982a805541ebeed0419594f0a0312b1728345))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.234",
-    "date": "2026-07-21",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.233...v0.1.234",
-    "sections": []
-  },
-  {
-    "version": "0.1.233",
-    "date": "2026-07-21",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.232...v0.1.233",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**acquire:** folder-first results + intuitive catalog-miss flow ([5e13dae](https://github.com/kevinch3/NicotinD/commit/5e13dae032175fd2bbe35610943b42c72892d42a))",
-          "**acquire:** remind users lossless picks are stored as Opus ([fbe3c06](https://github.com/kevinch3/NicotinD/commit/fbe3c06df307cbd80248d72bf237469ed459e3fc))",
-          "**hunt:** precise skew queries + shared core query builder ([a8ff991](https://github.com/kevinch3/NicotinD/commit/a8ff991c743970c6ebcca39e6920ac1a93dc1e68))"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**search:** filter fuzzy first-token junk from catalog title search ([bbb888f](https://github.com/kevinch3/NicotinD/commit/bbb888f000c03e4efdda2d311eccca19a43956ef))",
-          "**search:** hide the Soulseek peer lane when it isn't an available source ([d8f0458](https://github.com/kevinch3/NicotinD/commit/d8f0458805d1615614371e256defdf049345ef20))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.232",
-    "date": "2026-07-21",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.231...v0.1.232",
-    "sections": []
-  },
-  {
-    "version": "0.1.231",
-    "date": "2026-07-21",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.230...v0.1.231",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**api:** admin audit log for destructive actions ([17969cd](https://github.com/kevinch3/NicotinD/commit/17969cd4aa4d7ddcb6b7de80668dd8482e58fc31))",
-          "**api:** daily backups (DB snapshot + secrets) with admin trigger ([f3e0d3a](https://github.com/kevinch3/NicotinD/commit/f3e0d3af9b2dcac8fea68eb9cb723d435db90f20))",
-          "**api:** server update check + version-history ledger ([913b27b](https://github.com/kevinch3/NicotinD/commit/913b27b21c260c5b0d4f1462195d7e60ea976524))",
-          "**deploy:** publish the analysis sidecar image; pin infra images ([459c627](https://github.com/kevinch3/NicotinD/commit/459c6271fb0330d7e07cb9dc7c2e5830494d2622))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.230",
-    "date": "2026-07-20",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.229...v0.1.230",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**api:** report the running version from /api/health ([6330539](https://github.com/kevinch3/NicotinD/commit/633053984486043165bb1184ba0f33c00df76adb))",
-          "**deploy:** publish a multi-arch server image to GHCR; compose + deploy pull it ([dda3b78](https://github.com/kevinch3/NicotinD/commit/dda3b78c654adefa71c69229cae7a37978c05e01))"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**docker:** probe /api/health in the image HEALTHCHECK ([e89c16a](https://github.com/kevinch3/NicotinD/commit/e89c16a86a6a7bbe1ed62e5ef60edd51c7141866))"
-        ]
-      }
-    ]
   }
 ]
