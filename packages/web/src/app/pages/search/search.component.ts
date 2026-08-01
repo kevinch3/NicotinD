@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { SearchApiService } from '../../services/api/search-api.service';
+import { chunk } from '../../lib/tv-nav-grid';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
@@ -208,6 +209,7 @@ function escapeHtml(text: string): string {
   templateUrl: './search.component.html',
 })
 export class SearchComponent implements OnInit, OnDestroy {
+  readonly chunk = chunk;
   readonly router = inject(Router);
   private route = inject(ActivatedRoute);
   private api = inject(SearchApiService);

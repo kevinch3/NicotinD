@@ -421,6 +421,52 @@ Three guards make the arrow keys safe to own globally:
 handlers with no current shared "is a modal open" signal — real, separate work) and any
 volume shortcut (this app has no volume-level control to wire one to).
 
+**Phase 3/4 final-review follow-ups (issues #356-#359), resolved**:
+
+- **Perf (#357)**: `TvNavGroupDirective.indexOf(item)` is now O(1) — the memoized sort keeps an
+  `item→index` `Map` in lockstep with `this.sorted`, rebuilt only when the sort itself is
+  recomputed. Wrapping `items()` itself in a real `computed()` (which would have collapsed its
+  n-per-keypress re-invocations to one) was tried and **reverted**: it broke the pure-reorder
+  correctness test, since a `computed()` only re-runs when a tracked signal's value changes, and a
+  pure `@for` reorder changes neither `itemsSignal` nor `domVersion` synchronously (the
+  `MutationObserver` bump is async) — `computed()` kept serving the pre-reorder answer until a
+  later microtask. The `isInDomOrder` O(n)-per-read scan therefore still runs on every `items()`
+  call; only the `indexOf` half of the issue was safely fixable.
+- **Desync (#358)**: both axes now resolve "where focus currently is" for a keydown from the
+  event's own origin item (`originIndex`, shared by the vertical/horizontal and grid branches),
+  rather than the grid axis deriving it from the event target while vertical/horizontal read
+  `activeIndex()` directly. `activeIndex.set(next)` still runs from the resolved origin, so a
+  post-reorder desync self-corrects on the very next keypress with no separate resync path needed.
+- **ARIA grid conformance (#359)**: `role="grid"` axis groups now get real `role="row"`/`role="gridcell"`
+  descendants (WAI-ARIA's grid role requires them). A directive-side fix — reparenting
+  already-rendered items into synthetic wrapper elements via `Renderer2` — was prototyped and
+  **rejected**: verified with a real TestBed reproduction that moving an `@for`-rendered node into a
+  wrapper div, then mutating the underlying array, leaves Angular's own reconciliation silently
+  stale (no exception, just a DOM that stops reflecting the model — confirmed on both add and
+  remove). The shipped fix is template-level instead: `TvNavGroupDirective` exposes a `gridColumns`
+  signal (`lib/tv-nav-grid.ts`'s `gridColumnCount`, reading the container's own resolved
+  `grid-template-columns` via `ResizeObserver`, independent of any already-rendered item — sidesteps
+  `inferColumnsPerRow`'s chicken/egg problem of needing already-laid-out items to infer columns from);
+  every `axis="grid"` template chunks its flat item array with the new `chunk()` helper and renders
+  one `role="row"` `display:contents` wrapper per chunk, so Angular owns the wrapper structure from
+  the start like any other view. The one exception is Admin's processing-task list
+  (`class="space-y-2"`, not a CSS grid at all — each task's run+gate pair is already one wrapper
+  `<div>` per `@for` iteration, so it just gets `role="row"` directly with no `chunk()` involved).
+- **Queue Remove reachability (#356)**: `TvNavGroupDirective` now supports **nested child groups** —
+  a group with no parent behaves exactly as before, but a group whose ancestor is itself a
+  `TvNavGroupDirective` registers as that ancestor's child (mirroring how a `TvNavItemDirective`
+  registers with its nearest group) via `parentGroup`/`registerChildGroup`. The Now Playing queue's
+  row wrapper is now `axis="horizontal"` (`[jump, remove]`), nested inside the queue's
+  `axis="vertical"` rows group: ArrowRight from the jump button reaches Remove (handled entirely by
+  the inner group, unchanged from a plain 2-item group); ArrowDown/Up move between rows, now handled
+  by the OUTER group navigating its `childGroups()` instead of flat `items()` when any are
+  registered. Only one item across the whole nested tree may hold `tabindex="0"` at a time (a
+  roving-tabindex composite has exactly one Tab stop) — `TvNavGroupDirective.isActiveChild` tracks
+  which child group currently owns focus (kept in sync purely through the existing `notifyFocused` →
+  parent chain, i.e. real focus moving into any descendant item, never written from keydown
+  handling directly), and `TvNavItemDirective.tabIndex` returns `-1` for every item in a non-active
+  child group regardless of that group's own `activeIndex`.
+
 ## OAuth login (proposed — not yet implemented)
 
 Google + Microsoft OAuth login is **proposed** for NicotinD as an `auth` plugin

@@ -15,12 +15,22 @@ import { TvNavGroupDirective } from './tv-nav-group.directive';
   standalone: true,
   host: {
     '[attr.tabindex]': 'tabIndex()',
+    '[attr.role]': 'itemRole()',
     '(focusin)': 'onFocusIn()',
   },
 })
 export class TvNavItemDirective {
   private readonly el = inject(ElementRef<HTMLElement>);
   private readonly group = inject(TvNavGroupDirective, { optional: true });
+
+  /** `role="gridcell"` inside a grid-axis group (issue #359 ARIA
+   *  conformance — the group's own `role="grid"` and the templates' new
+   *  `role="row"` chunk wrappers need a `gridcell` descendant to be
+   *  conformant); `null` (no attribute) for vertical/horizontal groups, which
+   *  are plain `toolbar` items with no cell semantics. `axis` is a static
+   *  `@Input()` set once by Angular, so this needs no signal dependency to
+   *  stay correct. */
+  readonly itemRole = computed(() => (this.group?.axis === 'grid' ? 'gridcell' : null));
 
   constructor() {
     // Register with the group through DI rather than letting the group find
@@ -33,7 +43,14 @@ export class TvNavItemDirective {
 
   readonly tabIndex = computed(() => {
     if (!this.group) return 0;
-    return this.group.items().indexOf(this) === this.group.activeIndex() ? 0 : -1;
+    // `isActiveChild` (issue #356): inside a nested group (e.g. a queue row's
+    // [jump, remove] pair nested under the rows group), only the row that
+    // currently owns focus may hand out tabindex 0 — otherwise every row
+    // would independently default its own item to 0, giving a composite
+    // widget with N rows N simultaneous Tab stops. Always true for a
+    // top-level group (no parent).
+    if (!this.group.isActiveChild()) return -1;
+    return this.group.indexOf(this) === this.group.activeIndex() ? 0 : -1;
   });
 
   onFocusIn(): void {

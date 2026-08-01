@@ -15,6 +15,7 @@ import { HttpClient } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
+import { chunk } from '../../lib/tv-nav-grid';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import type {
   Album,
@@ -88,6 +89,7 @@ const SONGS_PAGE_SIZE = 60;
   templateUrl: './artist-detail.component.html',
 })
 export class ArtistDetailComponent implements OnInit, OnDestroy {
+  readonly chunk = chunk;
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private http = inject(HttpClient);

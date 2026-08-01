@@ -89,45 +89,49 @@
       <p class="text-center text-theme-muted py-20">No albums yet. Download some music to get started!</p>
     }
 
-    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid">
-      @for (album of filteredAlbums(); track album.id) {
-        <a [routerLink]="getAlbumLink(album.id)"
-          appTvNavItem
-          data-testid="album-card"
-          [attr.data-album-id]="album.id"
-          class="group relative p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer break-inside-avoid">
-          <app-cover-art
-            [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
-            [artist]="album.artist"
-            [album]="album.name"
-            [fill]="true"
-            rounded="rounded"
-            className="mb-2"
-          />
-          <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
-          <p class="text-xs text-theme-muted truncate">
-            {{ album.artist }}{{ album.year ? ' · ' + album.year : '' }}
-          </p>
-          @if (auth.canCurate()) {
-            @if (album.hidden) {
-              <button
-                type="button"
-                class="absolute top-2 right-2 px-2 py-0.5 text-[10px] rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition"
-                (click)="unhideAlbum(album, $event)"
-                title="Unhide album">
-                Unhide
-              </button>
-            } @else {
-              <button
-                type="button"
-                class="absolute top-2 right-2 px-2 py-0.5 text-[10px] rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition"
-                (click)="hideAlbum(album, $event)"
-                title="Hide album">
-                Hide
-              </button>
-            }
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid" #albumsGrid="appTvNavGroup">
+      @for (row of chunk(filteredAlbums(), albumsGrid.gridColumns()); track $index) {
+        <div role="row" style="display: contents">
+          @for (album of row; track album.id) {
+            <a [routerLink]="getAlbumLink(album.id)"
+              appTvNavItem
+              data-testid="album-card"
+              [attr.data-album-id]="album.id"
+              class="group relative p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer break-inside-avoid">
+              <app-cover-art
+                [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
+                [artist]="album.artist"
+                [album]="album.name"
+                [fill]="true"
+                rounded="rounded"
+                className="mb-2"
+              />
+              <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
+              <p class="text-xs text-theme-muted truncate">
+                {{ album.artist }}{{ album.year ? ' · ' + album.year : '' }}
+              </p>
+              @if (auth.canCurate()) {
+                @if (album.hidden) {
+                  <button
+                    type="button"
+                    class="absolute top-2 right-2 px-2 py-0.5 text-[10px] rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition"
+                    (click)="unhideAlbum(album, $event)"
+                    title="Unhide album">
+                    Unhide
+                  </button>
+                } @else {
+                  <button
+                    type="button"
+                    class="absolute top-2 right-2 px-2 py-0.5 text-[10px] rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition"
+                    (click)="hideAlbum(album, $event)"
+                    title="Hide album">
+                    Hide
+                  </button>
+                }
+              }
+            </a>
           }
-        </a>
+        </div>
       }
     </div>
 
@@ -203,22 +207,26 @@
         <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
       </div>
     } @else {
-      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid">
-        @for (album of compilationsWindow.visible(); track album.id) {
-          <a [routerLink]="getAlbumLink(album.id)"
-            appTvNavItem
-            class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
-            <app-cover-art
-              [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
-              [artist]="album.artist"
-              [album]="album.name"
-              [fill]="true"
-              rounded="rounded"
-              className="mb-2"
-            />
-            <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
-            <p class="text-xs text-theme-muted truncate">Various Artists</p>
-          </a>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid" #compilationsGrid="appTvNavGroup">
+        @for (row of chunk(compilationsWindow.visible(), compilationsGrid.gridColumns()); track $index) {
+          <div role="row" style="display: contents">
+            @for (album of row; track album.id) {
+              <a [routerLink]="getAlbumLink(album.id)"
+                appTvNavItem
+                class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
+                <app-cover-art
+                  [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
+                  [artist]="album.artist"
+                  [album]="album.name"
+                  [fill]="true"
+                  rounded="rounded"
+                  className="mb-2"
+                />
+                <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
+                <p class="text-xs text-theme-muted truncate">Various Artists</p>
+              </a>
+            }
+          </div>
         }
       </div>
       @if (compilationsWindow.hasMore()) {
@@ -287,24 +295,28 @@
         <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
       </div>
     } @else {
-      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid">
-        @for (album of singlesWindow.visible(); track album.id) {
-          <a [routerLink]="getAlbumLink(album.id)"
-            appTvNavItem
-            class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
-            <app-cover-art
-              [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
-              [artist]="album.artist"
-              [album]="album.name"
-              [fill]="true"
-              rounded="rounded"
-              className="mb-2"
-            />
-            <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
-            <p class="text-xs text-theme-muted truncate">
-              {{ album.artist }} · {{ album.classification === 'ep' ? 'EP' : 'Single' }}
-            </p>
-          </a>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid" #singlesGrid="appTvNavGroup">
+        @for (row of chunk(singlesWindow.visible(), singlesGrid.gridColumns()); track $index) {
+          <div role="row" style="display: contents">
+            @for (album of row; track album.id) {
+              <a [routerLink]="getAlbumLink(album.id)"
+                appTvNavItem
+                class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
+                <app-cover-art
+                  [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
+                  [artist]="album.artist"
+                  [album]="album.name"
+                  [fill]="true"
+                  rounded="rounded"
+                  className="mb-2"
+                />
+                <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
+                <p class="text-xs text-theme-muted truncate">
+                  {{ album.artist }} · {{ album.classification === 'ep' ? 'EP' : 'Single' }}
+                </p>
+              </a>
+            }
+          </div>
         }
       </div>
       @if (singlesWindow.hasMore()) {
@@ -373,36 +385,40 @@
         <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
       </div>
     } @else {
-      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid">
-        @for (artist of artistsWindow.visible(); track artist.id) {
-          <a [routerLink]="getArtistLink(artist.id)"
-            appTvNavItem
-            class="relative flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-theme-hover transition-colors text-center cursor-pointer">
-            <div class="relative">
-              <app-cover-art
-                [src]="artist.coverArt ? '/api/cover/' + artist.coverArt + '?size=160&token=' + auth.token() + (artistImageVersion() ? '&v=' + artistImageVersion() : '') : undefined"
-                [artist]="artist.name"
-                [size]="80"
-                rounded="rounded-full"
-              />
-              <!-- Add-photo affordance (issue #250 gap 4): the same component the
-                   artist page uses, so upload / from-album / auto-fetch / reset
-                   can't drift between the two surfaces. Curator-gated. -->
-              @if (auth.canCurate()) {
-                <div class="absolute -bottom-1 -right-1">
-                  <app-artist-image-menu
-                    [artistId]="artist.id"
-                    [compact]="true"
-                    (changed)="onArtistImageChanged()"
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid" #artistsGrid="appTvNavGroup">
+        @for (row of chunk(artistsWindow.visible(), artistsGrid.gridColumns()); track $index) {
+          <div role="row" style="display: contents">
+            @for (artist of row; track artist.id) {
+              <a [routerLink]="getArtistLink(artist.id)"
+                appTvNavItem
+                class="relative flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-theme-hover transition-colors text-center cursor-pointer">
+                <div class="relative">
+                  <app-cover-art
+                    [src]="artist.coverArt ? '/api/cover/' + artist.coverArt + '?size=160&token=' + auth.token() + (artistImageVersion() ? '&v=' + artistImageVersion() : '') : undefined"
+                    [artist]="artist.name"
+                    [size]="80"
+                    rounded="rounded-full"
                   />
+                  <!-- Add-photo affordance (issue #250 gap 4): the same component the
+                       artist page uses, so upload / from-album / auto-fetch / reset
+                       can't drift between the two surfaces. Curator-gated. -->
+                  @if (auth.canCurate()) {
+                    <div class="absolute -bottom-1 -right-1">
+                      <app-artist-image-menu
+                        [artistId]="artist.id"
+                        [compact]="true"
+                        (changed)="onArtistImageChanged()"
+                      />
+                    </div>
+                  }
                 </div>
-              }
-            </div>
-            <div class="min-w-0 w-full">
-              <div class="text-sm text-theme-primary truncate">{{ artist.name }}</div>
-              <div class="text-xs text-theme-muted">{{ artist.albumCount }} album{{ artist.albumCount !== 1 ? 's' : '' }}</div>
-            </div>
-          </a>
+                <div class="min-w-0 w-full">
+                  <div class="text-sm text-theme-primary truncate">{{ artist.name }}</div>
+                  <div class="text-xs text-theme-muted">{{ artist.albumCount }} album{{ artist.albumCount !== 1 ? 's' : '' }}</div>
+                </div>
+              </a>
+            }
+          </div>
         }
       </div>
       @if (artistsWindow.hasMore()) {
@@ -422,14 +438,18 @@
         <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
       </div>
     } @else {
-      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3" appTvNavGroup axis="grid">
-        @for (genre of genres(); track genre.value) {
-          <a [routerLink]="getGenreLink(genre.value)"
-            appTvNavItem
-            class="flex flex-col items-start gap-1 p-4 rounded-xl bg-theme-surface hover:bg-theme-hover transition-colors border border-theme text-left cursor-pointer break-inside-avoid">
-            <div class="text-sm text-theme-primary font-medium truncate w-full">{{ genre.value }}</div>
-            <div class="text-xs text-theme-muted">{{ genre.songCount }} tracks</div>
-          </a>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3" appTvNavGroup axis="grid" #genresGrid="appTvNavGroup">
+        @for (row of chunk(genres(), genresGrid.gridColumns()); track $index) {
+          <div role="row" style="display: contents">
+            @for (genre of row; track genre.value) {
+              <a [routerLink]="getGenreLink(genre.value)"
+                appTvNavItem
+                class="flex flex-col items-start gap-1 p-4 rounded-xl bg-theme-surface hover:bg-theme-hover transition-colors border border-theme text-left cursor-pointer break-inside-avoid">
+                <div class="text-sm text-theme-primary font-medium truncate w-full">{{ genre.value }}</div>
+                <div class="text-xs text-theme-muted">{{ genre.songCount }} tracks</div>
+              </a>
+            }
+          </div>
         }
       </div>
       @if (isGenresEmpty()) {
