@@ -14,6 +14,8 @@ import { PlayerService } from './player.service';
  */
 @Injectable({ providedIn: 'root' })
 export class KeyboardShortcutsService {
+  private static readonly SEEK_STEP_SECONDS = 10;
+
   private readonly player = inject(PlayerService);
 
   initialize(): Subscription {
@@ -63,6 +65,16 @@ export class KeyboardShortcutsService {
     if (event.key === 'n' || event.key === 'N') {
       event.preventDefault();
       this.player.setNowPlayingOpen(true);
+      return;
+    }
+    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+      if (event.defaultPrevented) return; // a D-pad nav group already handled this keypress
+      event.preventDefault();
+      const delta =
+        event.key === 'ArrowRight'
+          ? KeyboardShortcutsService.SEEK_STEP_SECONDS
+          : -KeyboardShortcutsService.SEEK_STEP_SECONDS;
+      this.player.seek(Math.max(0, this.player.currentTime() + delta));
       return;
     }
   }

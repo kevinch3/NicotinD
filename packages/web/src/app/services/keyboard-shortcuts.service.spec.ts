@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import type { Subscription } from 'rxjs';
 import { KeyboardShortcutsService } from './keyboard-shortcuts.service';
 import { PlayerService } from './player.service';
@@ -22,6 +23,8 @@ describe('KeyboardShortcutsService', () => {
     playNext: ReturnType<typeof vi.fn>;
     toggleVocalMute: ReturnType<typeof vi.fn>;
     setNowPlayingOpen: ReturnType<typeof vi.fn>;
+    currentTime: ReturnType<typeof signal<number>>;
+    seek: ReturnType<typeof vi.fn>;
   };
   let sub: Subscription;
 
@@ -34,6 +37,8 @@ describe('KeyboardShortcutsService', () => {
       playNext: vi.fn(),
       toggleVocalMute: vi.fn(),
       setNowPlayingOpen: vi.fn(),
+      currentTime: signal(0),
+      seek: vi.fn(),
     };
     TestBed.configureTestingModule({
       providers: [KeyboardShortcutsService, { provide: PlayerService, useValue: playerStub }],
@@ -158,5 +163,42 @@ describe('KeyboardShortcutsService', () => {
     expect(playerStub.playNext).not.toHaveBeenCalled();
     expect(playerStub.toggleVocalMute).not.toHaveBeenCalled();
     expect(playerStub.setNowPlayingOpen).not.toHaveBeenCalled();
+  });
+
+  it('ArrowRight seeks forward 10s from the current position', () => {
+    setup(false);
+    playerStub.currentTime.set(30);
+    dispatchKeydown(window, 'ArrowRight');
+    expect(playerStub.seek).toHaveBeenCalledWith(40);
+  });
+
+  it('ArrowLeft seeks backward 10s, clamped to 0', () => {
+    setup(false);
+    playerStub.currentTime.set(5);
+    dispatchKeydown(window, 'ArrowLeft');
+    expect(playerStub.seek).toHaveBeenCalledWith(0);
+  });
+
+  it('does not seek when the keydown event was already handled (defaultPrevented) by a D-pad nav group', () => {
+    setup(false);
+    playerStub.currentTime.set(30);
+    const event = new KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      bubbles: true,
+      cancelable: true,
+    });
+    event.preventDefault(); // simulates a TvNavGroupDirective having already moved focus
+    window.dispatchEvent(event);
+    expect(playerStub.seek).not.toHaveBeenCalled();
+  });
+
+  it('ArrowLeft/ArrowRight are ignored while a text input is focused', () => {
+    setup(false);
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    dispatchKeydown(input, 'ArrowRight');
+    dispatchKeydown(input, 'ArrowLeft');
+    expect(playerStub.seek).not.toHaveBeenCalled();
   });
 });
