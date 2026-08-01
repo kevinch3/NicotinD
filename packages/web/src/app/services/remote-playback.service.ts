@@ -12,6 +12,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PlaybackWsService } from './playback-ws.service';
 import { PlayerService, Track } from './player.service';
 import { AuthService } from './auth.service';
+import { isTvBuild } from '../lib/platform';
 
 export interface RemoteDevice {
   id: string;
@@ -31,8 +32,17 @@ export class RemotePlaybackService {
   // State signals
   // ---------------------------------------------------------------------------
 
-  /** Whether this client has opted in to receive remote play commands */
-  readonly remoteEnabled = signal(localStorage.getItem('nicotind_remote_enabled') === 'true');
+  /**
+   * Whether this client has opted in to receive remote play commands.
+   * Explicit user choice (the key exists in storage) always wins; only when
+   * the user has never toggled this do we default it on for a TV build, so a
+   * TV instance is immediately controllable from a phone with zero setup.
+   */
+  readonly remoteEnabled = signal(
+    localStorage.getItem('nicotind_remote_enabled') !== null
+      ? localStorage.getItem('nicotind_remote_enabled') === 'true'
+      : isTvBuild(),
+  );
   /** Set when remote playback was automatically disabled due to connection failure */
   readonly disabledReason = signal<string | null>(null);
   /** The device that is currently the active audio output */
