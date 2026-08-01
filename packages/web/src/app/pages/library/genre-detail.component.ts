@@ -26,6 +26,7 @@ import { IconComponent } from '../../components/icon/icon.component';
 import { PreserveService } from '../../services/preserve.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { SongMenuService } from '../../services/song-menu.service';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 
 @Component({
   selector: 'app-genre-detail',
@@ -35,6 +36,7 @@ import { SongMenuService } from '../../services/song-menu.service';
     RouterLink,
     SelectionBarComponent,
     IconComponent,
+    TvNavGroupDirective,
   ],
   templateUrl: './genre-detail.component.html',
 })

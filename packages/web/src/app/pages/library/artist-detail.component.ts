@@ -58,6 +58,8 @@ import { appendUnique } from '../../lib/append-unique';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 import { NavigationService } from '../../services/navigation.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 
 export type ArtistTab = 'albums' | 'singles' | 'appears-on' | 'songs';
 export type SongSort = 'newest' | 'title' | 'album';
@@ -80,6 +82,8 @@ const SONGS_PAGE_SIZE = 60;
     ArtistGenreModalComponent,
     ArtistInfoComponent,
     GenreDistributionStripComponent,
+    TvNavGroupDirective,
+    TvNavItemDirective,
   ],
   templateUrl: './artist-detail.component.html',
 })

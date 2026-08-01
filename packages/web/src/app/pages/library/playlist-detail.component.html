@@ -129,7 +129,7 @@
           (cancel)="selection.exit()"
         />
       }
-      <div class="space-y-0.5">
+      <div class="space-y-0.5" appTvNavGroup axis="vertical">
         @for (song of visibleSongs(); track song.id; let i = $index) {
           <app-track-row
             [track]="toTrack(song)"

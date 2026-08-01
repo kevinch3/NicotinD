@@ -16,6 +16,7 @@ import { TransferService } from '../../services/transfer.service';
 import { SongMenuService } from '../../services/song-menu.service';
 import { SongPickerComponent } from '../../components/song-picker/song-picker.component';
 import type { PlaylistDetail, Song } from '../../services/api/api-types';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 
 @Component({
   selector: 'app-playlist-detail',
@@ -26,6 +27,7 @@ import type { PlaylistDetail, Song } from '../../services/api/api-types';
     SelectionBarComponent,
     IconComponent,
     SongPickerComponent,
+    TvNavGroupDirective,
   ],
   templateUrl: './playlist-detail.component.html',
 })
