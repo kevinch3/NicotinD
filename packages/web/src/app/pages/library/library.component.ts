@@ -36,6 +36,8 @@ import {
 } from '../../lib/library-filters';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { ArtistImageMenuComponent } from '../../components/artist-image-menu/artist-image-menu.component';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import {
   LIBRARY_FILTER_PARAM_KEYS,
   isEmptyLibraryFilter,
@@ -112,6 +114,8 @@ function writePersistedState(state: PersistedLibraryState): void {
     LibrarySongsComponent,
     IconComponent,
     TranslatePipe,
+    TvNavGroupDirective,
+    TvNavItemDirective,
   ],
   templateUrl: './library.component.html',
 })

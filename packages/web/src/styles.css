@@ -452,3 +452,22 @@
   display: none; /* Chrome/Safari */
 }
 
+/* ─── Focus visibility (keyboard/D-pad navigation) ──────────────────────
+   The .seek-range thumb has its own custom focus treatment (box-shadow on
+   the thumb pseudo-elements, `outline: none` above) and stays unlayered so
+   it still wins outright over this rule. This rule itself is wrapped in
+   `@layer base` so Tailwind's `@layer utilities` (which is where
+   `focus:outline-none`/`focus:ring-*` utility classes live, per Tailwind
+   v4's implicit `@layer theme, base, components, utilities;` from the
+   `@import 'tailwindcss'` above) correctly wins per cascade-layer
+   precedence — unlayered CSS always beats layered CSS regardless of
+   specificity, so leaving this bare would have overridden every deliberate
+   `focus:outline-none` opt-out app-wide. Plain buttons/links with no
+   Tailwind focus override still get this visible ring. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--theme-accent);
+    outline-offset: 2px;
+  }
+}
+

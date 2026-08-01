@@ -11,6 +11,8 @@ import { buildPairingLink } from '../../../lib/pairing';
 import { isNativePlatform } from '../../../lib/platform';
 import { TranslateService } from '../../../services/translate.service';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
+import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 
 /**
  * "Link a device" — pair a phone to this server by QR (or manual URL + code)
@@ -20,7 +22,7 @@ import { TranslatePipe } from '../../../pipes/translate.pipe';
  */
 @Component({
   selector: 'app-devices',
-  imports: [RouterLink, TranslatePipe],
+  imports: [RouterLink, TranslatePipe, TvNavGroupDirective, TvNavItemDirective],
   templateUrl: './devices.component.html',
 })
 export class DevicesComponent implements OnInit, OnDestroy {

@@ -196,29 +196,32 @@
     <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
       {{ 'devices.pairedDevices' | t }}
     </h2>
-    @for (d of devices(); track d.id) {
-      <div class="mb-2 p-4 rounded-xl bg-theme-surface border border-theme flex items-center justify-between gap-4"
-           data-testid="device-row">
-        <div class="min-w-0">
-          <p class="font-medium text-theme-primary">
-            {{ d.name }}
-            @if (d.current) {
-              <span class="ml-2 text-xs px-1.5 py-0.5 rounded bg-theme-elevated text-theme-muted">{{ 'devices.thisDevice' | t }}</span>
-            }
-          </p>
-          <p class="text-xs text-theme-muted mt-0.5">
-            {{ 'devices.deviceMeta' | t: { platform: d.platform, linkedAt: formatWhen(d.createdAt), lastSeenAt: formatWhen(d.lastSeenAt) } }}
-          </p>
+    <div appTvNavGroup axis="vertical">
+      @for (d of devices(); track d.id) {
+        <div class="mb-2 p-4 rounded-xl bg-theme-surface border border-theme flex items-center justify-between gap-4"
+             data-testid="device-row">
+          <div class="min-w-0">
+            <p class="font-medium text-theme-primary">
+              {{ d.name }}
+              @if (d.current) {
+                <span class="ml-2 text-xs px-1.5 py-0.5 rounded bg-theme-elevated text-theme-muted">{{ 'devices.thisDevice' | t }}</span>
+              }
+            </p>
+            <p class="text-xs text-theme-muted mt-0.5">
+              {{ 'devices.deviceMeta' | t: { platform: d.platform, linkedAt: formatWhen(d.createdAt), lastSeenAt: formatWhen(d.lastSeenAt) } }}
+            </p>
+          </div>
+          <button
+            appTvNavItem
+            (click)="revoke(d)"
+            data-testid="device-revoke"
+            class="shrink-0 text-sm text-status-error hover:underline"
+          >
+            {{ 'devices.revoke' | t }}
+          </button>
         </div>
-        <button
-          (click)="revoke(d)"
-          data-testid="device-revoke"
-          class="shrink-0 text-sm text-status-error hover:underline"
-        >
-          {{ 'devices.revoke' | t }}
-        </button>
-      </div>
-    }
+      }
+    </div>
     @if (devices().length === 0) {
       <p class="text-sm text-theme-muted" data-testid="devices-empty">{{ 'devices.noPairedDevices' | t }}</p>
     }

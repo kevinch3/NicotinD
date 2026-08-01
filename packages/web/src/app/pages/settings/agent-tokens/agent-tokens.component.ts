@@ -7,6 +7,8 @@ import type {
   AgentTokenMintResponse,
   AgentTokenRow,
 } from '../../../services/api/api-types';
+import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 
 /**
  * Mint/list/revoke MCP agent tokens (issue #232) — the credential an external
@@ -16,7 +18,7 @@ import type {
  */
 @Component({
   selector: 'app-agent-tokens',
-  imports: [RouterLink, FormsModule],
+  imports: [RouterLink, FormsModule, TvNavGroupDirective, TvNavItemDirective],
   templateUrl: './agent-tokens.component.html',
 })
 export class AgentTokensComponent implements OnInit {

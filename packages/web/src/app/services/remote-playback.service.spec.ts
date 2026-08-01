@@ -4,6 +4,20 @@ import { PlaybackWsService } from './playback-ws.service';
 import { PlayerService } from './player.service';
 import { AuthService } from './auth.service';
 import { EMPTY } from 'rxjs';
+import * as platform from '../lib/platform';
+
+// `remoteEnabled`'s initial value is computed once, at class-field-initialization
+// time, from `isTvBuild()`. Mocking the module (rather than the dynamic-import
+// dance) lets each test flip that return value per-case while still injecting a
+// fresh `RemotePlaybackService` instance per `TestBed.inject` call below --
+// matches the pattern already used by desktop-window-controls.component.spec.ts.
+vi.mock('../lib/platform', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/platform')>();
+  return {
+    ...actual,
+    isTvBuild: vi.fn().mockReturnValue(false),
+  };
+});
 
 // Provide a full localStorage stub so the test works regardless of the
 // vitest environment (jsdom, happy-dom, or bare Node).
@@ -126,5 +140,59 @@ describe('RemotePlaybackService', () => {
       const value = localStorage.getItem('nicotind_remote_enabled') === 'true';
       expect(value).toBe(false);
     });
+  });
+});
+
+describe('RemotePlaybackService TV default', () => {
+  let mockWs: {
+    updateDevice: ReturnType<typeof vi.fn>;
+    clearPersistentFailure: ReturnType<typeof vi.fn>;
+  };
+
+  beforeEach(() => {
+    storageStub.clear();
+    mockWs = { updateDevice: vi.fn(), clearPersistentFailure: vi.fn() };
+  });
+
+  afterEach(() => {
+    vi.mocked(platform.isTvBuild).mockReturnValue(false);
+  });
+
+  function inject(): RemotePlaybackService {
+    TestBed.configureTestingModule({
+      providers: [
+        RemotePlaybackService,
+        { provide: PlaybackWsService, useValue: mockWs },
+        { provide: PlayerService, useValue: {} },
+        { provide: AuthService, useValue: {} },
+      ],
+    });
+    return TestBed.inject(RemotePlaybackService);
+  }
+
+  it('defaults remoteEnabled to true on a TV build with no stored preference', () => {
+    vi.mocked(platform.isTvBuild).mockReturnValue(true);
+    const service = inject();
+    expect(service.remoteEnabled()).toBe(true);
+  });
+
+  it('does not default remoteEnabled on a non-TV build with no stored preference', () => {
+    vi.mocked(platform.isTvBuild).mockReturnValue(false);
+    const service = inject();
+    expect(service.remoteEnabled()).toBe(false);
+  });
+
+  it('an explicit stored false always wins over a TV-build default', () => {
+    storageStub.setItem('nicotind_remote_enabled', 'false');
+    vi.mocked(platform.isTvBuild).mockReturnValue(true);
+    const service = inject();
+    expect(service.remoteEnabled()).toBe(false);
+  });
+
+  it('an explicit stored true wins on a non-TV build too', () => {
+    storageStub.setItem('nicotind_remote_enabled', 'true');
+    vi.mocked(platform.isTvBuild).mockReturnValue(false);
+    const service = inject();
+    expect(service.remoteEnabled()).toBe(true);
   });
 });
