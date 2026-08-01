@@ -73,31 +73,34 @@
 
   <section>
     <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">Your tokens</h2>
-    @for (t of tokens(); track t.id) {
-      <div class="mb-2 p-4 rounded-xl bg-theme-surface border border-theme flex items-center justify-between gap-4"
-           data-testid="agent-token-row">
-        <div class="min-w-0">
-          <p class="font-medium text-theme-primary">
-            {{ t.name }}
-            @if (t.revokedAt) {
-              <span class="ml-2 text-xs px-1.5 py-0.5 rounded bg-theme-elevated text-theme-muted">Revoked</span>
-            }
-          </p>
-          <p class="text-xs text-theme-muted mt-0.5">
-            {{ t.scope }} · created {{ formatWhen(t.createdAt) }} · last used {{ formatWhen(t.lastUsedAt) }}
-          </p>
+    <div appTvNavGroup axis="vertical">
+      @for (t of tokens(); track t.id) {
+        <div class="mb-2 p-4 rounded-xl bg-theme-surface border border-theme flex items-center justify-between gap-4"
+             data-testid="agent-token-row">
+          <div class="min-w-0">
+            <p class="font-medium text-theme-primary">
+              {{ t.name }}
+              @if (t.revokedAt) {
+                <span class="ml-2 text-xs px-1.5 py-0.5 rounded bg-theme-elevated text-theme-muted">Revoked</span>
+              }
+            </p>
+            <p class="text-xs text-theme-muted mt-0.5">
+              {{ t.scope }} · created {{ formatWhen(t.createdAt) }} · last used {{ formatWhen(t.lastUsedAt) }}
+            </p>
+          </div>
+          @if (!t.revokedAt) {
+            <button
+              appTvNavItem
+              (click)="revoke(t)"
+              data-testid="agent-token-revoke"
+              class="shrink-0 text-sm text-status-error hover:underline"
+            >
+              Revoke
+            </button>
+          }
         </div>
-        @if (!t.revokedAt) {
-          <button
-            (click)="revoke(t)"
-            data-testid="agent-token-revoke"
-            class="shrink-0 text-sm text-status-error hover:underline"
-          >
-            Revoke
-          </button>
-        }
-      </div>
-    }
+      }
+    </div>
     @if (tokens().length === 0) {
       <p class="text-sm text-theme-muted" data-testid="agent-tokens-empty">No agent tokens yet.</p>
     }

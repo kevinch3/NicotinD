@@ -5,7 +5,7 @@ import { provideRouter } from '@angular/router';
 import { DevicesComponent } from './devices.component';
 import { DevicesApiService } from '../../../services/api/devices-api.service';
 import { AuthService } from '../../../services/auth.service';
-import type { PairingMintResponse } from '../../../services/api/api-types';
+import type { PairedDevice, PairingMintResponse } from '../../../services/api/api-types';
 
 /**
  * Issue #256. `qrcode` moved from a static import to `await import('qrcode')`
@@ -46,6 +46,45 @@ function setup(mint: PairingMintResponse = MINT): DevicesComponent {
   });
   return TestBed.createComponent(DevicesComponent).componentInstance;
 }
+
+const DEVICE: PairedDevice = {
+  id: 'd1',
+  name: 'Living Room TV',
+  platform: 'android',
+  createdAt: Date.now(),
+  lastSeenAt: Date.now(),
+  current: false,
+};
+
+describe('DevicesComponent — TV nav (Android TV phase 4)', () => {
+  it('renders the devices list as an appTvNavGroup with each revoke button as appTvNavItem', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [DevicesComponent],
+      providers: [
+        provideRouter([]),
+        {
+          provide: DevicesApiService,
+          useValue: {
+            mintPairing: () => of(MINT),
+            getDevices: () => of({ devices: [DEVICE] }),
+            getRemoteAccess: () => of(null),
+            setRemoteAccess: () => of(null),
+            revokeDevice: () => of(undefined),
+          },
+        },
+        { provide: AuthService, useValue: { isAdmin: () => false, user: () => null } },
+      ],
+    });
+    const fixture = TestBed.createComponent(DevicesComponent);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const button = el.querySelector('[data-testid="device-revoke"]');
+    expect(button?.matches('[appTvNavItem]')).toBe(true);
+    const group = button?.closest('[appTvNavGroup]');
+    expect(group?.getAttribute('axis')).toBe('vertical');
+  });
+});
 
 describe('DevicesComponent — lazy qrcode (#256)', () => {
   beforeEach(() => vi.restoreAllMocks());

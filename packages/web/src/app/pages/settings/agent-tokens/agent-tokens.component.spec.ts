@@ -116,4 +116,14 @@ describe('AgentTokensComponent', () => {
     c.dismissMinted();
     expect(c.minted()).toBeNull();
   });
+
+  it('renders the tokens list as an appTvNavGroup with each revoke button as appTvNavItem', () => {
+    const fixture = setup();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const button = el.querySelector('[data-testid="agent-token-revoke"]');
+    expect(button?.matches('[appTvNavItem]')).toBe(true);
+    const group = button?.closest('[appTvNavGroup]');
+    expect(group?.getAttribute('axis')).toBe('vertical');
+  });
 });
