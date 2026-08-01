@@ -267,19 +267,25 @@ already wires play/pause/next/prev/seek MediaSession action handlers — **but t
 device-verified on a TV remote** (matches the existing "still device-validated, not CI-validated"
 caveat elsewhere in this doc for background audio).
 
-**D-pad navigation (Phase 2)**: `TvNavGroupDirective`/`TvNavItemDirective`
-(`packages/web/src/app/directives/`) implement roving-tabindex arrow-key navigation — one
-`appTvNavGroup` per list/row (`'vertical'` or `'horizontal'`), each focusable item marked
-`appTvNavItem`. Exactly one item is `tabindex="0"` at a time so Tab enters/exits the group in one
-stop; arrow keys move focus + the roving index (no wrap — an edge arrow press is a no-op); Home/End
-jump to the first/last item; a `(focusin)` handshake keeps the roving index in sync when focus
-arrives via click or Tab rather than an arrow key. Applied so far to the Now Playing queue list and
-the mini-player's previous/play-pause/next buttons — shuffle/repeat stay plain Tab-focusable for
-now. A global `:focus-visible` outline (`styles.css`) makes focus visible app-wide (the `.seek-range`
-slider thumb keeps its own pre-existing focus treatment, unaffected by CSS specificity). **Not yet
-applied**: library/search/acquire grids, artist/album/playlist pages, settings/admin (tracked
-phases 3-5); no `'grid'` axis exists yet (built when a real grid consumer needs column-wrap
-inference).
+**D-pad navigation (Phase 3 extends this to grids)**: a `'grid'` axis was added
+(`lib/tv-nav-grid.ts`'s `inferColumnsPerRow`, comparing rendered `offsetTop` across items — no
+`grid-template-columns` parsing, works across any responsive breakpoint) — ArrowLeft/Right move
+within a row (clamped, no wrap to the next row), ArrowUp/Down jump a full row landing on the same
+column, clamped into a shorter final row. Applied to every Library page card grid (albums,
+compilations, singles/EPs, artists, genres) + the Library playlists list, artist-detail's
+albums/singles/appears-on grids, the Search page's catalog albums grid + artist chips, the
+album-hunt-modal candidate list, and — via one shared change to `TrackRowComponent` itself — every
+song list built on it (library Songs tab, album/genre/artist/playlist detail pages). **Not yet
+applied**: settings/admin pages (Phase 5, narrower scope — native `<select>`/text-input handling);
+the full keyboard shortcut table (Phase 6) is also still just Space/K.
+
+**Implementation note (circular-import handling)**: `TvNavGroupDirective` and `TvNavItemDirective`
+have a mutual dependency — the group queries for items via `@ContentChildren(TvNavItemDirective)`,
+and items optionally `inject()` their parent group. The directive pair uses `forwardRef()` in the
+`@ContentChildren` decorator to defer the `TvNavItemDirective` reference until first use, so the
+directive is immune to which of the two a consumer imports first (e.g., a consumer importing
+`TrackRowComponent` reaches `TvNavItemDirective` before `TvNavGroupDirective`, and would otherwise
+cause a "query selector wasn't defined" error at JIT-compile time if `forwardRef` weren't used).
 
 **Global keyboard shortcuts (Phase 2)**: `KeyboardShortcutsService`
 (`packages/web/src/app/services/keyboard-shortcuts.service.ts`, initialized once from `App`) — so

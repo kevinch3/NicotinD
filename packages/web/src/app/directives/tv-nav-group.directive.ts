@@ -50,16 +50,9 @@ export type TvNavAxis = 'vertical' | 'horizontal' | 'grid';
 export class TvNavGroupDirective implements AfterContentInit {
   @Input() axis: TvNavAxis = 'vertical';
 
-  // forwardRef: TvNavItemDirective imports this file too (it optionally
-  // `inject()`s TvNavGroupDirective at runtime). Whichever of the two a
-  // consumer's import graph reaches first decides module-eval order — and a
-  // consumer that imports TrackRowComponent (which pulls in TvNavItemDirective
-  // directly, with no TvNavGroupDirective import of its own) reaches
-  // tv-nav-item.directive.ts first, so *this* decorator would otherwise
-  // evaluate `TvNavItemDirective` before that circular import has resolved to
-  // the real class, throwing "query selector wasn't defined" at JIT-compile
-  // time. forwardRef defers the reference to first-use, making this immune to
-  // which module of the pair a caller happens to import first.
+  // forwardRef defers TvNavItemDirective resolution to avoid circular-import
+  // errors when consumers import TvNavItemDirective before TvNavGroupDirective
+  // (see docs/mobile-app.md for the full mechanics).
   @ContentChildren(forwardRef(() => TvNavItemDirective), { descendants: true })
   private readonly itemsQuery!: QueryList<TvNavItemDirective>;
 

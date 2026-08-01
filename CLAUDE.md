@@ -1216,9 +1216,11 @@ lock-screen controls come from `@jofr/capacitor-media-session` on Android and an
 transport). Android/iOS artifacts are built by tag-only best-effort CI jobs in `deploy.yml`. **The Android APK
 also supports sideload-only Android TV use** (manifest touchscreen fix + a `tv` Angular build
 configuration defaulting remote-control opt-in on; a roving-tabindex D-pad navigation directive
-pair + a global Space/K play-pause shortcut now cover the Now Playing queue/transport controls —
-full app coverage + the rest of the shortcut table are tracked follow-ups). → See
-[docs/mobile-app.md](docs/mobile-app.md) and [docs/ios-app.md](docs/ios-app.md).
+pair — now including a `'grid'` axis — covers the Now Playing queue, transport controls, every
+Library card grid, Search's catalog grid, and every `TrackRowComponent`-based song list, plus a
+global Space/K play-pause shortcut; settings/admin coverage and the full shortcut table are
+tracked follow-ups). → See [docs/mobile-app.md](docs/mobile-app.md) and
+[docs/ios-app.md](docs/ios-app.md).
 
 ## Desktop app (Electron)
 
