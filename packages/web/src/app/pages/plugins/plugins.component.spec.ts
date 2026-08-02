@@ -121,3 +121,46 @@ describe('PluginsComponent — acquisition kill-switch (#235)', () => {
     expect(document.activeElement).toBe(items[1]);
   });
 });
+
+describe('PluginsComponent — Connectivity section visibility', () => {
+  beforeEach(() => TestBed.resetTestingModule());
+
+  it('hides the Connectivity section entirely when no connectivity plugins are registered', () => {
+    const el = render(true);
+    expect(el.querySelector('[data-testid="extensions-connectivity-section"]')).toBeNull();
+    expect(el.textContent).not.toContain('Tailscale');
+  });
+
+  it('shows the Connectivity section when a connectivity plugin exists', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [PluginsComponent],
+      providers: [
+        provideRouter([]),
+        {
+          provide: PluginService,
+          useValue: {
+            refresh: () => Promise.resolve(),
+            plugins: signal([]),
+            acquisition: signal([]),
+            metadata: signal([]),
+            connectivity: signal([
+              {
+                id: 'tailscale',
+                kind: 'connectivity',
+                name: 'Tailscale',
+                enabled: false,
+              } as PluginInfo,
+            ]),
+          },
+        },
+        { provide: AuthService, useValue: { serverAcquisitionEnabled: signal(true) } },
+      ],
+    });
+    const fixture = TestBed.createComponent(PluginsComponent);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="extensions-connectivity-section"]')).not.toBeNull();
+    expect(el.textContent).toContain('Tailscale');
+  });
+});

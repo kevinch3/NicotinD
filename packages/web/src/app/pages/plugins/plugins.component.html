@@ -31,9 +31,11 @@
 
   @if (acquisitionEnabled()) {
     <section class="mb-10" data-testid="extensions-acquisition-section" appTvNavGroup axis="vertical">
-      <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
-        Acquisition
-      </h2>
+      <app-settings-group-header
+        icon="download"
+        title="Acquisition"
+        description="Soulseek, yt-dlp, and other download sources"
+      />
       @for (p of plugins.acquisition(); track p.id) {
         <app-plugin-card
           [plugin]="p"
@@ -57,9 +59,11 @@
     appTvNavGroup
     axis="vertical"
   >
-    <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
-      Metadata
-    </h2>
+    <app-settings-group-header
+      icon="tag"
+      title="Metadata"
+      description="Genre, lyrics, and metadata lookups"
+    />
     @for (p of plugins.metadata(); track p.id) {
       <app-plugin-card
         [plugin]="p"
@@ -76,27 +80,26 @@
     }
   </section>
 
-  <section appTvNavGroup axis="vertical">
-    <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
-      Connectivity
-    </h2>
-    @for (p of plugins.connectivity(); track p.id) {
-      <app-plugin-card
-        [plugin]="p"
-        [busy]="busy()"
-        [detailRoute]="detailRoute(p.id)"
-        [draft]="draftFor(p.id)"
-        (toggle)="toggle($event)"
-        (save)="saveConfig($event)"
-        (fieldChange)="setField(p.id, $event.key, $event.value)"
+  @if (plugins.connectivity().length > 0) {
+    <section class="mb-10" data-testid="extensions-connectivity-section" appTvNavGroup axis="vertical">
+      <app-settings-group-header
+        icon="wifi"
+        title="Connectivity"
+        description="Remote access and network tools"
       />
-    }
-    @if (plugins.connectivity().length === 0) {
-      <p class="text-sm text-theme-muted">
-        No connectivity plugins yet. Tailscale / WireGuard support will appear here.
-      </p>
-    }
-  </section>
+      @for (p of plugins.connectivity(); track p.id) {
+        <app-plugin-card
+          [plugin]="p"
+          [busy]="busy()"
+          [detailRoute]="detailRoute(p.id)"
+          [draft]="draftFor(p.id)"
+          (toggle)="toggle($event)"
+          (save)="saveConfig($event)"
+          (fieldChange)="setField(p.id, $event.key, $event.value)"
+        />
+      }
+    </section>
+  }
 
 </div>
 
