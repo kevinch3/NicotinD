@@ -1,9 +1,10 @@
 import { Component, HostListener, input, output } from '@angular/core';
+import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 @Component({
   selector: 'app-confirm-dialog',
   standalone: true,
-  imports: [],
+  imports: [BottomChromeSafeDirective],
   templateUrl: './confirm-dialog.component.html',
 })
 export class ConfirmDialogComponent {

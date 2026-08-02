@@ -387,7 +387,7 @@
       }
 
       @if (showLogoutDialog()) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" appBottomChromeSafe>
           <div class="bg-theme-surface border border-theme rounded-xl p-6 max-w-sm w-full shadow-2xl">
             <h3 class="text-lg font-semibold text-theme-primary mb-4">{{ 'settings.signOutConfirmTitle' | t }}</h3>
             <label class="flex items-start gap-3 mb-6 cursor-pointer">

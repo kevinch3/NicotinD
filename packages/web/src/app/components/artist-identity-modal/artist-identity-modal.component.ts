@@ -14,6 +14,7 @@ import { LibraryApiService } from '../../services/api/library-api.service';
 import type { ArtistIdentityResult } from '../../services/api/api-types';
 import { ToastService } from '../../services/toast.service';
 import { IconComponent } from '../icon/icon.component';
+import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 /**
  * Client-side mirror of the server's `splitOnDelimiters` (artist-split.ts) used only
@@ -56,7 +57,7 @@ export type IdentityMode = 'single' | 'split' | 'merge' | 'rename';
 @Component({
   selector: 'app-artist-identity-modal',
   standalone: true,
-  imports: [FormsModule, IconComponent],
+  imports: [FormsModule, IconComponent, BottomChromeSafeDirective],
   templateUrl: './artist-identity-modal.component.html',
 })
 export class ArtistIdentityModalComponent {
