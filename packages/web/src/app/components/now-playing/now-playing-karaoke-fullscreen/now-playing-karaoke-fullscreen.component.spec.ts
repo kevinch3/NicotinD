@@ -74,6 +74,18 @@ describe('NowPlayingKaraokeFullscreenComponent', () => {
     expect(el.querySelector('[data-testid="karaoke-fullscreen-browse-list"]')).toBeNull();
   });
 
+  // `lyricsScrollRef` (the `#lyricsScroll` viewChild on the browse-mode list
+  // container, mirroring `NowPlayingLyricsPanelComponent.lyricsScrollRef`) is
+  // not unit-testable here: this JIT vitest harness doesn't resolve
+  // `viewChild()` queries at all — confirmed with a minimal inline-template
+  // repro completely outside now-playing (a bare `<div #ref>` component's own
+  // `viewChild<ElementRef>('ref')` also stays `undefined` after
+  // `detectChanges()`), so this isn't specific to this component or a bug in
+  // the fix. `overlayRef` above has the same, previously-unexamined gap — no
+  // existing spec ever asserted it resolves either. The DOM contract this ref
+  // targets (the browse-list container existing, keyed by testid, exactly
+  // when `browsing()` is true) is covered by the test below; the ref's actual
+  // resolution is exercised by e2e (real Chromium, no JIT harness).
   it('shows the full list in browse mode and emits lineSelected with the seek target', () => {
     const fixture = TestBed.createComponent(NowPlayingKaraokeFullscreenComponent);
     setInputValue(fixture.componentInstance.browsing, true);

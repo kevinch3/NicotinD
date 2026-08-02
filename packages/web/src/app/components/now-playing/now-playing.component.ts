@@ -27,13 +27,7 @@ import {
   DEFAULT_PALETTE,
   type CoverPalette,
 } from '../../lib/cover-colors';
-
-function formatTime(s: number): string {
-  if (!Number.isFinite(s) || s < 0) return '0:00';
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, '0')}`;
-}
+import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container';
 
 @Component({
   selector: 'app-now-playing',
@@ -313,11 +307,19 @@ export class NowPlayingComponent {
       this.extractColorsFromImage(url);
     });
 
-    // Auto-scroll lyrics to the active line (in-place panel or fullscreen overlay).
+    // Auto-scroll lyrics to the active line — `resolveLyricsScrollContainer`
+    // (a pure function, unit-tested standalone) picks whichever surface is
+    // actually visible: the in-place lyrics panel, or the karaoke-fullscreen
+    // overlay's browse-mode list (its own ref is only populated while
+    // `browsing()` is true, so this is a no-op — early return below — during
+    // the fullscreen auto-follow 2-line view, which has no scrollable list).
     effect(() => {
       const active = this.activeLine();
       if (!this.lyricsOpen() || active < 0) return;
-      const container = this.lyricsPanel()?.lyricsScrollRef()?.nativeElement;
+      const container = resolveLyricsScrollContainer(this.karaokeFullscreen(), {
+        lyricsPanelEl: this.lyricsPanel()?.lyricsScrollRef()?.nativeElement ?? null,
+        karaokeEl: this.karaokeFullscreenPanel()?.lyricsScrollRef()?.nativeElement ?? null,
+      });
       if (!container) return;
       scrollToActiveLine(container, active);
     });
@@ -551,9 +553,5 @@ export class NowPlayingComponent {
         .then(() => this.player.setAutoplayBlocked(false))
         .catch(() => {});
     }
-  }
-
-  formatTime(s: number): string {
-    return formatTime(s);
   }
 }

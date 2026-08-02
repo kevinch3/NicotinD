@@ -40,6 +40,10 @@ export class NowPlayingKaraokeFullscreenComponent {
   readonly prevClicked = output<void>();
 
   readonly overlayRef = viewChild<ElementRef<HTMLElement>>('karaokeOverlay');
+  /** The browse-mode scrollable line list — re-exposed so the shell's
+   *  auto-scroll effect can reach it while fullscreen browse mode is active,
+   *  mirroring `NowPlayingLyricsPanelComponent.lyricsScrollRef`. */
+  readonly lyricsScrollRef = viewChild<ElementRef<HTMLElement>>('lyricsScroll');
 
   formatTime(s: number): string {
     if (!Number.isFinite(s) || s < 0) return '0:00';

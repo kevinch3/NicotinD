@@ -308,6 +308,16 @@ describe('NowPlayingComponent', () => {
     // still asserts the shell's own responsibility: that the right child
     // *component* is present/absent.
 
+    // The auto-scroll effect's container *selection* (in-place lyrics panel
+    // vs. karaoke-fullscreen browse list) is a pure `resolveLyricsScrollContainer`
+    // (lib/lyrics-scroll-container.ts, unit-tested standalone) so the branching
+    // logic is covered without going through Angular `viewChild()` at all —
+    // this JIT vitest harness doesn't resolve *any* `viewChild()` query
+    // (confirmed with a minimal inline-template repro unrelated to now-playing:
+    // a bare `<div #ref>` component's own `viewChild<ElementRef>('ref')` stays
+    // `undefined` after `detectChanges()`), so a test exercising the real refs
+    // end-to-end through this shell can only ever pass in a real browser/e2e.
+
     it('alternates the line animation class each time activeLine changes', () => {
       const { fixture, playerStub, libraryStub } = setup();
       const component = fixture.componentInstance;
