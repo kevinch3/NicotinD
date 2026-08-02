@@ -7,20 +7,35 @@
     <div class="min-w-0">
       <div class="flex items-center gap-2 flex-wrap">
         <span class="font-medium text-theme-primary">{{ plugin.name }}</span>
-        @if (plugin.enabled) {
-          <span class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-done"
-            >Enabled</span
-          >
-        } @else {
-          <span
-            class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-muted"
-            >Disabled</span
-          >
-        }
-        @if (plugin.enabled && !plugin.available) {
-          <span class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-warn"
-            >Unavailable</span
-          >
+        @switch (status()) {
+          @case ('off') {
+            <span
+              data-testid="plugin-status"
+              class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-muted"
+              >Off</span
+            >
+          }
+          @case ('needs-config') {
+            <span
+              data-testid="plugin-status"
+              class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-warn"
+              >Needs config</span
+            >
+          }
+          @case ('unavailable') {
+            <span
+              data-testid="plugin-status"
+              class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-warn"
+              >Unavailable</span
+            >
+          }
+          @case ('ready') {
+            <span
+              data-testid="plugin-status"
+              class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-done"
+              >Ready</span
+            >
+          }
         }
       </div>
       <p class="text-sm text-theme-secondary mt-1">{{ plugin.description }}</p>
