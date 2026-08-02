@@ -20,6 +20,32 @@ import type { ProcessingSettings, ProcessingStatus } from '../../../types/core';
 import { AuthService } from '../../services/auth.service';
 import BASE_CATALOG from '../../../../public/i18n/en.json';
 
+/**
+ * Task 4 (Admin panel regroup): every panel now lives inside a collapsible
+ * `<app-admin-group>` whose body is `@if (open())`-gated, and `open()` reads
+ * a `[defaultOpen]` signal `input()`. This JIT vitest harness never registers
+ * signal inputs on a *nested imported* component (see
+ * `src/testing/signal-input.ts`), so every group's `[defaultOpen]`/`[title]`/
+ * etc. binding silently fails to land and the component falls back to its
+ * own default (`defaultOpen` defaults to `false`) — every group therefore
+ * renders **collapsed** in this harness regardless of its real default. Specs
+ * that need to see a moved panel's content must open the groups themselves by
+ * clicking each group's toggle button, exactly like a real user would.
+ */
+function expandAllGroups(fixture: { nativeElement: unknown; detectChanges: () => void }): void {
+  const el = fixture.nativeElement as HTMLElement;
+  const toggles = el.querySelectorAll<HTMLButtonElement>('[data-testid="admin-group-toggle"]');
+  // `AdminGroupComponent` persists open/closed to localStorage per groupId,
+  // which survives across tests within this file (jsdom's localStorage is
+  // process-wide, not reset per-test). Only click a group that's actually
+  // closed — blindly clicking every toggle would re-collapse a group a prior
+  // test already opened and left "true" in storage.
+  toggles.forEach((btn) => {
+    if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
+  });
+  fixture.detectChanges();
+}
+
 function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
   return {
     collectedAt: 1_700_000_000_000,
@@ -236,6 +262,7 @@ describe('AdminComponent (snapshot-driven via ServiceReview)', () => {
     f.detectChanges();
     await f.whenStable();
     f.detectChanges();
+    expandAllGroups(f);
     const el = f.nativeElement as HTMLElement;
     expect(el.querySelector('[data-testid="metrics-pills"]')).toBeTruthy();
     expect(el.querySelector('[data-testid="streaming-panel"]')).toBeTruthy();
@@ -299,6 +326,7 @@ describe('AdminComponent (orphan side-table rows, #259)', () => {
     f.detectChanges();
     await f.whenStable();
     f.detectChanges();
+    expandAllGroups(f);
     const el = f.nativeElement as HTMLElement;
 
     // Raw i18n key in this harness (no real catalog loaded) — same convention
@@ -367,6 +395,7 @@ describe('AdminComponent (artist portrait coverage, #250)', () => {
     f.detectChanges();
     await f.whenStable();
     f.detectChanges();
+    expandAllGroups(f);
     return f;
   }
 
@@ -468,6 +497,7 @@ describe('AdminComponent (acquisition kill-switch, #235)', () => {
     f.detectChanges();
     await f.whenStable();
     f.detectChanges();
+    expandAllGroups(f);
     return { f, setAcquisition };
   }
 
@@ -706,6 +736,7 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const el: HTMLElement = fixture.nativeElement;
     const group = el.querySelector('[appTvNavGroup][axis="grid"]');
     expect(group).not.toBeNull();
@@ -735,6 +766,7 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const el: HTMLElement = fixture.nativeElement;
     const host = el.querySelector('[appTvNavGroup][axis="grid"]')!;
     const group = fixture.debugElement
@@ -752,6 +784,7 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const el: HTMLElement = fixture.nativeElement;
     const group = el.querySelector('[appTvNavGroup][axis="horizontal"]');
     expect(group).not.toBeNull();
@@ -765,6 +798,7 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const el: HTMLElement = fixture.nativeElement;
     const group = el.querySelector('[appTvNavGroup][axis="horizontal"]')!;
     const buttons: HTMLElement[] = Array.from(group.querySelectorAll('button[appTvNavItem]'));
@@ -790,6 +824,7 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const el: HTMLElement = fixture.nativeElement;
     const runCheckbox = el.querySelector('[data-testid^="processing-task-"]');
     expect(runCheckbox?.hasAttribute('appTvNavItem')).toBe(true);
@@ -817,6 +852,7 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const el: HTMLElement = fixture.nativeElement;
     const group = el
       .querySelector('[data-testid^="processing-task-"]')!
@@ -904,8 +940,13 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const el: HTMLElement = fixture.nativeElement;
-    const selectEl = el.querySelector('select')!;
+    // Groups reordered `<select>` elements ahead of User Management (e.g. the
+    // streaming format/bitrate selects, the auto-playlists cadence select), so
+    // the bare `select` selector now hits the wrong one — target the user-row
+    // role select by testid instead.
+    const selectEl = el.querySelector('[data-testid="user-role-select"]')!;
     const actionCell = selectEl.closest('td');
     const group = actionCell?.querySelector('[appTvNavGroup]');
     expect(group).not.toBeNull();
