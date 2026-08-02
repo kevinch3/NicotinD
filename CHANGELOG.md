@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.295](https://github.com/kevinch3/NicotinD/compare/v0.1.294...v0.1.295) (2026-08-02)
+
+### Features
+
+* **web:** add i18n keys for regrouped Settings page ([b13478e](https://github.com/kevinch3/NicotinD/commit/b13478e7f39a367bdb91a471b3867b9e1961ff51))
+* **web:** add settings-header and device-type icon glyphs ([5fd7cc4](https://github.com/kevinch3/NicotinD/commit/5fd7cc4a45d489ce8761842b70a83c6ab635ce72))
+* **web:** add shared SettingsGroupHeaderComponent ([1c4b34d](https://github.com/kevinch3/NicotinD/commit/1c4b34d0b907d22ab341a9bf5a2e5e47064df3a7))
+* **web:** regroup Settings page into 4 cards with uniform icon headers ([b782e0b](https://github.com/kevinch3/NicotinD/commit/b782e0b90e0d811170fe4139f552de12a8c03fc7))
+
+### Bug Fixes
+
+* **web:** register theme-accent as a Tailwind color + cover Advanced-card gate ([815a47f](https://github.com/kevinch3/NicotinD/commit/815a47f01c4a6f04054b09e4a1e2423b5f365235))
 ## [0.1.294](https://github.com/kevinch3/NicotinD/compare/v0.1.293...v0.1.294) (2026-08-01)
 
 ### Bug Fixes
