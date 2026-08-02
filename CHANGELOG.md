@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.298](https://github.com/kevinch3/NicotinD/compare/v0.1.297...v0.1.298) (2026-08-02)
+
+### Features
+
+* **web:** add activity, wrench, and database icon glyphs for Admin groups ([e743f42](https://github.com/kevinch3/NicotinD/commit/e743f42e8448ad410a3848873ad7d3673420de50))
+* **web:** add collapsible AdminGroupComponent with per-device persistence ([62e540e](https://github.com/kevinch3/NicotinD/commit/62e540e7734d2b3740a356605cc78c04d5f97414))
+* **web:** add i18n keys for the regrouped Admin panel ([63562ab](https://github.com/kevinch3/NicotinD/commit/63562ab3772ccd0cbd81e84ed378db47ca9239b0))
+* **web:** regroup Admin panel into 8 collapsible icon-headed groups ([bdcde00](https://github.com/kevinch3/NicotinD/commit/bdcde00c1754d8bbf6e5d2e1ff5d8ded9738768d))
+
+### Bug Fixes
+
+* **e2e:** expand User Management admin group before locating user row ([24a764f](https://github.com/kevinch3/NicotinD/commit/24a764f15660fb749c98c0f39567d3e081c925db))
+* **web:** restore Admin page heading and un-trap the error banner ([e593bb7](https://github.com/kevinch3/NicotinD/commit/e593bb782265fb29b1b5adde41547b8d0a02e47a))
 ## [0.1.297](https://github.com/kevinch3/NicotinD/compare/v0.1.296...v0.1.297) (2026-08-02)
 
 ### Features
