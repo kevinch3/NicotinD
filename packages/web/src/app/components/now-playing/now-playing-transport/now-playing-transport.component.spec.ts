@@ -83,6 +83,20 @@ describe('NowPlayingTransportComponent', () => {
     expect(next).toBe(true);
   });
 
+  it('groups the transport row for D-pad nav with each control as a nav item', () => {
+    // TV-nav coverage added by this extraction (issue: android-tv-support) — the transport row
+    // previously had no appTvNavGroup/appTvNavItem wiring at all in now-playing.component.html;
+    // this asserts the new coverage rather than treating it as inert relocated markup.
+    const fixture = TestBed.createComponent(NowPlayingTransportComponent);
+    fixture.detectChanges();
+    const group = fixture.nativeElement.querySelector('[appTvNavGroup]');
+    expect(group).toBeTruthy();
+    const navItems = group.querySelectorAll('[appTvNavItem]');
+    // shuffle, prev, play/pause, next, repeat
+    expect(navItems.length).toBe(5);
+    expect(group.contains(navItems[0])).toBe(true);
+  });
+
   it('delegates repeat and radio toggles to PlayerService directly', () => {
     const fixture = TestBed.createComponent(NowPlayingTransportComponent);
     fixture.detectChanges();
