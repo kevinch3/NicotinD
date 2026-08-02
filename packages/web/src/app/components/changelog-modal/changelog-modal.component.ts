@@ -2,6 +2,7 @@ import { Component, HostListener, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import changelog from '../../../../public/changelog.json';
 import { parseChangelogItem, type ParsedChangelogItem } from '../../lib/changelog';
+import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 interface RawChangelogSection {
   title: string;
@@ -30,7 +31,7 @@ interface ParsedEntry {
 @Component({
   selector: 'app-changelog-modal',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, BottomChromeSafeDirective],
   templateUrl: './changelog-modal.component.html',
 })
 export class ChangelogModalComponent {

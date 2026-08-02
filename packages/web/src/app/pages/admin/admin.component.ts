@@ -41,6 +41,7 @@ import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
+import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 /** A copy in a duplicate group — shape returned by the maintenance duplicates API. */
 type DuplicateSong = {
@@ -65,6 +66,7 @@ type DuplicateSong = {
     TranslatePipe,
     TvNavGroupDirective,
     TvNavItemDirective,
+    BottomChromeSafeDirective,
   ],
   templateUrl: './admin.component.html',
 })
