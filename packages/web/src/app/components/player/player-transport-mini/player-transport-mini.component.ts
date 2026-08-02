@@ -13,6 +13,11 @@ import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 @Component({
   selector: 'app-player-transport-mini',
   imports: [TvNavGroupDirective, TvNavItemDirective],
+  // `display: contents` so the host doesn't break the mini-player bar's flex
+  // row — the shell's flex container needs to see this component's own
+  // top-level element as the flex item, and `contents` makes the host
+  // transparent.
+  host: { class: 'contents' },
   templateUrl: './player-transport-mini.component.html',
 })
 export class PlayerTransportMiniComponent {

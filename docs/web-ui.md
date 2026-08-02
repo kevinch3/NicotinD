@@ -70,7 +70,16 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   2026-08, Tasks 2–10): the once-monolithic `now-playing.component` (header, cover art, transport,
   queue, lyrics, and the fullscreen karaoke overlay all inline in one file/template) is now a thin
   shell composing **7 extracted sub-components**, each owning its own template + (where relevant)
-  its own local state:
+  its own local state. Every one of them (plus `PlayerTransportMiniComponent`, the mini-player's
+  equivalent extraction) sets `host: { class: 'contents' }` — the shell's root is `fixed inset-0
+  flex flex-col`, and an unstyled component host element is a `display: block` box by default that
+  breaks the flex column (the `flex-1 min-h-0`/`flex-shrink-0` classes *inside* a child's own
+  template become inert, since the shell's flex container only ever sees the host, not those inner
+  divs); `display: contents` makes the host transparent so the child's top-level elements
+  participate in the parent flex layout exactly as the old inline `<div>`s did (same idiom as
+  `DesktopWindowControlsComponent`). Caught late because the symptom (queue panel expanding to full
+  content height and overflowing unscrollably instead of filling-and-scrolling) only showed up
+  looking at the whole extracted tree together, not any single component in isolation:
   - `NowPlayingHeaderComponent` — drag-to-dismiss handle + device switcher.
   - `NowPlayingCoverArtComponent` — cover art, title/artist, track-info button, context menu trigger.
   - `NowPlayingTransportComponent` — seek bar, transport buttons, autoplay-blocked banner.
@@ -94,10 +103,20 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   queue in place (`lyricsOpen` boolean, `now-playing-lyrics-toggle` button). `NowPlayingPanelTabsComponent`
   now renders two persistent tabs (`data-testid="now-playing-tab-queue"`/`"now-playing-tab-lyrics"`) —
   the queue tab shows a live count badge, the lyrics tab shows an availability dot
-  (`data-testid="now-playing-lyrics-dot"`) when lyrics exist but aren't the active tab. `activePanel`
+  (`data-testid="now-playing-lyrics-dot"`) when lyrics exist but aren't the active tab. The dot
+  (`hasLyrics`, gated on the loaded `lyrics()` matching the current track via `lyricsLoadedForId`
+  so a track switch can't show a stale positive from the previous track) only reflects lyrics that
+  have actually been **loaded** for the current track — lyrics load lazily on first Lyrics-tab open,
+  so the dot stays off from the Queue tab until the Lyrics tab has been visited at least once for
+  that track; it does not proactively prefetch/probe availability (a known, out-of-scope limitation,
+  not a bug). `activePanel`
   (`'queue' | 'lyrics'`, `NowPlayingComponent.setActivePanel`) drives which panel renders and is
   **persisted per-device** in `localStorage` (`nicotind:np-active-panel`), same durability as the
-  queue-resize state below. The fullscreen karaoke overlay still fully replaces the tabbed area
+  queue-resize state below. `lyricsOpen` (the flag the lyrics-load/color-extraction/auto-scroll
+  effects gate on) is seeded from the restored `activePanel` at construction (`lyricsOpen`'s field
+  declared *after* `activePanel`'s, since class-field initialization order matters) — otherwise a
+  page load that restored onto the Lyrics tab rendered an incorrect "no lyrics" empty state until
+  the tab was re-clicked. The fullscreen karaoke overlay still fully replaces the tabbed area
   (`@if (!karaokeFullscreen()) { tabs + panel } @else { karaoke overlay }`), independent of which tab
   was active when it opened.
 

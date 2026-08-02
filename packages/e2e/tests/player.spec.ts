@@ -212,11 +212,6 @@ test.describe('player controls', () => {
     // album (6 tracks); clear it, then add exactly 2 tracks back via the row
     // menu's "Add to queue" so the tab badge is asserted against a known
     // count without scrolling/trimming a long, viewport-clipped queue list.
-    // A taller viewport keeps the queue's "Clear" row on-screen below the
-    // full-height cover art — at the default 1280x720 it sits right at the
-    // fold (the cover only shrinks via the manual drag-resize handle, not
-    // automatically for a short viewport).
-    await page.setViewportSize({ width: 1280, height: 1000 });
     await startAlbum(page);
     await page.getByTestId('player-title').click();
     await expect(page.getByText('Now Playing')).toBeVisible();

@@ -9,6 +9,10 @@ import { formatQuality } from '../../../lib/download-status';
 @Component({
   selector: 'app-now-playing-cover-art',
   imports: [CoverArtComponent, ArtistLinksComponent, TranslatePipe],
+  // `display: contents` so the host doesn't break the sheet's flex column —
+  // the shell's flex container needs to see this component's own top-level
+  // element as the flex item, and `contents` makes the host transparent.
+  host: { class: 'contents' },
   templateUrl: './now-playing-cover-art.component.html',
 })
 export class NowPlayingCoverArtComponent {
