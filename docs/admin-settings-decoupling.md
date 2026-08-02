@@ -84,9 +84,20 @@ Small, independent improvements this refactor sets up — none required for it t
 5. **Extensions surface for `metadata`/`connectivity` kinds** — the lrclib lyrics plugin and the
    scaffolded connectivity kind could each get a small settings page via the same detail-route
    pattern.
-6. **Library maintenance consolidation** — Admin now hosts find-duplicates next to incomplete-albums
-   and untracked-downloads; folding the library-audit scripts (`docs/library-audit.md`) behind a
-   button here would give admins one maintenance home.
+6. ~~**Library maintenance consolidation**~~ — **Shipped.** The Admin page (previously one flat
+   1530-line scroll with a 14-panel "System" mega-section holding unrelated sub-panels with no
+   internal grouping) was regrouped into **8 collapsible, icon-headed groups**: System Health,
+   Library Processing, Library Maintenance, Streaming & Media, Backups & Data, Acquisition &
+   Automation, User Management, Audit Log. The new shared `AdminGroupComponent`
+   (`packages/web/src/app/components/admin-group/`) composes `SettingsGroupHeaderComponent`'s
+   icon+title+description header with a collapsible body, persisted per-device to `localStorage`
+   (key `nicotind-admin-group-<groupId>`); System Health and Library Processing default expanded
+   (frequently-checked "is everything running" info), the other 6 default collapsed. "Library
+   Maintenance" now holds: orphan rows, the fragmentation diagnostic, sync/rescan library,
+   optimize-metadata, artist-image coverage, find-duplicates, incomplete albums, and untracked
+   downloads — folding library-audit-adjacent tooling into one maintenance home, as this idea
+   proposed. Zero backend changes. Folding the standalone `docs/library-audit.md` scripts behind a
+   button here remains a further, un-scheduled follow-up.
 7. **User-facing "what's shared" read-out** — surface the slskd share stats (files/folders) to
    non-admins as a lightweight "you're sharing N tracks" acknowledgement, reinforcing the P2P
    give/take model.
