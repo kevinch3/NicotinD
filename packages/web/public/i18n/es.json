@@ -366,6 +366,7 @@
   "nowPlaying.muteVocals": "Silenciar voz",
   "nowPlaying.nextFrom": "Siguiente de: {name}",
   "nowPlaying.nextUp": "A continuación",
+  "nowPlaying.tracksCount": "{count} pistas",
   "nowPlaying.noLyricsAvailable": "No hay letra disponible",
   "nowPlaying.noLyricsAvailableHint": "La letra aparecerá aquí cuando se encuentre sincronizada",
   "nowPlaying.queueEmpty": "La cola está vacía",

@@ -14,7 +14,7 @@
   }
   <div class="flex items-center gap-2 mb-3 px-2">
     <span class="text-xs font-semibold text-theme-secondary uppercase tracking-wider">{{ 'nowPlaying.nextUp' | t }}</span>
-    <span class="text-xs text-theme-muted">{{ player.queue().length }} tracks</span>
+    <span class="text-xs text-theme-muted">{{ 'nowPlaying.tracksCount' | t: { count: player.queue().length } }}</span>
     @if (player.queue().length > 0) {
       <button type="button" (click)="clearQueue()" data-testid="queue-clear" class="ml-auto text-xs text-theme-muted hover:text-theme-primary transition">
         {{ 'nowPlaying.clear' | t }}
