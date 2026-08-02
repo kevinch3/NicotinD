@@ -1,0 +1,29 @@
+<div class="mb-6">
+  <button
+    type="button"
+    (click)="toggle()"
+    data-testid="admin-group-toggle"
+    class="w-full flex items-center gap-2 text-left"
+    [attr.aria-expanded]="open()"
+  >
+    <app-settings-group-header
+      [icon]="icon()"
+      [title]="title()"
+      [description]="description()"
+      class="flex-1"
+    />
+    <span
+      class="text-theme-muted transition-transform flex-shrink-0"
+      [style.transform]="open() ? 'rotate(180deg)' : 'rotate(0deg)'"
+      aria-hidden="true"
+    >
+      <app-icon name="back" [size]="16" style="transform: rotate(-90deg); display: inline-block" />
+    </span>
+  </button>
+
+  @if (open()) {
+    <div data-testid="admin-group-body" class="mt-4">
+      <ng-content />
+    </div>
+  }
+</div>
