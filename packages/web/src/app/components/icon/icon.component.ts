@@ -31,7 +31,10 @@ export type IconName =
   | 'speaker'
   | 'smartphone'
   | 'monitor'
-  | 'wifi';
+  | 'wifi'
+  | 'activity'
+  | 'wrench'
+  | 'database';
 
 /** Play is the only filled glyph; the rest are stroked outlines. DI-free so the
  *  branch is unit-testable (the JIT harness can't drive the `name` input). */

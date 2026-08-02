@@ -20,6 +20,9 @@ describe('isFilledIcon', () => {
       'smartphone',
       'monitor',
       'wifi',
+      'activity',
+      'wrench',
+      'database',
     ] as const) {
       expect(isFilledIcon(name)).toBe(false);
     }
@@ -53,6 +56,9 @@ describe('IconComponent', () => {
       'smartphone',
       'monitor',
       'wifi',
+      'activity',
+      'wrench',
+      'database',
     ] as const;
     for (const name of names) {
       const fixture = TestBed.createComponent(IconComponent);

@@ -4,230 +4,24 @@
   </div>
 } @else {
   <div class="max-w-3xl mx-auto px-3 py-4 md:px-6 md:py-8 space-y-12">
-    <!-- User Management -->
-    <div>
-      <div class="flex items-center justify-between mb-8">
-        <h1 class="text-xl font-bold text-theme-primary">{{ 'admin.userManagement' | t }}</h1>
-        <button
-          (click)="showCreateUser.set(true)"
-          class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-inverse text-theme-inverse hover:opacity-90 transition"
-        >
-          {{ 'admin.createUser' | t }}
+    <h1 class="text-xl font-bold text-theme-primary">{{ 'admin.title' | t }}</h1>
+
+    @if (error()) {
+      <div class="mb-6 px-4 py-2.5 rounded-lg text-sm status-error border border-theme">
+        {{ error() }}
+        <button (click)="error.set(null)" class="ml-2 text-status-error hover:opacity-80">
+          {{ 'admin.dismiss' | t }}
         </button>
-      </div>
-
-      @if (error()) {
-        <div class="mb-6 px-4 py-2.5 rounded-lg text-sm status-error border border-theme">
-          {{ error() }}
-          <button (click)="error.set(null)" class="ml-2 text-status-error hover:opacity-80">
-            {{ 'admin.dismiss' | t }}
-          </button>
-        </div>
-      }
-
-      <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-theme">
-              <th
-                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-              >
-                {{ 'admin.colUser' | t }}
-              </th>
-              <th
-                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-              >
-                {{ 'admin.colRole' | t }}
-              </th>
-              <th
-                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-              >
-                {{ 'admin.colStatus' | t }}
-              </th>
-              <th
-                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
-              >
-                {{ 'admin.colOnline' | t }}
-              </th>
-              <th
-                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
-              >
-                {{ 'admin.colDevices' | t }}
-              </th>
-              <th
-                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
-              >
-                {{ 'admin.colSessions' | t }}
-              </th>
-              <th
-                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
-              >
-                {{ 'admin.colJoined' | t }}
-              </th>
-              <th
-                class="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-              >
-                {{ 'admin.colActions' | t }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (user of users(); track user.id) {
-              <tr class="border-b border-theme last:border-0">
-                <td class="px-4 py-3 text-theme-primary">
-                  {{ user.username }}
-                  @if (user.id === currentUserId()) {
-                    <span class="ml-1.5 text-xs text-theme-muted">{{ 'admin.you' | t }}</span>
-                  }
-                </td>
-                <td class="px-4 py-3">
-                  <span
-                    [class]="
-                      'inline-block px-2 py-0.5 rounded text-xs font-medium ' +
-                      (user.role === 'admin'
-                        ? 'status-warn border border-theme'
-                        : 'bg-theme-surface-2 text-theme-secondary border border-theme')
-                    "
-                  >
-                    {{ user.role }}
-                  </span>
-                </td>
-                <td class="px-4 py-3">
-                  <span
-                    [class]="
-                      'inline-flex items-center gap-1.5 text-xs ' +
-                      (user.status === 'active' ? 'text-status-done' : 'text-status-error')
-                    "
-                  >
-                    <span
-                      [class]="
-                        'w-1.5 h-1.5 rounded-full ' +
-                        (user.status === 'active' ? 'bg-emerald-500' : 'bg-red-500')
-                      "
-                    ></span>
-                    {{ user.status }}
-                  </span>
-                </td>
-                <td class="px-4 py-3 hidden sm:table-cell">
-                  <span
-                    [class]="
-                      'inline-block w-1.5 h-1.5 rounded-full ' +
-                      (user.isConnected ? 'bg-emerald-500' : 'bg-theme-muted')
-                    "
-                    [title]="user.isConnected ? i18n.t('admin.online') : i18n.t('admin.offline')"
-                  ></span>
-                </td>
-                <td class="px-4 py-3 text-theme-secondary text-xs hidden sm:table-cell">
-                  {{ user.amountOfDevices }}
-                </td>
-                <td class="px-4 py-3 text-theme-secondary text-xs hidden sm:table-cell">
-                  {{ user.amountOfSessions }}
-                </td>
-                <td class="px-4 py-3 text-theme-muted text-xs hidden sm:table-cell">
-                  {{ formatDate(user.created_at) }}
-                </td>
-                <td class="px-4 py-3 text-right">
-                  <div class="flex items-center justify-end gap-1">
-                    <select
-                      [disabled]="user.id === currentUserId()"
-                      (change)="setRole(user, $any($event.target).value)"
-                      [title]="
-                        user.id === currentUserId()
-                          ? i18n.t('admin.cannotChangeOwnRole')
-                          : i18n.t('admin.changeRole')
-                      "
-                      data-testid="user-role-select"
-                      class="px-2 py-1 rounded text-xs bg-theme-surface-2 text-theme-secondary border border-theme hover:text-theme-primary transition disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      @for (r of roles; track r) {
-                        <option [value]="r" [selected]="r === user.role">{{ r }}</option>
-                      }
-                    </select>
-                    <div appTvNavGroup axis="horizontal" class="flex items-center gap-1">
-                      <button
-                        appTvNavItem
-                        (click)="toggleStatus(user)"
-                        [disabled]="user.id === currentUserId()"
-                        class="px-2 py-1 rounded text-xs text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2 transition disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        {{ (user.status === 'active' ? 'admin.disable' : 'admin.enable') | t }}
-                      </button>
-                      <button
-                        appTvNavItem
-                        (click)="resetTarget.set(user); newPassword.set('')"
-                        class="px-2 py-1 rounded text-xs text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2 transition"
-                      >
-                        {{ 'admin.resetPw' | t }}
-                      </button>
-                      <button
-                        appTvNavItem
-                        (click)="deleteTarget.set(user)"
-                        [disabled]="user.id === currentUserId()"
-                        class="px-2 py-1 rounded text-xs text-status-error hover:bg-theme-hover transition disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        {{ 'admin.delete' | t }}
-                      </button>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </section>
-    </div>
-
-    <!-- Audit log: recent destructive/curation actions. -->
-    @if (auditTail().length > 0) {
-      <div data-testid="audit-log">
-        <h2 class="text-xl font-bold text-theme-primary mb-8">{{ 'admin.auditLog' | t }}</h2>
-        <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-theme">
-                <th
-                  class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-                >
-                  {{ 'admin.colWhen' | t }}
-                </th>
-                <th
-                  class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-                >
-                  {{ 'admin.colUser' | t }}
-                </th>
-                <th
-                  class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-                >
-                  {{ 'admin.colAction' | t }}
-                </th>
-                <th
-                  class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-                >
-                  {{ 'admin.colTarget' | t }}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (e of auditTail(); track e.id) {
-                <tr class="border-b border-theme last:border-0">
-                  <td class="px-4 py-2.5 text-theme-muted whitespace-nowrap">
-                    {{ formatAuditTime(e.at) }}
-                  </td>
-                  <td class="px-4 py-2.5 text-theme-secondary">{{ e.username ?? e.userId }}</td>
-                  <td class="px-4 py-2.5 text-theme-secondary">{{ e.action }}</td>
-                  <td class="px-4 py-2.5 text-theme-muted">{{ e.detail ?? e.targetId ?? '—' }}</td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </section>
       </div>
     }
 
-    <!-- System Panel -->
-    <div>
-      <h2 class="text-xl font-bold text-theme-primary mb-8">{{ 'admin.system' | t }}</h2>
-
+    <app-admin-group
+      groupId="system-health"
+      [defaultOpen]="true"
+      icon="activity"
+      [title]="'admin.system' | t"
+      [description]="'admin.groupSystemHealthDesc' | t"
+    >
       <!-- Live metric pills: CPU, RAM, GPU. Drained from ServiceReviewService
                (single polled snapshot — no per-pill fetcher). GPU hides itself when
                no vendor CLI returns a utilisation. -->
@@ -312,476 +106,69 @@
         </div>
       }
 
-      <!-- Maintenance: library-wide metadata optimization -->
-      <div class="flex flex-col gap-2 mb-8">
-        <div class="flex items-center gap-3">
-          <button
-            (click)="optimizeAllMetadata()"
-            [disabled]="optimizingMetadata()"
-            data-testid="optimize-all-metadata"
-            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
-          >
-            {{ (optimizingMetadata() ? 'admin.optimizing' : 'admin.optimizeMetadata') | t }}
-          </button>
-          <span class="text-xs text-theme-muted">{{ 'admin.optimizeMetadataHint' | t }}</span>
-        </div>
-        @if (optimizeMetadataMsg(); as msg) {
-          <p class="text-xs text-theme-secondary" data-testid="optimize-all-msg">{{ msg }}</p>
-        }
-      </div>
+      <!-- Log viewer -->
+      <div>
+        <span class="text-xs font-semibold uppercase tracking-wider text-theme-muted">{{
+          'admin.logs' | t
+        }}</span>
 
-      <!-- Maintenance: full library rescan from disk -->
-      <div class="flex flex-col gap-2 mb-8">
-        <div class="flex items-center gap-3">
-          <button
-            (click)="syncLibrary()"
-            [disabled]="syncing()"
-            data-testid="sync-library"
-            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
-          >
-            {{ (syncing() ? 'admin.rescanning' : 'admin.syncLibrary') | t }}
-          </button>
-          <span class="text-xs text-theme-muted">{{ 'admin.syncLibraryHint' | t }}</span>
-        </div>
-        @if (syncMsg(); as msg) {
-          <p class="text-xs text-theme-secondary" data-testid="sync-library-msg">{{ msg }}</p>
-        }
-      </div>
-
-      <!-- Maintenance: backups. -->
-      <div class="flex flex-col gap-2 mb-8" data-testid="backups-panel">
-        <div class="flex items-center gap-3">
-          <button
-            (click)="runBackup()"
-            [disabled]="backingUp()"
-            data-testid="backup-now"
-            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
-          >
-            {{ (backingUp() ? 'admin.backingUp' : 'admin.backupNow') | t }}
-          </button>
-          <span class="text-xs text-theme-muted">
-            {{ 'admin.backupHint' | t }}
-          </span>
-        </div>
-        @if (backupMsg(); as msg) {
-          <p class="text-xs text-theme-secondary" data-testid="backup-msg">{{ msg }}</p>
-        }
-        @if (backups().length > 0) {
-          <ul class="text-xs text-theme-muted flex flex-col gap-0.5" data-testid="backups-list">
-            @for (b of backups(); track b.name) {
-              <li>
-                <span class="text-theme-secondary">{{ b.name }}</span>
-                — {{ formatBackupSize(b.sizeBytes) }}, {{ formatBackupDate(b.createdAt) }}
-              </li>
-            }
-          </ul>
-        }
-      </div>
-
-      <!-- Maintenance: orphaned side-table rows (issue #259). Reported, not
-               actionable: a daily pass marks orphans and deletes them only after
-               a 30-day grace, so a deleted-then-re-downloaded track keeps its
-               cached embedding. Shown so an admin can see the prune keeping up. -->
-      @if (orphanRowCount() > 0) {
-        <div class="flex flex-col gap-1 mb-8" data-testid="orphan-rows-panel">
-          <p class="text-xs text-theme-secondary">
-            {{
-              (orphanRowCount() === 1 ? 'admin.orphanRowSingular' : 'admin.orphanRowsPlural')
-                | t: { count: orphanRowCount() }
-            }}
-            <span class="text-theme-muted">{{ 'admin.orphanedRowsHint' | t }}</span>
-          </p>
-          <ul class="text-xs text-theme-muted flex flex-col gap-0.5" data-testid="orphan-rows-list">
-            @for (t of orphanRows(); track t.table) {
-              @if (t.orphans > 0) {
-                <li>
-                  <span class="text-theme-secondary">{{ t.table }}</span>
-                  — {{ t.orphans }} {{ 'admin.of' | t }} {{ t.rows }}
-                </li>
-              }
-            }
-          </ul>
-        </div>
-      }
-
-      <!-- Artist portraits: the single biggest visual signal in the Artists
-               grid, and a library can sit half-placeholder indefinitely with no
-               in-app way to see it (issue #250). Read-only overview; the fill
-               itself is the enrichment task / backfill script. Hidden once every
-               visible artist has one, so a healthy install shows nothing. -->
-      @if (artistImages().missing > 0) {
-        <div class="flex flex-col gap-1 mb-8" data-testid="artist-images-panel">
-          <p class="text-xs text-theme-secondary">
-            {{
-              'admin.artistPortraitCoverage'
-                | t: { withPortrait: artistImages().withPortrait, visible: artistImages().visible }
-            }}
-            <span class="text-theme-muted">{{
-              (artistImages().missing === 1
-                ? 'admin.artistPortraitMissingSingular'
-                : 'admin.artistPortraitMissingPlural'
-              ) | t: { missing: artistImages().missing }
-            }}</span>
-          </p>
-          <div
-            class="h-1.5 w-full max-w-xs rounded-full bg-theme-elevated overflow-hidden"
-            role="progressbar"
-            [attr.aria-valuenow]="artistImages().withPortrait"
-            [attr.aria-valuemin]="0"
-            [attr.aria-valuemax]="artistImages().visible"
-            [attr.aria-label]="i18n.t('admin.artistPortraitAriaLabel')"
-          >
-            <div
-              class="h-full bg-theme-accent"
-              data-testid="artist-images-bar"
-              [style.width.%]="artistImageCoverageRatio() * 100"
-            ></div>
-          </div>
-          @if (artistImages().manualOverride > 0) {
-            <p class="text-xs text-theme-muted" data-testid="artist-images-overrides">
-              {{ 'admin.artistImagesOverrides' | t: { count: artistImages().manualOverride } }}
-            </p>
-          }
-        </div>
-      }
-
-      <!-- Deployment-wide acquisition kill-switch (issue #235). Hidden
-               entirely when the server doesn't expose the toggle. -->
-      @if (acquisition(); as acq) {
-        <div class="flex flex-col gap-2 mb-8" data-testid="acquisition-panel">
-          <label class="flex items-center justify-between gap-4">
-            <span class="text-sm text-theme-primary"
-              >{{ 'admin.acquisition' | t }}
-              @if (!acq.configurable) {
-                <span class="block text-xs text-status-warn" data-testid="acquisition-env-locked">
-                  {{ 'admin.acquisitionEnvLocked' | t }}
-                </span>
-              } @else {
-                <span class="block text-xs text-theme-muted">
-                  {{ 'admin.acquisitionHint' | t }}
-                </span>
-              }
-            </span>
-            <input
-              type="checkbox"
-              [checked]="acq.enabled"
-              data-testid="acquisition-toggle"
-              [disabled]="acquisitionSaving() || !acq.configurable"
-              (change)="setAcquisition($any($event.target).checked)"
-              class="w-4 h-4 rounded accent-emerald-500"
-            />
-          </label>
-        </div>
-      }
-
-      <!-- Maintenance: portable config export/import (issue #221). -->
-      <div class="flex flex-col gap-2 mb-8" data-testid="config-panel">
-        <div class="flex items-center gap-3 flex-wrap">
-          <button
-            (click)="exportConfig()"
-            [disabled]="configBusy()"
-            data-testid="config-export"
-            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
-          >
-            {{ 'admin.exportConfiguration' | t }}
-          </button>
-          <label class="text-xs text-theme-muted flex items-center gap-1.5">
-            <input
-              type="checkbox"
-              data-testid="config-export-secrets"
-              [checked]="configWithSecrets()"
-              (change)="configWithSecrets.set($any($event.target).checked)"
-            />
-            {{ 'admin.includeCredentials' | t }}
-          </label>
-          <label
-            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition cursor-pointer"
-          >
-            {{ 'admin.importConfiguration' | t }}
-            <input
-              type="file"
-              accept="application/json,.json"
-              class="hidden"
-              data-testid="config-import-file"
-              (change)="previewImport($event)"
-            />
-          </label>
-        </div>
-        <span class="text-xs text-theme-muted">
-          {{ 'admin.configHint' | t }}
-        </span>
-        @if (configMsg(); as msg) {
-          <p class="text-xs text-theme-secondary" data-testid="config-msg">{{ msg }}</p>
-        }
-
-        <!-- Dry-run preview: nothing is written until this is confirmed. -->
-        @if (importPlan(); as plan) {
-          <div
-            class="rounded-lg bg-theme-surface-2 p-3 flex flex-col gap-2"
-            data-testid="config-import-preview"
-          >
-            <p class="text-xs text-theme-secondary">
-              {{ 'admin.bundleWouldChange' | t }}
-            </p>
-            <ul class="text-xs text-theme-muted flex flex-col gap-0.5">
-              @for (s of plan.sections; track s.section) {
-                <li>
-                  <span class="text-theme-secondary">{{ s.section }}</span>
-                  — {{ 'admin.importPlanCounts' | t: { create: s.create, update: s.update } }}
-                  @if (s.skip) {
-                    {{ 'admin.importPlanSkippedSuffix' | t: { skip: s.skip } }}
-                  }
-                </li>
-              }
-            </ul>
-            @for (w of plan.warnings; track w) {
-              <p class="text-xs text-theme-muted">⚠ {{ w }}</p>
-            }
-            <div class="flex items-center gap-2">
-              <button
-                (click)="applyImport()"
-                [disabled]="configBusy()"
-                data-testid="config-import-apply"
-                class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-accent text-theme-on-accent hover:opacity-90 transition disabled:opacity-50"
-              >
-                {{ 'admin.applyImport' | t }}
-              </button>
-              <button
-                (click)="cancelImport()"
-                data-testid="config-import-cancel"
-                class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface text-theme-secondary hover:bg-theme-hover transition"
-              >
-                {{ 'admin.cancel' | t }}
-              </button>
-            </div>
-          </div>
-        }
-      </div>
-
-      <!-- Automated playlists: cadence + manual generate (issue #228). -->
-      @if (autoPlaylists(); as ap) {
-        <div class="flex flex-col gap-2 mb-8" data-testid="auto-playlists-panel">
-          <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex gap-2 mb-3 flex-wrap mt-3" appTvNavGroup axis="horizontal">
+          @for (svc of logServiceOptions; track svc) {
             <button
-              (click)="refreshAutoPlaylists()"
-              [disabled]="autoPlaylistsBusy()"
-              data-testid="auto-playlists-generate"
-              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+              appTvNavItem
+              (click)="selectLogService(svc)"
+              [class]="
+                selectedService() === svc
+                  ? 'px-3 py-1 rounded text-sm font-medium bg-theme-accent text-theme-on-accent'
+                  : 'px-3 py-1 rounded text-sm font-medium bg-theme-surface text-theme-muted hover:text-theme-primary'
+              "
             >
-              {{ (autoPlaylistsBusy() ? 'admin.generating' : 'admin.generateNow') | t }}
+              {{ svc }}
             </button>
-            <label class="text-xs text-theme-muted flex items-center gap-2">
-              {{ 'admin.refresh' | t }}
-              <select
-                data-testid="auto-playlists-cadence"
-                [value]="ap.cadence"
-                (change)="setAutoPlaylistCadence($any($event.target).value)"
-                class="px-2 py-1 rounded-lg bg-theme-surface-2 text-theme-secondary text-xs"
-              >
-                <option value="off">{{ 'admin.off' | t }}</option>
-                <option value="daily">{{ 'admin.daily' | t }}</option>
-                <option value="weekly">{{ 'admin.weekly' | t }}</option>
-              </select>
-            </label>
-            <span class="text-xs text-theme-muted" data-testid="auto-playlists-refreshed">
-              {{ 'admin.lastRefreshed' | t: { date: formatRefreshedAt(ap.lastRefreshedAt) } }}
-            </span>
-          </div>
-          @if (autoPlaylistsMsg(); as msg) {
-            <p class="text-xs text-theme-secondary" data-testid="auto-playlists-msg">{{ msg }}</p>
           }
         </div>
-      }
 
-      <!-- Maintenance: library fragmentation diagnostic (manual action). -->
-      <div class="flex flex-col gap-2 mb-8" data-testid="library-fragments">
-        <div class="flex items-center gap-3">
-          <button
-            (click)="loadFragments()"
-            [disabled]="loadingFragments()"
-            data-testid="fragments-check"
-            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
-          >
-            {{ (loadingFragments() ? 'admin.checking' : 'admin.checkFragmentation') | t }}
-          </button>
-          <span class="text-xs text-theme-muted">
-            {{ 'admin.fragmentationHint' | t }}
-          </span>
-        </div>
-        @if (fragments(); as r) {
-          @if (r.ok) {
-            <p class="text-xs text-theme-secondary" data-testid="fragments-ok">
-              {{ 'admin.noFragmentation' | t }}
-            </p>
-          } @else {
-            <div
-              class="rounded-lg border border-theme bg-theme-surface-2 p-3 space-y-3"
-              data-testid="fragments-report"
+        <div class="text-xs mb-2">
+          @if (logStreamStatus() === 'connecting') {
+            <span class="text-status-warn">{{ 'admin.reconnecting' | t }}</span>
+          } @else if (logStreamStatus() === 'connected') {
+            <span class="text-status-done">{{ 'admin.live' | t }}</span>
+          } @else if (logStreamStatus() === 'disconnected') {
+            <span class="text-status-error"
+              >{{ 'admin.disconnected' | t }}
+              <button class="underline" (click)="connectLogStream()">
+                {{ 'admin.reconnect' | t }}
+              </button></span
             >
-              @if (r.duplicateAlbums.length > 0) {
-                <div>
-                  <p class="text-xs font-semibold text-theme-primary">
-                    {{ 'admin.duplicateAlbumsHeading' | t: { count: r.duplicateAlbums.length } }}
-                  </p>
-                  <ul class="mt-1 ml-4 list-disc text-xs text-theme-secondary space-y-0.5">
-                    @for (c of r.duplicateAlbums; track c.normalizedTitle) {
-                      <li>
-                        <span class="text-theme-primary">"{{ c.displayTitle }}"</span> —
-                        {{
-                          'admin.duplicateAlbumRow'
-                            | t: { rows: c.memberIds.length, totalSongs: c.totalSongs }
-                        }}
-                        @for (s of c.artistSpellings; track s.name; let last = $last) {
-                          <span class="text-theme-muted">{{ s.name }} ({{ s.occurrences }})</span
-                          >{{ last ? '' : ', ' }}
-                        }
-                      </li>
-                    }
-                  </ul>
-                </div>
-              }
-              @if (r.hiddenByClassification.length > 0) {
-                <div>
-                  <p class="text-xs font-semibold text-theme-primary">
-                    {{
-                      'admin.hiddenAlbumsHeading' | t: { count: r.hiddenByClassification.length }
-                    }}
-                  </p>
-                  <ul class="mt-1 ml-4 list-disc text-xs text-theme-secondary space-y-0.5">
-                    @for (h of r.hiddenByClassification; track h.albumId) {
-                      <li>
-                        <span class="text-theme-primary">"{{ h.name }}"</span> —
-                        {{ h.artist }}
-                        <span class="text-theme-muted">
-                          @switch (h.reason) {
-                            @case ('oversized') {
-                              {{
-                                'admin.reasonOversized'
-                                  | t: { songCount: h.songCount, classification: h.classification }
-                              }}
-                            }
-                            @case ('unknown') {
-                              {{ 'admin.reasonUnknown' | t }}
-                            }
-                            @default {
-                              {{ 'admin.reasonHiddenByCurator' | t }}
-                            }
-                          }
-                        </span>
-                      </li>
-                    }
-                  </ul>
-                </div>
-              }
-            </div>
           }
-        }
-        @if (fragmentsError(); as err) {
-          <p class="text-xs text-red-400" data-testid="fragments-error">{{ err }}</p>
-        }
+        </div>
+
+        <div
+          class="log-scroll-container bg-theme-surface rounded p-3 h-80 overflow-y-auto font-mono text-xs text-theme-muted"
+        >
+          @if (logLines().length === 0) {
+            <div class="text-theme-muted/50">{{ 'admin.waitingForLogs' | t }}</div>
+          } @else {
+            @for (line of logLines(); track $index) {
+              <div class="whitespace-pre-wrap break-all leading-relaxed">{{ line }}</div>
+            }
+          }
+        </div>
       </div>
+    </app-admin-group>
 
-      <!-- Streaming / transcoding -->
-      <section
-        class="rounded-xl border border-theme bg-theme-surface p-6 mb-8"
-        data-testid="streaming-panel"
-      >
-        <h3 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">
-          {{ 'admin.streaming' | t }}
-        </h3>
-        @if (streaming(); as s) {
-          <div class="space-y-4">
-            <label class="flex items-center justify-between gap-4">
-              <span class="text-sm text-theme-primary"
-                >{{ 'admin.transcodeOnTheFly' | t }}
-                @if (s.ffmpegAvailable === false) {
-                  <span class="block text-xs text-status-warn">{{
-                    'admin.ffmpegNotFound' | t
-                  }}</span>
-                } @else {
-                  <span class="block text-xs text-theme-muted">{{
-                    'admin.transcodeHint' | t
-                  }}</span>
-                }
-              </span>
-              <input
-                type="checkbox"
-                [checked]="s.transcodeEnabled"
-                [disabled]="streamingSaving() || s.ffmpegAvailable === false"
-                (change)="saveStreaming({ transcodeEnabled: $any($event.target).checked })"
-                class="w-4 h-4 rounded accent-emerald-500"
-              />
-            </label>
-
-            @if (s.transcodeEnabled) {
-              <label class="flex items-center justify-between gap-4">
-                <span class="text-sm text-theme-primary">{{ 'admin.format' | t }}</span>
-                <select
-                  [value]="s.format"
-                  [disabled]="streamingSaving()"
-                  (change)="saveStreaming({ format: $any($event.target).value })"
-                  class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary"
-                >
-                  <option value="mp3">MP3</option>
-                  <option value="opus">Opus</option>
-                  <option value="aac">AAC</option>
-                </select>
-              </label>
-
-              <label class="flex items-center justify-between gap-4">
-                <span class="text-sm text-theme-primary">{{ 'admin.maxBitrate' | t }}</span>
-                <select
-                  [value]="s.maxBitRate"
-                  [disabled]="streamingSaving()"
-                  (change)="saveStreaming({ maxBitRate: +$any($event.target).value })"
-                  class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary"
-                >
-                  <option [value]="96">96</option>
-                  <option [value]="128">128</option>
-                  <option [value]="192">192</option>
-                  <option [value]="256">256</option>
-                  <option [value]="320">320</option>
-                </select>
-              </label>
-
-              <label class="flex items-center justify-between gap-4">
-                <span class="text-sm text-theme-primary"
-                  >{{ 'admin.alwaysTranscode' | t }}
-                  <span class="block text-xs text-theme-muted">{{
-                    'admin.alwaysTranscodeHint' | t
-                  }}</span>
-                </span>
-                <input
-                  type="checkbox"
-                  [checked]="s.forceTranscode"
-                  [disabled]="streamingSaving()"
-                  (change)="saveStreaming({ forceTranscode: $any($event.target).checked })"
-                  class="w-4 h-4 rounded accent-emerald-500"
-                />
-              </label>
-            }
-
-            @if (streamingMessage(); as m) {
-              <p
-                class="text-xs"
-                [class.text-status-done]="m.type === 'success'"
-                [class.text-status-error]="m.type === 'error'"
-              >
-                {{ m.text }}
-              </p>
-            }
-          </div>
-        }
-      </section>
-
+    <app-admin-group
+      groupId="library-processing"
+      [defaultOpen]="true"
+      icon="sliders"
+      [title]="'admin.libraryProcessing' | t"
+      [description]="'admin.groupLibraryProcessingDesc' | t"
+    >
       <!-- Library processing (settings + SSE live progress) -->
       <section
         class="rounded-xl border border-theme bg-theme-surface p-6 mb-8"
         data-testid="processing-panel"
       >
-        <h3 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-2">
-          {{ 'admin.libraryProcessing' | t }}
-        </h3>
         <p class="text-xs text-theme-muted mb-5">{{ 'admin.libraryProcessingHint' | t }}</p>
         @if (processing(); as p) {
           <div class="space-y-4">
@@ -1080,63 +467,206 @@
           </div>
         }
       </section>
+    </app-admin-group>
 
-      <!-- Log viewer -->
-      <div>
-        <span class="text-xs font-semibold uppercase tracking-wider text-theme-muted">{{
-          'admin.logs' | t
-        }}</span>
-
-        <div class="flex gap-2 mb-3 flex-wrap mt-3" appTvNavGroup axis="horizontal">
-          @for (svc of logServiceOptions; track svc) {
-            <button
-              appTvNavItem
-              (click)="selectLogService(svc)"
-              [class]="
-                selectedService() === svc
-                  ? 'px-3 py-1 rounded text-sm font-medium bg-theme-accent text-theme-on-accent'
-                  : 'px-3 py-1 rounded text-sm font-medium bg-theme-surface text-theme-muted hover:text-theme-primary'
-              "
-            >
-              {{ svc }}
-            </button>
-          }
+    <app-admin-group
+      groupId="library-maintenance"
+      icon="wrench"
+      [title]="'admin.libraryMaintenance' | t"
+      [description]="'admin.groupLibraryMaintenanceDesc' | t"
+    >
+      <!-- Maintenance: library-wide metadata optimization -->
+      <div class="flex flex-col gap-2 mb-8">
+        <div class="flex items-center gap-3">
+          <button
+            (click)="optimizeAllMetadata()"
+            [disabled]="optimizingMetadata()"
+            data-testid="optimize-all-metadata"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+          >
+            {{ (optimizingMetadata() ? 'admin.optimizing' : 'admin.optimizeMetadata') | t }}
+          </button>
+          <span class="text-xs text-theme-muted">{{ 'admin.optimizeMetadataHint' | t }}</span>
         </div>
-
-        <div class="text-xs mb-2">
-          @if (logStreamStatus() === 'connecting') {
-            <span class="text-status-warn">{{ 'admin.reconnecting' | t }}</span>
-          } @else if (logStreamStatus() === 'connected') {
-            <span class="text-status-done">{{ 'admin.live' | t }}</span>
-          } @else if (logStreamStatus() === 'disconnected') {
-            <span class="text-status-error"
-              >{{ 'admin.disconnected' | t }}
-              <button class="underline" (click)="connectLogStream()">
-                {{ 'admin.reconnect' | t }}
-              </button></span
-            >
-          }
-        </div>
-
-        <div
-          class="log-scroll-container bg-theme-surface rounded p-3 h-80 overflow-y-auto font-mono text-xs text-theme-muted"
-        >
-          @if (logLines().length === 0) {
-            <div class="text-theme-muted/50">{{ 'admin.waitingForLogs' | t }}</div>
-          } @else {
-            @for (line of logLines(); track $index) {
-              <div class="whitespace-pre-wrap break-all leading-relaxed">{{ line }}</div>
-            }
-          }
-        </div>
+        @if (optimizeMetadataMsg(); as msg) {
+          <p class="text-xs text-theme-secondary" data-testid="optimize-all-msg">{{ msg }}</p>
+        }
       </div>
-    </div>
 
-    <!-- Library Maintenance: Find Duplicates (moved from Settings) -->
-    <div>
-      <h2 class="text-xl font-bold text-theme-primary mb-8">
-        {{ 'admin.libraryMaintenance' | t }}
-      </h2>
+      <!-- Maintenance: full library rescan from disk -->
+      <div class="flex flex-col gap-2 mb-8">
+        <div class="flex items-center gap-3">
+          <button
+            (click)="syncLibrary()"
+            [disabled]="syncing()"
+            data-testid="sync-library"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+          >
+            {{ (syncing() ? 'admin.rescanning' : 'admin.syncLibrary') | t }}
+          </button>
+          <span class="text-xs text-theme-muted">{{ 'admin.syncLibraryHint' | t }}</span>
+        </div>
+        @if (syncMsg(); as msg) {
+          <p class="text-xs text-theme-secondary" data-testid="sync-library-msg">{{ msg }}</p>
+        }
+      </div>
+
+      <!-- Maintenance: orphaned side-table rows (issue #259). Reported, not
+               actionable: a daily pass marks orphans and deletes them only after
+               a 30-day grace, so a deleted-then-re-downloaded track keeps its
+               cached embedding. Shown so an admin can see the prune keeping up. -->
+      @if (orphanRowCount() > 0) {
+        <div class="flex flex-col gap-1 mb-8" data-testid="orphan-rows-panel">
+          <p class="text-xs text-theme-secondary">
+            {{
+              (orphanRowCount() === 1 ? 'admin.orphanRowSingular' : 'admin.orphanRowsPlural')
+                | t: { count: orphanRowCount() }
+            }}
+            <span class="text-theme-muted">{{ 'admin.orphanedRowsHint' | t }}</span>
+          </p>
+          <ul class="text-xs text-theme-muted flex flex-col gap-0.5" data-testid="orphan-rows-list">
+            @for (t of orphanRows(); track t.table) {
+              @if (t.orphans > 0) {
+                <li>
+                  <span class="text-theme-secondary">{{ t.table }}</span>
+                  — {{ t.orphans }} {{ 'admin.of' | t }} {{ t.rows }}
+                </li>
+              }
+            }
+          </ul>
+        </div>
+      }
+
+      <!-- Artist portraits: the single biggest visual signal in the Artists
+               grid, and a library can sit half-placeholder indefinitely with no
+               in-app way to see it (issue #250). Read-only overview; the fill
+               itself is the enrichment task / backfill script. Hidden once every
+               visible artist has one, so a healthy install shows nothing. -->
+      @if (artistImages().missing > 0) {
+        <div class="flex flex-col gap-1 mb-8" data-testid="artist-images-panel">
+          <p class="text-xs text-theme-secondary">
+            {{
+              'admin.artistPortraitCoverage'
+                | t: { withPortrait: artistImages().withPortrait, visible: artistImages().visible }
+            }}
+            <span class="text-theme-muted">{{
+              (artistImages().missing === 1
+                ? 'admin.artistPortraitMissingSingular'
+                : 'admin.artistPortraitMissingPlural'
+              ) | t: { missing: artistImages().missing }
+            }}</span>
+          </p>
+          <div
+            class="h-1.5 w-full max-w-xs rounded-full bg-theme-elevated overflow-hidden"
+            role="progressbar"
+            [attr.aria-valuenow]="artistImages().withPortrait"
+            [attr.aria-valuemin]="0"
+            [attr.aria-valuemax]="artistImages().visible"
+            [attr.aria-label]="i18n.t('admin.artistPortraitAriaLabel')"
+          >
+            <div
+              class="h-full bg-theme-accent"
+              data-testid="artist-images-bar"
+              [style.width.%]="artistImageCoverageRatio() * 100"
+            ></div>
+          </div>
+          @if (artistImages().manualOverride > 0) {
+            <p class="text-xs text-theme-muted" data-testid="artist-images-overrides">
+              {{ 'admin.artistImagesOverrides' | t: { count: artistImages().manualOverride } }}
+            </p>
+          }
+        </div>
+      }
+
+      <!-- Maintenance: library fragmentation diagnostic (manual action). -->
+      <div class="flex flex-col gap-2 mb-8" data-testid="library-fragments">
+        <div class="flex items-center gap-3">
+          <button
+            (click)="loadFragments()"
+            [disabled]="loadingFragments()"
+            data-testid="fragments-check"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+          >
+            {{ (loadingFragments() ? 'admin.checking' : 'admin.checkFragmentation') | t }}
+          </button>
+          <span class="text-xs text-theme-muted">
+            {{ 'admin.fragmentationHint' | t }}
+          </span>
+        </div>
+        @if (fragments(); as r) {
+          @if (r.ok) {
+            <p class="text-xs text-theme-secondary" data-testid="fragments-ok">
+              {{ 'admin.noFragmentation' | t }}
+            </p>
+          } @else {
+            <div
+              class="rounded-lg border border-theme bg-theme-surface-2 p-3 space-y-3"
+              data-testid="fragments-report"
+            >
+              @if (r.duplicateAlbums.length > 0) {
+                <div>
+                  <p class="text-xs font-semibold text-theme-primary">
+                    {{ 'admin.duplicateAlbumsHeading' | t: { count: r.duplicateAlbums.length } }}
+                  </p>
+                  <ul class="mt-1 ml-4 list-disc text-xs text-theme-secondary space-y-0.5">
+                    @for (c of r.duplicateAlbums; track c.normalizedTitle) {
+                      <li>
+                        <span class="text-theme-primary">"{{ c.displayTitle }}"</span> —
+                        {{
+                          'admin.duplicateAlbumRow'
+                            | t: { rows: c.memberIds.length, totalSongs: c.totalSongs }
+                        }}
+                        @for (s of c.artistSpellings; track s.name; let last = $last) {
+                          <span class="text-theme-muted">{{ s.name }} ({{ s.occurrences }})</span
+                          >{{ last ? '' : ', ' }}
+                        }
+                      </li>
+                    }
+                  </ul>
+                </div>
+              }
+              @if (r.hiddenByClassification.length > 0) {
+                <div>
+                  <p class="text-xs font-semibold text-theme-primary">
+                    {{
+                      'admin.hiddenAlbumsHeading' | t: { count: r.hiddenByClassification.length }
+                    }}
+                  </p>
+                  <ul class="mt-1 ml-4 list-disc text-xs text-theme-secondary space-y-0.5">
+                    @for (h of r.hiddenByClassification; track h.albumId) {
+                      <li>
+                        <span class="text-theme-primary">"{{ h.name }}"</span> —
+                        {{ h.artist }}
+                        <span class="text-theme-muted">
+                          @switch (h.reason) {
+                            @case ('oversized') {
+                              {{
+                                'admin.reasonOversized'
+                                  | t: { songCount: h.songCount, classification: h.classification }
+                              }}
+                            }
+                            @case ('unknown') {
+                              {{ 'admin.reasonUnknown' | t }}
+                            }
+                            @default {
+                              {{ 'admin.reasonHiddenByCurator' | t }}
+                            }
+                          }
+                        </span>
+                      </li>
+                    }
+                  </ul>
+                </div>
+              }
+            </div>
+          }
+        }
+        @if (fragmentsError(); as err) {
+          <p class="text-xs text-red-400" data-testid="fragments-error">{{ err }}</p>
+        }
+      </div>
+
+      <!-- Library Maintenance: Find Duplicates (moved from Settings) -->
       <section
         class="rounded-xl border border-theme bg-theme-surface p-6"
         data-testid="duplicates-panel"
@@ -1226,168 +756,680 @@
           </div>
         }
       </section>
-    </div>
 
-    <!-- Incomplete Albums (snapshot-based via ServiceReview). -->
-    <div>
-      <div class="flex items-center justify-between mb-8">
-        <h2 class="text-xl font-bold text-theme-primary">{{ 'admin.incompleteAlbums' | t }}</h2>
-        <button
-          (click)="reviewSvc.refresh()"
-          class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition"
-        >
-          {{ 'admin.refresh' | t }}
-        </button>
+      <!-- Incomplete Albums (snapshot-based via ServiceReview). -->
+      <div>
+        <div class="flex items-center justify-between mb-8">
+          <h2 class="text-xl font-bold text-theme-primary">{{ 'admin.incompleteAlbums' | t }}</h2>
+          <button
+            (click)="reviewSvc.refresh()"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition"
+          >
+            {{ 'admin.refresh' | t }}
+          </button>
+        </div>
+
+        @if (incompleteJobsCount() === 0 && incompleteJobs().length === 0) {
+          <p class="text-theme-muted text-sm">{{ 'admin.noIncompleteHunts' | t }}</p>
+        } @else if (incompleteJobs().length === 0) {
+          <p class="text-theme-muted text-sm">{{ 'admin.loadingAlbumJobs' | t }}</p>
+        } @else {
+          <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-theme">
+                  <th
+                    class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+                  >
+                    {{ 'admin.colAlbum' | t }}
+                  </th>
+                  <th
+                    class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+                  >
+                    {{ 'admin.colState' | t }}
+                  </th>
+                  <th
+                    class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
+                  >
+                    {{ 'admin.colAttempts' | t }}
+                  </th>
+                  <th
+                    class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
+                  >
+                    {{ 'admin.colCreated' | t }}
+                  </th>
+                  <th
+                    class="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+                  >
+                    {{ 'admin.colActions' | t }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (job of incompleteJobs(); track job.id) {
+                  <tr class="border-b border-theme last:border-0">
+                    <td class="px-4 py-3 text-theme-primary">
+                      <div class="font-medium">{{ job.albumTitle ?? job.directory }}</div>
+                      @if (job.artistName) {
+                        <div class="text-xs text-theme-muted">{{ job.artistName }}</div>
+                      }
+                    </td>
+                    <td class="px-4 py-3">
+                      <span [class]="'text-xs font-medium ' + jobStateClass(job.state)">{{
+                        job.state
+                      }}</span>
+                    </td>
+                    <td class="px-4 py-3 text-theme-muted text-xs hidden sm:table-cell">
+                      {{ job.fallbackAttempts }}
+                    </td>
+                    <td class="px-4 py-3 text-theme-muted text-xs hidden sm:table-cell">
+                      {{ formatTimestamp(job.createdAt) }}
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                      <button
+                        (click)="retryHunt(job)"
+                        [disabled]="job.lidarrAlbumId == null"
+                        [title]="
+                          job.lidarrAlbumId == null
+                            ? i18n.t('admin.noLidarrAlbumId')
+                            : i18n.t('admin.rehuntAlbum')
+                        "
+                        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-inverse text-theme-inverse hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {{ 'admin.retryHunt' | t }}
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </section>
+        }
       </div>
 
-      @if (incompleteJobsCount() === 0 && incompleteJobs().length === 0) {
-        <p class="text-theme-muted text-sm">{{ 'admin.noIncompleteHunts' | t }}</p>
-      } @else if (incompleteJobs().length === 0) {
-        <p class="text-theme-muted text-sm">{{ 'admin.loadingAlbumJobs' | t }}</p>
-      } @else {
-        <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-theme">
-                <th
-                  class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-                >
-                  {{ 'admin.colAlbum' | t }}
-                </th>
-                <th
-                  class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-                >
-                  {{ 'admin.colState' | t }}
-                </th>
-                <th
-                  class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
-                >
-                  {{ 'admin.colAttempts' | t }}
-                </th>
-                <th
-                  class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
-                >
-                  {{ 'admin.colCreated' | t }}
-                </th>
-                <th
-                  class="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-                >
-                  {{ 'admin.colActions' | t }}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (job of incompleteJobs(); track job.id) {
-                <tr class="border-b border-theme last:border-0">
-                  <td class="px-4 py-3 text-theme-primary">
-                    <div class="font-medium">{{ job.albumTitle ?? job.directory }}</div>
-                    @if (job.artistName) {
-                      <div class="text-xs text-theme-muted">{{ job.artistName }}</div>
-                    }
-                  </td>
-                  <td class="px-4 py-3">
-                    <span [class]="'text-xs font-medium ' + jobStateClass(job.state)">{{
-                      job.state
-                    }}</span>
-                  </td>
-                  <td class="px-4 py-3 text-theme-muted text-xs hidden sm:table-cell">
-                    {{ job.fallbackAttempts }}
-                  </td>
-                  <td class="px-4 py-3 text-theme-muted text-xs hidden sm:table-cell">
-                    {{ formatTimestamp(job.createdAt) }}
-                  </td>
-                  <td class="px-4 py-3 text-right">
-                    <button
-                      (click)="retryHunt(job)"
-                      [disabled]="job.lidarrAlbumId == null"
-                      [title]="
-                        job.lidarrAlbumId == null
-                          ? i18n.t('admin.noLidarrAlbumId')
-                          : i18n.t('admin.rehuntAlbum')
-                      "
-                      class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-inverse text-theme-inverse hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      {{ 'admin.retryHunt' | t }}
-                    </button>
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </section>
-      }
-    </div>
+      <!-- Untracked Downloads (snapshot-based via ServiceReview). -->
+      <div>
+        <div class="flex items-center justify-between mb-8">
+          <h2 class="text-xl font-bold text-theme-primary">
+            {{ 'admin.untrackedDownloads' | t }}
+            @if (untrackedCount() > 0) {
+              <span class="ml-2 text-sm font-normal text-theme-muted">{{
+                'admin.totalCount' | t: { count: untrackedCount() }
+              }}</span>
+            }
+          </h2>
+          <button
+            (click)="reviewSvc.refresh()"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition"
+          >
+            {{ 'admin.refresh' | t }}
+          </button>
+        </div>
 
-    <!-- Untracked Downloads (snapshot-based via ServiceReview). -->
-    <div>
-      <div class="flex items-center justify-between mb-8">
-        <h2 class="text-xl font-bold text-theme-primary">
-          {{ 'admin.untrackedDownloads' | t }}
-          @if (untrackedCount() > 0) {
-            <span class="ml-2 text-sm font-normal text-theme-muted">{{
-              'admin.totalCount' | t: { count: untrackedCount() }
-            }}</span>
+        <p class="text-xs text-theme-muted mb-4">
+          {{ 'admin.untrackedHintPrefix' | t }}
+          <code class="px-1 py-0.5 rounded bg-theme-surface-2 text-theme-secondary"
+            >bun run packages/api/src/scripts/backfill-untracked.ts --apply</code
+          >
+          {{ 'admin.untrackedHintSuffix' | t }}
+        </p>
+
+        @if (untracked().length === 0 && untrackedCount() === 0) {
+          <p class="text-theme-muted text-sm">{{ 'admin.noUntrackedDownloads' | t }}</p>
+        } @else if (untracked().length === 0) {
+          <p class="text-theme-muted text-sm">{{ 'admin.loadingUntracked' | t }}</p>
+        } @else {
+          <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-theme">
+                  <th
+                    class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+                  >
+                    {{ 'admin.colFile' | t }}
+                  </th>
+                  <th
+                    class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
+                  >
+                    {{ 'admin.colPeerFolder' | t }}
+                  </th>
+                  <th
+                    class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
+                  >
+                    {{ 'admin.colCompleted' | t }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of untracked(); track row.transferKey) {
+                  <tr class="border-b border-theme last:border-0">
+                    <td class="px-4 py-3 text-theme-secondary break-all">{{ row.filename }}</td>
+                    <td class="px-4 py-3 text-theme-muted text-xs hidden sm:table-cell break-all">
+                      {{ row.directory }}
+                    </td>
+                    <td class="px-4 py-3 text-theme-muted text-xs hidden sm:table-cell">
+                      {{ formatTimestamp(row.completedAt) }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </section>
+        }
+      </div>
+    </app-admin-group>
+
+    <app-admin-group
+      groupId="streaming-media"
+      icon="headphones"
+      [title]="'admin.groupStreamingMediaTitle' | t"
+      [description]="'admin.groupStreamingMediaDesc' | t"
+    >
+      <!-- Streaming / transcoding -->
+      <section
+        class="rounded-xl border border-theme bg-theme-surface p-6 mb-8"
+        data-testid="streaming-panel"
+      >
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">
+          {{ 'admin.streaming' | t }}
+        </h3>
+        @if (streaming(); as s) {
+          <div class="space-y-4">
+            <label class="flex items-center justify-between gap-4">
+              <span class="text-sm text-theme-primary"
+                >{{ 'admin.transcodeOnTheFly' | t }}
+                @if (s.ffmpegAvailable === false) {
+                  <span class="block text-xs text-status-warn">{{
+                    'admin.ffmpegNotFound' | t
+                  }}</span>
+                } @else {
+                  <span class="block text-xs text-theme-muted">{{
+                    'admin.transcodeHint' | t
+                  }}</span>
+                }
+              </span>
+              <input
+                type="checkbox"
+                [checked]="s.transcodeEnabled"
+                [disabled]="streamingSaving() || s.ffmpegAvailable === false"
+                (change)="saveStreaming({ transcodeEnabled: $any($event.target).checked })"
+                class="w-4 h-4 rounded accent-emerald-500"
+              />
+            </label>
+
+            @if (s.transcodeEnabled) {
+              <label class="flex items-center justify-between gap-4">
+                <span class="text-sm text-theme-primary">{{ 'admin.format' | t }}</span>
+                <select
+                  [value]="s.format"
+                  [disabled]="streamingSaving()"
+                  (change)="saveStreaming({ format: $any($event.target).value })"
+                  class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary"
+                >
+                  <option value="mp3">MP3</option>
+                  <option value="opus">Opus</option>
+                  <option value="aac">AAC</option>
+                </select>
+              </label>
+
+              <label class="flex items-center justify-between gap-4">
+                <span class="text-sm text-theme-primary">{{ 'admin.maxBitrate' | t }}</span>
+                <select
+                  [value]="s.maxBitRate"
+                  [disabled]="streamingSaving()"
+                  (change)="saveStreaming({ maxBitRate: +$any($event.target).value })"
+                  class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary"
+                >
+                  <option [value]="96">96</option>
+                  <option [value]="128">128</option>
+                  <option [value]="192">192</option>
+                  <option [value]="256">256</option>
+                  <option [value]="320">320</option>
+                </select>
+              </label>
+
+              <label class="flex items-center justify-between gap-4">
+                <span class="text-sm text-theme-primary"
+                  >{{ 'admin.alwaysTranscode' | t }}
+                  <span class="block text-xs text-theme-muted">{{
+                    'admin.alwaysTranscodeHint' | t
+                  }}</span>
+                </span>
+                <input
+                  type="checkbox"
+                  [checked]="s.forceTranscode"
+                  [disabled]="streamingSaving()"
+                  (change)="saveStreaming({ forceTranscode: $any($event.target).checked })"
+                  class="w-4 h-4 rounded accent-emerald-500"
+                />
+              </label>
+            }
+
+            @if (streamingMessage(); as m) {
+              <p
+                class="text-xs"
+                [class.text-status-done]="m.type === 'success'"
+                [class.text-status-error]="m.type === 'error'"
+              >
+                {{ m.text }}
+              </p>
+            }
+          </div>
+        }
+      </section>
+    </app-admin-group>
+
+    <app-admin-group
+      groupId="backups-data"
+      icon="database"
+      [title]="'admin.groupBackupsDataTitle' | t"
+      [description]="'admin.groupBackupsDataDesc' | t"
+    >
+      <!-- Maintenance: backups. -->
+      <div class="flex flex-col gap-2 mb-8" data-testid="backups-panel">
+        <div class="flex items-center gap-3">
+          <button
+            (click)="runBackup()"
+            [disabled]="backingUp()"
+            data-testid="backup-now"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+          >
+            {{ (backingUp() ? 'admin.backingUp' : 'admin.backupNow') | t }}
+          </button>
+          <span class="text-xs text-theme-muted">
+            {{ 'admin.backupHint' | t }}
+          </span>
+        </div>
+        @if (backupMsg(); as msg) {
+          <p class="text-xs text-theme-secondary" data-testid="backup-msg">{{ msg }}</p>
+        }
+        @if (backups().length > 0) {
+          <ul class="text-xs text-theme-muted flex flex-col gap-0.5" data-testid="backups-list">
+            @for (b of backups(); track b.name) {
+              <li>
+                <span class="text-theme-secondary">{{ b.name }}</span>
+                — {{ formatBackupSize(b.sizeBytes) }}, {{ formatBackupDate(b.createdAt) }}
+              </li>
+            }
+          </ul>
+        }
+      </div>
+
+      <!-- Maintenance: portable config export/import (issue #221). -->
+      <div class="flex flex-col gap-2 mb-8" data-testid="config-panel">
+        <div class="flex items-center gap-3 flex-wrap">
+          <button
+            (click)="exportConfig()"
+            [disabled]="configBusy()"
+            data-testid="config-export"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+          >
+            {{ 'admin.exportConfiguration' | t }}
+          </button>
+          <label class="text-xs text-theme-muted flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              data-testid="config-export-secrets"
+              [checked]="configWithSecrets()"
+              (change)="configWithSecrets.set($any($event.target).checked)"
+            />
+            {{ 'admin.includeCredentials' | t }}
+          </label>
+          <label
+            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition cursor-pointer"
+          >
+            {{ 'admin.importConfiguration' | t }}
+            <input
+              type="file"
+              accept="application/json,.json"
+              class="hidden"
+              data-testid="config-import-file"
+              (change)="previewImport($event)"
+            />
+          </label>
+        </div>
+        <span class="text-xs text-theme-muted">
+          {{ 'admin.configHint' | t }}
+        </span>
+        @if (configMsg(); as msg) {
+          <p class="text-xs text-theme-secondary" data-testid="config-msg">{{ msg }}</p>
+        }
+
+        <!-- Dry-run preview: nothing is written until this is confirmed. -->
+        @if (importPlan(); as plan) {
+          <div
+            class="rounded-lg bg-theme-surface-2 p-3 flex flex-col gap-2"
+            data-testid="config-import-preview"
+          >
+            <p class="text-xs text-theme-secondary">
+              {{ 'admin.bundleWouldChange' | t }}
+            </p>
+            <ul class="text-xs text-theme-muted flex flex-col gap-0.5">
+              @for (s of plan.sections; track s.section) {
+                <li>
+                  <span class="text-theme-secondary">{{ s.section }}</span>
+                  — {{ 'admin.importPlanCounts' | t: { create: s.create, update: s.update } }}
+                  @if (s.skip) {
+                    {{ 'admin.importPlanSkippedSuffix' | t: { skip: s.skip } }}
+                  }
+                </li>
+              }
+            </ul>
+            @for (w of plan.warnings; track w) {
+              <p class="text-xs text-theme-muted">⚠ {{ w }}</p>
+            }
+            <div class="flex items-center gap-2">
+              <button
+                (click)="applyImport()"
+                [disabled]="configBusy()"
+                data-testid="config-import-apply"
+                class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-accent text-theme-on-accent hover:opacity-90 transition disabled:opacity-50"
+              >
+                {{ 'admin.applyImport' | t }}
+              </button>
+              <button
+                (click)="cancelImport()"
+                data-testid="config-import-cancel"
+                class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface text-theme-secondary hover:bg-theme-hover transition"
+              >
+                {{ 'admin.cancel' | t }}
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    </app-admin-group>
+
+    <app-admin-group
+      groupId="acquisition-automation"
+      icon="download"
+      [title]="'admin.groupAcquisitionAutomationTitle' | t"
+      [description]="'admin.groupAcquisitionAutomationDesc' | t"
+    >
+      <!-- Deployment-wide acquisition kill-switch (issue #235). Hidden
+               entirely when the server doesn't expose the toggle. -->
+      @if (acquisition(); as acq) {
+        <div class="flex flex-col gap-2 mb-8" data-testid="acquisition-panel">
+          <label class="flex items-center justify-between gap-4">
+            <span class="text-sm text-theme-primary"
+              >{{ 'admin.acquisition' | t }}
+              @if (!acq.configurable) {
+                <span class="block text-xs text-status-warn" data-testid="acquisition-env-locked">
+                  {{ 'admin.acquisitionEnvLocked' | t }}
+                </span>
+              } @else {
+                <span class="block text-xs text-theme-muted">
+                  {{ 'admin.acquisitionHint' | t }}
+                </span>
+              }
+            </span>
+            <input
+              type="checkbox"
+              [checked]="acq.enabled"
+              data-testid="acquisition-toggle"
+              [disabled]="acquisitionSaving() || !acq.configurable"
+              (change)="setAcquisition($any($event.target).checked)"
+              class="w-4 h-4 rounded accent-emerald-500"
+            />
+          </label>
+        </div>
+      }
+
+      <!-- Automated playlists: cadence + manual generate (issue #228). -->
+      @if (autoPlaylists(); as ap) {
+        <div class="flex flex-col gap-2 mb-8" data-testid="auto-playlists-panel">
+          <div class="flex items-center gap-3 flex-wrap">
+            <button
+              (click)="refreshAutoPlaylists()"
+              [disabled]="autoPlaylistsBusy()"
+              data-testid="auto-playlists-generate"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+            >
+              {{ (autoPlaylistsBusy() ? 'admin.generating' : 'admin.generateNow') | t }}
+            </button>
+            <label class="text-xs text-theme-muted flex items-center gap-2">
+              {{ 'admin.refresh' | t }}
+              <select
+                data-testid="auto-playlists-cadence"
+                [value]="ap.cadence"
+                (change)="setAutoPlaylistCadence($any($event.target).value)"
+                class="px-2 py-1 rounded-lg bg-theme-surface-2 text-theme-secondary text-xs"
+              >
+                <option value="off">{{ 'admin.off' | t }}</option>
+                <option value="daily">{{ 'admin.daily' | t }}</option>
+                <option value="weekly">{{ 'admin.weekly' | t }}</option>
+              </select>
+            </label>
+            <span class="text-xs text-theme-muted" data-testid="auto-playlists-refreshed">
+              {{ 'admin.lastRefreshed' | t: { date: formatRefreshedAt(ap.lastRefreshedAt) } }}
+            </span>
+          </div>
+          @if (autoPlaylistsMsg(); as msg) {
+            <p class="text-xs text-theme-secondary" data-testid="auto-playlists-msg">{{ msg }}</p>
           }
-        </h2>
+        </div>
+      }
+    </app-admin-group>
+
+    <app-admin-group
+      groupId="user-management"
+      icon="user"
+      [title]="'admin.userManagement' | t"
+      [description]="'admin.groupUserManagementDesc' | t"
+    >
+      <div class="flex items-center justify-end mb-4">
         <button
-          (click)="reviewSvc.refresh()"
-          class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition"
+          (click)="showCreateUser.set(true)"
+          class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-inverse text-theme-inverse hover:opacity-90 transition"
         >
-          {{ 'admin.refresh' | t }}
+          {{ 'admin.createUser' | t }}
         </button>
       </div>
 
-      <p class="text-xs text-theme-muted mb-4">
-        {{ 'admin.untrackedHintPrefix' | t }}
-        <code class="px-1 py-0.5 rounded bg-theme-surface-2 text-theme-secondary"
-          >bun run packages/api/src/scripts/backfill-untracked.ts --apply</code
-        >
-        {{ 'admin.untrackedHintSuffix' | t }}
-      </p>
-
-      @if (untracked().length === 0 && untrackedCount() === 0) {
-        <p class="text-theme-muted text-sm">{{ 'admin.noUntrackedDownloads' | t }}</p>
-      } @else if (untracked().length === 0) {
-        <p class="text-theme-muted text-sm">{{ 'admin.loadingUntracked' | t }}</p>
-      } @else {
-        <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-theme">
-                <th
-                  class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-                >
-                  {{ 'admin.colFile' | t }}
-                </th>
-                <th
-                  class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
-                >
-                  {{ 'admin.colPeerFolder' | t }}
-                </th>
-                <th
-                  class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
-                >
-                  {{ 'admin.colCompleted' | t }}
-                </th>
+      <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-theme">
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+              >
+                {{ 'admin.colUser' | t }}
+              </th>
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+              >
+                {{ 'admin.colRole' | t }}
+              </th>
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+              >
+                {{ 'admin.colStatus' | t }}
+              </th>
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
+              >
+                {{ 'admin.colOnline' | t }}
+              </th>
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
+              >
+                {{ 'admin.colDevices' | t }}
+              </th>
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
+              >
+                {{ 'admin.colSessions' | t }}
+              </th>
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
+              >
+                {{ 'admin.colJoined' | t }}
+              </th>
+              <th
+                class="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+              >
+                {{ 'admin.colActions' | t }}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (user of users(); track user.id) {
+              <tr class="border-b border-theme last:border-0">
+                <td class="px-4 py-3 text-theme-primary">
+                  {{ user.username }}
+                  @if (user.id === currentUserId()) {
+                    <span class="ml-1.5 text-xs text-theme-muted">{{ 'admin.you' | t }}</span>
+                  }
+                </td>
+                <td class="px-4 py-3">
+                  <span
+                    [class]="
+                      'inline-block px-2 py-0.5 rounded text-xs font-medium ' +
+                      (user.role === 'admin'
+                        ? 'status-warn border border-theme'
+                        : 'bg-theme-surface-2 text-theme-secondary border border-theme')
+                    "
+                  >
+                    {{ user.role }}
+                  </span>
+                </td>
+                <td class="px-4 py-3">
+                  <span
+                    [class]="
+                      'inline-flex items-center gap-1.5 text-xs ' +
+                      (user.status === 'active' ? 'text-status-done' : 'text-status-error')
+                    "
+                  >
+                    <span
+                      [class]="
+                        'w-1.5 h-1.5 rounded-full ' +
+                        (user.status === 'active' ? 'bg-emerald-500' : 'bg-red-500')
+                      "
+                    ></span>
+                    {{ user.status }}
+                  </span>
+                </td>
+                <td class="px-4 py-3 hidden sm:table-cell">
+                  <span
+                    [class]="
+                      'inline-block w-1.5 h-1.5 rounded-full ' +
+                      (user.isConnected ? 'bg-emerald-500' : 'bg-theme-muted')
+                    "
+                    [title]="user.isConnected ? i18n.t('admin.online') : i18n.t('admin.offline')"
+                  ></span>
+                </td>
+                <td class="px-4 py-3 text-theme-secondary text-xs hidden sm:table-cell">
+                  {{ user.amountOfDevices }}
+                </td>
+                <td class="px-4 py-3 text-theme-secondary text-xs hidden sm:table-cell">
+                  {{ user.amountOfSessions }}
+                </td>
+                <td class="px-4 py-3 text-theme-muted text-xs hidden sm:table-cell">
+                  {{ formatDate(user.created_at) }}
+                </td>
+                <td class="px-4 py-3 text-right">
+                  <div class="flex items-center justify-end gap-1">
+                    <select
+                      [disabled]="user.id === currentUserId()"
+                      (change)="setRole(user, $any($event.target).value)"
+                      [title]="
+                        user.id === currentUserId()
+                          ? i18n.t('admin.cannotChangeOwnRole')
+                          : i18n.t('admin.changeRole')
+                      "
+                      data-testid="user-role-select"
+                      class="px-2 py-1 rounded text-xs bg-theme-surface-2 text-theme-secondary border border-theme hover:text-theme-primary transition disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      @for (r of roles; track r) {
+                        <option [value]="r" [selected]="r === user.role">{{ r }}</option>
+                      }
+                    </select>
+                    <div appTvNavGroup axis="horizontal" class="flex items-center gap-1">
+                      <button
+                        appTvNavItem
+                        (click)="toggleStatus(user)"
+                        [disabled]="user.id === currentUserId()"
+                        class="px-2 py-1 rounded text-xs text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        {{ (user.status === 'active' ? 'admin.disable' : 'admin.enable') | t }}
+                      </button>
+                      <button
+                        appTvNavItem
+                        (click)="resetTarget.set(user); newPassword.set('')"
+                        class="px-2 py-1 rounded text-xs text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2 transition"
+                      >
+                        {{ 'admin.resetPw' | t }}
+                      </button>
+                      <button
+                        appTvNavItem
+                        (click)="deleteTarget.set(user)"
+                        [disabled]="user.id === currentUserId()"
+                        class="px-2 py-1 rounded text-xs text-status-error hover:bg-theme-hover transition disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        {{ 'admin.delete' | t }}
+                      </button>
+                    </div>
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              @for (row of untracked(); track row.transferKey) {
-                <tr class="border-b border-theme last:border-0">
-                  <td class="px-4 py-3 text-theme-secondary break-all">{{ row.filename }}</td>
-                  <td class="px-4 py-3 text-theme-muted text-xs hidden sm:table-cell break-all">
-                    {{ row.directory }}
-                  </td>
-                  <td class="px-4 py-3 text-theme-muted text-xs hidden sm:table-cell">
-                    {{ formatTimestamp(row.completedAt) }}
-                  </td>
+            }
+          </tbody>
+        </table>
+      </section>
+    </app-admin-group>
+
+    <app-admin-group
+      groupId="audit-log"
+      icon="queue"
+      [title]="'admin.auditLog' | t"
+      [description]="'admin.groupAuditLogDesc' | t"
+    >
+      <!-- Audit log: recent destructive/curation actions. -->
+      @if (auditTail().length > 0) {
+        <div data-testid="audit-log">
+          <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-theme">
+                  <th
+                    class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+                  >
+                    {{ 'admin.colWhen' | t }}
+                  </th>
+                  <th
+                    class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+                  >
+                    {{ 'admin.colUser' | t }}
+                  </th>
+                  <th
+                    class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+                  >
+                    {{ 'admin.colAction' | t }}
+                  </th>
+                  <th
+                    class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+                  >
+                    {{ 'admin.colTarget' | t }}
+                  </th>
                 </tr>
-              }
-            </tbody>
-          </table>
-        </section>
+              </thead>
+              <tbody>
+                @for (e of auditTail(); track e.id) {
+                  <tr class="border-b border-theme last:border-0">
+                    <td class="px-4 py-2.5 text-theme-muted whitespace-nowrap">
+                      {{ formatAuditTime(e.at) }}
+                    </td>
+                    <td class="px-4 py-2.5 text-theme-secondary">{{ e.username ?? e.userId }}</td>
+                    <td class="px-4 py-2.5 text-theme-secondary">{{ e.action }}</td>
+                    <td class="px-4 py-2.5 text-theme-muted">{{ e.detail ?? e.targetId ?? '—' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </section>
+        </div>
       }
-    </div>
+    </app-admin-group>
 
     <!-- Retry-hunt modal (reuses the album-hunt flow) -->
     @if (retryAlbum(); as album) {
