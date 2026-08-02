@@ -238,8 +238,11 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
 - `pages/plugins/plugins.component.ts` — admin-only page (route `/settings/plugins`, `adminGuard`),
   labelled **Extensions** in the UI (linked from Settings → Extensions; identifiers stay `plugin*`).
   Cards grouped by kind — **Acquisition**, **Metadata** (lrclib today), and a generic
-  **Connectivity** section that currently shows an empty-state (the wiring is ready for a
-  tailscale/wireguard plugin to appear with no UI changes). Every kind in the core union needs a
+  **Connectivity** section, each with a uniform icon+title+description header
+  (`SettingsGroupHeaderComponent`, shared with the Settings page). Connectivity **hides
+  entirely** rather than showing an empty-state — the wiring is ready for a
+  tailscale/wireguard plugin to appear with no UI changes, at which point the section
+  reappears on its own. Every kind in the core union needs a
   section here, or its plugins are invisible. Enabling a consent-gated plugin opens its disclaimer
   via `ConfirmDialogComponent` and
   only then calls `enable(id, true)`.
@@ -279,6 +282,18 @@ Uploads()`, `options.get()` (new JSON options accessor), and `application.getInf
   stored config, so "leave the secret blank to keep it" round-trips safely. The build-submit /
   prefill logic is in the DI-free `lib/plugin-config.ts` (unit-tested). The Spotify plugin is the
   first consumer (client id/secret).
+- **Unified plugin status pill**: each card shows one derived status —
+  Off / Needs config / Unavailable / Ready — computed by the pure
+  `lib/plugin-status.ts` `pluginStatus()` from fields `GET /api/plugins` already
+  returns (`enabled`, `needsConfig`, `available`); no new API surface. Replaced two
+  overlapping badges (Enabled/Disabled + a conditional Unavailable) that could both
+  render at once. **Deferred**: today `available` is a config-presence/binary-existence
+  check for the stateless API-client plugins (lrclib, discogs, spotify, spotdl), not a
+  live reachability probe — adding real probes is future per-plugin backend work that
+  would need no UI changes, since the pill already consumes `available` as its source of
+  truth. Similarly, slskd's dedicated live status panel (`GET /api/plugins/slskd/status`)
+  remains a one-off; generalizing a `health` capability any plugin manifest could declare
+  is a separate future design, not attempted here.
 - **Capability-gated surfaces**: the search page hides the **URL acquire box** unless `hasResolve()`
   and the **watchlist star** unless `hasDownload()`. The network search lane already self-hides via
   the server's `networkAvailable: false` (no enabled `search` plugin), and hunt/watchlist routes

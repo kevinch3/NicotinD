@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import type { PluginInfo } from '../../services/plugin.service';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
+import { pluginStatus, type PluginStatus } from '../../lib/plugin-status';
 
 /**
  * One extension card on the Extensions page. A real component rather than the
@@ -57,5 +58,10 @@ export class PluginCardComponent {
   missingBinaries(): string | null {
     const binaries = this.plugin.requirements?.binaries;
     return binaries?.length ? binaries.join(', ') : null;
+  }
+
+  /** The unified status pill state — see `pluginStatus()` for priority order. */
+  status(): PluginStatus {
+    return pluginStatus(this.plugin);
   }
 }

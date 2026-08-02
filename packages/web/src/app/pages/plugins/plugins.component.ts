@@ -6,6 +6,7 @@ import { PluginService, type PluginInfo } from '../../services/plugin.service';
 import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/plugin-config';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { PluginCardComponent } from './plugin-card.component';
+import { SettingsGroupHeaderComponent } from '../../components/settings-group-header/settings-group-header.component';
 
 /**
  * Admin-only plugin management. Lists plugins grouped by kind (acquisition now;
@@ -27,7 +28,13 @@ const PLUGIN_DETAIL_ROUTES: Record<string, string> = {
 @Component({
   selector: 'app-plugins',
   standalone: true,
-  imports: [RouterLink, ConfirmDialogComponent, TvNavGroupDirective, PluginCardComponent],
+  imports: [
+    RouterLink,
+    ConfirmDialogComponent,
+    TvNavGroupDirective,
+    PluginCardComponent,
+    SettingsGroupHeaderComponent,
+  ],
   templateUrl: './plugins.component.html',
 })
 export class PluginsComponent implements OnInit {
