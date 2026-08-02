@@ -6,13 +6,16 @@ describe('pluginStatus', () => {
     expect(pluginStatus({ enabled: false, needsConfig: false, available: false })).toBe('off');
   });
 
-  it('is "needs-config" when enabled but not yet configured', () => {
+  it('is "needs-config" when enabled, unconfigured, and not available', () => {
     expect(pluginStatus({ enabled: true, needsConfig: true, available: false })).toBe(
       'needs-config',
     );
-    expect(pluginStatus({ enabled: true, needsConfig: true, available: true })).toBe(
-      'needs-config',
-    );
+  });
+
+  it('is "ready" when available even if needsConfig is still true', () => {
+    // yt-dlp/spotDL/archive.org: all-optional config schema, but the binary/feature
+    // works — needsConfig alone must never demote a working plugin.
+    expect(pluginStatus({ enabled: true, needsConfig: true, available: true })).toBe('ready');
   });
 
   it('is "unavailable" when enabled and configured but not available', () => {

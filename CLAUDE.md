@@ -940,7 +940,9 @@ Add detail there, not here.
   with an augmented PATH (`acquireEnv`: bundled-ffmpeg dir + brew/pip bins — GUI apps inherit a
   minimal PATH) + an admin-editable `binaryPath` field; embedded slskd auto-shares the music dir
   (merge-preserving `slskd.yml` regeneration). UI labelled **Extensions**, one section per kind
-  (Acquisition / Metadata / Connectivity) — the web `PluginKind` union mirrors the core one and a
+  (Acquisition / Metadata / Connectivity) — icon-headed section groupings, each card showing one
+  unified derived status pill (off/needs-config/unavailable/ready), and Connectivity hides itself
+  when empty — the web `PluginKind` union mirrors the core one and a
   kind missing from **either** renders its plugins nowhere; extensions with bespoke config own a
   dedicated settings page via `PLUGIN_DETAIL_ROUTES` (first: slskd, which shows a not-reachable
   notice when slskd is down). All first-party plugins are constructed in `registerBuiltinPlugins`
