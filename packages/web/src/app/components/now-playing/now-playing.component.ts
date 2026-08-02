@@ -14,6 +14,7 @@ import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { NowPlayingHeaderComponent } from './now-playing-header/now-playing-header.component';
+import { NowPlayingCoverArtComponent } from './now-playing-cover-art/now-playing-cover-art.component';
 import { TrackContextMenuComponent } from '../track-context-menu/track-context-menu.component';
 import { TrackInfoService } from '../../services/track-info.service';
 import { resolveArtistTarget } from '../../lib/route-utils';
@@ -25,7 +26,6 @@ import { createPointerDrag } from '../../lib/pointer-drag';
 import { ScrollLockService } from '../../services/scroll-lock.service';
 import { SeekBarComponent } from '../seek-bar/seek-bar.component';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
-import { ArtistLinksComponent } from '../artist-links/artist-links.component';
 import { ServerConfigService } from '../../services/server-config.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
@@ -48,10 +48,10 @@ function formatTime(s: number): string {
   selector: 'app-now-playing',
   imports: [
     NowPlayingHeaderComponent,
+    NowPlayingCoverArtComponent,
     TrackContextMenuComponent,
     SeekBarComponent,
     CoverArtComponent,
-    ArtistLinksComponent,
     TranslatePipe,
     TvNavGroupDirective,
     TvNavItemDirective,
@@ -558,7 +558,6 @@ export class NowPlayingComponent {
   }
 
   onTitleContextMenu(event: MouseEvent): void {
-    event.preventDefault();
     this.contextMenu.set({ x: event.clientX, y: event.clientY });
   }
 
