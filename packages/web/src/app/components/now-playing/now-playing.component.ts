@@ -16,6 +16,7 @@ import { PlaybackWsService } from '../../services/playback-ws.service';
 import { NowPlayingHeaderComponent } from './now-playing-header/now-playing-header.component';
 import { NowPlayingCoverArtComponent } from './now-playing-cover-art/now-playing-cover-art.component';
 import { NowPlayingTransportComponent } from './now-playing-transport/now-playing-transport.component';
+import { NowPlayingLyricsPanelComponent } from './now-playing-lyrics-panel/now-playing-lyrics-panel.component';
 import { TrackContextMenuComponent } from '../track-context-menu/track-context-menu.component';
 import { TrackInfoService } from '../../services/track-info.service';
 import { resolveArtistTarget } from '../../lib/route-utils';
@@ -51,6 +52,7 @@ function formatTime(s: number): string {
     NowPlayingHeaderComponent,
     NowPlayingCoverArtComponent,
     NowPlayingTransportComponent,
+    NowPlayingLyricsPanelComponent,
     TrackContextMenuComponent,
     SeekBarComponent,
     CoverArtComponent,
@@ -129,8 +131,12 @@ export class NowPlayingComponent {
   readonly karaokeFullscreen = signal(false);
   /** Dominant colors extracted from the current track's cover art. */
   readonly coverColors = signal<CoverPalette>(DEFAULT_PALETTE);
-  /** Reference to the lyrics scroll container for auto-scroll (in-place or fullscreen). */
-  readonly lyricsScrollRef = viewChild<ElementRef<HTMLElement>>('lyricsScroll');
+  /** The in-place lyrics panel child — its own `lyricsScrollRef` (an internal
+   *  `#lyricsScroll` template ref) is re-exposed here so the shell's
+   *  auto-scroll effect below can reach across the component boundary; this
+   *  is the one place in the now-playing decomposition where a child's
+   *  internal DOM ref must be reachable from the shell. */
+  readonly lyricsPanel = viewChild(NowPlayingLyricsPanelComponent);
   /** Fullscreen overlay root — focused on entry so ArrowUp/ArrowDown work
    *  immediately for keyboard/TV-remote users with no prior click. */
   readonly karaokeOverlayRef = viewChild<ElementRef<HTMLElement>>('karaokeOverlay');
@@ -328,7 +334,7 @@ export class NowPlayingComponent {
     effect(() => {
       const active = this.activeLine();
       if (!this.lyricsOpen() || active < 0) return;
-      const container = this.lyricsScrollRef()?.nativeElement;
+      const container = this.lyricsPanel()?.lyricsScrollRef()?.nativeElement;
       if (!container) return;
       scrollToActiveLine(container, active);
     });
