@@ -59,8 +59,11 @@ export class NowPlayingComponent {
   readonly contextMenu = signal<{ x: number; y: number } | null>(null);
 
   // Lyrics view state. Lyrics load lazily on first open and reload when the
-  // track changes while the panel is open.
-  readonly lyricsOpen = signal(false);
+  // track changes while the panel is open. `lyricsOpen`'s own declaration
+  // lives further down (seeded from `activePanel`, see the comment there) —
+  // field initialization order matters in JS/TS class bodies, and
+  // `activePanel` must already be assigned before `lyricsOpen`'s initializer
+  // runs.
   readonly lyrics = signal<LyricsDto | null>(null);
   readonly lyricsLoading = signal(false);
   /** True after a source *failed* (vs a confident no-match) — offer a retry. */
@@ -76,8 +79,20 @@ export class NowPlayingComponent {
   );
   /** Plain text fallback when there are no synced lines. */
   readonly plainLyrics = computed(() => this.lyrics()?.plain ?? '');
-  /** Whether the current track has lyrics loaded (drives the tab-switcher dot). */
-  readonly hasLyrics = computed(() => !!this.lyrics()?.synced || !!this.lyrics()?.plain);
+  /** Whether the current track has lyrics loaded (drives the tab-switcher dot).
+   *  Gated on `lyricsLoadedForId` matching the current track — `lyrics()` is
+   *  only cleared/reloaded when the lyrics panel is open (see the effects
+   *  below), so without this gate switching tracks with the panel closed
+   *  left `lyrics()` holding the PREVIOUS track's data and the dot showed a
+   *  stale positive. This only reflects data that has actually been loaded
+   *  for the current track — it does not proactively prefetch, so the dot
+   *  stays off until the Lyrics tab has been opened at least once for this
+   *  track (see docs/web-ui.md). */
+  readonly hasLyrics = computed(() => {
+    const track = this.player.currentTrack();
+    if (!track || this.lyricsLoadedForId() !== track.id) return false;
+    return !!this.lyrics()?.synced || !!this.lyrics()?.plain;
+  });
 
   /** Current line's text for the fullscreen auto-follow (2-line) view. */
   readonly currentLineText = computed(() => this.lyricLines()[this.activeLine()]?.text ?? '');
@@ -181,6 +196,13 @@ export class NowPlayingComponent {
   // Active panel (queue vs lyrics) persisted per-device.
   private static readonly ACTIVE_PANEL_STORAGE_KEY = 'nicotind:np-active-panel';
   readonly activePanel = signal<'queue' | 'lyrics'>(this.readStoredActivePanel());
+  // Seeded from the restored `activePanel` (must be declared after it — see
+  // the comment near `lyrics` above) so a page load that restores onto the
+  // Lyrics tab has `lyricsOpen` already true: the lyrics-loading/color-
+  // extraction/auto-scroll effects below all gate on `lyricsOpen()`, and
+  // without this seed a restored Lyrics tab rendered an incorrect "no
+  // lyrics" empty state until the user re-clicked the tab.
+  readonly lyricsOpen = signal(this.activePanel() === 'lyrics');
 
   /** Cover art max-width (px), shrinking as the queue is dragged taller. */
   readonly coverMaxPx = computed(

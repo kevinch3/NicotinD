@@ -164,6 +164,32 @@ describe('NowPlayingComponent', () => {
     });
   });
 
+  describe('hasLyrics (tab-switcher dot)', () => {
+    it('does not show a stale positive after switching tracks with lyrics loaded for the previous one', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+
+      // Load lyrics for track A (simulates having visited the Lyrics tab).
+      playerStub.currentTrack.set({ id: 'a', title: 'Song A', artist: 'Artist' });
+      libraryStub.fetchLyrics.mockReturnValue(
+        of({ plain: 'la la', synced: null, source: 'lrclib', customized: false, updatedAt: 0 }),
+      );
+      component.fetchLyricsManually();
+      expect(component.hasLyrics()).toBe(true);
+
+      // Switch to track B without reopening the lyrics panel — `lyrics()`
+      // still holds track A's data (nothing clears it on track change).
+      playerStub.currentTrack.set({ id: 'b', title: 'Song B', artist: 'Artist' });
+
+      expect(component.hasLyrics()).toBe(false);
+    });
+
+    it('is false with no current track', () => {
+      const { fixture } = setup();
+      expect(fixture.componentInstance.hasLyrics()).toBe(false);
+    });
+  });
+
   describe('karaoke fullscreen 2-line mode', () => {
     function withSyncedLyrics(playerStub: ReturnType<typeof makePlayerStub>) {
       playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
@@ -401,6 +427,19 @@ describe('NowPlayingComponent', () => {
       localStorage.setItem('nicotind:np-active-panel', 'lyrics');
       const fixture = TestBed.createComponent(NowPlayingComponent);
       expect(fixture.componentInstance.activePanel()).toBe('lyrics');
+    });
+
+    it('seeds lyricsOpen from a restored lyrics activePanel (issue: lyrics tab restored with lyricsOpen still false)', () => {
+      localStorage.setItem('nicotind:np-active-panel', 'lyrics');
+      const fixture = TestBed.createComponent(NowPlayingComponent);
+      expect(fixture.componentInstance.activePanel()).toBe('lyrics');
+      expect(fixture.componentInstance.lyricsOpen()).toBe(true);
+    });
+
+    it('leaves lyricsOpen false when the restored activePanel is queue', () => {
+      const fixture = TestBed.createComponent(NowPlayingComponent);
+      expect(fixture.componentInstance.activePanel()).toBe('queue');
+      expect(fixture.componentInstance.lyricsOpen()).toBe(false);
     });
 
     it('setActivePanel updates the signal and persists it', () => {
