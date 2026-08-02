@@ -70,90 +70,13 @@
         <!-- Controls — mobile: content-sized, sits at the right edge after the
              track-info column grows; desktop: flex-1 to host the progress bar. -->
         <div class="flex-none md:flex-1 flex flex-col items-center gap-1">
-          <div class="flex items-center gap-2 md:gap-3" appTvNavGroup axis="horizontal">
-            <!-- Shuffle - desktop only -->
-            <button
-              (click)="player.toggleShuffle()"
-              data-testid="player-shuffle"
-              [attr.data-active]="player.shuffle()"
-              [class]="'hidden md:flex w-7 h-7 items-center justify-center rounded-full transition ' +
-                (player.shuffle() ? 'text-status-done' : 'text-theme-muted hover:text-theme-secondary')"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M16 3h5v5" />
-                <path d="M4 20 21 3" />
-                <path d="M21 16v5h-5" />
-                <path d="M15 15l6 6" />
-                <path d="M4 4l5 5" />
-              </svg>
-            </button>
-
-            <!-- Previous -->
-            <button
-              appTvNavItem
-              (click)="handlePrev()"
-              data-testid="player-prev"
-              class="w-7 h-7 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="3" y="5" width="3" height="14" />
-                <polygon points="21,5 9,12 21,19" />
-              </svg>
-            </button>
-
-            <!-- Play/Pause -->
-            <button
-              appTvNavItem
-              (click)="handlePlayPause()"
-              data-testid="player-playpause"
-              [attr.data-playing]="showPlaying()"
-              [attr.data-buffering]="showBuffering()"
-              class="w-8 h-8 rounded-full bg-theme-inverse text-theme-inverse flex items-center justify-center hover:opacity-90 transition"
-            >
-              @if (showBuffering()) {
-                <span class="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-              } @else if (showPlaying()) {
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="6" y="4" width="4" height="16" />
-                  <rect x="14" y="4" width="4" height="16" />
-                </svg>
-              } @else {
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="5,3 19,12 5,21" />
-                </svg>
-              }
-            </button>
-
-            <!-- Next -->
-            <button
-              appTvNavItem
-              (click)="handleNext()"
-              data-testid="player-next"
-              class="w-7 h-7 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="3,5 15,12 3,19" />
-                <rect x="18" y="5" width="3" height="14" />
-              </svg>
-            </button>
-
-            <!-- Repeat - desktop only -->
-            <button
-              (click)="player.cycleRepeat()"
-              [class]="'hidden md:flex w-7 h-7 items-center justify-center rounded-full transition relative ' +
-                (player.repeat() !== 'off' ? 'text-status-done' : 'text-theme-muted hover:text-theme-secondary')"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 2l4 4-4 4" />
-                <path d="M3 11v-1a4 4 0 014-4h14" />
-                <path d="M7 22l-4-4 4-4" />
-                <path d="M21 13v1a4 4 0 01-4 4H3" />
-              </svg>
-              @if (player.repeat() === 'one') {
-                <span class="absolute -top-1 -right-1 text-[9px] font-bold text-status-done">1</span>
-              }
-            </button>
-          </div>
+          <app-player-transport-mini
+            [playing]="showPlaying()"
+            [buffering]="showBuffering()"
+            (prevClicked)="handlePrev()"
+            (playPauseClicked)="handlePlayPause()"
+            (nextClicked)="handleNext()"
+          />
 
           <!-- Progress bar (desktop) -->
           <div class="hidden md:flex items-center gap-2 w-full max-w-md">
