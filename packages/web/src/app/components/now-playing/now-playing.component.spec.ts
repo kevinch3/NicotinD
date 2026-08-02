@@ -164,6 +164,32 @@ describe('NowPlayingComponent', () => {
     });
   });
 
+  describe('hasLyrics (tab-switcher dot)', () => {
+    it('does not show a stale positive after switching tracks with lyrics loaded for the previous one', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+
+      // Load lyrics for track A (simulates having visited the Lyrics tab).
+      playerStub.currentTrack.set({ id: 'a', title: 'Song A', artist: 'Artist' });
+      libraryStub.fetchLyrics.mockReturnValue(
+        of({ plain: 'la la', synced: null, source: 'lrclib', customized: false, updatedAt: 0 }),
+      );
+      component.fetchLyricsManually();
+      expect(component.hasLyrics()).toBe(true);
+
+      // Switch to track B without reopening the lyrics panel — `lyrics()`
+      // still holds track A's data (nothing clears it on track change).
+      playerStub.currentTrack.set({ id: 'b', title: 'Song B', artist: 'Artist' });
+
+      expect(component.hasLyrics()).toBe(false);
+    });
+
+    it('is false with no current track', () => {
+      const { fixture } = setup();
+      expect(fixture.componentInstance.hasLyrics()).toBe(false);
+    });
+  });
+
   describe('karaoke fullscreen 2-line mode', () => {
     function withSyncedLyrics(playerStub: ReturnType<typeof makePlayerStub>) {
       playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
@@ -191,7 +217,7 @@ describe('NowPlayingComponent', () => {
           updatedAt: 0,
         }),
       );
-      component.toggleLyrics();
+      component.setActivePanel('lyrics');
       fixture.detectChanges();
       playerStub.currentTime.set(10); // activeLine -> index 1 ("second line")
 
@@ -212,7 +238,7 @@ describe('NowPlayingComponent', () => {
           updatedAt: 0,
         }),
       );
-      component.toggleLyrics();
+      component.setActivePanel('lyrics');
       fixture.detectChanges();
       playerStub.currentTime.set(0);
 
@@ -260,7 +286,7 @@ describe('NowPlayingComponent', () => {
           updatedAt: 0,
         }),
       );
-      component.toggleLyrics();
+      component.setActivePanel('lyrics');
       fixture.detectChanges();
       component.toggleKaraokeFullscreen();
       component.onKaraokeInteraction();
@@ -294,65 +320,29 @@ describe('NowPlayingComponent', () => {
       expect(component.karaokeBrowsing()).toBe(false);
     });
 
-    it('renders only current+next lines in auto-follow mode', () => {
-      const { fixture, playerStub, libraryStub } = setup();
-      const component = fixture.componentInstance;
-      withSyncedLyrics(playerStub);
-      libraryStub.getLyrics.mockReturnValue(
-        of({
-          plain: null,
-          synced: '[00:00.00]a\n[00:05.00]b\n[00:10.00]c\n[00:15.00]d',
-          source: 'lrclib',
-          customized: false,
-          updatedAt: 0,
-        }),
-      );
-      component.toggleLyrics();
-      fixture.detectChanges();
-      component.toggleKaraokeFullscreen();
-      playerStub.currentTime.set(5); // activeLine -> index 1 ("b")
-      fixture.detectChanges();
+    // "renders only current+next lines in auto-follow mode" and "shows the
+    // full list in browse mode and seeks on line click" moved to
+    // now-playing-karaoke-fullscreen.component.spec.ts as of the Task 10
+    // shell decomposition: the JIT vitest harness doesn't propagate a
+    // template `[input]="…"` binding across a *nested* component boundary
+    // (see src/testing/signal-input.ts's documented limitation — the same
+    // gap extends to a nested child's rendered content, not just its signal
+    // value), so once the karaoke overlay became a child component instead
+    // of inline shell markup, its *content* can only be asserted from its
+    // own spec (driven directly with `setInputValue`), not through the shell.
+    // The shell-level "tabbed queue/lyrics panel wiring" describe below
+    // still asserts the shell's own responsibility: that the right child
+    // *component* is present/absent.
 
-      const el: HTMLElement = fixture.nativeElement;
-      const current = el.querySelector('[data-testid="karaoke-fullscreen-line-current"]');
-      const next = el.querySelector('[data-testid="karaoke-fullscreen-line-next"]');
-      expect(current?.textContent?.trim()).toBe('b');
-      expect(next?.textContent?.trim()).toBe('c');
-      expect(el.querySelectorAll('[data-karaoke-line]').length).toBe(2);
-      expect(el.querySelector('[data-testid="karaoke-fullscreen-browse-list"]')).toBeNull();
-    });
-
-    it('shows the full list in browse mode and seeks on line click', () => {
-      const { fixture, playerStub, libraryStub } = setup();
-      const component = fixture.componentInstance;
-      withSyncedLyrics(playerStub);
-      libraryStub.getLyrics.mockReturnValue(
-        of({
-          plain: null,
-          synced: '[00:00.00]a\n[00:05.00]b\n[00:10.00]c',
-          source: 'lrclib',
-          customized: false,
-          updatedAt: 0,
-        }),
-      );
-      component.toggleLyrics();
-      fixture.detectChanges();
-      component.toggleKaraokeFullscreen();
-      component.onKaraokeInteraction();
-      fixture.detectChanges();
-
-      const el: HTMLElement = fixture.nativeElement;
-      const list = el.querySelector('[data-testid="karaoke-fullscreen-browse-list"]');
-      expect(list).not.toBeNull();
-      const lines = Array.from(el.querySelectorAll('[data-karaoke-line]'));
-      expect(lines.length).toBe(3);
-
-      (lines[2] as HTMLElement).click();
-      fixture.detectChanges();
-
-      expect(playerStub.seek).toHaveBeenCalledWith(10);
-      expect(component.karaokeBrowsing()).toBe(false);
-    });
+    // The auto-scroll effect's container *selection* (in-place lyrics panel
+    // vs. karaoke-fullscreen browse list) is a pure `resolveLyricsScrollContainer`
+    // (lib/lyrics-scroll-container.ts, unit-tested standalone) so the branching
+    // logic is covered without going through Angular `viewChild()` at all —
+    // this JIT vitest harness doesn't resolve *any* `viewChild()` query
+    // (confirmed with a minimal inline-template repro unrelated to now-playing:
+    // a bare `<div #ref>` component's own `viewChild<ElementRef>('ref')` stays
+    // `undefined` after `detectChanges()`), so a test exercising the real refs
+    // end-to-end through this shell can only ever pass in a real browser/e2e.
 
     it('alternates the line animation class each time activeLine changes', () => {
       const { fixture, playerStub, libraryStub } = setup();
@@ -367,7 +357,7 @@ describe('NowPlayingComponent', () => {
           updatedAt: 0,
         }),
       );
-      component.toggleLyrics();
+      component.setActivePanel('lyrics');
       fixture.detectChanges();
 
       const first = component.karaokeLineAnimClass();
@@ -417,32 +407,46 @@ describe('NowPlayingComponent', () => {
       expect(btn).not.toBeNull();
     });
 
-    it('ArrowDown on the overlay enters browsing mode', () => {
-      const { fixture, playerStub } = setup();
-      const component = fixture.componentInstance;
-      playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
-      component.toggleKaraokeFullscreen();
-      fixture.detectChanges();
+    // "ArrowDown/ArrowUp on the overlay enters browsing mode" moved to
+    // now-playing-karaoke-fullscreen.component.spec.ts for the same reason
+    // as above — the keydown listener now lives on the extracted child's own
+    // template, and its `(interaction)` output crossing back to this shell
+    // can't be exercised via a real DOM event dispatch in this harness
+    // (confirmed by a minimal repro: an `output()`-based child event bound
+    // in a *parent* template via `(event)="…"` never reaches the parent
+    // handler here, while `componentInstance.someOutput.subscribe(...)`
+    // does — the same class of gap `setInputValue` works around for inputs).
+    // `onKaraokeInteraction enters browsing mode` above still covers the
+    // shell's own reaction to that call directly.
+  });
 
-      const overlay = fixture.nativeElement.querySelector('[data-testid="karaoke-overlay"]');
-      overlay.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-      fixture.detectChanges();
+  describe('active panel (queue vs lyrics)', () => {
+    beforeEach(() => localStorage.clear());
 
-      expect(component.karaokeBrowsing()).toBe(true);
+    it('persists the active panel choice across construction', () => {
+      localStorage.setItem('nicotind:np-active-panel', 'lyrics');
+      const fixture = TestBed.createComponent(NowPlayingComponent);
+      expect(fixture.componentInstance.activePanel()).toBe('lyrics');
     });
 
-    it('ArrowUp on the overlay enters browsing mode', () => {
-      const { fixture, playerStub } = setup();
-      const component = fixture.componentInstance;
-      playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
-      component.toggleKaraokeFullscreen();
-      fixture.detectChanges();
+    it('seeds lyricsOpen from a restored lyrics activePanel (issue: lyrics tab restored with lyricsOpen still false)', () => {
+      localStorage.setItem('nicotind:np-active-panel', 'lyrics');
+      const fixture = TestBed.createComponent(NowPlayingComponent);
+      expect(fixture.componentInstance.activePanel()).toBe('lyrics');
+      expect(fixture.componentInstance.lyricsOpen()).toBe(true);
+    });
 
-      const overlay = fixture.nativeElement.querySelector('[data-testid="karaoke-overlay"]');
-      overlay.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
-      fixture.detectChanges();
+    it('leaves lyricsOpen false when the restored activePanel is queue', () => {
+      const fixture = TestBed.createComponent(NowPlayingComponent);
+      expect(fixture.componentInstance.activePanel()).toBe('queue');
+      expect(fixture.componentInstance.lyricsOpen()).toBe(false);
+    });
 
-      expect(component.karaokeBrowsing()).toBe(true);
+    it('setActivePanel updates the signal and persists it', () => {
+      const fixture = TestBed.createComponent(NowPlayingComponent);
+      fixture.componentInstance.setActivePanel('lyrics');
+      expect(fixture.componentInstance.activePanel()).toBe('lyrics');
+      expect(localStorage.getItem('nicotind:np-active-panel')).toBe('lyrics');
     });
   });
 
@@ -587,6 +591,60 @@ describe('NowPlayingComponent', () => {
       );
       fixture.detectChanges();
       expect(document.activeElement).toBe(rows[0]!.remove);
+    });
+  });
+
+  describe('tabbed queue/lyrics panel wiring', () => {
+    beforeEach(() => localStorage.clear());
+
+    // The tab buttons themselves route through `app-now-playing-panel-tabs`'s
+    // `(panelSelected)` output — its own spec covers that a click emits the
+    // right value (`now-playing-panel-tabs.component.spec.ts`, direct
+    // `.subscribe()`, since the JIT vitest harness doesn't propagate a
+    // template `(event)="…"` binding across a *nested* component boundary;
+    // see src/testing/signal-input.ts's documented input-side version of the
+    // same gap). These shell-level tests drive `setActivePanel` directly
+    // (exactly what that output binding calls) to assert the shell's own
+    // responsibility: swapping which child renders.
+    it('shows the queue panel by default and switches to lyrics on tab select', () => {
+      const { fixture, playerStub } = setup();
+      playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('app-now-playing-queue-panel')).toBeTruthy();
+      expect(fixture.nativeElement.querySelector('app-now-playing-lyrics-panel')).toBeNull();
+
+      fixture.componentInstance.setActivePanel('lyrics');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('app-now-playing-lyrics-panel')).toBeTruthy();
+      expect(fixture.nativeElement.querySelector('app-now-playing-queue-panel')).toBeNull();
+    });
+
+    it('shows the karaoke fullscreen component instead of the lyrics panel when karaokeFullscreen is set', () => {
+      const { fixture, playerStub } = setup();
+      playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
+      fixture.detectChanges();
+      fixture.componentInstance.setActivePanel('lyrics');
+      fixture.componentInstance.karaokeFullscreen.set(true);
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector('app-now-playing-karaoke-fullscreen'),
+      ).toBeTruthy();
+      expect(fixture.nativeElement.querySelector('app-now-playing-lyrics-panel')).toBeNull();
+    });
+
+    it('returns to the queue view when the Queue tab is selected after Lyrics', () => {
+      const { fixture, playerStub } = setup();
+      playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
+      fixture.detectChanges();
+
+      fixture.componentInstance.setActivePanel('lyrics');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('app-now-playing-lyrics-panel')).toBeTruthy();
+
+      fixture.componentInstance.setActivePanel('queue');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('app-now-playing-queue-panel')).toBeTruthy();
+      expect(fixture.nativeElement.querySelector('app-now-playing-lyrics-panel')).toBeNull();
     });
   });
 

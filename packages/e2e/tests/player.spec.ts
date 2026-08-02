@@ -190,6 +190,51 @@ test.describe('player controls', () => {
     await expect(page.getByTestId('player-title')).toHaveText('Closing Time');
   });
 
+  test('Queue tab returns to the queue view after the Lyrics tab (round-trip)', async ({
+    page,
+  }) => {
+    await startAlbum(page);
+    await page.getByTestId('player-title').click();
+    await expect(page.getByText('Now Playing')).toBeVisible();
+    await expect(page.getByTestId('now-playing-queue')).toBeVisible();
+
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
+    await expect(page.getByTestId('now-playing-queue')).toHaveCount(0);
+
+    await page.getByTestId('now-playing-tab-queue').click();
+    await expect(page.getByTestId('now-playing-queue')).toBeVisible();
+    await expect(page.getByTestId('now-playing-lyrics')).toHaveCount(0);
+  });
+
+  test('Queue tab shows the live queue-count badge', async ({ page }) => {
+    // startAlbum's playWithContext seeds the queue with the whole rest of the
+    // album (6 tracks); clear it, then add exactly 2 tracks back via the row
+    // menu's "Add to queue" so the tab badge is asserted against a known
+    // count without scrolling/trimming a long, viewport-clipped queue list.
+    await startAlbum(page);
+    await page.getByTestId('player-title').click();
+    await expect(page.getByText('Now Playing')).toBeVisible();
+
+    await page.getByTestId('queue-clear').click();
+    // Close the sheet (back chevron in the drag-handle header, which
+    // slides the sheet off-screen rather than removing it) to reach the
+    // album's track rows underneath.
+    await page.getByTestId('now-playing-drag-handle').locator('button').first().click();
+    await expect(page.getByTestId('track-row').first()).toBeInViewport();
+
+    const rows = page.getByTestId('track-row');
+    for (const i of [1, 2]) {
+      const row = rows.nth(i);
+      await row.getByTestId('track-row-menu-toggle').click();
+      await row.getByTestId('track-action-Add to queue').click();
+    }
+
+    await page.getByTestId('player-title').click();
+    await expect(page.getByText('Now Playing')).toBeVisible();
+    await expect(page.getByTestId('now-playing-tab-queue')).toContainText('2');
+  });
+
   test('vocal mute toggle preserves playback position (server-side transcode filter)', async ({
     page,
   }) => {
@@ -215,8 +260,8 @@ test.describe('player controls', () => {
     await expect.poll(() => audioTime(page), { timeout: 5_000 }).toBeGreaterThan(5);
     const posBefore = await audioTime(page);
 
-    // Open the karaoke overlay: lyrics toggle → karaoke fullscreen.
-    await page.getByTestId('now-playing-lyrics-toggle').click();
+    // Open the karaoke overlay: lyrics tab → karaoke fullscreen.
+    await page.getByTestId('now-playing-tab-lyrics').click();
     await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
     await page.getByTestId('now-playing-karaoke-toggle').click();
     await expect(page.getByTestId('karaoke-overlay')).toBeVisible();

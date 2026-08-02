@@ -1,639 +1,98 @@
+@if (player.currentTrack(); as track) {
+  <div
+    [class]="'fixed inset-0 z-[60] bg-theme-base ease-out flex flex-col ' +
+      (dragging() ? 'transition-none ' : 'transition-transform duration-300 ') +
+      (player.nowPlayingOpen() ? 'translate-y-0' : 'translate-y-full')"
+    [style.transform]="dragOffsetPx() > 0 ? 'translateY(' + dragOffsetPx() + 'px)' : null"
+  >
+    <app-now-playing-header (dragPointerDown)="onSheetDragStart($event)" />
 
-    @if (player.currentTrack(); as track) {
-      <div
-        [class]="'fixed inset-0 z-[60] bg-zinc-950 ease-out flex flex-col ' +
-          (dragging() ? 'transition-none ' : 'transition-transform duration-300 ') +
-          (player.nowPlayingOpen() ? 'translate-y-0' : 'translate-y-full')"
-        [style.transform]="dragOffsetPx() > 0 ? 'translateY(' + dragOffsetPx() + 'px)' : null"
-      >
+    <app-now-playing-cover-art
+      [coverMaxPx]="coverMaxPx()"
+      [resizing]="resizingQueue()"
+      (openTrackInfo)="onOpenTrackInfo($event)"
+      (titleContextMenu)="onTitleContextMenu($event)"
+      (navigateToArtistClicked)="navigateToArtist()"
+    />
 
-        <!-- Header — drag handle to dismiss (live-follow).
-             pt folds in env(safe-area-inset-top) so the grab pill and the
-             close chevron drop below the iPhone hardware notch — on a PWA with
-             viewport-fit=cover an un-padded top would tuck the handle under the
-             cutout, making it invisible / untappable to close the sheet. No-op
-             on desktop / non-notched screens (inset resolves to 0). -->
-        <div
-          class="flex flex-col items-center px-4 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-3 relative touch-none select-none"
-          (pointerdown)="onSheetDragStart($event)"
-        >
-          <div class="w-10 h-1 rounded-full bg-zinc-600 mb-2"></div>
-          <div class="flex items-center justify-center w-full relative">
-            <button
-              (click)="player.setNowPlayingOpen(false)"
-              class="absolute left-0 w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-zinc-100 transition"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </button>
-            <span class="text-xs text-zinc-500 uppercase tracking-wider">{{ 'nowPlaying.title' | t }}</span>
-            <div class="absolute right-0">
-              @if (remote.remoteEnabled()) {
-                <app-device-switcher placement="down" />
-              }
-            </div>
-          </div>
-        </div>
+    <app-now-playing-transport
+      [progress]="safeProgress()"
+      [duration]="safeDuration()"
+      [buffered]="player.bufferedRanges()"
+      [playing]="showPlaying()"
+      [buffering]="showBuffering()"
+      [autoplayBlocked]="player.autoplayBlocked()"
+      (seek)="onSeek($event)"
+      (unblockAutoplay)="unblockAutoplay()"
+      (playPauseClicked)="handlePlayPause()"
+      (nextClicked)="handleNext()"
+      (prevClicked)="handlePrev()"
+    />
 
-        <!-- Cover art — app-cover-art degrades a missing/404 cover to the on-theme
-             gradient tile (like the grid/mini-player) instead of a broken-image glyph. -->
-        <div class="flex-shrink-0 flex justify-center px-4 py-4 md:px-8">
-          <div
-            class="w-[60vw] max-w-80"
-            [class.transition-[max-width]]="!resizingQueue()"
-            [class.duration-150]="!resizingQueue()"
-            [style.max-width.px]="coverMaxPx()"
-            data-testid="now-playing-cover"
-          >
-            <app-cover-art
-              [src]="track.coverArt ? '/api/cover/' + track.coverArt + '?size=600&token=' + auth.token() : undefined"
-              [artist]="track.artist"
-              [album]="track.album ?? ''"
-              [fill]="true"
-              rounded="rounded-lg"
-            />
-          </div>
-        </div>
-
-        <!-- Track info -->
-        <div class="text-center px-4 mb-4 md:px-8 no-callout" translate="no">
-          <div class="flex items-center justify-center gap-2 min-w-0">
-            <h2
-              class="text-xl font-semibold text-zinc-100 truncate select-none"
-              (contextmenu)="onTitleContextMenu($event)"
-            >
-              {{ track.title }}
-            </h2>
-            <!-- G4: visible affordance to open Track info (was long-press only). -->
-            <button
-              (click)="onOpenTrackInfo(track.id)"
-              data-testid="now-playing-info"
-              [attr.aria-label]="'nowPlaying.trackInfo' | t"
-              [attr.title]="'nowPlaying.trackInfo' | t"
-              class="shrink-0 text-zinc-500 hover:text-zinc-200 transition"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="16" x2="12" y2="12" />
-                <line x1="12" y1="8" x2="12.01" y2="8" />
-              </svg>
-            </button>
-            <!-- Lyrics toggle -->
-            <button
-              (click)="toggleLyrics()"
-              data-testid="now-playing-lyrics-toggle"
-              [attr.aria-label]="'nowPlaying.lyrics' | t"
-              [attr.title]="'nowPlaying.lyrics' | t"
-              [attr.aria-pressed]="lyricsOpen()"
-              [class]="'shrink-0 transition ' + (lyricsOpen() ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-200')"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 6h16" />
-                <path d="M4 12h10" />
-                <path d="M4 18h7" />
-                <circle cx="18" cy="16" r="3" />
-                <path d="M21 16V9l-3 1" />
-              </svg>
-            </button>
-          </div>
-          <p class="text-sm text-zinc-400 truncate mt-1 select-none hover:text-zinc-200 transition">
-            @if (track.artists?.length) {
-              <app-artist-links [artists]="track.artists" (linkFollowed)="player.setNowPlayingOpen(false)" />
-            } @else {
-              <span class="cursor-pointer hover:underline" (click)="navigateToArtist()">{{ track.artist }}</span>
-            }
-          </p>
-          <div class="flex justify-center mt-2">
-          </div>
-        </div>
-
-        <!-- Seek bar -->
-        <div class="px-4 mb-4 md:px-8">
-          <app-seek-bar
-            [position]="safeProgress()"
-            [duration]="safeDuration()"
-            [buffered]="player.bufferedRanges()"
-            (seek)="onSeek($event)"
-          />
-          <div class="flex justify-between mt-1.5">
-            <span class="text-xs text-zinc-500">{{ formatTime(safeProgress()) }}</span>
-            <span class="text-xs text-zinc-500">{{ formatTime(safeDuration()) }}</span>
-          </div>
-        </div>
-
-        <!-- Autoplay blocked indicator -->
-        @if (player.autoplayBlocked()) {
-          <div class="flex justify-center mb-4">
-            <button
-              (click)="unblockAutoplay()"
-              class="px-4 py-2 bg-amber-500/20 border border-amber-500/40 rounded-lg text-amber-300 text-sm"
-            >
-              {{ 'nowPlaying.tapToStart' | t }}
-            </button>
-          </div>
-        }
-
-        <!-- Transport controls -->
-        <div class="flex items-center justify-center gap-6 mb-6">
-          <!-- Shuffle -->
-          <button
-            (click)="player.toggleShuffle()"
-            data-testid="now-playing-shuffle"
-            [attr.aria-pressed]="player.shuffle()"
-            [class]="'w-8 h-8 flex items-center justify-center rounded-full transition ' +
-              (player.shuffle() ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300')"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M16 3h5v5" />
-              <path d="M4 20 21 3" />
-              <path d="M21 16v5h-5" />
-              <path d="M15 15l6 6" />
-              <path d="M4 4l5 5" />
-            </svg>
-          </button>
-
-          <!-- Previous -->
-          <button
-            (click)="handlePrev()"
-            class="w-10 h-10 flex items-center justify-center text-zinc-300 hover:text-zinc-100 transition"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="3" y="5" width="3" height="14" />
-              <polygon points="21,5 9,12 21,19" />
-            </svg>
-          </button>
-
-          <!-- Play/Pause -->
-          <button
-            (click)="handlePlayPause()"
-            [attr.data-buffering]="showBuffering()"
-            class="w-14 h-14 rounded-full bg-zinc-100 text-zinc-900 flex items-center justify-center hover:bg-zinc-200 transition"
-          >
-            @if (showBuffering()) {
-              <span class="inline-block w-6 h-6 border-[3px] border-current border-t-transparent rounded-full animate-spin"></span>
-            } @else if (showPlaying()) {
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="4" width="4" height="16" />
-                <rect x="14" y="4" width="4" height="16" />
-              </svg>
-            } @else {
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="6,3 20,12 6,21" />
-              </svg>
-            }
-          </button>
-
-          <!-- Next -->
-          <button
-            (click)="handleNext()"
-            class="w-10 h-10 flex items-center justify-center text-zinc-300 hover:text-zinc-100 transition"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="3,5 15,12 3,19" />
-              <rect x="18" y="5" width="3" height="14" />
-            </svg>
-          </button>
-
-          <!-- Repeat -->
-          <button
-            (click)="player.cycleRepeat()"
-            data-testid="now-playing-repeat"
-            [attr.aria-pressed]="player.repeat() !== 'off'"
-            [class]="'w-8 h-8 flex items-center justify-center rounded-full transition relative ' +
-              (player.repeat() !== 'off' ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300')"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17 2l4 4-4 4" />
-              <path d="M3 11v-1a4 4 0 014-4h14" />
-              <path d="M7 22l-4-4 4-4" />
-              <path d="M21 13v1a4 4 0 01-4 4H3" />
-            </svg>
-            @if (player.repeat() === 'one') {
-              <span class="absolute -top-1 -right-1 text-[10px] font-bold text-emerald-400">1</span>
-            }
-          </button>
-        </div>
-
-        <!-- Radio: keep playing similar library tracks once the queue empties -->
-        <div class="flex justify-center mb-6 -mt-2">
-          <button
-            (click)="player.toggleRadio()"
-            data-testid="now-playing-radio"
-            [attr.aria-pressed]="player.radio()"
-            [class]="'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition border ' +
-              (player.radio()
-                ? 'text-emerald-400 border-emerald-400/40 bg-emerald-400/10'
-                : 'text-zinc-500 border-zinc-700 hover:text-zinc-300')"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="2" />
-              <path d="M4.93 19.07a10 10 0 010-14.14M7.76 16.24a6 6 0 010-8.48M16.24 7.76a6 6 0 010 8.48M19.07 4.93a10 10 0 010 14.14" />
-            </svg>
-            {{ (player.radio() ? 'nowPlaying.radioOn' : 'nowPlaying.radio') | t }}
-          </button>
-        </div>
-
-        @if (contextMenu(); as pos) {
-          <app-track-context-menu
-            [artist]="track.artist"
-            [position]="pos"
-            [trackId]="track.id"
-            (close)="contextMenu.set(null)"
-            (openInfo)="onOpenTrackInfo($event)"
-          />
-        }
-
-        <!-- Lyrics panel — karaoke-styled synced view, replaces the queue while open -->
-        @if (lyricsOpen() && !karaokeFullscreen()) {
-          <div class="flex-1 min-h-0 flex flex-col overflow-hidden relative" data-testid="now-playing-lyrics">
-            <!-- Fullscreen expand button -->
-            <button
-              (click)="toggleKaraokeFullscreen()"
-              data-testid="now-playing-karaoke-toggle"
-              [attr.aria-label]="'nowPlaying.fullscreenLyrics' | t"
-              [attr.title]="'nowPlaying.fullscreenLyrics' | t"
-              class="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-zinc-800/60 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/80 transition"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8 3H5a2 2 0 00-2 2v3" />
-                <path d="M21 8V5a2 2 0 00-2-2h-3" />
-                <path d="M3 16v3a2 2 0 002 2h3" />
-                <path d="M16 21h3a2 2 0 002-2v-3" />
-              </svg>
-            </button>
-            @if (lyricsLoading()) {
-              <p class="text-sm text-zinc-500 px-2">{{ 'nowPlaying.loadingLyrics' | t }}</p>
-            } @else if (lyricLines().length > 0) {
-              <div
-                #lyricsScroll
-                class="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4 text-center scroll-smooth karaoke-scroll"
-                style="mask-image: linear-gradient(transparent 0%, black 10%, black 90%, transparent 100%); -webkit-mask-image: linear-gradient(transparent 0%, black 10%, black 90%, transparent 100%);"
-              >
-                <div class="pt-[30%] pb-[30%] space-y-1">
-                  @for (line of lyricLines(); track $index) {
-                    <p
-                      data-karaoke-line
-                      [class]="'break-words transition-all duration-500 ease-out select-none ' +
-                        ($index === activeLine()
-                          ? 'text-lg font-bold text-zinc-100 scale-105'
-                          : $index === activeLine() - 1 || $index === activeLine() + 1
-                            ? 'text-sm text-zinc-400'
-                            : 'text-sm text-zinc-600')"
-                      [style.transform]="$index === activeLine() ? 'scale(1.05)' : 'scale(1)'"
-                    >
-                      {{ line.text || '♪' }}
-                    </p>
-                  }
-                </div>
-              </div>
-            } @else if (plainLyrics()) {
-              <pre class="flex-1 overflow-y-auto overflow-x-hidden pb-4 whitespace-pre-wrap break-words font-sans text-sm text-zinc-300 text-center">{{ plainLyrics() }}</pre>
-            } @else {
-              <div
-                class="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center"
-                data-testid="now-playing-lyrics-empty"
-              >
-                <svg class="w-10 h-10 text-zinc-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M9 18V5l12-2v13" />
-                  <circle cx="6" cy="18" r="3" />
-                  <circle cx="18" cy="16" r="3" />
-                </svg>
-                @if (lyricsError()) {
-                  <div class="space-y-1">
-                    <p class="text-sm font-medium text-zinc-300">{{ 'nowPlaying.lyricsErrorTitle' | t }}</p>
-                    <p class="text-xs text-zinc-500">{{ 'nowPlaying.lyricsErrorHint' | t }}</p>
-                  </div>
-                } @else {
-                  <div class="space-y-1">
-                    <p class="text-sm font-medium text-zinc-300">{{ 'nowPlaying.lyricsEmptyTitle' | t }}</p>
-                    <p class="text-xs text-zinc-500">{{ 'nowPlaying.lyricsEmptyHint' | t }}</p>
-                  </div>
-                }
-                <button
-                  (click)="fetchLyricsManually()"
-                  [disabled]="fetchingLyrics()"
-                  data-testid="now-playing-lyrics-fetch"
-                  class="inline-flex items-center gap-2 rounded-full bg-zinc-800 px-4 py-1.5 text-xs font-medium text-zinc-200 transition hover:bg-zinc-700 disabled:cursor-wait disabled:opacity-60"
-                >
-                  @if (fetchingLyrics()) {
-                    <span class="w-3 h-3 rounded-full border-2 border-zinc-400 border-t-transparent animate-spin"></span>
-                    <span>{{ 'nowPlaying.fetching' | t }}</span>
-                  } @else {
-                    <span>{{ (lyricsError() ? 'nowPlaying.tryAgain' : 'nowPlaying.fetchLyrics') | t }}</span>
-                  }
-                </button>
-              </div>
-            }
-          </div>
-        } @else if (!lyricsOpen()) {
-
-        <!-- Queue section -->
-        <div class="flex-1 min-h-0 flex flex-col px-4 overflow-hidden" data-testid="now-playing-queue">
-          <!-- Drag handle: pull up to grow the queue (shrinks the cover). -->
-          <div
-            (pointerdown)="onQueueResizeStart($event)"
-            data-testid="now-playing-queue-resize"
-            role="separator"
-            aria-orientation="horizontal"
-            [attr.aria-label]="'nowPlaying.resizeQueue' | t"
-            class="group flex-shrink-0 flex justify-center items-center py-2 -mt-1 cursor-ns-resize touch-none select-none"
-          >
-            <span
-              class="w-10 h-1 rounded-full transition-colors"
-              [class]="resizingQueue() ? 'bg-zinc-400' : 'bg-zinc-700 group-hover:bg-zinc-500'"
-            ></span>
-          </div>
-          @if (player.context() && player.context()!.type !== 'adhoc') {
-            <p class="text-xs text-zinc-500 px-2 mb-1">{{ 'nowPlaying.nextFrom' | t: { name: player.context()!.name ?? '' } }}</p>
-          }
-          <div class="flex items-center gap-2 mb-3 px-2">
-            <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">{{ 'nowPlaying.nextUp' | t }}</span>
-            <span class="text-xs text-zinc-600">{{ player.queue().length }} tracks</span>
-            @if (player.queue().length > 0) {
-              <button
-                type="button"
-                (click)="clearQueue()"
-                data-testid="queue-clear"
-                class="ml-auto text-xs text-zinc-500 hover:text-zinc-200 transition"
-              >
-                {{ 'nowPlaying.clear' | t }}
-              </button>
-            }
-          </div>
-
-          @if (player.queue().length === 0) {
-            <div class="flex-1 flex items-center justify-center">
-              <p class="text-sm text-zinc-600">{{ 'nowPlaying.queueEmpty' | t }}</p>
-            </div>
-          } @else {
-            <div class="flex-1 overflow-y-auto pb-4" appTvNavGroup axis="vertical">
-              @for (queueTrack of player.queue(); track queueTrack.id + '-' + $index) {
-                <div
-                  class="flex items-center group"
-                  appTvNavGroup
-                  axis="horizontal"
-                  draggable="true"
-                  (dragstart)="onQueueDragStart($event, $index)"
-                  (dragover)="onQueueDragOver($event, $index)"
-                  (drop)="onQueueDrop($event, $index)"
-                  (dragend)="onQueueDragEnd()"
-                  [class.opacity-40]="dragSourceIndex() === $index"
-                  [class.border-t-2]="dropTargetIndex() === $index && dropTargetIndex() !== dragSourceIndex()"
-                  [class.border-t-indigo-500]="dropTargetIndex() === $index && dropTargetIndex() !== dragSourceIndex()"
-                >
-                  <button
-                    appTvNavItem
-                    (click)="jumpToTrack($index)"
-                    class="flex-1 flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-zinc-800/50 transition text-left"
-                  >
-                    <span class="text-xs text-zinc-600 w-4 flex-shrink-0 cursor-grab">≡</span>
-                    <span class="text-xs text-zinc-600 w-6 text-right">{{ $index + 1 }}</span>
-                    <app-cover-art
-                      [src]="queueTrack.coverArt ? '/api/cover/' + queueTrack.coverArt + '?size=80&token=' + auth.token() : undefined"
-                      [artist]="queueTrack.artist"
-                      [album]="queueTrack.album ?? ''"
-                      [size]="32"
-                      rounded="rounded"
-                    />
-                    <div class="min-w-0 flex-1">
-                      <p class="text-sm text-zinc-200 truncate">{{ queueTrack.title }}</p>
-                      <p class="text-xs text-zinc-500 truncate">{{ queueTrack.artist }}</p>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    appTvNavItem
-                    (click)="removeFromQueue($index)"
-                    data-testid="queue-remove"
-                    [attr.title]="'nowPlaying.remove' | t"
-                    [attr.aria-label]="'nowPlaying.removeFromQueue' | t"
-                    class="p-1 mr-1 text-zinc-600 group-hover:text-zinc-400 hover:!text-red-400 transition flex-shrink-0"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-              }
-            </div>
-          }
-        </div>
-        }
-
-        <!-- Fullscreen karaoke overlay -->
-        @if (lyricsOpen() && karaokeFullscreen()) {
-          <div
-            #karaokeOverlay
-            tabindex="-1"
-            class="fixed inset-0 z-[70] flex flex-col transition-opacity duration-500 outline-none"
-            [style.background]="'linear-gradient(135deg, ' + coverColors().primary + ' 0%, ' + coverColors().secondary + ' 50%, ' + coverColors().primary + ' 100%)'"
-            data-testid="karaoke-overlay"
-            (keydown.arrowdown)="onKaraokeInteraction()"
-            (keydown.arrowup)="onKaraokeInteraction()"
-          >
-            <!-- Animated background glow orbs -->
-            <div class="absolute inset-0 overflow-hidden pointer-events-none">
-              <div
-                class="absolute w-[60vw] h-[60vw] rounded-full opacity-20 blur-[80px] animate-pulse"
-                [style.background]="coverColors().glow"
-                style="top: -10%; left: -10%; animation-duration: 6s;"
-              ></div>
-              <div
-                class="absolute w-[50vw] h-[50vw] rounded-full opacity-15 blur-[60px] animate-pulse"
-                [style.background]="coverColors().secondary"
-                style="bottom: -5%; right: -10%; animation-duration: 8s; animation-delay: 2s;"
-              ></div>
-              <div
-                class="absolute w-[30vw] h-[30vw] rounded-full opacity-10 blur-[50px] animate-pulse"
-                [style.background]="coverColors().glow"
-                style="top: 40%; left: 60%; animation-duration: 10s; animation-delay: 4s;"
-              ></div>
-            </div>
-
-            <!-- Karaoke header — pt folds in env(safe-area-inset-top) so the
-                 exit button clears the iPhone notch (sheet is fixed inset-0
-                 over a viewport-fit=cover page). -->
-            <div class="relative z-10 flex items-center justify-between px-6 pt-[calc(1rem+env(safe-area-inset-top))] pb-2">
-              <button
-                (click)="toggleKaraokeFullscreen()"
-                class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition rounded-full hover:bg-white/10"
-                [attr.aria-label]="'nowPlaying.exitFullscreen' | t"
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M18 6L6 18" />
-                  <path d="M6 6l12 12" />
-                </svg>
-              </button>
-              <button
-                (click)="toggleKaraokeBrowsing()"
-                class="w-10 h-10 flex items-center justify-center transition rounded-full hover:bg-white/10"
-                [class]="karaokeBrowsing() ? 'text-white' : 'text-white/60 hover:text-white'"
-                [attr.aria-label]="(karaokeBrowsing() ? 'nowPlaying.exitBrowseLyrics' : 'nowPlaying.browseLyrics') | t"
-                data-testid="karaoke-browse-toggle"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="8" y1="6" x2="21" y2="6" />
-                  <line x1="8" y1="12" x2="21" y2="12" />
-                  <line x1="8" y1="18" x2="21" y2="18" />
-                  <line x1="3" y1="6" x2="3.01" y2="6" />
-                  <line x1="3" y1="12" x2="3.01" y2="12" />
-                  <line x1="3" y1="18" x2="3.01" y2="18" />
-                </svg>
-              </button>
-              <div class="text-center flex-1 min-w-0 px-4">
-                <p class="text-sm font-medium text-white/90 truncate">{{ track.title }}</p>
-                <p class="text-xs text-white/50 truncate">{{ track.artist }}</p>
-              </div>
-              <button
-                (click)="player.toggleVocalMute()"
-                class="w-10 h-10 flex items-center justify-center transition rounded-full hover:bg-white/10"
-                [class]="player.vocalsMuted() ? 'text-red-400' : 'text-white/60 hover:text-white'"
-                [attr.aria-label]="(player.vocalsMuted() ? 'nowPlaying.unmuteVocals' : 'nowPlaying.muteVocals') | t"
-                data-testid="vocal-mute-toggle"
-              >
-                @if (player.vocalsMuted()) {
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    <line x1="12" y1="19" x2="12" y2="22" />
-                    <line x1="2" y1="2" x2="22" y2="22" />
-                  </svg>
-                } @else {
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    <line x1="12" y1="19" x2="12" y2="22" />
-                  </svg>
-                }
-              </button>
-            </div>
-
-            <!-- Lyrics body -->
-            <div
-              class="relative z-10 flex-1 min-h-0 flex flex-col items-center justify-center px-4 overflow-hidden"
-              (wheel)="onKaraokeInteraction()"
-              (touchmove)="onKaraokeInteraction()"
-            >
-              @if (lyricsLoading()) {
-                <p class="text-lg text-white/40">{{ 'nowPlaying.loadingLyrics' | t }}</p>
-              } @else if (lyricLines().length > 0) {
-                @if (karaokeBrowsing()) {
-                  <div
-                    #lyricsScroll
-                    data-testid="karaoke-fullscreen-browse-list"
-                    class="w-full max-w-2xl overflow-y-auto overflow-x-hidden px-4 pb-[40vh] pt-[40vh] scroll-smooth karaoke-scroll"
-                    style="mask-image: linear-gradient(transparent 0%, black 25%, black 75%, transparent 100%); -webkit-mask-image: linear-gradient(transparent 0%, black 25%, black 75%, transparent 100%);"
-                  >
-                    @for (line of lyricLines(); track $index) {
-                      <p
-                        data-karaoke-line
-                        tabindex="0"
-                        role="button"
-                        (click)="seekToLine($index)"
-                        (keydown.enter)="seekToLine($index)"
-                        (keydown.space)="seekToLine($index)"
-                        [class]="'text-center py-3 break-words transition-all duration-500 ease-out select-none cursor-pointer ' +
-                          ($index === activeLine()
-                            ? 'text-3xl md:text-4xl font-bold text-white scale-105 drop-shadow-lg'
-                            : $index === activeLine() - 1 || $index === activeLine() + 1
-                              ? 'text-xl md:text-2xl text-white/40'
-                              : 'text-lg md:text-xl text-white/20')"
-                        [style.transform]="$index === activeLine() ? 'scale(1.05)' : 'scale(1)'"
-                      >
-                        {{ line.text || '♪' }}
-                      </p>
-                    }
-                  </div>
-                } @else {
-                  <div
-                    data-testid="karaoke-fullscreen-follow"
-                    class="w-full max-w-2xl flex flex-col items-center gap-3 text-center"
-                  >
-                    <p
-                      data-karaoke-line
-                      data-testid="karaoke-fullscreen-line-current"
-                      [class]="'break-words select-none text-3xl md:text-4xl font-bold text-white drop-shadow-lg ' + karaokeLineAnimClass()"
-                    >
-                      {{ currentLineText() || '♪' }}
-                    </p>
-                    @if (nextLineText() !== null) {
-                      <p
-                        data-karaoke-line
-                        data-testid="karaoke-fullscreen-line-next"
-                        class="break-words select-none text-xl md:text-2xl text-white/40"
-                      >
-                        {{ nextLineText() }}
-                      </p>
-                    }
-                  </div>
-                }
-              } @else if (plainLyrics()) {
-                <pre class="max-w-xl text-center text-lg text-white/70 whitespace-pre-wrap break-words font-sans overflow-y-auto overflow-x-hidden px-4 pb-4">{{ plainLyrics() }}</pre>
-              } @else {
-                <div class="text-center">
-                  <p class="text-xl text-white/30 mb-2">{{ 'nowPlaying.noLyricsAvailable' | t }}</p>
-                  <p class="text-sm text-white/15">{{ 'nowPlaying.noLyricsAvailableHint' | t }}</p>
-                </div>
-              }
-            </div>
-
-            <!-- Karaoke transport controls -->
-            <div class="relative z-10 px-6 pb-6 pt-2">
-              <!-- Seek bar -->
-              <div class="max-w-md mx-auto mb-3">
-                <app-seek-bar
-                  [position]="safeProgress()"
-                  [duration]="safeDuration()"
-                  [buffered]="player.bufferedRanges()"
-                  (seek)="onSeek($event)"
-                />
-                <div class="flex justify-between mt-1">
-                  <span class="text-xs text-white/40">{{ formatTime(safeProgress()) }}</span>
-                  <span class="text-xs text-white/40">{{ formatTime(safeDuration()) }}</span>
-                </div>
-              </div>
-              <!-- Controls -->
-              <div class="flex items-center justify-center gap-6">
-                <button
-                  (click)="handlePrev()"
-                  class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="3" y="5" width="3" height="14" />
-                    <polygon points="21,5 9,12 21,19" />
-                  </svg>
-                </button>
-                <button
-                  (click)="handlePlayPause()"
-                  [attr.data-buffering]="showBuffering()"
-                  class="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm text-white flex items-center justify-center hover:bg-white/30 transition border border-white/10"
-                >
-                  @if (showBuffering()) {
-                    <span class="inline-block w-5 h-5 border-[3px] border-current border-t-transparent rounded-full animate-spin"></span>
-                  } @else if (showPlaying()) {
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <rect x="6" y="4" width="4" height="16" />
-                      <rect x="14" y="4" width="4" height="16" />
-                    </svg>
-                  } @else {
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <polygon points="6,3 20,12 6,21" />
-                    </svg>
-                  }
-                </button>
-                <button
-                  (click)="handleNext()"
-                  class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <polygon points="3,5 15,12 3,19" />
-                    <rect x="18" y="5" width="3" height="14" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-        }
-      </div>
+    @if (contextMenu(); as pos) {
+      <app-track-context-menu
+        [artist]="track.artist"
+        [position]="pos"
+        [trackId]="track.id"
+        (close)="contextMenu.set(null)"
+        (openInfo)="onOpenTrackInfo($event)"
+      />
     }
+
+    @if (!karaokeFullscreen()) {
+      <app-now-playing-panel-tabs
+        [activePanel]="activePanel()"
+        [queueCount]="player.queue().length"
+        [hasLyrics]="hasLyrics()"
+        (panelSelected)="setActivePanel($event)"
+      />
+
+      @if (activePanel() === 'lyrics') {
+        <app-now-playing-lyrics-panel
+          [loading]="lyricsLoading()"
+          [lines]="lyricLines()"
+          [activeLine]="activeLine()"
+          [plainLyrics]="plainLyrics()"
+          [error]="lyricsError()"
+          [fetching]="fetchingLyrics()"
+          (fullscreenRequested)="toggleKaraokeFullscreen()"
+          (fetchRequested)="fetchLyricsManually()"
+        />
+      } @else {
+        <app-now-playing-queue-panel
+          [resizing]="resizingQueue()"
+          (resizeStart)="onQueueResizeStart($event)"
+        />
+      }
+    } @else {
+      <app-now-playing-karaoke-fullscreen
+        [colors]="coverColors()"
+        [title]="track.title"
+        [artist]="track.artist"
+        [browsing]="karaokeBrowsing()"
+        [loading]="lyricsLoading()"
+        [lines]="lyricLines()"
+        [activeLine]="activeLine()"
+        [plainLyrics]="plainLyrics()"
+        [currentLineText]="currentLineText()"
+        [nextLineText]="nextLineText()"
+        [lineAnimClass]="karaokeLineAnimClass()"
+        [vocalsMuted]="player.vocalsMuted()"
+        [progress]="safeProgress()"
+        [duration]="safeDuration()"
+        [buffered]="player.bufferedRanges()"
+        [playing]="showPlaying()"
+        [buffering]="showBuffering()"
+        (exit)="toggleKaraokeFullscreen()"
+        (browseToggle)="toggleKaraokeBrowsing()"
+        (interaction)="onKaraokeInteraction()"
+        (lineSelected)="seekToLine($event)"
+        (vocalMuteToggle)="player.toggleVocalMute()"
+        (seek)="onSeek($event)"
+        (playPauseClicked)="handlePlayPause()"
+        (nextClicked)="handleNext()"
+        (prevClicked)="handlePrev()"
+      />
+    }
+  </div>
+}

@@ -1,0 +1,77 @@
+<div class="flex-1 min-h-0 flex flex-col px-4 overflow-hidden" data-testid="now-playing-queue">
+  <div
+    (pointerdown)="resizeStart.emit($event)"
+    data-testid="now-playing-queue-resize"
+    role="separator"
+    aria-orientation="horizontal"
+    [attr.aria-label]="'nowPlaying.resizeQueue' | t"
+    class="group flex-shrink-0 flex justify-center items-center py-2 -mt-1 cursor-ns-resize touch-none select-none"
+  >
+    <span class="w-10 h-1 rounded-full transition-colors" [class]="resizing() ? 'bg-theme-secondary' : 'bg-theme-surface-2 group-hover:bg-theme-muted'"></span>
+  </div>
+  @if (player.context() && player.context()!.type !== 'adhoc') {
+    <p class="text-xs text-theme-muted px-2 mb-1">{{ 'nowPlaying.nextFrom' | t: { name: player.context()!.name ?? '' } }}</p>
+  }
+  <div class="flex items-center gap-2 mb-3 px-2">
+    <span class="text-xs font-semibold text-theme-secondary uppercase tracking-wider">{{ 'nowPlaying.nextUp' | t }}</span>
+    <span class="text-xs text-theme-muted">{{ 'nowPlaying.tracksCount' | t: { count: player.queue().length } }}</span>
+    @if (player.queue().length > 0) {
+      <button type="button" (click)="clearQueue()" data-testid="queue-clear" class="ml-auto text-xs text-theme-muted hover:text-theme-primary transition">
+        {{ 'nowPlaying.clear' | t }}
+      </button>
+    }
+  </div>
+
+  @if (player.queue().length === 0) {
+    <div class="flex-1 flex items-center justify-center">
+      <p class="text-sm text-theme-muted">{{ 'nowPlaying.queueEmpty' | t }}</p>
+    </div>
+  } @else {
+    <div class="flex-1 overflow-y-auto pb-4" appTvNavGroup [axis]="'vertical'">
+      @for (queueTrack of player.queue(); track queueTrack.id + '-' + $index) {
+        <div
+          class="flex items-center group"
+          appTvNavGroup
+          [axis]="'horizontal'"
+          draggable="true"
+          (dragstart)="onQueueDragStart($event, $index)"
+          (dragover)="onQueueDragOver($event, $index)"
+          (drop)="onQueueDrop($event, $index)"
+          (dragend)="onQueueDragEnd()"
+          [class.opacity-40]="dragSourceIndex() === $index"
+          [class.border-t-2]="dropTargetIndex() === $index && dropTargetIndex() !== dragSourceIndex()"
+          [class.border-theme-accent]="dropTargetIndex() === $index && dropTargetIndex() !== dragSourceIndex()"
+        >
+          <button appTvNavItem (click)="jumpToTrack($index)" class="flex-1 flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-theme-surface transition text-left">
+            <span class="text-xs text-theme-muted w-4 flex-shrink-0 cursor-grab">≡</span>
+            <span class="text-xs text-theme-muted w-6 text-right">{{ $index + 1 }}</span>
+            <app-cover-art
+              [src]="queueTrack.coverArt ? '/api/cover/' + queueTrack.coverArt + '?size=80&token=' + auth.token() : undefined"
+              [artist]="queueTrack.artist"
+              [album]="queueTrack.album ?? ''"
+              [size]="32"
+              rounded="rounded"
+            />
+            <div class="min-w-0 flex-1">
+              <p class="text-sm text-theme-primary truncate">{{ queueTrack.title }}</p>
+              <p class="text-xs text-theme-muted truncate">{{ queueTrack.artist }}</p>
+            </div>
+          </button>
+          <button
+            type="button"
+            appTvNavItem
+            (click)="removeFromQueue($index)"
+            data-testid="queue-remove"
+            [attr.title]="'nowPlaying.remove' | t"
+            [attr.aria-label]="'nowPlaying.removeFromQueue' | t"
+            class="p-1 mr-1 text-theme-muted group-hover:text-theme-secondary hover:!text-red-400 transition flex-shrink-0"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      }
+    </div>
+  }
+</div>

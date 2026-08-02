@@ -1,0 +1,29 @@
+<!-- Header — drag handle to dismiss (live-follow).
+     pt folds in env(safe-area-inset-top) so the grab pill and the
+     close chevron drop below the iPhone hardware notch — on a PWA with
+     viewport-fit=cover an un-padded top would tuck the handle under the
+     cutout, making it invisible / untappable to close the sheet. No-op
+     on desktop / non-notched screens (inset resolves to 0). -->
+<div
+  data-testid="now-playing-drag-handle"
+  class="flex flex-col items-center px-4 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-3 relative touch-none select-none"
+  (pointerdown)="dragPointerDown.emit($event)"
+>
+  <div class="w-10 h-1 rounded-full bg-theme-surface-2 mb-2"></div>
+  <div class="flex items-center justify-center w-full relative">
+    <button
+      (click)="player.setNowPlayingOpen(false)"
+      class="absolute left-0 w-8 h-8 flex items-center justify-center text-theme-muted hover:text-theme-primary transition"
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 9l6 6 6-6" />
+      </svg>
+    </button>
+    <span class="text-xs text-theme-muted uppercase tracking-wider">{{ 'nowPlaying.title' | t }}</span>
+    <div class="absolute right-0">
+      @if (remote.remoteEnabled()) {
+        <app-device-switcher placement="down" />
+      }
+    </div>
+  </div>
+</div>

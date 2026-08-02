@@ -366,6 +366,7 @@
   "nowPlaying.muteVocals": "Mute vocals",
   "nowPlaying.nextFrom": "Next from: {name}",
   "nowPlaying.nextUp": "Next up",
+  "nowPlaying.tracksCount": "{count} tracks",
   "nowPlaying.noLyricsAvailable": "No lyrics available",
   "nowPlaying.noLyricsAvailableHint": "Lyrics will appear here when synced lyrics are found",
   "nowPlaying.queueEmpty": "Queue is empty",

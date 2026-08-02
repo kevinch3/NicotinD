@@ -23,6 +23,7 @@ describe('isFilledIcon', () => {
       'activity',
       'wrench',
       'database',
+      'mic',
     ] as const) {
       expect(isFilledIcon(name)).toBe(false);
     }
@@ -68,5 +69,14 @@ describe('IconComponent', () => {
       expect(svg, `${name} did not render an svg`).not.toBeNull();
       expect(svg.getAttribute('fill')).toBe('none'); // none of these are filled glyphs
     }
+  });
+
+  it('renders the mic icon', () => {
+    const fixture = TestBed.createComponent(IconComponent);
+    setInputValue(fixture.componentInstance.name, 'mic');
+    fixture.detectChanges();
+    const svg = fixture.nativeElement.querySelector('svg') as SVGElement;
+    expect(svg?.querySelector('path')).toBeTruthy();
+    expect(svg.getAttribute('fill')).toBe('none');
   });
 });

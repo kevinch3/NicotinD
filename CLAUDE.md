@@ -516,11 +516,12 @@ Add detail there, not here.
   scored by the Radio engine and sequenced via `energy-arc`. →
   [docs/audio-ml-enrichment.md](docs/audio-ml-enrichment.md)
 - **Lyrics (on-demand, plugin-sourced, editable)**: new `metadata` plugin kind + `lyrics` capability
-  (LRCLIB first source); stored in `library_lyrics` + file tag, user-editable. The now-playing
-  lyrics toggle opens a karaoke-styled panel (synced line highlighting + auto-scroll) with a
-  fullscreen expand button — fullscreen defaults to a current+next-line-only auto-follow view
-  (narrow-screen/TV friendly) with a wheel/touch-gesture browse mode for tap-to-seek; a centered
-  styled empty state carries an inline Fetch button. Fetch is
+  (LRCLIB first source); stored in `library_lyrics` + file tag, user-editable. Now Playing's
+  **Lyrics tab** (alongside Queue — see the Now Playing component-split entry below) opens a
+  karaoke-styled panel (synced line highlighting + auto-scroll) with a fullscreen expand button —
+  fullscreen defaults to a current+next-line-only auto-follow view (narrow-screen/TV friendly) with
+  a wheel/touch-gesture browse mode for tap-to-seek; a centered styled empty state carries an inline
+  Fetch button. Fetch is
   **reliable 1-click**: LRCLIB retries transient failures (404 stays no-match) and the route returns
   `502` for a source error vs `null` for a confident miss, so the first click doesn't
   false-negative. **Vocal mute** (`?vocals=off` → server-side ffmpeg center-channel cancellation
@@ -622,6 +623,14 @@ Add detail there, not here.
 - **Now Playing queue — clear + drag-reorder + per-row remove**: "Next up" supports a Clear link,
   HTML5 drag-and-drop row reorder, and per-row remove (X) backed by `PlayerService.clearQueue()` /
   `moveInQueue(from,to)` / `removeFromQueue(index)`. → [docs/web-ui.md](docs/web-ui.md)
+- **Now Playing component split + tabbed Queue/Lyrics panel**: the once-monolithic
+  `now-playing.component` shell now composes 7 extracted sub-components
+  (`NowPlayingHeaderComponent`/`-CoverArtComponent`/`-TransportComponent`/`-PanelTabsComponent`/
+  `-QueuePanelComponent`/`-LyricsPanelComponent`/`-KaraokeFullscreenComponent`); a **Queue/Lyrics tab
+  switcher** (`NowPlayingPanelTabsComponent`, queue-count badge + lyrics-availability dot) replaces
+  the old lyrics-toggle-swaps-the-queue model. The sheet now follows theme tokens like the rest of
+  the app — only the fullscreen karaoke overlay's dynamic cover-gradient background stays an
+  intentional exception. → [docs/web-ui.md](docs/web-ui.md)
 - **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a
   **weight-normalized** blend (comparable-factors-only, so un-analyzed tracks aren't out-biased
   mid-backfill) of BPM, Camelot key (incl. ±2/diagonal moves), multi-genre set closeness
