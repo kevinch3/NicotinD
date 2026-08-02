@@ -13,7 +13,7 @@ import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
-import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
+import { NowPlayingHeaderComponent } from './now-playing-header/now-playing-header.component';
 import { TrackContextMenuComponent } from '../track-context-menu/track-context-menu.component';
 import { TrackInfoService } from '../../services/track-info.service';
 import { resolveArtistTarget } from '../../lib/route-utils';
@@ -47,7 +47,7 @@ function formatTime(s: number): string {
 @Component({
   selector: 'app-now-playing',
   imports: [
-    DeviceSwitcherComponent,
+    NowPlayingHeaderComponent,
     TrackContextMenuComponent,
     SeekBarComponent,
     CoverArtComponent,
