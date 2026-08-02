@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.296](https://github.com/kevinch3/NicotinD/compare/v0.1.295...v0.1.296) (2026-08-02)
+
+### Bug Fixes
+
+* **web:** reserve bottom-chrome space in full-screen modal backdrops ([cc6b91e](https://github.com/kevinch3/NicotinD/commit/cc6b91eaf648b921ce179674250116ccbd9386d0)), closes [#367](https://github.com/kevinch3/NicotinD/issues/367)
 ## [0.1.295](https://github.com/kevinch3/NicotinD/compare/v0.1.294...v0.1.295) (2026-08-02)
 
 ### Features
