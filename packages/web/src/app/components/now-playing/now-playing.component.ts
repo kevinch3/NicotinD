@@ -15,6 +15,7 @@ import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { NowPlayingHeaderComponent } from './now-playing-header/now-playing-header.component';
 import { NowPlayingCoverArtComponent } from './now-playing-cover-art/now-playing-cover-art.component';
+import { NowPlayingTransportComponent } from './now-playing-transport/now-playing-transport.component';
 import { TrackContextMenuComponent } from '../track-context-menu/track-context-menu.component';
 import { TrackInfoService } from '../../services/track-info.service';
 import { resolveArtistTarget } from '../../lib/route-utils';
@@ -49,6 +50,7 @@ function formatTime(s: number): string {
   imports: [
     NowPlayingHeaderComponent,
     NowPlayingCoverArtComponent,
+    NowPlayingTransportComponent,
     TrackContextMenuComponent,
     SeekBarComponent,
     CoverArtComponent,
