@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.297](https://github.com/kevinch3/NicotinD/compare/v0.1.296...v0.1.297) (2026-08-02)
+
+### Features
+
+* **web:** add icon headers to Extensions groups, hide empty Connectivity section ([b3e9e8e](https://github.com/kevinch3/NicotinD/commit/b3e9e8ef6d30814072cad64e00adf405aec42e81))
+* **web:** add pluginStatus() unified status derivation ([40d622b](https://github.com/kevinch3/NicotinD/commit/40d622bbc6f40e2592d2a148823ac2d0027a3a4d))
+* **web:** add wifi icon glyph for the Extensions Connectivity header ([e12bf82](https://github.com/kevinch3/NicotinD/commit/e12bf82f1d04f6b3e256fd620e25cde97575c993))
+* **web:** replace two plugin-card badges with one unified status pill ([4e1f237](https://github.com/kevinch3/NicotinD/commit/4e1f237c10f9701ac9d2a4d4231d21987cee2e5e))
+
+### Bug Fixes
+
+* **web:** plugin status pill no longer mislabels working plugins as needs-config ([fced927](https://github.com/kevinch3/NicotinD/commit/fced9272b322e3b4eca8894697b639b6f4cc876f))
 ## [0.1.296](https://github.com/kevinch3/NicotinD/compare/v0.1.295...v0.1.296) (2026-08-02)
 
 ### Bug Fixes
