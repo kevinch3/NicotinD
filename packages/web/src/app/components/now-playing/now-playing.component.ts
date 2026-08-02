@@ -1,13 +1,4 @@
-import {
-  Component,
-  inject,
-  signal,
-  computed,
-  effect,
-  ElementRef,
-  viewChild,
-  DestroyRef,
-} from '@angular/core';
+import { Component, inject, signal, computed, effect, viewChild, DestroyRef } from '@angular/core';
 import { Router } from '@angular/router';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
@@ -17,6 +8,7 @@ import { NowPlayingHeaderComponent } from './now-playing-header/now-playing-head
 import { NowPlayingCoverArtComponent } from './now-playing-cover-art/now-playing-cover-art.component';
 import { NowPlayingTransportComponent } from './now-playing-transport/now-playing-transport.component';
 import { NowPlayingLyricsPanelComponent } from './now-playing-lyrics-panel/now-playing-lyrics-panel.component';
+import { NowPlayingKaraokeFullscreenComponent } from './now-playing-karaoke-fullscreen/now-playing-karaoke-fullscreen.component';
 import { TrackContextMenuComponent } from '../track-context-menu/track-context-menu.component';
 import { TrackInfoService } from '../../services/track-info.service';
 import { resolveArtistTarget } from '../../lib/route-utils';
@@ -53,6 +45,7 @@ function formatTime(s: number): string {
     NowPlayingCoverArtComponent,
     NowPlayingTransportComponent,
     NowPlayingLyricsPanelComponent,
+    NowPlayingKaraokeFullscreenComponent,
     TrackContextMenuComponent,
     SeekBarComponent,
     CoverArtComponent,
@@ -137,9 +130,11 @@ export class NowPlayingComponent {
    *  is the one place in the now-playing decomposition where a child's
    *  internal DOM ref must be reachable from the shell. */
   readonly lyricsPanel = viewChild(NowPlayingLyricsPanelComponent);
-  /** Fullscreen overlay root — focused on entry so ArrowUp/ArrowDown work
-   *  immediately for keyboard/TV-remote users with no prior click. */
-  readonly karaokeOverlayRef = viewChild<ElementRef<HTMLElement>>('karaokeOverlay');
+  /** Fullscreen karaoke overlay child — its `overlayRef` (an internal
+   *  `#karaokeOverlay` template ref) is re-exposed here so it can be focused
+   *  on entry (ArrowUp/ArrowDown work immediately for keyboard/TV-remote
+   *  users with no prior click), mirroring `lyricsPanel()` above. */
+  readonly karaokeFullscreenPanel = viewChild(NowPlayingKaraokeFullscreenComponent);
   private colorExtractedForId: string | null = null;
 
   // Playback progress interpolation
@@ -367,7 +362,7 @@ export class NowPlayingComponent {
         const url = this.server.apiUrl(`/api/cover/${track.coverArt}?size=80&token=${token}`);
         this.extractColorsFromImage(url);
       }
-      setTimeout(() => this.karaokeOverlayRef()?.nativeElement.focus(), 0);
+      setTimeout(() => this.karaokeFullscreenPanel()?.overlayRef()?.nativeElement.focus(), 0);
     }
   }
 
