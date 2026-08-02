@@ -737,7 +737,9 @@ Add detail there, not here.
   mini-player/tab bar; every `TrackRowComponent` `⋯` menu uses it. →
   [docs/design-patterns.md](docs/design-patterns.md)
 - **Bottom-chrome stacking + scroll lock**: mini-player and tab bar share one `z-50` plane;
-  `ScrollLockService` pins the document under full-screen sheets. →
+  `ScrollLockService` pins the document under full-screen sheets. Full-screen modal backdrops use
+  `BottomChromeSafeDirective` (issue #367) so a tall dialog never renders its last content under the
+  mini-player/tab bar. →
   [docs/design-patterns.md](docs/design-patterns.md)
 - **Catalog (metadata-driven) search**: `CatalogService` returns artist/album cards from
   Lidarr/MusicBrainz, scoped to the matched artist, resolving into album-hunt (typed 404 +

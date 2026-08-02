@@ -6,6 +6,7 @@ import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { AuthService } from '../../services/auth.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import type { Album } from '../../services/api/api-types';
+import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 /**
  * The artist-portrait override control: upload / copy from an album cover /
@@ -25,7 +26,7 @@ import type { Album } from '../../services/api/api-types';
 @Component({
   selector: 'app-artist-image-menu',
   standalone: true,
-  imports: [MenuPanelComponent, IconComponent, CoverArtComponent],
+  imports: [MenuPanelComponent, IconComponent, CoverArtComponent, BottomChromeSafeDirective],
   templateUrl: './artist-image-menu.component.html',
 })
 export class ArtistImageMenuComponent {

@@ -1446,6 +1446,7 @@
     @if (showCreateUser()) {
       <div
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+        appBottomChromeSafe
         (click)="showCreateUser.set(false)"
       >
         <div
@@ -1497,6 +1498,7 @@
     @if (resetTarget()) {
       <div
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+        appBottomChromeSafe
         (click)="resetTarget.set(null)"
       >
         <div
@@ -1536,6 +1538,7 @@
     @if (deleteTarget()) {
       <div
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+        appBottomChromeSafe
         (click)="deleteTarget.set(null)"
       >
         <div

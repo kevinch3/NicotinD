@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.297](https://github.com/kevinch3/NicotinD/compare/v0.1.296...v0.1.297) (2026-08-02)
+
+### Features
+
+* **web:** add icon headers to Extensions groups, hide empty Connectivity section ([b3e9e8e](https://github.com/kevinch3/NicotinD/commit/b3e9e8ef6d30814072cad64e00adf405aec42e81))
+* **web:** add pluginStatus() unified status derivation ([40d622b](https://github.com/kevinch3/NicotinD/commit/40d622bbc6f40e2592d2a148823ac2d0027a3a4d))
+* **web:** add wifi icon glyph for the Extensions Connectivity header ([e12bf82](https://github.com/kevinch3/NicotinD/commit/e12bf82f1d04f6b3e256fd620e25cde97575c993))
+* **web:** replace two plugin-card badges with one unified status pill ([4e1f237](https://github.com/kevinch3/NicotinD/commit/4e1f237c10f9701ac9d2a4d4231d21987cee2e5e))
+
+### Bug Fixes
+
+* **web:** plugin status pill no longer mislabels working plugins as needs-config ([fced927](https://github.com/kevinch3/NicotinD/commit/fced9272b322e3b4eca8894697b639b6f4cc876f))
+## [0.1.296](https://github.com/kevinch3/NicotinD/compare/v0.1.295...v0.1.296) (2026-08-02)
+
+### Bug Fixes
+
+* **web:** reserve bottom-chrome space in full-screen modal backdrops ([cc6b91e](https://github.com/kevinch3/NicotinD/commit/cc6b91eaf648b921ce179674250116ccbd9386d0)), closes [#367](https://github.com/kevinch3/NicotinD/issues/367)
+## [0.1.295](https://github.com/kevinch3/NicotinD/compare/v0.1.294...v0.1.295) (2026-08-02)
+
+### Features
+
+* **web:** add i18n keys for regrouped Settings page ([b13478e](https://github.com/kevinch3/NicotinD/commit/b13478e7f39a367bdb91a471b3867b9e1961ff51))
+* **web:** add settings-header and device-type icon glyphs ([5fd7cc4](https://github.com/kevinch3/NicotinD/commit/5fd7cc4a45d489ce8761842b70a83c6ab635ce72))
+* **web:** add shared SettingsGroupHeaderComponent ([1c4b34d](https://github.com/kevinch3/NicotinD/commit/1c4b34d0b907d22ab341a9bf5a2e5e47064df3a7))
+* **web:** regroup Settings page into 4 cards with uniform icon headers ([b782e0b](https://github.com/kevinch3/NicotinD/commit/b782e0b90e0d811170fe4139f552de12a8c03fc7))
+
+### Bug Fixes
+
+* **web:** register theme-accent as a Tailwind color + cover Advanced-card gate ([815a47f](https://github.com/kevinch3/NicotinD/commit/815a47f01c4a6f04054b09e4a1e2423b5f365235))
+## [0.1.294](https://github.com/kevinch3/NicotinD/compare/v0.1.293...v0.1.294) (2026-08-01)
+
+### Bug Fixes
+
+* **web:** fix TV nav perf/desync, ARIA grid conformance, queue remove reachability ([08776cf](https://github.com/kevinch3/NicotinD/commit/08776cf9ff98c74e11b6e8d1a40290e5b8701080)), closes [#357](https://github.com/kevinch3/NicotinD/issues/357) [#358](https://github.com/kevinch3/NicotinD/issues/358) [#359](https://github.com/kevinch3/NicotinD/issues/359) [#356](https://github.com/kevinch3/NicotinD/issues/356), references [#351](https://github.com/kevinch3/NicotinD/issues/351)
+* **web:** stop changelog.json regeneration from dirtying the working tree ([927688b](https://github.com/kevinch3/NicotinD/commit/927688b718eae6c4b0024e9bf21f810110308192))
 ## [0.1.293](https://github.com/kevinch3/NicotinD/compare/v0.1.292...v0.1.293) (2026-08-01)
 
 ### Bug Fixes
