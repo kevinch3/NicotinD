@@ -287,6 +287,26 @@
    needed) all resolve from this one token. */
 @theme {
   --color-theme-accent: var(--theme-accent);
+  /* `theme-secondary`/`theme-surface`/`theme-muted` get the same `@theme`
+     promotion as `theme-accent` above, for the same reason: the now-playing
+     queue panel + lyrics panel (player standardization branch) use
+     `bg-theme-secondary`, `bg-theme-surface/60`, `hover:bg-theme-surface/80`,
+     `group-hover:bg-theme-muted`, `hover:bg-theme-surface`,
+     `group-hover:text-theme-secondary`, and `border-theme-muted` — none of
+     which Tailwind v4 will generate for a name that only exists as a static
+     `@layer utilities`/`@utility` class (those never get automatic
+     opacity-modifier or `hover:`/`group-hover:` variants; `theme-accent`'s
+     comment above documents the same empirical finding). `bg-theme-secondary`
+     and `border-theme-muted` didn't exist as utilities at all before this —
+     `@theme` registration generates the whole bg-/text-/border-/... family
+     for a name, so no separate `@utility` fallback is needed (again mirroring
+     `theme-accent`). The existing static `.text-theme-secondary` /
+     `.bg-theme-surface` / `.bg-theme-muted` classes above are left in place
+     (harmless, byte-identical duplicates for the plain no-variant case) so no
+     existing call site needs touching. */
+  --color-theme-secondary: var(--theme-text-secondary);
+  --color-theme-surface: var(--theme-surface);
+  --color-theme-muted: var(--theme-text-muted);
 }
 /* `theme-inverse` is a neutral high-contrast fill (primary-text color as the
    background, base bg as the text) that flips per theme: it keeps the dark-theme
