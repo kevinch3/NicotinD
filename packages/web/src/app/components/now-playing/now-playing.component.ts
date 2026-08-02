@@ -99,6 +99,8 @@ export class NowPlayingComponent {
   );
   /** Plain text fallback when there are no synced lines. */
   readonly plainLyrics = computed(() => this.lyrics()?.plain ?? '');
+  /** Whether the current track has lyrics loaded (drives the tab-switcher dot). */
+  readonly hasLyrics = computed(() => !!this.lyrics()?.synced || !!this.lyrics()?.plain);
 
   /** Current line's text for the fullscreen auto-follow (2-line) view. */
   readonly currentLineText = computed(() => this.lyricLines()[this.activeLine()]?.text ?? '');
