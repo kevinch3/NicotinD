@@ -4,6 +4,17 @@
   </div>
 } @else {
   <div class="max-w-3xl mx-auto px-3 py-4 md:px-6 md:py-8 space-y-12">
+    <h1 class="text-xl font-bold text-theme-primary">{{ 'admin.title' | t }}</h1>
+
+    @if (error()) {
+      <div class="mb-6 px-4 py-2.5 rounded-lg text-sm status-error border border-theme">
+        {{ error() }}
+        <button (click)="error.set(null)" class="ml-2 text-status-error hover:opacity-80">
+          {{ 'admin.dismiss' | t }}
+        </button>
+      </div>
+    }
+
     <app-admin-group
       groupId="system-health"
       [defaultOpen]="true"
@@ -1206,15 +1217,6 @@
       [title]="'admin.userManagement' | t"
       [description]="'admin.groupUserManagementDesc' | t"
     >
-      @if (error()) {
-        <div class="mb-6 px-4 py-2.5 rounded-lg text-sm status-error border border-theme">
-          {{ error() }}
-          <button (click)="error.set(null)" class="ml-2 text-status-error hover:opacity-80">
-            {{ 'admin.dismiss' | t }}
-          </button>
-        </div>
-      }
-
       <div class="flex items-center justify-end mb-4">
         <button
           (click)="showCreateUser.set(true)"
