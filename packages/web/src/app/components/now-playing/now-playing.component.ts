@@ -7,6 +7,8 @@ import { PlaybackWsService } from '../../services/playback-ws.service';
 import { NowPlayingHeaderComponent } from './now-playing-header/now-playing-header.component';
 import { NowPlayingCoverArtComponent } from './now-playing-cover-art/now-playing-cover-art.component';
 import { NowPlayingTransportComponent } from './now-playing-transport/now-playing-transport.component';
+import { NowPlayingPanelTabsComponent } from './now-playing-panel-tabs/now-playing-panel-tabs.component';
+import { NowPlayingQueuePanelComponent } from './now-playing-queue-panel/now-playing-queue-panel.component';
 import { NowPlayingLyricsPanelComponent } from './now-playing-lyrics-panel/now-playing-lyrics-panel.component';
 import { NowPlayingKaraokeFullscreenComponent } from './now-playing-karaoke-fullscreen/now-playing-karaoke-fullscreen.component';
 import { TrackContextMenuComponent } from '../track-context-menu/track-context-menu.component';
@@ -18,12 +20,7 @@ import type { LyricsDto } from '@nicotind/core';
 import { firstValueFrom } from 'rxjs';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { ScrollLockService } from '../../services/scroll-lock.service';
-import { SeekBarComponent } from '../seek-bar/seek-bar.component';
-import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { ServerConfigService } from '../../services/server-config.service';
-import { TranslatePipe } from '../../pipes/translate.pipe';
-import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
-import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import {
   computePaletteFromPixels,
   scrollToActiveLine,
@@ -44,14 +41,11 @@ function formatTime(s: number): string {
     NowPlayingHeaderComponent,
     NowPlayingCoverArtComponent,
     NowPlayingTransportComponent,
+    NowPlayingPanelTabsComponent,
+    NowPlayingQueuePanelComponent,
     NowPlayingLyricsPanelComponent,
     NowPlayingKaraokeFullscreenComponent,
     TrackContextMenuComponent,
-    SeekBarComponent,
-    CoverArtComponent,
-    TranslatePipe,
-    TvNavGroupDirective,
-    TvNavItemDirective,
   ],
   templateUrl: './now-playing.component.html',
 })
@@ -69,12 +63,6 @@ export class NowPlayingComponent {
 
   // Context menu state
   readonly contextMenu = signal<{ x: number; y: number } | null>(null);
-
-  // Queue drag-and-drop reorder (HTML5 DnD; works with mouse + touch via
-  // pointer events polyfill on mobile — Angular's (dragstart) etc. are fine
-  // for a desktop-first feature, the rows are also tappable to jump).
-  readonly dragSourceIndex = signal<number | null>(null);
-  readonly dropTargetIndex = signal<number | null>(null);
 
   // Lyrics view state. Lyrics load lazily on first open and reload when the
   // track changes while the panel is open.
@@ -521,45 +509,6 @@ export class NowPlayingComponent {
     } else {
       this.onKaraokeInteraction();
     }
-  }
-
-  jumpToTrack(index: number): void {
-    if (this.dragSourceIndex() !== null) return;
-    this.player.jumpToQueueIndex(index);
-  }
-
-  clearQueue(): void {
-    this.player.clearQueue();
-  }
-
-  removeFromQueue(index: number): void {
-    this.player.removeFromQueue(index);
-  }
-
-  onQueueDragStart(event: DragEvent, index: number): void {
-    this.dragSourceIndex.set(index);
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', String(index));
-    }
-  }
-
-  onQueueDragOver(event: DragEvent, index: number): void {
-    event.preventDefault();
-    if (this.dragSourceIndex() !== null) this.dropTargetIndex.set(index);
-  }
-
-  onQueueDrop(event: DragEvent, index: number): void {
-    event.preventDefault();
-    const from = this.dragSourceIndex();
-    this.dragSourceIndex.set(null);
-    this.dropTargetIndex.set(null);
-    if (from !== null && from !== index) this.player.moveInQueue(from, index);
-  }
-
-  onQueueDragEnd(): void {
-    this.dragSourceIndex.set(null);
-    this.dropTargetIndex.set(null);
   }
 
   onSheetDragStart(event: PointerEvent): void {
