@@ -191,7 +191,7 @@ describe('NowPlayingComponent', () => {
           updatedAt: 0,
         }),
       );
-      component.toggleLyrics();
+      component.setActivePanel('lyrics');
       fixture.detectChanges();
       playerStub.currentTime.set(10); // activeLine -> index 1 ("second line")
 
@@ -212,7 +212,7 @@ describe('NowPlayingComponent', () => {
           updatedAt: 0,
         }),
       );
-      component.toggleLyrics();
+      component.setActivePanel('lyrics');
       fixture.detectChanges();
       playerStub.currentTime.set(0);
 
@@ -260,7 +260,7 @@ describe('NowPlayingComponent', () => {
           updatedAt: 0,
         }),
       );
-      component.toggleLyrics();
+      component.setActivePanel('lyrics');
       fixture.detectChanges();
       component.toggleKaraokeFullscreen();
       component.onKaraokeInteraction();
@@ -307,7 +307,7 @@ describe('NowPlayingComponent', () => {
           updatedAt: 0,
         }),
       );
-      component.toggleLyrics();
+      component.setActivePanel('lyrics');
       fixture.detectChanges();
       component.toggleKaraokeFullscreen();
       playerStub.currentTime.set(5); // activeLine -> index 1 ("b")
@@ -335,7 +335,7 @@ describe('NowPlayingComponent', () => {
           updatedAt: 0,
         }),
       );
-      component.toggleLyrics();
+      component.setActivePanel('lyrics');
       fixture.detectChanges();
       component.toggleKaraokeFullscreen();
       component.onKaraokeInteraction();
@@ -367,7 +367,7 @@ describe('NowPlayingComponent', () => {
           updatedAt: 0,
         }),
       );
-      component.toggleLyrics();
+      component.setActivePanel('lyrics');
       fixture.detectChanges();
 
       const first = component.karaokeLineAnimClass();
@@ -443,6 +443,23 @@ describe('NowPlayingComponent', () => {
       fixture.detectChanges();
 
       expect(component.karaokeBrowsing()).toBe(true);
+    });
+  });
+
+  describe('active panel (queue vs lyrics)', () => {
+    beforeEach(() => localStorage.clear());
+
+    it('persists the active panel choice across construction', () => {
+      localStorage.setItem('nicotind:np-active-panel', 'lyrics');
+      const fixture = TestBed.createComponent(NowPlayingComponent);
+      expect(fixture.componentInstance.activePanel()).toBe('lyrics');
+    });
+
+    it('setActivePanel updates the signal and persists it', () => {
+      const fixture = TestBed.createComponent(NowPlayingComponent);
+      fixture.componentInstance.setActivePanel('lyrics');
+      expect(fixture.componentInstance.activePanel()).toBe('lyrics');
+      expect(localStorage.getItem('nicotind:np-active-panel')).toBe('lyrics');
     });
   });
 

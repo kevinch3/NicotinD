@@ -192,6 +192,11 @@ export class NowPlayingComponent {
     NowPlayingComponent.COVER_MAX_PX - NowPlayingComponent.COVER_MIN_PX;
   private static readonly QUEUE_EXTRA_STORAGE_KEY = 'nicotind:np-queue-extra';
   readonly queueExtraHeightPx = signal(this.readStoredQueueExtra());
+
+  // Active panel (queue vs lyrics) persisted per-device.
+  private static readonly ACTIVE_PANEL_STORAGE_KEY = 'nicotind:np-active-panel';
+  readonly activePanel = signal<'queue' | 'lyrics'>(this.readStoredActivePanel());
+
   /** Cover art max-width (px), shrinking as the queue is dragged taller. */
   readonly coverMaxPx = computed(
     () => NowPlayingComponent.COVER_MAX_PX - this.queueExtraHeightPx(),
@@ -232,6 +237,25 @@ export class NowPlayingComponent {
       localStorage.setItem(NowPlayingComponent.QUEUE_EXTRA_STORAGE_KEY, String(px));
     } catch {
       /* storage unavailable — the size just won't persist */
+    }
+  }
+
+  private readStoredActivePanel(): 'queue' | 'lyrics' {
+    try {
+      const raw = localStorage.getItem(NowPlayingComponent.ACTIVE_PANEL_STORAGE_KEY);
+      return raw === 'lyrics' ? 'lyrics' : 'queue';
+    } catch {
+      return 'queue';
+    }
+  }
+
+  setActivePanel(panel: 'queue' | 'lyrics'): void {
+    this.activePanel.set(panel);
+    this.lyricsOpen.set(panel === 'lyrics');
+    try {
+      localStorage.setItem(NowPlayingComponent.ACTIVE_PANEL_STORAGE_KEY, panel);
+    } catch {
+      /* storage unavailable — the choice just won't persist */
     }
   }
 
@@ -317,14 +341,6 @@ export class NowPlayingComponent {
 
     // Ensure the browse-idle timeout can never fire/leak past destruction.
     this.destroyRef.onDestroy(() => this.clearBrowseIdleTimer());
-  }
-
-  toggleLyrics(): void {
-    const opening = !this.lyricsOpen();
-    this.lyricsOpen.update((v) => !v);
-    if (!opening) {
-      this.karaokeFullscreen.set(false);
-    }
   }
 
   toggleKaraokeFullscreen(): void {
