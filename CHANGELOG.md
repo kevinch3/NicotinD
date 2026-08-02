@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.299](https://github.com/kevinch3/NicotinD/compare/v0.1.298...v0.1.299) (2026-08-02)
+
+### Features
+
+* **web:** add mic icon for the Now Playing lyrics tab ([fa3324b](https://github.com/kevinch3/NicotinD/commit/fa3324bfe5d635a9667d8b136a60561166ffdcad))
+* **web:** add now-playing-panel-tabs (queue/lyrics tab switcher with badge, dot, D-pad) ([65e349a](https://github.com/kevinch3/NicotinD/commit/65e349af02d319cff7879a5739fec7e1cc26b751))
+* **web:** add persisted activePanel signal to now-playing, replacing lyrics toggle ([428866f](https://github.com/kevinch3/NicotinD/commit/428866f0b7ccf90831e132aa73cc42b21f893249))
+
+### Bug Fixes
+
+* **web:** give extracted Now Playing/mini-player children display:contents ([4c575bf](https://github.com/kevinch3/NicotinD/commit/4c575bf3da08ec2527ddc094ce9ad3bbfa8b1c43))
+* **web:** register theme-secondary/theme-surface/theme-muted as Tailwind colors ([4f6eb20](https://github.com/kevinch3/NicotinD/commit/4f6eb204c46199b6423e830dab3e795d6fff944b))
+* **web:** restore karaoke-fullscreen browse-mode auto-scroll, drop dead formatTime ([4e0c978](https://github.com/kevinch3/NicotinD/commit/4e0c978c853d959ba056554ad981eceeba80bb6b)), references [#lyricsScroll](https://github.com/kevinch3/NicotinD/issues/lyricsScroll)
+* **web:** seed lyricsOpen from restored activePanel + fix stale hasLyrics dot ([7559456](https://github.com/kevinch3/NicotinD/commit/7559456678932bcde5ffe39910521bca3eec592d))
+* **web:** translate the queue panel's hardcoded "N tracks" label ([a1b8ed5](https://github.com/kevinch3/NicotinD/commit/a1b8ed56fe4f9082f412027eb240b453e80b4417))
 ## [0.1.298](https://github.com/kevinch3/NicotinD/compare/v0.1.297...v0.1.298) (2026-08-02)
 
 ### Features
