@@ -8,7 +8,17 @@ import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { DesktopChromeService } from '../../services/desktop-chrome.service';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+import { ScrollLockService } from '../../services/scroll-lock.service';
 import { APP_VERSION } from '../../app.config';
+
+// jsdom lacks a PointerEvent constructor; MouseEvent carries clientX/Y + button
+// and dispatches under any type string, so it stands in for pointer events here.
+function pointer(type: string, clientY: number, button = 0): PointerEvent {
+  return new MouseEvent(type, { clientY, button }) as unknown as PointerEvent;
+}
+
+let mockCoarsePointer = true;
 
 vi.mock('../../lib/platform', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/platform')>();
@@ -20,6 +30,7 @@ vi.mock('../../lib/platform', async (importOriginal) => {
     // the real one closes over the un-mocked module-internal isElectron/
     // electronOS bindings, so flipping those two alone wouldn't reach it.
     isElectronLinux: vi.fn().mockReturnValue(false),
+    isCoarsePointer: () => mockCoarsePointer,
   };
 });
 
@@ -135,6 +146,98 @@ describe('LayoutComponent — desktop downloads badge', () => {
     transfersStub.activeDownloadCount.set(0);
     acquireStub.activeJobs.set([]);
     expect(fixture.componentInstance.downloadCount()).toBe(0);
+  });
+});
+
+describe('LayoutComponent — pull-to-refresh gesture host', () => {
+  beforeEach(() => {
+    mockCoarsePointer = true;
+  });
+
+  function setup() {
+    const playerStub = {
+      currentTrack: signal<{ id: string } | null>(null),
+      setRadioProvider: () => {},
+    };
+    const authStub = { username: signal('user'), role: signal('user'), logout: () => {} };
+
+    TestBed.configureTestingModule({
+      imports: [LayoutComponent],
+      providers: [
+        provideRouter([]),
+        { provide: PlayerService, useValue: playerStub },
+        { provide: AuthService, useValue: authStub },
+        { provide: APP_VERSION, useValue: '0.0.0-test' },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    });
+
+    TestBed.overrideComponent(LayoutComponent, {
+      set: {
+        template: `
+          <main [class]="'relative flex-1 ' + mainPadClass()" (pointerdown)="pull.onPointerDown($event)">
+            @if (pull.phase() !== 'idle') {
+              <div data-testid="pull-refresh-indicator"></div>
+            }
+          </main>
+        `,
+        imports: [],
+      },
+    });
+
+    const fixture = TestBed.createComponent(LayoutComponent);
+    return { fixture, component: fixture.componentInstance };
+  }
+
+  it('renders no pull indicator while idle', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="pull-refresh-indicator"]'),
+    ).toBeNull();
+  });
+
+  it('shows the indicator and triggers the registered handler on an armed pull', async () => {
+    const { fixture, component } = setup();
+    fixture.detectChanges();
+    const p2r = TestBed.inject(PullToRefreshService);
+    const handler = vi.fn().mockResolvedValue(undefined);
+    TestBed.runInInjectionContext(() => p2r.register(handler));
+
+    Object.defineProperty(window, 'scrollY', { value: 0, configurable: true, writable: true });
+    component.pull.onPointerDown(pointer('pointerdown', 100));
+    document.dispatchEvent(pointer('pointermove', 400));
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="pull-refresh-indicator"]'),
+    ).not.toBeNull();
+
+    document.dispatchEvent(pointer('pointerup', 400));
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start a pull when the scroll lock is held', () => {
+    const { fixture, component } = setup();
+    fixture.detectChanges();
+    const p2r = TestBed.inject(PullToRefreshService);
+    TestBed.runInInjectionContext(() => p2r.register(vi.fn()));
+    TestBed.inject(ScrollLockService).lock();
+
+    component.pull.onPointerDown(pointer('pointerdown', 100));
+    document.dispatchEvent(pointer('pointermove', 400));
+    expect(component.pull.phase()).toBe('idle');
+  });
+
+  it('does not start a pull on fine-pointer devices', () => {
+    mockCoarsePointer = false;
+    const { fixture, component } = setup();
+    fixture.detectChanges();
+    const p2r = TestBed.inject(PullToRefreshService);
+    TestBed.runInInjectionContext(() => p2r.register(vi.fn()));
+
+    component.pull.onPointerDown(pointer('pointerdown', 100));
+    document.dispatchEvent(pointer('pointermove', 400));
+    expect(component.pull.phase()).toBe('idle');
   });
 });
 

@@ -25,8 +25,11 @@ import { FeedbackDetailSheetComponent } from '../feedback-detail-sheet/feedback-
 import { ChangelogModalComponent } from '../changelog-modal/changelog-modal.component';
 import { DesktopWindowControlsComponent } from '../desktop-window-controls/desktop-window-controls.component';
 import { DesktopChromeService } from '../../services/desktop-chrome.service';
-import { isElectronLinux } from '../../lib/platform';
+import { isElectronLinux, isCoarsePointer } from '../../lib/platform';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { createPullToRefresh, PULL_THRESHOLD_PX } from '../../lib/pull-to-refresh';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+import { ScrollLockService } from '../../services/scroll-lock.service';
 
 interface NavItem {
   to: string;
@@ -87,6 +90,26 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private likes = inject(LikeService);
 
   private desktopChrome = inject(DesktopChromeService);
+  private readonly p2r = inject(PullToRefreshService);
+  private readonly scrollLock = inject(ScrollLockService);
+
+  /** Touch pull-to-refresh — the one gesture host for every route; pages
+   *  register what "refresh" means via PullToRefreshService. */
+  readonly pull = createPullToRefresh({
+    canStart: () => isCoarsePointer() && !this.scrollLock.locked && this.p2r.hasHandler(),
+    onRefresh: () => this.p2r.trigger(),
+  });
+
+  /** Indicator chip: rides the damped pull from above the fold; pinned at the
+   *  threshold offset while refreshing. -48 hides it fully at rest. */
+  readonly pullIndicatorTransform = computed(() => {
+    const y = this.pull.phase() === 'refreshing' ? PULL_THRESHOLD_PX : this.pull.pullPx();
+    return `translate(-50%, ${y - 48}px)`;
+  });
+
+  readonly pullSpinnerStyle = computed(() =>
+    this.pull.phase() === 'refreshing' ? null : `rotate(${this.pull.pullPx() * 2.5}deg)`,
+  );
 
   /**
    * True only inside the desktop shell on Linux (and Windows, when a Win
