@@ -77,3 +77,49 @@ describe('createPointerDrag', () => {
     expect(host.drag.dragging()).toBe(false);
   });
 });
+
+@Component({ standalone: true, template: '' })
+class CancelHostComponent {
+  ends: PointerEvent[] = [];
+  cancels: PointerEvent[] = [];
+  readonly dragWithCancel: PointerDrag = createPointerDrag({
+    onEnd: (e) => this.ends.push(e),
+    onCancel: (e) => this.cancels.push(e),
+  });
+  readonly dragWithoutCancel: PointerDrag = createPointerDrag({
+    onEnd: (e) => this.ends.push(e),
+  });
+}
+
+describe('pointercancel', () => {
+  function setupCancel() {
+    const fixture = TestBed.createComponent(CancelHostComponent);
+    return { host: fixture.componentInstance };
+  }
+
+  it('routes pointercancel to onEnd when no onCancel handler is given', () => {
+    const { host } = setupCancel();
+    host.dragWithoutCancel.start(pointer('pointerdown', 100));
+    document.dispatchEvent(pointer('pointercancel', 150));
+    expect(host.ends.length).toBe(1);
+    expect(host.dragWithoutCancel.dragging()).toBe(false);
+  });
+
+  it('prefers onCancel over onEnd when provided', () => {
+    const { host } = setupCancel();
+    host.dragWithCancel.start(pointer('pointerdown', 100));
+    document.dispatchEvent(pointer('pointercancel', 150));
+    expect(host.cancels.length).toBe(1);
+    expect(host.ends.length).toBe(0);
+  });
+
+  it('detaches all listeners after a cancel — no further moves or ups fire', () => {
+    const { host } = setupCancel();
+    host.dragWithCancel.start(pointer('pointerdown', 100));
+    document.dispatchEvent(pointer('pointercancel', 150));
+    document.dispatchEvent(pointer('pointermove', 200));
+    document.dispatchEvent(pointer('pointerup', 200));
+    expect(host.cancels.length).toBe(1);
+    expect(host.ends.length).toBe(0);
+  });
+});

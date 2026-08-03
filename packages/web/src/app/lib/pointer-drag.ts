@@ -1,7 +1,7 @@
 /**
  * createPointerDrag — the shared skeleton behind every pointer-drag gesture in the
  * app (sheet dismiss, panel resize, seek scrub). Wires `document` pointermove +
- * a one-shot pointerup on `start()`, exposes a `dragging` signal, and — crucially —
+ * one-shot pointerup/pointercancel on `start()`, exposes a `dragging` signal, and — crucially —
  * detaches its listeners automatically when the owning injection context is
  * destroyed, so a gesture interrupted by teardown can't leak document listeners.
  *
@@ -19,6 +19,10 @@ export interface PointerDragHandlers {
   onMove?: (e: PointerEvent, start: PointerEvent) => void;
   /** Fires once on pointerup with the up event and the start event. */
   onEnd?: (e: PointerEvent, start: PointerEvent) => void;
+  /** Fires when the browser reclaims the pointer (pointercancel — e.g. a touch
+   *  pan the browser turns into a scroll). Defaults to `onEnd` so interrupted
+   *  gestures still settle their state. */
+  onCancel?: (e: PointerEvent, start: PointerEvent) => void;
 }
 
 export interface PointerDrag {
@@ -39,6 +43,7 @@ export function createPointerDrag(handlers: PointerDragHandlers): PointerDrag {
   const detach = (): void => {
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup', onUp);
+    document.removeEventListener('pointercancel', onCancelEv);
     startEvent = null;
     dragging.set(false);
   };
@@ -49,6 +54,12 @@ export function createPointerDrag(handlers: PointerDragHandlers): PointerDrag {
     if (start) handlers.onEnd?.(e, start);
   }
 
+  function onCancelEv(e: PointerEvent): void {
+    const start = startEvent;
+    detach();
+    if (start) (handlers.onCancel ?? handlers.onEnd)?.(e, start);
+  }
+
   const start = (e: PointerEvent): void => {
     if (e.button !== 0) return;
     startEvent = e;
@@ -56,6 +67,7 @@ export function createPointerDrag(handlers: PointerDragHandlers): PointerDrag {
     dragging.set(true);
     document.addEventListener('pointermove', onMove);
     document.addEventListener('pointerup', onUp, { once: true });
+    document.addEventListener('pointercancel', onCancelEv, { once: true });
   };
 
   inject(DestroyRef).onDestroy(detach);
