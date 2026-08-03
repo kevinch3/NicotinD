@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.300](https://github.com/kevinch3/NicotinD/compare/v0.1.299...v0.1.300) (2026-08-03)
+
+### Features
+
+* **web:** add Spotify-like desktop side panel to Now Playing at lg ([5a48be4](https://github.com/kevinch3/NicotinD/commit/5a48be43e61c0be4760d357bdff73902e73aa8d5))
+
+### Bug Fixes
+
+* **web:** bound variable-height modal panels above the bottom chrome ([cea5888](https://github.com/kevinch3/NicotinD/commit/cea5888a9330dc4d026c4db1d6a5166d2576ffb9))
+* **web:** hoist Now Playing resize handle so it works on the Lyrics tab ([57ec71c](https://github.com/kevinch3/NicotinD/commit/57ec71c45fda32cff397868ac5a8df6d0cc4842b))
 ## [0.1.299](https://github.com/kevinch3/NicotinD/compare/v0.1.298...v0.1.299) (2026-08-02)
 
 ### Features
