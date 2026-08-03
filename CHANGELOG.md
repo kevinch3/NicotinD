@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.303](https://github.com/kevinch3/NicotinD/compare/v0.1.302...v0.1.303) (2026-08-03)
+
+### Bug Fixes
+
+* **web:** admin on page-shell max-w-3xl; strip legacy card-in-card panels (refs [#384](https://github.com/kevinch3/NicotinD/issues/384)) ([9dd19e5](https://github.com/kevinch3/NicotinD/commit/9dd19e50213165937034cb4916529fcf116b64f1))
+* **web:** final-review polish — slskd heading alignment + idiom docs/guard notes (refs [#384](https://github.com/kevinch3/NicotinD/issues/384)) ([d2a5953](https://github.com/kevinch3/NicotinD/commit/d2a595388b201001ff24949093c105a46d4d26ad))
+* **web:** page-shell idiom utilities + browse-tier wrappers (refs [#384](https://github.com/kevinch3/NicotinD/issues/384)) ([7256c60](https://github.com/kevinch3/NicotinD/commit/7256c60d1f882a86259ddcdba63f91a75dc98a21))
+* **web:** radio-landing, playlist-detail, share-view on page-shell (refs [#384](https://github.com/kevinch3/NicotinD/issues/384)) ([cb03be4](https://github.com/kevinch3/NicotinD/commit/cb03be47509bdb7c508da39cc97add890af95581))
+* **web:** settings family on page-shell max-w-2xl + page-title/section-title (refs [#384](https://github.com/kevinch3/NicotinD/issues/384)) ([3085e31](https://github.com/kevinch3/NicotinD/commit/3085e31ca000576652ca42d37e3e7590855addf2))
 ## [0.1.302](https://github.com/kevinch3/NicotinD/compare/v0.1.301...v0.1.302) (2026-08-03)
 
 ### Features
