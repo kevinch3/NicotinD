@@ -12,6 +12,7 @@ import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { ListControlsService } from '../../services/list-controls.service';
 import { TransferService } from '../../services/transfer.service';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 
 const ALBUM: AlbumDetail = {
   id: 'a1',
@@ -39,15 +40,31 @@ function setup(
     vi.fn(() =>
       of({ matched: true, coverUpdated: true, yearUpdated: true, releaseTypeUpdated: false }),
     );
+  const getAlbumCalls: string[] = [];
+  const getAlbum = vi.fn((id: string) => {
+    getAlbumCalls.push(id);
+    return of(ALBUM);
+  });
+
+  let registeredHandler: (() => Promise<void> | void) | null = null;
+  const p2rStub = {
+    register: (h: () => Promise<void> | void) => {
+      registeredHandler = h;
+    },
+    refreshing: signal(false),
+    hasHandler: signal(true),
+    trigger: vi.fn(),
+  };
 
   TestBed.configureTestingModule({
     imports: [AlbumDetailComponent],
     providers: [
       provideRouter([]),
+      { provide: PullToRefreshService, useValue: p2rStub },
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'a1' } } } },
       {
         provide: LibraryApiService,
-        useValue: { getAlbum: () => of(ALBUM), deleteSongs, optimizeAlbumMetadata },
+        useValue: { getAlbum, deleteSongs, optimizeAlbumMetadata },
       },
       { provide: AuthService, useValue: { token: signal('tok'), role: () => 'admin' } },
       { provide: PlayerService, useValue: { play: () => {}, playWithContext, playSingle } },
@@ -72,6 +89,9 @@ function setup(
     optimizeAlbumMetadata,
     playWithContext,
     playSingle,
+    getAlbum,
+    getAlbumCalls,
+    getRegisteredHandler: () => registeredHandler,
   };
 }
 
@@ -201,5 +221,18 @@ describe('AlbumDetailComponent — fix metadata', () => {
 
     expect(navigate).toHaveBeenCalledWith(['/library', 'albums', 'a2-new']);
     expect(component.showMetadataFix()).toBe(false);
+  });
+});
+
+describe('AlbumDetailComponent — pull-to-refresh', () => {
+  it('re-fetches the album from the route id', async () => {
+    const { getAlbumCalls, getRegisteredHandler } = setup();
+    getAlbumCalls.length = 0;
+
+    const handler = getRegisteredHandler();
+    expect(handler).toBeTruthy();
+    await handler!();
+
+    expect(getAlbumCalls).toEqual(['a1']);
   });
 });

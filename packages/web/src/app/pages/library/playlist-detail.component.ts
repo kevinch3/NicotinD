@@ -15,6 +15,7 @@ import { PreserveService } from '../../services/preserve.service';
 import { TransferService } from '../../services/transfer.service';
 import { SongMenuService } from '../../services/song-menu.service';
 import { SongPickerComponent } from '../../components/song-picker/song-picker.component';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import type { PlaylistDetail, Song } from '../../services/api/api-types';
 
 @Component({
@@ -40,6 +41,11 @@ export class PlaylistDetailComponent implements OnInit {
   private transferService = inject(TransferService);
   readonly songMenu = inject(SongMenuService);
   private http = inject(HttpClient);
+  private p2r = inject(PullToRefreshService);
+
+  constructor() {
+    this.p2r.register(() => this.reload());
+  }
 
   readonly loading = signal(true);
   readonly playlist = signal<PlaylistDetail | null>(null);

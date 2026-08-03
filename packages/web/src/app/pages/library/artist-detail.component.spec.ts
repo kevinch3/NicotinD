@@ -10,6 +10,7 @@ import { AuthService } from '../../services/auth.service';
 import { asRole, canCurate as canCurateRole } from '../../../types/core';
 import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 
 const ARTIST = {
   id: 'ar1',
@@ -86,10 +87,22 @@ function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedC
   // Drives the :id param so tests can exercise the artist→artist reaction.
   const paramMap = new BehaviorSubject(convertToParamMap({ id: 'ar1' }));
 
+  let registeredHandler: (() => Promise<void> | void) | null = null;
+  const p2rStub = {
+    register: (h: () => Promise<void> | void) => {
+      registeredHandler = h;
+    },
+    refreshing: signal(false),
+    hasHandler: signal(true),
+    trigger: vi.fn(),
+  };
+  const invalidateLibraryReads = vi.fn();
+
   TestBed.configureTestingModule({
     imports: [ArtistDetailComponent],
     providers: [
       provideRouter([]),
+      { provide: PullToRefreshService, useValue: p2rStub },
       {
         provide: ActivatedRoute,
         useValue: {
@@ -140,6 +153,7 @@ function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedC
             return of({ ok: true });
           },
           deleteSongs,
+          invalidateLibraryReads,
         },
       },
       {
@@ -177,6 +191,8 @@ function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedC
     imageCalls,
     deleteSongs,
     paramMap,
+    invalidateLibraryReads,
+    getRegisteredHandler: () => registeredHandler,
   };
 }
 
@@ -549,6 +565,33 @@ describe('ArtistDetailComponent — onIdentitySaved navigation', () => {
     component.onIdentitySaved({ ok: true, resynced: true, kind: 'split', artistId: null });
 
     expect(nav).toHaveBeenCalledWith(['/library'], { queryParams: { type: 'artists' } });
+  });
+});
+
+describe('ArtistDetailComponent — pull-to-refresh', () => {
+  it('reloads the artist and invalidates library reads', async () => {
+    const { getArtistCalls, invalidateLibraryReads, getRegisteredHandler } = setup();
+    await fixture_stable();
+    getArtistCalls.length = 0;
+
+    const handler = getRegisteredHandler();
+    expect(handler).toBeTruthy();
+    await handler!();
+
+    expect(invalidateLibraryReads).toHaveBeenCalled();
+    expect(getArtistCalls).toEqual(['ar1']);
+  });
+
+  it('no-ops when artistId is empty', async () => {
+    const { component, getArtistCalls, invalidateLibraryReads, getRegisteredHandler } = setup();
+    await fixture_stable();
+    component.artistId = '';
+    getArtistCalls.length = 0;
+
+    await getRegisteredHandler()!();
+
+    expect(invalidateLibraryReads).not.toHaveBeenCalled();
+    expect(getArtistCalls).toEqual([]);
   });
 });
 
