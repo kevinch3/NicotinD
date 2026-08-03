@@ -202,9 +202,11 @@ targeted by an opacity modifier or `@apply`d from a theme color that isn't `@the
 `text-theme-primary`/`border-theme` inside these declarations are raw `var()`, not `@apply`):
 
 - `page-shell` — `mx-auto px-4 py-5 md:px-6 md:py-8`. The **one** responsive gutter/width scale;
-  every routed page adds a `max-w-(6xl|3xl|2xl)` alongside it (the width is chosen per page, the
-  gutters/padding never vary).
-- `page-title` — `text-2xl font-bold` + `--theme-text-primary`. The page-level `<h1>`.
+  every routed page inside the app shell adds a `max-w-(6xl|3xl|2xl)` alongside it (the width is
+  chosen per page, the gutters/padding never vary).
+- `page-title` — `text-2xl font-bold` + `--theme-text-primary`. The settings-family/admin page
+  `<h1>`; browse-tier titles are a possible follow-up (kept their own title styles by scoping
+  decision).
 - `section-title` — `text-sm font-semibold uppercase tracking-wider mb-5` +
   `--theme-text-secondary`. The small-caps sub-heading above a section (replaces the raw
   `text-sm font-semibold uppercase tracking-wider text-theme-secondary` literal that used to be
@@ -263,6 +265,9 @@ list"), and that each route's `.page-shell` reports the tier's expected `maxWidt
 table above. Add the template to `PAGE_TIERS` in `page-shell.spec.ts` — the guard only covers pages
 listed in that table, so skipping this step means a new page can drift from the criteria with
 nothing catching it; adding the entry is what turns future drift on that page into a failing test.
+Pre-auth full-screen shells (login, setup wizard, pair, server-config) are exempt from this rule —
+they render before there is an authenticated app shell to be consistent with, so they keep their
+own full-viewport layout rather than adopting `page-shell`.
 
 ## Boot — player restore is paused by default (opt-in autoplay)
 

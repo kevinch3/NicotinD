@@ -35,6 +35,9 @@ const IDIOM_PAGES = [
 ];
 
 describe('page shell drift guard (issue #384)', () => {
+  // These assertions are canaries for the idiomatic spelling, not exhaustive checks over every
+  // class-ordering a template could legally use — `toContain`/`toMatch` here are class-order-
+  // sensitive, so a semantically-equivalent reorder of the same classes could slip past.
   it.each(PAGE_TIERS)('%s wraps its content in page-shell max-w-%s', (rel, tier) => {
     expect(read(rel)).toContain(`page-shell max-w-${tier}`);
   });
