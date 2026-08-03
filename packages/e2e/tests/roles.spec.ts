@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { ADMIN, bearer } from '../helpers';
+import { ADMIN, bearer, expandGroup } from '../helpers';
 
 /**
  * End-to-end proof that an admin changing a user's role **through the admin UI**
@@ -51,7 +51,7 @@ test.describe('admin role switching affects the user view', () => {
     await page.goto('/admin');
     // The users table lives inside the collapsible "User Management" settings
     // group, which starts collapsed by default — expand it first.
-    await page.getByTestId('settings-group-toggle').filter({ hasText: 'User Management' }).click();
+    await expandGroup(page, 'user-management');
     const row = page.locator('tr', { hasText: target.username });
     const select = row.getByTestId('user-role-select');
     await expect(select).toBeVisible();
