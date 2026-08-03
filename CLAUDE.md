@@ -1012,16 +1012,24 @@ Add detail there, not here.
 - **Admin/Settings/Extensions decoupling**: core Settings = universal prefs only; server-admin tools
   (streaming, library processing, find-duplicates) live in **Admin**; slskd owns its
   connection/shares + a Nicotine+-style live status panel (`GET /api/plugins/slskd/status`,
-  `SlskdStatus`) on its extension page. Credential storage unchanged (UI relocation only). →
+  `SlskdStatus`), embedded inline in its own collapsible Extensions card rather than a dedicated
+  route. Credential storage unchanged (UI relocation only). →
   [docs/admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
-- **Settings-family unified card (`SettingsGroupComponent`, settings-cards unification Task 1)**:
-  one bordered, collapsible card (`packages/web/src/app/components/settings-group/`) generalized
-  from the Admin-only AdminGroupComponent (renamed, no longer a repo symbol), collapsed by default everywhere and persisted
-  per-device (`lib/group-state.ts`, `localStorage` key `nicotind-group-<id>`, cleared on signout via
+- **Settings-cards unification (`SettingsGroupComponent`, all five settings-family views)**: one
+  bordered, collapsible card (`packages/web/src/app/components/settings-group/`) generalized from
+  the Admin-only `AdminGroupComponent` (renamed, no longer a repo symbol) now backs **every**
+  group on `/settings`, `/admin`, `/settings/plugins` (incl. each `PluginCardComponent`'s own
+  collapsible body), `/settings/devices`, and `/settings/agent-tokens` — collapsed by default
+  everywhere, no exceptions (Devices' pairing panel mints its code on first expand via the
+  `opened` output rather than an eager `defaultOpen`) — and persisted per-device
+  (`lib/group-state.ts`, `localStorage` key `nicotind-group-<id>`, cleared on signout via
   `AuthService.resetSession()`). Admin's 8 groups (System Health / Library Processing / Library
   Maintenance / Streaming & Media / Backups & Data / Acquisition & Automation / User Management /
-  Audit Log — the old 14-panel "System" mega-section dissolved across them) are the first consumer;
-  Settings/Extensions/Devices/Agent tokens migrate onto it in later tasks. →
+  Audit Log — the old 14-panel "System" mega-section dissolved across them) were the first
+  consumer. `tests/settings-consistency.spec.ts` (CI) is the cross-view gate that every route
+  renders fully collapsed on load with identical computed styles;
+  `tests/settings-gallery.screens.ts` (out-of-CI, `playwright.screenshots.config.ts`) captures a
+  collapsed + expanded shot of every route in mobile and desktop viewports for human review. →
   [docs/design-patterns.md](docs/design-patterns.md) "SettingsGroupComponent",
   [docs/admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
 - **Changelog modal**: build-time `CHANGELOG.md` → `changelog.json` (capped at 50 versions); version
