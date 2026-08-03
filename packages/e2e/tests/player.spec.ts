@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { FIXTURE } from '../helpers';
+import { FIXTURE, expandGroup } from '../helpers';
 
 /** Max currentTime across the (double-buffered) audio elements. */
 const audioTime = (page: Page) =>
@@ -67,6 +67,9 @@ test.describe('auto-preserve queue (PWA lock-screen resilience)', () => {
 
   test('Settings exposes the four auto-preserve modes and the explainer', async ({ page }) => {
     await page.goto('/settings');
+    // The Playback & Offline card starts collapsed (settings-cards
+    // unification task 2) — expand it to reach the auto-preserve controls.
+    await expandGroup(page, 'settings-playback');
     await expect(page.getByTestId('auto-preserve-off')).toBeVisible();
     await expect(page.getByTestId('auto-preserve-5')).toBeVisible();
     await expect(page.getByTestId('auto-preserve-20')).toBeVisible();
@@ -85,6 +88,7 @@ test.describe('auto-preserve queue (PWA lock-screen resilience)', () => {
 
     // Enable auto-preserve on the next 5 tracks.
     await page.goto('/settings');
+    await expandGroup(page, 'settings-playback');
     await page.getByTestId('auto-preserve-5').click();
     await expect(page.getByTestId('auto-preserve-5')).toHaveAttribute('aria-pressed', 'true');
 
@@ -97,6 +101,7 @@ test.describe('auto-preserve queue (PWA lock-screen resilience)', () => {
 
     // Toggle off — should prompt a confirm dialog with the count baked in.
     await page.goto('/settings');
+    await expandGroup(page, 'settings-playback');
     const dialog = page.getByTestId('confirm-dialog');
     await page.getByTestId('auto-preserve-off').click();
     await expect(dialog).toBeVisible();

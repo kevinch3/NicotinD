@@ -3,13 +3,12 @@
       <h1 class="text-xl font-bold text-theme-primary mb-8">{{ 'settings.title' | t }}</h1>
 
       <!-- Appearance -->
-      <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
-        <app-settings-group-header
-          icon="palette"
-          [title]="'settings.appearance' | t"
-          [description]="'settings.groupAppearanceDesc' | t"
-        />
-
+      <app-settings-group
+        groupId="settings-appearance"
+        icon="palette"
+        [title]="'settings.appearance' | t"
+        [description]="'settings.groupAppearanceDesc' | t"
+      >
         <!-- Language (issue #236). Per-device, not per-user: login/setup/share
              pages render before any user exists, and a per-user setting would
              leave exactly those untranslatable. -->
@@ -61,16 +60,15 @@
             </div>
           }
         </div>
-      </section>
+      </app-settings-group>
 
       <!-- Playback & Offline -->
-      <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
-        <app-settings-group-header
-          icon="headphones"
-          [title]="'settings.groupPlaybackTitle' | t"
-          [description]="'settings.groupPlaybackDesc' | t"
-        />
-
+      <app-settings-group
+        groupId="settings-playback"
+        icon="headphones"
+        [title]="'settings.groupPlaybackTitle' | t"
+        [description]="'settings.groupPlaybackDesc' | t"
+      >
         <!-- Autoplay -->
         <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.playback' | t }}</h3>
         <div class="flex items-start gap-3">
@@ -214,16 +212,15 @@
             </p>
           </div>
         </div>
-      </section>
+      </app-settings-group>
 
       <!-- Account & Devices -->
-      <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
-        <app-settings-group-header
-          icon="user"
-          [title]="'settings.groupAccountTitle' | t"
-          [description]="'settings.groupAccountDesc' | t"
-        />
-
+      <app-settings-group
+        groupId="settings-account"
+        icon="user"
+        [title]="'settings.groupAccountTitle' | t"
+        [description]="'settings.groupAccountDesc' | t"
+      >
         <!-- Identity -->
         <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.account' | t }}</h3>
         <p class="text-sm text-theme-muted mb-4">{{ 'settings.signedInAs' | t: { username: auth.username() ?? '' } }}</p>
@@ -267,17 +264,16 @@
             v{{ version }}
           </button>
         </div>
-      </section>
+      </app-settings-group>
 
       <!-- Advanced -->
       @if (auth.isAdmin() || isNativeApp || isElectron || isNativeIos) {
-        <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
-          <app-settings-group-header
-            icon="sliders"
-            [title]="'settings.groupAdvancedTitle' | t"
-            [description]="'settings.groupAdvancedDesc' | t"
-          />
-
+        <app-settings-group
+          groupId="settings-advanced"
+          icon="sliders"
+          [title]="'settings.groupAdvancedTitle' | t"
+          [description]="'settings.groupAdvancedDesc' | t"
+        >
           <!-- Developer (admin-only): feedback capture -->
           @if (auth.isAdmin()) {
             <div data-testid="developer-section">
@@ -379,7 +375,7 @@
               }
             </div>
           }
-        </section>
+        </app-settings-group>
       }
 
       @if (showChangelog()) {

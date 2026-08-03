@@ -31,6 +31,30 @@ vi.mock('../../services/native/native-capabilities', () => ({
   revealLogs: vi.fn().mockResolvedValue(undefined),
 }));
 
+/**
+ * Task 2 (settings-cards unification): every card is now a collapsible
+ * `<app-settings-group>` whose body is `@if (open())`-gated, and `open()`
+ * reads a `[groupId]`/`[defaultOpen]` signal `input()`. This JIT vitest
+ * harness never registers signal inputs on a *nested imported* component (see
+ * `src/testing/signal-input.ts` / `docs/web-ui.md` "Testing input()-signal
+ * components"), so every group's `[groupId]`/`[title]`/etc. binding silently
+ * fails to land — all four groups fall back to the same default `groupId`
+ * (`''`), meaning they all read/write the *same* localStorage key. That's
+ * harmless for opening every card (this helper just clicks whichever toggles
+ * are still closed), but it does mean a prior test's "open" write can leak
+ * into a later test's fresh fixture — tests that assert the fresh-render
+ * collapsed state must `localStorage.clear()` first, mirroring
+ * `admin.component.spec.ts`'s `expandAllGroups`.
+ */
+function expandAllGroups(fixture: { nativeElement: unknown; detectChanges: () => void }): void {
+  const el = fixture.nativeElement as HTMLElement;
+  const toggles = el.querySelectorAll<HTMLButtonElement>('[data-testid="settings-group-toggle"]');
+  toggles.forEach((btn) => {
+    if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
+  });
+  fixture.detectChanges();
+}
+
 function makeToastService() {
   return {
     show: vi.fn().mockImplementation(() => 'toast-1'),
@@ -162,6 +186,7 @@ describe('SettingsComponent (TV D-pad navigation)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const el: HTMLElement = fixture.nativeElement;
     const group = el.querySelector('[appTvNavGroup][axis="grid"]');
     expect(group).not.toBeNull();
@@ -188,6 +213,7 @@ describe('SettingsComponent (TV D-pad navigation)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const el: HTMLElement = fixture.nativeElement;
     const group = el.querySelector('[appTvNavGroup][axis="grid"]')!;
     const presets: HTMLElement[] = Array.from(group.querySelectorAll('[appTvNavItem]'));
@@ -214,6 +240,7 @@ describe('SettingsComponent (TV D-pad navigation)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const el: HTMLElement = fixture.nativeElement;
     const group = el
       .querySelector('[data-testid="auto-preserve-off"]')!
@@ -233,6 +260,7 @@ describe('SettingsComponent (universal prefs only)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const text = fixture.nativeElement.textContent as string;
     // Section headers/copy are i18n keys now (issue #236); the raw key renders
     // since no catalog is loaded in this harness.
@@ -281,6 +309,7 @@ describe('SettingsComponent (universal prefs only)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     expect(
       fixture.nativeElement.querySelector('[data-testid="settings-extensions-link"]'),
     ).toBeTruthy();
@@ -299,6 +328,7 @@ describe('SettingsComponent (universal prefs only)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const toggle = fixture.nativeElement.querySelector(
       '[data-testid="autoplay-on-load-toggle"]',
     ) as HTMLButtonElement;
@@ -319,6 +349,7 @@ describe('SettingsComponent (universal prefs only)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     expect(fixture.nativeElement.querySelector('[data-testid="developer-section"]')).toBeTruthy();
     fixture.destroy();
   });
@@ -349,6 +380,20 @@ describe('SettingsComponent (universal prefs only)', () => {
     ]) {
       expect(BASE_CATALOG, `missing catalog key: ${key}`).toHaveProperty([key]);
     }
+  });
+
+  it('renders every card collapsed on a fresh render (all cards default-collapsed)', async () => {
+    localStorage.clear();
+    const { list } = makeProviders('admin');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const bodies = fixture.nativeElement.querySelectorAll('[data-testid="settings-group-body"]');
+    expect(bodies.length).toBe(0);
+    fixture.destroy();
   });
 });
 
@@ -396,6 +441,7 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const btn = fixture.nativeElement.querySelector(
       '[data-testid="settings-reveal-logs"]',
     ) as HTMLButtonElement;
@@ -415,6 +461,7 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const btn = fixture.nativeElement.querySelector(
       '[data-testid="settings-change-folder"]',
     ) as HTMLButtonElement;
@@ -459,6 +506,7 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
 
     await fixture.componentInstance.changeMusicFolder();
     fixture.detectChanges();
@@ -516,6 +564,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     const fixture = await makeFixture();
     patchPreserve();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const buttons = Array.from(
       fixture.nativeElement.querySelectorAll('button[data-testid^="auto-preserve-"]'),
     ) as HTMLButtonElement[];
@@ -536,6 +585,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     patchPreserve();
     patchConfirm();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const btn = fixture.nativeElement.querySelector(
       '[data-testid="auto-preserve-5"]',
     ) as HTMLButtonElement;
@@ -553,6 +603,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     patchPreserve();
     patchConfirm();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const offBtn = fixture.nativeElement.querySelector(
       '[data-testid="auto-preserve-off"]',
     ) as HTMLButtonElement;
@@ -572,6 +623,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
       fixture.componentInstance.preserve as unknown as { autoPreservedCount: () => number }
     ).autoPreservedCount = () => 7;
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const offBtn = fixture.nativeElement.querySelector(
       '[data-testid="auto-preserve-off"]',
     ) as HTMLButtonElement;
@@ -596,6 +648,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
       fixture.componentInstance.preserve as unknown as { autoPreservedCount: () => number }
     ).autoPreservedCount = () => 3;
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const offBtn = fixture.nativeElement.querySelector(
       '[data-testid="auto-preserve-off"]',
     ) as HTMLButtonElement;
@@ -611,6 +664,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     const fixture = await makeFixture();
     patchPreserve();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const explain = fixture.nativeElement.querySelector(
       '[data-testid="auto-preserve-explain"]',
     ) as HTMLElement;
@@ -642,6 +696,7 @@ describe('SettingsComponent (manual PWA update check)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     expect(
       fixture.nativeElement.querySelector('[data-testid="settings-check-update"]'),
     ).toBeTruthy();
@@ -670,6 +725,7 @@ describe('SettingsComponent (manual PWA update check)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const btn = fixture.nativeElement.querySelector(
       '[data-testid="settings-check-update"]',
     ) as HTMLButtonElement;
@@ -759,6 +815,7 @@ describe('SettingsComponent (manual PWA update check)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const inFlight = fixture.componentInstance.searchForUpdates();
     fixture.detectChanges();
     const btn = fixture.nativeElement.querySelector(

@@ -28,7 +28,7 @@ import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { chunk } from '../../lib/tv-nav-grid';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { IconComponent, type IconName } from '../../components/icon/icon.component';
-import { SettingsGroupHeaderComponent } from '../../components/settings-group-header/settings-group-header.component';
+import { SettingsGroupComponent } from '../../components/settings-group/settings-group.component';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 const GB = 1024 * 1024 * 1024;
@@ -68,7 +68,7 @@ export const AUTO_PRESERVE_OPTIONS: { value: AutoPreserveMode; label: string }[]
     TvNavGroupDirective,
     TvNavItemDirective,
     IconComponent,
-    SettingsGroupHeaderComponent,
+    SettingsGroupComponent,
     BottomChromeSafeDirective,
   ],
   templateUrl: './settings.component.html',
