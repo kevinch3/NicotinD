@@ -186,6 +186,84 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
 - **Playback auto-radio**: `PlayerService.radio` (persisted in the player state snapshot) keeps playback going — a constructor `effect()` watching `queue().length` calls `replenishRadio()` when the queue drains to `RADIO_MIN_QUEUE` (and `repeat==='off'`), appending fresh tracks (de-duped against current/queue/recent history). The `RadioProvider` registered by `LayoutComponent` calls `GET /api/radio/next` with the current track as seed — the server scores candidates by BPM, key (Camelot), genre, year, duration, and artist diversity, returning musically similar tracks. Falls back to shuffled recent songs when no seed track. `PlayerService` stays HTTP-free via the `RadioProvider` callback. Toggle lives in the Now Playing sheet. **Filter "vibe" radio**: `PlayerService.radioFilter` (a persisted `LibraryFilter`, set by `startRadioWithFilter(tracks, filter)`) makes the provider replenish via `getFilterRadio(filter,…)` so a mood/genre/bpm radio stays in-vibe; it's cleared when seed radio starts or radio turns off. → [docs/radio.md](../docs/radio.md)
 - **Radio landing (`pages/radio-landing/`, the home route `''`)**: the post-login surface, built to *start listening in one tap* — recover a mood or make a new one. Two blocks: (1) **Resume** — a card seeded from the persisted last track (`PlayerService.currentTrack`); tapping `startRadio`s it and the block **disappears** (a local `resumeDismissed` signal; hidden entirely when there's no last track). (2) **New mood** — one-tap **vibe presets** (Happy/Chill/Party/Energetic/Danceable/Uplifting/120bpm+/Acoustic, each a canonical `LibraryFilter` over `MOOD_VOCAB`/perceptual buckets/bpm) + top-genre chips. Each tap calls `getFilterRadio` and hands the result to `startRadioWithFilter` (empty match → a neutral toast, never an error). Mobile-first (thumb-sized chips, inherits bottom-chrome padding from `<main>`), theme-token styled. **Chip hover** is `hover:bg-theme-accent/15 hover:text-theme-accent` (a tinted overlay + accent-colored text, not a solid `bg-theme-accent` fill) so the indigo-on-white pair on **Daylight** + the warm-paper-on-cream pair on **Warm Paper** pass AA without a per-theme accent shadow; pinned by `radio-landing.component.spec.ts → "visual contract"`. The header brand ("NicotinD") logo now points here (`routerLink="/"`) so clicking it lands on the radio landing; `/search` is reachable from the desktop top-nav and the mobile bottom-nav Search tab. `data-testid`s: `radio-landing`/`radio-resume`/`radio-resume-play`/`radio-preset`/`radio-genre`. → [docs/radio.md](../docs/radio.md)
 
+## Page & section idioms (issue #384)
+
+**The problem**: six page-level patterns had drifted independently over time — page wrapper
+width/gutters, page titles, section headings, grouped-card chrome, and table framing each had 2-3
+slightly different literal implementations across routes (a `max-w-5xl` here, a `max-w-3xl` there,
+`space-y-12` on one page and nothing on the next, `rounded-xl border border-theme bg-theme-surface`
+copy-pasted per table). No single page was wrong in isolation; the drift only showed up comparing
+pages side by side. Issue #384 is the cleanup: four shared utilities + a criteria table for which
+tier a new page gets, enforced by a spec so the next page can't silently reintroduce a fifth
+variant.
+
+**The four utilities** (`styles.css`, `@utility` block — plain `@layer utilities` classes can't be
+targeted by an opacity modifier or `@apply`d from a theme color that isn't `@theme`-registered, so
+`text-theme-primary`/`border-theme` inside these declarations are raw `var()`, not `@apply`):
+
+- `page-shell` — `mx-auto px-4 py-5 md:px-6 md:py-8`. The **one** responsive gutter/width scale;
+  every routed page adds a `max-w-(6xl|3xl|2xl)` alongside it (the width is chosen per page, the
+  gutters/padding never vary).
+- `page-title` — `text-2xl font-bold` + `--theme-text-primary`. The page-level `<h1>`.
+- `section-title` — `text-sm font-semibold uppercase tracking-wider mb-5` +
+  `--theme-text-secondary`. The small-caps sub-heading above a section (replaces the raw
+  `text-sm font-semibold uppercase tracking-wider text-theme-secondary` literal that used to be
+  copy-pasted per page).
+- `section-flush` — `rounded-xl border bg-theme-surface/50 overflow-x-auto` + `--theme-border`. The
+  idiom for a table: border + horizontal-scroll container, with cell padding doing the interior
+  spacing (no `p-*` on the section itself, unlike a card).
+
+**Tier criteria** — pick one when adding a routed page, based on what the page *is*, not how wide it
+happens to look today:
+
+| Tier | Pages | Why |
+| --- | --- | --- |
+| `max-w-6xl` | Library, album/artist/genre detail, Acquire, Downloads | Browse surfaces — grids/lists that want the room. Downloads moved `max-w-5xl` → `6xl` to join this tier rather than keep a one-off width. |
+| `max-w-3xl` | Playlist detail, Radio landing, Share view, Admin | Reading/mixed surfaces — a mix of prose-width content and wider panels (Admin's tables/forms don't need browse-grid width). |
+| `max-w-2xl` | Settings, Devices, Agent tokens, Extensions (`plugins.component`) | The settings-family of forms — narrow enough that a form/toggle list stays scannable. |
+
+**Section idioms** — once inside a page, three shapes cover everything:
+
+- **Grouped card** = `SettingsGroupComponent` (`components/settings-group/`). This is *the* idiom
+  for a collapsible titled block (Settings, Devices, Agent tokens, Extensions, and Admin all use
+  it) — never a hand-rolled `rounded-xl border ...` card. It **owns its own `mb-6` bottom margin**
+  on the root `<section>` rather than relying on a parent `space-y-6` wrapper. This is a deliberate
+  choice, not an oversight: a parent `space-y-*` adds `margin-top` to *every* child including
+  `position: fixed` overlay children (the Settings sign-out confirm modal and Admin's hunt modals
+  are siblings-in-template of the grouped cards), which offsets a fixed `inset-0` box away from the
+  viewport edges it's supposed to pin to. Component-owned rhythm sidesteps that entirely, and it was
+  also the smaller diff over re-deriving margins for a parent wrapper on every page that already had
+  `SettingsGroupComponent` children.
+- **`section-flush`** = any table (Admin's incomplete-jobs/untracked/quota/audit-log tables all use
+  it). Cell padding provides interior spacing; the section itself is border + scroll container only.
+- **Bare content** = everything else (a plain paragraph, a form, a card-free content block). Not
+  every section needs a card — only a collapsible titled block or a table gets one of the two idioms
+  above. Admin's legacy card-in-card panels (nested `rounded-xl border ... bg-theme-surface` blocks
+  that used to live *inside* a `SettingsGroupComponent` body, plus its `space-y-12` root spacing)
+  were stripped down to bare blocks — the outer grouped card already supplies the chrome, so an
+  inner card was double framing; its service-status tiles moved from `bg-theme-surface` to the
+  softer `bg-theme-surface/50` to read as content-inside-a-group rather than a second nested card.
+
+A static, non-collapsible card idiom (tentatively `section-card`) was **deliberately not added** —
+no page currently needs "a card, but never collapsible", so adding the utility ahead of a real
+consumer would just be unused surface area. If one shows up, add it as a named `@utility` next to
+the other three; never reintroduce a raw `rounded-xl border ...` literal as a one-off.
+
+**Drift guard**: `packages/web/src/app/pages/page-shell.spec.ts` (runs in `bun run test:web`)
+asserts, per a `PAGE_TIERS` table, that all 14 routed page templates contain their assigned
+`page-shell max-w-<tier>` string, and separately bans the raw bare-surface card literal
+(`rounded-xl border border-theme bg-theme-surface` without a `/`-opacity or `-2` suffix) and the raw
+uppercase-heading literal on the six idiom pages (Settings, Devices, Agent tokens, Extensions,
+`slskd-settings`, Admin). `packages/e2e/tests/settings-consistency.spec.ts` is the runtime
+counterpart — it asserts every settings-family + Admin route's first `SettingsGroupComponent` card
+and its header resolve to **identical** computed styles (`getComputedStyle`, not just "same class
+list"), and that each route's `.page-shell` reports the tier's expected `maxWidth`/padding.
+
+**Rule for a new page**: root element is `page-shell max-w-<tier>`, tier chosen from the criteria
+table above. Add the template to `PAGE_TIERS` in `page-shell.spec.ts` — the guard only covers pages
+listed in that table, so skipping this step means a new page can drift from the criteria with
+nothing catching it; adding the entry is what turns future drift on that page into a failing test.
+
 ## Boot — player restore is paused by default (opt-in autoplay)
 
 `PlayerService.restoreState()` (called from `provideAppInitializer` in `app.config.ts`) loads the last track/queue/history/currentTime from `nicotind_player_state` but **leaves `isPlaying` false**. The autoplay decision is deferred until `GET /api/auth/me` resolves, at which point `player.maybeResumeAutoplay(profile.autoplayOnLoad)` resumes only when the per-user `autoplay_on_load` setting is enabled. Without the setting, the page never attempts a gesture-less `audio.play()` on load, so the browser-polity block + "Tap to resume" banner overlay are gone and the user always presses play themselves.
