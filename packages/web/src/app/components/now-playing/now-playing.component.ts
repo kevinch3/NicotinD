@@ -12,6 +12,7 @@ import { NowPlayingQueuePanelComponent } from './now-playing-queue-panel/now-pla
 import { NowPlayingLyricsPanelComponent } from './now-playing-lyrics-panel/now-playing-lyrics-panel.component';
 import { NowPlayingKaraokeFullscreenComponent } from './now-playing-karaoke-fullscreen/now-playing-karaoke-fullscreen.component';
 import { TrackContextMenuComponent } from '../track-context-menu/track-context-menu.component';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TrackInfoService } from '../../services/track-info.service';
 import { resolveArtistTarget } from '../../lib/route-utils';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -40,6 +41,7 @@ import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container'
     NowPlayingLyricsPanelComponent,
     NowPlayingKaraokeFullscreenComponent,
     TrackContextMenuComponent,
+    TranslatePipe,
   ],
   templateUrl: './now-playing.component.html',
 })

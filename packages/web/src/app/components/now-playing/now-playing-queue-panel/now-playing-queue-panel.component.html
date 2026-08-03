@@ -1,14 +1,4 @@
 <div class="flex-1 min-h-0 flex flex-col px-4 overflow-hidden" data-testid="now-playing-queue">
-  <div
-    (pointerdown)="resizeStart.emit($event)"
-    data-testid="now-playing-queue-resize"
-    role="separator"
-    aria-orientation="horizontal"
-    [attr.aria-label]="'nowPlaying.resizeQueue' | t"
-    class="group flex-shrink-0 flex justify-center items-center py-2 -mt-1 cursor-ns-resize touch-none select-none"
-  >
-    <span class="w-10 h-1 rounded-full transition-colors" [class]="resizing() ? 'bg-theme-secondary' : 'bg-theme-surface-2 group-hover:bg-theme-muted'"></span>
-  </div>
   @if (player.context() && player.context()!.type !== 'adhoc') {
     <p class="text-xs text-theme-muted px-2 mb-1">{{ 'nowPlaying.nextFrom' | t: { name: player.context()!.name ?? '' } }}</p>
   }

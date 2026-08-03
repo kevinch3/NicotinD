@@ -84,8 +84,8 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   - `NowPlayingCoverArtComponent` — cover art, title/artist, track-info button, context menu trigger.
   - `NowPlayingTransportComponent` — seek bar, transport buttons, autoplay-blocked banner.
   - `NowPlayingPanelTabsComponent` — the **Queue/Lyrics tab switcher** (below).
-  - `NowPlayingQueuePanelComponent` — the "Next up" list: Clear, drag-reorder, per-row remove,
-    resize handle. Owns `clearQueue`/`removeFromQueue`/`jumpToTrack`/the HTML5 DnD handlers itself
+  - `NowPlayingQueuePanelComponent` — the "Next up" list: Clear, drag-reorder, per-row remove.
+    Owns `clearQueue`/`removeFromQueue`/`jumpToTrack`/the HTML5 DnD handlers itself
     (`PlayerService.clearQueue()`/`moveInQueue(from,to)`/`removeFromQueue(index)` underneath — all
     three still unit-tested in `player.service.spec.ts`); a drag dims the source row to 40% opacity
     and shows an accent top border at the drop target.
@@ -145,7 +145,7 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   values (`lib/lyrics-scroll-container.ts` `resolveLyricsScrollContainer`) and unit-test *that*, the
   same way `scrollToActiveLine`'s pixel math is pure and tested separately from the DOM wiring that
   calls it.
-  - **Manual queue resize** (`data-testid="now-playing-queue-resize"`): a drag handle at the top of the "Next up" section lets the user pull the queue **taller**, which **shrinks the cover art** to make room (the queue is `flex-1`, so shrinking the cover grows it). Driven by the shared `createPointerDrag` (`lib/pointer-drag.ts`); `queueExtraHeightPx` (px the cover has shrunk from its 320px max, clamped to `[0, 200]`) feeds `coverMaxPx = 320 − queueExtraHeightPx`, bound to the cover's `max-width`. The chosen size is **persisted per-device** in `localStorage` (`nicotind:np-queue-extra`) and read on construction, so it survives reload. The handle only shows on the Queue tab (not while the Lyrics tab is active). Unit-tested in `now-playing.component.spec.ts` → "queue resize (drag handle)".
+  - **Manual queue resize** (`data-testid="now-playing-queue-resize"`): a drag handle lets the user pull the panel area **taller**, which **shrinks the cover art** to make room (the panel is `flex-1`, so shrinking the cover grows it). The handle is **shell-owned, rendered above the Queue/Lyrics tab bar** — it originally lived inside the queue panel, so after the tab switcher shipped it vanished on the Lyrics tab and users reported the feature as lost; hoisting it makes it work for **both** panels (the queue panel's old `resizing` input / `resizeStart` output API is removed). Driven by the shared `createPointerDrag` (`lib/pointer-drag.ts`); `queueExtraHeightPx` (px the cover has shrunk from its 320px max, clamped to `[0, 200]`) feeds `coverMaxPx = 320 − queueExtraHeightPx`, bound to the cover's `max-width`. The chosen size is **persisted per-device** in `localStorage` (`nicotind:np-queue-extra`) and read on construction, so it survives reload. Unit-tested in `now-playing.component.spec.ts` → "queue resize (drag handle)" + "hoisted resize handle (shell-owned)"; the Lyrics-tab drag is covered end-to-end in `mobile-ux.spec.ts`.
 - **Mini-player transport** (player-standardization plan, Task 11 — the plan's final task):
   `PlayerTransportMiniComponent` (`components/player/player-transport-mini/`) pulls the
   shuffle/prev/play-pause/next/repeat button cluster out of the mini bar (`player.component`) — a

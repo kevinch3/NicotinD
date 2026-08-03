@@ -40,6 +40,24 @@
     }
 
     @if (!karaokeFullscreen()) {
+      <!-- Drag handle: pull up to grow the active panel (shrinks the cover).
+           Shell-owned and rendered above the tabs so it works on the Queue AND
+           Lyrics tabs — inside the queue panel it vanished with the tab switch
+           and read as a lost feature. -->
+      <div
+        (pointerdown)="onQueueResizeStart($event)"
+        data-testid="now-playing-queue-resize"
+        role="separator"
+        aria-orientation="horizontal"
+        [attr.aria-label]="'nowPlaying.resizeQueue' | t"
+        class="group flex-shrink-0 flex justify-center items-center py-2 cursor-ns-resize touch-none select-none"
+      >
+        <span
+          class="w-10 h-1 rounded-full transition-colors"
+          [class]="resizingQueue() ? 'bg-theme-secondary' : 'bg-theme-surface-2 group-hover:bg-theme-muted'"
+        ></span>
+      </div>
+
       <app-now-playing-panel-tabs
         [activePanel]="activePanel()"
         [queueCount]="player.queue().length"
@@ -59,10 +77,7 @@
           (fetchRequested)="fetchLyricsManually()"
         />
       } @else {
-        <app-now-playing-queue-panel
-          [resizing]="resizingQueue()"
-          (resizeStart)="onQueueResizeStart($event)"
-        />
+        <app-now-playing-queue-panel />
       }
     } @else {
       <app-now-playing-karaoke-fullscreen
