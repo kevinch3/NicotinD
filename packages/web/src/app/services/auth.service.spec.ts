@@ -151,6 +151,8 @@ describe('AuthService', () => {
       localStorage.setItem('nicotind-library-show-hidden', '1');
       localStorage.setItem('nicotind-theme', '{"state":{}}');
       localStorage.setItem('nicotind_device_id', 'device-123');
+      localStorage.setItem('nicotind-group-system-health', 'true');
+      localStorage.setItem('nicotind-admin-group-user-management', 'true');
 
       auth.logout();
 
@@ -181,6 +183,8 @@ describe('AuthService', () => {
       expect(localStorage.getItem('nicotind-library-state')).toBeNull();
       expect(localStorage.getItem('nicotind-library-mode')).toBeNull();
       expect(localStorage.getItem('nicotind-library-show-hidden')).toBeNull();
+      expect(localStorage.getItem('nicotind-group-system-health')).toBeNull();
+      expect(localStorage.getItem('nicotind-admin-group-user-management')).toBeNull();
 
       expect(localStorage.getItem('nicotind-theme')).toBe('{"state":{}}');
       expect(localStorage.getItem('nicotind_device_id')).toBe('device-123');

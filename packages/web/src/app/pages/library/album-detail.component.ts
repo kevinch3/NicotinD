@@ -28,6 +28,7 @@ import {
   type GenreSlice,
 } from '../../components/genre-distribution-strip/genre-distribution-strip.component';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 
 @Component({
   selector: 'app-album-detail',
@@ -41,6 +42,7 @@ import { PullToRefreshService } from '../../services/pull-to-refresh.service';
     MetadataFixModalComponent,
     ArtistLinksComponent,
     GenreDistributionStripComponent,
+    TvNavGroupDirective,
   ],
   templateUrl: './album-detail.component.html',
 })

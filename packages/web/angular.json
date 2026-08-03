@@ -59,6 +59,21 @@
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
+            },
+            "tv": {
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.tv.ts"
+                }
+              ],
+              "allowedCommonJsDependencies": ["qrcode", "dijkstrajs"],
+              "budgets": [
+                { "type": "initial", "maximumWarning": "780kB", "maximumError": "1MB" },
+                { "type": "anyComponentStyle", "maximumWarning": "4kB", "maximumError": "8kB" }
+              ],
+              "outputHashing": "all",
+              "serviceWorker": "ngsw-config.json"
             }
           },
           "defaultConfiguration": "production"

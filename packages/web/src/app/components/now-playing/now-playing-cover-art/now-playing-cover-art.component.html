@@ -1,0 +1,63 @@
+@if (player.currentTrack(); as track) {
+  <!-- Cover art — app-cover-art degrades a missing/404 cover to the on-theme
+       gradient tile (like the grid/mini-player) instead of a broken-image glyph. -->
+  <div class="flex-shrink-0 flex justify-center px-4 py-4 md:px-8">
+    <!-- The stored queue-resize shrink (coverMaxPx) is mobile-only: at lg the
+         side-panel layout has no vertical resize, so lg:max-w-80 wins over the
+         var-driven cap via the responsive cascade — an inline style.max-width
+         would beat every class, which is why the value rides a CSS var. -->
+    <div
+      class="w-[60vw] max-w-[var(--np-cover-max,20rem)] lg:max-w-80"
+      [class.transition-[max-width]]="!resizing()"
+      [class.duration-150]="!resizing()"
+      [style.--np-cover-max]="coverMaxPx() + 'px'"
+      data-testid="now-playing-cover"
+    >
+      <app-cover-art
+        [src]="track.coverArt ? '/api/cover/' + track.coverArt + '?size=600&token=' + auth.token() : undefined"
+        [artist]="track.artist"
+        [album]="track.album ?? ''"
+        [fill]="true"
+        rounded="rounded-lg"
+      />
+    </div>
+  </div>
+
+  <!-- Track info -->
+  <div class="text-center px-4 mb-4 md:px-8 no-callout" translate="no">
+    <div class="flex items-center justify-center gap-2 min-w-0">
+      <h2
+        class="text-xl font-semibold text-theme-primary truncate select-none"
+        (contextmenu)="titleContextMenu.emit($event); $event.preventDefault()"
+      >
+        {{ track.title }}
+      </h2>
+      <!-- G4: visible affordance to open Track info (was long-press only). -->
+      <button
+        (click)="openTrackInfo.emit(track.id)"
+        data-testid="now-playing-info"
+        [attr.aria-label]="'nowPlaying.trackInfo' | t"
+        [attr.title]="'nowPlaying.trackInfo' | t"
+        class="shrink-0 text-theme-muted hover:text-theme-primary transition"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="16" x2="12" y2="12" />
+          <line x1="12" y1="8" x2="12.01" y2="8" />
+        </svg>
+      </button>
+    </div>
+    <p class="text-sm text-theme-secondary truncate mt-1 select-none hover:text-theme-primary transition">
+      @if (track.artists?.length) {
+        <app-artist-links [artists]="track.artists" (linkFollowed)="navigateToArtistClicked.emit()" />
+      } @else {
+        <span class="cursor-pointer hover:underline" (click)="navigateToArtistClicked.emit()">{{ track.artist }}</span>
+      }
+    </p>
+    @if (formatQuality(track.bitRate); as quality) {
+      @if (quality) {
+        <p data-testid="now-playing-quality" class="text-xs text-theme-muted mt-1">{{ quality }}</p>
+      }
+    }
+  </div>
+}

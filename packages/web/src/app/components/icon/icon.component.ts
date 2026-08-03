@@ -14,7 +14,28 @@ const DEFAULT_ICON = 'play' as const;
  * stroke-width 2) to match the rest of the app's inline icons.
  */
 export type IconName =
-  'back' | 'play' | 'download' | 'share' | 'close' | 'add' | 'delete' | 'queue' | 'edit' | 'tag';
+  | 'back'
+  | 'play'
+  | 'download'
+  | 'share'
+  | 'close'
+  | 'add'
+  | 'delete'
+  | 'queue'
+  | 'edit'
+  | 'tag'
+  | 'palette'
+  | 'headphones'
+  | 'user'
+  | 'sliders'
+  | 'speaker'
+  | 'smartphone'
+  | 'monitor'
+  | 'wifi'
+  | 'activity'
+  | 'wrench'
+  | 'database'
+  | 'mic';
 
 /** Play is the only filled glyph; the rest are stroked outlines. DI-free so the
  *  branch is unit-testable (the JIT harness can't drive the `name` input). */
@@ -25,6 +46,7 @@ export function isFilledIcon(name: IconName): boolean {
 @Component({
   selector: 'app-icon',
   templateUrl: './icon.component.html',
+  standalone: true,
 })
 export class IconComponent {
   // Not `input.required`: consumers always set it, but a required signal throws

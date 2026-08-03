@@ -1,7 +1,11 @@
-<div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+<!-- No items-center: a centered flex child taller than the scrollport clips its
+     top irrecoverably — m-auto on the panel centers when there is free space and
+     collapses to 0 when there isn't (docs/design-patterns.md "Bottom-chrome-safe
+     modals"). -->
+<div class="fixed inset-0 z-50 flex justify-center p-4 bg-black/60" appBottomChromeSafe
   data-testid="artist-genre-modal" (click)="closed.emit()">
-  <div class="w-full max-w-md rounded-xl bg-theme-surface border border-theme p-4 shadow-2xl"
-    (click)="$event.stopPropagation()">
+  <div class="w-full max-w-md m-auto max-h-[calc(100dvh-var(--bottom-chrome-inset,0px)-2rem)] overflow-y-auto rounded-xl bg-theme-surface border border-theme p-4 shadow-2xl"
+    data-testid="artist-genre-panel" (click)="$event.stopPropagation()">
     <div class="flex items-center justify-between mb-1">
       <h2 class="text-base font-semibold text-theme-primary">Fix artist genre</h2>
       <button type="button" (click)="closed.emit()" aria-label="Close"

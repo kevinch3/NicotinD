@@ -1,3 +1,5 @@
+import { environment } from '../../environments/environment';
+
 // Capacitor injects a global `Capacitor` object into the native WebView (Android
 // and iOS); it is absent in a normal browser. Detecting it here (instead of
 // importing @capacitor/core) keeps the web bundle free of native deps — the same
@@ -96,4 +98,28 @@ export function serviceWorkerEnabled(devMode: boolean, nativeShell: boolean): bo
  *  Gates touch-only affordances like pull-to-refresh. */
 export function isCoarsePointer(): boolean {
   return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+}
+
+/**
+ * True only in a build made with the Angular "tv" configuration
+ * (`ng build --configuration tv`), baked in via environment.tv.ts. Used to
+ * default TV-only behaviors (e.g. RemotePlaybackService's opt-in) without
+ * runtime Android UiModeManager detection, since sideload-only distribution
+ * doesn't need it.
+ */
+export function isTvBuild(): boolean {
+  return environment.tvBuild;
+}
+
+/**
+ * Resolves a boolean localStorage preference that defaults to `true` on a TV
+ * build only when the user has never explicitly set it — an explicit stored
+ * choice (true or false) always wins. Shared by every reader of the
+ * `nicotind_remote_enabled` key so "TV defaults it on" can't drift between
+ * call sites (playback-ws.service.ts used to carry its own independent copy
+ * of this logic, so the WS REGISTER payload disagreed with the UI's own
+ * `RemotePlaybackService.remoteEnabled` signal).
+ */
+export function resolveTvDefaultedPreference(stored: string | null, tvBuild: boolean): boolean {
+  return stored !== null ? stored === 'true' : tvBuild;
 }

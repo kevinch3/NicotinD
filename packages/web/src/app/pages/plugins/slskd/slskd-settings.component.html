@@ -1,25 +1,16 @@
-<div class="max-w-2xl mx-auto px-4 py-5 md:px-6 md:py-8" data-testid="slskd-settings">
-  <div class="flex items-center gap-3 mb-1">
-    <a routerLink="/settings/plugins" class="text-theme-muted hover:text-theme-secondary text-sm">← Extensions</a>
-  </div>
-  <h1 class="text-xl font-bold text-theme-primary mb-1">Soulseek (slskd)</h1>
-  <p class="text-sm text-theme-muted mb-8">
-    Connection, shared folders, and live transfer status for the slskd extension.
-  </p>
-
+<div data-testid="slskd-settings">
   @if (!plugins.hasSlskd()) {
     <!-- Extension disabled: nothing slskd-specific is functional. -->
-    <section class="rounded-xl border border-theme bg-theme-surface/50 p-6" data-testid="slskd-disabled-notice">
+    <div data-testid="slskd-disabled-notice">
       <p class="text-sm text-theme-secondary">
-        The Soulseek extension is disabled. Enable it on the
-        <a routerLink="/settings/plugins" class="text-theme-accent hover:underline">Extensions</a>
-        page to configure a connection and download from the network.
+        The Soulseek extension is disabled. Enable it above to configure a connection and download
+        from the network.
       </p>
-    </section>
+    </div>
   } @else {
     <!-- Status & speeds (Nicotine+-style) -->
-    <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="slskd-status">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Status</h2>
+    <div class="mb-6" data-testid="slskd-status">
+      <h3 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Status</h3>
       @if (status(); as s) {
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
           <div>
@@ -79,22 +70,22 @@
       } @else {
         <p class="text-sm text-theme-muted">Waiting for slskd status…</p>
       }
-    </section>
+    </div>
 
     @if (!slskdReachable()) {
       <!-- slskd itself is down/absent (e.g. desktop external mode): the
            connection + shares forms can only error, so show a notice instead. -->
-      <section class="rounded-xl border border-theme bg-theme-surface/50 p-6" data-testid="slskd-unreachable-notice">
+      <div data-testid="slskd-unreachable-notice">
         <p class="text-sm text-theme-secondary">
           The slskd service is not reachable. If it runs separately, start it and reload this
           page; in embedded mode it starts automatically once Soulseek credentials are configured.
         </p>
-      </section>
+      </div>
     } @else {
     <!-- Connection -->
-    <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
+    <div class="mb-6">
       <div class="flex items-center gap-3 mb-6 flex-wrap">
-        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary">Connection</h2>
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary">Connection</h3>
         <div class="flex items-center gap-2 flex-1">
           <span [class]="'inline-block w-2.5 h-2.5 rounded-full ' + statusDotClass()"></span>
           <span class="text-xs text-theme-muted">{{ statusLabel() }}</span>
@@ -183,11 +174,11 @@
           </button>
         </form>
       }
-    </section>
+    </div>
 
     <!-- Shared Folders -->
-    <section class="rounded-xl border border-theme bg-theme-surface/50 p-6">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-2">Shared Folders</h2>
+    <div>
+      <h3 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-2">Shared Folders</h3>
       <p class="text-xs text-theme-muted mb-5">
         Your music library folder is shared automatically. Add folders here only to share
         something extra with the Soulseek network.
@@ -231,7 +222,7 @@
           {{ sharesMessage()!.text }}
         </p>
       }
-    </section>
+    </div>
     }
   }
 </div>

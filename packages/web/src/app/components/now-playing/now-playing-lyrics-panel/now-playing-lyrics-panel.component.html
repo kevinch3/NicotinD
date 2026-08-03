@@ -1,0 +1,67 @@
+<div class="flex-1 min-h-0 flex flex-col overflow-hidden relative" data-testid="now-playing-lyrics">
+  <button
+    (click)="fullscreenRequested.emit()"
+    data-testid="now-playing-karaoke-toggle"
+    [attr.aria-label]="'nowPlaying.fullscreenLyrics' | t"
+    [attr.title]="'nowPlaying.fullscreenLyrics' | t"
+    class="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-theme-surface/60 text-theme-muted hover:text-theme-primary hover:bg-theme-surface/80 transition"
+  >
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 3H5a2 2 0 00-2 2v3" /><path d="M21 8V5a2 2 0 00-2-2h-3" /><path d="M3 16v3a2 2 0 002 2h3" /><path d="M16 21h3a2 2 0 002-2v-3" />
+    </svg>
+  </button>
+  @if (loading()) {
+    <p class="text-sm text-theme-muted px-2">{{ 'nowPlaying.loadingLyrics' | t }}</p>
+  } @else if (lines().length > 0) {
+    <div
+      #lyricsScroll
+      class="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4 text-center scroll-smooth karaoke-scroll"
+      style="mask-image: linear-gradient(transparent 0%, black 10%, black 90%, transparent 100%); -webkit-mask-image: linear-gradient(transparent 0%, black 10%, black 90%, transparent 100%);"
+    >
+      <div class="pt-[30%] pb-[30%] space-y-1">
+        @for (line of lines(); track $index) {
+          <p
+            data-karaoke-line
+            [class]="'break-words transition-all duration-500 ease-out select-none ' +
+              ($index === activeLine() ? 'text-lg font-bold text-theme-primary scale-105' : ($index === activeLine() - 1 || $index === activeLine() + 1) ? 'text-sm text-theme-secondary' : 'text-sm text-theme-muted')"
+            [style.transform]="$index === activeLine() ? 'scale(1.05)' : 'scale(1)'"
+          >
+            {{ line.text || '♪' }}
+          </p>
+        }
+      </div>
+    </div>
+  } @else if (plainLyrics()) {
+    <pre class="flex-1 overflow-y-auto overflow-x-hidden pb-4 whitespace-pre-wrap break-words font-sans text-sm text-theme-secondary text-center">{{ plainLyrics() }}</pre>
+  } @else {
+    <div class="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center" data-testid="now-playing-lyrics-empty">
+      <svg class="w-10 h-10 text-theme-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+      </svg>
+      @if (error()) {
+        <div class="space-y-1">
+          <p class="text-sm font-medium text-theme-secondary">{{ 'nowPlaying.lyricsErrorTitle' | t }}</p>
+          <p class="text-xs text-theme-muted">{{ 'nowPlaying.lyricsErrorHint' | t }}</p>
+        </div>
+      } @else {
+        <div class="space-y-1">
+          <p class="text-sm font-medium text-theme-secondary">{{ 'nowPlaying.lyricsEmptyTitle' | t }}</p>
+          <p class="text-xs text-theme-muted">{{ 'nowPlaying.lyricsEmptyHint' | t }}</p>
+        </div>
+      }
+      <button
+        (click)="fetchRequested.emit()"
+        [disabled]="fetching()"
+        data-testid="now-playing-lyrics-fetch"
+        class="inline-flex items-center gap-2 rounded-full bg-theme-surface-2 px-4 py-1.5 text-xs font-medium text-theme-primary transition hover:bg-theme-hover disabled:cursor-wait disabled:opacity-60"
+      >
+        @if (fetching()) {
+          <span class="w-3 h-3 rounded-full border-2 border-theme-muted border-t-transparent animate-spin"></span>
+          <span>{{ 'nowPlaying.fetching' | t }}</span>
+        } @else {
+          <span>{{ (error() ? 'nowPlaying.tryAgain' : 'nowPlaying.fetchLyrics') | t }}</span>
+        }
+      </button>
+    </div>
+  }
+</div>

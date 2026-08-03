@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { ADMIN, FIXTURE, bearer } from '../helpers';
+import { ADMIN, FIXTURE, bearer, expandGroup } from '../helpers';
 
 /**
  * Mobile-viewport UX regressions (the G-series in
@@ -96,7 +96,10 @@ test.describe('mobile UX', () => {
     // Open the title context menu → "Track info" (scope to the menu; a visible
     // info button with the same label also exists — see the G4 test).
     await page.getByRole('heading', { name: 'Opening Static' }).click({ button: 'right' });
-    await page.locator('app-track-context-menu').getByRole('button', { name: 'Track info' }).click();
+    await page
+      .locator('app-track-context-menu')
+      .getByRole('button', { name: 'Track info' })
+      .click();
 
     const identity = page.getByTestId('track-info-identity');
     await expect(identity).toBeVisible();
@@ -184,6 +187,9 @@ test.describe('mobile UX', () => {
   // (The processing panel moved from Settings to Admin in the settings refactor.)
   test('admin page does not overflow horizontally', async ({ page }) => {
     await page.goto('/admin');
+    // The panel now lives inside the collapsible "Library Processing"
+    // settings group, which starts collapsed by default — expand it first.
+    await expandGroup(page, 'library-processing');
     // Admin-only processing panel with the offending time inputs.
     await expect(page.getByTestId('processing-panel')).toBeVisible();
     const overflow = await page.evaluate(() => {
@@ -281,11 +287,11 @@ test.describe('mobile UX', () => {
     await expect(section.getByTestId('lyrics-text')).toHaveCount(0);
   });
 
-  // The Now Playing lyrics toggle swaps the queue for the lyrics panel. Lyrics
+  // The Now Playing Lyrics tab swaps the queue tab for the lyrics panel. Lyrics
   // are pre-seeded through the real (admin) API so the panel renders stored
   // lyrics with no on-demand fetch — keeping the test offline + deterministic
   // (the LRCLIB fetch + synced parsing are covered by the API/unit tests).
-  test('Now Playing lyrics toggle reveals the lyrics panel', async ({ page, request }) => {
+  test('Now Playing Lyrics tab reveals the lyrics panel', async ({ page, request }) => {
     const token = (
       (await (await request.post('/api/auth/login', { data: ADMIN })).json()) as { token: string }
     ).token;
@@ -306,12 +312,44 @@ test.describe('mobile UX', () => {
 
     await openNowPlaying(page);
     await expect(page.getByTestId('now-playing-queue')).toBeVisible();
-    await page.getByTestId('now-playing-lyrics-toggle').click();
+    await page.getByTestId('now-playing-tab-lyrics').click();
 
     const panel = page.getByTestId('now-playing-lyrics');
     await expect(panel).toBeVisible();
     await expect(page.getByTestId('now-playing-queue')).toHaveCount(0);
     await expect(panel).toContainText('seeded chorus line');
+
+    // Round-trip: the Queue tab returns to the queue view.
+    await page.getByTestId('now-playing-tab-queue').click();
+    await expect(page.getByTestId('now-playing-queue')).toBeVisible();
+    await expect(page.getByTestId('now-playing-lyrics')).toHaveCount(0);
+  });
+
+  // The drag-resize handle is shell-owned (above the Queue/Lyrics tabs) so it
+  // must stay usable on the Lyrics tab — inside the queue panel it vanished with
+  // the tab switch and read as a lost feature. Drag it up and assert the cover
+  // actually shrinks.
+  test('Now Playing resize handle works from the Lyrics tab', async ({ page }) => {
+    await openNowPlaying(page);
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
+
+    const handle = page.getByTestId('now-playing-queue-resize');
+    await expect(handle).toBeVisible();
+
+    const coverBefore = (await page.getByTestId('now-playing-cover').boundingBox())!;
+    const handleBox = (await handle.boundingBox())!;
+    const startX = handleBox.x + handleBox.width / 2;
+    const startY = handleBox.y + handleBox.height / 2;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX, startY - 80, { steps: 8 });
+    await page.mouse.up();
+
+    const coverAfter = (await page.getByTestId('now-playing-cover').boundingBox())!;
+    expect(coverAfter.width, 'cover shrinks when the panel is pulled taller').toBeLessThan(
+      coverBefore.width,
+    );
   });
 
   // A long lyric line (no natural break) must wrap inside the lyrics panel and
@@ -338,7 +376,7 @@ test.describe('mobile UX', () => {
     }
 
     await openNowPlaying(page);
-    await page.getByTestId('now-playing-lyrics-toggle').click();
+    await page.getByTestId('now-playing-tab-lyrics').click();
     await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
 
     const overflow = await page.evaluate(() => {

@@ -585,24 +585,21 @@ describe('PlayerComponent', () => {
       expect(playerService.buffering()).toBe(true);
     });
 
-    it('shows a spinner on the play/pause button while buffering is visible', () => {
+    // The actual spinner/attribute rendering now lives inside
+    // app-player-transport-mini (see player-transport-mini.component.spec.ts
+    // "shows the buffering spinner when buffering is true") — this harness's
+    // plain-vitest JIT setup doesn't register signal inputs on a nested
+    // imported component (see testing/signal-input.ts), so a parent-level
+    // detectChanges() can't verify the [buffering] binding actually lands on
+    // the child. What's left worth asserting at this layer is that the
+    // shell's own showBuffering() computed — the value handed to the
+    // binding — resolves correctly.
+    it('showBuffering() reflects bufferingVisible while this device is active', () => {
       playerService.bufferingVisible.set(true);
-      fixture.detectChanges();
-      const btn = (fixture.nativeElement as HTMLElement).querySelector(
-        '[data-testid="player-playpause"]',
-      ) as HTMLElement;
-      expect(btn.getAttribute('data-buffering')).toBe('true');
-      expect(btn.querySelector('.animate-spin')).not.toBeNull();
-    });
+      expect(component.showBuffering()).toBe(true);
 
-    it('shows no spinner when buffering is not visible', () => {
       playerService.bufferingVisible.set(false);
-      fixture.detectChanges();
-      const btn = (fixture.nativeElement as HTMLElement).querySelector(
-        '[data-testid="player-playpause"]',
-      ) as HTMLElement;
-      expect(btn.getAttribute('data-buffering')).toBe('false');
-      expect(btn.querySelector('.animate-spin')).toBeNull();
+      expect(component.showBuffering()).toBe(false);
     });
   });
 

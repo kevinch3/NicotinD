@@ -14,6 +14,7 @@ import { ToastService } from '../../services/toast.service';
 import { IconComponent } from '../icon/icon.component';
 import { GenreRadarComponent, type GenreSlice } from '../genre-radar/genre-radar.component';
 import { genresLostBy, projectGenreDistribution } from '../../lib/genre-projection';
+import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 /**
  * Curator fix for an artist's genre (issue #187 A3).
@@ -32,7 +33,7 @@ import { genresLostBy, projectGenreDistribution } from '../../lib/genre-projecti
 @Component({
   selector: 'app-artist-genre-modal',
   standalone: true,
-  imports: [FormsModule, IconComponent, GenreRadarComponent],
+  imports: [FormsModule, IconComponent, GenreRadarComponent, BottomChromeSafeDirective],
   templateUrl: './artist-genre-modal.component.html',
 })
 export class ArtistGenreModalComponent {

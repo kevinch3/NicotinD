@@ -72,7 +72,10 @@ function setup(
     imports: [LibraryComponent],
     providers: [
       { provide: LibraryApiService, useValue: api },
-      { provide: AuthService, useValue: { token: signal('tok'), role: () => 'user' } },
+      {
+        provide: AuthService,
+        useValue: { token: signal('tok'), role: () => 'user', canCurate: () => false },
+      },
       {
         provide: PlaylistService,
         useValue: {
@@ -276,6 +279,97 @@ describe('LibraryComponent — isXxxEmpty flash-prevention computeds', () => {
     component.loadingSingles.set(false);
     filteredItems.set([]);
     expect(component.isSinglesEmpty()).toBe(true);
+  });
+});
+
+describe('LibraryComponent — TV D-pad nav (issue android-tv phase3)', () => {
+  it('renders the albums grid as one appTvNavGroup with grid axis', () => {
+    const { fixture, filteredItems } = setup();
+    filteredItems.set([{ id: 'a1', name: 'Album One', artist: 'Artist' }] as never);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[data-testid="album-card"]')?.closest('[appTvNavGroup]');
+    expect(group?.getAttribute('axis')).toBe('grid');
+  });
+
+  it('renders the playlists list as one appTvNavGroup with vertical axis', () => {
+    const { component, fixture } = setup(
+      {},
+      {
+        playlists: [
+          {
+            id: 'u1',
+            name: 'My mix',
+            description: null,
+            songCount: 3,
+            coverArt: null,
+            kind: 'user',
+            createdAt: 0,
+            modifiedAt: 0,
+          },
+        ],
+      },
+    );
+    component.libraryMode.set('playlists');
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[data-testid="playlist-row"]')?.closest('[appTvNavGroup]');
+    expect(group?.getAttribute('axis')).toBe('vertical');
+  });
+
+  // The two assertions above only prove the ATTRIBUTES are in the DOM, which
+  // NO_ERRORS_SCHEMA would let pass even if the directives were never
+  // imported. The behavioral tests below prove the group actually has a
+  // non-empty, working item list — an empty items() (the cross-component
+  // boundary bug) moves no focus at all.
+  it('ArrowRight moves focus along the albums grid (real D-pad behaviour)', () => {
+    const { fixture, filteredItems } = setup();
+    filteredItems.set([
+      { id: 'a1', name: 'Album One', artist: 'Artist' },
+      { id: 'a2', name: 'Album Two', artist: 'Artist' },
+    ] as never);
+    fixture.detectChanges();
+    const cards: HTMLElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('[data-testid="album-card"]'),
+    );
+    expect(cards.length).toBe(2);
+    expect(cards[0]!.getAttribute('tabindex')).toBe('0');
+    cards[0]!.focus();
+    cards[0]!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }),
+    );
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(cards[1]);
+  });
+
+  it('ArrowDown moves focus down the playlists list (real D-pad behaviour)', () => {
+    const playlist = (id: string, name: string): PlaylistSummary => ({
+      id,
+      name,
+      description: null,
+      songCount: 3,
+      coverArt: null,
+      kind: 'user',
+      createdAt: 0,
+      modifiedAt: 0,
+    });
+    const { component, fixture } = setup(
+      {},
+      { playlists: [playlist('u1', 'My mix'), playlist('u2', 'Other mix')] },
+    );
+    component.libraryMode.set('playlists');
+    fixture.detectChanges();
+    const links: HTMLElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('[data-testid="playlist-row"] [appTvNavItem]'),
+    );
+    expect(links.length).toBe(2);
+    expect(links[0]!.getAttribute('tabindex')).toBe('0');
+    links[0]!.focus();
+    links[0]!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+    );
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(links[1]);
   });
 });
 

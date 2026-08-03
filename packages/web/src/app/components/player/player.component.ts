@@ -30,6 +30,7 @@ import { miniPlayerSlideClass } from '../../lib/player-chrome';
 import { SeekBarComponent } from '../seek-bar/seek-bar.component';
 import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { PlayerTransportMiniComponent } from './player-transport-mini/player-transport-mini.component';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -99,6 +100,7 @@ export function browserDurationIsAcceptable(knownSec: number, nativeSec: number)
     SeekBarComponent,
     ArtistLinksComponent,
     TranslatePipe,
+    PlayerTransportMiniComponent,
   ],
   templateUrl: './player.component.html',
 })

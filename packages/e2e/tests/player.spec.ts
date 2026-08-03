@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { FIXTURE } from '../helpers';
+import { FIXTURE, expandGroup } from '../helpers';
 
 /** Max currentTime across the (double-buffered) audio elements. */
 const audioTime = (page: Page) =>
@@ -67,6 +67,9 @@ test.describe('auto-preserve queue (PWA lock-screen resilience)', () => {
 
   test('Settings exposes the four auto-preserve modes and the explainer', async ({ page }) => {
     await page.goto('/settings');
+    // The Playback & Offline card starts collapsed (settings-cards
+    // unification task 2) — expand it to reach the auto-preserve controls.
+    await expandGroup(page, 'settings-playback');
     await expect(page.getByTestId('auto-preserve-off')).toBeVisible();
     await expect(page.getByTestId('auto-preserve-5')).toBeVisible();
     await expect(page.getByTestId('auto-preserve-20')).toBeVisible();
@@ -85,6 +88,7 @@ test.describe('auto-preserve queue (PWA lock-screen resilience)', () => {
 
     // Enable auto-preserve on the next 5 tracks.
     await page.goto('/settings');
+    await expandGroup(page, 'settings-playback');
     await page.getByTestId('auto-preserve-5').click();
     await expect(page.getByTestId('auto-preserve-5')).toHaveAttribute('aria-pressed', 'true');
 
@@ -97,6 +101,7 @@ test.describe('auto-preserve queue (PWA lock-screen resilience)', () => {
 
     // Toggle off — should prompt a confirm dialog with the count baked in.
     await page.goto('/settings');
+    await expandGroup(page, 'settings-playback');
     const dialog = page.getByTestId('confirm-dialog');
     await page.getByTestId('auto-preserve-off').click();
     await expect(dialog).toBeVisible();
@@ -190,6 +195,51 @@ test.describe('player controls', () => {
     await expect(page.getByTestId('player-title')).toHaveText('Closing Time');
   });
 
+  test('Queue tab returns to the queue view after the Lyrics tab (round-trip)', async ({
+    page,
+  }) => {
+    await startAlbum(page);
+    await page.getByTestId('player-title').click();
+    await expect(page.getByText('Now Playing')).toBeVisible();
+    await expect(page.getByTestId('now-playing-queue')).toBeVisible();
+
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
+    await expect(page.getByTestId('now-playing-queue')).toHaveCount(0);
+
+    await page.getByTestId('now-playing-tab-queue').click();
+    await expect(page.getByTestId('now-playing-queue')).toBeVisible();
+    await expect(page.getByTestId('now-playing-lyrics')).toHaveCount(0);
+  });
+
+  test('Queue tab shows the live queue-count badge', async ({ page }) => {
+    // startAlbum's playWithContext seeds the queue with the whole rest of the
+    // album (6 tracks); clear it, then add exactly 2 tracks back via the row
+    // menu's "Add to queue" so the tab badge is asserted against a known
+    // count without scrolling/trimming a long, viewport-clipped queue list.
+    await startAlbum(page);
+    await page.getByTestId('player-title').click();
+    await expect(page.getByText('Now Playing')).toBeVisible();
+
+    await page.getByTestId('queue-clear').click();
+    // Close the sheet (back chevron in the drag-handle header, which
+    // slides the sheet off-screen rather than removing it) to reach the
+    // album's track rows underneath.
+    await page.getByTestId('now-playing-drag-handle').locator('button').first().click();
+    await expect(page.getByTestId('track-row').first()).toBeInViewport();
+
+    const rows = page.getByTestId('track-row');
+    for (const i of [1, 2]) {
+      const row = rows.nth(i);
+      await row.getByTestId('track-row-menu-toggle').click();
+      await row.getByTestId('track-action-Add to queue').click();
+    }
+
+    await page.getByTestId('player-title').click();
+    await expect(page.getByText('Now Playing')).toBeVisible();
+    await expect(page.getByTestId('now-playing-tab-queue')).toContainText('2');
+  });
+
   test('vocal mute toggle preserves playback position (server-side transcode filter)', async ({
     page,
   }) => {
@@ -215,11 +265,19 @@ test.describe('player controls', () => {
     await expect.poll(() => audioTime(page), { timeout: 5_000 }).toBeGreaterThan(5);
     const posBefore = await audioTime(page);
 
-    // Open the karaoke overlay: lyrics toggle → karaoke fullscreen.
-    await page.getByTestId('now-playing-lyrics-toggle').click();
+    // Open the karaoke overlay: lyrics tab → karaoke fullscreen.
+    await page.getByTestId('now-playing-tab-lyrics').click();
     await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
     await page.getByTestId('now-playing-karaoke-toggle').click();
     await expect(page.getByTestId('karaoke-overlay')).toBeVisible();
+
+    // Regression guard for the fullscreen lyrics-body restructure (2-line
+    // auto-follow vs. browse-to-seek): with only plain-text lyrics available
+    // in e2e (no synced LRC seedable here — see docs/design-patterns.md, the
+    // Lyrics bullet), the overlay must still render without the new
+    // karaoke-fullscreen-follow block (that block only appears for synced
+    // lines) and without throwing.
+    await expect(page.getByTestId('karaoke-fullscreen-follow')).toHaveCount(0);
 
     // Toggle vocal mute on, then off. Both should be position-stable.
     const toggle = page.getByTestId('vocal-mute-toggle');
@@ -230,20 +288,26 @@ test.describe('player controls', () => {
     // Position should not have reset — restoredTime carries it across the src
     // reload. Allow a small advance for the audio continuing to play.
     await expect
-      .poll(async () => {
-        const t = await audioTime(page);
-        return t >= posBefore - 1 && t < posBefore + 5;
-      }, { timeout: 5_000 })
+      .poll(
+        async () => {
+          const t = await audioTime(page);
+          return t >= posBefore - 1 && t < posBefore + 5;
+        },
+        { timeout: 5_000 },
+      )
       .toBe(true);
 
     // Toggle off again — still no position reset.
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-label', /Mute vocals/);
     await expect
-      .poll(async () => {
-        const t = await audioTime(page);
-        return t >= posBefore - 1 && t < posBefore + 5;
-      }, { timeout: 5_000 })
+      .poll(
+        async () => {
+          const t = await audioTime(page);
+          return t >= posBefore - 1 && t < posBefore + 5;
+        },
+        { timeout: 5_000 },
+      )
       .toBe(true);
   });
 });

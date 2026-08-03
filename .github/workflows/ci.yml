@@ -8,7 +8,11 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # The release job pushes a version-bump commit to master, which triggers a
+  # new run in this same group — cancelling THIS run (the one that just
+  # produced the release) out from under itself (issue #360). master pushes
+  # must never cancel each other; only superseded PR pushes should.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true

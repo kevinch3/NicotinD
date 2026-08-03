@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { expandGroup } from '../helpers';
 
 /**
  * Manual PWA update check. The Settings → Account button renders only when the
@@ -20,10 +21,15 @@ import { test, expect } from '@playwright/test';
  * flakiness than this assertion warrants.
  */
 test.describe('PWA update check (manual)', () => {
-  test('shows the Check-for-updates control on the production e2e build (SW enabled)', async ({ page }) => {
+  test('shows the Check-for-updates control on the production e2e build (SW enabled)', async ({
+    page,
+  }) => {
     await page.goto('/settings');
     await expect(page).toHaveURL(/\/settings$/);
     await expect(page.getByText(/Account/i).first()).toBeVisible();
+    // The Account & Devices card starts collapsed (settings-cards
+    // unification task 2) — expand it to reach the update-check control.
+    await expandGroup(page, 'settings-account');
     const button = page.getByTestId('settings-check-update');
     await expect(button).toBeVisible();
     await expect(button).toHaveText(/Check for updates/i);

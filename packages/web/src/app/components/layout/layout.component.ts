@@ -30,6 +30,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 import { createPullToRefresh, PULL_THRESHOLD_PX } from '../../lib/pull-to-refresh';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { ScrollLockService } from '../../services/scroll-lock.service';
+import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 interface NavItem {
   to: string;
@@ -74,6 +75,7 @@ const HEADER_BASE_CLASSES =
     TrackInfoHostComponent,
     FeedbackDetailSheetComponent,
     DesktopWindowControlsComponent,
+    BottomChromeSafeDirective,
   ],
   templateUrl: './layout.component.html',
 })

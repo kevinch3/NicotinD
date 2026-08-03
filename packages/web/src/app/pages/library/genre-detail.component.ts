@@ -27,6 +27,7 @@ import { PreserveService } from '../../services/preserve.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { SongMenuService } from '../../services/song-menu.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 
 @Component({
   selector: 'app-genre-detail',
@@ -36,6 +37,7 @@ import { PullToRefreshService } from '../../services/pull-to-refresh.service';
     RouterLink,
     SelectionBarComponent,
     IconComponent,
+    TvNavGroupDirective,
   ],
   templateUrl: './genre-detail.component.html',
 })

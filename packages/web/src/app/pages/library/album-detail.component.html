@@ -168,7 +168,7 @@
       />
     }
 
-    <div>
+    <div appTvNavGroup axis="vertical">
       @for (song of detailControls.filtered(); track song.id) {
         <app-track-row
           [track]="toTrackFromSong(song)"

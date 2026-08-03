@@ -27,6 +27,27 @@ const MINT: AgentTokenMintResponse = {
   token: 'nca_secret',
 };
 
+/**
+ * Task 3 (settings-cards unification): the two sections are now collapsible
+ * `<app-settings-group>` cards. This JIT vitest harness never registers signal
+ * inputs on a nested imported component (see `src/testing/signal-input.ts`),
+ * so every group's `[groupId]` binding silently fails to land and all groups
+ * fall back to the same default groupId (`''`) — meaning they share one
+ * localStorage key. Harmless for opening every card (this helper just clicks
+ * whichever toggles are still closed), but a prior test's "open" write can
+ * leak into a later fixture — tests asserting the fresh-render collapsed
+ * state must `localStorage.clear()` first, mirroring
+ * `settings.component.spec.ts`/`admin.component.spec.ts`.
+ */
+function expandAllGroups(fixture: { nativeElement: unknown; detectChanges: () => void }): void {
+  const el = fixture.nativeElement as HTMLElement;
+  const toggles = el.querySelectorAll<HTMLButtonElement>('[data-testid="settings-group-toggle"]');
+  toggles.forEach((btn) => {
+    if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
+  });
+  fixture.detectChanges();
+}
+
 function setup(overrides: Partial<Record<keyof AgentTokensApiService, unknown>> = {}) {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -115,5 +136,48 @@ describe('AgentTokensComponent', () => {
     expect(c.minted()).not.toBeNull();
     c.dismissMinted();
     expect(c.minted()).toBeNull();
+  });
+
+  it('renders the tokens list as an appTvNavGroup with each revoke button as appTvNavItem', () => {
+    const fixture = setup();
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    const el: HTMLElement = fixture.nativeElement;
+    const button = el.querySelector('[data-testid="agent-token-revoke"]');
+    expect(button?.matches('[appTvNavItem]')).toBe(true);
+    const group = button?.closest('[appTvNavGroup]');
+    expect(group?.getAttribute('axis')).toBe('vertical');
+  });
+
+  /**
+   * The assertion above is attribute-only, and a directive selector survives in
+   * the DOM whether or not the directive is imported, applied, or able to reach
+   * its group — which is how the Extensions page shipped with every group
+   * registering zero items. This is the behavioural proof: a real key event
+   * moving real focus.
+   */
+  it('ArrowDown moves focus from one token revoke button to the next', () => {
+    const fixture = setup({
+      listTokens: () => of({ tokens: [...TOKENS, { ...TOKENS[0]!, id: 't9', name: 'Second' }] }),
+    });
+    expandAllGroups(fixture);
+    const el: HTMLElement = fixture.nativeElement;
+    const buttons: HTMLElement[] = Array.from(
+      el.querySelectorAll('[data-testid="agent-token-revoke"]'),
+    );
+    expect(buttons.length).toBe(2);
+    buttons[0]!.focus();
+    buttons[0]!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+    );
+    expect(document.activeElement).toBe(buttons[1]);
+  });
+
+  it('renders every group collapsed on a fresh render (all groups default-collapsed)', () => {
+    localStorage.clear();
+    const fixture = setup();
+    fixture.detectChanges();
+    const bodies = fixture.nativeElement.querySelectorAll('[data-testid="settings-group-body"]');
+    expect(bodies.length).toBe(0);
   });
 });

@@ -30,6 +30,7 @@ import {
   coverCandidateToRequest,
   customCoverToRequest,
 } from '../../lib/cover-candidates';
+import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 /**
  * Admin metadata fix modal: search Lidarr with an editable query, pick a candidate
@@ -40,7 +41,7 @@ import {
 @Component({
   selector: 'app-metadata-fix-modal',
   standalone: true,
-  imports: [FormsModule, CoverArtComponent],
+  imports: [FormsModule, CoverArtComponent, BottomChromeSafeDirective],
   templateUrl: './metadata-fix-modal.component.html',
 })
 export class MetadataFixModalComponent implements OnInit {

@@ -340,9 +340,10 @@ Add detail there, not here.
 - **Queue extensions (full management)**: `PlayerService` exposes `queueNext`, `addToQueue`,
   `clearQueue`, `removeFromQueue`, `moveInQueue`, `toggleShuffle`, `jumpToQueueIndex`; Now Playing
   queue UI has header toolbar (shuffle/save-as-playlist/clear), per-track remove, drag-to-reorder
-  (native HTML5 drag handlers — `onQueueDragStart`/`onQueueDrop` in `now-playing.component`, not a
-  directive), a **manual drag-resize handle** (pull the queue taller → cover art
-  shrinks; `createPointerDrag`, persisted per-device), history peek, and mini-player queue badge.
+  (native HTML5 drag handlers — `onQueueDragStart`/`onQueueDrop` in the queue panel component, not a
+  directive), a **manual drag-resize handle** (shell-owned above the Queue/Lyrics tabs; pull the
+  panel taller → cover art shrinks; `createPointerDrag`, persisted per-device, mobile-only — the
+  `lg:` side panel is fixed-width), history peek, and mini-player queue badge.
   The Play next / Add to queue entries are built inline by `SongMenuService.build` (calling
   `queueNext`/`addToQueue`), so every track-row menu gets them. →
   [docs/web-ui.md](docs/web-ui.md)
@@ -520,9 +521,12 @@ Add detail there, not here.
   scored by the Radio engine and sequenced via `energy-arc`. →
   [docs/audio-ml-enrichment.md](docs/audio-ml-enrichment.md)
 - **Lyrics (on-demand, plugin-sourced, editable)**: new `metadata` plugin kind + `lyrics` capability
-  (LRCLIB first source); stored in `library_lyrics` + file tag, user-editable. The now-playing
-  lyrics toggle opens a karaoke-styled panel (synced line highlighting + auto-scroll) with a
-  fullscreen expand button; a centered styled empty state carries an inline Fetch button. Fetch is
+  (LRCLIB first source); stored in `library_lyrics` + file tag, user-editable. Now Playing's
+  **Lyrics tab** (alongside Queue — see the Now Playing component-split entry below) opens a
+  karaoke-styled panel (synced line highlighting + auto-scroll) with a fullscreen expand button —
+  fullscreen defaults to a current+next-line-only auto-follow view (narrow-screen/TV friendly) with
+  a wheel/touch-gesture browse mode for tap-to-seek; a centered styled empty state carries an inline
+  Fetch button. Fetch is
   **reliable 1-click**: LRCLIB retries transient failures (404 stays no-match) and the route returns
   `502` for a source error vs `null` for a confident miss, so the first click doesn't
   false-negative. **Vocal mute** (`?vocals=off` → server-side ffmpeg center-channel cancellation
@@ -624,6 +628,18 @@ Add detail there, not here.
 - **Now Playing queue — clear + drag-reorder + per-row remove**: "Next up" supports a Clear link,
   HTML5 drag-and-drop row reorder, and per-row remove (X) backed by `PlayerService.clearQueue()` /
   `moveInQueue(from,to)` / `removeFromQueue(index)`. → [docs/web-ui.md](docs/web-ui.md)
+- **Now Playing component split + tabbed Queue/Lyrics panel**: the once-monolithic
+  `now-playing.component` shell now composes 7 extracted sub-components
+  (`NowPlayingHeaderComponent`/`-CoverArtComponent`/`-TransportComponent`/`-PanelTabsComponent`/
+  `-QueuePanelComponent`/`-LyricsPanelComponent`/`-KaraokeFullscreenComponent`); a **Queue/Lyrics tab
+  switcher** (`NowPlayingPanelTabsComponent`, queue-count badge + lyrics-availability dot) replaces
+  the old lyrics-toggle-swaps-the-queue model. The queue drag-resize handle is **shell-owned, above
+  the tabs** (works on both panels — inside the queue panel it vanished on the Lyrics tab), and at
+  `lg:` the sheet is **two columns**: cover/transport left, the tabbed panel an always-visible fixed
+  380px right column (Spotify-like), via `contents lg:flex` group wrappers since every child is
+  `display: contents`. The sheet now follows theme tokens like the rest of
+  the app — only the fullscreen karaoke overlay's dynamic cover-gradient background stays an
+  intentional exception. → [docs/web-ui.md](docs/web-ui.md)
 - **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a
   **weight-normalized** blend (comparable-factors-only, so un-analyzed tracks aren't out-biased
   mid-backfill) of BPM, Camelot key (incl. ±2/diagonal moves), multi-genre set closeness
@@ -739,7 +755,12 @@ Add detail there, not here.
   mini-player/tab bar; every `TrackRowComponent` `⋯` menu uses it. →
   [docs/design-patterns.md](docs/design-patterns.md)
 - **Bottom-chrome stacking + scroll lock**: mini-player and tab bar share one `z-50` plane;
-  `ScrollLockService` pins the document under full-screen sheets. →
+  `ScrollLockService` pins the document under full-screen sheets. Full-screen modal backdrops use
+  `BottomChromeSafeDirective` (issue #367) so a tall dialog never renders its last content under the
+  mini-player/tab bar — hardened with ResizeObserver/transitionend re-measure + a published
+  `--bottom-chrome-inset` CSS var, and a canonical bounded-panel recipe (`m-auto`, never
+  `items-center`, `max-h` off the var) that variable-height modals must pair with it
+  (`measureBottomChromeInset` is the one shared chrome-measuring entry point). →
   [docs/design-patterns.md](docs/design-patterns.md)
 - **Catalog (metadata-driven) search**: `CatalogService` returns artist/album cards from
   Lidarr/MusicBrainz, scoped to the matched artist, resolving into album-hunt (typed 404 +
@@ -942,10 +963,17 @@ Add detail there, not here.
   with an augmented PATH (`acquireEnv`: bundled-ffmpeg dir + brew/pip bins — GUI apps inherit a
   minimal PATH) + an admin-editable `binaryPath` field; embedded slskd auto-shares the music dir
   (merge-preserving `slskd.yml` regeneration). UI labelled **Extensions**, one section per kind
-  (Acquisition / Metadata / Connectivity) — the web `PluginKind` union mirrors the core one and a
-  kind missing from **either** renders its plugins nowhere; extensions with bespoke config own a
-  dedicated settings page via `PLUGIN_DETAIL_ROUTES` (first: slskd, which shows a not-reachable
-  notice when slskd is down). All first-party plugins are constructed in `registerBuiltinPlugins`
+  (Acquisition / Metadata / Connectivity) — each a collapsible `SettingsGroupComponent` card
+  (groupIds `plugins-acquisition`/`plugins-metadata`/`plugins-connectivity`), and each plugin itself
+  a collapsible `PluginCardComponent` (header row — name, one unified derived status pill
+  off/needs-config/unavailable/ready, Enable/Disable — always visible; description/capabilities/
+  config form behind the card's own toggle), and Connectivity hides itself when empty — the web
+  `PluginKind` union mirrors the core one and a kind missing from **either** renders its plugins
+  nowhere. Extensions with bespoke config no longer get a separate route: slskd's settings
+  (`SlskdSettingsComponent`, connection/shares/live status, shows a not-reachable notice when slskd
+  is down) are embedded inline in its own card body once expanded, so its ~3s status poll only runs
+  while that card is open (`/settings/plugins/slskd` now just redirects to `/settings/plugins`). All
+  first-party plugins are constructed in `registerBuiltinPlugins`
   (`services/plugins/builtin.ts`), not inline in `index.ts`, so cross-plugin construction deps
   (spotdl reading spotify's creds) are covered by a test. → [docs/plugins.md](docs/plugins.md)
 - **Discogs metadata plugin (genre + artist-info)**: `metadata`-kind, default-off + consent-gated
@@ -988,7 +1016,25 @@ Add detail there, not here.
 - **Admin/Settings/Extensions decoupling**: core Settings = universal prefs only; server-admin tools
   (streaming, library processing, find-duplicates) live in **Admin**; slskd owns its
   connection/shares + a Nicotine+-style live status panel (`GET /api/plugins/slskd/status`,
-  `SlskdStatus`) on its extension page. Credential storage unchanged (UI relocation only). →
+  `SlskdStatus`), embedded inline in its own collapsible Extensions card rather than a dedicated
+  route. Credential storage unchanged (UI relocation only). →
+  [docs/admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
+- **Settings-cards unification (`SettingsGroupComponent`, all five settings-family views)**: one
+  bordered, collapsible card (`packages/web/src/app/components/settings-group/`) generalized from
+  the Admin-only `AdminGroupComponent` (renamed, no longer a repo symbol) now backs **every**
+  group on `/settings`, `/admin`, `/settings/plugins` (incl. each `PluginCardComponent`'s own
+  collapsible body), `/settings/devices`, and `/settings/agent-tokens` — collapsed by default
+  everywhere, no exceptions (Devices' pairing panel mints its code on first expand via the
+  `opened` output rather than an eager `defaultOpen`) — and persisted per-device
+  (`lib/group-state.ts`, `localStorage` key `nicotind-group-<id>`, cleared on signout via
+  `AuthService.resetSession()`). Admin's 8 groups (System Health / Library Processing / Library
+  Maintenance / Streaming & Media / Backups & Data / Acquisition & Automation / User Management /
+  Audit Log — the old 14-panel "System" mega-section dissolved across them) were the first
+  consumer. `tests/settings-consistency.spec.ts` (CI) is the cross-view gate that every route
+  renders fully collapsed on load with identical computed styles;
+  `tests/settings-gallery.screens.ts` (out-of-CI, `playwright.screenshots.config.ts`) captures a
+  collapsed + expanded shot of every route in mobile and desktop viewports for human review. →
+  [docs/design-patterns.md](docs/design-patterns.md) "SettingsGroupComponent",
   [docs/admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
 - **Changelog modal**: build-time `CHANGELOG.md` → `changelog.json` (capped at 50 versions); version
   string in header/settings is clickable. `CHANGELOG.md` is also the source for the **GitHub Release
@@ -1091,7 +1137,12 @@ Add detail there, not here.
   `--follow-tags` push (a rejected branch update rejects the tag too) + self-healing orphan
   detection (a `vX` tag not reachable from master is deleted + re-cut, never silently skipped) —
   fixes the 2026-07-23 freeze where a non-atomic push orphaned `v0.1.244` and wedged every release
-  behind a green-but-silent "already published" skip. → [docs/deployment.md](docs/deployment.md)
+  behind a green-but-silent "already published" skip. **The workflow's own
+  `cancel-in-progress` concurrency guard no longer cancels itself (issue
+  #360)**: it's scoped off for `master` pushes, since the `release` job's
+  version-bump commit is itself a push to `master` that used to retrigger a
+  run in the same group and cancel the originating (already-succeeded) run
+  out from under itself. → [docs/deployment.md](docs/deployment.md)
 - **Measure prod before building (`prod-probe.ts`)**: several issues ask for a prod measurement
   first and it repeatedly **changed** the fix rather than confirming it (#262's stated root cause was
   wrong; #259's retention tension dissolved; #271's threshold was calibrated off 462 real jobs) — but
@@ -1217,8 +1268,13 @@ build (no second UI codebase). The enabler is a runtime-configurable API base UR
 (`ServerConfigService` + a native-only server-picker + `nativeAppCors()`). Background audio +
 lock-screen controls come from `@jofr/capacitor-media-session` on Android and an iOS-only
 `@nicotind/capacitor-now-playing` Swift plugin (owns `MPNowPlayingInfoCenter` + `AVAudioSession` +
-transport). Android/iOS artifacts are built by tag-only best-effort CI jobs in `deploy.yml`. → See
-[docs/mobile-app.md](docs/mobile-app.md) and [docs/ios-app.md](docs/ios-app.md).
+transport). Android/iOS artifacts are built by tag-only best-effort CI jobs in `deploy.yml`. **The Android APK also supports sideload-only Android TV use** (manifest touchscreen fix + a `tv`
+Angular build configuration defaulting remote-control opt-in on; a roving-tabindex D-pad
+navigation directive pair — vertical/horizontal/grid axes — covers the Now Playing queue,
+transport controls, every Library/Search/artist-detail grid, every `TrackRowComponent`-based song
+list, and Settings/Admin/Extensions button/toggle rows (forms stay Tab-order-only by design),
+plus a global keyboard shortcut set (Space/K play-pause, J/L prev/next, M mute, N now-playing, arrow-key seek that defers to D-pad nav groups, `/` for Acquire — Escape-as-back is a deliberately deferred follow-up given the modal-arbitration work it needs). → See [docs/mobile-app.md](docs/mobile-app.md) and
+[docs/ios-app.md](docs/ios-app.md).
 
 ## Desktop app (Electron)
 
@@ -1267,7 +1323,10 @@ bundle and report pre-fix behaviour as the actual value (issue #253); `E2E_SKIP_
 fast path, and `E2E_BASE_URL` never builds. CI is split: `ci.yml`
 runs `ci` + `e2e` then a `release` job tags `vX.Y.Z`; that tag triggers `deploy.yml`. A gated
 **playground harness** (`PLAYGROUND=1`), the mutating **real round-trip** (`PLAYGROUND_REAL=1`), and
-**screenshot flows** are all out of CI. The flow catalogue + recurring routines live in
+**screenshot flows** are all out of CI. **The README's 3 locally-capturable screenshots refresh with
+one command** (`bun run --filter @nicotind/e2e screens:readme`, docs/e2e.md "Screenshot flows") — run
+it and commit any changed `docs/images/*.png` whenever a UI change touches the Library/album/Now-Playing
+screens. The flow catalogue + recurring routines live in
 [docs/testing-routines.md](docs/testing-routines.md). → See [docs/e2e.md](docs/e2e.md).
 
 **Real-use feedback log**: [docs/feedback-log-2026-07.md](docs/feedback-log-2026-07.md) is a

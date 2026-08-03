@@ -279,92 +279,102 @@
           <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">
             {{ 'acquire.albums' | t }}
           </h2>
-          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            @for (album of catalog()!.albums; track album.foreignAlbumId) {
-              <button
-                (click)="huntCatalogAlbum(album)"
-                [disabled]="resolvingAlbum() !== null"
-                class="group text-left rounded-lg overflow-hidden border border-zinc-800/80 transition hover:border-zinc-600 disabled:opacity-60"
-                style="background: var(--theme-surface)"
-              >
-                <div class="aspect-square bg-zinc-800 relative" data-testid="catalog-album-cover">
-                  <!-- Shared cover component: gradient placeholder, fade-in on
-                       load and an error fallback, none of which the raw <img>
-                       here ever had (issue #263). -->
-                  <app-cover-art
-                    [src]="album.coverUrl"
-                    [artist]="album.artistName"
-                    [album]="album.title"
-                    [fill]="true"
-                    rounded="rounded-none"
-                  />
-                  @if (resolvingAlbum() === album.foreignAlbumId) {
-                    <div
-                      class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60"
-                    >
-                      <span
-                        class="inline-block w-5 h-5 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin"
-                      ></span>
-                      <span class="text-xs text-zinc-300">Preparing…</span>
+          <div
+            class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
+            appTvNavGroup
+            axis="grid"
+            #catalogAlbumsGrid="appTvNavGroup"
+          >
+            @for (row of chunk(catalog()!.albums, catalogAlbumsGrid.gridColumns()); track $index) {
+              <div role="row" style="display: contents">
+                @for (album of row; track album.foreignAlbumId) {
+                  <button
+                    appTvNavItem
+                    (click)="huntCatalogAlbum(album)"
+                    [disabled]="resolvingAlbum() !== null"
+                    class="group text-left rounded-lg overflow-hidden border border-zinc-800/80 transition hover:border-zinc-600 disabled:opacity-60"
+                    style="background: var(--theme-surface)"
+                  >
+                    <div class="aspect-square bg-zinc-800 relative" data-testid="catalog-album-cover">
+                      <!-- Shared cover component: gradient placeholder, fade-in on
+                           load and an error fallback, none of which the raw <img>
+                           here ever had (issue #263). -->
+                      <app-cover-art
+                        [src]="album.coverUrl"
+                        [artist]="album.artistName"
+                        [album]="album.title"
+                        [fill]="true"
+                        rounded="rounded-none"
+                      />
+                      @if (resolvingAlbum() === album.foreignAlbumId) {
+                        <div
+                          class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60"
+                        >
+                          <span
+                            class="inline-block w-5 h-5 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin"
+                          ></span>
+                          <span class="text-xs text-zinc-300">Preparing…</span>
+                        </div>
+                      }
+                      <!-- Watchlist star — auto-acquire when a complete folder appears
+                               (only when a download-capable plugin is enabled) -->
+                      @if (plugins.hasDownload()) {
+                        <span
+                          role="button"
+                          tabindex="0"
+                          data-testid="watchlist-star"
+                          (click)="toggleWatch(album, $event)"
+                          (keydown.enter)="toggleWatch(album, $event)"
+                          [attr.aria-label]="
+                            watchlist.isWatched(album.foreignAlbumId)
+                              ? 'Stop watching'
+                              : 'Watch for this album'
+                          "
+                          [attr.title]="
+                            watchlist.isWatched(album.foreignAlbumId)
+                              ? 'Watching — auto-downloads when found'
+                              : 'Watch — auto-download when found'
+                          "
+                          class="absolute top-1.5 right-1.5 w-7 h-7 flex items-center justify-center rounded-full bg-black/55 hover:bg-black/75 transition cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100"
+                          [class.!opacity-100]="watchlist.isWatched(album.foreignAlbumId)"
+                        >
+                          <svg
+                            width="15"
+                            height="15"
+                            viewBox="0 0 24 24"
+                            [attr.fill]="
+                              watchlist.isWatched(album.foreignAlbumId) ? 'currentColor' : 'none'
+                            "
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            [class.text-amber-400]="watchlist.isWatched(album.foreignAlbumId)"
+                            [class.text-white]="!watchlist.isWatched(album.foreignAlbumId)"
+                          >
+                            <polygon
+                              points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+                            />
+                          </svg>
+                        </span>
+                      }
                     </div>
-                  }
-                  <!-- Watchlist star — auto-acquire when a complete folder appears
-                           (only when a download-capable plugin is enabled) -->
-                  @if (plugins.hasDownload()) {
-                    <span
-                      role="button"
-                      tabindex="0"
-                      data-testid="watchlist-star"
-                      (click)="toggleWatch(album, $event)"
-                      (keydown.enter)="toggleWatch(album, $event)"
-                      [attr.aria-label]="
-                        watchlist.isWatched(album.foreignAlbumId)
-                          ? 'Stop watching'
-                          : 'Watch for this album'
-                      "
-                      [attr.title]="
-                        watchlist.isWatched(album.foreignAlbumId)
-                          ? 'Watching — auto-downloads when found'
-                          : 'Watch — auto-download when found'
-                      "
-                      class="absolute top-1.5 right-1.5 w-7 h-7 flex items-center justify-center rounded-full bg-black/55 hover:bg-black/75 transition cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100"
-                      [class.!opacity-100]="watchlist.isWatched(album.foreignAlbumId)"
-                    >
-                      <svg
-                        width="15"
-                        height="15"
-                        viewBox="0 0 24 24"
-                        [attr.fill]="
-                          watchlist.isWatched(album.foreignAlbumId) ? 'currentColor' : 'none'
-                        "
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        [class.text-amber-400]="watchlist.isWatched(album.foreignAlbumId)"
-                        [class.text-white]="!watchlist.isWatched(album.foreignAlbumId)"
-                      >
-                        <polygon
-                          points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
-                        />
-                      </svg>
-                    </span>
-                  }
-                </div>
-                <div class="p-2">
-                  <p class="text-sm truncate" style="color: var(--theme-text-primary)">
-                    {{ album.title }}
-                  </p>
-                  <p class="text-xs truncate" style="color: var(--theme-text-secondary)">
-                    {{ album.artistName }}
-                  </p>
-                  <p class="text-xs truncate" style="color: var(--theme-text-muted)">
-                    {{ album.year }}{{ album.year && album.albumType ? ' · ' : ''
-                    }}{{ album.albumType
-                    }}{{ album.trackCount ? ' · ' + album.trackCount + ' tracks' : '' }}
-                  </p>
-                </div>
-              </button>
+                    <div class="p-2">
+                      <p class="text-sm truncate" style="color: var(--theme-text-primary)">
+                        {{ album.title }}
+                      </p>
+                      <p class="text-xs truncate" style="color: var(--theme-text-secondary)">
+                        {{ album.artistName }}
+                      </p>
+                      <p class="text-xs truncate" style="color: var(--theme-text-muted)">
+                        {{ album.year }}{{ album.year && album.albumType ? ' · ' : ''
+                        }}{{ album.albumType
+                        }}{{ album.trackCount ? ' · ' + album.trackCount + ' tracks' : '' }}
+                      </p>
+                    </div>
+                  </button>
+                }
+              </div>
             }
           </div>
         </div>
@@ -374,9 +384,10 @@
           <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">
             {{ 'acquire.artists' | t }}
           </h2>
-          <div class="flex flex-wrap gap-2">
+          <div class="flex flex-wrap gap-2" appTvNavGroup axis="horizontal">
             @for (artist of catalog()!.artists; track artist.mbid) {
               <button
+                appTvNavItem
                 (click)="activateArtist(artist)"
                 class="px-3 py-1.5 rounded-full text-sm border border-theme text-theme-secondary hover:border-theme-accent hover:text-theme-primary transition"
               >

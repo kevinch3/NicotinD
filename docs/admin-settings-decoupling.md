@@ -15,8 +15,17 @@ configuring an extension). This refactor draws clean lines.
 | --- | --- | --- | --- |
 | **Settings** | `/settings` | every user | Appearance, Offline storage, Remote playback + device name, Account (sign-out/version/changelog), iOS Now-Playing diagnostics. **Nothing admin- or extension-specific.** Admins also get `Admin →` + `Extensions →` links. |
 | **Admin** | `/admin` (`adminGuard`) | admins | User management, System (services/restart, scan, optimize-metadata, logs), **Streaming**, **Library processing**, **Library maintenance: find-duplicates**, Incomplete albums, Untracked downloads. |
-| **Extensions** | `/settings/plugins` (`adminGuard`) | admins | The plugin hub (enable/disable/consent + generic `configFields`). Extensions with bespoke settings link to their own page. |
-| **slskd extension** | `/settings/plugins/slskd` (`adminGuard`) | admins | Connection (creds/port/UPnP + connect/disconnect), Shared folders, and a live **status panel**. Body gated on `PluginService.hasSlskd()`. |
+| **Extensions** | `/settings/plugins` (`adminGuard`) | admins | The plugin hub — three collapsible kind-group cards (Acquisition/Metadata/Connectivity), each holding a collapsible per-plugin card (enable/disable/consent + generic `configFields`). Extensions with bespoke settings (slskd) embed them inline in their own card body instead of linking to a separate page (Task 4, settings-cards unification). |
+
+> **slskd's settings used to live at `/settings/plugins/slskd`** — that route now just redirects
+> back to `/settings/plugins`. `SlskdSettingsComponent` (connection creds/port/UPnP +
+> connect/disconnect, shared folders, and a live **status panel**) is unchanged internally but is
+> now rendered inline inside `PluginCardComponent`'s collapsible body (`@if (plugin.id === 'slskd')`)
+> instead of behind its own route, stripped of its former page chrome (container/back-link/`<h1>` —
+> the card supplies that). Its body is gated on `PluginService.hasSlskd()` as before. Because the
+> card body is itself `@if`-gated on being expanded, `SlskdSettingsComponent` — and its ~3s status
+> poll started in `ngOnInit` — only mounts while the card is open; collapsing it runs `ngOnDestroy`
+> and stops the poll.
 
 ## What moved (UI only)
 
@@ -25,8 +34,9 @@ configuring an extension). This refactor draws clean lines.
   `AdminComponent` (they already called `SystemApiService`/`LibraryApiService`). The processing
   `EventSource` is opened in `ngOnInit` and closed in `ngOnDestroy` alongside the existing log
   stream.
-- **Settings → slskd extension page**: the Soulseek connection form + shared-folders manager, moved
-  verbatim onto `SlskdSettingsComponent`.
+- **Settings → slskd extension card**: the Soulseek connection form + shared-folders manager, moved
+  verbatim onto `SlskdSettingsComponent`, now embedded inline in the slskd `PluginCardComponent`'s
+  collapsible body rather than behind its own route (Task 4, settings-cards unification).
 
 **Backend storage is unchanged.** slskd credentials still live in `secrets.json` behind the
 admin-gated `/api/settings/soulseek*` and `/api/settings/shares*` routes (wired to embedded-mode via
@@ -78,15 +88,30 @@ Small, independent improvements this refactor sets up — none required for it t
    at-a-glance server view.
 3. **Per-transfer detail in the panel** — the roll-up already walks every transfer; a small expandable
    list (filename · peer · speed · % ) would mirror Nicotine+'s transfer view with no new API.
-4. **Generalize `PLUGIN_DETAIL_ROUTES` to a manifest flag** — let a plugin declare
-   `hasSettingsPage` in its manifest so the Configure link is data-driven instead of a hardcoded
-   frontend map (removes the one place the kernel still knows an extension by id).
+4. ~~**Generalize `PLUGIN_DETAIL_ROUTES` to a manifest flag**~~ — **Superseded.** Task 4 (settings-cards
+   unification) removed per-plugin detail routes entirely: a plugin with bespoke settings (slskd)
+   now embeds them inline in its own collapsible `PluginCardComponent` body instead of linking
+   elsewhere, so there is no longer a route map to generalize. A future second bespoke-settings
+   plugin would follow the same `@if (plugin.id === '…')` pattern in the card template.
 5. **Extensions surface for `metadata`/`connectivity` kinds** — the lrclib lyrics plugin and the
-   scaffolded connectivity kind could each get a small settings page via the same detail-route
-   pattern.
-6. **Library maintenance consolidation** — Admin now hosts find-duplicates next to incomplete-albums
-   and untracked-downloads; folding the library-audit scripts (`docs/library-audit.md`) behind a
-   button here would give admins one maintenance home.
+   scaffolded connectivity kind could each get bespoke settings via the same inline collapsible
+   card-body pattern slskd now uses.
+6. ~~**Library maintenance consolidation**~~ — **Shipped.** The Admin page (previously one flat
+   1530-line scroll with a 14-panel "System" mega-section holding unrelated sub-panels with no
+   internal grouping) was regrouped into **8 collapsible, icon-headed groups**: System Health,
+   Library Processing, Library Maintenance, Streaming & Media, Backups & Data, Acquisition &
+   Automation, User Management, Audit Log. The shared `SettingsGroupComponent`
+   (`packages/web/src/app/components/settings-group/`, generalized from the Admin-only
+   `AdminGroupComponent` as part of the settings-cards unification — see
+   [docs/design-patterns.md](design-patterns.md) "SettingsGroupComponent") composes
+   `SettingsGroupHeaderComponent`'s icon+title+description header with a collapsible body,
+   persisted per-device to `localStorage` (key `nicotind-group-<groupId>`, cleared on signout).
+   Every group is collapsed by default. "Library
+   Maintenance" now holds: orphan rows, the fragmentation diagnostic, sync/rescan library,
+   optimize-metadata, artist-image coverage, find-duplicates, incomplete albums, and untracked
+   downloads — folding library-audit-adjacent tooling into one maintenance home, as this idea
+   proposed. Zero backend changes. Folding the standalone `docs/library-audit.md` scripts behind a
+   button here remains a further, un-scheduled follow-up.
 7. **User-facing "what's shared" read-out** — surface the slskd share stats (files/folders) to
    non-admins as a lightweight "you're sharing N tracks" acknowledgement, reinforcing the P2P
    give/take model.

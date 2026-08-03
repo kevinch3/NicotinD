@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import type { ProcessingSettings, ProcessingStatus, ProcessingTaskId } from '../../../types/core';
 import { ROLES, type Role } from '../../../types/core';
 import { SystemApiService } from '../../services/api/system-api.service';
+import { chunk } from '../../lib/tv-nav-grid';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ServiceReviewService } from '../../services/service-review.service';
@@ -38,6 +39,10 @@ import { MetricPillComponent } from '../../components/metric-pill/metric-pill.co
 import { DiscographyAlbum } from '../../services/api/api-types';
 import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
+import { SettingsGroupComponent } from '../../components/settings-group/settings-group.component';
+import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 /** A copy in a duplicate group — shape returned by the maintenance duplicates API. */
 type DuplicateSong = {
@@ -60,10 +65,15 @@ type DuplicateSong = {
     AlbumHuntModalComponent,
     MetricPillComponent,
     TranslatePipe,
+    TvNavGroupDirective,
+    TvNavItemDirective,
+    SettingsGroupComponent,
+    BottomChromeSafeDirective,
   ],
   templateUrl: './admin.component.html',
 })
 export class AdminComponent implements OnInit, OnDestroy {
+  readonly chunk = chunk;
   private api = inject(SystemApiService);
   private downloadsApi = inject(DownloadsApiService);
   private libraryApi = inject(LibraryApiService);

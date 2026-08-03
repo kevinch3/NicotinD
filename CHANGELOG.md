@@ -2,6 +2,162 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.301](https://github.com/kevinch3/NicotinD/compare/v0.1.300...v0.1.301) (2026-08-03)
+
+### Features
+
+* **web:** collapse Devices and Agent tokens sections into settings-group cards ([8dcb9cd](https://github.com/kevinch3/NicotinD/commit/8dcb9cd843a30399bc737bffb05b4763d76a844f))
+* **web:** collapse Extensions kind sections + plugin cards into settings-group cards ([e5bb614](https://github.com/kevinch3/NicotinD/commit/e5bb6143b595c5b4556375a5e8f15907e88829f0))
+* **web:** collapse the Settings page groups into settings-group cards ([b3f2f50](https://github.com/kevinch3/NicotinD/commit/b3f2f50c6ab4353cb81556a4aa9900876c5aa113))
+* **web:** generalize admin groups into collapsible settings-group cards ([e96e529](https://github.com/kevinch3/NicotinD/commit/e96e52933ca7ec1742db5252fa59b1e78b51110f))
+
+### Bug Fixes
+
+* **web:** collapse the Link device group by default, no exception ([9046c84](https://github.com/kevinch3/NicotinD/commit/9046c843d87239dc57cae813196e8b7a1c907a5d))
+* **web:** match the house redirect shape for the slskd route ([0ea0c6e](https://github.com/kevinch3/NicotinD/commit/0ea0c6e3f1f5c1c10a1038f8533d3b35fc206200))
+## [0.1.300](https://github.com/kevinch3/NicotinD/compare/v0.1.299...v0.1.300) (2026-08-03)
+
+### Features
+
+* **web:** add Spotify-like desktop side panel to Now Playing at lg ([5a48be4](https://github.com/kevinch3/NicotinD/commit/5a48be43e61c0be4760d357bdff73902e73aa8d5))
+
+### Bug Fixes
+
+* **web:** bound variable-height modal panels above the bottom chrome ([cea5888](https://github.com/kevinch3/NicotinD/commit/cea5888a9330dc4d026c4db1d6a5166d2576ffb9))
+* **web:** hoist Now Playing resize handle so it works on the Lyrics tab ([57ec71c](https://github.com/kevinch3/NicotinD/commit/57ec71c45fda32cff397868ac5a8df6d0cc4842b))
+## [0.1.299](https://github.com/kevinch3/NicotinD/compare/v0.1.298...v0.1.299) (2026-08-02)
+
+### Features
+
+* **web:** add mic icon for the Now Playing lyrics tab ([fa3324b](https://github.com/kevinch3/NicotinD/commit/fa3324bfe5d635a9667d8b136a60561166ffdcad))
+* **web:** add now-playing-panel-tabs (queue/lyrics tab switcher with badge, dot, D-pad) ([65e349a](https://github.com/kevinch3/NicotinD/commit/65e349af02d319cff7879a5739fec7e1cc26b751))
+* **web:** add persisted activePanel signal to now-playing, replacing lyrics toggle ([428866f](https://github.com/kevinch3/NicotinD/commit/428866f0b7ccf90831e132aa73cc42b21f893249))
+
+### Bug Fixes
+
+* **web:** give extracted Now Playing/mini-player children display:contents ([4c575bf](https://github.com/kevinch3/NicotinD/commit/4c575bf3da08ec2527ddc094ce9ad3bbfa8b1c43))
+* **web:** register theme-secondary/theme-surface/theme-muted as Tailwind colors ([4f6eb20](https://github.com/kevinch3/NicotinD/commit/4f6eb204c46199b6423e830dab3e795d6fff944b))
+* **web:** restore karaoke-fullscreen browse-mode auto-scroll, drop dead formatTime ([4e0c978](https://github.com/kevinch3/NicotinD/commit/4e0c978c853d959ba056554ad981eceeba80bb6b)), references [#lyricsScroll](https://github.com/kevinch3/NicotinD/issues/lyricsScroll)
+* **web:** seed lyricsOpen from restored activePanel + fix stale hasLyrics dot ([7559456](https://github.com/kevinch3/NicotinD/commit/7559456678932bcde5ffe39910521bca3eec592d))
+* **web:** translate the queue panel's hardcoded "N tracks" label ([a1b8ed5](https://github.com/kevinch3/NicotinD/commit/a1b8ed56fe4f9082f412027eb240b453e80b4417))
+## [0.1.298](https://github.com/kevinch3/NicotinD/compare/v0.1.297...v0.1.298) (2026-08-02)
+
+### Features
+
+* **web:** add activity, wrench, and database icon glyphs for Admin groups ([e743f42](https://github.com/kevinch3/NicotinD/commit/e743f42e8448ad410a3848873ad7d3673420de50))
+* **web:** add collapsible AdminGroupComponent with per-device persistence ([62e540e](https://github.com/kevinch3/NicotinD/commit/62e540e7734d2b3740a356605cc78c04d5f97414))
+* **web:** add i18n keys for the regrouped Admin panel ([63562ab](https://github.com/kevinch3/NicotinD/commit/63562ab3772ccd0cbd81e84ed378db47ca9239b0))
+* **web:** regroup Admin panel into 8 collapsible icon-headed groups ([bdcde00](https://github.com/kevinch3/NicotinD/commit/bdcde00c1754d8bbf6e5d2e1ff5d8ded9738768d))
+
+### Bug Fixes
+
+* **e2e:** expand User Management admin group before locating user row ([24a764f](https://github.com/kevinch3/NicotinD/commit/24a764f15660fb749c98c0f39567d3e081c925db))
+* **web:** restore Admin page heading and un-trap the error banner ([e593bb7](https://github.com/kevinch3/NicotinD/commit/e593bb782265fb29b1b5adde41547b8d0a02e47a))
+## [0.1.297](https://github.com/kevinch3/NicotinD/compare/v0.1.296...v0.1.297) (2026-08-02)
+
+### Features
+
+* **web:** add icon headers to Extensions groups, hide empty Connectivity section ([b3e9e8e](https://github.com/kevinch3/NicotinD/commit/b3e9e8ef6d30814072cad64e00adf405aec42e81))
+* **web:** add pluginStatus() unified status derivation ([40d622b](https://github.com/kevinch3/NicotinD/commit/40d622bbc6f40e2592d2a148823ac2d0027a3a4d))
+* **web:** add wifi icon glyph for the Extensions Connectivity header ([e12bf82](https://github.com/kevinch3/NicotinD/commit/e12bf82f1d04f6b3e256fd620e25cde97575c993))
+* **web:** replace two plugin-card badges with one unified status pill ([4e1f237](https://github.com/kevinch3/NicotinD/commit/4e1f237c10f9701ac9d2a4d4231d21987cee2e5e))
+
+### Bug Fixes
+
+* **web:** plugin status pill no longer mislabels working plugins as needs-config ([fced927](https://github.com/kevinch3/NicotinD/commit/fced9272b322e3b4eca8894697b639b6f4cc876f))
+## [0.1.296](https://github.com/kevinch3/NicotinD/compare/v0.1.295...v0.1.296) (2026-08-02)
+
+### Bug Fixes
+
+* **web:** reserve bottom-chrome space in full-screen modal backdrops ([cc6b91e](https://github.com/kevinch3/NicotinD/commit/cc6b91eaf648b921ce179674250116ccbd9386d0)), closes [#367](https://github.com/kevinch3/NicotinD/issues/367)
+## [0.1.295](https://github.com/kevinch3/NicotinD/compare/v0.1.294...v0.1.295) (2026-08-02)
+
+### Features
+
+* **web:** add i18n keys for regrouped Settings page ([b13478e](https://github.com/kevinch3/NicotinD/commit/b13478e7f39a367bdb91a471b3867b9e1961ff51))
+* **web:** add settings-header and device-type icon glyphs ([5fd7cc4](https://github.com/kevinch3/NicotinD/commit/5fd7cc4a45d489ce8761842b70a83c6ab635ce72))
+* **web:** add shared SettingsGroupHeaderComponent ([1c4b34d](https://github.com/kevinch3/NicotinD/commit/1c4b34d0b907d22ab341a9bf5a2e5e47064df3a7))
+* **web:** regroup Settings page into 4 cards with uniform icon headers ([b782e0b](https://github.com/kevinch3/NicotinD/commit/b782e0b90e0d811170fe4139f552de12a8c03fc7))
+
+### Bug Fixes
+
+* **web:** register theme-accent as a Tailwind color + cover Advanced-card gate ([815a47f](https://github.com/kevinch3/NicotinD/commit/815a47f01c4a6f04054b09e4a1e2423b5f365235))
+## [0.1.294](https://github.com/kevinch3/NicotinD/compare/v0.1.293...v0.1.294) (2026-08-01)
+
+### Bug Fixes
+
+* **web:** fix TV nav perf/desync, ARIA grid conformance, queue remove reachability ([08776cf](https://github.com/kevinch3/NicotinD/commit/08776cf9ff98c74e11b6e8d1a40290e5b8701080)), closes [#357](https://github.com/kevinch3/NicotinD/issues/357) [#358](https://github.com/kevinch3/NicotinD/issues/358) [#359](https://github.com/kevinch3/NicotinD/issues/359) [#356](https://github.com/kevinch3/NicotinD/issues/356), references [#351](https://github.com/kevinch3/NicotinD/issues/351)
+* **web:** stop changelog.json regeneration from dirtying the working tree ([927688b](https://github.com/kevinch3/NicotinD/commit/927688b718eae6c4b0024e9bf21f810110308192))
+## [0.1.293](https://github.com/kevinch3/NicotinD/compare/v0.1.292...v0.1.293) (2026-08-01)
+
+### Bug Fixes
+
+* **web:** stop changelog.json regeneration from dirtying the working tree ([4e4c9e8](https://github.com/kevinch3/NicotinD/commit/4e4c9e81356ae34a40d4150832ea32d542f781ae))
+## [0.1.292](https://github.com/kevinch3/NicotinD/compare/v0.1.291...v0.1.292) (2026-08-01)
+
+### Features
+
+* **e2e:** add a one-command README screenshot refresh ([1ee501f](https://github.com/kevinch3/NicotinD/commit/1ee501f66953229bd455aecc867109174f3e56cc))
+
+### Bug Fixes
+
+* **e2e:** bypass the landing gate in the screenshot harness config ([e7fa465](https://github.com/kevinch3/NicotinD/commit/e7fa465f138b5ff0e75ed11ef96af6a5bbbc65e9)), references [#352](https://github.com/kevinch3/NicotinD/issues/352)
+* **e2e:** disambiguate the "Track info" locator in the mobile screenshot flow ([22d4dd2](https://github.com/kevinch3/NicotinD/commit/22d4dd261e1688458f806c8ca659e4b925db54a1)), references [#353](https://github.com/kevinch3/NicotinD/issues/353)
+* **e2e:** report spawn errors and skip byte-identical copies in screens:readme ([d240607](https://github.com/kevinch3/NicotinD/commit/d2406074591f447087ceb94358125fb8ebb4eaf3)), references [#354](https://github.com/kevinch3/NicotinD/issues/354)
+* **e2e:** use viewport screenshots for README shots, closes duplicate player bar glitch ([0c71325](https://github.com/kevinch3/NicotinD/commit/0c7132554af6f67b91943f0b6eaf68a58d9373cc)), closes [#354](https://github.com/kevinch3/NicotinD/issues/354), references [#354](https://github.com/kevinch3/NicotinD/issues/354)
+## [0.1.291](https://github.com/kevinch3/NicotinD/compare/v0.1.290...v0.1.291) (2026-08-01)
+
+### Features
+
+* **web:** add karaoke fullscreen browse-mode state and seek-to-line ([072fa05](https://github.com/kevinch3/NicotinD/commit/072fa059a2ee5b52990348f548287625a450bc54))
+* **web:** animate the fullscreen karaoke line change with a slide+crossfade ([aec187d](https://github.com/kevinch3/NicotinD/commit/aec187d79e8a72e628693f3a512a981a721150d0))
+* **web:** split fullscreen karaoke into 2-line auto-follow + browse-to-seek views ([bc6b67c](https://github.com/kevinch3/NicotinD/commit/bc6b67c8ed998223a6b9ec1390c8c5c3e0e24704))
+
+### Bug Fixes
+
+* **web:** clean up karaoke browse-idle timer on destroy, test ArrowUp ([7f28b59](https://github.com/kevinch3/NicotinD/commit/7f28b599259eea92fcc1efe7bbfaa6634b10abbb))
+* **web:** keyboard/TV-remote entry into karaoke browse mode, fix doc accuracy nits ([863fa2e](https://github.com/kevinch3/NicotinD/commit/863fa2e75b98d1d429ea642d8a00767541c246a4))
+* **web:** type getLyrics test stub to accept a populated LyricsDto ([9bd1db9](https://github.com/kevinch3/NicotinD/commit/9bd1db9883fbf8ffdb373cedfb30df1e09e7af2f))
+## [0.1.290](https://github.com/kevinch3/NicotinD/compare/v0.1.289...v0.1.290) (2026-08-01)
+## [0.1.289](https://github.com/kevinch3/NicotinD/compare/v0.1.288...v0.1.289) (2026-08-01)
+
+### Features
+
+* **mobile:** add Android TV touchscreen manifest fix and a tv build flag ([ce815a0](https://github.com/kevinch3/NicotinD/commit/ce815a054ac420c68a8fc7e7c8a1ed1aab8d1b15))
+* **web:** add / shortcut to navigate to the Acquire page ([ea6cb2d](https://github.com/kevinch3/NicotinD/commit/ea6cb2df9597ed52a17d184ab4c9cc1fefd73cc7))
+* **web:** add app-wide focus-visible ring, apply D-pad nav to the Now Playing queue ([df5f010](https://github.com/kevinch3/NicotinD/commit/df5f01038f4b85624c5c8b757559e9aae06cd43f))
+* **web:** add ArrowLeft/ArrowRight seek shortcut, deferring to D-pad nav groups ([2da4ebf](https://github.com/kevinch3/NicotinD/commit/2da4ebf1e3a039cd9ceb8af0e45f9dff15e3ae8a))
+* **web:** add global Space/K play-pause shortcut, D-pad nav on transport controls ([687dccd](https://github.com/kevinch3/NicotinD/commit/687dccd6d28fd2883b00fdf78ceba16a9207b669))
+* **web:** add grid-axis D-pad navigation to TvNavGroupDirective ([154e980](https://github.com/kevinch3/NicotinD/commit/154e98056b01d3a0679b4e4e32238929b4cf8b51))
+* **web:** add J/L/M/N keyboard shortcuts (prev/next/mute/now-playing) ([d04365d](https://github.com/kevinch3/NicotinD/commit/d04365d87313509190de312d3ee8333f7b1dcd44))
+* **web:** add roving-tabindex D-pad navigation directive pair ([6e17310](https://github.com/kevinch3/NicotinD/commit/6e17310dce1640fdca3193843ab39bc939accff3))
+* **web:** apply D-pad nav to Admin services grid, log buttons, processing tasks ([2631934](https://github.com/kevinch3/NicotinD/commit/2631934755794fd2cbfc433bd23bb42530cffa48))
+* **web:** apply D-pad nav to Admin user-management action buttons ([6cb19f8](https://github.com/kevinch3/NicotinD/commit/6cb19f8dba6616b7774d3d68aa9f24955b24f845))
+* **web:** apply D-pad nav to Extensions page plugin cards, excluding config inputs ([4d035b0](https://github.com/kevinch3/NicotinD/commit/4d035b0d0778c32d03138d1a4728c078c41e97f0))
+* **web:** apply D-pad nav to Search catalog grid/chips and hunt candidate list ([1322899](https://github.com/kevinch3/NicotinD/commit/1322899d3f9641192616652a3d32fae82272d47d))
+* **web:** apply D-pad nav to Settings page grids and action lists ([2d84e3c](https://github.com/kevinch3/NicotinD/commit/2d84e3c3685c87ca2d89a570eb036846465d8064))
+* **web:** apply D-pad nav to the devices and agent-tokens revoke lists ([835273f](https://github.com/kevinch3/NicotinD/commit/835273fe7073ec10d0336b328966bf480f580b85))
+* **web:** apply grid/vertical D-pad nav to Library and artist-detail card grids ([64843e4](https://github.com/kevinch3/NicotinD/commit/64843e4f8720809ef96d62e052649590cedcaa68))
+* **web:** d-pad nav for every track row song list (5 pages, 1 shared fix) ([e6724d8](https://github.com/kevinch3/NicotinD/commit/e6724d8a05098c149e9b64f7abeca62e69a49c76))
+* **web:** default remote-control opt-in on for TV builds ([a2568b9](https://github.com/kevinch3/NicotinD/commit/a2568b95a7bf0ea25c685daf003eafbc8b71c260))
+
+### Bug Fixes
+
+* **web:** correct the Admin processing axis and Settings' overwritten role ([5233343](https://github.com/kevinch3/NicotinD/commit/523334378b07129432a29257f2cfc699431fcb16))
+* **web:** extract the plugin card into a component so D-pad nav reaches it ([06921b6](https://github.com/kevinch3/NicotinD/commit/06921b6f7a872b0bc428f5387dfb3358b11ba1f6))
+* **web:** fix TV nav a11y/cascade bugs from Phase 2 final review ([4c5fca2](https://github.com/kevinch3/NicotinD/commit/4c5fca247b0469e7db5fa383f7409144bcb2df14))
+* **web:** guard global shortcuts against modifier chords and focused selects ([962d42a](https://github.com/kevinch3/NicotinD/commit/962d42a4e2c14f2dadace150133941cbd313c1ac))
+* **web:** invalidate the TV nav item cache on a pure reorder ([377e723](https://github.com/kevinch3/NicotinD/commit/377e723fbe7fea961cb0a3395003f17ac0ca3e05))
+* **web:** preventDefault a recognized D-pad key even at a group boundary ([35117aa](https://github.com/kevinch3/NicotinD/commit/35117aa2b67477a4b3589942246fcaae7c6f9039))
+* **web:** register TV nav items via DI, not @ContentChildren ([28a48ff](https://github.com/kevinch3/NicotinD/commit/28a48ff03d42a303ae56772c73eeabe75b4b8663))
+* **web:** tidy up discarded subscription, inline activeIndex clamp, add missing K+input test ([a845ea4](https://github.com/kevinch3/NicotinD/commit/a845ea432ff7897dc6774ca7b714a42ecf0a1a53))
+* **web:** type the queue test stub so typecheck:spec passes ([41dd6dd](https://github.com/kevinch3/NicotinD/commit/41dd6dd99685fbeb926f8d3ac977ca9eae072cd6))
+* **web:** unify TV-defaulted remote-enabled preference across sites ([9df3b57](https://github.com/kevinch3/NicotinD/commit/9df3b57cace80e25649da4bcb40cc2ee264f7e46))
+## [0.1.288](https://github.com/kevinch3/NicotinD/compare/v0.1.287...v0.1.288) (2026-07-31)
+
+### Features
+
+* **mcp:** merge_artist destructive tool ([5bdfc4c](https://github.com/kevinch3/NicotinD/commit/5bdfc4ca510412d79c2f56854c50b2ce5c7a5094)), closes [#339](https://github.com/kevinch3/NicotinD/issues/339), references [#232](https://github.com/kevinch3/NicotinD/issues/232)
 ## [0.1.287](https://github.com/kevinch3/NicotinD/compare/v0.1.286...v0.1.287) (2026-07-31)
 ## [0.1.286](https://github.com/kevinch3/NicotinD/compare/v0.1.285...v0.1.286) (2026-07-31)
 ## [0.1.285](https://github.com/kevinch3/NicotinD/compare/v0.1.284...v0.1.285) (2026-07-31)

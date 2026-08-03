@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { SearchApiService } from '../../services/api/search-api.service';
+import { chunk } from '../../lib/tv-nav-grid';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
@@ -53,6 +54,8 @@ import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import {
   shouldOpenDirectSearch,
   discographyFallbackNote,
@@ -201,10 +204,13 @@ function escapeHtml(text: string): string {
     SourceChipComponent,
     CoverArtComponent,
     TranslatePipe,
+    TvNavGroupDirective,
+    TvNavItemDirective,
   ],
   templateUrl: './search.component.html',
 })
 export class SearchComponent implements OnInit, OnDestroy {
+  readonly chunk = chunk;
   readonly router = inject(Router);
   private route = inject(ActivatedRoute);
   private api = inject(SearchApiService);

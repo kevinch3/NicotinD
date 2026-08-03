@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { miniPlayerSlideClass, mainBottomPadClass, bottomChromeInset } from './player-chrome';
+import { describe, it, expect, afterEach } from 'vitest';
+import {
+  miniPlayerSlideClass,
+  mainBottomPadClass,
+  bottomChromeInset,
+  measureBottomChromeInset,
+} from './player-chrome';
 
 describe('miniPlayerSlideClass', () => {
   it('is fully visible and interactive when a track is loaded', () => {
@@ -78,5 +83,30 @@ describe('bottomChromeInset', () => {
   it('ignores a layer slid off-screen — the mini-player when no track is loaded', () => {
     // hidden mini-player translated fully below the viewport (top ≥ VH)
     expect(bottomChromeInset([{ top: 900, height: 72 }], VH)).toBe(0);
+  });
+});
+
+describe('measureBottomChromeInset', () => {
+  afterEach(() => {
+    document.querySelectorAll('[data-bottom-chrome]').forEach((el) => el.remove());
+  });
+
+  function addChromeLayer(top: number, height: number): void {
+    const el = document.createElement('div');
+    el.setAttribute('data-bottom-chrome', '');
+    el.getBoundingClientRect = () =>
+      ({ top, height, bottom: top + height, left: 0, right: 0, width: 0, x: 0, y: top }) as DOMRect;
+    document.body.appendChild(el);
+  }
+
+  it('is 0 when no [data-bottom-chrome] layer exists', () => {
+    expect(measureBottomChromeInset()).toBe(0);
+  });
+
+  it('measures the live rects of every tagged chrome layer', () => {
+    const vh = window.innerHeight;
+    addChromeLayer(vh - 56, 56); // tab bar
+    addChromeLayer(vh - 128, 72); // mini-player stacked above it
+    expect(measureBottomChromeInset()).toBe(128);
   });
 });

@@ -56,20 +56,22 @@
         (cancel)="selection.exit()"
       />
     }
-    @for (song of songWindow.visible(); track song.id) {
-      <app-track-row
-        [track]="toTrackFn(song)"
-        [artists]="song.artists"
-        [subtitle]="song.artists?.length ? song.album : (song.artist + ' · ' + song.album)"
-        [duration]="song.duration"
-        [offline]="preserve.isPreserved(song.id)"
-        [selectable]="selection.active()"
-        [selected]="selection.isSelected(song.id)"
-        [actions]="songMenu.build(song, { removable: true })"
-        (play)="playSong(song)"
-        (selectedChange)="selection.toggleRange(song.id, genreTrackIds(), $event.shiftKey)"
-      />
-    }
+    <div appTvNavGroup axis="vertical">
+      @for (song of songWindow.visible(); track song.id) {
+        <app-track-row
+          [track]="toTrackFn(song)"
+          [artists]="song.artists"
+          [subtitle]="song.artists?.length ? song.album : (song.artist + ' · ' + song.album)"
+          [duration]="song.duration"
+          [offline]="preserve.isPreserved(song.id)"
+          [selectable]="selection.active()"
+          [selected]="selection.isSelected(song.id)"
+          [actions]="songMenu.build(song, { removable: true })"
+          (play)="playSong(song)"
+          (selectedChange)="selection.toggleRange(song.id, genreTrackIds(), $event.shiftKey)"
+        />
+      }
+    </div>
     @if (songWindow.hasMore()) {
       <div #songsSentinel data-testid="genre-songs-sentinel" class="h-8"></div>
     }

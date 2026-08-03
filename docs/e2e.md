@@ -121,7 +121,7 @@ E2E_SKIP_BUILD=1 bunx playwright test tests/x.spec.ts   # fast re-run, existing 
 had to remember, and forgetting it was punishing: the managed `webServer` runs
 `bun run src/main.ts` and Hono serves the **prebuilt** `packages/web/dist` —
 there is no dev server and no watch — so editing anything under
-`packages/web/src` and running the suite silently exercised the *previous*
+`packages/web/src` and running the suite silently exercised the _previous_
 bundle. It failed in the most misleading direction possible: a spec written for
 a fix you just made reports the **pre-fix** behaviour as the actual value, which
 reads exactly like your fix not working. (Real cost, paid on the #233 regression
@@ -269,11 +269,50 @@ under a dedicated `--config` and stay out of CI, like the playground flows. Shot
 under `screenshots/mobile/<flow>/NN-label.png` via the pure `playground/shot.ts`
 helper (`shotPath`/`shot`, unit-tested in the `ci` job alongside `observe`/`report`).
 
-| Config                              | Backend                             | Flows                                                                                   |
-| ----------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------- |
-| `playwright.screenshots.config.ts`  | managed server + fixtures (Pixel 7) | `mobile-screenshots.screens.ts` — library / album / player / now-playing / song-details |
-| `playwright.hunt.config.ts`         | **live** (`E2E_BASE_URL`, Pixel 7)  | `hunt-mobile` + `network-album-download` — **mutates prod** (real downloads)            |
-| `playwright.live-screens.config.ts` | **live** (`E2E_BASE_URL`, Pixel 7)  | `player-analysis` + `downloads-acquire` — read-mostly; mutating sub-steps env-gated     |
+| Config                              | Backend                                       | Flows                                                                                                                                                    |
+| ----------------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `playwright.screenshots.config.ts`  | managed server + fixtures (Pixel 7 + desktop) | `mobile-screenshots.screens.ts` — library / album / player / now-playing / song-details; `settings-gallery.screens.ts` — settings-family gallery (below) |
+| `playwright.hunt.config.ts`         | **live** (`E2E_BASE_URL`, Pixel 7)            | `hunt-mobile` + `network-album-download` — **mutates prod** (real downloads)                                                                             |
+| `playwright.live-screens.config.ts` | **live** (`E2E_BASE_URL`, Pixel 7)            | `player-analysis` + `downloads-acquire` — read-mostly; mutating sub-steps env-gated                                                                      |
+
+**Settings gallery (`settings-gallery.screens.ts`)**: the settings-cards-unification project
+migrated `/settings`, `/admin`, `/settings/plugins`, `/settings/devices`, and
+`/settings/agent-tokens` onto one shared collapsible `app-settings-group` card. This flow captures
+each of the 5 routes twice — collapsed (real default state) then fully expanded (every
+`settings-group-toggle`, plus every `plugin-card-toggle` on Extensions, `fullPage: true`) — so a
+human reviewer can eyeball cross-page visual consistency side by side. It runs under both a
+`mobile` (Pixel 7) and a `desktop` (1280x900) project in the same config; the `<flow>` segment
+`shot()` builds its path from is suffixed with the project name so the two sets never collide:
+
+```bash
+cd packages/e2e && bunx playwright test --config=playwright.screenshots.config.ts
+```
+
+Shots land at `screenshots/mobile/settings-gallery-mobile/NN-<route>-{collapsed,expanded}.png` and
+`screenshots/mobile/settings-gallery-desktop/NN-<route>-{collapsed,expanded}.png`.
+
+The CI-safe counterpart of this manual review is `tests/settings-consistency.spec.ts` (default
+`playwright.config.ts`, chromium project): it reads `getComputedStyle` on each route's first
+`[data-group-id]` card (border-radius/border-color/background-color) and its toggle's title
+(font-size/font-weight/color) and asserts all 5 routes yield an identical tuple, plus that every
+route renders zero `settings-group-body` elements on first load (collapsed-by-default, no
+exceptions). No screenshots/pixel diffs — pure `getComputedStyle` reads, deterministic once the
+element is visible (precedent: `mobile-ux.spec.ts`).
+
+**Refreshing the README's screenshots**: `docs/images/{library,album,now-playing}.png` (3 of the
+README's 4 images) are curated copies of specific shots from `mobile-screenshots.screens.ts`, kept
+current via one command:
+
+```bash
+bun run --filter @nicotind/e2e screens:readme
+```
+
+This runs the flow above end-to-end and copies the 3 relevant PNGs into `docs/images/`, printing
+what changed. **`docs/images/search.png` is NOT covered by this script** — the Acquire page needs a
+real Lidarr/slskd to render anything worth screenshotting, which this fixture-based harness
+deliberately has neither of (`NICOTIND_LIDARR_URL`/`NICOTIND_SLSKD_URL` point at closed ports in
+`playwright.screenshots.config.ts`); that one image is refreshed via the live `screens:live` flow
+instead, by hand, when the Acquire UI changes materially enough to be worth a fresh live capture.
 
 The **live-screens** config doubles as a findings run: its two flows use the playground
 `obs` fixture, so the config also wires `playground/reporter.ts` and a single run emits

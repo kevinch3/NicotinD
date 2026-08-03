@@ -31,6 +31,30 @@ vi.mock('../../services/native/native-capabilities', () => ({
   revealLogs: vi.fn().mockResolvedValue(undefined),
 }));
 
+/**
+ * Task 2 (settings-cards unification): every card is now a collapsible
+ * `<app-settings-group>` whose body is `@if (open())`-gated, and `open()`
+ * reads a `[groupId]`/`[defaultOpen]` signal `input()`. This JIT vitest
+ * harness never registers signal inputs on a *nested imported* component (see
+ * `src/testing/signal-input.ts` / `docs/web-ui.md` "Testing input()-signal
+ * components"), so every group's `[groupId]`/`[title]`/etc. binding silently
+ * fails to land — all four groups fall back to the same default `groupId`
+ * (`''`), meaning they all read/write the *same* localStorage key. That's
+ * harmless for opening every card (this helper just clicks whichever toggles
+ * are still closed), but it does mean a prior test's "open" write can leak
+ * into a later test's fresh fixture — tests that assert the fresh-render
+ * collapsed state must `localStorage.clear()` first, mirroring
+ * `admin.component.spec.ts`'s `expandAllGroups`.
+ */
+function expandAllGroups(fixture: { nativeElement: unknown; detectChanges: () => void }): void {
+  const el = fixture.nativeElement as HTMLElement;
+  const toggles = el.querySelectorAll<HTMLButtonElement>('[data-testid="settings-group-toggle"]');
+  toggles.forEach((btn) => {
+    if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
+  });
+  fixture.detectChanges();
+}
+
 function makeToastService() {
   return {
     show: vi.fn().mockImplementation(() => 'toast-1'),
@@ -153,6 +177,80 @@ function makeProviders(role: 'admin' | 'user', updateOverrides: UpdateOverrides 
   };
 }
 
+describe('SettingsComponent (TV D-pad navigation)', () => {
+  it('renders the theme presets grid as an appTvNavGroup with grid axis', async () => {
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[appTvNavGroup][axis="grid"]');
+    expect(group).not.toBeNull();
+    expect(group!.querySelectorAll('[appTvNavItem]').length).toBeGreaterThan(0);
+    fixture.destroy();
+  });
+
+  /**
+   * The attribute assertion above cannot fail for a wiring bug — a directive
+   * selector stays in the rendered DOM whether or not the directive is
+   * imported, applied, or able to reach its group (exactly how the Extensions
+   * page shipped with every group registering zero items). This is the
+   * behavioural counterpart: a real key event must move real focus.
+   *
+   * jsdom computes no layout, so every `offsetTop` is 0 and
+   * `inferColumnsPerRow` reads the presets as a single row — which is why this
+   * uses ArrowRight (intra-row movement) rather than ArrowDown.
+   */
+  it('ArrowRight moves focus between theme preset buttons', async () => {
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[appTvNavGroup][axis="grid"]')!;
+    const presets: HTMLElement[] = Array.from(group.querySelectorAll('[appTvNavItem]'));
+    expect(presets.length).toBeGreaterThan(1);
+    presets[0]!.focus();
+    presets[0]!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }),
+    );
+    expect(document.activeElement).toBe(presets[1]);
+    fixture.destroy();
+  });
+
+  /**
+   * `TvNavGroupDirective` binds `[attr.role]` on every change-detection pass,
+   * so a hand-written `role` on the same element is silently overwritten. The
+   * auto-preserve group declared `role="radiogroup"` and rendered as
+   * `role="grid"`; the static one is gone and the directive's is authoritative.
+   */
+  it('the auto-preserve group carries only the nav group role, no stale radiogroup', async () => {
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el
+      .querySelector('[data-testid="auto-preserve-off"]')!
+      .closest('[appTvNavGroup]')!;
+    expect(group.getAttribute('role')).toBe('grid');
+    expect(el.querySelector('[role="radiogroup"]')).toBeNull();
+    fixture.destroy();
+  });
+});
+
 describe('SettingsComponent (universal prefs only)', () => {
   it('renders universal sections without any admin/extension coupling', async () => {
     const { list } = makeProviders('user');
@@ -162,10 +260,25 @@ describe('SettingsComponent (universal prefs only)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const text = fixture.nativeElement.textContent as string;
     // Section headers/copy are i18n keys now (issue #236); the raw key renders
     // since no catalog is loaded in this harness.
-    expect(text).toContain('settings.appearance');
+    //
+    // 'settings.appearance' is no longer asserted here: the settings-page
+    // regroup (task 4) moved it from a literal h2 in this component's own
+    // template into a `[title]` binding on the nested, imported
+    // `app-settings-group-header` (Card 1's header). Per
+    // docs/web-ui.md "Testing input()-signal components (JIT vitest
+    // limitation)", this harness's JIT compiler never registers a template
+    // binding onto a *nested imported* standalone component's signal
+    // `input()` — the binding silently doesn't land, so the child renders its
+    // input's default rather than the passed value. That's a harness
+    // constraint on how a parent spec can observe a nested component's
+    // content, not a defect in the app: `settings-group-header.component.spec.ts`
+    // covers the header's own rendering directly (via the shared
+    // `setInputValue` helper), and `bun run typecheck`/`ng build` confirm the
+    // binding is real at compile time and runtime outside this harness.
     expect(text).toContain('settings.offlineStorage');
     expect(text).toContain('settings.remotePlayback');
     expect(text).toContain('settings.resumePlayback');
@@ -196,6 +309,7 @@ describe('SettingsComponent (universal prefs only)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     expect(
       fixture.nativeElement.querySelector('[data-testid="settings-extensions-link"]'),
     ).toBeTruthy();
@@ -214,6 +328,7 @@ describe('SettingsComponent (universal prefs only)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const toggle = fixture.nativeElement.querySelector(
       '[data-testid="autoplay-on-load-toggle"]',
     ) as HTMLButtonElement;
@@ -223,6 +338,61 @@ describe('SettingsComponent (universal prefs only)', () => {
       setAutoplayOnLoad: ReturnType<typeof vi.fn>;
     };
     expect(auth.setAutoplayOnLoad).toHaveBeenCalledWith(true);
+    fixture.destroy();
+  });
+
+  it('renders the Advanced card with the Developer section for admins', async () => {
+    const { list } = makeProviders('admin');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    expect(fixture.nativeElement.querySelector('[data-testid="developer-section"]')).toBeTruthy();
+    fixture.destroy();
+  });
+
+  it('hides the Advanced card entirely for a plain web user', async () => {
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="developer-section"]')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('has catalog entries for the settings regroup i18n keys', () => {
+    for (const key of [
+      'settings.groupAppearanceDesc',
+      'settings.groupPlaybackTitle',
+      'settings.groupPlaybackDesc',
+      'settings.groupAccountTitle',
+      'settings.groupAccountDesc',
+      'settings.subLinks',
+      'settings.subUpdates',
+      'settings.groupAdvancedTitle',
+      'settings.groupAdvancedDesc',
+    ]) {
+      expect(BASE_CATALOG, `missing catalog key: ${key}`).toHaveProperty([key]);
+    }
+  });
+
+  it('renders every card collapsed on a fresh render (all cards default-collapsed)', async () => {
+    localStorage.clear();
+    const { list } = makeProviders('admin');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const bodies = fixture.nativeElement.querySelectorAll('[data-testid="settings-group-body"]');
+    expect(bodies.length).toBe(0);
     fixture.destroy();
   });
 });
@@ -271,6 +441,7 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const btn = fixture.nativeElement.querySelector(
       '[data-testid="settings-reveal-logs"]',
     ) as HTMLButtonElement;
@@ -290,6 +461,7 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const btn = fixture.nativeElement.querySelector(
       '[data-testid="settings-change-folder"]',
     ) as HTMLButtonElement;
@@ -334,6 +506,7 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
 
     await fixture.componentInstance.changeMusicFolder();
     fixture.detectChanges();
@@ -391,6 +564,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     const fixture = await makeFixture();
     patchPreserve();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const buttons = Array.from(
       fixture.nativeElement.querySelectorAll('button[data-testid^="auto-preserve-"]'),
     ) as HTMLButtonElement[];
@@ -411,6 +585,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     patchPreserve();
     patchConfirm();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const btn = fixture.nativeElement.querySelector(
       '[data-testid="auto-preserve-5"]',
     ) as HTMLButtonElement;
@@ -428,6 +603,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     patchPreserve();
     patchConfirm();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const offBtn = fixture.nativeElement.querySelector(
       '[data-testid="auto-preserve-off"]',
     ) as HTMLButtonElement;
@@ -447,6 +623,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
       fixture.componentInstance.preserve as unknown as { autoPreservedCount: () => number }
     ).autoPreservedCount = () => 7;
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const offBtn = fixture.nativeElement.querySelector(
       '[data-testid="auto-preserve-off"]',
     ) as HTMLButtonElement;
@@ -471,6 +648,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
       fixture.componentInstance.preserve as unknown as { autoPreservedCount: () => number }
     ).autoPreservedCount = () => 3;
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const offBtn = fixture.nativeElement.querySelector(
       '[data-testid="auto-preserve-off"]',
     ) as HTMLButtonElement;
@@ -486,6 +664,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     const fixture = await makeFixture();
     patchPreserve();
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const explain = fixture.nativeElement.querySelector(
       '[data-testid="auto-preserve-explain"]',
     ) as HTMLElement;
@@ -517,6 +696,7 @@ describe('SettingsComponent (manual PWA update check)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     expect(
       fixture.nativeElement.querySelector('[data-testid="settings-check-update"]'),
     ).toBeTruthy();
@@ -545,6 +725,7 @@ describe('SettingsComponent (manual PWA update check)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const btn = fixture.nativeElement.querySelector(
       '[data-testid="settings-check-update"]',
     ) as HTMLButtonElement;
@@ -634,6 +815,7 @@ describe('SettingsComponent (manual PWA update check)', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    expandAllGroups(fixture);
     const inFlight = fixture.componentInstance.searchForUpdates();
     fixture.detectChanges();
     const btn = fixture.nativeElement.querySelector(
@@ -651,6 +833,23 @@ describe('SettingsComponent (manual PWA update check)', () => {
     // i18n key now (issue #236).
     expect(btn.textContent?.trim()).toBe('settings.checkForUpdates');
     expect(BASE_CATALOG).toHaveProperty(['settings.checkForUpdates']);
+    fixture.destroy();
+  });
+});
+
+describe('SettingsComponent (device icon mapping)', () => {
+  it('maps device type/name to the right glyph', async () => {
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    const component = fixture.componentInstance;
+    expect(component.getDeviceIcon({ type: 'web', name: 'Chrome on Linux' })).toBe('monitor');
+    expect(component.getDeviceIcon({ type: 'web', name: 'Safari on iPhone' })).toBe('smartphone');
+    expect(component.getDeviceIcon({ type: 'web', name: 'Android Chrome' })).toBe('smartphone');
+    expect(component.getDeviceIcon({ type: 'cast', name: 'Living Room Speaker' })).toBe('speaker');
     fixture.destroy();
   });
 });

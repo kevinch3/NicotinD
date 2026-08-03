@@ -1,11 +1,18 @@
-import { Component, inject, signal, computed, effect, ElementRef, viewChild } from '@angular/core';
+import { Component, inject, signal, computed, effect, viewChild, DestroyRef } from '@angular/core';
 import { Router } from '@angular/router';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
-import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
+import { NowPlayingHeaderComponent } from './now-playing-header/now-playing-header.component';
+import { NowPlayingCoverArtComponent } from './now-playing-cover-art/now-playing-cover-art.component';
+import { NowPlayingTransportComponent } from './now-playing-transport/now-playing-transport.component';
+import { NowPlayingPanelTabsComponent } from './now-playing-panel-tabs/now-playing-panel-tabs.component';
+import { NowPlayingQueuePanelComponent } from './now-playing-queue-panel/now-playing-queue-panel.component';
+import { NowPlayingLyricsPanelComponent } from './now-playing-lyrics-panel/now-playing-lyrics-panel.component';
+import { NowPlayingKaraokeFullscreenComponent } from './now-playing-karaoke-fullscreen/now-playing-karaoke-fullscreen.component';
 import { TrackContextMenuComponent } from '../track-context-menu/track-context-menu.component';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TrackInfoService } from '../../services/track-info.service';
 import { resolveArtistTarget } from '../../lib/route-utils';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -14,33 +21,26 @@ import type { LyricsDto } from '@nicotind/core';
 import { firstValueFrom } from 'rxjs';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { ScrollLockService } from '../../services/scroll-lock.service';
-import { SeekBarComponent } from '../seek-bar/seek-bar.component';
-import { CoverArtComponent } from '../cover-art/cover-art.component';
-import { ArtistLinksComponent } from '../artist-links/artist-links.component';
 import { ServerConfigService } from '../../services/server-config.service';
-import { TranslatePipe } from '../../pipes/translate.pipe';
 import {
   computePaletteFromPixels,
   scrollToActiveLine,
   DEFAULT_PALETTE,
   type CoverPalette,
 } from '../../lib/cover-colors';
-
-function formatTime(s: number): string {
-  if (!Number.isFinite(s) || s < 0) return '0:00';
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, '0')}`;
-}
+import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container';
 
 @Component({
   selector: 'app-now-playing',
   imports: [
-    DeviceSwitcherComponent,
+    NowPlayingHeaderComponent,
+    NowPlayingCoverArtComponent,
+    NowPlayingTransportComponent,
+    NowPlayingPanelTabsComponent,
+    NowPlayingQueuePanelComponent,
+    NowPlayingLyricsPanelComponent,
+    NowPlayingKaraokeFullscreenComponent,
     TrackContextMenuComponent,
-    SeekBarComponent,
-    CoverArtComponent,
-    ArtistLinksComponent,
     TranslatePipe,
   ],
   templateUrl: './now-playing.component.html',
@@ -54,20 +54,18 @@ export class NowPlayingComponent {
   private api = inject(LibraryApiService);
   private scrollLock = inject(ScrollLockService);
   private server = inject(ServerConfigService);
+  private destroyRef = inject(DestroyRef);
   readonly trackInfo = inject(TrackInfoService);
 
   // Context menu state
   readonly contextMenu = signal<{ x: number; y: number } | null>(null);
 
-  // Queue drag-and-drop reorder (HTML5 DnD; works with mouse + touch via
-  // pointer events polyfill on mobile — Angular's (dragstart) etc. are fine
-  // for a desktop-first feature, the rows are also tappable to jump).
-  readonly dragSourceIndex = signal<number | null>(null);
-  readonly dropTargetIndex = signal<number | null>(null);
-
   // Lyrics view state. Lyrics load lazily on first open and reload when the
-  // track changes while the panel is open.
-  readonly lyricsOpen = signal(false);
+  // track changes while the panel is open. `lyricsOpen`'s own declaration
+  // lives further down (seeded from `activePanel`, see the comment there) —
+  // field initialization order matters in JS/TS class bodies, and
+  // `activePanel` must already be assigned before `lyricsOpen`'s initializer
+  // runs.
   readonly lyrics = signal<LyricsDto | null>(null);
   readonly lyricsLoading = signal(false);
   /** True after a source *failed* (vs a confident no-match) — offer a retry. */
@@ -83,14 +81,59 @@ export class NowPlayingComponent {
   );
   /** Plain text fallback when there are no synced lines. */
   readonly plainLyrics = computed(() => this.lyrics()?.plain ?? '');
+  /** Whether the current track has lyrics loaded (drives the tab-switcher dot).
+   *  Gated on `lyricsLoadedForId` matching the current track — `lyrics()` is
+   *  only cleared/reloaded when the lyrics panel is open (see the effects
+   *  below), so without this gate switching tracks with the panel closed
+   *  left `lyrics()` holding the PREVIOUS track's data and the dot showed a
+   *  stale positive. This only reflects data that has actually been loaded
+   *  for the current track — it does not proactively prefetch, so the dot
+   *  stays off until the Lyrics tab has been opened at least once for this
+   *  track (see docs/web-ui.md). */
+  readonly hasLyrics = computed(() => {
+    const track = this.player.currentTrack();
+    if (!track || this.lyricsLoadedForId() !== track.id) return false;
+    return !!this.lyrics()?.synced || !!this.lyrics()?.plain;
+  });
+
+  /** Current line's text for the fullscreen auto-follow (2-line) view. */
+  readonly currentLineText = computed(() => this.lyricLines()[this.activeLine()]?.text ?? '');
+  /** Next line's text, or null when the current line is the last one. */
+  readonly nextLineText = computed(() => {
+    const next = this.lyricLines()[this.activeLine() + 1];
+    return next ? next.text : null;
+  });
+
+  // Fullscreen lyrics has two views: a 2-line auto-follow view (default, fits a
+  // narrow TV/monitor without wrapping) and a manual-browse view (the full
+  // scrolling list) entered by scrolling/swiping; tapping a line there seeks
+  // and returns to auto-follow. `false` = auto-follow.
+  readonly karaokeBrowsing = signal(false);
+  private static readonly BROWSE_IDLE_MS = 4000;
+  private browseIdleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Alternates on every activeLine change so the CSS keyframe animation
+   *  restarts (changing the class name is what forces a replay). */
+  readonly karaokeLineAnimClass = signal<'karaoke-line-anim-a' | 'karaoke-line-anim-b'>(
+    'karaoke-line-anim-a',
+  );
 
   // Fullscreen karaoke overlay (the in-place lyrics panel is always open when
   // lyricsOpen is true; this flag expands it to a gradient-covered immersive view).
   readonly karaokeFullscreen = signal(false);
   /** Dominant colors extracted from the current track's cover art. */
   readonly coverColors = signal<CoverPalette>(DEFAULT_PALETTE);
-  /** Reference to the lyrics scroll container for auto-scroll (in-place or fullscreen). */
-  readonly lyricsScrollRef = viewChild<ElementRef<HTMLElement>>('lyricsScroll');
+  /** The in-place lyrics panel child — its own `lyricsScrollRef` (an internal
+   *  `#lyricsScroll` template ref) is re-exposed here so the shell's
+   *  auto-scroll effect below can reach across the component boundary; this
+   *  is the one place in the now-playing decomposition where a child's
+   *  internal DOM ref must be reachable from the shell. */
+  readonly lyricsPanel = viewChild(NowPlayingLyricsPanelComponent);
+  /** Fullscreen karaoke overlay child — its `overlayRef` (an internal
+   *  `#karaokeOverlay` template ref) is re-exposed here so it can be focused
+   *  on entry (ArrowUp/ArrowDown work immediately for keyboard/TV-remote
+   *  users with no prior click), mirroring `lyricsPanel()` above. */
+  readonly karaokeFullscreenPanel = viewChild(NowPlayingKaraokeFullscreenComponent);
   private colorExtractedForId: string | null = null;
 
   // Playback progress interpolation
@@ -151,6 +194,18 @@ export class NowPlayingComponent {
     NowPlayingComponent.COVER_MAX_PX - NowPlayingComponent.COVER_MIN_PX;
   private static readonly QUEUE_EXTRA_STORAGE_KEY = 'nicotind:np-queue-extra';
   readonly queueExtraHeightPx = signal(this.readStoredQueueExtra());
+
+  // Active panel (queue vs lyrics) persisted per-device.
+  private static readonly ACTIVE_PANEL_STORAGE_KEY = 'nicotind:np-active-panel';
+  readonly activePanel = signal<'queue' | 'lyrics'>(this.readStoredActivePanel());
+  // Seeded from the restored `activePanel` (must be declared after it — see
+  // the comment near `lyrics` above) so a page load that restores onto the
+  // Lyrics tab has `lyricsOpen` already true: the lyrics-loading/color-
+  // extraction/auto-scroll effects below all gate on `lyricsOpen()`, and
+  // without this seed a restored Lyrics tab rendered an incorrect "no
+  // lyrics" empty state until the user re-clicked the tab.
+  readonly lyricsOpen = signal(this.activePanel() === 'lyrics');
+
   /** Cover art max-width (px), shrinking as the queue is dragged taller. */
   readonly coverMaxPx = computed(
     () => NowPlayingComponent.COVER_MAX_PX - this.queueExtraHeightPx(),
@@ -191,6 +246,25 @@ export class NowPlayingComponent {
       localStorage.setItem(NowPlayingComponent.QUEUE_EXTRA_STORAGE_KEY, String(px));
     } catch {
       /* storage unavailable — the size just won't persist */
+    }
+  }
+
+  private readStoredActivePanel(): 'queue' | 'lyrics' {
+    try {
+      const raw = localStorage.getItem(NowPlayingComponent.ACTIVE_PANEL_STORAGE_KEY);
+      return raw === 'lyrics' ? 'lyrics' : 'queue';
+    } catch {
+      return 'queue';
+    }
+  }
+
+  setActivePanel(panel: 'queue' | 'lyrics'): void {
+    this.activePanel.set(panel);
+    this.lyricsOpen.set(panel === 'lyrics');
+    try {
+      localStorage.setItem(NowPlayingComponent.ACTIVE_PANEL_STORAGE_KEY, panel);
+    } catch {
+      /* storage unavailable — the choice just won't persist */
     }
   }
 
@@ -257,27 +331,40 @@ export class NowPlayingComponent {
       this.extractColorsFromImage(url);
     });
 
-    // Auto-scroll lyrics to the active line (in-place panel or fullscreen overlay).
+    // Auto-scroll lyrics to the active line — `resolveLyricsScrollContainer`
+    // (a pure function, unit-tested standalone) picks whichever surface is
+    // actually visible: the in-place lyrics panel, or the karaoke-fullscreen
+    // overlay's browse-mode list (its own ref is only populated while
+    // `browsing()` is true, so this is a no-op — early return below — during
+    // the fullscreen auto-follow 2-line view, which has no scrollable list).
     effect(() => {
       const active = this.activeLine();
       if (!this.lyricsOpen() || active < 0) return;
-      const container = this.lyricsScrollRef()?.nativeElement;
+      const container = resolveLyricsScrollContainer(this.karaokeFullscreen(), {
+        lyricsPanelEl: this.lyricsPanel()?.lyricsScrollRef()?.nativeElement ?? null,
+        karaokeEl: this.karaokeFullscreenPanel()?.lyricsScrollRef()?.nativeElement ?? null,
+      });
       if (!container) return;
       scrollToActiveLine(container, active);
     });
-  }
 
-  toggleLyrics(): void {
-    const opening = !this.lyricsOpen();
-    this.lyricsOpen.update((v) => !v);
-    if (!opening) {
-      this.karaokeFullscreen.set(false);
-    }
+    // Replay the fullscreen auto-follow line-change animation on every advance.
+    effect(() => {
+      this.activeLine();
+      this.karaokeLineAnimClass.update((c) =>
+        c === 'karaoke-line-anim-a' ? 'karaoke-line-anim-b' : 'karaoke-line-anim-a',
+      );
+    });
+
+    // Ensure the browse-idle timeout can never fire/leak past destruction.
+    this.destroyRef.onDestroy(() => this.clearBrowseIdleTimer());
   }
 
   toggleKaraokeFullscreen(): void {
     const entering = !this.karaokeFullscreen();
     this.karaokeFullscreen.set(entering);
+    this.clearBrowseIdleTimer();
+    this.karaokeBrowsing.set(false);
     if (entering) {
       // Ensure lyrics stay loaded
       if (!this.lyricsOpen()) this.lyricsOpen.set(true);
@@ -289,6 +376,7 @@ export class NowPlayingComponent {
         const url = this.server.apiUrl(`/api/cover/${track.coverArt}?size=80&token=${token}`);
         this.extractColorsFromImage(url);
       }
+      setTimeout(() => this.karaokeFullscreenPanel()?.overlayRef()?.nativeElement.focus(), 0);
     }
   }
 
@@ -409,43 +497,44 @@ export class NowPlayingComponent {
     }
   }
 
-  jumpToTrack(index: number): void {
-    if (this.dragSourceIndex() !== null) return;
-    this.player.jumpToQueueIndex(index);
+  /** Wheel/touch gesture on the fullscreen lyrics body enters browse mode. */
+  onKaraokeInteraction(): void {
+    this.karaokeBrowsing.set(true);
+    this.resetBrowseIdleTimer();
   }
 
-  clearQueue(): void {
-    this.player.clearQueue();
+  /** Tapping a line in browse mode seeks there and returns to auto-follow. */
+  seekToLine(index: number): void {
+    const line = this.lyricLines()[index];
+    if (!line) return;
+    this.clearBrowseIdleTimer();
+    this.onSeek(line.timeMs / 1000);
+    this.karaokeBrowsing.set(false);
   }
 
-  removeFromQueue(index: number): void {
-    this.player.removeFromQueue(index);
+  private resetBrowseIdleTimer(): void {
+    this.clearBrowseIdleTimer();
+    this.browseIdleTimer = setTimeout(() => {
+      this.karaokeBrowsing.set(false);
+    }, NowPlayingComponent.BROWSE_IDLE_MS);
   }
 
-  onQueueDragStart(event: DragEvent, index: number): void {
-    this.dragSourceIndex.set(index);
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', String(index));
+  private clearBrowseIdleTimer(): void {
+    if (this.browseIdleTimer !== null) {
+      clearTimeout(this.browseIdleTimer);
+      this.browseIdleTimer = null;
     }
   }
 
-  onQueueDragOver(event: DragEvent, index: number): void {
-    event.preventDefault();
-    if (this.dragSourceIndex() !== null) this.dropTargetIndex.set(index);
-  }
-
-  onQueueDrop(event: DragEvent, index: number): void {
-    event.preventDefault();
-    const from = this.dragSourceIndex();
-    this.dragSourceIndex.set(null);
-    this.dropTargetIndex.set(null);
-    if (from !== null && from !== index) this.player.moveInQueue(from, index);
-  }
-
-  onQueueDragEnd(): void {
-    this.dragSourceIndex.set(null);
-    this.dropTargetIndex.set(null);
+  /** Explicit toggle for the visible browse button and keyboard entry — flips
+   *  between the 2-line auto-follow view and the full browse list. */
+  toggleKaraokeBrowsing(): void {
+    if (this.karaokeBrowsing()) {
+      this.clearBrowseIdleTimer();
+      this.karaokeBrowsing.set(false);
+    } else {
+      this.onKaraokeInteraction();
+    }
   }
 
   onSheetDragStart(event: PointerEvent): void {
@@ -465,7 +554,6 @@ export class NowPlayingComponent {
   }
 
   onTitleContextMenu(event: MouseEvent): void {
-    event.preventDefault();
     this.contextMenu.set({ x: event.clientX, y: event.clientY });
   }
 
@@ -489,9 +577,5 @@ export class NowPlayingComponent {
         .then(() => this.player.setAutoplayBlocked(false))
         .catch(() => {});
     }
-  }
-
-  formatTime(s: number): string {
-    return formatTime(s);
   }
 }
