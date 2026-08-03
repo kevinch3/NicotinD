@@ -89,6 +89,7 @@ function setup(opts: { offline?: boolean; role?: string } = {}) {
   let deletedSongs: string[] = [];
   let cleared = false;
 
+  let refreshListCalls = 0;
   const preservedTracks = signal<PreservedTrackMeta[]>(opts.offline ? OFFLINE : []);
   const preserveStub = {
     preservedTracks,
@@ -97,7 +98,10 @@ function setup(opts: { offline?: boolean; role?: string } = {}) {
     preserving: signal(new Set<string>()),
     isPreserved: (id: string) => preservedTracks().some((t) => t.id === id),
     isPreserving: () => false,
-    refreshList: () => Promise.resolve(),
+    refreshList: () => {
+      refreshListCalls++;
+      return Promise.resolve();
+    },
     remove: () => Promise.resolve(),
     preserve: () => Promise.resolve(),
     preserveCollection: () => Promise.resolve(),
@@ -164,6 +168,7 @@ function setup(opts: { offline?: boolean; role?: string } = {}) {
     calls,
     getDeletedSongs: () => deletedSongs,
     wasCleared: () => cleared,
+    getRefreshListCalls: () => refreshListCalls,
   };
 }
 
@@ -235,6 +240,15 @@ describe('LibrarySongsComponent — online', () => {
     expect(calls.at(-1)?.opts.q).toBeUndefined();
   });
 
+  it('refresh() reloads songs from scratch when online', async () => {
+    const { component, calls } = setup();
+    await component.loadSongs(true);
+    const before = calls.length;
+    await component.refresh();
+    expect(calls.length).toBeGreaterThan(before);
+    expect(calls.at(-1)?.offset).toBe(0);
+  });
+
   it('rapid setSearchText calls collapse into a single debounced refetch', () => {
     // Unit-test the debounce timing contract directly with fake timers
     // (fixture-level tests can't drive the timer without triggering a render
@@ -286,6 +300,15 @@ describe('LibrarySongsComponent — offline', () => {
     const { component } = setup({ offline: true });
     const labels = component.offlineActions(OFFLINE[0]).map((a) => a.label);
     expect(labels).toEqual(['Add to queue', 'Play next', 'Remove download']);
+  });
+
+  it('refresh() refreshes the preserved list when offline', async () => {
+    const { component, calls, getRefreshListCalls } = setup({ offline: true });
+    component.ngOnInit();
+    const before = getRefreshListCalls();
+    await component.refresh();
+    expect(getRefreshListCalls()).toBeGreaterThan(before);
+    expect(calls.length).toBe(0); // no server fetch
   });
 
   it('clear-all confirms then clears the device store', async () => {

@@ -24,6 +24,7 @@ import { LibraryFilterPanelComponent } from '../../components/library-filter-pan
 import { IconComponent } from '../../components/icon/icon.component';
 import { LibrarySongsComponent } from './library-songs.component';
 import { SetupService } from '../../services/setup.service';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { resolveAlbumRoute, resolveGenreRoute, resolveArtistRoute } from '../../lib/route-utils';
 import { appendUnique } from '../../lib/append-unique';
 import { createRenderWindow } from '../../lib/render-window';
@@ -125,6 +126,12 @@ export class LibraryComponent implements OnInit, OnDestroy {
   readonly setup = inject(SetupService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private p2r = inject(PullToRefreshService);
+  private readonly songsCmp = viewChild(LibrarySongsComponent);
+
+  constructor() {
+    this.p2r.register(() => this.refreshActiveTab());
+  }
 
   // ─── Mode ─────────────────────────────────────────────────────────
   readonly modes = [
@@ -530,6 +537,34 @@ export class LibraryComponent implements OnInit, OnDestroy {
       await this.fetchCompilations();
     } else if (mode === 'artists') {
       await this.fetchArtists();
+    }
+  }
+
+  /** Pull-to-refresh: refetch the active tab now, stale-mark the rest so they
+   *  lazily refetch on their next switch (onFilterChange's shape, sans URL sync). */
+  private async refreshActiveTab(): Promise<void> {
+    this.api.invalidateLibraryReads();
+    this.singlesFetched.set(false);
+    this.compilationsFetched.set(false);
+    this.artistsFetched.set(false);
+    this.genresFetched.set(false);
+    this.albumsStale = true;
+    const mode = this.libraryMode();
+    if (mode === 'albums') {
+      this.albumsStale = false;
+      await this.resetAndLoad();
+    } else if (mode === 'singles') {
+      await this.fetchSingles();
+    } else if (mode === 'compilations') {
+      await this.fetchCompilations();
+    } else if (mode === 'artists') {
+      await this.fetchArtists();
+    } else if (mode === 'genre') {
+      await this.fetchGenres();
+    } else if (mode === 'songs') {
+      await this.songsCmp()?.refresh();
+    } else if (mode === 'playlists') {
+      await this.playlistService.refresh();
     }
   }
 
