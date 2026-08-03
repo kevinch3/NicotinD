@@ -346,6 +346,10 @@ Add detail there, not here.
   The Play next / Add to queue entries are built inline by `SongMenuService.build` (calling
   `queueNext`/`addToQueue`), so every track-row menu gets them. →
   [docs/web-ui.md](docs/web-ui.md)
+- **Pull-to-refresh (touch)**: one layout-hosted gesture on `<main>` (`lib/pull-to-refresh.ts`
+  composing `createPointerDrag`, which now handles `pointercancel`) + a `PullToRefreshService`
+  handler stack pages register into; coarse-pointer-gated, `overscroll-behavior-y: contain`
+  suppresses Chrome Android's native P2R. → [docs/web-ui.md](docs/web-ui.md) "Pull to refresh"
 - **Queue semantics — what a click replaces (issue #233)**: the bare `play(track)` never touched
   `queue`, so a standalone track click left an unrelated queue in place and it resumed the moment
   the clicked track ended. The gesture now decides: `play()` is the queue-untouched **primitive**
