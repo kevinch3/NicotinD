@@ -11,6 +11,9 @@ test.describe('device pairing', () => {
   test('devices page mints a code and explains remote access', async ({ page }) => {
     await page.goto('/settings/devices');
 
+    // Every settings-group card is collapsed by default, with no exception —
+    // a pairing code is minted only once the Link device card is expanded.
+    await expandGroup(page, 'devices-link');
     await expect(page.getByTestId('pairing-code')).toHaveText(/^[A-HJ-NP-Z2-9]{6}$/);
     // Browser origin is 127.0.0.1 (loopback) and no funnel exists in CI — the
     // QR placeholder prompts enabling remote access instead of a dead QR.
@@ -32,6 +35,7 @@ test.describe('device pairing', () => {
 
   test('regenerate invalidates the previous code', async ({ page, request }) => {
     await page.goto('/settings/devices');
+    await expandGroup(page, 'devices-link');
     const oldCode = await page.getByTestId('pairing-code').textContent();
     await page.getByTestId('pairing-regenerate').click();
     await expect(page.getByTestId('pairing-code')).not.toHaveText(oldCode!);
@@ -78,6 +82,7 @@ test.describe('device pairing', () => {
 
   test('claim → device listed → revoke → refresh 403s', async ({ page, request }) => {
     await page.goto('/settings/devices');
+    await expandGroup(page, 'devices-link');
     const code = await page.getByTestId('pairing-code').textContent();
 
     // Simulate the phone: claim by code, unauthenticated.

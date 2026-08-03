@@ -124,11 +124,11 @@ the request-origin candidate (below).
    Generate a new one" overlay so a stale QR never looks scannable. The panel
    lives in the `devices-link` `<app-settings-group>` card (Task 3 of the
    settings-cards unification — see [docs/design-patterns.md](design-patterns.md)
-   "SettingsGroupComponent"); on the **native shell** the card's `[defaultOpen]` is `false` (the
-   phone app's job is to *scan* QRs, not to lead with one) versus `true`
-   everywhere else, and minting happens in `onLinkOpened()`, wired to the
-   group's `(opened)` output — so it mints once the card is actually visible,
-   never while collapsed, and never twice if a code already exists.
+   "SettingsGroupComponent"), collapsed by default like every settings-group
+   card everywhere (no web/native exception) — minting happens in
+   `onLinkOpened()`, wired to the group's `(opened)` output, so a code is
+   minted only the first time a user actually expands the card, never on
+   page load and never twice if a code already exists.
 3. **Scan** — two equally supported paths:
    - **Camera app**: scanning opens `/pair` on the server; done.
    - **In-app**: the phone's server-picker native-only **Scan QR** button

@@ -5,7 +5,11 @@ import { provideRouter } from '@angular/router';
 import { DevicesComponent } from './devices.component';
 import { DevicesApiService } from '../../../services/api/devices-api.service';
 import { AuthService } from '../../../services/auth.service';
-import type { PairedDevice, PairingMintResponse } from '../../../services/api/api-types';
+import type {
+  PairedDevice,
+  PairingMintResponse,
+  RemoteAccessStatus,
+} from '../../../services/api/api-types';
 
 /**
  * Issue #256. `qrcode` moved from a static import to `await import('qrcode')`
@@ -167,9 +171,14 @@ describe('DevicesComponent — lazy qrcode (#256)', () => {
 });
 
 describe('DevicesComponent — settings-group migration (Task 3)', () => {
-  function setupSpiedMint(mint: PairingMintResponse = MINT) {
+  function setupSpiedMint(
+    mint: PairingMintResponse = MINT,
+    options: { isAdmin?: boolean; remote?: RemoteAccessStatus | null } = {},
+  ) {
     TestBed.resetTestingModule();
     const mintPairing = vi.fn().mockReturnValue(of(mint));
+    const isAdmin = options.isAdmin ?? false;
+    const remote = options.remote ?? null;
     TestBed.configureTestingModule({
       imports: [DevicesComponent],
       providers: [
@@ -179,22 +188,30 @@ describe('DevicesComponent — settings-group migration (Task 3)', () => {
           useValue: {
             mintPairing,
             getDevices: () => of({ devices: [] }),
-            getRemoteAccess: () => of(null),
+            getRemoteAccess: () => of(remote),
             setRemoteAccess: () => of(null),
             revokeDevice: () => of(undefined),
           },
         },
-        { provide: AuthService, useValue: { isAdmin: () => false, user: () => null } },
+        { provide: AuthService, useValue: { isAdmin: () => isAdmin, user: () => null } },
       ],
     });
     const fixture = TestBed.createComponent(DevicesComponent);
     return { fixture, mintPairing };
   }
 
-  it('renders every group collapsed on a fresh render (all groups default-collapsed)', () => {
+  it('renders every group collapsed on a fresh render (all groups default-collapsed, no exception)', () => {
     localStorage.clear();
-    const { fixture } = setupSpiedMint();
+    // Admin + a resolved remote-access status renders all three groups
+    // (devices-remote-access, devices-link, devices-paired) — every one of
+    // them, including devices-link, must start collapsed. There is no
+    // exception for web/desktop vs native: the project-wide rule is every
+    // settings-group card is collapsed by default.
+    const remoteStatus: RemoteAccessStatus = { enabled: false, state: { kind: 'inactive' } };
+    const { fixture } = setupSpiedMint(MINT, { isAdmin: true, remote: remoteStatus });
     fixture.detectChanges();
+    const toggles = fixture.nativeElement.querySelectorAll('[data-testid="settings-group-toggle"]');
+    expect(toggles.length).toBe(3);
     const bodies = fixture.nativeElement.querySelectorAll('[data-testid="settings-group-body"]');
     expect(bodies.length).toBe(0);
   });

@@ -50,12 +50,15 @@ export class DevicesComponent implements OnInit, OnDestroy {
   private copiedTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
-   * On the phone app the QR exists to be scanned BY a phone, so auto-minting
-   * and showing it front-and-center is noise (you can't scan your own screen).
-   * The "Link device" group therefore defaults to collapsed there (and open
-   * everywhere else) via `[defaultOpen]="!onNativeApp"` on the settings-group;
-   * minting itself happens in `onLinkOpened()`, driven by the group's
-   * `(opened)` output, so nothing mints while the group is collapsed.
+   * Every settings-group card is collapsed by default with no exception
+   * (project-wide decision) — so the "Link device" card no longer
+   * auto-expands on web/desktop the way its pre-migration `linkPanelOpen`
+   * signal did. `onNativeApp` still distinguishes the copy ("Link a device"
+   * vs "Link another device" — the phone app's job is to *scan* QRs, not
+   * lead with one) and which scan-instructions string to show, but no longer
+   * drives a `defaultOpen`. Minting happens in `onLinkOpened()`, driven by
+   * the group's `(opened)` output, so nothing mints on page load — only the
+   * first time a user actually expands the card.
    */
   readonly onNativeApp = isNativePlatform();
 
