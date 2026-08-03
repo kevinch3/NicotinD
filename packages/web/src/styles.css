@@ -356,6 +356,29 @@
   accent-color: var(--theme-text-secondary);
 }
 
+/* Page & section idioms (issue #384) — criteria in docs/web-ui.md "Page & section idioms".
+   page-shell owns the ONE responsive gutter/width scale; pages add max-w-(6xl|3xl|2xl).
+   Theme colors not @theme-registered (text-theme-primary, border-theme) are raw var()
+   declarations here — @apply can only resolve @theme-registered names. section-title's color
+   is a raw var() too even though text-theme-secondary IS @theme-registered, for consistency
+   with the other raw-var() declarations in this block rather than mixing @apply and raw var()
+   within the same idiom set. */
+@utility page-shell {
+  @apply mx-auto px-4 py-5 md:px-6 md:py-8;
+}
+@utility page-title {
+  @apply text-2xl font-bold;
+  color: var(--theme-text-primary);
+}
+@utility section-title {
+  @apply text-sm font-semibold uppercase tracking-wider mb-5;
+  color: var(--theme-text-secondary);
+}
+@utility section-flush {
+  @apply rounded-xl border bg-theme-surface/50 overflow-x-auto;
+  border-color: var(--theme-border);
+}
+
 /* ─── Seek bar (app-seek-bar) ────────────────────────────────────────────
    A native <input type=range> styled to read as a slim progress bar with a
    draggable thumb. Lives in global CSS (not the component) so the vendor

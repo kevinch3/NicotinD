@@ -762,6 +762,11 @@ Add detail there, not here.
   `items-center`, `max-h` off the var) that variable-height modals must pair with it
   (`measureBottomChromeInset` is the one shared chrome-measuring entry point). →
   [docs/design-patterns.md](docs/design-patterns.md)
+- **Page & section idioms (issue #384)**: every routed page inside the app shell has root
+  `page-shell max-w-(6xl|3xl|2xl)` (browse/reading/settings-forms — criteria table in the doc;
+  pre-auth full-screen shells like login/setup/pair/server-config are exempt); grouped pages share
+  `SettingsGroupComponent` cards, tables use `section-flush`, headings `page-title`/`section-title`;
+  `page-shell.spec.ts` is the drift guard. → [docs/web-ui.md](docs/web-ui.md) "Page & section idioms"
 - **Catalog (metadata-driven) search**: `CatalogService` returns artist/album cards from
   Lidarr/MusicBrainz, scoped to the matched artist, resolving into album-hunt (typed 404 +
   raw-network fallback for absent compilations). On a catalog miss (`ALBUM_NOT_IN_LIDARR`), the
