@@ -7,6 +7,7 @@ import {
   isElectron,
   isNativeShell,
   serviceWorkerEnabled,
+  isCoarsePointer,
 } from './platform';
 
 type CapStub = {
@@ -83,5 +84,22 @@ describe('platform helpers', () => {
     expect(serviceWorkerEnabled(false, false)).toBe(true);
     expect(serviceWorkerEnabled(false, true)).toBe(false);
     expect(serviceWorkerEnabled(true, false)).toBe(false);
+  });
+});
+
+describe('isCoarsePointer', () => {
+  afterEach(() => {
+    delete (globalThis as { matchMedia?: unknown }).matchMedia;
+  });
+
+  it('is false when matchMedia is unavailable (jsdom, SSR)', () => {
+    expect(isCoarsePointer()).toBe(false);
+  });
+
+  it('reflects the (pointer: coarse) media query', () => {
+    (globalThis as { matchMedia?: unknown }).matchMedia = (q: string) => ({
+      matches: q === '(pointer: coarse)',
+    });
+    expect(isCoarsePointer()).toBe(true);
   });
 });

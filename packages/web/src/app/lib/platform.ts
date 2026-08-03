@@ -91,3 +91,9 @@ export function isNativeShell(): boolean {
 export function serviceWorkerEnabled(devMode: boolean, nativeShell: boolean): boolean {
   return !devMode && !nativeShell;
 }
+
+/** True on devices whose primary pointer is coarse (touch phones/tablets).
+ *  Gates touch-only affordances like pull-to-refresh. */
+export function isCoarsePointer(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+}
