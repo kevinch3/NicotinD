@@ -35,8 +35,23 @@ export default defineConfig({
     { name: 'setup', testMatch: /auth\.setup\.ts/ },
     {
       name: 'mobile',
-      testMatch: /mobile-screenshots\.screens\.ts/,
+      testMatch: /(mobile-screenshots|settings-gallery)\.screens\.ts/,
       use: { ...devices['Pixel 7'], storageState: '.auth/admin.json' },
+      dependencies: ['setup'],
+    },
+    // Desktop-viewport counterpart of the gallery only (mobile-screenshots.screens.ts
+    // is a mobile-only UX review flow, not part of this project). shot()'s `<flow>`
+    // segment is suffixed with the project name (see settings-gallery.screens.ts), so
+    // the two projects' outputs land in separate folders under the shared
+    // `screenshots/mobile` root and never collide.
+    {
+      name: 'desktop',
+      testMatch: /settings-gallery\.screens\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 900 },
+        storageState: '.auth/admin.json',
+      },
       dependencies: ['setup'],
     },
   ],
