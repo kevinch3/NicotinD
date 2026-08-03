@@ -20,6 +20,9 @@ const PAGE_TIERS: Array<[string, '6xl' | '3xl' | '2xl']> = [
   ['settings/agent-tokens/agent-tokens.component.html', '2xl'],
   ['plugins/plugins.component.html', '2xl'],
   ['admin/admin.component.html', '3xl'],
+  ['radio-landing/radio-landing.component.html', '3xl'],
+  ['library/playlist-detail.component.html', '3xl'],
+  ['share/share-view.component.html', '3xl'],
 ];
 
 const IDIOM_PAGES = [
