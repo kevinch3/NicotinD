@@ -96,6 +96,19 @@ describe('PullToRefreshService', () => {
     expect(s.refreshing()).toBe(false);
   });
 
+  it('clears refreshing when the handler throws synchronously', async () => {
+    const s = svc();
+    RegistrantComponent.nextHandler = () => {
+      throw new Error('boom');
+    };
+    TestBed.createComponent(RegistrantComponent).detectChanges();
+
+    const t = s.trigger();
+    await vi.advanceTimersByTimeAsync(400);
+    await expect(t).resolves.toBeUndefined();
+    expect(s.refreshing()).toBe(false);
+  });
+
   it('is re-entrancy guarded — a second trigger during a refresh is a no-op', async () => {
     const s = svc();
     let calls = 0;
