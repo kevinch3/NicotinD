@@ -498,6 +498,62 @@ describe('NowPlayingComponent', () => {
     });
   });
 
+  describe('hoisted resize handle (shell-owned)', () => {
+    // The handle used to live inside the queue panel, below the Queue/Lyrics tab
+    // bar — so it vanished whenever the Lyrics tab was active and read as "lost".
+    // It is now owned by the shell, above the tabs, working for both panels.
+    const pointer = (type: string, clientY: number, button = 0) =>
+      new MouseEvent(type, { clientY, button }) as unknown as PointerEvent;
+
+    function setupWithTrack() {
+      const ctx = setup();
+      ctx.playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
+      ctx.fixture.detectChanges();
+      return ctx;
+    }
+
+    beforeEach(() => localStorage.clear());
+
+    it('renders the handle in the shell, outside the queue panel and before the tabs', () => {
+      const { fixture } = setupWithTrack();
+      const el: HTMLElement = fixture.nativeElement;
+      const handle = el.querySelector('[data-testid="now-playing-queue-resize"]')!;
+      expect(handle).not.toBeNull();
+      expect(handle.closest('app-now-playing-queue-panel')).toBeNull();
+      const tabs = el.querySelector('app-now-playing-panel-tabs')!;
+      expect(handle.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('stays available on the Lyrics tab', () => {
+      const { fixture } = setupWithTrack();
+      fixture.componentInstance.setActivePanel('lyrics');
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="now-playing-queue-resize"]'),
+      ).not.toBeNull();
+    });
+
+    it('drives the queue resize drag from the template wiring', () => {
+      const { fixture } = setupWithTrack();
+      const handle: HTMLElement = fixture.nativeElement.querySelector(
+        '[data-testid="now-playing-queue-resize"]',
+      )!;
+      handle.dispatchEvent(pointer('pointerdown', 300));
+      document.dispatchEvent(pointer('pointermove', 200)); // up 100px
+      expect(fixture.componentInstance.queueExtraHeightPx()).toBe(100);
+      document.dispatchEvent(pointer('pointerup', 200));
+    });
+
+    it('is absent while karaoke fullscreen is active', () => {
+      const { fixture } = setupWithTrack();
+      fixture.componentInstance.toggleKaraokeFullscreen();
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="now-playing-queue-resize"]'),
+      ).toBeNull();
+    });
+  });
+
   describe('notch / safe-area clearance', () => {
     // The now-playing sheet is fixed inset-0 over a viewport-fit=cover page, so
     // on notched iPhones the grab pill + close chevron sit right under the

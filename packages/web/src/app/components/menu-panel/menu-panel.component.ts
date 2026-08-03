@@ -8,7 +8,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { computeMenuPosition } from '../../lib/menu-position';
-import { bottomChromeInset } from '../../lib/player-chrome';
+import { measureBottomChromeInset } from '../../lib/player-chrome';
 
 /**
  * Reusable dropdown/popover panel anchored to a projected trigger, positioned
@@ -55,13 +55,7 @@ export class MenuPanelComponent {
     // Reserve the fixed bottom chrome (mini-player + tab bar) so the panel flips
     // up / clamps above it instead of opening under it — the mobile bug where a
     // track-row menu near the list end was hidden behind the player.
-    const inset = bottomChromeInset(
-      Array.from(document.querySelectorAll<HTMLElement>('[data-bottom-chrome]')).map((el) => {
-        const rect = el.getBoundingClientRect();
-        return { top: rect.top, height: rect.height };
-      }),
-      window.innerHeight,
-    );
+    const inset = measureBottomChromeInset();
     this.pos.set(
       computeMenuPosition(
         r,

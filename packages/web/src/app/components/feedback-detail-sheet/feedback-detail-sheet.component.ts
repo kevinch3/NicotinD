@@ -6,6 +6,7 @@ import {
 } from '../../services/feedback-sheet.service';
 import { FeedbackService } from '../../services/feedback.service';
 import { ToastService } from '../../services/toast.service';
+import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 import type { HuntMatchItemFlags } from '../../../types/core';
 
 /**
@@ -18,7 +19,7 @@ import type { HuntMatchItemFlags } from '../../../types/core';
 @Component({
   selector: 'app-feedback-detail-sheet',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, BottomChromeSafeDirective],
   templateUrl: './feedback-detail-sheet.component.html',
 })
 export class FeedbackDetailSheetComponent {

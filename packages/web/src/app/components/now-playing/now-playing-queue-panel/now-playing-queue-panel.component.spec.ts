@@ -46,4 +46,12 @@ describe('NowPlayingQueuePanelComponent', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('nowPlaying.queueEmpty');
   });
+
+  it('no longer owns the resize handle (hoisted to the shell, above the tabs)', () => {
+    const fixture = TestBed.createComponent(NowPlayingQueuePanelComponent);
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="now-playing-queue-resize"]'),
+    ).toBeNull();
+  });
 });

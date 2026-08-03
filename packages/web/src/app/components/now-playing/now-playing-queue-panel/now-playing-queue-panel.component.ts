@@ -1,4 +1,4 @@
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { PlayerService } from '../../../services/player.service';
 import { AuthService } from '../../../services/auth.service';
 import { CoverArtComponent } from '../../cover-art/cover-art.component';
@@ -18,9 +18,6 @@ import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 export class NowPlayingQueuePanelComponent {
   readonly player = inject(PlayerService);
   readonly auth = inject(AuthService);
-
-  readonly resizing = input(false);
-  readonly resizeStart = output<PointerEvent>();
 
   readonly dragSourceIndex = signal<number | null>(null);
   readonly dropTargetIndex = signal<number | null>(null);

@@ -7,28 +7,6 @@
   >
     <app-now-playing-header (dragPointerDown)="onSheetDragStart($event)" />
 
-    <app-now-playing-cover-art
-      [coverMaxPx]="coverMaxPx()"
-      [resizing]="resizingQueue()"
-      (openTrackInfo)="onOpenTrackInfo($event)"
-      (titleContextMenu)="onTitleContextMenu($event)"
-      (navigateToArtistClicked)="navigateToArtist()"
-    />
-
-    <app-now-playing-transport
-      [progress]="safeProgress()"
-      [duration]="safeDuration()"
-      [buffered]="player.bufferedRanges()"
-      [playing]="showPlaying()"
-      [buffering]="showBuffering()"
-      [autoplayBlocked]="player.autoplayBlocked()"
-      (seek)="onSeek($event)"
-      (unblockAutoplay)="unblockAutoplay()"
-      (playPauseClicked)="handlePlayPause()"
-      (nextClicked)="handleNext()"
-      (prevClicked)="handlePrev()"
-    />
-
     @if (contextMenu(); as pos) {
       <app-track-context-menu
         [artist]="track.artist"
@@ -39,32 +17,88 @@
       />
     }
 
-    @if (!karaokeFullscreen()) {
-      <app-now-playing-panel-tabs
-        [activePanel]="activePanel()"
-        [queueCount]="player.queue().length"
-        [hasLyrics]="hasLyrics()"
-        (panelSelected)="setActivePanel($event)"
-      />
-
-      @if (activePanel() === 'lyrics') {
-        <app-now-playing-lyrics-panel
-          [loading]="lyricsLoading()"
-          [lines]="lyricLines()"
-          [activeLine]="activeLine()"
-          [plainLyrics]="plainLyrics()"
-          [error]="lyricsError()"
-          [fetching]="fetchingLyrics()"
-          (fullscreenRequested)="toggleKaraokeFullscreen()"
-          (fetchRequested)="fetchLyricsManually()"
-        />
-      } @else {
-        <app-now-playing-queue-panel
+    <!-- Two-column at lg: cover/transport centered left, queue/lyrics a fixed
+         right side panel (Spotify-like). The group wrappers are `contents`
+         below lg — every child uses host `display: contents`, so a grid/flex
+         on the root would place each child's *inner* element individually;
+         real column boxes only exist at lg, leaving the mobile stacked layout
+         untouched by construction. -->
+    <div class="flex-1 min-h-0 flex flex-col lg:flex-row" data-testid="now-playing-body">
+      <div class="contents lg:flex lg:flex-1 lg:min-h-0 lg:flex-col lg:justify-center">
+        <app-now-playing-cover-art
+          [coverMaxPx]="coverMaxPx()"
           [resizing]="resizingQueue()"
-          (resizeStart)="onQueueResizeStart($event)"
+          (openTrackInfo)="onOpenTrackInfo($event)"
+          (titleContextMenu)="onTitleContextMenu($event)"
+          (navigateToArtistClicked)="navigateToArtist()"
         />
+
+        <app-now-playing-transport
+          [progress]="safeProgress()"
+          [duration]="safeDuration()"
+          [buffered]="player.bufferedRanges()"
+          [playing]="showPlaying()"
+          [buffering]="showBuffering()"
+          [autoplayBlocked]="player.autoplayBlocked()"
+          (seek)="onSeek($event)"
+          (unblockAutoplay)="unblockAutoplay()"
+          (playPauseClicked)="handlePlayPause()"
+          (nextClicked)="handleNext()"
+          (prevClicked)="handlePrev()"
+        />
+
+        @if (!karaokeFullscreen()) {
+          <!-- Drag handle: pull up to grow the active panel (shrinks the cover).
+               Shell-owned and rendered above the tabs so it works on the Queue AND
+               Lyrics tabs — inside the queue panel it vanished with the tab switch
+               and read as a lost feature. lg:hidden — a vertical resize is
+               meaningless beside the fixed-width side panel. -->
+          <div
+            (pointerdown)="onQueueResizeStart($event)"
+            data-testid="now-playing-queue-resize"
+            role="separator"
+            aria-orientation="horizontal"
+            [attr.aria-label]="'nowPlaying.resizeQueue' | t"
+            class="lg:hidden group flex-shrink-0 flex justify-center items-center py-2 cursor-ns-resize touch-none select-none"
+          >
+            <span
+              class="w-10 h-1 rounded-full transition-colors"
+              [class]="resizingQueue() ? 'bg-theme-secondary' : 'bg-theme-surface-2 group-hover:bg-theme-muted'"
+            ></span>
+          </div>
+        }
+      </div>
+
+      @if (!karaokeFullscreen()) {
+        <div
+          class="contents lg:flex lg:flex-col lg:flex-none lg:w-[380px] lg:min-h-0 lg:border-l lg:border-theme"
+        >
+          <app-now-playing-panel-tabs
+            [activePanel]="activePanel()"
+            [queueCount]="player.queue().length"
+            [hasLyrics]="hasLyrics()"
+            (panelSelected)="setActivePanel($event)"
+          />
+
+          @if (activePanel() === 'lyrics') {
+            <app-now-playing-lyrics-panel
+              [loading]="lyricsLoading()"
+              [lines]="lyricLines()"
+              [activeLine]="activeLine()"
+              [plainLyrics]="plainLyrics()"
+              [error]="lyricsError()"
+              [fetching]="fetchingLyrics()"
+              (fullscreenRequested)="toggleKaraokeFullscreen()"
+              (fetchRequested)="fetchLyricsManually()"
+            />
+          } @else {
+            <app-now-playing-queue-panel />
+          }
+        </div>
       }
-    } @else {
+    </div>
+
+    @if (karaokeFullscreen()) {
       <app-now-playing-karaoke-fullscreen
         [colors]="coverColors()"
         [title]="track.title"

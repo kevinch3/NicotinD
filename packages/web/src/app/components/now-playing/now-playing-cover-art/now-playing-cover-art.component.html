@@ -2,11 +2,15 @@
   <!-- Cover art — app-cover-art degrades a missing/404 cover to the on-theme
        gradient tile (like the grid/mini-player) instead of a broken-image glyph. -->
   <div class="flex-shrink-0 flex justify-center px-4 py-4 md:px-8">
+    <!-- The stored queue-resize shrink (coverMaxPx) is mobile-only: at lg the
+         side-panel layout has no vertical resize, so lg:max-w-80 wins over the
+         var-driven cap via the responsive cascade — an inline style.max-width
+         would beat every class, which is why the value rides a CSS var. -->
     <div
-      class="w-[60vw] max-w-80"
+      class="w-[60vw] max-w-[var(--np-cover-max,20rem)] lg:max-w-80"
       [class.transition-[max-width]]="!resizing()"
       [class.duration-150]="!resizing()"
-      [style.max-width.px]="coverMaxPx()"
+      [style.--np-cover-max]="coverMaxPx() + 'px'"
       data-testid="now-playing-cover"
     >
       <app-cover-art

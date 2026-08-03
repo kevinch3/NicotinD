@@ -322,6 +322,33 @@ test.describe('mobile UX', () => {
     await expect(page.getByTestId('now-playing-lyrics')).toHaveCount(0);
   });
 
+  // The drag-resize handle is shell-owned (above the Queue/Lyrics tabs) so it
+  // must stay usable on the Lyrics tab — inside the queue panel it vanished with
+  // the tab switch and read as a lost feature. Drag it up and assert the cover
+  // actually shrinks.
+  test('Now Playing resize handle works from the Lyrics tab', async ({ page }) => {
+    await openNowPlaying(page);
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
+
+    const handle = page.getByTestId('now-playing-queue-resize');
+    await expect(handle).toBeVisible();
+
+    const coverBefore = (await page.getByTestId('now-playing-cover').boundingBox())!;
+    const handleBox = (await handle.boundingBox())!;
+    const startX = handleBox.x + handleBox.width / 2;
+    const startY = handleBox.y + handleBox.height / 2;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX, startY - 80, { steps: 8 });
+    await page.mouse.up();
+
+    const coverAfter = (await page.getByTestId('now-playing-cover').boundingBox())!;
+    expect(coverAfter.width, 'cover shrinks when the panel is pulled taller').toBeLessThan(
+      coverBefore.width,
+    );
+  });
+
   // A long lyric line (no natural break) must wrap inside the lyrics panel and
   // never push the page wider than the phone — the panel/lines gained
   // overflow-x-hidden + break-words after lyrics were reported overflowing the

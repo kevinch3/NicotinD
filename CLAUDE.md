@@ -340,9 +340,10 @@ Add detail there, not here.
 - **Queue extensions (full management)**: `PlayerService` exposes `queueNext`, `addToQueue`,
   `clearQueue`, `removeFromQueue`, `moveInQueue`, `toggleShuffle`, `jumpToQueueIndex`; Now Playing
   queue UI has header toolbar (shuffle/save-as-playlist/clear), per-track remove, drag-to-reorder
-  (native HTML5 drag handlers — `onQueueDragStart`/`onQueueDrop` in `now-playing.component`, not a
-  directive), a **manual drag-resize handle** (pull the queue taller → cover art
-  shrinks; `createPointerDrag`, persisted per-device), history peek, and mini-player queue badge.
+  (native HTML5 drag handlers — `onQueueDragStart`/`onQueueDrop` in the queue panel component, not a
+  directive), a **manual drag-resize handle** (shell-owned above the Queue/Lyrics tabs; pull the
+  panel taller → cover art shrinks; `createPointerDrag`, persisted per-device, mobile-only — the
+  `lg:` side panel is fixed-width), history peek, and mini-player queue badge.
   The Play next / Add to queue entries are built inline by `SongMenuService.build` (calling
   `queueNext`/`addToQueue`), so every track-row menu gets them. →
   [docs/web-ui.md](docs/web-ui.md)
@@ -628,7 +629,11 @@ Add detail there, not here.
   (`NowPlayingHeaderComponent`/`-CoverArtComponent`/`-TransportComponent`/`-PanelTabsComponent`/
   `-QueuePanelComponent`/`-LyricsPanelComponent`/`-KaraokeFullscreenComponent`); a **Queue/Lyrics tab
   switcher** (`NowPlayingPanelTabsComponent`, queue-count badge + lyrics-availability dot) replaces
-  the old lyrics-toggle-swaps-the-queue model. The sheet now follows theme tokens like the rest of
+  the old lyrics-toggle-swaps-the-queue model. The queue drag-resize handle is **shell-owned, above
+  the tabs** (works on both panels — inside the queue panel it vanished on the Lyrics tab), and at
+  `lg:` the sheet is **two columns**: cover/transport left, the tabbed panel an always-visible fixed
+  380px right column (Spotify-like), via `contents lg:flex` group wrappers since every child is
+  `display: contents`. The sheet now follows theme tokens like the rest of
   the app — only the fullscreen karaoke overlay's dynamic cover-gradient background stays an
   intentional exception. → [docs/web-ui.md](docs/web-ui.md)
 - **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a
@@ -748,7 +753,10 @@ Add detail there, not here.
 - **Bottom-chrome stacking + scroll lock**: mini-player and tab bar share one `z-50` plane;
   `ScrollLockService` pins the document under full-screen sheets. Full-screen modal backdrops use
   `BottomChromeSafeDirective` (issue #367) so a tall dialog never renders its last content under the
-  mini-player/tab bar. →
+  mini-player/tab bar — hardened with ResizeObserver/transitionend re-measure + a published
+  `--bottom-chrome-inset` CSS var, and a canonical bounded-panel recipe (`m-auto`, never
+  `items-center`, `max-h` off the var) that variable-height modals must pair with it
+  (`measureBottomChromeInset` is the one shared chrome-measuring entry point). →
   [docs/design-patterns.md](docs/design-patterns.md)
 - **Catalog (metadata-driven) search**: `CatalogService` returns artist/album cards from
   Lidarr/MusicBrainz, scoped to the matched artist, resolving into album-hunt (typed 404 +
