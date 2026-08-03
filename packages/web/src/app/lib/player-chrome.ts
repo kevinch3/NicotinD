@@ -57,3 +57,19 @@ export function bottomChromeInset(rects: ChromeRect[], viewportHeight: number): 
   if (!tops.length) return 0;
   return Math.max(0, viewportHeight - Math.min(...tops));
 }
+
+/**
+ * Measures the live `[data-bottom-chrome]` layers in the document and returns
+ * their `bottomChromeInset` — the one DOM-reading entry point shared by
+ * `BottomChromeSafeDirective` (modal backdrops) and `MenuPanelComponent`
+ * (popovers), so the two never drift on how the chrome is found or measured.
+ */
+export function measureBottomChromeInset(): number {
+  return bottomChromeInset(
+    Array.from(document.querySelectorAll<HTMLElement>('[data-bottom-chrome]')).map((el) => {
+      const rect = el.getBoundingClientRect();
+      return { top: rect.top, height: rect.height };
+    }),
+    window.innerHeight,
+  );
+}

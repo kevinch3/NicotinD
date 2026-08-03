@@ -1,5 +1,5 @@
 import { AfterViewInit, Directive, ElementRef, HostListener, inject } from '@angular/core';
-import { bottomChromeInset } from '../lib/player-chrome';
+import { measureBottomChromeInset } from '../lib/player-chrome';
 
 /**
  * Reserves space for the fixed bottom chrome (mini-player + mobile tab bar) at
@@ -43,13 +43,7 @@ export class BottomChromeSafeDirective implements AfterViewInit {
   @HostListener('window:resize')
   reposition(): void {
     const host = this.el.nativeElement;
-    const inset = bottomChromeInset(
-      Array.from(document.querySelectorAll<HTMLElement>('[data-bottom-chrome]')).map((chrome) => {
-        const rect = chrome.getBoundingClientRect();
-        return { top: rect.top, height: rect.height };
-      }),
-      window.innerHeight,
-    );
+    const inset = measureBottomChromeInset();
     host.style.paddingBottom = `${this.basePaddingBottom + inset}px`;
   }
 }
