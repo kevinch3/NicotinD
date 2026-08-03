@@ -3,6 +3,7 @@ import { firstValueFrom } from 'rxjs';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { TransferService } from '../../services/transfer.service';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import type { AcquireJob } from '@nicotind/core';
 import {
@@ -41,6 +42,7 @@ export class DownloadsComponent {
   private api = inject(DownloadsApiService);
   private systemApi = inject(SystemApiService);
   private transferService = inject(TransferService);
+  private readonly p2r = inject(PullToRefreshService);
 
   readonly retrying = signal(new Set<string>());
   readonly scanning = signal(false);
@@ -49,6 +51,7 @@ export class DownloadsComponent {
   readonly diskUsage = signal<DiskUsage | null>(null);
 
   constructor() {
+    this.p2r.register(() => this.transferService.kickPoll());
     firstValueFrom(this.systemApi.getDiskUsage())
       .then((d) => this.diskUsage.set(d))
       .catch(() => {

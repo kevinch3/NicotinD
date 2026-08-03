@@ -211,6 +211,13 @@ describe('TransferService adaptive polling', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(pollCount).toBe(before + 1);
   });
+
+  it('kickPoll resolves after the poll completes', async () => {
+    setup();
+    const before = pollCount;
+    await service.kickPoll();
+    expect(pollCount).toBe(before + 1);
+  });
 });
 
 describe('TransferService libraryDirty flagging', () => {
