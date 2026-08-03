@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { ADMIN, bearer } from '../helpers';
+import { ADMIN, bearer, expandGroup } from '../helpers';
 
 // Device pairing (QR link): the Devices settings page mints a short-lived
 // pairing code; claiming it (the phone's job — simulated here with a direct
@@ -22,9 +22,11 @@ test.describe('device pairing', () => {
     // the *absence* of a host binary, so it passed in CI and failed on any dev box
     // with Tailscale installed — and gave zero coverage of the state most
     // self-hosters actually see.
+    await expandGroup(page, 'devices-remote-access');
     await expect(page.getByTestId('remote-access-state')).toHaveText(
       /Tailscale|Remote access is off/,
     );
+    await expandGroup(page, 'devices-paired');
     await expect(page.getByTestId('devices-empty')).toBeVisible();
   });
 
@@ -60,6 +62,7 @@ test.describe('device pairing', () => {
 
     // The browser now holds a device-bound session: the device row exists.
     await page.goto('/settings/devices');
+    await expandGroup(page, 'devices-paired');
     await expect(page.getByTestId('device-row')).toContainText('browser', { ignoreCase: true });
     // Clean up so the other tests' device-list assertions stay isolated.
     await page.getByTestId('device-revoke').click();
@@ -90,6 +93,7 @@ test.describe('device pairing', () => {
 
     // The paired device appears in the list (page polls nothing — reload).
     await page.reload();
+    await expandGroup(page, 'devices-paired');
     await expect(page.getByTestId('device-row')).toContainText('CI phone');
 
     // The device JWT is a real session: refresh works…
