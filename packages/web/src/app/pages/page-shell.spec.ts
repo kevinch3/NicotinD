@@ -19,6 +19,7 @@ const PAGE_TIERS: Array<[string, '6xl' | '3xl' | '2xl']> = [
   ['settings/devices/devices.component.html', '2xl'],
   ['settings/agent-tokens/agent-tokens.component.html', '2xl'],
   ['plugins/plugins.component.html', '2xl'],
+  ['admin/admin.component.html', '3xl'],
 ];
 
 const IDIOM_PAGES = [
@@ -27,6 +28,7 @@ const IDIOM_PAGES = [
   'settings/agent-tokens/agent-tokens.component.html',
   'plugins/plugins.component.html',
   'plugins/slskd/slskd-settings.component.html',
+  'admin/admin.component.html',
 ];
 
 describe('page shell drift guard (issue #384)', () => {

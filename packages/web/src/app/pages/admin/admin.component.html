@@ -1,10 +1,10 @@
 @if (loading()) {
-  <div class="max-w-3xl mx-auto px-3 py-4 md:px-6 md:py-8">
+  <div class="page-shell max-w-3xl">
     <p class="text-theme-muted">{{ 'admin.loadingUsers' | t }}</p>
   </div>
 } @else {
-  <div class="max-w-3xl mx-auto px-3 py-4 md:px-6 md:py-8 space-y-12">
-    <h1 class="text-xl font-bold text-theme-primary">{{ 'admin.title' | t }}</h1>
+  <div class="page-shell max-w-3xl">
+    <h1 class="page-title mb-8">{{ 'admin.title' | t }}</h1>
 
     @if (error()) {
       <div class="mb-6 px-4 py-2.5 rounded-lg text-sm status-error border border-theme">
@@ -34,7 +34,7 @@
           <div role="row" style="display: contents">
             @for (svc of row; track svc) {
               <div
-                class="rounded-xl border border-theme bg-theme-surface p-4 flex items-center justify-between gap-4"
+                class="rounded-xl border border-theme bg-theme-surface/50 p-4 flex items-center justify-between gap-4"
               >
                 <div>
                   <p class="text-sm font-medium text-theme-primary capitalize">{{ svc }}</p>
@@ -164,7 +164,7 @@
     >
       <!-- Library processing (settings + SSE live progress) -->
       <section
-        class="rounded-xl border border-theme bg-theme-surface p-6 mb-8"
+        class="mb-8"
         data-testid="processing-panel"
       >
         <p class="text-xs text-theme-muted mb-5">{{ 'admin.libraryProcessingHint' | t }}</p>
@@ -665,10 +665,7 @@
       </div>
 
       <!-- Library Maintenance: Find Duplicates (moved from Settings) -->
-      <section
-        class="rounded-xl border border-theme bg-theme-surface p-6"
-        data-testid="duplicates-panel"
-      >
+      <section data-testid="duplicates-panel">
         <p class="text-sm text-theme-primary mb-1">{{ 'admin.findDuplicates' | t }}</p>
         <p class="text-xs text-theme-muted mb-3">
           {{ 'admin.findDuplicatesHint' | t }}
@@ -772,7 +769,7 @@
         } @else if (incompleteJobs().length === 0) {
           <p class="text-theme-muted text-sm">{{ 'admin.loadingAlbumJobs' | t }}</p>
         } @else {
-          <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
+          <section class="section-flush">
             <table class="w-full text-sm">
               <thead>
                 <tr class="border-b border-theme">
@@ -877,7 +874,7 @@
         } @else if (untracked().length === 0) {
           <p class="text-theme-muted text-sm">{{ 'admin.loadingUntracked' | t }}</p>
         } @else {
-          <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
+          <section class="section-flush">
             <table class="w-full text-sm">
               <thead>
                 <tr class="border-b border-theme">
@@ -925,10 +922,10 @@
     >
       <!-- Streaming / transcoding -->
       <section
-        class="rounded-xl border border-theme bg-theme-surface p-6 mb-8"
+        class="mb-8"
         data-testid="streaming-panel"
       >
-        <h3 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">
+        <h3 class="section-title">
           {{ 'admin.streaming' | t }}
         </h3>
         @if (streaming(); as s) {
@@ -1224,7 +1221,7 @@
         </button>
       </div>
 
-      <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
+      <section class="section-flush">
         <table class="w-full text-sm">
           <thead>
             <tr class="border-b border-theme">
@@ -1385,7 +1382,7 @@
       <!-- Audit log: recent destructive/curation actions. -->
       @if (auditTail().length > 0) {
         <div data-testid="audit-log">
-          <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
+          <section class="section-flush">
             <table class="w-full text-sm">
               <thead>
                 <tr class="border-b border-theme">
