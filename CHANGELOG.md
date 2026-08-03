@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.301](https://github.com/kevinch3/NicotinD/compare/v0.1.300...v0.1.301) (2026-08-03)
+
+### Features
+
+* **web:** collapse Devices and Agent tokens sections into settings-group cards ([8dcb9cd](https://github.com/kevinch3/NicotinD/commit/8dcb9cd843a30399bc737bffb05b4763d76a844f))
+* **web:** collapse Extensions kind sections + plugin cards into settings-group cards ([e5bb614](https://github.com/kevinch3/NicotinD/commit/e5bb6143b595c5b4556375a5e8f15907e88829f0))
+* **web:** collapse the Settings page groups into settings-group cards ([b3f2f50](https://github.com/kevinch3/NicotinD/commit/b3f2f50c6ab4353cb81556a4aa9900876c5aa113))
+* **web:** generalize admin groups into collapsible settings-group cards ([e96e529](https://github.com/kevinch3/NicotinD/commit/e96e52933ca7ec1742db5252fa59b1e78b51110f))
+
+### Bug Fixes
+
+* **web:** collapse the Link device group by default, no exception ([9046c84](https://github.com/kevinch3/NicotinD/commit/9046c843d87239dc57cae813196e8b7a1c907a5d))
+* **web:** match the house redirect shape for the slskd route ([0ea0c6e](https://github.com/kevinch3/NicotinD/commit/0ea0c6e3f1f5c1c10a1038f8533d3b35fc206200))
 ## [0.1.300](https://github.com/kevinch3/NicotinD/compare/v0.1.299...v0.1.300) (2026-08-03)
 
 ### Features
