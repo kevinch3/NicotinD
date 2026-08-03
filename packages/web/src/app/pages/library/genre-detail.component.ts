@@ -26,6 +26,7 @@ import { IconComponent } from '../../components/icon/icon.component';
 import { PreserveService } from '../../services/preserve.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { SongMenuService } from '../../services/song-menu.service';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 
 @Component({
@@ -49,6 +50,7 @@ export class GenreDetailComponent implements OnInit, OnDestroy {
   private playlists = inject(PlaylistService);
   readonly songMenu = inject(SongMenuService);
   private route = inject(ActivatedRoute);
+  private p2r = inject(PullToRefreshService);
 
   readonly loadingGenreSongs = signal(true);
   readonly genreSlug = signal<string | null>(null);
@@ -68,6 +70,11 @@ export class GenreDetailComponent implements OnInit, OnDestroy {
   private songsObserver?: IntersectionObserver;
 
   constructor() {
+    this.p2r.register(() => {
+      const slug = this.route.snapshot.paramMap.get('slug');
+      return slug ? this.loadGenre(slug) : undefined;
+    });
+
     effect(() => {
       const sentinel = this.songsSentinel();
       this.songsObserver?.disconnect();
@@ -111,19 +118,24 @@ export class GenreDetailComponent implements OnInit, OnDestroy {
   // ─── Lifecycle ────────────────────────────────────────────────────
   async ngOnInit(): Promise<void> {
     const slug = this.route.snapshot.paramMap.get('slug');
-    if (slug) {
-      this.genreSlug.set(slug);
-      try {
-        // Fetch the full genre (not just the default page) so "Download" can
-        // preserve the whole list up to the storage cap.
-        const songs = await firstValueFrom(this.api.getSongsByGenre(slug, 5000));
-        this.genreSongs.set(songs);
-      } catch {
-        /* ignore */
-      } finally {
-        this.loadingGenreSongs.set(false);
-      }
-    } else {
+    if (!slug) {
+      this.loadingGenreSongs.set(false);
+      return;
+    }
+    await this.loadGenre(slug);
+  }
+
+  /** Load (or pull-to-refresh reload) the genre's songs. */
+  private async loadGenre(slug: string): Promise<void> {
+    this.genreSlug.set(slug);
+    try {
+      // Fetch the full genre (not just the default page) so "Download" can
+      // preserve the whole list up to the storage cap.
+      const songs = await firstValueFrom(this.api.getSongsByGenre(slug, 5000));
+      this.genreSongs.set(songs);
+    } catch {
+      /* ignore */
+    } finally {
       this.loadingGenreSongs.set(false);
     }
   }

@@ -21,6 +21,7 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { AuthService } from '../../services/auth.service';
 import { PluginService } from '../../services/plugin.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import {
   getSingleDownloadLabel,
   getFolderDownloadLabel,
@@ -223,6 +224,14 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly plugins = inject(PluginService);
   readonly auth = inject(AuthService);
   private autoHunt = inject(AutoHuntService);
+  private p2r = inject(PullToRefreshService);
+
+  constructor() {
+    this.p2r.register(async () => {
+      if (this.linkIntent() || this.loading() || !this.search.query().trim()) return;
+      await this.executeSearch();
+    });
+  }
 
   readonly btnClasses = BUTTON_CLASSES;
   readonly formatDuration = formatDuration;

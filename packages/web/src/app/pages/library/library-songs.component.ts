@@ -226,6 +226,11 @@ export class LibrarySongsComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Pull-to-refresh entry: reload the current source from scratch. */
+  refresh(): Promise<void> {
+    return this.offline() ? this.preserve.refreshList() : this.loadSongs(true);
+  }
+
   // ─── Online fetching ──────────────────────────────────────────────
   setSongSort(sort: SongSort): void {
     if (sort === this.songSort()) return;

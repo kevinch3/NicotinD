@@ -1,22 +1,33 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
+import { vi } from 'vitest';
 import { of } from 'rxjs';
 import { DownloadsComponent } from './downloads.component';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { TransferService } from '../../services/transfer.service';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import type { AcquireJob } from '@nicotind/core';
 
 function setup(opts: { acquireJobs?: AcquireJob[] } = {}) {
   let scanned = false;
+  let registeredHandler: (() => Promise<void> | void) | null = null;
   const transferStub = {
     downloads: signal([]),
     uploads: signal([]),
     acquireJobs: signal(opts.acquireJobs ?? []),
     acquisitionJobs: signal([]),
     libraryDirty: signal(false),
-    kickPoll: () => {},
+    kickPoll: vi.fn().mockResolvedValue(undefined),
+  };
+  const p2rStub = {
+    register: (h: () => Promise<void> | void) => {
+      registeredHandler = h;
+    },
+    refreshing: signal(false),
+    hasHandler: signal(true),
+    trigger: vi.fn(),
   };
 
   TestBed.configureTestingModule({
@@ -35,6 +46,7 @@ function setup(opts: { acquireJobs?: AcquireJob[] } = {}) {
         },
       },
       { provide: TransferService, useValue: transferStub },
+      { provide: PullToRefreshService, useValue: p2rStub },
     ],
     schemas: [NO_ERRORS_SCHEMA],
   });
@@ -43,7 +55,12 @@ function setup(opts: { acquireJobs?: AcquireJob[] } = {}) {
   // required `item` input the JIT harness can't set (NG0950). These tests read
   // the computed signals directly.
   const fixture = TestBed.createComponent(DownloadsComponent);
-  return { component: fixture.componentInstance, wasScanned: () => scanned };
+  return {
+    component: fixture.componentInstance,
+    wasScanned: () => scanned,
+    transferService: transferStub,
+    getRegisteredHandler: () => registeredHandler,
+  };
 }
 
 function job(id: string, state: AcquireJob['state']): AcquireJob {
@@ -95,5 +112,13 @@ describe('DownloadsComponent — active feed', () => {
     const { component } = setup();
     await Promise.resolve();
     expect(component.diskUsage()).toEqual({ total: 1000, free: 400, used: 600 });
+  });
+
+  it('registers a pull-to-refresh handler that kicks a transfer poll', async () => {
+    const { transferService, getRegisteredHandler } = setup();
+    const handler = getRegisteredHandler();
+    expect(handler).not.toBeNull();
+    await handler!();
+    expect(transferService.kickPoll).toHaveBeenCalled();
   });
 });

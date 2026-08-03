@@ -7,6 +7,7 @@ import {
   isElectron,
   isNativeShell,
   serviceWorkerEnabled,
+  isCoarsePointer,
   isTvBuild,
   resolveTvDefaultedPreference,
 } from './platform';
@@ -116,5 +117,22 @@ describe('platform helpers', () => {
     it('an explicit stored "true" wins on a non-TV build too', () => {
       expect(resolveTvDefaultedPreference('true', false)).toBe(true);
     });
+  });
+});
+
+describe('isCoarsePointer', () => {
+  afterEach(() => {
+    delete (globalThis as { matchMedia?: unknown }).matchMedia;
+  });
+
+  it('is false when matchMedia is unavailable (jsdom, SSR)', () => {
+    expect(isCoarsePointer()).toBe(false);
+  });
+
+  it('reflects the (pointer: coarse) media query', () => {
+    (globalThis as { matchMedia?: unknown }).matchMedia = (q: string) => ({
+      matches: q === '(pointer: coarse)',
+    });
+    expect(isCoarsePointer()).toBe(true);
   });
 });

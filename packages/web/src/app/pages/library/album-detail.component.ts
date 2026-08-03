@@ -27,6 +27,7 @@ import {
   GenreDistributionStripComponent,
   type GenreSlice,
 } from '../../components/genre-distribution-strip/genre-distribution-strip.component';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 
 @Component({
@@ -58,7 +59,15 @@ export class AlbumDetailComponent implements OnInit {
   private http = inject(HttpClient);
   private nav = inject(NavigationService);
   readonly preserve = inject(PreserveService);
+  private p2r = inject(PullToRefreshService);
   readonly shareCopied = signal(false);
+
+  constructor() {
+    this.p2r.register(() => {
+      const id = this.route.snapshot.paramMap.get('id');
+      return id ? this.loadAlbum(id) : undefined;
+    });
+  }
 
   /** Human label for a licence code (badge on the album header). */
   licenceLabel(code: string): string {
@@ -128,19 +137,24 @@ export class AlbumDetailComponent implements OnInit {
   // ─── Lifecycle ────────────────────────────────────────────────────
   async ngOnInit(): Promise<void> {
     const albumId = this.route.snapshot.paramMap.get('id');
-    if (albumId) {
-      try {
-        const detail = await firstValueFrom(this.api.getAlbum(albumId));
-        this.selectedAlbum.set(detail);
-      } catch {
-        /* ignore */
-      } finally {
-        this.loadingAlbum.set(false);
-      }
-      this.loadGenreDistribution(albumId);
-    } else {
+    if (!albumId) {
+      this.loadingAlbum.set(false);
+      return;
+    }
+    await this.loadAlbum(albumId);
+  }
+
+  /** Load (or pull-to-refresh reload) the album. */
+  private async loadAlbum(albumId: string): Promise<void> {
+    try {
+      const detail = await firstValueFrom(this.api.getAlbum(albumId));
+      this.selectedAlbum.set(detail);
+    } catch {
+      /* ignore */
+    } finally {
       this.loadingAlbum.set(false);
     }
+    this.loadGenreDistribution(albumId);
   }
 
   private async loadGenreDistribution(albumId: string): Promise<void> {

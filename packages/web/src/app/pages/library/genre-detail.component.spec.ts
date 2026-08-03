@@ -11,6 +11,7 @@ import { asRole, canCurate as canCurateRole } from '../../../types/core';
 import { PlayerService } from '../../services/player.service';
 import { PreserveService } from '../../services/preserve.service';
 import { PlaylistService } from '../../services/playlist.service';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 
 const MOCK_SONGS: Song[] = [
   {
@@ -58,16 +59,32 @@ function setup(opts: { role?: 'admin' | 'user'; deleteSongs?: ReturnType<typeof 
   };
   const openPicker = vi.fn();
   const deleteSongs = opts.deleteSongs ?? vi.fn(() => of({ ok: true, deletedCount: 0 }));
+  const getSongsByGenreCalls: string[] = [];
+  const getSongsByGenre = vi.fn((slug: string) => {
+    getSongsByGenreCalls.push(slug);
+    return of(MOCK_SONGS);
+  });
+
+  let registeredHandler: (() => Promise<void> | void) | null = null;
+  const p2rStub = {
+    register: (h: () => Promise<void> | void) => {
+      registeredHandler = h;
+    },
+    refreshing: signal(false),
+    hasHandler: signal(true),
+    trigger: vi.fn(),
+  };
 
   TestBed.configureTestingModule({
     imports: [GenreDetailComponent],
     providers: [
       provideRouter([]),
+      { provide: PullToRefreshService, useValue: p2rStub },
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'Reggae' } } } },
       {
         provide: LibraryApiService,
         useValue: {
-          getSongsByGenre: () => of(MOCK_SONGS),
+          getSongsByGenre,
           deleteSongs,
         },
       },
@@ -94,6 +111,8 @@ function setup(opts: { role?: 'admin' | 'user'; deleteSongs?: ReturnType<typeof 
     preserve,
     openPicker,
     deleteSongs,
+    getSongsByGenreCalls,
+    getRegisteredHandler: () => registeredHandler,
   };
 }
 
@@ -308,5 +327,18 @@ describe('GenreDetailComponent — Bulk delete', () => {
     component.deleteSelectedSongs();
     expect(component.confirmCallback()).toBeNull();
     expect(deleteSongs).not.toHaveBeenCalled();
+  });
+});
+
+describe('GenreDetailComponent — pull-to-refresh', () => {
+  it('re-fetches the genre songs from the route slug', async () => {
+    const { getSongsByGenreCalls, getRegisteredHandler } = setup();
+    getSongsByGenreCalls.length = 0;
+
+    const handler = getRegisteredHandler();
+    expect(handler).toBeTruthy();
+    await handler!();
+
+    expect(getSongsByGenreCalls).toEqual(['Reggae']);
   });
 });

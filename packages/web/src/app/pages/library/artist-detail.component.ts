@@ -59,6 +59,7 @@ import { appendUnique } from '../../lib/append-unique';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 import { NavigationService } from '../../services/navigation.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 
@@ -104,6 +105,15 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   readonly songMenu = inject(SongMenuService);
   private nav = inject(NavigationService);
   protected autoHunt = inject(AutoHuntService);
+  private p2r = inject(PullToRefreshService);
+
+  constructor() {
+    this.p2r.register(() => {
+      if (!this.artistId) return;
+      this.api.invalidateLibraryReads();
+      return this.loadArtist(this.artistId);
+    });
+  }
 
   // Return to the previous in-app view, falling back to the library grid.
   goBack(): void {

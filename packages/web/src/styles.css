@@ -15,6 +15,17 @@
     touch-action: manipulation;
   }
 
+  /* Suppress Chrome-Android's native pull-to-refresh (a full SPA reload) so the
+     in-app refresher (lib/pull-to-refresh.ts) owns the gesture. `contain` — not
+     `none` — only blocks scroll-chaining/navigation actions, so the iOS
+     WKWebView rubber-band survives. Scoped to coarse pointers so desktop
+     two-finger swipe-back navigation is untouched. */
+  @media (pointer: coarse) {
+    html {
+      overscroll-behavior-y: contain;
+    }
+  }
+
   /* Midnight (default — values match current hardcoded zinc classes) */
   :root,
   [data-theme="midnight"] {

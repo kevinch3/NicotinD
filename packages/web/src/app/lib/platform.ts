@@ -94,6 +94,12 @@ export function serviceWorkerEnabled(devMode: boolean, nativeShell: boolean): bo
   return !devMode && !nativeShell;
 }
 
+/** True on devices whose primary pointer is coarse (touch phones/tablets).
+ *  Gates touch-only affordances like pull-to-refresh. */
+export function isCoarsePointer(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+}
+
 /**
  * True only in a build made with the Angular "tv" configuration
  * (`ng build --configuration tv`), baked in via environment.tv.ts. Used to

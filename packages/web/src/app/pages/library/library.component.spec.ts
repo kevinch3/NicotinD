@@ -10,6 +10,7 @@ import { PlaylistService } from '../../services/playlist.service';
 import { ConfirmService } from '../../services/confirm.service';
 import { TransferService } from '../../services/transfer.service';
 import { ListControlsService } from '../../services/list-controls.service';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import type { PlaylistSummary } from '../../services/api/api-types';
 
 function setup(
@@ -44,28 +45,33 @@ function setup(
   const playlistDelete = vi.fn().mockResolvedValue(undefined);
   const playlistCreate = vi.fn().mockResolvedValue({ id: 'new-pl' } as PlaylistSummary);
   const confirmAsk = vi.fn().mockResolvedValue(opts.confirmResult ?? true);
+  const playlistRefresh = vi.fn().mockResolvedValue(undefined);
+  let registeredHandler: (() => Promise<void> | void) | null = null;
+  const p2rStub = {
+    register: (h: () => Promise<void> | void) => {
+      registeredHandler = h;
+    },
+    refreshing: signal(false),
+    hasHandler: signal(true),
+    trigger: vi.fn(),
+  };
+
+  const api = {
+    getAlbums: (type: string, _size: number, _offset: number, opts: Record<string, unknown>) => {
+      albumCalls.push({ type, opts });
+      return of([]);
+    },
+    getArtists: vi.fn(() => of([])),
+    getSingles: vi.fn(() => of([])),
+    getCompilations: vi.fn(() => of([])),
+    getGenres: vi.fn(() => of([])),
+    invalidateLibraryReads: vi.fn(),
+  };
 
   TestBed.configureTestingModule({
     imports: [LibraryComponent],
     providers: [
-      {
-        provide: LibraryApiService,
-        useValue: {
-          getAlbums: (
-            type: string,
-            _size: number,
-            _offset: number,
-            opts: Record<string, unknown>,
-          ) => {
-            albumCalls.push({ type, opts });
-            return of([]);
-          },
-          getArtists: () => of([]),
-          getSingles: () => of([]),
-          getCompilations: () => of([]),
-          getGenres: () => of([]),
-        },
-      },
+      { provide: LibraryApiService, useValue: api },
       {
         provide: AuthService,
         useValue: { token: signal('tok'), role: () => 'user', canCurate: () => false },
@@ -73,7 +79,7 @@ function setup(
       {
         provide: PlaylistService,
         useValue: {
-          refresh: () => Promise.resolve(),
+          refresh: playlistRefresh,
           playlists: playlistsSignal,
           loaded: signal(true),
           create: playlistCreate,
@@ -81,6 +87,7 @@ function setup(
           delete: playlistDelete,
         },
       },
+      { provide: PullToRefreshService, useValue: p2rStub },
       { provide: ConfirmService, useValue: { ask: confirmAsk } },
       { provide: TransferService, useValue: { clearLibraryDirty: () => {} } },
       {
@@ -125,6 +132,9 @@ function setup(
     playlistDelete,
     playlistCreate,
     confirmAsk,
+    api,
+    playlistService: { refresh: playlistRefresh },
+    getRegisteredHandler: () => registeredHandler,
   };
 }
 
@@ -172,6 +182,32 @@ describe('LibraryComponent — standardized metadata filters', () => {
     await component.onFilterChange({ starred: true });
     expect(albumCalls.length).toBeGreaterThan(before); // albums (active) refetched
     expect(component.singlesFetched()).toBe(false); // others lazily refetch on switch
+  });
+});
+
+describe('LibraryComponent — pull-to-refresh', () => {
+  it('registers a pull-to-refresh handler that refetches the active tab and stale-marks the rest', async () => {
+    const { component, api, getRegisteredHandler } = setup();
+    await component.ngOnInit();
+    component.libraryMode.set('artists');
+    component.singlesFetched.set(true);
+    component.compilationsFetched.set(true);
+    const handler = getRegisteredHandler();
+    expect(handler).not.toBeNull();
+    await handler!();
+    expect(api.invalidateLibraryReads).toHaveBeenCalled();
+    expect(api.getArtists).toHaveBeenCalled();
+    expect(component.singlesFetched()).toBe(false);
+    expect(component.compilationsFetched()).toBe(false);
+  });
+
+  it('pull-to-refresh on the playlists tab refreshes playlists', async () => {
+    const { component, playlistService, getRegisteredHandler } = setup();
+    await component.ngOnInit();
+    component.libraryMode.set('playlists');
+    const handler = getRegisteredHandler();
+    await handler!();
+    expect(playlistService.refresh).toHaveBeenCalled();
   });
 });
 

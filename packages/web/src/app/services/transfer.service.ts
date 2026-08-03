@@ -187,13 +187,15 @@ export class TransferService {
     this.hasPolled = false;
   }
 
-  /** Immediately fires a poll and resets the adaptive timer. Call after initiating a download. */
-  kickPoll(): void {
+  /** Immediately fires a poll and resets the adaptive timer. Call after
+   *  initiating a download; resolves when the poll round-trip completes
+   *  (pull-to-refresh awaits it so the spinner reflects real work). */
+  kickPoll(): Promise<void> {
     if (this.timerId) {
       clearTimeout(this.timerId);
       this.timerId = null;
     }
-    void this.tick();
+    return this.tick();
   }
 
   getStatus(username: string, filename: string): TransferEntry | undefined {

@@ -9,6 +9,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { TransferService } from '../../services/transfer.service';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import type { PlaylistDetail, Song } from '../../services/api/api-types';
 
 const SONG = (id: string): Song => ({
@@ -41,12 +42,23 @@ function setup(playlist: PlaylistDetail = PLAYLIST) {
   const getProposals = vi.fn(() => Promise.resolve<Song[]>([]));
   const get = vi.fn(() => Promise.resolve({ ...playlist, songs: [...playlist.songs] }));
 
+  let registeredHandler: (() => Promise<void> | void) | null = null;
+  const p2rStub = {
+    register: (h: () => Promise<void> | void) => {
+      registeredHandler = h;
+    },
+    refreshing: signal(false),
+    hasHandler: signal(true),
+    trigger: vi.fn(),
+  };
+
   TestBed.configureTestingModule({
     imports: [PlaylistDetailComponent],
     providers: [
       provideRouter([]),
       provideHttpClient(),
       provideHttpClientTesting(),
+      { provide: PullToRefreshService, useValue: p2rStub },
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'pl1' } } } },
       { provide: AuthService, useValue: { token: signal('tok'), role: () => 'user' } },
       { provide: PlayerService, useValue: { play: () => {}, playWithContext: () => {} } },
@@ -74,6 +86,7 @@ function setup(playlist: PlaylistDetail = PLAYLIST) {
     getProposals,
     get,
     httpMock,
+    getRegisteredHandler: () => registeredHandler,
   };
 }
 
@@ -210,5 +223,19 @@ describe('PlaylistDetailComponent — sharing', () => {
 
     httpMock.expectNone('/api/share');
     httpMock.verify();
+  });
+});
+
+describe('PlaylistDetailComponent — pull-to-refresh', () => {
+  it('re-fetches the playlist', async () => {
+    const { get, getRegisteredHandler } = setup();
+    await Promise.resolve(); // ngOnInit get()
+    get.mockClear();
+
+    const handler = getRegisteredHandler();
+    expect(handler).toBeTruthy();
+    await handler!();
+
+    expect(get).toHaveBeenCalledWith('pl1');
   });
 });
