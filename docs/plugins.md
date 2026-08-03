@@ -332,8 +332,9 @@ Uploads()`, `options.get()` (new JSON options accessor), and `application.getInf
   Settings → Extensions management UI + capability-gating of the web surfaces.
 - **Decoupling refactor** _(done)_ — core **Settings** page slimmed to universal prefs only;
   server-admin tools (streaming, library processing, find-duplicates) moved to **Admin**; slskd
-  config + a new live status panel moved to its own **extension page**. See "Per-extension settings
-  surface" above and [docs/admin-settings-decoupling.md](admin-settings-decoupling.md).
+  config + a new live status panel embedded inline in its own collapsible Extensions card (no
+  dedicated route). See "Per-extension bespoke settings, embedded inline" above and
+  [docs/admin-settings-decoupling.md](admin-settings-decoupling.md).
 - **E** _(scaffolded, not shipped)_ — connectivity kind (tailscale/wireguard). The contracts,
   registry, and UI handle the kind generically; a real connectivity plugin can be registered in
   `index.ts` with no further wiring. Per current direction, none is integrated yet.
