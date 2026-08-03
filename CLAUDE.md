@@ -959,12 +959,17 @@ Add detail there, not here.
   with an augmented PATH (`acquireEnv`: bundled-ffmpeg dir + brew/pip bins — GUI apps inherit a
   minimal PATH) + an admin-editable `binaryPath` field; embedded slskd auto-shares the music dir
   (merge-preserving `slskd.yml` regeneration). UI labelled **Extensions**, one section per kind
-  (Acquisition / Metadata / Connectivity) — icon-headed section groupings, each card showing one
-  unified derived status pill (off/needs-config/unavailable/ready), and Connectivity hides itself
-  when empty — the web `PluginKind` union mirrors the core one and a
-  kind missing from **either** renders its plugins nowhere; extensions with bespoke config own a
-  dedicated settings page via `PLUGIN_DETAIL_ROUTES` (first: slskd, which shows a not-reachable
-  notice when slskd is down). All first-party plugins are constructed in `registerBuiltinPlugins`
+  (Acquisition / Metadata / Connectivity) — each a collapsible `SettingsGroupComponent` card
+  (groupIds `plugins-acquisition`/`plugins-metadata`/`plugins-connectivity`), and each plugin itself
+  a collapsible `PluginCardComponent` (header row — name, one unified derived status pill
+  off/needs-config/unavailable/ready, Enable/Disable — always visible; description/capabilities/
+  config form behind the card's own toggle), and Connectivity hides itself when empty — the web
+  `PluginKind` union mirrors the core one and a kind missing from **either** renders its plugins
+  nowhere. Extensions with bespoke config no longer get a separate route: slskd's settings
+  (`SlskdSettingsComponent`, connection/shares/live status, shows a not-reachable notice when slskd
+  is down) are embedded inline in its own card body once expanded, so its ~3s status poll only runs
+  while that card is open (`/settings/plugins/slskd` now just redirects to `/settings/plugins`). All
+  first-party plugins are constructed in `registerBuiltinPlugins`
   (`services/plugins/builtin.ts`), not inline in `index.ts`, so cross-plugin construction deps
   (spotdl reading spotify's creds) are covered by a test. → [docs/plugins.md](docs/plugins.md)
 - **Discogs metadata plugin (genre + artist-info)**: `metadata`-kind, default-off + consent-gated

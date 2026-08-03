@@ -30,75 +30,76 @@
   }
 
   @if (acquisitionEnabled()) {
-    <section class="mb-10" data-testid="extensions-acquisition-section" appTvNavGroup axis="vertical">
-      <app-settings-group-header
-        icon="download"
-        title="Acquisition"
-        description="Soulseek, yt-dlp, and other download sources"
-      />
-      @for (p of plugins.acquisition(); track p.id) {
-        <app-plugin-card
-          [plugin]="p"
-          [busy]="busy()"
-          [detailRoute]="detailRoute(p.id)"
-          [draft]="draftFor(p.id)"
-          (toggle)="toggle($event)"
-          (save)="saveConfig($event)"
-          (fieldChange)="setField(p.id, $event.key, $event.value)"
-        />
-      }
-      @if (plugins.acquisition().length === 0) {
-        <p class="text-sm text-theme-muted">No acquisition plugins registered.</p>
-      }
-    </section>
+    <app-settings-group
+      data-testid="extensions-acquisition-section"
+      groupId="plugins-acquisition"
+      icon="download"
+      title="Acquisition"
+      description="Soulseek, yt-dlp, and other download sources"
+    >
+      <div appTvNavGroup axis="vertical">
+        @for (p of plugins.acquisition(); track p.id) {
+          <app-plugin-card
+            [plugin]="p"
+            [busy]="busy()"
+            [draft]="draftFor(p.id)"
+            (toggle)="toggle($event)"
+            (save)="saveConfig($event)"
+            (fieldChange)="setField(p.id, $event.key, $event.value)"
+          />
+        }
+        @if (plugins.acquisition().length === 0) {
+          <p class="text-sm text-theme-muted">No acquisition plugins registered.</p>
+        }
+      </div>
+    </app-settings-group>
   }
 
-  <section
-    class="mb-10"
+  <app-settings-group
     data-testid="extensions-metadata-section"
-    appTvNavGroup
-    axis="vertical"
+    groupId="plugins-metadata"
+    icon="tag"
+    title="Metadata"
+    description="Genre, lyrics, and metadata lookups"
   >
-    <app-settings-group-header
-      icon="tag"
-      title="Metadata"
-      description="Genre, lyrics, and metadata lookups"
-    />
-    @for (p of plugins.metadata(); track p.id) {
-      <app-plugin-card
-        [plugin]="p"
-        [busy]="busy()"
-        [detailRoute]="detailRoute(p.id)"
-        [draft]="draftFor(p.id)"
-        (toggle)="toggle($event)"
-        (save)="saveConfig($event)"
-        (fieldChange)="setField(p.id, $event.key, $event.value)"
-      />
-    }
-    @if (plugins.metadata().length === 0) {
-      <p class="text-sm text-theme-muted">No metadata extensions registered.</p>
-    }
-  </section>
-
-  @if (plugins.connectivity().length > 0) {
-    <section class="mb-10" data-testid="extensions-connectivity-section" appTvNavGroup axis="vertical">
-      <app-settings-group-header
-        icon="wifi"
-        title="Connectivity"
-        description="Remote access and network tools"
-      />
-      @for (p of plugins.connectivity(); track p.id) {
+    <div appTvNavGroup axis="vertical">
+      @for (p of plugins.metadata(); track p.id) {
         <app-plugin-card
           [plugin]="p"
           [busy]="busy()"
-          [detailRoute]="detailRoute(p.id)"
           [draft]="draftFor(p.id)"
           (toggle)="toggle($event)"
           (save)="saveConfig($event)"
           (fieldChange)="setField(p.id, $event.key, $event.value)"
         />
       }
-    </section>
+      @if (plugins.metadata().length === 0) {
+        <p class="text-sm text-theme-muted">No metadata extensions registered.</p>
+      }
+    </div>
+  </app-settings-group>
+
+  @if (plugins.connectivity().length > 0) {
+    <app-settings-group
+      data-testid="extensions-connectivity-section"
+      groupId="plugins-connectivity"
+      icon="wifi"
+      title="Connectivity"
+      description="Remote access and network tools"
+    >
+      <div appTvNavGroup axis="vertical">
+        @for (p of plugins.connectivity(); track p.id) {
+          <app-plugin-card
+            [plugin]="p"
+            [busy]="busy()"
+            [draft]="draftFor(p.id)"
+            (toggle)="toggle($event)"
+            (save)="saveConfig($event)"
+            (fieldChange)="setField(p.id, $event.key, $event.value)"
+          />
+        }
+      </div>
+    </app-settings-group>
   }
 
 </div>

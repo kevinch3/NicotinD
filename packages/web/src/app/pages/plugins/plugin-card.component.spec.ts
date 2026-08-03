@@ -1,7 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { of } from 'rxjs';
 import { PluginCardComponent } from './plugin-card.component';
-import type { PluginInfo } from '../../services/plugin.service';
+import { PluginService, type PluginInfo } from '../../services/plugin.service';
+import { SystemApiService } from '../../services/api/system-api.service';
 
 function basePlugin(overrides: Partial<PluginInfo>): PluginInfo {
   return {
@@ -56,5 +58,94 @@ describe('PluginCardComponent — unified status pill', () => {
   it('renders only one status pill, not the old two-badge combination', () => {
     const el = render(basePlugin({ enabled: true, needsConfig: false, available: false }));
     expect(el.querySelectorAll('[data-testid="plugin-status"]').length).toBe(1);
+  });
+});
+
+/**
+ * Task 4 (settings-cards unification): the card's description/capabilities/
+ * config form collapse into a body toggled independently of the always-visible
+ * Enable/Disable button, persisted per-device like `SettingsGroupComponent`.
+ */
+describe('PluginCardComponent — collapsible body', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('is collapsed by default (no body rendered)', () => {
+    const el = render(basePlugin({ description: 'A plugin for testing.' }));
+    expect(el.querySelector('[data-testid="plugin-card-body"]')).toBeNull();
+    expect(
+      el.querySelector('[data-testid="plugin-card-toggle"]')?.getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
+  it('expands the body when the toggle is clicked, and persists the state', () => {
+    const fixture = TestBed.createComponent(PluginCardComponent);
+    fixture.componentInstance.plugin = basePlugin({ description: 'A plugin for testing.' });
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+
+    const toggle = el.querySelector<HTMLButtonElement>('[data-testid="plugin-card-toggle"]')!;
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    const body = el.querySelector('[data-testid="plugin-card-body"]');
+    expect(body).not.toBeNull();
+    expect(body!.textContent).toContain('A plugin for testing.');
+    expect(localStorage.getItem('nicotind-group-plugin-test-plugin')).toBe('true');
+  });
+
+  it('keeps the Enable/Disable button clickable while collapsed', () => {
+    const el = render(basePlugin({ enabled: false }));
+    const toggleBtn = el.querySelector<HTMLButtonElement>('[data-testid="plugin-toggle"]')!;
+    expect(el.querySelector('[data-testid="plugin-card-body"]')).toBeNull();
+    expect(toggleBtn.disabled).toBe(false);
+    // The Enable/Disable button must not be nested inside the collapsible
+    // toggle button (invalid HTML — nested interactive elements — and it
+    // would also toggle the body open on every enable/disable click).
+    const cardToggle = el.querySelector('[data-testid="plugin-card-toggle"]')!;
+    expect(cardToggle.contains(toggleBtn)).toBe(false);
+  });
+
+  it('embeds app-slskd-settings only for the slskd plugin, and only when expanded', () => {
+    // Expanding the slskd card mounts SlskdSettingsComponent, which injects
+    // PluginService + SystemApiService directly (no card-level provider) —
+    // stub both so its ngOnInit doesn't hit the real HttpClient.
+    TestBed.configureTestingModule({
+      imports: [PluginCardComponent],
+      providers: [
+        provideRouter([]),
+        {
+          provide: PluginService,
+          useValue: { hasSlskd: () => false, getSlskdStatus: () => of(null) },
+        },
+        {
+          provide: SystemApiService,
+          useValue: {
+            getSoulseekSettings: () => of({ username: '', configured: false, connected: false }),
+            getShares: () => of({ directories: [] }),
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(PluginCardComponent);
+    fixture.componentInstance.plugin = basePlugin({ id: 'slskd', name: 'Soulseek' });
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.querySelector('app-slskd-settings')).toBeNull();
+
+    el.querySelector<HTMLButtonElement>('[data-testid="plugin-card-toggle"]')!.click();
+    fixture.detectChanges();
+    expect(el.querySelector('app-slskd-settings')).not.toBeNull();
+  });
+
+  it('does not embed app-slskd-settings for a non-slskd plugin, even expanded', () => {
+    const fixture = TestBed.createComponent(PluginCardComponent);
+    fixture.componentInstance.plugin = basePlugin({ id: 'discogs' });
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    el.querySelector<HTMLButtonElement>('[data-testid="plugin-card-toggle"]')!.click();
+    fixture.detectChanges();
+    expect(el.querySelector('app-slskd-settings')).toBeNull();
   });
 });

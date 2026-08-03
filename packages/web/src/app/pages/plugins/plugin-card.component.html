@@ -2,57 +2,59 @@
   class="mb-3 p-4 rounded-xl bg-theme-surface border border-theme"
   data-testid="plugin-card"
   [attr.data-plugin-id]="plugin.id"
+  [attr.data-group-id]="groupId()"
 >
   <div class="flex items-start justify-between gap-4">
-    <div class="min-w-0">
-      <div class="flex items-center gap-2 flex-wrap">
-        <span class="font-medium text-theme-primary">{{ plugin.name }}</span>
-        @switch (status()) {
-          @case ('off') {
-            <span
-              data-testid="plugin-status"
-              class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-muted"
-              >Off</span
-            >
+    <button
+      type="button"
+      (click)="toggleOpen()"
+      data-testid="plugin-card-toggle"
+      [attr.aria-expanded]="isOpen()"
+      class="min-w-0 flex-1 flex items-start gap-2 text-left"
+    >
+      <span class="min-w-0 flex-1">
+        <span class="flex items-center gap-2 flex-wrap">
+          <span class="font-medium text-theme-primary">{{ plugin.name }}</span>
+          @switch (status()) {
+            @case ('off') {
+              <span
+                data-testid="plugin-status"
+                class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-muted"
+                >Off</span
+              >
+            }
+            @case ('needs-config') {
+              <span
+                data-testid="plugin-status"
+                class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-warn"
+                >Needs config</span
+              >
+            }
+            @case ('unavailable') {
+              <span
+                data-testid="plugin-status"
+                class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-warn"
+                >Unavailable</span
+              >
+            }
+            @case ('ready') {
+              <span
+                data-testid="plugin-status"
+                class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-done"
+                >Ready</span
+              >
+            }
           }
-          @case ('needs-config') {
-            <span
-              data-testid="plugin-status"
-              class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-warn"
-              >Needs config</span
-            >
-          }
-          @case ('unavailable') {
-            <span
-              data-testid="plugin-status"
-              class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-warn"
-              >Unavailable</span
-            >
-          }
-          @case ('ready') {
-            <span
-              data-testid="plugin-status"
-              class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-done"
-              >Ready</span
-            >
-          }
-        }
-      </div>
-      <p class="text-sm text-theme-secondary mt-1">{{ plugin.description }}</p>
-      <div class="flex gap-1.5 mt-2 flex-wrap">
-        @for (cap of plugin.capabilities; track cap) {
-          <span class="text-[10px] px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-secondary">{{
-            cap
-          }}</span>
-        }
-      </div>
-      @if (plugin.enabled && !plugin.available && missingBinaries(); as binaries) {
-        <p class="text-xs text-status-warn mt-2">
-          Not found: {{ binaries }} — install it, or set its full path in the settings below and
-          save.
-        </p>
-      }
-    </div>
+        </span>
+      </span>
+      <span
+        class="text-theme-muted transition-transform flex-shrink-0 mt-0.5"
+        [style.transform]="isOpen() ? 'rotate(180deg)' : 'rotate(0deg)'"
+        aria-hidden="true"
+      >
+        <app-icon name="back" [size]="14" style="transform: rotate(-90deg); display: inline-block" />
+      </span>
+    </button>
     <div class="shrink-0 flex flex-col items-end gap-2">
       <button
         (click)="toggle.emit(plugin)"
@@ -68,62 +70,78 @@
       >
         {{ plugin.enabled ? 'Disable' : 'Enable' }}
       </button>
-      @if (detailRoute; as route) {
-        <a
-          [routerLink]="route"
-          appTvNavItem
-          data-testid="plugin-configure"
-          class="text-xs text-theme-accent hover:underline"
-          >Configure &rarr;</a
-        >
-      }
     </div>
   </div>
 
-  @if (plugin.configFields?.length) {
-    <form
-      (ngSubmit)="save.emit(plugin)"
-      class="mt-4 pt-4 border-t border-theme space-y-3"
-      data-testid="plugin-config-form"
-    >
-      @if (plugin.id === 'spotdl') {
-        <p class="text-xs text-theme-muted" data-testid="spotdl-uses-spotify-credentials">
-          Uses the credentials from the <strong>Spotify</strong> card above to authenticate Spotify
-          metadata calls. Without them, spotDL falls back to its built-in shared client.
+  @if (isOpen()) {
+    <div data-testid="plugin-card-body" class="mt-3">
+      <p class="text-sm text-theme-secondary">{{ plugin.description }}</p>
+      <div class="flex gap-1.5 mt-2 flex-wrap">
+        @for (cap of plugin.capabilities; track cap) {
+          <span class="text-[10px] px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-secondary">{{
+            cap
+          }}</span>
+        }
+      </div>
+      @if (plugin.enabled && !plugin.available && missingBinaries(); as binaries) {
+        <p class="text-xs text-status-warn mt-2">
+          Not found: {{ binaries }} — install it, or set its full path in the settings below and
+          save.
         </p>
       }
-      @for (f of plugin.configFields; track f.key) {
-        <label class="block">
-          <span class="text-xs text-theme-secondary">
-            {{ f.label }}
-            @if (f.type === 'password' && plugin.configured?.[f.key]) {
-              <span class="text-status-done">&bull; configured</span>
-            }
-          </span>
-          <input
-            [type]="f.type === 'password' ? 'password' : 'text'"
-            [placeholder]="f.placeholder ?? ''"
-            [ngModel]="draftValue(f.key)"
-            (ngModelChange)="fieldChange.emit({ key: f.key, value: $event })"
-            [name]="plugin.id + '-' + f.key"
-            [attr.data-testid]="'plugin-config-' + f.key"
-            autocomplete="off"
-            class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface border border-theme text-sm text-theme-primary focus:outline-none focus:border-theme-accent"
-          />
-          @if (f.help) {
-            <span class="text-[11px] text-theme-muted mt-1 block">{{ f.help }}</span>
+
+      @if (plugin.configFields?.length) {
+        <form
+          (ngSubmit)="save.emit(plugin)"
+          class="mt-4 pt-4 border-t border-theme space-y-3"
+          data-testid="plugin-config-form"
+        >
+          @if (plugin.id === 'spotdl') {
+            <p class="text-xs text-theme-muted" data-testid="spotdl-uses-spotify-credentials">
+              Uses the credentials from the <strong>Spotify</strong> card above to authenticate
+              Spotify metadata calls. Without them, spotDL falls back to its built-in shared client.
+            </p>
           }
-        </label>
+          @for (f of plugin.configFields; track f.key) {
+            <label class="block">
+              <span class="text-xs text-theme-secondary">
+                {{ f.label }}
+                @if (f.type === 'password' && plugin.configured?.[f.key]) {
+                  <span class="text-status-done">&bull; configured</span>
+                }
+              </span>
+              <input
+                [type]="f.type === 'password' ? 'password' : 'text'"
+                [placeholder]="f.placeholder ?? ''"
+                [ngModel]="draftValue(f.key)"
+                (ngModelChange)="fieldChange.emit({ key: f.key, value: $event })"
+                [name]="plugin.id + '-' + f.key"
+                [attr.data-testid]="'plugin-config-' + f.key"
+                autocomplete="off"
+                class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface border border-theme text-sm text-theme-primary focus:outline-none focus:border-theme-accent"
+              />
+              @if (f.help) {
+                <span class="text-[11px] text-theme-muted mt-1 block">{{ f.help }}</span>
+              }
+            </label>
+          }
+          <button
+            type="submit"
+            [disabled]="busy"
+            appTvNavItem
+            data-testid="plugin-config-save"
+            class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-surface-2 text-theme-primary hover:bg-theme-hover disabled:opacity-50"
+          >
+            Save
+          </button>
+        </form>
       }
-      <button
-        type="submit"
-        [disabled]="busy"
-        appTvNavItem
-        data-testid="plugin-config-save"
-        class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-surface-2 text-theme-primary hover:bg-theme-hover disabled:opacity-50"
-      >
-        Save
-      </button>
-    </form>
+
+      @if (plugin.id === 'slskd') {
+        <div class="mt-4 pt-4 border-t border-theme">
+          <app-slskd-settings />
+        </div>
+      }
+    </div>
   }
 </div>
