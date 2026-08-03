@@ -1,17 +1,40 @@
 import { test, expect } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+import { expandGroup } from '../helpers';
+
+/**
+ * Task 4 (settings-cards unification): every kind section is a collapsible
+ * `app-settings-group` and every plugin card is itself collapsible, both
+ * collapsed by default — so a spec that needs to see a card, or a card's
+ * body content (config form, embedded slskd settings), must expand both
+ * levels first.
+ */
+async function expandCard(card: Locator): Promise<void> {
+  const toggle = card.getByTestId('plugin-card-toggle');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+}
+
+/** The card lives inside its kind group's body — expand the group first, or
+ *  the card locator itself never resolves. */
+async function openPluginCard(page: Page, groupId: string, pluginId: string): Promise<Locator> {
+  await expandGroup(page, groupId);
+  const card = page.locator(`[data-testid="plugin-card"][data-plugin-id="${pluginId}"]`);
+  await expect(card).toBeVisible();
+  await expandCard(card);
+  return card;
+}
 
 /**
  * The compliance-critical contract: acquisition UI only appears when a backing
  * plugin is enabled. yt-dlp is a consent-gated `resolve` plugin, default-off.
  */
 test.describe('plugin capability gating', () => {
-  const ytdlpCard = (page: import('@playwright/test').Page) =>
-    page.locator('[data-testid="plugin-card"][data-plugin-id="ytdlp"]');
+  const ytdlpCard = async (page: Page) => openPluginCard(page, 'plugins-acquisition', 'ytdlp');
 
   test.afterEach(async ({ page }) => {
     // Leave yt-dlp disabled so the suite stays order-independent.
     await page.goto('/settings/plugins');
-    const card = ytdlpCard(page);
+    const card = await ytdlpCard(page);
     if ((await card.getByTestId('plugin-toggle').textContent())?.trim() === 'Disable') {
       await card.getByTestId('plugin-toggle').click();
       await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
@@ -34,7 +57,7 @@ test.describe('plugin capability gating', () => {
 
     // Enable yt-dlp (consent-gated) on the admin plugins page.
     await page.goto('/settings/plugins');
-    const card = ytdlpCard(page);
+    const card = await ytdlpCard(page);
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
     await card.getByTestId('plugin-toggle').click();
     await page.getByTestId('confirm-ok').click(); // acknowledge the disclaimer
@@ -47,8 +70,9 @@ test.describe('plugin capability gating', () => {
 
     // Disabling it removes the capability again.
     await page.goto('/settings/plugins');
-    await card.getByTestId('plugin-toggle').click();
-    await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
+    const card2 = await ytdlpCard(page);
+    await card2.getByTestId('plugin-toggle').click();
+    await expect(card2.getByTestId('plugin-toggle')).toHaveText('Enable');
     await page.goto('/search');
     await pasteUrl();
     await expect(page.getByTestId('link-intent-card')).toHaveCount(0);
@@ -56,8 +80,7 @@ test.describe('plugin capability gating', () => {
 
   test('the archive.org plugin ships registered and default-off', async ({ page }) => {
     await page.goto('/settings/plugins');
-    const card = page.locator('[data-testid="plugin-card"][data-plugin-id="archive"]');
-    await expect(card).toBeVisible();
+    const card = await openPluginCard(page, 'plugins-acquisition', 'archive');
     // Compliance posture: a fresh install enables nothing.
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
   });
@@ -66,8 +89,7 @@ test.describe('plugin capability gating', () => {
     page,
   }) => {
     await page.goto('/settings/plugins');
-    const card = page.locator('[data-testid="plugin-card"][data-plugin-id="spotify"]');
-    await expect(card).toBeVisible();
+    const card = await openPluginCard(page, 'plugins-acquisition', 'spotify');
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
     // The generic config-field form renders the Spotify API credentials, with the
     // secret as a write-only password input.
@@ -85,24 +107,26 @@ test.describe('plugin capability gating', () => {
   // it, disable it, or read what it does.
   test('the LRCLIB metadata extension is visible and manageable', async ({ page }) => {
     await page.goto('/settings/plugins');
-    const card = page.locator('[data-testid="plugin-card"][data-plugin-id="lrclib"]');
-    await expect(card).toBeVisible();
+    const card = await openPluginCard(page, 'plugins-metadata', 'lrclib');
     // Default-on (keyless, benign) — unlike every acquisition plugin.
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Disable');
   });
 
-  test('the slskd card links to its own extension page (disabled notice when off)', async ({
-    page,
-  }) => {
+  test('the slskd card embeds its settings inline (disabled notice when off)', async ({ page }) => {
     await page.goto('/settings/plugins');
-    const card = page.locator('[data-testid="plugin-card"][data-plugin-id="slskd"]');
-    await expect(card).toBeVisible();
-    // Bespoke settings live on the extension's own page, not an inline form.
-    await card.getByTestId('plugin-configure').click();
-    await expect(page).toHaveURL(/\/settings\/plugins\/slskd$/);
+    // Bespoke settings are embedded inline in the card's own body — no more
+    // separate "Configure →" page (Task 4, settings-cards unification).
+    await openPluginCard(page, 'plugins-acquisition', 'slskd');
     await expect(page.getByTestId('slskd-settings')).toBeVisible();
     // Acquisition is default-off in e2e, so the extension shows its enable-first notice.
     await expect(page.getByTestId('slskd-disabled-notice')).toBeVisible();
+  });
+
+  // The old dedicated route is now just a redirect back to the Extensions
+  // hub, so any bookmark/deep-link into it still lands somewhere useful.
+  test('the old /settings/plugins/slskd route redirects to /settings/plugins', async ({ page }) => {
+    await page.goto('/settings/plugins/slskd');
+    await expect(page).toHaveURL(/\/settings\/plugins$/);
   });
 
   test('the From Spotify lane stays hidden while the plugin is disabled', async ({ page }) => {
