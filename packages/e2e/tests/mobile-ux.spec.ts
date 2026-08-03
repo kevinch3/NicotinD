@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { ADMIN, FIXTURE, bearer } from '../helpers';
+import { ADMIN, FIXTURE, bearer, expandGroup } from '../helpers';
 
 /**
  * Mobile-viewport UX regressions (the G-series in
@@ -187,6 +187,9 @@ test.describe('mobile UX', () => {
   // (The processing panel moved from Settings to Admin in the settings refactor.)
   test('admin page does not overflow horizontally', async ({ page }) => {
     await page.goto('/admin');
+    // The panel now lives inside the collapsible "Library Processing"
+    // settings group, which starts collapsed by default — expand it first.
+    await expandGroup(page, 'library-processing');
     // Admin-only processing panel with the offending time inputs.
     await expect(page.getByTestId('processing-panel')).toBeVisible();
     const overflow = await page.evaluate(() => {

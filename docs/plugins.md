@@ -238,33 +238,42 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
 - `pages/plugins/plugins.component.ts` — admin-only page (route `/settings/plugins`, `adminGuard`),
   labelled **Extensions** in the UI (linked from Settings → Extensions; identifiers stay `plugin*`).
   Cards grouped by kind — **Acquisition**, **Metadata** (lrclib today), and a generic
-  **Connectivity** section, each with a uniform icon+title+description header
-  (`SettingsGroupHeaderComponent`, shared with the Settings page). Connectivity **hides
-  entirely** rather than showing an empty-state — the wiring is ready for a
-  tailscale/wireguard plugin to appear with no UI changes, at which point the section
-  reappears on its own. Every kind in the core union needs a
-  section here, or its plugins are invisible. Enabling a consent-gated plugin opens its disclaimer
-  via `ConfirmDialogComponent` and
+  **Connectivity** section — each a collapsible `SettingsGroupComponent` (groupIds
+  `plugins-acquisition`/`plugins-metadata`/`plugins-connectivity`, collapsed by default, persisted
+  per-device). Connectivity **hides entirely** rather than showing an empty-state — the wiring is
+  ready for a tailscale/wireguard plugin to appear with no UI changes, at which point the section
+  reappears on its own. Every kind in the core union needs a section here, or its plugins are
+  invisible. Enabling a consent-gated plugin opens its disclaimer via `ConfirmDialogComponent` and
   only then calls `enable(id, true)`.
-- **Per-extension settings surface (`PLUGIN_DETAIL_ROUTES`)**: extensions whose settings are too
-  bespoke for the generic config-field form own a dedicated page. `plugins.component.ts` maps
-  `plugin id → detail route` and renders a **Configure →** link on the card when an entry exists;
-  otherwise the inline `configFields` form is the whole story (spotify/ytdlp). This keeps
-  extension-specific UI _with the extension_ instead of leaking into core Settings. First consumer:
-  **slskd** → `/settings/plugins/slskd` (`pages/plugins/slskd/slskd-settings.component.ts`,
-  `adminGuard`). That page owns the Soulseek **connection** form (creds/port/UPnP + connect/
-  disconnect), **shared folders**, and a live **status panel** — all moved out of the old core
-  Settings page. It gates its own body on `PluginService.hasSlskd()` (shows an enable-first notice
-  when the extension is off), and additionally on **reachability** (`slskdReachable` signal): when
-  `GET /api/settings/shares` fails with anything other than 401/403, slskd itself is down/absent
-  (e.g. the desktop app's external mode with no slskd running), so the connection + shares forms —
-  which could only error — are replaced with a "slskd is not reachable" notice
-  (`data-testid="slskd-unreachable-notice"`). The shares section clarifies that **the music
+- **`PluginCardComponent` is itself collapsible** (Task 4, settings-cards unification): the header
+  row (name, one unified status pill, Enable/Disable) is always visible and toggles independently of
+  the card's own expand/collapse button (`data-testid="plugin-card-toggle"`, persisted per-device
+  like `SettingsGroupComponent` but via a plain getter/setter, id `plugin-<plugin.id>`, since this
+  component keeps the classic `@Input`/`@Output` decorator API — see its class docstring for why).
+  Description/capabilities/binaries-warning/the generic `configFields` form only render once
+  expanded (`data-testid="plugin-card-body"`).
+- **Per-extension bespoke settings, embedded inline**: extensions whose settings are too bespoke for
+  the generic config-field form used to link to a dedicated route (`PLUGIN_DETAIL_ROUTES`); Task 4
+  removed that route entirely — bespoke UI now renders directly inside the plugin's own collapsible
+  card body (`@if (plugin.id === 'slskd') { <app-slskd-settings /> }`), keeping extension-specific UI
+  _with the extension_ without a second navigation hop. First (and so far only) consumer: **slskd**
+  (`pages/plugins/slskd/slskd-settings.component.ts`). It owns no page chrome of its own (no outer
+  container/back-link/`<h1>` — the card's header supplies that); its former `/settings/plugins/slskd`
+  route now just redirects to `/settings/plugins`. It renders the Soulseek **connection** form
+  (creds/port/UPnP + connect/disconnect), **shared folders**, and a live **status panel** as plain
+  sub-headings (no nested collapsibles). It gates its own body on `PluginService.hasSlskd()` (shows
+  an enable-first notice when the extension is off), and additionally on **reachability**
+  (`slskdReachable` signal): when `GET /api/settings/shares` fails with anything other than 401/403,
+  slskd itself is down/absent (e.g. the desktop app's external mode with no slskd running), so the
+  connection + shares forms — which could only error — are replaced with a "slskd is not reachable"
+  notice (`data-testid="slskd-unreachable-notice"`). The shares section clarifies that **the music
   library folder is shared automatically** (see below); manual entries are for extra folders.
-  _Backend credential storage is unchanged_ — it still uses the
-  admin-gated `/api/settings/soulseek*` + `/api/settings/shares*` routes (`secrets.json`, wired to
-  embedded-mode via `slskd-config.ts`); only the UI relocated, to avoid destabilizing the
-  embedded-mode credential wiring.
+  Because the card body is `@if`-gated on being expanded, this component (and its ~3s status poll
+  started in `ngOnInit`) only mounts while the card is open — collapsing it runs `ngOnDestroy` and
+  stops the poll. _Backend credential storage is unchanged_ — it still uses the admin-gated
+  `/api/settings/soulseek*` + `/api/settings/shares*` routes (`secrets.json`, wired to embedded-mode
+  via `slskd-config.ts`); only the UI relocated, to avoid destabilizing the embedded-mode credential
+  wiring.
 - **slskd status panel (Nicotine+-style)**: `GET /api/plugins/slskd/status` (admin, self-gates on
   the plugin being enabled + a reachable client) returns a typed `SlskdStatus` — current up/down
   speeds, active/queued transfer counts, configured limits (upload/download speed + slots), share
@@ -323,8 +332,9 @@ Uploads()`, `options.get()` (new JSON options accessor), and `application.getInf
   Settings → Extensions management UI + capability-gating of the web surfaces.
 - **Decoupling refactor** _(done)_ — core **Settings** page slimmed to universal prefs only;
   server-admin tools (streaming, library processing, find-duplicates) moved to **Admin**; slskd
-  config + a new live status panel moved to its own **extension page**. See "Per-extension settings
-  surface" above and [docs/admin-settings-decoupling.md](admin-settings-decoupling.md).
+  config + a new live status panel embedded inline in its own collapsible Extensions card (no
+  dedicated route). See "Per-extension bespoke settings, embedded inline" above and
+  [docs/admin-settings-decoupling.md](admin-settings-decoupling.md).
 - **E** _(scaffolded, not shipped)_ — connectivity kind (tailscale/wireguard). The contracts,
   registry, and UI handle the kind generically; a real connectivity plugin can be registered in
   `index.ts` with no further wiring. Per current direction, none is integrated yet.

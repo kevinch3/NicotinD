@@ -1,9 +1,11 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import type { PluginInfo } from '../../services/plugin.service';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { pluginStatus, type PluginStatus } from '../../lib/plugin-status';
+import { IconComponent } from '../../components/icon/icon.component';
+import { SlskdSettingsComponent } from './slskd/slskd-settings.component';
+import { readGroupOpen, writeGroupOpen } from '../../lib/group-state';
 
 /**
  * One extension card on the Extensions page. A real component rather than the
@@ -29,25 +31,56 @@ import { pluginStatus, type PluginStatus } from '../../lib/plugin-status';
  * match the rest of this codebase's TV-nav work: the signal-based functions do
  * not populate under this project's hand-rolled vitest+JIT harness (see
  * `TvNavGroupDirective`'s class comment).
+ *
+ * Task 4 (settings-cards unification): the header row (name, status pill,
+ * Enable/Disable) stays always visible; description/capabilities/binaries
+ * warning/config form collapse into a body, mirroring
+ * `SettingsGroupComponent`'s persisted-per-device open/closed state
+ * (`lib/group-state.ts`, id `plugin-<plugin.id>`) but as a plain
+ * `@Input`/`@Output`-era signal rather than that component's `input()`s, for
+ * the same JIT-harness reason above. slskd no longer has its own route —
+ * `SlskdSettingsComponent` is embedded directly in this card's body (see its
+ * class docstring), so its status poll only runs while the card is expanded
+ * (an `@if`-gated body unmounts it on collapse, running `ngOnDestroy`).
  */
 @Component({
   selector: 'app-plugin-card',
   standalone: true,
-  imports: [RouterLink, FormsModule, TvNavItemDirective],
+  imports: [FormsModule, TvNavItemDirective, IconComponent, SlskdSettingsComponent],
   templateUrl: './plugin-card.component.html',
 })
 export class PluginCardComponent {
   @Input({ required: true }) plugin!: PluginInfo;
   /** Whether a mutation is in flight page-wide (disables both buttons). */
   @Input() busy = false;
-  /** Dedicated settings route, or null when the inline form is the only config. */
-  @Input() detailRoute: string | null = null;
   /** This plugin's editable config values, keyed by field key. */
   @Input() draft: Record<string, string> = {};
 
   @Output() readonly toggle = new EventEmitter<PluginInfo>();
   @Output() readonly save = new EventEmitter<PluginInfo>();
   @Output() readonly fieldChange = new EventEmitter<{ key: string; value: string }>();
+
+  private openState: boolean | null = null;
+
+  /** Collapsed by default; restores the per-device persisted state on first
+   *  read (mirrors `SettingsGroupComponent.open`, but as a plain getter since
+   *  this component has no signal inputs to drive an `effect()` off of). */
+  isOpen(): boolean {
+    if (this.openState === null) {
+      this.openState = readGroupOpen(localStorage, this.groupId()) ?? false;
+    }
+    return this.openState;
+  }
+
+  toggleOpen(): void {
+    const next = !this.isOpen();
+    this.openState = next;
+    writeGroupOpen(localStorage, this.groupId(), next);
+  }
+
+  groupId(): string {
+    return `plugin-${this.plugin.id}`;
+  }
 
   draftValue(key: string): string {
     return this.draft[key] ?? '';

@@ -1,9 +1,12 @@
-<div class="mb-6">
+<section
+  class="rounded-xl border border-theme bg-theme-surface/50 mb-6"
+  [attr.data-group-id]="groupId()"
+>
   <button
     type="button"
     (click)="toggle()"
-    data-testid="admin-group-toggle"
-    class="w-full flex items-center gap-2 text-left"
+    data-testid="settings-group-toggle"
+    class="w-full flex items-center gap-2 text-left p-6"
     [attr.aria-expanded]="open()"
   >
     <app-settings-group-header
@@ -22,8 +25,8 @@
   </button>
 
   @if (open()) {
-    <div data-testid="admin-group-body" class="mt-4">
+    <div data-testid="settings-group-body" class="px-6 pb-6">
       <ng-content />
     </div>
   }
-</div>
+</section>

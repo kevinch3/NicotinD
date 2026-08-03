@@ -1,6 +1,5 @@
 import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import type { SlskdStatus } from '@nicotind/core';
 import { SystemApiService } from '../../../services/api/system-api.service';
@@ -8,20 +7,30 @@ import { PluginService } from '../../../services/plugin.service';
 import { PasswordFieldComponent } from '../../../components/password-field/password-field.component';
 
 /**
- * The slskd (Soulseek) extension's own settings surface — reachable from its
- * card on the Extensions page. Owns everything slskd-specific that used to be
- * hardcoded into the core Settings page: the connection form (account creds,
- * listening port, UPnP, connect/disconnect) and shared folders, plus a new
- * Nicotine+-style live status panel (current speeds, active/queued transfers,
- * configured limits, share size). All gated on the plugin being enabled — the
- * page shows an "enable it first" notice otherwise. Backend credential storage
- * is unchanged (still the admin-gated `/api/settings/soulseek*` routes); this
- * only relocates the UI so the extension owns its config.
+ * The slskd (Soulseek) extension's own settings surface — embedded inline in
+ * its `PluginCardComponent` body on the Extensions page (Task 4, settings-cards
+ * unification; it used to be a dedicated `/settings/plugins/slskd` route, now a
+ * redirect back to `/settings/plugins`). Owns everything slskd-specific that
+ * used to be hardcoded into the core Settings page: the connection form
+ * (account creds, listening port, UPnP, connect/disconnect) and shared
+ * folders, plus a Nicotine+-style live status panel (current speeds,
+ * active/queued transfers, configured limits, share size). All gated on the
+ * plugin being enabled — the page shows an "enable it first" notice otherwise.
+ * Backend credential storage is unchanged (still the admin-gated
+ * `/api/settings/soulseek*` routes).
+ *
+ * Owns no page chrome of its own (no outer container/back-link/`<h1>`) — the
+ * host `PluginCardComponent` supplies that (its always-visible header row);
+ * this component renders only its three sub-sections (Status/Connection/
+ * Shared Folders as plain sub-headings, no nested collapsibles). Because the
+ * card's body is `@if`-gated on being open, this component (and its ~3s status
+ * poll started in `ngOnInit`) is only ever mounted while the card is expanded,
+ * and `ngOnDestroy` clears the poll interval + visibility listener on collapse.
  */
 @Component({
   selector: 'app-slskd-settings',
   standalone: true,
-  imports: [FormsModule, RouterLink, PasswordFieldComponent],
+  imports: [FormsModule, PasswordFieldComponent],
   templateUrl: './slskd-settings.component.html',
 })
 export class SlskdSettingsComponent implements OnInit, OnDestroy {

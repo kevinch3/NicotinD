@@ -13,6 +13,7 @@ import { TranslateService } from '../../../services/translate.service';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
+import { SettingsGroupComponent } from '../../../components/settings-group/settings-group.component';
 
 /**
  * "Link a device" — pair a phone to this server by QR (or manual URL + code)
@@ -22,7 +23,13 @@ import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
  */
 @Component({
   selector: 'app-devices',
-  imports: [RouterLink, TranslatePipe, TvNavGroupDirective, TvNavItemDirective],
+  imports: [
+    RouterLink,
+    TranslatePipe,
+    TvNavGroupDirective,
+    TvNavItemDirective,
+    SettingsGroupComponent,
+  ],
   templateUrl: './devices.component.html',
 })
 export class DevicesComponent implements OnInit, OnDestroy {
@@ -43,16 +50,19 @@ export class DevicesComponent implements OnInit, OnDestroy {
   private copiedTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
-   * On the phone app the QR exists to be scanned BY a phone, so auto-minting
-   * and showing it front-and-center is noise (you can't scan your own screen).
-   * It stays available behind a "Link another device" expander for the
-   * second-phone case; desktop/web keep the always-open auto-minting panel.
+   * Every settings-group card is collapsed by default with no exception
+   * (project-wide decision) — so the "Link device" card no longer
+   * auto-expands on web/desktop the way its pre-migration `linkPanelOpen`
+   * signal did. `onNativeApp` still distinguishes the copy ("Link a device"
+   * vs "Link another device" — the phone app's job is to *scan* QRs, not
+   * lead with one) and which scan-instructions string to show, but no longer
+   * drives a `defaultOpen`. Minting happens in `onLinkOpened()`, driven by
+   * the group's `(opened)` output, so nothing mints on page load — only the
+   * first time a user actually expands the card.
    */
   readonly onNativeApp = isNativePlatform();
-  readonly linkPanelOpen = signal(!isNativePlatform());
 
   ngOnInit(): void {
-    if (this.linkPanelOpen()) this.regenerate();
     this.loadDevices();
     if (this.auth.isAdmin()) {
       this.api.getRemoteAccess().subscribe({
@@ -60,6 +70,13 @@ export class DevicesComponent implements OnInit, OnDestroy {
         error: () => {},
       });
     }
+  }
+
+  /** Mints a pairing code the moment the Link device group becomes open
+   * (including a restored-open/defaultOpen resolution at init) — but never
+   * re-mints if a code already exists (e.g. a re-open after collapsing). */
+  onLinkOpened(): void {
+    if (!this.pairing()) this.regenerate();
   }
 
   ngOnDestroy(): void {
@@ -78,13 +95,6 @@ export class DevicesComponent implements OnInit, OnDestroy {
       },
       error: () => this.error.set(this.i18n.t('devices.errorCreatePairing')),
     });
-  }
-
-  /** Expand the mobile "Link another device" panel, minting on first open. */
-  openLinkPanel(): void {
-    if (this.linkPanelOpen()) return;
-    this.linkPanelOpen.set(true);
-    this.regenerate();
   }
 
   private async renderQr(mint: PairingMintResponse): Promise<void> {

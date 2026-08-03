@@ -5,7 +5,11 @@ import { provideRouter } from '@angular/router';
 import { DevicesComponent } from './devices.component';
 import { DevicesApiService } from '../../../services/api/devices-api.service';
 import { AuthService } from '../../../services/auth.service';
-import type { PairedDevice, PairingMintResponse } from '../../../services/api/api-types';
+import type {
+  PairedDevice,
+  PairingMintResponse,
+  RemoteAccessStatus,
+} from '../../../services/api/api-types';
 
 /**
  * Issue #256. `qrcode` moved from a static import to `await import('qrcode')`
@@ -65,6 +69,27 @@ const DEVICE_2: PairedDevice = {
   current: false,
 };
 
+/**
+ * Task 3 (settings-cards unification): the three sections are now collapsible
+ * `<app-settings-group>` cards. This JIT vitest harness never registers signal
+ * inputs on a nested imported component (see `src/testing/signal-input.ts`),
+ * so every group's `[groupId]` binding silently fails to land and all groups
+ * fall back to the same default groupId (`''`) — meaning they share one
+ * localStorage key. Harmless for opening every card (this helper just clicks
+ * whichever toggles are still closed), but a prior test's "open" write can
+ * leak into a later fixture — tests asserting the fresh-render collapsed
+ * state must `localStorage.clear()` first, mirroring
+ * `settings.component.spec.ts`/`admin.component.spec.ts`.
+ */
+function expandAllGroups(fixture: { nativeElement: unknown; detectChanges: () => void }): void {
+  const el = fixture.nativeElement as HTMLElement;
+  const toggles = el.querySelectorAll<HTMLButtonElement>('[data-testid="settings-group-toggle"]');
+  toggles.forEach((btn) => {
+    if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
+  });
+  fixture.detectChanges();
+}
+
 function setupWithDevices(devices: PairedDevice[]) {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -92,6 +117,7 @@ function setupWithDevices(devices: PairedDevice[]) {
 describe('DevicesComponent — TV nav (Android TV phase 4)', () => {
   it('renders the devices list as an appTvNavGroup with each revoke button as appTvNavItem', () => {
     const fixture = setupWithDevices([DEVICE]);
+    expandAllGroups(fixture);
     const el: HTMLElement = fixture.nativeElement;
     const button = el.querySelector('[data-testid="device-revoke"]');
     expect(button?.matches('[appTvNavItem]')).toBe(true);
@@ -108,6 +134,7 @@ describe('DevicesComponent — TV nav (Android TV phase 4)', () => {
    */
   it('ArrowDown moves focus from one device revoke button to the next', () => {
     const fixture = setupWithDevices([DEVICE, DEVICE_2]);
+    expandAllGroups(fixture);
     const el: HTMLElement = fixture.nativeElement;
     const buttons: HTMLElement[] = Array.from(el.querySelectorAll('[data-testid="device-revoke"]'));
     expect(buttons.length).toBe(2);
@@ -140,5 +167,88 @@ describe('DevicesComponent — lazy qrcode (#256)', () => {
       urls: [],
     });
     expect(c.qrDataUrl()).toBeNull();
+  });
+});
+
+describe('DevicesComponent — settings-group migration (Task 3)', () => {
+  function setupSpiedMint(
+    mint: PairingMintResponse = MINT,
+    options: { isAdmin?: boolean; remote?: RemoteAccessStatus | null } = {},
+  ) {
+    TestBed.resetTestingModule();
+    const mintPairing = vi.fn().mockReturnValue(of(mint));
+    const isAdmin = options.isAdmin ?? false;
+    const remote = options.remote ?? null;
+    TestBed.configureTestingModule({
+      imports: [DevicesComponent],
+      providers: [
+        provideRouter([]),
+        {
+          provide: DevicesApiService,
+          useValue: {
+            mintPairing,
+            getDevices: () => of({ devices: [] }),
+            getRemoteAccess: () => of(remote),
+            setRemoteAccess: () => of(null),
+            revokeDevice: () => of(undefined),
+          },
+        },
+        { provide: AuthService, useValue: { isAdmin: () => isAdmin, user: () => null } },
+      ],
+    });
+    const fixture = TestBed.createComponent(DevicesComponent);
+    return { fixture, mintPairing };
+  }
+
+  it('renders every group collapsed on a fresh render (all groups default-collapsed, no exception)', () => {
+    localStorage.clear();
+    // Admin + a resolved remote-access status renders all three groups
+    // (devices-remote-access, devices-link, devices-paired) — every one of
+    // them, including devices-link, must start collapsed. There is no
+    // exception for web/desktop vs native: the project-wide rule is every
+    // settings-group card is collapsed by default.
+    const remoteStatus: RemoteAccessStatus = { enabled: false, state: { kind: 'inactive' } };
+    const { fixture } = setupSpiedMint(MINT, { isAdmin: true, remote: remoteStatus });
+    fixture.detectChanges();
+    const toggles = fixture.nativeElement.querySelectorAll('[data-testid="settings-group-toggle"]');
+    expect(toggles.length).toBe(3);
+    const bodies = fixture.nativeElement.querySelectorAll('[data-testid="settings-group-body"]');
+    expect(bodies.length).toBe(0);
+  });
+
+  it('does not mint a pairing code while the Link device group is collapsed on init', () => {
+    localStorage.clear();
+    const { fixture, mintPairing } = setupSpiedMint();
+    fixture.detectChanges();
+    expect(mintPairing).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The JIT harness never propagates a nested component's `output()` binding
+   * back to the parent template handler (see docs/web-ui.md "JIT vitest
+   * harness limitation" — confirmed during Task 10 for the same
+   * `output()`-across-a-component-boundary gap), so a DOM click on the
+   * settings-group toggle can't be asserted to reach `onLinkOpened()` here —
+   * only e2e (real Chromium) proves that click-through wiring
+   * (`device-pairing.spec.ts`). These tests instead drive `onLinkOpened()`
+   * directly, covering the mint-vs-no-mint *decision* it makes.
+   */
+  it('mints a pairing code when onLinkOpened runs with no pairing yet', () => {
+    const { fixture, mintPairing } = setupSpiedMint();
+    fixture.detectChanges();
+    expect(mintPairing).not.toHaveBeenCalled();
+    fixture.componentInstance.onLinkOpened();
+    expect(mintPairing).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-mint a pairing code when onLinkOpened runs with one already present', () => {
+    const { fixture, mintPairing } = setupSpiedMint();
+    fixture.detectChanges();
+    // Simulate a pairing already minted (e.g. re-opening after a prior visit
+    // within the same component instance) before the group opens again.
+    fixture.componentInstance.regenerate();
+    expect(mintPairing).toHaveBeenCalledTimes(1);
+    fixture.componentInstance.onLinkOpened();
+    expect(mintPairing).toHaveBeenCalledTimes(1);
   });
 });

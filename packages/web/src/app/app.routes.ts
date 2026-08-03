@@ -116,14 +116,12 @@ export const routes: Routes = [
           import('./pages/plugins/plugins.component').then((m) => m.PluginsComponent),
         canActivate: [adminGuard],
       },
-      {
-        path: 'settings/plugins/slskd',
-        loadComponent: () =>
-          import('./pages/plugins/slskd/slskd-settings.component').then(
-            (m) => m.SlskdSettingsComponent,
-          ),
-        canActivate: [adminGuard],
-      },
+      // Task 4 (settings-cards unification): slskd no longer has its own page —
+      // its settings are embedded inline in its Extensions card body (see
+      // PluginCardComponent's docstring). Redirect any existing bookmark/link,
+      // mirroring the house shape used by the search → acquire redirect above
+      // (relative target + explicit pathMatch: 'full').
+      { path: 'settings/plugins/slskd', redirectTo: 'settings/plugins', pathMatch: 'full' },
       {
         path: 'admin',
         loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent),

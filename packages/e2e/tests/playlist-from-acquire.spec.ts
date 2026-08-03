@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { ADMIN, bearer } from '../helpers';
+import { ADMIN, bearer, expandGroup } from '../helpers';
 
 /**
  * Playlist-from-acquisition: the link-intent card surfaces a "Treat as playlist"
@@ -42,6 +42,10 @@ test.describe('Playlist-from-acquire (web surface)', () => {
     // Leave archive disabled so the suite stays order-independent (the
     // plugin-gating suite asserts a fresh server enables nothing).
     await page.goto('/settings/plugins');
+    // The Enable/Disable toggle lives in the plugin card's always-visible
+    // header, but the card itself only mounts once its kind GROUP (archive is
+    // `acquisition`) is expanded — both start collapsed (Task 4).
+    await expandGroup(page, 'plugins-acquisition');
     const card = page.locator('[data-testid="plugin-card"][data-plugin-id="archive"]');
     // Wait for the card to render before reading it — `textContent()` does not
     // wait, so on a slow plugin-list load this read raced the mount and returned
@@ -60,6 +64,7 @@ test.describe('Playlist-from-acquire (web surface)', () => {
     // Enable the archive plugin first — without a resolve-capable plugin the
     // link-intent card never renders (plugin capability gating).
     await page.goto('/settings/plugins');
+    await expandGroup(page, 'plugins-acquisition');
     const card = page.locator('[data-testid="plugin-card"][data-plugin-id="archive"]');
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
     await card.getByTestId('plugin-toggle').click();

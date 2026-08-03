@@ -1,7 +1,7 @@
 import { test, expect } from '../playground/fixtures';
 import { appeared } from '../playground/screens-ui';
 import type { BrowserContext, Page } from '@playwright/test';
-import { FIXTURE } from '../helpers';
+import { FIXTURE, expandGroup } from '../helpers';
 
 /**
  * Remote-playback (device control) feedback flow — the "cast to another device"
@@ -103,6 +103,9 @@ test('remote-playback-device-control', async ({ page, obs, browser }) => {
 
     await target.goto('/settings');
     await target.waitForLoadState('networkidle').catch(() => {});
+    // The Playback & Offline card starts collapsed (settings-cards
+    // unification task 2) — expand it to reach the remote toggle.
+    await expandGroup(target, 'settings-playback');
     const remoteToggle = target.getByTestId('remote-toggle');
     if ((await remoteToggle.count()) === 0) {
       j.deadEnd('Settings remote-toggle not found — feature not deployed here');
@@ -161,7 +164,11 @@ test('remote-playback-device-control', async ({ page, obs, browser }) => {
     await page.getByTestId('device-switcher-toggle').first().click();
     const showsNowPlaying = await appeared(page.getByTestId('device-now-playing'), 5000);
     if (!showsNowPlaying) j.fallback('controller did not mark the target NOW PLAYING');
-    await page.getByTestId('device-switcher-toggle').first().click().catch(() => {}); // close
+    await page
+      .getByTestId('device-switcher-toggle')
+      .first()
+      .click()
+      .catch(() => {}); // close
     j.step('controller casts to target');
 
     // Target should begin streaming + advancing audio.
@@ -183,7 +190,8 @@ test('remote-playback-device-control', async ({ page, obs, browser }) => {
         kind: 'gap',
         title: 'Cast did not start remote playback',
         severity: 'high',
-        detail: 'Target received the cast but no audio advanced — likely autoplay block or COMMAND/STATE_SYNC race.',
+        detail:
+          'Target received the cast but no audio advanced — likely autoplay block or COMMAND/STATE_SYNC race.',
       });
     } else {
       j.step('target playing');
@@ -218,6 +226,7 @@ test('remote-playback-device-control', async ({ page, obs, browser }) => {
     // --- Settings surface: connected devices + active host ---
     await page.goto('/settings');
     await page.waitForLoadState('networkidle').catch(() => {});
+    await expandGroup(page, 'settings-playback');
     const toggleOn = await page
       .getByTestId('remote-toggle')
       .getAttribute('aria-checked')

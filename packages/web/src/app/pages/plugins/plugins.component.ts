@@ -6,24 +6,21 @@ import { PluginService, type PluginInfo } from '../../services/plugin.service';
 import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/plugin-config';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { PluginCardComponent } from './plugin-card.component';
-import { SettingsGroupHeaderComponent } from '../../components/settings-group-header/settings-group-header.component';
+import { SettingsGroupComponent } from '../../components/settings-group/settings-group.component';
 
 /**
  * Admin-only plugin management. Lists plugins grouped by kind (acquisition now;
  * connectivity is rendered generically so a tailscale/wireguard plugin can later
  * drop in with no UI changes). Enabling a consent-gated plugin shows its legal
  * disclaimer and requires explicit acknowledgement.
+ *
+ * Task 4 (settings-cards unification): the three kind sections are collapsible
+ * `<app-settings-group>` cards (groupIds `plugins-acquisition`/`plugins-metadata`/
+ * `plugins-connectivity`), and there is no more per-plugin detail route — a
+ * plugin with a bespoke settings surface (slskd) embeds it directly inside its
+ * own collapsible `PluginCardComponent` body instead (see that component's
+ * docstring).
  */
-
-/**
- * Plugins that own a dedicated settings surface (bespoke UI beyond the generic
- * `configFields` form) map their id → detail route here. The card renders a
- * "Configure →" link when an entry exists. Keeps the extension-specific UI with
- * the extension instead of leaking it into this generic list.
- */
-const PLUGIN_DETAIL_ROUTES: Record<string, string> = {
-  slskd: '/settings/plugins/slskd',
-};
 
 @Component({
   selector: 'app-plugins',
@@ -33,7 +30,7 @@ const PLUGIN_DETAIL_ROUTES: Record<string, string> = {
     ConfirmDialogComponent,
     TvNavGroupDirective,
     PluginCardComponent,
-    SettingsGroupHeaderComponent,
+    SettingsGroupComponent,
   ],
   templateUrl: './plugins.component.html',
 })
@@ -71,11 +68,6 @@ export class PluginsComponent implements OnInit {
 
   ngOnInit(): void {
     void this.plugins.refresh();
-  }
-
-  /** Dedicated settings route for a plugin, or null when it uses the inline form only. */
-  detailRoute(pluginId: string): string | null {
-    return PLUGIN_DETAIL_ROUTES[pluginId] ?? null;
   }
 
   /** This plugin's editable config values (empty when it has no config form).

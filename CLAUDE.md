@@ -959,12 +959,17 @@ Add detail there, not here.
   with an augmented PATH (`acquireEnv`: bundled-ffmpeg dir + brew/pip bins — GUI apps inherit a
   minimal PATH) + an admin-editable `binaryPath` field; embedded slskd auto-shares the music dir
   (merge-preserving `slskd.yml` regeneration). UI labelled **Extensions**, one section per kind
-  (Acquisition / Metadata / Connectivity) — icon-headed section groupings, each card showing one
-  unified derived status pill (off/needs-config/unavailable/ready), and Connectivity hides itself
-  when empty — the web `PluginKind` union mirrors the core one and a
-  kind missing from **either** renders its plugins nowhere; extensions with bespoke config own a
-  dedicated settings page via `PLUGIN_DETAIL_ROUTES` (first: slskd, which shows a not-reachable
-  notice when slskd is down). All first-party plugins are constructed in `registerBuiltinPlugins`
+  (Acquisition / Metadata / Connectivity) — each a collapsible `SettingsGroupComponent` card
+  (groupIds `plugins-acquisition`/`plugins-metadata`/`plugins-connectivity`), and each plugin itself
+  a collapsible `PluginCardComponent` (header row — name, one unified derived status pill
+  off/needs-config/unavailable/ready, Enable/Disable — always visible; description/capabilities/
+  config form behind the card's own toggle), and Connectivity hides itself when empty — the web
+  `PluginKind` union mirrors the core one and a kind missing from **either** renders its plugins
+  nowhere. Extensions with bespoke config no longer get a separate route: slskd's settings
+  (`SlskdSettingsComponent`, connection/shares/live status, shows a not-reachable notice when slskd
+  is down) are embedded inline in its own card body once expanded, so its ~3s status poll only runs
+  while that card is open (`/settings/plugins/slskd` now just redirects to `/settings/plugins`). All
+  first-party plugins are constructed in `registerBuiltinPlugins`
   (`services/plugins/builtin.ts`), not inline in `index.ts`, so cross-plugin construction deps
   (spotdl reading spotify's creds) are covered by a test. → [docs/plugins.md](docs/plugins.md)
 - **Discogs metadata plugin (genre + artist-info)**: `metadata`-kind, default-off + consent-gated
@@ -1007,19 +1012,26 @@ Add detail there, not here.
 - **Admin/Settings/Extensions decoupling**: core Settings = universal prefs only; server-admin tools
   (streaming, library processing, find-duplicates) live in **Admin**; slskd owns its
   connection/shares + a Nicotine+-style live status panel (`GET /api/plugins/slskd/status`,
-  `SlskdStatus`) on its extension page. Credential storage unchanged (UI relocation only). →
+  `SlskdStatus`), embedded inline in its own collapsible Extensions card rather than a dedicated
+  route. Credential storage unchanged (UI relocation only). →
   [docs/admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
-- **Admin panel regroup (8 collapsible groups)**: `AdminGroupComponent`
-  (`packages/web/src/app/components/admin-group/`) composes
-  `SettingsGroupHeaderComponent`'s header with a per-device-persisted
-  (`localStorage`, key `nicotind-admin-group-<id>`) collapse toggle — Settings/
-  Extensions stay always-expanded (short pages), Admin needed an actual lever
-  since grouping alone doesn't shrink a 3500-line page. The old 14-panel
-  "System" mega-section is dissolved across System Health / Library Processing
-  / Library Maintenance / Streaming & Media / Backups & Data / Acquisition &
-  Automation, alongside User Management and Audit Log — directly actioning
-  `docs/admin-settings-decoupling.md`'s "library maintenance consolidation"
-  follow-up. → [docs/admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
+- **Settings-cards unification (`SettingsGroupComponent`, all five settings-family views)**: one
+  bordered, collapsible card (`packages/web/src/app/components/settings-group/`) generalized from
+  the Admin-only `AdminGroupComponent` (renamed, no longer a repo symbol) now backs **every**
+  group on `/settings`, `/admin`, `/settings/plugins` (incl. each `PluginCardComponent`'s own
+  collapsible body), `/settings/devices`, and `/settings/agent-tokens` — collapsed by default
+  everywhere, no exceptions (Devices' pairing panel mints its code on first expand via the
+  `opened` output rather than an eager `defaultOpen`) — and persisted per-device
+  (`lib/group-state.ts`, `localStorage` key `nicotind-group-<id>`, cleared on signout via
+  `AuthService.resetSession()`). Admin's 8 groups (System Health / Library Processing / Library
+  Maintenance / Streaming & Media / Backups & Data / Acquisition & Automation / User Management /
+  Audit Log — the old 14-panel "System" mega-section dissolved across them) were the first
+  consumer. `tests/settings-consistency.spec.ts` (CI) is the cross-view gate that every route
+  renders fully collapsed on load with identical computed styles;
+  `tests/settings-gallery.screens.ts` (out-of-CI, `playwright.screenshots.config.ts`) captures a
+  collapsed + expanded shot of every route in mobile and desktop viewports for human review. →
+  [docs/design-patterns.md](docs/design-patterns.md) "SettingsGroupComponent",
+  [docs/admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
 - **Changelog modal**: build-time `CHANGELOG.md` → `changelog.json` (capped at 50 versions); version
   string in header/settings is clickable. `CHANGELOG.md` is also the source for the **GitHub Release
   description** — the `release-notes` job in `deploy.yml` extracts the tag's section into the

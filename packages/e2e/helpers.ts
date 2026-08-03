@@ -1,4 +1,4 @@
-import type { APIRequestContext } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -63,6 +63,18 @@ export function preserveMusicFixture(relPath: string): void {
     // Only rewrite when the spec actually removed it — never clobber a live file.
     if (snapshot && !existsSync(abs)) writeFileSync(abs, snapshot);
   });
+}
+
+/**
+ * Expand a collapsible `<app-settings-group>` card (Admin + Settings pages —
+ * see docs/web-ui.md) identified by its `groupId`, no-op if already open.
+ * Every group renders collapsed by default and persists open/closed state to
+ * localStorage per device, so a spec that needs to interact with a card's body
+ * must expand it first.
+ */
+export async function expandGroup(page: Page, groupId: string): Promise<void> {
+  const toggle = page.locator(`[data-group-id="${groupId}"]`).getByTestId('settings-group-toggle');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
 }
 
 /** Wait until the library scan has settled and at least one album is listed. */
