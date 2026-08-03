@@ -15,6 +15,9 @@ import { AcquireService } from '../../services/acquire.service';
 import type { AcquireJob } from '../../services/acquire.service';
 import { PluginService, type PluginInfo } from '../../services/plugin.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
+import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+
+let registeredHandler: (() => Promise<void> | void) | null = null;
 
 const CATALOG_ALBUM: CatalogAlbum = {
   foreignAlbumId: 'dsotm-rg',
@@ -35,12 +38,21 @@ function setup(
   // via this.route.snapshot.queryParamMap. Empty by default (no share intent).
   shareParams: { url?: string; text?: string; title?: string } = {},
 ) {
+  registeredHandler = null;
   const acquireSubmit = vi.fn(acquireOverrides.submit ?? (() => Promise.resolve('job1')));
   const acquireCancel = vi.fn(() => Promise.resolve());
   const acquireRefresh = vi.fn(() => Promise.resolve());
   const acquireJobs = signal<AcquireJob[]>([]);
   const retryAcquireJob = vi.fn(() => of({ jobId: 'job2' }));
   const autoHunt = { hunt: vi.fn() };
+  const p2rStub = {
+    register: (h: () => Promise<void> | void) => {
+      registeredHandler = h;
+    },
+    refreshing: signal(false),
+    hasHandler: signal(true),
+    trigger: vi.fn(),
+  };
   const searchApi = {
     catalogSearch: () =>
       of({ artists: [{ mbid: 'pf-mbid', name: 'Pink Floyd' }], albums: [CATALOG_ALBUM] }),
@@ -91,6 +103,7 @@ function setup(
         },
       },
       { provide: AutoHuntService, useValue: autoHunt },
+      { provide: PullToRefreshService, useValue: p2rStub },
       {
         provide: ActivatedRoute,
         useValue: { snapshot: { queryParamMap: convertToParamMap(shareParams) } },
@@ -629,5 +642,42 @@ describe('SearchComponent — results cap', () => {
 
     component.resultsExpanded.set(true);
     expect(component.visibleBlendedResults().length).toBe(12);
+  });
+});
+
+describe('SearchComponent — pull-to-refresh', () => {
+  it('pull-to-refresh re-runs the current query', async () => {
+    const { component, search } = setup();
+    search.setQuery('pink floyd');
+    const spy = vi.spyOn(component as never, 'executeSearch' as never);
+    (spy as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue(undefined);
+
+    await registeredHandler!();
+
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('pull-to-refresh is a no-op when the query is empty or a link-intent card is showing', async () => {
+    const { component, search } = setup();
+    const spy = vi.spyOn(component as never, 'executeSearch' as never);
+
+    await registeredHandler!(); // empty query
+    expect(spy).not.toHaveBeenCalled();
+
+    search.setQuery('pink floyd');
+    component.linkIntent.set({} as never); // link-intent card showing
+    await registeredHandler!();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('pull-to-refresh is a no-op while a search is already in flight', async () => {
+    const { component, search } = setup();
+    search.setQuery('pink floyd');
+    const spy = vi.spyOn(component as never, 'executeSearch' as never);
+    component.loading.set(true);
+
+    await registeredHandler!();
+
+    expect(spy).not.toHaveBeenCalled();
   });
 });
