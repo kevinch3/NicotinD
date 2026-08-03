@@ -94,8 +94,8 @@ Small, independent improvements this refactor sets up — none required for it t
    elsewhere, so there is no longer a route map to generalize. A future second bespoke-settings
    plugin would follow the same `@if (plugin.id === '…')` pattern in the card template.
 5. **Extensions surface for `metadata`/`connectivity` kinds** — the lrclib lyrics plugin and the
-   scaffolded connectivity kind could each get a small settings page via the same detail-route
-   pattern.
+   scaffolded connectivity kind could each get bespoke settings via the same inline collapsible
+   card-body pattern slskd now uses.
 6. ~~**Library maintenance consolidation**~~ — **Shipped.** The Admin page (previously one flat
    1530-line scroll with a 14-panel "System" mega-section holding unrelated sub-panels with no
    internal grouping) was regrouped into **8 collapsible, icon-headed groups**: System Health,
