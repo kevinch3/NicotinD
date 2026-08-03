@@ -74,6 +74,16 @@ async function readStyleTuple(page: Page): Promise<StyleTuple> {
   });
 }
 
+/** Issue #384: the settings family + admin share ONE page-shell gutter scale;
+ * widths differ only by documented tier (settings family 2xl, admin 3xl). */
+const WRAPPER_MAX_WIDTH: Record<string, string> = {
+  '/settings': '672px',
+  '/settings/plugins': '672px',
+  '/settings/devices': '672px',
+  '/settings/agent-tokens': '672px',
+  '/admin': '768px',
+};
+
 test.describe('settings cards — cross-view consistency', () => {
   test('every route renders fully collapsed on first load', async ({ page }) => {
     for (const route of ROUTES) {
@@ -103,6 +113,33 @@ test.describe('settings cards — cross-view consistency', () => {
       expect(tuples[route], `${route} card/title styles should match ${firstRoute}`).toEqual(
         expected,
       );
+    }
+  });
+
+  test('every settings-family route shares the page-shell gutter scale', async ({ page }) => {
+    const readings: Array<{ route: string; maxWidth: string; pad: string }> = [];
+    for (const route of ROUTES) {
+      await page.goto(route);
+      // /admin renders a transient `loading()` page-shell before swapping to the
+      // loaded one; waiting on the stable group card (as the tests above do)
+      // avoids reading computed styles off a node Angular is about to detach.
+      await expect(page.locator('[data-group-id]').first()).toBeVisible();
+      const shell = page.locator('.page-shell').first();
+      await expect(shell).toBeVisible();
+      readings.push(
+        await shell.evaluate((el, r) => {
+          const s = getComputedStyle(el);
+          return {
+            route: r,
+            maxWidth: s.maxWidth,
+            pad: `${s.paddingLeft}/${s.paddingRight}/${s.paddingTop}/${s.paddingBottom}`,
+          };
+        }, route),
+      );
+    }
+    for (const r of readings) {
+      expect.soft(r.maxWidth, r.route).toBe(WRAPPER_MAX_WIDTH[r.route]);
+      expect.soft(r.pad, r.route).toBe(readings[0].pad);
     }
   });
 });
