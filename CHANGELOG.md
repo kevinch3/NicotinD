@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.302](https://github.com/kevinch3/NicotinD/compare/v0.1.301...v0.1.302) (2026-08-03)
+
+### Features
+
+* **web:** add PullToRefreshService handler stack ([1f9d8ed](https://github.com/kevinch3/NicotinD/commit/1f9d8edec219b7afe405e77ef1bee85bcf10308b))
+* **web:** isCoarsePointer platform helper ([2a40a63](https://github.com/kevinch3/NicotinD/commit/2a40a630c41c566d3c7d76c7820c67e7730bd0ed))
+* **web:** layout-hosted pull-to-refresh gesture + indicator ([b713aa9](https://github.com/kevinch3/NicotinD/commit/b713aa9bc36d8e8713c9aeddb2fd1460fc8ba1ee))
+* **web:** pointercancel support in createPointerDrag ([1c2ee5d](https://github.com/kevinch3/NicotinD/commit/1c2ee5db20f49d33a89d1eebde53fdf4f69ceddb))
+* **web:** pull-to-refresh gesture factory ([f7ee3c8](https://github.com/kevinch3/NicotinD/commit/f7ee3c863e04079d3b40ec1ef5a3d1ec7492021b))
+* **web:** pull-to-refresh on detail pages ([10d6f5d](https://github.com/kevinch3/NicotinD/commit/10d6f5df71e545f5bb2b88bee0a6909b2f667996))
+* **web:** pull-to-refresh on the acquire page ([1febb20](https://github.com/kevinch3/NicotinD/commit/1febb204f99d54d49d6648102ff78d51ddf79a7d))
+* **web:** pull-to-refresh on the downloads feed ([372f49f](https://github.com/kevinch3/NicotinD/commit/372f49fb8ef668fb088afbe125d344b62823747e))
+* **web:** pull-to-refresh on the library tabs ([0cbafc2](https://github.com/kevinch3/NicotinD/commit/0cbafc25786435082dc06052b8ef3aa0fddd5a1b))
+
+### Bug Fixes
+
+* **web:** guard synchronous onRefresh throw in pull-to-refresh commit ([7754ba6](https://github.com/kevinch3/NicotinD/commit/7754ba6b12a3bfd0e7436b4ca054d060b9aa5883))
+* **web:** opt album-picker overlay out of pull-to-refresh ([f15114e](https://github.com/kevinch3/NicotinD/commit/f15114ebd63c1883d3c1504649cbfa23aa908735))
+* **web:** opt nested scrollers out of pull-to-refresh ([ad16abc](https://github.com/kevinch3/NicotinD/commit/ad16abce462694feaa79ff24dfece81fdf6a0361))
 ## [0.1.301](https://github.com/kevinch3/NicotinD/compare/v0.1.300...v0.1.301) (2026-08-03)
 
 ### Features
