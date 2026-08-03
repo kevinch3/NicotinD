@@ -49,9 +49,9 @@ test.describe('admin role switching affects the user view', () => {
     // Admin demotes them to `listener` through the role <select> in the users
     // table, scoped to the target's row. Wait for the persist to land.
     await page.goto('/admin');
-    // The users table lives inside the collapsible "User Management" admin
+    // The users table lives inside the collapsible "User Management" settings
     // group, which starts collapsed by default — expand it first.
-    await page.getByTestId('admin-group-toggle').filter({ hasText: 'User Management' }).click();
+    await page.getByTestId('settings-group-toggle').filter({ hasText: 'User Management' }).click();
     const row = page.locator('tr', { hasText: target.username });
     const select = row.getByTestId('user-role-select');
     await expect(select).toBeVisible();

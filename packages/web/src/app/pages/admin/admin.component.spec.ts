@@ -21,25 +21,27 @@ import { AuthService } from '../../services/auth.service';
 import BASE_CATALOG from '../../../../public/i18n/en.json';
 
 /**
- * Task 4 (Admin panel regroup): every panel now lives inside a collapsible
- * `<app-admin-group>` whose body is `@if (open())`-gated, and `open()` reads
- * a `[defaultOpen]` signal `input()`. This JIT vitest harness never registers
- * signal inputs on a *nested imported* component (see
- * `src/testing/signal-input.ts`), so every group's `[defaultOpen]`/`[title]`/
- * etc. binding silently fails to land and the component falls back to its
- * own default (`defaultOpen` defaults to `false`) — every group therefore
- * renders **collapsed** in this harness regardless of its real default. Specs
- * that need to see a moved panel's content must open the groups themselves by
- * clicking each group's toggle button, exactly like a real user would.
+ * Task 4 (Admin panel regroup) / Task 1 (settings-cards unification): every
+ * panel now lives inside a collapsible `<app-settings-group>` whose body is
+ * `@if (open())`-gated, and `open()` reads a `[defaultOpen]` signal `input()`
+ * (all 8 groups pass no `[defaultOpen]` at all now — every group is collapsed
+ * by default). This JIT vitest harness never registers signal inputs on a
+ * *nested imported* component (see `src/testing/signal-input.ts`), so every
+ * group's `[defaultOpen]`/`[title]`/etc. binding silently fails to land and
+ * the component falls back to its own default (`defaultOpen` defaults to
+ * `false`) — harmless here since real production usage is now all-collapsed
+ * too. Specs that need to see a moved panel's content must open the groups
+ * themselves by clicking each group's toggle button, exactly like a real user
+ * would.
  */
 function expandAllGroups(fixture: { nativeElement: unknown; detectChanges: () => void }): void {
   const el = fixture.nativeElement as HTMLElement;
-  const toggles = el.querySelectorAll<HTMLButtonElement>('[data-testid="admin-group-toggle"]');
-  // `AdminGroupComponent` persists open/closed to localStorage per groupId,
-  // which survives across tests within this file (jsdom's localStorage is
-  // process-wide, not reset per-test). Only click a group that's actually
-  // closed — blindly clicking every toggle would re-collapse a group a prior
-  // test already opened and left "true" in storage.
+  const toggles = el.querySelectorAll<HTMLButtonElement>('[data-testid="settings-group-toggle"]');
+  // `SettingsGroupComponent` persists open/closed to localStorage per
+  // groupId, which survives across tests within this file (jsdom's
+  // localStorage is process-wide, not reset per-test). Only click a group
+  // that's actually closed — blindly clicking every toggle would re-collapse
+  // a group a prior test already opened and left "true" in storage.
   toggles.forEach((btn) => {
     if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
   });
@@ -1031,47 +1033,27 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
     const headers = Array.from(el.querySelectorAll('app-settings-group-header'));
     expect(headers.length).toBe(8);
     // The header text itself is driven by `[title]` — a property binding on a
-    // nested `<app-admin-group>` — so it's subject to the same JIT-harness
+    // nested `<app-settings-group>` — so it's subject to the same JIT-harness
     // signal-input gap documented above `expandAllGroups`. Order/count is
     // still a real, harness-observable structural assertion: it only depends
-    // on how many `<app-admin-group>` elements the template renders and in
+    // on how many `<app-settings-group>` elements the template renders and in
     // what sequence, not on any input value landing.
     expect(headers.length).toBe(8);
     fixture.destroy();
   });
 
-  // The brief's suggested second test ("System Health and Library Processing
-  // start expanded; the rest start collapsed", asserting exactly 2
-  // `admin-group-body` elements on a fresh render) cannot pass in this
-  // harness and is deliberately NOT written that way here.
-  //
-  // Task 4's review established why: this repo's JIT vitest harness never
-  // registers a signal `input()` binding on a *nested imported* component
-  // (see `packages/web/src/testing/signal-input.ts`), so every
-  // `<app-admin-group [defaultOpen]="true">` / implicit-false `[defaultOpen]`
-  // binding in `admin.component.html` silently fails to land when
-  // `AdminComponent` is rendered here. Every `AdminGroupComponent` instance
-  // falls back to its own internal default (`false`) regardless of what the
-  // template says, and `groupId` doesn't land either, so all 8 instances
-  // share one localStorage key in this harness — per-group state genuinely
-  // cannot be distinguished here.
-  //
-  // So the only thing this file CAN honestly assert is what actually
-  // happens: every group renders collapsed on a truly fresh render. Do not
-  // "fix" this back to expecting 2 open groups — that assertion is
-  // permanently red in this harness, not a bug to chase. The real per-group
-  // default-open guarantee (System Health / Library Processing open,
-  // everything else closed) already has correct, passing coverage in
-  // `AdminGroupComponent`'s own spec
-  // (`packages/web/src/app/components/admin-group/admin-group.component.spec.ts`,
-  // Task 2), which renders the component directly rather than nested, so its
-  // `[defaultOpen]` binding does land. Task 6 additionally covers the real
-  // default-open behavior end-to-end in a real browser.
-  it('renders every group collapsed on a fresh admin.component.spec.ts render (known JIT-harness limitation — see comment above)', async () => {
+  // Task 1 (settings-cards unification) removed the `[defaultOpen]="true"`
+  // bindings from System Health / Library Processing — every one of the 8
+  // groups is now collapsed by default, in the real app as well as here. So
+  // unlike the old Task 4 comment this used to carry (which had to explain
+  // away a JIT-harness signal-input gap masking a *real* 2-open default),
+  // this assertion is now honest in both the harness and production: every
+  // group starts collapsed.
+  it('renders every group collapsed on a fresh render (all groups default-collapsed)', async () => {
     localStorage.clear();
     const fixture = await createAndSettle();
     const el: HTMLElement = fixture.nativeElement;
-    const bodies = el.querySelectorAll('[data-testid="admin-group-body"]');
+    const bodies = el.querySelectorAll('[data-testid="settings-group-body"]');
     expect(bodies.length).toBe(0);
     fixture.destroy();
   });

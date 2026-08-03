@@ -1009,17 +1009,16 @@ Add detail there, not here.
   connection/shares + a Nicotine+-style live status panel (`GET /api/plugins/slskd/status`,
   `SlskdStatus`) on its extension page. Credential storage unchanged (UI relocation only). →
   [docs/admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
-- **Admin panel regroup (8 collapsible groups)**: `AdminGroupComponent`
-  (`packages/web/src/app/components/admin-group/`) composes
-  `SettingsGroupHeaderComponent`'s header with a per-device-persisted
-  (`localStorage`, key `nicotind-admin-group-<id>`) collapse toggle — Settings/
-  Extensions stay always-expanded (short pages), Admin needed an actual lever
-  since grouping alone doesn't shrink a 3500-line page. The old 14-panel
-  "System" mega-section is dissolved across System Health / Library Processing
-  / Library Maintenance / Streaming & Media / Backups & Data / Acquisition &
-  Automation, alongside User Management and Audit Log — directly actioning
-  `docs/admin-settings-decoupling.md`'s "library maintenance consolidation"
-  follow-up. → [docs/admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
+- **Settings-family unified card (`SettingsGroupComponent`, settings-cards unification Task 1)**:
+  one bordered, collapsible card (`packages/web/src/app/components/settings-group/`) generalized
+  from the Admin-only AdminGroupComponent (renamed, no longer a repo symbol), collapsed by default everywhere and persisted
+  per-device (`lib/group-state.ts`, `localStorage` key `nicotind-group-<id>`, cleared on signout via
+  `AuthService.resetSession()`). Admin's 8 groups (System Health / Library Processing / Library
+  Maintenance / Streaming & Media / Backups & Data / Acquisition & Automation / User Management /
+  Audit Log — the old 14-panel "System" mega-section dissolved across them) are the first consumer;
+  Settings/Extensions/Devices/Agent tokens migrate onto it in later tasks. →
+  [docs/design-patterns.md](docs/design-patterns.md) "SettingsGroupComponent",
+  [docs/admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
 - **Changelog modal**: build-time `CHANGELOG.md` → `changelog.json` (capped at 50 versions); version
   string in header/settings is clickable. `CHANGELOG.md` is also the source for the **GitHub Release
   description** — the `release-notes` job in `deploy.yml` extracts the tag's section into the

@@ -88,11 +88,13 @@ Small, independent improvements this refactor sets up — none required for it t
    1530-line scroll with a 14-panel "System" mega-section holding unrelated sub-panels with no
    internal grouping) was regrouped into **8 collapsible, icon-headed groups**: System Health,
    Library Processing, Library Maintenance, Streaming & Media, Backups & Data, Acquisition &
-   Automation, User Management, Audit Log. The new shared `AdminGroupComponent`
-   (`packages/web/src/app/components/admin-group/`) composes `SettingsGroupHeaderComponent`'s
-   icon+title+description header with a collapsible body, persisted per-device to `localStorage`
-   (key `nicotind-admin-group-<groupId>`); System Health and Library Processing default expanded
-   (frequently-checked "is everything running" info), the other 6 default collapsed. "Library
+   Automation, User Management, Audit Log. The shared `SettingsGroupComponent`
+   (`packages/web/src/app/components/settings-group/`, generalized from the Admin-only
+   `AdminGroupComponent` as part of the settings-cards unification — see
+   [docs/design-patterns.md](design-patterns.md) "SettingsGroupComponent") composes
+   `SettingsGroupHeaderComponent`'s icon+title+description header with a collapsible body,
+   persisted per-device to `localStorage` (key `nicotind-group-<groupId>`, cleared on signout).
+   Every group is collapsed by default. "Library
    Maintenance" now holds: orphan rows, the fragmentation diagnostic, sync/rescan library,
    optimize-metadata, artist-image coverage, find-duplicates, incomplete albums, and untracked
    downloads — folding library-audit-adjacent tooling into one maintenance home, as this idea

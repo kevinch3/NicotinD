@@ -15,9 +15,8 @@
       </div>
     }
 
-    <app-admin-group
+    <app-settings-group
       groupId="system-health"
-      [defaultOpen]="true"
       icon="activity"
       [title]="'admin.system' | t"
       [description]="'admin.groupSystemHealthDesc' | t"
@@ -155,11 +154,10 @@
           }
         </div>
       </div>
-    </app-admin-group>
+    </app-settings-group>
 
-    <app-admin-group
+    <app-settings-group
       groupId="library-processing"
-      [defaultOpen]="true"
       icon="sliders"
       [title]="'admin.libraryProcessing' | t"
       [description]="'admin.groupLibraryProcessingDesc' | t"
@@ -467,9 +465,9 @@
           </div>
         }
       </section>
-    </app-admin-group>
+    </app-settings-group>
 
-    <app-admin-group
+    <app-settings-group
       groupId="library-maintenance"
       icon="wrench"
       [title]="'admin.libraryMaintenance' | t"
@@ -917,9 +915,9 @@
           </section>
         }
       </div>
-    </app-admin-group>
+    </app-settings-group>
 
-    <app-admin-group
+    <app-settings-group
       groupId="streaming-media"
       icon="headphones"
       [title]="'admin.groupStreamingMediaTitle' | t"
@@ -1017,9 +1015,9 @@
           </div>
         }
       </section>
-    </app-admin-group>
+    </app-settings-group>
 
-    <app-admin-group
+    <app-settings-group
       groupId="backups-data"
       icon="database"
       [title]="'admin.groupBackupsDataTitle' | t"
@@ -1138,9 +1136,9 @@
           </div>
         }
       </div>
-    </app-admin-group>
+    </app-settings-group>
 
-    <app-admin-group
+    <app-settings-group
       groupId="acquisition-automation"
       icon="download"
       [title]="'admin.groupAcquisitionAutomationTitle' | t"
@@ -1209,9 +1207,9 @@
           }
         </div>
       }
-    </app-admin-group>
+    </app-settings-group>
 
-    <app-admin-group
+    <app-settings-group
       groupId="user-management"
       icon="user"
       [title]="'admin.userManagement' | t"
@@ -1376,9 +1374,9 @@
           </tbody>
         </table>
       </section>
-    </app-admin-group>
+    </app-settings-group>
 
-    <app-admin-group
+    <app-settings-group
       groupId="audit-log"
       icon="queue"
       [title]="'admin.auditLog' | t"
@@ -1429,7 +1427,7 @@
           </section>
         </div>
       }
-    </app-admin-group>
+    </app-settings-group>
 
     <!-- Retry-hunt modal (reuses the album-hunt flow) -->
     @if (retryAlbum(); as album) {

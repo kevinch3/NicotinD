@@ -187,6 +187,13 @@ test.describe('mobile UX', () => {
   // (The processing panel moved from Settings to Admin in the settings refactor.)
   test('admin page does not overflow horizontally', async ({ page }) => {
     await page.goto('/admin');
+    // The panel now lives inside the collapsible "Library Processing"
+    // settings group, which starts collapsed by default — expand it first.
+    // (A shared `expandGroup` e2e helper arrives in Task 2; expand inline for now.)
+    await page
+      .getByTestId('settings-group-toggle')
+      .filter({ hasText: 'Library Processing' })
+      .click();
     // Admin-only processing panel with the offending time inputs.
     await expect(page.getByTestId('processing-panel')).toBeVisible();
     const overflow = await page.evaluate(() => {

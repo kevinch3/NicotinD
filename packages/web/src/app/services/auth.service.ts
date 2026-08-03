@@ -20,6 +20,7 @@ import {
   isAdmin as isAdminRole,
 } from '../../types/core';
 import { clearStashedSession } from '../lib/server-registry';
+import { clearGroupStates } from '../lib/group-state';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -158,6 +159,7 @@ export class AuthService {
     localStorage.removeItem('nicotind-library-state');
     localStorage.removeItem('nicotind-library-mode');
     localStorage.removeItem('nicotind-library-show-hidden');
+    clearGroupStates(localStorage);
 
     this.token.set(null);
     this.username.set(null);
