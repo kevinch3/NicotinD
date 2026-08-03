@@ -27,6 +27,7 @@ import { DesktopWindowControlsComponent } from '../desktop-window-controls/deskt
 import { DesktopChromeService } from '../../services/desktop-chrome.service';
 import { isElectronLinux } from '../../lib/platform';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 interface NavItem {
   to: string;
@@ -71,6 +72,7 @@ const HEADER_BASE_CLASSES =
     TrackInfoHostComponent,
     FeedbackDetailSheetComponent,
     DesktopWindowControlsComponent,
+    BottomChromeSafeDirective,
   ],
   templateUrl: './layout.component.html',
 })

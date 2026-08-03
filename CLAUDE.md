@@ -748,7 +748,10 @@ Add detail there, not here.
 - **Bottom-chrome stacking + scroll lock**: mini-player and tab bar share one `z-50` plane;
   `ScrollLockService` pins the document under full-screen sheets. Full-screen modal backdrops use
   `BottomChromeSafeDirective` (issue #367) so a tall dialog never renders its last content under the
-  mini-player/tab bar. →
+  mini-player/tab bar — hardened with ResizeObserver/transitionend re-measure + a published
+  `--bottom-chrome-inset` CSS var, and a canonical bounded-panel recipe (`m-auto`, never
+  `items-center`, `max-h` off the var) that variable-height modals must pair with it
+  (`measureBottomChromeInset` is the one shared chrome-measuring entry point). →
   [docs/design-patterns.md](docs/design-patterns.md)
 - **Catalog (metadata-driven) search**: `CatalogService` returns artist/album cards from
   Lidarr/MusicBrainz, scoped to the matched artist, resolving into album-hunt (typed 404 +

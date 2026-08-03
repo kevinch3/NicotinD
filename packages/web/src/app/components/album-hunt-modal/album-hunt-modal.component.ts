@@ -28,6 +28,7 @@ import { SourceChipComponent } from '../source-chip/source-chip.component';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
+import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 type HuntState =
   | 'idle'
@@ -49,6 +50,7 @@ type ArchiveState = 'idle' | 'searching' | 'done' | 'error';
     CoverArtComponent,
     TvNavGroupDirective,
     TvNavItemDirective,
+    BottomChromeSafeDirective,
   ],
   templateUrl: './album-hunt-modal.component.html',
   host: { '(document:keydown.escape)': 'close()' },
