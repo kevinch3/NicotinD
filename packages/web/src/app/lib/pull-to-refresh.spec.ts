@@ -89,6 +89,24 @@ describe('createPullToRefresh', () => {
     expect(host.pull.phase()).toBe('idle');
   });
 
+  it('never starts tracking when the pointerdown target sits inside a [data-no-p2r] element', () => {
+    const { host } = setup();
+    const optOutRoot = document.createElement('div');
+    optOutRoot.setAttribute('data-no-p2r', '');
+    const innerTarget = document.createElement('div');
+    optOutRoot.appendChild(innerTarget);
+    document.body.appendChild(optOutRoot);
+    try {
+      const down = pointer('pointerdown', 100);
+      Object.defineProperty(down, 'target', { value: innerTarget, configurable: true });
+      host.pull.onPointerDown(down);
+      document.dispatchEvent(pointer('pointermove', 300));
+      expect(host.pull.phase()).toBe('idle');
+    } finally {
+      optOutRoot.remove();
+    }
+  });
+
   it('aborts silently when the first move past slop is upward', () => {
     const { host } = setup();
     host.pull.onPointerDown(pointer('pointerdown', 100));

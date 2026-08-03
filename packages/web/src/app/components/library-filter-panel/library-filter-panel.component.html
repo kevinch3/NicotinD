@@ -1,4 +1,4 @@
-<app-menu-panel align="end" [panelTestId]="testIdPrefix() + '-filter-panel'">
+<app-menu-panel align="end" [panelTestId]="testIdPrefix() + '-filter-panel'" data-no-p2r>
   <button menuTrigger type="button" [attr.data-testid]="testIdPrefix() + '-filters'"
     (click)="panelOpened.emit()"
     class="cursor-pointer select-none px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary hover:bg-theme-hover focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)] transition flex items-center gap-1.5">
