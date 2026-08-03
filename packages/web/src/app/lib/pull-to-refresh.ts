@@ -71,7 +71,13 @@ export function createPullToRefresh(options: PullToRefreshOptions): PullToRefres
     intent = 'undecided';
     phase.set('refreshing');
     pullPx.set(PULL_THRESHOLD_PX);
-    void Promise.resolve(options.onRefresh())
+    let result: Promise<void> | void;
+    try {
+      result = options.onRefresh();
+    } catch {
+      result = undefined;
+    }
+    void Promise.resolve(result)
       .catch(() => undefined)
       .finally(() => {
         phase.set('idle');

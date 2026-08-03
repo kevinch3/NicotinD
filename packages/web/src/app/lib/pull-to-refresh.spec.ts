@@ -36,6 +36,15 @@ class HostComponent {
   });
 }
 
+@Component({ standalone: true, template: '' })
+class ThrowingHostComponent {
+  readonly pull: PullToRefresh = createPullToRefresh({
+    onRefresh: () => {
+      throw new Error('synchronous onRefresh failure');
+    },
+  });
+}
+
 describe('dampPull', () => {
   it('is 0 at or below 0 and monotonically approaches PULL_MAX_PX', () => {
     expect(dampPull(-5)).toBe(0);
@@ -167,5 +176,31 @@ describe('createPullToRefresh', () => {
     expect(host.pull.phase()).toBe('refreshing');
     pullTo(host, 400);
     expect(host.refreshes).toBe(1);
+  });
+
+  it('a synchronously throwing onRefresh still resets to idle and does not wedge the gesture', async () => {
+    Object.defineProperty(window, 'scrollY', { value: 0, configurable: true, writable: true });
+    const fixture = TestBed.createComponent(ThrowingHostComponent);
+    const host = fixture.componentInstance;
+
+    host.pull.onPointerDown(pointer('pointerdown', 100));
+    document.dispatchEvent(pointer('pointermove', 400));
+    expect(() => document.dispatchEvent(pointer('pointerup', 400))).not.toThrow();
+    expect(host.pull.phase()).toBe('refreshing'); // still settling until the microtask flushes
+
+    await new Promise((r) => setTimeout(r, 0)); // flush the catch/finally chain
+
+    expect(host.pull.phase()).toBe('idle');
+    expect(host.pull.pullPx()).toBe(0);
+
+    // the touchmove blocker must not be left attached either.
+    const e = new Event('touchmove', { cancelable: true });
+    document.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+
+    // and the gesture must not be permanently wedged: a fresh pull works.
+    host.pull.onPointerDown(pointer('pointerdown', 100));
+    document.dispatchEvent(pointer('pointermove', 400));
+    expect(host.pull.phase()).toBe('armed');
   });
 });
