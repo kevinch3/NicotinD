@@ -7,9 +7,14 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import { LikeService } from '../../services/like.service';
+import { SetupService } from '../../services/setup.service';
+import { PreserveService } from '../../services/preserve.service';
 import { DesktopChromeService } from '../../services/desktop-chrome.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { ScrollLockService } from '../../services/scroll-lock.service';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import { APP_VERSION } from '../../app.config';
 
 // jsdom lacks a PointerEvent constructor; MouseEvent carries clientX/Y + button
@@ -238,6 +243,105 @@ describe('LayoutComponent — pull-to-refresh gesture host', () => {
     component.pull.onPointerDown(pointer('pointerdown', 100));
     document.dispatchEvent(pointer('pointermove', 400));
     expect(component.pull.phase()).toBe('idle');
+  });
+});
+
+describe('LayoutComponent — pull-to-refresh wiring on the REAL template', () => {
+  // The block above overrides the template with a hand-copied `<main
+  // (pointerdown)...>` snippet, so it would keep passing even if the real
+  // `layout.component.html` lost the binding or the indicator entirely. This
+  // block renders the actual templateUrl (no `template`/`templateUrl`
+  // override) to prove the wiring really exists in the shipped markup.
+  // `imports` is trimmed to just the one pipe the template needs (`t`) —
+  // every child component tag (`<app-player>`, `<router-outlet>`, etc.)
+  // becomes an inert unknown element under NO_ERRORS_SCHEMA, which is fine:
+  // this block only cares about `<main>` and the indicator.
+  beforeEach(() => {
+    mockCoarsePointer = true;
+  });
+
+  function setup() {
+    const playerStub = {
+      currentTrack: signal<{ id: string } | null>(null),
+      queue: () => [],
+      history: () => [],
+      setRadioProvider: () => {},
+    };
+    const authStub = {
+      username: signal('user'),
+      role: signal('user'),
+      logout: () => {},
+      canAcquire: () => true,
+      isAdmin: () => false,
+    };
+    const setupStub = { isOffline: () => false };
+    const preserveStub = { totalUsage: () => 0, clearAll: async () => {} };
+    const transfersStub = {
+      activeDownloadCount: signal(0),
+      startPolling: () => {},
+      stopPolling: () => {},
+    };
+    const acquireStub = { activeJobs: signal<unknown[]>([]), refresh: async () => {} };
+    const likesStub = { refresh: async () => {} };
+    const apiStub = {};
+
+    TestBed.configureTestingModule({
+      imports: [LayoutComponent],
+      providers: [
+        provideRouter([]),
+        { provide: PlayerService, useValue: playerStub },
+        { provide: AuthService, useValue: authStub },
+        { provide: SetupService, useValue: setupStub },
+        { provide: PreserveService, useValue: preserveStub },
+        { provide: TransferService, useValue: transfersStub },
+        { provide: AcquireService, useValue: acquireStub },
+        { provide: LikeService, useValue: likesStub },
+        { provide: LibraryApiService, useValue: apiStub },
+        { provide: APP_VERSION, useValue: '0.0.0-test' },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    });
+
+    // No `template`/`templateUrl` key — the real templateUrl is kept.
+    TestBed.overrideComponent(LayoutComponent, {
+      set: { imports: [TranslatePipe] },
+    });
+
+    const fixture = TestBed.createComponent(LayoutComponent);
+    return { fixture, component: fixture.componentInstance };
+  }
+
+  it('renders the real <main> with the pointerdown binding and no indicator while idle', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+
+    const main: HTMLElement | null = fixture.nativeElement.querySelector('main');
+    expect(main).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="pull-refresh-indicator"]'),
+    ).toBeNull();
+  });
+
+  it('a real pointerdown on <main> reaches the gesture and arms it past threshold', () => {
+    const { fixture, component } = setup();
+    fixture.detectChanges();
+    const p2r = TestBed.inject(PullToRefreshService);
+    TestBed.runInInjectionContext(() => p2r.register(vi.fn().mockResolvedValue(undefined)));
+
+    Object.defineProperty(window, 'scrollY', { value: 0, configurable: true, writable: true });
+    const main: HTMLElement = fixture.nativeElement.querySelector('main');
+    // Dispatched on the rendered element (not called directly on the
+    // component) — this is what proves the template's `(pointerdown)`
+    // binding actually reaches `pull.onPointerDown`, since the readonly
+    // `pull` object can't be spied on.
+    main.dispatchEvent(pointer('pointerdown', 100));
+    document.dispatchEvent(pointer('pointermove', 400));
+
+    expect(component.pull.phase()).not.toBe('idle');
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="pull-refresh-indicator"]'),
+    ).not.toBeNull();
   });
 });
 
