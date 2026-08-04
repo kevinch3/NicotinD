@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { clearGroupState } from '../helpers';
 
 /**
  * Cross-view consistency spec (Task 5, settings-cards unification). Tasks 1-4
@@ -33,17 +34,6 @@ interface StyleTuple {
     fontWeight: string;
     color: string;
   };
-}
-
-/** Every persisted group-open key is prefixed `nicotind-group-` (see
- * `lib/group-state.ts`) — cleared so a leftover expanded state from an earlier
- * spec/run can never make a route look "not collapsed by default". */
-async function clearGroupState(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    for (const key of Object.keys(localStorage)) {
-      if (key.startsWith('nicotind-group-')) localStorage.removeItem(key);
-    }
-  });
 }
 
 async function readStyleTuple(page: Page): Promise<StyleTuple> {

@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { expandAllGroups } from '../../../testing/expand-groups';
 import { provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
 import { vi } from 'vitest';
@@ -46,15 +47,6 @@ vi.mock('../../services/native/native-capabilities', () => ({
  * collapsed state must `localStorage.clear()` first, mirroring
  * `admin.component.spec.ts`'s `expandAllGroups`.
  */
-function expandAllGroups(fixture: { nativeElement: unknown; detectChanges: () => void }): void {
-  const el = fixture.nativeElement as HTMLElement;
-  const toggles = el.querySelectorAll<HTMLButtonElement>('[data-testid="settings-group-toggle"]');
-  toggles.forEach((btn) => {
-    if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
-  });
-  fixture.detectChanges();
-}
-
 function makeToastService() {
   return {
     show: vi.fn().mockImplementation(() => 'toast-1'),

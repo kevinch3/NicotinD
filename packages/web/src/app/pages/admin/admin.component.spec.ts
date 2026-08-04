@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { expandAllGroups } from '../../../testing/expand-groups';
 import { By } from '@angular/platform-browser';
 import { vi, beforeEach, describe, it, expect } from 'vitest';
 import { of, throwError } from 'rxjs';
@@ -34,20 +35,6 @@ import BASE_CATALOG from '../../../../public/i18n/en.json';
  * themselves by clicking each group's toggle button, exactly like a real user
  * would.
  */
-function expandAllGroups(fixture: { nativeElement: unknown; detectChanges: () => void }): void {
-  const el = fixture.nativeElement as HTMLElement;
-  const toggles = el.querySelectorAll<HTMLButtonElement>('[data-testid="settings-group-toggle"]');
-  // `SettingsGroupComponent` persists open/closed to localStorage per
-  // groupId, which survives across tests within this file (jsdom's
-  // localStorage is process-wide, not reset per-test). Only click a group
-  // that's actually closed — blindly clicking every toggle would re-collapse
-  // a group a prior test already opened and left "true" in storage.
-  toggles.forEach((btn) => {
-    if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
-  });
-  fixture.detectChanges();
-}
-
 function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
   return {
     collectedAt: 1_700_000_000_000,

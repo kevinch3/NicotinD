@@ -21,9 +21,14 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   `localStorage` under `nicotind-group-<groupId>` (`lib/group-state.ts`), cleared on signout
   (`clearGroupStates` inside `AuthService.resetSession()`) so a shared device never leaks one user's
   expand habits into the next session. Testids: `settings-group-toggle`/`settings-group-body` on the
-  card, `data-group-id` on the section, `plugin-card-toggle`/`plugin-card-body` on the nested plugin
-  cards. e2e specs that need a card's body call the shared `expandGroup(page, groupId)` helper
-  (`packages/e2e/helpers.ts`) first. `tests/settings-consistency.spec.ts` is the CI-run gate that
+  card, `data-group-id` on the section, `plugin-card-toggle`/`plugin-card-body` +
+  `data-plugin-group-id` on the nested plugin cards (issue #378 — cards no longer reuse
+  `data-group-id`, so the consistency/gallery specs' "first `[data-group-id]` card" queries can
+  never silently measure a plugin card). e2e specs that need a card's body call the shared
+  `expandGroup(page, groupId)` helper (`packages/e2e/helpers.ts`) first, and specs that assert
+  collapsed-by-default use its `clearGroupState(page)` sibling; web unit specs share one
+  `expandAllGroups` from `packages/web/src/testing/expand-groups.ts` (issue #377 — both used to
+  be per-file copies). `tests/settings-consistency.spec.ts` is the CI-run gate that
   every route renders fully collapsed on load and that the first card + title resolve to identical
   computed styles across all five routes; `tests/settings-gallery.screens.ts` (out-of-CI, run via
   `cd packages/e2e && bunx playwright test --config=playwright.screenshots.config.ts`) captures a

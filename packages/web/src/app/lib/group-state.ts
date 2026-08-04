@@ -10,7 +10,7 @@ export const GROUP_STATE_PREFIX = 'nicotind-group-';
 const LEGACY_ADMIN_GROUP_PREFIX = 'nicotind-admin-group-';
 
 type ReadWriteStorage = Pick<Storage, 'getItem' | 'setItem'>;
-type EnumerableStorage = Pick<Storage, 'getItem' | 'length' | 'key' | 'removeItem'>;
+type EnumerableStorage = Pick<Storage, 'length' | 'key' | 'removeItem'>;
 
 /** Reads a group's persisted open/closed state. Only 'true'/'false' parse —
  * anything else (missing, corrupt) returns null so the caller falls back to

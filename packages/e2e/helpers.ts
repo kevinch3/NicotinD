@@ -77,6 +77,18 @@ export async function expandGroup(page: Page, groupId: string): Promise<void> {
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
 }
 
+/** Clears every persisted `nicotind-group-*` open/closed key (issue #377 —
+ * this loop used to be copy-pasted per spec) so a leftover expanded state
+ * from an earlier spec/run can never leak into a collapsed-by-default
+ * assertion or screenshot. Reload after it when the page must re-render. */
+export async function clearGroupState(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('nicotind-group-')) localStorage.removeItem(key);
+    }
+  });
+}
+
 /** Wait until the library scan has settled and at least one album is listed. */
 export async function waitForLibrary(request: APIRequestContext, token: string): Promise<void> {
   await expect

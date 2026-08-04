@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { expandAllGroups } from '../../../../testing/expand-groups';
 import { describe, it, expect } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { provideRouter } from '@angular/router';
@@ -39,15 +40,6 @@ const MINT: AgentTokenMintResponse = {
  * state must `localStorage.clear()` first, mirroring
  * `settings.component.spec.ts`/`admin.component.spec.ts`.
  */
-function expandAllGroups(fixture: { nativeElement: unknown; detectChanges: () => void }): void {
-  const el = fixture.nativeElement as HTMLElement;
-  const toggles = el.querySelectorAll<HTMLButtonElement>('[data-testid="settings-group-toggle"]');
-  toggles.forEach((btn) => {
-    if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
-  });
-  fixture.detectChanges();
-}
-
 function setup(overrides: Partial<Record<keyof AgentTokensApiService, unknown>> = {}) {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
