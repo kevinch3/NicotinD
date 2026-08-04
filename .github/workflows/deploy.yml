@@ -174,15 +174,42 @@ jobs:
       # Gradle emits a bare `app-release.apk`; rename it to the versioned,
       # product-named scheme the other release assets use (NicotinD-<version>.apk)
       # via $NICOTIND_VERSION_NAME (already in $GITHUB_ENV from "Derive Android version").
-      - name: Rename APK with version
+      # Staged out of the gradle output dir so the TV build below can't clobber it.
+      - name: Stage phone APK
         working-directory: packages/mobile/android/app/build/outputs/apk/release
-        run: mv app-release.apk "NicotinD-${NICOTIND_VERSION_NAME}.apk"
+        run: |
+          mkdir -p "$RUNNER_TEMP/apks"
+          mv app-release.apk "$RUNNER_TEMP/apks/NicotinD-${NICOTIND_VERSION_NAME}.apk"
 
-      - name: Attach APK to the GitHub Release
+      # Second flavor: the SAME Android project rebuilt with the web bundle from
+      # the Angular `tv` configuration (environment.tv.ts → isTvBuild() true).
+      # This is what makes the tv config reachable by users at all — the plain
+      # APK has tvBuild:false, so it never gets TV remote-control defaults and
+      # keeps the arrow-seek shortcut that breaks D-pad navigation (issue #387).
+      - name: Build web (tv configuration)
+        run: bun run --filter @nicotind/web build -- --configuration tv
+
+      - name: Sync Capacitor Android project (tv)
+        run: bunx cap sync android
+        working-directory: packages/mobile
+
+      - name: Build TV release APK
+        working-directory: packages/mobile/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
+
+      - name: Stage TV APK
+        working-directory: packages/mobile/android/app/build/outputs/apk/release
+        run: mv app-release.apk "$RUNNER_TEMP/apks/NicotinD-TV-${NICOTIND_VERSION_NAME}.apk"
+
+      - name: Attach APKs to the GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: packages/mobile/android/app/build/outputs/apk/release/*.apk
+          files: ${{ runner.temp }}/apks/*.apk
           fail_on_unmatched_files: true
 
   # Build an UNSIGNED iOS .ipa and attach it to the GitHub Release.

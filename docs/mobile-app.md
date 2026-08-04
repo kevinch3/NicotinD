@@ -531,8 +531,13 @@ browse → play.
   release run red so it can't ship a tag with no APK. It builds the web, `cap sync`s, decodes the
   keystore, runs `./gradlew assembleRelease`, renames Gradle's bare `app-release.apk` to the
   versioned `NicotinD-<version>.apk` (via `$NICOTIND_VERSION_NAME`, for naming cohesion with the
-  desktop assets), and
-  attaches the APK to the GitHub Release for the version tag. Required repo secrets:
+  desktop assets), then repeats the web-build → `cap sync` → `assembleRelease` sequence with the
+  Angular **`tv` configuration** to produce `NicotinD-TV-<version>.apk` (the flavor that actually
+  carries `tvBuild:true` — before issue #387 the tv config was never built by CI, so no released
+  APK ever had TV behavior). Both staged APKs are
+  attached to the GitHub Release for the version tag. The two share one `applicationId`/signature —
+  install `NicotinD-TV-*.apk` on TVs, the plain one on phones; installing the wrong flavor silently
+  swaps TV behavior. Required repo secrets:
   `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`
   (until they're set, the job builds an unsigned APK / fails loudly — it never ships a broken keystore).
 
