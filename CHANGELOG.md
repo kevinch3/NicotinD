@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.309](https://github.com/kevinch3/NicotinD/compare/v0.1.308...v0.1.309) (2026-08-04)
+
+### Features
+
+* **web:** d-pad tail — karaoke overlay, admin duplicates, streaming rows (refs [#396](https://github.com/kevinch3/NicotinD/issues/396)) ([#404](https://github.com/kevinch3/NicotinD/issues/404)) ([f0a3ec1](https://github.com/kevinch3/NicotinD/commit/f0a3ec12ff6277c39ef40129a3eb5f9322f0a6ee)), references [#389](https://github.com/kevinch3/NicotinD/issues/389)
 ## [0.1.308](https://github.com/kevinch3/NicotinD/compare/v0.1.307...v0.1.308) (2026-08-04)
 ## [0.1.307](https://github.com/kevinch3/NicotinD/compare/v0.1.306...v0.1.307) (2026-08-04)
 
