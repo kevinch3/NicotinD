@@ -109,6 +109,24 @@ export class SetupService {
   }
 
   /**
+   * Entry point for the interceptor's SUCCESS signal (issue #372): any API
+   * request that received a real HTTP response while the app believed the
+   * server unreachable is itself the reachability proof — no verification
+   * round-trip needed. This heals the app instantly when background traffic
+   * (the disk pill, transfers poll, …) reaches a recovered server, instead of
+   * waiting out the 20s recovery poll or requiring a device online/offline
+   * edge (which never fires for a server-side outage). Only when the setup
+   * status was never learned (an offline launch) does it still probe, since
+   * `needsSetup` must come from somewhere.
+   */
+  reportServerSuccess(): void {
+    if (!this.serverUnreachable()) return;
+    this.serverUnreachable.set(false);
+    this.clearRecoveryTimer();
+    if (this.status() === null) void this.verify();
+  }
+
+  /**
    * One reachability probe, and the single writer of `serverUnreachable` in both
    * directions: success stores the setup status, clears the flag and stops the
    * recovery poll; failure sets the flag and (re)schedules the poll. Boot
