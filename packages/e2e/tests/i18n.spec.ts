@@ -72,6 +72,14 @@ test.describe('i18n (#236)', () => {
     await expect(tabs).toContainText('Artistas');
     // A key that failed to resolve renders as its dotted key — assert none leak.
     await expect(tabs).not.toContainText('library.tab.');
+
+    // The Albums sort dropdown's labels are i18n keys too — and its options
+    // shipped WITHOUT the `t` pipe for a while, rendering the literal
+    // "library.sort.newest" (issue #391). Assert the translation lands and no
+    // key leaks.
+    const sort = page.getByTestId('library-sort');
+    await expect(sort).toContainText('Más recientes');
+    await expect(sort).not.toContainText('library.sort.');
   });
 
   test('translates the Acquire page (extraction pass, #236)', async ({ page }) => {

@@ -52,7 +52,7 @@ Client disconnects / tab closes
   → if it was the active device, server clears activeDeviceId
 ```
 
-Device IDs are generated once per browser profile via `crypto.randomUUID()` and persisted in `localStorage`. The device name is auto-detected from the User-Agent (`"Chrome on Windows"`, `"Safari on iPhone"`, …) and can be overridden by the user.
+Device IDs are generated once per browser profile via `crypto.randomUUID()` and persisted in `localStorage`. The device name is auto-detected from the User-Agent (`"Chrome on Windows"`, `"Safari on iPhone"`, …) — except on a TV UI, where the UA reads "Chrome on Android" and says nothing a cast selector needs, so the default is `"NicotinD TV"` (issue #393) — and can be overridden by the user.
 
 A 30-second heartbeat keeps the connection alive through idle proxies.
 

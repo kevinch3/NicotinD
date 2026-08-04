@@ -326,7 +326,8 @@ absent, chip content/position, backdrop layer present). **Remote playback out of
 verified on a fresh tv-build install — "Make this device available as an audio output" defaults ON
 (`resolveTvDefaultedPreference`) and the device self-registers in Connected devices; an explicit
 stored toggle always wins over the default (so reinstalled test devices with old data can differ). The
-default device *name* on a TV is the UA-derived "Chrome on Android" — issue #393.
+default device *name* on a TV is `"NicotinD TV"` (issue #393; the UA-derived fallback said
+"Chrome on Android") — a stored user-chosen name still wins.
 
 A separate Angular build configuration (`bun run --filter @nicotind/web build -- --configuration
 tv`, `angular.json`) swaps in `environments/environment.tv.ts` (`tvBuild: true`, otherwise

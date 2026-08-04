@@ -7,7 +7,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 import { ServerConfigService } from './server-config.service';
-import { isTvBuild, resolveTvDefaultedPreference } from '../lib/platform';
+import { isTvBuild, isTvUi, resolveTvDefaultedPreference } from '../lib/platform';
 
 interface WsMessage {
   type: string;
@@ -78,6 +78,10 @@ export class PlaybackWsService {
   }
 
   private detectDeviceName(): string {
+    // The UA on a TV says "Chrome on Android" — meaningless in the cast
+    // device selector other devices see (issue #393).
+    if (isTvUi()) return 'NicotinD TV';
+
     const ua = navigator.userAgent;
 
     let device: string;
