@@ -665,7 +665,7 @@
       </div>
 
       <!-- Library Maintenance: Find Duplicates (moved from Settings) -->
-      <section data-testid="duplicates-panel">
+      <section data-testid="duplicates-panel" appTvNavGroup axis="vertical">
         <p class="text-sm text-theme-primary mb-1">{{ 'admin.findDuplicates' | t }}</p>
         <p class="text-xs text-theme-muted mb-3">
           {{ 'admin.findDuplicatesHint' | t }}
@@ -684,6 +684,7 @@
 
         <button
           type="button"
+          appTvNavItem
           (click)="loadDuplicates()"
           [disabled]="duplicatesLoading()"
           data-testid="find-duplicates"
@@ -700,6 +701,7 @@
               >
                 @for (song of group; track song.id) {
                   <label
+                    appTvNavItem
                     class="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-theme-hover/30 transition"
                   >
                     <input
@@ -737,6 +739,7 @@
           <div class="flex items-center gap-3">
             <button
               type="button"
+              appTvNavItem
               (click)="deleteMarkedDuplicates()"
               [disabled]="deletingDuplicates() || duplicatesDeleteSet().size === 0"
               class="px-4 py-2 rounded-lg status-error border border-theme text-sm hover:opacity-80 transition disabled:opacity-40"
@@ -930,7 +933,7 @@
         </h3>
         @if (streaming(); as s) {
           <div class="space-y-4">
-            <label class="flex items-center justify-between gap-4">
+            <label class="flex items-center justify-between gap-4" appTvNavGroup axis="horizontal">
               <span class="text-sm text-theme-primary"
                 >{{ 'admin.transcodeOnTheFly' | t }}
                 @if (s.ffmpegAvailable === false) {
@@ -945,6 +948,7 @@
               </span>
               <input
                 type="checkbox"
+                appTvNavItem
                 [checked]="s.transcodeEnabled"
                 [disabled]="streamingSaving() || s.ffmpegAvailable === false"
                 (change)="saveStreaming({ transcodeEnabled: $any($event.target).checked })"
@@ -983,7 +987,7 @@
                 </select>
               </label>
 
-              <label class="flex items-center justify-between gap-4">
+              <label class="flex items-center justify-between gap-4" appTvNavGroup axis="horizontal">
                 <span class="text-sm text-theme-primary"
                   >{{ 'admin.alwaysTranscode' | t }}
                   <span class="block text-xs text-theme-muted">{{
@@ -992,6 +996,7 @@
                 </span>
                 <input
                   type="checkbox"
+                  appTvNavItem
                   [checked]="s.forceTranscode"
                   [disabled]="streamingSaving()"
                   (change)="saveStreaming({ forceTranscode: $any($event.target).checked })"

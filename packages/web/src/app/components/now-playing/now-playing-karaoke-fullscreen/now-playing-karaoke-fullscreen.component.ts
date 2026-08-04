@@ -1,11 +1,13 @@
 import { Component, ElementRef, input, output, viewChild } from '@angular/core';
 import { SeekBarComponent } from '../../seek-bar/seek-bar.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
+import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { DEFAULT_PALETTE, type CoverPalette } from '../../../lib/cover-colors';
 
 @Component({
   selector: 'app-now-playing-karaoke-fullscreen',
-  imports: [SeekBarComponent, TranslatePipe],
+  imports: [SeekBarComponent, TranslatePipe, TvNavGroupDirective, TvNavItemDirective],
   templateUrl: './now-playing-karaoke-fullscreen.component.html',
 })
 export class NowPlayingKaraokeFullscreenComponent {

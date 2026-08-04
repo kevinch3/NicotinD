@@ -8,7 +8,9 @@ import { TvNavGroupDirective } from './tv-nav-group.directive';
  * so the roving index stays correct even when arrow keys weren't involved.
  * Works on any focusable element — the actual target of `<button>` (queue
  * rows, transport controls) needs no other change since a button is already
- * natively Enter/Space-activatable.
+ * natively Enter/Space-activatable. Hosts that are NOT natively activatable
+ * (e.g. the Admin duplicates `<label>` rows, issue #396) get an Enter/Space →
+ * `click()` passthrough so a D-pad select activates them like any button.
  */
 @Directive({
   selector: '[appTvNavItem]',
@@ -17,6 +19,8 @@ import { TvNavGroupDirective } from './tv-nav-group.directive';
     '[attr.tabindex]': 'tabIndex()',
     '[attr.role]': 'itemRole()',
     '(focusin)': 'onFocusIn()',
+    '(keydown.enter)': 'onActivateKey($event)',
+    '(keydown.space)': 'onActivateKey($event)',
   },
 })
 export class TvNavItemDirective {
@@ -53,6 +57,18 @@ export class TvNavItemDirective {
 
   onFocusIn(): void {
     this.group?.notifyFocused(this);
+  }
+
+  /** Enter/Space → `click()` for hosts with no native activation (a `<label>`
+   *  row). Natively-activatable elements are left to the browser — a
+   *  synthesized click on a button would double-fire — and so is a key coming
+   *  from a focusable descendant (the label's own checkbox). */
+  onActivateKey(event: Event): void {
+    const host = this.el.nativeElement;
+    if (event.target !== host) return;
+    if (/^(button|a|input|select|textarea|summary)$/i.test(host.tagName)) return;
+    event.preventDefault();
+    host.click();
   }
 
   focusElement(): void {
