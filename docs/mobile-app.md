@@ -549,8 +549,22 @@ order: (1) the topmost registered overlay closes — a minimal LIFO `BackHandler
 (`lib/back-handlers.ts`, pure + unit-tested) that Now Playing registers persistently
 (karaoke-fullscreen exits first, then the sheet; state-checked so per-open pushes always sit above
 it), and `TrackInfoService`/`MenuPanelComponent` push onto per-open; (2) any non-home route walks
-`Location.back()`; (3) only at home with nothing open does `App.exitApp()` run. Deliberately NOT a
-consolidation of the per-component Escape handlers — that stays a tracked follow-up.
+`Location.back()`; (3) only at home with nothing open does `App.exitApp()` run.
+
+**Escape shares the stack (issue #398)**: `BackButtonService.initialize()` also attaches one
+document-level Escape listener (all platforms, `AbortController` teardown on destroy) that runs
+`stack.handleBack()` — so Escape and hardware Back have identical topmost-first semantics, and one
+press closes only the topmost overlay instead of every open modal's own `document:keydown.escape`
+handler firing at once. Unlike Back it never falls through to navigation: Escape means "close",
+not "go back" (an empty stack leaves the event untouched, and an event something downstream
+already `preventDefault`-ed is skipped). The 8 per-component handlers migrated onto it in two
+shapes: modals rendered under an `@if` (confirm-dialog, changelog, album-hunt, metadata-fix,
+artist-genre, artist-identity) — where component lifetime IS open lifetime — call the
+`registerOverlayCloser(close)` helper (exported from `back-button.service.ts`: stack push in the
+constructor, `DestroyRef` unregister) once; overlays that outlive their open state (MenuPanel,
+the artist-image album picker) keep managing their registration per open/close. The library
+playlist-rename input keeps its element-scoped Escape (cancel-the-rename is caret-local, not an
+overlay) but now `preventDefault`s so the global listener never also closes an overlay behind it.
 
 **Deliberately not built**: `Escape`-as-back (would need to arbitrate against 7+ existing per-component modal Escape
 handlers with no current shared "is a modal open" signal — real, separate work) and any

@@ -1,4 +1,5 @@
 import { Component, inject, input, output, signal, computed, OnInit } from '@angular/core';
+import { registerOverlayCloser } from '../../services/native/back-button.service';
 import { NgTemplateOutlet } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import type { ArchiveCandidate, SpotifyCandidate } from '@nicotind/core';
@@ -53,9 +54,13 @@ type ArchiveState = 'idle' | 'searching' | 'done' | 'error';
     BottomChromeSafeDirective,
   ],
   templateUrl: './album-hunt-modal.component.html',
-  host: { '(document:keydown.escape)': 'close()' },
 })
 export class AlbumHuntModalComponent implements OnInit {
+  constructor() {
+    // Escape / hardware Back close via the shared stack (issue #398).
+    registerOverlayCloser(() => this.close());
+  }
+
   private api = inject(DownloadsApiService);
   private searchApi = inject(SearchApiService);
   private transfer = inject(TransferService);

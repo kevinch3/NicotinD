@@ -490,7 +490,7 @@
             @if (editingPlaylistId() === pl.id) {
               <input class="flex-1 min-w-0 px-2 py-1 rounded bg-theme-surface-2 text-theme-primary text-sm outline-none"
                 [ngModel]="renameDraft()" (ngModelChange)="renameDraft.set($event)" name="renameDraft"
-                (keydown.enter)="commitRename(pl.id)" (keydown.escape)="cancelRename()"
+                (keydown.enter)="commitRename(pl.id)" (keydown.escape)="cancelRename(); $event.preventDefault()"
                 (blur)="commitRename(pl.id)" autofocus />
             } @else {
               <a [routerLink]="['/library/playlists', pl.id]" appTvNavItem class="flex-1 min-w-0 flex items-center gap-2 cursor-pointer">
