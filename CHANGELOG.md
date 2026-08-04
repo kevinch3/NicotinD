@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.306](https://github.com/kevinch3/NicotinD/compare/v0.1.305...v0.1.306) (2026-08-04)
+
+### Bug Fixes
+
+* **web:** tv polish — albums sort i18n leak + tv device name default ([#401](https://github.com/kevinch3/NicotinD/issues/401)) ([6b9f90d](https://github.com/kevinch3/NicotinD/commit/6b9f90d1a7cacce1d2d081c9fa49b8222d715fe4)), references [#391](https://github.com/kevinch3/NicotinD/issues/391) [#393](https://github.com/kevinch3/NicotinD/issues/393)
 ## [0.1.305](https://github.com/kevinch3/NicotinD/compare/v0.1.304...v0.1.305) (2026-08-04)
 
 ### Bug Fixes
