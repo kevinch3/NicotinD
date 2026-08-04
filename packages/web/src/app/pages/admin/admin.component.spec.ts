@@ -970,6 +970,65 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     expect(document.activeElement).toBe(buttons[1]);
     fixture.destroy();
   });
+
+  it('duplicates rows are label nav items in one vertical group (issue #396)', async () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.componentInstance.duplicates.set([
+      [
+        { id: 's1', title: 'A', artist: 'X', album: 'Al', suffix: 'flac', duration: 60 },
+        { id: 's2', title: 'A', artist: 'X', album: 'Al', suffix: 'mp3', duration: 60 },
+      ],
+    ] as never);
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    const el: HTMLElement = fixture.nativeElement;
+    const panel = el.querySelector('[data-testid="duplicates-panel"]')!;
+    // One vertical group spans the whole panel: the find button, every song
+    // row (a <label> — activated via the item directive's Enter passthrough,
+    // since a label has no native key activation) and the delete button all
+    // share one D-pad sweep.
+    expect(panel.hasAttribute('appTvNavGroup')).toBe(true);
+    const findButton = panel.querySelector('[data-testid="find-duplicates"]')!;
+    expect(findButton.hasAttribute('appTvNavItem')).toBe(true);
+    const rows = Array.from(panel.querySelectorAll('label'));
+    expect(rows.length).toBe(2);
+    for (const row of rows) expect(row.hasAttribute('appTvNavItem')).toBe(true);
+    fixture.destroy();
+  });
+
+  it('streaming checkboxes get per-row groups; the selects stay outside every group (issue #396)', async () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.componentInstance.streaming.set({
+      transcodeEnabled: true,
+      format: 'opus',
+      maxBitRate: 192,
+      forceTranscode: false,
+      ffmpegAvailable: true,
+    } as never);
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    const el: HTMLElement = fixture.nativeElement;
+    const panel = el.querySelector('[data-testid="streaming-panel"]')!;
+    const checkboxes = Array.from(panel.querySelectorAll('input[type="checkbox"]'));
+    expect(checkboxes.length).toBe(2);
+    for (const checkbox of checkboxes) {
+      expect(checkbox.hasAttribute('appTvNavItem')).toBe(true);
+      expect(checkbox.closest('[appTvNavGroup]')).not.toBeNull();
+    }
+    // The structural invariant from the user-row test above: a <select> is
+    // never inside a nav group's subtree, so its own option cycling is never
+    // intercepted (per-row exclusion, not attribute absence).
+    const selects = Array.from(panel.querySelectorAll('select'));
+    expect(selects.length).toBe(2);
+    for (const select of selects) {
+      expect(select.closest('[appTvNavGroup]')).toBeNull();
+    }
+    fixture.destroy();
+  });
 });
 
 /**

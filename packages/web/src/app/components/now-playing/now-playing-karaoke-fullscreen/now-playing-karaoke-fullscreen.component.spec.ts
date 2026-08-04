@@ -108,4 +108,21 @@ describe('NowPlayingKaraokeFullscreenComponent', () => {
 
     expect(selected).toBe(2);
   });
+
+  it('every overlay button is a D-pad nav item in a two-row group (issue #396)', () => {
+    const fixture = TestBed.createComponent(NowPlayingKaraokeFullscreenComponent);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    // The overlay root is a vertical group holding two horizontal rows —
+    // header (exit / browse / vocal-mute) and transport (prev / play / next).
+    const overlay = el.querySelector('[data-testid="karaoke-overlay"]');
+    expect(overlay?.hasAttribute('appTvNavGroup')).toBe(true);
+    const rows = el.querySelectorAll('[data-testid="karaoke-overlay"] [appTvNavGroup]');
+    expect(rows.length).toBe(2);
+    const buttons = Array.from(el.querySelectorAll('button'));
+    expect(buttons.length).toBe(6);
+    for (const button of buttons) {
+      expect(button.hasAttribute('appTvNavItem')).toBe(true);
+    }
+  });
 });

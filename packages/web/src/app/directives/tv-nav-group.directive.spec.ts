@@ -628,3 +628,79 @@ describe('TvNavGroupDirective mixed direct items + child groups (issue #389)', (
     expect(after.getAttribute('tabindex')).toBe('-1');
   });
 });
+
+describe('TvNavItemDirective activation passthrough (issue #396)', () => {
+  // A `<label>` (the Admin duplicates rows) is focusable as a nav item but not
+  // natively Enter/Space-activatable the way a button is — the passthrough
+  // synthesizes the click so a D-pad Enter toggles the wrapped checkbox.
+  @Component({
+    standalone: true,
+    imports: [TvNavGroupDirective, TvNavItemDirective],
+    template: `
+      <div appTvNavGroup axis="vertical">
+        <label appTvNavItem class="row" (click)="labelClicks = labelClicks + 1">
+          <input type="checkbox" />
+        </label>
+        <button appTvNavItem class="btn" (click)="buttonClicks = buttonClicks + 1">go</button>
+      </div>
+    `,
+  })
+  class PassthroughHost {
+    labelClicks = 0;
+    buttonClicks = 0;
+  }
+
+  function setupPassthrough() {
+    TestBed.configureTestingModule({ imports: [PassthroughHost] });
+    const fixture = TestBed.createComponent(PassthroughHost);
+    fixture.detectChanges();
+    const label: HTMLLabelElement = fixture.nativeElement.querySelector('.row');
+    const button: HTMLButtonElement = fixture.nativeElement.querySelector('.btn');
+    return { fixture, label, button, host: fixture.componentInstance };
+  }
+
+  function keydown(el: HTMLElement, key: string): KeyboardEvent {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    el.dispatchEvent(event);
+    return event;
+  }
+
+  it('Enter on a focused label item clicks it (checkbox rows toggle once)', () => {
+    const { fixture, label, host } = setupPassthrough();
+    const checkbox: HTMLInputElement = fixture.nativeElement.querySelector('input');
+    label.focus();
+    const event = keydown(label, 'Enter');
+    // The label forwards activation to its checkbox, whose click bubbles back
+    // through the label — so the label sees 2 click events but the checkbox
+    // toggles exactly once, same as a real mouse click on a label.
+    expect(checkbox.checked).toBe(true);
+    expect(host.labelClicks).toBeGreaterThan(0);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('Space on a focused label item clicks it too', () => {
+    const { fixture, label } = setupPassthrough();
+    const checkbox: HTMLInputElement = fixture.nativeElement.querySelector('input');
+    label.focus();
+    keydown(label, ' ');
+    expect(checkbox.checked).toBe(true);
+  });
+
+  it('a natively-activatable button gets no synthesized click (no double-fire)', () => {
+    const { button, host } = setupPassthrough();
+    button.focus();
+    const event = keydown(button, 'Enter');
+    // The browser's own Enter→click on buttons is the real activation path;
+    // the passthrough must stay out of it entirely.
+    expect(host.buttonClicks).toBe(0);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('a key from the nested checkbox itself is left alone', () => {
+    const { fixture, host } = setupPassthrough();
+    const checkbox: HTMLInputElement = fixture.nativeElement.querySelector('input');
+    checkbox.focus();
+    keydown(checkbox, 'Enter');
+    expect(host.labelClicks).toBe(0);
+  });
+});
