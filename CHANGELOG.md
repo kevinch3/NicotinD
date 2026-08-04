@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.307](https://github.com/kevinch3/NicotinD/compare/v0.1.306...v0.1.307) (2026-08-04)
+
+### Features
+
+* **mobile:** google tv launcher channel row of newest albums (refs [#395](https://github.com/kevinch3/NicotinD/issues/395)) ([#402](https://github.com/kevinch3/NicotinD/issues/402)) ([86a4146](https://github.com/kevinch3/NicotinD/commit/86a414673394c12ae57b135c7de1de1f59493b36))
+* **mobile:** self-update the sideloaded apk from github releases ([#403](https://github.com/kevinch3/NicotinD/issues/403)) ([80d222b](https://github.com/kevinch3/NicotinD/commit/80d222b31af3d741038d955ea637060d39c999a5))
 ## [0.1.306](https://github.com/kevinch3/NicotinD/compare/v0.1.305...v0.1.306) (2026-08-04)
 
 ### Bug Fixes
