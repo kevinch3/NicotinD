@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { Subscription, fromEvent } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { PlayerService } from './player.service';
+import { isTvBuild } from '../lib/platform';
 
 /**
  * Global keyboard/TV-remote shortcuts: Space/K (play/pause), J/L (prev/next),
@@ -78,6 +79,12 @@ export class KeyboardShortcutsService {
     }
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
       if (event.defaultPrevented) return; // a D-pad nav group already handled this keypress
+      // On a TV build, Left/Right belong to the WebView's spatial focus
+      // navigation — preventDefault() here is what cancelled the D-pad focus
+      // move and made the whole Now Playing sheet horizontally unnavigable
+      // (issue #387). Seeking on TV stays available via the focused seek bar
+      // (native <input type=range>) and hardware media keys.
+      if (isTvBuild()) return;
       // A focused, closed `<select>` changes its selected option on
       // ArrowLeft/ArrowRight — a preventable default we must not steal (there
       // are `<select>`s in the Library sort dropdowns, Settings, Admin, the

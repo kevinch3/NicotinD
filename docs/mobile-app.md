@@ -416,6 +416,14 @@ Three guards make the arrow keys safe to own globally:
    ±10s jump. A key the group's axis does _not_ navigate by (ArrowUp inside a `horizontal` group;
    ArrowUp at a grid's first row, where there is no row to jump to) stays un-prevented and reaches
    the global handler — neither is a seek key, so nothing leaks.
+4. **Never on a TV build** (issue #387) — the seek branch returns before `preventDefault()` when
+   `isTvBuild()`. On Android TV, the WebView's built-in D-pad **spatial focus navigation** is what
+   moves focus between elements not covered by a nav group; `preventDefault()` on the keydown is
+   exactly what cancels that focus move. This is why vertical D-pad movement always worked (ArrowUp/
+   Down are never intercepted) while horizontal was dead across the whole Now Playing sheet — the
+   transport row could never even be *entered* horizontally. Seeking on TV stays available through
+   the focused seek bar (a native `<input type="range">` consumes ArrowLeft/Right to scrub) and the
+   remote's hardware media keys via MediaSession. Non-TV builds keep the seek shortcut unchanged.
 
 **Deliberately not built**: `Escape`-as-back (would need to arbitrate against 7+ existing per-component modal Escape
 handlers with no current shared "is a modal open" signal — real, separate work) and any
