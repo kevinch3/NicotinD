@@ -1287,7 +1287,7 @@ player — blurred-cover backdrop, bottom-pinned glass transport without shuffle
 navigation directive pair — vertical/horizontal/grid axes — covers the Now Playing queue,
 transport controls, every Library/Search/artist-detail grid, every `TrackRowComponent`-based song
 list, and Settings/Admin/Extensions button/toggle rows (forms stay Tab-order-only by design),
-plus a global keyboard shortcut set (Space/K play-pause, J/L prev/next, M mute, N now-playing, arrow-key seek that defers to D-pad nav groups, `/` for Acquire — Escape-as-back is a deliberately deferred follow-up given the modal-arbitration work it needs). → See [docs/mobile-app.md](docs/mobile-app.md) and
+plus a global keyboard shortcut set (Space/K play-pause, J/L prev/next, M mute, N now-playing, arrow-key seek that defers to D-pad nav groups, `/` for Acquire — Escape-as-back is a deliberately deferred follow-up given the modal-arbitration work it needs). The `@nicotind/capacitor-tv-channels` plugin owns the Google TV launcher surface: a Watch Next "Continue listening" entry for the current track, a "Recently added" preview-channel row of the newest albums whose tiles deep-link into the app via a sanitized route extra (issue #395, `publishChannel`/`clearChannel` + the retained `deepLink` event), and the Assistant's play-from-search voice intent. → See [docs/mobile-app.md](docs/mobile-app.md) and
 [docs/ios-app.md](docs/ios-app.md).
 
 ## Desktop app (Electron)
