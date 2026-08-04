@@ -33,6 +33,10 @@ describe('AndroidManifest.xml — Android TV launcher contract', () => {
     );
   });
 
+  it('allows cleartext http — self-hosted LAN servers have no TLS (#390)', () => {
+    expect(manifest).toMatch(/<application[\s\S]*?android:usesCleartextTraffic="true"[\s\S]*?>/);
+  });
+
   it('declares the camera optional — the CAMERA permission (QR pairing) implies required=true otherwise', () => {
     expect(manifest).toMatch(
       /<uses-feature\s+android:name="android\.hardware\.camera"\s+android:required="false"\s*\/>/,

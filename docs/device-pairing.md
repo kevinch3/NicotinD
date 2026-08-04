@@ -28,8 +28,10 @@ easy/safe compromise for "phone reaches the desktop from anywhere":
   the QR carries a normal public HTTPS URL.
 - The backend **stays loopback-bound** (`NICOTIND_BIND_HOST=127.0.0.1` on
   desktop); `tailscale funnel --bg <port>` proxies 443 → localhost. No bind
-  changes, no firewall holes, no Android-cleartext / iOS-ATS work (Tailscale
-  terminates real HTTPS with a real cert).
+  changes and no firewall holes (Tailscale terminates real HTTPS with a real
+  cert). The Android app separately allows cleartext/mixed content for
+  plain-`http` LAN servers (issue #390, see docs/mobile-app.md) — Funnel makes
+  that unnecessary but is not required.
 - Trade-offs, accepted and documented: the app becomes **publicly reachable**
   (the JWT login is the gate — use a strong password; claim is rate-limited),
   and streams relay through Tailscale's Funnel proxy, which is

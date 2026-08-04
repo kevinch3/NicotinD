@@ -99,8 +99,14 @@ native:
   bundle; requires the `CAMERA` permission added to the Android manifest) reads the server's
   Link-a-device QR, probes its candidate URLs, claims the one-time token, and lands **connected and
   signed in** in one scan. A **pairing code** field is the manual fallback (URL + 6-char code typed
-  from the server's Devices page). No cleartext config is needed — the pairing URLs are HTTPS
-  (Tailscale Funnel or a reverse-proxied deployment).
+  from the server's Devices page). Pairing URLs are typically HTTPS (Tailscale Funnel or a
+  reverse-proxied deployment), but plain-`http` LAN servers also work: the Android shell allows
+  cleartext + mixed content (issue #390 — `android:usesCleartextTraffic="true"` in the manifest +
+  `allowMixedContent: true` in `capacitor.config.ts`). Without those, the WebView's
+  `https://localhost` origin blocked every `http://` API call twice over (cleartext policy + mixed
+  content), making LAN-only self-hosted servers unreachable from the app entirely — the accepted
+  trade-off is that a self-hosted music server on a private LAN is exactly the deployment that has
+  no TLS. iOS ATS has the mirror problem and is a tracked follow-up.
 - **Service worker disabled on native** (`app.config.ts`): the WebView serves assets locally, so ngsw
   caching is redundant and can fight Capacitor / cross-origin API calls. IndexedDB offline still works.
 

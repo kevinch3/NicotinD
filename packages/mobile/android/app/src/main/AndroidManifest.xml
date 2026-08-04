@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- usesCleartextTraffic: self-hosted NicotinD servers on a LAN speak plain
+         http (no TLS); without this the WebView blocks every http API call
+         (issue #390). Pairs with allowMixedContent in capacitor.config.ts —
+         the app itself is served from https://localhost, so an http server is
+         also mixed content. -->
     <application
+        android:usesCleartextTraffic="true"
         android:allowBackup="true"
         android:banner="@drawable/banner"
         android:icon="@mipmap/ic_launcher"
