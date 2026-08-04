@@ -290,8 +290,28 @@ cold-start voice launch isn't lost before the web layer attaches. Web side:
 `services/native/tv-channels.service.ts` publishes on track change (the MediaSession-artwork URL
 recipe) and answers voice queries via the pure `lib/play-from-search.ts` ranker (core `fold`,
 exact-title > title-prefix > all-tokens; null keeps current playback) over a `q=`-filtered
-`/api/library/songs` page. Scope is deliberately **Play Next only** — a full recommendation
-channel row is a tracked follow-up. `deploy.yml`'s mobile path filter includes the new package.
+`/api/library/songs` page. `deploy.yml`'s mobile path filter includes the new package.
+
+**Launcher channel row (issue #395)**: the same plugin also maintains ONE preview channel on the
+launcher home — `publishChannel`/`clearChannel` via androidx.tvprovider `Channel`/`PreviewProgram`
+(`TYPE_PREVIEW` channel, `TYPE_ALBUM` programs, 1:1 poster art). Same discipline as Play Next:
+channel id in SharedPreferences, replace-all program semantics per publish (the preview-program
+table forbids query selections, so the wipe filters client-side over the app's own rows), every
+method TV-gated + best-effort. The channel logo is rendered from the app icon
+(`ChannelLogoUtils`) so there's no second asset to sync; `requestChannelBrowsable` runs once on
+creation (some launchers auto-surface an app's first channel and ignore it). Each tile's intent
+URI carries the album's in-app route as a `nicotind_route` extra, forwarded to the web as a
+retained `deepLink` event (same cold-start buffering as `playFromSearch`) — the web side runs it
+through `sanitizeReturnUrl` (an intent extra is craftable by any app on the device, same trust
+level as a returnUrl) before `router.navigateByUrl`. Web content: `TvChannelsService.syncChannel`
+publishes the 12 newest albums as a translated "Recently added" row, driven by an effect on
+auth token + i18n readiness (the `ready` gate keeps a raw key off the launcher; a language switch
+retitles the row); sign-out deletes the channel (which cascades its programs). No background
+sync — the row refreshes whenever the app runs, which for a music app the user opens to play is
+the natural cadence; a WorkManager periodic sync remains out of scope. Verified on the google-tv
+emulator end-to-end: bridge payload → provider row inserts (temporary instrumentation, since the
+shell can't query another app's TV-provider rows) → firing a tile's intent (`am start … --es
+nicotind_route /library/albums/<id>`) lands on that album's detail page.
 
 **Overscan calibration (Settings → Appearance, TV only)**: real panels overscan differently, so the safe-area insets are now per-device presets (`lib/tv-overscan.ts`: Off / Standard / Extra, localStorage `nicotind-tv-overscan`, the language-picker per-device rationale) applied as inline `--tv-overscan-x/y` on the root at bootstrap (main.ts, overriding the stylesheet defaults; Standard equals the defaults so fresh installs look unchanged) and switchable live from an `isTvUi()`-gated preset row.
 
