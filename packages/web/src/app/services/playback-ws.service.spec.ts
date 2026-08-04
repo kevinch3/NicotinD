@@ -103,6 +103,29 @@ describe('PlaybackWsService REGISTER payload', () => {
     return registerFrame.payload;
   }
 
+  it('a TV registers as "NicotinD TV", not the UA-derived browser name (issue #393)', () => {
+    // The UA default ("Chrome on Android") is what other devices see in the
+    // cast device selector — meaningless for a television.
+    document.documentElement.classList.add('tv-build');
+    try {
+      const payload = connectAndCaptureRegister();
+      expect(payload['name']).toBe('NicotinD TV');
+    } finally {
+      document.documentElement.classList.remove('tv-build');
+    }
+  });
+
+  it('a stored custom name still wins on a TV (explicit choice beats the default)', () => {
+    document.documentElement.classList.add('tv-build');
+    try {
+      storageStub.setItem('nicotind_device_name', 'Living room');
+      const payload = connectAndCaptureRegister();
+      expect(payload['name']).toBe('Living room');
+    } finally {
+      document.documentElement.classList.remove('tv-build');
+    }
+  });
+
   it('sends remoteEnabled: false on a non-TV build with no stored preference', () => {
     vi.mocked(platform.isTvBuild).mockReturnValue(false);
     const payload = connectAndCaptureRegister();
