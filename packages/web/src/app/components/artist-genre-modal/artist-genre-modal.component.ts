@@ -1,13 +1,5 @@
-import {
-  Component,
-  HostListener,
-  computed,
-  effect,
-  inject,
-  input,
-  output,
-  signal,
-} from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { registerOverlayCloser } from '../../services/native/back-button.service';
 import { FormsModule } from '@angular/forms';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ToastService } from '../../services/toast.service';
@@ -73,6 +65,8 @@ export class ArtistGenreModalComponent {
   readonly distributionGenres = signal(0);
 
   constructor() {
+    // Escape / hardware Back close via the shared stack (issue #398).
+    registerOverlayCloser(() => this.closed.emit());
     effect(() => {
       const id = this.artistId();
       this.loading.set(true);
@@ -180,10 +174,5 @@ export class ArtistGenreModalComponent {
         this.error.set('Failed to reset');
       },
     });
-  }
-
-  @HostListener('document:keydown.escape')
-  onEscape(): void {
-    this.closed.emit();
   }
 }

@@ -151,9 +151,6 @@ export class MenuPanelComponent {
   @HostListener('document:click') onDocClick(): void {
     this.close();
   }
-  @HostListener('document:keydown.escape') onEsc(): void {
-    this.close();
-  }
   @HostListener('window:resize') onResize(): void {
     if (this.open()) this.reposition();
   }

@@ -1,9 +1,19 @@
-import { Component, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  inject,
+  input,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 import { IconComponent } from '../icon/icon.component';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { AuthService } from '../../services/auth.service';
+import { BackButtonService } from '../../services/native/back-button.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import type { Album } from '../../services/api/api-types';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
@@ -44,6 +54,30 @@ export class ArtistImageMenuComponent {
 
   readonly busy = signal(false);
   readonly albumPickerOpen = signal(false);
+
+  // The picker opens/closes within the component's lifetime, so its
+  // Escape/Back closer is managed per open (the MenuPanel pattern, issue
+  // #398) rather than per component lifetime.
+  private readonly backButton = inject(BackButtonService);
+  private readonly destroyRef = inject(DestroyRef);
+  private unregisterPickerBack: (() => void) | null = null;
+
+  constructor() {
+    this.destroyRef.onDestroy(() => this.unregisterPickerBack?.());
+  }
+
+  private setPickerOpen(open: boolean): void {
+    this.albumPickerOpen.set(open);
+    if (open) {
+      this.unregisterPickerBack ??= this.backButton.stack.push(() => {
+        this.setPickerOpen(false);
+        return true;
+      });
+    } else {
+      this.unregisterPickerBack?.();
+      this.unregisterPickerBack = null;
+    }
+  }
   readonly pickable = signal<Album[]>([]);
   readonly loadingAlbums = signal(false);
 
@@ -72,13 +106,13 @@ export class ArtistImageMenuComponent {
     const provided = this.albums();
     if (provided.length > 0) {
       this.pickable.set(provided);
-      this.albumPickerOpen.set(true);
+      this.setPickerOpen(true);
       return;
     }
     // Grid case: no albums to hand, so fetch them on demand rather than making
     // every tile pay for a request it probably never needs.
     this.loadingAlbums.set(true);
-    this.albumPickerOpen.set(true);
+    this.setPickerOpen(true);
     try {
       const res = await firstValueFrom(this.api.getArtist(this.artistId()));
       this.pickable.set([...(res.albums ?? []), ...(res.singlesAndEps ?? [])]);
@@ -90,11 +124,11 @@ export class ArtistImageMenuComponent {
   }
 
   closeAlbumPicker(): void {
-    this.albumPickerOpen.set(false);
+    this.setPickerOpen(false);
   }
 
   async pickAlbumCover(albumId: string): Promise<void> {
-    this.albumPickerOpen.set(false);
+    this.setPickerOpen(false);
     await this.run(() =>
       firstValueFrom(this.api.setArtistImageFromAlbum(this.artistId(), albumId)),
     );

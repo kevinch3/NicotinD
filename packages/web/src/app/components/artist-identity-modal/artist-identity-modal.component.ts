@@ -1,6 +1,5 @@
 import {
   Component,
-  HostListener,
   computed,
   effect,
   inject,
@@ -9,6 +8,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
+import { registerOverlayCloser } from '../../services/native/back-button.service';
 import { FormsModule } from '@angular/forms';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import type { ArtistIdentityResult } from '../../services/api/api-types';
@@ -82,6 +82,8 @@ export class ArtistIdentityModalComponent {
   readonly error = signal<string | null>(null);
 
   constructor() {
+    // Escape / hardware Back close via the shared stack (issue #398).
+    registerOverlayCloser(() => this.closed.emit());
     // Prefill the member chips + the rename field whenever a new raw name opens.
     effect(() => {
       const raw = this.rawName();
@@ -158,10 +160,5 @@ export class ArtistIdentityModalComponent {
         this.error.set(err?.error?.error ?? 'Failed to save the fix');
       },
     });
-  }
-
-  @HostListener('document:keydown.escape')
-  onEscape(): void {
-    this.closed.emit();
   }
 }

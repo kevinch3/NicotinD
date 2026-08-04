@@ -1,7 +1,6 @@
 import {
   Component,
   ElementRef,
-  HostListener,
   inject,
   input,
   output,
@@ -10,6 +9,7 @@ import {
   viewChild,
   OnInit,
 } from '@angular/core';
+import { registerOverlayCloser } from '../../services/native/back-button.service';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom, type Observable } from 'rxjs';
 import type { MetadataCandidate, AlbumCoverCandidate } from '../../../types/core';
@@ -57,6 +57,11 @@ export class MetadataFixModalComponent implements OnInit {
   /** Emitted after a cover-only change so the parent can refetch + cache-bust without closing. */
   readonly coverChanged = output<void>();
   readonly cancel = output<void>();
+
+  constructor() {
+    // Escape / hardware Back cancel via the shared stack (issue #398).
+    registerOverlayCloser(() => this.cancel.emit());
+  }
 
   // Cover picker state.
   readonly coverOptions = signal<AlbumCoverCandidate[]>([]);
@@ -155,11 +160,6 @@ export class MetadataFixModalComponent implements OnInit {
     } finally {
       this.coverApplying.set(false);
     }
-  }
-
-  @HostListener('document:keydown.escape')
-  onEscape(): void {
-    this.cancel.emit();
   }
 
   async search(): Promise<void> {

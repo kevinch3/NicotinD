@@ -1,4 +1,5 @@
-import { Component, HostListener, output } from '@angular/core';
+import { Component, output } from '@angular/core';
+import { registerOverlayCloser } from '../../services/native/back-button.service';
 import { CommonModule } from '@angular/common';
 import changelog from '../../../../public/changelog.json';
 import { parseChangelogItem, type ParsedChangelogItem } from '../../lib/changelog';
@@ -47,8 +48,8 @@ export class ChangelogModalComponent {
     })),
   }));
 
-  @HostListener('document:keydown.escape')
-  onEscape() {
-    this.close.emit();
+  constructor() {
+    // Escape / hardware Back close via the shared stack (issue #398).
+    registerOverlayCloser(() => this.close.emit());
   }
 }

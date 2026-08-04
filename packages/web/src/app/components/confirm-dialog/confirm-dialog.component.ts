@@ -1,4 +1,5 @@
-import { Component, HostListener, input, output } from '@angular/core';
+import { Component, input, output } from '@angular/core';
+import { registerOverlayCloser } from '../../services/native/back-button.service';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 @Component({
@@ -13,8 +14,8 @@ export class ConfirmDialogComponent {
   confirm = output<void>();
   cancel = output<void>();
 
-  @HostListener('document:keydown.escape')
-  onEscape() {
-    this.cancel.emit();
+  constructor() {
+    // Escape / hardware Back cancel via the shared stack (issue #398).
+    registerOverlayCloser(() => this.cancel.emit());
   }
 }

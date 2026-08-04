@@ -79,4 +79,90 @@ describe('BackButtonService (issue #394)', () => {
     expect(locationBack).not.toHaveBeenCalled();
     expect(exitApp).toHaveBeenCalled();
   });
+
+  describe('Escape shares the stack (issue #398)', () => {
+    function setupWeb() {
+      // No Capacitor global: the browser/PWA case. Escape must still work.
+      locationBack = vi.fn();
+      routerUrl = '/library';
+      TestBed.configureTestingModule({
+        providers: [
+          BackButtonService,
+          {
+            provide: Router,
+            useValue: {
+              get url() {
+                return routerUrl;
+              },
+            },
+          },
+          { provide: Location, useValue: { back: locationBack } },
+        ],
+      });
+      const service = TestBed.inject(BackButtonService);
+      service.initialize();
+      return service;
+    }
+
+    function pressEscape(): KeyboardEvent {
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+      return event;
+    }
+
+    it('a document Escape closes the topmost overlay, even off the native shell', () => {
+      const service = setupWeb();
+      let closed = 0;
+      service.stack.push(() => {
+        closed++;
+        return true;
+      });
+      const event = pressEscape();
+      expect(closed).toBe(1);
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('one press closes only the topmost of two stacked overlays', () => {
+      const service = setupWeb();
+      const order: string[] = [];
+      service.stack.push(() => {
+        order.push('bottom');
+        return true;
+      });
+      service.stack.push(() => {
+        order.push('top');
+        return true;
+      });
+      pressEscape();
+      expect(order).toEqual(['top']);
+    });
+
+    it('Escape with nothing to close never navigates (Escape is close, Back is close-then-back)', () => {
+      setupWeb();
+      const event = pressEscape();
+      expect(locationBack).not.toHaveBeenCalled();
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('an Escape already handled downstream (defaultPrevented) is left alone', () => {
+      const service = setupWeb();
+      let closed = 0;
+      service.stack.push(() => {
+        closed++;
+        return true;
+      });
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      event.preventDefault();
+      document.dispatchEvent(event);
+      expect(closed).toBe(0);
+    });
+  });
 });

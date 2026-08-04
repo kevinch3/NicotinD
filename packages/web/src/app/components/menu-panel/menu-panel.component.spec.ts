@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Component } from '@angular/core';
 import { MenuPanelComponent } from './menu-panel.component';
+import { BackButtonService } from '../../services/native/back-button.service';
 
 // The JIT harness can't drive `input()` or measure layout (jsdom), so the
 // viewport math is covered by computeMenuPosition's pure spec. Here we test the
@@ -36,7 +37,9 @@ describe('MenuPanelComponent', () => {
     expect(c.open()).toBe(false);
 
     c.toggle({ stopPropagation: () => {} } as unknown as Event);
-    c.onEsc();
+    // Escape now routes through the shared BackHandlerStack (issue #398): the
+    // open menu registered a closer there, and one press closes it.
+    expect(TestBed.inject(BackButtonService).stack.handleBack()).toBe(true);
     expect(c.open()).toBe(false);
   });
 });
@@ -108,7 +111,7 @@ describe('MenuPanelComponent D-pad support (issue #389)', () => {
     const { fixture, openMenu, trig, q } = setupHost();
     await openMenu();
     expect(document.activeElement).toBe(q('.a1'));
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    TestBed.inject(BackButtonService).stack.handleBack();
     fixture.detectChanges();
     expect(document.activeElement).toBe(trig);
   });
