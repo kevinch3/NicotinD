@@ -24,6 +24,8 @@ import { ScrollLockService } from '../../services/scroll-lock.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { isTvUi } from '../../lib/platform';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
+import { NowPlayingTvQueueComponent } from './now-playing-tv-queue/now-playing-tv-queue.component';
 import { BackButtonService } from '../../services/native/back-button.service';
 import {
   computePaletteFromPixels,
@@ -46,6 +48,8 @@ import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container'
     TrackContextMenuComponent,
     TranslatePipe,
     TvNavGroupDirective,
+    TvNavItemDirective,
+    NowPlayingTvQueueComponent,
   ],
   templateUrl: './now-playing.component.html',
 })
@@ -63,6 +67,28 @@ export class NowPlayingComponent {
 
   // Context menu state
   readonly contextMenu = signal<{ x: number; y: number } | null>(null);
+
+  /** TV queue overlay opened from the Next-up chip (issue #399). */
+  readonly tvQueueOpen = signal(false);
+
+  onTvQueueJump(index: number): void {
+    this.player.jumpToQueueIndex(index);
+    this.closeTvQueue();
+  }
+
+  onTvQueueRemove(index: number): void {
+    this.player.removeFromQueue(index);
+    // Removing the last row leaves nothing to act on (the chip itself is
+    // about to disappear too) — close rather than strand focus.
+    if (this.player.queue().length === 0) this.closeTvQueue();
+  }
+
+  closeTvQueue(): void {
+    this.tvQueueOpen.set(false);
+    // Focus-restore to the chip (the MenuPanel discipline): host query, not
+    // viewChild — signal view queries do not populate in the JIT harness.
+    document.querySelector<HTMLElement>('[data-testid="now-playing-next-up"]')?.focus();
+  }
 
   // Lyrics view state. Lyrics load lazily on first open and reload when the
   // track changes while the panel is open. `lyricsOpen`'s own declaration

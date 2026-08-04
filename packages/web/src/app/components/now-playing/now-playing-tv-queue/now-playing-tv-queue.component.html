@@ -1,0 +1,31 @@
+<div class="np-tv-queue-backdrop" data-testid="tv-queue-overlay" (click)="closed.emit()">
+  <div class="np-tv-queue-panel" (click)="$event.stopPropagation()">
+    <p class="np-tv-queue-heading">{{ 'nowPlaying.nextUp' | t }}</p>
+    <div class="np-tv-queue-list" appTvNavGroup [axis]="'vertical'">
+      @for (track of queue(); track track.id + $index) {
+        <div class="np-tv-queue-rowwrap" appTvNavGroup [axis]="'horizontal'">
+          <button
+            type="button"
+            appTvNavItem
+            data-testid="tv-queue-row"
+            class="np-tv-queue-row"
+            (click)="jump.emit($index)"
+          >
+            <span class="np-tv-queue-title">{{ track.title }}</span>
+            <span class="np-tv-queue-artist">{{ track.artist }}</span>
+          </button>
+          <button
+            type="button"
+            appTvNavItem
+            data-testid="tv-queue-remove"
+            class="np-tv-queue-remove"
+            [attr.aria-label]="'nowPlaying.removeFromQueue' | t"
+            (click)="remove.emit($index)"
+          >
+            ✕
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+</div>

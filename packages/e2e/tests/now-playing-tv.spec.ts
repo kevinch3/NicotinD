@@ -98,13 +98,56 @@ test.describe('Now Playing on a TV viewport (tv-build)', () => {
     await expect(page.getByTestId('now-playing-radio')).toBeFocused();
 
     // Back up re-enters the transport on its remembered active item, then
-    // walks the direct items above it: track info, then the header close.
+    // walks the direct items above it: track info, the Next-up chip (a nav
+    // item since issue #399 — it opens the queue overlay), then header close.
     await page.keyboard.press('ArrowUp');
     await expect(playPause).toBeFocused();
     await page.keyboard.press('ArrowUp');
     await expect(page.getByTestId('now-playing-info')).toBeFocused();
     await page.keyboard.press('ArrowUp');
+    await expect(page.getByTestId('now-playing-next-up')).toBeFocused();
+    await page.keyboard.press('ArrowUp');
     await expect(page.getByTestId('now-playing-close')).toBeFocused();
+  });
+
+  test('the Next-up chip opens a D-pad queue overlay: jump, remove, escape (issue #399)', async ({
+    page,
+  }) => {
+    await openNowPlaying(page);
+    const chip = page.getByTestId('now-playing-next-up');
+    await expect(chip).toContainText('Second Wind');
+
+    // The chip is a focusable nav item now; Enter opens the overlay with one
+    // row per queued track, first row autofocused.
+    await chip.click();
+    await expect(page.getByTestId('tv-queue-overlay')).toBeVisible();
+    const rows = page.getByTestId('tv-queue-row');
+    await expect(rows.first()).toBeFocused();
+    await expect(rows.first()).toContainText('Second Wind');
+
+    // Remove the head of the queue: the row list shrinks and the chip
+    // re-labels to the new head.
+    const before = await rows.count();
+    await page.getByTestId('tv-queue-remove').first().click();
+    await expect(rows).toHaveCount(before - 1);
+
+    // Escape closes the overlay (shared BackHandlerStack, issue #398) and
+    // restores focus to the chip.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('tv-queue-overlay')).toHaveCount(0);
+    await expect(chip).toBeFocused();
+
+    // Reopen and jump: Enter on a row plays it and consumes the queue up to
+    // it (the #233 jump semantics) — the overlay closes.
+    await chip.click();
+    const target = (await page
+      .getByTestId('tv-queue-row')
+      .first()
+      .locator('.np-tv-queue-title')
+      .textContent())!;
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('tv-queue-overlay')).toHaveCount(0);
+    await expect(page.getByTestId('player-title')).toContainText(target.trim());
   });
 
   test('the sheet carries the blurred-cover backdrop hook', async ({ page }) => {

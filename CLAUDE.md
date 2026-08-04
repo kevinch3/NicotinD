@@ -1286,7 +1286,7 @@ paths + optional leanback/touchscreen/camera features, locked in by `android-man
 defaulting remote-control opt-in on, releasing ArrowLeft/Right to the WebView's spatial D-pad
 navigation instead of the seek shortcut, insetting content into the TV overscan safe area via
 `applyTvBuildClass` + the `html.tv-build` styles, and swapping Now Playing for a dedicated 10-foot
-player — blurred-cover backdrop, bottom-pinned glass transport without shuffle/repeat, Next-up chip
+player — blurred-cover backdrop, bottom-pinned glass transport without shuffle/repeat, a Next-up chip that opens a D-pad queue overlay with jump/remove (issue #399, `NowPlayingTvQueueComponent`)
 — driven by `isTvUi()` (the root class, e2e-testable via `now-playing-tv.spec.ts`); a roving-tabindex D-pad
 navigation directive pair — vertical/horizontal/grid axes — covers the Now Playing queue,
 transport controls, every Library/Search/artist-detail grid, every `TrackRowComponent`-based song
