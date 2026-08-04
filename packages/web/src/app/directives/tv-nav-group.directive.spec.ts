@@ -508,3 +508,123 @@ describe('TvNavGroupDirective nested child groups (issue #356)', () => {
     expect(jump(0).getAttribute('tabindex')).toBe('-1');
   });
 });
+
+describe('TvNavGroupDirective mixed direct items + child groups (issue #389)', () => {
+  // Mirrors the TV Now Playing root: a vertical group owning a close button
+  // (direct item), a nested horizontal transport group, and a radio button
+  // (direct item) — one merged, DOM-ordered navigation sequence.
+  @Component({
+    standalone: true,
+    imports: [TvNavGroupDirective, TvNavItemDirective],
+    template: `
+      <div appTvNavGroup axis="vertical">
+        <button appTvNavItem class="close">close</button>
+        <div appTvNavGroup axis="horizontal">
+          <button appTvNavItem class="prev">prev</button>
+          <button appTvNavItem class="play">play</button>
+        </div>
+        <button appTvNavItem class="radio">radio</button>
+      </div>
+    `,
+  })
+  class MixedHost {}
+
+  function setupMixed() {
+    TestBed.configureTestingModule({ imports: [MixedHost] });
+    const fixture = TestBed.createComponent(MixedHost);
+    fixture.detectChanges();
+    const q = (sel: string): HTMLButtonElement => fixture.nativeElement.querySelector(sel);
+    return { fixture, close: q('.close'), prev: q('.prev'), play: q('.play'), radio: q('.radio') };
+  }
+
+  it('exactly one Tab stop: the first entry (a direct item) starts at tabindex 0', () => {
+    const { close, prev, play, radio } = setupMixed();
+    expect(close.getAttribute('tabindex')).toBe('0');
+    expect(prev.getAttribute('tabindex')).toBe('-1');
+    expect(play.getAttribute('tabindex')).toBe('-1');
+    expect(radio.getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('ArrowDown walks item -> child group -> item in DOM order', () => {
+    const { fixture, close, prev, radio } = setupMixed();
+    close.focus();
+    keydown(close, 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(prev);
+    keydown(prev, 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(radio);
+  });
+
+  it("ArrowUp from an item after the group re-enters the group's own remembered active item", () => {
+    const { fixture, close, prev, play, radio } = setupMixed();
+    close.focus();
+    keydown(close, 'ArrowDown');
+    fixture.detectChanges();
+    keydown(prev, 'ArrowRight'); // move within the transport to play
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(play);
+    keydown(play, 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(radio);
+    keydown(radio, 'ArrowUp');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(play); // remembered, not prev
+  });
+
+  it('focus inside the child group demotes direct items to -1 (single Tab stop across kinds)', () => {
+    const { fixture, close, prev } = setupMixed();
+    prev.focus();
+    fixture.detectChanges();
+    expect(prev.getAttribute('tabindex')).toBe('0');
+    expect(close.getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('the inner group still owns its own axis (ArrowRight moves prev -> play, never to radio)', () => {
+    const { fixture, prev, play } = setupMixed();
+    prev.focus();
+    keydown(prev, 'ArrowRight');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(play);
+    const event = keydown(play, 'ArrowRight'); // clamped at the row edge
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(play);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('Home/End jump across the merged sequence', () => {
+    const { fixture, close, prev, radio } = setupMixed();
+    close.focus();
+    keydown(close, 'ArrowDown');
+    fixture.detectChanges();
+    keydown(prev, 'End');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(radio);
+    keydown(radio, 'Home');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(close);
+  });
+
+  it('a childGroups-first container starts its Tab stop inside the group', () => {
+    @Component({
+      standalone: true,
+      imports: [TvNavGroupDirective, TvNavItemDirective],
+      template: `
+        <div appTvNavGroup axis="vertical">
+          <div appTvNavGroup axis="horizontal">
+            <button appTvNavItem class="first">first</button>
+          </div>
+          <button appTvNavItem class="after">after</button>
+        </div>
+      `,
+    })
+    class GroupFirstHost {}
+    TestBed.configureTestingModule({ imports: [GroupFirstHost] });
+    const fixture = TestBed.createComponent(GroupFirstHost);
+    fixture.detectChanges();
+    const first: HTMLButtonElement = fixture.nativeElement.querySelector('.first');
+    const after: HTMLButtonElement = fixture.nativeElement.querySelector('.after');
+    expect(first.getAttribute('tabindex')).toBe('0');
+    expect(after.getAttribute('tabindex')).toBe('-1');
+  });
+});

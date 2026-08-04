@@ -520,14 +520,22 @@ volume shortcut (this app has no volume-level control to wire one to).
   registers with its nearest group) via `parentGroup`/`registerChildGroup`. The Now Playing queue's
   row wrapper is now `axis="horizontal"` (`[jump, remove]`), nested inside the queue's
   `axis="vertical"` rows group: ArrowRight from the jump button reaches Remove (handled entirely by
-  the inner group, unchanged from a plain 2-item group); ArrowDown/Up move between rows, now handled
-  by the OUTER group navigating its `childGroups()` instead of flat `items()` when any are
-  registered. Only one item across the whole nested tree may hold `tabindex="0"` at a time (a
-  roving-tabindex composite has exactly one Tab stop) — `TvNavGroupDirective.isActiveChild` tracks
-  which child group currently owns focus (kept in sync purely through the existing `notifyFocused` →
-  parent chain, i.e. real focus moving into any descendant item, never written from keydown
-  handling directly), and `TvNavItemDirective.tabIndex` returns `-1` for every item in a non-active
-  child group regardless of that group's own `activeIndex`.
+  the inner group, unchanged from a plain 2-item group); ArrowDown/Up move between rows, handled by
+  the OUTER group. **Mixed containers (issue #389)**: a group's direct `items()` and its
+  `childGroups()` are now navigated as ONE DOM-ordered sequence (`mergedEntries()`, a linear
+  two-pointer merge of the two already-sorted arrays) — the old model's early-return that made a
+  group with any child groups ignore its own direct items is gone, which is what lets the TV Now
+  Playing root own a close button, the nested transport group, and a radio button in one sweep.
+  Landing on an entry dispatches polymorphically: `item.focusElement()` vs
+  `group.focusActiveItem()` (now recursive through nested groups). Only one item across the whole
+  nested tree may hold `tabindex="0"` at a time (a roving-tabindex composite has exactly one Tab
+  stop) — the `activeKind` signal (`'item' | 'group'`, defaulting to the first merged entry's kind
+  until real focus lands) discriminates which side of a mixed container owns the stop:
+  `TvNavItemDirective.tabIndex` gates on `directItemsActive()` (active child AND kind `item`), and
+  a child group's `isActiveChild` requires kind `group` — both kept in sync purely through the
+  real-focus `notifyFocused` → `notifyActiveChildGroup` chain (which now bubbles to every
+  ancestor), never written from keydown handling directly. Grid-axis groups with child groups
+  deliberately do not navigate (no current need, unchanged).
 
 ## OAuth login (proposed — not yet implemented)
 
