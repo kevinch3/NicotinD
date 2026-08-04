@@ -535,6 +535,27 @@ export function applySchema(db: Database): void {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_paired_devices_user ON paired_devices (user_id)`);
 
+  // TV sign-in via phone approval (device-grant direction of pairing): the
+  // UNAUTHENTICATED device mints a request (token + 6-char code) and polls;
+  // a signed-in user approves the code from their own device; the claim then
+  // exchanges the token for a device-bound JWT. Unlike pairing_tokens (minted
+  // by an authenticated user), anonymous minting makes unbounded growth a
+  // real risk — expired rows are pruned on every mint.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS login_requests (
+      token               TEXT    PRIMARY KEY,
+      code                TEXT    NOT NULL,
+      device_name         TEXT    NOT NULL,
+      platform            TEXT    NOT NULL,
+      created_at          INTEGER NOT NULL,
+      expires_at          INTEGER NOT NULL,
+      approved_by_user_id TEXT,
+      approved_at         INTEGER,
+      claimed_at          INTEGER
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_login_requests_code ON login_requests (code)`);
+
   // MCP agent tokens (issue #232): a scoped, revocable bearer an external
   // LLM/agent uses to curate the library via /api/mcp. Only the sha256 HASH of
   // the token is stored (a leak of this table never leaks a live token — a
