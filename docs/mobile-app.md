@@ -232,13 +232,24 @@ and must work first try on device. Revisit if the plugin (or a equivalent) ships
 Still device-validated, not CI-validated: confirm on a physical device that playback continues
 backgrounded and the lock-screen controls/scrubber work.
 
-## Android TV support (sideload only)
+## Android TV support
 
-The Android APK is also usable on Android TV / TV boxes via direct sideload (no Play Store TV
-listing — no `LEANBACK_LAUNCHER` category, TV banner, or `android.software.leanback` feature
-declared). `AndroidManifest.xml` declares
+The Android APK is usable on Android TV / TV boxes via direct sideload, and it **appears on the TV
+home launcher** (issue #388): `AndroidManifest.xml` declares the
+`android.intent.category.LEANBACK_LAUNCHER` category on MainActivity's existing MAIN/LAUNCHER
+intent-filter, an `android:banner="@drawable/banner"` (320×180 xhdpi PNG rendered by
+`bun run icons:source` from `native-icons.ts`'s `bannerSvg()` — `@capacitor/assets` has no banner
+concept, so the generator writes it straight into the committed `res/drawable-xhdpi/`), and
+`<uses-feature android:name="android.software.leanback" android:required="false"/>`. The original
+"sideload-only ⇒ no leanback declarations" decision rested on a wrong premise: `LEANBACK_LAUNCHER`
+is what makes **any** installed APK (sideloaded included) show up on the Google TV home row — it is
+not a Play-Store-listing requirement; without it the app was only reachable via Settings → Apps.
+One activity serves both form factors — extra intent-filter categories never un-match phone
+launchers (verified on-device), and both TV-ish `uses-feature`s are `required="false"` so phone
+installs are unaffected. `AndroidManifest.xml` also declares
 `<uses-feature android:name="android.hardware.touchscreen" android:required="false"/>` so the app
-isn't blocked/degraded on a touchscreen-less device.
+isn't blocked/degraded on a touchscreen-less device. `packages/mobile/src/android-manifest.test.ts`
+locks all of this in (the first manifest-content test — pure XML no compiler checks).
 
 A separate Angular build configuration (`bun run --filter @nicotind/web build -- --configuration
 tv`, `angular.json`) swaps in `environments/environment.tv.ts` (`tvBuild: true`, otherwise

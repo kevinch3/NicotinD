@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  BANNER_DISC_FRACTION,
+  BANNER_HEIGHT,
+  BANNER_WIDTH,
   BRAND,
   FOREGROUND_SAFE_ZONE,
   SPLASH_DISC_FRACTION,
   backgroundSvg,
+  bannerSvg,
   foregroundSvg,
   fullIconSvg,
   splashSvg,
@@ -85,5 +89,35 @@ describe('splashSvg', () => {
   it('honours a custom disc fraction', () => {
     const scale = (0.5 * 100) / 80;
     expect(splashSvg(0.5)).toContain(`scale(${scale})`);
+  });
+});
+
+describe('bannerSvg', () => {
+  it('is the Android TV launcher banner aspect (320x180) on the solid brand field', () => {
+    const svg = bannerSvg();
+    expect(BANNER_WIDTH / BANNER_HEIGHT).toBeCloseTo(16 / 9);
+    expect(svg).toContain(`viewBox="0 0 ${BANNER_WIDTH} ${BANNER_HEIGHT}"`);
+    expect(svg).toContain(
+      `<rect width="${BANNER_WIDTH}" height="${BANNER_HEIGHT}" fill="${BRAND.background}"/>`,
+    );
+  });
+
+  it('centres the brand glyph on the banner', () => {
+    const svg = bannerSvg();
+    expect(svg).toContain(`<circle cx="50" cy="50" r="40" fill="${BRAND.accent}"/>`);
+    expect(svg).toContain(`<polygon points="42,32 70,50 42,68" fill="${BRAND.mark}"/>`);
+    expect(svg).toContain(`translate(${BANNER_WIDTH / 2} ${BANNER_HEIGHT / 2})`);
+  });
+
+  it('sizes the disc to BANNER_DISC_FRACTION of the banner height, never cropped', () => {
+    const scale = (BANNER_DISC_FRACTION * BANNER_HEIGHT) / 80;
+    expect(bannerSvg()).toContain(`scale(${scale})`);
+    // Disc half-height after scaling, measured from the banner centre.
+    const discHalf = 40 * scale;
+    expect(BANNER_HEIGHT / 2 - discHalf).toBeGreaterThan(10);
+  });
+
+  it('uses no <text> — sharp/librsvg text rendering depends on host fonts', () => {
+    expect(bannerSvg()).not.toContain('<text');
   });
 });

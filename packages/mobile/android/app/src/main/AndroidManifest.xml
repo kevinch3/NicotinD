@@ -3,6 +3,7 @@
 
     <application
         android:allowBackup="true"
+        android:banner="@drawable/banner"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -20,6 +21,11 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <!-- LEANBACK_LAUNCHER puts the app on the Android/Google TV home
+                     row — required even for a sideloaded APK (issue #388). Extra
+                     filter categories never un-match phone launchers, so one
+                     activity serves both form factors. -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
 
         </activity>
@@ -37,10 +43,12 @@
 
     <!-- Android TV / TV boxes have no touchscreen; without this the OS defaults
          android.hardware.touchscreen to required=true, which blocks/degrades
-         install on some TV launchers even for a sideloaded APK. Sideload-only
-         support: no LEANBACK_LAUNCHER category, TV banner, or
-         android.software.leanback feature — see docs/mobile-app.md. -->
+         install on some TV launchers even for a sideloaded APK. leanback is
+         declared optional (required="false") so the SAME APK stays installable
+         on phones while the LEANBACK_LAUNCHER category + banner above list it
+         on the TV home row (issue #388) — see docs/mobile-app.md. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
 
     <!-- Permissions -->
 
