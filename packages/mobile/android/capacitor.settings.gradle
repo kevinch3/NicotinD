@@ -2,6 +2,15 @@
 include ':capacitor-android'
 project(':capacitor-android').projectDir = new File('../../../node_modules/.bun/@capacitor+android@6.2.1/node_modules/@capacitor/android/capacitor')
 
+include ':capacitor-app'
+project(':capacitor-app').projectDir = new File('../../../node_modules/.bun/@capacitor+app@8.1.1/node_modules/@capacitor/app/android')
+
+include ':capacitor-barcode-scanner'
+project(':capacitor-barcode-scanner').projectDir = new File('../../../node_modules/.bun/@capacitor+barcode-scanner@1.0.4/node_modules/@capacitor/barcode-scanner/android')
+
+include ':capacitor-network'
+project(':capacitor-network').projectDir = new File('../../../node_modules/.bun/@capacitor+network@6.0.4/node_modules/@capacitor/network/android')
+
 include ':capacitor-preferences'
 project(':capacitor-preferences').projectDir = new File('../../../node_modules/.bun/@capacitor+preferences@6.0.4/node_modules/@capacitor/preferences/android')
 

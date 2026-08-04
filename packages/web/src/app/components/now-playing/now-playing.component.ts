@@ -24,6 +24,7 @@ import { ScrollLockService } from '../../services/scroll-lock.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { isTvUi } from '../../lib/platform';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { BackButtonService } from '../../services/native/back-button.service';
 import {
   computePaletteFromPixels,
   scrollToActiveLine,
@@ -287,7 +288,25 @@ export class NowPlayingComponent {
     }
   }
 
+  private readonly backButton = inject(BackButtonService);
+
   constructor() {
+    // Hardware Back (issue #394): exit karaoke first, then close the sheet.
+    // Persistent + state-checked so transient overlays (menus, track info)
+    // pushed while open always sit above it on the stack.
+    const unregisterBack = this.backButton.stack.push(() => {
+      if (this.karaokeFullscreen()) {
+        this.karaokeFullscreen.set(false);
+        return true;
+      }
+      if (this.player.nowPlayingOpen()) {
+        this.player.setNowPlayingOpen(false);
+        return true;
+      }
+      return false;
+    });
+    this.destroyRef.onDestroy(unregisterBack);
+
     // Remote playback interpolation (rAF loop)
     effect((onCleanup) => {
       const isActive = this.isActiveDevice();

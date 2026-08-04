@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { computeMenuPosition } from '../../lib/menu-position';
 import { measureBottomChromeInset } from '../../lib/player-chrome';
+import { BackButtonService } from '../../services/native/back-button.service';
 
 /**
  * Reusable dropdown/popover panel anchored to a projected trigger, positioned
@@ -110,9 +111,22 @@ export class MenuPanelComponent {
     this.positioned.set(true);
   }
 
+  private readonly backButton = inject(BackButtonService);
+  private unregisterBack: (() => void) | null = null;
+
   toggle(event: Event): void {
     event.stopPropagation();
     this.open.update((v) => !v);
+    if (this.open()) {
+      // Hardware Back closes the open menu first (issue #394).
+      this.unregisterBack ??= this.backButton.stack.push(() => {
+        this.close();
+        return true;
+      });
+    } else {
+      this.unregisterBack?.();
+      this.unregisterBack = null;
+    }
   }
 
   close(): void {
@@ -124,6 +138,8 @@ export class MenuPanelComponent {
     const panelEl = this.panelRootEl();
     const restore = !!panelEl && panelEl.contains(document.activeElement);
     this.open.set(false);
+    this.unregisterBack?.();
+    this.unregisterBack = null;
     if (restore) {
       const trigger = this.host.nativeElement.querySelector<HTMLElement>('[data-menu-trigger]');
       (trigger?.querySelector<HTMLElement>('button, a, [tabindex]') ?? trigger)?.focus();

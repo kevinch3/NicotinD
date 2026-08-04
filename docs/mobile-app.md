@@ -483,6 +483,17 @@ Three guards make the arrow keys safe to own globally:
    the focused seek bar (a native `<input type="range">` consumes ArrowLeft/Right to scrub) and the
    remote's hardware media keys via MediaSession. Non-TV builds keep the seek shortcut unchanged.
 
+**Hardware Back (issue #394)**: Android's Back button used to finish the activity from anywhere
+(the observed TV behavior of "Back exits the app"). `BackButtonService`
+(`services/native/back-button.service.ts`, initialized from `App`, `@capacitor/app` reached
+through the Capacitor global so `@capacitor/*` stays out of the web bundle) now decides in priority
+order: (1) the topmost registered overlay closes — a minimal LIFO `BackHandlerStack`
+(`lib/back-handlers.ts`, pure + unit-tested) that Now Playing registers persistently
+(karaoke-fullscreen exits first, then the sheet; state-checked so per-open pushes always sit above
+it), and `TrackInfoService`/`MenuPanelComponent` push onto per-open; (2) any non-home route walks
+`Location.back()`; (3) only at home with nothing open does `App.exitApp()` run. Deliberately NOT a
+consolidation of the per-component Escape handlers — that stays a tracked follow-up.
+
 **Deliberately not built**: `Escape`-as-back (would need to arbitrate against 7+ existing per-component modal Escape
 handlers with no current shared "is a modal open" signal — real, separate work) and any
 volume shortcut (this app has no volume-level control to wire one to).
