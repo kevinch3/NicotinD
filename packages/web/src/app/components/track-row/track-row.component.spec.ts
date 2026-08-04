@@ -144,11 +144,14 @@ describe('TrackRowComponent inside an appTvNavGroup (cross-component boundary)',
     setInputValue(rows[0]!.track, ROW_TRACK);
     setInputValue(rows[1]!.track, OTHER_TRACK);
     rows.forEach((r) => setInputValue(r.showCover, false));
+    rows.forEach((r) => setInputValue(r.actions, [{ label: 'Play next', action: () => {} }]));
     fixture.detectChanges();
     const titles: HTMLButtonElement[] = Array.from(
       fixture.nativeElement.querySelectorAll('[data-testid="track-row-title"]'),
     );
-    return { fixture, titles };
+    const q = (sel: string): HTMLButtonElement[] =>
+      Array.from(fixture.nativeElement.querySelectorAll(sel));
+    return { fixture, titles, q };
   }
 
   function keydown(el: HTMLElement, key: string): KeyboardEvent {
@@ -186,14 +189,39 @@ describe('TrackRowComponent inside an appTvNavGroup (cross-component boundary)',
     expect(document.activeElement).toBe(titles[0]);
   });
 
+  it('each row is a horizontal child group: ArrowRight walks title -> like -> menu toggle (issue #389)', () => {
+    const { fixture, titles, q } = setupHost();
+    titles[0]!.focus();
+    const event = keydown(titles[0]!, 'ArrowRight');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(q('[data-testid="track-like"]')[0]);
+    expect(event.defaultPrevented).toBe(true);
+    keydown(document.activeElement as HTMLElement, 'ArrowRight');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(q('[data-testid="track-row-menu-toggle"]')[0]);
+  });
+
+  it('ArrowDown from a row extra lands on the next row (rows stay the vertical unit)', () => {
+    const { fixture, titles, q } = setupHost();
+    titles[0]!.focus();
+    keydown(titles[0]!, 'ArrowRight');
+    fixture.detectChanges();
+    keydown(q('[data-testid="track-like"]')[0]!, 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(titles[1]);
+  });
+
   it('a destroyed row unregisters itself from the group', () => {
     const { fixture, titles } = setupHost();
     const group = fixture.debugElement
       .query(By.directive(TvNavGroupDirective))
       .injector.get(TvNavGroupDirective);
-    expect(group.items().length).toBe(2);
+    // Since issue #389 each row is its own horizontal child group, so the
+    // outer list group holds child groups rather than direct items.
+    expect(group.childGroups().length).toBe(2);
+    expect(group.items().length).toBe(0);
     expect(titles.length).toBe(2);
     fixture.destroy();
-    expect(group.items().length).toBe(0);
+    expect(group.childGroups().length).toBe(0);
   });
 });

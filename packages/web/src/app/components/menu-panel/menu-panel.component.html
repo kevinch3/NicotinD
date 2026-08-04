@@ -1,10 +1,11 @@
 <div class="relative inline-flex">
-  <span #trigger (click)="toggle($event)" class="inline-flex">
+  <span #trigger data-menu-trigger (click)="toggle($event)" class="inline-flex">
     <ng-content select="[menuTrigger]" />
   </span>
   @if (open()) {
     <div
       #panelEl
+      data-menu-panel-root
       class="fixed z-50"
       [style.left.px]="pos().x"
       [style.top.px]="pos().y"

@@ -1,5 +1,9 @@
 
-    <div data-testid="track-row" [attr.data-playback-state]="playbackState()"
+    <!-- The row is its own horizontal nav group (issue #389): title, like,
+         remove and the ⋯ menu toggle are all D-pad reachable, while the row
+         registers as a child group of the surrounding vertical track list so
+         ArrowUp/Down still move between rows. -->
+    <div data-testid="track-row" appTvNavGroup [axis]="'horizontal'" [attr.data-playback-state]="playbackState()"
       [class]="'flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-theme-hover transition group' + (disabled() ? ' opacity-40 pointer-events-none' : '')">
       @if (selectable()) {
         <button type="button" (click)="selectedChange.emit($event)"
@@ -49,7 +53,7 @@
         }
       </div>
       @if (showLike()) {
-        <button type="button" data-testid="track-like" (click)="toggleLike()"
+        <button type="button" appTvNavItem data-testid="track-like" (click)="toggleLike()"
           [attr.aria-pressed]="likes.isLiked(track().id)"
           [class]="'p-1 transition flex-shrink-0 ' + (likes.isLiked(track().id)
             ? 'text-rose-500 hover:text-rose-400'
@@ -69,7 +73,7 @@
         </svg>
       </button>
       @if (showRemove()) {
-        <button type="button" (click)="remove.emit()" class="p-1 text-theme-muted group-hover:text-theme-secondary hover:!text-red-400 transition flex-shrink-0" title="Remove">
+        <button type="button" appTvNavItem (click)="remove.emit()" class="p-1 text-theme-muted group-hover:text-theme-secondary hover:!text-red-400 transition flex-shrink-0" title="Remove">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -79,6 +83,7 @@
         <app-menu-panel #menu class="flex-shrink-0" align="end" panelTestId="track-row-menu">
           <button
             menuTrigger
+            appTvNavItem
             type="button"
             data-testid="track-row-menu-toggle"
             class="p-1 text-theme-muted group-hover:text-theme-secondary hover:!text-theme-primary transition"

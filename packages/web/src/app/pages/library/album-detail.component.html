@@ -43,14 +43,14 @@
         <!-- flex-wrap so the 4–6 actions never overflow/clip the primary Play
              button off a narrow (mobile) viewport. Play is the accent-filled
              primary action; the rest stay neutral-secondary. -->
-        <div class="flex flex-wrap justify-center sm:justify-start gap-3 mt-4">
-          <button (click)="playAlbum()"
+        <div appTvNavGroup [axis]="'horizontal'" class="flex flex-wrap justify-center sm:justify-start gap-3 mt-4">
+          <button appTvNavItem (click)="playAlbum()"
             data-testid="play-album" aria-label="Play album" title="Play album"
             class="w-10 h-10 flex items-center justify-center rounded-lg bg-theme-accent text-theme-on-accent hover:opacity-90 transition">
             <app-icon name="play" />
           </button>
           @if (!selection.active()) {
-            <button (click)="selection.enter()"
+            <button appTvNavItem (click)="selection.enter()"
               class="px-4 py-2 rounded-lg text-sm bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition">
               Select
             </button>
@@ -58,7 +58,7 @@
           @if (preserve.batchFor(selectedAlbum()!.id); as b) {
             <span class="px-4 py-2 text-sm text-theme-muted">Saving {{ b.done }}/{{ b.total }}…</span>
           } @else {
-            <button (click)="toggleDownloadAlbum()"
+            <button appTvNavItem (click)="toggleDownloadAlbum()"
               [attr.aria-label]="albumDownloaded() ? 'Downloaded — remove offline' : 'Download album'"
               [attr.title]="albumDownloaded() ? 'Downloaded' : 'Download'"
               [class]="'w-10 h-10 flex items-center justify-center rounded-lg transition ' + (albumDownloaded()
@@ -67,7 +67,7 @@
               <app-icon name="download" />
             </button>
           }
-          <button (click)="shareAlbum()"
+          <button appTvNavItem (click)="shareAlbum()"
             [attr.aria-label]="shareCopied() ? 'Link copied' : 'Share album'"
             [attr.title]="shareCopied() ? 'Link copied!' : 'Share'"
             [class]="'w-10 h-10 flex items-center justify-center rounded-lg transition ' + (shareCopied()
@@ -76,12 +76,12 @@
             <app-icon name="share" />
           </button>
           @if (auth.canCurate()) {
-            <button (click)="openMetadataFix()"
+            <button appTvNavItem (click)="openMetadataFix()"
               data-testid="optimize-metadata"
               class="px-4 py-2 rounded-lg text-sm bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition disabled:opacity-50">
               Fix metadata
             </button>
-            <button (click)="removeAlbum()" [disabled]="deleting()"
+            <button appTvNavItem (click)="removeAlbum()" [disabled]="deleting()"
               class="px-4 py-2 rounded-lg text-sm text-status-error hover:bg-theme-hover transition disabled:opacity-50">
               {{ deleting() ? 'Removing...' : 'Remove album' }}
             </button>
