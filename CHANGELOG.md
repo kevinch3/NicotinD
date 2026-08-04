@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.312](https://github.com/kevinch3/NicotinD/compare/v0.1.311...v0.1.312) (2026-08-04)
+
+### Features
+
+* **web:** tv queue overlay from the now playing next-up chip (refs [#399](https://github.com/kevinch3/NicotinD/issues/399)) ([#407](https://github.com/kevinch3/NicotinD/issues/407)) ([d76f0c8](https://github.com/kevinch3/NicotinD/commit/d76f0c818d9ebe18992f1cf215e36eb89ae14141)), closes [#389](https://github.com/kevinch3/NicotinD/issues/389), references [#398](https://github.com/kevinch3/NicotinD/issues/398)
 ## [0.1.311](https://github.com/kevinch3/NicotinD/compare/v0.1.310...v0.1.311) (2026-08-04)
 ## [0.1.310](https://github.com/kevinch3/NicotinD/compare/v0.1.309...v0.1.310) (2026-08-04)
 
