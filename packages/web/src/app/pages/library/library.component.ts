@@ -536,6 +536,9 @@ export class LibraryComponent implements OnInit, OnDestroy {
     this.singlesFetched.set(false);
     this.compilationsFetched.set(false);
     this.artistsFetched.set(false);
+    // genresFetched deliberately NOT reset (issue #382, measured): the
+    // /genres endpoint takes no filter params, so a filter change can't alter
+    // that list — only pull-to-refresh resets it (server data may have changed).
     this.albumsStale = true;
     const mode = this.libraryMode();
     if (mode === 'albums') {

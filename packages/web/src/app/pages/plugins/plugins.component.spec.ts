@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { expandAllGroups } from '../../../testing/expand-groups';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
@@ -87,19 +88,10 @@ function render(acquisitionEnabled: boolean): HTMLElement {
  * defaultOpen, i.e. collapsed).
  */
 function expandAll(fixture: Fixture): HTMLElement {
-  const el = fixture.nativeElement as HTMLElement;
-  const clickClosed = (selector: string): void => {
-    el.querySelectorAll<HTMLButtonElement>(selector).forEach((btn) => {
-      if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
-    });
-    fixture.detectChanges();
-  };
-  // Two passes: a plugin card only mounts once its enclosing kind group is
-  // open, so its `plugin-card-toggle` button isn't in the DOM to query/click
-  // until the first pass's `detectChanges()` has run.
-  clickClosed('[data-testid="settings-group-toggle"]');
-  clickClosed('[data-testid="plugin-card-toggle"]');
-  return el;
+  // Second pass for the nested plugin-card toggles: a card only mounts once
+  // its enclosing kind group's first pass has run `detectChanges()`.
+  expandAllGroups(fixture, ['[data-testid="plugin-card-toggle"]']);
+  return fixture.nativeElement as HTMLElement;
 }
 
 describe('PluginsComponent — acquisition kill-switch (#235)', () => {

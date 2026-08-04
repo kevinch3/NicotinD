@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { clearGroupState } from '../helpers';
 import { shot } from '../playground/shot';
 
 /**
@@ -32,11 +33,7 @@ const ROUTES: Array<{ path: string; label: string }> = [
  * shot so a prior route's expansion (or a leftover run) can never leak a
  * false "already open" state into this route's default-state capture. */
 async function resetGroupState(page: import('@playwright/test').Page): Promise<void> {
-  await page.evaluate(() => {
-    for (const key of Object.keys(localStorage)) {
-      if (key.startsWith('nicotind-group-')) localStorage.removeItem(key);
-    }
-  });
+  await clearGroupState(page);
   await page.reload();
 }
 
