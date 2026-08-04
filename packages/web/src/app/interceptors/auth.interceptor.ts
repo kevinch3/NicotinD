@@ -1,7 +1,7 @@
 import { inject } from '@angular/core';
-import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
+import { HttpInterceptorFn, HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { catchError, throwError, timeout } from 'rxjs';
+import { catchError, tap, throwError, timeout } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 import { ServerConfigService } from '../services/server-config.service';
 import { SetupService } from '../services/setup.service';
@@ -34,6 +34,19 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     outgoing.method === 'GET' ? next(outgoing).pipe(timeout(GET_TIMEOUT_MS)) : next(outgoing);
 
   return bounded.pipe(
+    // The SUCCESS mirror of the failure report below (issue #372): any real
+    // HTTP response on an API path proves the server is reachable, so a
+    // recovered server heals offline mode the moment ANY background request
+    // lands — instead of waiting out the 20s recovery poll or a device
+    // online event that never fires for a server-side outage.
+    tap((event) => {
+      if (
+        event instanceof HttpResponse &&
+        (req.url.startsWith('/api') || req.url.startsWith('/rest'))
+      ) {
+        setup.reportServerSuccess();
+      }
+    }),
     catchError((err: HttpErrorResponse) => {
       // A network-level failure (status 0 = the request died with no HTTP
       // response: server down, DNS/connection refused, dropped mid-flight) on an

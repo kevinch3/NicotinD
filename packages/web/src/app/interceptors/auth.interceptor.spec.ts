@@ -16,10 +16,13 @@ import { AuthService } from '../services/auth.service';
 describe('authInterceptor — server-failure reporting', () => {
   let http: HttpClient;
   let ctrl: HttpTestingController;
-  let setup: { reportServerFailure: ReturnType<typeof vi.fn> };
+  let setup: {
+    reportServerFailure: ReturnType<typeof vi.fn>;
+    reportServerSuccess: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
-    setup = { reportServerFailure: vi.fn() };
+    setup = { reportServerFailure: vi.fn(), reportServerSuccess: vi.fn() };
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(withInterceptors([authInterceptor])),
@@ -47,6 +50,21 @@ describe('authInterceptor — server-failure reporting', () => {
       .flush({ error: 'boom' }, { status: 500, statusText: 'Internal Server Error' });
 
     expect(setup.reportServerFailure).not.toHaveBeenCalled();
+  });
+
+  it('reports a SUCCESSFUL API response so a recovered server heals offline mode (issue #372)', () => {
+    http.get('/api/system/disk').subscribe();
+    ctrl.expectOne('/api/system/disk').flush({ ok: true });
+
+    expect(setup.reportServerSuccess).toHaveBeenCalledTimes(1);
+    expect(setup.reportServerFailure).not.toHaveBeenCalled();
+  });
+
+  it('does NOT report success for a non-API request', () => {
+    http.get('/i18n/en.json').subscribe();
+    ctrl.expectOne('/i18n/en.json').flush({});
+
+    expect(setup.reportServerSuccess).not.toHaveBeenCalled();
   });
 
   it('does NOT report a network failure on a non-API path (e.g. an i18n catalog)', () => {

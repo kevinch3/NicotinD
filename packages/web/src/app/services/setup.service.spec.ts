@@ -283,3 +283,89 @@ describe('SetupService — mid-session server loss + automatic recovery', () => 
     expect(svc.isOffline()).toBe(false);
   });
 });
+
+describe('SetupService — success-signal recovery (issue #372)', () => {
+  it('reportServerSuccess clears offline mode instantly, with no extra probe', async () => {
+    // Boot succeeds (status learned), then the server dies mid-session.
+    let up = true;
+    const api = makeApi(() =>
+      up ? of({ needsSetup: false } as SetupStatus) : throwError(() => new Error('down')),
+    );
+    const { svc } = configure(true, api);
+    await svc.check();
+    up = false;
+    svc.reportServerFailure();
+    await flush();
+    expect(svc.isOffline()).toBe(true);
+    const probes = api.getSetupStatus.mock.calls.length;
+
+    // A later API request succeeded (e.g. the disk pill's poll): that response
+    // IS the reachability proof — no verification round-trip needed.
+    up = true;
+    svc.reportServerSuccess();
+    await flush();
+
+    expect(svc.isOffline()).toBe(false);
+    expect(api.getSetupStatus.mock.calls.length).toBe(probes); // status known → no probe
+  });
+
+  it('reportServerSuccess still probes when the setup status was never learned (offline launch)', async () => {
+    // Device online but server down at boot → unreachable with status null.
+    let up = false;
+    const api = makeApi(() =>
+      up ? of({ needsSetup: false } as SetupStatus) : throwError(() => new Error('down')),
+    );
+    const { svc } = configure(true, api);
+    await svc.check();
+    expect(svc.status()).toBeNull();
+    const probes = api.getSetupStatus.mock.calls.length;
+
+    up = true;
+    svc.reportServerSuccess();
+    await flush();
+
+    expect(svc.isOffline()).toBe(false);
+    expect(svc.status()).toEqual({ needsSetup: false }); // probe filled the gap
+    expect(api.getSetupStatus.mock.calls.length).toBe(probes + 1);
+  });
+
+  it('is a no-op while the server is not flagged unreachable', async () => {
+    const api = makeApi(okStatus(false));
+    const { svc } = configure(true, api);
+    await svc.check();
+    const probes = api.getSetupStatus.mock.calls.length;
+
+    svc.reportServerSuccess();
+    await flush();
+
+    expect(api.getSetupStatus.mock.calls.length).toBe(probes);
+    expect(svc.isOffline()).toBe(false);
+  });
+
+  it('stops the recovery poll once a success is reported', async () => {
+    vi.useFakeTimers();
+    try {
+      let up = false;
+      const api = makeApi(() =>
+        up ? of({ needsSetup: false } as SetupStatus) : throwError(() => new Error('down')),
+      );
+      const { svc } = configure(true, api);
+      svc.reportServerFailure();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(svc.isOffline()).toBe(true);
+
+      up = true; // the server recovered — a background request then succeeded
+      svc.reportServerSuccess();
+      await Promise.resolve();
+      await Promise.resolve();
+      const probes = api.getSetupStatus.mock.calls.length;
+      // The 20s poll must have been cancelled — no further probes fire.
+      await vi.advanceTimersByTimeAsync(SERVER_RECOVERY_POLL_MS * 3);
+      expect(api.getSetupStatus.mock.calls.length).toBe(probes);
+      expect(svc.isOffline()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

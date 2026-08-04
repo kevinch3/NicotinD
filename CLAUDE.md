@@ -884,7 +884,9 @@ Add detail there, not here.
   the 3 s probe (the ANR persisted despite the fast path existing). **The switch is automatic both
   ways mid-session too**: the interceptor reports status-0 API failures → `reportServerFailure()`
   verification-probes before flipping offline (never on one flaky request); once unreachable a
-  `SERVER_RECOVERY_POLL_MS` poll + an instant device-reconnect re-probe restore online mode without
+  `SERVER_RECOVERY_POLL_MS` poll + an instant device-reconnect re-probe + the interceptor's
+  success signal (`reportServerSuccess` — any 2xx `/api` response while flagged unreachable heals
+  offline mode instantly, issue #372) restore online mode without
   a reload, and the boot `refreshToken` chain (`refreshSession`) is deferred until after `check()` —
   offline keeps the stored session, and the first return to online runs the deferred refresh
   (autoplay suppressed). Native

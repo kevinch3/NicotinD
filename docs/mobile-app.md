@@ -165,7 +165,17 @@ The fix has four parts:
     The reconnect probe also fires when `status` is still `null` — i.e. an offline **launch** skipped
     the boot probe entirely, so the app has never learned the server's setup state and must catch up
     now. A healthy already-probed session reconnecting after a tunnel/elevator blip adds **no**
-    probe (unit-tested), preserving the zero-extra-traffic property.
+    probe (unit-tested), preserving the zero-extra-traffic property. **Third leave-path — the
+    success signal (issue #372)**: the interceptor also reports every SUCCESSFUL `/api`/`/rest`
+    response (`SetupService.reportServerSuccess()`), and a real HTTP response while flagged
+    unreachable is itself the reachability proof — the flag clears instantly with **no** probe
+    (unless `status` is still `null`, the offline-launch catch-up, which does probe) and the
+    recovery poll is cancelled. This is what heals the app the moment any background request (the
+    disk pill, the transfers poll, a heartbeat) reaches a recovered server, instead of waiting up
+    to 20 s or for a device online event that never fires in a server-side outage — and it is what
+    made the order-dependent `offline.spec.ts` e2e flake (the reconnect fast path's device event
+    occasionally going quiet under Playwright's `context.setOffline`) deterministic: 5/5 green
+    with retries disabled on the exact repro pair that previously failed most runs.
     `SetupService.verify()` is the single writer of `serverUnreachable` in both directions, so every
     trigger (boot, interceptor report, poll, reconnect) shares one decision path.
   - **Offline keeps the session**: the boot `refreshToken`/`getMe` chain (now the exported
