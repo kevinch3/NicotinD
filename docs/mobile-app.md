@@ -343,7 +343,14 @@ seek/transport is a bottom-pinned glass bar (Netflix/Spotify convention; `positi
 `app-now-playing-transport` host, overriding its `contents` display); shuffle/repeat are
 template-gated out of the transport; and the stacked queue/lyrics panels + pointer-drag resize
 handle are template-gated off in favour of a top-right **Next-up chip** (head of the queue, placed
-left of the header's device switcher). Components read TV-ness via `lib/platform.ts`'s
+left of the header's device switcher). **The chip opens a queue overlay (issue #399)**: it's a
+focusable nav item in the sheet's root group; Enter opens
+`NowPlayingTvQueueComponent` — a right-aligned glass panel where each queued track is a horizontal
+child group of [jump, remove]. Jump reuses `jumpToQueueIndex` (the #233 consume-up-to semantics)
+and closes the overlay; removing the last row closes it too rather than stranding focus. Being
+`@if`-rendered it takes the #398 modal shape (`registerOverlayCloser` in the constructor), so
+Escape/hardware Back close it topmost-first, and closing restores focus to the chip (the MenuPanel
+discipline, via a host query — signal view queries don't populate in the JIT vitest harness). Components read TV-ness via `lib/platform.ts`'s
 **`isTvUi()`** — the `tv-build` *root class*, not the build-time env — so
 `packages/e2e/tests/now-playing-tv.spec.ts` exercises the real TV template in the prod bundle by
 stamping the class at a 960×540 viewport (transport fully on-screen + pinned low, shuffle/repeat

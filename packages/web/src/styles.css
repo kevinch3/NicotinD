@@ -668,5 +668,101 @@ html.tv-build .np-tv-next-title {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Outside a TV build the chip markup never renders (template-gated), so no
-   non-TV rules are needed. */
+/* The chip is a button since issue #399 (it opens the queue overlay) —
+   neutralize button chrome and give the D-pad a visible focus state. */
+html.tv-build .np-tv-next {
+  background: transparent;
+  border: none;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  text-align: right;
+}
+html.tv-build .np-tv-next:focus-visible {
+  outline: 2px solid rgb(255 255 255 / 0.9);
+  outline-offset: 2px;
+}
+/* Queue overlay opened from the chip (issue #399): right-aligned glass panel
+   over the player, D-pad rows via nav groups. */
+html.tv-build .np-tv-queue-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgb(0 0 0 / 0.45);
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+}
+html.tv-build .np-tv-queue-panel {
+  margin: calc(var(--tv-overscan-y) + 3rem) calc(var(--tv-overscan-x) + 1rem) 0 0;
+  width: 24rem;
+  max-height: calc(100vh - var(--tv-overscan-y) * 2 - 4rem);
+  overflow-y: auto;
+  border-radius: 0.75rem;
+  background: rgb(20 20 24 / 0.85);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  padding: 0.75rem;
+}
+html.tv-build .np-tv-queue-heading {
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.55);
+  padding: 0 0.5rem 0.5rem;
+}
+html.tv-build .np-tv-queue-rowwrap {
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+html.tv-build .np-tv-queue-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.5rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+html.tv-build .np-tv-queue-row:focus-visible,
+html.tv-build .np-tv-queue-remove:focus-visible {
+  outline: 2px solid rgb(255 255 255 / 0.9);
+  outline-offset: -2px;
+}
+html.tv-build .np-tv-queue-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: rgb(255 255 255 / 0.92);
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html.tv-build .np-tv-queue-artist {
+  font-size: 0.75rem;
+  color: rgb(255 255 255 / 0.55);
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html.tv-build .np-tv-queue-remove {
+  flex: 0 0 auto;
+  width: 2.25rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: rgb(255 255 255 / 0.55);
+  cursor: pointer;
+}
+html.tv-build .np-tv-queue-remove:hover {
+  color: rgb(255 255 255 / 0.9);
+}
+/* Outside a TV build the chip/overlay markup never renders (template-gated),
+   so no non-TV rules are needed. */

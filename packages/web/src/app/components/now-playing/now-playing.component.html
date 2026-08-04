@@ -16,11 +16,27 @@
 
     @if (isTv && nextUp(); as next) {
       <!-- TV replaces the stacked queue panel with a glanceable Next-up chip;
-           it sits left of the header's device switcher (absolute right-0). -->
-      <div class="np-tv-next" data-testid="now-playing-next-up" aria-live="polite">
+           it sits left of the header's device switcher (absolute right-0).
+           Focusable (issue #399): Enter opens the D-pad queue overlay. -->
+      <button
+        type="button"
+        appTvNavItem
+        class="np-tv-next"
+        data-testid="now-playing-next-up"
+        aria-live="polite"
+        (click)="tvQueueOpen.set(true)"
+      >
         <span class="np-tv-next-label">{{ 'nowPlaying.nextUp' | t }}</span>
         <span class="np-tv-next-title">{{ next.title }} · {{ next.artist }}</span>
-      </div>
+      </button>
+      @if (tvQueueOpen()) {
+        <app-now-playing-tv-queue
+          [queue]="player.queue()"
+          (jump)="onTvQueueJump($event)"
+          (remove)="onTvQueueRemove($event)"
+          (closed)="closeTvQueue()"
+        />
+      }
     }
 
     @if (contextMenu(); as pos) {
