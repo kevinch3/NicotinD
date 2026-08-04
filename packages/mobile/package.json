@@ -25,6 +25,7 @@
     "@capacitor/preferences": "^6.0.3",
     "@jofr/capacitor-media-session": "^4.0.0",
     "@nicotind/capacitor-now-playing": "workspace:*",
+    "@nicotind/capacitor-apk-update": "workspace:*",
     "@nicotind/capacitor-tv-channels": "workspace:*"
   },
   "devDependencies": {

@@ -16,6 +16,7 @@ COPY packages/e2e/package.json packages/e2e/
 # mobile depends on capacitor-now-playing so its manifest must be present).
 COPY packages/mobile/package.json packages/mobile/
 COPY packages/capacitor-now-playing/package.json packages/capacitor-now-playing/
+COPY packages/capacitor-apk-update/package.json packages/capacitor-apk-update/
 COPY packages/capacitor-tv-channels/package.json packages/capacitor-tv-channels/
 # desktop (Electron) is never built in the image, but it's a workspace member,
 # so its manifest must be present for the frozen lockfile to resolve.
@@ -81,6 +82,7 @@ COPY packages/web/package.json packages/web/
 COPY packages/e2e/package.json packages/e2e/
 COPY packages/mobile/package.json packages/mobile/
 COPY packages/capacitor-now-playing/package.json packages/capacitor-now-playing/
+COPY packages/capacitor-apk-update/package.json packages/capacitor-apk-update/
 COPY packages/capacitor-tv-channels/package.json packages/capacitor-tv-channels/
 COPY packages/desktop/package.json packages/desktop/
 COPY src/ src/

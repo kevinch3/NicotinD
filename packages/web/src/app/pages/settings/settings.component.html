@@ -278,6 +278,11 @@
               {{ (update.searching() ? 'settings.checkingForUpdates' : 'settings.checkForUpdates') | t }}
             </button>
           }
+          @if (update.downloadProgress() !== null) {
+            <p class="text-xs text-theme-secondary mt-1" data-testid="settings-update-progress">
+              {{ 'settings.updateDownloading' | t: { percent: update.downloadProgress()! } }}
+            </p>
+          }
           <button
             appTvNavItem
             (click)="showChangelog.set(true)"

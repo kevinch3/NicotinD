@@ -651,6 +651,33 @@ browse → play.
   `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`
   (until they're set, the job builds an unsigned APK / fails loudly — it never ships a broken keystore).
 
+## Self-update from GitHub releases (Android + TV)
+
+The sideloaded APK has no store channel, so the app updates **itself**: Settings → Account →
+**Check for updates** (the same button the PWA uses; `UpdateService.enabled` is true on the native
+Android shell even without a service worker). The native check fetches
+`api.github.com/…/releases/latest` directly (unauthenticated, CORS-open; the same endpoint the
+server's daily update-check polls) and compares the tag against the build's `APP_VERSION` via the
+shared `compareVersions` — moved to `@nicotind/core` (`version.ts`) so the server and web use one
+implementation, re-exported through the web's browser-safe `types/core.ts` shim. On "available" the
+toast offers **Install** (not the PWA's Reload): `applyUpdate()` hands the
+`@nicotind/capacitor-apk-update` plugin (`packages/capacitor-apk-update/`, the tv-channels plugin
+shape — Android-only, reached via the `Capacitor.Plugins.NicotindApkUpdate` global) the
+flavor-matched asset URL — `NicotinD-TV-<v>.apk` when `isTvUi()`, `NicotinD-<v>.apk` otherwise
+(pure `lib/apk-update.ts`, asset names locked to what deploy.yml attaches). The plugin streams the
+download to the app cache on its own thread (progress events → a `settings-update-progress` line),
+then opens the system installer through the app FileProvider (`ACTION_VIEW` +
+`application/vnd.android.package-archive`; manifest carries `REQUEST_INSTALL_PACKAGES`, and the
+manifest test pins both the permission and the FileProvider `<cache-path>` it depends on). Android's
+one-time **"install unknown apps"** prompt appears on first use with a direct Settings deep-link —
+D-pad navigable on TV. The final accept and the **signature check are the system's**: CI signs every
+release with the one stable keystore from repo secrets, so release→release updates install cleanly;
+a locally-built debug APK updating onto a CI release (or vice versa) is rejected as a package
+conflict — that's Android working as intended, not a bug. Verified on the google-tv emulator
+end-to-end against the live v0.1.306 release: version toast → real CDN download → unknown-apps
+prompt → installer "Do you want to update this app?". Note the flow only exists **from** builds that
+carry it — the first release with this feature must still be sideloaded manually once.
+
 ### `@capacitor/barcode-scanner` build requirements (root `build.gradle` + `variables.gradle`)
 
 The QR device-pairing plugin (`@capacitor/barcode-scanner`) pulls its native lib

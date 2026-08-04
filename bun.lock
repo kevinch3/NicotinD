@@ -46,6 +46,10 @@
         "zod": "^4.4.3",
       },
     },
+    "packages/capacitor-apk-update": {
+      "name": "@nicotind/capacitor-apk-update",
+      "version": "0.0.1",
+    },
     "packages/capacitor-now-playing": {
       "name": "@nicotind/capacitor-now-playing",
       "version": "0.0.1",
@@ -110,6 +114,7 @@
         "@capacitor/network": "^6.0.3",
         "@capacitor/preferences": "^6.0.3",
         "@jofr/capacitor-media-session": "^4.0.0",
+        "@nicotind/capacitor-apk-update": "workspace:*",
         "@nicotind/capacitor-now-playing": "workspace:*",
         "@nicotind/capacitor-tv-channels": "workspace:*",
       },
@@ -661,6 +666,8 @@
     "@napi-rs/nice-win32-x64-msvc": ["@napi-rs/nice-win32-x64-msvc@1.1.1", "", { "os": "win32", "cpu": "x64" }, "sha512-vB+4G/jBQCAh0jelMTY3+kgFy00Hlx2f2/1zjMoH821IbplbWZOkLiTYXQkygNTzQJTq5cvwBDgn2ppHD+bglQ=="],
 
     "@nicotind/api": ["@nicotind/api@workspace:packages/api"],
+
+    "@nicotind/capacitor-apk-update": ["@nicotind/capacitor-apk-update@workspace:packages/capacitor-apk-update"],
 
     "@nicotind/capacitor-now-playing": ["@nicotind/capacitor-now-playing@workspace:packages/capacitor-now-playing"],
 

@@ -1057,7 +1057,11 @@ Add detail there, not here.
   just the user-trigger. `ngsw-bypass` already gates every `/api/stream/*` URL so the SW never
   intercepts audio; **see [docs/web-ui.md](docs/web-ui.md) "Manual PWA update check" for the design
   history (3 alternatives considered) + the parity matrix across PWA / Electron (`electron-updater`,
-  apply-on-Linux / notify-on-macOS) / Capacitor (no OTA — APK/IPA reininstallation).**
+  apply-on-Linux / notify-on-macOS) / Capacitor Android/TV (in-app APK self-update from GitHub
+  releases: the same button checks `releases/latest` via the shared `compareVersions`, and the
+  `NicotindApkUpdate` plugin downloads the flavor-matched `NicotinD[-TV]-<v>.apk` and opens the
+  system installer — `packages/capacitor-apk-update/`) / Capacitor iOS (no OTA — IPA
+  reinstallation).**
 - **ServiceReview (one resource, one polling lifecycle)**: `GET /api/admin/review` (admin-only, one
   round-trip) replaces the Admin page's prior N independent loaders (`systemStatus`, `scanStatus`,
   `updateCheck`, `backups`, `auditLog`, `processing` summary, `incompleteJobs`/`untracked` tables) —
