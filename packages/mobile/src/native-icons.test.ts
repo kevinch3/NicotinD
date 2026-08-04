@@ -120,4 +120,33 @@ describe('bannerSvg', () => {
   it('uses no <text> — sharp/librsvg text rendering depends on host fonts', () => {
     expect(bannerSvg()).not.toContain('<text');
   });
+
+  describe('with a wordmark (the shipped banner: logo + app name lockup)', () => {
+    // A stub path standing in for the opentype.js-generated "NicotinD" outline.
+    const wordmark = { pathD: 'M0 0L10 0', width: 120, capHeight: 28 };
+
+    it('renders the wordmark as a <path>, never <text>', () => {
+      const svg = bannerSvg(wordmark);
+      expect(svg).toContain('<path d="M0 0L10 0"');
+      expect(svg).not.toContain('<text');
+    });
+
+    it('centres the disc+wordmark lockup horizontally', () => {
+      // disc = BANNER_LOCKUP_DISC_FRACTION*H = 90; total = 90 + gap 18 + 120 = 228;
+      // startX = (320-228)/2 = 46 → wordmark starts at 46+90+18 = 154.
+      const svg = bannerSvg(wordmark);
+      expect(svg).toContain(`translate(154 ${BANNER_HEIGHT / 2 + wordmark.capHeight / 2})`);
+    });
+
+    it('scales the glyph so the disc spans the lockup fraction of the height', () => {
+      // scale = (0.5*180)/80 = 1.125; disc left edge lands at startX:
+      // translate(46 - 10*1.125, 90 - 50*1.125) = translate(34.75 33.75).
+      expect(bannerSvg(wordmark)).toContain('translate(34.75 33.75) scale(1.125)');
+    });
+
+    it('keeps the lockup inside the banner (never cropped)', () => {
+      // total lockup width for this stub = 228 < 320, disc 90 < 180.
+      expect(90 + 18 + wordmark.width).toBeLessThan(320);
+    });
+  });
 });

@@ -49,6 +49,10 @@
          on the TV home row (issue #388) — see docs/mobile-app.md. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
+    <!-- The CAMERA permission below implies android.hardware.camera
+         required=true unless relaxed — TVs have no camera; QR pairing simply
+         stays unavailable there (manual pairing code works). -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- Permissions -->
 

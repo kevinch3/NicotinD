@@ -240,7 +240,15 @@ home launcher** (issue #388): `AndroidManifest.xml` declares the
 intent-filter, an `android:banner="@drawable/banner"` (320×180 xhdpi PNG rendered by
 `bun run icons:source` from `native-icons.ts`'s `bannerSvg()` — `@capacitor/assets` has no banner
 concept, so the generator writes it straight into the committed `res/drawable-xhdpi/`), and
-`<uses-feature android:name="android.software.leanback" android:required="false"/>`. The original
+`<uses-feature android:name="android.software.leanback" android:required="false"/>`. The shipped
+banner is a **disc + "NicotinD" wordmark lockup** (`BannerWordmark`): Google's TV app-icon
+guideline requires the app name inside the banner art (launchers may render no separate label), and
+the wordmark is converted to SVG **paths** via `opentype.js` + the committed
+`assets/fonts/Roboto-Bold.ttf` (Apache-2.0, notice alongside) rather than SVG `<text>`, because
+librsvg shapes text with host fonts and would break the committed-deterministic-output property.
+The `CAMERA` permission (QR pairing) otherwise implies `android.hardware.camera required=true`, so
+the manifest relaxes it too — on a camera-less TV the QR scan path simply stays unavailable while
+the manual pairing code works. The original
 "sideload-only ⇒ no leanback declarations" decision rested on a wrong premise: `LEANBACK_LAUNCHER`
 is what makes **any** installed APK (sideloaded included) show up on the Google TV home row — it is
 not a Play-Store-listing requirement; without it the app was only reachable via Settings → Apps.

@@ -33,6 +33,12 @@ describe('AndroidManifest.xml — Android TV launcher contract', () => {
     );
   });
 
+  it('declares the camera optional — the CAMERA permission (QR pairing) implies required=true otherwise', () => {
+    expect(manifest).toMatch(
+      /<uses-feature\s+android:name="android\.hardware\.camera"\s+android:required="false"\s*\/>/,
+    );
+  });
+
   it('points the application at the TV banner drawable', () => {
     expect(manifest).toMatch(/<application[\s\S]*?android:banner="@drawable\/banner"[\s\S]*?>/);
   });

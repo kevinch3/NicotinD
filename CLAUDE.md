@@ -1274,10 +1274,12 @@ build (no second UI codebase). The enabler is a runtime-configurable API base UR
 lock-screen controls come from `@jofr/capacitor-media-session` on Android and an iOS-only
 `@nicotind/capacitor-now-playing` Swift plugin (owns `MPNowPlayingInfoCenter` + `AVAudioSession` +
 transport). Android/iOS artifacts are built by tag-only best-effort CI jobs in `deploy.yml`. **The Android APK also supports sideloaded Android TV use, listed on the TV home launcher**
-(manifest `LEANBACK_LAUNCHER` + banner + optional leanback/touchscreen features, locked in by
-`android-manifest.test.ts`; a `tv` Angular build configuration — shipped by CI as a second
-`NicotinD-TV-<version>.apk` — defaulting remote-control opt-in on and releasing ArrowLeft/Right to
-the WebView's spatial D-pad navigation instead of the seek shortcut; a roving-tabindex D-pad
+(manifest `LEANBACK_LAUNCHER` + a disc+wordmark banner rendered deterministically via opentype.js
+paths + optional leanback/touchscreen/camera features, locked in by `android-manifest.test.ts`; a
+`tv` Angular build configuration — shipped by CI as a second `NicotinD-TV-<version>.apk` —
+defaulting remote-control opt-in on, releasing ArrowLeft/Right to the WebView's spatial D-pad
+navigation instead of the seek shortcut, and insetting content into the TV overscan safe area via
+`applyTvBuildClass` + the `html.tv-build` styles; a roving-tabindex D-pad
 navigation directive pair — vertical/horizontal/grid axes — covers the Now Playing queue,
 transport controls, every Library/Search/artist-detail grid, every `TrackRowComponent`-based song
 list, and Settings/Admin/Extensions button/toggle rows (forms stay Tab-order-only by design),
