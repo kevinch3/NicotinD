@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.305](https://github.com/kevinch3/NicotinD/compare/v0.1.304...v0.1.305) (2026-08-04)
+
+### Bug Fixes
+
+* **web:** heal offline mode on any successful api response ([#372](https://github.com/kevinch3/NicotinD/issues/372)) ([3f73d6e](https://github.com/kevinch3/NicotinD/commit/3f73d6e67f4a6024a68abb6a937253f834ef880d))
 ## [0.1.304](https://github.com/kevinch3/NicotinD/compare/v0.1.303...v0.1.304) (2026-08-04)
 
 ### Features
