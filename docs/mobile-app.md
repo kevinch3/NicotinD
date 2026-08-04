@@ -339,12 +339,14 @@ shared `resolveTvDefaultedPreference` helper in `lib/platform.ts`, used both by
 `RemotePlaybackService`'s signal and by the WS `REGISTER` payload in `playback-ws.service.ts`, so
 the two can't disagree about whether the TV is opted in) — so a TV instance is controllable from a
 phone via the existing device-agnostic remote-playback relay (`docs/remote-playback.md`) after
-signing in on the TV once (the existing QR-code device pairing flow, `docs/device-pairing.md`, is
-the practical way to do this without typing credentials via D-pad). Hardware media-key handling (a
-TV remote's transport buttons) is _expected_ to work unchanged — `@jofr/capacitor-media-session`
-already wires play/pause/next/prev/seek MediaSession action handlers — **but this is not yet
-device-verified on a TV remote** (matches the existing "still device-validated, not CI-validated"
-caveat elsewhere in this doc for background audio).
+signing in on the TV once (the **approve-from-phone flow** in `docs/device-pairing.md` — the TV
+displays a QR + code and signs itself in with zero typing). Hardware media-key handling (a TV
+remote's transport buttons) is **verified on the Google TV emulator**: `KEYCODE_MEDIA_PLAY_PAUSE`
+(85) toggles playback and `KEYCODE_MEDIA_NEXT`/`PREVIOUS` (87/88) change tracks through
+`@jofr/capacitor-media-session`'s existing MediaSession action handlers, no code changes needed.
+On TV that is also the answer to the Space/K parity gap: every focused element is a `<button>` (so
+the global Space shortcut is suppressed by design) and a remote has no K key — play/pause belongs
+to the media keys, which work.
 
 **D-pad navigation (Phase 3 extends this to grids)**: a `'grid'` axis was added
 (`lib/tv-nav-grid.ts`'s `inferColumnsPerRow`, comparing rendered `offsetTop` across items — no

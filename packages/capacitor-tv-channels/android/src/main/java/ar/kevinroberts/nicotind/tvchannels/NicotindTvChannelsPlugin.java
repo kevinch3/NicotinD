@@ -109,6 +109,7 @@ public class NicotindTvChannelsPlugin extends Plugin {
             }
             call.resolve();
         } catch (Exception e) {
+            android.util.Log.w("NicotindTvChannels", "publishPlayNext failed", e);
             // A launcher without the TV provider (or a policy denial) must
             // never break playback — Play Next is best-effort.
             call.resolve();
