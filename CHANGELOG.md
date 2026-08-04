@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.304](https://github.com/kevinch3/NicotinD/compare/v0.1.303...v0.1.304) (2026-08-04)
+
+### Features
+
+* **api:** approve-from-phone login requests ([b785e6b](https://github.com/kevinch3/NicotinD/commit/b785e6b1041886910794f9a2b7ed23552b4dcbf0))
+* **ci:** ship a TV-flagged NicotinD-TV APK from the release workflow ([#387](https://github.com/kevinch3/NicotinD/issues/387)) ([22a1ccb](https://github.com/kevinch3/NicotinD/commit/22a1ccb76484e057397621ecb8d256cba74b2ea1))
+* **mobile:** hardware back closes overlays, then navigates, then exits ([#394](https://github.com/kevinch3/NicotinD/issues/394)) ([89ab128](https://github.com/kevinch3/NicotinD/commit/89ab12894ae104ffe35977639668af824e783fd2))
+* **mobile:** tv banner wordmark + optional camera feature ([c5d6c29](https://github.com/kevinch3/NicotinD/commit/c5d6c29b363a914eec16b9590ed6f3bd3d48a793)), references [#388](https://github.com/kevinch3/NicotinD/issues/388)
+* **mobile:** tv play next channel + assistant play-from-search plugin ([711adb6](https://github.com/kevinch3/NicotinD/commit/711adb639f349e78eded80e17ccb99ee5ae78327))
+* **web:** d-pad find-a-song flow — library tabs, album actions, track rows, menus (refs [#389](https://github.com/kevinch3/NicotinD/issues/389)) ([18a898e](https://github.com/kevinch3/NicotinD/commit/18a898eb5ece00e1ff016eb26d3a222a14d15bf1))
+* **web:** dedicated TV player for Now Playing ([#387](https://github.com/kevinch3/NicotinD/issues/387)) ([87c5248](https://github.com/kevinch3/NicotinD/commit/87c5248e13ca156dd1b1e9524104fda3c608a7ae)), references [#372](https://github.com/kevinch3/NicotinD/issues/372) [#393](https://github.com/kevinch3/NicotinD/issues/393) [#394](https://github.com/kevinch3/NicotinD/issues/394)
+* **web:** inset TV builds into the overscan safe area ([f4b72f5](https://github.com/kevinch3/NicotinD/commit/f4b72f52c88575d2705ede512c6ac6822bcea6ed)), references [#387](https://github.com/kevinch3/NicotinD/issues/387)
+* **web:** tv nav groups mix direct items with child groups (refs [#389](https://github.com/kevinch3/NicotinD/issues/389)) ([4fc0de0](https://github.com/kevinch3/NicotinD/commit/4fc0de065522a89e803aebd4bbfe30389e548f9d))
+* **web:** tv now playing — radio, close, and track info reachable by d-pad (refs [#389](https://github.com/kevinch3/NicotinD/issues/389)) ([b9f42f5](https://github.com/kevinch3/NicotinD/commit/b9f42f5144bf6baf3e169154e76653e9d2652276))
+* **web:** tv overscan calibration presets in settings ([6b30965](https://github.com/kevinch3/NicotinD/commit/6b3096543becd9936415912e756a4b44680a38f3))
+* **web:** tv sign-in via phone approval (qr + code) with approve page ([0b25b75](https://github.com/kevinch3/NicotinD/commit/0b25b757b1337af5ac4e15cd796a532d915111ca))
+
+### Bug Fixes
+
+* **docker:** copy the capacitor-tv-channels manifest for the frozen-lockfile install ([8b7957b](https://github.com/kevinch3/NicotinD/commit/8b7957b32cdf12a5f797f7d9c3fb04b8d15e58e2))
+* **mobile:** allow cleartext http + mixed content for self-hosted lan servers (refs [#390](https://github.com/kevinch3/NicotinD/issues/390)) ([d5dce6e](https://github.com/kevinch3/NicotinD/commit/d5dce6e78840fddaa5438d8755f5253d1011cb07))
+* **mobile:** list the app on the Android TV launcher ([#388](https://github.com/kevinch3/NicotinD/issues/388)) ([c09e2de](https://github.com/kevinch3/NicotinD/commit/c09e2de0349661255d2c1a8b580f283d2bfa225f))
+* **web:** don't hijack ArrowLeft/Right for seek on TV builds ([#387](https://github.com/kevinch3/NicotinD/issues/387)) ([513960c](https://github.com/kevinch3/NicotinD/commit/513960c71b643d531d5032f9f30d2b0bcd7ab181))
 ## [0.1.303](https://github.com/kevinch3/NicotinD/compare/v0.1.302...v0.1.303) (2026-08-03)
 
 ### Bug Fixes
