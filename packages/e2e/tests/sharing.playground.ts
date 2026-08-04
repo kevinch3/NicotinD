@@ -13,7 +13,7 @@ test('sharing-readonly', async ({ page, browser, obs, apiToken }) => {
   const j = obs.journey();
   await page.goto('/library');
   const token = await apiToken();
-  const auth = token ? { Authorization: `Bearer ${token}` } : {};
+  const auth: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
   const albumId = await firstAlbumId(page, token);
   if (!albumId) {

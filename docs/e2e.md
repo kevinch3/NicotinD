@@ -115,7 +115,14 @@ bunx playwright install chromium            # one-time, from packages/e2e
 bun run --filter @nicotind/e2e test         # or: bun run e2e (from repo root)
 bun run --filter @nicotind/e2e test:ui      # interactive UI mode
 E2E_SKIP_BUILD=1 bunx playwright test tests/x.spec.ts   # fast re-run, existing dist
+bun run --filter @nicotind/e2e typecheck    # type-check the specs (also part of root typecheck)
 ```
+
+**Specs are type-checked (issue #376).** `packages/e2e` used to sit in none of the repo's
+type-check surfaces, so a spec type error only surfaced when Playwright actually loaded the file.
+`tsc --noEmit` (node + bun types — the playground `bun:test` files and `make-fixtures.ts` use Bun
+globals) now runs as `@nicotind/e2e typecheck`, folded into root `bun run typecheck`, which CI
+gates on.
 
 **The web build is automatic (issue #253).** It used to be a separate step you
 had to remember, and forgetting it was punishing: the managed `webServer` runs
