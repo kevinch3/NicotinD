@@ -166,17 +166,31 @@ export class SettingsComponent {
 
   reloadToUpdate(): void {
     if (this.updateToastId()) this.toast.dismiss(this.updateToastId()!);
-    void this.update.applyUpdate();
+    void this.update.applyUpdate().catch(() => {
+      this.toast.show({
+        message: this.i18n.t('settings.updateInstallFailed'),
+        kind: 'error',
+        duration: 4,
+      });
+    });
   }
 
   private showUpdateToast(outcome: 'available' | 'up-to-date'): string {
     if (outcome === 'available') {
+      // A pending APK version means the native GitHub-release path found it:
+      // the action downloads + opens the installer rather than reloading.
+      const apkVersion = this.update.pendingApkVersion();
       const id = this.toast.show({
-        message: this.i18n.t('settings.updateAvailable'),
+        message: apkVersion
+          ? this.i18n.t('settings.updateAvailableApk', { version: apkVersion })
+          : this.i18n.t('settings.updateAvailable'),
         kind: 'info',
         duration: 8,
         actions: [
-          { label: this.i18n.t('settings.reload'), callback: () => this.reloadToUpdate() },
+          {
+            label: this.i18n.t(apkVersion ? 'settings.install' : 'settings.reload'),
+            callback: () => this.reloadToUpdate(),
+          },
           { label: this.i18n.t('settings.later'), callback: () => this.toast.dismiss(id) },
         ],
       });

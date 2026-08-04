@@ -71,6 +71,8 @@ type UpdateOverrides = Partial<{
   enabled: boolean;
   updateAvailable: boolean;
   searching: boolean;
+  pendingApkVersion: string | null;
+  downloadProgress: number | null;
   checkForUpdate: Mock<() => Promise<CheckUpdateOutcome>>;
   applyUpdate: Mock<() => Promise<void>>;
 }>;
@@ -79,7 +81,7 @@ function makeUpdateService(overrides: UpdateOverrides = {}) {
   const check =
     overrides.checkForUpdate ??
     vi.fn<() => Promise<CheckUpdateOutcome>>().mockResolvedValue('up-to-date');
-  const apply = overrides.applyUpdate ?? vi.fn<() => Promise<void>>();
+  const apply = overrides.applyUpdate ?? vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
   return {
     enabled: signal(overrides.enabled ?? false),
     updateAvailable: signal(overrides.updateAvailable ?? false),
@@ -89,6 +91,8 @@ function makeUpdateService(overrides: UpdateOverrides = {}) {
         !(overrides.updateAvailable ?? false) &&
         !(overrides.searching ?? false),
     ),
+    pendingApkVersion: signal(overrides.pendingApkVersion ?? null),
+    downloadProgress: signal(overrides.downloadProgress ?? null),
     checkForUpdate: check,
     applyUpdate: apply,
   } satisfies Partial<UpdateService> & { [k: string]: unknown };
@@ -763,6 +767,47 @@ describe('SettingsComponent (manual PWA update check)', () => {
     expect(BASE_CATALOG).toHaveProperty(['settings.later']);
     toast.show.mock.calls[0][0].actions![0].callback();
     expect(update.applyUpdate).toHaveBeenCalledTimes(1);
+    fixture.destroy();
+  });
+
+  it('offers Install (not Reload) when the native APK path found the update', async () => {
+    const { list, toast, update } = makeProviders('user', {
+      enabled: true,
+      pendingApkVersion: '0.1.305',
+    });
+    update.checkForUpdate.mockResolvedValueOnce('available');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    await fixture.componentInstance.searchForUpdates();
+    expect(toast.show).toHaveBeenCalledTimes(1);
+    expect(toast.show.mock.calls[0][0].message).toBe('settings.updateAvailableApk');
+    expect(toast.show.mock.calls[0][0].actions?.[0].label).toBe('settings.install');
+    expect(BASE_CATALOG).toHaveProperty(['settings.updateAvailableApk']);
+    expect(BASE_CATALOG).toHaveProperty(['settings.install']);
+    toast.show.mock.calls[0][0].actions![0].callback();
+    expect(update.applyUpdate).toHaveBeenCalledTimes(1);
+    fixture.destroy();
+  });
+
+  it('renders the APK download progress line while the native download streams', async () => {
+    const { list } = makeProviders('user', { enabled: true, downloadProgress: 42 });
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    const progress = fixture.nativeElement.querySelector(
+      '[data-testid="settings-update-progress"]',
+    );
+    expect(progress).toBeTruthy();
+    expect(progress.textContent).toContain('settings.updateDownloading');
+    expect(BASE_CATALOG).toHaveProperty(['settings.updateDownloading']);
     fixture.destroy();
   });
 

@@ -591,14 +591,14 @@ The Angular service worker (`provideServiceWorker('ngsw-worker.js')`, registered
 ### Design
 
 - **Service**: `UpdateService` (`packages/web/src/app/services/update.service.ts`) bridges Angular's `SwUpdate` to signals. Exposes:
-  - `enabled: Signal<boolean>` — `SwUpdate.isEnabled` (false in dev, Capacitor, Electron, browsers without SW support).
+  - `enabled: Signal<boolean>` — `SwUpdate.isEnabled` **or the native Android APK path** (see below; false in dev, Electron, iOS, browsers without SW support).
   - `updateAvailable: Signal<boolean>` — sticky `true` once `VERSION_READY` fires (existing).
   - `searching: Signal<boolean>` — gates duplicate clicks while a check is in flight.
   - `checkAvailable: Signal<boolean>` — `enabled && !updateAvailable`; the manual control only renders when this is true (the banner already owns the CTA once an update is staged).
   - `checkForUpdate(): Promise<'available' | 'up-to-date' | 'unavailable'>` — short-circuits to `'unavailable'` when `!enabled` or already `searching`; otherwise calls `sw.checkForUpdate()` (resolves `true` if the new version is downloaded & ready, `false` otherwise; rejects on a network/SW error) and returns the result.
   - `applyUpdate(): Promise<void>` — `sw.activateUpdate()` then `document.location.reload()` (unchanged; jsdom doesn't allow redefining `location.reload`, so the test asserts the call against the stub).
 
-- **UI** (`packages/web/src/app/pages/settings/settings.component.{ts,html}`): the Account section grows a `@if (update.checkAvailable()) { … }` button, gated on the same `isNativeShell()` gate that disables `provideServiceWorker` (`lib/platform.ts:50-52`). It shows **Check for updates** by default and **Checking for updates…** + `disabled` while the check is in flight.
+- **UI** (`packages/web/src/app/pages/settings/settings.component.{ts,html}`): the Account section grows a `@if (update.checkAvailable()) { … }` button. On browsers it follows `SwUpdate.isEnabled` (so dev builds and Electron hide it); on the native Android/TV shell `enabled` is true via the APK path instead. It shows **Check for updates** by default and **Checking for updates…** + `disabled` while the check is in flight.
 
 - **Outcomes → toasts** (existing `ToastService`, no new component):
   - `'up-to-date'` → green `"You're on v{version}"` toast (3 s).
@@ -612,7 +612,8 @@ The Angular service worker (`provideServiceWorker('ngsw-worker.js')`, registered
   |---|---|---|---|
   | **PWA (web)** | Angular service worker + `SwUpdate` | `Check for updates` button → `UpdateService.checkForUpdate()` | Banner (`UpdateBannerComponent`) owns `applyUpdate` once `VERSION_READY` |
   | **Electron** (`packages/desktop/electron/updater.ts`) | `electron-updater` polling GitHub Releases (`updateMode(platform, signed)`: Linux AppImage = apply, macOS = notify-only) | Native `dialog.showMessageBox` on `update-downloaded` / `update-available`; auto-downloaded by electron-builder's `--publish always` | User opens **Releases page** link |
-  | **Capacitor** (iOS / Android) | **No OTA** — users must install a new APK/IPA from GitHub Releases | None — the Settings button is hidden because `isNativeShell()` is true | In-app copy "Updates are managed by your app store" is the planned placeholder; today the button is hidden entirely |
+  | **Capacitor Android / TV** | **In-app APK self-update from GitHub Releases**: `checkForUpdate()` reads `releases/latest`, compares via the shared `compareVersions` (`@nicotind/core`), and `applyUpdate()` has the `NicotindApkUpdate` plugin download the flavor-matched asset (`NicotinD[-TV]-<v>.apk`, chosen by `isTvUi()`) and open the system installer — see [docs/mobile-app.md](mobile-app.md) "Self-update from GitHub releases" | Same `Check for updates` button (the toast offers **Install** instead of Reload; a `settings-update-progress` line shows download %) | The system installer owns the final accept/deny |
+  | **Capacitor iOS** | **No OTA** — reinstall the IPA from GitHub Releases | None — the button stays hidden (`enabled` is false off Android) | — |
 
   The reason the manual check is a *button* rather than a *timer*: Angular's docs explicitly warn that long-running `setInterval` polling (the canonical "check every 6 h" snippet) **prevents the app from stabilizing and delays SW registration up to 30 s** (`ngsw-config.json` + `provideServiceWorker`). A user-triggered click is both the cheapest and the safest fix. Every NicotinD release already triggers a `chore(release):` commit and pushes a `vX.Y.Z` tag, so the SW's natural polling cadence is fine when the user actually opens the tab — the bug only surfaces for users who stay parked on the same tab for hours.
 

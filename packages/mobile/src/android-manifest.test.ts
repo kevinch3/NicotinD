@@ -57,6 +57,20 @@ describe('AndroidManifest.xml — Android TV launcher contract', () => {
   it('points the application at the TV banner drawable', () => {
     expect(manifest).toMatch(/<application[\s\S]*?android:banner="@drawable\/banner"[\s\S]*?>/);
   });
+
+  it('declares REQUEST_INSTALL_PACKAGES — the sideloaded APK self-updates from GitHub releases', () => {
+    expect(manifest).toContain(
+      '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />',
+    );
+  });
+
+  it('keeps the FileProvider cache path the APK self-update installer depends on', () => {
+    // The apk-update plugin serves the downloaded APK to the system installer
+    // through the app FileProvider; a dropped <cache-path> would break it at
+    // runtime with no compile signal.
+    const filePaths = readFileSync(join(ANDROID_APP, 'res', 'xml', 'file_paths.xml'), 'utf8');
+    expect(filePaths).toMatch(/<cache-path[^>]*path="\."[^>]*\/>/);
+  });
 });
 
 describe('TV banner asset', () => {

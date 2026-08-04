@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { vi } from 'vitest';
 import { SwUpdate, VersionEvent, VersionReadyEvent } from '@angular/service-worker';
+import { APP_VERSION } from '../app.config';
 import { UpdateService } from './update.service';
 
 function makeSwStub(
@@ -25,7 +26,12 @@ function makeSwStub(
 }
 
 function provide(sw: ReturnType<typeof makeSwStub>) {
-  TestBed.configureTestingModule({ providers: [{ provide: SwUpdate, useValue: sw }] });
+  TestBed.configureTestingModule({
+    providers: [
+      { provide: SwUpdate, useValue: sw },
+      { provide: APP_VERSION, useValue: '0.1.300' },
+    ],
+  });
   return TestBed.inject(UpdateService);
 }
 
@@ -143,6 +149,91 @@ describe('UpdateService', () => {
 
     expect(firstResult).toBe('up-to-date');
     expect(service.searching()).toBe(false);
+  });
+
+  describe('native APK path (sideloaded Android/TV app)', () => {
+    let downloadAndInstall: ReturnType<typeof vi.fn>;
+    let fetchMock: ReturnType<typeof vi.fn>;
+
+    function provideNative(currentVersion = '0.1.300', latestTag = 'v0.1.305') {
+      downloadAndInstall = vi.fn().mockResolvedValue(undefined);
+      (globalThis as { Capacitor?: unknown }).Capacitor = {
+        isNativePlatform: () => true,
+        getPlatform: () => 'android',
+        Plugins: { NicotindApkUpdate: { downloadAndInstall, addListener: vi.fn() } },
+      };
+      fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({ tag_name: latestTag }), { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: SwUpdate, useValue: makeSwStub(false) },
+          { provide: APP_VERSION, useValue: currentVersion },
+        ],
+      });
+      return TestBed.inject(UpdateService);
+    }
+
+    afterEach(() => {
+      delete (globalThis as { Capacitor?: unknown }).Capacitor;
+      vi.unstubAllGlobals();
+      document.documentElement.classList.remove('tv-build');
+    });
+
+    it('enables the manual checker on native Android even without a service worker', () => {
+      const service = provideNative();
+      expect(service.enabled()).toBe(true);
+      expect(service.checkAvailable()).toBe(true);
+    });
+
+    it('checkForUpdate reads the latest GitHub release and reports available on a newer tag', async () => {
+      const service = provideNative('0.1.300', 'v0.1.305');
+      const result = await service.checkForUpdate();
+      expect(result).toBe('available');
+      expect(fetchMock.mock.calls[0][0]).toContain('/releases/latest');
+      expect(service.pendingApkVersion()).toBe('0.1.305');
+    });
+
+    it('checkForUpdate reports up-to-date when the release matches the running version', async () => {
+      const service = provideNative('0.1.305', 'v0.1.305');
+      expect(await service.checkForUpdate()).toBe('up-to-date');
+      expect(service.pendingApkVersion()).toBeNull();
+    });
+
+    it('checkForUpdate rejects on a GitHub API failure and clears searching', async () => {
+      const service = provideNative();
+      fetchMock.mockResolvedValue(new Response('rate limited', { status: 403 }));
+      await expect(service.checkForUpdate()).rejects.toThrow();
+      expect(service.searching()).toBe(false);
+    });
+
+    it('applyUpdate downloads the phone APK asset via the native plugin', async () => {
+      const service = provideNative('0.1.300', 'v0.1.305');
+      await service.checkForUpdate();
+      await service.applyUpdate();
+      expect(downloadAndInstall).toHaveBeenCalledWith({
+        url: 'https://github.com/kevinch3/NicotinD/releases/download/v0.1.305/NicotinD-0.1.305.apk',
+        fileName: 'NicotinD-0.1.305.apk',
+      });
+    });
+
+    it('applyUpdate picks the TV APK asset on a tv build', async () => {
+      document.documentElement.classList.add('tv-build');
+      const service = provideNative('0.1.300', 'v0.1.305');
+      await service.checkForUpdate();
+      await service.applyUpdate();
+      expect(downloadAndInstall).toHaveBeenCalledWith({
+        url: 'https://github.com/kevinch3/NicotinD/releases/download/v0.1.305/NicotinD-TV-0.1.305.apk',
+        fileName: 'NicotinD-TV-0.1.305.apk',
+      });
+    });
+
+    it('applyUpdate without a pending version is a no-op (never a blind download)', async () => {
+      const service = provideNative();
+      await service.applyUpdate();
+      expect(downloadAndInstall).not.toHaveBeenCalled();
+    });
   });
 
   it('applyUpdate activates the SW and reloads the document', async () => {

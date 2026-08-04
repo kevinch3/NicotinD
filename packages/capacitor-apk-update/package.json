@@ -1,0 +1,14 @@
+{
+  "name": "@nicotind/capacitor-apk-update",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Sideloaded-APK self-update: downloads a NicotinD release APK from GitHub and hands it to the system package installer (the Android/TV app has no store channel). Android-only by construction (no ios src). There is no JS package to import — the web app reaches it through the injected Capacitor.Plugins.NicotindApkUpdate global (see packages/web services/update.service.ts).",
+  "files": [
+    "android"
+  ],
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  }
+}

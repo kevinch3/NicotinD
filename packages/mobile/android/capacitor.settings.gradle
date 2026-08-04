@@ -17,5 +17,8 @@ project(':capacitor-preferences').projectDir = new File('../../../node_modules/.
 include ':jofr-capacitor-media-session'
 project(':jofr-capacitor-media-session').projectDir = new File('../../../node_modules/.bun/@jofr+capacitor-media-session@4.0.0/node_modules/@jofr/capacitor-media-session/android')
 
+include ':nicotind-capacitor-apk-update'
+project(':nicotind-capacitor-apk-update').projectDir = new File('../../capacitor-apk-update/android')
+
 include ':nicotind-capacitor-tv-channels'
 project(':nicotind-capacitor-tv-channels').projectDir = new File('../../capacitor-tv-channels/android')
