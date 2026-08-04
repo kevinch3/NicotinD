@@ -33,6 +33,17 @@ describe('AndroidManifest.xml — Android TV launcher contract', () => {
     );
   });
 
+  it('declares the Assistant MEDIA_PLAY_FROM_SEARCH filter separately from the MAIN filter', () => {
+    const filters = manifest.match(/<intent-filter>[\s\S]*?<\/intent-filter>/g) ?? [];
+    const searchFilter = filters.find((f) =>
+      f.includes('android.media.action.MEDIA_PLAY_FROM_SEARCH'),
+    );
+    expect(searchFilter).toBeDefined();
+    // Never merged into the MAIN filter — extra actions/categories there
+    // would change launcher matching.
+    expect(searchFilter).not.toContain('android.intent.action.MAIN');
+  });
+
   it('allows cleartext http — self-hosted LAN servers have no TLS (#390)', () => {
     expect(manifest).toMatch(/<application[\s\S]*?android:usesCleartextTraffic="true"[\s\S]*?>/);
   });

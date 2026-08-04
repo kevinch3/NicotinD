@@ -50,6 +50,10 @@
       "name": "@nicotind/capacitor-now-playing",
       "version": "0.0.1",
     },
+    "packages/capacitor-tv-channels": {
+      "name": "@nicotind/capacitor-tv-channels",
+      "version": "0.0.1",
+    },
     "packages/cli": {
       "name": "@nicotind/cli",
       "version": "0.1.0",
@@ -99,7 +103,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@capacitor/android": "^6.2.0",
-        "@capacitor/app": "^8.1.1",
+        "@capacitor/app": "^6",
         "@capacitor/barcode-scanner": "^1",
         "@capacitor/core": "^6.2.0",
         "@capacitor/ios": "^6.2.0",
@@ -107,6 +111,7 @@
         "@capacitor/preferences": "^6.0.3",
         "@jofr/capacitor-media-session": "^4.0.0",
         "@nicotind/capacitor-now-playing": "workspace:*",
+        "@nicotind/capacitor-tv-channels": "workspace:*",
       },
       "devDependencies": {
         "@capacitor/assets": "^3.0.5",
@@ -285,7 +290,7 @@
 
     "@capacitor/android": ["@capacitor/android@6.2.1", "", { "peerDependencies": { "@capacitor/core": "^6.2.0" } }, "sha512-8gd4CIiQO5LAIlPIfd5mCuodBRxMMdZZEdj8qG8m+dQ1sQ2xyemVpzHmRK8qSCHorsBUCg3D62j2cp6bEBAkdw=="],
 
-    "@capacitor/app": ["@capacitor/app@8.1.1", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-xM2ZTX5jK60tFtmjsmJv+Cdj1Qsb6NcavkqmdEnCPQBeya9oKhamZJxYOnQNj1ZvcJM7sWfG6BEtSLx42pisbA=="],
+    "@capacitor/app": ["@capacitor/app@6.0.3", "", { "peerDependencies": { "@capacitor/core": "^6.0.0" } }, "sha512-4gFUCbcVz0N/YYN32OBFerocWXslIv3Nc90gDiRsBkJc0plwK6kIUT6PKa5WtW2kfhteUeCVXQbvArH2fH+0Ug=="],
 
     "@capacitor/assets": ["@capacitor/assets@3.0.5", "", { "dependencies": { "@capacitor/cli": "^5.3.0", "@ionic/utils-array": "2.1.6", "@ionic/utils-fs": "3.1.7", "@trapezedev/project": "^7.0.10", "commander": "8.3.0", "debug": "4.3.4", "fs-extra": "10.1.0", "node-fetch": "2.7.0", "node-html-parser": "5.4.2", "sharp": "0.32.6", "tslib": "2.6.2", "yargs": "17.7.2" }, "bin": { "capacitor-assets": "bin/capacitor-assets" } }, "sha512-ohz/OUq61Y1Fc6aVSt0uDrUdeOA7oTH4pkWDbv/8I3UrPjH7oPkzYhShuDRUjekNp9RBi198VSFdt0CetpEOzw=="],
 
@@ -658,6 +663,8 @@
     "@nicotind/api": ["@nicotind/api@workspace:packages/api"],
 
     "@nicotind/capacitor-now-playing": ["@nicotind/capacitor-now-playing@workspace:packages/capacitor-now-playing"],
+
+    "@nicotind/capacitor-tv-channels": ["@nicotind/capacitor-tv-channels@workspace:packages/capacitor-tv-channels"],
 
     "@nicotind/cli": ["@nicotind/cli@workspace:packages/cli"],
 

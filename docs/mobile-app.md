@@ -265,6 +265,24 @@ installs are unaffected. `AndroidManifest.xml` also declares
 isn't blocked/degraded on a touchscreen-less device. `packages/mobile/src/android-manifest.test.ts`
 locks all of this in (the first manifest-content test — pure XML no compiler checks).
 
+**Google TV Play Next + Assistant voice (`@nicotind/capacitor-tv-channels`)**: the repo's first
+Android-side Capacitor plugin (`packages/capacitor-tv-channels/`, mirroring
+`capacitor-now-playing`'s shape with `"capacitor": {"android": {"src": "android"}}` and no JS
+package — the web reaches it through the `Capacitor.Plugins.NicotindTvChannels` global). It keeps
+ONE "Continue listening" entry in the launcher's Watch Next row for the current track
+(`publishPlayNext`/`clearPlayNext` via androidx.tvprovider `WatchNextProgram`; the previous row id
+lives in SharedPreferences so publishes replace, never accumulate; every method is gated on
+`UiModeManager` reporting a television so phones no-op; failures are swallowed — Play Next is
+best-effort and must never break playback). The same plugin bridges the Assistant's
+`MEDIA_PLAY_FROM_SEARCH` intent (a **separate** manifest intent-filter — never merged into the
+MAIN filter) to a `playFromSearch` web event, retained (`notifyListeners(..., true)`) so a
+cold-start voice launch isn't lost before the web layer attaches. Web side:
+`services/native/tv-channels.service.ts` publishes on track change (the MediaSession-artwork URL
+recipe) and answers voice queries via the pure `lib/play-from-search.ts` ranker (core `fold`,
+exact-title > title-prefix > all-tokens; null keeps current playback) over a `q=`-filtered
+`/api/library/songs` page. Scope is deliberately **Play Next only** — a full recommendation
+channel row is a tracked follow-up. `deploy.yml`'s mobile path filter includes the new package.
+
 **Overscan safe area (TV builds only)**: TVs may crop up to ~5% of every edge, so `main.ts` stamps
 a `tv-build` class on `<html>` via `lib/platform.ts`'s `applyTvBuildClass` (pure, unit-tested) and
 `styles.css` insets *content* into the action-safe area (`--tv-overscan-x/y`, ≈ the Android TV

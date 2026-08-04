@@ -1,0 +1,16 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /home/kevinch3/Documentos/Dev/NicotinD/.claude/worktrees/android-tv-dpad-launcher/packages/capacitor-tv-channels/android/src/main/AndroidManifest.xml:2:1-72
+INJECTED from /home/kevinch3/Documentos/Dev/NicotinD/.claude/worktrees/android-tv-dpad-launcher/packages/capacitor-tv-channels/android/src/main/AndroidManifest.xml:2:1-72
+	package
+		INJECTED from /home/kevinch3/Documentos/Dev/NicotinD/.claude/worktrees/android-tv-dpad-launcher/packages/capacitor-tv-channels/android/src/main/AndroidManifest.xml
+	xmlns:android
+		ADDED from /home/kevinch3/Documentos/Dev/NicotinD/.claude/worktrees/android-tv-dpad-launcher/packages/capacitor-tv-channels/android/src/main/AndroidManifest.xml:2:11-69
+uses-sdk
+INJECTED from /home/kevinch3/Documentos/Dev/NicotinD/.claude/worktrees/android-tv-dpad-launcher/packages/capacitor-tv-channels/android/src/main/AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from /home/kevinch3/Documentos/Dev/NicotinD/.claude/worktrees/android-tv-dpad-launcher/packages/capacitor-tv-channels/android/src/main/AndroidManifest.xml
+INJECTED from /home/kevinch3/Documentos/Dev/NicotinD/.claude/worktrees/android-tv-dpad-launcher/packages/capacitor-tv-channels/android/src/main/AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from /home/kevinch3/Documentos/Dev/NicotinD/.claude/worktrees/android-tv-dpad-launcher/packages/capacitor-tv-channels/android/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /home/kevinch3/Documentos/Dev/NicotinD/.claude/worktrees/android-tv-dpad-launcher/packages/capacitor-tv-channels/android/src/main/AndroidManifest.xml

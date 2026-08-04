@@ -7,6 +7,7 @@ import { RemotePlaybackService } from './services/remote-playback.service';
 import { PresenceService } from './services/presence.service';
 import { KeyboardShortcutsService } from './services/keyboard-shortcuts.service';
 import { BackButtonService } from './services/native/back-button.service';
+import { TvChannelsService } from './services/native/tv-channels.service';
 import { ToastOutletComponent } from './components/toast-outlet/toast-outlet.component';
 import { DesktopTitleBarOverlayComponent } from './components/desktop-title-bar-overlay/desktop-title-bar-overlay.component';
 
@@ -25,6 +26,7 @@ export class App {
   private presence = inject(PresenceService);
   private keyboardShortcuts = inject(KeyboardShortcutsService);
   private backButton = inject(BackButtonService);
+  private tvChannels = inject(TvChannelsService);
 
   // `App` is the root component (mounted once, never destroyed), so this
   // subscription outlives the app regardless — kept as a field rather than
@@ -44,6 +46,9 @@ export class App {
 
     // Android hardware Back: overlays first, then history, exit at home (#394).
     this.backButton.initialize();
+
+    // Google TV Play Next + Assistant voice playback (Android TV only).
+    this.tvChannels.initialize();
 
     // Redirect to setup if needed, or to the library (Songs → offline downloads)
     // when offline (runs after APP_INITIALIZER completes).
