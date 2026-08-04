@@ -13,7 +13,7 @@ test('playlists-roundtrip', async ({ page, browser, obs, apiToken }) => {
   const j = obs.journey();
   await page.goto('/library');
   const token = await apiToken();
-  const auth = token ? { Authorization: `Bearer ${token}` } : {};
+  const auth: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
   const albumId = await firstAlbumId(page, token);
   if (!albumId) {
@@ -24,8 +24,8 @@ test('playlists-roundtrip', async ({ page, browser, obs, apiToken }) => {
 
   // A song id to add — from the album detail payload (`song[]`).
   const detail = await page.request.get(`/api/library/albums/${albumId}`, { headers: auth });
-  const songId = (((await detail.json().catch(() => ({}))) as { song?: Array<{ id: string }> }).song ??
-    [])[0]?.id;
+  const songId = (((await detail.json().catch(() => ({}))) as { song?: Array<{ id: string }> })
+    .song ?? [])[0]?.id;
   if (!songId) {
     obs.record({ kind: 'degraded', title: 'Album had no playable song', severity: 'info' });
     obs.outcome('degraded');
@@ -50,7 +50,8 @@ test('playlists-roundtrip', async ({ page, browser, obs, apiToken }) => {
       obs.outcome('failed', `create ${created.status()}`);
       return;
     }
-    playlistId = (((await created.json()) as { playlist?: { id: string } }).playlist ?? null)?.id ?? null;
+    playlistId =
+      (((await created.json()) as { playlist?: { id: string } }).playlist ?? null)?.id ?? null;
 
     // 2. Render the playlist page (the user-facing surface).
     if (playlistId) {

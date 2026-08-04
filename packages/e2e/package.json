@@ -13,9 +13,12 @@
     "playground:real": "playwright test --config=playwright.real.config.ts",
     "screens:live": "playwright test --config=playwright.live-screens.config.ts",
     "screens:readme": "bun run scripts/update-readme-screenshots.ts",
-    "make-fixtures": "bun run scripts/make-fixtures.ts"
+    "make-fixtures": "bun run scripts/make-fixtures.ts",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1"
+    "@playwright/test": "^1.61.1",
+    "@types/node": "25.5.0",
+    "@types/bun": "^1.3.5"
   }
 }

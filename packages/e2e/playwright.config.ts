@@ -107,7 +107,9 @@ function correctnessProjects(): PlaywrightTestConfig['projects'] {
 }
 
 /** Build a managed server config on the given port + throwaway data dir. */
-function makeServer(port: string, dir: string): NonNullable<PlaywrightTestConfig['webServer']> {
+type WebServer = Extract<NonNullable<PlaywrightTestConfig['webServer']>, { command: string }>;
+
+function makeServer(port: string, dir: string): WebServer {
   return {
     command: 'bun run src/main.ts',
     cwd: repoRoot,

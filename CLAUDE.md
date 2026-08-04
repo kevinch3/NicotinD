@@ -1221,11 +1221,13 @@ Add detail there, not here.
 
 Angular v22 standalone SPA with signals, `HttpClient` + interceptors, and lazy-loaded routes. Built
 via `ng build` (esbuild); tests run on **plain vitest**, never `ng test` (which forbids the
-`vi.mock` five specs rely on — see docs/web-ui.md "Web test harness"). Three type-check surfaces,
+`vi.mock` five specs rely on — see docs/web-ui.md "Web test harness"). Four type-check surfaces,
 none of which covers the others: `tsc --build` (app + packages), `typecheck:web-spec` (specs, which
-`tsconfig.app.json` excludes), and `typecheck:template` (**Angular templates** via `ngc` — `tsc`
+`tsconfig.app.json` excludes), `typecheck:template` (**Angular templates** via `ngc` — `tsc`
 never sees a binding expression, so this was "green locally, red at `ng build`" until issue #273
-folded it into `bun run typecheck`). The HTTP surface is split into per-domain
+folded it into `bun run typecheck`), and the **e2e specs** (`@nicotind/e2e typecheck`, issue #376 —
+`packages/e2e` sat in none of the other three, so spec type errors only surfaced when Playwright
+loaded the file; now `tsc --noEmit` with node+bun types, folded into `bun run typecheck` too). The HTTP surface is split into per-domain
 stateless services under `services/api/` (`Auth`/`Search`/`Library`/`Downloads`/`System`/`Playlists`
 ApiService + shared `api-types.ts`) — inject the specific one; there is no monolithic `ApiService`.
 → See [docs/web-ui.md](docs/web-ui.md) for theme system, Angular patterns, and component

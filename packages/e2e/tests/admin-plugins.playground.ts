@@ -25,7 +25,7 @@ test('admin-plugins', async ({ page, obs, apiToken }) => {
   });
   j.step('open /settings/plugins');
   const token = await apiToken();
-  const auth = token ? { Authorization: `Bearer ${token}` } : {};
+  const auth: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   if (!(await appeared(page.locator('main'), 6000))) j.fallback('plugins page slow/blank');
 
   // 2. Read plugin states + system status via API (what the admin actually sees).
@@ -47,7 +47,9 @@ test('admin-plugins', async ({ page, obs, apiToken }) => {
   j.step('open /admin');
   const statusRes = await page.request.get('/api/system/status', { headers: auth });
   if (statusRes.ok()) {
-    const status = (await statusRes.json()) as { slskd?: { configured?: boolean; healthy?: boolean } };
+    const status = (await statusRes.json()) as {
+      slskd?: { configured?: boolean; healthy?: boolean };
+    };
     obs.record({
       kind: 'metric',
       title: 'slskd configured/healthy',

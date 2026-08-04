@@ -22,7 +22,7 @@ const ACQUIRE_TIMEOUT_MS = Number(process.env.PLAYGROUND_REAL_TIMEOUT_MS ?? 8 * 
 test('real-roundtrip', async ({ page, obs, apiToken }) => {
   const j = obs.journey();
   const token = await apiToken();
-  const auth = token ? { Authorization: `Bearer ${token}` } : {};
+  const auth: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
   if (!REAL_URL && !(REAL_ARTIST && REAL_ALBUM)) {
     obs.record({
@@ -60,9 +60,7 @@ test('real-roundtrip', async ({ page, obs, apiToken }) => {
       await page.getByTestId('search-input').press('Enter');
       j.step('search artist + album');
       // Best-effort: open the first catalog/hunt affordance and trigger download.
-      const hunt = page
-        .getByRole('button', { name: /hunt|download|get/i })
-        .first();
+      const hunt = page.getByRole('button', { name: /hunt|download|get/i }).first();
       if (!(await hunt.count())) {
         j.deadEnd('no hunt/download affordance for the query');
         obs.outcome('failed', 'no hunt control');
