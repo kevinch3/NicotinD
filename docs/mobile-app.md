@@ -267,6 +267,27 @@ a `tv-build` class on `<html>` via `lib/platform.ts`'s `applyTvBuildClass` (pure
 physical edge (the standard TV treatment). Non-TV builds are untouched: every rule is scoped under
 `html.tv-build`, and the class is only applied when `isTvBuild()`.
 
+**Dedicated TV player (Now Playing)**: a 1080p TV at density 320 is a **960×540 CSS viewport** —
+below Tailwind's `lg` (1024px) — so the sheet used to render the mobile *stacked* layout in a short
+landscape window and the cover pushed the whole transport below the fold (the "only shows the art
+cover" report). On TV the sheet is now a 10-foot player: the current cover, stretched and heavily
+blurred, backs the whole sheet (`--np-tv-backdrop` bound in `now-playing.component.html`, drawn by
+the root's `::before` at `z-index:-1` — the fixed root's `z-[60]` makes it a stacking context, so
+the layer sits above the sheet background but below all content); the art is centered; the
+seek/transport is a bottom-pinned glass bar (Netflix/Spotify convention; `position:absolute` on the
+`app-now-playing-transport` host, overriding its `contents` display); shuffle/repeat are
+template-gated out of the transport; and the stacked queue/lyrics panels + pointer-drag resize
+handle are template-gated off in favour of a top-right **Next-up chip** (head of the queue, placed
+left of the header's device switcher). Components read TV-ness via `lib/platform.ts`'s
+**`isTvUi()`** — the `tv-build` *root class*, not the build-time env — so
+`packages/e2e/tests/now-playing-tv.spec.ts` exercises the real TV template in the prod bundle by
+stamping the class at a 960×540 viewport (transport fully on-screen + pinned low, shuffle/repeat
+absent, chip content/position, backdrop layer present). **Remote playback out of the box**:
+verified on a fresh tv-build install — "Make this device available as an audio output" defaults ON
+(`resolveTvDefaultedPreference`) and the device self-registers in Connected devices; an explicit
+stored toggle always wins over the default (so reinstalled test devices with old data can differ). The
+default device *name* on a TV is the UA-derived "Chrome on Android" — issue #393.
+
 A separate Angular build configuration (`bun run --filter @nicotind/web build -- --configuration
 tv`, `angular.json`) swaps in `environments/environment.tv.ts` (`tvBuild: true`, otherwise
 identical to the prod environment), exposed via `lib/platform.ts`'s `isTvBuild()`. This is a

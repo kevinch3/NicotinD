@@ -9,6 +9,7 @@ import {
   serviceWorkerEnabled,
   isCoarsePointer,
   isTvBuild,
+  isTvUi,
   applyTvBuildClass,
   resolveTvDefaultedPreference,
 } from './platform';
@@ -115,6 +116,16 @@ describe('platform helpers', () => {
       const el = document.createElement('html');
       applyTvBuildClass(el, false);
       expect(el.classList.contains('tv-build')).toBe(false);
+    });
+  });
+
+  describe('isTvUi', () => {
+    afterEach(() => document.documentElement.classList.remove('tv-build'));
+
+    it('is true iff the document root carries the tv-build class', () => {
+      expect(isTvUi()).toBe(false);
+      document.documentElement.classList.add('tv-build');
+      expect(isTvUi()).toBe(true);
     });
   });
 

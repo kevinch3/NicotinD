@@ -22,6 +22,7 @@ import { firstValueFrom } from 'rxjs';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { ScrollLockService } from '../../services/scroll-lock.service';
 import { ServerConfigService } from '../../services/server-config.service';
+import { isTvUi } from '../../lib/platform';
 import {
   computePaletteFromPixels,
   scrollToActiveLine,
@@ -210,6 +211,22 @@ export class NowPlayingComponent {
   readonly coverMaxPx = computed(
     () => NowPlayingComponent.COVER_MAX_PX - this.queueExtraHeightPx(),
   );
+
+  /** TV player treatment (10-foot layout): blurred-cover backdrop, bottom
+   *  transport bar, Next-up chip instead of the stacked queue/lyrics panels.
+   *  Reads the root class (not the build env) so e2e can exercise it. */
+  readonly isTv = isTvUi();
+
+  /** The blurred sheet backdrop on TV — same cover endpoint the art uses;
+   *  null (no backdrop) when the track has no cover. */
+  readonly tvBackdropUrl = computed(() => {
+    const track = this.player.currentTrack();
+    if (!this.isTv || !track?.coverArt) return null;
+    return this.server.apiUrl(`/api/cover/${track.coverArt}?size=600&token=${this.auth.token()}`);
+  });
+
+  /** Head of the queue, shown in the TV Next-up chip. */
+  readonly nextUp = computed(() => this.player.queue()[0] ?? null);
   private queueResizeStartExtra = 0;
   private readonly queueResizeDrag = createPointerDrag({
     onStart: () => {
