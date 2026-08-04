@@ -92,6 +92,10 @@ export * from '../../../core/src/types/licence';
 // Value re-export: role ladder helpers (pure, browser-safe) shared with the API.
 export * from '../../../core/src/roles';
 
+// Value re-export: version comparison (pure) — shared with the server update-check
+// and the native APK self-update.
+export * from '../../../core/src/version';
+
 // Value re-export: slskd hunt query builders (pure, browser-safe) — the single
 // source the album-hunt modal shows and the API hunter fires. See hunt-queries.ts.
 export * from '../../../core/src/hunt-queries';

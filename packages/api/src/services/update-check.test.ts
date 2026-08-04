@@ -3,7 +3,6 @@ import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import {
   checkForUpdateNow,
-  compareVersions,
   getStoredUpdateCheck,
   listVersionHistory,
   maybeCheckForUpdate,
@@ -28,17 +27,6 @@ function fakeRelease(tag: string): FetchLike {
 }
 
 const failing: FetchLike = async () => new Response('rate limited', { status: 403 });
-
-describe('compareVersions', () => {
-  it('orders numeric dot versions', () => {
-    expect(compareVersions('0.1.231', '0.1.230')).toBeGreaterThan(0);
-    expect(compareVersions('0.1.230', '0.1.230')).toBe(0);
-    expect(compareVersions('0.2.0', '0.1.999')).toBeGreaterThan(0);
-    expect(compareVersions('1.0.0', '0.9.9')).toBeGreaterThan(0);
-    expect(compareVersions('v0.1.231', '0.1.230')).toBeGreaterThan(0);
-    expect(compareVersions('0.1', '0.1.0')).toBe(0);
-  });
-});
 
 describe('checkForUpdateNow', () => {
   it('stores the latest release (v-prefix stripped)', async () => {
