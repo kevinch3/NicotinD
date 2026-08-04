@@ -29,6 +29,7 @@ import {
 } from '../../components/genre-distribution-strip/genre-distribution-strip.component';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 
 @Component({
   selector: 'app-album-detail',
@@ -43,6 +44,7 @@ import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
     ArtistLinksComponent,
     GenreDistributionStripComponent,
     TvNavGroupDirective,
+    TvNavItemDirective,
   ],
   templateUrl: './album-detail.component.html',
 })

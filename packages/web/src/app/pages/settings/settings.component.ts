@@ -16,7 +16,13 @@ import {
   MediaControlsService,
   type NowPlayingDiagnostics,
 } from '../../services/media-controls.service';
-import { isIosNative, isElectron, isNativePlatform } from '../../lib/platform';
+import { isIosNative, isElectron, isNativePlatform, isTvUi } from '../../lib/platform';
+import {
+  loadOverscanPreset,
+  setOverscanPreset,
+  OVERSCAN_PRESETS,
+  type OverscanPreset,
+} from '../../lib/tv-overscan';
 import { ServerConfigService } from '../../services/server-config.service';
 import { pickDirectory, setMusicDir, revealLogs } from '../../services/native/native-capabilities';
 import { ConfirmService } from '../../services/confirm.service';
@@ -106,6 +112,16 @@ export class SettingsComponent {
 
   /** "Change music folder" only exists in the Electron desktop shell. */
   readonly isElectron = isElectron();
+
+  // TV overscan calibration (issue #389 family — see lib/tv-overscan.ts).
+  readonly isTv = isTvUi();
+  readonly overscanPresets = Object.keys(OVERSCAN_PRESETS) as OverscanPreset[];
+  readonly overscanPreset = signal<OverscanPreset>(loadOverscanPreset());
+
+  setOverscan(preset: OverscanPreset): void {
+    this.overscanPreset.set(preset);
+    setOverscanPreset(preset);
+  }
   readonly musicDirChanging = signal(false);
   /** Set once a folder is picked this session; the backend doesn't expose its current musicDir at runtime. */
   readonly musicDirChosen = signal<string | null>(null);

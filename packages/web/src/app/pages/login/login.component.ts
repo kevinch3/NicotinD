@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
@@ -9,13 +9,26 @@ import { sanitizeReturnUrl } from '../../lib/return-url';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TranslateService } from '../../services/translate.service';
 import { httpErrorMessageI18n } from '../../lib/http-error';
+import { isTvUi } from '../../lib/platform';
+import { platformId } from '../../services/native/native-capabilities';
+import { pollTvLoginClaim, requestTvLogin, type TvLoginRequestResult } from '../../lib/pairing';
+import { renderQrDataUrl } from '../../lib/qr';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 
 @Component({
   selector: 'app-login',
-  imports: [FormsModule, RouterLink, PasswordFieldComponent, TranslatePipe],
+  imports: [
+    FormsModule,
+    RouterLink,
+    PasswordFieldComponent,
+    TranslatePipe,
+    TvNavGroupDirective,
+    TvNavItemDirective,
+  ],
   templateUrl: './login.component.html',
 })
-export class LoginComponent implements OnInit {
+export class LoginComponent implements OnInit, OnDestroy {
   private auth = inject(AuthService);
   private api = inject(AuthApiService);
   private router = inject(Router);
@@ -37,6 +50,16 @@ export class LoginComponent implements OnInit {
   readonly showServerLink = this.server.native;
   readonly serverHost = hostOf(this.server.baseUrl());
 
+  // ── TV sign-in from phone (issue #389 flow cohesion) ────────────────────
+  /** TV builds lead with the approve-from-phone panel; the typed form stays
+   *  as the fallback behind `showPasswordForm`. */
+  readonly isTv = isTvUi();
+  readonly showPasswordForm = signal(false);
+  readonly tvLogin = signal<TvLoginRequestResult | null>(null);
+  readonly tvQrDataUrl = signal<string | null>(null);
+  readonly tvExpired = signal(false);
+  private tvPollTimer: ReturnType<typeof setTimeout> | null = null;
+
   ngOnInit(): void {
     // Capture where the auth guard wanted to send us (issue #231), sanitized to
     // an in-app path so a crafted link can't open-redirect after login.
@@ -45,6 +68,60 @@ export class LoginComponent implements OnInit {
       next: (res) => this.registrationEnabled.set(res.enabled),
       error: () => this.registrationEnabled.set(false),
     });
+    if (this.isTv) void this.startTvLogin();
+  }
+
+  ngOnDestroy(): void {
+    if (this.tvPollTimer) clearTimeout(this.tvPollTimer);
+  }
+
+  /** Mint (or re-mint) a sign-in request and start polling it. */
+  async startTvLogin(): Promise<void> {
+    if (this.tvPollTimer) clearTimeout(this.tvPollTimer);
+    this.tvExpired.set(false);
+    this.error.set('');
+    try {
+      const minted = await requestTvLogin(this.server.baseUrl(), {
+        deviceName: 'NicotinD TV',
+        platform: platformId(),
+      });
+      this.tvLogin.set(minted);
+      // The QR opens the phone's own approval page — code in the fragment so
+      // it never reaches proxy logs (the /pair link pattern). Origin: the
+      // server's best candidate, falling back to this device's server URL.
+      const origin = minted.urls[0] ?? this.server.baseUrl();
+      this.tvQrDataUrl.set(await renderQrDataUrl(`${origin}/approve#c=${minted.code}`));
+      this.schedulePoll();
+    } catch {
+      this.error.set(this.i18n.t('errors.generic'));
+    }
+  }
+
+  /** Recursive setTimeout (never setInterval — a slow round-trip must not
+   *  stack, the TransferService convention), bounded by the request TTL. */
+  private schedulePoll(): void {
+    this.tvPollTimer = setTimeout(() => void this.pollTvLogin(), 2500);
+  }
+
+  private async pollTvLogin(): Promise<void> {
+    const minted = this.tvLogin();
+    if (!minted) return;
+    if (Date.now() >= minted.expiresAt) {
+      this.tvExpired.set(true);
+      return;
+    }
+    try {
+      const result = await pollTvLoginClaim(this.server.baseUrl(), minted.token);
+      if ('status' in result) {
+        this.schedulePoll();
+        return;
+      }
+      this.auth.login(result.token, result.user.username, result.user.role);
+      void this.router.navigateByUrl(this.returnUrl);
+    } catch {
+      // Expired/consumed server-side — surface the regenerate affordance.
+      this.tvExpired.set(true);
+    }
   }
 
   toggleMode(): void {

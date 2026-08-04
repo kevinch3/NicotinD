@@ -1,5 +1,6 @@
 import { Component, inject, input, output } from '@angular/core';
 import { PlayerService } from '../../../services/player.service';
+import { isTvUi } from '../../../lib/platform';
 import { SeekBarComponent } from '../../seek-bar/seek-bar.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
@@ -16,6 +17,10 @@ import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 })
 export class NowPlayingTransportComponent {
   readonly player = inject(PlayerService);
+
+  // TV player keeps only prev/play/next: shuffle and repeat are cut from the
+  // 10-foot transport (D-pad economy; the queue is radio/album-driven there).
+  readonly isTv = isTvUi();
 
   readonly progress = input(0);
   readonly duration = input(0);

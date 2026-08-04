@@ -34,6 +34,8 @@ export const ERROR_CODE_I18N_KEYS: Record<string, string> = {
   USERNAME_TAKEN: 'errors.usernameTaken',
   INVALID_CREDENTIALS: 'errors.invalidCredentials',
   ACCOUNT_DISABLED: 'errors.accountDisabled',
+  LOGIN_REQUEST_EXPIRED: 'errors.loginRequestExpired',
+  LOGIN_REQUEST_NOT_FOUND: 'errors.loginRequestNotFound',
   PAIRING_NOT_FOUND: 'errors.pairingNotFound',
   PAIRING_EXPIRED: 'errors.pairingExpired',
   RATE_LIMITED: 'errors.rateLimited',

@@ -567,3 +567,106 @@
   }
 }
 
+
+/* ─── Android TV overscan safe area ─────────────────────────────────────
+   TVs may crop up to ~5% of every edge (overscan), so a TV build (main.ts
+   stamps `tv-build` on <html> via applyTvBuildClass) insets *content* into
+   the action-safe area while surfaces/backgrounds keep bleeding to the
+   physical edge — the standard TV layout treatment. Values follow the
+   Android TV layout guideline (≈5% horizontal / 5% vertical margins,
+   48/27dp at 1080p). Only content padding is touched; fixed elements keep
+   their full-bleed backgrounds. */
+html.tv-build {
+  --tv-overscan-x: 4vw;
+  --tv-overscan-y: 2.5vh;
+}
+html.tv-build body > app-root header {
+  padding-left: var(--tv-overscan-x);
+  padding-right: var(--tv-overscan-x);
+  padding-top: var(--tv-overscan-y);
+}
+html.tv-build body > app-root main {
+  padding-left: var(--tv-overscan-x);
+  padding-right: var(--tv-overscan-x);
+}
+html.tv-build [data-bottom-chrome] {
+  padding-left: var(--tv-overscan-x);
+  padding-right: var(--tv-overscan-x);
+  padding-bottom: calc(var(--tv-overscan-y) / 2);
+}
+html.tv-build app-now-playing > div {
+  padding-left: var(--tv-overscan-x);
+  padding-right: var(--tv-overscan-x);
+}
+/* ── TV player treatment ──
+   A 1080p TV at DPR 2 is a 960×540 CSS viewport — below Tailwind's lg
+   (1024px), so Now Playing renders the mobile *stacked* layout in a short
+   landscape window; uncapped, the 20rem cover pushed the transport below the
+   fold (the "only shows the art cover" symptom). On TV the sheet becomes a
+   dedicated 10-foot player: the current cover, stretched and heavily
+   blurred, backs the whole sheet; the art is centered; the seek/transport
+   is a bottom-pinned glass bar (Netflix/Spotify convention); the stacked
+   queue/lyrics panels are template-gated off (a Next-up chip replaces them —
+   see now-playing.component.html). */
+html.tv-build app-now-playing > div::before {
+  content: '';
+  position: absolute;
+  inset: -6%; /* hide the blur's unsampled edge outside the viewport */
+  z-index: -1; /* above the sheet's own bg, below all content (root is a stacking context via z-[60]) */
+  background-image: var(--np-tv-backdrop);
+  background-size: cover;
+  background-position: center;
+  filter: blur(56px) brightness(0.5) saturate(1.15);
+}
+html.tv-build [data-testid='now-playing-body'] {
+  justify-content: center;
+  padding-bottom: 13rem; /* keep the centered art + title clear of the pinned bar */
+}
+html.tv-build [data-testid='now-playing-cover'] {
+  max-width: min(var(--np-cover-max, 20rem), 38vh);
+}
+html.tv-build app-now-playing-transport {
+  display: block; /* overrides the host's `contents` so the bar is a real box */
+  position: absolute; /* containing block = the fixed sheet root */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0.75rem var(--tv-overscan-x) calc(var(--tv-overscan-y) / 1.5);
+  background: rgb(8 8 12 / 0.45);
+  backdrop-filter: blur(24px);
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
+/* The mobile sheet breathes with mb-6 between seek/buttons/radio; the pinned
+   bar wants a tighter rhythm so it stays a bar, not a panel. */
+html.tv-build app-now-playing-transport .mb-6 {
+  margin-bottom: 0.75rem;
+}
+/* The chip color commits to the blurred-cover ground (always dark on TV). */
+html.tv-build .np-tv-next {
+  position: absolute;
+  top: calc(var(--tv-overscan-y) + 0.5rem);
+  right: calc(var(--tv-overscan-x) + 4rem); /* clear the header's device switcher */
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  max-width: 22rem;
+}
+html.tv-build .np-tv-next-label {
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.55);
+}
+html.tv-build .np-tv-next-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: rgb(255 255 255 / 0.9);
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Outside a TV build the chip markup never renders (template-gated), so no
+   non-TV rules are needed. */

@@ -43,13 +43,11 @@ export class TvNavItemDirective {
 
   readonly tabIndex = computed(() => {
     if (!this.group) return 0;
-    // `isActiveChild` (issue #356): inside a nested group (e.g. a queue row's
-    // [jump, remove] pair nested under the rows group), only the row that
-    // currently owns focus may hand out tabindex 0 — otherwise every row
-    // would independently default its own item to 0, giving a composite
-    // widget with N rows N simultaneous Tab stops. Always true for a
-    // top-level group (no parent).
-    if (!this.group.isActiveChild()) return -1;
+    // `directItemsActive` folds two conditions (issues #356/#389): the group
+    // must be its parent's active child, AND — in a mixed items+child-groups
+    // container — the active entry kind must be an item, so a direct item and
+    // a nested group's item can never both claim the single Tab stop.
+    if (!this.group.directItemsActive()) return -1;
     return this.group.indexOf(this) === this.group.activeIndex() ? 0 : -1;
   });
 

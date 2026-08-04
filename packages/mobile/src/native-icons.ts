@@ -32,6 +32,43 @@ export const FOREGROUND_SAFE_ZONE = 0.66;
  */
 export const SPLASH_DISC_FRACTION = 0.22;
 
+/**
+ * Android TV launcher banner dimensions (xhdpi `drawable-xhdpi/banner.png`),
+ * fixed by the platform: 320×180 dp at xhdpi. The Google TV home row renders
+ * this banner as the app's tile.
+ */
+export const BANNER_WIDTH = 320;
+export const BANNER_HEIGHT = 180;
+
+/**
+ * Fraction of the banner height the brand disc spans. Larger than the splash's
+ * fraction — the banner IS the tile art, not a centred accent on a big field.
+ */
+export const BANNER_DISC_FRACTION = 0.62;
+
+/**
+ * Disc fraction / gap for the disc+wordmark lockup variant. Google's TV
+ * app-icon guideline requires the banner to carry the app name (launchers may
+ * render no separate label), so the shipped banner uses this lockup; the
+ * glyph-only variant remains for callers with no wordmark path.
+ */
+export const BANNER_LOCKUP_DISC_FRACTION = 0.5;
+export const BANNER_LOCKUP_GAP = 18;
+
+/**
+ * The app-name outline for the banner, pre-converted to path data (opentype.js
+ * in generate-native-icons.ts) so librsvg never shapes text with host fonts —
+ * that would break the committed-deterministic-output property.
+ */
+export interface BannerWordmark {
+  /** SVG path data drawn with the left edge at x=0 and the baseline at y=0. */
+  pathD: string;
+  /** Advance width of the wordmark, in banner px. */
+  width: number;
+  /** Cap height in banner px — used to centre the text block on the disc. */
+  capHeight: number;
+}
+
 /** The bare brand glyph (indigo disc + play triangle), no background. */
 function glyph(): string {
   return (
@@ -87,6 +124,51 @@ export function foregroundSvg(scale: number = FOREGROUND_SAFE_ZONE): string {
  * local centre (50,50) is mapped to the canvas centre and scaled so its 80-unit
  * disc reaches that fraction.
  */
+/**
+ * The Android TV launcher banner: the brand glyph centred on the solid dark
+ * field at 16:9. Deliberately no `<text>` wordmark — sharp/librsvg text
+ * rendering depends on host fonts, which would break this pipeline's
+ * committed-deterministic-output property (the TV launcher shows the app name
+ * from the manifest label alongside the tile anyway).
+ */
+export function bannerSvg(
+  wordmark?: BannerWordmark,
+  discFraction: number = BANNER_DISC_FRACTION,
+): string {
+  const open =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${BANNER_WIDTH} ${BANNER_HEIGHT}">` +
+    `<rect width="${BANNER_WIDTH}" height="${BANNER_HEIGHT}" fill="${BRAND.background}"/>`;
+  if (!wordmark) {
+    // Glyph-only: disc diameter is 80 local units; span `discFraction` of the
+    // banner height, mapping the glyph centre (50,50) to the banner centre.
+    const scale = (discFraction * BANNER_HEIGHT) / 80;
+    return (
+      open +
+      `<g transform="translate(${BANNER_WIDTH / 2} ${BANNER_HEIGHT / 2}) scale(${scale}) translate(-50 -50)">` +
+      glyph() +
+      `</g>` +
+      `</svg>`
+    );
+  }
+  // Disc + wordmark lockup, centred as one block. The disc's left edge sits at
+  // startX (the glyph viewBox has a 10-unit margin around the 80-unit disc).
+  const scale = (BANNER_LOCKUP_DISC_FRACTION * BANNER_HEIGHT) / 80;
+  const disc = 80 * scale;
+  const total = disc + BANNER_LOCKUP_GAP + wordmark.width;
+  const startX = (BANNER_WIDTH - total) / 2;
+  const midY = BANNER_HEIGHT / 2;
+  return (
+    open +
+    `<g transform="translate(${startX - 10 * scale} ${midY - 50 * scale}) scale(${scale})">` +
+    glyph() +
+    `</g>` +
+    `<g transform="translate(${startX + disc + BANNER_LOCKUP_GAP} ${midY + wordmark.capHeight / 2})">` +
+    `<path d="${wordmark.pathD}" fill="${BRAND.mark}"/>` +
+    `</g>` +
+    `</svg>`
+  );
+}
+
 export function splashSvg(discFraction: number = SPLASH_DISC_FRACTION): string {
   const half = 50; // half of the 0..100 glyph viewBox
   // Glyph disc diameter is 80 in local units; scale so it spans `discFraction`

@@ -271,3 +271,136 @@ describe('createFixedWindowLimiter', () => {
     expect(limiter.hit()).toBeTrue();
   });
 });
+
+describe('TV sign-in via phone approval (login-request/approve/claim)', () => {
+  beforeEach(() => {
+    testDb.run('DELETE FROM login_requests');
+    testDb.run('DELETE FROM audit_log');
+  });
+
+  async function requestLogin(app: Hono<AuthEnv>) {
+    const res = await app.request('http://public.example/api/devices/login-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceName: 'Living-room TV', platform: 'android' }),
+    });
+    expect(res.status).toBe(200);
+    return (await res.json()) as { token: string; code: string; expiresAt: number; urls: string[] };
+  }
+
+  async function approve(app: Hono<AuthEnv>, code: string) {
+    return app.request('http://public.example/api/devices/login-approve', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${await userToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ code }),
+    });
+  }
+
+  async function claim(app: Hono<AuthEnv>, token: string) {
+    return app.request('http://public.example/api/devices/login-claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  it('full loop: request → pending poll → approve → claim yields a device-bound JWT', async () => {
+    const app = buildApp();
+    const minted = await requestLogin(app);
+    expect(minted.code).toHaveLength(6);
+
+    const pending = await claim(app, minted.token);
+    expect(pending.status).toBe(202);
+    expect(((await pending.json()) as { status: string }).status).toBe('pending');
+
+    const approved = await approve(app, minted.code);
+    expect(approved.status).toBe(200);
+    expect(((await approved.json()) as { deviceName: string }).deviceName).toBe('Living-room TV');
+
+    const claimed = await claim(app, minted.token);
+    expect(claimed.status).toBe(200);
+    const body = (await claimed.json()) as { token: string; user: { username: string } };
+    expect(body.user.username).toBe('alice');
+    const payload = jose.decodeJwt(body.token);
+    expect(payload['deviceId']).toBeDefined();
+
+    const device = testDb.query<{ name: string }, []>('SELECT name FROM paired_devices').get();
+    expect(device?.name).toBe('Living-room TV');
+  });
+
+  it('approval is audit-logged', async () => {
+    const app = buildApp();
+    const minted = await requestLogin(app);
+    await approve(app, minted.code);
+    const audit = testDb
+      .query<{ action: string; target_id: string }, []>(
+        'SELECT action, target_id FROM audit_log ORDER BY rowid DESC LIMIT 1',
+      )
+      .get();
+    expect(audit?.action).toBe('devices.approve_login');
+    expect(audit?.target_id).toBe('Living-room TV');
+  });
+
+  it('an unknown code 404s and an expired request 410s on approve and claim', async () => {
+    let t = 1_000_000;
+    const app = buildApp(() => t);
+    const minted = await requestLogin(app);
+    expect((await approve(app, 'ZZZZZZ')).status).toBe(404);
+    t += 6 * 60 * 1000; // past the 5-minute TTL
+    expect((await approve(app, minted.code)).status).toBe(410);
+    expect((await claim(app, minted.token)).status).toBe(410);
+  });
+
+  it('a claim is single-use: the second claim of the same token 410s', async () => {
+    const app = buildApp();
+    const minted = await requestLogin(app);
+    await approve(app, minted.code);
+    expect((await claim(app, minted.token)).status).toBe(200);
+    expect((await claim(app, minted.token)).status).toBe(410);
+  });
+
+  it('an account disabled AFTER approval cannot be claimed', async () => {
+    const app = buildApp();
+    const minted = await requestLogin(app);
+    await approve(app, minted.code);
+    testDb.run("UPDATE users SET status = 'disabled' WHERE id = 'u1'");
+    try {
+      const res = await claim(app, minted.token);
+      expect(res.status).toBe(403);
+    } finally {
+      testDb.run("UPDATE users SET status = 'active' WHERE id = 'u1'");
+    }
+  });
+
+  it('minting prunes expired rows (anonymous growth guard)', async () => {
+    let t = 1_000_000;
+    const app = buildApp(() => t);
+    await requestLogin(app);
+    await requestLogin(app);
+    expect(
+      testDb.query<{ n: number }, []>('SELECT COUNT(*) as n FROM login_requests').get()?.n,
+    ).toBe(2);
+    t += 6 * 60 * 1000;
+    await requestLogin(app);
+    expect(
+      testDb.query<{ n: number }, []>('SELECT COUNT(*) as n FROM login_requests').get()?.n,
+    ).toBe(1);
+  });
+
+  it('login-request is rate limited', async () => {
+    const app = buildApp();
+    let lastStatus = 200;
+    for (let i = 0; i < 12; i++) {
+      const res = await app.request('http://public.example/api/devices/login-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      lastStatus = res.status;
+    }
+    expect(lastStatus).toBe(429);
+  });
+});

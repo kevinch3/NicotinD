@@ -99,8 +99,14 @@ native:
   bundle; requires the `CAMERA` permission added to the Android manifest) reads the server's
   Link-a-device QR, probes its candidate URLs, claims the one-time token, and lands **connected and
   signed in** in one scan. A **pairing code** field is the manual fallback (URL + 6-char code typed
-  from the server's Devices page). No cleartext config is needed — the pairing URLs are HTTPS
-  (Tailscale Funnel or a reverse-proxied deployment).
+  from the server's Devices page). Pairing URLs are typically HTTPS (Tailscale Funnel or a
+  reverse-proxied deployment), but plain-`http` LAN servers also work: the Android shell allows
+  cleartext + mixed content (issue #390 — `android:usesCleartextTraffic="true"` in the manifest +
+  `allowMixedContent: true` in `capacitor.config.ts`). Without those, the WebView's
+  `https://localhost` origin blocked every `http://` API call twice over (cleartext policy + mixed
+  content), making LAN-only self-hosted servers unreachable from the app entirely — the accepted
+  trade-off is that a self-hosted music server on a private LAN is exactly the deployment that has
+  no TLS. iOS ATS has the mirror problem and is a tracked follow-up.
 - **Service worker disabled on native** (`app.config.ts`): the WebView serves assets locally, so ngsw
   caching is redundant and can fight Capacitor / cross-origin API calls. IndexedDB offline still works.
 
@@ -232,13 +238,85 @@ and must work first try on device. Revisit if the plugin (or a equivalent) ships
 Still device-validated, not CI-validated: confirm on a physical device that playback continues
 backgrounded and the lock-screen controls/scrubber work.
 
-## Android TV support (sideload only)
+## Android TV support
 
-The Android APK is also usable on Android TV / TV boxes via direct sideload (no Play Store TV
-listing — no `LEANBACK_LAUNCHER` category, TV banner, or `android.software.leanback` feature
-declared). `AndroidManifest.xml` declares
+The Android APK is usable on Android TV / TV boxes via direct sideload, and it **appears on the TV
+home launcher** (issue #388): `AndroidManifest.xml` declares the
+`android.intent.category.LEANBACK_LAUNCHER` category on MainActivity's existing MAIN/LAUNCHER
+intent-filter, an `android:banner="@drawable/banner"` (320×180 xhdpi PNG rendered by
+`bun run icons:source` from `native-icons.ts`'s `bannerSvg()` — `@capacitor/assets` has no banner
+concept, so the generator writes it straight into the committed `res/drawable-xhdpi/`), and
+`<uses-feature android:name="android.software.leanback" android:required="false"/>`. The shipped
+banner is a **disc + "NicotinD" wordmark lockup** (`BannerWordmark`): Google's TV app-icon
+guideline requires the app name inside the banner art (launchers may render no separate label), and
+the wordmark is converted to SVG **paths** via `opentype.js` + the committed
+`assets/fonts/Roboto-Bold.ttf` (Apache-2.0, notice alongside) rather than SVG `<text>`, because
+librsvg shapes text with host fonts and would break the committed-deterministic-output property.
+The `CAMERA` permission (QR pairing) otherwise implies `android.hardware.camera required=true`, so
+the manifest relaxes it too — on a camera-less TV the QR scan path simply stays unavailable while
+the manual pairing code works. The original
+"sideload-only ⇒ no leanback declarations" decision rested on a wrong premise: `LEANBACK_LAUNCHER`
+is what makes **any** installed APK (sideloaded included) show up on the Google TV home row — it is
+not a Play-Store-listing requirement; without it the app was only reachable via Settings → Apps.
+One activity serves both form factors — extra intent-filter categories never un-match phone
+launchers (verified on-device), and both TV-ish `uses-feature`s are `required="false"` so phone
+installs are unaffected. `AndroidManifest.xml` also declares
 `<uses-feature android:name="android.hardware.touchscreen" android:required="false"/>` so the app
-isn't blocked/degraded on a touchscreen-less device.
+isn't blocked/degraded on a touchscreen-less device. `packages/mobile/src/android-manifest.test.ts`
+locks all of this in (the first manifest-content test — pure XML no compiler checks).
+
+**Google TV Play Next + Assistant voice (`@nicotind/capacitor-tv-channels`)**: the repo's first
+Android-side Capacitor plugin (`packages/capacitor-tv-channels/`, mirroring
+`capacitor-now-playing`'s shape with `"capacitor": {"android": {"src": "android"}}` and no JS
+package — the web reaches it through the `Capacitor.Plugins.NicotindTvChannels` global). It keeps
+ONE "Continue listening" entry in the launcher's Watch Next row for the current track
+(`publishPlayNext`/`clearPlayNext` via androidx.tvprovider `WatchNextProgram`; the previous row id
+lives in SharedPreferences so publishes replace, never accumulate; every method is gated on
+`UiModeManager` reporting a television so phones no-op; failures are swallowed — Play Next is
+best-effort and must never break playback). The same plugin bridges the Assistant's
+`MEDIA_PLAY_FROM_SEARCH` intent (a **separate** manifest intent-filter — never merged into the
+MAIN filter) to a `playFromSearch` web event, retained (`notifyListeners(..., true)`) so a
+cold-start voice launch isn't lost before the web layer attaches. Web side:
+`services/native/tv-channels.service.ts` publishes on track change (the MediaSession-artwork URL
+recipe) and answers voice queries via the pure `lib/play-from-search.ts` ranker (core `fold`,
+exact-title > title-prefix > all-tokens; null keeps current playback) over a `q=`-filtered
+`/api/library/songs` page. Scope is deliberately **Play Next only** — a full recommendation
+channel row is a tracked follow-up. `deploy.yml`'s mobile path filter includes the new package.
+
+**Overscan calibration (Settings → Appearance, TV only)**: real panels overscan differently, so the safe-area insets are now per-device presets (`lib/tv-overscan.ts`: Off / Standard / Extra, localStorage `nicotind-tv-overscan`, the language-picker per-device rationale) applied as inline `--tv-overscan-x/y` on the root at bootstrap (main.ts, overriding the stylesheet defaults; Standard equals the defaults so fresh installs look unchanged) and switchable live from an `isTvUi()`-gated preset row.
+
+**Overscan safe area (TV builds only)**: TVs may crop up to ~5% of every edge, so `main.ts` stamps
+a `tv-build` class on `<html>` via `lib/platform.ts`'s `applyTvBuildClass` (pure, unit-tested) and
+`styles.css` insets *content* into the action-safe area (`--tv-overscan-x/y`, ≈ the Android TV
+48/27dp-at-1080p guideline) on the app shell's stable landmarks — `header`, `main`,
+`[data-bottom-chrome]`, and the Now Playing sheet — while surfaces/backgrounds keep bleeding to the
+physical edge (the standard TV treatment). Non-TV builds are untouched: every rule is scoped under
+`html.tv-build`, and the class is only applied when `isTvBuild()`.
+
+**Dedicated TV player (Now Playing)**: the sheet root is a mixed nav group — header close, the
+cover's track-info button and the transport's Radio toggle are direct items, with the
+transport/tabs/queue registering as child groups, so the whole sheet is one vertical D-pad sweep
+(issue #389, the first mixed-entries consumer; `now-playing-tv.spec.ts` walks it). A 1080p TV at
+density 320 is a **960×540 CSS viewport** —
+below Tailwind's `lg` (1024px) — so the sheet used to render the mobile *stacked* layout in a short
+landscape window and the cover pushed the whole transport below the fold (the "only shows the art
+cover" report). On TV the sheet is now a 10-foot player: the current cover, stretched and heavily
+blurred, backs the whole sheet (`--np-tv-backdrop` bound in `now-playing.component.html`, drawn by
+the root's `::before` at `z-index:-1` — the fixed root's `z-[60]` makes it a stacking context, so
+the layer sits above the sheet background but below all content); the art is centered; the
+seek/transport is a bottom-pinned glass bar (Netflix/Spotify convention; `position:absolute` on the
+`app-now-playing-transport` host, overriding its `contents` display); shuffle/repeat are
+template-gated out of the transport; and the stacked queue/lyrics panels + pointer-drag resize
+handle are template-gated off in favour of a top-right **Next-up chip** (head of the queue, placed
+left of the header's device switcher). Components read TV-ness via `lib/platform.ts`'s
+**`isTvUi()`** — the `tv-build` *root class*, not the build-time env — so
+`packages/e2e/tests/now-playing-tv.spec.ts` exercises the real TV template in the prod bundle by
+stamping the class at a 960×540 viewport (transport fully on-screen + pinned low, shuffle/repeat
+absent, chip content/position, backdrop layer present). **Remote playback out of the box**:
+verified on a fresh tv-build install — "Make this device available as an audio output" defaults ON
+(`resolveTvDefaultedPreference`) and the device self-registers in Connected devices; an explicit
+stored toggle always wins over the default (so reinstalled test devices with old data can differ). The
+default device *name* on a TV is the UA-derived "Chrome on Android" — issue #393.
 
 A separate Angular build configuration (`bun run --filter @nicotind/web build -- --configuration
 tv`, `angular.json`) swaps in `environments/environment.tv.ts` (`tvBuild: true`, otherwise
@@ -261,12 +339,14 @@ shared `resolveTvDefaultedPreference` helper in `lib/platform.ts`, used both by
 `RemotePlaybackService`'s signal and by the WS `REGISTER` payload in `playback-ws.service.ts`, so
 the two can't disagree about whether the TV is opted in) — so a TV instance is controllable from a
 phone via the existing device-agnostic remote-playback relay (`docs/remote-playback.md`) after
-signing in on the TV once (the existing QR-code device pairing flow, `docs/device-pairing.md`, is
-the practical way to do this without typing credentials via D-pad). Hardware media-key handling (a
-TV remote's transport buttons) is _expected_ to work unchanged — `@jofr/capacitor-media-session`
-already wires play/pause/next/prev/seek MediaSession action handlers — **but this is not yet
-device-verified on a TV remote** (matches the existing "still device-validated, not CI-validated"
-caveat elsewhere in this doc for background audio).
+signing in on the TV once (the **approve-from-phone flow** in `docs/device-pairing.md` — the TV
+displays a QR + code and signs itself in with zero typing). Hardware media-key handling (a TV
+remote's transport buttons) is **verified on the Google TV emulator**: `KEYCODE_MEDIA_PLAY_PAUSE`
+(85) toggles playback and `KEYCODE_MEDIA_NEXT`/`PREVIOUS` (87/88) change tracks through
+`@jofr/capacitor-media-session`'s existing MediaSession action handlers, no code changes needed.
+On TV that is also the answer to the Space/K parity gap: every focused element is a `<button>` (so
+the global Space shortcut is suppressed by design) and a remote has no K key — play/pause belongs
+to the media keys, which work.
 
 **D-pad navigation (Phase 3 extends this to grids)**: a `'grid'` axis was added
 (`lib/tv-nav-grid.ts`'s `inferColumnsPerRow`, comparing rendered `offsetTop` across items — no
@@ -276,7 +356,7 @@ column, clamped into a shorter final row. Applied to every Library page card gri
 compilations, singles/EPs, artists, genres) + the Library playlists list, artist-detail's
 albums/singles/appears-on grids, the Search page's catalog albums grid + artist chips, the
 album-hunt-modal candidate list, and — via one shared change to `TrackRowComponent` itself — every
-song list built on it (library Songs tab, album/genre/artist/playlist detail pages). **Settings/Admin/Extensions coverage (Phase 4)**: applied to Settings' theme/budget/auto-preserve grids and account action list, the Devices/agent-tokens revoke lists, Admin's services grid, log-service buttons, processing-task checkboxes, and user-management action buttons, and the Extensions (plugins) page's enable/configure buttons per card. Forms stay Tab-order-only by design — native `<input>`/`<select>` elements are never wrapped in `appTvNavItem`, so arrow keys keep their native meaning inside them (caret movement, select-value change, number increment). **Not yet applied**: the Admin duplicates list (needs a `<label>`-activation passthrough, deferred) and the streaming-panel's mixed checkbox/select rows (same per-row-exclusion technique already established elsewhere in this phase, just not yet applied there). The full keyboard shortcut table (Phase 6) is also still just Space/K.
+song list built on it (library Songs tab, album/genre/artist/playlist detail pages). **Settings/Admin/Extensions coverage (Phase 4)**: applied to Settings' theme/budget/auto-preserve grids and account action list, the Devices/agent-tokens revoke lists, Admin's services grid, log-service buttons, processing-task checkboxes, and user-management action buttons, and the Extensions (plugins) page's enable/configure buttons per card. Forms stay Tab-order-only by design — native `<input>`/`<select>` elements are never wrapped in `appTvNavItem`, so arrow keys keep their native meaning inside them (caret movement, select-value change, number increment). **Find-a-song flow coverage (issue #389)**: the Library **tabs bar** is a horizontal group; the album-detail **action row** (Play/Select/Download/Share/Fix/Remove) is a horizontal group; **every `TrackRowComponent` is its own horizontal child group** (title + like + remove + ⋯ menu toggle as items) nested inside the surrounding vertical list, enabled by the mixed items+child-groups directive rework; and **`MenuPanelComponent` speaks D-pad** — the first action autofocuses on open, ArrowUp/Down move between actions (stopPropagation so the list behind never navigates underneath), Enter activates, and closing restores focus to the trigger (only when focus was inside the panel — an outside click keeps its own focus). This is what finally exposes `SongMenuService`'s Play next / Add to queue to remote users; the keyboard-only journey is locked in by `packages/e2e/tests/library-dpad-tv.spec.ts`. **Not yet applied**: the Admin duplicates list (needs a `<label>`-activation passthrough, deferred) and the streaming-panel's mixed checkbox/select rows (same per-row-exclusion technique already established elsewhere in this phase, just not yet applied there). The full keyboard shortcut table (Phase 6) is also still just Space/K.
 
 **DI crosses a component boundary but NOT an `ngTemplateOutlet` one (the Phase 4 final-review
 fix)**: the Extensions page rendered every plugin card from a shared `<ng-template #card let-p>`
@@ -416,6 +496,25 @@ Three guards make the arrow keys safe to own globally:
    ±10s jump. A key the group's axis does _not_ navigate by (ArrowUp inside a `horizontal` group;
    ArrowUp at a grid's first row, where there is no row to jump to) stays un-prevented and reaches
    the global handler — neither is a seek key, so nothing leaks.
+4. **Never on a TV build** (issue #387) — the seek branch returns before `preventDefault()` when
+   `isTvBuild()`. On Android TV, the WebView's built-in D-pad **spatial focus navigation** is what
+   moves focus between elements not covered by a nav group; `preventDefault()` on the keydown is
+   exactly what cancels that focus move. This is why vertical D-pad movement always worked (ArrowUp/
+   Down are never intercepted) while horizontal was dead across the whole Now Playing sheet — the
+   transport row could never even be *entered* horizontally. Seeking on TV stays available through
+   the focused seek bar (a native `<input type="range">` consumes ArrowLeft/Right to scrub) and the
+   remote's hardware media keys via MediaSession. Non-TV builds keep the seek shortcut unchanged.
+
+**Hardware Back (issue #394)**: Android's Back button used to finish the activity from anywhere
+(the observed TV behavior of "Back exits the app"). `BackButtonService`
+(`services/native/back-button.service.ts`, initialized from `App`, `@capacitor/app` reached
+through the Capacitor global so `@capacitor/*` stays out of the web bundle) now decides in priority
+order: (1) the topmost registered overlay closes — a minimal LIFO `BackHandlerStack`
+(`lib/back-handlers.ts`, pure + unit-tested) that Now Playing registers persistently
+(karaoke-fullscreen exits first, then the sheet; state-checked so per-open pushes always sit above
+it), and `TrackInfoService`/`MenuPanelComponent` push onto per-open; (2) any non-home route walks
+`Location.back()`; (3) only at home with nothing open does `App.exitApp()` run. Deliberately NOT a
+consolidation of the per-component Escape handlers — that stays a tracked follow-up.
 
 **Deliberately not built**: `Escape`-as-back (would need to arbitrate against 7+ existing per-component modal Escape
 handlers with no current shared "is a modal open" signal — real, separate work) and any
@@ -458,14 +557,22 @@ volume shortcut (this app has no volume-level control to wire one to).
   registers with its nearest group) via `parentGroup`/`registerChildGroup`. The Now Playing queue's
   row wrapper is now `axis="horizontal"` (`[jump, remove]`), nested inside the queue's
   `axis="vertical"` rows group: ArrowRight from the jump button reaches Remove (handled entirely by
-  the inner group, unchanged from a plain 2-item group); ArrowDown/Up move between rows, now handled
-  by the OUTER group navigating its `childGroups()` instead of flat `items()` when any are
-  registered. Only one item across the whole nested tree may hold `tabindex="0"` at a time (a
-  roving-tabindex composite has exactly one Tab stop) — `TvNavGroupDirective.isActiveChild` tracks
-  which child group currently owns focus (kept in sync purely through the existing `notifyFocused` →
-  parent chain, i.e. real focus moving into any descendant item, never written from keydown
-  handling directly), and `TvNavItemDirective.tabIndex` returns `-1` for every item in a non-active
-  child group regardless of that group's own `activeIndex`.
+  the inner group, unchanged from a plain 2-item group); ArrowDown/Up move between rows, handled by
+  the OUTER group. **Mixed containers (issue #389)**: a group's direct `items()` and its
+  `childGroups()` are now navigated as ONE DOM-ordered sequence (`mergedEntries()`, a linear
+  two-pointer merge of the two already-sorted arrays) — the old model's early-return that made a
+  group with any child groups ignore its own direct items is gone, which is what lets the TV Now
+  Playing root own a close button, the nested transport group, and a radio button in one sweep.
+  Landing on an entry dispatches polymorphically: `item.focusElement()` vs
+  `group.focusActiveItem()` (now recursive through nested groups). Only one item across the whole
+  nested tree may hold `tabindex="0"` at a time (a roving-tabindex composite has exactly one Tab
+  stop) — the `activeKind` signal (`'item' | 'group'`, defaulting to the first merged entry's kind
+  until real focus lands) discriminates which side of a mixed container owns the stop:
+  `TvNavItemDirective.tabIndex` gates on `directItemsActive()` (active child AND kind `item`), and
+  a child group's `isActiveChild` requires kind `group` — both kept in sync purely through the
+  real-focus `notifyFocused` → `notifyActiveChildGroup` chain (which now bubbles to every
+  ancestor), never written from keydown handling directly. Grid-axis groups with child groups
+  deliberately do not navigate (no current need, unchanged).
 
 ## OAuth login (proposed — not yet implemented)
 
@@ -523,8 +630,13 @@ browse → play.
   release run red so it can't ship a tag with no APK. It builds the web, `cap sync`s, decodes the
   keystore, runs `./gradlew assembleRelease`, renames Gradle's bare `app-release.apk` to the
   versioned `NicotinD-<version>.apk` (via `$NICOTIND_VERSION_NAME`, for naming cohesion with the
-  desktop assets), and
-  attaches the APK to the GitHub Release for the version tag. Required repo secrets:
+  desktop assets), then repeats the web-build → `cap sync` → `assembleRelease` sequence with the
+  Angular **`tv` configuration** to produce `NicotinD-TV-<version>.apk` (the flavor that actually
+  carries `tvBuild:true` — before issue #387 the tv config was never built by CI, so no released
+  APK ever had TV behavior). Both staged APKs are
+  attached to the GitHub Release for the version tag. The two share one `applicationId`/signature —
+  install `NicotinD-TV-*.apk` on TVs, the plain one on phones; installing the wrong flavor silently
+  swaps TV behavior. Required repo secrets:
   `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`
   (until they're set, the job builds an unsigned APK / fails loudly — it never ships a broken keystore).
 

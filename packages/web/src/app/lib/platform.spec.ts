@@ -9,6 +9,8 @@ import {
   serviceWorkerEnabled,
   isCoarsePointer,
   isTvBuild,
+  isTvUi,
+  applyTvBuildClass,
   resolveTvDefaultedPreference,
 } from './platform';
 import { environment } from '../../environments/environment';
@@ -99,6 +101,32 @@ describe('platform helpers', () => {
     } finally {
       (environment as { tvBuild: boolean }).tvBuild = original;
     }
+  });
+
+  describe('applyTvBuildClass', () => {
+    it('adds the tv-build class on a TV build (idempotently)', () => {
+      const el = document.createElement('html');
+      applyTvBuildClass(el, true);
+      applyTvBuildClass(el, true);
+      expect(el.classList.contains('tv-build')).toBe(true);
+      expect(el.className).toBe('tv-build');
+    });
+
+    it('leaves the element untouched on a non-TV build', () => {
+      const el = document.createElement('html');
+      applyTvBuildClass(el, false);
+      expect(el.classList.contains('tv-build')).toBe(false);
+    });
+  });
+
+  describe('isTvUi', () => {
+    afterEach(() => document.documentElement.classList.remove('tv-build'));
+
+    it('is true iff the document root carries the tv-build class', () => {
+      expect(isTvUi()).toBe(false);
+      document.documentElement.classList.add('tv-build');
+      expect(isTvUi()).toBe(true);
+    });
   });
 
   describe('resolveTvDefaultedPreference', () => {

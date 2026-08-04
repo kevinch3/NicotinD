@@ -1273,8 +1273,15 @@ build (no second UI codebase). The enabler is a runtime-configurable API base UR
 (`ServerConfigService` + a native-only server-picker + `nativeAppCors()`). Background audio +
 lock-screen controls come from `@jofr/capacitor-media-session` on Android and an iOS-only
 `@nicotind/capacitor-now-playing` Swift plugin (owns `MPNowPlayingInfoCenter` + `AVAudioSession` +
-transport). Android/iOS artifacts are built by tag-only best-effort CI jobs in `deploy.yml`. **The Android APK also supports sideload-only Android TV use** (manifest touchscreen fix + a `tv`
-Angular build configuration defaulting remote-control opt-in on; a roving-tabindex D-pad
+transport). Android/iOS artifacts are built by tag-only best-effort CI jobs in `deploy.yml`. **The Android APK also supports sideloaded Android TV use, listed on the TV home launcher**
+(manifest `LEANBACK_LAUNCHER` + a disc+wordmark banner rendered deterministically via opentype.js
+paths + optional leanback/touchscreen/camera features, locked in by `android-manifest.test.ts`; a
+`tv` Angular build configuration — shipped by CI as a second `NicotinD-TV-<version>.apk` —
+defaulting remote-control opt-in on, releasing ArrowLeft/Right to the WebView's spatial D-pad
+navigation instead of the seek shortcut, insetting content into the TV overscan safe area via
+`applyTvBuildClass` + the `html.tv-build` styles, and swapping Now Playing for a dedicated 10-foot
+player — blurred-cover backdrop, bottom-pinned glass transport without shuffle/repeat, Next-up chip
+— driven by `isTvUi()` (the root class, e2e-testable via `now-playing-tv.spec.ts`); a roving-tabindex D-pad
 navigation directive pair — vertical/horizontal/grid axes — covers the Now Playing queue,
 transport controls, every Library/Search/artist-detail grid, every `TrackRowComponent`-based song
 list, and Settings/Admin/Extensions button/toggle rows (forms stay Tab-order-only by design),

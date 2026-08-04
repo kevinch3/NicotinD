@@ -1,4 +1,5 @@
 import { Component, inject, output } from '@angular/core';
+import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { PlayerService } from '../../../services/player.service';
 import { RemotePlaybackService } from '../../../services/remote-playback.service';
 import { DeviceSwitcherComponent } from '../../device-switcher/device-switcher.component';
@@ -6,7 +7,7 @@ import { TranslatePipe } from '../../../pipes/translate.pipe';
 
 @Component({
   selector: 'app-now-playing-header',
-  imports: [DeviceSwitcherComponent, TranslatePipe],
+  imports: [DeviceSwitcherComponent, TranslatePipe, TvNavItemDirective],
   // `display: contents` so the host doesn't break the sheet's flex column —
   // the shell's flex container needs to see this component's own top-level
   // element as the flex item, and `contents` makes the host transparent.

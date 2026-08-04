@@ -11,8 +11,10 @@ interface DomPositioned {
   readonly nativeElement: HTMLElement;
 }
 
-/** Comparator ordering two entries by their elements' real document position. */
-function byDomOrder<T extends DomPositioned>(a: T, b: T): number {
+/** Comparator ordering two entries by their elements' real document position.
+ *  Non-generic on purpose: the mixed-entries merge (issue #389) compares an
+ *  item against a child group. */
+function byDomOrder(a: DomPositioned, b: DomPositioned): number {
   const position = a.nativeElement.compareDocumentPosition(b.nativeElement);
   if (position & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
   if (position & Node.DOCUMENT_POSITION_PRECEDING) return 1;
@@ -228,19 +230,48 @@ export class TvNavGroupDirective {
   /** Which child group currently owns focus — the group-level counterpart to
    *  `activeIndex`, kept in sync purely by the `notifyFocused` → parent chain
    *  below (real focus moving into any descendant item), never written
-   *  directly by keydown handling (see `onKeydownOverChildGroups`). */
+   *  directly by keydown handling. */
   private readonly activeChildIndex = signal(0);
+
+  /** Which KIND of entry currently owns focus in a mixed container (issue
+   *  #389: a group may now hold direct items AND child groups). `null` until
+   *  real focus has landed anywhere, in which case the first merged entry's
+   *  kind is the default — that is what keeps exactly one Tab stop in every
+   *  shape (items-only, groups-only, mixed, either kind first). Written only
+   *  by the real-focus chain (`notifyFocused` / `notifyActiveChildGroup`),
+   *  mirroring how the two index signals are kept in sync. */
+  private readonly activeKind = signal<'item' | 'group' | null>(null);
+
+  private effectiveActiveKind(): 'item' | 'group' {
+    const stored = this.activeKind();
+    if (stored !== null) return stored;
+    const first = this.mergedEntries()[0];
+    return first instanceof TvNavGroupDirective ? 'group' : 'item';
+  }
+
+  /** True when this group's DIRECT items may hand out the roving
+   *  `tabindex="0"` — i.e. this group is its parent's active child AND, in a
+   *  mixed container, the active entry kind is an item. Read by
+   *  `TvNavItemDirective`. */
+  readonly directItemsActive = (): boolean =>
+    this.isActiveChild() && this.effectiveActiveKind() === 'item';
 
   /** Whether this group is its parent's currently-focused child (always true
    *  for a top-level group with no parent). A nested group's items must NOT
    *  hand out `tabindex="0"` unless this is true — otherwise every row would
    *  independently default its own jump button to tabindex 0, giving a
    *  composite widget with N rows N simultaneous Tab stops instead of the
-   *  one a roving-tabindex pattern requires. Read by `TvNavItemDirective`. */
+   *  one a roving-tabindex pattern requires. In a mixed parent this also
+   *  requires the parent's active entry kind to be 'group', so a direct item
+   *  and a child group can never both claim the Tab stop (issue #389). */
   readonly isActiveChild = computed((): boolean => {
     const parent = this.parentGroup;
     if (!parent) return true;
-    return parent.childGroups().indexOf(this) === parent.activeChildIndex();
+    if (!parent.isActiveChild()) return false;
+    return (
+      parent.effectiveActiveKind() === 'group' &&
+      parent.childGroups().indexOf(this) === parent.activeChildIndex()
+    );
   });
 
   /** Called by a nested `TvNavGroupDirective` from its own constructor. */
@@ -267,15 +298,43 @@ export class TvNavGroupDirective {
    *  `activeIndex` in sync for plain items. */
   private notifyActiveChildGroup(group: TvNavGroupDirective): void {
     const idx = this.childGroups().indexOf(group);
-    if (idx >= 0) this.activeChildIndex.set(idx);
+    if (idx >= 0) {
+      this.activeChildIndex.set(idx);
+      this.activeKind.set('group');
+    }
+    // Bubble further up so a deep composite keeps every level's cursor in
+    // sync from one real-focus event.
+    this.parentGroup?.notifyActiveChildGroup(this);
   }
 
-  /** Focuses this group's own currently-active item — how an ancestor group
-   *  moves real focus "down" into a resolved child group after ArrowUp/Down
-   *  (issue #356's `onKeydownOverChildGroups`). */
-  focusActiveItem(): void {
+  /** This group's direct items and child groups as ONE DOM-ordered sequence
+   *  (issue #389) — the navigation space for a mixed container. Both inputs
+   *  are already DOM-sorted, so this is a linear two-pointer merge. */
+  readonly mergedEntries = (): readonly (TvNavItemDirective | TvNavGroupDirective)[] => {
     const items = this.items();
-    items[this.activeIndex()]?.focusElement();
+    const groups = this.childGroups();
+    if (groups.length === 0) return items;
+    if (items.length === 0) return groups;
+    const merged: (TvNavItemDirective | TvNavGroupDirective)[] = [];
+    let i = 0;
+    let g = 0;
+    while (i < items.length && g < groups.length) {
+      merged.push(byDomOrder(items[i]!, groups[g]!) <= 0 ? items[i++]! : groups[g++]!);
+    }
+    while (i < items.length) merged.push(items[i++]!);
+    while (g < groups.length) merged.push(groups[g++]!);
+    return merged;
+  };
+
+  /** Focuses this group's own currently-active entry — how an ancestor group
+   *  moves real focus "down" into a resolved child group. Recursive through
+   *  nested groups so a groups-only child delegates further down. */
+  focusActiveItem(): void {
+    if (this.effectiveActiveKind() === 'group') {
+      this.childGroups()[this.activeChildIndex()]?.focusActiveItem();
+      return;
+    }
+    this.items()[this.activeIndex()]?.focusElement();
   }
 
   /** Bumped when the group's child list changes. A pure reorder writes to no
@@ -382,7 +441,10 @@ export class TvNavGroupDirective {
    *  composite keeps the whole tree's roving tabindex correct. */
   notifyFocused(item: TvNavItemDirective): void {
     const idx = this.indexOf(item);
-    if (idx >= 0) this.activeIndex.set(idx);
+    if (idx >= 0) {
+      this.activeIndex.set(idx);
+      this.activeKind.set('item');
+    }
     this.parentGroup?.notifyActiveChildGroup(this);
   }
 
@@ -409,33 +471,36 @@ export class TvNavGroupDirective {
   }
 
   onKeydown(event: KeyboardEvent): void {
-    const childGroups = this.childGroups();
-    if (childGroups.length > 0) {
-      this.onKeydownOverChildGroups(event, childGroups);
-      return;
-    }
-    const items = this.items();
-    if (items.length === 0) return;
+    // One merged, DOM-ordered navigation space of direct items AND child
+    // groups (issue #389 — a group with child groups used to ignore its own
+    // items entirely). A child group handles its own axis's keys first
+    // (unconditional preventDefault even at its edges), so only keys the
+    // child has no opinion about bubble up here — the same mechanism the
+    // original two-level model relied on.
+    const entries = this.mergedEntries();
+    if (entries.length === 0) return;
     // The (keydown) host listener fires for any descendant's keydown,
     // including focusable elements deliberately not marked appTvNavItem
-    // (e.g. a queue-remove button). Those never update activeIndex via
-    // TvNavItemDirective's focusin handler, so acting on the event here
-    // would move focus based on a stale activeIndex rather than where the
-    // user's focus actually is. Bail unless the event actually originated
-    // inside one of this group's own items.
-    if (!items.some((item) => item.containsEventTarget(event.target))) return;
+    // (e.g. the queue Clear link). Those never update the cursors via the
+    // focusin chain, so acting on the event here would move focus based on a
+    // stale cursor rather than where the user's focus actually is. Bail
+    // unless the event originated inside one of this group's own entries.
+    if (!entries.some((entry) => entry.containsEventTarget(event.target))) return;
     if (this.axis === 'grid') {
-      this.onGridKeydown(event, items);
+      // Grid-axis nesting isn't a current need — a grid with child groups
+      // deliberately does not navigate (unchanged from the two-level model).
+      if (this.childGroups().length > 0) return;
+      this.onGridKeydown(event, this.items());
       return;
     }
     const forwardKey = this.axis === 'vertical' ? 'ArrowDown' : 'ArrowRight';
     const backwardKey = this.axis === 'vertical' ? 'ArrowUp' : 'ArrowLeft';
-    const current = this.originIndex(event, items, this.activeIndex());
+    const current = this.originIndex(event, entries, this.activeEntryIndex(entries));
     let next: number | null = null;
-    if (event.key === forwardKey) next = Math.min(current + 1, items.length - 1);
+    if (event.key === forwardKey) next = Math.min(current + 1, entries.length - 1);
     else if (event.key === backwardKey) next = Math.max(current - 1, 0);
     else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = items.length - 1;
+    else if (event.key === 'End') next = entries.length - 1;
     // `next === null` means the key isn't one this axis navigates by (e.g.
     // ArrowUp inside a 'horizontal' group): the group has no opinion, so the
     // event keeps bubbling un-prevented for whoever else wants it.
@@ -445,11 +510,27 @@ export class TvNavGroupDirective {
     // therefore unconditional here: an edge press must be a true no-op for
     // D-pad users, not something the global ArrowLeft/Right seek shortcut
     // picks up and turns into a ±10s jump. Only the focus move stays gated —
-    // re-focusing the already-focused item would be pointless churn.
+    // re-focusing the already-focused entry would be pointless churn.
     event.preventDefault();
     if (next === current) return;
-    this.activeIndex.set(next);
-    items[next]!.focusElement();
+    const target = entries[next]!;
+    // Moving real focus synchronously triggers the target's own focusin →
+    // notifyFocused/notifyActiveChildGroup chain, which is what actually
+    // updates the cursors + activeKind — one source of truth for all paths.
+    if (target instanceof TvNavGroupDirective) target.focusActiveItem();
+    else target.focusElement();
+  }
+
+  /** The merged index of the currently-active entry — the keydown fallback
+   *  when the event target resolves to no entry (which the bail-out above
+   *  already makes rare). */
+  private activeEntryIndex(entries: readonly (TvNavItemDirective | TvNavGroupDirective)[]): number {
+    const active =
+      this.effectiveActiveKind() === 'group'
+        ? this.childGroups()[this.activeChildIndex()]
+        : this.items()[this.activeIndex()];
+    const idx = active ? entries.indexOf(active) : -1;
+    return idx >= 0 ? idx : 0;
   }
 
   /** Grid axis: ArrowLeft/Right move within the current row (clamped at its
@@ -494,41 +575,5 @@ export class TvNavGroupDirective {
     event.preventDefault();
     this.activeIndex.set(next);
     items[next]!.focusElement();
-  }
-
-  /** Navigates between nested child groups rather than plain items (issue
-   *  #356) — used when `this.axis` describes how ROWS relate to each other
-   *  (e.g. `vertical` rows of `horizontal` [jump, remove] pairs), not how the
-   *  leaf items within one row relate. Only Home/End plus the axis's own
-   *  forward/backward keys are meaningful at this level; a nested group's own
-   *  `onKeydown` already handles movement WITHIN a row (e.g. ArrowRight from
-   *  jump to remove) and simply doesn't recognize ArrowDown/Up, letting them
-   *  bubble here un-prevented — the same "axis has no opinion" mechanism
-   *  `onKeydown` already relies on for the plain-items case. `grid`-axis
-   *  child-group nesting isn't a current need, so only vertical/horizontal
-   *  are handled. */
-  private onKeydownOverChildGroups(
-    event: KeyboardEvent,
-    groups: readonly TvNavGroupDirective[],
-  ): void {
-    if (!groups.some((group) => group.containsEventTarget(event.target))) return;
-    if (this.axis === 'grid') return;
-    const forwardKey = this.axis === 'vertical' ? 'ArrowDown' : 'ArrowRight';
-    const backwardKey = this.axis === 'vertical' ? 'ArrowUp' : 'ArrowLeft';
-    const current = this.originIndex(event, groups, this.activeChildIndex());
-    let next: number | null = null;
-    if (event.key === forwardKey) next = Math.min(current + 1, groups.length - 1);
-    else if (event.key === backwardKey) next = Math.max(current - 1, 0);
-    else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = groups.length - 1;
-    if (next === null) return;
-    event.preventDefault();
-    if (next === current) return;
-    // `focusActiveItem` moving real focus synchronously triggers the target
-    // group's own `focusin` → `notifyFocused` → `notifyActiveChildGroup`
-    // chain, which is what actually updates `activeChildIndex` — mirroring
-    // how the plain-items path leaves `notifyFocused` as the source of truth
-    // rather than writing the signal from two places.
-    groups[next]!.focusActiveItem();
   }
 }

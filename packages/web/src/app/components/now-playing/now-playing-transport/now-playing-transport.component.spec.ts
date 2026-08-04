@@ -25,6 +25,20 @@ describe('NowPlayingTransportComponent', () => {
     });
   });
 
+  describe('on a TV build (tv-build root class)', () => {
+    beforeEach(() => document.documentElement.classList.add('tv-build'));
+    afterEach(() => document.documentElement.classList.remove('tv-build'));
+
+    it('drops shuffle and repeat from the 10-foot transport, keeping prev/play/next', () => {
+      const fixture = TestBed.createComponent(NowPlayingTransportComponent);
+      fixture.detectChanges();
+      const q = (id: string) => fixture.nativeElement.querySelector(`[data-testid="${id}"]`);
+      expect(q('now-playing-shuffle')).toBeNull();
+      expect(q('now-playing-repeat')).toBeNull();
+      expect(q('now-playing-playpause')).not.toBeNull();
+    });
+  });
+
   it('emits playPauseClicked on click', () => {
     const fixture = TestBed.createComponent(NowPlayingTransportComponent);
     fixture.detectChanges();

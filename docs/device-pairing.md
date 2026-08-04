@@ -28,8 +28,10 @@ easy/safe compromise for "phone reaches the desktop from anywhere":
   the QR carries a normal public HTTPS URL.
 - The backend **stays loopback-bound** (`NICOTIND_BIND_HOST=127.0.0.1` on
   desktop); `tailscale funnel --bg <port>` proxies 443 → localhost. No bind
-  changes, no firewall holes, no Android-cleartext / iOS-ATS work (Tailscale
-  terminates real HTTPS with a real cert).
+  changes and no firewall holes (Tailscale terminates real HTTPS with a real
+  cert). The Android app separately allows cleartext/mixed content for
+  plain-`http` LAN servers (issue #390, see docs/mobile-app.md) — Funnel makes
+  that unnecessary but is not required.
 - Trade-offs, accepted and documented: the app becomes **publicly reachable**
   (the JWT login is the gate — use a strong password; claim is rate-limited),
   and streams relay through Tailscale's Funnel proxy, which is
@@ -206,6 +208,34 @@ globally plus a stricter **10 failures / 5 min** budget → 429. Against the
 6-char code space and 5-minute TTL this makes brute force non-viable without
 per-IP plumbing (it's a home server). There is no persistent lockout — the
 window just passes.
+
+## TV sign-in (approve from phone) — the inverse direction
+
+The `/pair`→`/claim` flow assumes the **new** device can type or scan; a TV with only a D-pad can
+do neither well. `login_requests` inverts it (OAuth-device-grant shape): the **unauthenticated TV**
+mints `POST /api/devices/login-request` (anonymous, own fixed-window limiter, and — because
+anonymous minting means unbounded growth — **expired rows are pruned on every mint**, unlike
+`pairing_tokens`), getting `{token, code, expiresAt, urls}` (same `generatePairingCode` 6-char
+code, same 5-minute TTL, `candidateUrls` for the QR origin). The TV displays a QR encoding
+`<origin>/approve#c=<code>` plus the code as text; the **signed-in phone** opens it and
+`POST /api/devices/login-approve` (auth; stamps `approved_by_user_id`; `recordAudit
+'devices.approve_login'` — the first audited event in the pairing family; 404
+`LOGIN_REQUEST_NOT_FOUND` / 410 `LOGIN_REQUEST_EXPIRED`). Meanwhile the TV polls
+`POST /api/devices/login-claim` with its token: `202 {status:'pending'}` until approved, then the
+same disabled-account check and `paired_devices` + device-bound JWT issuance as `/claim` — with a
+**compare-and-swap** single-use claim (`UPDATE … WHERE claimed_at IS NULL`, `.changes` checked) so
+two concurrent polls can't both win. Revocation is unchanged: delete the device row.
+
+**UI**: the TV build's login page leads with the approve-from-phone panel (`tv-login-panel`: QR via
+the shared lazy `lib/qr.ts` helper — extracted from the devices page; **its CJS interop handles
+both namespace shapes**, since esbuild's per-chunk interop left the destructured `toDataURL`
+undefined in the login chunk while vitest's node interop worked — plus the code as text and a "use
+password instead" toggle to the classic form). It polls `login-claim` on a recursive `setTimeout`
+(TransferService convention) bounded by the TTL, with a regenerate button on expiry (the devices QR
+overlay pattern). The phone side is the new auth-guarded `/approve` page
+(`pages/approve-login/`, code in the fragment, returnUrl round-trip for an unauthenticated scan).
+End-to-end coverage: `packages/e2e/tests/login-tv-signin.spec.ts` (API loop + a real TV-viewport
+UI test where an API-side approval signs the TV in with zero typing + the /approve page).
 
 ## Device registry + revocation
 

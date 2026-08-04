@@ -6,6 +6,23 @@ import { KeyboardShortcutsService } from './keyboard-shortcuts.service';
 import { PlayerService } from './player.service';
 import { TvNavGroupDirective } from '../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../directives/tv-nav-item.directive';
+import * as platform from '../lib/platform';
+
+// The arrow-seek shortcut is gated on the build flavor: on a TV build,
+// ArrowLeft/Right belong to the WebView's spatial focus navigation (issue
+// #387). Module-mocking `isTvBuild` lets each test pick the flavor — same
+// pattern as remote-playback.service.spec.ts.
+vi.mock('../lib/platform', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/platform')>();
+  return {
+    ...actual,
+    isTvBuild: vi.fn().mockReturnValue(false),
+  };
+});
+
+beforeEach(() => {
+  vi.mocked(platform.isTvBuild).mockReturnValue(false);
+});
 
 function dispatchKeydown(
   target: EventTarget,
@@ -191,6 +208,30 @@ describe('KeyboardShortcutsService', () => {
     playerStub.currentTime.set(5);
     dispatchKeydown(window, 'ArrowLeft');
     expect(playerStub.seek).toHaveBeenCalledWith(0);
+  });
+
+  it('on a TV build, ArrowLeft/Right neither seek nor preventDefault (WebView spatial nav owns them)', () => {
+    vi.mocked(platform.isTvBuild).mockReturnValue(true);
+    setup(false);
+    playerStub.currentTime.set(30);
+    const right = dispatchKeydown(window, 'ArrowRight');
+    const left = dispatchKeydown(window, 'ArrowLeft');
+    expect(playerStub.seek).not.toHaveBeenCalled();
+    // The un-prevented event IS the fix: preventDefault() is what cancelled
+    // the WebView's D-pad focus move (issue #387).
+    expect(right.defaultPrevented).toBe(false);
+    expect(left.defaultPrevented).toBe(false);
+  });
+
+  it('on a TV build, Space/K/J/L still work (only the arrow-seek shortcut is gated)', () => {
+    vi.mocked(platform.isTvBuild).mockReturnValue(true);
+    setup(false);
+    dispatchKeydown(window, ' ');
+    dispatchKeydown(window, 'j');
+    dispatchKeydown(window, 'l');
+    expect(playerStub.resume).toHaveBeenCalled();
+    expect(playerStub.playPrev).toHaveBeenCalled();
+    expect(playerStub.playNext).toHaveBeenCalled();
   });
 
   it('does not seek when the keydown event was already handled (defaultPrevented) by a D-pad nav group', () => {
@@ -409,11 +450,29 @@ describe('KeyboardShortcutsService + TvNavGroupDirective (cross-directive preced
     expect(playerStub.seek).not.toHaveBeenCalled();
   });
 
-  it('a real ArrowRight outside any nav group still triggers the global seek shortcut', () => {
+  it('a real ArrowRight outside any nav group still triggers the global seek shortcut (non-TV build)', () => {
     const { outside } = setupIntegration();
     outside.focus();
     arrowKeydown(outside, 'ArrowRight');
 
     expect(playerStub.seek).toHaveBeenCalledWith(40);
+  });
+
+  it('on a TV build, a nav group still owns arrows inside it while outside arrows stay un-prevented', () => {
+    vi.mocked(platform.isTvBuild).mockReturnValue(true);
+    const { fixture, row, outside } = setupIntegration();
+
+    // Inside a group: the directive still moves D-pad focus itself.
+    row[0]!.focus();
+    arrowKeydown(row[0]!, 'ArrowRight');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(row[1]);
+
+    // Outside any group: no seek AND no preventDefault, so the WebView's
+    // spatial navigation is free to move focus (issue #387).
+    outside.focus();
+    const event = arrowKeydown(outside, 'ArrowRight');
+    expect(playerStub.seek).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
   });
 });

@@ -50,6 +50,10 @@
       "name": "@nicotind/capacitor-now-playing",
       "version": "0.0.1",
     },
+    "packages/capacitor-tv-channels": {
+      "name": "@nicotind/capacitor-tv-channels",
+      "version": "0.0.1",
+    },
     "packages/cli": {
       "name": "@nicotind/cli",
       "version": "0.1.0",
@@ -99,6 +103,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@capacitor/android": "^6.2.0",
+        "@capacitor/app": "^6",
         "@capacitor/barcode-scanner": "^1",
         "@capacitor/core": "^6.2.0",
         "@capacitor/ios": "^6.2.0",
@@ -106,10 +111,12 @@
         "@capacitor/preferences": "^6.0.3",
         "@jofr/capacitor-media-session": "^4.0.0",
         "@nicotind/capacitor-now-playing": "workspace:*",
+        "@nicotind/capacitor-tv-channels": "workspace:*",
       },
       "devDependencies": {
         "@capacitor/assets": "^3.0.5",
         "@capacitor/cli": "^6.2.0",
+        "opentype.js": "^2.0.0",
         "sharp": "^0.35.3",
       },
     },
@@ -282,6 +289,8 @@
     "@bramus/specificity": ["@bramus/specificity@2.4.2", "", { "dependencies": { "css-tree": "^3.0.0" }, "bin": { "specificity": "bin/cli.js" } }, "sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw=="],
 
     "@capacitor/android": ["@capacitor/android@6.2.1", "", { "peerDependencies": { "@capacitor/core": "^6.2.0" } }, "sha512-8gd4CIiQO5LAIlPIfd5mCuodBRxMMdZZEdj8qG8m+dQ1sQ2xyemVpzHmRK8qSCHorsBUCg3D62j2cp6bEBAkdw=="],
+
+    "@capacitor/app": ["@capacitor/app@6.0.3", "", { "peerDependencies": { "@capacitor/core": "^6.0.0" } }, "sha512-4gFUCbcVz0N/YYN32OBFerocWXslIv3Nc90gDiRsBkJc0plwK6kIUT6PKa5WtW2kfhteUeCVXQbvArH2fH+0Ug=="],
 
     "@capacitor/assets": ["@capacitor/assets@3.0.5", "", { "dependencies": { "@capacitor/cli": "^5.3.0", "@ionic/utils-array": "2.1.6", "@ionic/utils-fs": "3.1.7", "@trapezedev/project": "^7.0.10", "commander": "8.3.0", "debug": "4.3.4", "fs-extra": "10.1.0", "node-fetch": "2.7.0", "node-html-parser": "5.4.2", "sharp": "0.32.6", "tslib": "2.6.2", "yargs": "17.7.2" }, "bin": { "capacitor-assets": "bin/capacitor-assets" } }, "sha512-ohz/OUq61Y1Fc6aVSt0uDrUdeOA7oTH4pkWDbv/8I3UrPjH7oPkzYhShuDRUjekNp9RBi198VSFdt0CetpEOzw=="],
 
@@ -654,6 +663,8 @@
     "@nicotind/api": ["@nicotind/api@workspace:packages/api"],
 
     "@nicotind/capacitor-now-playing": ["@nicotind/capacitor-now-playing@workspace:packages/capacitor-now-playing"],
+
+    "@nicotind/capacitor-tv-channels": ["@nicotind/capacitor-tv-channels@workspace:packages/capacitor-tv-channels"],
 
     "@nicotind/cli": ["@nicotind/cli@workspace:packages/cli"],
 
@@ -1968,6 +1979,8 @@
     "open": ["open@8.4.2", "", { "dependencies": { "define-lazy-prop": "^2.0.0", "is-docker": "^2.1.1", "is-wsl": "^2.2.0" } }, "sha512-7x81NCL719oNbsq/3mh+hVrAWmFuEYUqrq/Iw3kUzH8ReypT9QQ0BLoJS7/G9k6N81XjW4qHWtjWwe/9eLy1EQ=="],
 
     "openapi3-ts": ["openapi3-ts@4.5.0", "", { "dependencies": { "yaml": "^2.8.0" } }, "sha512-jaL+HgTq2Gj5jRcfdutgRGLosCy/hT8sQf6VOy+P+g36cZOjI1iukdPnijC+4CmeRzg/jEllJUboEic2FhxhtQ=="],
+
+    "opentype.js": ["opentype.js@2.0.0", "", { "bin": { "ot": "bin/ot" } }, "sha512-kCyjv6xdDY1W/jLWZ/L3QhhTlKUqDZMQ5+Jdlw12b3dXkKNpYBqqlMMj0YDQPShWFTMwgZI1hG14kN3XUDSg/A=="],
 
     "optionator": ["optionator@0.9.4", "", { "dependencies": { "deep-is": "^0.1.3", "fast-levenshtein": "^2.0.6", "levn": "^0.4.1", "prelude-ls": "^1.2.1", "type-check": "^0.4.0", "word-wrap": "^1.2.5" } }, "sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g=="],
 

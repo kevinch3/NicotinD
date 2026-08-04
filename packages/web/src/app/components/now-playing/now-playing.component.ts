@@ -22,6 +22,9 @@ import { firstValueFrom } from 'rxjs';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { ScrollLockService } from '../../services/scroll-lock.service';
 import { ServerConfigService } from '../../services/server-config.service';
+import { isTvUi } from '../../lib/platform';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { BackButtonService } from '../../services/native/back-button.service';
 import {
   computePaletteFromPixels,
   scrollToActiveLine,
@@ -42,6 +45,7 @@ import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container'
     NowPlayingKaraokeFullscreenComponent,
     TrackContextMenuComponent,
     TranslatePipe,
+    TvNavGroupDirective,
   ],
   templateUrl: './now-playing.component.html',
 })
@@ -210,6 +214,22 @@ export class NowPlayingComponent {
   readonly coverMaxPx = computed(
     () => NowPlayingComponent.COVER_MAX_PX - this.queueExtraHeightPx(),
   );
+
+  /** TV player treatment (10-foot layout): blurred-cover backdrop, bottom
+   *  transport bar, Next-up chip instead of the stacked queue/lyrics panels.
+   *  Reads the root class (not the build env) so e2e can exercise it. */
+  readonly isTv = isTvUi();
+
+  /** The blurred sheet backdrop on TV — same cover endpoint the art uses;
+   *  null (no backdrop) when the track has no cover. */
+  readonly tvBackdropUrl = computed(() => {
+    const track = this.player.currentTrack();
+    if (!this.isTv || !track?.coverArt) return null;
+    return this.server.apiUrl(`/api/cover/${track.coverArt}?size=600&token=${this.auth.token()}`);
+  });
+
+  /** Head of the queue, shown in the TV Next-up chip. */
+  readonly nextUp = computed(() => this.player.queue()[0] ?? null);
   private queueResizeStartExtra = 0;
   private readonly queueResizeDrag = createPointerDrag({
     onStart: () => {
@@ -268,7 +288,25 @@ export class NowPlayingComponent {
     }
   }
 
+  private readonly backButton = inject(BackButtonService);
+
   constructor() {
+    // Hardware Back (issue #394): exit karaoke first, then close the sheet.
+    // Persistent + state-checked so transient overlays (menus, track info)
+    // pushed while open always sit above it on the stack.
+    const unregisterBack = this.backButton.stack.push(() => {
+      if (this.karaokeFullscreen()) {
+        this.karaokeFullscreen.set(false);
+        return true;
+      }
+      if (this.player.nowPlayingOpen()) {
+        this.player.setNowPlayingOpen(false);
+        return true;
+      }
+      return false;
+    });
+    this.destroyRef.onDestroy(unregisterBack);
+
     // Remote playback interpolation (rAF loop)
     effect((onCleanup) => {
       const isActive = this.isActiveDevice();

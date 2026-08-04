@@ -1,0 +1,14 @@
+{
+  "name": "@nicotind/capacitor-tv-channels",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Android TV launcher integration: publishes the current track to the Google TV Play Next (Watch Next) row and bridges the Assistant's MEDIA_PLAY_FROM_SEARCH intent to the web app. Android-only by construction (no ios src); every method no-ops off TV via a UiModeManager gate. There is no JS package to import — the web app reaches it through the injected Capacitor.Plugins.NicotindTvChannels global (see packages/web services/native/tv-channels.service.ts).",
+  "files": [
+    "android"
+  ],
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  }
+}

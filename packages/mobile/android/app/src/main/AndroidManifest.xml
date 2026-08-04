@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- usesCleartextTraffic: self-hosted NicotinD servers on a LAN speak plain
+         http (no TLS); without this the WebView blocks every http API call
+         (issue #390). Pairs with allowMixedContent in capacitor.config.ts —
+         the app itself is served from https://localhost, so an http server is
+         also mixed content. -->
     <application
+        android:usesCleartextTraffic="true"
         android:allowBackup="true"
+        android:banner="@drawable/banner"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -20,6 +27,20 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <!-- LEANBACK_LAUNCHER puts the app on the Android/Google TV home
+                     row — required even for a sideloaded APK (issue #388). Extra
+                     filter categories never un-match phone launchers, so one
+                     activity serves both form factors. -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+
+            <!-- Google Assistant voice playback ("play X on NicotinD"): the
+                 tv-channels plugin forwards SearchManager.QUERY to the web app
+                 as a playFromSearch event. A SEPARATE filter — adding
+                 categories to the MAIN filter would change launcher matching. -->
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
         </activity>
@@ -37,10 +58,16 @@
 
     <!-- Android TV / TV boxes have no touchscreen; without this the OS defaults
          android.hardware.touchscreen to required=true, which blocks/degrades
-         install on some TV launchers even for a sideloaded APK. Sideload-only
-         support: no LEANBACK_LAUNCHER category, TV banner, or
-         android.software.leanback feature — see docs/mobile-app.md. -->
+         install on some TV launchers even for a sideloaded APK. leanback is
+         declared optional (required="false") so the SAME APK stays installable
+         on phones while the LEANBACK_LAUNCHER category + banner above list it
+         on the TV home row (issue #388) — see docs/mobile-app.md. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <!-- The CAMERA permission below implies android.hardware.camera
+         required=true unless relaxed — TVs have no camera; QR pairing simply
+         stays unavailable there (manual pairing code works). -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- Permissions -->
 

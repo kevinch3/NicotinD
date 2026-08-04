@@ -34,6 +34,7 @@
       </h2>
       <!-- G4: visible affordance to open Track info (was long-press only). -->
       <button
+        appTvNavItem
         (click)="openTrackInfo.emit(track.id)"
         data-testid="now-playing-info"
         [attr.aria-label]="'nowPlaying.trackInfo' | t"

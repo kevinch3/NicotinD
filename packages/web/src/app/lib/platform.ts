@@ -112,6 +112,29 @@ export function isTvBuild(): boolean {
 }
 
 /**
+ * Stamps the `tv-build` class on the document root of a TV build, so styles.css
+ * can apply TV-only layout (the overscan safe-area insets — TVs may crop up to
+ * ~5% of every edge, so content must stay inside an action-safe area while
+ * backgrounds bleed). Called once at bootstrap (main.ts).
+ */
+export function applyTvBuildClass(
+  el: HTMLElement = document.documentElement,
+  tv: boolean = isTvBuild(),
+): void {
+  if (tv) el.classList.add('tv-build');
+}
+
+/**
+ * Component-facing TV check: reads the `tv-build` root class rather than the
+ * build-time environment, so the TV template variants are exercisable in e2e
+ * (which runs the prod bundle) by stamping the class. On a real TV build the
+ * class is applied before bootstrap, so both signals agree.
+ */
+export function isTvUi(): boolean {
+  return document.documentElement.classList.contains('tv-build');
+}
+
+/**
  * Resolves a boolean localStorage preference that defaults to `true` on a TV
  * build only when the user has never explicitly set it — an explicit stored
  * choice (true or false) always wins. Shared by every reader of the

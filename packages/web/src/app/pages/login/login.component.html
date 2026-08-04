@@ -1,109 +1,165 @@
+<div
+  class="relative min-h-screen flex items-center justify-center overflow-hidden bg-zinc-950 px-6"
+>
+  <!-- Aurora glow: blurred gradient blobs behind the glass card -->
+  <div
+    class="pointer-events-none absolute -top-32 -left-24 h-96 w-96 rounded-full bg-indigo-600/40 blur-3xl"
+  ></div>
+  <div
+    class="pointer-events-none absolute top-1/3 -right-24 h-96 w-96 rounded-full bg-fuchsia-600/30 blur-3xl"
+  ></div>
+  <div
+    class="pointer-events-none absolute -bottom-32 left-1/4 h-96 w-96 rounded-full bg-teal-500/30 blur-3xl"
+  ></div>
 
-    <div
-      class="relative min-h-screen flex items-center justify-center overflow-hidden bg-zinc-950 px-6"
-    >
-      <!-- Aurora glow: blurred gradient blobs behind the glass card -->
+  <div
+    class="relative z-10 w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl"
+  >
+    <!-- Brand mark -->
+    <div class="mb-5 flex justify-center">
       <div
-        class="pointer-events-none absolute -top-32 -left-24 h-96 w-96 rounded-full bg-indigo-600/40 blur-3xl"
-      ></div>
-      <div
-        class="pointer-events-none absolute top-1/3 -right-24 h-96 w-96 rounded-full bg-fuchsia-600/30 blur-3xl"
-      ></div>
-      <div
-        class="pointer-events-none absolute -bottom-32 left-1/4 h-96 w-96 rounded-full bg-teal-500/30 blur-3xl"
-      ></div>
-
-      <div
-        class="relative z-10 w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl"
+        class="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 shadow-lg shadow-indigo-500/40"
       >
-        <!-- Brand mark -->
-        <div class="mb-5 flex justify-center">
-          <div
-            class="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 shadow-lg shadow-indigo-500/40"
-          >
-            <svg
-              class="h-7 w-7 text-white"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                d="M9 17.5a2.5 2.5 0 1 1-2.5-2.5c.45 0 .87.12 1.24.32V6.13a1 1 0 0 1 .76-.97l7-1.75A1 1 0 0 1 17 4.38V14.5a2.5 2.5 0 1 1-2.5-2.5c.45 0 .87.12 1.24.32V8.78l-6 1.5v7.22Z"
-              />
-            </svg>
-          </div>
-        </div>
-
-        <h1 class="text-center text-3xl font-bold tracking-tight text-white">NicotinD</h1>
-        <p class="mb-8 mt-1 text-center text-sm text-white/50">
-          {{ (isRegister() ? 'login.subtitle.register' : 'login.subtitle.signIn') | t }}
-        </p>
-
-        <form (ngSubmit)="handleSubmit()" class="space-y-5">
-          <input
-            type="text"
-            [placeholder]="'login.username' | t"
-            [(ngModel)]="username"
-            name="username"
-            required
-            data-testid="login-username"
-            class="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/40 transition focus:border-indigo-400/60 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+        <svg class="h-7 w-7 text-white" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path
+            d="M9 17.5a2.5 2.5 0 1 1-2.5-2.5c.45 0 .87.12 1.24.32V6.13a1 1 0 0 1 .76-.97l7-1.75A1 1 0 0 1 17 4.38V14.5a2.5 2.5 0 1 1-2.5-2.5c.45 0 .87.12 1.24.32V8.78l-6 1.5v7.22Z"
           />
-          <app-password-field
-            [(ngModel)]="password"
-            name="password"
-            [placeholder]="'login.password' | t"
-            [autocomplete]="'current-password'"
-            [required]="true"
-            [testId]="'login-password'"
-            [inputClass]="'rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/40 transition focus:border-indigo-400/60 focus:outline-none focus:ring-2 focus:ring-indigo-500/30'"
-          />
-
-          @if (error()) {
-            <p class="text-sm text-red-400" data-testid="login-error">{{ error() }}</p>
-          }
-
-          <button
-            type="submit"
-            [disabled]="loading()"
-            data-testid="login-submit"
-            class="w-full rounded-lg bg-gradient-to-r from-indigo-500 to-fuchsia-500 py-3 font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:from-indigo-400 hover:to-fuchsia-400 disabled:opacity-50"
-          >
-            {{
-              loading()
-                ? '...'
-                : ((isRegister() ? 'login.submit.register' : 'login.submit.signIn') | t)
-            }}
-          </button>
-        </form>
-
-        @if (registrationEnabled()) {
-          <button
-            (click)="toggleMode()"
-            data-testid="login-toggle"
-            class="mt-5 w-full text-sm text-white/50 transition hover:text-white/80"
-          >
-            {{ (isRegister() ? 'login.toggle.toSignIn' : 'login.toggle.toRegister') | t }}
-          </button>
-        }
-
-        @if (showServerLink) {
-          <a
-            routerLink="/server"
-            data-testid="login-switch-server"
-            class="mt-5 flex items-center justify-center gap-1.5 text-xs text-white/40 transition hover:text-white/70"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/>
-              <line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/>
-            </svg>
-            @if (serverHost) {
-              {{ serverHost }} · Use a different server
-            } @else {
-              Use a different server
-            }
-          </a>
-        }
+        </svg>
       </div>
     </div>
+
+    <h1 class="text-center text-3xl font-bold tracking-tight text-white">NicotinD</h1>
+    <p class="mb-8 mt-1 text-center text-sm text-white/50">
+      {{ (isRegister() ? 'login.subtitle.register' : 'login.subtitle.signIn') | t }}
+    </p>
+
+    @if (isTv && !showPasswordForm()) {
+      <!-- TV sign-in from the phone (issue #389 flow): QR + code + poll;
+               the typed form stays available behind the toggle below. -->
+      <div
+        appTvNavGroup
+        [axis]="'vertical'"
+        class="space-y-4 text-center"
+        data-testid="tv-login-panel"
+      >
+        <p class="text-sm text-white/70">{{ 'login.tvScanHint' | t }}</p>
+        @if (tvQrDataUrl(); as qr) {
+          <div
+            [class]="
+              'mx-auto w-fit rounded-xl bg-white p-2 transition-opacity ' +
+              (tvExpired() ? 'opacity-20' : '')
+            "
+          >
+            <img [src]="qr" alt="" width="180" height="180" data-testid="tv-login-qr" />
+          </div>
+        }
+        @if (tvLogin(); as minted) {
+          <p class="font-mono text-2xl tracking-[0.3em] text-white" data-testid="tv-login-code">
+            {{ minted.code }}
+          </p>
+        }
+        @if (tvExpired()) {
+          <button
+            type="button"
+            appTvNavItem
+            (click)="startTvLogin()"
+            data-testid="tv-login-regenerate"
+            class="rounded-lg bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20"
+          >
+            {{ 'login.tvRegenerate' | t }}
+          </button>
+        } @else {
+          <p class="text-xs text-white/40">{{ 'login.tvWaiting' | t }}</p>
+        }
+        <button
+          type="button"
+          appTvNavItem
+          (click)="showPasswordForm.set(true)"
+          data-testid="tv-login-use-password"
+          class="text-xs text-white/50 underline-offset-2 hover:underline"
+        >
+          {{ 'login.tvOrPassword' | t }}
+        </button>
+      </div>
+    }
+    <form
+      (ngSubmit)="handleSubmit()"
+      class="space-y-5"
+      [class.hidden]="isTv && !showPasswordForm()"
+    >
+      <input
+        type="text"
+        [placeholder]="'login.username' | t"
+        [(ngModel)]="username"
+        name="username"
+        required
+        data-testid="login-username"
+        class="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/40 transition focus:border-indigo-400/60 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+      />
+      <app-password-field
+        [(ngModel)]="password"
+        name="password"
+        [placeholder]="'login.password' | t"
+        [autocomplete]="'current-password'"
+        [required]="true"
+        [testId]="'login-password'"
+        [inputClass]="'rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/40 transition focus:border-indigo-400/60 focus:outline-none focus:ring-2 focus:ring-indigo-500/30'"
+      />
+
+      @if (error()) {
+        <p class="text-sm text-red-400" data-testid="login-error">{{ error() }}</p>
+      }
+
+      <button
+        type="submit"
+        [disabled]="loading()"
+        data-testid="login-submit"
+        class="w-full rounded-lg bg-gradient-to-r from-indigo-500 to-fuchsia-500 py-3 font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:from-indigo-400 hover:to-fuchsia-400 disabled:opacity-50"
+      >
+        {{
+          loading() ? '...' : ((isRegister() ? 'login.submit.register' : 'login.submit.signIn') | t)
+        }}
+      </button>
+    </form>
+
+    @if (registrationEnabled()) {
+      <button
+        (click)="toggleMode()"
+        data-testid="login-toggle"
+        class="mt-5 w-full text-sm text-white/50 transition hover:text-white/80"
+      >
+        {{ (isRegister() ? 'login.toggle.toSignIn' : 'login.toggle.toRegister') | t }}
+      </button>
+    }
+
+    @if (showServerLink) {
+      <a
+        routerLink="/server"
+        data-testid="login-switch-server"
+        class="mt-5 flex items-center justify-center gap-1.5 text-xs text-white/40 transition hover:text-white/70"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="2" y="3" width="20" height="7" rx="2" />
+          <rect x="2" y="14" width="20" height="7" rx="2" />
+          <line x1="6" y1="6.5" x2="6.01" y2="6.5" />
+          <line x1="6" y1="17.5" x2="6.01" y2="17.5" />
+        </svg>
+        @if (serverHost) {
+          {{ serverHost }} · Use a different server
+        } @else {
+          Use a different server
+        }
+      </a>
+    }
+  </div>
+</div>

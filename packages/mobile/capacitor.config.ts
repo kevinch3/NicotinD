@@ -10,8 +10,12 @@ const config: CapacitorConfig = {
   webDir: '../web/dist',
   android: {
     // Capacitor's default `https` scheme serves the app from https://localhost,
-    // which the API CORS allowlist (NATIVE_APP_ORIGINS) accepts.
-    allowMixedContent: false,
+    // which the API CORS allowlist (NATIVE_APP_ORIGINS) accepts. Mixed content
+    // is allowed because a self-hosted LAN server is plain http (issue #390):
+    // from the https://localhost origin every http API call is mixed content,
+    // and blocking it made such servers unreachable ("Couldn't reach a
+    // NicotinD server"). Pairs with usesCleartextTraffic in AndroidManifest.
+    allowMixedContent: true,
   },
   ios: {
     // iOS WKWebView serves the app from `capacitor://localhost` (already in the
