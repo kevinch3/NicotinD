@@ -4,7 +4,7 @@ import { App } from './app/app';
 import { environment } from './environments/environment';
 import { loadSentry } from './app/observability/sentry';
 import { installStartupErrorCapture, captureError } from './app/observability/error-buffer';
-import { isNativeShell } from './app/lib/platform';
+import { isNativeShell, applyTvBuildClass } from './app/lib/platform';
 import pkg from '../../../package.json';
 
 // Sentry is loaded lazily to keep its ~272 kB (42 % of the initial chunk) off
@@ -12,6 +12,10 @@ import pkg from '../../../package.json';
 // *first* so a startup/bootstrap failure is still buffered and replayed once the
 // SDK resolves — the property the old eager init existed to provide.
 const stopStartupCapture = installStartupErrorCapture();
+
+// TV builds get the overscan safe-area layout (styles.css `.tv-build` rules) —
+// stamped before bootstrap so the first paint is already inset.
+applyTvBuildClass();
 
 // Native shells get a trimmed init (no Session Replay / tracing) — see loadSentry.
 function startSentry(): void {

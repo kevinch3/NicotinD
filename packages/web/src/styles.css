@@ -567,3 +567,34 @@
   }
 }
 
+
+/* ─── Android TV overscan safe area ─────────────────────────────────────
+   TVs may crop up to ~5% of every edge (overscan), so a TV build (main.ts
+   stamps `tv-build` on <html> via applyTvBuildClass) insets *content* into
+   the action-safe area while surfaces/backgrounds keep bleeding to the
+   physical edge — the standard TV layout treatment. Values follow the
+   Android TV layout guideline (≈5% horizontal / 5% vertical margins,
+   48/27dp at 1080p). Only content padding is touched; fixed elements keep
+   their full-bleed backgrounds. */
+html.tv-build {
+  --tv-overscan-x: 4vw;
+  --tv-overscan-y: 2.5vh;
+}
+html.tv-build body > app-root header {
+  padding-left: var(--tv-overscan-x);
+  padding-right: var(--tv-overscan-x);
+  padding-top: var(--tv-overscan-y);
+}
+html.tv-build body > app-root main {
+  padding-left: var(--tv-overscan-x);
+  padding-right: var(--tv-overscan-x);
+}
+html.tv-build [data-bottom-chrome] {
+  padding-left: var(--tv-overscan-x);
+  padding-right: var(--tv-overscan-x);
+  padding-bottom: calc(var(--tv-overscan-y) / 2);
+}
+html.tv-build app-now-playing > div {
+  padding-left: var(--tv-overscan-x);
+  padding-right: var(--tv-overscan-x);
+}

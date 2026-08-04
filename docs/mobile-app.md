@@ -251,6 +251,14 @@ installs are unaffected. `AndroidManifest.xml` also declares
 isn't blocked/degraded on a touchscreen-less device. `packages/mobile/src/android-manifest.test.ts`
 locks all of this in (the first manifest-content test — pure XML no compiler checks).
 
+**Overscan safe area (TV builds only)**: TVs may crop up to ~5% of every edge, so `main.ts` stamps
+a `tv-build` class on `<html>` via `lib/platform.ts`'s `applyTvBuildClass` (pure, unit-tested) and
+`styles.css` insets *content* into the action-safe area (`--tv-overscan-x/y`, ≈ the Android TV
+48/27dp-at-1080p guideline) on the app shell's stable landmarks — `header`, `main`,
+`[data-bottom-chrome]`, and the Now Playing sheet — while surfaces/backgrounds keep bleeding to the
+physical edge (the standard TV treatment). Non-TV builds are untouched: every rule is scoped under
+`html.tv-build`, and the class is only applied when `isTvBuild()`.
+
 A separate Angular build configuration (`bun run --filter @nicotind/web build -- --configuration
 tv`, `angular.json`) swaps in `environments/environment.tv.ts` (`tvBuild: true`, otherwise
 identical to the prod environment), exposed via `lib/platform.ts`'s `isTvBuild()`. This is a
