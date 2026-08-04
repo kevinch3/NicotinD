@@ -623,7 +623,10 @@ describe('NowPlayingComponent', () => {
       fixture.detectChanges();
 
       const rows = queueRows(fixture);
-      expect(rows[0]!.jump.getAttribute('tabindex')).toBe('0');
+      // Since the sheet gained a ROOT nav group (issue #389) the single Tab
+      // stop belongs to its first entry (the header close button), so every
+      // queue item starts at -1; focusing a row re-syncs the whole chain.
+      expect(rows[0]!.jump.getAttribute('tabindex')).toBe('-1');
       expect(rows[1]!.jump.getAttribute('tabindex')).toBe('-1');
       rows[0]!.jump.focus();
       rows[0]!.jump.dispatchEvent(

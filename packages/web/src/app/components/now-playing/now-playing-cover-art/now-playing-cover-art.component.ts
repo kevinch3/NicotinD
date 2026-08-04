@@ -5,10 +5,11 @@ import { CoverArtComponent } from '../../cover-art/cover-art.component';
 import { ArtistLinksComponent } from '../../artist-links/artist-links.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { formatQuality } from '../../../lib/download-status';
+import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 
 @Component({
   selector: 'app-now-playing-cover-art',
-  imports: [CoverArtComponent, ArtistLinksComponent, TranslatePipe],
+  imports: [CoverArtComponent, ArtistLinksComponent, TranslatePipe, TvNavItemDirective],
   // `display: contents` so the host doesn't break the sheet's flex column —
   // the shell's flex container needs to see this component's own top-level
   // element as the flex item, and `contents` makes the host transparent.

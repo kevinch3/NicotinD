@@ -23,6 +23,7 @@ import { createPointerDrag } from '../../lib/pointer-drag';
 import { ScrollLockService } from '../../services/scroll-lock.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { isTvUi } from '../../lib/platform';
+import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import {
   computePaletteFromPixels,
   scrollToActiveLine,
@@ -43,6 +44,7 @@ import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container'
     NowPlayingKaraokeFullscreenComponent,
     TrackContextMenuComponent,
     TranslatePipe,
+    TvNavGroupDirective,
   ],
   templateUrl: './now-playing.component.html',
 })

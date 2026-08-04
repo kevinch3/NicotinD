@@ -84,6 +84,29 @@ test.describe('Now Playing on a TV viewport (tv-build)', () => {
     await expect(page.getByTestId('now-playing-queue-resize')).toHaveCount(0);
   });
 
+  test('radio, close and track info are D-pad reachable via the root nav group (issue #389)', async ({
+    page,
+  }) => {
+    await openNowPlaying(page);
+    const playPause = page.getByTestId('now-playing-playpause');
+    await expect(playPause).toBeInViewport({ ratio: 1 });
+    await playPause.focus();
+
+    // The horizontal transport has no opinion on ArrowDown — the root group
+    // walks to the next merged entry, the Radio toggle.
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId('now-playing-radio')).toBeFocused();
+
+    // Back up re-enters the transport on its remembered active item, then
+    // walks the direct items above it: track info, then the header close.
+    await page.keyboard.press('ArrowUp');
+    await expect(playPause).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(page.getByTestId('now-playing-info')).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(page.getByTestId('now-playing-close')).toBeFocused();
+  });
+
   test('the sheet carries the blurred-cover backdrop hook', async ({ page }) => {
     await openNowPlaying(page);
     // The backdrop custom property is bound whenever the track has cover art;

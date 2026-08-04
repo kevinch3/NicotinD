@@ -273,7 +273,11 @@ a `tv-build` class on `<html>` via `lib/platform.ts`'s `applyTvBuildClass` (pure
 physical edge (the standard TV treatment). Non-TV builds are untouched: every rule is scoped under
 `html.tv-build`, and the class is only applied when `isTvBuild()`.
 
-**Dedicated TV player (Now Playing)**: a 1080p TV at density 320 is a **960×540 CSS viewport** —
+**Dedicated TV player (Now Playing)**: the sheet root is a mixed nav group — header close, the
+cover's track-info button and the transport's Radio toggle are direct items, with the
+transport/tabs/queue registering as child groups, so the whole sheet is one vertical D-pad sweep
+(issue #389, the first mixed-entries consumer; `now-playing-tv.spec.ts` walks it). A 1080p TV at
+density 320 is a **960×540 CSS viewport** —
 below Tailwind's `lg` (1024px) — so the sheet used to render the mobile *stacked* layout in a short
 landscape window and the cover pushed the whole transport below the fold (the "only shows the art
 cover" report). On TV the sheet is now a 10-foot player: the current cover, stretched and heavily

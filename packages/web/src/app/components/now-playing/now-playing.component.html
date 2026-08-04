@@ -1,5 +1,11 @@
 @if (player.currentTrack(); as track) {
+  <!-- Root nav group (issue #389): header close, the cover's track-info
+       button and the transport's radio button are direct items; the transport
+       row / panel tabs / queue register as child groups — one merged vertical
+       D-pad sweep across the whole sheet. -->
   <div
+    appTvNavGroup
+    [axis]="'vertical'"
     [class]="'fixed inset-0 z-[60] bg-theme-base ease-out flex flex-col ' +
       (dragging() ? 'transition-none ' : 'transition-transform duration-300 ') +
       (player.nowPlayingOpen() ? 'translate-y-0' : 'translate-y-full')"
