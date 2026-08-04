@@ -283,6 +283,8 @@ exact-title > title-prefix > all-tokens; null keeps current playback) over a `q=
 `/api/library/songs` page. Scope is deliberately **Play Next only** — a full recommendation
 channel row is a tracked follow-up. `deploy.yml`'s mobile path filter includes the new package.
 
+**Overscan calibration (Settings → Appearance, TV only)**: real panels overscan differently, so the safe-area insets are now per-device presets (`lib/tv-overscan.ts`: Off / Standard / Extra, localStorage `nicotind-tv-overscan`, the language-picker per-device rationale) applied as inline `--tv-overscan-x/y` on the root at bootstrap (main.ts, overriding the stylesheet defaults; Standard equals the defaults so fresh installs look unchanged) and switchable live from an `isTvUi()`-gated preset row.
+
 **Overscan safe area (TV builds only)**: TVs may crop up to ~5% of every edge, so `main.ts` stamps
 a `tv-build` class on `<html>` via `lib/platform.ts`'s `applyTvBuildClass` (pure, unit-tested) and
 `styles.css` insets *content* into the action-safe area (`--tv-overscan-x/y`, ≈ the Android TV

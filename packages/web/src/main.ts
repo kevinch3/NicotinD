@@ -4,7 +4,8 @@ import { App } from './app/app';
 import { environment } from './environments/environment';
 import { loadSentry } from './app/observability/sentry';
 import { installStartupErrorCapture, captureError } from './app/observability/error-buffer';
-import { isNativeShell, applyTvBuildClass } from './app/lib/platform';
+import { isNativeShell, applyTvBuildClass, isTvBuild } from './app/lib/platform';
+import { applyOverscan, loadOverscanPreset } from './app/lib/tv-overscan';
 import pkg from '../../../package.json';
 
 // Sentry is loaded lazily to keep its ~272 kB (42 % of the initial chunk) off
@@ -16,6 +17,7 @@ const stopStartupCapture = installStartupErrorCapture();
 // TV builds get the overscan safe-area layout (styles.css `.tv-build` rules) —
 // stamped before bootstrap so the first paint is already inset.
 applyTvBuildClass();
+if (isTvBuild()) applyOverscan(loadOverscanPreset());
 
 // Native shells get a trimmed init (no Session Replay / tracing) — see loadSentry.
 function startSentry(): void {
