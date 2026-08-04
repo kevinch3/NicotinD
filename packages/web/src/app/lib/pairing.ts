@@ -158,3 +158,57 @@ export async function claimPairing(
   }
   return parsed;
 }
+
+// ── TV sign-in (approve from phone) — pre-auth raw-fetch helpers ─────────
+
+export interface TvLoginRequestResult {
+  token: string;
+  code: string;
+  expiresAt: number;
+  urls: string[];
+}
+
+/** Mint a TV sign-in request (anonymous): the TV displays the code/QR and
+ * polls `pollTvLoginClaim` with the returned token. */
+export async function requestTvLogin(
+  serverUrl: string,
+  body: { deviceName?: string; platform?: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<TvLoginRequestResult> {
+  const res = await fetchImpl(buildApiUrl(serverUrl, '/api/devices/login-request'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const parsed = (await res.json().catch(() => null)) as
+    (TvLoginRequestResult & { error?: string; code?: string }) | null;
+  if (!res.ok || !parsed?.token) {
+    throw new PairingClaimError(parsed?.error ?? 'Sign-in request failed', parsed?.code);
+  }
+  return parsed;
+}
+
+export type TvLoginClaimResult = { status: 'pending'; expiresAt: number } | ClaimResult;
+
+/** One poll of the TV's own sign-in request: `{status:'pending'}` until the
+ * phone approves, then the same `ClaimResult` shape as `claimPairing`. */
+export async function pollTvLoginClaim(
+  serverUrl: string,
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<TvLoginClaimResult> {
+  const res = await fetchImpl(buildApiUrl(serverUrl, '/api/devices/login-claim'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  const parsed = (await res.json().catch(() => null)) as
+    (ClaimResult & { status?: 'pending'; error?: string; code?: string }) | null;
+  if (res.status === 202 && parsed?.status === 'pending') {
+    return { status: 'pending', expiresAt: (parsed as { expiresAt?: number }).expiresAt ?? 0 };
+  }
+  if (!res.ok || !parsed?.token) {
+    throw new PairingClaimError(parsed?.error ?? 'Sign-in failed', parsed?.code);
+  }
+  return parsed;
+}

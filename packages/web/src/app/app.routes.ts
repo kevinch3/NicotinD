@@ -25,6 +25,16 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/pair/pair.component').then((m) => m.PairComponent),
   },
   {
+    // Phone-side approval for a TV's sign-in code — the TV's QR encodes
+    // `/approve#c=…` (code in the fragment, like /pair). Auth-guarded: an
+    // unauthenticated scan round-trips through login and returns here with
+    // the fragment intact (sanitizeReturnUrl keeps in-app paths).
+    path: 'approve',
+    canActivate: [serverGuard, authGuard],
+    loadComponent: () =>
+      import('./pages/approve-login/approve-login.component').then((m) => m.ApproveLoginComponent),
+  },
+  {
     path: 'setup',
     loadComponent: () => import('./pages/setup/setup.component').then((m) => m.SetupComponent),
   },

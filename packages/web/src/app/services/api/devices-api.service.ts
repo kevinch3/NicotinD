@@ -9,6 +9,13 @@ import type { PairingMintResponse, PairedDevice, RemoteAccessStatus } from './ap
 export class DevicesApiService {
   private http = inject(HttpClient);
 
+  /** Approve a TV's displayed sign-in code (the phone side of the flow). */
+  approveTvLogin(code: string) {
+    return this.http.post<{ ok: boolean; deviceName: string }>('/api/devices/login-approve', {
+      code,
+    });
+  }
+
   mintPairing() {
     return this.http.post<PairingMintResponse>('/api/devices/pair', {});
   }

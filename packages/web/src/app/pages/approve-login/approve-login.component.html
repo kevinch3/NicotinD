@@ -1,0 +1,55 @@
+<div class="min-h-screen flex items-center justify-center bg-theme-base px-6">
+  <div class="w-full max-w-sm rounded-2xl border border-theme bg-theme-surface p-8 text-center">
+    @switch (state()) {
+      @case ('confirm') {
+        <h1 class="text-xl font-semibold text-theme-primary">{{ 'approve.title' | t }}</h1>
+        <p class="mt-2 text-sm text-theme-muted">{{ 'approve.question' | t }}</p>
+        <p
+          class="mt-4 font-mono text-2xl tracking-[0.3em] text-theme-primary"
+          data-testid="approve-code"
+        >
+          {{ code() }}
+        </p>
+        <div class="mt-6 flex justify-center gap-3">
+          <button
+            (click)="approve()"
+            data-testid="approve-confirm"
+            class="rounded-lg bg-theme-accent px-5 py-2 text-sm font-medium text-theme-on-accent hover:opacity-90"
+          >
+            {{ 'approve.approve' | t }}
+          </button>
+          <button
+            (click)="deny()"
+            data-testid="approve-deny"
+            class="rounded-lg bg-theme-surface-2 px-5 py-2 text-sm text-theme-muted hover:bg-theme-hover"
+          >
+            {{ 'approve.deny' | t }}
+          </button>
+        </div>
+      }
+      @case ('approving') {
+        <p class="text-sm text-theme-muted">…</p>
+      }
+      @case ('done') {
+        <h1 class="text-xl font-semibold text-theme-primary" data-testid="approve-done">
+          {{ 'approve.approved' | t: { name: deviceName() } }}
+        </h1>
+        <button
+          (click)="goHome()"
+          class="mt-6 rounded-lg bg-theme-surface-2 px-5 py-2 text-sm text-theme-muted hover:bg-theme-hover"
+        >
+          {{ 'approve.goHome' | t }}
+        </button>
+      }
+      @case ('error') {
+        <p class="text-sm text-status-error" data-testid="approve-error">{{ error() }}</p>
+        <button
+          (click)="goHome()"
+          class="mt-6 rounded-lg bg-theme-surface-2 px-5 py-2 text-sm text-theme-muted hover:bg-theme-hover"
+        >
+          {{ 'approve.goHome' | t }}
+        </button>
+      }
+    }
+  </div>
+</div>

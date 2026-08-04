@@ -226,6 +226,17 @@ same disabled-account check and `paired_devices` + device-bound JWT issuance as 
 **compare-and-swap** single-use claim (`UPDATE … WHERE claimed_at IS NULL`, `.changes` checked) so
 two concurrent polls can't both win. Revocation is unchanged: delete the device row.
 
+**UI**: the TV build's login page leads with the approve-from-phone panel (`tv-login-panel`: QR via
+the shared lazy `lib/qr.ts` helper — extracted from the devices page; **its CJS interop handles
+both namespace shapes**, since esbuild's per-chunk interop left the destructured `toDataURL`
+undefined in the login chunk while vitest's node interop worked — plus the code as text and a "use
+password instead" toggle to the classic form). It polls `login-claim` on a recursive `setTimeout`
+(TransferService convention) bounded by the TTL, with a regenerate button on expiry (the devices QR
+overlay pattern). The phone side is the new auth-guarded `/approve` page
+(`pages/approve-login/`, code in the fragment, returnUrl round-trip for an unauthenticated scan).
+End-to-end coverage: `packages/e2e/tests/login-tv-signin.spec.ts` (API loop + a real TV-viewport
+UI test where an API-side approval signs the TV in with zero typing + the /approve page).
+
 ## Device registry + revocation
 
 `paired_devices` (id, user_id, name, platform, created_at, last_seen_at).

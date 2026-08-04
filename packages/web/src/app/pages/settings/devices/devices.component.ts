@@ -8,6 +8,7 @@ import type {
   RemoteAccessStatus,
 } from '../../../services/api/api-types';
 import { buildPairingLink } from '../../../lib/pairing';
+import { renderQrDataUrl } from '../../../lib/qr';
 import { isNativePlatform } from '../../../lib/platform';
 import { TranslateService } from '../../../services/translate.service';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
@@ -105,16 +106,8 @@ export class DevicesComponent implements OnInit, OnDestroy {
     // The QR encodes a `/pair#t=…` link (not raw JSON) so a plain camera app
     // can act on it too — it opens the server's own pairing page in a browser.
     const payload = buildPairingLink({ name: mint.name, urls: mint.urls, token: mint.token });
-    try {
-      // Dynamic import: `qrcode` is CommonJS, which esbuild reports as an
-      // optimization bailout ("Module 'qrcode' … is not ESM") when statically
-      // imported. Loading it here also keeps it out of this route's chunk until
-      // a pairing QR is actually requested — it is needed once, on one click.
-      const { toDataURL } = await import('qrcode');
-      this.qrDataUrl.set(await toDataURL(payload, { margin: 1, width: 240 }));
-    } catch {
-      this.qrDataUrl.set(null);
-    }
+    // Shared lazy-qrcode helper (issue #256 rationale lives there).
+    this.qrDataUrl.set(await renderQrDataUrl(payload));
   }
 
   private startCountdown(expiresAt: number): void {
