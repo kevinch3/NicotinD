@@ -9,6 +9,13 @@
  * - `NSCameraUsageDescription` — required by @capacitor/barcode-scanner for the
  *   QR device-pairing scan (see docs/device-pairing.md); iOS kills the app on
  *   camera access without it.
+ * - `NSAppTransportSecurity: { NSAllowsArbitraryLoads: true }` — the iOS
+ *   mirror of Android's `usesCleartextTraffic` (issues #390/#397): a
+ *   self-hosted music server on a private LAN is exactly the deployment with
+ *   no TLS, and it can live on any hostname or raw IP, so the scoped
+ *   `NSAllowsLocalNetworking` (.local/link-local only) is not enough. The IPA
+ *   is sideloaded, never App-Store-reviewed, so the arbitrary-loads
+ *   justification requirement doesn't apply.
  * - `CFBundleShortVersionString` / `CFBundleVersion` — the marketing + build
  *   numbers derived from the monorepo version (see {@link iosVersion}).
  *
@@ -27,6 +34,9 @@ export function buildPlistBuddyCommands(opts: {
     'Add :UIBackgroundModes:0 string audio',
     `Add :NSCameraUsageDescription string ${CAMERA_USAGE}`,
     `Set :NSCameraUsageDescription ${CAMERA_USAGE}`,
+    'Delete :NSAppTransportSecurity',
+    'Add :NSAppTransportSecurity dict',
+    'Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true',
   ];
   if (opts.shortVersion) {
     cmds.push(`Add :CFBundleShortVersionString string ${opts.shortVersion}`);

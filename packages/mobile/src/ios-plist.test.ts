@@ -35,6 +35,17 @@ describe('buildPlistBuddyCommands', () => {
     );
   });
 
+  it('allows plain-http servers via an ATS exception (issue #397, the #390 iOS mirror)', () => {
+    const cmds = buildPlistBuddyCommands({});
+    // Delete-then-add keeps re-runs idempotent, same as UIBackgroundModes.
+    expect(cmds.indexOf('Delete :NSAppTransportSecurity')).toBeLessThan(
+      cmds.indexOf('Add :NSAppTransportSecurity dict'),
+    );
+    expect(cmds.indexOf('Add :NSAppTransportSecurity dict')).toBeLessThan(
+      cmds.indexOf('Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true'),
+    );
+  });
+
   it('omits version commands when no version is supplied', () => {
     const cmds = buildPlistBuddyCommands({ build: '' });
     expect(cmds.some((c) => c.includes('CFBundleShortVersionString'))).toBe(false);

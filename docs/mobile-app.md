@@ -106,7 +106,12 @@ native:
   `https://localhost` origin blocked every `http://` API call twice over (cleartext policy + mixed
   content), making LAN-only self-hosted servers unreachable from the app entirely — the accepted
   trade-off is that a self-hosted music server on a private LAN is exactly the deployment that has
-  no TLS. iOS ATS has the mirror problem and is a tracked follow-up.
+  no TLS. **iOS carries the mirror exception (issue #397)**: `ios-plist.ts` now writes
+  `NSAppTransportSecurity: { NSAllowsArbitraryLoads: true }` into the generated Info.plist —
+  arbitrary-loads rather than the scoped `NSAllowsLocalNetworking` because a self-hosted server can
+  live on any hostname or raw IP (not just `.local`), and the sideloaded IPA never faces App Store
+  review's justification requirement. Unverified on hardware (no signed device build), but the
+  plist patching path itself is the same CI-exercised one as the audio/camera keys.
 - **Service worker disabled on native** (`app.config.ts`): the WebView serves assets locally, so ngsw
   caching is redundant and can fight Capacitor / cross-origin API calls. IndexedDB offline still works.
 

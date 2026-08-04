@@ -55,9 +55,16 @@ platform-agnostic and works on iOS with no change:
   `scripts/ios-plist.ts` patch. Without it iOS terminates the app on first
   camera access.
 - **App Transport Security (ATS)**: iOS blocks plain-`http://` requests by
-  default. We expect users to point the app at an **HTTPS** self-hosted server
-  (the default is HTTPS). Only add an `NSAppTransportSecurity` exception if a
-  plain-HTTP server must be supported — document it then, don't pre-weaken ATS.
+  default. That "only weaken ATS when a plain-HTTP server must be supported"
+  moment arrived with issue #390 (Android): a self-hosted music server on a
+  private LAN is exactly the deployment with no TLS, and Android now allows
+  cleartext for it. Issue #397 mirrors that here —
+  `NSAppTransportSecurity: { NSAllowsArbitraryLoads: true }` is injected by the
+  same `scripts/ios-plist.ts` patch. Arbitrary-loads rather than the scoped
+  `NSAllowsLocalNetworking` because a LAN server can live on any hostname or
+  raw IP, not just `.local`; the sideloaded IPA never faces App Store review's
+  arbitrary-loads justification. Unverified on hardware (no signed device
+  build yet).
 - **iOS app icon + splash**: the branded AppIcon **and launch/splash screen** are
   generated **in CI** from the committed `packages/mobile/assets/` brand sources
   (`bunx @capacitor/assets generate --ios`), because the ephemeral `ios/` project
