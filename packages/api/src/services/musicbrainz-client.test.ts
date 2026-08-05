@@ -123,6 +123,69 @@ describe('MusicBrainzClient getLicence', () => {
   });
 });
 
+describe('MusicBrainzClient searchReleaseGroups', () => {
+  it('maps release-group hits from artist-credit/primary-type/first-release-date/score', async () => {
+    mockFetch({
+      'release-groups': [
+        {
+          id: 'rg-1',
+          title: 'Discovery',
+          score: 100,
+          'primary-type': 'Album',
+          'first-release-date': '2001-03-12',
+          'artist-credit': [{ name: 'Daft Punk' }],
+        },
+        {
+          id: 'rg-2',
+          title: 'Discovery (Deluxe)',
+          score: 80,
+          'primary-type': 'Album',
+          'first-release-date': '2001-03-13',
+          'artist-credit': [{ name: 'Daft Punk' }],
+        },
+      ],
+    });
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const hits = await client.searchReleaseGroups('Daft Punk', 'Discovery');
+
+    expect(hits).toEqual([
+      {
+        id: 'rg-1',
+        title: 'Discovery',
+        artist: 'Daft Punk',
+        primaryType: 'Album',
+        firstReleaseDate: '2001-03-12',
+        score: 100,
+      },
+      {
+        id: 'rg-2',
+        title: 'Discovery (Deluxe)',
+        artist: 'Daft Punk',
+        primaryType: 'Album',
+        firstReleaseDate: '2001-03-13',
+        score: 80,
+      },
+    ]);
+  });
+
+  it('caches the result so a repeat lookup does not re-query', async () => {
+    const calls = mockFetch({
+      'release-groups': [
+        {
+          id: 'rg-1',
+          title: 'Discovery',
+          score: 100,
+          'artist-credit': [{ name: 'Daft Punk' }],
+        },
+      ],
+    });
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    await client.searchReleaseGroups('Daft Punk', 'Discovery');
+    await client.searchReleaseGroups('Daft Punk', 'Discovery');
+    expect(calls).toHaveLength(1);
+  });
+});
+
 describe('MusicBrainzClient getArtistDiscogsUrl', () => {
   it('parses a discogs url-relation on an artist', async () => {
     const calls = mockFetch({
