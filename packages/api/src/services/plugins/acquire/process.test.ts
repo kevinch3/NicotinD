@@ -442,10 +442,10 @@ describe('isBinaryAvailable', () => {
     const exec = ((_bin: string, _args: string[], opts: { env?: NodeJS.ProcessEnv }) => {
       execCalls.push(opts);
       return Buffer.from('');
-    }) as unknown as Parameters<typeof isBinaryAvailable>[1];
+    }) as unknown as Parameters<typeof isBinaryAvailable>[2];
 
-    expect(isBinaryAvailable('fake-dl', exec)).toBe(true);
-    expect(isBinaryAvailable('fake-dl', exec)).toBe(true);
+    expect(isBinaryAvailable('fake-dl', undefined, exec)).toBe(true);
+    expect(isBinaryAvailable('fake-dl', undefined, exec)).toBe(true);
     expect(execCalls).toHaveLength(1);
     expect(execCalls[0]!.env?.PATH?.split(':')).toContain('/usr/local/bin');
   });
@@ -455,12 +455,12 @@ describe('isBinaryAvailable', () => {
     const exec = ((_bin: string) => {
       if (!installed) throw new Error('not found');
       return Buffer.from('');
-    }) as unknown as Parameters<typeof isBinaryAvailable>[1];
+    }) as unknown as Parameters<typeof isBinaryAvailable>[2];
 
-    expect(isBinaryAvailable('fake-dl', exec)).toBe(false);
+    expect(isBinaryAvailable('fake-dl', undefined, exec)).toBe(false);
     installed = true;
-    expect(isBinaryAvailable('fake-dl', exec)).toBe(false); // still cached
+    expect(isBinaryAvailable('fake-dl', undefined, exec)).toBe(false); // still cached
     invalidateBinaryCache('fake-dl');
-    expect(isBinaryAvailable('fake-dl', exec)).toBe(true);
+    expect(isBinaryAvailable('fake-dl', undefined, exec)).toBe(true);
   });
 });

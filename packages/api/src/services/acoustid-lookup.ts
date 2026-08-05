@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import type { IdentifyResult } from '@nicotind/core';
 import { createLogger } from '@nicotind/core';
 
 const log = createLogger('acoustid');
@@ -11,23 +12,25 @@ const MIN_INTERVAL_MS = 334; // ~3 req/s, AcoustID's free limit
 // treats as the separator; an explicit `+` becomes `%2B` and the server reads
 // it as one unknown token, silently returning `{id, score}` only.
 
-export interface AcoustIdResult {
-  /** AcoustID track UUID. Always present when lookup() returns non-null. */
-  acoustId: string;
-  /** Best match score (0..1). */
-  score: number;
-  /** Fields below are only populated when the AcoustID is linked to MB metadata. */
-  artist?: string;
+/**
+ * Result shape. Field-identical to core's `IdentifyResult` plus two extras
+ * (`albumArtist`, `trackNumber`) that only this engine's non-plugin callers
+ * (`library-organizer.ts`) use — kept as an alias rather than a redeclaration
+ * so the two never drift, and existing imports of `AcoustIdResult` keep
+ * compiling unchanged.
+ */
+export type AcoustIdResult = IdentifyResult & {
   albumArtist?: string;
-  album?: string;
-  title?: string;
-  year?: number;
   trackNumber?: number;
-  recordingId?: string;
-  releaseId?: string;
-}
+};
 
 type FpcalcOutput = { duration: number; fingerprint: string };
+
+/** Injectable dependencies — tests fake `spawnFn`/`fetchFn` to avoid real I/O. */
+export interface AcoustIdLookupDeps {
+  spawnFn?: typeof spawn;
+  fetchFn?: typeof fetch;
+}
 
 let lastCallAt = 0;
 async function rateLimit(): Promise<void> {
@@ -39,9 +42,13 @@ async function rateLimit(): Promise<void> {
 
 let fpcalcMissingLogged = false;
 
-function runFpcalc(filepath: string): Promise<FpcalcOutput | null> {
+function runFpcalc(
+  filepath: string,
+  binaryPath: string,
+  spawnFn: typeof spawn,
+): Promise<FpcalcOutput | null> {
   return new Promise<FpcalcOutput | null>((resolve) => {
-    const proc = spawn('fpcalc', ['-json', filepath], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawnFn(binaryPath, ['-json', filepath], { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     proc.stdout.on('data', (d) => {
       stdout += d.toString();
@@ -94,11 +101,21 @@ interface AcoustIdRaw {
 }
 
 export class AcoustIdLookup {
-  constructor(private apiKey: string) {}
+  private readonly spawnFn: typeof spawn;
+  private readonly fetchFn: typeof fetch;
+
+  constructor(
+    private apiKey: string,
+    private binaryPath: string = 'fpcalc',
+    deps: AcoustIdLookupDeps = {},
+  ) {
+    this.spawnFn = deps.spawnFn ?? spawn;
+    this.fetchFn = deps.fetchFn ?? fetch;
+  }
 
   async lookup(filepath: string): Promise<AcoustIdResult | null> {
     if (!this.apiKey) return null;
-    const fp = await runFpcalc(filepath);
+    const fp = await runFpcalc(filepath, this.binaryPath, this.spawnFn);
     if (!fp) return null;
 
     await rateLimit();
@@ -117,7 +134,7 @@ export class AcoustIdLookup {
 
     let raw: AcoustIdRaw;
     try {
-      const res = await fetch(ACOUSTID_URL, { method: 'POST', body: params });
+      const res = await this.fetchFn(ACOUSTID_URL, { method: 'POST', body: params });
       if (!res.ok) {
         log.debug({ status: res.status, filepath }, 'AcoustID HTTP error');
         return null;

@@ -11,6 +11,7 @@ import { YtdlpPlugin } from './ytdlp/index.js';
 import { LrclibPlugin } from './lrclib/index.js';
 import { DiscogsPlugin } from './discogs/index.js';
 import { parseDiscogsRef, type DiscogsRef } from './discogs/matching.js';
+import { AcoustidPlugin } from './acoustid/index.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../musicbrainz-client.js';
 
 /**
@@ -34,6 +35,13 @@ export interface BuiltinPluginDeps {
   dataDir: string;
   slskdRef: SlskdRef;
   providerRegistry: ProviderRegistry;
+  /**
+   * The legacy AcoustID API key (from `secrets.json`, not `config` — it
+   * predates the plugin system and is still `LibraryOrganizer`'s own
+   * tags-missing fallback's key source). Seeds the AcoustID plugin's config so
+   * an existing deployment's key keeps working without re-entry.
+   */
+  acoustidApiKey?: string;
 }
 
 /**
@@ -53,7 +61,7 @@ export interface BuiltinPluginDeps {
  * to miss.
  */
 export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPluginDeps): void {
-  const { config, dataDir, slskdRef, providerRegistry } = deps;
+  const { config, dataDir, slskdRef, providerRegistry, acoustidApiKey } = deps;
 
   plugins.register(new SlskdPlugin(slskdRef, providerRegistry));
 
@@ -127,4 +135,10 @@ export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPlu
       { resolveDiscogsArtistRef: makeDiscogsArtistResolver(mbClientForDiscogs) },
     ),
   );
+  // Metadata source — identifies a track from its audio fingerprint
+  // (chromaprint/fpcalc + AcoustID, issue #411's download-inbox triage rescue
+  // path). Seeded from the legacy `secrets.json` key so an existing deployment
+  // that already configured AcoustID for the organizer's tags-missing fallback
+  // keeps working without re-entering it here.
+  plugins.register(new AcoustidPlugin({ apiKey: acoustidApiKey ?? '' }));
 }

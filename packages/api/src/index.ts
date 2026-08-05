@@ -469,6 +469,7 @@ export function createApp({
     dataDir: expandedDataDir,
     slskdRef,
     providerRegistry: registry,
+    acoustidApiKey,
   });
   // Populate the artist-info ref now that the plugin registry (and Discogs) exist.
   artistInfoRef.lookup = (mbid) => {

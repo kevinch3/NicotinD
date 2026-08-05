@@ -11,6 +11,7 @@ import {
   type BuiltinPluginDeps,
 } from './builtin.js';
 import { SpotdlPlugin } from './spotdl/index.js';
+import { AcoustidPlugin } from './acoustid/index.js';
 import { MusicBrainzClient } from '../musicbrainz-client.js';
 import type { SlskdRef } from '../../index.js';
 import type { ProviderRegistry } from '../provider-registry.js';
@@ -57,7 +58,7 @@ describe('registerBuiltinPlugins', () => {
         .getAll()
         .map((p) => p.manifest.id)
         .sort(),
-    ).toEqual(['archive', 'discogs', 'lrclib', 'slskd', 'spotdl', 'spotify', 'ytdlp']);
+    ).toEqual(['acoustid', 'archive', 'discogs', 'lrclib', 'slskd', 'spotdl', 'spotify', 'ytdlp']);
   });
 
   // Regression: spotdl was constructed without `{ registry }`, so its live read
@@ -81,6 +82,21 @@ describe('registerBuiltinPlugins', () => {
     const spotdl = plugins.get('spotdl') as SpotdlPlugin;
     plugins.setConfig('spotify', { clientId: 'id-123' });
     expect(spotdl.spotifyEnv()).toBeNull();
+  });
+
+  it('seeds the acoustid plugin from the legacy secrets.json key', () => {
+    const db2 = new Database(':memory:');
+    applySchema(db2);
+    const plugins2 = new PluginRegistry({ db: db2, dataDir: '/tmp/nicotind-test' });
+    registerBuiltinPlugins(plugins2, makeDeps({ acoustidApiKey: 'legacy-key' }));
+
+    const acoustid = plugins2.get('acoustid') as AcoustidPlugin;
+    expect(acoustid.hasApiKey()).toBe(true);
+  });
+
+  it('leaves the acoustid plugin keyless when no legacy key is configured', () => {
+    const acoustid = plugins.get('acoustid') as AcoustidPlugin;
+    expect(acoustid.hasApiKey()).toBe(false);
   });
 });
 

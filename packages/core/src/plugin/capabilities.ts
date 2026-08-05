@@ -198,6 +198,38 @@ export interface ReleaseCandidatesCapability {
   searchReleases(query: ReleaseCandidateQuery): Promise<ReleaseCandidateHit[]>;
 }
 
+/**
+ * What a source resolves when identifying a track from its audio fingerprint
+ * (AcoustID/chromaprint) — the rescue path for a file whose tags are garbage
+ * or missing. `acoustId` + `score` are always present when a match came back
+ * at all; the rest is only populated when the AcoustID is linked to
+ * MusicBrainz metadata (a bare fingerprint match with no MB link still counts
+ * as a result, so a re-run can skip the fingerprint round-trip).
+ */
+export interface IdentifyResult {
+  /** AcoustID track UUID. */
+  acoustId: string;
+  /** Best match score (0..1). */
+  score: number;
+  artist?: string;
+  album?: string;
+  title?: string;
+  year?: number;
+  /** MusicBrainz recording id, when the AcoustID is linked. */
+  recordingId?: string;
+  /** MusicBrainz release id, when the AcoustID is linked. */
+  releaseId?: string;
+}
+
+/**
+ * Metadata source that identifies a track from its audio fingerprint given an
+ * absolute file path (AcoustID). The plugin owns the fingerprint extraction
+ * (fpcalc) + the lookup HTTP call; the host just gets a match or null.
+ */
+export interface IdentifyCapability {
+  identifyTrack(absPath: string): Promise<IdentifyResult | null>;
+}
+
 /** Connectivity plugins (tailscale/wireguard) — scaffold; none shipped yet. */
 export interface ConnectivityCapability {
   up(): Promise<void>;

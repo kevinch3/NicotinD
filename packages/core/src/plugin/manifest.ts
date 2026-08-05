@@ -13,7 +13,8 @@ export type PluginKind = 'acquisition' | 'metadata' | 'connectivity';
 export type AcquisitionCapability = 'search' | 'browse' | 'resolve' | 'download';
 
 /** Capabilities a metadata plugin may declare + implement. */
-export type MetadataCapabilityName = 'lyrics' | 'genre' | 'artist-info' | 'release-candidates';
+export type MetadataCapabilityName =
+  'lyrics' | 'genre' | 'artist-info' | 'release-candidates' | 'identify';
 
 /** Capabilities a connectivity plugin may declare + implement. */
 export type ConnectivityCapabilityName = 'connectivity';
@@ -88,6 +89,7 @@ const METADATA_CAPS: MetadataCapabilityName[] = [
   'genre',
   'artist-info',
   'release-candidates',
+  'identify',
 ];
 
 /**
