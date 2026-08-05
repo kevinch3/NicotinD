@@ -189,8 +189,14 @@ function makeAdminMocks(review: Partial<ServiceReview> = {}) {
     of({
       settings: {
         enabled: true,
+        paused: false,
+        holdForReview: false,
         window: { start: '02:00', end: '06:00' },
         tasks: { bpm: true, genre: true, key: false, energy: false, 'audio-features': false },
+        gates: {},
+        concurrency: 4,
+        batchSize: 100,
+        gpuBusyPercent: 0,
       } as ProcessingSettings,
       status: procStatus,
     }),
@@ -532,6 +538,90 @@ describe('AdminComponent (acquisition kill-switch, #235)', () => {
     expect(
       (f.nativeElement as HTMLElement).querySelector('[data-testid="acquisition-panel"]'),
     ).toBeFalsy();
+    f.destroy();
+  });
+});
+
+/** Task 13 (download inbox triage, issue #411): the hold-for-review toggle
+ *  gates new downloads in a quarantine state until a curator approves them. */
+describe('AdminComponent (hold-for-review toggle, #411)', () => {
+  beforeEach(async () => {
+    const mocks = makeAdminMocks();
+    const saveProcessing = vi.fn((p: unknown) => of(p as object));
+    await TestBed.configureTestingModule({
+      imports: [AdminComponent],
+      providers: [
+        { provide: DownloadsApiService, useValue: {} },
+        {
+          provide: SystemApiService,
+          useValue: {
+            getUsers: vi.fn(() => of([])),
+            getStreamingSettings: mocks.getStreaming,
+            saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getProcessing: mocks.getProcessing,
+            getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
+            setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
+            saveProcessing,
+          },
+        },
+        {
+          provide: LibraryApiService,
+          useValue: {
+            resyncLibrary: vi.fn(() => of({ ok: true })),
+            getFragments: vi.fn(() =>
+              of({
+                duplicateAlbums: [],
+                hiddenByClassification: [],
+                misSplitAlbums: [],
+                totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 },
+                ok: true,
+              } as LibraryFragmentReport),
+            ),
+          },
+        },
+        { provide: ServiceReviewService, useValue: mocks.reviewService },
+        { provide: AuthService, useValue: { token: () => null } },
+      ],
+    }).compileComponents();
+  });
+
+  it('renders the holdForReview toggle and verifies i18n keys', async () => {
+    const f = TestBed.createComponent(AdminComponent);
+    f.componentInstance.loading.set(false);
+    f.detectChanges();
+    await f.whenStable();
+    f.detectChanges();
+    expandAllGroups(f);
+    const el = f.nativeElement as HTMLElement;
+    const toggle = el.querySelector(
+      '[data-testid="processing-hold-for-review"]',
+    ) as HTMLInputElement;
+    expect(toggle).toBeTruthy();
+    expect(toggle.type).toBe('checkbox');
+    // Verify i18n keys are present in the catalog
+    expect(BASE_CATALOG).toHaveProperty(['admin.holdForReview']);
+    expect(BASE_CATALOG).toHaveProperty(['admin.holdForReviewHint']);
+    f.destroy();
+  });
+
+  it('calls saveProcessing when holdForReview checkbox is toggled', async () => {
+    const f = TestBed.createComponent(AdminComponent);
+    f.componentInstance.loading.set(false);
+    f.detectChanges();
+    await f.whenStable();
+    f.detectChanges();
+    expandAllGroups(f);
+    const el = f.nativeElement as HTMLElement;
+    const toggle = el.querySelector(
+      '[data-testid="processing-hold-for-review"]',
+    ) as HTMLInputElement;
+    expect(toggle).toBeTruthy();
+
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+    expect(TestBed.inject(SystemApiService).saveProcessing).toHaveBeenCalledWith({
+      holdForReview: true,
+    });
     f.destroy();
   });
 });

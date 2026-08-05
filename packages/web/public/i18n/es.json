@@ -143,6 +143,8 @@
   "admin.groupSystemHealthDesc": "Métricas en vivo, servicios, actualizaciones y registros",
   "admin.groupUserManagementDesc": "Cuentas, roles y acceso",
   "admin.hiddenAlbumsHeading": "Álbumes ocultos incorrectamente de la grilla ({count})",
+  "admin.holdForReview": "Retener descargas para revisión",
+  "admin.holdForReviewHint": "Las descargas nuevas esperan en la bandeja de Descargas hasta que un curador las apruebe",
   "admin.idleSongs": "Inactivo — {count} canciones",
   "admin.importConfiguration": "Importar configuración…",
   "admin.importedRows": "Se importaron {count} fila(s). Reiniciá el servidor para aplicar los cambios de plugins.",

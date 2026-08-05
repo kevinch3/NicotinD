@@ -143,6 +143,8 @@
   "admin.groupSystemHealthDesc": "Live metrics, services, updates, and logs",
   "admin.groupUserManagementDesc": "Accounts, roles, and access",
   "admin.hiddenAlbumsHeading": "Albums wrongly hidden from the grid ({count})",
+  "admin.holdForReview": "Hold downloads for review",
+  "admin.holdForReviewHint": "New downloads wait in the Downloads inbox until a curator approves them",
   "admin.idleSongs": "Idle — {count} songs",
   "admin.importConfiguration": "Import configuration…",
   "admin.importedRows": "Imported {count} row(s). Restart the server to pick up plugin changes.",
