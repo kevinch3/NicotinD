@@ -77,3 +77,17 @@ export function applyIdentify(
   }
   return next;
 }
+
+/**
+ * After a `retagTracks` round-trip, clear the dirty flags of the rows that
+ * actually saved — a row whose id is in `failedIds` keeps its edits (and its
+ * dirty flags) so the curator can see and retry exactly what didn't land;
+ * everything else's edits are now reflected server-side, so re-saving them
+ * would be a no-op `dirtyTrackPayload` should no longer include.
+ */
+export function markTracksSaved(tracks: EditableTrack[], failedIds: string[]): EditableTrack[] {
+  const failed = new Set(failedIds);
+  return tracks.map((t) =>
+    failed.has(t.id) ? t : { ...t, dirtyTitle: false, dirtyArtist: false },
+  );
+}

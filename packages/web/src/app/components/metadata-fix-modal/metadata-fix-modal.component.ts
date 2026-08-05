@@ -33,6 +33,7 @@ import {
   toEditableTracks,
   dirtyTrackPayload,
   applyIdentify,
+  markTracksSaved,
   type EditableTrack,
 } from '../../lib/review-tracks';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
@@ -364,16 +365,34 @@ export class MetadataFixModalComponent implements OnInit {
     }
   }
 
-  /** Persist only the edited (dirty) rows, then let the parent refresh the queue. */
+  /**
+   * Persist only the edited (dirty) rows. The server returns 200 even on a
+   * partial failure (`failed: [...]` for an unknown id / path escape), so a
+   * non-empty `failed` must never read as success: no toast, no
+   * `tracksSaved` emit (the modal stays open so the curator sees what
+   * didn't land), and only the rows that *did* save have their dirty flags
+   * cleared — a failed row keeps its edits so retrying is just "Save" again.
+   */
   async saveTracks(): Promise<void> {
     const payload = dirtyTrackPayload(this.tracks());
     if (payload.length === 0 || this.savingTracks()) return;
     this.savingTracks.set(true);
     this.msg.set(null);
     try {
-      await firstValueFrom(this.review.retagTracks(this.albumId(), payload));
-      this.toast.show({ message: this.i18n.t('review.tracksSaved'), kind: 'success' });
-      this.tracksSaved.emit();
+      const r = await firstValueFrom(this.review.retagTracks(this.albumId(), payload));
+      const failedIds = r.failed.map((f) => f.id);
+      this.tracks.update((list) => markTracksSaved(list, failedIds));
+      if (r.failed.length > 0) {
+        this.msg.set(
+          this.i18n.t('review.tracksPartial', {
+            updated: r.updated,
+            failed: r.failed.length,
+          }),
+        );
+      } else {
+        this.toast.show({ message: this.i18n.t('review.tracksSaved'), kind: 'success' });
+        this.tracksSaved.emit();
+      }
     } catch (err) {
       this.msg.set(httpErrorMessage(err, 'Could not save the tracks.'));
     } finally {

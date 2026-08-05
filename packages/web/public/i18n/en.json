@@ -424,6 +424,7 @@
   "review.sourcesDown": "Unavailable: {list}",
   "review.title": "Needs review",
   "review.tracks": "{count} tracks",
+  "review.tracksPartial": "Saved {updated}, failed {failed}",
   "review.tracksSaved": "Tracks retagged — rescanning",
   "settings.account": "Account",
   "settings.adminPanel": "Admin panel →",

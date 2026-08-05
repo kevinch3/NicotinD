@@ -424,6 +424,7 @@
   "review.sourcesDown": "No disponible: {list}",
   "review.title": "Pendientes de revisión",
   "review.tracks": "{count} pistas",
+  "review.tracksPartial": "Guardadas {updated}, fallaron {failed}",
   "review.tracksSaved": "Pistas re-etiquetadas — reescaneando",
   "settings.account": "Cuenta",
   "settings.adminPanel": "Panel de administración →",

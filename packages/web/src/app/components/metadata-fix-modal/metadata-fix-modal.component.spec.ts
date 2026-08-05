@@ -204,7 +204,7 @@ describe('MetadataFixModalComponent review mode', () => {
     expect(c.isReviewMode()).toBe(true);
   });
 
-  it('saveTracks posts only dirty rows and emits tracksSaved', async () => {
+  it('saveTracks posts only dirty rows, emits tracksSaved, and clears the dirty flag on success', async () => {
     const c = create();
     c.ngOnInit();
     await Promise.resolve();
@@ -217,6 +217,41 @@ describe('MetadataFixModalComponent review mode', () => {
 
     expect(retagTracks).toHaveBeenCalledWith('album-1', [{ id: 's1', title: 'New Title' }]);
     expect(emitted).toHaveBeenCalledTimes(1);
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'success', message: 'review.tracksSaved' }),
+    );
+    expect(c.tracks().find((t) => t.id === 's1')).toMatchObject({ dirtyTitle: false });
+  });
+
+  it('a partial failure sets msg, shows no success toast, does not emit tracksSaved, and only clears the succeeded row', async () => {
+    const c = create();
+    c.ngOnInit();
+    await Promise.resolve();
+    retagTracks.mockReturnValue(
+      of({
+        updated: 1,
+        failed: [{ id: 's2', error: 'Invalid path' }],
+        rescanned: true,
+      }),
+    );
+    const emitted = vi.fn();
+    c.tracksSaved.subscribe(emitted);
+
+    c.onTrackTitleChange('s1', 'New Title');
+    c.onTrackTitleChange('s2', 'Bad Title');
+    await c.saveTracks();
+
+    expect(emitted).not.toHaveBeenCalled();
+    expect(toastShow).not.toHaveBeenCalled();
+    expect(c.msg()).toBe('review.tracksPartial');
+    expect(c.tracks().find((t) => t.id === 's1')).toMatchObject({
+      title: 'New Title',
+      dirtyTitle: false,
+    });
+    expect(c.tracks().find((t) => t.id === 's2')).toMatchObject({
+      title: 'Bad Title',
+      dirtyTitle: true,
+    });
   });
 
   it('does not save when no row is dirty', async () => {

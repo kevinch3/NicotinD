@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { toEditableTracks, dirtyTrackPayload, applyIdentify } from './review-tracks';
+import {
+  toEditableTracks,
+  dirtyTrackPayload,
+  applyIdentify,
+  markTracksSaved,
+} from './review-tracks';
 
 describe('toEditableTracks', () => {
   it('orders by track number, nulls last', () => {
@@ -98,5 +103,31 @@ describe('applyIdentify', () => {
     expect(next.artist).toBe('A');
     expect(next.dirtyTitle).toBe(true);
     expect(next.dirtyArtist).toBe(true);
+  });
+});
+
+describe('markTracksSaved', () => {
+  it('clears dirty flags on every row when nothing failed', () => {
+    const rows = toEditableTracks([
+      { id: 'a', title: 'A', track: 1 },
+      { id: 'b', title: 'B', track: 2 },
+    ]).map((t) => ({ ...t, dirtyTitle: true }));
+    const next = markTracksSaved(rows, []);
+    expect(next.every((t) => !t.dirtyTitle && !t.dirtyArtist)).toBe(true);
+  });
+
+  it('keeps a failed row dirty (and its edits) while clearing the rest', () => {
+    const rows = toEditableTracks([
+      { id: 'a', title: 'A', track: 1 },
+      { id: 'b', title: 'B', track: 2 },
+    ]).map((t) => ({ ...t, title: t.id === 'a' ? 'A2' : 'B2', dirtyTitle: true }));
+
+    const next = markTracksSaved(rows, ['a']);
+
+    const a = next.find((t) => t.id === 'a')!;
+    const b = next.find((t) => t.id === 'b')!;
+    expect(a).toEqual({ ...a, title: 'A2', dirtyTitle: true });
+    expect(b.dirtyTitle).toBe(false);
+    expect(b.title).toBe('B2');
   });
 });
