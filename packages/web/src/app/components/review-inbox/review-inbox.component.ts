@@ -12,10 +12,14 @@ import { TransferService } from '../../services/transfer.service';
 import { PlayerService } from '../../services/player.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { toTrack } from '../../lib/track-utils';
-import type { ReviewQueueAlbum } from '../../services/api/api-types';
-import type { SongSteps } from '../../services/api/api-types';
+import type {
+  QuarantineSong,
+  ReviewQueueAlbum,
+  SongSteps,
+  StepState,
+} from '../../services/api/api-types';
 
-/** Ordered step badges rendered per song, mirroring the Admin quarantine queue's `stepKeys`. */
+/** Ordered step badges rendered per album, mirroring the Admin quarantine queue's `stepKeys`. */
 export const STEP_KEYS = [
   'bpm',
   'key',
@@ -23,6 +27,28 @@ export const STEP_KEYS = [
   'genre',
   'mood',
 ] as const satisfies (keyof SongSteps)[];
+
+export type StepKey = (typeof STEP_KEYS)[number];
+
+/**
+ * Aggregate one album's per-song step states into one badge per step
+ * (5 total, not 5 × song count). Per step, the *worst* state across the
+ * album's songs wins: any `pending` outranks `skipped`, which outranks
+ * `done` — so a single still-queued track keeps the whole album's badge
+ * showing "in progress" rather than a false "done", and a step that failed
+ * everywhere it wasn't still pending shows as `skipped`. Pure + exported so
+ * it's unit-testable without rendering the component.
+ */
+export function aggregateAlbumSteps(songs: QuarantineSong[]): Record<StepKey, StepState> {
+  const result = {} as Record<StepKey, StepState>;
+  for (const step of STEP_KEYS) {
+    const states = songs.map((song) => song.steps[step]);
+    if (states.some((s) => s === 'pending')) result[step] = 'pending';
+    else if (states.some((s) => s === 'skipped')) result[step] = 'skipped';
+    else result[step] = 'done';
+  }
+  return result;
+}
 
 /**
  * Download inbox triage (issue #411): a "Needs review" section on the
@@ -73,6 +99,11 @@ export class ReviewInboxComponent implements OnDestroy {
 
   coverUrl(album: ReviewQueueAlbum): string {
     return `/api/cover/${album.albumId}?size=300&token=${this.auth.token()}`;
+  }
+
+  /** One aggregated `{bpm,key,energy,genre,mood}` state per album — see `aggregateAlbumSteps`. */
+  stepsFor(album: ReviewQueueAlbum): Record<StepKey, StepState> {
+    return aggregateAlbumSteps(album.songs);
   }
 
   async listen(album: ReviewQueueAlbum): Promise<void> {

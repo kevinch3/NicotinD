@@ -2,7 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { vi } from 'vitest';
 import { of } from 'rxjs';
-import { ReviewInboxComponent } from './review-inbox.component';
+import { ReviewInboxComponent, aggregateAlbumSteps } from './review-inbox.component';
+import type { QuarantineSong } from '../../services/api/api-types';
 import { DownloadReviewService } from '../../services/download-review.service';
 import { ReviewApiService } from '../../services/api/review-api.service';
 import { AuthService } from '../../services/auth.service';
@@ -188,5 +189,122 @@ describe('ReviewInboxComponent', () => {
     await component.listen(a);
     expect(libraryStub.getSong).toHaveBeenCalledWith('s1');
     expect(playerStub.playSingle).toHaveBeenCalled();
+  });
+
+  it('stepsFor() aggregates one badge set per album, not per song', () => {
+    const { component } = setup();
+    const a = album({
+      songs: [
+        song({
+          id: 's1',
+          steps: {
+            download: 'done',
+            bpm: 'done',
+            key: 'done',
+            energy: 'done',
+            genre: 'done',
+            mood: 'done',
+          },
+        }),
+        song({
+          id: 's2',
+          steps: {
+            download: 'done',
+            bpm: 'done',
+            key: 'done',
+            energy: 'done',
+            genre: 'done',
+            mood: 'done',
+          },
+        }),
+      ],
+    });
+    expect(Object.keys(component.stepsFor(a))).toEqual(['bpm', 'key', 'energy', 'genre', 'mood']);
+  });
+});
+
+function song(over: Partial<QuarantineSong> = {}): QuarantineSong {
+  return {
+    id: 's1',
+    title: 'Track',
+    track: 1,
+    steps: {
+      download: 'done',
+      bpm: 'done',
+      key: 'done',
+      energy: 'done',
+      genre: 'done',
+      mood: 'done',
+    },
+    ...over,
+  };
+}
+
+describe('aggregateAlbumSteps', () => {
+  it('reports the worst state per step across the album (pending beats skipped beats done)', () => {
+    const songs: QuarantineSong[] = [
+      song({
+        id: 's1',
+        steps: {
+          download: 'done',
+          bpm: 'done',
+          key: 'pending',
+          energy: 'skipped',
+          genre: 'done',
+          mood: 'done',
+        },
+      }),
+      song({
+        id: 's2',
+        steps: {
+          download: 'done',
+          bpm: 'skipped',
+          key: 'done',
+          energy: 'skipped',
+          genre: 'done',
+          mood: 'pending',
+        },
+      }),
+      song({
+        id: 's3',
+        steps: {
+          download: 'done',
+          bpm: 'done',
+          key: 'done',
+          energy: 'done',
+          genre: 'skipped',
+          mood: 'done',
+        },
+      }),
+    ];
+
+    expect(aggregateAlbumSteps(songs)).toEqual({
+      bpm: 'skipped', // done, skipped, done → skipped
+      key: 'pending', // pending, done, done → pending
+      energy: 'skipped', // skipped, skipped, done → skipped
+      genre: 'skipped', // done, done, skipped → skipped
+      mood: 'pending', // done, pending, done → pending
+    });
+  });
+
+  it('reports done when every song is done for that step', () => {
+    const songs: QuarantineSong[] = [song({ id: 's1' }), song({ id: 's2' })];
+    expect(aggregateAlbumSteps(songs)).toEqual({
+      bpm: 'done',
+      key: 'done',
+      energy: 'done',
+      genre: 'done',
+      mood: 'done',
+    });
+  });
+
+  it('returns done for every step on an empty song list (vacuous — no song contradicts done)', () => {
+    expect(aggregateAlbumSteps([])).toEqual({
+      bpm: 'done',
+      key: 'done',
+      energy: 'done',
+      genre: 'done',
+      mood: 'done',
+    });
   });
 });

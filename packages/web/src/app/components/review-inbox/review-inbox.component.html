@@ -30,18 +30,19 @@
             <p class="text-xs text-theme-muted">{{ 'review.tracks' | t: { count: album.songs.length } }}</p>
 
             <div class="mt-2 flex flex-wrap gap-1">
-              @for (song of album.songs; track song.id) {
-                @for (step of stepKeys; track step) {
-                  <span
-                    class="rounded-full px-1.5 py-0.5 text-[10px] leading-none"
-                    [class.bg-status-success]="song.steps[step] === 'done'"
-                    [class.text-white]="song.steps[step] === 'done'"
-                    [class.bg-theme-surface-2]="song.steps[step] !== 'done'"
-                    [class.text-theme-muted]="song.steps[step] !== 'done'"
-                  >
-                    {{ step }}
-                  </span>
-                }
+              @for (step of stepKeys; track step) {
+                <span
+                  class="rounded-full px-1.5 py-0.5 text-[10px] leading-none"
+                  [class.bg-status-success]="stepsFor(album)[step] === 'done'"
+                  [class.bg-theme-surface-2]="stepsFor(album)[step] === 'pending'"
+                  [class.bg-status-error]="stepsFor(album)[step] === 'skipped'"
+                  [class.text-white]="stepsFor(album)[step] !== 'pending'"
+                  [class.text-theme-muted]="stepsFor(album)[step] === 'pending'"
+                  [class.line-through]="stepsFor(album)[step] === 'skipped'"
+                  [class.opacity-80]="stepsFor(album)[step] === 'skipped'"
+                >
+                  {{ step }}
+                </span>
               }
             </div>
           </div>
