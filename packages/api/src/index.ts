@@ -20,6 +20,8 @@ import { searchRoutes } from './routes/search.js';
 import { downloadRoutes } from './routes/downloads.js';
 import { uploadRoutes } from './routes/uploads.js';
 import { libraryRoutes } from './routes/library.js';
+import { downloadReviewRoutes } from './routes/download-review.js';
+import { ShareRescanScheduler } from './services/share-rescan-scheduler.js';
 import { streamingRoutes } from './routes/streaming.js';
 import { healthRoutes } from './routes/health.js';
 import { recordBootVersion } from './services/update-check.js';
@@ -532,6 +534,7 @@ export function createApp({
   app.use('/api/downloads/*', auth);
   app.use('/api/uploads/*', auth);
   app.use('/api/library/*', auth);
+  app.use('/api/review/*', auth);
   app.use('/api/stream/*', auth);
   app.use('/api/cover/*', auth);
   app.use('/api/system/*', auth);
@@ -612,6 +615,21 @@ export function createApp({
       // on-demand fill isn't a Lidarr-only shortcut (issue #250).
       lookupArtistImageSpotify: (name) =>
         spotifyArtistImageRef.lookup?.(name) ?? Promise.resolve(null),
+    }),
+  );
+  // Download inbox triage (issue #411): the quarantine-hold review queue.
+  // Own ShareRescanScheduler instance, mirroring libraryRoutes' — a deleted
+  // file's slskd share entry needs the same debounced rescan on discard.
+  const reviewShareRescan = new ShareRescanScheduler(async () => {
+    const slskd = slskdRef.current;
+    if (slskd) await slskd.shares.rescan();
+  });
+  app.route(
+    '/api/review',
+    downloadReviewRoutes({
+      musicDir: config.musicDir,
+      shareRescan: reviewShareRescan,
+      kickEager: () => processingRef.current?.kickEager() ?? Promise.resolve(),
     }),
   );
   app.route(
