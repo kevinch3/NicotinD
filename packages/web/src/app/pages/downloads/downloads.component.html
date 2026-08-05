@@ -21,6 +21,18 @@
 
       <app-review-inbox (fixRequested)="onFixRequested($event)" />
 
+      @if (fixAlbum(); as fa) {
+        <app-metadata-fix-modal
+          [albumId]="fa.albumId"
+          [currentArtist]="fa.albumArtist"
+          [currentAlbum]="fa.albumTitle"
+          [reviewTracks]="fa.songs"
+          (tracksSaved)="onTracksSaved()"
+          (applied)="onFixApplied($event)"
+          (cancel)="fixAlbum.set(null)"
+        />
+      }
+
       <!-- Active Downloads — unified feed (slskd + URL acquisitions) -->
       @if (downloadFeed().length > 0) {
         <section class="mb-8" data-testid="downloads-active">

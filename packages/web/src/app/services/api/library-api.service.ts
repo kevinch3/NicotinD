@@ -82,6 +82,11 @@ export class LibraryApiService {
       album: { id: string; name: string; artist: string };
       query: string;
       candidates: MetadataCandidate[];
+      /** Per-source status (issue #411's multi-source gatherer) — a source
+       *  reporting `ok: false` is unconfigured/down, not "no matches". */
+      sources: Array<{ id: string; ok: boolean }>;
+      /** Whether an enabled+configured fingerprint (`identify`) plugin exists. */
+      identifyAvailable: boolean;
     }>(`/api/library/albums/${id}/metadata-candidates${qs}`);
   }
   /** Apply a user-confirmed metadata correction (candidate or free-text; admin). */

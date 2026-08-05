@@ -127,6 +127,13 @@
               <p class="text-theme-muted text-xs truncate">
                 {{ c.artist }}@if (c.year) { · {{ c.year }} }@if (c.releaseType) { · {{ c.releaseType }} }
               </p>
+              @if (c.source) {
+                <span
+                  data-testid="candidate-source"
+                  class="inline-block mt-0.5 text-[10px] uppercase tracking-wide text-theme-muted"
+                  >{{ c.source }}</span
+                >
+              }
             </div>
             <span class="text-theme-muted text-xs tabular-nums" title="match confidence">{{ c.score }}%</span>
             <button
@@ -140,6 +147,84 @@
           </li>
         }
       </ul>
+    }
+
+    @if (sourcesDownList()) {
+      <p class="text-theme-muted text-xs mb-4" data-testid="metadata-sources-down">
+        {{ 'review.sourcesDown' | t: { list: sourcesDownList() } }}
+      </p>
+    }
+
+    <!-- Review mode: per-track grid (issue #411) -->
+    @if (isReviewMode()) {
+      <div class="mb-4 border-t border-theme pt-4" data-testid="review-tracks-section">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-theme-secondary text-sm font-medium">Tracks</p>
+          <button
+            type="button"
+            (click)="identifyAlbumFingerprint()"
+            [disabled]="identifyingAlbum()"
+            data-testid="review-identify-album"
+            class="px-3 py-1.5 rounded-lg text-xs bg-theme-surface text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+          >
+            {{ 'review.identifyAlbum' | t }}
+          </button>
+        </div>
+        <ul class="flex flex-col gap-2 mb-3">
+          @for (t of tracks(); track t.id) {
+            <li
+              data-testid="review-track-row"
+              class="flex items-center gap-2 p-2 rounded-lg bg-theme-surface-2 border border-theme"
+            >
+              <span class="text-theme-muted text-xs w-5 text-right tabular-nums">{{ t.track ?? '–' }}</span>
+              <input
+                type="text"
+                [ngModel]="t.title"
+                (ngModelChange)="onTrackTitleChange(t.id, $event)"
+                placeholder="Title"
+                data-testid="review-track-title"
+                class="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-theme-surface text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
+              />
+              <input
+                type="text"
+                [ngModel]="t.artist"
+                (ngModelChange)="onTrackArtistChange(t.id, $event)"
+                placeholder="Artist"
+                data-testid="review-track-artist"
+                class="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-theme-surface text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
+              />
+              @if (identifyAvailable()) {
+                <button
+                  type="button"
+                  (click)="identifyTrack(t)"
+                  [disabled]="isIdentifyingTrack(t.id)"
+                  data-testid="review-track-identify"
+                  class="px-2 py-1.5 rounded-lg text-xs bg-theme-surface text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50 flex-shrink-0"
+                >
+                  {{ 'review.identify' | t }}
+                </button>
+              }
+              <button
+                type="button"
+                (click)="removeTrack(t)"
+                data-testid="review-track-remove"
+                class="px-2 py-1.5 rounded-lg text-xs text-status-error hover:opacity-80 transition flex-shrink-0"
+              >
+                ✕
+              </button>
+            </li>
+          }
+        </ul>
+        <button
+          type="button"
+          (click)="saveTracks()"
+          [disabled]="!hasDirtyTracks() || savingTracks()"
+          data-testid="review-save-tracks"
+          class="px-4 py-2 rounded-lg text-sm bg-theme-accent text-theme-on-accent hover:opacity-90 transition disabled:opacity-50"
+        >
+          {{ 'review.saveTracks' | t }}
+        </button>
+      </div>
     }
 
     <!-- Manual free-text fallback -->
