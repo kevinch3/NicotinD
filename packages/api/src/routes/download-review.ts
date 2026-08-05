@@ -44,13 +44,13 @@ export function downloadReviewRoutes(deps: DownloadReviewDeps): Hono<AuthEnv> {
     return c.json({ pending: pendingReviewCount(getDatabase()) });
   });
 
-  app.post('/albums/:id/approve', async (c) => {
+  app.post('/albums/:id/approve', (c) => {
     const user = requireCurator(c);
     const db = getDatabase();
     const id = c.req.param('id');
     recordReviewDecision(db, id, 'approved', user.sub);
     recordAudit(db, user, 'download_review.approve', { targetKind: 'album', targetId: id });
-    await deps.kickEager?.();
+    void deps.kickEager?.();
     return c.json({ ok: true });
   });
 
