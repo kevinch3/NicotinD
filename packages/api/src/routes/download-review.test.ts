@@ -381,6 +381,43 @@ describe('download-review identify + retag routes', () => {
     expect(writeTags).toHaveBeenCalledTimes(1);
   });
 
+  it('retag: a track with no title/artist fields fails without a silent no-op success', async () => {
+    ensureAlbum('al1');
+    const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-review-'));
+    seedSongWithFile(musicDir, 'al1', 's1', 's1.mp3');
+    const writeTags = mock(async () => true);
+    const scanIncremental = mock(async () => {});
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        downloadReviewRoutes({
+          musicDir,
+          shareRescan: noopScheduler(),
+          writeTags,
+          scanIncremental,
+        }),
+      ),
+    );
+
+    const res = await app.request('/albums/al1/tracks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tracks: [{ id: 's1' }] }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      updated: number;
+      failed: Array<{ id: string; error: string }>;
+      rescanned: boolean;
+    };
+    expect(body.updated).toBe(0);
+    expect(body.failed).toEqual([{ id: 's1', error: 'No fields to update' }]);
+    expect(body.rescanned).toBe(false);
+    expect(writeTags).not.toHaveBeenCalled();
+    expect(scanIncremental).not.toHaveBeenCalled();
+  });
+
   it('retag: a path escaping the music dir fails without calling writeTags', async () => {
     ensureAlbum('al1');
     const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-review-'));
