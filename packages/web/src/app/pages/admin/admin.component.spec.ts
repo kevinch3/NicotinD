@@ -1139,3 +1139,188 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
     fixture.destroy();
   });
 });
+
+/** Issue #314: the fragmentation report is actionable — every defect class
+ *  carries its remediation instead of a read-only listing. */
+describe('AdminComponent (actionable fragments, #314)', () => {
+  const report: LibraryFragmentReport = {
+    duplicateAlbums: [
+      {
+        normalizedTitle: 'el mismo aire',
+        displayTitle: 'El mismo aire',
+        memberIds: ['a', 'b'],
+        artistSpellings: [
+          { name: 'La Konga', occurrences: 1 },
+          { name: "La K'onga", occurrences: 4 },
+        ],
+        totalSongs: 17,
+      },
+    ],
+    hiddenByClassification: [
+      {
+        albumId: 'hid1',
+        name: 'Coolio.com',
+        artist: 'Coolio',
+        classification: 'unknown',
+        hidden: false,
+        songCount: 14,
+        reason: 'unknown',
+      },
+    ],
+    misSplitAlbums: [
+      {
+        rule: 'missplit_album',
+        severity: 'high',
+        subject: 'latin only',
+        message: '"Latin Only" is split into 3 one-track singles (mis-tagged album)',
+      },
+    ],
+    totals: { duplicateAlbums: 1, hiddenByClassification: 1, misSplitAlbums: 1 },
+    ok: false,
+  };
+
+  function makeLibraryApi() {
+    return {
+      resyncLibrary: vi.fn(() => of({ ok: true })),
+      getFragments: vi.fn(() => of(report)),
+      fixArtistIdentity: vi.fn(() => of({ ok: true })),
+      reclassifyAlbum: vi.fn(() => of({ ok: true })),
+      unhideAlbum: vi.fn(() => of({ ok: true })),
+      deleteAlbum: vi.fn(() => of({ ok: true })),
+      missplitPreview: vi.fn(() =>
+        of({
+          members: [
+            {
+              albumId: 'g1',
+              name: 'Latin Only',
+              artist: 'Gilda',
+              classification: 'single',
+              songCount: 1,
+              flagged: true,
+              paths: ['Gilda/Latin Only/99.mp3'],
+            },
+            {
+              albumId: 'g2',
+              name: 'Latin Only',
+              artist: 'Onda Sabanera',
+              classification: 'single',
+              songCount: 1,
+              flagged: true,
+              paths: ['Onda/Latin Only/97.mp3'],
+            },
+          ],
+          suggestedAlbumArtist: 'Various Artists',
+        }),
+      ),
+      missplitMerge: vi.fn(() => of({ tagged: 2, failed: 0, resynced: true })),
+    };
+  }
+
+  async function mount(libraryApi: ReturnType<typeof makeLibraryApi>) {
+    const mocks = makeAdminMocks();
+    await TestBed.configureTestingModule({
+      imports: [AdminComponent],
+      providers: [
+        {
+          provide: DownloadsApiService,
+          useValue: {
+            listAlbumJobs: vi.fn(() => of({ jobs: [] })),
+            getUntrackedDownloads: vi.fn(() => of({ total: 0, rows: [] })),
+          },
+        },
+        {
+          provide: SystemApiService,
+          useValue: {
+            getUsers: mocks.getUsers,
+            getStreamingSettings: mocks.getStreaming,
+            saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getProcessing: mocks.getProcessing,
+            getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
+            setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
+            saveProcessing: vi.fn((p: unknown) => of(p as object)),
+          },
+        },
+        { provide: LibraryApiService, useValue: libraryApi },
+        { provide: ServiceReviewService, useValue: mocks.reviewService },
+        { provide: AuthService, useValue: { token: () => null } },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(AdminComponent);
+    fixture.componentInstance.loading.set(false);
+    fixture.componentInstance.fragments.set(report);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    return fixture;
+  }
+
+  it('a duplicate cluster merges the other spellings into the clicked one', async () => {
+    const api = makeLibraryApi();
+    const fixture = await mount(api);
+    const btns = fixture.nativeElement.querySelectorAll('[data-testid="fragments-merge-spelling"]');
+    expect(btns.length).toBe(2); // one per spelling: "make this one canonical"
+    (btns[1] as HTMLButtonElement).click(); // canonical = La K'onga
+    await fixture.whenStable();
+    expect(api.fixArtistIdentity).toHaveBeenCalledTimes(1);
+    expect(api.fixArtistIdentity).toHaveBeenCalledWith({
+      rawName: 'La Konga',
+      mergeInto: "La K'onga",
+    });
+    expect(api.getFragments).toHaveBeenCalled(); // report refreshed
+    fixture.destroy();
+  });
+
+  it('a hidden row reclassifies as album in place', async () => {
+    const api = makeLibraryApi();
+    const fixture = await mount(api);
+    const btn = fixture.nativeElement.querySelector(
+      '[data-testid="fragments-reclassify"]',
+    ) as HTMLButtonElement;
+    btn.click();
+    await fixture.whenStable();
+    expect(api.reclassifyAlbum).toHaveBeenCalledWith('hid1', 'album');
+    fixture.destroy();
+  });
+
+  it('a hidden row delete needs a second confirming click', async () => {
+    const api = makeLibraryApi();
+    const fixture = await mount(api);
+    const btn = fixture.nativeElement.querySelector(
+      '[data-testid="fragments-delete"]',
+    ) as HTMLButtonElement;
+    btn.click();
+    await fixture.whenStable();
+    expect(api.deleteAlbum).not.toHaveBeenCalled(); // first click arms only
+    btn.click();
+    await fixture.whenStable();
+    expect(api.deleteAlbum).toHaveBeenCalledWith('hid1');
+    fixture.destroy();
+  });
+
+  it('a mis-split cluster previews members then merges the selected ones', async () => {
+    const api = makeLibraryApi();
+    const fixture = await mount(api);
+    (
+      fixture.nativeElement.querySelector(
+        '[data-testid="fragments-missplit-open"]',
+      ) as HTMLButtonElement
+    ).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(api.missplitPreview).toHaveBeenCalledWith('latin only');
+    // Both members render selected (their artist differs from the target).
+    const checks = fixture.nativeElement.querySelectorAll(
+      '[data-testid="fragments-missplit-member"]',
+    );
+    expect(checks.length).toBe(2);
+    (
+      fixture.nativeElement.querySelector(
+        '[data-testid="fragments-missplit-apply"]',
+      ) as HTMLButtonElement
+    ).click();
+    await fixture.whenStable();
+    expect(api.missplitMerge).toHaveBeenCalledWith(['g1', 'g2'], 'Various Artists');
+    fixture.destroy();
+  });
+});

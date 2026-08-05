@@ -74,6 +74,34 @@ The reporter now calls `contradictsTrackCount` instead of keeping a second opini
 
 Measured on prod: hidden-by-classification **19 → 10** once #315's guard had rescanned, then **10 → 7** with this change. The remaining 7 are all genuine — DJ-pool watermark pollution (`djdownloadme.com`, `LOSERPOWER.ORG`, `ElectronicFresh.com`) and unresolved `unknown` rows.
 
+### The report is actionable in-app (issue #314)
+
+An operator-facing report whose only remedy is SSH surgery is not a product feature — every
+self-hosted library accumulates the same defect classes, so the Admin fragments report now carries
+its remediation inline (all curator-gated, each action refreshing the report so the operator
+watches the list converge):
+
+- **Duplicate-albums cluster**: a per-spelling "Merge into" button — for each other spelling it
+  calls the existing `POST /api/library/artists/identity` merge (the human-gated
+  `library_artist_aliases` path; nothing new server-side), which rescans synchronously.
+- **Hidden row**: inline **Reclassify as album** / **Unhide** (the curator `manual_override`
+  writes) and a two-click-armed **Delete** for the watermark-junk class (the same
+  `DELETE /albums/:id` the album page uses — folder-first + share-rescan).
+- **Mis-split cluster** — the one class that had no fix pathway at all:
+  `services/fragment-remediation.ts` + two new curator routes. `POST
+  /fragments/missplit-preview` lists **every** album sharing the cluster's normalized title
+  (`missplitClusterMembers` — deliberately wider than the detector's singles-only clustering, so
+  2-3-track credit-variant fragments are mergeable too) with a suggested target
+  (`suggestAlbumArtist`: the dominant ≥3-track member's artist, else `Various Artists`); the
+  curator **deselects false positives** before anything is written — a title-only cluster can sweep
+  in different artists' albums that merely share a generic name (prod's "20 Grandes Exitos" is four
+  artists' own best-ofs; the preview-then-select shape is the config-import dry-run discipline
+  applied to tags). `POST /fragments/missplit-merge` then writes the unified `ALBUMARTIST` into the
+  selected albums' **file tags** via `writeAudioTags` (VA merges also set the `COMPILATION` flag so
+  `classifyFolder` recognizes the merged row; per-track artist credits are untouched — the
+  scanner's albumArtist-groups/trackArtist-performs split is exactly why this works), audits, and
+  rescans synchronously. A failed tag write is counted, never aborts the batch.
+
 ## Multi-genre support
 
 **One song, many genres.** File tags are multi-valued in practice — multiple ID3 genre frames and `;`/`,`/`|`-joined strings ("Alternative Country;Alternative Pop;…"; a prod dry-run found 1,355/9,791 tagged songs with semicolon lists). The scanner keeps the FULL set: `ScannedTrack.genre` holds every frame (old single-string scan-cache rows remain valid input), `buildLibrary` runs each value through the pure `splitGenres` (`genre-split.ts`), writes the ordered set to **`library_song_genres`** (`song_id, genre, position`; position 0 = primary) and mirrors the primary into `library_songs.genre` for zero-breakage single-value reads. `library_genres` counts a song under **every** genre it has.

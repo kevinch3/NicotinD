@@ -513,6 +513,22 @@ export interface LibraryFragmentFinding {
   message: string;
 }
 
+/** One album in a mis-split cluster preview (issue #314 remediation). */
+export interface MissplitMember {
+  albumId: string;
+  name: string;
+  artist: string;
+  classification: string;
+  songCount: number;
+  flagged: boolean;
+  paths: string[];
+}
+
+export interface MissplitPreview {
+  members: MissplitMember[];
+  suggestedAlbumArtist: string;
+}
+
 /** One admin audit-log entry (destructive/curation action record). */
 export interface AuditEntry {
   id: number;

@@ -618,6 +618,20 @@
                           <span class="text-theme-muted">{{ s.name }} ({{ s.occurrences }})</span
                           >{{ last ? '' : ', ' }}
                         }
+                        <span class="inline-flex gap-1 ml-2">
+                          @for (s of c.artistSpellings; track s.name) {
+                            <button
+                              type="button"
+                              data-testid="fragments-merge-spelling"
+                              [disabled]="fragmentsBusy()"
+                              (click)="mergeDuplicateCluster(c, s.name)"
+                              class="px-1.5 py-0.5 rounded bg-theme-surface border border-theme text-[11px] text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
+                              [title]="'admin.fragmentsMergeIntoTooltip' | t: { name: s.name }"
+                            >
+                              {{ 'admin.fragmentsMergeInto' | t: { name: s.name } }}
+                            </button>
+                          }
+                        </span>
                       </li>
                     }
                   </ul>
@@ -651,9 +665,127 @@
                             }
                           }
                         </span>
+                        <span class="inline-flex gap-1 ml-2">
+                          <button
+                            type="button"
+                            data-testid="fragments-reclassify"
+                            [disabled]="fragmentsBusy()"
+                            (click)="reclassifyFragmentRow(h)"
+                            class="px-1.5 py-0.5 rounded bg-theme-surface border border-theme text-[11px] text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
+                          >
+                            {{ 'admin.fragmentsReclassify' | t }}
+                          </button>
+                          @if (h.hidden) {
+                            <button
+                              type="button"
+                              data-testid="fragments-unhide"
+                              [disabled]="fragmentsBusy()"
+                              (click)="unhideFragmentRow(h)"
+                              class="px-1.5 py-0.5 rounded bg-theme-surface border border-theme text-[11px] text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
+                            >
+                              {{ 'admin.fragmentsUnhide' | t }}
+                            </button>
+                          }
+                          <button
+                            type="button"
+                            data-testid="fragments-delete"
+                            [disabled]="fragmentsBusy()"
+                            (click)="deleteFragmentRow(h)"
+                            class="px-1.5 py-0.5 rounded border border-theme text-[11px] transition disabled:opacity-40"
+                            [class]="
+                              fragmentsDeleteArmed() === h.albumId
+                                ? 'status-error'
+                                : 'bg-theme-surface text-theme-secondary hover:text-theme-primary'
+                            "
+                          >
+                            {{
+                              (fragmentsDeleteArmed() === h.albumId
+                                ? 'admin.fragmentsDeleteConfirm'
+                                : 'admin.fragmentsDelete'
+                              ) | t
+                            }}
+                          </button>
+                        </span>
                       </li>
                     }
                   </ul>
+                </div>
+              }
+              @if (r.misSplitAlbums.length > 0) {
+                <div>
+                  <p class="text-xs font-semibold text-theme-primary">
+                    {{ 'admin.missplitHeading' | t: { count: r.misSplitAlbums.length } }}
+                  </p>
+                  <ul class="mt-1 ml-4 list-disc text-xs text-theme-secondary space-y-0.5">
+                    @for (f of r.misSplitAlbums; track f.subject) {
+                      <li>
+                        {{ f.message }}
+                        <button
+                          type="button"
+                          data-testid="fragments-missplit-open"
+                          [disabled]="fragmentsBusy()"
+                          (click)="openMissplit(f)"
+                          class="ml-2 px-1.5 py-0.5 rounded bg-theme-surface border border-theme text-[11px] text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
+                        >
+                          {{ 'admin.missplitOpen' | t }}
+                        </button>
+                      </li>
+                    }
+                  </ul>
+                </div>
+              }
+              @if (missplitState(); as ms) {
+                <div
+                  class="rounded-lg border border-theme bg-theme-surface p-3 space-y-2"
+                  data-testid="fragments-missplit-panel"
+                >
+                  <p class="text-xs text-theme-secondary">{{ 'admin.missplitHint' | t }}</p>
+                  <ul class="space-y-1">
+                    @for (m of ms.members; track m.albumId) {
+                      <li class="flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          data-testid="fragments-missplit-member"
+                          [checked]="m.selected"
+                          (change)="toggleMissplitMember(m.albumId)"
+                          class="w-3.5 h-3.5 rounded accent-emerald-500"
+                        />
+                        <span class="text-theme-primary">{{ m.artist }}</span>
+                        <span class="text-theme-muted"
+                          >— {{ m.name }} ({{ m.songCount }} · {{ m.classification }})</span
+                        >
+                      </li>
+                    }
+                  </ul>
+                  <div class="flex items-center gap-2">
+                    <label class="text-xs text-theme-secondary" for="missplit-album-artist">{{
+                      'admin.missplitAlbumArtist' | t
+                    }}</label>
+                    <input
+                      id="missplit-album-artist"
+                      type="text"
+                      data-testid="fragments-missplit-artist"
+                      [value]="ms.albumArtist"
+                      (input)="setMissplitAlbumArtist($any($event.target).value)"
+                      class="text-xs rounded-lg bg-theme-surface-2 border border-theme px-2 py-1 text-theme-primary"
+                    />
+                    <button
+                      type="button"
+                      data-testid="fragments-missplit-apply"
+                      [disabled]="fragmentsBusy()"
+                      (click)="applyMissplit()"
+                      class="px-2 py-1 rounded-lg bg-theme-surface-2 border border-theme text-xs text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
+                    >
+                      {{ 'admin.missplitApply' | t }}
+                    </button>
+                    <button
+                      type="button"
+                      (click)="missplitState.set(null)"
+                      class="px-2 py-1 rounded-lg text-xs text-theme-muted hover:text-theme-secondary transition"
+                    >
+                      {{ 'admin.missplitCancel' | t }}
+                    </button>
+                  </div>
                 </div>
               }
             </div>

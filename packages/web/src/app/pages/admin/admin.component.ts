@@ -15,6 +15,10 @@ import type {
   QuarantineAlbum,
   SongSteps,
   LibraryFragmentReport,
+  LibraryDuplicateAlbumCluster,
+  LibraryHiddenByClassification,
+  LibraryFragmentFinding,
+  MissplitMember,
   StreamingSettings,
   UntrackedDownload,
   AutoPlaylistStatus,
@@ -745,6 +749,126 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   formatBackupDate(ms: number): string {
     return new Date(ms).toLocaleString();
+  }
+
+  /** Issue #314 — in-app remediation for the fragments report. One busy flag
+   *  serializes the actions; every action refreshes the report afterwards so
+   *  the operator watches the defect list converge. */
+  readonly fragmentsBusy = signal(false);
+  /** Two-click delete arm state (albumId), the marked-duplicates discipline. */
+  readonly fragmentsDeleteArmed = signal<string | null>(null);
+  readonly missplitState = signal<{
+    key: string;
+    albumArtist: string;
+    members: Array<MissplitMember & { selected: boolean }>;
+  } | null>(null);
+
+  private async runFragmentsAction(action: () => Promise<void>): Promise<void> {
+    if (this.fragmentsBusy()) return;
+    this.fragmentsBusy.set(true);
+    this.fragmentsError.set(null);
+    try {
+      await action();
+      this.fragments.set(await firstValueFrom(this.libraryApi.getFragments()));
+    } catch (err) {
+      this.fragmentsError.set(
+        err instanceof Error ? err.message : this.i18n.t('admin.fragmentsLoadFailed'),
+      );
+    } finally {
+      this.fragmentsBusy.set(false);
+    }
+  }
+
+  /** Merge every other spelling of the cluster into `canonical` (the
+   *  human-gated alias path the server's identity fix owns). */
+  async mergeDuplicateCluster(
+    cluster: LibraryDuplicateAlbumCluster,
+    canonical: string,
+  ): Promise<void> {
+    await this.runFragmentsAction(async () => {
+      for (const spelling of cluster.artistSpellings) {
+        if (spelling.name === canonical) continue;
+        await firstValueFrom(
+          this.libraryApi.fixArtistIdentity({ rawName: spelling.name, mergeInto: canonical }),
+        );
+      }
+    });
+  }
+
+  async reclassifyFragmentRow(row: LibraryHiddenByClassification): Promise<void> {
+    await this.runFragmentsAction(async () => {
+      await firstValueFrom(this.libraryApi.reclassifyAlbum(row.albumId, 'album'));
+    });
+  }
+
+  async unhideFragmentRow(row: LibraryHiddenByClassification): Promise<void> {
+    await this.runFragmentsAction(async () => {
+      await firstValueFrom(this.libraryApi.unhideAlbum(row.albumId));
+    });
+  }
+
+  async deleteFragmentRow(row: LibraryHiddenByClassification): Promise<void> {
+    if (this.fragmentsDeleteArmed() !== row.albumId) {
+      this.fragmentsDeleteArmed.set(row.albumId);
+      return;
+    }
+    this.fragmentsDeleteArmed.set(null);
+    await this.runFragmentsAction(async () => {
+      await firstValueFrom(this.libraryApi.deleteAlbum(row.albumId));
+    });
+  }
+
+  /** Open the mis-split preview: the curator sees every same-title album and
+   *  deselects generic-title false positives before anything is written. */
+  async openMissplit(finding: LibraryFragmentFinding): Promise<void> {
+    if (this.fragmentsBusy()) return;
+    this.fragmentsBusy.set(true);
+    try {
+      const preview = await firstValueFrom(this.libraryApi.missplitPreview(finding.subject));
+      this.missplitState.set({
+        key: finding.subject,
+        albumArtist: preview.suggestedAlbumArtist,
+        members: preview.members.map((m) => ({
+          ...m,
+          // Members already carrying the target albumArtist need no retag.
+          selected: m.artist !== preview.suggestedAlbumArtist,
+        })),
+      });
+    } catch (err) {
+      this.fragmentsError.set(
+        err instanceof Error ? err.message : this.i18n.t('admin.fragmentsLoadFailed'),
+      );
+    } finally {
+      this.fragmentsBusy.set(false);
+    }
+  }
+
+  toggleMissplitMember(albumId: string): void {
+    const state = this.missplitState();
+    if (!state) return;
+    this.missplitState.set({
+      ...state,
+      members: state.members.map((m) =>
+        m.albumId === albumId ? { ...m, selected: !m.selected } : m,
+      ),
+    });
+  }
+
+  setMissplitAlbumArtist(value: string): void {
+    const state = this.missplitState();
+    if (state) this.missplitState.set({ ...state, albumArtist: value });
+  }
+
+  async applyMissplit(): Promise<void> {
+    const state = this.missplitState();
+    if (!state) return;
+    const ids = state.members.filter((m) => m.selected).map((m) => m.albumId);
+    const albumArtist = state.albumArtist.trim();
+    if (ids.length === 0 || !albumArtist) return;
+    await this.runFragmentsAction(async () => {
+      await firstValueFrom(this.libraryApi.missplitMerge(ids, albumArtist));
+      this.missplitState.set(null);
+    });
   }
 
   async loadFragments(): Promise<void> {
