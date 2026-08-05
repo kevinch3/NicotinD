@@ -40,7 +40,7 @@ describe('DiscogsPlugin manifest', () => {
     const plugin = makePlugin();
     expect(validatePluginManifest(plugin.manifest)).toEqual([]);
     expect(plugin.manifest.kind).toBe('metadata');
-    expect(plugin.manifest.capabilities).toEqual(['genre', 'artist-info']);
+    expect(plugin.manifest.capabilities).toEqual(['genre', 'artist-info', 'release-candidates']);
     expect(plugin.manifest.defaultEnabled).toBe(false);
     expect(plugin.manifest.compliance?.requiresConsent).toBe(true);
   });
@@ -241,5 +241,94 @@ describe('DiscogsPlugin.artistInfo', () => {
       { resolveDiscogsArtistRef: async () => ({ kind: 'artist', id: 1 }) },
     );
     expect(await plugin.artistInfo.fetchArtistInfo({ mbid: 'mbid-4' })).toBeNull();
+  });
+});
+
+describe('DiscogsPlugin.releaseCandidates', () => {
+  const query = { artist: 'La Portuaria', album: 'Selva' };
+
+  it('maps corroborated release/master hits to ranked ReleaseCandidateHit, sorted by confidence', async () => {
+    const { fetchFn, calls } = routeFetch([
+      {
+        match: '/database/search',
+        body: {
+          results: [
+            {
+              id: 1,
+              type: 'release',
+              title: 'La Portuaria - Selva',
+              year: '1996',
+              cover_image: 'https://img.example/selva.jpg',
+            },
+            {
+              id: 2,
+              type: 'master',
+              title: 'La Portuaria - Selva (Remastered)',
+              year: '2005',
+              thumb: 'https://img.example/selva-thumb.jpg',
+            },
+            // Not release/master — must be filtered out even though it'd score.
+            { id: 3, type: 'artist', title: 'La Portuaria' },
+          ],
+        },
+      },
+    ]);
+    const plugin = makePlugin({}, { fetchFn });
+    const hits = await plugin.releaseCandidates!.searchReleases(query);
+
+    expect(hits).toEqual([
+      {
+        artist: 'La Portuaria',
+        title: 'Selva',
+        year: 1996,
+        coverUrl: 'https://img.example/selva.jpg',
+        confidence: 1,
+      },
+      {
+        artist: 'La Portuaria',
+        title: 'Selva (Remastered)',
+        year: 2005,
+        coverUrl: 'https://img.example/selva-thumb.jpg',
+        confidence: 0.8,
+      },
+    ]);
+    // Uses the /database/search endpoint, same as the genre name-search path.
+    expect(calls.some((u) => u.includes('/database/search'))).toBe(true);
+  });
+
+  it('falls back to the query artist and null year/cover when a hit lacks them', async () => {
+    const { fetchFn } = routeFetch([
+      {
+        match: '/database/search',
+        body: { results: [{ id: 5, type: 'release', title: 'Selva' }] },
+      },
+    ]);
+    const plugin = makePlugin({}, { fetchFn });
+    const hits = await plugin.releaseCandidates!.searchReleases(query);
+    // No " - " in the hit title → splitDiscogsTitle has no artist half, so the
+    // query's own artist is used as the fallback; scoreSearchHit's own artist
+    // corroboration then scores 0 for this hit (no separate confidence floor
+    // is applied here — the caller/consumer decides what to do with a low
+    // score, this capability only maps + ranks).
+    expect(hits).toEqual([
+      { artist: 'La Portuaria', title: 'Selva', year: null, coverUrl: null, confidence: 0 },
+    ]);
+  });
+
+  it('caps results at 8', async () => {
+    const results = Array.from({ length: 12 }, (_, i) => ({
+      id: i,
+      type: 'release',
+      title: `La Portuaria - Selva ${i}`,
+    }));
+    const { fetchFn } = routeFetch([{ match: '/database/search', body: { results } }]);
+    const plugin = makePlugin({}, { fetchFn });
+    const hits = await plugin.releaseCandidates!.searchReleases(query);
+    expect(hits.length).toBe(8);
+  });
+
+  it('returns an empty array when the client is unconfigured', async () => {
+    const plugin = new DiscogsPlugin({ consumerKey: '', consumerSecret: '' });
+    expect(await plugin.releaseCandidates!.searchReleases(query)).toEqual([]);
   });
 });

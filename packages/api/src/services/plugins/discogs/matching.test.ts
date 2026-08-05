@@ -8,6 +8,7 @@ import {
   mapArtistInfo,
   foldArtist,
   foldTitle,
+  splitDiscogsTitle,
   type DiscogsSearchHit,
 } from './matching.js';
 
@@ -147,6 +148,26 @@ describe('mapReleaseGenres', () => {
 
   it('tolerates missing arrays', () => {
     expect(mapReleaseGenres({})).toEqual({ genres: [], styles: [] });
+  });
+});
+
+describe('splitDiscogsTitle', () => {
+  it('splits on the first " - " keeping raw casing/punctuation', () => {
+    expect(splitDiscogsTitle('José Larralde - Herencia Pa un Hijo Gaucho')).toEqual({
+      artist: 'José Larralde',
+      album: 'Herencia Pa un Hijo Gaucho',
+    });
+  });
+
+  it('splits on the first separator only, when the title has more than one', () => {
+    expect(splitDiscogsTitle('A - B - C')).toEqual({ artist: 'A', album: 'B - C' });
+  });
+
+  it('treats a title with no separator as the whole string being the album', () => {
+    expect(splitDiscogsTitle('No Separator Here')).toEqual({
+      artist: '',
+      album: 'No Separator Here',
+    });
   });
 });
 

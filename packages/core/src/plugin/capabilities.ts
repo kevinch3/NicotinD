@@ -168,6 +168,36 @@ export interface ArtistInfoCapability {
   fetchArtistInfo(query: ArtistInfoQuery): Promise<ArtistInfoResult | null>;
 }
 
+/**
+ * What the host knows when asking a source for candidate releases matching an
+ * artist + album name — the "which release is this?" lookup that backs the
+ * download-inbox triage UI (issue #411), distinct from {@link GenreQuery}'s
+ * MBID-aware genre lookup: this one is name-search-only, since triage runs
+ * *before* a track has any MBID to key off of.
+ */
+export interface ReleaseCandidateQuery {
+  artist: string;
+  album: string;
+}
+
+/** One candidate release a source matched for a {@link ReleaseCandidateQuery}. */
+export interface ReleaseCandidateHit {
+  artist: string;
+  title: string;
+  year: number | null;
+  coverUrl: string | null;
+  /** Match confidence in [0, 1] — always a real, computed number. */
+  confidence: number;
+}
+
+/**
+ * Metadata source that searches for candidate releases by artist + album name
+ * (Discogs, …), ranked by match confidence, for a human to pick from.
+ */
+export interface ReleaseCandidatesCapability {
+  searchReleases(query: ReleaseCandidateQuery): Promise<ReleaseCandidateHit[]>;
+}
+
 /** Connectivity plugins (tailscale/wireguard) — scaffold; none shipped yet. */
 export interface ConnectivityCapability {
   up(): Promise<void>;

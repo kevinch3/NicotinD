@@ -34,6 +34,10 @@ export interface DiscogsSearchHit {
   year?: string;
   genre?: string[];
   style?: string[];
+  /** Full-size cover, when Discogs has one. */
+  cover_image?: string;
+  /** Smaller fallback image — present even when `cover_image` is a placeholder. */
+  thumb?: string;
 }
 
 /** A fetched Discogs release/master (only the genre-bearing fields). */
@@ -98,6 +102,19 @@ export function buildSearchParams(query: {
     type: 'release',
     per_page: '10',
   };
+}
+
+/**
+ * Split a raw Discogs "Artist - Title" hit title into its two unfolded halves,
+ * for callers (release-candidates) that want the original casing/punctuation
+ * rather than {@link splitHitTitle}'s folded-for-comparison output. Splits on
+ * the first ` - `; a title with no separator is treated as the whole string
+ * being the album, with no artist half.
+ */
+export function splitDiscogsTitle(title: string): { artist: string; album: string } {
+  const idx = title.indexOf(' - ');
+  if (idx === -1) return { artist: '', album: title };
+  return { artist: title.slice(0, idx), album: title.slice(idx + 3) };
 }
 
 /** Split a Discogs "Artist - Title" hit title into its two folded halves. */

@@ -9,12 +9,17 @@ import type {
   ArtistInfoCapability,
   ArtistInfoQuery,
   ArtistInfoResult,
+  ReleaseCandidatesCapability,
+  ReleaseCandidateQuery,
+  ReleaseCandidateHit,
 } from '@nicotind/core';
 import { DiscogsClient, type DiscogsClientDeps } from './client.js';
 import { mapDiscogsGenres } from '../../discogs-genre-vocab.js';
 import {
   buildSearchParams,
   selectBestRelease,
+  scoreSearchHit,
+  splitDiscogsTitle,
   mapReleaseGenres,
   mapArtistInfo,
   type DiscogsRef,
@@ -81,7 +86,7 @@ export class DiscogsPlugin implements Plugin {
       'Enrich release genres/styles from the Discogs database — strong on Latin, ' +
       'regional, pre-2000 and DJ-pool repertoire. Needs a free Consumer Key + Secret.',
     kind: 'metadata',
-    capabilities: ['genre', 'artist-info'],
+    capabilities: ['genre', 'artist-info', 'release-candidates'],
     requirements: { binaries: [] },
     configSchema: z
       .object({
@@ -151,6 +156,10 @@ export class DiscogsPlugin implements Plugin {
 
   readonly artistInfo: ArtistInfoCapability = {
     fetchArtistInfo: (query) => this.fetchArtistInfo(query),
+  };
+
+  readonly releaseCandidates: ReleaseCandidatesCapability = {
+    searchReleases: (q) => this.searchReleases(q),
   };
 
   async init(ctx: PluginHostContext): Promise<void> {
@@ -226,6 +235,36 @@ export class DiscogsPlugin implements Plugin {
     const { bio, urls } = mapArtistInfo(raw as DiscogsArtistEntity);
     if (!bio && urls.length === 0) return null;
     return { bio, urls, source: 'discogs', confidence: MBID_MATCH_CONFIDENCE };
+  }
+
+  /**
+   * Search for candidate releases by artist + album name — the download-inbox
+   * triage lookup (issue #411). Unlike {@link fetchGenres} this has no MBID-first
+   * path (triage runs before a track has one) and no confidence floor (the
+   * human picking from the list is the corroboration step, not the matcher);
+   * it's just "rank what Discogs found, release/master only".
+   */
+  private async searchReleases(q: ReleaseCandidateQuery): Promise<ReleaseCandidateHit[]> {
+    const client = this.client;
+    if (!client) return [];
+    const hits = await client.search(
+      buildSearchParams({ artist: q.artist, album: q.album }),
+      'interactive',
+    );
+    return hits
+      .filter((h) => h.type === 'release' || h.type === 'master')
+      .map((h) => {
+        const split = splitDiscogsTitle(h.title);
+        return {
+          artist: split.artist || q.artist,
+          title: split.album,
+          year: h.year ? Number(h.year) || null : null,
+          coverUrl: h.cover_image ?? h.thumb ?? null,
+          confidence: scoreSearchHit(q, h),
+        };
+      })
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, 8);
   }
 
   /** Fetch a ref's release/master and flatten genres + styles (general first). */
