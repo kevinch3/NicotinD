@@ -642,6 +642,8 @@ export function createApp({
       musicDir: config.musicDir,
       shareRescan: reviewShareRescan,
       kickEager: () => processingRef.current?.kickEager() ?? Promise.resolve(),
+      plugins,
+      scanIncremental,
     }),
   );
   app.route(
