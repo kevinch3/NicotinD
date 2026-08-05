@@ -41,6 +41,7 @@ import { RemoteAccess } from './services/tailscale.js';
 import { shareMetaHandler } from './routes/share-meta.js';
 import { discographyRoutes } from './routes/discography.js';
 import { catalogRoutes } from './routes/catalog.js';
+import { MusicBrainzClient, MB_USER_AGENT } from './services/musicbrainz-client.js';
 import { archiveRoutes } from './routes/archive.js';
 import { ArchiveSearchService } from './services/archive-search.service.js';
 import { spotifyRoutes } from './routes/spotify.js';
@@ -471,6 +472,15 @@ export function createApp({
     providerRegistry: registry,
     acoustidApiKey,
   });
+  // why: registerBuiltinPlugins already builds a MusicBrainzClient for Discogs
+  // artist-info resolution, but keeps it private to that function — a second
+  // instance here (sharing the same on-disk cache file) is cheaper than
+  // exporting/threading the first one through, and the two never race since
+  // the cache is read-through JSON keyed by query, not an exclusive lock.
+  const mbClient = new MusicBrainzClient(
+    join(expandedDataDir, 'musicbrainz-cache.json'),
+    MB_USER_AGENT,
+  );
   // Populate the artist-info ref now that the plugin registry (and Discogs) exist.
   artistInfoRef.lookup = (mbid) => {
     const [provider] = plugins.getEnabledWithCapability('artist-info');
@@ -612,6 +622,7 @@ export function createApp({
       pluginRegistry: plugins,
       slskdRef,
       audioFeaturesClient,
+      mbClient,
       // Same provider chain the windowed artist-image task uses, so the
       // on-demand fill isn't a Lidarr-only shortcut (issue #250).
       lookupArtistImageSpotify: (name) =>

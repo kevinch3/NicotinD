@@ -17,6 +17,12 @@ export interface MetadataCandidate {
   coverUrl: string | null;
   /** 0–100 match confidence against the search query (diacritic-insensitive). */
   score: number;
+  /**
+   * Which source produced this candidate (issue #411's multi-source gatherer).
+   * Optional so the pre-existing single-source Lidarr search
+   * (`searchCandidates`/`rankCandidates`) keeps working unannotated.
+   */
+  source?: 'lidarr' | 'musicbrainz' | 'discogs' | 'tags' | 'acoustid' | 'manual';
 }
 
 /** Body for `POST /api/library/albums/:id/metadata` — apply a confirmed fix. */
