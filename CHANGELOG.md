@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.315](https://github.com/kevinch3/NicotinD/compare/v0.1.314...v0.1.315) (2026-08-05)
+
+### Features
+
+* **library:** actionable fragmentation report (refs [#314](https://github.com/kevinch3/NicotinD/issues/314)) ([#410](https://github.com/kevinch3/NicotinD/issues/410)) ([6ffaf9b](https://github.com/kevinch3/NicotinD/commit/6ffaf9b68c40153179beaceccadfe0a87546c51b))
 ## [0.1.314](https://github.com/kevinch3/NicotinD/compare/v0.1.313...v0.1.314) (2026-08-04)
 ## [0.1.313](https://github.com/kevinch3/NicotinD/compare/v0.1.312...v0.1.313) (2026-08-04)
 ## [0.1.312](https://github.com/kevinch3/NicotinD/compare/v0.1.311...v0.1.312) (2026-08-04)
