@@ -417,6 +417,16 @@ export interface QuarantineAlbum {
   songs: QuarantineSong[];
 }
 
+/**
+ * Download inbox triage (issue #411) queue row — a `QuarantineAlbum` (shared
+ * shape with the Admin processing queue) plus the release year the review
+ * card surfaces. Mirrors the API's `ReviewQueueAlbum` in
+ * `download-review-store.ts`.
+ */
+export interface ReviewQueueAlbum extends QuarantineAlbum {
+  year: number | null;
+}
+
 // ── Device pairing (QR link) + remote access ─────────────────────────────────
 
 /** Guided remote-access state machine (Tailscale Funnel), mirrored from the

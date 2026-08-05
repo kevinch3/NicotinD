@@ -5,15 +5,19 @@ import { BottomNavComponent } from './bottom-nav.component';
 import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
+import { DownloadReviewService } from '../../services/download-review.service';
 import BASE_CATALOG from '../../../../public/i18n/en.json';
 
 @Component({ standalone: true, template: '' })
 class _Stub {}
 
-function setup(opts: { offline?: boolean; active?: number; canAcquire?: boolean } = {}) {
+function setup(
+  opts: { offline?: boolean; active?: number; canAcquire?: boolean; pending?: number } = {},
+) {
   const isOffline = signal(opts.offline ?? false);
   const activeDownloadCount = signal(opts.active ?? 0);
   const canAcquire = signal(opts.canAcquire ?? true);
+  const pending = signal(opts.pending ?? 0);
 
   TestBed.configureTestingModule({
     imports: [BottomNavComponent],
@@ -28,13 +32,14 @@ function setup(opts: { offline?: boolean; active?: number; canAcquire?: boolean 
       { provide: AuthService, useValue: { canAcquire } },
       { provide: SetupService, useValue: { isOffline } },
       { provide: TransferService, useValue: { activeDownloadCount } },
+      { provide: DownloadReviewService, useValue: { pending } },
     ],
   });
 
   const fixture = TestBed.createComponent(BottomNavComponent);
   const router = TestBed.inject(Router);
   fixture.detectChanges();
-  return { fixture, isOffline, activeDownloadCount, router };
+  return { fixture, isOffline, activeDownloadCount, pending, router };
 }
 
 function linkFor(
@@ -99,6 +104,13 @@ describe('BottomNavComponent', () => {
     fixture.detectChanges();
     const badge = fixture.nativeElement.querySelector('nav a span') as HTMLElement;
     expect(badge?.textContent?.trim()).toBe('4');
+  });
+
+  it('folds the download-review pending count into the Downloads badge (issue #411)', () => {
+    const { fixture } = setup({ active: 1, pending: 2 });
+    expect(fixture.componentInstance.activeDownloads()).toBe(3);
+    const badge = fixture.nativeElement.querySelector('nav a span') as HTMLElement;
+    expect(badge?.textContent?.trim()).toBe('3');
   });
 
   it('sits at the mini-player stacking level (z-50) so a modal hides menu + player together', () => {

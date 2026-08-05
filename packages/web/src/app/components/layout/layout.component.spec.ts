@@ -7,6 +7,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
+import { DownloadReviewService } from '../../services/download-review.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { LikeService } from '../../services/like.service';
 import { SetupService } from '../../services/setup.service';
@@ -44,7 +45,12 @@ function setup() {
     currentTrack: signal<{ id: string } | null>(null),
     setRadioProvider: () => {},
   };
-  const authStub = { username: signal('user'), role: signal('user'), logout: () => {} };
+  const authStub = {
+    username: signal('user'),
+    role: signal('user'),
+    logout: () => {},
+    canCurate: () => false,
+  };
 
   TestBed.configureTestingModule({
     imports: [LayoutComponent],
@@ -109,7 +115,7 @@ describe('LayoutComponent — player + tab-bar safe margin', () => {
 });
 
 describe('LayoutComponent — desktop downloads badge', () => {
-  it('sums active transfers and in-flight acquire jobs into downloadCount', () => {
+  it('sums active transfers, in-flight acquire jobs, and the review queue into downloadCount', () => {
     const playerStub = {
       currentTrack: signal<{ id: string } | null>(null),
       setRadioProvider: () => {},
@@ -123,6 +129,7 @@ describe('LayoutComponent — desktop downloads badge', () => {
       activeJobs: signal<unknown[]>([{}, {}, {}]),
       refresh: async () => {},
     };
+    const reviewStub = { pending: signal(1), start: () => () => {} };
 
     TestBed.configureTestingModule({
       imports: [LayoutComponent],
@@ -131,10 +138,16 @@ describe('LayoutComponent — desktop downloads badge', () => {
         { provide: PlayerService, useValue: playerStub },
         {
           provide: AuthService,
-          useValue: { username: signal('u'), role: signal('user'), logout: () => {} },
+          useValue: {
+            username: signal('u'),
+            role: signal('user'),
+            logout: () => {},
+            canCurate: () => false,
+          },
         },
         { provide: TransferService, useValue: transfersStub },
         { provide: AcquireService, useValue: acquireStub },
+        { provide: DownloadReviewService, useValue: reviewStub },
         { provide: APP_VERSION, useValue: '0.0.0-test' },
       ],
       schemas: [NO_ERRORS_SCHEMA],
@@ -146,10 +159,11 @@ describe('LayoutComponent — desktop downloads badge', () => {
     const fixture = TestBed.createComponent(LayoutComponent);
     fixture.detectChanges();
 
-    expect(fixture.componentInstance.downloadCount()).toBe(5);
+    expect(fixture.componentInstance.downloadCount()).toBe(6);
 
     transfersStub.activeDownloadCount.set(0);
     acquireStub.activeJobs.set([]);
+    reviewStub.pending.set(0);
     expect(fixture.componentInstance.downloadCount()).toBe(0);
   });
 });
@@ -164,7 +178,12 @@ describe('LayoutComponent — pull-to-refresh gesture host', () => {
       currentTrack: signal<{ id: string } | null>(null),
       setRadioProvider: () => {},
     };
-    const authStub = { username: signal('user'), role: signal('user'), logout: () => {} };
+    const authStub = {
+      username: signal('user'),
+      role: signal('user'),
+      logout: () => {},
+      canCurate: () => false,
+    };
 
     TestBed.configureTestingModule({
       imports: [LayoutComponent],
@@ -273,6 +292,7 @@ describe('LayoutComponent — pull-to-refresh wiring on the REAL template', () =
       logout: () => {},
       canAcquire: () => true,
       isAdmin: () => false,
+      canCurate: () => false,
     };
     const setupStub = { isOffline: () => false };
     const preserveStub = { totalUsage: () => 0, clearAll: async () => {} };
@@ -366,7 +386,12 @@ describe('LayoutComponent — desktop chrome bar (Electron)', () => {
         },
         {
           provide: AuthService,
-          useValue: { username: signal('u'), role: signal('user'), logout: () => {} },
+          useValue: {
+            username: signal('u'),
+            role: signal('user'),
+            logout: () => {},
+            canCurate: () => false,
+          },
         },
         { provide: APP_VERSION, useValue: '0.0.0-test' },
       ],

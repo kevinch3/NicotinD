@@ -4,6 +4,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
+import { DownloadReviewService } from '../../services/download-review.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
 interface BottomNavItem {
@@ -51,12 +52,17 @@ export class BottomNavComponent {
   readonly setup = inject(SetupService);
   private transfers = inject(TransferService);
   private auth = inject(AuthService);
+  private review = inject(DownloadReviewService);
 
   // Downloads is an acquisition surface — hidden from listeners (declutter).
   readonly tabs = computed(() =>
     this.auth.canAcquire() ? TABS : TABS.filter((t) => t.to !== '/downloads'),
   );
-  readonly activeDownloads = this.transfers.activeDownloadCount;
+  // Active transfers + the download-inbox triage queue (issue #411) — the
+  // latter is 0 for anyone who can't curate, so it's a no-op for most roles.
+  readonly activeDownloads = computed(
+    () => this.transfers.activeDownloadCount() + this.review.pending(),
+  );
 
   isDisabled(tab: BottomNavItem): boolean {
     return tab.onlineOnly && this.setup.isOffline();

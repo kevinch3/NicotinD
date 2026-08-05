@@ -12,6 +12,7 @@ import { mainBottomPadClass } from '../../lib/player-chrome';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
+import { DownloadReviewService } from '../../services/download-review.service';
 import { PreserveService } from '../../services/preserve.service';
 import { PlayerComponent } from '../player/player.component';
 import { NowPlayingComponent } from '../now-playing/now-playing.component';
@@ -88,8 +89,10 @@ export class LayoutComponent implements OnInit, OnDestroy {
   readonly version = inject(APP_VERSION);
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
+  private review = inject(DownloadReviewService);
   private api = inject(LibraryApiService);
   private likes = inject(LikeService);
+  private reviewDispose?: () => void;
 
   private desktopChrome = inject(DesktopChromeService);
   private readonly p2r = inject(PullToRefreshService);
@@ -151,9 +154,13 @@ export class LayoutComponent implements OnInit, OnDestroy {
   // Active download badge on the desktop "Downloads" nav link — slskd transfers
   // + in-flight URL acquisitions (the old standalone header indicator's signal,
   // folded into the nav item now that the dedicated header button is gone; the
-  // mobile tab bar already carries the same badge).
+  // mobile tab bar already carries the same badge) + the download-inbox triage
+  // queue (issue #411, 0 for anyone who can't curate).
   readonly downloadCount = computed(
-    () => this.transfers.activeDownloadCount() + this.acquire.activeJobs().length,
+    () =>
+      this.transfers.activeDownloadCount() +
+      this.acquire.activeJobs().length +
+      this.review.pending(),
   );
 
   // Bottom padding so fixed chrome never covers the last list item — geometry
@@ -210,6 +217,10 @@ export class LayoutComponent implements OnInit, OnDestroy {
     void this.acquire.refresh();
     // Hydrate the per-user "like" state so hearts reflect the DB app-wide.
     void this.likes.refresh();
+    // Download-inbox triage (issue #411) pending-count poll — no-ops for a
+    // role that can't curate. Shared timer, so mounting the shell once is
+    // enough for every nav badge to stay live.
+    this.reviewDispose = this.review.start();
 
     // Radio source: metadata-aware track selection so playback continues with
     // musically similar tracks. Falls back to shuffled recent songs when no seed.
@@ -243,5 +254,6 @@ export class LayoutComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.transfers.stopPolling();
     this.desktopChrome.shellHeaderActive.set(false);
+    this.reviewDispose?.();
   }
 }
