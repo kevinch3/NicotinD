@@ -515,6 +515,10 @@ Add detail there, not here.
   out-of-window `kickEager()` so it lands ASAP; per-download step badges via
   `GET /api/admin/processing/queue`. → [docs/library-processing.md](docs/library-processing.md),
   [docs/download-pipeline.md](docs/download-pipeline.md)
+- **Download inbox triage (hold-for-review, issue #411)**: opt-in `holdForReview` processing setting
+  holds quarantined downloads until curator approval in the Downloads inbox; `download_reviews`
+  decision table (pending = derived), multi-source metadata candidates + AcoustID identify + per-track
+  retag. → [docs/download-review.md](docs/download-review.md)
 - **Perceptual audio features (no LLM)**: energy/loudness measured bun-side via ffmpeg ebur128;
   danceability/valence/mood/vocals/acousticness + cached embeddings (content-invalidated by
   `library_embeddings.file_size` since issue #258 — a file replaced in place keeps its path-derived
