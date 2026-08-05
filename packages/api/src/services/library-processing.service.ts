@@ -448,21 +448,32 @@ export class LibraryProcessingService extends EventEmitter {
     const required = this.requiredGateTasks(settings);
     const now = this.now().getTime();
     const cutoff = now - QUARANTINE_MAX_HOURS * 3_600_000;
+    // Hold-for-review (#411): a human decision, deliberately outside the 24h valve
+    // and unaffected by LANDING_GATE_DISABLED — those exist for enrichment tooling,
+    // not for skipping review. reviewed_at >= created so a later wave / re-download
+    // of the same album pends again instead of riding an old approval.
+    const reviewCond = settings.holdForReview
+      ? `EXISTS (SELECT 1 FROM download_reviews r
+           WHERE r.album_id = library_songs.album_id AND r.state = 'approved'
+             AND (library_songs.created IS NULL OR r.reviewed_at >= library_songs.created))`
+      : null;
     // Each required step is satisfied when it has a value OR the file has
     // permanently failed that step (corrupt/unanalyzable — must still land).
     const stepConds = required.map(
       (t) => `(${t.satisfiedColumnSql} OR ${permanentlyFailedClause(t.id)})`,
     );
     if (stepConds.length === 0) {
-      // Nothing gates landing → every quarantined song lands now.
-      this.db.run(`UPDATE library_songs SET landed_at = ? WHERE landed_at IS NULL`, [now]);
+      // Nothing gates landing → every quarantined song lands now (unless held for review).
+      const where = reviewCond ? `landed_at IS NULL AND ${reviewCond}` : `landed_at IS NULL`;
+      this.db.run(`UPDATE library_songs SET landed_at = ? WHERE ${where}`, [now]);
       recomputeActiveJobStages(this.db);
       return;
     }
     // `created` is an ISO-8601 string; compare against the cutoff as an ISO string
     // so a genuinely-stuck song (un-ledgered environmental failure) still lands.
     const valve = `(created IS NOT NULL AND created <= ?)`;
-    const gate = `((${stepConds.join(' AND ')}) OR ${valve})`;
+    const stepsOrValve = `((${stepConds.join(' AND ')}) OR ${valve})`;
+    const gate = reviewCond ? `${stepsOrValve} AND ${reviewCond}` : stepsOrValve;
     this.db.run(`UPDATE library_songs SET landed_at = ? WHERE landed_at IS NULL AND ${gate}`, [
       now,
       new Date(cutoff).toISOString(),

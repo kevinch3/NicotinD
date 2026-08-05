@@ -9,6 +9,10 @@ import { LibraryProcessingService } from './library-processing.service.js';
 import { MAX_ANALYSIS_ATTEMPTS } from './enrichment/analysis-failures.js';
 import type { EnrichmentContext } from './enrichment/tasks.js';
 import { createJob, getJob, recomputeStage } from './acquisition-job-store.js';
+import { recordReviewDecision } from './download-review-store.js';
+
+/** `seedSong` mints all songs under this album id (see `seedSong` below). */
+const ALBUM_ID_OF_S1 = 'alb';
 
 let db: Database;
 let dataDir: string;
@@ -194,5 +198,42 @@ describe('landing gate', () => {
     seedSong('s2');
     const svc = service(new Date(2024, 0, 1, 12, 0));
     expect(svc.getState().status.quarantined).toBe(2);
+  });
+
+  it('holdForReview keeps an unapproved song quarantined even past the 24h valve', async () => {
+    seedSong('s1', '2024-01-01');
+    setProcessingSettings(db, { holdForReview: true });
+    const svc = service(new Date('2024-03-01T00:00:00Z')); // far past the valve
+    await svc.runNow();
+    expect(isLanded('s1')).toBe(false);
+  });
+
+  it('holdForReview lands an approved song', async () => {
+    seedSong('s1', '2024-01-01');
+    setProcessingSettings(db, { holdForReview: true });
+    recordReviewDecision(db, ALBUM_ID_OF_S1, 'approved', 'u1', new Date('2024-01-02'));
+    const svc = service(new Date('2024-03-01T00:00:00Z'));
+    await svc.runNow();
+    expect(isLanded('s1')).toBe(true);
+  });
+
+  it('an approval older than the song does not land it (wave-2 / re-download rule)', async () => {
+    seedSong('s1', '2024-02-01');
+    setProcessingSettings(db, { holdForReview: true });
+    recordReviewDecision(db, ALBUM_ID_OF_S1, 'approved', 'u1', new Date('2024-01-02'));
+    const svc = service(new Date('2024-03-01T00:00:00Z'));
+    await svc.runNow();
+    expect(isLanded('s1')).toBe(false);
+  });
+
+  it('review holds even when no enrichment steps are gated (empty-gate branch)', async () => {
+    seedSong('s1');
+    setProcessingSettings(db, {
+      holdForReview: true,
+      gates: { bpm: false, key: false, energy: false, genre: false },
+    });
+    const svc = service(new Date('2024-01-01T12:00:00Z'));
+    await svc.runNow();
+    expect(isLanded('s1')).toBe(false);
   });
 });
