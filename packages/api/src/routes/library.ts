@@ -65,6 +65,11 @@ import {
   writeFolderCover,
 } from '../services/cover-sources.js';
 import { checkFragments } from '../services/library-fragments.js';
+import {
+  applyMissplitMerge,
+  missplitClusterMembers,
+  suggestAlbumArtist,
+} from '../services/fragment-remediation.js';
 import { songOrderBy } from '../services/song-sort.js';
 import { attachSongArtists, attachAlbumArtists } from '../services/artist-attach.js';
 import { tokenize, matchesAllTokens, rankBy } from '../services/search-tokens.js';
@@ -1620,6 +1625,42 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   app.get('/fragments', (c) => {
     requireAdmin(c);
     return c.json(checkFragments(getDatabase()));
+  });
+
+  // Mis-split remediation (issue #314), preview → apply: the preview lists
+  // every album sharing the cluster's title so the curator deselects
+  // generic-title false positives before any file is touched.
+  app.post('/fragments/missplit-preview', async (c) => {
+    requireCurator(c);
+    const body = await c.req.json<{ key?: string }>().catch(() => null);
+    const key = body?.key?.trim();
+    if (!key) return c.json({ error: 'key required' }, 400);
+    const members = missplitClusterMembers(getDatabase(), key);
+    return c.json({ members, suggestedAlbumArtist: suggestAlbumArtist(members) });
+  });
+
+  app.post('/fragments/missplit-merge', async (c) => {
+    requireCurator(c);
+    const body = await c.req
+      .json<{ albumIds?: string[]; albumArtist?: string }>()
+      .catch(() => null);
+    const albumIds = (body?.albumIds ?? []).filter((id) => typeof id === 'string' && id);
+    const albumArtist = body?.albumArtist?.trim();
+    if (albumIds.length === 0 || !albumArtist) {
+      return c.json({ error: 'albumIds and albumArtist required' }, 400);
+    }
+    if (!musicDir) return c.json({ error: 'musicDir not configured' }, 503);
+    const db = getDatabase();
+    const result = await applyMissplitMerge(db, musicDir, albumIds, albumArtist);
+    recordAudit(db, c.get('user'), 'library.missplit_merge', {
+      targetKind: 'album',
+      targetId: albumIds.join(','),
+      detail: `albumArtist="${albumArtist}" tagged=${result.tagged} failed=${result.failed}`,
+    });
+    // Re-bucket synchronously so the report the caller refreshes reflects the
+    // merge (same await pattern as the identity fix above).
+    if (runSync) await runSync();
+    return c.json({ ...result, resynced: Boolean(runSync) });
   });
 
   // --- Songs --------------------------------------------------------------------

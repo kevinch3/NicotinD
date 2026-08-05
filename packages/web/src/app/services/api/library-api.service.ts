@@ -17,7 +17,7 @@ import type {
 } from '@nicotind/core';
 import { serializeLibraryFilter, isEmptyLibraryFilter } from '@nicotind/core';
 import type { Album, AlbumDetail, Song, ProvenanceRecord, ArtistIdentityResult } from './api-types';
-import type { LibraryFragmentReport } from './api-types';
+import type { LibraryFragmentReport, MissplitPreview } from './api-types';
 
 type QueryParams = Record<string, string | number | boolean | string[]>;
 
@@ -178,6 +178,23 @@ export class LibraryApiService {
    */
   getFragments(): Observable<LibraryFragmentReport> {
     return this.http.get<LibraryFragmentReport>(`/api/library/fragments`);
+  }
+  /** Issue #314: preview a mis-split cluster's members before merging. */
+  missplitPreview(key: string): Observable<MissplitPreview> {
+    return this.http.post<MissplitPreview>(`/api/library/fragments/missplit-preview`, { key });
+  }
+  /** Issue #314: unify ALBUMARTIST across the selected albums' files + rescan. */
+  missplitMerge(
+    albumIds: string[],
+    albumArtist: string,
+  ): Observable<{ tagged: number; failed: number; resynced: boolean }> {
+    return this.http
+      .post<{
+        tagged: number;
+        failed: number;
+        resynced: boolean;
+      }>(`/api/library/fragments/missplit-merge`, { albumIds, albumArtist })
+      .pipe(tap(() => this.invalidateLibraryReads()));
   }
   /**
    * User-corrected artist identity (admin): mark a compound one act, force-split it,
