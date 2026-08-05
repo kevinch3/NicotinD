@@ -15,7 +15,8 @@ import {
 } from '../../lib/download-groups';
 import { DownloadItemComponent } from '../../components/download-item/download-item.component';
 import { DiskPillComponent } from '../../components/disk-pill/disk-pill.component';
-import type { DiskUsage } from '../../services/api/api-types';
+import { ReviewInboxComponent } from '../../components/review-inbox/review-inbox.component';
+import type { DiskUsage, ReviewQueueAlbum } from '../../services/api/api-types';
 
 const ACQUIRE_STATE_ORDER: Record<AcquireJob['state'], number> = {
   running: 0,
@@ -35,7 +36,7 @@ function sortAcquireJobs(jobs: AcquireJob[]): AcquireJob[] {
 
 @Component({
   selector: 'app-downloads',
-  imports: [ConfirmDialogComponent, DownloadItemComponent, DiskPillComponent],
+  imports: [ConfirmDialogComponent, DownloadItemComponent, DiskPillComponent, ReviewInboxComponent],
   templateUrl: './downloads.component.html',
 })
 export class DownloadsComponent {
@@ -46,6 +47,14 @@ export class DownloadsComponent {
 
   readonly retrying = signal(new Set<string>());
   readonly scanning = signal(false);
+
+  // Download inbox triage (issue #411): the review-inbox's "Fix metadata"
+  // action lands here; Task 12 wires the fix modal off this signal.
+  readonly fixAlbum = signal<ReviewQueueAlbum | null>(null);
+
+  onFixRequested(album: ReviewQueueAlbum): void {
+    this.fixAlbum.set(album);
+  }
 
   // Storage pill for the header — best-effort; hidden if the disk read fails.
   readonly diskUsage = signal<DiskUsage | null>(null);

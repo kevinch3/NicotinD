@@ -19,6 +19,8 @@
         </div>
       </div>
 
+      <app-review-inbox (fixRequested)="onFixRequested($event)" />
+
       <!-- Active Downloads — unified feed (slskd + URL acquisitions) -->
       @if (downloadFeed().length > 0) {
         <section class="mb-8" data-testid="downloads-active">
