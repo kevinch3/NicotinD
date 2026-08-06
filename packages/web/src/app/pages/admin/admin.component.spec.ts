@@ -124,7 +124,9 @@ function makeSvc(over: Partial<ServiceReview> = {}) {
     reviewHeldCount: (() => r.downloadReviews.pending) as ServiceReviewService['reviewHeldCount'],
     reviewHeldOldestDays: (() => {
       const oldest = r.downloadReviews.oldestCreated;
-      return oldest === null ? null : Math.floor((Date.now() - Date.parse(oldest)) / 86_400_000);
+      return oldest === null
+        ? null
+        : Math.max(0, Math.floor((Date.now() - Date.parse(oldest)) / 86_400_000));
     }) as ServiceReviewService['reviewHeldOldestDays'],
   };
   return svc;

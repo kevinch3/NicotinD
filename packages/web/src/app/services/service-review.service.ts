@@ -92,12 +92,16 @@ export class ServiceReviewService {
     () => this.review()?.downloadReviews ?? { pending: 0, oldestCreated: null },
   );
   readonly reviewHeldCount = computed(() => this.downloadReviews().pending);
-  /** Days the oldest held album has been waiting, floored; null when nothing is held. */
+  /**
+   * Days the oldest held album has been waiting, floored and clamped at 0;
+   * null when nothing is held. The clamp guards a future/skewed
+   * `oldestCreated` (clock drift) from rendering as negative days.
+   */
   readonly reviewHeldOldestDays = computed(() => {
     const oldest = this.downloadReviews().oldestCreated;
     if (oldest === null) return null;
     const ms = Date.now() - Date.parse(oldest);
-    return Math.floor(ms / 86_400_000);
+    return Math.max(0, Math.floor(ms / 86_400_000));
   });
   readonly auditTail = computed(() => this.review()?.auditTail ?? []);
   /** Snapshots of the Admin tables — drained from ServiceReview instead of polled per-table. */

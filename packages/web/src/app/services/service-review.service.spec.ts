@@ -107,6 +107,16 @@ describe('ServiceReviewService', () => {
       expect(service.reviewHeldCount()).toBe(2);
       expect(service.reviewHeldOldestDays()).toBe(3);
     });
+
+    it('clamps a future/skewed oldestCreated at 0 rather than going negative', async () => {
+      const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      getServiceReview.mockImplementationOnce(() =>
+        of(makeReview({ downloadReviews: { pending: 1, oldestCreated: oneHourFromNow } })),
+      );
+      service.start();
+      await service.refresh();
+      expect(service.reviewHeldOldestDays()).toBe(0);
+    });
   });
 
   it('ref-counts concurrent start() / stop() calls — timer survives while owners remain', () => {
