@@ -15,6 +15,7 @@ import { applySchema } from '../db.js';
 import { downloadReviewRoutes, voteAlbumIdentity } from './download-review.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
+import { setProcessingSettings } from '../services/processing-settings.js';
 
 function noopScheduler(): ShareRescanScheduler {
   return new ShareRescanScheduler(async () => {});
@@ -72,6 +73,7 @@ describe('download-review routes', () => {
   });
 
   it('lists pending albums in the queue and count', async () => {
+    setProcessingSettings(testDb, { holdForReview: true });
     seedAlbum('al1', 's1');
     seedAlbum('al2', 's2');
     const app = authed(
@@ -168,6 +170,40 @@ describe('download-review routes', () => {
     );
     const res = await app.request('/albums/nope/discard', { method: 'POST' });
     expect(res.status).toBe(404);
+  });
+
+  it('with holdForReview off (the default), queue/count read as empty even with quarantined albums', async () => {
+    seedAlbum('al1', 's1');
+    seedAlbum('al2', 's2');
+    const app = authed(
+      new Hono<AuthEnv>().route('/', downloadReviewRoutes({ shareRescan: noopScheduler() })),
+    );
+
+    const queueRes = await app.request('/queue');
+    expect(queueRes.status).toBe(200);
+    expect(await queueRes.json()).toEqual({ albums: [] });
+
+    const countRes = await app.request('/count');
+    expect(countRes.status).toBe(200);
+    expect(await countRes.json()).toEqual({ pending: 0 });
+  });
+
+  it('with holdForReview on, queue/count report the pending albums as before', async () => {
+    setProcessingSettings(testDb, { holdForReview: true });
+    seedAlbum('al1', 's1');
+    seedAlbum('al2', 's2');
+    const app = authed(
+      new Hono<AuthEnv>().route('/', downloadReviewRoutes({ shareRescan: noopScheduler() })),
+    );
+
+    const queueRes = await app.request('/queue');
+    expect(queueRes.status).toBe(200);
+    const queueBody = (await queueRes.json()) as { albums: { albumId: string }[] };
+    expect(queueBody.albums).toHaveLength(2);
+
+    const countRes = await app.request('/count');
+    expect(countRes.status).toBe(200);
+    expect((await countRes.json()) as { pending: number }).toEqual({ pending: 2 });
   });
 });
 
@@ -416,6 +452,92 @@ describe('download-review identify + retag routes', () => {
     expect(body.rescanned).toBe(false);
     expect(writeTags).not.toHaveBeenCalled();
     expect(scanIncremental).not.toHaveBeenCalled();
+  });
+
+  it('retag: a landed song id (post-quarantine) fails, and its file is left untouched', async () => {
+    ensureAlbum('al1');
+    const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-review-'));
+    seedSongWithFile(musicDir, 'al1', 's1', 's1.mp3');
+    testDb.run(`UPDATE library_songs SET landed_at = '2024-01-02' WHERE id = 's1'`);
+    const writeTags = mock(async () => true);
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        downloadReviewRoutes({ musicDir, shareRescan: noopScheduler(), writeTags }),
+      ),
+    );
+
+    const res = await app.request('/albums/al1/tracks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tracks: [{ id: 's1', title: 'Should Not Land' }] }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      updated: number;
+      failed: Array<{ id: string; error: string }>;
+    };
+    expect(body.updated).toBe(0);
+    expect(body.failed).toEqual([{ id: 's1', error: 'Not a quarantined track of this album' }]);
+    expect(writeTags).not.toHaveBeenCalled();
+  });
+
+  it('retag: a track belonging to a different album fails without calling writeTags', async () => {
+    ensureAlbum('al1');
+    ensureAlbum('al2');
+    const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-review-'));
+    seedSongWithFile(musicDir, 'al2', 's1', 's1.mp3');
+    const writeTags = mock(async () => true);
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        downloadReviewRoutes({ musicDir, shareRescan: noopScheduler(), writeTags }),
+      ),
+    );
+
+    // s1 actually belongs to al2 — hitting al1's tracks route for it must fail.
+    const res = await app.request('/albums/al1/tracks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tracks: [{ id: 's1', title: 'Wrong Album' }] }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      updated: number;
+      failed: Array<{ id: string; error: string }>;
+    };
+    expect(body.updated).toBe(0);
+    expect(body.failed).toEqual([{ id: 's1', error: 'Not a quarantined track of this album' }]);
+    expect(writeTags).not.toHaveBeenCalled();
+  });
+
+  it('retag: an all-failed request (0 updated) records no audit entry', async () => {
+    ensureAlbum('al1');
+    const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-review-'));
+    seedSongWithFile(musicDir, 'al1', 's1', 's1.mp3');
+    const writeTags = mock(async () => true);
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        downloadReviewRoutes({ musicDir, shareRescan: noopScheduler(), writeTags }),
+      ),
+    );
+
+    const res = await app.request('/albums/al1/tracks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tracks: [{ id: 's1' }] }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { updated: number }).updated).toBe(0);
+
+    const audit = testDb
+      .query("SELECT action FROM audit_log WHERE action = 'download_review.retag'")
+      .get() as { action: string } | null;
+    expect(audit).toBeNull();
   });
 
   it('retag: a path escaping the music dir fails without calling writeTags', async () => {

@@ -198,8 +198,8 @@ even issues the `GET /api/review/count` request.
 - `MetadataFixModal` gained a **review mode** (`reviewTracks` input): source
   chips (`data-testid="candidate-source"`, one per `sources[]` entry from
   `gatherCandidates`) alongside the existing candidate list, plus a per-track
-  grid (`review-track-title` / `review-track-artist` / `review-identify` /
-  `review-remove` per row) with an album-level `review-identify-album` button
+  grid (`review-track-title` / `review-track-artist` / `review-track-identify` /
+  `review-track-remove` per row) with an album-level `review-identify-album` button
   (fires the majority-vote fingerprint) and `review-save-tracks` (posts to
   `/albums/:id/tracks`). A partial retag failure (some tracks succeeded, some
   didn't) surfaces via a `review.tracksPartial` message and **keeps the modal

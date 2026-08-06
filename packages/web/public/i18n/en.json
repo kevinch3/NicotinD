@@ -413,7 +413,7 @@
   "player.tapToStart": "Tap here to start playback",
   "player.unavailableOffline": "\"{title}\" isn't available offline",
   "review.approve": "Approve",
-  "review.approved": "Landed in library",
+  "review.approved": "Approved",
   "review.confirmDiscard": "Delete \"{album}\" and its files?",
   "review.discard": "Discard",
   "review.discarded": "Discarded",
