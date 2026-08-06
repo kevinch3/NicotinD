@@ -176,11 +176,15 @@
     }
   </app-settings-group>
 
+  <!-- Default-open (issue #379): the paired list is this page's primary content,
+       and the common reason to visit is revoking a device — the uniform
+       collapsed-by-default rule costs a tap exactly where it matters most. -->
   <app-settings-group
     groupId="devices-paired"
     icon="monitor"
     [title]="'devices.pairedDevices' | t"
     [description]="'devices.pairedDevicesDesc' | t"
+    [defaultOpen]="true"
   >
     <div appTvNavGroup axis="vertical">
       @for (d of devices(); track d.id) {

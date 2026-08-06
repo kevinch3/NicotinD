@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { TestBed } from '@angular/core/testing';
 import { expandAllGroups } from '../../../../testing/expand-groups';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -192,20 +194,30 @@ describe('DevicesComponent — settings-group migration (Task 3)', () => {
     return { fixture, mintPairing };
   }
 
-  it('renders every group collapsed on a fresh render (all groups default-collapsed, no exception)', () => {
+  it('renders all three groups; paired-devices is the one default-open exception (issue #379)', () => {
     localStorage.clear();
     // Admin + a resolved remote-access status renders all three groups
-    // (devices-remote-access, devices-link, devices-paired) — every one of
-    // them, including devices-link, must start collapsed. There is no
-    // exception for web/desktop vs native: the project-wide rule is every
-    // settings-group card is collapsed by default.
+    // (devices-remote-access, devices-link, devices-paired). The paired list is
+    // the page's primary content — the visit reason is revoking a device — so
+    // it is the one documented default-open exception to the project-wide
+    // collapsed-by-default rule; remote-access and link still start collapsed
+    // (devices-link mints its code on first expand).
     const remoteStatus: RemoteAccessStatus = { enabled: false, state: { kind: 'inactive' } };
     const { fixture } = setupSpiedMint(MINT, { isAdmin: true, remote: remoteStatus });
     fixture.detectChanges();
     const toggles = fixture.nativeElement.querySelectorAll('[data-testid="settings-group-toggle"]');
     expect(toggles.length).toBe(3);
-    const bodies = fixture.nativeElement.querySelectorAll('[data-testid="settings-group-body"]');
-    expect(bodies.length).toBe(0);
+    // The JIT vitest harness never lands bindings on a nested component's
+    // signal inputs (see testing/signal-input.ts), so `[defaultOpen]="true"`
+    // cannot be observed behaviorally here — the rendered-open state is
+    // asserted by the CI-run e2e gate (settings-consistency.spec.ts
+    // DEFAULT_OPEN). This spec guards the template contract instead: exactly
+    // the devices-paired group carries the exception.
+    const template = readFileSync(join(import.meta.dirname, 'devices.component.html'), 'utf8');
+    const defaultOpenCount = (template.match(/\[defaultOpen\]="true"/g) ?? []).length;
+    expect(defaultOpenCount).toBe(1);
+    const pairedGroup = template.slice(template.indexOf('groupId="devices-paired"'));
+    expect(pairedGroup.slice(0, pairedGroup.indexOf('>'))).toContain('[defaultOpen]="true"');
   });
 
   it('does not mint a pairing code while the Link device group is collapsed on init', () => {
