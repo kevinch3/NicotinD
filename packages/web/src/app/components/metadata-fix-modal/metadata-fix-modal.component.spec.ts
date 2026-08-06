@@ -146,6 +146,7 @@ describe('MetadataFixModalComponent review mode', () => {
   const getMetadataCandidates = vi.fn();
   const getCoverCandidates = vi.fn(() => of({ current: null, lidarr: [], files: [] }));
   const deleteSongs = vi.fn(() => of({ ok: true, deletedCount: 1 }));
+  const getCanonicalTracklist = vi.fn();
   const identifySong = vi.fn();
   const identifyAlbum = vi.fn();
   const retagTracks = vi.fn();
@@ -156,6 +157,7 @@ describe('MetadataFixModalComponent review mode', () => {
     getMetadataCandidates.mockReset();
     getCoverCandidates.mockClear();
     deleteSongs.mockClear();
+    getCanonicalTracklist.mockReset();
     identifySong.mockReset();
     identifyAlbum.mockReset();
     retagTracks.mockReset();
@@ -176,7 +178,12 @@ describe('MetadataFixModalComponent review mode', () => {
       providers: [
         {
           provide: LibraryApiService,
-          useValue: { getCoverCandidates, getMetadataCandidates, deleteSongs },
+          useValue: {
+            getCoverCandidates,
+            getMetadataCandidates,
+            deleteSongs,
+            getCanonicalTracklist,
+          },
         },
         { provide: ReviewApiService, useValue: { identifySong, identifyAlbum, retagTracks } },
         { provide: AuthService, useValue: { token: () => 'tok' } },
@@ -305,5 +312,95 @@ describe('MetadataFixModalComponent review mode', () => {
 
     expect(deleteSongs).toHaveBeenCalledWith(['s1']);
     expect(c.tracks().map((t) => t.id)).toEqual(['s2']);
+  });
+
+  // Issue #413: MusicBrainz is the one candidate source with a per-track
+  // tracklist, so the action is offered only when an MB candidate is present.
+  describe('apply canonical tracklist (issue #413)', () => {
+    function withMbCandidate(c: ReturnType<typeof create>) {
+      c.candidates.set([
+        {
+          releaseGroupId: 'rg-1',
+          artist: 'Artist',
+          title: 'Album',
+          year: null,
+          releaseType: null,
+          coverUrl: null,
+          score: 90,
+          source: 'musicbrainz',
+        },
+      ]);
+    }
+
+    it('is offered only for a MusicBrainz candidate carrying a release-group id', () => {
+      const c = create();
+      expect(c.tracklistCandidate()).toBeNull();
+
+      c.candidates.set([
+        {
+          releaseGroupId: null,
+          artist: 'A',
+          title: 'B',
+          year: null,
+          releaseType: null,
+          coverUrl: null,
+          score: 50,
+          source: 'lidarr',
+        },
+      ]);
+      expect(c.tracklistCandidate()).toBeNull();
+
+      withMbCandidate(c);
+      expect(c.tracklistCandidate()?.releaseGroupId).toBe('rg-1');
+    });
+
+    it('fills the grid by position and leaves the rows dirty for the curator to save', async () => {
+      const c = create();
+      c.ngOnInit();
+      await Promise.resolve();
+      withMbCandidate(c);
+      getCanonicalTracklist.mockReturnValue(
+        of({
+          tracks: [
+            { position: 1, title: 'Canonical One' },
+            { position: 2, title: 'Canonical Two' },
+          ],
+        }),
+      );
+
+      await c.applyCanonicalTitles();
+
+      expect(getCanonicalTracklist).toHaveBeenCalledWith('rg-1');
+      expect(c.tracks().map((t) => [t.title, t.dirtyTitle])).toEqual([
+        ['Canonical One', true],
+        ['Canonical Two', true],
+      ]);
+      // Nothing is persisted here — saving stays the curator's explicit step.
+      expect(retagTracks).not.toHaveBeenCalled();
+    });
+
+    it('says so when MusicBrainz has no tracklist, without touching the grid', async () => {
+      const c = create();
+      c.ngOnInit();
+      await Promise.resolve();
+      withMbCandidate(c);
+      const before = c.tracks().map((t) => t.title);
+      getCanonicalTracklist.mockReturnValue(of({ tracks: [] }));
+
+      await c.applyCanonicalTitles();
+
+      expect(c.tracks().map((t) => t.title)).toEqual(before);
+      expect(toastShow).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'review.tracklistEmpty' }),
+      );
+    });
+
+    it('does nothing when there is no MusicBrainz candidate', async () => {
+      const c = create();
+      c.ngOnInit();
+      await Promise.resolve();
+      await c.applyCanonicalTitles();
+      expect(getCanonicalTracklist).not.toHaveBeenCalled();
+    });
   });
 });

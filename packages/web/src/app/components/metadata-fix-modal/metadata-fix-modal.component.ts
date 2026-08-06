@@ -31,6 +31,7 @@ import {
 } from '../../lib/metadata-fix';
 import {
   toEditableTracks,
+  applyCanonicalTracklist,
   dirtyTrackPayload,
   applyIdentify,
   markTracksSaved,
@@ -125,6 +126,16 @@ export class MetadataFixModalComponent implements OnInit {
   readonly hasDirtyTracks = computed(() => dirtyTrackPayload(this.tracks()).length > 0);
   readonly identifyingTrackIds = signal<Set<string>>(new Set());
   readonly identifyingAlbum = signal(false);
+  /** In-flight guard for the canonical-tracklist apply (issue #413). */
+  readonly applyingTracklist = signal(false);
+  /**
+   * The MusicBrainz candidate whose tracklist can be applied, if any. Only MB
+   * publishes a per-track tracklist, so the action is offered exactly when a
+   * `musicbrainz` candidate with a release-group id is on screen.
+   */
+  readonly tracklistCandidate = computed(
+    () => this.candidates().find((c) => c.source === 'musicbrainz' && c.releaseGroupId) ?? null,
+  );
   readonly savingTracks = signal(false);
 
   /** Prefill the search box + manual fields from the album's current values. */
@@ -280,6 +291,36 @@ export class MetadataFixModalComponent implements OnInit {
     this.tracks.update((list) =>
       list.map((t) => (t.id === id ? { ...t, artist, dirtyArtist: true } : t)),
     );
+  }
+
+  /**
+   * Overlay the picked MusicBrainz release's canonical titles onto the grid
+   * (issue #413). Nothing is saved here — the rows go dirty and the curator
+   * still reviews them and presses Save tracks, same as a fingerprint match.
+   */
+  async applyCanonicalTitles(): Promise<void> {
+    const candidate = this.tracklistCandidate();
+    if (!candidate?.releaseGroupId || this.applyingTracklist()) return;
+    this.applyingTracklist.set(true);
+    this.msg.set(null);
+    try {
+      const { tracks } = await firstValueFrom(
+        this.api.getCanonicalTracklist(candidate.releaseGroupId),
+      );
+      if (tracks.length === 0) {
+        this.toast.show({ message: this.i18n.t('review.tracklistEmpty'), kind: 'info' });
+        return;
+      }
+      this.tracks.update((list) => applyCanonicalTracklist(list, tracks));
+      this.toast.show({
+        message: this.i18n.t('review.tracklistApplied', { count: String(tracks.length) }),
+        kind: 'success',
+      });
+    } catch (err) {
+      this.msg.set(httpErrorMessage(err, 'Could not load the canonical tracklist.'));
+    } finally {
+      this.applyingTracklist.set(false);
+    }
   }
 
   isIdentifyingTrack(id: string): boolean {
