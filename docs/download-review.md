@@ -90,8 +90,8 @@ case it).
 
 | Route | Purpose |
 | --- | --- |
-| `GET /queue` | Pending albums (quarantine metadata + `year`). |
-| `GET /count` | `{ pending: number }` — backs the nav badge + inbox poller. |
+| `GET /queue` | Pending albums (quarantine metadata + `year`). Returns `{ albums: [] }` when `holdForReview` is off — with the toggle off, ordinary enrichment quarantine must never surface as an inbox (zero-behavior-change guarantee). |
+| `GET /count` | `{ pending: number }` — backs the nav badge + inbox poller. Returns `{ pending: 0 }` when `holdForReview` is off (same gating as `/queue`). |
 | `POST /albums/:id/approve` | Records an `approved` decision, audits `download_review.approve`, nudges `kickEager()` so landing isn't waiting on the next window tick. Idempotent (upsert on `album_id`). |
 | `POST /albums/:id/discard` | Runs the **shared** `deleteAlbum` (same function library delete + the MCP delete tool use — `services/library-deletion.ts`), then records a `discarded` decision, audits `download_review.discard`. |
 | `POST /songs/:id/identify` | Fingerprint one track via the enabled `identify` plugin (AcoustID). 503 if no plugin/music dir configured. |
