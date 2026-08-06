@@ -69,7 +69,11 @@ function fakeCtx(opts: { bpmResult?: number | null; sidecar?: boolean } = {}) {
   });
 }
 
-function service(now: Date, ctxOpts?: { bpmResult?: number | null; sidecar?: boolean }) {
+function service(
+  now: Date,
+  ctxOpts?: { bpmResult?: number | null; sidecar?: boolean },
+  opts?: { acquisitionEnabled?: () => boolean },
+) {
   return new LibraryProcessingService({
     db,
     lidarr: {} as never,
@@ -77,6 +81,7 @@ function service(now: Date, ctxOpts?: { bpmResult?: number | null; sidecar?: boo
     dataDir,
     now: () => now,
     contextFactory: fakeCtx(ctxOpts),
+    acquisitionEnabled: opts?.acquisitionEnabled,
   });
 }
 
@@ -208,6 +213,24 @@ describe('landing gate', () => {
     const svc = service(new Date('2024-03-01T00:00:00Z')); // far past the valve
     await svc.runNow();
     expect(isLanded('s1')).toBe(false);
+  });
+
+  it('holdForReview is inert while acquisition is off (issue #416)', async () => {
+    // With acquisition off the Downloads page — and the review inbox on it —
+    // is hidden, so a manual drop must land rather than strand quarantined
+    // behind an unreachable approval. The setting itself may predate the
+    // acquisition switch-off, which is why the gate re-checks live state.
+    armReviewHold(db);
+    seedSong('s1');
+    setProcessingSettings(db, {
+      holdForReview: true,
+      gates: { bpm: false, key: false, energy: false, genre: false },
+    });
+    const svc = service(new Date('2024-01-01T12:00:00Z'), undefined, {
+      acquisitionEnabled: () => false,
+    });
+    await svc.runNow();
+    expect(isLanded('s1')).toBe(true);
   });
 
   it('holdForReview lands an approved song', async () => {

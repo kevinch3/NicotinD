@@ -15,6 +15,7 @@ import { createLogger } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { pruneOrphanArtist } from './library-aggregates.js';
 import type { ShareRescanScheduler } from './share-rescan-scheduler.js';
+import { expandDir, resolveSongPath, isUnderMusicDir } from './song-path.js';
 
 const log = createLogger('library-deletion');
 
@@ -36,30 +37,6 @@ const AUDIO_EXTENSIONS = new Set([
 export interface DeletionDeps {
   musicDir?: string;
   shareRescan: ShareRescanScheduler;
-}
-
-function expandDir(dir: string): string {
-  if (dir.startsWith('~')) {
-    return join(process.env.HOME ?? '/root', dir.slice(1));
-  }
-  return dir;
-}
-
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith('/') || /^[a-zA-Z]:\//.test(path);
-}
-
-function resolveSongPath(musicDir: string, songPath: string): string {
-  const normalizedSongPath = songPath.replace(/\\/g, '/');
-  if (isAbsolutePath(normalizedSongPath)) {
-    return normalize(normalizedSongPath);
-  }
-  return normalize(join(musicDir, normalizedSongPath));
-}
-
-function isUnderMusicDir(musicDir: string, candidatePath: string): boolean {
-  const rel = relative(musicDir, candidatePath);
-  return rel !== '' && !rel.startsWith('..');
 }
 
 function lookupDownloadPath(navidromeId: string): string | null {

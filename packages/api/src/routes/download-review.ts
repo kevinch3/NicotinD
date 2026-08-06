@@ -7,7 +7,7 @@
  * Mounted read-only-auth-gated at /api/review; see routes/review.ts for the
  * unrelated admin ServiceReview snapshot.
  */
-import { join, normalize, relative } from 'node:path';
+import { relative } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Hono } from 'hono';
 import type { IdentifyCapability, IdentifyResult } from '@nicotind/core';
@@ -28,6 +28,7 @@ import {
   recordReviewDecision,
   reviewHoldActive,
 } from '../services/download-review-store.js';
+import { expandDir, resolveSongPath, isUnderMusicDir } from '../services/song-path.js';
 
 export interface DownloadReviewDeps {
   musicDir?: string;
@@ -41,33 +42,6 @@ export interface DownloadReviewDeps {
   scanIncremental?: (relPaths: string[]) => Promise<void>;
   /** Overridable for tests; defaults to services/audio-tags.js `writeAudioTags`. */
   writeTags?: (abs: string, tags: AudioTags) => Promise<boolean>;
-}
-
-// Same three-helper path-safety triad as routes/library.ts (~L1786-1789) /
-// services/library-deletion.ts — kept as a local copy rather than an import
-// since neither original exports them.
-function expandDir(dir: string): string {
-  if (dir.startsWith('~')) {
-    return join(process.env.HOME ?? '/root', dir.slice(1));
-  }
-  return dir;
-}
-
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith('/') || /^[a-zA-Z]:\//.test(path);
-}
-
-function resolveSongPath(musicDir: string, songPath: string): string {
-  const normalizedSongPath = songPath.replace(/\\/g, '/');
-  if (isAbsolutePath(normalizedSongPath)) {
-    return normalize(normalizedSongPath);
-  }
-  return normalize(join(musicDir, normalizedSongPath));
-}
-
-function isUnderMusicDir(musicDir: string, candidatePath: string): boolean {
-  const rel = relative(musicDir, candidatePath);
-  return rel !== '' && !rel.startsWith('..');
 }
 
 function identifyPlugin(deps: DownloadReviewDeps): IdentifyCapability | null {

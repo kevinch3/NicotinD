@@ -145,6 +145,7 @@
   "admin.hiddenAlbumsHeading": "Albums wrongly hidden from the grid ({count})",
   "admin.holdForReview": "Hold downloads for review",
   "admin.holdForReviewHint": "New downloads wait in the Downloads inbox indefinitely until a curator (refiner or admin) approves them — enable only if someone actively checks that page.",
+  "admin.holdForReviewNeedsAcquisition": "Requires acquisition — with acquisition off, the Downloads page (and its review inbox) is hidden, so held files would be unreachable.",
   "admin.idleSongs": "Idle — {count} songs",
   "admin.importConfiguration": "Import configuration…",
   "admin.importedRows": "Imported {count} row(s). Restart the server to pick up plugin changes.",

@@ -285,6 +285,44 @@ describe('admin /processing', () => {
     ).toBe(true);
   });
 
+  // Issue #416: with acquisition off the review inbox is unreachable, so
+  // enabling the hold is denied with an explanation (the landing gate also
+  // ignores it — this is the braces to that belt).
+  it('PUT denies enabling holdForReview while acquisition is off', async () => {
+    const acquisition = { enabled: () => false } as never;
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', processing: makeService(), acquisition }),
+      ),
+      'admin',
+    );
+    const res = await app.request('/processing', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ holdForReview: true }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain('acquisition');
+  });
+
+  it('PUT still allows turning holdForReview off while acquisition is off', async () => {
+    const acquisition = { enabled: () => false } as never;
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', processing: makeService(), acquisition }),
+      ),
+      'admin',
+    );
+    const res = await app.request('/processing', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ holdForReview: false }),
+    });
+    expect(res.status).toBe(200);
+  });
+
   it('PUT rejects non-boolean holdForReview', async () => {
     const app = authed(
       new Hono<AuthEnv>().route(
