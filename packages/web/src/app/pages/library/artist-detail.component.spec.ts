@@ -122,6 +122,8 @@ function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedC
       {
         provide: LibraryApiService,
         useValue: {
+          // The curator image menu loads live source availability on construction (issue #422).
+          artistImageSources: () => of({ sources: ['lidarr'] }),
           getArtist: (id: string) => {
             getArtistCalls.push(id);
             return of({ artist: { ...ARTIST, id }, albums: ALBUMS, singlesAndEps: [] });

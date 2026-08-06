@@ -45,7 +45,13 @@
         type="button"
         data-testid="artist-image-auto-fetch"
         (click)="autoFetch()"
-        class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition"
+        [disabled]="imageSources.autoFetchUnavailable()"
+        [title]="
+          imageSources.autoFetchUnavailable()
+            ? 'No artist-image source is enabled — configure Lidarr or enable the Spotify or Discogs extension'
+            : ''
+        "
+        class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
         Fetch automatically
       </button>

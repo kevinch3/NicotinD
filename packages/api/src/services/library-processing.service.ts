@@ -85,6 +85,8 @@ export interface LibraryProcessingDeps {
   dataDir: string;
   /** Spotify portrait lookup for the artist-image task, or null when unconfigured. */
   lookupArtistImageSpotify?: ((name: string) => Promise<string | null>) | null;
+  lookupArtistImageDiscogs?:
+    ((artist: { id: string; name: string }) => Promise<string | null>) | null;
   /** Discogs (or future) artist-info lookup for the artist-info task, or null when unconfigured. */
   lookupArtistInfo?: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
   /** Discogs (or future) release-genre lookup for the genre-discogs task (#194), or null. */
@@ -130,6 +132,8 @@ export class LibraryProcessingService extends EventEmitter {
   private readonly musicDir: string;
   private readonly dataDir: string;
   private readonly lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
+  private readonly lookupArtistImageDiscogs:
+    ((artist: { id: string; name: string }) => Promise<string | null>) | null;
   private readonly lookupArtistInfo: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
   private readonly lookupGenreForRelease:
     ((query: GenreQuery) => Promise<GenreResult | null>) | null;
@@ -166,6 +170,7 @@ export class LibraryProcessingService extends EventEmitter {
     this.musicDir = deps.musicDir;
     this.dataDir = deps.dataDir;
     this.lookupArtistImageSpotify = deps.lookupArtistImageSpotify ?? null;
+    this.lookupArtistImageDiscogs = deps.lookupArtistImageDiscogs ?? null;
     this.lookupArtistInfo = deps.lookupArtistInfo ?? null;
     this.lookupGenreForRelease = deps.lookupGenreForRelease ?? null;
     this.audioFeaturesClient = deps.audioFeaturesClient ?? null;
@@ -183,6 +188,7 @@ export class LibraryProcessingService extends EventEmitter {
           lidarr: this.lidarr,
           concurrency: settings.concurrency,
           lookupArtistImageSpotify: this.lookupArtistImageSpotify,
+          lookupArtistImageDiscogs: this.lookupArtistImageDiscogs,
           lookupArtistInfo: this.lookupArtistInfo,
           lookupGenreForRelease: this.lookupGenreForRelease,
           audioFeaturesClient: this.audioFeaturesClient,

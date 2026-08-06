@@ -363,8 +363,12 @@ Add detail there, not here.
 - **Canonical artwork**: `library_artwork` stores canonical URLs keyed on deterministic IDs
   (survives rescans). → [docs/library-scanner.md](docs/library-scanner.md)
 - **Artist images (auto + override)**: real portraits resolved through a priority-ordered **provider
-  chain** (`artist-image-providers.ts` `buildArtistImageProviders` → `lidarr → spotify → …`, each
-  provider self-contained so the Lidarr `db` coupling never leaks;
+  chain** (`artist-image-providers.ts` `buildArtistImageProviders` → `lidarr → spotify → discogs`, each
+  provider self-contained so the Lidarr `db` coupling never leaks; the Discogs seat (issue #422)
+  bridges the plugin kernel's new `artist-image` capability via `makePluginArtistImageLookup`
+  (MBID-only, never a name search), and the web's "Fetch automatically" menu entry is
+  **availability-gated** by the live `GET /api/library/artist-image/sources` — disabled when no
+  source could serve a portrait;
   `resolveArtistImageUrl(providers, artist)` walks it, `source` is an open `string`, adding a source
   = one `CHAIN` entry + the task `available` gate derives from `configuredArtistImageSources`),
   auto-filled by the `artist-image` enrichment task; users (admin) upload or copy-from-album a

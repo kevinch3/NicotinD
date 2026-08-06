@@ -31,21 +31,31 @@ describe('configuredArtistImageSources', () => {
 
   it('lists both sources in priority order (lidarr before spotify)', () => {
     expect(
-      configuredArtistImageSources({ lidarr: lidarrMock([]), spotifyLookup: spotify }),
+      configuredArtistImageSources({
+        lidarr: lidarrMock([]),
+        spotifyLookup: spotify,
+        discogsLookup: null,
+      }),
     ).toEqual(['lidarr', 'spotify']);
   });
 
   it('lists only the configured source', () => {
-    expect(configuredArtistImageSources({ lidarr: lidarrMock([]), spotifyLookup: null })).toEqual([
-      'lidarr',
-    ]);
-    expect(configuredArtistImageSources({ lidarr: null, spotifyLookup: spotify })).toEqual([
-      'spotify',
-    ]);
+    expect(
+      configuredArtistImageSources({
+        lidarr: lidarrMock([]),
+        spotifyLookup: null,
+        discogsLookup: null,
+      }),
+    ).toEqual(['lidarr']);
+    expect(
+      configuredArtistImageSources({ lidarr: null, spotifyLookup: spotify, discogsLookup: null }),
+    ).toEqual(['spotify']);
   });
 
   it('is empty when nothing is configured (drives the task unavailable gate)', () => {
-    expect(configuredArtistImageSources({ lidarr: null, spotifyLookup: null })).toEqual([]);
+    expect(
+      configuredArtistImageSources({ lidarr: null, spotifyLookup: null, discogsLookup: null }),
+    ).toEqual([]);
   });
 });
 
@@ -59,6 +69,7 @@ describe('buildArtistImageProviders', () => {
         lidarr: lidarrMock([]),
         index: indexLidarrArtists([]),
         spotifyLookup: async () => null,
+        discogsLookup: null,
       }).map((p) => p.source),
     ).toEqual(['lidarr', 'spotify']);
 
@@ -68,11 +79,18 @@ describe('buildArtistImageProviders', () => {
         lidarr: null,
         index: null,
         spotifyLookup: async () => null,
+        discogsLookup: null,
       }).map((p) => p.source),
     ).toEqual(['spotify']);
 
     expect(
-      buildArtistImageProviders({ db, lidarr: null, index: null, spotifyLookup: null }),
+      buildArtistImageProviders({
+        db,
+        lidarr: null,
+        index: null,
+        spotifyLookup: null,
+        discogsLookup: null,
+      }),
     ).toEqual([]);
   });
 
@@ -85,6 +103,7 @@ describe('buildArtistImageProviders', () => {
       lidarr,
       index: indexLidarrArtists(await lidarr.artist.list()),
       spotifyLookup: async () => 'https://x/spotify.jpg',
+      discogsLookup: null,
     });
     expect(await resolveArtistImageUrl(providers, artist)).toEqual({
       url: 'https://x/lidarr.jpg',
@@ -98,6 +117,7 @@ describe('buildArtistImageProviders', () => {
       lidarr: lidarrMock([]),
       index: indexLidarrArtists([]),
       spotifyLookup: async () => 'https://x/spotify.jpg',
+      discogsLookup: null,
     });
     expect(await resolveArtistImageUrl(providers, artist)).toEqual({
       url: 'https://x/spotify.jpg',
@@ -111,6 +131,7 @@ describe('buildArtistImageProviders', () => {
       lidarr: null,
       index: null,
       spotifyLookup: async () => 'https://x/s.jpg',
+      discogsLookup: null,
     });
     expect(await resolveArtistImageUrl(providers, artist)).toEqual({
       url: 'https://x/s.jpg',
@@ -124,6 +145,7 @@ describe('buildArtistImageProviders', () => {
       lidarr: lidarrMock([]),
       index: indexLidarrArtists([]),
       spotifyLookup: async () => null,
+      discogsLookup: null,
     });
     expect(await resolveArtistImageUrl(providers, artist)).toBeNull();
   });
@@ -146,10 +168,46 @@ describe('buildArtistImageProviders', () => {
       lidarr,
       index: indexLidarrArtists(await lidarr.artist.list()),
       spotifyLookup: null,
+      discogsLookup: null,
     });
     expect(await resolveArtistImageUrl(providers, { id: 'a1', name: 'Anything Else' })).toEqual({
       url: 'https://x/linked.jpg',
       source: 'lidarr',
+    });
+  });
+});
+
+describe('discogs chain entry (issue #422)', () => {
+  const artist = { id: 'a1', name: 'Aphex Twin' };
+
+  it('joins the configured list last (lidarr → spotify → discogs)', () => {
+    expect(
+      configuredArtistImageSources({
+        lidarr: lidarrMock([]),
+        spotifyLookup: async () => null,
+        discogsLookup: async () => null,
+      }),
+    ).toEqual(['lidarr', 'spotify', 'discogs']);
+    expect(
+      configuredArtistImageSources({
+        lidarr: null,
+        spotifyLookup: null,
+        discogsLookup: async () => null,
+      }),
+    ).toEqual(['discogs']);
+  });
+
+  it('resolves via discogs when the earlier providers miss', async () => {
+    const providers = buildArtistImageProviders({
+      db,
+      lidarr: lidarrMock([]),
+      index: indexLidarrArtists([]),
+      spotifyLookup: async () => null,
+      discogsLookup: async (a) => (a.name === 'Aphex Twin' ? 'https://img/discogs.jpg' : null),
+    });
+    expect(await resolveArtistImageUrl(providers, artist)).toEqual({
+      url: 'https://img/discogs.jpg',
+      source: 'discogs',
     });
   });
 });

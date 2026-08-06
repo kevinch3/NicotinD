@@ -40,7 +40,12 @@ describe('DiscogsPlugin manifest', () => {
     const plugin = makePlugin();
     expect(validatePluginManifest(plugin.manifest)).toEqual([]);
     expect(plugin.manifest.kind).toBe('metadata');
-    expect(plugin.manifest.capabilities).toEqual(['genre', 'artist-info', 'release-candidates']);
+    expect(plugin.manifest.capabilities).toEqual([
+      'genre',
+      'artist-info',
+      'artist-image',
+      'release-candidates',
+    ]);
     expect(plugin.manifest.defaultEnabled).toBe(false);
     expect(plugin.manifest.compliance?.requiresConsent).toBe(true);
   });
@@ -330,5 +335,67 @@ describe('DiscogsPlugin.releaseCandidates', () => {
   it('returns an empty array when the client is unconfigured', async () => {
     const plugin = new DiscogsPlugin({ consumerKey: '', consumerSecret: '' });
     expect(await plugin.releaseCandidates!.searchReleases(query)).toEqual([]);
+  });
+});
+
+describe('DiscogsPlugin.artistImage (issue #422)', () => {
+  it('resolves the primary image via the same MBID-first artist resolution', async () => {
+    const plugin = new DiscogsPlugin(
+      { consumerKey: 'k', consumerSecret: 's' },
+      {
+        resolveDiscogsArtistRef: async (mbid) =>
+          mbid === 'mbid-1' ? { kind: 'artist', id: 72872 } : null,
+        fetchFn: (async (url: string) => {
+          expect(url).toContain('/artists/72872');
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              profile: 'Bio',
+              images: [
+                { type: 'secondary', uri: 'https://img/gallery.jpg' },
+                { type: 'primary', uri: 'https://img/portrait.jpg' },
+              ],
+            }),
+          } as unknown as Response;
+        }) as unknown as typeof fetch,
+      },
+    );
+    expect(await plugin.artistImage.fetchArtistImage({ mbid: 'mbid-1' })).toEqual({
+      url: 'https://img/portrait.jpg',
+      source: 'discogs',
+      confidence: 0.95,
+    });
+  });
+
+  it('returns null when the artist has no images', async () => {
+    const plugin = new DiscogsPlugin(
+      { consumerKey: 'k', consumerSecret: 's' },
+      {
+        resolveDiscogsArtistRef: async () => ({ kind: 'artist', id: 1 }),
+        fetchFn: (async () =>
+          ({
+            ok: true,
+            status: 200,
+            json: async () => ({ profile: 'Bio only' }),
+          }) as unknown as Response) as unknown as typeof fetch,
+      },
+    );
+    expect(await plugin.artistImage.fetchArtistImage({ mbid: 'mbid-1' })).toBeNull();
+  });
+
+  it('returns null with no MBID / no discogs relation / no credentials', async () => {
+    const noRef = new DiscogsPlugin(
+      { consumerKey: 'k', consumerSecret: 's' },
+      { resolveDiscogsArtistRef: async () => null },
+    );
+    expect(await noRef.artistImage.fetchArtistImage({ mbid: 'mbid-2' })).toBeNull();
+    expect(await noRef.artistImage.fetchArtistImage({ mbid: '' })).toBeNull();
+
+    const noCreds = new DiscogsPlugin(
+      { consumerKey: '', consumerSecret: '' },
+      { resolveDiscogsArtistRef: async () => ({ kind: 'artist', id: 1 }) },
+    );
+    expect(await noCreds.artistImage.fetchArtistImage({ mbid: 'mbid-3' })).toBeNull();
   });
 });

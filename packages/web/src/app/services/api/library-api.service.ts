@@ -150,6 +150,14 @@ export class LibraryApiService {
   autoFetchArtistImage(id: string) {
     return this.http.post<{ filled: boolean }>(`/api/library/artists/${id}/auto-fetch-image`, {});
   }
+  /**
+   * Which artist-image sources could serve a portrait right now (issue #422) —
+   * live server truth (Lidarr configured / spotify enabled / Discogs
+   * enabled+available), backing the "Fetch automatically" enable state.
+   */
+  artistImageSources() {
+    return this.http.get<{ sources: string[] }>(`/api/library/artist-image/sources`);
+  }
   /** Remove the manual artist-image override → revert to auto/placeholder (admin). */
   resetArtistImage(id: string) {
     return this.http.delete<{ ok: boolean }>(`/api/library/artists/${id}/image`);

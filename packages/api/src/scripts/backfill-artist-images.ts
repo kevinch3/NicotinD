@@ -96,10 +96,15 @@ async function main(): Promise<void> {
 
   const { applied, labels, unresolved } = await fillArtistImages(
     db,
-    // The spotify provider needs the running plugin registry, which a CLI has
-    // no access to; the chain simply skips an unconfigured source. Run the
-    // windowed task (or the per-artist route) for Spotify coverage.
-    { lidarr, spotifyLookup: null, coverCacheDir: join(dataDir, 'cover-cache') },
+    // The spotify/discogs providers need the running plugin registry, which a
+    // CLI has no access to; the chain simply skips an unconfigured source. Run
+    // the windowed task (or the per-artist route) for their coverage.
+    {
+      lidarr,
+      spotifyLookup: null,
+      discogsLookup: null,
+      coverCacheDir: join(dataDir, 'cover-cache'),
+    },
     rows,
   );
 

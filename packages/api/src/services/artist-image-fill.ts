@@ -28,6 +28,8 @@ export interface ArtistImageFillDeps {
   lidarr: Lidarr | null | undefined;
   /** Returns a Spotify portrait URL for an artist name, or null. */
   spotifyLookup: ((name: string) => Promise<string | null>) | null;
+  /** Returns a portrait URL from the enabled `artist-image` plugin (issue #422), or null. */
+  discogsLookup: ((artist: { id: string; name: string }) => Promise<string | null>) | null;
   coverCacheDir: string;
 }
 
@@ -77,6 +79,7 @@ export async function fillArtistImages(
     lidarr: deps.lidarr ?? null,
     index,
     spotifyLookup: deps.spotifyLookup,
+    discogsLookup: deps.discogsLookup,
   });
 
   for (const artist of artists) {

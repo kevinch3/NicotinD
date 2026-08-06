@@ -15,6 +15,7 @@ import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { AuthService } from '../../services/auth.service';
 import { BackButtonService } from '../../services/native/back-button.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
+import { ArtistImageSourcesService } from '../../services/artist-image-sources.service';
 import type { Album } from '../../services/api/api-types';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
@@ -42,6 +43,8 @@ import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.d
 export class ArtistImageMenuComponent {
   private readonly api = inject(LibraryApiService);
   readonly auth = inject(AuthService);
+  /** Live artist-image source availability — gates "Fetch automatically" (issue #422). */
+  readonly imageSources = inject(ArtistImageSourcesService);
 
   readonly artistId = input.required<string>();
   /** Albums offered for "choose from album". Empty → fetched lazily on open. */
@@ -64,6 +67,8 @@ export class ArtistImageMenuComponent {
 
   constructor() {
     this.destroyRef.onDestroy(() => this.unregisterPickerBack?.());
+    // One cached request per session (root service), so grid tiles don't fan out.
+    this.imageSources.ensureLoaded();
   }
 
   private setPickerOpen(open: boolean): void {
@@ -134,8 +139,9 @@ export class ArtistImageMenuComponent {
     );
   }
 
-  /** Resolve a portrait from the provider chain (lidarr → spotify → …). */
+  /** Resolve a portrait from the provider chain (lidarr → spotify → discogs). */
   async autoFetch(): Promise<void> {
+    if (this.imageSources.autoFetchUnavailable()) return;
     this.closeMenu();
     await this.run(() => firstValueFrom(this.api.autoFetchArtistImage(this.artistId())));
   }
