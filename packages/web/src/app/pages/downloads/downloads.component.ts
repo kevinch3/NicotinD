@@ -15,7 +15,10 @@ import {
 } from '../../lib/download-groups';
 import { DownloadItemComponent } from '../../components/download-item/download-item.component';
 import { DiskPillComponent } from '../../components/disk-pill/disk-pill.component';
-import type { DiskUsage } from '../../services/api/api-types';
+import { ReviewInboxComponent } from '../../components/review-inbox/review-inbox.component';
+import { MetadataFixModalComponent } from '../../components/metadata-fix-modal/metadata-fix-modal.component';
+import { DownloadReviewService } from '../../services/download-review.service';
+import type { DiskUsage, ReviewQueueAlbum } from '../../services/api/api-types';
 
 const ACQUIRE_STATE_ORDER: Record<AcquireJob['state'], number> = {
   running: 0,
@@ -35,7 +38,13 @@ function sortAcquireJobs(jobs: AcquireJob[]): AcquireJob[] {
 
 @Component({
   selector: 'app-downloads',
-  imports: [ConfirmDialogComponent, DownloadItemComponent, DiskPillComponent],
+  imports: [
+    ConfirmDialogComponent,
+    DownloadItemComponent,
+    DiskPillComponent,
+    ReviewInboxComponent,
+    MetadataFixModalComponent,
+  ],
   templateUrl: './downloads.component.html',
 })
 export class DownloadsComponent {
@@ -43,9 +52,33 @@ export class DownloadsComponent {
   private systemApi = inject(SystemApiService);
   private transferService = inject(TransferService);
   private readonly p2r = inject(PullToRefreshService);
+  private readonly review = inject(DownloadReviewService);
 
   readonly retrying = signal(new Set<string>());
   readonly scanning = signal(false);
+
+  // Download inbox triage (issue #411): the review-inbox's "Fix metadata"
+  // action opens the fix modal in review mode against this album.
+  readonly fixAlbum = signal<ReviewQueueAlbum | null>(null);
+
+  onFixRequested(album: ReviewQueueAlbum): void {
+    this.fixAlbum.set(album);
+  }
+
+  /** A retag re-mints the album id, so the fixed album reappears as a new
+   *  pending entry — refresh the queue and close so it doesn't show a now-stale
+   *  albumId in place. */
+  async onTracksSaved(): Promise<void> {
+    this.fixAlbum.set(null);
+    await this.review.refresh();
+  }
+
+  /** A plain metadata apply (artist/album/cover/year) can also re-point the
+   *  album; refresh the queue so it reflects the corrected entry too. */
+  async onFixApplied(_result: { albumId: string }): Promise<void> {
+    this.fixAlbum.set(null);
+    await this.review.refresh();
+  }
 
   // Storage pill for the header — best-effort; hidden if the disk read fails.
   readonly diskUsage = signal<DiskUsage | null>(null);

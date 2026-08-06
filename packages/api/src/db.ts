@@ -955,6 +955,20 @@ export function applySchema(db: Database): void {
     `CREATE INDEX IF NOT EXISTS idx_metadata_overrides_corrected ON library_metadata_overrides(corrected_album_id)`,
   );
 
+  // Download inbox triage (#411): records curator approve/discard decisions for
+  // quarantined albums. Pending is DERIVED (quarantined songs + no covering row),
+  // never stored, so this table cannot drift from scanner state. reviewed_at is
+  // ISO-8601 so it compares lexicographically with library_songs.created — a song
+  // scanned after the decision re-pends its album (re-download after discard).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS download_reviews (
+      album_id    TEXT PRIMARY KEY,
+      state       TEXT NOT NULL CHECK (state IN ('approved','discarded')),
+      reviewed_by TEXT,
+      reviewed_at TEXT NOT NULL
+    )
+  `);
+
   // On-demand lyrics, keyed on the scanner's path-derived songId. Lyrics are
   // fetched from a lyrics-capable plugin (LRCLIB, …), persisted here, and may be
   // edited by the user (customized=1 protects them from being overwritten by a

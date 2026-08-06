@@ -64,11 +64,12 @@ const binaryCache = new Map<string, boolean>();
 
 export function isBinaryAvailable(
   binaryPath: string,
+  probeArgs: string[] = ['--version'],
   exec: typeof execFileSync = execFileSync,
 ): boolean {
   if (binaryCache.has(binaryPath)) return binaryCache.get(binaryPath)!;
   try {
-    exec(binaryPath, ['--version'], { stdio: 'ignore', env: acquireEnv() });
+    exec(binaryPath, probeArgs, { stdio: 'ignore', env: acquireEnv() });
     binaryCache.set(binaryPath, true);
     return true;
   } catch {

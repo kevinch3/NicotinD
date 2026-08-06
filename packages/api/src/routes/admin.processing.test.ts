@@ -265,6 +265,41 @@ describe('admin /processing', () => {
     expect(res.status).toBe(400);
   });
 
+  it('PUT accepts holdForReview boolean', async () => {
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', processing: makeService() }),
+      ),
+      'admin',
+    );
+    const res = await app.request('/processing', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ holdForReview: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(
+      ((await res.json()) as { settings: { holdForReview: boolean } }).settings.holdForReview,
+    ).toBe(true);
+  });
+
+  it('PUT rejects non-boolean holdForReview', async () => {
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', processing: makeService() }),
+      ),
+      'admin',
+    );
+    const res = await app.request('/processing', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ holdForReview: 'yes' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('returns the quarantine queue grouped by album', async () => {
     testDb.run(
       `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)

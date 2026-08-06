@@ -17,8 +17,12 @@ const log = createLogger('metadata-fix');
 /** Lidarr surface the candidate search needs — narrowed so tests can inject a mock. */
 export type FixLidarr = Pick<Lidarr, 'album'>;
 
-/** Parse a plausible 4-digit year, dropping MusicBrainz `0001` placeholders. */
-function parseYear(releaseDate: string | undefined): number | null {
+/**
+ * Parse a plausible 4-digit year, dropping MusicBrainz `0001` placeholders.
+ * Exported for reuse by the multi-source candidate gatherer (issue #411),
+ * which applies the same rule to MusicBrainz release-group dates.
+ */
+export function parseYear(releaseDate: string | undefined): number | null {
   if (!releaseDate) return null;
   const m = releaseDate.match(/^(\d{4})/);
   if (!m) return null;

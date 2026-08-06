@@ -168,6 +168,68 @@ export interface ArtistInfoCapability {
   fetchArtistInfo(query: ArtistInfoQuery): Promise<ArtistInfoResult | null>;
 }
 
+/**
+ * What the host knows when asking a source for candidate releases matching an
+ * artist + album name — the "which release is this?" lookup that backs the
+ * download-inbox triage UI (issue #411), distinct from {@link GenreQuery}'s
+ * MBID-aware genre lookup: this one is name-search-only, since triage runs
+ * *before* a track has any MBID to key off of.
+ */
+export interface ReleaseCandidateQuery {
+  artist: string;
+  album: string;
+}
+
+/** One candidate release a source matched for a {@link ReleaseCandidateQuery}. */
+export interface ReleaseCandidateHit {
+  artist: string;
+  title: string;
+  year: number | null;
+  coverUrl: string | null;
+  /** Match confidence in [0, 1] — always a real, computed number. */
+  confidence: number;
+}
+
+/**
+ * Metadata source that searches for candidate releases by artist + album name
+ * (Discogs, …), ranked by match confidence, for a human to pick from.
+ */
+export interface ReleaseCandidatesCapability {
+  searchReleases(query: ReleaseCandidateQuery): Promise<ReleaseCandidateHit[]>;
+}
+
+/**
+ * What a source resolves when identifying a track from its audio fingerprint
+ * (AcoustID/chromaprint) — the rescue path for a file whose tags are garbage
+ * or missing. `acoustId` + `score` are always present when a match came back
+ * at all; the rest is only populated when the AcoustID is linked to
+ * MusicBrainz metadata (a bare fingerprint match with no MB link still counts
+ * as a result, so a re-run can skip the fingerprint round-trip).
+ */
+export interface IdentifyResult {
+  /** AcoustID track UUID. */
+  acoustId: string;
+  /** Best match score (0..1). */
+  score: number;
+  artist?: string;
+  album?: string;
+  title?: string;
+  year?: number;
+  /** MusicBrainz recording id, when the AcoustID is linked. */
+  recordingId?: string;
+  /** MusicBrainz release id, when the AcoustID is linked. */
+  releaseId?: string;
+}
+
+/**
+ * Metadata source that identifies a track from its audio fingerprint given an
+ * absolute file path (AcoustID). The plugin owns the fingerprint extraction
+ * (fpcalc) + the lookup HTTP call; the host just gets a match or null.
+ */
+export interface IdentifyCapability {
+  identifyTrack(absPath: string): Promise<IdentifyResult | null>;
+}
+
 /** Connectivity plugins (tailscale/wireguard) — scaffold; none shipped yet. */
 export interface ConnectivityCapability {
   up(): Promise<void>;

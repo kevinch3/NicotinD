@@ -99,3 +99,6 @@ export * from '../../../core/src/version';
 // Value re-export: slskd hunt query builders (pure, browser-safe) — the single
 // source the album-hunt modal shows and the API hunter fires. See hunt-queries.ts.
 export * from '../../../core/src/hunt-queries';
+
+/** AcoustID fingerprint-identify result shape (issue #411 download-review). */
+export type { IdentifyResult } from '../../../core/src/plugin/capabilities';

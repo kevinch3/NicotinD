@@ -31,6 +31,7 @@ import { optimizeAlbum } from '../services/metadata-optimize.js';
 import { rankCandidates, DEFAULT_WEIGHTS, type SongFeatures } from '../services/radio.service.js';
 import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.js';
 import { searchCandidates, applyMetadataFix } from '../services/metadata-fix.js';
+import { gatherCandidates } from '../services/candidate-sources.js';
 import {
   setArtwork,
   deleteArtwork,
@@ -374,6 +375,10 @@ interface LibraryRoutesOptions {
    *  (Essentia — the local music-tempo fallback makes frequent octave errors).
    *  Null when no sidecar is configured. */
   audioFeaturesClient?: AudioFeaturesClient | null;
+  /** MusicBrainz client for the multi-source metadata-candidates gatherer
+   *  (issue #411) — null/absent omits the musicbrainz source rather than
+   *  failing the request. */
+  mbClient?: MusicBrainzClient | null;
 }
 
 interface AlbumRow {
@@ -578,6 +583,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     audioFeaturesClient,
     slskdRef,
     lookupArtistImageSpotify,
+    mbClient,
   } = options;
   // A deleted file's slskd share entry doesn't go away on its own — see
   // ShareRescanScheduler. Debounced so an album/bulk delete triggers one
@@ -1076,16 +1082,23 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json(result);
   });
 
-  // User-driven metadata fix: search Lidarr/MusicBrainz with an *editable* query
+  // User-driven metadata fix: search every configured source (Lidarr,
+  // MusicBrainz, Discogs, the album's own file tags) with an *editable* query
   // (defaults to the album's current "<artist> <album>", which the user can
   // override when the stored artist is wrong — e.g. "<Desconocido>") and return
-  // ranked candidates to confirm. Admin only; 503 without Lidarr.
+  // ranked, deduped candidates to confirm. Admin only. No longer 503s when a
+  // source is unconfigured/down — `sources[]` reports each one's status so the
+  // UI can degrade gracefully instead of blocking on Lidarr specifically
+  // (issue #411).
   app.get('/albums/:id/metadata-candidates', async (c) => {
     requireCurator(c);
-    if (!lidarr) return c.json({ error: 'Lidarr not configured' }, 503);
-    const res = await searchCandidates(getDatabase(), lidarr, c.req.param('id'), c.req.query('q'));
-    if (!res) return c.json({ error: 'Album not found' }, 404);
-    return c.json(res);
+    const result = await gatherCandidates(
+      { db: getDatabase(), lidarr, mb: mbClient, plugins: pluginRegistry, musicDir },
+      c.req.param('id'),
+      c.req.query('q'),
+    );
+    if (!result) return c.json({ error: 'Album not found' }, 404);
+    return c.json(result);
   });
 
   // Apply a confirmed correction (from a candidate or free-text). Persists an

@@ -84,4 +84,10 @@ describe('processing-settings', () => {
     expect(merged.gates.bpm).toBe(false); // patched
     expect(merged.gates.key).toBe(DEFAULT_PROCESSING_SETTINGS.gates.key); // untouched default
   });
+
+  it('holdForReview defaults false and persists', () => {
+    expect(getProcessingSettings(db).holdForReview).toBe(false);
+    setProcessingSettings(db, { holdForReview: true });
+    expect(getProcessingSettings(db).holdForReview).toBe(true);
+  });
 });

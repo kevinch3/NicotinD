@@ -73,6 +73,12 @@ export interface ProcessingSettings {
    * enrichment runs. An explicit admin "Run now" still overrides it.
    */
   paused: boolean;
+  /**
+   * Hold quarantined downloads until a curator explicitly approves them
+   * (download inbox, #411). Independent of enrichment gates: applies even when
+   * the landing gate task list is empty or NICOTIND_DISABLE_LANDING_GATE is set.
+   */
+  holdForReview: boolean;
 }
 
 /** Coarse phase of the processor at a point in time. */

@@ -50,8 +50,10 @@ export class TransferService {
 
   // Flag the library as changed AND drop cached whole-library reads (artists /
   // genres), so the refresh that the dirty flag triggers actually re-fetches
-  // instead of replaying a now-stale cached list.
-  private markLibraryDirty(): void {
+  // instead of replaying a now-stale cached list. Public: the download-review
+  // inbox (issue #411) calls this directly after an approve/discard, since
+  // those mutate the library outside the poller's own completion detection.
+  markLibraryDirty(): void {
     this.libraryDirty.set(true);
     this.libraryApi.invalidateLibraryReads();
   }

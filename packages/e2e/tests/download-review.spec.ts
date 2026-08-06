@@ -1,0 +1,72 @@
+import { test, expect } from '@playwright/test';
+import { cpSync, rmSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ADMIN, bearer, FIXTURE } from '../helpers';
+
+const MUSIC = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'music');
+// Copy the loose single, not an FIXTURE.album track: the copy quarantines
+// under its tag-derived albumId, which — while pending review — hides that
+// album from every listing. FIXTURE.album is asserted against by ~15 other
+// spec files; FIXTURE.single is used by only one (library.spec.ts), so it's
+// the low-collision choice for this suite's first add-file-mid-test flow.
+const SRC = join(
+  MUSIC,
+  FIXTURE.single.artist.replace(/ /g, '_'),
+  FIXTURE.single.title.replace(/ /g, '_'),
+  '01 - E2E_Lonesome_Single.flac',
+);
+const REVIEW_DIR = join(MUSIC, 'E2E_Review_Copy');
+
+test.describe('download review inbox', () => {
+  test.afterEach(async ({ request }) => {
+    rmSync(REVIEW_DIR, { recursive: true, force: true });
+    const login = await request.post('/api/auth/login', { data: ADMIN });
+    const token = ((await login.json()) as { token: string }).token;
+    await request.put('/api/admin/processing', {
+      headers: bearer(token),
+      data: { holdForReview: false },
+    });
+    await request.post('/api/system/scan', { headers: bearer(token) }); // prune the copied song
+  });
+
+  test('held download appears in inbox, approve lands it', async ({ page, request }) => {
+    const login = await request.post('/api/auth/login', { data: ADMIN });
+    const token = ((await login.json()) as { token: string }).token;
+    await request.put('/api/admin/processing', {
+      headers: bearer(token),
+      data: { holdForReview: true },
+    });
+
+    cpSync(SRC, join(REVIEW_DIR, 'review-track.flac')); // NOTE: file carries the fixture single's tags —
+    // it quarantines under the EXISTING fixture single's albumId, hiding it
+    // from the library while pending.
+    await request.post('/api/system/scan', { headers: bearer(token) });
+
+    // pending: count > 0
+    await expect
+      .poll(
+        async () =>
+          (
+            (await (await request.get('/api/review/count', { headers: bearer(token) })).json()) as {
+              pending: number;
+            }
+          ).pending,
+      )
+      .toBeGreaterThan(0);
+
+    await page.goto('/downloads');
+    await expect(page.getByTestId('review-inbox')).toBeVisible();
+    await page.getByTestId('review-approve').first().click();
+    await expect
+      .poll(
+        async () =>
+          (
+            (await (await request.get('/api/review/count', { headers: bearer(token) })).json()) as {
+              pending: number;
+            }
+          ).pending,
+      )
+      .toBe(0);
+  });
+});

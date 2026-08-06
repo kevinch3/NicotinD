@@ -37,10 +37,20 @@ export interface MBReleaseGroup {
   firstReleaseDate?: string;
 }
 
+export interface MBReleaseGroupHit {
+  id: string;
+  title: string;
+  artist: string;
+  primaryType?: string;
+  firstReleaseDate?: string;
+  score: number;
+}
+
 type CacheEntry =
   | { type: 'artist'; result: MBArtist | null }
   | { type: 'recording'; result: MBRecording | null }
   | { type: 'release-group'; result: MBReleaseGroup | null }
+  | { type: 'release-group-search'; result: MBReleaseGroupHit[] }
   | { type: 'licence'; result: string | null }
   | { type: 'discogs-url'; result: string | null };
 
@@ -173,6 +183,48 @@ export class MusicBrainzClient {
 
     this.setCached(key, { type: 'release-group', result });
     return result;
+  }
+
+  /**
+   * Search release-groups by artist + album title, returning candidate hits
+   * ranked by MB's own relevance `score`. Used by the download-inbox triage
+   * candidate layer to propose an album match for an unresolved download.
+   */
+  async searchReleaseGroups(
+    artist: string,
+    album: string,
+    limit = 5,
+  ): Promise<MBReleaseGroupHit[]> {
+    const key = `rgsearch:${artist.toLowerCase()}|${album.toLowerCase()}`;
+    const cached = this.cache.get(key);
+    if (cached?.type === 'release-group-search') return cached.result;
+
+    const query = artist
+      ? `releasegroup:"${album}" AND artist:"${artist}"`
+      : `releasegroup:"${album}"`;
+    const url = `${MB_BASE}/release-group?query=${encodeURIComponent(query)}&limit=${limit}&fmt=json`;
+    const data = await this.fetch<{
+      'release-groups'?: Array<{
+        id: string;
+        title: string;
+        score?: number;
+        'primary-type'?: string;
+        'first-release-date'?: string;
+        'artist-credit'?: Array<{ name?: string }>;
+      }>;
+    }>(url);
+
+    const hits: MBReleaseGroupHit[] = (data?.['release-groups'] ?? []).map((rg) => ({
+      id: rg.id,
+      title: rg.title,
+      artist: rg['artist-credit']?.[0]?.name ?? '',
+      primaryType: rg['primary-type'],
+      firstReleaseDate: rg['first-release-date'],
+      score: rg.score ?? 0,
+    }));
+
+    this.setCached(key, { type: 'release-group-search', result: hits });
+    return hits;
   }
 
   /**

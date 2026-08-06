@@ -8,6 +8,8 @@ import type {
   LyricsCapability,
   GenreCapability,
   ArtistInfoCapability,
+  ReleaseCandidatesCapability,
+  IdentifyCapability,
   ConnectivityCapability,
 } from './capabilities.js';
 
@@ -35,6 +37,8 @@ export interface Plugin {
   readonly lyrics?: LyricsCapability;
   readonly genre?: GenreCapability;
   readonly artistInfo?: ArtistInfoCapability;
+  readonly releaseCandidates?: ReleaseCandidatesCapability;
+  readonly identify?: IdentifyCapability;
   readonly connectivity?: ConnectivityCapability;
 }
 

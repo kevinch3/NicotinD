@@ -28,6 +28,10 @@ ready.
   songs grouped by album with per-step badges (downloaded ✓ · bpm ✓ · key ⏳ · mood …),
   rendered under the Admin → Library processing panel.
 
+An opt-in `holdForReview` setting adds a curator-approval gate **in front of**
+landing (a human decision, not another enrichment step) — see
+[docs/download-review.md](download-review.md).
+
 ## Release-type model — albums, EPs & singles (Spotify-style)
 
 NicotinD is album-centric, but loose tracks (a YouTube single, a Soulseek peer with no album tag) are **first-class** rather than hidden. Every `library_albums` row carries a `classification`: `album` | `ep` | `single` | `compilation` | `unknown`.

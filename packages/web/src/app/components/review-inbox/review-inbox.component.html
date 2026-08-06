@@ -1,0 +1,88 @@
+
+@if (visible()) {
+  <section class="mb-8" data-testid="review-inbox">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
+        {{ 'review.title' | t }}
+      </h2>
+    </div>
+
+    <div class="space-y-3">
+      @for (album of queue(); track album.albumId) {
+        <div
+          class="flex items-center gap-4 rounded-lg border border-theme bg-theme-surface/30 p-3"
+          data-testid="review-album"
+        >
+          <app-cover-art
+            [src]="coverUrl(album)"
+            [artist]="album.albumArtist"
+            [album]="album.albumTitle"
+            [size]="56"
+            rounded="rounded"
+          />
+
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-medium text-theme-primary">
+              {{ album.albumArtist }} — {{ album.albumTitle }}@if (album.year) {
+                <span> ({{ album.year }})</span>
+              }
+            </p>
+            <p class="text-xs text-theme-muted">{{ 'review.tracks' | t: { count: album.songs.length } }}</p>
+
+            <div class="mt-2 flex flex-wrap gap-1">
+              @for (step of stepKeys; track step) {
+                <span
+                  class="rounded-full px-1.5 py-0.5 text-[10px] leading-none"
+                  [class.bg-status-success]="stepsFor(album)[step] === 'done'"
+                  [class.bg-theme-surface-2]="stepsFor(album)[step] === 'pending'"
+                  [class.bg-status-error]="stepsFor(album)[step] === 'skipped'"
+                  [class.text-white]="stepsFor(album)[step] !== 'pending'"
+                  [class.text-theme-muted]="stepsFor(album)[step] === 'pending'"
+                  [class.line-through]="stepsFor(album)[step] === 'skipped'"
+                  [class.opacity-80]="stepsFor(album)[step] === 'skipped'"
+                >
+                  {{ step }}
+                </span>
+              }
+            </div>
+          </div>
+
+          <div class="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              (click)="listen(album)"
+              data-testid="review-listen"
+              class="rounded-full border border-theme px-3 py-1.5 text-xs font-medium text-theme-secondary transition hover:border-theme hover:text-theme-primary"
+            >
+              {{ 'review.listen' | t }}
+            </button>
+            <button
+              type="button"
+              (click)="fix(album)"
+              data-testid="review-fix"
+              class="rounded-full border border-theme px-3 py-1.5 text-xs font-medium text-theme-secondary transition hover:border-theme hover:text-theme-primary"
+            >
+              {{ 'review.fix' | t }}
+            </button>
+            <button
+              type="button"
+              (click)="approve(album)"
+              data-testid="review-approve"
+              class="rounded-full bg-status-success px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+            >
+              {{ 'review.approve' | t }}
+            </button>
+            <button
+              type="button"
+              (click)="discard(album)"
+              data-testid="review-discard"
+              class="rounded-full border border-theme px-3 py-1.5 text-xs font-medium text-status-error transition hover:border-status-error"
+            >
+              {{ 'review.discard' | t }}
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+  </section>
+}

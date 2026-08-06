@@ -206,8 +206,8 @@ describe('YtdlpPlugin binaryPath config', () => {
     // before the user installed the binary.
     const failing = (() => {
       throw new Error('not found');
-    }) as unknown as Parameters<typeof isBinaryAvailable>[1];
-    expect(isBinaryAvailable('yt-dlp-custom', failing)).toBe(false);
+    }) as unknown as Parameters<typeof isBinaryAvailable>[2];
+    expect(isBinaryAvailable('yt-dlp-custom', undefined, failing)).toBe(false);
 
     const p = new YtdlpPlugin(cfg());
     const ctx = fakeCtx();
@@ -217,7 +217,7 @@ describe('YtdlpPlugin binaryPath config', () => {
     // Cache was invalidated by init — a fresh probe now runs (and succeeds).
     const succeeding = (() => Buffer.from('')) as unknown as Parameters<
       typeof isBinaryAvailable
-    >[1];
-    expect(isBinaryAvailable('yt-dlp-custom', succeeding)).toBe(true);
+    >[2];
+    expect(isBinaryAvailable('yt-dlp-custom', undefined, succeeding)).toBe(true);
   });
 });

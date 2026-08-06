@@ -20,6 +20,8 @@ import { searchRoutes } from './routes/search.js';
 import { downloadRoutes } from './routes/downloads.js';
 import { uploadRoutes } from './routes/uploads.js';
 import { libraryRoutes } from './routes/library.js';
+import { downloadReviewRoutes } from './routes/download-review.js';
+import { ShareRescanScheduler } from './services/share-rescan-scheduler.js';
 import { streamingRoutes } from './routes/streaming.js';
 import { healthRoutes } from './routes/health.js';
 import { recordBootVersion } from './services/update-check.js';
@@ -39,6 +41,7 @@ import { RemoteAccess } from './services/tailscale.js';
 import { shareMetaHandler } from './routes/share-meta.js';
 import { discographyRoutes } from './routes/discography.js';
 import { catalogRoutes } from './routes/catalog.js';
+import { MusicBrainzClient, MB_USER_AGENT } from './services/musicbrainz-client.js';
 import { archiveRoutes } from './routes/archive.js';
 import { ArchiveSearchService } from './services/archive-search.service.js';
 import { spotifyRoutes } from './routes/spotify.js';
@@ -467,7 +470,17 @@ export function createApp({
     dataDir: expandedDataDir,
     slskdRef,
     providerRegistry: registry,
+    acoustidApiKey,
   });
+  // why: registerBuiltinPlugins already builds a MusicBrainzClient for Discogs
+  // artist-info resolution, but keeps it private to that function — a second
+  // instance here (sharing the same on-disk cache file) is cheaper than
+  // exporting/threading the first one through, and the two never race since
+  // the cache is read-through JSON keyed by query, not an exclusive lock.
+  const mbClient = new MusicBrainzClient(
+    join(expandedDataDir, 'musicbrainz-cache.json'),
+    MB_USER_AGENT,
+  );
   // Populate the artist-info ref now that the plugin registry (and Discogs) exist.
   artistInfoRef.lookup = (mbid) => {
     const [provider] = plugins.getEnabledWithCapability('artist-info');
@@ -532,6 +545,7 @@ export function createApp({
   app.use('/api/downloads/*', auth);
   app.use('/api/uploads/*', auth);
   app.use('/api/library/*', auth);
+  app.use('/api/review/*', auth);
   app.use('/api/stream/*', auth);
   app.use('/api/cover/*', auth);
   app.use('/api/system/*', auth);
@@ -608,10 +622,28 @@ export function createApp({
       pluginRegistry: plugins,
       slskdRef,
       audioFeaturesClient,
+      mbClient,
       // Same provider chain the windowed artist-image task uses, so the
       // on-demand fill isn't a Lidarr-only shortcut (issue #250).
       lookupArtistImageSpotify: (name) =>
         spotifyArtistImageRef.lookup?.(name) ?? Promise.resolve(null),
+    }),
+  );
+  // Download inbox triage (issue #411): the quarantine-hold review queue.
+  // Own ShareRescanScheduler instance, mirroring libraryRoutes' — a deleted
+  // file's slskd share entry needs the same debounced rescan on discard.
+  const reviewShareRescan = new ShareRescanScheduler(async () => {
+    const slskd = slskdRef.current;
+    if (slskd) await slskd.shares.rescan();
+  });
+  app.route(
+    '/api/review',
+    downloadReviewRoutes({
+      musicDir: config.musicDir,
+      shareRescan: reviewShareRescan,
+      kickEager: () => processingRef.current?.kickEager() ?? Promise.resolve(),
+      plugins,
+      scanIncremental,
     }),
   );
   app.route(

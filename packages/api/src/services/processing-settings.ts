@@ -70,6 +70,8 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
   // one, and a default threshold would silently delay enrichment for them. The
   // shared-card operator opts in.
   gpuBusyPercent: 0,
+  // Hold quarantined downloads until explicitly reviewed (issue #411).
+  holdForReview: false,
 };
 
 export function getProcessingSettings(db: Database): ProcessingSettings {

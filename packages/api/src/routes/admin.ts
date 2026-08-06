@@ -445,6 +445,9 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (body.paused !== undefined && typeof body.paused !== 'boolean') {
       return c.json({ error: 'paused must be a boolean' }, 400);
     }
+    if (body.holdForReview !== undefined && typeof body.holdForReview !== 'boolean') {
+      return c.json({ error: 'holdForReview must be a boolean' }, 400);
+    }
     // 0 disables the shared-GPU yield; above 100 could never trigger, which
     // would read as "enabled" while doing nothing (issue #224).
     if (
