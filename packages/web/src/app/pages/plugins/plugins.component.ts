@@ -7,6 +7,8 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { PluginCardComponent } from './plugin-card.component';
 import { SettingsGroupComponent } from '../../components/settings-group/settings-group.component';
+import { TranslatePipe } from '../../pipes/translate.pipe';
+import { TranslateService } from '../../services/translate.service';
 
 /**
  * Admin-only plugin management. Lists plugins grouped by kind (acquisition now;
@@ -31,11 +33,13 @@ import { SettingsGroupComponent } from '../../components/settings-group/settings
     TvNavGroupDirective,
     PluginCardComponent,
     SettingsGroupComponent,
+    TranslatePipe,
   ],
   templateUrl: './plugins.component.html',
 })
 export class PluginsComponent implements OnInit {
   readonly plugins = inject(PluginService);
+  private readonly i18n = inject(TranslateService);
   /**
    * Deployment-wide acquisition kill-switch (issue #235). When off, every
    * acquisition route hard-404s and the pollers never start — so listing
@@ -86,16 +90,25 @@ export class PluginsComponent implements OnInit {
   saveConfig(p: PluginInfo): void {
     const fields = p.configFields ?? [];
     const payload = buildPluginConfigPayload(fields, this.configDraft()[p.id] ?? {});
-    void this.run(() => this.plugins.saveConfig(p.id, payload), `${p.name} settings saved`);
+    void this.run(
+      () => this.plugins.saveConfig(p.id, payload),
+      this.i18n.t('extensions.settingsSaved', { name: p.name }),
+    );
   }
 
   toggle(p: PluginInfo): void {
     if (p.enabled) {
-      void this.run(() => this.plugins.disable(p.id), `${p.name} disabled`);
+      void this.run(
+        () => this.plugins.disable(p.id),
+        this.i18n.t('extensions.pluginDisabled', { name: p.name }),
+      );
     } else if (p.compliance?.requiresConsent) {
       this.consentTarget.set(p);
     } else {
-      void this.run(() => this.plugins.enable(p.id), `${p.name} enabled`);
+      void this.run(
+        () => this.plugins.enable(p.id),
+        this.i18n.t('extensions.pluginEnabled', { name: p.name }),
+      );
     }
   }
 
@@ -103,7 +116,10 @@ export class PluginsComponent implements OnInit {
     const p = this.consentTarget();
     if (!p) return;
     this.consentTarget.set(null);
-    void this.run(() => this.plugins.enable(p.id, true), `${p.name} enabled`);
+    void this.run(
+      () => this.plugins.enable(p.id, true),
+      this.i18n.t('extensions.pluginEnabled', { name: p.name }),
+    );
   }
 
   private async run(op: () => Promise<void>, ok: string): Promise<void> {
@@ -113,7 +129,7 @@ export class PluginsComponent implements OnInit {
       await op();
       this.message.set({ type: 'success', text: ok });
     } catch (err) {
-      const text = err instanceof Error ? err.message : 'Operation failed';
+      const text = err instanceof Error ? err.message : this.i18n.t('extensions.operationFailed');
       this.message.set({ type: 'error', text });
     } finally {
       this.busy.set(false);

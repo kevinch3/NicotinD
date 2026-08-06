@@ -20,28 +20,28 @@
               <span
                 data-testid="plugin-status"
                 class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-muted"
-                >Off</span
+                >{{ 'extensions.statusOff' | t }}</span
               >
             }
             @case ('needs-config') {
               <span
                 data-testid="plugin-status"
                 class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-warn"
-                >Needs config</span
+                >{{ 'extensions.statusNeedsConfig' | t }}</span
               >
             }
             @case ('unavailable') {
               <span
                 data-testid="plugin-status"
                 class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-warn"
-                >Unavailable</span
+                >{{ 'extensions.statusUnavailable' | t }}</span
               >
             }
             @case ('ready') {
               <span
                 data-testid="plugin-status"
                 class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-done"
-                >Ready</span
+                >{{ 'extensions.statusReady' | t }}</span
               >
             }
           }
@@ -68,7 +68,7 @@
             : 'bg-theme-accent text-theme-on-accent hover:opacity-90'
         "
       >
-        {{ plugin.enabled ? 'Disable' : 'Enable' }}
+        {{ (plugin.enabled ? 'extensions.disable' : 'extensions.enable') | t }}
       </button>
     </div>
   </div>
@@ -85,8 +85,7 @@
       </div>
       @if (plugin.enabled && !plugin.available && missingBinaries(); as binaries) {
         <p class="text-xs text-status-warn mt-2">
-          Not found: {{ binaries }} — install it, or set its full path in the settings below and
-          save.
+          {{ 'extensions.binariesMissing' | t: { binaries: binaries } }}
         </p>
       }
 
@@ -98,8 +97,8 @@
         >
           @if (plugin.id === 'spotdl') {
             <p class="text-xs text-theme-muted" data-testid="spotdl-uses-spotify-credentials">
-              Uses the credentials from the <strong>Spotify</strong> card above to authenticate
-              Spotify metadata calls. Without them, spotDL falls back to its built-in shared client.
+              {{ 'extensions.spotdlHintBefore' | t }} <strong>Spotify</strong>
+              {{ 'extensions.spotdlHintAfter' | t }}
             </p>
           }
           @for (f of plugin.configFields; track f.key) {
@@ -107,7 +106,7 @@
               <span class="text-xs text-theme-secondary">
                 {{ f.label }}
                 @if (f.type === 'password' && plugin.configured?.[f.key]) {
-                  <span class="text-status-done">&bull; configured</span>
+                  <span class="text-status-done">&bull; {{ 'extensions.configuredBadge' | t }}</span>
                 }
               </span>
               <input
@@ -132,7 +131,7 @@
             data-testid="plugin-config-save"
             class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-surface-2 text-theme-primary hover:bg-theme-hover disabled:opacity-50"
           >
-            Save
+            {{ 'extensions.save' | t }}
           </button>
         </form>
       }

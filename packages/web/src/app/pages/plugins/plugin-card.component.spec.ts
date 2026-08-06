@@ -4,6 +4,7 @@ import { of } from 'rxjs';
 import { PluginCardComponent } from './plugin-card.component';
 import { PluginService, type PluginInfo } from '../../services/plugin.service';
 import { SystemApiService } from '../../services/api/system-api.service';
+import BASE_CATALOG from '../../../../public/i18n/en.json';
 
 function basePlugin(overrides: Partial<PluginInfo>): PluginInfo {
   return {
@@ -31,28 +32,39 @@ function render(plugin: PluginInfo): HTMLElement {
 }
 
 describe('PluginCardComponent — unified status pill', () => {
-  it('shows "Off" for a disabled plugin', () => {
+  // No catalog is loaded in this harness, so the `t` pipe renders the raw key;
+  // assert the key lands in the DOM AND exists in the base catalog (issue #380,
+  // the admin.component.spec.ts pattern).
+  it('shows the Off pill for a disabled plugin', () => {
     const el = render(basePlugin({ enabled: false }));
-    expect(el.querySelector('[data-testid="plugin-status"]')?.textContent?.trim()).toBe('Off');
+    expect(el.querySelector('[data-testid="plugin-status"]')?.textContent?.trim()).toBe(
+      'extensions.statusOff',
+    );
+    expect(BASE_CATALOG).toHaveProperty(['extensions.statusOff']);
   });
 
-  it('shows "Needs config" for an enabled, unconfigured plugin', () => {
+  it('shows the Needs-config pill for an enabled, unconfigured plugin', () => {
     const el = render(basePlugin({ enabled: true, needsConfig: true, available: false }));
     expect(el.querySelector('[data-testid="plugin-status"]')?.textContent?.trim()).toBe(
-      'Needs config',
+      'extensions.statusNeedsConfig',
     );
+    expect(BASE_CATALOG).toHaveProperty(['extensions.statusNeedsConfig']);
   });
 
-  it('shows "Unavailable" for an enabled, configured, but unreachable plugin', () => {
+  it('shows the Unavailable pill for an enabled, configured, but unreachable plugin', () => {
     const el = render(basePlugin({ enabled: true, needsConfig: false, available: false }));
     expect(el.querySelector('[data-testid="plugin-status"]')?.textContent?.trim()).toBe(
-      'Unavailable',
+      'extensions.statusUnavailable',
     );
+    expect(BASE_CATALOG).toHaveProperty(['extensions.statusUnavailable']);
   });
 
-  it('shows "Ready" for an enabled, configured, available plugin', () => {
+  it('shows the Ready pill for an enabled, configured, available plugin', () => {
     const el = render(basePlugin({ enabled: true, needsConfig: false, available: true }));
-    expect(el.querySelector('[data-testid="plugin-status"]')?.textContent?.trim()).toBe('Ready');
+    expect(el.querySelector('[data-testid="plugin-status"]')?.textContent?.trim()).toBe(
+      'extensions.statusReady',
+    );
+    expect(BASE_CATALOG).toHaveProperty(['extensions.statusReady']);
   });
 
   it('renders only one status pill, not the old two-badge combination', () => {

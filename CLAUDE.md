@@ -1258,15 +1258,20 @@ shell (navs/offline) + library tabs/sort + home vibes + the **Acquire page** pri
 high-traffic slice, incl. the first TS-side `this.i18n.t(key, params)` call sites for toasts/dialogs
 built outside a template) + **Devices/remote-access settings** (issue #338, `devices.*` — the
 pairing panel, paired-devices list, and the admin Tailscale Funnel state machine; a shared
-`common.backToSettings` key was added for the "← Settings" back-link reused by still-untranslated
-`agent-tokens`/`plugins` pages) + **onboarding/setup wizard** (`setup.*`, all five wizard steps,
+`common.backToSettings` key was added for the "← Settings" back-link) + **onboarding/setup wizard**
+(`setup.*`, all five wizard steps,
 plus `common.back`/`common.next`) + **Admin panel** (issue #338, `admin.*` — 215 keys, every
 section; `processingTaskDefs` moved from a pre-translated `label` to a `labelKey` so the task list
 stays reactive to a live language switch, matching the rest of the page) + **Acquire's Advanced
 disclosure** (issue #338, the raw Soulseek folder-browser section — closes the #338 long tail;
 deliberately leaves the shared `getFolderBtn`/`getSongBtn`/`getGroupFileBtn` download-status-label
-helpers untranslated since they're used by other components, not scoped to this one page); **es.json
-is at full parity** with the base. Extraction is a phased pass — **API
+helpers untranslated since they're used by other components, not scoped to this one page) +
+**Extensions / Agent tokens / slskd settings** (issue #380, `extensions.*`/`agentTokens.*`/`slskd.*`
+— the settings-adjacent trio #338 skipped: kind groups, status pills, config forms + consent dialog;
+mint/shown-once/revoke; the slskd status panel, connection + shares forms and both notices — the
+`common.backToSettings` back-link finally picked up on both pages; per-plugin manifest strings
+(name/description/config-field labels) stay untranslated since they're server data, not web copy);
+**es.json is at full parity** with the base. Extraction is a phased pass — **API
 error `code` fields (issue #337, client mapping started)**: `NicotinDError`'s existing `code` extended
 onto the inline `c.json({ error })` responses in `routes/auth.ts`/`devices.ts`/`settings.ts`/
 `agent-tokens.ts` — additive `{ error, code }`, the ~24 other route files untouched. The web client
