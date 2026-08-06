@@ -357,6 +357,41 @@ describe('applySchema — landing backfill', () => {
   });
 });
 
+describe('applySchema — hold-for-review bootstrap exemption (#417)', () => {
+  it('arms the marker on a database that already has a landed song', () => {
+    const db = new Database(':memory:');
+    // A legacy library (no landed_at column) with one existing song — mirrors
+    // the landing-backfill test above, since that backfill is what produces
+    // the landed row this arming condition looks for.
+    db.run(`
+      CREATE TABLE library_songs (
+        id TEXT PRIMARY KEY, album_id TEXT NOT NULL, title TEXT NOT NULL, artist TEXT NOT NULL,
+        artist_id TEXT NOT NULL, duration INTEGER NOT NULL DEFAULT 0, genre TEXT, path TEXT NOT NULL,
+        hidden INTEGER NOT NULL DEFAULT 0, synced_at INTEGER NOT NULL
+      )
+    `);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
+       VALUES ('old', 'a', 'T', 'X', 'art', 'p', 1)`,
+    );
+
+    applySchema(db);
+
+    expect(
+      db.query(`SELECT 1 FROM library_sync_state WHERE key = 'review_hold_armed_v1'`).get(),
+    ).not.toBeNull();
+  });
+
+  it('does not arm the marker on a fresh, empty database', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+
+    expect(
+      db.query(`SELECT 1 FROM library_sync_state WHERE key = 'review_hold_armed_v1'`).get(),
+    ).toBeNull();
+  });
+});
+
 function landed(db: Database, id: string): number | null {
   return (
     db

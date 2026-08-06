@@ -29,6 +29,7 @@ import { captureProcessingFailure, type ProcessingFailureReport } from '../obser
 import { countSkippedFiles, permanentlyFailedClause } from './enrichment/analysis-failures.js';
 import { recomputeActiveJobStages } from './acquisition-job-store.js';
 import { maybeRunDailyCoverCachePrune } from './cover-cache-prune.js';
+import { maybeArmReviewHold, reviewHoldActive } from './download-review-store.js';
 
 const log = createLogger('library-processing');
 
@@ -451,8 +452,12 @@ export class LibraryProcessingService extends EventEmitter {
     // Hold-for-review (#411): a human decision, deliberately outside the 24h valve
     // and unaffected by LANDING_GATE_DISABLED — those exist for enrichment tooling,
     // not for skipping review. reviewed_at >= created so a later wave / re-download
-    // of the same album pends again instead of riding an old approval.
-    const reviewCond = settings.holdForReview
+    // of the same album pends again instead of riding an old approval. Gated on
+    // reviewHoldActive (#417), not the bare setting: a fresh-DB bootstrap scan
+    // stays unarmed (see db.ts / download-review-store.ts) so the *entire*
+    // existing library doesn't flood the review inbox the first time the toggle
+    // is on — only downloads that land after the marker arms actually hold.
+    const reviewCond = reviewHoldActive(this.db, settings.holdForReview)
       ? `EXISTS (SELECT 1 FROM download_reviews r
            WHERE r.album_id = library_songs.album_id AND r.state = 'approved'
              AND (library_songs.created IS NULL OR r.reviewed_at >= library_songs.created))`
@@ -467,6 +472,7 @@ export class LibraryProcessingService extends EventEmitter {
       const where = reviewCond ? `landed_at IS NULL AND ${reviewCond}` : `landed_at IS NULL`;
       this.db.run(`UPDATE library_songs SET landed_at = ? WHERE ${where}`, [now]);
       recomputeActiveJobStages(this.db);
+      maybeArmReviewHold(this.db);
       return;
     }
     // `created` is an ISO-8601 string; compare against the cutoff as an ISO string
@@ -480,6 +486,7 @@ export class LibraryProcessingService extends EventEmitter {
     ]);
     // Landing may have completed an acquisition job waiting in `processing`.
     recomputeActiveJobStages(this.db);
+    maybeArmReviewHold(this.db);
   }
 
   /** One bounded batch across each runnable task (or the given subset). */
