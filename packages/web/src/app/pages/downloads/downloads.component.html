@@ -2,7 +2,7 @@
     <div class="page-shell max-w-6xl">
       <!-- Header -->
       <div class="flex items-center justify-between gap-3 mb-6 flex-wrap">
-        <h1 class="text-lg font-semibold text-theme-primary">Downloads</h1>
+        <h1 class="page-title">Downloads</h1>
         <div class="flex items-center gap-3 flex-wrap">
           @if (diskUsage(); as disk) {
             <app-disk-pill [used]="disk.used" [total]="disk.total" />

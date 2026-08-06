@@ -20,7 +20,7 @@
         className="flex-shrink-0"
       />
       <div class="flex flex-col justify-end">
-        <h1 class="text-2xl font-bold text-theme-primary">{{ selectedAlbum()!.name }}</h1>
+        <h1 class="page-title">{{ selectedAlbum()!.name }}</h1>
         <p class="text-theme-secondary hover:text-theme-primary transition mt-1">
           <app-artist-links
             [artists]="selectedAlbum()!.artists"
