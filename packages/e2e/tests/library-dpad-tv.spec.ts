@@ -93,4 +93,30 @@ test.describe('TV D-pad find-a-song flow', () => {
     await page.getByTestId('player-title').click();
     await expect(page.getByTestId('now-playing-next-up')).toContainText('Five Easy Pieces');
   });
+
+  /**
+   * Issue #432 — the mini-player grab notch was bound only to `(pointerdown)`,
+   * so a remote (key events only) could neither focus nor activate it and
+   * Now Playing was unreachable from the player bar. Unit tests cover the DOM
+   * contract; this proves a real browser's keyboard actually gets there.
+   */
+  test('the mini-player grab notch is keyboard-focusable and expands Now Playing', async ({
+    page,
+  }) => {
+    await page.goto('/library');
+    const card = page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title });
+    await card.focus();
+    await page.keyboard.press('Enter');
+    await page.getByTestId('play-album').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('player-title')).toBeVisible();
+
+    const grab = page.getByTestId('player-grab');
+    await expect(grab).toHaveAttribute('role', 'button');
+    await grab.focus();
+    await expect(grab).toBeFocused();
+
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('now-playing-body')).toBeVisible();
+  });
 });
