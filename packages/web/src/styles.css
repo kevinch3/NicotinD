@@ -357,7 +357,7 @@
 }
 
 /* Page & section idioms (issue #384) — criteria in docs/web-ui.md "Page & section idioms".
-   page-shell owns the ONE responsive gutter/width scale; pages add max-w-(6xl|3xl|2xl).
+   page-shell owns the ONE responsive gutter/width scale; pages add max-w-(6xl|3xl).
    Theme colors not @theme-registered (text-theme-primary, border-theme) are raw var()
    declarations here — @apply can only resolve @theme-registered names. section-title's color
    is a raw var() too even though text-theme-secondary IS @theme-registered, for consistency

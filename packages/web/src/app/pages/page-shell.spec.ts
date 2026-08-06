@@ -8,17 +8,19 @@ import { join } from 'path';
 // raw card/heading literals. Criteria: docs/web-ui.md "Page & section idioms".
 const read = (rel: string): string => readFileSync(join(__dirname, rel), 'utf8');
 
-const PAGE_TIERS: Array<[string, '6xl' | '3xl' | '2xl']> = [
+// The settings-family pages share Admin's 3xl tier (issue #420) — a 2xl/3xl split made the
+// content column jump when navigating Settings ↔ Admin ↔ Extensions.
+const PAGE_TIERS: Array<[string, '6xl' | '3xl']> = [
   ['library/library.component.html', '6xl'],
   ['library/album-detail.component.html', '6xl'],
   ['library/artist-detail.component.html', '6xl'],
   ['library/genre-detail.component.html', '6xl'],
   ['search/search.component.html', '6xl'],
   ['downloads/downloads.component.html', '6xl'],
-  ['settings/settings.component.html', '2xl'],
-  ['settings/devices/devices.component.html', '2xl'],
-  ['settings/agent-tokens/agent-tokens.component.html', '2xl'],
-  ['plugins/plugins.component.html', '2xl'],
+  ['settings/settings.component.html', '3xl'],
+  ['settings/devices/devices.component.html', '3xl'],
+  ['settings/agent-tokens/agent-tokens.component.html', '3xl'],
+  ['plugins/plugins.component.html', '3xl'],
   ['admin/admin.component.html', '3xl'],
   ['radio-landing/radio-landing.component.html', '3xl'],
   ['library/playlist-detail.component.html', '3xl'],

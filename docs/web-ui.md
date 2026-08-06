@@ -214,7 +214,7 @@ targeted by an opacity modifier or `@apply`d from a theme color that isn't `@the
 `text-theme-primary`/`border-theme` inside these declarations are raw `var()`, not `@apply`):
 
 - `page-shell` — `mx-auto px-4 py-5 md:px-6 md:py-8`. The **one** responsive gutter/width scale;
-  every routed page inside the app shell adds a `max-w-(6xl|3xl|2xl)` alongside it (the width is
+  every routed page inside the app shell adds a `max-w-(6xl|3xl)` alongside it (the width is
   chosen per page, the gutters/padding never vary).
 - `page-title` — `text-2xl font-bold` + `--theme-text-primary`. The settings-family/admin page
   `<h1>`; browse-tier titles are a possible follow-up (kept their own title styles by scoping
@@ -233,8 +233,7 @@ happens to look today:
 | Tier | Pages | Why |
 | --- | --- | --- |
 | `max-w-6xl` | Library, album/artist/genre detail, Acquire, Downloads | Browse surfaces — grids/lists that want the room. Downloads moved `max-w-5xl` → `6xl` to join this tier rather than keep a one-off width. |
-| `max-w-3xl` | Playlist detail, Radio landing, Share view, Admin | Reading/mixed surfaces — a mix of prose-width content and wider panels (Admin's tables/forms don't need browse-grid width). |
-| `max-w-2xl` | Settings, Devices, Agent tokens, Extensions (`plugins.component`) | The settings-family of forms — narrow enough that a form/toggle list stays scannable. |
+| `max-w-3xl` | Playlist detail, Radio landing, Share view, Admin, Settings, Devices, Agent tokens, Extensions (`plugins.component`) | Reading/mixed surfaces — a mix of prose-width content and wider panels (Admin's tables/forms don't need browse-grid width). The settings-family started one tier narrower (`max-w-2xl`), but the 2xl/3xl split made the content column visibly jump when navigating Settings ↔ Admin ↔ Extensions — all `SettingsGroupComponent` pages now share this tier (issue #420). |
 
 **Section idioms** — once inside a page, three shapes cover everything:
 
