@@ -76,13 +76,20 @@ const WRAPPER_MAX_WIDTH: Record<string, string> = {
 };
 
 test.describe('settings cards — cross-view consistency', () => {
-  test('every route renders fully collapsed on first load', async ({ page }) => {
+  // The one documented default-open exception (issue #379): Devices' paired
+  // list is that page's primary content (the visit reason is revoking a
+  // device), so it renders expanded while every sibling stays collapsed.
+  const DEFAULT_OPEN: Record<string, number> = { '/settings/devices': 1 };
+
+  test('every route renders collapsed on first load (minus documented exceptions)', async ({
+    page,
+  }) => {
     for (const route of ROUTES) {
       await page.goto(route);
       await clearGroupState(page);
       await page.reload();
       await expect(page.locator('[data-group-id]').first()).toBeVisible();
-      await expect(page.getByTestId('settings-group-body')).toHaveCount(0);
+      await expect(page.getByTestId('settings-group-body')).toHaveCount(DEFAULT_OPEN[route] ?? 0);
     }
   });
 

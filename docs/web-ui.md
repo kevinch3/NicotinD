@@ -16,8 +16,10 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   `/settings/plugins` (incl. each `PluginCardComponent`), `/settings/devices`, and
   `/settings/agent-tokens` all render their groups through the one shared bordered, collapsible
   `SettingsGroupComponent` (`packages/web/src/app/components/settings-group/`) — **every group
-  collapsed by default, no exceptions** (Devices' pairing panel mints its code on first expand via
-  the `opened` output rather than an eager `defaultOpen`). Open/closed state persists per device to
+  collapsed by default, with one documented exception** (issue #379): Devices' paired-devices list
+  ships `[defaultOpen]="true"` because it is that page's primary content and the common visit
+  reason is revoking a device. Devices' pairing panel still mints its code on first expand via
+  the `opened` output rather than an eager `defaultOpen`. Open/closed state persists per device to
   `localStorage` under `nicotind-group-<groupId>` (`lib/group-state.ts`), cleared on signout
   (`clearGroupStates` inside `AuthService.resetSession()`) so a shared device never leaks one user's
   expand habits into the next session. Testids: `settings-group-toggle`/`settings-group-body` on the
@@ -29,7 +31,7 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   collapsed-by-default use its `clearGroupState(page)` sibling; web unit specs share one
   `expandAllGroups` from `packages/web/src/testing/expand-groups.ts` (issue #377 — both used to
   be per-file copies). `tests/settings-consistency.spec.ts` is the CI-run gate that
-  every route renders fully collapsed on load and that the first card + title resolve to identical
+  every route renders collapsed on load (its `DEFAULT_OPEN` map carries the #379 exception) and that the first card + title resolve to identical
   computed styles across all five routes; `tests/settings-gallery.screens.ts` (out-of-CI, run via
   `cd packages/e2e && bunx playwright test --config=playwright.screenshots.config.ts`) captures a
   collapsed + fully-expanded shot of every route in both a mobile and a desktop viewport for human
