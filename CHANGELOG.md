@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.316](https://github.com/kevinch3/NicotinD/compare/v0.1.315...v0.1.316) (2026-08-06)
+
+### Features
+
+* **downloads:** download inbox triage — hold-for-review + multi-source metadata fix ([#412](https://github.com/kevinch3/NicotinD/issues/412)) ([2a7452f](https://github.com/kevinch3/NicotinD/commit/2a7452fecbce06d488ff3c1d54b8acec69b1b0e3)), closes [#411](https://github.com/kevinch3/NicotinD/issues/411), references [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411) [#411](https://github.com/kevinch3/NicotinD/issues/411)
 ## [0.1.315](https://github.com/kevinch3/NicotinD/compare/v0.1.314...v0.1.315) (2026-08-05)
 
 ### Features
