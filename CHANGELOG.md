@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.317](https://github.com/kevinch3/NicotinD/compare/v0.1.316...v0.1.317) (2026-08-06)
+
+### Bug Fixes
+
+* **api,web:** hold-for-review hardening — bootstrap exemption, admin strand warning, hint wording ([#419](https://github.com/kevinch3/NicotinD/issues/419)) ([e0aa347](https://github.com/kevinch3/NicotinD/commit/e0aa3478942255f038301b3c43a0d88cb6ac64ed)), references [#417](https://github.com/kevinch3/NicotinD/issues/417) [#418](https://github.com/kevinch3/NicotinD/issues/418) [#417](https://github.com/kevinch3/NicotinD/issues/417) [#417](https://github.com/kevinch3/NicotinD/issues/417) [#417](https://github.com/kevinch3/NicotinD/issues/417)
 ## [0.1.316](https://github.com/kevinch3/NicotinD/compare/v0.1.315...v0.1.316) (2026-08-06)
 
 ### Features
