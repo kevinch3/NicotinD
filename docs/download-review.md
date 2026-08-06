@@ -220,6 +220,42 @@ seeds the plugin's `apiKey` at registration time
 — an existing deployment that had already set this secret gets AcoustID
 identify for free without re-entering a key.
 
+## Canonical tracklist (issue #413)
+
+MusicBrainz is the only candidate source that publishes a **per-track**
+tracklist, so it gets its own route rather than a field on the generic
+candidate contract: `GET /api/library/musicbrainz/release-groups/:rgid/tracklist`
+(curator-gated, 503 without an MB client). The fix modal shows **Apply
+MusicBrainz titles** above the track grid exactly when a `musicbrainz`
+candidate carrying a release-group id is on screen.
+
+Three decisions worth keeping:
+
+- **Two hops, and the release pick matters.** A release *group* has no tracks
+  (it is the abstract "album"), so the tracklist comes off one of its releases.
+  The pick is the **Official** release with the **most** tracks, not the first
+  listed — MB lists promos, single edits and partial digital editions alongside
+  the real album, and a short one would silently truncate the tracklist a
+  curator is about to apply. Non-official releases are used only when there is
+  no official one. Only the first medium is returned: a curator is matching one
+  folder's worth of files, and flattening multi-disc positions would renumber
+  them wrongly.
+- **Matched by position, never by title.** A curator reaches for this precisely
+  when the existing titles are junk (`01 - track01`), so title similarity is the
+  one signal that cannot be trusted. A row's position is its track number, or
+  its place in the (already track-ordered) grid when it has none — so a folder
+  with no track tags still lines up in file order. A row with no canonical
+  counterpart is left untouched, never blanked.
+- **Titles only, and nothing is saved.** MB's per-track credits are
+  recording-level, so applying them would smear the wrong artist across a
+  compilation; artist stays the album-level decision the modal already makes.
+  The rows go dirty and the curator still reviews them and presses **Save
+  tracks**, exactly like a fingerprint match — the action fills the grid, it
+  does not retag behind their back.
+
+The overlay itself is the pure `applyCanonicalTracklist`
+(`web/src/app/lib/review-tracks.ts`), unit-tested alongside its siblings.
+
 ## Retag-vs-override persistence rationale
 
 There are two different "fix the metadata" paths in the codebase now, and

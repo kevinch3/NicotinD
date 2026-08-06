@@ -522,7 +522,8 @@ Add detail there, not here.
 - **Download inbox triage (hold-for-review, issue #411)**: opt-in `holdForReview` processing setting
   holds quarantined downloads until curator approval in the Downloads inbox; `download_reviews`
   decision table (pending = derived), multi-source metadata candidates + AcoustID identify + per-track
-  retag. → [docs/download-review.md](docs/download-review.md)
+  retag + an **Apply MusicBrainz titles** action (issue #413 — MB is the only source with a per-track
+  tracklist; position-matched, titles-only, fills the grid without saving). → [docs/download-review.md](docs/download-review.md)
 - **Perceptual audio features (no LLM)**: energy/loudness measured bun-side via ffmpeg ebur128;
   danceability/valence/mood/vocals/acousticness + cached embeddings (content-invalidated by
   `library_embeddings.file_size` since issue #258 — a file replaced in place keeps its path-derived

@@ -110,6 +110,15 @@ export class LibraryApiService {
       );
   }
   /**
+   * The canonical tracklist behind a MusicBrainz candidate (issue #413) —
+   * scoped to the release group the curator actually picked in the modal.
+   */
+  getCanonicalTracklist(releaseGroupId: string) {
+    return this.http.get<{ tracks: Array<{ position: number; title: string }> }>(
+      `/api/library/musicbrainz/release-groups/${encodeURIComponent(releaseGroupId)}/tracklist`,
+    );
+  }
+  /**
    * Cover candidates for an album (admin): the current cover, Lidarr
    * alternatives (when configured), and per-track embedded art. `q` overrides
    * the Lidarr lookup query.
