@@ -8,6 +8,7 @@ import type {
   LyricsCapability,
   GenreCapability,
   ArtistInfoCapability,
+  ArtistImageCapability,
   ReleaseCandidatesCapability,
   IdentifyCapability,
   ConnectivityCapability,
@@ -37,6 +38,7 @@ export interface Plugin {
   readonly lyrics?: LyricsCapability;
   readonly genre?: GenreCapability;
   readonly artistInfo?: ArtistInfoCapability;
+  readonly artistImage?: ArtistImageCapability;
   readonly releaseCandidates?: ReleaseCandidatesCapability;
   readonly identify?: IdentifyCapability;
   readonly connectivity?: ConnectivityCapability;

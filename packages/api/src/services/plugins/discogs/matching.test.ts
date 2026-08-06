@@ -6,6 +6,7 @@ import {
   selectBestRelease,
   mapReleaseGenres,
   mapArtistInfo,
+  mapArtistImage,
   foldArtist,
   foldTitle,
   splitDiscogsTitle,
@@ -194,5 +195,35 @@ describe('mapArtistInfo', () => {
 
   it('treats a blank profile as no bio', () => {
     expect(mapArtistInfo({ profile: '   ' })).toEqual({ bio: null, urls: [] });
+  });
+});
+
+describe('mapArtistImage (issue #422)', () => {
+  it('prefers the primary image over secondary gallery shots', () => {
+    expect(
+      mapArtistImage({
+        images: [
+          { type: 'secondary', uri: 'https://img/2.jpg' },
+          { type: 'primary', uri: 'https://img/1.jpg' },
+        ],
+      }),
+    ).toBe('https://img/1.jpg');
+  });
+
+  it('falls back to the first entry with a URI when no primary exists', () => {
+    expect(
+      mapArtistImage({
+        images: [
+          { type: 'secondary', uri: '  ' },
+          { type: 'secondary', uri: 'https://img/2.jpg' },
+        ],
+      }),
+    ).toBe('https://img/2.jpg');
+  });
+
+  it('returns null for missing/empty/uri-less image lists', () => {
+    expect(mapArtistImage({})).toBeNull();
+    expect(mapArtistImage({ images: [] })).toBeNull();
+    expect(mapArtistImage({ images: [{ type: 'primary' }, { uri: '' }] })).toBeNull();
   });
 });

@@ -371,6 +371,10 @@ interface LibraryRoutesOptions {
    *  on-demand artist-image fill reuse the same provider chain as the windowed
    *  enrichment task instead of a Lidarr-only shortcut (issue #250). */
   lookupArtistImageSpotify?: ((name: string) => Promise<string | null>) | null;
+  /** Plugin-backed portrait lookup (Discogs today — issue #422): third seat of
+   *  the provider chain the on-demand fill walks. */
+  lookupArtistImageDiscogs?:
+    ((artist: { id: string; name: string }) => Promise<string | null>) | null;
   /** Analysis-sidecar client: preferred BPM detector for on-demand analysis
    *  (Essentia — the local music-tempo fallback makes frequent octave errors).
    *  Null when no sidecar is configured. */
@@ -583,6 +587,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     audioFeaturesClient,
     slskdRef,
     lookupArtistImageSpotify,
+    lookupArtistImageDiscogs,
     mbClient,
   } = options;
   // A deleted file's slskd share entry doesn't go away on its own — see
@@ -1330,6 +1335,28 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
    * artist and can never thrash the provider chain or overwrite a manual pick.
    * Degrades silently to `{ filled: false }` — an auto-trigger must not toast.
    */
+  /**
+   * Which artist-image sources could actually serve a portrait right now
+   * (issue #422) — backs the web's "Fetch automatically" enable/disable state.
+   *
+   * Deliberately NOT derived from `configuredArtistImageSources`: the chain's
+   * spotify/discogs closures are wired always-non-null (the enable check lives
+   * inside them, at call time), so config presence would report every source
+   * as available forever. This computes from the live truth instead: Lidarr
+   * configured, spotify plugin enabled (the exact gate
+   * `gatedSpotifyArtistImageLookup` applies), and each `artist-image`-capable
+   * plugin both enabled and available (creds present).
+   */
+  app.get('/artist-image/sources', async (c) => {
+    const sources: string[] = [];
+    if (lidarr) sources.push('lidarr');
+    if (pluginRegistry?.isEnabled('spotify')) sources.push('spotify');
+    for (const p of pluginRegistry?.getEnabledWithCapability('artist-image') ?? []) {
+      if (await p.isAvailable()) sources.push(p.manifest.id);
+    }
+    return c.json({ sources });
+  });
+
   app.post('/artists/:id/auto-fetch-image', async (c) => {
     const id = c.req.param('id');
     const db = getDatabase();
@@ -1351,7 +1378,12 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     try {
       const { applied } = await fillArtistImages(
         db,
-        { lidarr, spotifyLookup: lookupArtistImageSpotify ?? null, coverCacheDir },
+        {
+          lidarr,
+          spotifyLookup: lookupArtistImageSpotify ?? null,
+          discogsLookup: lookupArtistImageDiscogs ?? null,
+          coverCacheDir,
+        },
         [{ id: artist.id, name: artist.name }],
       );
       // A bulk fill changes what the Artists grid renders, but a single

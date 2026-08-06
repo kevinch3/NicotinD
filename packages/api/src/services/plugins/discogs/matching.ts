@@ -192,10 +192,11 @@ export function mapReleaseGenres(entity: DiscogsGenreEntity): {
   };
 }
 
-/** A fetched Discogs artist (only the bio-bearing fields). */
+/** A fetched Discogs artist (only the bio- and image-bearing fields). */
 export interface DiscogsArtistEntity {
   profile?: string;
   urls?: string[];
+  images?: Array<{ type?: string; uri?: string }>;
 }
 
 /** Extract a trimmed bio + de-duplicated links from a fetched Discogs artist.
@@ -217,6 +218,20 @@ export function mapArtistInfo(entity: DiscogsArtistEntity): {
     bio: bio ? bio : null,
     urls: dedupeTrim(entity.urls),
   };
+}
+
+/**
+ * Pick the artist's portrait from a fetched Discogs artist (issue #422): the
+ * `primary`-typed image, else the first entry with a URI. Discogs marks exactly
+ * one image `primary` (the profile photo); `secondary` entries are gallery
+ * shots, so they're only a fallback when no primary exists.
+ */
+export function mapArtistImage(entity: DiscogsArtistEntity): string | null {
+  const images = entity.images ?? [];
+  const pick =
+    images.find((i) => i.type === 'primary' && i.uri?.trim()) ??
+    images.find((i) => Boolean(i.uri?.trim()));
+  return pick?.uri?.trim() || null;
 }
 
 function dedupeTrim(values: readonly string[] | undefined): string[] {

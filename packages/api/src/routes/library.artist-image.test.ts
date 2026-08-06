@@ -291,3 +291,38 @@ describe('POST /artists/:id/auto-fetch-image (#250)', () => {
     expect(await res.json()).toEqual({ filled: false });
   });
 });
+
+describe('GET /artist-image/sources (issue #422)', () => {
+  it('is empty when nothing can serve a portrait', async () => {
+    const res = await makeApp().request('/artist-image/sources');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ sources: [] });
+  });
+
+  it('reports live truth: lidarr config, spotify enablement, available artist-image plugins', async () => {
+    const registry = {
+      isEnabled: (id: string) => id === 'spotify',
+      getEnabledWithCapability: () => [
+        { manifest: { id: 'discogs' }, isAvailable: async () => true },
+        // Enabled but creds-less plugin must not be reported as a live source.
+        { manifest: { id: 'credless' }, isAvailable: async () => false },
+      ],
+    };
+    const app = new Hono<AuthEnv>();
+    app.use('*', async (c, next) => {
+      c.set('user', { sub: 'u1', role: 'user', iat: 0, exp: 0 } as JwtPayload);
+      await next();
+    });
+    app.route(
+      '/',
+      libraryRoutes('/music', {
+        dataDir,
+        coverCacheDir: join(dataDir, 'cover-cache'),
+        lidarr: {} as never,
+        pluginRegistry: registry as never,
+      }),
+    );
+    const res = await app.request('/artist-image/sources');
+    expect(await res.json()).toEqual({ sources: ['lidarr', 'spotify', 'discogs'] });
+  });
+});

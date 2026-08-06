@@ -75,7 +75,7 @@ describe('fillArtistImages (#250)', () => {
 
     const res = await fillArtistImages(
       db,
-      { lidarr: null, spotifyLookup: lookup, coverCacheDir },
+      { lidarr: null, spotifyLookup: lookup, discogsLookup: null, coverCacheDir },
       selectArtistsNeedingPortrait(db, 10),
     );
 
@@ -90,7 +90,7 @@ describe('fillArtistImages (#250)', () => {
     seedArtist('a', 'Obscure');
     const res = await fillArtistImages(
       db,
-      { lidarr: null, spotifyLookup: spotify({}), coverCacheDir },
+      { lidarr: null, spotifyLookup: spotify({}), discogsLookup: null, coverCacheDir },
       selectArtistsNeedingPortrait(db, 10),
     );
     expect(res.applied).toBe(0);
@@ -107,7 +107,7 @@ describe('fillArtistImages (#250)', () => {
 
     const res = await fillArtistImages(
       db,
-      { lidarr: null, spotifyLookup: lookup, coverCacheDir },
+      { lidarr: null, spotifyLookup: lookup, discogsLookup: null, coverCacheDir },
       selectArtistsNeedingPortrait(db, 10),
     );
 
@@ -135,6 +135,7 @@ describe('fillArtistImages (#250)', () => {
       {
         lidarr: lidarr as never,
         spotifyLookup: spotify({ Resilient: 'https://cdn/ok.jpg' }),
+        discogsLookup: null,
         coverCacheDir,
       },
       selectArtistsNeedingPortrait(db, 10),
@@ -147,7 +148,7 @@ describe('fillArtistImages (#250)', () => {
     const lookup = spotify({});
     const res = await fillArtistImages(
       db,
-      { lidarr: null, spotifyLookup: lookup, coverCacheDir },
+      { lidarr: null, spotifyLookup: lookup, discogsLookup: null, coverCacheDir },
       [],
     );
     expect(res).toEqual({ applied: 0, labels: [], unresolved: [] });

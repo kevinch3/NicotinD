@@ -15,6 +15,7 @@ export type PluginCapability =
   | 'lyrics'
   | 'genre'
   | 'artist-info'
+  | 'artist-image'
   | 'connectivity';
 
 export type PluginConfigFieldType = 'text' | 'password';

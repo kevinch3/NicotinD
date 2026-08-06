@@ -49,6 +49,7 @@ import {
   SpotifySearchService,
   gatedSpotifyArtistImageLookup,
 } from './services/spotify-search.service.js';
+import { makePluginArtistImageLookup } from './services/artist-image-plugin.js';
 import { sourcesRoutes } from './routes/sources.js';
 import { CandidateSearchAggregator } from './services/candidate-search.js';
 import {
@@ -367,6 +368,11 @@ export function createApp({
   const spotifyArtistImageRef: { lookup: ((name: string) => Promise<string | null>) | null } = {
     lookup: null,
   };
+  // Plugin-backed (Discogs) portrait lookup for the same chain (issue #422) —
+  // same ref-bridge: populated once the plugin registry exists below.
+  const artistImagePluginRef: {
+    lookup: ((artist: { id: string; name: string }) => Promise<string | null>) | null;
+  } = { lookup: null };
 
   // Discogs artist-info lookup for the artist-info enrichment task (issue #195).
   // Same ref-bridge as spotifyArtistImageRef: LibraryProcessingService is
@@ -396,6 +402,8 @@ export function createApp({
     dataDir: expandedDataDir,
     lookupArtistImageSpotify: (name) =>
       spotifyArtistImageRef.lookup?.(name) ?? Promise.resolve(null),
+    lookupArtistImageDiscogs: (artist) =>
+      artistImagePluginRef.lookup?.(artist) ?? Promise.resolve(null),
     lookupArtistInfo: (mbid) => artistInfoRef.lookup?.(mbid) ?? Promise.resolve(null),
     lookupGenreForRelease: (query) => genreRef.lookup?.(query) ?? Promise.resolve(null),
     audioFeaturesClient,
@@ -492,6 +500,10 @@ export function createApp({
     const [provider] = plugins.getEnabledWithCapability('genre');
     return provider?.genre?.fetchGenres(query) ?? Promise.resolve(null);
   };
+  // Populate the plugin-backed artist-image ref (issue #422): enablement is
+  // re-checked inside on every call, so a live plugin toggle takes effect
+  // without a restart.
+  artistImagePluginRef.lookup = makePluginArtistImageLookup({ db, lidarr, plugins });
   // One-time migration: seed the previously-implicit acquisition plugins enabled
   // ONLY on an existing (pre-plugin) install, so upgrades stay seamless. Fresh
   // installs are default-off — an admin opts into acquisition in Settings →
@@ -627,6 +639,8 @@ export function createApp({
       // on-demand fill isn't a Lidarr-only shortcut (issue #250).
       lookupArtistImageSpotify: (name) =>
         spotifyArtistImageRef.lookup?.(name) ?? Promise.resolve(null),
+      lookupArtistImageDiscogs: (artist) =>
+        artistImagePluginRef.lookup?.(artist) ?? Promise.resolve(null),
     }),
   );
   // Download inbox triage (issue #411): the quarantine-hold review queue.

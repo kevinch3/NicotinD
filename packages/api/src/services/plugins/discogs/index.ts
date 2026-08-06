@@ -9,6 +9,8 @@ import type {
   ArtistInfoCapability,
   ArtistInfoQuery,
   ArtistInfoResult,
+  ArtistImageCapability,
+  ArtistImageResult,
   ReleaseCandidatesCapability,
   ReleaseCandidateQuery,
   ReleaseCandidateHit,
@@ -22,6 +24,7 @@ import {
   splitDiscogsTitle,
   mapReleaseGenres,
   mapArtistInfo,
+  mapArtistImage,
   type DiscogsRef,
   type DiscogsArtistEntity,
 } from './matching.js';
@@ -86,7 +89,7 @@ export class DiscogsPlugin implements Plugin {
       'Enrich release genres/styles from the Discogs database — strong on Latin, ' +
       'regional, pre-2000 and DJ-pool repertoire. Needs a free Consumer Key + Secret.',
     kind: 'metadata',
-    capabilities: ['genre', 'artist-info', 'release-candidates'],
+    capabilities: ['genre', 'artist-info', 'artist-image', 'release-candidates'],
     requirements: { binaries: [] },
     configSchema: z
       .object({
@@ -156,6 +159,10 @@ export class DiscogsPlugin implements Plugin {
 
   readonly artistInfo: ArtistInfoCapability = {
     fetchArtistInfo: (query) => this.fetchArtistInfo(query),
+  };
+
+  readonly artistImage: ArtistImageCapability = {
+    fetchArtistImage: (query) => this.fetchArtistImage(query),
   };
 
   readonly releaseCandidates: ReleaseCandidatesCapability = {
@@ -235,6 +242,26 @@ export class DiscogsPlugin implements Plugin {
     const { bio, urls } = mapArtistInfo(raw as DiscogsArtistEntity);
     if (!bio && urls.length === 0) return null;
     return { bio, urls, source: 'discogs', confidence: MBID_MATCH_CONFIDENCE };
+  }
+
+  /**
+   * Artist portrait (issue #422) — same MBID-only resolution as
+   * {@link fetchArtistInfo}, then the primary entry of the artist's `images[]`
+   * (which {@link fetchArtistInfo} always fetched and discarded). The client's
+   * on-disk cache means an info+image pair for one artist costs one API call.
+   */
+  private async fetchArtistImage(query: ArtistInfoQuery): Promise<ArtistImageResult | null> {
+    const client = this.client;
+    if (!client || !this.deps.resolveDiscogsArtistRef || !query.mbid) return null;
+
+    const ref = await this.deps.resolveDiscogsArtistRef(query.mbid);
+    if (!ref || ref.kind !== 'artist') return null;
+
+    const raw = await client.getArtist(ref.id);
+    if (!raw) return null;
+    const url = mapArtistImage(raw as DiscogsArtistEntity);
+    if (!url) return null;
+    return { url, source: 'discogs', confidence: MBID_MATCH_CONFIDENCE };
   }
 
   /**

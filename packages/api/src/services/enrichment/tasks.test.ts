@@ -79,6 +79,7 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     audioFeaturesAvailable: () => true,
     lookupGenre: async () => 'Rock',
     lookupArtistImageSpotify: async () => null,
+    lookupArtistImageDiscogs: null,
     lookupArtistInfo: null,
     lookupGenreForRelease: null,
     resolveArtistIdentity: null,

@@ -19,7 +19,7 @@ interface Calls {
   getArtist: string[];
 }
 
-function make(opts: { albums?: unknown[]; getArtistFails?: boolean } = {}) {
+function make(opts: { albums?: unknown[]; getArtistFails?: boolean; sources?: string[] } = {}) {
   const calls: Calls = { upload: [], fromAlbum: [], reset: [], autoFetch: [], getArtist: [] };
   const api = {
     uploadArtistImage: vi.fn((id: string, file: File) => {
@@ -38,6 +38,8 @@ function make(opts: { albums?: unknown[]; getArtistFails?: boolean } = {}) {
       calls.autoFetch.push(id);
       return of({ filled: true });
     }),
+    // Live source availability (issue #422) — defaults to "lidarr available".
+    artistImageSources: vi.fn(() => of({ sources: opts.sources ?? ['lidarr'] })),
     getArtist: vi.fn((id: string) => {
       calls.getArtist.push(id);
       return opts.getArtistFails
@@ -146,5 +148,30 @@ describe('ArtistImageMenuComponent', () => {
 
     expect(changed).not.toHaveBeenCalled();
     expect(failing.c.busy()).toBe(false);
+  });
+  // Issue #422: "Fetch automatically" is gated on the server's live source list —
+  // enabled when any provider (Lidarr / Spotify / Discogs) can serve a portrait,
+  // disabled when none can.
+  describe('auto-fetch availability gate (issue #422)', () => {
+    it('reports unavailable and refuses to fetch when the server lists no sources', async () => {
+      const g = make({ sources: [] });
+      expect(g.c.imageSources.autoFetchUnavailable()).toBe(true);
+      await g.c.autoFetch();
+      expect(g.calls.autoFetch).toHaveLength(0);
+    });
+
+    it('stays enabled when a provider (e.g. discogs) is live', async () => {
+      const g = make({ sources: ['discogs'] });
+      expect(g.c.imageSources.autoFetchUnavailable()).toBe(false);
+      await g.c.autoFetch();
+      expect(g.calls.autoFetch).toEqual(['ar1']);
+    });
+
+    it('stays enabled while availability is still unknown (request not resolved)', () => {
+      const g = make();
+      // Force the not-yet-loaded state: a fresh service before any response.
+      g.c.imageSources.sources.set(null);
+      expect(g.c.imageSources.autoFetchUnavailable()).toBe(false);
+    });
   });
 });

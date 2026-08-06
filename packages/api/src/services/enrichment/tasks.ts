@@ -153,6 +153,10 @@ export interface EnrichmentContext {
   /** Returns a Spotify portrait url for an artist name, or null. Null when Spotify
    *  isn't configured — the artist-image task then relies on Lidarr alone. */
   lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
+  /** Returns a portrait url from the enabled `artist-image` plugin (Discogs —
+   *  issue #422), or null. Third seat of the artist-image provider chain. */
+  lookupArtistImageDiscogs:
+    ((artist: { id: string; name: string }) => Promise<string | null>) | null;
   /** Resolve Discogs bio/links for an artist's MBID (issue #195), or null when
    *  unavailable/no confident match. Null *member* (not just a null return)
    *  when no artist-info-capable plugin is enabled+configured — the task then
@@ -419,6 +423,8 @@ export function createEnrichmentContext(deps: {
   concurrency: number;
   /** Spotify portrait lookup, or null when Spotify creds aren't configured. */
   lookupArtistImageSpotify?: ((name: string) => Promise<string | null>) | null;
+  lookupArtistImageDiscogs?:
+    ((artist: { id: string; name: string }) => Promise<string | null>) | null;
   /** Discogs artist bio/links lookup, or null when unconfigured. */
   lookupArtistInfo?: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
   /** Discogs release-genre lookup (issue #194), or null when unconfigured. */
@@ -450,6 +456,7 @@ export function createEnrichmentContext(deps: {
       return r.candidates.length > 0 ? r.candidates.join('; ') : r.suggested;
     },
     lookupArtistImageSpotify: deps.lookupArtistImageSpotify ?? null,
+    lookupArtistImageDiscogs: deps.lookupArtistImageDiscogs ?? null,
     lookupArtistInfo: deps.lookupArtistInfo ?? null,
     lookupGenreForRelease: deps.lookupGenreForRelease ?? null,
     resolveArtistIdentity: deps.lidarr ? makeLidarrArtistIdentityResolver(deps.lidarr) : null,
@@ -958,6 +965,7 @@ const artistImageTask: EnrichmentTask = {
     configuredArtistImageSources({
       lidarr: ctx.lidarr,
       spotifyLookup: ctx.lookupArtistImageSpotify,
+      discogsLookup: ctx.lookupArtistImageDiscogs,
     }).length > 0
       ? true
       : 'No artist-image provider configured',
@@ -972,6 +980,7 @@ const artistImageTask: EnrichmentTask = {
       {
         lidarr: ctx.lidarr,
         spotifyLookup: ctx.lookupArtistImageSpotify,
+        discogsLookup: ctx.lookupArtistImageDiscogs,
         coverCacheDir: ctx.coverCacheDir,
       },
       rows,

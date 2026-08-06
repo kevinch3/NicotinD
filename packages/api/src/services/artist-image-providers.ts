@@ -34,6 +34,9 @@ export interface ArtistImageConfig {
   lidarr: ArtistImageLidarr | null;
   /** Returns a Spotify portrait URL for an artist name, or null. */
   spotifyLookup: ((name: string) => Promise<string | null>) | null;
+  /** Returns a portrait URL from the enabled `artist-image` plugin (Discogs
+   *  today — issue #422), or null. Built by `makePluginArtistImageLookup`. */
+  discogsLookup: ((artist: { id: string; name: string }) => Promise<string | null>) | null;
 }
 
 /** Everything a provider needs to actually run — config plus per-batch runtime. */
@@ -89,6 +92,13 @@ const CHAIN: ReadonlyArray<{
     source: 'spotify',
     isConfigured: (cfg) => cfg.spotifyLookup != null,
     build: (deps) => makeSpotifyArtistImageProvider(deps.spotifyLookup!),
+  },
+  // Last: Discogs portraits are community uploads (variable framing/quality),
+  // so the curated Lidarr poster and Spotify's press photo win when present.
+  {
+    source: 'discogs',
+    isConfigured: (cfg) => cfg.discogsLookup != null,
+    build: (deps) => ({ source: 'discogs', lookup: (artist) => deps.discogsLookup!(artist) }),
   },
 ];
 

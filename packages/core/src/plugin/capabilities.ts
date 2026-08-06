@@ -168,6 +168,27 @@ export interface ArtistInfoCapability {
   fetchArtistInfo(query: ArtistInfoQuery): Promise<ArtistInfoResult | null>;
 }
 
+/** A portrait URL a source resolved for an artist (issue #422). */
+export interface ArtistImageResult {
+  /** Direct URL of the source's artist photo (its primary image). */
+  url: string;
+  /** Plugin id that produced this (e.g. 'discogs'). */
+  source: string;
+  /** Match confidence in [0, 1] — always a real, computed number, never a 1.0 shortcut. */
+  confidence: number;
+}
+
+/**
+ * Metadata source that resolves an artist portrait on demand (Discogs, …).
+ * Reuses {@link ArtistInfoQuery}: MBID-only, no name-search fallback — the same
+ * discipline as artist-info, because a wrong photo on a real person's page is
+ * worse than a missing one.
+ */
+export interface ArtistImageCapability {
+  /** Returns a portrait for the artist, or null when the source has none. */
+  fetchArtistImage(query: ArtistInfoQuery): Promise<ArtistImageResult | null>;
+}
+
 /**
  * What the host knows when asking a source for candidate releases matching an
  * artist + album name — the "which release is this?" lookup that backs the

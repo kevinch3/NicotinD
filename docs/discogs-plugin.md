@@ -207,6 +207,20 @@ Recorded so a later PR doesn't re-litigate them:
 `plugin/index.ts`. The web mirrors the capability string in `plugin.service.ts`'s
 hand-written `PluginCapability` union.
 
+## Artist images — the `artist-image` capability (issue #422)
+
+`MetadataCapabilityName` also carries `'artist-image'` (`Plugin.artistImage?:
+ArtistImageCapability`, `fetchArtistImage({mbid}) → {url, source, confidence} | null`).
+Discogs implements it with the **same MBID-only resolution** as `artist-info`
+(`resolveDiscogsArtistRef` on MusicBrainz's discogs url-relation — no name
+search), then picks the **`primary`-typed entry of `images[]`** (falling back to
+the first entry with a URI) via the pure `mapArtistImage` in `matching.ts`. The
+`/artists/{id}` payload was already fetched for bios and the images discarded;
+the client's on-disk cache means a bio+image pair for one artist still costs one
+API call. Consumed as the third seat of the artist-image provider chain
+(`lidarr → spotify → discogs`) through `makePluginArtistImageLookup` — see
+[library-scanner.md](library-scanner.md) "Artist images".
+
 ## Artist bios — the `artist-info` capability (issue #195)
 
 `MetadataCapabilityName` also carries `'artist-info'`, backing `Plugin.artistInfo?:
