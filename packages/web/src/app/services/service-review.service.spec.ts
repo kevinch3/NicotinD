@@ -42,6 +42,7 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     untrackedCount: 0,
     orphanRows: [],
     artistImages: { visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 },
+    downloadReviews: { pending: 0, oldestCreated: null },
     auditTail: [],
     incompleteJobs: [],
     untracked: [],
@@ -85,6 +86,37 @@ describe('ServiceReviewService', () => {
     expect(service.memory()?.totalBytes).toBe(8000);
     expect(service.gpu()).toBeNull();
     expect(service.version()).toBe('0.1.234');
+  });
+
+  describe('downloadReviews (issue #417)', () => {
+    it('defaults to zeros when the snapshot has none / hasn’t landed yet', async () => {
+      service.start();
+      await service.refresh();
+      expect(service.downloadReviews()).toEqual({ pending: 0, oldestCreated: null });
+      expect(service.reviewHeldCount()).toBe(0);
+      expect(service.reviewHeldOldestDays()).toBeNull();
+    });
+
+    it('reflects a nonzero snapshot slice', async () => {
+      const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000).toISOString();
+      getServiceReview.mockImplementationOnce(() =>
+        of(makeReview({ downloadReviews: { pending: 2, oldestCreated: threeDaysAgo } })),
+      );
+      service.start();
+      await service.refresh();
+      expect(service.reviewHeldCount()).toBe(2);
+      expect(service.reviewHeldOldestDays()).toBe(3);
+    });
+
+    it('clamps a future/skewed oldestCreated at 0 rather than going negative', async () => {
+      const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      getServiceReview.mockImplementationOnce(() =>
+        of(makeReview({ downloadReviews: { pending: 1, oldestCreated: oneHourFromNow } })),
+      );
+      service.start();
+      await service.refresh();
+      expect(service.reviewHeldOldestDays()).toBe(0);
+    });
   });
 
   it('ref-counts concurrent start() / stop() calls — timer survives while owners remain', () => {

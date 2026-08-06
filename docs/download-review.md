@@ -41,6 +41,70 @@ album, `reviewed_at >= created`. Two deliberate independences:
 Off (the default), `reviewCond` is `null` and the gate reduces exactly to the
 pre-#411 behavior — zero change until an admin opts in.
 
+### Bootstrap exemption (fresh database)
+
+Turning `holdForReview` on for a **brand-new** database is a flood, not a
+triage aid: the very first library scan lands dozens or hundreds of songs in
+one bootstrap drain, and without an exemption every one of them would pile
+into the inbox as if a curator needed to individually approve their own
+freshly-imported collection. Issue #417 closes that with a one-way marker,
+`review_hold_armed_v1`, in `library_sync_state` (`services/download-review-store.ts`
+`reviewHoldArmed`/`armReviewHold`/`maybeArmReviewHold`). `reviewCond` is only
+consulted once the marker is armed (`reviewHoldActive(db, holdForReview) =
+holdForReview && reviewHoldArmed(db)`) — an unarmed database behaves exactly
+like `holdForReview` off, regardless of the toggle.
+
+The marker is armed at two independent sites:
+
+- **`applySchema`, end of migration** — armed for any library that already
+  has at least one landed song, so an *upgrade* of an established install is
+  armed immediately, including one that already has a pending review inbox
+  at deploy time (nothing that was already sitting for review gets swept
+  under the rug by the migration). This is a weaker condition than the
+  runtime site below — it doesn't require quarantine to be empty — because on
+  an upgrade the pre-#411 library is, by definition, not something the
+  marker needs to protect from flooding.
+- **`graduatePending`'s tail (runtime)** — `maybeArmReviewHold` fires on
+  every run, toggle-independent (arms even with `holdForReview` off so the
+  marker is ready the moment an admin turns the toggle on), but only once at
+  least one song has landed **and** quarantine is fully empty. That stronger
+  condition keeps a multi-batch bootstrap drain (a fresh scan importing
+  thousands of songs across many `graduatePending` batches) exempt
+  end-to-end — arming after the *first* batch lands would flood the inbox
+  with every subsequent batch's worth of songs.
+
+Both are one-way (never unset) and independent of the `holdForReview` toggle
+itself, so flipping the toggle off and back on doesn't re-flood an
+already-established library, and a wiped-then-rescanned database naturally
+re-enters bootstrap (the marker lives in the same file that got wiped).
+
+**Why not reuse `landing_backfill_v1`?** That marker is consumed earlier in
+the same migration, while `library_songs` is still empty on a genuinely
+fresh database — checking "any landed song" against an empty table at that
+point would never arm, so a fresh install would stay permanently unarmed
+even after its first scan completed. The two markers answer different
+questions (`landing_backfill_v1`: "has the one-time land-everything migration
+run?" vs `review_hold_armed_v1`: "has this library ever finished landing
+something?") and have to be checked at different times to mean what they say.
+
+Two transients are accepted rather than engineered away:
+
+1. A **brand-new install** whose first-ever content arrives as a download
+   (not a bootstrap scan) with the toggle already on lands unreviewed — there
+   is no prior "established library" for the upgrade site to have armed, and
+   the runtime site only arms after quarantine drains, i.e. after this same
+   song has already landed.
+2. A download that **arrives mid-bootstrap-drain** (while earlier batches are
+   still quarantined) lands unreviewed alongside the rest of that drain,
+   bounded by the same step/valve gate as the drain itself — once unarmed,
+   the plain `stepsOrValve` condition (including the 24h valve) applies with
+   no review requirement layered on top.
+
+Both are self-limiting (they can only happen before the marker arms, and
+arming happens automatically the moment the library has anything landed) and
+are judged an acceptable trade against re-flooding the inbox on every fresh
+install.
+
 ## `download_reviews` — an album-keyed decision table, not a status column
 
 ```sql
@@ -90,8 +154,8 @@ case it).
 
 | Route | Purpose |
 | --- | --- |
-| `GET /queue` | Pending albums (quarantine metadata + `year`). Returns `{ albums: [] }` when `holdForReview` is off — with the toggle off, ordinary enrichment quarantine must never surface as an inbox (zero-behavior-change guarantee). |
-| `GET /count` | `{ pending: number }` — backs the nav badge + inbox poller. Returns `{ pending: 0 }` when `holdForReview` is off (same gating as `/queue`). |
+| `GET /queue` | Pending albums (quarantine metadata + `year`). Returns `{ albums: [] }` when `holdForReview` is off, and stays empty until the library has first-established landed content (same `reviewHoldActive` helper as the landing gate — see "Bootstrap exemption" above) — with the toggle off, or before the bootstrap marker arms, ordinary enrichment quarantine must never surface as an inbox (zero-behavior-change guarantee). |
+| `GET /count` | `{ pending: number }` — backs the nav badge + inbox poller. Returns `{ pending: 0 }` when `holdForReview` is off or the bootstrap marker hasn't armed yet (same gating as `/queue`). |
 | `POST /albums/:id/approve` | Records an `approved` decision, audits `download_review.approve`, nudges `kickEager()` so landing isn't waiting on the next window tick. Idempotent (upsert on `album_id`). |
 | `POST /albums/:id/discard` | Runs the **shared** `deleteAlbum` (same function library delete + the MCP delete tool use — `services/library-deletion.ts`), then records a `discarded` decision, audits `download_review.discard`. |
 | `POST /songs/:id/identify` | Fingerprint one track via the enabled `identify` plugin (AcoustID). 503 if no plugin/music dir configured. |
@@ -99,6 +163,14 @@ case it).
 | `POST /albums/:id/tracks` | Per-track retag (title/artist), writes tags to the file, then an incremental rescan. A track with no fields to update fails with `'No fields to update'`; other tracks in the same request still get written (partial success surfaces per-track). Audits `download_review.retag`. |
 
 All routes require `requireCurator` — role gating detail below.
+
+`GET /api/admin/review`'s `downloadReviews` slice (`pendingReviewStats`) feeds
+a hidden-at-zero Admin panel row (`data-testid="review-held-panel"`, "N
+albums held for review — oldest waiting D days") directly under the toggle.
+It shares the exact same pending predicate (`PENDING_REVIEW_SQL`) and the
+same `reviewHoldActive` gate as `/queue` and `/count`, so the admin number
+always equals what the inbox shows — there is no separate counting path that
+could drift from what a curator actually sees.
 
 ## Multi-source metadata candidates
 

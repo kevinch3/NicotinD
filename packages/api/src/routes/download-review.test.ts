@@ -16,6 +16,7 @@ import { downloadReviewRoutes, voteAlbumIdentity } from './download-review.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { setProcessingSettings } from '../services/processing-settings.js';
+import { armReviewHold } from '../services/download-review-store.js';
 
 function noopScheduler(): ShareRescanScheduler {
   return new ShareRescanScheduler(async () => {});
@@ -73,6 +74,7 @@ describe('download-review routes', () => {
   });
 
   it('lists pending albums in the queue and count', async () => {
+    armReviewHold(testDb); // established library — bootstrap exemption already cleared
     setProcessingSettings(testDb, { holdForReview: true });
     seedAlbum('al1', 's1');
     seedAlbum('al2', 's2');
@@ -189,6 +191,7 @@ describe('download-review routes', () => {
   });
 
   it('with holdForReview on, queue/count report the pending albums as before', async () => {
+    armReviewHold(testDb);
     setProcessingSettings(testDb, { holdForReview: true });
     seedAlbum('al1', 's1');
     seedAlbum('al2', 's2');
@@ -204,6 +207,24 @@ describe('download-review routes', () => {
     const countRes = await app.request('/count');
     expect(countRes.status).toBe(200);
     expect((await countRes.json()) as { pending: number }).toEqual({ pending: 2 });
+  });
+
+  it('with holdForReview on but the bootstrap marker unarmed, queue/count read as empty', async () => {
+    // No armReviewHold — a fresh library that hasn't finished its first
+    // bootstrap drain must not surface a review inbox (issue #417).
+    setProcessingSettings(testDb, { holdForReview: true });
+    seedAlbum('al1', 's1');
+    const app = authed(
+      new Hono<AuthEnv>().route('/', downloadReviewRoutes({ shareRescan: noopScheduler() })),
+    );
+
+    const queueRes = await app.request('/queue');
+    expect(queueRes.status).toBe(200);
+    expect(await queueRes.json()).toEqual({ albums: [] });
+
+    const countRes = await app.request('/count');
+    expect(countRes.status).toBe(200);
+    expect(await countRes.json()).toEqual({ pending: 0 });
   });
 });
 

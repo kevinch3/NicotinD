@@ -79,6 +79,7 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     untrackedCount: 0,
     orphanRows: [],
     artistImages: { visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 },
+    downloadReviews: { pending: 0, oldestCreated: null },
     auditTail: [],
     incompleteJobs: [],
     untracked: [],
@@ -120,6 +121,13 @@ function makeSvc(over: Partial<ServiceReview> = {}) {
         : 1) as ServiceReviewService['artistImageCoverageRatio'],
     incompleteJobs: (() => r.incompleteJobs) as ServiceReviewService['incompleteJobs'],
     untracked: (() => r.untracked) as ServiceReviewService['untracked'],
+    reviewHeldCount: (() => r.downloadReviews.pending) as ServiceReviewService['reviewHeldCount'],
+    reviewHeldOldestDays: (() => {
+      const oldest = r.downloadReviews.oldestCreated;
+      return oldest === null
+        ? null
+        : Math.max(0, Math.floor((Date.now() - Date.parse(oldest)) / 86_400_000));
+    }) as ServiceReviewService['reviewHeldOldestDays'],
   };
   return svc;
 }
@@ -265,6 +273,8 @@ describe('AdminComponent (snapshot-driven via ServiceReview)', () => {
     expect(el.querySelector('[data-testid="duplicates-panel"]')).toBeTruthy();
     // Nothing orphaned in the default fixture — the panel stays out of the way.
     expect(el.querySelector('[data-testid="orphan-rows-panel"]')).toBeFalsy();
+    // Nothing held for review in the default fixture — hidden entirely.
+    expect(el.querySelector('[data-testid="review-held-panel"]')).toBeFalsy();
     f.destroy();
   });
 });
@@ -622,6 +632,72 @@ describe('AdminComponent (hold-for-review toggle, #411)', () => {
     expect(TestBed.inject(SystemApiService).saveProcessing).toHaveBeenCalledWith({
       holdForReview: true,
     });
+    f.destroy();
+  });
+});
+
+/** Issue #417: an admin strand warning for downloads held in review — hidden
+ *  entirely at zero (off/unarmed/steady-state), rendered with count + oldest
+ *  waiting time when nonzero. */
+describe('AdminComponent (download-review admin warning, #417)', () => {
+  it('renders the held count + oldest-waiting hint immediately after the toggle', async () => {
+    const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    const mocks = makeAdminMocks({
+      downloadReviews: { pending: 2, oldestCreated: threeDaysAgo },
+    });
+    await TestBed.configureTestingModule({
+      imports: [AdminComponent],
+      providers: [
+        { provide: DownloadsApiService, useValue: {} },
+        {
+          provide: SystemApiService,
+          useValue: {
+            getUsers: vi.fn(() => of([])),
+            getStreamingSettings: mocks.getStreaming,
+            saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getProcessing: mocks.getProcessing,
+            getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
+            setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
+            saveProcessing: vi.fn((p: unknown) => of(p as object)),
+          },
+        },
+        {
+          provide: LibraryApiService,
+          useValue: {
+            resyncLibrary: vi.fn(() => of({ ok: true })),
+            getFragments: vi.fn(() =>
+              of({
+                duplicateAlbums: [],
+                hiddenByClassification: [],
+                misSplitAlbums: [],
+                totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 },
+                ok: true,
+              } as LibraryFragmentReport),
+            ),
+          },
+        },
+        { provide: ServiceReviewService, useValue: mocks.reviewService },
+        { provide: AuthService, useValue: { token: () => null } },
+      ],
+    }).compileComponents();
+
+    const f = TestBed.createComponent(AdminComponent);
+    f.componentInstance.loading.set(false);
+    f.detectChanges();
+    await f.whenStable();
+    f.detectChanges();
+    expandAllGroups(f);
+    const el = f.nativeElement as HTMLElement;
+
+    const panel = el.querySelector('[data-testid="review-held-panel"]');
+    expect(panel).toBeTruthy();
+    // Raw i18n key in this harness (no real catalog loaded) — same convention
+    // as the orphan-rows-panel test above.
+    expect(panel?.textContent).toContain('admin.reviewHeldPlural');
+    expect(panel?.textContent).toContain('admin.reviewHeldHint');
+    expect(BASE_CATALOG).toHaveProperty(['admin.reviewHeldPlural']);
+    expect(BASE_CATALOG).toHaveProperty(['admin.reviewHeldSingular']);
+    expect(BASE_CATALOG).toHaveProperty(['admin.reviewHeldHint']);
     f.destroy();
   });
 });
@@ -1195,15 +1271,16 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
   });
 
   it('every pre-existing panel testid still resolves inside its group', async () => {
-    // `orphan-rows-panel` and `artist-images-panel` are both conditionally
-    // hidden at the healthy-steady-state zero (issues #259 / #250 gap 3), so
-    // the default fixture used elsewhere in this file wouldn't render them —
-    // supply non-zero values so every testid in this list is actually present
-    // to find, matching the other describe blocks' own overrides for these
-    // two panels.
+    // `orphan-rows-panel`, `artist-images-panel`, and `review-held-panel` are
+    // all conditionally hidden at the healthy-steady-state zero (issues #259 /
+    // #250 gap 3 / #417), so the default fixture used elsewhere in this file
+    // wouldn't render them — supply non-zero values so every testid in this
+    // list is actually present to find, matching the other describe blocks'
+    // own overrides for these panels.
     const fixture = await createAndSettle({
       orphanRows: [{ table: 'library_embeddings', rows: 100, orphans: 5 }],
       artistImages: { visible: 10, withPortrait: 7, missing: 3, manualOverride: 0 },
+      downloadReviews: { pending: 2, oldestCreated: '2026-08-01T00:00:00.000Z' },
     });
     expandAllGroups(fixture);
     const el: HTMLElement = fixture.nativeElement;
@@ -1219,6 +1296,7 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
       'auto-playlists-panel',
       'orphan-rows-panel',
       'artist-images-panel',
+      'review-held-panel',
       'library-fragments',
     ]) {
       expect(

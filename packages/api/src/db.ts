@@ -1,6 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
+import { armReviewHold, reviewHoldArmed } from './services/download-review-store.js';
 
 let db: Database;
 
@@ -1335,6 +1336,24 @@ export function applySchema(db: Database): void {
         ['landing_backfill_v1', now],
       );
     })();
+  }
+
+  // Hold-for-review bootstrap exemption (issue #417): arm the one-way
+  // `review_hold_armed_v1` marker here (weaker condition than the runtime
+  // `maybeArmReviewHold` — any landed song, quarantine need not be empty) so
+  // an *upgrade* of an established library is armed immediately, including
+  // one with a pending review inbox at deploy time — nothing lands unreviewed
+  // just because the marker hadn't existed yet before this migration shipped.
+  // A genuinely fresh database (no landed song at all) stays unarmed;
+  // `maybeArmReviewHold` (called from `graduatePending`) arms it at runtime
+  // once the scanner's first bootstrap drain fully lands, so an initial
+  // library import carrying `holdForReview: true` isn't flooded into the
+  // inbox.
+  if (!reviewHoldArmed(db)) {
+    const anyLanded = db
+      .query<{ 1: number }, []>(`SELECT 1 FROM library_songs WHERE landed_at IS NOT NULL LIMIT 1`)
+      .get();
+    if (anyLanded) armReviewHold(db);
   }
 
   // One-time scan-cache flush for multi-genre. Pre-multi-genre cache rows kept

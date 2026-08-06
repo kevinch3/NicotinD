@@ -82,6 +82,79 @@ export function loadReviewQueue(db: Database): ReviewQueueAlbum[] {
     .map((a) => ({ ...a, year: years.get(a.albumId) ?? null }));
 }
 
-export function pendingReviewCount(db: Database): number {
-  return pendingAlbumIds(db).size;
+export interface PendingReviewStats {
+  pending: number;
+  oldestCreated: string | null;
+}
+
+/**
+ * Pending-review count + oldest-waiting timestamp for the Admin ServiceReview
+ * slice (issue #417) and the `/count` route. Gated internally on
+ * `reviewHoldActive` — off or unarmed always reports zeros, so the admin
+ * number can never disagree with what the inbox itself shows (a hidden inbox
+ * with a nonzero admin count would read as "there's something you can't
+ * see").
+ */
+export function pendingReviewStats(db: Database, holdForReview: boolean): PendingReviewStats {
+  if (!reviewHoldActive(db, holdForReview)) return { pending: 0, oldestCreated: null };
+  const row = db
+    .query<{ pending: number; oldestCreated: string | null }, []>(
+      `SELECT COUNT(DISTINCT album_id) AS pending, MIN(created) AS oldestCreated
+         FROM library_songs
+        WHERE landed_at IS NULL AND hidden = 0 AND ${PENDING_REVIEW_SQL}`,
+    )
+    .get();
+  return { pending: row?.pending ?? 0, oldestCreated: row?.oldestCreated ?? null };
+}
+
+/**
+ * Bootstrap exemption for hold-for-review (issue #417): a one-way marker in
+ * `library_sync_state`, same KV pattern as `auto-playlists.service.ts`'s
+ * readMarker/writeMarker. A naive `holdForReview && EXISTS(landed_at IS NULL)`
+ * check would re-flood the inbox on every batch of a fresh-DB bootstrap scan
+ * (graduatePending runs once per batch) and would flap if the library ever
+ * emptied again. Arming is one-way and lives in the DB, so it self-heals on a
+ * DB wipe: a wiped-then-rescanned library goes through bootstrap again.
+ */
+export const REVIEW_HOLD_ARMED_KEY = 'review_hold_armed_v1';
+
+export function reviewHoldArmed(db: Database): boolean {
+  return (
+    db
+      .query<{ 1: number }, [string]>(`SELECT 1 FROM library_sync_state WHERE key = ?`)
+      .get(REVIEW_HOLD_ARMED_KEY) !== null
+  );
+}
+
+/** Unconditional upsert — arms (or re-stamps) the marker regardless of current state. */
+export function armReviewHold(db: Database, now: number = Date.now()): void {
+  db.run(
+    `INSERT INTO library_sync_state (key, value, updated_at) VALUES (?, '1', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    [REVIEW_HOLD_ARMED_KEY, now],
+  );
+}
+
+/**
+ * Runtime arming: fires at the tail of `graduatePending`, toggle-independent
+ * (arms even with holdForReview off), only once the quarantine has fully
+ * drained — at least one landed song exists AND none remain quarantined. That
+ * keeps a multi-batch bootstrap drain exempt end-to-end rather than arming
+ * (and flooding the inbox) after the first batch lands. A no-op once already
+ * armed, so it's cheap to call unconditionally every run.
+ */
+export function maybeArmReviewHold(db: Database): void {
+  if (reviewHoldArmed(db)) return;
+  const row = db
+    .query<{ ok: number }, []>(
+      `SELECT (EXISTS(SELECT 1 FROM library_songs WHERE landed_at IS NOT NULL)
+               AND NOT EXISTS(SELECT 1 FROM library_songs WHERE landed_at IS NULL)) AS ok`,
+    )
+    .get();
+  if (row?.ok === 1) armReviewHold(db);
+}
+
+/** The one predicate both the landing gate and the /queue + /count routes consume. */
+export function reviewHoldActive(db: Database, holdForReview: boolean): boolean {
+  return holdForReview && reviewHoldArmed(db);
 }

@@ -192,6 +192,8 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly artistImageCoverageRatio = this.reviewSvc.artistImageCoverageRatio;
   readonly orphanRowCount = this.reviewSvc.orphanRowCount;
   readonly analysis = this.reviewSvc.analysis;
+  readonly reviewHeldCount = this.reviewSvc.reviewHeldCount;
+  readonly reviewHeldOldestDays = this.reviewSvc.reviewHeldOldestDays;
 
   private logEventSource: EventSource | null = null;
   private logReconnectTimer: ReturnType<typeof setTimeout> | null = null;
