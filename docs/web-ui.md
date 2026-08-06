@@ -216,9 +216,15 @@ targeted by an opacity modifier or `@apply`d from a theme color that isn't `@the
 - `page-shell` — `mx-auto px-4 py-5 md:px-6 md:py-8`. The **one** responsive gutter/width scale;
   every routed page inside the app shell adds a `max-w-(6xl|3xl)` alongside it (the width is
   chosen per page, the gutters/padding never vary).
-- `page-title` — `text-2xl font-bold` + `--theme-text-primary`. The settings-family/admin page
-  `<h1>`; browse-tier titles are a possible follow-up (kept their own title styles by scoping
-  decision).
+- `page-title` — `text-2xl font-bold` + `--theme-text-primary`. **Every page-level `<h1>`, app-wide
+  since issue #385**: settings-family/admin plus the browse/detail tier (album, artist, genre,
+  playlist detail, share view, Downloads). Four of the browse pages already carried the exact
+  literal classes; Downloads' `text-lg` h1 and genre-detail's `h2` were promoted rather than
+  minting a smaller variant — one h1 typography, and the page's identity heading is always an
+  `<h1>`. Section headings *within* a page (`text-lg` h2s like radio-landing's, and
+  `section-title`) are a different tier and untouched. Guarded by `pages/page-shell.spec.ts`'s
+  title drift guard. Auth/onboarding screens (login, setup, pair, server-config) keep their own
+  centered branding headers — they render outside the app shell and are not browse pages.
 - `section-title` — `text-sm font-semibold uppercase tracking-wider mb-5` +
   `--theme-text-secondary`. The small-caps sub-heading above a section (replaces the raw
   `text-sm font-semibold uppercase tracking-wider text-theme-secondary` literal that used to be

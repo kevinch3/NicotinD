@@ -56,3 +56,27 @@ describe('page shell drift guard (issue #384)', () => {
     );
   });
 });
+
+// Browse/detail-tier identity headings adopted page-title too (issue #385) —
+// four already carried its exact literal classes; Downloads' text-lg h1 and
+// genre-detail's h2 were promoted so the app has one h1 typography. Section
+// headings *within* a page (text-lg h2s, section-title) are a different tier
+// and deliberately not listed.
+const PAGE_TITLE_PAGES = [
+  'library/album-detail.component.html',
+  'library/artist-detail.component.html',
+  'library/genre-detail.component.html',
+  'library/playlist-detail.component.html',
+  'share/share-view.component.html',
+  'downloads/downloads.component.html',
+];
+
+describe('page title drift guard (issue #385)', () => {
+  it.each(PAGE_TITLE_PAGES)('%s renders its main heading with page-title', (rel) => {
+    expect(read(rel)).toMatch(/<h1 class="page-title[" ]/);
+  });
+
+  it.each(PAGE_TITLE_PAGES)('%s has no raw page-title-sized heading literal left', (rel) => {
+    expect(read(rel)).not.toContain('text-2xl font-bold text-theme-primary');
+  });
+});
