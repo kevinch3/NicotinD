@@ -64,13 +64,14 @@ async function readStyleTuple(page: Page): Promise<StyleTuple> {
   });
 }
 
-/** Issue #384: the settings family + admin share ONE page-shell gutter scale;
- * widths differ only by documented tier (settings family 2xl, admin 3xl). */
+/** Issue #384: the settings family + admin share ONE page-shell gutter scale.
+ * Issue #420 merged the settings family's 2xl tier into admin's 3xl — one
+ * width everywhere, so the content column no longer jumps between routes. */
 const WRAPPER_MAX_WIDTH: Record<string, string> = {
-  '/settings': '672px',
-  '/settings/plugins': '672px',
-  '/settings/devices': '672px',
-  '/settings/agent-tokens': '672px',
+  '/settings': '768px',
+  '/settings/plugins': '768px',
+  '/settings/devices': '768px',
+  '/settings/agent-tokens': '768px',
   '/admin': '768px',
 };
 
