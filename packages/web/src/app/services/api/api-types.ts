@@ -735,6 +735,12 @@ export interface ServiceReview {
   orphanRows: OrphanCount[];
   /** Artist-portrait coverage (issue #250). */
   artistImages: ArtistImageCoverage;
+  /**
+   * Pending hold-for-review count + oldest-waiting timestamp (issue #417) —
+   * always zeros when the gate is off or the bootstrap marker hasn't armed,
+   * so this can never disagree with the Downloads inbox itself.
+   */
+  downloadReviews: PendingReviewStats;
   auditTail: AuditEntry[];
   incompleteJobs: IncompleteAlbumJob[];
   untracked: UntrackedDownload[];
@@ -758,6 +764,12 @@ export interface OrphanCount {
   table: string;
   rows: number;
   orphans: number;
+}
+
+/** Hold-for-review backlog snapshot (issue #417). */
+export interface PendingReviewStats {
+  pending: number;
+  oldestCreated: string | null;
 }
 
 export interface LibraryFragmentReport {

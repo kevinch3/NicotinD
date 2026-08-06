@@ -136,6 +136,7 @@ describe('GET /api/admin/review', () => {
       // file is green standalone, not only inside the full suite.
       orphanRows: mock(() => []),
       artistImages: mock(() => ({ visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 })),
+      downloadReviews: mock(() => ({ pending: 0, oldestCreated: null })),
       auditTail: mock(() => []),
       incompleteJobs: mock(() => []),
       untracked: mock(() => []),
@@ -305,6 +306,7 @@ describe('GET /api/admin/review', () => {
       // file is green standalone, not only inside the full suite.
       orphanRows: mock(() => []),
       artistImages: mock(() => ({ visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 })),
+      downloadReviews: mock(() => ({ pending: 0, oldestCreated: null })),
       auditTail: mock(() => []),
       incompleteJobs: mock(() => []),
       untracked: mock(() => []),
@@ -379,6 +381,7 @@ describe('GET /api/admin/review — every slice lands in its own field (#274)', 
       untracked: mock(() => [{ id: 'untracked-sentinel' }]),
       orphanRows: mock(() => [{ table: 'orphan-sentinel', rows: 1, orphans: 1 }]),
       artistImages: mock(() => ({ visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 })),
+      downloadReviews: mock(() => ({ pending: 7, oldestCreated: '2026-08-01T00:00:00.000Z' })),
       auditTail: mock(() => [{ id: 'audit-sentinel' }]),
       backupsList: mock(async () => [{ name: 'backup-sentinel' }]),
     } as never;
@@ -391,6 +394,7 @@ describe('GET /api/admin/review — every slice lands in its own field (#274)', 
     expect(body.incompleteJobs[0]).toMatchObject({ id: 'incomplete-sentinel' });
     expect(body.untracked[0]).toMatchObject({ id: 'untracked-sentinel' });
     expect(body.orphanRows[0]).toMatchObject({ table: 'orphan-sentinel' });
+    expect(body.downloadReviews).toEqual({ pending: 7, oldestCreated: '2026-08-01T00:00:00.000Z' });
     expect(body.auditTail[0]).toMatchObject({ id: 'audit-sentinel' });
     expect(body.backups[0]).toMatchObject({ name: 'backup-sentinel' });
   });

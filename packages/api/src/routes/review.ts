@@ -32,6 +32,8 @@ import {
 } from '../services/update-check.js';
 import { artistImageCoverage, type ArtistImageCoverage } from '../services/artist-image-fill.js';
 import { countOrphanRows, type OrphanCount } from '../services/orphan-prune.js';
+import { getProcessingSettings } from '../services/processing-settings.js';
+import { pendingReviewStats, type PendingReviewStats } from '../services/download-review-store.js';
 
 export type UpdateCheckSnapshot = {
   currentVersion: string;
@@ -138,6 +140,12 @@ export interface ServiceReview {
   orphanRows: OrphanCount[];
   /** Artist-portrait coverage for the Admin overview (issue #250). */
   artistImages: ArtistImageCoverage;
+  /**
+   * Pending hold-for-review count + oldest-waiting timestamp (issue #417) —
+   * gated internally on `reviewHoldActive`, so this number always equals what
+   * the Downloads inbox itself shows (off/unarmed → zeros).
+   */
+  downloadReviews: PendingReviewStats;
   auditTail: AuditEntry[];
   /** Snapshot of incomplete album hunts (active + exhausted) for the Admin panel. */
   incompleteJobs: IncompleteAlbumJob[];
@@ -166,6 +174,7 @@ export interface ReviewSubFns {
   untrackedCount: () => number;
   orphanRows: () => OrphanCount[];
   artistImages: () => ArtistImageCoverage;
+  downloadReviews: () => PendingReviewStats;
   auditTail: (limit: number) => AuditEntry[];
   incompleteJobs: () => IncompleteAlbumJob[];
   untracked: () => UntrackedDownload[];
@@ -507,6 +516,7 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
       untracked,
       orphanRows,
       artistImages,
+      downloadReviews,
       audit,
       incompleteList,
       untrackedList,
@@ -577,6 +587,14 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
         () => sub.artistImages?.() ?? artistImageCoverage(getDatabase()),
         { visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 } as ArtistImageCoverage,
       ),
+      downloadReviews: safe(
+        errors,
+        'downloadReviews',
+        () =>
+          sub.downloadReviews?.() ??
+          pendingReviewStats(getDatabase(), getProcessingSettings(getDatabase()).holdForReview),
+        { pending: 0, oldestCreated: null } as PendingReviewStats,
+      ),
       audit: safe(
         errors,
         'auditTail',
@@ -631,6 +649,7 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
       untrackedCount: untracked,
       orphanRows,
       artistImages,
+      downloadReviews,
       auditTail: audit,
       incompleteJobs: incompleteList,
       untracked: untrackedList,

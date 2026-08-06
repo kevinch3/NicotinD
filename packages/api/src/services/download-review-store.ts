@@ -82,8 +82,29 @@ export function loadReviewQueue(db: Database): ReviewQueueAlbum[] {
     .map((a) => ({ ...a, year: years.get(a.albumId) ?? null }));
 }
 
-export function pendingReviewCount(db: Database): number {
-  return pendingAlbumIds(db).size;
+export interface PendingReviewStats {
+  pending: number;
+  oldestCreated: string | null;
+}
+
+/**
+ * Pending-review count + oldest-waiting timestamp for the Admin ServiceReview
+ * slice (issue #417) and the `/count` route. Gated internally on
+ * `reviewHoldActive` — off or unarmed always reports zeros, so the admin
+ * number can never disagree with what the inbox itself shows (a hidden inbox
+ * with a nonzero admin count would read as "there's something you can't
+ * see").
+ */
+export function pendingReviewStats(db: Database, holdForReview: boolean): PendingReviewStats {
+  if (!reviewHoldActive(db, holdForReview)) return { pending: 0, oldestCreated: null };
+  const row = db
+    .query<{ pending: number; oldestCreated: string | null }, []>(
+      `SELECT COUNT(DISTINCT album_id) AS pending, MIN(created) AS oldestCreated
+         FROM library_songs
+        WHERE landed_at IS NULL AND hidden = 0 AND ${PENDING_REVIEW_SQL}`,
+    )
+    .get();
+  return { pending: row?.pending ?? 0, oldestCreated: row?.oldestCreated ?? null };
 }
 
 /**

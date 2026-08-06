@@ -24,7 +24,7 @@ import { fold } from '../services/search-tokens.js';
 import { getProcessingSettings } from '../services/processing-settings.js';
 import {
   loadReviewQueue,
-  pendingReviewCount,
+  pendingReviewStats,
   recordReviewDecision,
   reviewHoldActive,
 } from '../services/download-review-store.js';
@@ -134,10 +134,8 @@ export function downloadReviewRoutes(deps: DownloadReviewDeps): Hono<AuthEnv> {
   app.get('/count', (c) => {
     requireCurator(c);
     const db = getDatabase();
-    if (!reviewHoldActive(db, getProcessingSettings(db).holdForReview)) {
-      return c.json({ pending: 0 });
-    }
-    return c.json({ pending: pendingReviewCount(db) });
+    const { pending } = pendingReviewStats(db, getProcessingSettings(db).holdForReview);
+    return c.json({ pending });
   });
 
   app.post('/albums/:id/approve', (c) => {

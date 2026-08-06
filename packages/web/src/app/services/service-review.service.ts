@@ -2,7 +2,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import { firstValueFrom } from 'rxjs';
 import { SystemApiService } from './api/system-api.service';
-import type { BackupInfo, ServiceReview } from './api/api-types';
+import type { BackupInfo, PendingReviewStats, ServiceReview } from './api/api-types';
 
 /**
  * ServiceReview — singleton owner of the Admin page's one read-only snapshot.
@@ -86,6 +86,18 @@ export class ServiceReviewService {
   readonly artistImageCoverageRatio = computed(() => {
     const c = this.artistImages();
     return c.visible > 0 ? c.withPortrait / c.visible : 1;
+  });
+  /** Hold-for-review backlog (issue #417); zeros when off/unarmed/unfetched. */
+  readonly downloadReviews = computed<PendingReviewStats>(
+    () => this.review()?.downloadReviews ?? { pending: 0, oldestCreated: null },
+  );
+  readonly reviewHeldCount = computed(() => this.downloadReviews().pending);
+  /** Days the oldest held album has been waiting, floored; null when nothing is held. */
+  readonly reviewHeldOldestDays = computed(() => {
+    const oldest = this.downloadReviews().oldestCreated;
+    if (oldest === null) return null;
+    const ms = Date.now() - Date.parse(oldest);
+    return Math.floor(ms / 86_400_000);
   });
   readonly auditTail = computed(() => this.review()?.auditTail ?? []);
   /** Snapshots of the Admin tables — drained from ServiceReview instead of polled per-table. */

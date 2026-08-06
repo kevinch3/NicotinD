@@ -212,6 +212,26 @@
                 class="w-4 h-4 rounded accent-emerald-500" />
             </label>
 
+            <!-- Admin strand warning (issue #417): items wait indefinitely by
+                     design, so surface how many are held + how long the oldest
+                     has waited — hidden entirely at zero (nothing armed/off). -->
+            @if (reviewHeldCount() > 0) {
+              @let oldestDays = reviewHeldOldestDays();
+              <div class="flex flex-col gap-1" data-testid="review-held-panel">
+                <p class="text-xs text-theme-secondary">
+                  {{
+                    (reviewHeldCount() === 1 ? 'admin.reviewHeldSingular' : 'admin.reviewHeldPlural')
+                      | t: { count: reviewHeldCount() }
+                  }}
+                  @if (oldestDays !== null) {
+                    <span class="text-theme-muted">{{
+                      'admin.reviewHeldHint' | t: { days: oldestDays }
+                    }}</span>
+                  }
+                </p>
+              </div>
+            }
+
             <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               <span class="min-w-0 text-sm text-theme-primary"
                 >{{ 'admin.processingWindow' | t }}
