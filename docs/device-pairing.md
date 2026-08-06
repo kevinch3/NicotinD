@@ -237,6 +237,36 @@ overlay pattern). The phone side is the new auth-guarded `/approve` page
 End-to-end coverage: `packages/e2e/tests/login-tv-signin.spec.ts` (API loop + a real TV-viewport
 UI test where an API-side approval signs the TV in with zero typing + the /approve page).
 
+### The phone-side camera button (issue #434)
+
+The approve step above assumed the phone would reach the `/approve` link through its **OS camera
+app**. In practice a user looking for "authorize a new device" opens Settings → Devices and finds
+only a QR to *show*, never one to *read* — so the flow required leaving the app. The scanner itself
+already existed (`services/native/native-capabilities.ts` `canScanBarcode`/`scanBarcode`) but had a
+single call site: the `/server` page, reachable from Settings only via a native-only link labelled
+"Switch server", which reads as "change which backend I talk to".
+
+Settings → Devices now carries a **scan card** (`devices-scan-approve`), rendered only where
+`canScanBarcode()` is true — web and desktop have no scanner, and a dead button is worse than no
+button. It hands the scanned string to the pure `parseApproveCode` (`web/src/app/lib/pairing.ts`)
+and, on a hit, navigates to `/approve#c=<code>`: deliberately the **same entry point** the OS camera
+app would have opened, so `ApproveLoginComponent` stays the one place that confirms and posts —
+this button is a shortcut into the existing flow, not a second implementation of it.
+
+`parseApproveCode` accepts both forms the TV puts on screen — the `/approve` link (fragment first,
+query as the hand-built fallback, matching `ApproveLoginComponent`'s own precedence) and the bare
+printed code — so one button serves either. It **validates against the minting alphabet** rather
+than passing the value through: an instant "that isn't a sign-in code" beats a round-trip that
+returns 404. A foreign origin is accepted on purpose — the code is always claimed against *this*
+phone's own server, so a stranger's code simply 404s; the origin in the QR is cosmetic. A `/pair`
+QR (the server-pairing flow) returns null, keeping the two scan paths disjoint.
+
+To make that validation shared rather than duplicated, the alphabet moved to
+`@nicotind/core` `pairing-code.ts` (`CODE_ALPHABET`/`CODE_LENGTH`/`isPairingCodeShape`), which the
+API's `generatePairingCode` now imports. Note the web build does **not** consume core's barrel — it
+maps `@nicotind/core` to the curated `packages/web/src/types/core.ts` shim (the real barrel pulls in
+Bun-specific utils Angular can't compile), so a new shared helper needs a re-export line there too.
+
 ## Device registry + revocation
 
 `paired_devices` (id, user_id, name, platform, created_at, last_seen_at).

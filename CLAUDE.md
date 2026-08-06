@@ -681,7 +681,13 @@ Add detail there, not here.
   tags (`looksConcatenatedGenre`) + key-detection instability + filter-radio centroid
   genre-blindness. → [docs/radio.md](docs/radio.md), [docs/web-ui.md](docs/web-ui.md)
 - **Remote playback (cast, Spotify-Connect-style)**: per-user `PlaybackStateManager` broadcasts
-  state/commands over `GET /api/ws/playback`; each browser tab is a device. →
+  state/commands over `GET /api/ws/playback`; each browser tab is a device. **A pruned device now
+  heals (issue #433)**: `heartbeat` returns whether the device was known and `websocket.ts`
+  re-registers when it wasn't — the client only sends `REGISTER` from `onopen`, which never fires
+  again on a still-OPEN socket, so a routine 90s stale-prune (Android WebView throttles the 30s
+  heartbeat timer behind a TV screensaver) used to remove the TV *permanently*; and `onClose`
+  unregisters only if no other connection still holds that device id, since the client reuses one
+  stable id across reconnects and a dead socket's late close was evicting the live one. →
   [docs/remote-playback.md](docs/remote-playback.md)
 - **Hardware cast (Chromecast + DLNA, server-side controller)**: a `CastController` runs protocol
   adapters (`castv2`/`bonjour` for Chromecast, `node-ssdp`/`upnp-mediarenderer-client` for DLNA)
@@ -710,7 +716,15 @@ Add detail there, not here.
   (revocable via `paired_devices` row delete, enforced at refresh); the native app keeps a
   **saved-servers registry with per-server stashed sessions** (switch/remove/remember, no passwords
   stored) reachable from login + Settings; opt-in remote access publishes the loopback-bound backend
-  at a public HTTPS URL via `tailscale funnel` behind a guided admin state machine. →
+  at a public HTTPS URL via `tailscale funnel` behind a guided admin state machine. **Settings →
+  Devices now has the camera button (issue #434)**: the scanner existed but its only call site was
+  the `/server` page, reachable from Settings behind a link labelled "Switch server" — nowhere a
+  user looks to authorize a device. A `canScanBarcode()`-gated scan card feeds the pure
+  `parseApproveCode` (accepts the TV's `/approve#c=…` link *and* the bare printed code, validated
+  against the alphabet, `/pair` QRs rejected) and routes to `/approve#c=…` — the same entry point
+  the OS camera app would open, so `ApproveLoginComponent` stays the one confirm-and-post site. The
+  alphabet moved to `@nicotind/core` `pairing-code.ts` (`isPairingCodeShape`) so the minter and the
+  validator can't drift; web reaches it through the `src/types/core.ts` shim, not core's barrel. →
   [docs/device-pairing.md](docs/device-pairing.md)
 - **Observability (Sentry, opt-in)**: web `loadSentry` (empty DSN = off, prod-only, versioned + low
   sampling) + API `initServerSentry` (`NICOTIND_SENTRY_DSN` empty = off) reporting only unknown 500s
@@ -1310,7 +1324,12 @@ player — blurred-cover backdrop, bottom-pinned glass transport without shuffle
 — driven by `isTvUi()` (the root class, e2e-testable via `now-playing-tv.spec.ts`); a roving-tabindex D-pad
 navigation directive pair — vertical/horizontal/grid axes — covers the Now Playing queue,
 transport controls, every Library/Search/artist-detail grid, every `TrackRowComponent`-based song
-list, and Settings/Admin/Extensions button/toggle rows (forms stay Tab-order-only by design),
+list, Settings/Admin/Extensions button/toggle rows (forms stay Tab-order-only by design), and — the
+last pointer-only holdout — the **mini-player grab notch** (issue #432: it and the bar were bound
+solely to `(pointerdown)`, so expanding Now Playing was impossible from a remote; it stays a `<div>`
+rather than a `<button>` because `onBarPointerDown` bails on `closest('button')` and that would kill
+the touch swipe-to-open, and `TvNavItemDirective`'s `[attr.role]` no longer clobbers an
+author-provided `role`),
 plus a global keyboard shortcut set (Space/K play-pause, J/L prev/next, M mute, N now-playing, arrow-key seek that defers to D-pad nav groups, `/` for Acquire; Escape shares the hardware-Back `BackHandlerStack` (issue #398) so one press closes only the topmost overlay, via `registerOverlayCloser` for `@if`-rendered modals). The `@nicotind/capacitor-tv-channels` plugin owns the Google TV launcher surface: a Watch Next "Continue listening" entry for the current track, a "Recently added" preview-channel row of the newest albums whose tiles deep-link into the app via a sanitized route extra (issue #395, `publishChannel`/`clearChannel` + the retained `deepLink` event), and the Assistant's play-from-search voice intent. → See [docs/mobile-app.md](docs/mobile-app.md) and
 [docs/ios-app.md](docs/ios-app.md).
 
