@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.318](https://github.com/kevinch3/NicotinD/compare/v0.1.317...v0.1.318) (2026-08-06)
+
+### Bug Fixes
+
+* **web:** unify the settings family on admin's max-w-3xl page-shell tier ([#421](https://github.com/kevinch3/NicotinD/issues/421)) ([fae4405](https://github.com/kevinch3/NicotinD/commit/fae440550a8c011931629e66ee51d3449e196522))
 ## [0.1.317](https://github.com/kevinch3/NicotinD/compare/v0.1.316...v0.1.317) (2026-08-06)
 
 ### Bug Fixes
