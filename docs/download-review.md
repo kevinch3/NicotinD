@@ -210,7 +210,8 @@ codebase (see "Source-agnostic acquisition" in the top-level index).
 
 `AcoustidPlugin` (`services/plugins/acoustid/`) is a new `metadata`-kind,
 default-off plugin exposing the `identify` capability
-(`identifyTrack(path): Promise<IdentifyResult | null>`). Config is
+(`identifyTrack(path): Promise<IdentifyResult | null>` plus the optional
+`identifyTrackDetailed` — see "Identify outcome taxonomy" below). Config is
 `{ apiKey, binaryPath }`; availability is probed by spawning the local
 `fpcalc` binary with `-version` (never a real fingerprint call, so the probe
 is cheap and offline-safe). **Promotion note**: `createApp`'s legacy
@@ -219,6 +220,45 @@ seeds the plugin's `apiKey` at registration time
 (`registerBuiltinPlugins` → `new AcoustidPlugin({ apiKey: acoustidApiKey ?? '' })`)
 — an existing deployment that had already set this secret gets AcoustID
 identify for free without re-entering a key.
+
+## Identify outcome taxonomy (issue #414)
+
+`identifyTrack` answers `IdentifyResult | null`, which collapsed four
+situations that ask a curator for **opposite actions** into one "No fingerprint
+match" toast:
+
+| outcome | what happened | what the curator should do |
+| --- | --- | --- |
+| `match` | AcoustID matched | accept the suggested tags |
+| `no-match` | AcoustID answered, has no such recording | retag by hand |
+| `fpcalc-missing` | the binary isn't installed | install `libchromaprint-tools` — no file is at fault |
+| `undecodable` | `fpcalc` ran and rejected *this file* | likely a truncated/corrupt download — a discard candidate |
+| `source-error` | HTTP/network failure, unconfigured key | retry later; says nothing about the file |
+| `file-missing` | the row's path is not on disk | a scan/organizer problem, not a metadata one |
+
+The capability gained an **optional** `identifyTrackDetailed(absPath):
+Promise<IdentifyOutcome>` rather than changing `identifyTrack`'s signature, so a
+plugin that only implements the plain call stays valid — the route falls back to
+mapping its null onto `no-match`. Both identify routes now return
+`{ result, outcome }`: `result` is byte-identical to before (no client break),
+`outcome` is the addition.
+
+`undecodable` **carries fpcalc's stderr tail** (last 400 chars, in the outcome's
+`detail`). Two things were wrong before: `runFpcalc` piped stderr and never read
+it, so the diagnosis was discarded at the source; and an exit-0-with-no-usable-
+fingerprint (silence, zero-length audio) was indistinguishable from a real
+no-match even though it is a property of the *file*. This follows the same
+discipline the enrichment pipeline already applies to ffmpeg failures — surface
+the stderr tail, never swallow it as a bare exit code.
+
+**An unfingerprint-able file is itself a triage signal**, which is why the web
+renders it per-track rather than as one modal-level message: the metadata-fix
+modal shows an error chip under the offending row
+(`data-testid="review-track-identify-error"`, `data-reason` = the kind, stderr
+tail in the `title` tooltip), styled `text-status-error` for the actionable
+kinds and muted for a plain `no-match`; the toast likewise switches from `info`
+to `error`. In a bulk album identify, one unreadable file among ten is exactly
+the thing a per-row chip surfaces and a single verdict would average away.
 
 ## Retag-vs-override persistence rationale
 

@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
-import type { JwtPayload, IdentifyResult } from '@nicotind/core';
+import type { JwtPayload, IdentifyOutcome, IdentifyResult } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import { applySchema } from '../db.js';
 import { downloadReviewRoutes, voteAlbumIdentity } from './download-review.js';
@@ -265,8 +265,13 @@ describe('download-review identify + retag routes', () => {
   /** A registry stub exposing only the `identify` capability. */
   function makeIdentifyRegistry(
     fn: (abs: string) => Promise<IdentifyResult | null>,
+    detailed?: (abs: string) => Promise<IdentifyOutcome>,
   ): PluginRegistry {
-    const plugin = { identify: { identifyTrack: fn } };
+    const plugin = {
+      identify: detailed
+        ? { identifyTrack: fn, identifyTrackDetailed: detailed }
+        : { identifyTrack: fn },
+    };
     return {
       getEnabledWithCapability: (cap: string) => (cap === 'identify' ? [plugin] : []),
     } as unknown as PluginRegistry;
@@ -318,7 +323,84 @@ describe('download-review identify + retag routes', () => {
 
     const res = await app.request('/songs/s1/identify', { method: 'POST' });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ result });
+    // `result` is unchanged for existing callers; `outcome` is the #414 addition.
+    expect(await res.json()).toEqual({ result, outcome: { kind: 'match', result } });
+  });
+
+  // Issue #414: a plugin that can explain itself must have that explanation
+  // reach the client, and one that can't must still behave as before.
+  it('identify: passes a typed failure outcome through to the client', async () => {
+    ensureAlbum('al1');
+    const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-review-'));
+    seedSongWithFile(musicDir, 'al1', 's1', 's1.mp3');
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        downloadReviewRoutes({
+          musicDir,
+          shareRescan: noopScheduler(),
+          plugins: makeIdentifyRegistry(
+            async () => null,
+            async () => ({ kind: 'undecodable', detail: 'ERROR: invalid data found' }),
+          ),
+        }),
+      ),
+    );
+
+    const res = await app.request('/songs/s1/identify', { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      result: null,
+      outcome: { kind: 'undecodable', detail: 'ERROR: invalid data found' },
+    });
+  });
+
+  it('identify: falls back to no-match for a plugin without the detailed variant', async () => {
+    ensureAlbum('al1');
+    const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-review-'));
+    seedSongWithFile(musicDir, 'al1', 's1', 's1.mp3');
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        downloadReviewRoutes({
+          musicDir,
+          shareRescan: noopScheduler(),
+          plugins: makeIdentifyRegistry(async () => null),
+        }),
+      ),
+    );
+
+    const res = await app.request('/songs/s1/identify', { method: 'POST' });
+    expect(await res.json()).toEqual({ result: null, outcome: { kind: 'no-match' } });
+  });
+
+  it('identify album: a song whose file vanished reports file-missing, not no-match', async () => {
+    ensureAlbum('al2');
+    const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-review-'));
+    // Row points at a path that was never written to disk.
+    testDb.run(
+      `INSERT INTO library_songs
+         (id, album_id, title, artist, artist_id, duration, path, size, created, synced_at)
+       VALUES ('gone', 'al2', 'T', 'Artist', 'art', 0, 'gone.mp3', 1, '2024-01-01', 1)`,
+    );
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        downloadReviewRoutes({
+          musicDir,
+          shareRescan: noopScheduler(),
+          plugins: makeIdentifyRegistry(async () => null),
+        }),
+      ),
+    );
+
+    const res = await app.request('/albums/al2/identify', { method: 'POST' });
+    const body = (await res.json()) as {
+      perTrack: Array<{ songId: string; result: IdentifyResult | null; outcome: { kind: string } }>;
+    };
+    expect(body.perTrack).toEqual([
+      { songId: 'gone', result: null, outcome: { kind: 'file-missing' } },
+    ]);
   });
 
   it('identify: 503 when no identify plugin is enabled', async () => {

@@ -12,7 +12,7 @@ import {
 import { registerOverlayCloser } from '../../services/native/back-button.service';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom, type Observable } from 'rxjs';
-import type { MetadataCandidate, AlbumCoverCandidate } from '../../../types/core';
+import type { MetadataCandidate, AlbumCoverCandidate, IdentifyOutcome } from '../../../types/core';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ReviewApiService } from '../../services/api/review-api.service';
 import type { ReviewQueueAlbum } from '../../services/api/api-types';
@@ -124,6 +124,14 @@ export class MetadataFixModalComponent implements OnInit {
   readonly tracks = signal<EditableTrack[]>([]);
   readonly hasDirtyTracks = computed(() => dirtyTrackPayload(this.tracks()).length > 0);
   readonly identifyingTrackIds = signal<Set<string>>(new Set());
+  /**
+   * Per-track identify failures (issue #414), keyed by song id. Only failures
+   * live here — a match updates the row itself, so an entry means "this track
+   * has something to tell the curator". Kept beside `tracks` rather than on
+   * EditableTrack because it is transient UI state, not editable track data
+   * (`hasDirtyTracks` must not see it).
+   */
+  readonly identifyFailures = signal<Map<string, { kind: string; detail?: string }>>(new Map());
   readonly identifyingAlbum = signal(false);
   readonly savingTracks = signal(false);
 
@@ -286,16 +294,64 @@ export class MetadataFixModalComponent implements OnInit {
     return this.identifyingTrackIds().has(id);
   }
 
+  /** The failure to show on a track row, or undefined when there is none. */
+  identifyFailure(id: string): { kind: string; detail?: string } | undefined {
+    return this.identifyFailures().get(id);
+  }
+
+  /**
+   * Human copy for an identify failure. `no-match` keeps the existing neutral
+   * wording; the other kinds each name a different thing to *do* about it —
+   * which is the point of #414, since they used to be indistinguishable.
+   */
+  identifyFailureLabel(kind: string): string {
+    switch (kind) {
+      case 'fpcalc-missing':
+        return this.i18n.t('review.identifyFpcalcMissing');
+      case 'undecodable':
+        return this.i18n.t('review.identifyUndecodable');
+      case 'source-error':
+        return this.i18n.t('review.identifySourceError');
+      case 'file-missing':
+        return this.i18n.t('review.identifyFileMissing');
+      default:
+        return this.i18n.t('review.identifyNoMatch');
+    }
+  }
+
+  /** Narrow an outcome to its diagnostic detail (the match arm carries none). */
+  private outcomeDetail(outcome: IdentifyOutcome | undefined): string | undefined {
+    return outcome && outcome.kind !== 'match' ? outcome.detail : undefined;
+  }
+
+  /** Record or clear a track's identify failure. */
+  private setIdentifyFailure(id: string, failure?: { kind: string; detail?: string }): void {
+    this.identifyFailures.update((m) => {
+      const next = new Map(m);
+      if (failure && failure.kind !== 'match') next.set(id, failure);
+      else next.delete(id);
+      return next;
+    });
+  }
+
   /** Fingerprint-identify one track and merge a match into its row (no-op on a miss). */
   async identifyTrack(t: EditableTrack): Promise<void> {
     if (this.isIdentifyingTrack(t.id)) return;
     this.identifyingTrackIds.update((s) => new Set(s).add(t.id));
     try {
-      const { result } = await firstValueFrom(this.review.identifySong(t.id));
+      const { result, outcome } = await firstValueFrom(this.review.identifySong(t.id));
       if (!result) {
-        this.toast.show({ message: this.i18n.t('review.identifyNoMatch'), kind: 'info' });
+        const kind = outcome?.kind ?? 'no-match';
+        this.setIdentifyFailure(t.id, { kind, detail: this.outcomeDetail(outcome) });
+        // A broken file / missing binary is a real problem, not an "oh well" —
+        // so it warns rather than sharing no-match's neutral info toast.
+        this.toast.show({
+          message: this.identifyFailureLabel(kind),
+          kind: kind === 'no-match' ? 'info' : 'error',
+        });
         return;
       }
+      this.setIdentifyFailure(t.id);
       this.tracks.update((list) => list.map((x) => (x.id === t.id ? applyIdentify(x, result) : x)));
     } catch (err) {
       this.msg.set(httpErrorMessage(err, 'Could not identify the track.'));
@@ -325,6 +381,16 @@ export class MetadataFixModalComponent implements OnInit {
           return hit?.result ? applyIdentify(t, hit.result) : t;
         }),
       );
+      // One unreadable file among ten is exactly the signal a bulk identify
+      // should surface per row instead of averaging into a single verdict.
+      for (const p of perTrack) {
+        this.setIdentifyFailure(
+          p.songId,
+          p.result
+            ? undefined
+            : { kind: p.outcome?.kind ?? 'no-match', detail: this.outcomeDetail(p.outcome) },
+        );
+      }
       if (vote) {
         this.manualArtist.set(vote.artist);
         this.manualAlbum.set(vote.album);

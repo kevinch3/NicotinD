@@ -522,7 +522,9 @@ Add detail there, not here.
 - **Download inbox triage (hold-for-review, issue #411)**: opt-in `holdForReview` processing setting
   holds quarantined downloads until curator approval in the Downloads inbox; `download_reviews`
   decision table (pending = derived), multi-source metadata candidates + AcoustID identify + per-track
-  retag. → [docs/download-review.md](docs/download-review.md)
+  retag. **Identify failures are typed (issue #414)** — `no-match` / `fpcalc-missing` / `undecodable`
+  (with the fpcalc stderr tail) / `source-error` / `file-missing` ask for opposite curator actions, so
+  they render as a per-track error chip instead of one generic toast. → [docs/download-review.md](docs/download-review.md)
 - **Perceptual audio features (no LLM)**: energy/loudness measured bun-side via ffmpeg ebur128;
   danceability/valence/mood/vocals/acousticness + cached embeddings (content-invalidated by
   `library_embeddings.file_size` since issue #258 — a file replaced in place keeps its path-derived

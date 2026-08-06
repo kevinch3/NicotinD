@@ -12,6 +12,13 @@ class FakeProc extends EventEmitter {
   emitData(chunk: string): void {
     this.stdout.emit('data', Buffer.from(chunk));
   }
+  emitStderr(chunk: string): void {
+    this.stderr.emit('data', Buffer.from(chunk));
+  }
+  /** The binary isn't there — node reports spawn failure, never a close code. */
+  failToSpawn(message = 'spawn fpcalc ENOENT'): void {
+    this.emit('error', new Error(message));
+  }
   finish(code: number): void {
     this.emit('close', code);
   }
@@ -99,5 +106,109 @@ describe('AcoustidPlugin', () => {
     const result = await plugin.identify.identifyTrack('/music/track.flac');
 
     expect(result).toBeNull();
+  });
+
+  // Issue #414: identifyTrack's null collapsed four different situations into
+  // one; identifyTrackDetailed names them, because they ask the curator for
+  // opposite actions (retag vs install a binary vs discard a corrupt file vs
+  // retry later).
+  describe('identifyTrackDetailed outcome taxonomy (issue #414)', () => {
+    const neverFetch = (async () => {
+      throw new Error('should never be called');
+    }) as unknown as typeof fetch;
+
+    it('reports a match', async () => {
+      const spawnFn = fakeSpawn((proc) => {
+        proc.emitData(FPCALC_JSON);
+        proc.finish(0);
+      });
+      const fetchFn = (async () =>
+        new Response(JSON.stringify(LOOKUP_RESPONSE), { status: 200 })) as unknown as typeof fetch;
+      const plugin = new AcoustidPlugin({ apiKey: 'test-key' }, { spawnFn, fetchFn });
+
+      const outcome = await plugin.identify.identifyTrackDetailed!('/music/track.flac');
+      expect(outcome.kind).toBe('match');
+      expect(outcome.kind === 'match' && outcome.result.acoustId).toBe('acoustid-uuid-1');
+    });
+
+    it('distinguishes a genuine no-match (AcoustID answered, empty)', async () => {
+      const spawnFn = fakeSpawn((proc) => {
+        proc.emitData(FPCALC_JSON);
+        proc.finish(0);
+      });
+      const fetchFn = (async () =>
+        new Response(JSON.stringify({ status: 'ok', results: [] }), {
+          status: 200,
+        })) as unknown as typeof fetch;
+      const plugin = new AcoustidPlugin({ apiKey: 'test-key' }, { spawnFn, fetchFn });
+
+      expect(await plugin.identify.identifyTrackDetailed!('/music/track.flac')).toEqual({
+        kind: 'no-match',
+      });
+    });
+
+    it('distinguishes a missing fpcalc binary from anything file-related', async () => {
+      const spawnFn = fakeSpawn((proc) => proc.failToSpawn());
+      const plugin = new AcoustidPlugin({ apiKey: 'test-key' }, { spawnFn, fetchFn: neverFetch });
+
+      const outcome = await plugin.identify.identifyTrackDetailed!('/music/track.flac');
+      expect(outcome.kind).toBe('fpcalc-missing');
+      expect(outcome.kind !== 'match' && outcome.detail).toContain('ENOENT');
+    });
+
+    it('reports an undecodable file and carries fpcalc stderr out with it', async () => {
+      const spawnFn = fakeSpawn((proc) => {
+        proc.emitStderr('ERROR: could not decode audio: invalid data found\n');
+        proc.finish(1);
+      });
+      const plugin = new AcoustidPlugin({ apiKey: 'test-key' }, { spawnFn, fetchFn: neverFetch });
+
+      const outcome = await plugin.identify.identifyTrackDetailed!('/music/track.flac');
+      expect(outcome.kind).toBe('undecodable');
+      // The stderr tail is the whole point — a curator sees why the file failed.
+      expect(outcome.kind !== 'match' && outcome.detail).toContain('could not decode audio');
+    });
+
+    it('treats exit-0-with-no-fingerprint as a file problem, not a no-match', async () => {
+      const spawnFn = fakeSpawn((proc) => {
+        proc.emitData(JSON.stringify({ duration: 0, fingerprint: '' }));
+        proc.finish(0);
+      });
+      const plugin = new AcoustidPlugin({ apiKey: 'test-key' }, { spawnFn, fetchFn: neverFetch });
+
+      expect((await plugin.identify.identifyTrackDetailed!('/music/track.flac')).kind).toBe(
+        'undecodable',
+      );
+    });
+
+    it('reports an AcoustID HTTP failure as transient, never as no-match', async () => {
+      const spawnFn = fakeSpawn((proc) => {
+        proc.emitData(FPCALC_JSON);
+        proc.finish(0);
+      });
+      const fetchFn = (async () =>
+        new Response('nope', { status: 503 })) as unknown as typeof fetch;
+      const plugin = new AcoustidPlugin({ apiKey: 'test-key' }, { spawnFn, fetchFn });
+
+      const outcome = await plugin.identify.identifyTrackDetailed!('/music/track.flac');
+      expect(outcome.kind).toBe('source-error');
+      expect(outcome.kind !== 'match' && outcome.detail).toContain('503');
+    });
+
+    it('an unconfigured plugin is a source-error, not a no-match', async () => {
+      const plugin = new AcoustidPlugin({});
+      expect((await plugin.identify.identifyTrackDetailed!('/music/track.flac')).kind).toBe(
+        'source-error',
+      );
+    });
+
+    it('plain identifyTrack still returns match-or-null (unchanged contract)', async () => {
+      const spawnFn = fakeSpawn((proc) => {
+        proc.emitStderr('boom');
+        proc.finish(1);
+      });
+      const plugin = new AcoustidPlugin({ apiKey: 'test-key' }, { spawnFn, fetchFn: neverFetch });
+      expect(await plugin.identify.identifyTrack('/music/track.flac')).toBeNull();
+    });
   });
 });

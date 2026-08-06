@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import type { IdentifyResult } from '@nicotind/core';
+import type { IdentifyOutcome, IdentifyResult } from '@nicotind/core';
 import { createLogger } from '@nicotind/core';
 
 const log = createLogger('acoustid');
@@ -24,7 +24,33 @@ export type AcoustIdResult = IdentifyResult & {
   trackNumber?: number;
 };
 
+/**
+ * {@link IdentifyOutcome} narrowed to this engine's richer result type. Stays
+ * assignable to the core outcome (AcoustIdResult extends IdentifyResult), so
+ * the plugin can hand it straight to the capability without a cast.
+ */
+export type AcoustIdOutcome =
+  | { kind: 'match'; result: AcoustIdResult }
+  | { kind: Exclude<IdentifyOutcome['kind'], 'match'>; detail?: string };
+
 type FpcalcOutput = { duration: number; fingerprint: string };
+
+/**
+ * Why fpcalc produced no fingerprint (issue #414). `missing` is a deployment
+ * gap (the binary isn't there — no file is at fault); `undecodable` means
+ * fpcalc ran and rejected *this file*, which is a triage signal in itself, so
+ * its stderr tail is carried out rather than swallowed (the same discipline
+ * the enrichment pipeline applies to ffmpeg failures).
+ */
+type FpcalcFailure = { kind: 'missing' | 'undecodable'; detail: string };
+type FpcalcResult = { ok: true; value: FpcalcOutput } | { ok: false; error: FpcalcFailure };
+
+/** Last N chars of a stderr blob — enough to diagnose, bounded for storage/UI. */
+const STDERR_TAIL_CHARS = 400;
+function stderrTail(raw: string): string {
+  const trimmed = raw.trim();
+  return trimmed.length > STDERR_TAIL_CHARS ? `…${trimmed.slice(-STDERR_TAIL_CHARS)}` : trimmed;
+}
 
 /** Injectable dependencies — tests fake `spawnFn`/`fetchFn` to avoid real I/O. */
 export interface AcoustIdLookupDeps {
@@ -46,12 +72,18 @@ function runFpcalc(
   filepath: string,
   binaryPath: string,
   spawnFn: typeof spawn,
-): Promise<FpcalcOutput | null> {
-  return new Promise<FpcalcOutput | null>((resolve) => {
+): Promise<FpcalcResult> {
+  return new Promise<FpcalcResult>((resolve) => {
     const proc = spawnFn(binaryPath, ['-json', filepath], { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
+    let stderr = '';
     proc.stdout.on('data', (d) => {
       stdout += d.toString();
+    });
+    // stderr was piped but never read: fpcalc's own explanation of a failure
+    // was discarded at the source, so no layer above could ever report it.
+    proc.stderr?.on('data', (d) => {
+      stderr += d.toString();
     });
     proc.on('error', (err) => {
       if (!fpcalcMissingLogged) {
@@ -61,16 +93,43 @@ function runFpcalc(
           'fpcalc not available — install libchromaprint-tools to enable AcoustID lookup',
         );
       }
-      resolve(null);
+      resolve({ ok: false, error: { kind: 'missing', detail: err.message } });
     });
     proc.on('close', (code) => {
-      if (code !== 0) return resolve(null);
+      if (code !== 0) {
+        return resolve({
+          ok: false,
+          error: {
+            kind: 'undecodable',
+            detail: stderrTail(stderr) || `fpcalc exited with code ${code}`,
+          },
+        });
+      }
       try {
         const parsed = JSON.parse(stdout) as { duration: number; fingerprint: string };
-        if (!parsed.fingerprint || !Number.isFinite(parsed.duration)) return resolve(null);
-        resolve({ duration: parsed.duration, fingerprint: parsed.fingerprint });
+        if (!parsed.fingerprint || !Number.isFinite(parsed.duration)) {
+          // Exit 0 with no usable fingerprint is still a property of the file
+          // (silence / zero-length audio), not of the AcoustID database.
+          return resolve({
+            ok: false,
+            error: {
+              kind: 'undecodable',
+              detail: stderrTail(stderr) || 'fpcalc produced no fingerprint',
+            },
+          });
+        }
+        resolve({
+          ok: true,
+          value: { duration: parsed.duration, fingerprint: parsed.fingerprint },
+        });
       } catch {
-        resolve(null);
+        resolve({
+          ok: false,
+          error: {
+            kind: 'undecodable',
+            detail: stderrTail(stderr) || 'fpcalc output was not valid JSON',
+          },
+        });
       }
     });
   });
@@ -113,10 +172,33 @@ export class AcoustIdLookup {
     this.fetchFn = deps.fetchFn ?? fetch;
   }
 
+  /**
+   * Backward-compatible match-or-null wrapper. Callers that only act on a hit
+   * (the organizer's auto-tagging) keep this; anything that has to *explain*
+   * the outcome to a human uses {@link identify} (issue #414).
+   */
   async lookup(filepath: string): Promise<AcoustIdResult | null> {
-    if (!this.apiKey) return null;
+    const outcome = await this.identify(filepath);
+    return outcome.kind === 'match' ? outcome.result : null;
+  }
+
+  /**
+   * Identify a track, reporting *why* it failed rather than collapsing every
+   * path onto null. See `IdentifyFailureKind` for what each outcome asks the
+   * curator to do — the distinction is the whole point: "AcoustID doesn't know
+   * this recording" and "this file is corrupt" look identical to a caller of
+   * {@link lookup}, but only one of them is a reason to discard the download.
+   */
+  async identify(filepath: string): Promise<AcoustIdOutcome> {
+    if (!this.apiKey) {
+      return { kind: 'source-error', detail: 'No AcoustID API key configured' };
+    }
     const fp = await runFpcalc(filepath, this.binaryPath, this.spawnFn);
-    if (!fp) return null;
+    if (!fp.ok) {
+      return fp.error.kind === 'missing'
+        ? { kind: 'fpcalc-missing', detail: fp.error.detail }
+        : { kind: 'undecodable', detail: fp.error.detail };
+    }
 
     await rateLimit();
 
@@ -128,8 +210,8 @@ export class AcoustIdLookup {
     const params = new URLSearchParams({
       client: this.apiKey,
       meta: 'recordings releasegroups releases tracks',
-      duration: String(Math.round(fp.duration)),
-      fingerprint: fp.fingerprint,
+      duration: String(Math.round(fp.value.duration)),
+      fingerprint: fp.value.fingerprint,
     });
 
     let raw: AcoustIdRaw;
@@ -137,22 +219,28 @@ export class AcoustIdLookup {
       const res = await this.fetchFn(ACOUSTID_URL, { method: 'POST', body: params });
       if (!res.ok) {
         log.debug({ status: res.status, filepath }, 'AcoustID HTTP error');
-        return null;
+        // Transient by nature (5xx, rate limit) — a retry may well succeed, so
+        // this must never read as "AcoustID doesn't have this recording".
+        return { kind: 'source-error', detail: `AcoustID HTTP ${res.status}` };
       }
       raw = (await res.json()) as AcoustIdRaw;
     } catch (err) {
       log.debug({ err, filepath }, 'AcoustID request failed');
-      return null;
+      return { kind: 'source-error', detail: err instanceof Error ? err.message : String(err) };
     }
 
-    if (raw.status !== 'ok' || !raw.results || raw.results.length === 0) return null;
+    if (raw.status !== 'ok') {
+      return { kind: 'source-error', detail: `AcoustID status "${raw.status}"` };
+    }
+    // The service answered cleanly with nothing: the genuine no-match.
+    if (!raw.results || raw.results.length === 0) return { kind: 'no-match' };
 
     const best = raw.results.find((r) => (r.score ?? 0) >= 0.7) ?? raw.results[0];
-    if (!best) return null;
+    if (!best) return { kind: 'no-match' };
     // AcoustID matched the fingerprint but has no MB recording linked → still
     // return the AcoustID so the caller can cache it ("we tried, nothing here").
     if (!best.recordings || best.recordings.length === 0) {
-      return { acoustId: best.id, score: best.score };
+      return { kind: 'match', result: { acoustId: best.id, score: best.score } };
     }
 
     const recording = best.recordings[0]!;
@@ -174,16 +262,19 @@ export class AcoustIdLookup {
     }
 
     return {
-      acoustId: best.id,
-      score: best.score,
-      artist,
-      albumArtist,
-      album,
-      title,
-      year,
-      trackNumber,
-      recordingId: recording.id,
-      releaseId: release?.id,
+      kind: 'match',
+      result: {
+        acoustId: best.id,
+        score: best.score,
+        artist,
+        albumArtist,
+        album,
+        title,
+        year,
+        trackNumber,
+        recordingId: recording.id,
+        releaseId: release?.id,
+      },
     };
   }
 }

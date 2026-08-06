@@ -68,6 +68,11 @@ export class AcoustidPlugin implements Plugin {
 
   readonly identify: IdentifyCapability = {
     identifyTrack: (absPath) => this.lookup?.lookup(absPath) ?? Promise.resolve(null),
+    // Issue #414: the "why" variant. An unconfigured plugin reports
+    // source-error rather than no-match — nothing was asked of AcoustID.
+    identifyTrackDetailed: (absPath) =>
+      this.lookup?.identify(absPath) ??
+      Promise.resolve({ kind: 'source-error', detail: 'AcoustID is not configured' } as const),
   };
 
   async init(ctx: PluginHostContext): Promise<void> {
