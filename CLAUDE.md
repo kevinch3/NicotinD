@@ -74,6 +74,7 @@ bun run test:web         # Angular component tests (vitest — see docs/web-ui.m
 bun run typecheck:web-spec # Type-check the web specs (vitest does NOT type-check them)
 bun run --filter @nicotind/web typecheck:template # Angular templates alone (folded into typecheck)
 bun run e2e              # Playwright e2e suite (packages/e2e) — always run before declaring a feature done
+bun run e2e:tv           # Android TV emulator lane (real APK on an AVD) — D-pad/focus + WebView-only risk
 bun run packages/api/src/scripts/prod-probe.ts --orphans --jobs  # read-only prod/dev DB probe → docs/prod-inspection.md
                          # (builds @nicotind/web first; E2E_SKIP_BUILD=1 to reuse the existing dist)
 bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
@@ -1385,6 +1386,20 @@ one command** (`bun run --filter @nicotind/e2e screens:readme`, docs/e2e.md "Scr
 it and commit any changed `docs/images/*.png` whenever a UI change touches the Library/album/Now-Playing
 screens. The flow catalogue + recurring routines live in
 [docs/testing-routines.md](docs/testing-routines.md). → See [docs/e2e.md](docs/e2e.md).
+
+**Android TV emulator lane (`bun run e2e:tv`)**: a *second*, local-only Playwright lane driving the
+real APK on an AVD via Playwright's `_android` API (`chromium.connectOverCDP` does **not** work — a
+WebView exposes no browser-level target). It exists for the one thing the Chromium suite
+structurally cannot model: **an Android WebView has spatial navigation and desktop Chrome does not**,
+so a desktop test can't tell "focus correctly moved" from "focus never could have moved" — which is
+where issue #436's focus trap hid. Covers D-pad escape + a generic reachability audit (BFS over the
+focus graph, identity = a stamped `data-tvwalk` attribute because derived testids can't round-trip),
+hardware Back (#394, no Back key exists in Chromium), and a WebView-only smoke pass (CORS,
+`ngsw-bypass`, real audio decode). `tv/preflight.ts` owns the whole lifecycle and **deliberately
+caches nothing** — gradle's incremental no-op is 9.8 s, so skips would save ~18 s and reintroduce
+#253's stale-bundle failure. Three tests are `test.fail()` pinning #436: green while the bug is open,
+loudly red the moment it's fixed without updating them. →
+[docs/e2e-tv-emulator.md](docs/e2e-tv-emulator.md)
 
 **Real-use feedback log**: [docs/feedback-log-2026-07.md](docs/feedback-log-2026-07.md) is a
 rolling, dated log of friction noticed while actually _using_ the app — one entry per observation
