@@ -6,3 +6,5 @@ playground-report/
 screenshots/
 node_modules/
 .tmp-data-onboarding/
+.tmp-data-tv/
+.tmp-music-tv/

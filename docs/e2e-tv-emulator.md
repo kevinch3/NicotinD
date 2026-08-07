@@ -1,11 +1,30 @@
-# Android TV emulator e2e lane (design — not yet implemented)
+# Android TV emulator e2e lane
 
-**Status:** design approved 2026-08-07; no code written yet. Nothing in this document
-describes behaviour that currently exists — it is a plan, in the same sense as
-[oauth-auth.md](oauth-auth.md).
+**Status:** shipped 2026-08-07. `bun run e2e:tv` — 14 tests, ~2.8 min from cold. Three of
+those are `test.fail()` expected failures pinning issue #436 (see "Expected failures").
 
 **Origin:** verifying issue #432 on a real TV emulator found #436, a focus trap the
 114-test Chromium suite ([e2e.md](e2e.md)) structurally cannot detect.
+
+## Running it
+
+```bash
+bun run e2e:tv                       # everything: emulator, APK, server, tests
+bun run e2e:tv -- --grep "notch"     # extra args pass through to playwright
+```
+
+One-time prerequisites (no sudo; see the env notes in this repo's tooling docs):
+
+- Android SDK at `ANDROID_HOME` (defaults to `~/Android/Sdk`) with `platform-tools` and
+  `emulator`, plus a JDK on `PATH` for gradle.
+- A TV AVD named `nicotind-tv` (override with `E2E_TV_AVD`):
+  ```bash
+  avdmanager create avd -n nicotind-tv -k "system-images;android-36;google-tv;x86_64" -d tv_1080p
+  ```
+
+`E2E_TV_PORT` (default 8587) and `E2E_TV_SERIAL` override the server port and target device.
+Do not invoke `playwright test --config=playwright.tv.config.ts` directly — it skips
+preflight and fails in the `device` fixture with a pointer back to `bun run e2e:tv`.
 
 ## Why this exists
 
@@ -108,9 +127,15 @@ mints a JWT against the fixture server over HTTP, writes `nicotind_server_url`,
 server URL is injected as app config, never as the page origin. Inverting these is the most
 likely setup mistake, so it lives in the fixture rather than in specs.
 
-**D-pad helpers.** `dpad(device, 'DOWN', n)` wrapping `device.shell('input keyevent
-KEYCODE_DPAD_DOWN')`, and `focusPath(page)` returning the active element's testid plus its
-index within any enclosing list — the probe otherwise hand-rewritten in every spec.
+**D-pad helpers.** `dpad('DOWN', n)` wrapping `device.shell('input keyevent
+KEYCODE_DPAD_DOWN')`, and `focusId()` returning the active element's testid plus its index
+among same-testid siblings — the probe otherwise hand-rewritten in every spec. The index is
+load-bearing: every track row's title shares one testid, so a bare testid makes a walk down a
+list look stationary, which is exactly what made #436 ambiguous at first.
+
+Note the reachability audit uses a *different*, stronger identity (a stamped `data-tvwalk`
+attribute) because it must re-focus arbitrary elements; see "Two harness bugs worth
+remembering". `focusId()` is the readable one for assertions.
 
 `playwright.tv.config.ts` declares **no browser project and no `use.browserName`**: the
 `page` fixture is overridden to return the WebView page, so Playwright must not also try to
@@ -204,21 +229,43 @@ intercepting `/api/stream` (`ngsw-bypass`), and media-session wiring.
 - **Acquisition, playgrounds, screenshot flows.** Default-off or already out of CI by
   design.
 
-## Open risk to resolve during implementation
+## Resolved: audio under `-no-audio`
 
-The emulator runs with `-no-audio`. Whether `<audio>` `currentTime` advances without an
-output device is unverified. If it stalls, `smoke.tv.spec.ts`'s "playback progresses"
-assertion is unwritable as stated, and the choice is between dropping `-no-audio` (costing
-boot time and possibly stability) or weakening the assertion to "the stream request returns
-206". Verify this first, before building around either assumption.
+The design flagged this as unverified. Measured on device: `currentTime` advances in real
+time (1.37 → 3.40 → 5.43 s over four seconds) with `paused=false` and `readyState=4` despite
+`-no-audio`. No output device does not mean no decode, so `smoke.tv.spec.ts` asserts real
+playback progress rather than settling for "the stream request returned 206".
 
-## Success criteria
+## Outcome against the success criteria
 
-- `bun run e2e:tv` completes from a cold machine in under ~2 minutes.
-- It never leaves the working tree dirty.
-- A failure names the element or surface at fault, not a stack trace.
+| Criterion                          | Result                                                                             |
+| ---------------------------------- | ---------------------------------------------------------------------------------- |
+| Completes from cold in ~2 min      | **~2.8 min** — over target; the three reachability walks cost 24–36 s each         |
+| Never leaves the tree dirty        | met (`changelogGuard`, temp-copied music, gitignored temp dirs)                    |
+| Failures name the surface at fault | met (unreachable elements listed by testid; escape failures print the focus trail) |
 
-### The suite is expected to be RED on arrival
+The 2.8 min overrun is the reachability audit doing real work — each walk is a BFS issuing
+hundreds of adb round-trips. Left as-is rather than trimmed: the audit is the part that finds
+bugs nobody predicted, and this is an on-demand pre-release gate, not a per-save loop.
+
+### Two harness bugs worth remembering
+
+Both were in the _tests_, not the app, and both produced convincing false findings:
+
+1. **The BFS never re-focused its frontier element**, so every direction fired from wherever
+   focus had drifted. The walk collapsed into one path, stalled in the library search input,
+   and reported nearly every control unreachable. Fixed by resuming each frontier state
+   before probing its neighbours.
+2. **Focus identity couldn't round-trip.** Keying on `data-testid` with a tagName fallback
+   yielded `a` for an unlabelled anchor, which then couldn't be re-focused (nothing has
+   `data-testid="a"`), aborting the walk after one step. Fixed with a stamped `data-tvwalk`
+   attribute — unique, survives re-focus, works for elements with no testid.
+
+The lesson generalizes: a reachability test that under-reports looks exactly like a
+discovered bug. Whenever this audit reports something unreachable, confirm by hand before
+filing.
+
+### Expected failures
 
 #436 is open, so `navigation-escape.tv.spec.ts` will fail the moment it exists — that is the
 point, and it is the proof the lane works. But a permanently-red suite is one nobody runs,
