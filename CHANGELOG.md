@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.319](https://github.com/kevinch3/NicotinD/compare/v0.1.318...v0.1.319) (2026-08-07)
+
+### Features
+
+* **library:** discogs artist images + availability-gated auto-fetch option ([#423](https://github.com/kevinch3/NicotinD/issues/423)) ([fdaad71](https://github.com/kevinch3/NicotinD/commit/fdaad71019d74727f7bfd3b3683128de0af92852)), closes [#422](https://github.com/kevinch3/NicotinD/issues/422)
+* **review:** apply the MusicBrainz canonical tracklist to the track grid ([#431](https://github.com/kevinch3/NicotinD/issues/431)) ([128e761](https://github.com/kevinch3/NicotinD/commit/128e761d11d7f8984383cb156303fe6492e26edc)), closes [#413](https://github.com/kevinch3/NicotinD/issues/413)
+
+### Bug Fixes
+
+* **devices:** open the paired-devices card by default ([#424](https://github.com/kevinch3/NicotinD/issues/424)) ([f940880](https://github.com/kevinch3/NicotinD/commit/f940880390f57b6d960cdf32e15dd6b29a8aafa7)), closes [#379](https://github.com/kevinch3/NicotinD/issues/379)
+* **tv:** D-pad-reachable player notch, self-healing remote playback, Settings scan button ([#435](https://github.com/kevinch3/NicotinD/issues/435)) ([3bf059f](https://github.com/kevinch3/NicotinD/commit/3bf059f7dd0795dbf128e3e8e19135d60bb0e860)), references [#433](https://github.com/kevinch3/NicotinD/issues/433) [#432](https://github.com/kevinch3/NicotinD/issues/432) [#434](https://github.com/kevinch3/NicotinD/issues/434)
+* **web:** adopt page-title across browse/detail-tier page headings ([#425](https://github.com/kevinch3/NicotinD/issues/425)) ([e0cd485](https://github.com/kevinch3/NicotinD/commit/e0cd485749f7c788e059e91034908f8dc70775e6)), closes [#385](https://github.com/kevinch3/NicotinD/issues/385)
 ## [0.1.318](https://github.com/kevinch3/NicotinD/compare/v0.1.317...v0.1.318) (2026-08-06)
 
 ### Bug Fixes
