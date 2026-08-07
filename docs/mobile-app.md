@@ -401,6 +401,26 @@ albums/singles/appears-on grids, the Search page's catalog albums grid + artist 
 album-hunt-modal candidate list, and — via one shared change to `TrackRowComponent` itself — every
 song list built on it (library Songs tab, album/genre/artist/playlist detail pages). **Settings/Admin/Extensions coverage (Phase 4)**: applied to Settings' theme/budget/auto-preserve grids and account action list, the Devices/agent-tokens revoke lists, Admin's services grid, log-service buttons, processing-task checkboxes, and user-management action buttons, and the Extensions (plugins) page's enable/configure buttons per card. Forms stay Tab-order-only by design — native `<input>`/`<select>` elements are never wrapped in `appTvNavItem`, so arrow keys keep their native meaning inside them (caret movement, select-value change, number increment). **Find-a-song flow coverage (issue #389)**: the Library **tabs bar** is a horizontal group; the album-detail **action row** (Play/Select/Download/Share/Fix/Remove) is a horizontal group; **every `TrackRowComponent` is its own horizontal child group** (title + like + remove + ⋯ menu toggle as items) nested inside the surrounding vertical list, enabled by the mixed items+child-groups directive rework; and **`MenuPanelComponent` speaks D-pad** — the first action autofocuses on open, ArrowUp/Down move between actions (stopPropagation so the list behind never navigates underneath), Enter activates, and closing restores focus to the trigger (only when focus was inside the panel — an outside click keeps its own focus). This is what finally exposes `SongMenuService`'s Play next / Add to queue to remote users; the keyboard-only journey is locked in by `packages/e2e/tests/library-dpad-tv.spec.ts`. **The #389 tail is closed (issue #396)**: `TvNavItemDirective` gained an Enter/Space→`click()` activation passthrough for hosts with no native key activation (skipped for buttons/inputs — a synthesized click would double-fire — and for keys coming from a focusable descendant), which is what the Admin **duplicates list** needed — the panel is one vertical group where the find button, every song row (`<label>` wrapping its checkbox; the passthrough makes Enter toggle it, and the label's native forward-to-control means the checkbox flips exactly once) and the delete button share one sweep. The **streaming panel**'s two checkbox rows got per-row horizontal groups with the checkbox as the item, while its `<select>`s deliberately stay **outside every group's subtree** (the structural invariant the user-row test pins: a select inside a group would have its option cycling intercepted) — select rows remain served by the WebView's spatial navigation and the native TV picker dialog. And the **fullscreen karaoke overlay** is now a vertical group of two horizontal rows — header (exit / browse / vocal-mute) + transport (prev / play-pause / next) — so all six buttons are D-pad reachable; the browse-mode lyric lines keep their existing tabindex/Enter handling (D-pad line browsing is possible follow-up work, but browse mode is primarily the wheel/touch gesture surface). The full keyboard shortcut table (Phase 6) is also still just Space/K.
 
+**The mini-player grab notch (issue #432)**: the one affordance in the player chrome that had
+**no** D-pad path. Both the notch and the bar were bound solely to `(pointerdown)` →
+`onBarPointerDown` → `createPointerDrag`; a remote emits key events, never pointer events, so
+expanding Now Playing from the mini-player was impossible. It looked half-alive only because
+`PlayerTransportMiniComponent`'s prev/play/next are `appTvNavItem`s — `player.component.html` itself
+carried zero `appTvNav*` markers. The notch is now an `appTvNavItem` with a `(click)` handler
+(`openNowPlaying()`), which the directive's Enter/Space→`click()` passthrough also reaches.
+
+It deliberately stays a `<div>` rather than becoming a `<button>`: `onBarPointerDown` bails on
+`target.closest('button')`, so promoting it would have silently killed the touch swipe-to-open drag
+the notch exists to serve. The double-activation a tap produces (pointer gesture *and* the native
+click) is harmless — `setNowPlayingOpen(true)` is idempotent.
+
+That required one change to the shared directive. `TvNavItemDirective` bound
+`[attr.role]="itemRole()"`, which returns `null` outside a grid group, and a host binding always
+beats a static template attribute — so `role="button"` on the notch would have been silently erased.
+`itemRole()` now falls back to the role the template authored (captured before the binding can
+overwrite it), keeping `gridcell` behaviour inside grids and no longer clobbering author intent
+anywhere else.
+
 **DI crosses a component boundary but NOT an `ngTemplateOutlet` one (the Phase 4 final-review
 fix)**: the Extensions page rendered every plugin card from a shared `<ng-template #card let-p>`
 declared as a **sibling** of its three `<section appTvNavGroup>` blocks and instantiated inside each

@@ -1,5 +1,5 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
 import { DevicesApiService } from '../../../services/api/devices-api.service';
 import type {
@@ -7,7 +7,8 @@ import type {
   PairingMintResponse,
   RemoteAccessStatus,
 } from '../../../services/api/api-types';
-import { buildPairingLink } from '../../../lib/pairing';
+import { buildPairingLink, parseApproveCode } from '../../../lib/pairing';
+import { canScanBarcode, scanBarcode } from '../../../services/native/native-capabilities';
 import { renderQrDataUrl } from '../../../lib/qr';
 import { isNativePlatform } from '../../../lib/platform';
 import { TranslateService } from '../../../services/translate.service';
@@ -36,6 +37,7 @@ import { SettingsGroupComponent } from '../../../components/settings-group/setti
 export class DevicesComponent implements OnInit, OnDestroy {
   readonly i18n = inject(TranslateService);
   private api = inject(DevicesApiService);
+  private router = inject(Router);
   readonly auth = inject(AuthService);
 
   readonly pairing = signal<PairingMintResponse | null>(null);
@@ -62,6 +64,44 @@ export class DevicesComponent implements OnInit, OnDestroy {
    * first time a user actually expands the card.
    */
   readonly onNativeApp = isNativePlatform();
+
+  /** Whether this build can open a camera at all (issue #434) — the scan card
+   *  is hidden entirely on web/desktop rather than offered and then failing. */
+  readonly canScan = canScanBarcode();
+  readonly scanning = signal(false);
+
+  /**
+   * Scan a TV's sign-in QR and land on the approval screen with the code
+   * filled in. The capability already existed (`scanBarcode`) but was wired
+   * only to the `/server` page, reachable from Settings behind a link labelled
+   * "Switch server" — nowhere a user looks to authorize a device (issue #434).
+   */
+  async scanApproveCode(): Promise<void> {
+    this.error.set('');
+    this.scanning.set(true);
+    try {
+      const outcome = await scanBarcode();
+      if (outcome.status === 'cancelled' || outcome.status === 'unavailable') return;
+      if (outcome.status === 'denied') {
+        this.error.set(this.i18n.t('devices.scanDenied'));
+        return;
+      }
+      if (outcome.status === 'error') {
+        this.error.set(this.i18n.t('devices.scanFailed'));
+        return;
+      }
+      const code = parseApproveCode(outcome.value);
+      if (!code) {
+        this.error.set(this.i18n.t('devices.scanNotASignInCode'));
+        return;
+      }
+      // Same `/approve#c=…` entry point the OS camera app would have opened,
+      // so the approval screen stays the single place that confirms + posts.
+      await this.router.navigateByUrl(`/approve#c=${code}`);
+    } finally {
+      this.scanning.set(false);
+    }
+  }
 
   ngOnInit(): void {
     this.loadDevices();

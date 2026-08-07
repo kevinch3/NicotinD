@@ -112,6 +112,28 @@
     </app-settings-group>
   }
 
+  <!-- Approve a TV's sign-in code by camera (issue #434). Only where a scanner
+       actually exists (native + the barcode plugin) — web/desktop have none,
+       and a dead button is worse than no button. -->
+  @if (canScan) {
+    <app-settings-group
+      groupId="devices-scan"
+      icon="camera"
+      [title]="'devices.scanCode' | t"
+      [description]="'devices.scanCodeDesc' | t"
+    >
+      <button
+        appTvNavItem
+        (click)="scanApproveCode()"
+        [disabled]="scanning()"
+        data-testid="devices-scan-approve"
+        class="px-4 py-2 rounded-lg text-sm font-medium bg-theme-accent text-theme-on-accent disabled:opacity-50"
+      >
+        {{ (scanning() ? 'devices.scanning' : 'devices.openCamera') | t }}
+      </button>
+    </app-settings-group>
+  }
+
   <app-settings-group
     groupId="devices-link"
     icon="smartphone"
