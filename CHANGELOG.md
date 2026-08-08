@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.322](https://github.com/kevinch3/NicotinD/compare/v0.1.321...v0.1.322) (2026-08-08)
+
+### Bug Fixes
+
+* **review:** hold-for-review is inert while acquisition is off + [#411](https://github.com/kevinch3/NicotinD/issues/411) ledger minors ([#427](https://github.com/kevinch3/NicotinD/issues/427)) ([d1000f9](https://github.com/kevinch3/NicotinD/commit/d1000f9b682670f0b22b635839c75c92637ebe95)), closes [#416](https://github.com/kevinch3/NicotinD/issues/416), references [#235](https://github.com/kevinch3/NicotinD/issues/235)
 ## [0.1.321](https://github.com/kevinch3/NicotinD/compare/v0.1.320...v0.1.321) (2026-08-08)
 
 ### Bug Fixes
