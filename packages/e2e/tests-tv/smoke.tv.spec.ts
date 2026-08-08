@@ -11,7 +11,7 @@ import { test, expect, goto, startPlayback } from '../tv/fixtures.js';
 test.describe('smoke', () => {
   test('library loads over the reverse tunnel (CORS + auth)', async ({ page }) => {
     await goto(page, '/library');
-    await expect(page.getByTestId('album-card').first()).toBeVisible();
+    await expect(page.getByTestId('tv-album-card').first()).toBeVisible();
   });
 
   test('audio actually decodes and advances', async ({ page }) => {
@@ -42,9 +42,30 @@ test.describe('smoke', () => {
 
   test('settings renders', async ({ page }) => {
     await goto(page, '/settings');
-    // Every settings control lives inside an `<app-settings-group>` card, and
-    // those collapse by default — so asserting any inner testid would really be
-    // asserting the collapse state. The cards themselves are the page.
-    await expect(page.getByTestId('settings-group-toggle').first()).toBeVisible();
+    // The TV settings screen is a flat list of D-pad rows — no collapsible
+    // cards, no form controls (docs/tv-ux.md).
+    await expect(page.getByTestId('tv-settings')).toBeVisible();
+  });
+
+  /**
+   * Cover art must actually render, not fall back to the letter placeholder.
+   *
+   * `/api/cover/:id` is auth-gated, so a URL built without `&token=` 401s and
+   * `CoverArtComponent` silently shows its gradient placeholder — which looks
+   * deliberate. Every structural test still passed while every cover on the TV
+   * surface was broken, because none of them looked at pixels. This one does.
+   */
+  test('cover art loads rather than falling back to the placeholder', async ({ page }) => {
+    await goto(page, '/library');
+    const card = page.getByTestId('tv-album-card').first();
+    await card.waitFor({ state: 'visible' });
+
+    const img = card.locator('img');
+    await expect(img).toHaveCount(1);
+    // naturalWidth > 0 is the only honest proof the bytes arrived and decoded.
+    await expect
+      .poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth), { timeout: 15_000 })
+      .toBeGreaterThan(0);
+    expect(await img.getAttribute('src')).toContain('token=');
   });
 });

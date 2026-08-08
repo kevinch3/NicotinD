@@ -127,9 +127,21 @@ async function startServer(): Promise<() => void> {
  */
 async function launchApp(serial: string): Promise<void> {
   adb(['shell', 'am', 'force-stop', APP_ID], { serial });
-  adb(['shell', 'monkey', '-p', APP_ID, '-c', 'android.intent.category.LEANBACK_LAUNCHER', '1'], {
-    serial,
-  });
+  // Wipe app state every run. Two reasons, both learned the hard way:
+  //  - a stale `nicotind_server_url` from a previous session points at a port
+  //    this run does not tunnel, and the restored track's cover URL then kills
+  //    the app outright through the media-session plugin (see issue below);
+  //  - a suite that inherits state is a suite whose results depend on what you
+  //    ran yesterday.
+  adb(['shell', 'pm', 'clear', APP_ID], { serial });
+  // Wake first: a long build lets the TV screensaver take the foreground, and
+  // a launch into a sleeping/occluded display starts the process without ever
+  // resuming the activity — no WebView, no devtools socket, opaque timeout.
+  adb(['shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'], { serial, quiet: true });
+  // `am start` on the explicit component, not `monkey`: monkey's category
+  // launch was observed starting the process while the launcher kept the top
+  // activity, which produces the same no-WebView symptom.
+  adb(['shell', 'am', 'start', '-W', '-n', `${APP_ID}/.MainActivity`], { serial });
 
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
@@ -140,10 +152,17 @@ async function launchApp(serial: string): Promise<void> {
     }
     await Bun.sleep(2000);
   }
-  const logcat = adb(['logcat', '-d', '-t', '40'], { serial, quiet: true });
+  // Filter to crashes and our own package: an unfiltered `-t 40` is 40 lines of
+  // system chatter that says nothing about why the app died (observed).
+  const crash = adb(['logcat', '-d', '-b', 'crash', '-t', '60'], { serial, quiet: true });
+  const app = adb(['logcat', '-d', '-t', '400'], { serial, quiet: true })
+    .split('\n')
+    .filter((l) => /nicotind|Capacitor|AndroidRuntime|chromium/i.test(l))
+    .slice(-30)
+    .join('\n');
   throw new Error(
     `[e2e:tv] app launched but exposed no WebView within 60s — it likely crashed.\n` +
-      `--- last 40 logcat lines ---\n${logcat}`,
+      `--- crash buffer ---\n${crash}\n--- app logcat ---\n${app}`,
   );
 }
 

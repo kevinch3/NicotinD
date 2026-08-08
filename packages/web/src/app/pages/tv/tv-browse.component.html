@@ -1,0 +1,92 @@
+<div class="px-[4vw] py-[3vh] flex flex-col gap-6" data-testid="tv-browse">
+  <nav
+    appTvNavGroup
+    [axis]="'horizontal'"
+    class="flex gap-3"
+    data-testid="tv-browse-tabs"
+  >
+    @for (t of tabs; track t.id) {
+      <button
+        appTvNavItem
+        type="button"
+        (click)="select(t.id)"
+        [attr.data-tab]="t.id"
+        [attr.aria-current]="tab() === t.id ? 'page' : null"
+        [class]="
+          'px-7 py-3 rounded-xl text-base font-semibold transition focus:outline-none ' +
+          'focus-visible:ring-4 focus-visible:ring-theme-accent ' +
+          (tab() === t.id
+            ? 'bg-theme-accent text-theme-on-accent'
+            : 'bg-theme-surface-2 text-theme-secondary')
+        "
+      >
+        {{ t.label | t }}
+      </button>
+    }
+  </nav>
+
+  @if (loading()) {
+    <p class="text-theme-muted" data-testid="tv-browse-loading">{{ 'tv.loading' | t }}</p>
+  } @else if (isEmpty()) {
+    <p class="text-theme-muted" data-testid="tv-browse-empty">{{ 'tv.nothingHere' | t }}</p>
+  } @else {
+    @switch (tab()) {
+      @case ('albums') {
+        <div appTvNavGroup [axis]="'grid'" class="grid grid-cols-4 gap-6" data-testid="tv-album-grid">
+          @for (a of albums(); track a.id) {
+            <button
+              appTvNavItem
+              type="button"
+              (click)="openAlbum(a)"
+              data-testid="tv-album-card"
+              class="text-left rounded-xl p-2 transition focus:outline-none
+                     focus-visible:ring-4 focus-visible:ring-theme-accent focus-visible:bg-theme-surface-2"
+            >
+              <app-cover-art
+                [src]="a.coverArt ? '/api/cover/' + a.coverArt + '?size=400&token=' + auth.token() : undefined"
+                [artist]="a.artist"
+                [album]="a.name"
+                [size]="200"
+                rounded="rounded-lg"
+              />
+              <p class="mt-2 text-sm font-semibold truncate text-theme-primary">{{ a.name }}</p>
+              <p class="text-xs text-theme-muted truncate">{{ a.artist }}</p>
+            </button>
+          }
+        </div>
+      }
+      @case ('artists') {
+        <div appTvNavGroup [axis]="'grid'" class="grid grid-cols-4 gap-6" data-testid="tv-artist-grid">
+          @for (ar of artists(); track ar.id) {
+            <button
+              appTvNavItem
+              type="button"
+              (click)="playArtist(ar)"
+              data-testid="tv-artist-card"
+              class="text-left rounded-xl p-4 bg-theme-surface-2 transition focus:outline-none
+                     focus-visible:ring-4 focus-visible:ring-theme-accent"
+            >
+              <p class="text-base font-semibold truncate text-theme-primary">{{ ar.name }}</p>
+            </button>
+          }
+        </div>
+      }
+      @case ('genres') {
+        <div appTvNavGroup [axis]="'grid'" class="grid grid-cols-4 gap-6" data-testid="tv-genre-grid">
+          @for (g of genres(); track g) {
+            <button
+              appTvNavItem
+              type="button"
+              (click)="playGenre(g)"
+              data-testid="tv-genre-card"
+              class="text-left rounded-xl p-4 bg-theme-surface-2 transition focus:outline-none
+                     focus-visible:ring-4 focus-visible:ring-theme-accent"
+            >
+              <p class="text-base font-semibold truncate text-theme-primary">{{ g }}</p>
+            </button>
+          }
+        </div>
+      }
+    }
+  }
+</div>

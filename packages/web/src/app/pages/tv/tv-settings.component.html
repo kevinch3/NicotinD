@@ -1,0 +1,99 @@
+<div class="px-[4vw] py-[3vh]" data-testid="tv-settings">
+  @if (chooser() === null) {
+    <h1 class="text-3xl font-bold mb-8 text-theme-primary">{{ 'nav.settings' | t }}</h1>
+    <div appTvNavGroup [axis]="'vertical'" class="flex flex-col gap-3 max-w-3xl">
+      <button
+        appTvNavItem
+        type="button"
+        (click)="open('language')"
+        data-testid="tv-settings-language"
+        class="flex items-center justify-between px-6 py-5 rounded-xl bg-theme-surface-2 text-left
+               focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+      >
+        <span class="text-lg text-theme-primary">{{ 'tv.language' | t }}</span>
+        <span class="text-base text-theme-muted uppercase">{{ i18n.lang() }}</span>
+      </button>
+
+      <button
+        appTvNavItem
+        type="button"
+        (click)="open('remote')"
+        data-testid="tv-settings-remote"
+        class="flex items-center justify-between px-6 py-5 rounded-xl bg-theme-surface-2 text-left
+               focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+      >
+        <span class="text-lg text-theme-primary">{{ 'tv.remoteControl' | t }}</span>
+        <span class="text-base text-theme-muted">
+          {{ (remoteEnabled() ? 'tv.on' : 'tv.off') | t }}
+        </span>
+      </button>
+
+      <button
+        appTvNavItem
+        type="button"
+        (click)="switchServer()"
+        data-testid="tv-settings-server"
+        class="px-6 py-5 rounded-xl bg-theme-surface-2 text-left text-lg text-theme-primary
+               focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+      >
+        {{ 'tv.switchServer' | t }}
+      </button>
+
+      <button
+        appTvNavItem
+        type="button"
+        (click)="signOut()"
+        data-testid="tv-settings-signout"
+        class="px-6 py-5 rounded-xl bg-theme-surface-2 text-left text-lg text-status-error
+               focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+      >
+        {{ 'tv.signOut' | t }}
+      </button>
+    </div>
+  } @else {
+    <!-- A full-screen list of buttons, deliberately in place of a <select>. -->
+    <h1 class="text-3xl font-bold mb-8 text-theme-primary">
+      {{ (chooser() === 'language' ? 'tv.language' : 'tv.remoteControl') | t }}
+    </h1>
+    <div appTvNavGroup [axis]="'vertical'" class="flex flex-col gap-3 max-w-3xl" data-testid="tv-chooser">
+      @if (chooser() === 'language') {
+        @for (l of i18n.available; track l) {
+          <button
+            appTvNavItem
+            type="button"
+            (click)="chooseLanguage(l)"
+            [attr.data-lang]="l"
+            data-testid="tv-chooser-option"
+            class="px-6 py-5 rounded-xl bg-theme-surface-2 text-left text-lg text-theme-primary
+                   focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+          >
+            {{ 'lang.' + l | t }}
+          </button>
+        }
+      } @else {
+        @for (opt of [true, false]; track opt) {
+          <button
+            appTvNavItem
+            type="button"
+            (click)="chooseRemote(opt)"
+            data-testid="tv-chooser-option"
+            class="px-6 py-5 rounded-xl bg-theme-surface-2 text-left text-lg text-theme-primary
+                   focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+          >
+            {{ (opt ? 'tv.on' : 'tv.off') | t }}
+          </button>
+        }
+      }
+      <button
+        appTvNavItem
+        type="button"
+        (click)="close()"
+        data-testid="tv-chooser-back"
+        class="px-6 py-5 rounded-xl text-left text-lg text-theme-secondary
+               focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+      >
+        {{ 'common.back' | t }}
+      </button>
+    </div>
+  }
+</div>

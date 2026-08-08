@@ -91,7 +91,7 @@ test.describe('D-pad reachability audit', () => {
     await startPlayback(page);
   });
 
-  for (const route of ['/library', '/library?tab=songs', '/settings']) {
+  for (const route of ['/', '/library', '/settings']) {
     test(`every focusable control on ${route} is reachable`, async ({ page, dpad }) => {
       await goto(page, route);
       await page.waitForTimeout(1500);
@@ -124,6 +124,20 @@ test.describe('D-pad reachability audit', () => {
           }
         }
       }
+
+      // The TV tree must contain NO native form controls at all. A remote has
+      // no Tab, so any focusable <input>/<select>/<textarea> is a trap by
+      // construction (issue #438) — that is why the seek bar could swallow all
+      // four arrow keys with no way out. Asserted here rather than left as a
+      // convention, because a convention loses to the next person adding a
+      // <select> who has no reason to think about remotes.
+      //
+      // Note this is a separate check from the reachability diff below: a
+      // native input carries neither appTvNavItem nor tabindex="0", so the walk
+      // never sees it — which is exactly why the audit passed while #438 was
+      // live.
+      const natives = await page.locator('input, select, textarea, [contenteditable]').count();
+      expect(natives, `${route} renders ${natives} native form control(s)`).toBe(0);
 
       const unreachable = declared.filter((d) => !seen.has(d.key)).map((d) => d.label);
 

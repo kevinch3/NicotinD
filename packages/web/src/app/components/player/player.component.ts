@@ -32,6 +32,7 @@ import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { PlayerTransportMiniComponent } from './player-transport-mini/player-transport-mini.component';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
+import { isTvBuild } from '../../lib/platform';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -107,6 +108,12 @@ export function browserDurationIsAcceptable(knownSec: number, nativeSec: number)
   templateUrl: './player.component.html',
 })
 export class PlayerComponent implements AfterViewInit, OnDestroy {
+  /** TV renders the player as a route, so this component contributes only its
+   *  <audio> engine there — no bar, and critically no seek bar (a native range
+   *  input a remote cannot escape, issue #438). Build-time, not the DOM class:
+   *  see app.routes.ts for why that distinction bites. */
+  readonly isTv = isTvBuild();
+
   readonly player = inject(PlayerService);
   readonly auth = inject(AuthService);
   readonly remote = inject(RemotePlaybackService);
