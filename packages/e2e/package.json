@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "playwright test",
+    "test:tv": "playwright test --config=playwright.tv.config.ts",
     "test:ui": "playwright test --ui",
     "test:headed": "playwright test --headed",
     "test:unit": "bun test playground",

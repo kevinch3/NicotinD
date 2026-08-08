@@ -4,6 +4,7 @@ import {
   buildPairingLink,
   parsePairingParams,
   parsePairingPayload,
+  parseApproveCode,
   probeCandidates,
   claimPairing,
   PairingClaimError,
@@ -170,5 +171,56 @@ describe('claimPairing', () => {
       expect(e).toBeInstanceOf(PairingClaimError);
       expect((e as PairingClaimError).code).toBe('PAIRING_EXPIRED');
     }
+  });
+});
+
+// Issue #434 — the Settings → Devices camera button feeds whatever the scanner
+// read straight into this. The TV renders `<origin>/approve#c=CODE` and prints
+// the bare code beneath it, so both forms have to land.
+describe('parseApproveCode', () => {
+  it('reads the code out of the /approve link the TV mints', () => {
+    expect(parseApproveCode('https://nas.local:8484/approve#c=ABC234')).toBe('ABC234');
+  });
+
+  it('accepts the bare code printed under the QR', () => {
+    expect(parseApproveCode('ABC234')).toBe('ABC234');
+  });
+
+  it('normalizes case and surrounding whitespace', () => {
+    expect(parseApproveCode('  abc234  ')).toBe('ABC234');
+    expect(parseApproveCode('https://nas.local/approve#c=abc234')).toBe('ABC234');
+  });
+
+  it('falls back to the query string for a hand-built link', () => {
+    expect(parseApproveCode('https://nas.local/approve?c=ABC234')).toBe('ABC234');
+  });
+
+  it('accepts a link from another origin — the code is claimed against our own server', () => {
+    expect(parseApproveCode('https://someone-else.example/approve#c=ABC234')).toBe('ABC234');
+  });
+
+  it('rejects a /pair QR — that is the server-pairing flow, not TV sign-in', () => {
+    const pairLink = 'https://nas.local/pair#t=sometoken&n=nas';
+    expect(parseApproveCode(pairLink)).toBeNull();
+    // ...and the pairing parser still claims it, so the two never overlap.
+    expect(parsePairingPayload(pairLink)).not.toBeNull();
+  });
+
+  it('rejects codes using the ambiguous characters the alphabet excludes', () => {
+    for (const code of ['ABC2O4', 'ABC2I4', 'ABC201', 'ABCI34']) {
+      expect(parseApproveCode(code)).toBeNull();
+    }
+  });
+
+  it('rejects wrong-length codes', () => {
+    expect(parseApproveCode('ABC23')).toBeNull();
+    expect(parseApproveCode('ABC2345')).toBeNull();
+  });
+
+  it('rejects an /approve link with no code, and non-NicotinD scans', () => {
+    expect(parseApproveCode('https://nas.local/approve')).toBeNull();
+    expect(parseApproveCode('https://example.com/')).toBeNull();
+    expect(parseApproveCode('WIFI:S=home;T=WPA;P=hunter2;;')).toBeNull();
+    expect(parseApproveCode('')).toBeNull();
   });
 });

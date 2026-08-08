@@ -474,6 +474,47 @@ describe('PlayerComponent', () => {
       expect(playerService.nowPlayingOpen()).toBe(false);
     });
 
+    // Issue #432 — a D-pad emits key events, never pointer events, so the
+    // pointer-only grab notch was unreachable on Android TV. The transport
+    // buttons beside it were focusable (appTvNavItem), which is why the bar
+    // looked half-alive.
+    describe('D-pad / keyboard (issue #432)', () => {
+      const grab = (): HTMLElement => {
+        const el = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+          '[data-testid="player-grab"]',
+        );
+        if (!el) throw new Error('grab notch not found');
+        return el;
+      };
+
+      it('exposes the grab notch as a focusable, labelled button', () => {
+        const el = grab();
+        expect(el.getAttribute('tabindex')).toBe('0');
+        expect(el.getAttribute('role')).toBe('button');
+        expect(el.getAttribute('aria-label')).toBeTruthy();
+      });
+
+      it('opens Now Playing on click (what a D-pad select fires in a WebView)', () => {
+        playerService.setNowPlayingOpen(false);
+        grab().click();
+        expect(playerService.nowPlayingOpen()).toBe(true);
+      });
+
+      it('opens Now Playing on Enter', () => {
+        playerService.setNowPlayingOpen(false);
+        grab().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        fixture.detectChanges();
+        expect(playerService.nowPlayingOpen()).toBe(true);
+      });
+
+      it('opens Now Playing on Space', () => {
+        playerService.setNowPlayingOpen(false);
+        grab().dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+        fixture.detectChanges();
+        expect(playerService.nowPlayingOpen()).toBe(true);
+      });
+    });
+
     it('regression: interacting with the bar never triggers router navigation', () => {
       const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
       playerService.setNowPlayingOpen(false);

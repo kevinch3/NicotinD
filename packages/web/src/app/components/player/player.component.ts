@@ -31,6 +31,7 @@ import { SeekBarComponent } from '../seek-bar/seek-bar.component';
 import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { PlayerTransportMiniComponent } from './player-transport-mini/player-transport-mini.component';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -101,6 +102,7 @@ export function browserDurationIsAcceptable(knownSec: number, nativeSec: number)
     ArtistLinksComponent,
     TranslatePipe,
     PlayerTransportMiniComponent,
+    TvNavItemDirective,
   ],
   templateUrl: './player.component.html',
 })
@@ -1035,6 +1037,15 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       }
     },
   });
+
+  /** The keyboard/D-pad route into the expand gesture (issue #432). The notch
+   *  stays a `<div>` rather than a `<button>` on purpose: `onBarPointerDown`
+   *  bails on `closest('button')`, so promoting it would kill the touch
+   *  swipe-to-open drag it exists to serve. Idempotent, so the click a tap
+   *  fires alongside the pointer gesture is harmless. */
+  openNowPlaying(): void {
+    this.player.setNowPlayingOpen(true);
+  }
 
   onBarPointerDown(event: PointerEvent): void {
     // Don't hijack control buttons or the desktop seek bar.

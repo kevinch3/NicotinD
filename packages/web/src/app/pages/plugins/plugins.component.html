@@ -1,18 +1,18 @@
 <div class="page-shell max-w-3xl">
   <div class="flex items-center gap-3 mb-1">
-    <a routerLink="/settings" class="text-theme-muted hover:text-theme-secondary text-sm">&larr; Settings</a>
+    <a routerLink="/settings" class="text-theme-muted hover:text-theme-secondary text-sm">{{
+      'common.backToSettings' | t
+    }}</a>
   </div>
-  <h1 class="page-title mb-1">Extensions</h1>
+  <h1 class="page-title mb-1">{{ 'extensions.title' | t }}</h1>
   @if (acquisitionEnabled()) {
     <p class="text-sm text-theme-muted mb-8">
-      Acquisition is opt-in. Nothing is downloaded until you enable an extension here — you are
-      responsible for ensuring its use is lawful where you are.
+      {{ 'extensions.subtitle' | t }}
     </p>
   } @else {
     <p class="text-sm text-theme-muted mb-8" data-testid="extensions-acquisition-off">
-      Acquisition is disabled for this whole server (<code>NICOTIND_ACQUISITION=off</code>), so
-      acquisition extensions are hidden — enabling one here could not do anything. Metadata and
-      connectivity extensions still apply. Restart with the setting unset to re-enable.
+      {{ 'extensions.acquisitionOffBefore' | t }}<code>NICOTIND_ACQUISITION=off</code
+      >{{ 'extensions.acquisitionOffAfter' | t }}
     </p>
   }
 
@@ -34,8 +34,8 @@
       data-testid="extensions-acquisition-section"
       groupId="plugins-acquisition"
       icon="download"
-      title="Acquisition"
-      description="Soulseek, yt-dlp, and other download sources"
+      [title]="'extensions.acquisition' | t"
+      [description]="'extensions.acquisitionDesc' | t"
     >
       <div appTvNavGroup axis="vertical">
         @for (p of plugins.acquisition(); track p.id) {
@@ -49,7 +49,7 @@
           />
         }
         @if (plugins.acquisition().length === 0) {
-          <p class="text-sm text-theme-muted">No acquisition plugins registered.</p>
+          <p class="text-sm text-theme-muted">{{ 'extensions.noAcquisition' | t }}</p>
         }
       </div>
     </app-settings-group>
@@ -59,8 +59,8 @@
     data-testid="extensions-metadata-section"
     groupId="plugins-metadata"
     icon="tag"
-    title="Metadata"
-    description="Genre, lyrics, and metadata lookups"
+    [title]="'extensions.metadata' | t"
+    [description]="'extensions.metadataDesc' | t"
   >
     <div appTvNavGroup axis="vertical">
       @for (p of plugins.metadata(); track p.id) {
@@ -74,7 +74,7 @@
         />
       }
       @if (plugins.metadata().length === 0) {
-        <p class="text-sm text-theme-muted">No metadata extensions registered.</p>
+        <p class="text-sm text-theme-muted">{{ 'extensions.noMetadata' | t }}</p>
       }
     </div>
   </app-settings-group>
@@ -84,8 +84,8 @@
       data-testid="extensions-connectivity-section"
       groupId="plugins-connectivity"
       icon="wifi"
-      title="Connectivity"
-      description="Remote access and network tools"
+      [title]="'extensions.connectivity' | t"
+      [description]="'extensions.connectivityDesc' | t"
     >
       <div appTvNavGroup axis="vertical">
         @for (p of plugins.connectivity(); track p.id) {
@@ -106,8 +106,8 @@
 
 @if (consentTarget(); as p) {
   <app-confirm-dialog
-    [message]="p.compliance?.disclaimer ?? 'Enable this plugin?'"
-    confirmLabel="I understand — enable"
+    [message]="p.compliance?.disclaimer ?? ('extensions.consentFallback' | t)"
+    [confirmLabel]="'extensions.consentConfirm' | t"
     (confirm)="confirmConsent()"
     (cancel)="consentTarget.set(null)"
   />

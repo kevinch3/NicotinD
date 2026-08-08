@@ -1,11 +1,11 @@
-import { describe, expect, it, beforeEach, mock } from 'bun:test';
+import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test';
 import type { WSContext } from 'hono/ws';
 
 // Mock playbackManager before importing websocket module
 const mockManager = {
   registerDevice: mock(() => {}),
   unregisterDevice: mock(() => {}),
-  heartbeat: mock(() => {}),
+  heartbeat: mock((_id: string) => true as boolean),
   updateState: mock(() => {}),
   updateStateQuiet: mock(() => {}),
   updateDevice: mock(() => {}),
@@ -34,8 +34,17 @@ mock.module('./playback-registry.js', () => ({
 // Import after mock is set up
 const { createWebSocketHandlers } = await import('./websocket.js');
 
+// `connections` in websocket.ts is module-level, so a socket a test opens and
+// never closes stays there for every later test. That used to be invisible;
+// now that onClose checks whether another connection still holds the device id
+// (issue #433), a leaked 'dev1' socket would suppress a real unregister. Track
+// every mock socket and close it in afterEach.
+const openSockets: WSContext[] = [];
+
 function createMockWs(): WSContext & { send: ReturnType<typeof mock> } {
-  return { send: mock(() => {}) } as unknown as WSContext & { send: ReturnType<typeof mock> };
+  const ws = { send: mock(() => {}) } as unknown as WSContext & { send: ReturnType<typeof mock> };
+  openSockets.push(ws);
+  return ws;
 }
 
 function createEvent(data: object): MessageEvent {
@@ -82,12 +91,17 @@ describe('createWebSocketHandlers', () => {
     mockManager.registerDevice.mockClear();
     mockManager.unregisterDevice.mockClear();
     mockManager.heartbeat.mockClear();
+    mockManager.heartbeat.mockReturnValue(true);
     mockManager.updateState.mockClear();
     mockManager.updateStateQuiet.mockClear();
     mockManager.updateDevice.mockClear();
     mockManager.emitCommand.mockClear();
     mockManager.getState.mockReturnValue(defaultState());
     mockManager.getDevices.mockReturnValue([]);
+  });
+
+  afterEach(() => {
+    for (const ws of openSockets.splice(0)) handlers.onClose!({} as CloseEvent, ws);
   });
 
   describe('REGISTER', () => {
@@ -166,6 +180,39 @@ describe('createWebSocketHandlers', () => {
 
       // heartbeat called with '' which is falsy — guard should skip
       expect(mockManager.heartbeat).not.toHaveBeenCalled();
+    });
+
+    // Issue #433: an Android WebView throttles the client's 30s heartbeat
+    // timer while the TV is behind a screensaver, so the server prunes the
+    // device as stale. The socket stays OPEN, so `onopen` — the only thing
+    // that sends REGISTER — never fires again. Without this the device is
+    // gone forever.
+    it('re-registers a device the manager pruned while the socket stayed open', () => {
+      const ws = createMockWs();
+      handlers.onOpen!({} as Event, ws);
+      registerDevice(handlers, ws, 'tv1', 'Living room TV');
+      mockManager.registerDevice.mockClear();
+
+      mockManager.heartbeat.mockReturnValue(false);
+      handlers.onMessage!(createEvent({ type: 'HEARTBEAT', payload: {} }), ws);
+
+      expect(mockManager.registerDevice).toHaveBeenCalledWith({
+        id: 'tv1',
+        name: 'Living room TV',
+        type: 'web',
+        remoteEnabled: false,
+      });
+    });
+
+    it('does not re-register while the device is still known', () => {
+      const ws = createMockWs();
+      handlers.onOpen!({} as Event, ws);
+      registerDevice(handlers, ws, 'tv1');
+      mockManager.registerDevice.mockClear();
+
+      handlers.onMessage!(createEvent({ type: 'HEARTBEAT', payload: {} }), ws);
+
+      expect(mockManager.registerDevice).not.toHaveBeenCalled();
     });
   });
 
@@ -659,6 +706,38 @@ describe('createWebSocketHandlers', () => {
       handlers.onClose!({} as CloseEvent, ws);
 
       expect(mockManager.unregisterDevice).not.toHaveBeenCalled();
+    });
+
+    // Issue #433: the client reuses one stable device id across reconnects, so
+    // a superseded socket's late close must not evict the live connection's
+    // device. `connections` is keyed by socket; `devices` is keyed by id.
+    it('does not unregister when a newer connection holds the same device id', () => {
+      const stale = createMockWs();
+      const fresh = createMockWs();
+      handlers.onOpen!({} as Event, stale);
+      registerDevice(handlers, stale, 'tv1');
+      // Wi-Fi blip: the client reconnects and re-registers before the dead
+      // socket's close lands.
+      handlers.onOpen!({} as Event, fresh);
+      registerDevice(handlers, fresh, 'tv1');
+
+      handlers.onClose!({} as CloseEvent, stale);
+
+      expect(mockManager.unregisterDevice).not.toHaveBeenCalled();
+    });
+
+    it('unregisters once the last connection for the device closes', () => {
+      const stale = createMockWs();
+      const fresh = createMockWs();
+      handlers.onOpen!({} as Event, stale);
+      registerDevice(handlers, stale, 'tv1');
+      handlers.onOpen!({} as Event, fresh);
+      registerDevice(handlers, fresh, 'tv1');
+
+      handlers.onClose!({} as CloseEvent, stale);
+      handlers.onClose!({} as CloseEvent, fresh);
+
+      expect(mockManager.unregisterDevice).toHaveBeenCalledWith('tv1');
     });
 
     it('handles close after device re-registration', () => {

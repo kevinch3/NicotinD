@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { hostname } from 'node:os';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { MiddlewareHandler } from 'hono';
-import { asRole } from '@nicotind/core';
+import { asRole, CODE_ALPHABET, CODE_LENGTH } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import { signJwt } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
@@ -11,12 +11,6 @@ import { recordAudit } from '../services/audit-log.js';
 import type { RemoteAccess } from '../services/tailscale.js';
 
 const PAIRING_TOKEN_TTL_MS = 5 * 60 * 1000;
-
-/** Human-typable fallback code: 6 chars over a 32-symbol alphabet with the
- * ambiguous 0/O/1/I removed — ~1.07e9 combinations against a 5-minute TTL
- * and the claim rate limiter below. */
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const CODE_LENGTH = 6;
 
 export function generatePairingCode(random: typeof randomBytes = randomBytes): string {
   const bytes = random(CODE_LENGTH);

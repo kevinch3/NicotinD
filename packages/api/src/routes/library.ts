@@ -1107,6 +1107,22 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json(result);
   });
 
+  /**
+   * The canonical tracklist behind a MusicBrainz candidate (issue #413).
+   *
+   * Scoped to the release-group id the candidate already carries rather than
+   * re-searching, so what a curator applies is exactly the release they picked
+   * in the modal. MusicBrainz-only by nature: it is the one candidate source
+   * that publishes a per-track tracklist, which is why this is its own route
+   * instead of a field on the generic candidate contract.
+   */
+  app.get('/musicbrainz/release-groups/:rgid/tracklist', async (c) => {
+    requireCurator(c);
+    if (!mbClient) return c.json({ error: 'MusicBrainz not configured' }, 503);
+    const tracks = await mbClient.getCanonicalTracklist(c.req.param('rgid'));
+    return c.json({ tracks });
+  });
+
   // Apply a confirmed correction (from a candidate or free-text). Persists an
   // override the scanner honors and re-buckets the canonical rows immediately.
   // Admin only. Does NOT require Lidarr (free-text fallback works offline).

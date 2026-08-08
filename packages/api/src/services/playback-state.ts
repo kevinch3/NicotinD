@@ -104,11 +104,13 @@ export class PlaybackStateManager extends EventEmitter {
     this.emit('devices_update', this.getDevices());
   }
 
-  heartbeat(id: string) {
+  /** Record a beat. Returns whether the device was still known — false means
+   *  it was pruned as stale and the caller must re-register it (issue #433). */
+  heartbeat(id: string): boolean {
     const device = this.devices.get(id);
-    if (device) {
-      device.lastSeen = Date.now();
-    }
+    if (!device) return false;
+    device.lastSeen = Date.now();
+    return true;
   }
 
   emitCommand(payload: Record<string, unknown>) {

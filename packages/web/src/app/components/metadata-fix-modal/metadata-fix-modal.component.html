@@ -160,15 +160,32 @@
       <div class="mb-4 border-t border-theme pt-4" data-testid="review-tracks-section">
         <div class="flex items-center justify-between mb-2">
           <p class="text-theme-secondary text-sm font-medium">Tracks</p>
-          <button
-            type="button"
-            (click)="identifyAlbumFingerprint()"
-            [disabled]="identifyingAlbum()"
-            data-testid="review-identify-album"
-            class="px-3 py-1.5 rounded-lg text-xs bg-theme-surface text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
-          >
-            {{ 'review.identifyAlbum' | t }}
-          </button>
+          <div class="flex items-center gap-2">
+            <!-- Issue #413: MusicBrainz is the only candidate source that
+                 publishes a per-track tracklist, so this appears exactly when
+                 an MB candidate is on screen. It fills the grid; the curator
+                 still reviews and presses Save tracks. -->
+            @if (tracklistCandidate()) {
+              <button
+                type="button"
+                (click)="applyCanonicalTitles()"
+                [disabled]="applyingTracklist()"
+                data-testid="review-apply-tracklist"
+                class="px-3 py-1.5 rounded-lg text-xs bg-theme-surface text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+              >
+                {{ 'review.applyCanonicalTitles' | t }}
+              </button>
+            }
+            <button
+              type="button"
+              (click)="identifyAlbumFingerprint()"
+              [disabled]="identifyingAlbum()"
+              data-testid="review-identify-album"
+              class="px-3 py-1.5 rounded-lg text-xs bg-theme-surface text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+            >
+              {{ 'review.identifyAlbum' | t }}
+            </button>
+          </div>
         </div>
         <ul class="flex flex-col gap-2 mb-3">
           @for (t of tracks(); track t.id) {

@@ -6,6 +6,13 @@ committed music library, then drives the Angular SPA in Chromium. It complements
 the unit tiers (`bun test` for the API, vitest for web) by covering the wiring no
 unit can: boot → auth → scan → stream → playback → plugin gating.
 
+> **There is a second lane for Android TV.** `bun run e2e:tv` drives the real APK on an
+> emulator. It exists because a Chromium run structurally cannot model one thing: an Android
+> WebView has **spatial navigation** and desktop Chrome does not, so a desktop test can't
+> distinguish "focus correctly moved" from "focus never could have moved". Anything about
+> D-pad reachability, focus escape, or the hardware Back key belongs there, not here. →
+> [e2e-tv-emulator.md](e2e-tv-emulator.md)
+
 ## What it covers
 
 | Spec                           | Asserts                                                                                                                                                                                                                                       |

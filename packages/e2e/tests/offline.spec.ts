@@ -7,7 +7,27 @@ import { test, expect } from '@playwright/test';
  * the shell reacts, without a reload. In the browser the signal is driven by
  * `navigator.onLine` + window online/offline events, which Playwright's
  * `context.setOffline()` emulates; the native shell uses @capacitor/network.
+ *
+ * Flake note (issue #362): `setOffline()` emulates at the network layer via
+ * CDP, but delivery of the window `online`/`offline` DOM events proved flaky
+ * under CI load (the banner assertion timed out with no code change, twice in
+ * a row, then passed on a bare rerun). The app's listener wiring — event →
+ * signal → banner — is what these tests exist to cover, so after each
+ * `setOffline()` flip we dispatch the corresponding DOM event explicitly:
+ * deterministic event delivery, while `setOffline()` still provides the real
+ * network-level failure underneath.
  */
+async function flipConnectivity(
+  context: { setOffline(offline: boolean): Promise<void> },
+  page: { evaluate<T>(fn: (arg: T) => void, arg: T): Promise<void> },
+  offline: boolean,
+): Promise<void> {
+  await context.setOffline(offline);
+  await page.evaluate(
+    (type) => window.dispatchEvent(new Event(type)),
+    offline ? 'offline' : 'online',
+  );
+}
 test.describe('offline network detection', () => {
   test('shows the offline banner when connectivity drops and hides it on reconnect', async ({
     page,
@@ -18,14 +38,14 @@ test.describe('offline network detection', () => {
     await expect(page.getByTestId('offline-banner')).toHaveCount(0);
 
     // Drop the network mid-session: the banner appears reactively (no reload).
-    await context.setOffline(true);
+    await flipConnectivity(context, page, true);
     await expect(page.getByTestId('offline-banner')).toBeVisible();
 
     // The Library stays reachable offline (it serves on-device downloaded tracks).
     await expect(page).toHaveURL(/\/library/);
 
     // Reconnect: the banner clears on its own.
-    await context.setOffline(false);
+    await flipConnectivity(context, page, false);
     await expect(page.getByTestId('offline-banner')).toHaveCount(0);
   });
 
@@ -64,8 +84,8 @@ test.describe('offline network detection', () => {
     // Server comes back + a device online event fires (the reconnect fast path):
     // the app re-probes immediately and leaves offline mode on its own.
     await page.unroute('**/api/**');
-    await context.setOffline(true);
-    await context.setOffline(false);
+    await flipConnectivity(context, page, true);
+    await flipConnectivity(context, page, false);
 
     await expect(page.getByTestId('offline-banner')).toHaveCount(0);
   });

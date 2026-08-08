@@ -199,6 +199,72 @@ it('escapes Lucene phrase quotes/backslashes in the query', async () => {
   expect(query).toBe('releasegroup:"Song \\"Two\\" of Three" AND artist:"AC\\\\DC"');
 });
 
+// Issue #413: the canonical tracklist behind an MB candidate. Two hops (a
+// release group has no tracks), and the release pick is load-bearing.
+describe('MusicBrainzClient getCanonicalTracklist', () => {
+  function twoHopFetch(releases: unknown, detail: unknown): string[] {
+    const calls: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      calls.push(url);
+      const body = url.includes('/release?') ? releases : detail;
+      return { ok: true, status: 200, json: async () => body } as unknown as Response;
+    }) as unknown as typeof fetch;
+    return calls;
+  }
+
+  it('prefers the Official release with the most tracks, not the first listed', async () => {
+    const calls = twoHopFetch(
+      {
+        releases: [
+          { id: 'promo', status: 'Promotion', media: [{ 'track-count': 12 }] },
+          { id: 'single-edit', status: 'Official', media: [{ 'track-count': 2 }] },
+          { id: 'full', status: 'Official', media: [{ 'track-count': 10 }] },
+        ],
+      },
+      {
+        media: [
+          {
+            tracks: [
+              { position: 1, title: 'One', length: 210000 },
+              { position: 2, title: 'Two' },
+            ],
+          },
+        ],
+      },
+    );
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+
+    const tracks = await client.getCanonicalTracklist('rg-1');
+
+    // A 2-track official edition would have truncated the tracklist.
+    expect(calls[1]).toContain('/release/full');
+    expect(tracks).toEqual([
+      { position: 1, title: 'One', durationSec: 210 },
+      { position: 2, title: 'Two', durationSec: undefined },
+    ]);
+  });
+
+  it('falls back to non-official releases when none are Official', async () => {
+    const calls = twoHopFetch(
+      { releases: [{ id: 'boot', status: 'Bootleg', media: [{ 'track-count': 3 }] }] },
+      { media: [{ tracks: [{ position: 1, title: 'Only' }] }] },
+    );
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+
+    expect(await client.getCanonicalTracklist('rg-2')).toHaveLength(1);
+    expect(calls[1]).toContain('/release/boot');
+  });
+
+  it('returns an empty list (and caches it) when the group has no releases', async () => {
+    const calls = twoHopFetch({ releases: [] }, {});
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+
+    expect(await client.getCanonicalTracklist('rg-3')).toEqual([]);
+    await client.getCanonicalTracklist('rg-3');
+    expect(calls).toHaveLength(1); // second call served from cache
+  });
+});
+
 describe('MusicBrainzClient getArtistDiscogsUrl', () => {
   it('parses a discogs url-relation on an artist', async () => {
     const calls = mockFetch({

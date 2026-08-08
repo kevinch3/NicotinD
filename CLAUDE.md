@@ -74,6 +74,7 @@ bun run test:web         # Angular component tests (vitest — see docs/web-ui.m
 bun run typecheck:web-spec # Type-check the web specs (vitest does NOT type-check them)
 bun run --filter @nicotind/web typecheck:template # Angular templates alone (folded into typecheck)
 bun run e2e              # Playwright e2e suite (packages/e2e) — always run before declaring a feature done
+bun run e2e:tv           # Android TV emulator lane (real APK on an AVD) — D-pad/focus + WebView-only risk
 bun run packages/api/src/scripts/prod-probe.ts --orphans --jobs  # read-only prod/dev DB probe → docs/prod-inspection.md
                          # (builds @nicotind/web first; E2E_SKIP_BUILD=1 to reuse the existing dist)
 bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
@@ -522,10 +523,12 @@ Add detail there, not here.
 - **Download inbox triage (hold-for-review, issue #411)**: opt-in `holdForReview` processing setting
   holds quarantined downloads until curator approval in the Downloads inbox; `download_reviews`
   decision table (pending = derived), multi-source metadata candidates + AcoustID identify + per-track
-  retag. **Inert while acquisition is off (issue #416)** — the inbox lives on the hidden Downloads
-  page, so the landing gate ANDs in live `acquisitionEnabled` and the admin route denies enabling
-  the hold; the same change extracted the path-safety triad into `services/song-path.ts` and
-  Lucene-escaped `searchReleaseGroups`. → [docs/download-review.md](docs/download-review.md)
+  retag + an **Apply MusicBrainz titles** action (issue #413 — MB is the only source with a per-track
+  tracklist; position-matched, titles-only, fills the grid without saving). **Inert while acquisition
+  is off (issue #416)** — the inbox lives on the hidden Downloads page, so the landing gate ANDs in
+  live `acquisitionEnabled` and the admin route denies enabling the hold; the same change extracted
+  the path-safety triad into `services/song-path.ts` and Lucene-escaped `searchReleaseGroups`. →
+  [docs/download-review.md](docs/download-review.md)
 - **Perceptual audio features (no LLM)**: energy/loudness measured bun-side via ffmpeg ebur128;
   danceability/valence/mood/vocals/acousticness + cached embeddings (content-invalidated by
   `library_embeddings.file_size` since issue #258 — a file replaced in place keeps its path-derived
@@ -683,7 +686,13 @@ Add detail there, not here.
   tags (`looksConcatenatedGenre`) + key-detection instability + filter-radio centroid
   genre-blindness. → [docs/radio.md](docs/radio.md), [docs/web-ui.md](docs/web-ui.md)
 - **Remote playback (cast, Spotify-Connect-style)**: per-user `PlaybackStateManager` broadcasts
-  state/commands over `GET /api/ws/playback`; each browser tab is a device. →
+  state/commands over `GET /api/ws/playback`; each browser tab is a device. **A pruned device now
+  heals (issue #433)**: `heartbeat` returns whether the device was known and `websocket.ts`
+  re-registers when it wasn't — the client only sends `REGISTER` from `onopen`, which never fires
+  again on a still-OPEN socket, so a routine 90s stale-prune (Android WebView throttles the 30s
+  heartbeat timer behind a TV screensaver) used to remove the TV *permanently*; and `onClose`
+  unregisters only if no other connection still holds that device id, since the client reuses one
+  stable id across reconnects and a dead socket's late close was evicting the live one. →
   [docs/remote-playback.md](docs/remote-playback.md)
 - **Hardware cast (Chromecast + DLNA, server-side controller)**: a `CastController` runs protocol
   adapters (`castv2`/`bonjour` for Chromecast, `node-ssdp`/`upnp-mediarenderer-client` for DLNA)
@@ -712,7 +721,15 @@ Add detail there, not here.
   (revocable via `paired_devices` row delete, enforced at refresh); the native app keeps a
   **saved-servers registry with per-server stashed sessions** (switch/remove/remember, no passwords
   stored) reachable from login + Settings; opt-in remote access publishes the loopback-bound backend
-  at a public HTTPS URL via `tailscale funnel` behind a guided admin state machine. →
+  at a public HTTPS URL via `tailscale funnel` behind a guided admin state machine. **Settings →
+  Devices now has the camera button (issue #434)**: the scanner existed but its only call site was
+  the `/server` page, reachable from Settings behind a link labelled "Switch server" — nowhere a
+  user looks to authorize a device. A `canScanBarcode()`-gated scan card feeds the pure
+  `parseApproveCode` (accepts the TV's `/approve#c=…` link *and* the bare printed code, validated
+  against the alphabet, `/pair` QRs rejected) and routes to `/approve#c=…` — the same entry point
+  the OS camera app would open, so `ApproveLoginComponent` stays the one confirm-and-post site. The
+  alphabet moved to `@nicotind/core` `pairing-code.ts` (`isPairingCodeShape`) so the minter and the
+  validator can't drift; web reaches it through the `src/types/core.ts` shim, not core's barrel. →
   [docs/device-pairing.md](docs/device-pairing.md)
 - **Observability (Sentry, opt-in)**: web `loadSentry` (empty DSN = off, prod-only, versioned + low
   sampling) + API `initServerSentry` (`NICOTIND_SENTRY_DSN` empty = off) reporting only unknown 500s
@@ -1261,15 +1278,20 @@ shell (navs/offline) + library tabs/sort + home vibes + the **Acquire page** pri
 high-traffic slice, incl. the first TS-side `this.i18n.t(key, params)` call sites for toasts/dialogs
 built outside a template) + **Devices/remote-access settings** (issue #338, `devices.*` — the
 pairing panel, paired-devices list, and the admin Tailscale Funnel state machine; a shared
-`common.backToSettings` key was added for the "← Settings" back-link reused by still-untranslated
-`agent-tokens`/`plugins` pages) + **onboarding/setup wizard** (`setup.*`, all five wizard steps,
+`common.backToSettings` key was added for the "← Settings" back-link) + **onboarding/setup wizard**
+(`setup.*`, all five wizard steps,
 plus `common.back`/`common.next`) + **Admin panel** (issue #338, `admin.*` — 215 keys, every
 section; `processingTaskDefs` moved from a pre-translated `label` to a `labelKey` so the task list
 stays reactive to a live language switch, matching the rest of the page) + **Acquire's Advanced
 disclosure** (issue #338, the raw Soulseek folder-browser section — closes the #338 long tail;
 deliberately leaves the shared `getFolderBtn`/`getSongBtn`/`getGroupFileBtn` download-status-label
-helpers untranslated since they're used by other components, not scoped to this one page); **es.json
-is at full parity** with the base. Extraction is a phased pass — **API
+helpers untranslated since they're used by other components, not scoped to this one page) +
+**Extensions / Agent tokens / slskd settings** (issue #380, `extensions.*`/`agentTokens.*`/`slskd.*`
+— the settings-adjacent trio #338 skipped: kind groups, status pills, config forms + consent dialog;
+mint/shown-once/revoke; the slskd status panel, connection + shares forms and both notices — the
+`common.backToSettings` back-link finally picked up on both pages; per-plugin manifest strings
+(name/description/config-field labels) stay untranslated since they're server data, not web copy);
+**es.json is at full parity** with the base. Extraction is a phased pass — **API
 error `code` fields (issue #337, client mapping started)**: `NicotinDError`'s existing `code` extended
 onto the inline `c.json({ error })` responses in `routes/auth.ts`/`devices.ts`/`settings.ts`/
 `agent-tokens.ts` — additive `{ error, code }`, the ~24 other route files untouched. The web client
@@ -1307,7 +1329,12 @@ player — blurred-cover backdrop, bottom-pinned glass transport without shuffle
 — driven by `isTvUi()` (the root class, e2e-testable via `now-playing-tv.spec.ts`); a roving-tabindex D-pad
 navigation directive pair — vertical/horizontal/grid axes — covers the Now Playing queue,
 transport controls, every Library/Search/artist-detail grid, every `TrackRowComponent`-based song
-list, and Settings/Admin/Extensions button/toggle rows (forms stay Tab-order-only by design),
+list, Settings/Admin/Extensions button/toggle rows (forms stay Tab-order-only by design), and — the
+last pointer-only holdout — the **mini-player grab notch** (issue #432: it and the bar were bound
+solely to `(pointerdown)`, so expanding Now Playing was impossible from a remote; it stays a `<div>`
+rather than a `<button>` because `onBarPointerDown` bails on `closest('button')` and that would kill
+the touch swipe-to-open, and `TvNavItemDirective`'s `[attr.role]` no longer clobbers an
+author-provided `role`),
 plus a global keyboard shortcut set (Space/K play-pause, J/L prev/next, M mute, N now-playing, arrow-key seek that defers to D-pad nav groups, `/` for Acquire; Escape shares the hardware-Back `BackHandlerStack` (issue #398) so one press closes only the topmost overlay, via `registerOverlayCloser` for `@if`-rendered modals). The `@nicotind/capacitor-tv-channels` plugin owns the Google TV launcher surface: a Watch Next "Continue listening" entry for the current track, a "Recently added" preview-channel row of the newest albums whose tiles deep-link into the app via a sanitized route extra (issue #395, `publishChannel`/`clearChannel` + the retained `deepLink` event), and the Assistant's play-from-search voice intent. → See [docs/mobile-app.md](docs/mobile-app.md) and
 [docs/ios-app.md](docs/ios-app.md).
 
@@ -1363,6 +1390,20 @@ one command** (`bun run --filter @nicotind/e2e screens:readme`, docs/e2e.md "Scr
 it and commit any changed `docs/images/*.png` whenever a UI change touches the Library/album/Now-Playing
 screens. The flow catalogue + recurring routines live in
 [docs/testing-routines.md](docs/testing-routines.md). → See [docs/e2e.md](docs/e2e.md).
+
+**Android TV emulator lane (`bun run e2e:tv`)**: a *second*, local-only Playwright lane driving the
+real APK on an AVD via Playwright's `_android` API (`chromium.connectOverCDP` does **not** work — a
+WebView exposes no browser-level target). It exists for the one thing the Chromium suite
+structurally cannot model: **an Android WebView has spatial navigation and desktop Chrome does not**,
+so a desktop test can't tell "focus correctly moved" from "focus never could have moved" — which is
+where issue #436's focus trap hid. Covers D-pad escape + a generic reachability audit (BFS over the
+focus graph, identity = a stamped `data-tvwalk` attribute because derived testids can't round-trip),
+hardware Back (#394, no Back key exists in Chromium), and a WebView-only smoke pass (CORS,
+`ngsw-bypass`, real audio decode). `tv/preflight.ts` owns the whole lifecycle and **deliberately
+caches nothing** — gradle's incremental no-op is 9.8 s, so skips would save ~18 s and reintroduce
+#253's stale-bundle failure. Three tests are `test.fail()` pinning #436: green while the bug is open,
+loudly red the moment it's fixed without updating them. →
+[docs/e2e-tv-emulator.md](docs/e2e-tv-emulator.md)
 
 **Real-use feedback log**: [docs/feedback-log-2026-07.md](docs/feedback-log-2026-07.md) is a
 rolling, dated log of friction noticed while actually _using_ the app — one entry per observation
