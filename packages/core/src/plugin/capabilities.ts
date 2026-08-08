@@ -243,12 +243,41 @@ export interface IdentifyResult {
 }
 
 /**
+ * Why an identify attempt produced no match (issue #414).
+ *
+ * A bare `null` collapsed four very different situations into one "no match"
+ * toast, but they call for opposite curator actions: `no-match` means the
+ * recording genuinely isn't in AcoustID (retag by hand), `fpcalc-missing` is a
+ * deployment gap (install libchromaprint-tools — no file is at fault),
+ * `undecodable` says *this file* is broken (an unfingerprint-able file is
+ * itself a triage signal — likely a truncated/corrupt download worth
+ * discarding), and `source-error` is transient (retry later).
+ */
+export type IdentifyFailureKind =
+  'no-match' | 'fpcalc-missing' | 'undecodable' | 'source-error' | 'file-missing';
+
+/** The full outcome of one identify attempt — a match, or a typed failure. */
+export type IdentifyOutcome =
+  | { kind: 'match'; result: IdentifyResult }
+  | {
+      kind: IdentifyFailureKind;
+      /** Diagnostic detail (fpcalc stderr tail, HTTP status, …) when there is one. */
+      detail?: string;
+    };
+
+/**
  * Metadata source that identifies a track from its audio fingerprint given an
  * absolute file path (AcoustID). The plugin owns the fingerprint extraction
  * (fpcalc) + the lookup HTTP call; the host just gets a match or null.
  */
 export interface IdentifyCapability {
   identifyTrack(absPath: string): Promise<IdentifyResult | null>;
+  /**
+   * Same attempt, but reporting *why* it failed. Optional so a plugin that
+   * only implements the plain call stays valid; callers fall back to mapping
+   * `identifyTrack`'s null onto `{ kind: 'no-match' }`.
+   */
+  identifyTrackDetailed?(absPath: string): Promise<IdentifyOutcome>;
 }
 
 /** Connectivity plugins (tailscale/wireguard) — scaffold; none shipped yet. */

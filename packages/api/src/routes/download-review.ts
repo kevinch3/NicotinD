@@ -10,7 +10,7 @@
 import { relative } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Hono } from 'hono';
-import type { IdentifyCapability, IdentifyResult } from '@nicotind/core';
+import type { IdentifyCapability, IdentifyOutcome, IdentifyResult } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import { requireCurator } from '../middleware/current-user.js';
@@ -140,6 +140,17 @@ export function downloadReviewRoutes(deps: DownloadReviewDeps): Hono<AuthEnv> {
     return c.json({ ok: true, deletedCount: result.deletedCount });
   });
 
+  /**
+   * One identify attempt, always as a typed outcome (issue #414). Falls back to
+   * mapping a plain `identifyTrack` null onto `no-match` for a plugin that
+   * doesn't implement the detailed variant.
+   */
+  async function identifyOne(plugin: IdentifyCapability, abs: string): Promise<IdentifyOutcome> {
+    if (plugin.identifyTrackDetailed) return plugin.identifyTrackDetailed(abs);
+    const result = await plugin.identifyTrack(abs);
+    return result ? { kind: 'match', result } : { kind: 'no-match' };
+  }
+
   // Fingerprint one track via the enabled `identify` plugin (AcoustID) — the
   // rescue path when tags are garbage or missing, so a curator can confirm
   // what a mis-tagged file actually is before retagging it.
@@ -162,8 +173,10 @@ export function downloadReviewRoutes(deps: DownloadReviewDeps): Hono<AuthEnv> {
       return c.json({ error: 'Song file not found' }, 404);
     }
 
-    const result = await plugin.identifyTrack(abs);
-    return c.json({ result });
+    const outcome = await identifyOne(plugin, abs);
+    // `result` stays on the payload (unchanged shape for any existing caller);
+    // `outcome` is the addition that says *why* there is no result.
+    return c.json({ result: outcome.kind === 'match' ? outcome.result : null, outcome });
   });
 
   // Fingerprint up to 5 quarantined tracks for an album sequentially (the
@@ -186,15 +199,25 @@ export function downloadReviewRoutes(deps: DownloadReviewDeps): Hono<AuthEnv> {
       )
       .all(albumId);
 
-    const perTrack: Array<{ songId: string; result: IdentifyResult | null }> = [];
+    const perTrack: Array<{
+      songId: string;
+      result: IdentifyResult | null;
+      outcome: IdentifyOutcome;
+    }> = [];
     for (const song of songs) {
       const abs = resolveSongPath(md, song.path);
       if (!isUnderMusicDir(md, abs) || !existsSync(abs)) {
-        perTrack.push({ songId: song.id, result: null });
+        // A row whose file vanished is its own triage signal, distinct from
+        // "AcoustID has never heard of this recording".
+        perTrack.push({ songId: song.id, result: null, outcome: { kind: 'file-missing' } });
         continue;
       }
-      const result = await plugin.identifyTrack(abs);
-      perTrack.push({ songId: song.id, result });
+      const outcome = await identifyOne(plugin, abs);
+      perTrack.push({
+        songId: song.id,
+        result: outcome.kind === 'match' ? outcome.result : null,
+        outcome,
+      });
     }
 
     const vote = voteAlbumIdentity(perTrack.map((t) => t.result));

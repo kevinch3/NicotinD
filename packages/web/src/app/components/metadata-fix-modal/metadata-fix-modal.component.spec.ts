@@ -301,6 +301,87 @@ describe('MetadataFixModalComponent review mode', () => {
     await c.identifyTrack(c.tracks()[0]!);
 
     expect(c.tracks()[0]).toMatchObject({ id: 's1', title: 'Fixed', dirtyTitle: true });
+    expect(c.identifyFailure('s1')).toBeUndefined();
+  });
+
+  // Issue #414: the four ways an identify can come back empty ask for opposite
+  // curator actions, so they must not render (or toast) identically.
+  describe('identify failure taxonomy (issue #414)', () => {
+    it('records an undecodable file with its stderr detail and warns', async () => {
+      const c = create();
+      c.ngOnInit();
+      await Promise.resolve();
+      identifySong.mockReturnValue(
+        of({ result: null, outcome: { kind: 'undecodable', detail: 'ERROR: invalid data' } }),
+      );
+
+      await c.identifyTrack(c.tracks()[0]!);
+
+      expect(c.identifyFailure('s1')).toEqual({
+        kind: 'undecodable',
+        detail: 'ERROR: invalid data',
+      });
+      // A broken file is an error, not the neutral "nothing found" note.
+      expect(toastShow).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'error', message: 'review.identifyUndecodable' }),
+      );
+    });
+
+    it('keeps a genuine no-match neutral', async () => {
+      const c = create();
+      c.ngOnInit();
+      await Promise.resolve();
+      identifySong.mockReturnValue(of({ result: null, outcome: { kind: 'no-match' } }));
+
+      await c.identifyTrack(c.tracks()[0]!);
+
+      expect(c.identifyFailure('s1')).toEqual({ kind: 'no-match', detail: undefined });
+      expect(toastShow).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'info', message: 'review.identifyNoMatch' }),
+      );
+    });
+
+    it('maps every kind to its own copy', () => {
+      const c = create();
+      expect(c.identifyFailureLabel('fpcalc-missing')).toBe('review.identifyFpcalcMissing');
+      expect(c.identifyFailureLabel('undecodable')).toBe('review.identifyUndecodable');
+      expect(c.identifyFailureLabel('source-error')).toBe('review.identifySourceError');
+      expect(c.identifyFailureLabel('file-missing')).toBe('review.identifyFileMissing');
+      expect(c.identifyFailureLabel('no-match')).toBe('review.identifyNoMatch');
+    });
+
+    it('a later match clears a previously recorded failure', async () => {
+      const c = create();
+      c.ngOnInit();
+      await Promise.resolve();
+      identifySong.mockReturnValue(of({ result: null, outcome: { kind: 'source-error' } }));
+      await c.identifyTrack(c.tracks()[0]!);
+      expect(c.identifyFailure('s1')?.kind).toBe('source-error');
+
+      identifySong.mockReturnValue(of({ result: { acoustId: 'x', score: 0.9, title: 'Fixed' } }));
+      await c.identifyTrack(c.tracks()[0]!);
+      expect(c.identifyFailure('s1')).toBeUndefined();
+    });
+
+    it('album identify records per-track failures alongside its matches', async () => {
+      const c = create();
+      c.ngOnInit();
+      await Promise.resolve();
+      identifyAlbum.mockReturnValue(
+        of({
+          perTrack: [
+            { songId: 's1', result: { acoustId: 'x', score: 0.9, title: 'Fixed' } },
+            { songId: 's2', result: null, outcome: { kind: 'undecodable', detail: 'bad frame' } },
+          ],
+          vote: null,
+        }),
+      );
+
+      await c.identifyAlbumFingerprint();
+
+      expect(c.identifyFailure('s1')).toBeUndefined();
+      expect(c.identifyFailure('s2')).toEqual({ kind: 'undecodable', detail: 'bad frame' });
+    });
   });
 
   it('removeTrack confirms, deletes, and drops the row', async () => {

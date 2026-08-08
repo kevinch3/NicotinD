@@ -107,3 +107,6 @@ export * from '../../../core/src/pairing-code';
 
 /** AcoustID fingerprint-identify result shape (issue #411 download-review). */
 export type { IdentifyResult } from '../../../core/src/plugin/capabilities';
+/** Why an identify attempt produced no match (issue #414) — re-exported from
+ *  the same source rather than re-declared, so the taxonomy can't drift. */
+export type { IdentifyOutcome, IdentifyFailureKind } from '../../../core/src/plugin/capabilities';

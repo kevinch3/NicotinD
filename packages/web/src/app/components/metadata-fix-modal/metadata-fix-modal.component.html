@@ -81,8 +81,8 @@
 
     @if (artistIsPlaceholder()) {
       <p class="text-status-warn text-xs mb-3" data-testid="placeholder-artist-hint">
-        The stored artist looks unknown, so we searched by album title only. Type the correct
-        artist into the box below (e.g. “La Portuaria Selva”) to narrow the results.
+        The stored artist looks unknown, so we searched by album title only. Type the correct artist
+        into the box below (e.g. “La Portuaria Selva”) to narrow the results.
       </p>
     }
 
@@ -125,7 +125,13 @@
             <div class="min-w-0 flex-1">
               <p class="text-theme-primary text-sm truncate">{{ c.title }}</p>
               <p class="text-theme-muted text-xs truncate">
-                {{ c.artist }}@if (c.year) { · {{ c.year }} }@if (c.releaseType) { · {{ c.releaseType }} }
+                {{ c.artist }}
+                @if (c.year) {
+                  · {{ c.year }}
+                }
+                @if (c.releaseType) {
+                  · {{ c.releaseType }}
+                }
               </p>
               @if (c.source) {
                 <span
@@ -135,7 +141,9 @@
                 >
               }
             </div>
-            <span class="text-theme-muted text-xs tabular-nums" title="match confidence">{{ c.score }}%</span>
+            <span class="text-theme-muted text-xs tabular-nums" title="match confidence"
+              >{{ c.score }}%</span
+            >
             <button
               (click)="applyCandidate(c)"
               [disabled]="applying()"
@@ -191,44 +199,66 @@
           @for (t of tracks(); track t.id) {
             <li
               data-testid="review-track-row"
-              class="flex items-center gap-2 p-2 rounded-lg bg-theme-surface-2 border border-theme"
+              class="flex flex-col gap-1 p-2 rounded-lg bg-theme-surface-2 border border-theme"
             >
-              <span class="text-theme-muted text-xs w-5 text-right tabular-nums">{{ t.track ?? '–' }}</span>
-              <input
-                type="text"
-                [ngModel]="t.title"
-                (ngModelChange)="onTrackTitleChange(t.id, $event)"
-                placeholder="Title"
-                data-testid="review-track-title"
-                class="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-theme-surface text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
-              />
-              <input
-                type="text"
-                [ngModel]="t.artist"
-                (ngModelChange)="onTrackArtistChange(t.id, $event)"
-                placeholder="Artist"
-                data-testid="review-track-artist"
-                class="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-theme-surface text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
-              />
-              @if (identifyAvailable()) {
+              <div class="flex items-center gap-2">
+                <span class="text-theme-muted text-xs w-5 text-right tabular-nums">{{
+                  t.track ?? '–'
+                }}</span>
+                <input
+                  type="text"
+                  [ngModel]="t.title"
+                  (ngModelChange)="onTrackTitleChange(t.id, $event)"
+                  placeholder="Title"
+                  data-testid="review-track-title"
+                  class="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-theme-surface text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
+                />
+                <input
+                  type="text"
+                  [ngModel]="t.artist"
+                  (ngModelChange)="onTrackArtistChange(t.id, $event)"
+                  placeholder="Artist"
+                  data-testid="review-track-artist"
+                  class="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-theme-surface text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
+                />
+                @if (identifyAvailable()) {
+                  <button
+                    type="button"
+                    (click)="identifyTrack(t)"
+                    [disabled]="isIdentifyingTrack(t.id)"
+                    data-testid="review-track-identify"
+                    class="px-2 py-1.5 rounded-lg text-xs bg-theme-surface text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50 flex-shrink-0"
+                  >
+                    {{ 'review.identify' | t }}
+                  </button>
+                }
                 <button
                   type="button"
-                  (click)="identifyTrack(t)"
-                  [disabled]="isIdentifyingTrack(t.id)"
-                  data-testid="review-track-identify"
-                  class="px-2 py-1.5 rounded-lg text-xs bg-theme-surface text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50 flex-shrink-0"
+                  (click)="removeTrack(t)"
+                  data-testid="review-track-remove"
+                  class="px-2 py-1.5 rounded-lg text-xs text-status-error hover:opacity-80 transition flex-shrink-0"
                 >
-                  {{ 'review.identify' | t }}
+                  ✕
                 </button>
+              </div>
+              <!-- Issue #414: an identify that failed says which kind of failure
+                   it was; an unfingerprint-able file is a triage signal, not a
+                   silent no-match. The fpcalc stderr tail rides along in the
+                   tooltip so the detail is available without adding noise. -->
+              @if (identifyFailure(t.id); as fail) {
+                <p
+                  data-testid="review-track-identify-error"
+                  [attr.data-reason]="fail.kind"
+                  [title]="fail.detail || ''"
+                  [class]="
+                    fail.kind === 'no-match'
+                      ? 'text-xs text-theme-muted pl-7'
+                      : 'text-xs text-status-error pl-7'
+                  "
+                >
+                  {{ identifyFailureLabel(fail.kind) }}
+                </p>
               }
-              <button
-                type="button"
-                (click)="removeTrack(t)"
-                data-testid="review-track-remove"
-                class="px-2 py-1.5 rounded-lg text-xs text-status-error hover:opacity-80 transition flex-shrink-0"
-              >
-                ✕
-              </button>
             </li>
           }
         </ul>
@@ -246,7 +276,9 @@
 
     <!-- Manual free-text fallback -->
     <details class="mb-2" [open]="searched() && candidates().length === 0">
-      <summary class="text-theme-secondary text-sm cursor-pointer select-none">Enter manually</summary>
+      <summary class="text-theme-secondary text-sm cursor-pointer select-none">
+        Enter manually
+      </summary>
       <div class="flex flex-col gap-2 mt-3">
         <input
           type="text"

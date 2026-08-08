@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { IdentifyResult } from '@nicotind/core';
+import type { IdentifyOutcome, IdentifyResult } from '@nicotind/core';
 import type { ReviewQueueAlbum } from './api-types';
 
 /**
@@ -36,7 +36,7 @@ export class ReviewApiService {
   }
 
   identifySong(id: string) {
-    return this.http.post<{ result: IdentifyResult | null }>(
+    return this.http.post<{ result: IdentifyResult | null; outcome: IdentifyOutcome }>(
       `/api/review/songs/${encodeURIComponent(id)}/identify`,
       {},
     );
@@ -44,7 +44,7 @@ export class ReviewApiService {
 
   identifyAlbum(id: string) {
     return this.http.post<{
-      perTrack: Array<{ songId: string; result: IdentifyResult | null }>;
+      perTrack: Array<{ songId: string; result: IdentifyResult | null; outcome: IdentifyOutcome }>;
       vote: { artist: string; album: string; votes: number; total: number } | null;
     }>(`/api/review/albums/${encodeURIComponent(id)}/identify`, {});
   }
