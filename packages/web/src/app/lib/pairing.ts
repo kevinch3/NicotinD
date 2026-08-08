@@ -2,6 +2,7 @@
 // building) and the phone's server-picker (scan → probe → claim). Kept pure +
 // DI-free so the logic is unit-testable without Angular.
 
+import { isPairingCodeShape } from '@nicotind/core';
 import { buildApiUrl, isHealthyResponse } from './server-url';
 
 export interface PairingPayload {
@@ -186,6 +187,45 @@ export async function requestTvLogin(
     throw new PairingClaimError(parsed?.error ?? 'Sign-in request failed', parsed?.code);
   }
   return parsed;
+}
+
+/**
+ * Parse what the phone's camera scanned on the Settings → Devices scan button
+ * (issue #434) into the TV sign-in code to approve, or null if the scan isn't
+ * one of ours.
+ *
+ * What the TV actually renders is `<origin>/approve#c=CODE` — see
+ * `login.component.ts` `startTvLogin`. The origin is cosmetic here: the code is
+ * always POSTed to *this* phone's own server via `approveTvLogin`, so a code
+ * minted elsewhere simply 404s rather than doing anything dangerous. The TV also
+ * displays the bare code beneath the QR as a manual fallback.
+ *
+ * Accepts both forms the TV puts on screen — the `/approve` link and the bare
+ * printed code — so the one camera button serves either. The code is validated
+ * against the shared minting alphabet (`isPairingCodeShape`) rather than passed
+ * through: an instant, honest "that isn't a sign-in code" beats a round-trip
+ * that comes back 404. Returns the normalized uppercase code.
+ *
+ * A `/pair` QR is the *other* flow (server pairing, `parsePairingPayload`) and
+ * deliberately returns null here.
+ */
+export function parseApproveCode(raw: string): string | null {
+  const trimmed = raw.trim();
+  let candidate = trimmed;
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      if (!url.pathname.endsWith('/approve')) return null;
+      // Fragment first (what the TV mints), query as the hand-built fallback —
+      // the same precedence ApproveLoginComponent applies.
+      const params = new URLSearchParams((url.hash || url.search).replace(/^[#?]/, ''));
+      candidate = params.get('c') ?? '';
+    } catch {
+      return null;
+    }
+  }
+  const code = candidate.trim().toUpperCase();
+  return isPairingCodeShape(code) ? code : null;
 }
 
 export type TvLoginClaimResult = { status: 'pending'; expiresAt: number } | ClaimResult;

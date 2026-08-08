@@ -79,6 +79,34 @@ export function applyIdentify(
 }
 
 /**
+ * Overlay a MusicBrainz canonical tracklist onto the grid (issue #413).
+ *
+ * Matched **by position, never by title**: a curator reaches for this exactly
+ * when the existing titles are junk ("01 - track01"), so title similarity is
+ * the one signal that cannot be trusted here. A row's position is its `track`
+ * number when it has one, else its place in the grid — which is already
+ * track-ordered with untracked rows last (`toEditableTracks`), so a folder
+ * with no track tags still lines up in file order.
+ *
+ * Only titles are applied: MB's per-track credits are recording-level and a
+ * compilation would smear the wrong artist across rows, so artist stays the
+ * album-level decision the modal already makes. A row with no canonical
+ * counterpart (the download has more files than the release) is left
+ * untouched rather than blanked.
+ */
+export function applyCanonicalTracklist(
+  tracks: EditableTrack[],
+  canonical: Array<{ position: number; title: string }>,
+): EditableTrack[] {
+  const byPosition = new Map(canonical.map((t) => [t.position, t.title]));
+  return tracks.map((t, i) => {
+    const title = byPosition.get(t.track ?? i + 1);
+    if (!title?.trim() || title === t.title) return t;
+    return { ...t, title, dirtyTitle: true };
+  });
+}
+
+/**
  * After a `retagTracks` round-trip, clear the dirty flags of the rows that
  * actually saved — a row whose id is in `failedIds` keeps its edits (and its
  * dirty flags) so the curator can see and retry exactly what didn't land;

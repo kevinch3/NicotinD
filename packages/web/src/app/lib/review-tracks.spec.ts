@@ -4,6 +4,7 @@ import {
   dirtyTrackPayload,
   applyIdentify,
   markTracksSaved,
+  applyCanonicalTracklist,
 } from './review-tracks';
 
 describe('toEditableTracks', () => {
@@ -129,5 +130,70 @@ describe('markTracksSaved', () => {
     expect(a).toEqual({ ...a, title: 'A2', dirtyTitle: true });
     expect(b.dirtyTitle).toBe(false);
     expect(b.title).toBe('B2');
+  });
+
+  // Issue #413: MusicBrainz is the one candidate source with a per-track
+  // tracklist; applying it is position-matched because a curator reaches for
+  // this precisely when the existing titles are junk.
+  describe('applyCanonicalTracklist', () => {
+    it('overwrites titles by track number and marks them dirty', () => {
+      const rows = toEditableTracks([
+        { id: 'a', title: 'track01', track: 1 },
+        { id: 'b', title: 'track02', track: 2 },
+      ]);
+
+      const next = applyCanonicalTracklist(rows, [
+        { position: 1, title: 'Real One' },
+        { position: 2, title: 'Real Two' },
+      ]);
+
+      expect(next.map((t) => [t.title, t.dirtyTitle])).toEqual([
+        ['Real One', true],
+        ['Real Two', true],
+      ]);
+    });
+
+    it('falls back to grid order for rows with no track number', () => {
+      const rows = toEditableTracks([
+        { id: 'a', title: 'x', track: null },
+        { id: 'b', title: 'y', track: null },
+      ]);
+
+      const next = applyCanonicalTracklist(rows, [
+        { position: 1, title: 'First' },
+        { position: 2, title: 'Second' },
+      ]);
+
+      expect(next.map((t) => t.title)).toEqual(['First', 'Second']);
+    });
+
+    it('leaves a row with no canonical counterpart untouched, never blanked', () => {
+      const rows = toEditableTracks([
+        { id: 'a', title: 'Keep Me', track: 1 },
+        { id: 'b', title: 'Bonus Track', track: 2 },
+      ]);
+
+      const next = applyCanonicalTracklist(rows, [{ position: 1, title: 'Keep Me' }]);
+
+      // Position 1 already matches, so it isn't even marked dirty.
+      expect(next[0]).toEqual({ ...rows[0]! });
+      expect(next[1]).toEqual({ ...rows[1]! });
+    });
+
+    it('never touches the artist field (MB credits are recording-level)', () => {
+      const rows = toEditableTracks([{ id: 'a', title: 'x', track: 1, artist: 'Kept' }]);
+
+      const next = applyCanonicalTracklist(rows, [{ position: 1, title: 'New' }]);
+
+      expect(next[0]!.artist).toBe('Kept');
+      expect(next[0]!.dirtyArtist).toBe(false);
+    });
+
+    it('ignores blank canonical titles', () => {
+      const rows = toEditableTracks([{ id: 'a', title: 'Original', track: 1 }]);
+      const next = applyCanonicalTracklist(rows, [{ position: 1, title: '   ' }]);
+      expect(next[0]!.title).toBe('Original');
+      expect(next[0]!.dirtyTitle).toBe(false);
+    });
   });
 });

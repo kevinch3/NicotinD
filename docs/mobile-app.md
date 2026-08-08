@@ -322,7 +322,7 @@ nicotind_route /library/albums/<id>`) lands on that album's detail page.
 
 **Overscan safe area (TV builds only)**: TVs may crop up to ~5% of every edge, so `main.ts` stamps
 a `tv-build` class on `<html>` via `lib/platform.ts`'s `applyTvBuildClass` (pure, unit-tested) and
-`styles.css` insets *content* into the action-safe area (`--tv-overscan-x/y`, ≈ the Android TV
+`styles.css` insets _content_ into the action-safe area (`--tv-overscan-x/y`, ≈ the Android TV
 48/27dp-at-1080p guideline) on the app shell's stable landmarks — `header`, `main`,
 `[data-bottom-chrome]`, and the Now Playing sheet — while surfaces/backgrounds keep bleeding to the
 physical edge (the standard TV treatment). Non-TV builds are untouched: every rule is scoped under
@@ -333,12 +333,20 @@ cover's track-info button and the transport's Radio toggle are direct items, wit
 transport/tabs/queue registering as child groups, so the whole sheet is one vertical D-pad sweep
 (issue #389, the first mixed-entries consumer; `now-playing-tv.spec.ts` walks it). A 1080p TV at
 density 320 is a **960×540 CSS viewport** —
-below Tailwind's `lg` (1024px) — so the sheet used to render the mobile *stacked* layout in a short
+below Tailwind's `lg` (1024px) — so the sheet used to render the mobile _stacked_ layout in a short
 landscape window and the cover pushed the whole transport below the fold (the "only shows the art
 cover" report). On TV the sheet is now a 10-foot player: the current cover, stretched and heavily
 blurred, backs the whole sheet (`--np-tv-backdrop` bound in `now-playing.component.html`, drawn by
 the root's `::before` at `z-index:-1` — the fixed root's `z-[60]` makes it a stacking context, so
-the layer sits above the sheet background but below all content); the art is centered; the
+the layer sits above the sheet background but below all content). **`tvBackdropUrl` returns null
+while the sheet is closed (issue #439)** — the sheet is never unmounted, only translated below the
+viewport, and the `::before`'s `inset: -6%` reaches 32px back _inside_ a 540px TV viewport, where
+`blur(56px)` smeared the cover's colour a further ~56px up. Because `z-[60]` sits above the
+mini-player's `z-50`, that wash painted _over_ the bottom of every route, tinting with whatever was
+playing (measured: a +4.2 luminance ramp at the bottom edge, flat after the fix). The fix is to
+withhold the URL, **not** `overflow: hidden` on the sheet — the sheet's transform makes it the
+containing block for the fixed-position TV queue overlay, so clipping it would clip that too. The
+art is centered; the
 seek/transport is a bottom-pinned glass bar (Netflix/Spotify convention; `position:absolute` on the
 `app-now-playing-transport` host, overriding its `contents` display); shuffle/repeat are
 template-gated out of the transport; and the stacked queue/lyrics panels + pointer-drag resize
@@ -351,14 +359,14 @@ and closes the overlay; removing the last row closes it too rather than strandin
 `@if`-rendered it takes the #398 modal shape (`registerOverlayCloser` in the constructor), so
 Escape/hardware Back close it topmost-first, and closing restores focus to the chip (the MenuPanel
 discipline, via a host query — signal view queries don't populate in the JIT vitest harness). Components read TV-ness via `lib/platform.ts`'s
-**`isTvUi()`** — the `tv-build` *root class*, not the build-time env — so
+**`isTvUi()`** — the `tv-build` _root class_, not the build-time env — so
 `packages/e2e/tests/now-playing-tv.spec.ts` exercises the real TV template in the prod bundle by
 stamping the class at a 960×540 viewport (transport fully on-screen + pinned low, shuffle/repeat
 absent, chip content/position, backdrop layer present). **Remote playback out of the box**:
 verified on a fresh tv-build install — "Make this device available as an audio output" defaults ON
 (`resolveTvDefaultedPreference`) and the device self-registers in Connected devices; an explicit
 stored toggle always wins over the default (so reinstalled test devices with old data can differ). The
-default device *name* on a TV is `"NicotinD TV"` (issue #393; the UA-derived fallback said
+default device _name_ on a TV is `"NicotinD TV"` (issue #393; the UA-derived fallback said
 "Chrome on Android") — a stored user-chosen name still wins.
 
 A separate Angular build configuration (`bun run --filter @nicotind/web build -- --configuration
@@ -400,6 +408,26 @@ compilations, singles/EPs, artists, genres) + the Library playlists list, artist
 albums/singles/appears-on grids, the Search page's catalog albums grid + artist chips, the
 album-hunt-modal candidate list, and — via one shared change to `TrackRowComponent` itself — every
 song list built on it (library Songs tab, album/genre/artist/playlist detail pages). **Settings/Admin/Extensions coverage (Phase 4)**: applied to Settings' theme/budget/auto-preserve grids and account action list, the Devices/agent-tokens revoke lists, Admin's services grid, log-service buttons, processing-task checkboxes, and user-management action buttons, and the Extensions (plugins) page's enable/configure buttons per card. Forms stay Tab-order-only by design — native `<input>`/`<select>` elements are never wrapped in `appTvNavItem`, so arrow keys keep their native meaning inside them (caret movement, select-value change, number increment). **Find-a-song flow coverage (issue #389)**: the Library **tabs bar** is a horizontal group; the album-detail **action row** (Play/Select/Download/Share/Fix/Remove) is a horizontal group; **every `TrackRowComponent` is its own horizontal child group** (title + like + remove + ⋯ menu toggle as items) nested inside the surrounding vertical list, enabled by the mixed items+child-groups directive rework; and **`MenuPanelComponent` speaks D-pad** — the first action autofocuses on open, ArrowUp/Down move between actions (stopPropagation so the list behind never navigates underneath), Enter activates, and closing restores focus to the trigger (only when focus was inside the panel — an outside click keeps its own focus). This is what finally exposes `SongMenuService`'s Play next / Add to queue to remote users; the keyboard-only journey is locked in by `packages/e2e/tests/library-dpad-tv.spec.ts`. **The #389 tail is closed (issue #396)**: `TvNavItemDirective` gained an Enter/Space→`click()` activation passthrough for hosts with no native key activation (skipped for buttons/inputs — a synthesized click would double-fire — and for keys coming from a focusable descendant), which is what the Admin **duplicates list** needed — the panel is one vertical group where the find button, every song row (`<label>` wrapping its checkbox; the passthrough makes Enter toggle it, and the label's native forward-to-control means the checkbox flips exactly once) and the delete button share one sweep. The **streaming panel**'s two checkbox rows got per-row horizontal groups with the checkbox as the item, while its `<select>`s deliberately stay **outside every group's subtree** (the structural invariant the user-row test pins: a select inside a group would have its option cycling intercepted) — select rows remain served by the WebView's spatial navigation and the native TV picker dialog. And the **fullscreen karaoke overlay** is now a vertical group of two horizontal rows — header (exit / browse / vocal-mute) + transport (prev / play-pause / next) — so all six buttons are D-pad reachable; the browse-mode lyric lines keep their existing tabindex/Enter handling (D-pad line browsing is possible follow-up work, but browse mode is primarily the wheel/touch gesture surface). The full keyboard shortcut table (Phase 6) is also still just Space/K.
+
+**The mini-player grab notch (issue #432)**: the one affordance in the player chrome that had
+**no** D-pad path. Both the notch and the bar were bound solely to `(pointerdown)` →
+`onBarPointerDown` → `createPointerDrag`; a remote emits key events, never pointer events, so
+expanding Now Playing from the mini-player was impossible. It looked half-alive only because
+`PlayerTransportMiniComponent`'s prev/play/next are `appTvNavItem`s — `player.component.html` itself
+carried zero `appTvNav*` markers. The notch is now an `appTvNavItem` with a `(click)` handler
+(`openNowPlaying()`), which the directive's Enter/Space→`click()` passthrough also reaches.
+
+It deliberately stays a `<div>` rather than becoming a `<button>`: `onBarPointerDown` bails on
+`target.closest('button')`, so promoting it would have silently killed the touch swipe-to-open drag
+the notch exists to serve. The double-activation a tap produces (pointer gesture _and_ the native
+click) is harmless — `setNowPlayingOpen(true)` is idempotent.
+
+That required one change to the shared directive. `TvNavItemDirective` bound
+`[attr.role]="itemRole()"`, which returns `null` outside a grid group, and a host binding always
+beats a static template attribute — so `role="button"` on the notch would have been silently erased.
+`itemRole()` now falls back to the role the template authored (captured before the binding can
+overwrite it), keeping `gridcell` behaviour inside grids and no longer clobbering author intent
+anywhere else.
 
 **DI crosses a component boundary but NOT an `ngTemplateOutlet` one (the Phase 4 final-review
 fix)**: the Extensions page rendered every plugin card from a shared `<ng-template #card let-p>`
@@ -544,7 +572,7 @@ Three guards make the arrow keys safe to own globally:
    moves focus between elements not covered by a nav group; `preventDefault()` on the keydown is
    exactly what cancels that focus move. This is why vertical D-pad movement always worked (ArrowUp/
    Down are never intercepted) while horizontal was dead across the whole Now Playing sheet — the
-   transport row could never even be *entered* horizontally. Seeking on TV stays available through
+   transport row could never even be _entered_ horizontally. Seeking on TV stays available through
    the focused seek bar (a native `<input type="range">` consumes ArrowLeft/Right to scrub) and the
    remote's hardware media keys via MediaSession. Non-TV builds keep the seek shortcut unchanged.
 

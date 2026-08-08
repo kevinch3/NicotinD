@@ -34,7 +34,16 @@ export class TvNavItemDirective {
    *  are plain `toolbar` items with no cell semantics. `axis` is a static
    *  `@Input()` set once by Angular, so this needs no signal dependency to
    *  stay correct. */
-  readonly itemRole = computed(() => (this.group?.axis === 'grid' ? 'gridcell' : null));
+  /** A role the template already set on the host, captured before the host
+   *  binding below can overwrite it. Without this, `[attr.role]` clobbers an
+   *  author-provided `role="button"` with `null` on every non-grid item — the
+   *  player's grab notch is a focusable `<div>` that must still announce
+   *  itself as a button (issue #432). */
+  private readonly authoredRole = this.el.nativeElement.getAttribute('role');
+
+  readonly itemRole = computed(() =>
+    this.group?.axis === 'grid' ? 'gridcell' : this.authoredRole,
+  );
 
   constructor() {
     // Register with the group through DI rather than letting the group find

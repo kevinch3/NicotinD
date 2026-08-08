@@ -1,7 +1,19 @@
 import type { WSContext } from 'hono/ws';
 import { playbackRegistry } from './playback-registry.js';
 
-const connections = new Map<WSContext, { deviceId: string; userId: string }>();
+interface DeviceRegistration {
+  id: string;
+  name: string;
+  type: string;
+  remoteEnabled: boolean;
+}
+
+/** The registration is kept alongside the id so a heartbeat can rebuild a
+ *  device the stale-sweeper pruned — see the HEARTBEAT case (issue #433). */
+const connections = new Map<
+  WSContext,
+  { deviceId: string; userId: string; registration: DeviceRegistration }
+>();
 const listenersAttached = new Set<string>();
 
 function attachListeners(userId: string) {
@@ -42,13 +54,14 @@ export function createWebSocketHandlers(userId: string) {
         switch (data.type) {
           case 'REGISTER': {
             const id = data.payload.id;
-            connections.set(ws, { deviceId: id, userId });
-            manager.registerDevice({
+            const registration: DeviceRegistration = {
               id,
               name: data.payload.name,
               type: data.payload.deviceType || 'web',
               remoteEnabled: data.payload.remoteEnabled === true,
-            });
+            };
+            connections.set(ws, { deviceId: id, userId, registration });
+            manager.registerDevice(registration);
 
             ws.send(
               JSON.stringify({
@@ -64,7 +77,14 @@ export function createWebSocketHandlers(userId: string) {
 
           case 'HEARTBEAT': {
             const info = connections.get(ws);
-            if (info?.deviceId) manager.heartbeat(info.deviceId);
+            if (!info?.deviceId) break;
+            // A device the stale-sweeper pruned must be able to come back on
+            // the socket it still owns: REGISTER is only sent from the
+            // client's `onopen`, which never fires again while the socket
+            // stays OPEN, so without this the device is gone for good
+            // (issue #433 — an Android WebView throttles the 30s heartbeat
+            // timer behind a TV screensaver, which is what prunes it).
+            if (!manager.heartbeat(info.deviceId)) manager.registerDevice(info.registration);
             break;
           }
 
@@ -144,10 +164,17 @@ export function createWebSocketHandlers(userId: string) {
     },
     onClose: (_event: CloseEvent, ws: WSContext) => {
       const info = connections.get(ws);
-      if (info?.deviceId) {
-        manager.unregisterDevice(info.deviceId);
-      }
       connections.delete(ws);
+      if (!info?.deviceId) return;
+      // Only drop the device if this socket was the last one holding its id.
+      // The client reuses one stable device id across reconnects, so after a
+      // Wi-Fi blip the dead socket's close can land *after* the fresh socket
+      // has already re-registered — unregistering by id alone evicts the live
+      // connection (issue #433).
+      for (const other of connections.values()) {
+        if (other.userId === userId && other.deviceId === info.deviceId) return;
+      }
+      manager.unregisterDevice(info.deviceId);
     },
   };
 }

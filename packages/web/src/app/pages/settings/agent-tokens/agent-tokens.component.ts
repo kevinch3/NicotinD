@@ -10,6 +10,8 @@ import type {
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { SettingsGroupComponent } from '../../../components/settings-group/settings-group.component';
+import { TranslatePipe } from '../../../pipes/translate.pipe';
+import { TranslateService } from '../../../services/translate.service';
 
 /**
  * Mint/list/revoke MCP agent tokens (issue #232) — the credential an external
@@ -25,11 +27,13 @@ import { SettingsGroupComponent } from '../../../components/settings-group/setti
     TvNavGroupDirective,
     TvNavItemDirective,
     SettingsGroupComponent,
+    TranslatePipe,
   ],
   templateUrl: './agent-tokens.component.html',
 })
 export class AgentTokensComponent implements OnInit {
   private api = inject(AgentTokensApiService);
+  private readonly i18n = inject(TranslateService);
 
   readonly tokens = signal<AgentTokenRow[]>([]);
   readonly error = signal('');
@@ -48,7 +52,7 @@ export class AgentTokensComponent implements OnInit {
   load(): void {
     this.api.listTokens().subscribe({
       next: (res) => this.tokens.set(res.tokens),
-      error: () => this.error.set('Could not load agent tokens'),
+      error: () => this.error.set(this.i18n.t('agentTokens.errorLoad')),
     });
   }
 
@@ -66,7 +70,7 @@ export class AgentTokensComponent implements OnInit {
       },
       error: () => {
         this.busy.set(false);
-        this.error.set('Could not create a token');
+        this.error.set(this.i18n.t('agentTokens.errorCreate'));
       },
     });
   }
@@ -74,7 +78,7 @@ export class AgentTokensComponent implements OnInit {
   revoke(token: AgentTokenRow): void {
     this.api.revokeToken(token.id).subscribe({
       next: () => this.tokens.update((list) => list.filter((t) => t.id !== token.id)),
-      error: () => this.error.set('Could not revoke token'),
+      error: () => this.error.set(this.i18n.t('agentTokens.errorRevoke')),
     });
   }
 

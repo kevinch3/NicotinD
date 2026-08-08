@@ -7,6 +7,7 @@ import type { SlskdStatus } from '@nicotind/core';
 import { SlskdSettingsComponent } from './slskd-settings.component';
 import { SystemApiService } from '../../../services/api/system-api.service';
 import { PluginService } from '../../../services/plugin.service';
+import BASE_CATALOG from '../../../../../public/i18n/en.json';
 
 function status(over: Partial<SlskdStatus> = {}): SlskdStatus {
   return {
@@ -65,8 +66,12 @@ describe('SlskdSettingsComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     const html = fixture.nativeElement.textContent as string;
-    expect(html).toContain('Status');
-    expect(html).toContain('Connection');
+    // No catalog is loaded in this harness, so the `t` pipe renders the raw
+    // key; assert the key lands AND exists in the base catalog (issue #380).
+    expect(html).toContain('slskd.status');
+    expect(html).toContain('slskd.connection');
+    expect(BASE_CATALOG).toHaveProperty(['slskd.status']);
+    expect(BASE_CATALOG).toHaveProperty(['slskd.connection']);
     // Download speed tile formatted from bytes/sec.
     expect(
       fixture.nativeElement.querySelector('[data-testid="slskd-download-speed"]')?.textContent,
@@ -89,7 +94,9 @@ describe('SlskdSettingsComponent', () => {
     expect(c.formatSpeed(0)).toBe('0 KB/s');
     expect(c.formatSpeed(2 * 1024 * 1024)).toBe('2.0 MB/s');
     expect(c.formatLimit(undefined)).toBe('—');
-    expect(c.formatLimit(0)).toBe('Unlimited');
+    // "Unlimited" is i18n'd; with no catalog loaded t() returns the key.
+    expect(c.formatLimit(0)).toBe('slskd.unlimited');
+    expect(BASE_CATALOG).toHaveProperty(['slskd.unlimited']);
     expect(c.formatLimit(500)).toBe('500 KB/s');
   });
 
@@ -103,7 +110,7 @@ describe('SlskdSettingsComponent', () => {
     expect(
       fixture.nativeElement.querySelector('[data-testid="slskd-unreachable-notice"]'),
     ).toBeTruthy();
-    expect(fixture.nativeElement.textContent).not.toContain('Shared Folders');
+    expect(fixture.nativeElement.textContent).not.toContain('slskd.sharedFolders');
     fixture.destroy();
   });
 
@@ -117,7 +124,8 @@ describe('SlskdSettingsComponent', () => {
     expect(
       fixture.nativeElement.querySelector('[data-testid="slskd-unreachable-notice"]'),
     ).toBeNull();
-    expect(fixture.nativeElement.textContent).toContain('Shared Folders');
+    expect(fixture.nativeElement.textContent).toContain('slskd.sharedFolders');
+    expect(BASE_CATALOG).toHaveProperty(['slskd.sharedFolders']);
     fixture.destroy();
   });
 });

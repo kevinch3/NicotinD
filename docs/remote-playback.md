@@ -54,7 +54,32 @@ Client disconnects / tab closes
 
 Device IDs are generated once per browser profile via `crypto.randomUUID()` and persisted in `localStorage`. The device name is auto-detected from the User-Agent (`"Chrome on Windows"`, `"Safari on iPhone"`, …) — except on a TV UI, where the UA reads "Chrome on Android" and says nothing a cast selector needs, so the default is `"NicotinD TV"` (issue #393) — and can be overridden by the user.
 
-A 30-second heartbeat keeps the connection alive through idle proxies.
+A 30-second heartbeat keeps the connection alive through idle proxies, and a 90-second
+`STALE_TIMEOUT` (three missed beats, swept every 30s) drops devices that stopped answering.
+
+#### Surviving a prune and a stale close (issue #433)
+
+Two defects made "the TV disappeared from the device list" **permanent** rather than transient, and
+both are worth keeping in mind when touching this file:
+
+- **A pruned device could never re-register.** `heartbeat(id)` used to silently no-op for an unknown
+  id, and the client only sends `REGISTER` from `ws.onopen`. Once the sweeper pruned a device, its
+  socket was still `OPEN` — so `onopen` never fired again, `REGISTER` was never resent, and every
+  later heartbeat hit the no-op. Android WebView throttles background timers, so a TV behind a
+  screensaver misses three beats easily; that made a routine prune terminal. `heartbeat` now
+  **returns whether the device was known**, and `websocket.ts` re-registers from the registration it
+  keeps alongside the connection when the answer is false. Healing on the server side is deliberate:
+  it needs no protocol change and works with clients that predate the fix.
+
+- **A stale close evicted a live device.** `connections` is keyed by `WSContext`, `devices` by device
+  id, and the client reuses **one stable device id across reconnects**. After a Wi-Fi blip the dead
+  socket's `onClose` could land *after* the fresh socket had already re-registered, and
+  `unregisterDevice(id)` would delete the id the live connection had just claimed. `onClose` now
+  drops the device only if no other connection for that user still holds the id.
+
+Test note: `connections` is module-level, so a spec that opens a mock socket and never closes it
+leaks into every later test in the file. That was invisible before the ownership check and is now
+load-bearing — `websocket.test.ts` closes every socket it creates in `afterEach`.
 
 ### State model
 

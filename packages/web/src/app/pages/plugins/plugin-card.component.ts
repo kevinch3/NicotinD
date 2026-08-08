@@ -6,6 +6,7 @@ import { pluginStatus, type PluginStatus } from '../../lib/plugin-status';
 import { IconComponent } from '../../components/icon/icon.component';
 import { SlskdSettingsComponent } from './slskd/slskd-settings.component';
 import { readGroupOpen, writeGroupOpen } from '../../lib/group-state';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 /**
  * One extension card on the Extensions page. A real component rather than the
@@ -46,7 +47,7 @@ import { readGroupOpen, writeGroupOpen } from '../../lib/group-state';
 @Component({
   selector: 'app-plugin-card',
   standalone: true,
-  imports: [FormsModule, TvNavItemDirective, IconComponent, SlskdSettingsComponent],
+  imports: [FormsModule, TvNavItemDirective, IconComponent, SlskdSettingsComponent, TranslatePipe],
   templateUrl: './plugin-card.component.html',
 })
 export class PluginCardComponent {

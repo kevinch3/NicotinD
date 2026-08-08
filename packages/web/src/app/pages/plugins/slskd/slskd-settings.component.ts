@@ -5,6 +5,8 @@ import type { SlskdStatus } from '@nicotind/core';
 import { SystemApiService } from '../../../services/api/system-api.service';
 import { PluginService } from '../../../services/plugin.service';
 import { PasswordFieldComponent } from '../../../components/password-field/password-field.component';
+import { TranslatePipe } from '../../../pipes/translate.pipe';
+import { TranslateService } from '../../../services/translate.service';
 
 /**
  * The slskd (Soulseek) extension's own settings surface — embedded inline in
@@ -30,12 +32,13 @@ import { PasswordFieldComponent } from '../../../components/password-field/passw
 @Component({
   selector: 'app-slskd-settings',
   standalone: true,
-  imports: [FormsModule, PasswordFieldComponent],
+  imports: [FormsModule, PasswordFieldComponent, TranslatePipe],
   templateUrl: './slskd-settings.component.html',
 })
 export class SlskdSettingsComponent implements OnInit, OnDestroy {
   private api = inject(SystemApiService);
   readonly plugins = inject(PluginService);
+  private readonly i18n = inject(TranslateService);
 
   // Connection (moved from the old Settings "Soulseek Network" section)
   readonly loading = signal(true);
@@ -109,7 +112,7 @@ export class SlskdSettingsComponent implements OnInit, OnDestroy {
   /** slskd speed limits are KiB/s; 0 = unlimited. */
   formatLimit(kib: number | undefined): string {
     if (kib == null) return '—';
-    return kib === 0 ? 'Unlimited' : `${kib} KB/s`;
+    return kib === 0 ? this.i18n.t('slskd.unlimited') : `${kib} KB/s`;
   }
 
   formatUptime(seconds: number | undefined): string {
@@ -128,9 +131,9 @@ export class SlskdSettingsComponent implements OnInit, OnDestroy {
   }
 
   statusLabel(): string {
-    if (!this.configured()) return 'Not configured';
-    if (this.connected()) return 'Connected';
-    return 'Disconnected';
+    if (!this.configured()) return this.i18n.t('slskd.notConfigured');
+    if (this.connected()) return this.i18n.t('slskd.connected');
+    return this.i18n.t('slskd.disconnected');
   }
 
   private async loadSettings(): Promise<void> {
@@ -153,7 +156,7 @@ export class SlskdSettingsComponent implements OnInit, OnDestroy {
     e.preventDefault();
     if (!this.username().trim() || !this.password().trim()) return;
     if (this.isNewAccount() && this.password() !== this.confirmPassword()) {
-      this.message.set({ type: 'error', text: 'Passwords do not match' });
+      this.message.set({ type: 'error', text: this.i18n.t('slskd.passwordsMismatch') });
       return;
     }
 
@@ -175,24 +178,25 @@ export class SlskdSettingsComponent implements OnInit, OnDestroy {
         this.connected.set(true);
         this.message.set({
           type: 'success',
-          text: this.isNewAccount()
-            ? `Account created — connected as ${result.username ?? this.username().trim()}`
-            : `Connected as ${result.username ?? this.username().trim()}`,
+          text: this.i18n.t(
+            this.isNewAccount() ? 'slskd.accountCreatedConnected' : 'slskd.connectedAs',
+            { username: result.username ?? this.username().trim() },
+          ),
         });
       } else {
         this.configured.set(true);
         this.message.set({
           type: this.isNewAccount() ? 'error' : 'success',
-          text: this.isNewAccount()
-            ? 'Connection failed — username may already be taken'
-            : 'Service started — connection may take a moment',
+          text: this.i18n.t(
+            this.isNewAccount() ? 'slskd.connectionFailedTaken' : 'slskd.serviceStarted',
+          ),
         });
         setTimeout(async () => {
           try {
             const status = await firstValueFrom(this.api.getSoulseekStatus());
             this.connected.set(status.connected);
             if (status.connected)
-              this.message.set({ type: 'success', text: 'Connected to Soulseek network' });
+              this.message.set({ type: 'success', text: this.i18n.t('slskd.connectedNetwork') });
           } catch {
             /* ignore */
           }
@@ -201,7 +205,7 @@ export class SlskdSettingsComponent implements OnInit, OnDestroy {
     } catch (err) {
       this.message.set({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to save settings',
+        text: err instanceof Error ? err.message : this.i18n.t('slskd.saveFailed'),
       });
     } finally {
       this.saving.set(false);
@@ -216,14 +220,14 @@ export class SlskdSettingsComponent implements OnInit, OnDestroy {
       this.connected.set(result.connected);
       this.toggleMessage.set({
         type: 'success',
-        text: result.connected
-          ? 'Connected to Soulseek network'
-          : 'Disconnected from Soulseek network',
+        text: this.i18n.t(
+          result.connected ? 'slskd.connectedNetwork' : 'slskd.disconnectedNetwork',
+        ),
       });
     } catch (err) {
       this.toggleMessage.set({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Toggle failed',
+        text: err instanceof Error ? err.message : this.i18n.t('slskd.toggleFailed'),
       });
     } finally {
       this.toggling.set(false);
@@ -251,11 +255,11 @@ export class SlskdSettingsComponent implements OnInit, OnDestroy {
       await firstValueFrom(this.api.addShare(path));
       this.newSharePath.set('');
       await this.loadShares();
-      this.sharesMessage.set({ type: 'success', text: `Added: ${path}` });
+      this.sharesMessage.set({ type: 'success', text: this.i18n.t('slskd.addedShare', { path }) });
     } catch (err) {
       this.sharesMessage.set({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to add directory',
+        text: err instanceof Error ? err.message : this.i18n.t('slskd.addShareFailed'),
       });
     } finally {
       this.sharesLoading.set(false);
@@ -271,7 +275,7 @@ export class SlskdSettingsComponent implements OnInit, OnDestroy {
     } catch (err) {
       this.sharesMessage.set({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to remove directory',
+        text: err instanceof Error ? err.message : this.i18n.t('slskd.removeShareFailed'),
       });
     } finally {
       this.sharesLoading.set(false);
@@ -283,11 +287,11 @@ export class SlskdSettingsComponent implements OnInit, OnDestroy {
     this.sharesMessage.set(null);
     try {
       await firstValueFrom(this.api.rescanShares());
-      this.sharesMessage.set({ type: 'success', text: 'Rescan triggered' });
+      this.sharesMessage.set({ type: 'success', text: this.i18n.t('slskd.rescanTriggered') });
     } catch (err) {
       this.sharesMessage.set({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Rescan failed',
+        text: err instanceof Error ? err.message : this.i18n.t('slskd.rescanFailed'),
       });
     } finally {
       this.sharesLoading.set(false);

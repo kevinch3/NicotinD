@@ -100,6 +100,11 @@ export * from '../../../core/src/version';
 // source the album-hunt modal shows and the API hunter fires. See hunt-queries.ts.
 export * from '../../../core/src/hunt-queries';
 
+// Value re-export: pairing / TV sign-in code alphabet (pure, browser-safe) —
+// the API mints codes with it, the Settings scan button validates against it
+// (issue #434), so the two can't drift.
+export * from '../../../core/src/pairing-code';
+
 /** AcoustID fingerprint-identify result shape (issue #411 download-review). */
 export type { IdentifyResult } from '../../../core/src/plugin/capabilities';
 /** Why an identify attempt produced no match (issue #414) — re-exported from

@@ -6,6 +6,7 @@ import { provideRouter } from '@angular/router';
 import { AgentTokensComponent } from './agent-tokens.component';
 import { AgentTokensApiService } from '../../../services/api/agent-tokens-api.service';
 import type { AgentTokenMintResponse, AgentTokenRow } from '../../../services/api/api-types';
+import BASE_CATALOG from '../../../../../public/i18n/en.json';
 
 const TOKENS: AgentTokenRow[] = [
   {
@@ -70,7 +71,10 @@ describe('AgentTokensComponent', () => {
 
   it('surfaces a load error', () => {
     const fixture = setup({ listTokens: () => throwError(() => new Error('boom')) });
-    expect(fixture.componentInstance.error()).toBe('Could not load agent tokens');
+    // Error copy is i18n'd (issue #380); no catalog is loaded in this harness,
+    // so t() returns the key — assert it exists in the base catalog too.
+    expect(fixture.componentInstance.error()).toBe('agentTokens.errorLoad');
+    expect(BASE_CATALOG).toHaveProperty(['agentTokens.errorLoad']);
   });
 
   it('mints a token, shows the once-only secret, and clears the name field', () => {
@@ -101,7 +105,8 @@ describe('AgentTokensComponent', () => {
     const c = fixture.componentInstance;
     c.name = 'New agent';
     c.mint();
-    expect(c.error()).toBe('Could not create a token');
+    expect(c.error()).toBe('agentTokens.errorCreate');
+    expect(BASE_CATALOG).toHaveProperty(['agentTokens.errorCreate']);
     expect(c.busy()).toBe(false);
   });
 
@@ -116,7 +121,8 @@ describe('AgentTokensComponent', () => {
     const fixture = setup({ revokeToken: () => throwError(() => new Error('boom')) });
     const c = fixture.componentInstance;
     c.revoke(TOKENS[0]!);
-    expect(c.error()).toBe('Could not revoke token');
+    expect(c.error()).toBe('agentTokens.errorRevoke');
+    expect(BASE_CATALOG).toHaveProperty(['agentTokens.errorRevoke']);
     expect(c.tokens()).toEqual(TOKENS);
   });
 

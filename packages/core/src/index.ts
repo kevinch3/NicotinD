@@ -24,6 +24,9 @@ export * from './roles.js';
 // slskd hunt query builders (shared by the API hunter + web hunt modal)
 export * from './hunt-queries.js';
 
+// Pairing / TV sign-in code alphabet (shared by the API minter + web scanner)
+export * from './pairing-code.js';
+
 // Plugin SDK (capability contracts + manifest)
 export * from './plugin/index.js';
 

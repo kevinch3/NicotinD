@@ -194,6 +194,15 @@ describe('PlaybackStateManager', () => {
       manager.heartbeat('nonexistent');
       expect(manager.getDevices()).toHaveLength(0);
     });
+
+    // Issue #433: the caller needs to distinguish "beat recorded" from "this
+    // device was pruned" so it can re-register it — the client only sends
+    // REGISTER from `onopen`, which never fires again on a still-open socket.
+    it('reports whether the device was known', () => {
+      manager.registerDevice({ id: 'd1', name: 'Test', type: 'web' });
+      expect(manager.heartbeat('d1')).toBe(true);
+      expect(manager.heartbeat('nonexistent')).toBe(false);
+    });
   });
 
   describe('emitCommand', () => {
