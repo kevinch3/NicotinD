@@ -246,11 +246,23 @@ export class NowPlayingComponent {
    *  Reads the root class (not the build env) so e2e can exercise it. */
   readonly isTv = isTvUi();
 
-  /** The blurred sheet backdrop on TV — same cover endpoint the art uses;
-   *  null (no backdrop) when the track has no cover. */
+  /**
+   * The blurred sheet backdrop on TV — same cover endpoint the art uses;
+   * null (no backdrop) when the track has no cover.
+   *
+   * Also null while the sheet is **closed**. The sheet is never unmounted, only
+   * translated below the viewport, and its `::before` uses `inset: -6%` to hide
+   * the blur's unsampled edge — which on a 540px TV viewport reaches 32px back
+   * INSIDE the screen. With `blur(56px)` on top, the cover's colours smeared
+   * roughly 90px up the page, painting a soft wash across the bottom of every
+   * route (the mini-player looked like it had a gradient behind it). Withholding
+   * the URL is the fix rather than `overflow: hidden` on the sheet: the sheet
+   * carries a transform, so it is the containing block for the fixed-position
+   * TV queue overlay, and clipping it would clip that too.
+   */
   readonly tvBackdropUrl = computed(() => {
     const track = this.player.currentTrack();
-    if (!this.isTv || !track?.coverArt) return null;
+    if (!this.isTv || !track?.coverArt || !this.player.nowPlayingOpen()) return null;
     return this.server.apiUrl(`/api/cover/${track.coverArt}?size=600&token=${this.auth.token()}`);
   });
 

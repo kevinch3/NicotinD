@@ -769,3 +769,52 @@ describe('NowPlayingComponent', () => {
     });
   });
 });
+
+describe('NowPlayingComponent — TV backdrop bleed (issue #439)', () => {
+  /**
+   * The sheet is never unmounted, only translated below the viewport. Its
+   * blurred-cover `::before` uses `inset: -6%`, which on a 540px TV viewport
+   * reaches 32px back inside the screen; `blur(56px)` then smeared the cover's
+   * colours ~90px up, so every route had a wash behind the mini-player.
+   *
+   * `isTv` is read once at construction from the root class, so the class must
+   * be stamped before `setup()` creates the component.
+   */
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    document.documentElement.classList.add('tv-build');
+  });
+  afterEach(() => document.documentElement.classList.remove('tv-build'));
+
+  const TRACK = { id: '1', title: 'Song', artist: 'Artist', coverArt: 'cov-1' };
+
+  it('withholds the backdrop while the sheet is closed', () => {
+    const { fixture, playerStub } = setup();
+    playerStub.currentTrack.set(TRACK);
+    playerStub.nowPlayingOpen.set(false);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.tvBackdropUrl()).toBeNull();
+  });
+
+  it('paints the backdrop once the sheet is open', () => {
+    const { fixture, playerStub } = setup();
+    playerStub.currentTrack.set(TRACK);
+    playerStub.nowPlayingOpen.set(true);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.tvBackdropUrl()).toContain('/api/cover/cov-1');
+  });
+
+  it('reacts to the sheet closing, not just its initial state', () => {
+    const { fixture, playerStub } = setup();
+    playerStub.currentTrack.set(TRACK);
+    playerStub.nowPlayingOpen.set(true);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.tvBackdropUrl()).not.toBeNull();
+
+    playerStub.nowPlayingOpen.set(false);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.tvBackdropUrl()).toBeNull();
+  });
+});
