@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { isTvBuild } from './lib/platform';
 import {
   authGuard,
   adminGuard,
@@ -43,6 +44,18 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./pages/share/share-view.component').then((m) => m.ShareViewComponent),
   },
+  // The authenticated shell. TV gets its OWN tree (docs/tv-ux.md): a route that
+  // does not exist cannot be reached by a stray routerLink and cannot accumulate
+  // a focus trap nobody is watching, which is why the TV surface subtracts
+  // routes rather than hiding them with CSS.
+  //
+  // `isTvBuild()` (environment-baked), NOT `isTvUi()` (reads the `tv-build`
+  // root class). This module's body is evaluated when main.ts imports
+  // appConfig — and ES imports are hoisted, so that happens BEFORE main.ts
+  // calls `applyTvBuildClass()`. A DOM-based check here is always false and the
+  // TV tree silently never registers. Anything picking a route tree at module
+  // scope must use the build-time signal.
+  ...(isTvBuild() ? [tvShellRoute()] : []),
   {
     path: '',
     loadComponent: () =>
@@ -141,3 +154,44 @@ export const routes: Routes = [
   },
   { path: '**', redirectTo: '' },
 ];
+
+/**
+ * The TV route tree — five screens and nothing else. Acquire, Downloads, Admin,
+ * artist/genre/playlist detail and the settings sub-pages are all absent by
+ * construction: each is search- or form-driven, and a remote has no Tab to
+ * escape a native control with (issue #438).
+ */
+function tvShellRoute() {
+  return {
+    path: '',
+    loadComponent: () =>
+      import('./components/tv-shell/tv-shell.component').then((m) => m.TvShellComponent),
+    canActivate: [serverGuard, authGuard],
+    children: [
+      {
+        path: '',
+        loadComponent: () => import('./pages/tv/tv-home.component').then((m) => m.TvHomeComponent),
+      },
+      {
+        path: 'library',
+        loadComponent: () =>
+          import('./pages/tv/tv-browse.component').then((m) => m.TvBrowseComponent),
+      },
+      {
+        path: 'library/albums/:id',
+        loadComponent: () =>
+          import('./pages/tv/tv-album.component').then((m) => m.TvAlbumComponent),
+      },
+      {
+        path: 'player',
+        loadComponent: () =>
+          import('./pages/tv/tv-player.component').then((m) => m.TvPlayerComponent),
+      },
+      {
+        path: 'settings',
+        loadComponent: () =>
+          import('./pages/tv/tv-settings.component').then((m) => m.TvSettingsComponent),
+      },
+    ],
+  };
+}

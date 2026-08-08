@@ -1,0 +1,92 @@
+<div
+  class="relative min-h-screen flex flex-col items-center justify-center overflow-hidden"
+  data-testid="tv-player"
+>
+  @if (backdrop(); as bg) {
+    <div
+      class="absolute inset-0 z-0 bg-cover bg-center"
+      [style.background-image]="bg"
+      style="filter: blur(56px) brightness(0.45) saturate(1.15); transform: scale(1.12)"
+      aria-hidden="true"
+    ></div>
+  }
+
+  @if (track(); as t) {
+    <div class="relative z-10 flex flex-col items-center gap-4 px-[4vw]">
+      <app-cover-art
+        [src]="t.coverArt ? '/api/cover/' + t.coverArt + '?size=600&token=' + auth.token() : undefined"
+        [artist]="t.artist"
+        [album]="t.album ?? ''"
+        [size]="188"
+        rounded="rounded-2xl"
+      />
+      <div class="text-center min-w-0 max-w-3xl">
+        <h1 class="text-2xl font-bold truncate text-white" data-testid="tv-player-title">
+          {{ t.title }}
+        </h1>
+        <p class="text-base text-white/70 truncate">{{ t.artist }}</p>
+      </div>
+
+      <div
+        appTvNavGroup
+        [axis]="'horizontal'"
+        class="flex items-center gap-6"
+        data-testid="tv-transport"
+      >
+        <button
+          appTvNavItem
+          type="button"
+          (click)="player.playPrev()"
+          data-testid="tv-prev"
+          aria-label="Previous"
+          class="w-14 h-14 rounded-full bg-white/10 text-white focus:outline-none
+                 focus-visible:ring-4 focus-visible:ring-white"
+        >
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M6 6h2v12H6zm3 6l9-6v12z" />
+        </svg>
+        </button>
+        <button
+          appTvNavItem
+          type="button"
+          (click)="togglePlay()"
+          data-testid="tv-playpause"
+          aria-label="Play or pause"
+          class="w-20 h-20 rounded-full bg-white text-black focus:outline-none
+                 focus-visible:ring-4 focus-visible:ring-white"
+        >
+          @if (player.isPlaying()) {
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M7 5h4v14H7zm6 0h4v14h-4z" />
+          </svg>
+        } @else {
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        }
+        </button>
+        <button
+          appTvNavItem
+          type="button"
+          (click)="player.playNext()"
+          data-testid="tv-next"
+          aria-label="Next"
+          class="w-14 h-14 rounded-full bg-white/10 text-white focus:outline-none
+                 focus-visible:ring-4 focus-visible:ring-white"
+        >
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M16 6h2v12h-2zm-1 6L6 18V6z" />
+        </svg>
+        </button>
+      </div>
+
+      <p class="text-sm text-white/50" data-testid="tv-seek-hint">{{ 'tv.seekHint' | t }}</p>
+
+      @if (nextUp(); as n) {
+        <p class="text-sm text-white/60 truncate max-w-2xl" data-testid="tv-next-up">
+          {{ 'tv.queue' | t }}: {{ n.title }} · {{ n.artist }}
+        </p>
+      }
+    </div>
+  }
+</div>

@@ -25,6 +25,12 @@ export class KeyboardShortcutsService {
       .subscribe((e) => this.handle(e));
   }
 
+  /** TV only: is the full-screen player the active route? See the ArrowLeft/
+   *  Right branch — seek belongs to that route and to no other. */
+  private onTvPlayerRoute(): boolean {
+    return this.router.url.split('?')[0] === '/player';
+  }
+
   private isTypingTarget(target: EventTarget | null): boolean {
     const el = target as HTMLElement | null;
     if (!el) return false;
@@ -82,9 +88,15 @@ export class KeyboardShortcutsService {
       // On a TV build, Left/Right belong to the WebView's spatial focus
       // navigation — preventDefault() here is what cancelled the D-pad focus
       // move and made the whole Now Playing sheet horizontally unnavigable
-      // (issue #387). Seeking on TV stays available via the focused seek bar
-      // (native <input type=range>) and hardware media keys.
-      if (isTvBuild()) return;
+      // (issue #387).
+      //
+      // The one exception is the TV player route, where seeking IS what
+      // Left/Right mean: the TV surface has no seek bar to focus, because a
+      // native range input eats all four arrow keys and a remote has no Tab to
+      // escape it with (issue #438). Scoping by *active route* rather than by
+      // focus position is deliberate — inferring the mode from what happens to
+      // be focused is exactly the ambiguity that produced #387.
+      if (isTvBuild() && !this.onTvPlayerRoute()) return;
       // A focused, closed `<select>` changes its selected option on
       // ArrowLeft/ArrowRight — a preventable default we must not steal (there
       // are `<select>`s in the Library sort dropdowns, Settings, Admin, the

@@ -1,7 +1,7 @@
-# The TV surface (design — not yet implemented)
+# The TV surface
 
-**Status:** design approved 2026-08-08; no code written. Nothing here describes behaviour that
-exists today, in the same sense as [oauth-auth.md](oauth-auth.md).
+**Status:** shipped 2026-08-08. `isTvBuild()` selects a five-route TV tree; `bun run e2e:tv` covers
+it with 18 tests, including an assertion that no TV route renders a native form control.
 
 **Supersedes** the conditional-patching approach that produced issues #387, #389, #393, #394, #396,
 #399, #432, #436, #438 and #439 — nine rounds of locally-reasonable fixes to touch components that
@@ -203,3 +203,43 @@ control on TV — so it closes when step 4's assertion goes green, not when the 
   is not knowable from here, and the fallback (find on phone, cast to TV) already works.
 - **Does the TV need its own Now Playing queue editing**, or is view-plus-jump enough? Currently
   #399's overlay does jump and remove; nothing suggests more is wanted.
+
+## What implementing it changed
+
+Four defects surfaced during the build, all of which **degraded into something that looked
+deliberate** rather than throwing. Worth recording, because each one passed typecheck and (except
+the last two) the test suite:
+
+1. **The route fork must use `isTvBuild()`, not `isTvUi()`.** `app.routes.ts` is evaluated when
+   `main.ts` imports `appConfig`, and ES imports are hoisted — so it runs _before_
+   `applyTvBuildClass()` stamps the root class. A DOM-based check there is always false and the TV
+   tree silently never registers; the app boots fine, just as the phone UI. Pinned by
+   `app.routes.spec.ts`, which asserts the source uses the build-time signal (a source-text check on
+   purpose: the bug _is_ evaluation order, so importing the module in a spec proves nothing).
+2. **`app-player` is the audio engine, not the bar.** Dropping it from the TV shell to remove the
+   mini-player removed `<audio>`, buffering, transcode fallback, false-ended recovery and the media
+   session with it. It is now rendered **headless** on TV — its template gates all chrome behind
+   `@if (!isTv)`. That also keeps the seek bar (`input[type=range]`) out of the DOM, which the
+   enforcement assertion requires.
+3. **Cover URLs need `&token=`.** `/api/cover/:id` is auth-gated; without the token every request
+   401s and `CoverArtComponent` falls back to its gradient placeholder — which reads as a design
+   choice. All 17 tests passed while every cover was broken, because none looked at pixels. The
+   smoke spec now asserts `naturalWidth > 0`.
+4. **`max-h` on `<app-cover-art>` clips the host, not the image.** With a fixed `[size]` the art
+   overflowed and sat on top of the track title. Size it once instead of clipping.
+
+The through-line: none of these threw, and three of four were invisible to a green suite. They were
+found by running the real APK on a real device and _looking at it_.
+
+### #436 is moot here, not fixed
+
+The escape tests asserted focus could reach the player chrome _below_ a track list. There is no such
+chrome on the TV tree any more, so that premise is gone rather than satisfied. `navigation-escape.tv.spec.ts`
+now tests what still matters — no screen is a dead end, Back always exits — and #436 stays **open**
+for any surface that still nests a bottom-most nav group under other chrome.
+
+### #438 closes on the assertion, not on the seek bar
+
+The issue names every native control on TV, not just the seek bar. It is satisfied by
+`dpad-reachability.tv.spec.ts`'s `input, select, textarea, [contenteditable]` count being zero on
+every TV route — which is what makes the guarantee durable rather than a convention.

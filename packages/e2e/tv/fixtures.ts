@@ -137,12 +137,18 @@ export async function goto(page: Page, route: string): Promise<void> {
   await page.waitForLoadState('domcontentloaded');
 }
 
-/** Start playback so the mini-player exists — the precondition for player specs. */
+/**
+ * Start playback and land on the TV player route.
+ *
+ * There is no mini-player on TV any more (docs/tv-ux.md) — the player is a
+ * route, and the shell navigates to it when something starts playing. So this
+ * ends on `/player` rather than on a bar at the bottom of the previous screen.
+ */
 export async function startPlayback(page: Page): Promise<void> {
   await goto(page, '/library');
-  const card = page.getByTestId('album-card').first();
+  const card = page.getByTestId('tv-album-card').first();
   await card.waitFor({ state: 'visible' });
   await card.click();
-  await page.getByTestId('play-album').click();
-  await expect(page.getByTestId('player-title')).toBeVisible();
+  await page.getByTestId('tv-album-play').click();
+  await expect(page.getByTestId('tv-player-title')).toBeVisible();
 }

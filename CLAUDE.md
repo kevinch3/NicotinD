@@ -1394,12 +1394,16 @@ it and commit any changed `docs/images/*.png` whenever a UI change touches the L
 screens. The flow catalogue + recurring routines live in
 [docs/testing-routines.md](docs/testing-routines.md). → See [docs/e2e.md](docs/e2e.md).
 
-**TV surface redesign (proposed, issue #436/#438)**: the TV is moving to a route-level fork —
+**TV surface (issue #436/#438)**: the TV is a route-level fork —
 three screens (moods / browse / player) plus minimal settings, no form controls anywhere, one
 button contract — because every TV defect so far reduces to two bug *classes*, not N bugs: a
 native control eating the arrow keys (a remote has no Tab to escape with), or a nav group
 clamping and swallowing the press. Enforced by extending the e2e:tv reachability audit to fail
-on any focusable native form control. Not yet implemented. →
+on any focusable native form control (a native input carries neither `appTvNavItem` nor
+`tabindex=0`, so the reachability walk is blind to it — which is why that audit passed while #438 was
+live). The fork keys off **`isTvBuild()`, never `isTvUi()`**: `app.routes.ts` is evaluated before
+`applyTvBuildClass()` runs, so a DOM-based check there silently registers nothing. `app-player` is
+still mounted on TV but **headless** — it owns the `<audio>` engine, not just the bar. →
 [docs/tv-ux.md](docs/tv-ux.md)
 
 **Android TV emulator lane (`bun run e2e:tv`)**: a *second*, local-only Playwright lane driving the

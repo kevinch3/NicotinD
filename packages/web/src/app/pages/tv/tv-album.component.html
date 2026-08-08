@@ -1,0 +1,53 @@
+<div class="px-[4vw] py-[3vh] flex flex-col gap-8" data-testid="tv-album">
+  @if (loading()) {
+    <p class="text-theme-muted">{{ 'tv.loading' | t }}</p>
+  } @else if (album(); as a) {
+    <div class="flex gap-10 items-end">
+      <app-cover-art
+        [src]="a.coverArt ? '/api/cover/' + a.coverArt + '?size=600&token=' + auth.token() : undefined"
+        [artist]="a.artist"
+        [album]="a.name"
+        [size]="260"
+        rounded="rounded-xl"
+      />
+      <div class="min-w-0 flex flex-col gap-4">
+        <div class="min-w-0">
+          <h1 class="text-4xl font-bold truncate text-theme-primary">{{ a.name }}</h1>
+          <p class="text-xl text-theme-secondary truncate">{{ a.artist }}</p>
+          @if (a.year) {
+            <p class="text-base text-theme-muted">{{ a.year }}</p>
+          }
+        </div>
+        <div appTvNavGroup [axis]="'horizontal'" class="flex">
+          <button
+            appTvNavItem
+            type="button"
+            (click)="play()"
+            data-testid="tv-album-play"
+            class="px-10 py-4 rounded-2xl bg-theme-accent text-theme-on-accent text-lg font-semibold
+                   focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+          >
+            {{ 'tv.play' | t }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div appTvNavGroup [axis]="'vertical'" class="flex flex-col" data-testid="tv-tracklist">
+      @for (s of songs(); track s.id; let i = $index) {
+        <button
+          appTvNavItem
+          type="button"
+          (click)="play(i)"
+          data-testid="tv-track-row"
+          class="flex items-center gap-5 px-4 py-3 rounded-lg text-left transition
+                 focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent
+                 focus-visible:bg-theme-surface-2"
+        >
+          <span class="w-8 text-right text-sm text-theme-muted tabular-nums">{{ i + 1 }}</span>
+          <span class="flex-1 min-w-0 truncate text-base text-theme-primary">{{ s.title }}</span>
+        </button>
+      }
+    </div>
+  }
+</div>

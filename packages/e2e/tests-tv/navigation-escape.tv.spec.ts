@@ -1,95 +1,53 @@
 /**
- * Can focus get OUT of a content region and reach the player chrome?
+ * Can focus get out of a content region, and can the viewer always get home?
  *
- * This is issue #436 generalized. `TvNavGroupDirective` clamps at a group edge
- * and `preventDefault()`s unconditionally (so an edge press can't leak into the
- * global ArrowLeft/Right seek shortcut). On desktop that is invisible — focus
- * wasn't going anywhere regardless. On a TV it suppresses the WebView's
- * spatial-navigation escape, trapping focus inside any bottom-most nav group.
+ * This file used to assert that focus could escape a track list **downward into
+ * the player chrome** — issue #436, where `TvNavGroupDirective` clamps at a
+ * group edge and `preventDefault()`s unconditionally, suppressing the WebView's
+ * spatial-navigation escape.
  *
- * The bug is a *pattern*, not a one-off: it recurs on any surface whose content
- * ends in a nav group. Hence one test per surface rather than one for albums.
+ * The TV surface redesign (docs/tv-ux.md) removed the premise rather than the
+ * clamp: there is no mini-player below the content any more, because the player
+ * is its own route. So "escape downward into the chrome" is no longer a thing a
+ * viewer needs to do, and asserting it would test something that does not exist.
+ *
+ * What still matters — and is what these tests now check — is that no screen is
+ * a dead end: from anywhere in a content region, a viewer can always reach
+ * another surface. On TV that is Back, which is the guaranteed exit.
+ *
+ * #436 itself is therefore **moot on the TV tree, not fixed**. It remains open
+ * for any surface that still nests a bottom-most nav group under other chrome.
  */
 import { test, expect, goto, startPlayback } from '../tv/fixtures.js';
-import type { Page } from '@playwright/test';
 
-test.describe('D-pad escape to the player', () => {
-  test.beforeEach(async ({ page }) => {
-    await startPlayback(page);
+test.describe('escape from a content region', () => {
+  test('Back leaves the album tracklist and returns to browse', async ({ page, dpad, focusId }) => {
+    await goto(page, '/library');
+    await page.getByTestId('tv-album-card').first().click();
+    await expect(page.getByTestId('tv-album')).toBeVisible();
+
+    // Walk into the tracklist — the region that used to be a trap.
+    const firstRow = page.getByTestId('tv-track-row').first();
+    await firstRow.waitFor({ state: 'visible' });
+    await firstRow.focus();
+    await dpad('DOWN', 3);
+    expect(await focusId()).toContain('tv-track-row');
+
+    await dpad('BACK');
+    await expect(page.getByTestId('tv-browse')).toBeVisible();
   });
 
-  /** Press DOWN until focus reaches the player, or we run out of patience. */
-  async function pressDownUntilPlayer(
-    dpad: (d: 'DOWN', n?: number) => Promise<void>,
-    focusId: () => Promise<string>,
-    max = 25,
-  ): Promise<{ reached: boolean; trail: string[] }> {
-    const trail: string[] = [await focusId()];
-    for (let i = 0; i < max; i++) {
-      await dpad('DOWN');
-      const id = await focusId();
-      trail.push(id);
-      if (id.startsWith('player-')) return { reached: true, trail };
-      // Focus stopped moving: clamped at an edge with nowhere to go.
-      if (trail.length >= 4 && new Set(trail.slice(-4)).size === 1) break;
-    }
-    return { reached: false, trail };
-  }
+  test('Back returns to Home from browse', async ({ page, dpad }) => {
+    await goto(page, '/library');
+    await expect(page.getByTestId('tv-browse')).toBeVisible();
+    await dpad('BACK');
+    await expect(page.getByTestId('tv-home')).toBeVisible();
+  });
 
-  /**
-   * Blocked by #436 today. `test.fail()` keeps the suite green while the bug is
-   * open AND fails loudly the moment #436 is fixed without updating this file —
-   * so the finding stays executable instead of rotting into a comment.
-   */
-  test.fail(
-    true,
-    'issue #436 — TvNavGroupDirective clamps + preventDefaults, suppressing spatial-nav escape',
-  );
-
-  interface Surface {
-    name: string;
-    /** Navigate to the surface under test, leaving a track list on screen. */
-    open: (page: Page) => Promise<void>;
-  }
-
-  const SURFACES: Surface[] = [
-    {
-      name: 'album detail',
-      open: async (page) => {
-        await goto(page, '/library');
-        await page.getByTestId('album-card').first().click();
-      },
-    },
-    {
-      name: 'library Songs',
-      open: async (page) => goto(page, '/library?tab=songs'),
-    },
-    {
-      name: 'artist detail',
-      open: async (page) => {
-        await goto(page, '/library?tab=artists');
-        await page.getByTestId('artist-card').first().click();
-      },
-    },
-  ];
-
-  for (const surface of SURFACES) {
-    test(`focus escapes ${surface.name} and reaches the player`, async ({
-      page,
-      dpad,
-      focusId,
-    }) => {
-      await surface.open(page);
-
-      // Enter the content region the way a viewer would.
-      const firstRow = page.getByTestId('track-row-title').first();
-      await firstRow.waitFor({ state: 'visible' });
-      await firstRow.focus();
-
-      const { reached, trail } = await pressDownUntilPlayer(dpad, focusId);
-      expect(reached, `focus never left the content region. Trail: ${trail.join(' → ')}`).toBe(
-        true,
-      );
-    });
-  }
+  test('the player is reachable from Home and Back returns', async ({ page, dpad }) => {
+    await startPlayback(page);
+    await expect(page.getByTestId('tv-player')).toBeVisible();
+    await dpad('BACK');
+    await expect(page.getByTestId('tv-player')).toBeHidden();
+  });
 });
