@@ -25,6 +25,30 @@ async function openNowPlaying(page: Page): Promise<void> {
   await expect(page.getByText('Now Playing')).toBeVisible();
 }
 
+/**
+ * Now Playing on a track with NO cover art.
+ *
+ * The 7-track album carries a real `cover.jpg` fixture (so screenshots and the
+ * TV surface show a genuine sleeve), which makes it the wrong subject for the
+ * gradient-fallback assertion below. The loose single is deliberately left
+ * art-less for exactly this.
+ */
+async function openNowPlayingArtless(page: Page): Promise<void> {
+  await page.goto('/library');
+  // The library tab is component state, not a query param — `?tab=songs` does
+  // nothing. Click the tab.
+  await page
+    .getByTestId('library-tabs')
+    .getByRole('button', { name: 'Songs', exact: true })
+    .click();
+  const row = page.locator('app-track-row').filter({ hasText: FIXTURE.single.title }).first();
+  await row.waitFor({ state: 'visible' });
+  await row.getByTestId('track-row-title').click();
+  await expect(page.getByTestId('player-title')).toBeVisible();
+  await page.getByTestId('player-title').click();
+  await expect(page.getByText('Now Playing')).toBeVisible();
+}
+
 test.describe('mobile UX', () => {
   test.use({ viewport: PHONE });
 
@@ -75,16 +99,16 @@ test.describe('mobile UX', () => {
   });
 
   // G2 — Now Playing renders covers via app-cover-art, so a missing/404 cover
-  // degrades to the gradient fallback (no broken-image glyph). The fixtures have
-  // no embedded art, so the hero cover must show the fallback initial and have
-  // no <img> element (app-cover-art swaps to the gradient div on error).
+  // degrades to the gradient fallback (no broken-image glyph). Driven from the
+  // art-less loose single: the 7-track album now ships a real cover.jpg, and
+  // asserting a fallback on a track that HAS art would test nothing.
   test('Now Playing hero cover degrades to the gradient fallback', async ({ page }) => {
-    await openNowPlaying(page);
+    await openNowPlayingArtless(page);
 
     const cover = page.getByTestId('now-playing-cover');
     await expect(cover).toBeVisible();
     // Fallback active: no <img> survives (it errors → gradient div) and the
-    // album initial ("E" for "E2E Test Album") is shown over the gradient.
+    // initial ("E") is shown over the gradient.
     await expect(cover.locator('img')).toHaveCount(0);
     await expect(cover).toContainText('E');
   });
