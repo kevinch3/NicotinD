@@ -93,6 +93,11 @@ export interface LibraryProcessingDeps {
   lookupGenreForRelease?: ((query: GenreQuery) => Promise<GenreResult | null>) | null;
   /** Analysis-sidecar client for the audio-features task, or null when unconfigured. */
   audioFeaturesClient?: AudioFeaturesClient | null;
+  /** Live acquisition kill-switch state (issue #235). With acquisition off the
+   *  Downloads page — and the review inbox on it — is hidden, so the
+   *  hold-for-review landing gate must not hold (issue #416): a manual file
+   *  drop would strand quarantined with no reachable inbox. Defaults to on. */
+  acquisitionEnabled?: () => boolean;
   /** Poll interval. Defaults to 60s. */
   intervalMs?: number;
   /** Injectable clock for window tests. */
@@ -138,6 +143,7 @@ export class LibraryProcessingService extends EventEmitter {
   private readonly lookupGenreForRelease:
     ((query: GenreQuery) => Promise<GenreResult | null>) | null;
   private readonly audioFeaturesClient: AudioFeaturesClient | null;
+  private readonly acquisitionEnabled: () => boolean;
   private readonly logPath: string;
   private readonly intervalMs: number;
   private readonly now: () => Date;
@@ -173,6 +179,7 @@ export class LibraryProcessingService extends EventEmitter {
     this.lookupArtistImageDiscogs = deps.lookupArtistImageDiscogs ?? null;
     this.lookupArtistInfo = deps.lookupArtistInfo ?? null;
     this.lookupGenreForRelease = deps.lookupGenreForRelease ?? null;
+    this.acquisitionEnabled = deps.acquisitionEnabled ?? (() => true);
     this.audioFeaturesClient = deps.audioFeaturesClient ?? null;
     this.logPath = join(deps.dataDir, 'library-processing.log');
     this.intervalMs = deps.intervalMs ?? 60_000;
@@ -463,7 +470,12 @@ export class LibraryProcessingService extends EventEmitter {
     // stays unarmed (see db.ts / download-review-store.ts) so the *entire*
     // existing library doesn't flood the review inbox the first time the toggle
     // is on — only downloads that land after the marker arms actually hold.
-    const reviewCond = reviewHoldActive(this.db, settings.holdForReview)
+    // holdForReview && acquisitionEnabled (issue #416): see the dep's doc — an
+    // unreachable inbox must never hold a landing.
+    const reviewCond = reviewHoldActive(
+      this.db,
+      settings.holdForReview && this.acquisitionEnabled(),
+    )
       ? `EXISTS (SELECT 1 FROM download_reviews r
            WHERE r.album_id = library_songs.album_id AND r.state = 'approved'
              AND (library_songs.created IS NULL OR r.reviewed_at >= library_songs.created))`

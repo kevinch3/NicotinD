@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { basename, dirname, join, normalize, relative } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 import type { Song, Album, Artist } from '@nicotind/core';
@@ -87,6 +87,7 @@ import {
   songFilterWheres,
 } from '../services/library-filter-sql.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../services/musicbrainz-client.js';
+import { expandDir, resolveSongPath, isUnderMusicDir } from '../services/song-path.js';
 
 const log = createLogger('library');
 
@@ -2605,30 +2606,4 @@ function parseCreatedAt(created?: string): number {
   if (!created) return 0;
   const parsed = Date.parse(created);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function expandDir(dir: string): string {
-  if (dir.startsWith('~')) {
-    return join(process.env.HOME ?? '/root', dir.slice(1));
-  }
-  return dir;
-}
-
-function resolveSongPath(musicDir: string, songPath: string): string {
-  const normalizedSongPath = songPath.replace(/\\/g, '/');
-
-  if (isAbsolutePath(normalizedSongPath)) {
-    return normalize(normalizedSongPath);
-  }
-
-  return normalize(join(musicDir, normalizedSongPath));
-}
-
-function isUnderMusicDir(musicDir: string, candidatePath: string): boolean {
-  const rel = relative(musicDir, candidatePath);
-  return rel !== '' && !rel.startsWith('..');
-}
-
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith('/') || /^[a-zA-Z]:\//.test(path);
 }

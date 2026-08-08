@@ -209,9 +209,13 @@ export class MusicBrainzClient {
     const cached = this.cache.get(key);
     if (cached?.type === 'release-group-search') return cached.result;
 
+    // Lucene phrase-escape (issue #416): a `"` or `\` inside a title would
+    // otherwise break out of the phrase and corrupt the whole query (same
+    // helper shape as archive-search.service.ts's `phrase`).
+    const phrase = (term: string): string => `"${term.replace(/[\\"]/g, '\\$&')}"`;
     const query = artist
-      ? `releasegroup:"${album}" AND artist:"${artist}"`
-      : `releasegroup:"${album}"`;
+      ? `releasegroup:${phrase(album)} AND artist:${phrase(artist)}`
+      : `releasegroup:${phrase(album)}`;
     const url = `${MB_BASE}/release-group?query=${encodeURIComponent(query)}&limit=${limit}&fmt=json`;
     const data = await this.fetch<{
       'release-groups'?: Array<{

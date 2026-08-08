@@ -1,4 +1,4 @@
-import { Component, inject, signal, effect, OnInit, OnDestroy } from '@angular/core';
+import { Component, computed, inject, signal, effect, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import type { ProcessingSettings, ProcessingStatus, ProcessingTaskId } from '../../../types/core';
@@ -137,6 +137,8 @@ export class AdminComponent implements OnInit, OnDestroy {
   // Acquisition kill-switch (issue #235). `configurable` false = the env
   // disabled it, a floor an admin cannot lift, so the control goes read-only.
   readonly acquisition = signal<{ enabled: boolean; configurable: boolean } | null>(null);
+  /** Hold-for-review needs a reachable inbox — hidden when acquisition is off (issue #416). */
+  readonly acquisitionOff = computed(() => this.acquisition()?.enabled === false);
   readonly acquisitionSaving = signal(false);
 
   readonly streaming = signal<StreamingSettings | null>(null);

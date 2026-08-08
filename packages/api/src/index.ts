@@ -395,9 +395,14 @@ export function createApp({
   // Windowed library-processing scheduler — runs enrichment tasks (BPM, genre,
   // key, energy, audio features, artist images) over the library, only inside
   // the configured daily window.
+  // Acquisition-toggle ref for the landing gate (issue #416): the toggle is
+  // constructed after this service; before it exists, report "enabled" so the
+  // hold-for-review gate errs toward holding (never toward a surprise landing).
+  const acquisitionOnRef: { enabled: (() => boolean) | null } = { enabled: null };
   processingRef.current = new LibraryProcessingService({
     db,
     lidarr,
+    acquisitionEnabled: () => acquisitionOnRef.enabled?.() ?? true,
     musicDir: expandedMusicDir,
     dataDir: expandedDataDir,
     lookupArtistImageSpotify: (name) =>
@@ -531,6 +536,7 @@ export function createApp({
   // floor an admin cannot lift; within that, the toggle is live.
   const acquisitionToggle = new AcquisitionToggle(db, config.acquisitionEnabled);
   const acquisitionOn = () => acquisitionToggle.enabled();
+  acquisitionOnRef.enabled = acquisitionOn;
   const requireAcquisitionEnabled = requireAcquisitionEnabledMiddleware(acquisitionOn);
 
   // Public routes

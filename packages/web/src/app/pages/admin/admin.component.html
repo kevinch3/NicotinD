@@ -205,8 +205,14 @@
               <span>
                 <span class="text-sm text-theme-primary block">{{ 'admin.holdForReview' | t }}</span>
                 <span class="text-xs text-theme-muted">{{ 'admin.holdForReviewHint' | t }}</span>
+                @if (acquisitionOff()) {
+                  <span class="text-xs text-amber-500 block" data-testid="hold-needs-acquisition">
+                    {{ 'admin.holdForReviewNeedsAcquisition' | t }}
+                  </span>
+                }
               </span>
-              <input type="checkbox" [checked]="p.holdForReview" [disabled]="processingSaving()"
+              <input type="checkbox" [checked]="p.holdForReview"
+                [disabled]="processingSaving() || acquisitionOff()"
                 data-testid="processing-hold-for-review"
                 (change)="saveProcessing({ holdForReview: $any($event.target).checked })"
                 class="w-4 h-4 rounded accent-emerald-500" />

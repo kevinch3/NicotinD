@@ -15,11 +15,16 @@ beforeEach(() => {
   applySchema(db);
 });
 
-function seedQuarantined(id: string, albumId: string, created = '2026-08-01T00:00:00.000Z'): void {
+function seedQuarantined(
+  id: string,
+  albumId: string,
+  created = '2026-08-01T00:00:00.000Z',
+  hidden = 0,
+): void {
   db.run(
     `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, hidden, synced_at)
-     VALUES (?, ?, ?, 'A', 'ar1', 0, ?, 10, 320, 'flac', 'audio/flac', ?, 0, 1)`,
-    [id, albumId, id, `/m/${id}.flac`, created],
+     VALUES (?, ?, ?, 'A', 'ar1', 0, ?, 10, 320, 'flac', 'audio/flac', ?, ?, 1)`,
+    [id, albumId, id, `/m/${id}.flac`, created, hidden],
   );
   db.run(
     `INSERT OR IGNORE INTO library_albums (id, name, artist, artist_id, synced_at) VALUES (?, 'Alb', 'A', 'ar1', 1)`,
@@ -57,6 +62,19 @@ describe('download-review-store', () => {
     armReviewHold(db);
     db.run(`UPDATE library_songs SET landed_at = 1 WHERE id = 's1'`);
     expect(pendingReviewStats(db, true).pending).toBe(0);
+  });
+
+  // Issue #416: hidden rows (dedupe/audit suppressions) must neither surface in
+  // the queue nor inflate the pending badge — a curator can't act on a song no
+  // listing will ever show.
+  it('hidden songs never count (queue + stats)', () => {
+    seedQuarantined('s1', 'al1', '2026-08-01T00:00:00.000Z', 1);
+    armReviewHold(db);
+    expect(pendingReviewStats(db, true)).toEqual({ pending: 0, oldestCreated: null });
+    expect(loadReviewQueue(db)).toEqual([]);
+    // A visible sibling still pends — the exclusion is per-row, not per-album.
+    seedQuarantined('s2', 'al1', '2026-08-02T00:00:00.000Z');
+    expect(pendingReviewStats(db, true).pending).toBe(1);
   });
 
   it('recordReviewDecision upserts (idempotent re-approve)', () => {

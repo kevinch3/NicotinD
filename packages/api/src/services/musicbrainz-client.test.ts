@@ -186,6 +186,19 @@ describe('MusicBrainzClient searchReleaseGroups', () => {
   });
 });
 
+// Issue #416: a quote/backslash inside a title used to break out of the
+// Lucene phrase and corrupt the whole query (encodeURIComponent only
+// URL-escapes — Lucene never sees it).
+it('escapes Lucene phrase quotes/backslashes in the query', async () => {
+  const calls = mockFetch({ 'release-groups': [] });
+  const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+  await client.searchReleaseGroups('AC\\DC', 'Song "Two" of Three');
+
+  expect(calls).toHaveLength(1);
+  const query = decodeURIComponent(new URL(calls[0]).searchParams.get('query') ?? '');
+  expect(query).toBe('releasegroup:"Song \\"Two\\" of Three" AND artist:"AC\\\\DC"');
+});
+
 // Issue #413: the canonical tracklist behind an MB candidate. Two hops (a
 // release group has no tracks), and the release pick is load-bearing.
 describe('MusicBrainzClient getCanonicalTracklist', () => {

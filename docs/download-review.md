@@ -41,6 +41,39 @@ album, `reviewed_at >= created`. Two deliberate independences:
 Off (the default), `reviewCond` is `null` and the gate reduces exactly to the
 pre-#411 behavior — zero change until an admin opts in.
 
+### Acquisition-off corner (issue #416)
+
+With the deployment-wide acquisition kill-switch off (issue #235) the Downloads
+page — and the review inbox rendered on it — is hidden from every user, but a
+**manual file drop into the music dir still scans**. Held files would then wait
+behind an approval no UI can grant, indefinitely (review is deliberately
+outside the 24h valve). Two coordinated guards close this:
+
+- **Belt — the landing gate ignores the flag while acquisition is off**:
+  `LibraryProcessingService` takes an `acquisitionEnabled` dep (the live
+  `AcquisitionToggle` state, re-checked every pass since the toggle is
+  runtime-flippable) and computes `reviewHoldActive(db, holdForReview &&
+  acquisitionEnabled())`. This covers the setting-predates-the-switch-off
+  history: however the flags got into that combination, nothing strands.
+- **Braces — `PUT /api/admin/processing` denies *enabling*** `holdForReview`
+  while acquisition is off (400 with the explanation), and the Admin toggle is
+  disabled with an inline note (`data-testid="hold-needs-acquisition"`), so the
+  admin learns *why* instead of watching a toggle silently do nothing.
+
+### Deferred minors from the #411 ledger (closed by #416)
+
+- `searchReleaseGroups` now Lucene-escapes `"`/`\` inside its phrase terms
+  (same helper shape as `archive-search.service.ts`) — a quote in an album
+  title used to break out of the phrase and corrupt the whole query.
+- The path-safety triad (`expandDir` → `resolveSongPath` → `isUnderMusicDir`)
+  is extracted to `services/song-path.ts` — one implementation instead of the
+  three byte-identical copies in routes/library.ts, services/library-deletion.ts
+  and routes/download-review.ts (the resolve-only variants in
+  `track-backfill.ts`/`candidate-sources.ts` intentionally stay local — they
+  omit the containment check for paths legitimately outside the library).
+- `hidden = 1` rows are covered by tests: they never surface in the review
+  queue nor inflate the pending badge.
+
 ### Bootstrap exemption (fresh database)
 
 Turning `holdForReview` on for a **brand-new** database is a flood, not a
