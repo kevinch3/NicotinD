@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.323](https://github.com/kevinch3/NicotinD/compare/v0.1.322...v0.1.323) (2026-08-08)
+
+### Bug Fixes
+
+* **review:** distinguish fpcalc failure from a fingerprint no-match ([#430](https://github.com/kevinch3/NicotinD/issues/430)) ([52b7bcd](https://github.com/kevinch3/NicotinD/commit/52b7bcd86d8d5644b3f7ff3dc38bc13ac053c5bc)), closes [#414](https://github.com/kevinch3/NicotinD/issues/414)
 ## [0.1.322](https://github.com/kevinch3/NicotinD/compare/v0.1.321...v0.1.322) (2026-08-08)
 
 ### Bug Fixes
