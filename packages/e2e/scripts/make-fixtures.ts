@@ -11,6 +11,17 @@
  * Produces:
  *   - a 7-track album  -> classified `album`, appears in the Albums grid
  *   - a 1-track loose single -> classified `single`, appears on the artist page
+ *
+ * NOT produced here: `E2E_Test_Artist/E2E_Test_Album/cover.jpg`, a committed
+ * 1400x1400 sleeve the scanner picks up as folder art. It exists so screenshots
+ * and the TV surface show a genuine cover rather than the gradient-initial
+ * placeholder — a placeholder reads as a design choice, which is exactly how a
+ * broken cover URL hid on the TV surface until someone looked at a screenshot.
+ * It is committed as a binary rather than generated: a fixture that regenerates
+ * is a fixture that can drift, and nothing here depends on its contents.
+ *
+ * The loose single is deliberately left WITHOUT art — `mobile-ux.spec.ts` G2
+ * asserts the gradient fallback, which needs a genuinely art-less subject.
  */
 import { mkdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -36,15 +47,24 @@ async function writeTrack(t: Track): Promise<void> {
   // 30s of silence at 44.1k, tagged. -y overwrite.
   const args = [
     '-y',
-    '-f', 'lavfi',
-    '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
-    '-t', '30',
-    '-metadata', `title=${t.title}`,
-    '-metadata', `artist=${t.artist}`,
-    '-metadata', `album=${t.album}`,
-    '-metadata', `album_artist=${t.artist}`,
-    '-metadata', `track=${t.track}/${t.total}`,
-    '-metadata', `date=2024`,
+    '-f',
+    'lavfi',
+    '-i',
+    'anullsrc=channel_layout=stereo:sample_rate=44100',
+    '-t',
+    '30',
+    '-metadata',
+    `title=${t.title}`,
+    '-metadata',
+    `artist=${t.artist}`,
+    '-metadata',
+    `album=${t.album}`,
+    '-metadata',
+    `album_artist=${t.artist}`,
+    '-metadata',
+    `track=${t.track}/${t.total}`,
+    '-metadata',
+    `date=2024`,
     file,
   ];
 

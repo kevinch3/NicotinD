@@ -134,4 +134,25 @@ test.describe('library', () => {
     expect(box!.x).toBeGreaterThanOrEqual(-1);
     expect(box!.x + box!.width).toBeLessThanOrEqual(360 + 1);
   });
+
+  /**
+   * The album fixture ships a real `cover.jpg`, so the grid must show it rather
+   * than the gradient placeholder.
+   *
+   * Worth asserting because the failure is invisible: `CoverArtComponent` falls
+   * back to a tasteful gradient with the album initial, so a broken cover URL
+   * (a missing auth token, a bad path) looks like a deliberate design choice.
+   * `naturalWidth > 0` is the only honest proof the bytes arrived and decoded.
+   */
+  test('the album grid renders the real cover, not the placeholder', async ({ page }) => {
+    await page.goto('/library');
+    const card = page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title });
+    await expect(card).toBeVisible();
+
+    const img = card.locator('img');
+    await expect(img).toHaveCount(1);
+    await expect
+      .poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth), { timeout: 15_000 })
+      .toBeGreaterThan(0);
+  });
 });
