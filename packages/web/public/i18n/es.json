@@ -145,6 +145,7 @@
   "admin.hiddenAlbumsHeading": "Álbumes ocultos incorrectamente de la grilla ({count})",
   "admin.holdForReview": "Retener descargas para revisión",
   "admin.holdForReviewHint": "Las descargas nuevas esperan indefinidamente en la bandeja de Descargas hasta que un curador (refiner o admin) las apruebe — actívalo solo si alguien revisa esa página activamente.",
+  "admin.holdForReviewNeedsAcquisition": "Requiere adquisición: con la adquisición desactivada, la página de Descargas (y su bandeja de revisión) está oculta, por lo que los archivos retenidos serían inaccesibles.",
   "admin.idleSongs": "Inactivo — {count} canciones",
   "admin.importConfiguration": "Importar configuración…",
   "admin.importedRows": "Se importaron {count} fila(s). Reiniciá el servidor para aplicar los cambios de plugins.",

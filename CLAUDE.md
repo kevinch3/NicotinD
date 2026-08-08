@@ -527,7 +527,11 @@ Add detail there, not here.
   tracklist; position-matched, titles-only, fills the grid without saving). **Identify failures are
   typed (issue #414)** — `no-match` / `fpcalc-missing` / `undecodable` (with the fpcalc stderr tail) /
   `source-error` / `file-missing` ask for opposite curator actions, so they render as a per-track
-  error chip instead of one generic toast. → [docs/download-review.md](docs/download-review.md)
+  error chip instead of one generic toast. **Inert while acquisition is off (issue #416)** — the
+  inbox lives on the hidden Downloads page, so the landing gate ANDs in live `acquisitionEnabled`
+  and the admin route denies enabling the hold; the same change extracted the path-safety triad into
+  `services/song-path.ts` and Lucene-escaped `searchReleaseGroups`. →
+  [docs/download-review.md](docs/download-review.md)
 - **Perceptual audio features (no LLM)**: energy/loudness measured bun-side via ffmpeg ebur128;
   danceability/valence/mood/vocals/acousticness + cached embeddings (content-invalidated by
   `library_embeddings.file_size` since issue #258 — a file replaced in place keeps its path-derived

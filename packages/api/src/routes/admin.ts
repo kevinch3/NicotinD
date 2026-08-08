@@ -448,6 +448,21 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (body.holdForReview !== undefined && typeof body.holdForReview !== 'boolean') {
       return c.json({ error: 'holdForReview must be a boolean' }, 400);
     }
+    // Issue #416: with acquisition off the Downloads page (and the review inbox
+    // on it) is hidden, but a manual file drop still scans — enabling the hold
+    // would strand those files quarantined with no reachable inbox. The landing
+    // gate also ignores the flag while acquisition is off (belt), but denying
+    // the enable (braces) tells the admin *why* instead of silently no-opping.
+    if (body.holdForReview === true && deps.acquisition && !deps.acquisition.enabled()) {
+      return c.json(
+        {
+          error:
+            'Hold for review requires acquisition to be enabled — with acquisition off the ' +
+            'Downloads page (and its review inbox) is hidden, so held files would be unreachable',
+        },
+        400,
+      );
+    }
     // 0 disables the shared-GPU yield; above 100 could never trigger, which
     // would read as "enabled" while doing nothing (issue #224).
     if (
