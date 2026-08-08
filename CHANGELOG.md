@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.324](https://github.com/kevinch3/NicotinD/compare/v0.1.323...v0.1.324) (2026-08-08)
+
+### Features
+
+* **web:** the TV surface — five routes, no form controls ([#442](https://github.com/kevinch3/NicotinD/issues/442)) ([0154175](https://github.com/kevinch3/NicotinD/commit/0154175cb6e53cd80b909ca5de94a48fc90ec65e)), references [#436](https://github.com/kevinch3/NicotinD/issues/436) [#438](https://github.com/kevinch3/NicotinD/issues/438) [#436](https://github.com/kevinch3/NicotinD/issues/436) [#387](https://github.com/kevinch3/NicotinD/issues/387) [#438](https://github.com/kevinch3/NicotinD/issues/438)
 ## [0.1.323](https://github.com/kevinch3/NicotinD/compare/v0.1.322...v0.1.323) (2026-08-08)
 
 ### Bug Fixes
