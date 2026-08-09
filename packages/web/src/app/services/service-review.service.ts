@@ -73,6 +73,8 @@ export class ServiceReviewService {
   readonly incompleteJobsCount = computed(() => this.review()?.incompleteJobsCount ?? 0);
   readonly untrackedCount = computed(() => this.review()?.untrackedCount ?? 0);
   readonly orphanRows = computed(() => this.review()?.orphanRows ?? []);
+  /** Listening-history size — the measurement behind the keep-forever policy. */
+  readonly playEventCount = computed(() => this.review()?.playEvents ?? 0);
   /** Total orphaned side-table rows across every pruned table (issue #259). */
   readonly orphanRowCount = computed(() =>
     this.orphanRows().reduce((sum, t) => sum + t.orphans, 0),

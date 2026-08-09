@@ -32,6 +32,7 @@ import {
 } from '../services/update-check.js';
 import { artistImageCoverage, type ArtistImageCoverage } from '../services/artist-image-fill.js';
 import { countOrphanRows, type OrphanCount } from '../services/orphan-prune.js';
+import { playEventCount } from '../services/play-history.js';
 import { getProcessingSettings } from '../services/processing-settings.js';
 import { pendingReviewStats, type PendingReviewStats } from '../services/download-review-store.js';
 
@@ -138,6 +139,12 @@ export interface ServiceReview {
    * keeping up — same spirit as `untracked`/`incompleteJobs`.
    */
   orphanRows: OrphanCount[];
+  /**
+   * Total listening-history rows. The history design deliberately keeps raw
+   * events forever and revisits only if a measurement says otherwise — this is
+   * that measurement. See docs/listening-history.md.
+   */
+  playEvents: number;
   /** Artist-portrait coverage for the Admin overview (issue #250). */
   artistImages: ArtistImageCoverage;
   /**
@@ -173,6 +180,7 @@ export interface ReviewSubFns {
   incompleteJobCount: () => number;
   untrackedCount: () => number;
   orphanRows: () => OrphanCount[];
+  playEvents: () => number;
   artistImages: () => ArtistImageCoverage;
   downloadReviews: () => PendingReviewStats;
   auditTail: (limit: number) => AuditEntry[];
@@ -515,6 +523,7 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
       incompleteCount,
       untracked,
       orphanRows,
+      playEvents,
       artistImages,
       downloadReviews,
       audit,
@@ -580,6 +589,12 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
         'orphanRows',
         () => sub.orphanRows?.() ?? countOrphanRows(getDatabase()),
         [] as OrphanCount[],
+      ),
+      playEvents: safe(
+        errors,
+        'playEvents',
+        () => sub.playEvents?.() ?? playEventCount(getDatabase()),
+        0,
       ),
       artistImages: safe(
         errors,
@@ -648,6 +663,7 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
       incompleteJobsCount: incompleteCount,
       untrackedCount: untracked,
       orphanRows,
+      playEvents,
       artistImages,
       downloadReviews,
       auditTail: audit,

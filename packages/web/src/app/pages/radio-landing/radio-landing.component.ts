@@ -5,6 +5,7 @@ import { PlayerService } from '../../services/player.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ToastService } from '../../services/toast.service';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
+import { RecentlyPlayedComponent } from '../../components/recently-played/recently-played.component';
 import { toTrack } from '../../lib/track-utils';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
@@ -61,7 +62,7 @@ const VIBE_PRESETS: readonly VibePreset[] = [
 @Component({
   selector: 'app-radio-landing',
   standalone: true,
-  imports: [CoverArtComponent, TranslatePipe],
+  imports: [CoverArtComponent, RecentlyPlayedComponent, TranslatePipe],
   templateUrl: './radio-landing.component.html',
 })
 export class RadioLandingComponent implements OnInit {

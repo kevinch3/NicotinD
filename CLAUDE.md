@@ -788,6 +788,26 @@ Add detail there, not here.
   `POST /playlists/auto/refresh` (audit-logged) back an Admin panel; the detail page shows
   "Refreshed &lt;date&gt;" from `modified_at`. →
   [docs/automated-playlists.md](docs/automated-playlists.md)
+- **Listening history (per-user play log)**: an append-only `play_events` row per playback session —
+  the app had **no** play tracking at all before (`albumOrderBy('frequent')` fell back to
+  `created DESC`; popularity's local play-count axis had no signal to build on). The client reports
+  **raw facts** (`ListeningTrackerService` session lifecycle + pure `accumulate` counting only
+  forward `timeupdate` motion under `MAX_DELTA_SEC`, so a seek accrues nothing) through a durable
+  localStorage outbox (`ListeningQueueService`, flushed on session end / page-hidden / the
+  `NetworkStatusService.reconnects` counter, so offline listening survives) into an **idempotent**
+  batch `POST /api/history/plays`; the **server** owns the Last.fm counting rule (`countsAsPlay`:
+  half the track or 4 min, 30 s floor) so it stays retunable — a client-side verdict would freeze the
+  threshold forever. `GET /api/stream/:id` is deliberately **not** the signal (N Range hits per
+  track, the 30 s gapless preload streams tracks that never play, preserved tracks play from
+  IndexedDB and never hit it, share tokens attribute to the sharer). No FK on `song_id` *and* a
+  `title`/`artist`/`album` snapshot on each event: ids are `sha1(path)` and re-mint on any
+  move/retag, so a cascade would delete history on a rescan and an id-only row would vanish from a
+  year review (the dangling-`playlist_songs` failure). Every player call site is gated on
+  `isActiveDevice()` (a controller tab mirroring a remote device isn't a play) and repeat-one
+  explicitly closes+reopens the session (it never changes `currentTrack`). Both endpoints take **no
+  user id** — privacy is structural; admin sees only the `playEvents` row count (the measure-first
+  hook for the keep-forever retention policy). Backs the "Recently played" shelf on the landing page.
+  → [docs/listening-history.md](docs/listening-history.md)
 - **Likes → auto-maintained "Liked Songs" playlist (issue #225)**: a per-user heart (track row
   `track-like`, track-info `track-info-like`, the `SongMenuService` menu's leading Like/Unlike).
   "Like" is personal so it can't reuse the global `library_songs.starred`; instead a new

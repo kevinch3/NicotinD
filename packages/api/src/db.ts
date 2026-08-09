@@ -1318,6 +1318,42 @@ export function applySchema(db: Database): void {
   // off — invisible to non-admins.
   addColumnIfMissing(db, 'user_settings', 'feedback_capture', 'INTEGER NOT NULL DEFAULT 0');
 
+  // Listening history: one append-only row per playback session, per user.
+  // Written by services/play-history.ts from client-reported raw facts; the
+  // "did this count as a play" rule is applied here at insert, never by the
+  // client, so it stays retunable. See docs/listening-history.md.
+  //
+  // Two deliberate schema choices:
+  //  - No FK on song_id. Song ids are sha1(path) and re-mint on any move or
+  //    retag, and the scanner rebuilds library_songs wholesale — a cascade
+  //    would delete listening history on a routine rescan.
+  //  - title/artist/album are snapshotted onto the event for the same reason:
+  //    a year review must survive the id re-mint that would otherwise orphan
+  //    the row (the failure that produced dangling playlist_songs, #259).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS play_events (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_event_id TEXT NOT NULL UNIQUE,
+      user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      song_id         TEXT NOT NULL,
+      title           TEXT,
+      artist          TEXT,
+      album           TEXT,
+      at              INTEGER NOT NULL,
+      ms_played       INTEGER NOT NULL,
+      duration_ms     INTEGER,
+      counted         INTEGER NOT NULL DEFAULT 0,
+      reason          TEXT NOT NULL,
+      source          TEXT,
+      device          TEXT
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_play_events_user_at ON play_events (user_id, at DESC)`);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_play_events_song_counted
+       ON play_events (song_id, user_id) WHERE counted = 1`,
+  );
+
   // One-time landing backfill. The landed_at column defaults to NULL (quarantined)
   // for every row, so an upgrade of an existing library would otherwise hide the
   // entire catalogue behind the new processing gate. Land every pre-existing song
