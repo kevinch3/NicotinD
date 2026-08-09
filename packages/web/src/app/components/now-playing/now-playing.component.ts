@@ -228,13 +228,18 @@ export class NowPlayingComponent {
   // Active panel (queue vs lyrics) persisted per-device.
   private static readonly ACTIVE_PANEL_STORAGE_KEY = 'nicotind:np-active-panel';
   readonly activePanel = signal<'queue' | 'lyrics'>(this.readStoredActivePanel());
-  // Seeded from the restored `activePanel` (must be declared after it — see
-  // the comment near `lyrics` above) so a page load that restores onto the
-  // Lyrics tab has `lyricsOpen` already true: the lyrics-loading/color-
-  // extraction/auto-scroll effects below all gate on `lyricsOpen()`, and
-  // without this seed a restored Lyrics tab rendered an incorrect "no
-  // lyrics" empty state until the user re-clicked the tab.
-  readonly lyricsOpen = signal(this.activePanel() === 'lyrics');
+  // DERIVED from `activePanel`, not a second writable signal (issue #446).
+  // The queue and lyrics areas are one panel showing one thing, and two
+  // independently-writable booleans drifted: `toggleKaraokeFullscreen` opened
+  // lyrics by writing this flag directly, so the panel choice that got
+  // persisted disagreed with what was on screen and the next launch restored
+  // the wrong one. As a computed there is exactly one writer (`setActivePanel`)
+  // and the two can no longer disagree.
+  //
+  // Still correct for the restore path it was seeded for: a page load onto the
+  // Lyrics tab has `lyricsOpen` true immediately, which the lyrics-loading /
+  // colour-extraction / auto-scroll effects below all gate on.
+  readonly lyricsOpen = computed(() => this.activePanel() === 'lyrics');
 
   /** Cover art max-width (px), shrinking as the queue is dragged taller. */
   readonly coverMaxPx = computed(
@@ -318,7 +323,9 @@ export class NowPlayingComponent {
 
   setActivePanel(panel: 'queue' | 'lyrics'): void {
     this.activePanel.set(panel);
-    this.lyricsOpen.set(panel === 'lyrics');
+    // Leaving lyrics must also leave karaoke fullscreen, or the overlay
+    // outlives the panel behind it and there is no way back to the queue.
+    if (panel !== 'lyrics') this.karaokeFullscreen.set(false);
     try {
       localStorage.setItem(NowPlayingComponent.ACTIVE_PANEL_STORAGE_KEY, panel);
     } catch {
@@ -442,8 +449,9 @@ export class NowPlayingComponent {
     this.clearBrowseIdleTimer();
     this.karaokeBrowsing.set(false);
     if (entering) {
-      // Ensure lyrics stay loaded
-      if (!this.lyricsOpen()) this.lyricsOpen.set(true);
+      // Ensure lyrics stay loaded — through setActivePanel so the persisted
+      // choice matches what is actually on screen (issue #446).
+      if (!this.lyricsOpen()) this.setActivePanel('lyrics');
       // Re-extract colors if needed
       const track = this.player.currentTrack();
       if (track?.coverArt && this.colorExtractedForId !== track.id) {

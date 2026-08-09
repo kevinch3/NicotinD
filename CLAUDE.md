@@ -545,6 +545,11 @@ Add detail there, not here.
   (LRCLIB first source); stored in `library_lyrics` + file tag, user-editable. Now Playing's
   **Lyrics tab** (alongside Queue — see the Now Playing component-split entry below) opens a
   karaoke-styled panel (synced line highlighting + auto-scroll) with a fullscreen expand button —
+  the queue/lyrics choice is one per-device-persisted `activePanel` signal with `lyricsOpen`
+  **derived** from it (issue #446: two independently-writable booleans drifted — entering karaoke
+  fullscreen wrote the render flag directly, so the persisted panel disagreed with the screen and
+  the next launch restored the wrong one; `setActivePanel` is now the single writer and also exits
+  fullscreen when leaving lyrics, so the overlay can't outlive the panel behind it) —
   fullscreen defaults to a current+next-line-only auto-follow view (narrow-screen/TV friendly) with
   a wheel/touch-gesture browse mode for tap-to-seek; a centered styled empty state carries an inline
   Fetch button. Fetch is

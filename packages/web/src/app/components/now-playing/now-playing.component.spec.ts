@@ -98,6 +98,12 @@ function setup() {
 }
 
 describe('NowPlayingComponent', () => {
+  // The component restores per-device UI state (active panel, queue height)
+  // from localStorage at construction, and several tests here persist it —
+  // entering karaoke fullscreen now records the panel choice (issue #446).
+  // Without a reset, that leaks into every later test's fresh component.
+  beforeEach(() => localStorage.clear());
+
   describe('device switcher', () => {
     it('renders app-device-switcher when a track is loaded and remote is enabled', () => {
       const { fixture, playerStub, remoteStub } = setup();
@@ -440,6 +446,35 @@ describe('NowPlayingComponent', () => {
       const fixture = TestBed.createComponent(NowPlayingComponent);
       expect(fixture.componentInstance.activePanel()).toBe('queue');
       expect(fixture.componentInstance.lyricsOpen()).toBe(false);
+    });
+
+    it('lyricsOpen is derived, so it cannot disagree with the persisted panel', () => {
+      // Two independently-writable booleans for one panel is what drifted:
+      // entering karaoke fullscreen used to open lyrics by writing lyricsOpen
+      // directly, leaving activePanel (the value that gets persisted and
+      // restored) saying 'queue' while lyrics were on screen.
+      const fixture = TestBed.createComponent(NowPlayingComponent);
+      const c = fixture.componentInstance;
+
+      c.toggleKaraokeFullscreen();
+
+      expect(c.lyricsOpen()).toBe(true);
+      expect(c.activePanel()).toBe('lyrics');
+      expect(localStorage.getItem('nicotind:np-active-panel')).toBe('lyrics');
+    });
+
+    it('leaving the lyrics panel exits karaoke fullscreen', () => {
+      const fixture = TestBed.createComponent(NowPlayingComponent);
+      const c = fixture.componentInstance;
+
+      c.setActivePanel('lyrics');
+      c.toggleKaraokeFullscreen();
+      expect(c.karaokeFullscreen()).toBe(true);
+
+      // Otherwise the overlay outlives the panel behind it.
+      c.setActivePanel('queue');
+      expect(c.karaokeFullscreen()).toBe(false);
+      expect(c.lyricsOpen()).toBe(false);
     });
 
     it('setActivePanel updates the signal and persists it', () => {
