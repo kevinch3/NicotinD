@@ -1,6 +1,7 @@
 import { Component, computed, inject } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { AcquireService } from '../../services/acquire.service';
 import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
@@ -15,14 +16,13 @@ interface BottomNavItem {
 }
 
 // Curated mobile tab order (Admin intentionally stays desktop-only to keep the
-// bar to thumb-reachable targets). Acquire is online-only because /acquire needs
-// the backend (network browse + URL acquire).
+// bar to thumb-reachable targets). /get is not online-only: its Downloads tab
+// works offline, and the Find tab surfaces its own offline state.
 const TABS: BottomNavItem[] = [
   // `label` is an i18n key (issue #236), rendered through the `t` pipe.
   { to: '/', label: 'nav.home', onlineOnly: true },
   { to: '/library', label: 'nav.library', onlineOnly: false },
-  { to: '/downloads', label: 'nav.downloads', onlineOnly: false },
-  { to: '/acquire', label: 'nav.acquire', onlineOnly: true },
+  { to: '/get', label: 'nav.get', onlineOnly: false },
   { to: '/settings', label: 'nav.settings', onlineOnly: false },
 ];
 
@@ -51,18 +51,29 @@ const TABS: BottomNavItem[] = [
 export class BottomNavComponent {
   readonly setup = inject(SetupService);
   private transfers = inject(TransferService);
+  private acquire = inject(AcquireService);
   private auth = inject(AuthService);
   private review = inject(DownloadReviewService);
 
-  // Downloads is an acquisition surface — hidden from listeners (declutter).
+  // /get is an acquisition surface — hidden from listeners (declutter).
   readonly tabs = computed(() =>
-    this.auth.canAcquire() ? TABS : TABS.filter((t) => t.to !== '/downloads'),
+    this.auth.canAcquire() ? TABS : TABS.filter((t) => t.to !== '/get'),
   );
-  // Active transfers + the download-inbox triage queue (issue #411) — the
-  // latter is 0 for anyone who can't curate, so it's a no-op for most roles.
+  // Same formula as the desktop nav badge: slskd transfers + in-flight URL
+  // acquisitions + the download-inbox triage queue (issue #411, 0 for anyone
+  // who can't curate). Mobile used to omit the acquire jobs, so a spotdl/yt-dlp
+  // download showed a badge on desktop and none on the phone.
   readonly activeDownloads = computed(
-    () => this.transfers.activeDownloadCount() + this.review.pending(),
+    () =>
+      this.transfers.activeDownloadCount() +
+      this.acquire.activeJobs().length +
+      this.review.pending(),
   );
+
+  // Derived, not a fixed `grid-cols-N` class: a listener has /get filtered out,
+  // so a hardcoded count leaves a trailing empty column and the tabs sit
+  // off-centre. (The old bar was `grid-cols-5` with a 4-item listener case.)
+  readonly gridColumns = computed(() => `repeat(${this.tabs().length}, minmax(0, 1fr))`);
 
   isDisabled(tab: BottomNavItem): boolean {
     return tab.onlineOnly && this.setup.isOffline();

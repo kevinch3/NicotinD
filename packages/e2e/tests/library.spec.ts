@@ -155,4 +155,47 @@ test.describe('library', () => {
       .poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth), { timeout: 15_000 })
       .toBeGreaterThan(0);
   });
+
+  /**
+   * The cross-type find bar (feedback-log-2026-07 item #7): a user typed an
+   * artist + title together, got songs back, and concluded the album was
+   * missing because no album card ever surfaced. One box must return every
+   * result type, not just the one whose tab happens to be open.
+   */
+  test('the find bar returns albums, not just songs, for an artist+title query', async ({
+    page,
+  }) => {
+    await page.goto('/library');
+
+    await page.getByTestId('library-find').fill(`${FIXTURE.album.artist} ${FIXTURE.album.title}`);
+
+    // The album card is the assertion that matters — songs alone were the bug.
+    const albums = page.getByTestId('library-find-albums');
+    await expect(albums).toBeVisible();
+    await expect(
+      albums.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }),
+    ).toBeVisible();
+
+    // The browse tabs are replaced while a search is active.
+    await expect(page.getByTestId('library-tabs')).toHaveCount(0);
+
+    // The query is in the URL, so the search is linkable.
+    await expect(page).toHaveURL(/find=/);
+  });
+
+  test('clearing the find bar restores the browse tabs', async ({ page }) => {
+    await page.goto('/library');
+    await page.getByTestId('library-find').fill(FIXTURE.album.title);
+    await expect(page.getByTestId('library-find-results')).toBeVisible();
+
+    await page.getByTestId('library-find-clear').click();
+    await expect(page.getByTestId('library-tabs')).toBeVisible();
+    await expect(page.getByTestId('library-find-results')).toHaveCount(0);
+  });
+
+  test('a query matching nothing you own reports empty rather than failing', async ({ page }) => {
+    await page.goto('/library');
+    await page.getByTestId('library-find').fill('zzz no such release zzz');
+    await expect(page.getByTestId('library-find-empty')).toBeVisible();
+  });
 });

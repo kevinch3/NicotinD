@@ -1,0 +1,29 @@
+<div class="max-w-6xl mx-auto px-4 pt-5 md:px-6 md:pt-8">
+  <div class="flex gap-1 p-1 bg-theme-surface-2 rounded-xl max-w-full overflow-x-auto w-fit" data-testid="get-tabs">
+    @for (t of tabs; track t.value) {
+      <button
+        class="relative shrink-0 whitespace-nowrap px-4 py-1.5 text-sm rounded-lg transition-colors"
+        [class.bg-theme-surface]="tab() === t.value"
+        [class.text-theme-primary]="tab() === t.value"
+        [class.text-theme-muted]="tab() !== t.value"
+        [attr.data-testid]="t.testid"
+        [attr.aria-current]="tab() === t.value ? 'page' : null"
+        (click)="setTab(t.value)">
+        {{ t.label | t }}
+        @if (t.value === 'downloads' && activeCount() > 0) {
+          <span
+            class="ml-1.5 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-theme-accent text-[10px] font-bold text-theme-on-accent"
+            data-testid="get-tab-downloads-badge">
+            {{ activeCount() }}
+          </span>
+        }
+      </button>
+    }
+  </div>
+</div>
+
+@if (tab() === 'find') {
+  <app-search />
+} @else {
+  <app-downloads />
+}

@@ -117,7 +117,7 @@ export class KeyboardShortcutsService {
     }
     if (event.key === '/') {
       event.preventDefault();
-      void this.router.navigate(['/acquire']);
+      void this.router.navigate(['/get'], { queryParams: { tab: 'find' } });
       return;
     }
   }
