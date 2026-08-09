@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { vi } from 'vitest';
-import { of, throwError } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { SetupService, SERVER_RECOVERY_POLL_MS } from './setup.service';
 import { SystemApiService } from './api/system-api.service';
 import { NetworkStatusService } from './network-status.service';
@@ -20,7 +20,20 @@ function configure(
   api: ReturnType<typeof makeApi>,
   whenReady: () => Promise<void> = () => Promise.resolve(),
 ) {
-  const net = { online: signal(online), whenReady };
+  const reconnects = signal(0);
+  const onlineSig = signal(online);
+  // Mirrors the real service: a transition to connected bumps the counter (the
+  // reconnect *event*), which is what SetupService reacts to.
+  const net = {
+    online: onlineSig,
+    reconnects,
+    whenReady,
+    /** Test helper: simulate the device reporting a connectivity change. */
+    setOnline(v: boolean) {
+      onlineSig.set(v);
+      if (v) reconnects.update((n) => n + 1);
+    },
+  };
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     providers: [
@@ -61,7 +74,7 @@ describe('SetupService', () => {
 
     const done = svc.check();
     // Seed lands: device is actually offline.
-    net.online.set(false);
+    net.setOnline(false);
     resolveSeed();
     await done;
 
@@ -118,11 +131,11 @@ describe('SetupService', () => {
     expect(svc.isOffline()).toBe(false);
 
     // Drop mid-session → offline without any re-check.
-    net.online.set(false);
+    net.setOnline(false);
     expect(svc.isOffline()).toBe(true);
 
     // Reconnect → back online, again reactively.
-    net.online.set(true);
+    net.setOnline(true);
     expect(svc.isOffline()).toBe(false);
   });
 });
@@ -232,14 +245,88 @@ describe('SetupService — mid-session server loss + automatic recovery', () => 
     expect(svc.isOffline()).toBe(true);
     const probesSoFar = api.getSetupStatus.mock.calls.length;
 
-    net.online.set(false);
+    net.setOnline(false);
     TestBed.flushEffects();
     up = true;
-    net.online.set(true);
+    net.setOnline(true);
     TestBed.flushEffects();
     await flush();
 
     expect(api.getSetupStatus.mock.calls.length).toBe(probesSoFar + 1);
+    expect(svc.isOffline()).toBe(false);
+  });
+
+  it('a reconnect that races an in-flight doomed probe still recovers (not stranded for a poll)', async () => {
+    // The real-world shape: the recovery poll fires a probe just as the device
+    // comes back. That probe was started while the network was still down, so
+    // it fails and re-arms the 20s poll. The reconnect's own probe used to be
+    // dropped by the single-flight guard, leaving the app offline for the full
+    // period despite a healthy server and a live network.
+    let up = false;
+    const pending: Array<(ok: boolean) => void> = [];
+    const api = makeApi(
+      () =>
+        new Observable<SetupStatus>((sub) => {
+          pending.push((ok) =>
+            ok
+              ? (sub.next({ needsSetup: false } as SetupStatus), sub.complete())
+              : sub.error(new Error('down')),
+          );
+        }),
+    );
+    const { svc, net } = configure(true, api);
+
+    void svc.check();
+    await flush();
+    pending.shift()!(false); // boot probe fails → offline
+    await flush();
+    expect(svc.isOffline()).toBe(true);
+
+    net.setOnline(false);
+    TestBed.flushEffects();
+
+    // A probe goes out while the device is still down (the poll's doing).
+    svc.reportServerFailure();
+    void (svc as unknown as { verify(): Promise<void> }).verify();
+    await flush();
+
+    // Device returns, and the server is healthy again.
+    up = true;
+    net.setOnline(true);
+    TestBed.flushEffects();
+    await flush();
+
+    // Settle the doomed in-flight probe; the coalesced reconnect probe replays.
+    pending.shift()?.(false);
+    await flush();
+    pending.shift()?.(up);
+    await flush();
+
+    expect(svc.isOffline()).toBe(false);
+  });
+
+  it('recovers when the offline/online pair is coalesced into one effect flush', async () => {
+    // The e2e/real-world shape: a fast airplane-mode toggle writes online
+    // false→true before Angular flushes, so an effect diffing `online` runs once
+    // and sees only the final `true` — no edge, no probe, and the app sat
+    // offline for the full 20s poll. Reacting to the reconnect COUNTER survives
+    // the coalescing.
+    let up = false;
+    const api = makeApi(() =>
+      up ? of({ needsSetup: false } as SetupStatus) : throwError(() => new Error('down')),
+    );
+    const { svc, net } = configure(true, api);
+
+    await svc.check();
+    expect(svc.isOffline()).toBe(true);
+
+    // Both writes land before a single flush — the coalescing that hid the edge.
+    up = true;
+    net.setOnline(false);
+    net.setOnline(true);
+    TestBed.flushEffects();
+    await flush();
+
     expect(svc.isOffline()).toBe(false);
   });
 
@@ -254,7 +341,7 @@ describe('SetupService — mid-session server loss + automatic recovery', () => 
     expect(api.getSetupStatus).not.toHaveBeenCalled();
     expect(svc.status()).toBeNull();
 
-    net.online.set(true);
+    net.setOnline(true);
     TestBed.flushEffects();
     await flush();
 
@@ -273,9 +360,9 @@ describe('SetupService — mid-session server loss + automatic recovery', () => 
     await svc.check();
     expect(api.getSetupStatus).toHaveBeenCalledTimes(1);
 
-    net.online.set(false);
+    net.setOnline(false);
     TestBed.flushEffects();
-    net.online.set(true);
+    net.setOnline(true);
     TestBed.flushEffects();
     await flush();
 

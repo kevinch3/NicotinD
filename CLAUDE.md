@@ -908,7 +908,13 @@ Add detail there, not here.
   [docs/web-ui.md](docs/web-ui.md)
 - **Reactive network / offline detection (fixes Android offline-launch ANR)**:
   `NetworkStatusService` is one live `online` signal (`@capacitor/network` on native via
-  `getCapacitorPlugin`, `navigator.onLine` + window events on web); `SetupService.isOffline` becomes
+  `getCapacitorPlugin`, `navigator.onLine` + window events on web) **plus a monotonic `reconnects`
+  counter**: the reconnect fast path must react to the connectivity *event*, not to a diff of
+  `online` — signals coalesce, so a quick false→true pair flushes the effect once with only the
+  final `true`, the edge is invisible, and the app sat offline for the full 20 s recovery poll
+  despite a live network (a fast airplane-mode toggle is exactly that pair). `verify()` also
+  *coalesces* a concurrent call instead of dropping it, so a reconnect racing an already-doomed
+  in-flight probe still gets its answer. `SetupService.isOffline` becomes
   a `computed` (`!online || serverUnreachable`) so the library source swap, nav gating, redirect +
   the app-shell offline banner (inline in `layout.component.html`, `data-testid="offline-banner"`)
   all react to connectivity flips **both ways** with no reload, and `check()` skips the boot HTTP
