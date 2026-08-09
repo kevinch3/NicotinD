@@ -6,10 +6,13 @@
        failure this exists to prevent. -->
   @if (findAvailable()) {
     <div class="relative mb-4">
+      <!-- type=search for the mobile keyboard's search action, but its native
+           cancel affordance is suppressed: we render our own clear button, and
+           two X icons side by side read as a bug. -->
       <input
         type="search"
         data-testid="library-find"
-        class="w-full pl-9 pr-9 py-2 text-sm rounded-lg bg-theme-surface-2 text-theme-primary placeholder:text-theme-muted border border-transparent focus:border-theme focus:outline-none"
+        class="w-full pl-9 pr-9 py-2 text-sm rounded-lg bg-theme-surface-2 text-theme-primary placeholder:text-theme-muted border border-transparent focus:border-theme focus:outline-none [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none"
         [placeholder]="'library.find.placeholder' | t"
         [value]="findInput()"
         (input)="onFindInput($any($event.target).value)"
