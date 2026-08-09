@@ -92,6 +92,26 @@ export interface GenerationFeedbackRecord {
   engineVersion: string | null;
 }
 
+/**
+ * Read model returned by `GET /api/feedback/summaries` — the Admin review queue.
+ * Deliberately carries NO `input`/`output`: one real capture's `output_json` is
+ * 251 KB, so a queue built on the full record would ship tens of MB. `artistName`
+ * / `albumTitle` are lifted out of the input snapshot for display and are null
+ * for a resourceType whose input has no such fields.
+ */
+export interface GenerationFeedbackSummary {
+  id: number;
+  at: number;
+  username: string | null;
+  resourceType: GenerationFeedbackResourceType;
+  resourceRef: string | null;
+  verdict: GenerationVerdict | null;
+  note: string | null;
+  engineVersion: string | null;
+  artistName: string | null;
+  albumTitle: string | null;
+}
+
 /** Body of `PATCH /api/feedback/:id` (grade a pending capture). */
 export interface ResolveFeedbackBody {
   verdict: GenerationVerdict;

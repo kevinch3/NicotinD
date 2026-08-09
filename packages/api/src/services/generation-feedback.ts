@@ -12,6 +12,7 @@ import {
   createLogger,
   type GenerationFeedbackResourceType,
   type GenerationFeedbackRecord,
+  type GenerationFeedbackSummary,
   type GenerationVerdict,
   type HuntMatchItemFlags,
   type HuntMatchInput,
@@ -25,7 +26,10 @@ const log = createLogger('generation-feedback');
 
 // Pending rows the admin never graded are abandoned hunts — prune them so the
 // table doesn't accumulate. Opportunistically swept on each new insert.
-export const PENDING_TTL_MS = 24 * 60 * 60 * 1000;
+// 30 days, not 24h: grading happens in the Admin review queue on the admin's own
+// schedule, and a one-day window silently deleted every capture before it was
+// ever looked at (issue #451 — prod kept 2 of ~39).
+export const PENDING_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface RecordPendingInput {
   userId: string;
@@ -239,16 +243,19 @@ function toRecord(r: FeedbackRow): GenerationFeedbackRecord {
   };
 }
 
-export function listFeedback(
-  db: Database,
-  opts: {
-    resourceType?: GenerationFeedbackResourceType;
-    /** true = graded only, false = pending only, undefined = all. */
-    graded?: boolean;
-    limit?: number;
-    offset?: number;
-  },
-): GenerationFeedbackRecord[] {
+export interface ListFeedbackOptions {
+  resourceType?: GenerationFeedbackResourceType;
+  /** true = graded only, false = pending only, undefined = all. */
+  graded?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+/** The WHERE/LIMIT half both list queries share, so their filters can't drift. */
+function buildListQuery(opts: ListFeedbackOptions): {
+  whereSql: string;
+  params: (string | number)[];
+} {
   const limit = Math.min(Math.max(opts.limit ?? 100, 1), 1000);
   const offset = Math.max(opts.offset ?? 0, 0);
   const wheres: string[] = [];
@@ -259,8 +266,12 @@ export function listFeedback(
   }
   if (opts.graded === true) wheres.push('verdict IS NOT NULL');
   if (opts.graded === false) wheres.push('verdict IS NULL');
-  const whereSql = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
   params.push(limit, offset);
+  return { whereSql: wheres.length ? `WHERE ${wheres.join(' AND ')}` : '', params };
+}
+
+export function listFeedback(db: Database, opts: ListFeedbackOptions): GenerationFeedbackRecord[] {
+  const { whereSql, params } = buildListQuery(opts);
   return db
     .query<FeedbackRow, (string | number)[]>(
       `SELECT id, at, user_id, username, resource_type, resource_ref, verdict, note,
@@ -270,4 +281,54 @@ export function listFeedback(
     )
     .all(...params)
     .map(toRecord);
+}
+
+type SummaryRow = Omit<FeedbackRow, 'user_id' | 'output_json' | 'item_flags_json'>;
+
+/**
+ * The Admin review queue's read model. Selects `input_json` (small — the proposal)
+ * but never `output_json`, which holds the verbatim slskd responses and is 251 KB
+ * on a real prod row. See GenerationFeedbackSummary.
+ */
+export function listFeedbackSummaries(
+  db: Database,
+  opts: ListFeedbackOptions,
+): GenerationFeedbackSummary[] {
+  const { whereSql, params } = buildListQuery(opts);
+  return db
+    .query<SummaryRow, (string | number)[]>(
+      `SELECT id, at, username, resource_type, resource_ref, verdict, note,
+              input_json, engine_version
+         FROM generation_feedback ${whereSql}
+         ORDER BY at DESC, id DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...params)
+    .map((r) => {
+      const input = safeParse<Partial<HuntMatchInput>>(r.input_json);
+      return {
+        id: r.id,
+        at: r.at,
+        username: r.username,
+        resourceType: r.resource_type as GenerationFeedbackResourceType,
+        resourceRef: r.resource_ref,
+        verdict: r.verdict as GenerationVerdict | null,
+        note: r.note,
+        engineVersion: r.engine_version,
+        artistName: input?.artistName ?? null,
+        albumTitle: input?.albumTitle ?? null,
+      };
+    });
+}
+
+/** One full record by id — fetched when the queue opens the grading sheet, which
+ *  needs the scored candidates the summary deliberately omits. */
+export function getFeedback(db: Database, id: number): GenerationFeedbackRecord | null {
+  const row = db
+    .query<FeedbackRow, [number]>(
+      `SELECT id, at, user_id, username, resource_type, resource_ref, verdict, note,
+              input_json, output_json, item_flags_json, engine_version
+         FROM generation_feedback WHERE id = ?`,
+    )
+    .get(id);
+  return row ? toRecord(row) : null;
 }

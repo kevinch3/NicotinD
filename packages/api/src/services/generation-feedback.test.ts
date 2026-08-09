@@ -5,6 +5,8 @@ import {
   recordPendingFeedback,
   resolveFeedback,
   listFeedback,
+  listFeedbackSummaries,
+  getFeedback,
   feedbackCaptureEnabled,
   captureHuntMatchFeedback,
   PENDING_TTL_MS,
@@ -272,5 +274,75 @@ describe('listFeedback', () => {
     record();
     expect(listFeedback(db, { resourceType: 'hunt-match' })).toHaveLength(1);
     expect(listFeedback(db, { resourceType: 'radio' })).toHaveLength(0);
+  });
+});
+
+describe('pending TTL', () => {
+  // Issue #451: at 24h an ungraded capture was gone before the admin ever looked,
+  // which is why ~39 prod captures left only 2 rows behind. The review queue is
+  // only useful over a window a human actually reviews in.
+  it('keeps ungraded captures for 30 days', () => {
+    expect(PENDING_TTL_MS).toBe(30 * 24 * 60 * 60 * 1000);
+  });
+
+  it('keeps a 29-day-old pending row and prunes a 31-day-old one', () => {
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+    const recent = record(now - 29 * day);
+    const ancient = record(now - 31 * day);
+    const fresh = record(now);
+
+    const ids = listFeedback(db, {}).map((r) => r.id);
+    expect(ids).toContain(recent);
+    expect(ids).toContain(fresh);
+    expect(ids).not.toContain(ancient);
+  });
+});
+
+describe('listFeedbackSummaries', () => {
+  // The queue must not ship output_json: one real prod row is 251 KB, so a
+  // 100-row list built on listFeedback would be ~25 MB.
+  it('returns a lightweight row carrying artist/album but no snapshots', () => {
+    const id = record();
+    const [row] = listFeedbackSummaries(db, {});
+
+    expect(row.id).toBe(id);
+    expect(row.artistName).toBe('Soda Stereo');
+    expect(row.albumTitle).toBe('Canción Animal');
+    expect(row.verdict).toBeNull();
+    expect(row.engineVersion).toBe('0.1.238');
+    expect(row).not.toHaveProperty('input');
+    expect(row).not.toHaveProperty('output');
+  });
+
+  it('honours the graded filter', () => {
+    const graded = record();
+    resolveFeedback(db, graded, 'u1', { verdict: 'bad' });
+    const pendingId = record();
+
+    expect(listFeedbackSummaries(db, { graded: true }).map((r) => r.id)).toEqual([graded]);
+    expect(listFeedbackSummaries(db, { graded: false }).map((r) => r.id)).toEqual([pendingId]);
+  });
+
+  it('degrades gracefully when input_json is not a hunt snapshot', () => {
+    recordPendingFeedback(db, {
+      userId: 'u1',
+      resourceType: 'radio',
+      input: { seedSongId: 'abc' },
+      output: {},
+    });
+    const [row] = listFeedbackSummaries(db, { resourceType: 'radio' });
+    expect(row.artistName).toBeNull();
+    expect(row.albumTitle).toBeNull();
+  });
+});
+
+describe('getFeedback', () => {
+  it('returns the full record for one id, and null for an unknown one', () => {
+    const id = record();
+    const full = getFeedback(db, id);
+    expect((full?.input as HuntMatchInput).artistName).toBe('Soda Stereo');
+    expect((full?.output as HuntMatchOutput).candidates).toHaveLength(1);
+    expect(getFeedback(db, id + 999)).toBeNull();
   });
 });

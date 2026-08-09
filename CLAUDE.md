@@ -855,7 +855,14 @@ Add detail there, not here.
   `scoreFolders(canonicalTracks, rawResponses)` (the replay seam) + `search` (I/O); `huntBase` now
   returns the raw slskd responses. An admin with a dev-mode toggle
   (`user_settings.feedback_capture`, Settings → Developer) gets a throttled 👍/👎 toast after a hunt
-  renders (`FeedbackService.shouldPrompt`); the `hunt/base` route snapshots
+  renders — from **both** hunt paths via one shared `FeedbackService.promptForHunt` (issue #451: the
+  `AutoHuntService` "Get" path, the one nearly every hunt takes, captured a row and never prompted,
+  so prod graded 0 of ~39 captures; `shouldPrompt` also consumed the id before knowing the toast
+  survived `ToastService`'s 3-countdown-toast drop, and is now a pure check paired with
+  `markPrompted`). Because a 12 s toast is a lossy surface, the durable half is an **Admin →
+  "Generation feedback" review queue** (`GET /api/feedback/summaries` — a lightweight projection,
+  never `listFeedback`, whose `output_json` is 251 KB per real row — plus `GET /api/feedback/:id` for
+  the grading sheet's candidates), and the pending TTL is **30 days**, not 24 h. The `hunt/base` route snapshots
   `{proposal(+MBIDs), rawResponses, scored candidates}` into a pending `generation_feedback` row
   (`captureHuntMatchFeedback`, admin+toggle-gated) and returns its `feedbackId`. 👍 = top pick
   correct; 👎 opens `FeedbackDetailSheetComponent` to mark the actually-correct folder (or "none") +
@@ -1447,7 +1454,7 @@ caches nothing** — gradle's incremental no-op is 9.8 s, so skips would save ~1
 loudly red the moment it's fixed without updating them. →
 [docs/e2e-tv-emulator.md](docs/e2e-tv-emulator.md)
 
-**Real-use feedback log**: [docs/feedback-log-2026-07.md](docs/feedback-log-2026-07.md) is a
+**Real-use feedback log**: [docs/feedback-log-2026-08.md](docs/feedback-log-2026-08.md) is a
 rolling, dated log of friction noticed while actually _using_ the app — one entry per observation
 with Severity/Status. Rotate monthly.
 
