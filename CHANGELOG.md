@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.326](https://github.com/kevinch3/NicotinD/compare/v0.1.325...v0.1.326) (2026-08-09)
+
+### Bug Fixes
+
+* **web:** recover from a coalesced offline/online flip instead of stalling 20s ([#449](https://github.com/kevinch3/NicotinD/issues/449)) ([878a101](https://github.com/kevinch3/NicotinD/commit/878a1010255626db52c33ffef1829ea987c664fc)), closes [#448](https://github.com/kevinch3/NicotinD/issues/448), references [#447](https://github.com/kevinch3/NicotinD/issues/447)
 ## [0.1.325](https://github.com/kevinch3/NicotinD/compare/v0.1.324...v0.1.325) (2026-08-08)
 ## [0.1.324](https://github.com/kevinch3/NicotinD/compare/v0.1.323...v0.1.324) (2026-08-08)
 
