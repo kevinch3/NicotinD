@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.327](https://github.com/kevinch3/NicotinD/compare/v0.1.326...v0.1.327) (2026-08-09)
+
+### Features
+
+* **web:** merge Acquire + Downloads into /get; add a Library cross-type find bar ([#447](https://github.com/kevinch3/NicotinD/issues/447)) ([16368ef](https://github.com/kevinch3/NicotinD/commit/16368ef703d0b13775182e65800bf088e89b5bb0)), closes [#444](https://github.com/kevinch3/NicotinD/issues/444), references [#227](https://github.com/kevinch3/NicotinD/issues/227) [#7](https://github.com/kevinch3/NicotinD/issues/7)
+
+### Bug Fixes
+
+* **web:** derive lyricsOpen from activePanel so the persisted Now Playing panel matches the screen ([#450](https://github.com/kevinch3/NicotinD/issues/450)) ([7ae7771](https://github.com/kevinch3/NicotinD/commit/7ae7771f14313ea59d66602e55a2d77a03a37ac3)), closes [#446](https://github.com/kevinch3/NicotinD/issues/446)
 ## [0.1.326](https://github.com/kevinch3/NicotinD/compare/v0.1.325...v0.1.326) (2026-08-09)
 
 ### Bug Fixes
