@@ -1,4 +1,5 @@
-import { Routes } from '@angular/router';
+import { inject } from '@angular/core';
+import { RedirectFunction, Router, Routes } from '@angular/router';
 import { isTvBuild } from './lib/platform';
 import {
   authGuard,
@@ -7,6 +8,17 @@ import {
   curatorGuard,
   serverGuard,
 } from './guards/auth.guard';
+import type { GetTab } from './pages/get/get.component';
+
+/** Redirect a legacy acquisition path onto the merged /get route's tab, keeping
+ *  whatever query params came in (a bookmarked /search?q=… still arrives with
+ *  its query). A `RedirectFunction` runs in an injection context, so it can
+ *  build the UrlTree itself — which a string `redirectTo` cannot do, because
+ *  that form can only *preserve* params, never add the `tab` one. */
+function redirectToGetTab(tab: GetTab): RedirectFunction {
+  return ({ queryParams }) =>
+    inject(Router).createUrlTree(['/get'], { queryParams: { ...queryParams, tab } });
+}
 
 export const routes: Routes = [
   {
@@ -70,24 +82,22 @@ export const routes: Routes = [
           ),
       },
       {
-        // Renamed from 'search' to 'acquire' (issue #227): the page is
-        // acquisition-only ("get new music"), while "find what I own" lives in
-        // Library/Radio. The component keeps its SearchComponent name — the
-        // backend is still /api/search — but the user-facing route + nav read
-        // "Acquire".
-        path: 'acquire',
-        loadComponent: () =>
-          import('./pages/search/search.component').then((m) => m.SearchComponent),
-      },
-      // Preserve every existing /search link, bookmark, and e2e goto — the
-      // redirect carries query params (e.g. ?q=…) through by default.
-      { path: 'search', redirectTo: 'acquire', pathMatch: 'full' },
-      {
-        path: 'downloads',
+        // The merged acquisition workspace. "Acquire" (find new music) and
+        // "Downloads" (watch it arrive) are two halves of one job, so they're
+        // one route with an internal `?tab=` rather than two nav destinations.
+        // The whole route is acquireGuard'ed — previously only /downloads was,
+        // while /acquire soft-gated itself with an in-template empty state.
+        path: 'get',
         canActivate: [acquireGuard],
-        loadComponent: () =>
-          import('./pages/downloads/downloads.component').then((m) => m.DownloadsComponent),
+        loadComponent: () => import('./pages/get/get.component').then((m) => m.GetComponent),
       },
+      // Preserve every existing /search, /acquire and /downloads link, bookmark
+      // and e2e goto. A function redirect is required (not a string) because
+      // the target needs a `tab` param *added* while the incoming ones — e.g.
+      // ?q=… — are carried through; a string redirectTo can only preserve.
+      { path: 'search', pathMatch: 'full', redirectTo: redirectToGetTab('find') },
+      { path: 'acquire', pathMatch: 'full', redirectTo: redirectToGetTab('find') },
+      { path: 'downloads', pathMatch: 'full', redirectTo: redirectToGetTab('downloads') },
       {
         path: 'library',
         loadComponent: () =>

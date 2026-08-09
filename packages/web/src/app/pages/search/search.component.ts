@@ -190,10 +190,11 @@ function escapeHtml(text: string): string {
 
 // Issue #227: this is the acquisition-only page ("get new music") — local
 // library results were removed, and non-acquirers get a Library-redirect empty
-// state. The user-facing route + nav now read "Acquire" (path `/acquire`, with a
-// `/search` redirect); the component keeps its SearchComponent name because the
-// backend is still `/api/search`. Still open (product): whether a lightweight
-// library-find box belongs on the Library page instead.
+// state. This component is now the **Find tab of the merged `/get` workspace**
+// (Acquire + Downloads became one nav item); `/search`, `/acquire` and
+// `/downloads` redirect onto it. It keeps its SearchComponent name because the
+// backend is still `/api/search`. #227's open product question is answered: the
+// library-find box shipped as the Library page's cross-type find bar.
 @Component({
   selector: 'app-search',
   imports: [
@@ -557,7 +558,9 @@ export class SearchComponent implements OnInit, OnDestroy {
   navigateAndSearch(query: string): void {
     this.search.setQuery(query);
     this.search.setAutoSearch(true);
-    this.router.navigate(['/acquire']);
+    // The merged route directly, not the legacy /acquire alias — going through
+    // the redirect would re-enter the page we're already on.
+    this.router.navigate(['/get'], { queryParams: { tab: 'find' } });
   }
 
   // ─── Catalog (metadata) results ─────────────────────────────────

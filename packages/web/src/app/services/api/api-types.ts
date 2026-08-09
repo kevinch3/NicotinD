@@ -68,6 +68,11 @@ export interface SearchResult {
       duration?: number;
       coverArt?: string;
       track?: number;
+      // The provider runs attachSongArtists (library-provider.ts:133), so
+      // multi-artist credits ship on every local song row — the type just
+      // never declared them, which silently cost search results their linked
+      // artists.
+      artists?: ArtistCredit[];
     }>;
   };
   network: null;

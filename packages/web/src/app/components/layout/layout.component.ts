@@ -41,15 +41,17 @@ interface NavItem {
 // `label` is an i18n key (issue #236), rendered through the `t` pipe.
 const BASE_NAV: NavItem[] = [
   { to: '/', label: 'nav.home' },
-  { to: '/acquire', label: 'nav.acquire' },
-  { to: '/downloads', label: 'nav.downloads' },
   { to: '/library', label: 'nav.library' },
+  { to: '/get', label: 'nav.get' },
   { to: '/settings', label: 'nav.settings' },
 ];
 // Nav items that require the backend to be available. Library stays enabled
 // offline: its Songs tab serves the on-device downloaded songs. The radio
-// landing (/) and acquire need the backend, so both are online-only.
-const ONLINE_ONLY_ROUTES = new Set(['/', '/acquire']);
+// landing (/) needs the backend. /get is deliberately NOT online-only even
+// though its Find tab needs the network — its Downloads tab never was, and
+// blocking the whole item would hide the download feed offline; the app-shell
+// offline banner carries the message instead.
+const ONLINE_ONLY_ROUTES = new Set(['/']);
 
 /** Shared header layout — same pixels everywhere so the brand/title row
  *  doesn't shift between platform states (only the chrome integration
@@ -142,8 +144,8 @@ export class LayoutComponent implements OnInit, OnDestroy {
   });
 
   readonly navItems = computed<NavItem[]>(() => {
-    // Downloads is an acquisition surface — hidden from listeners (declutter).
-    const base = this.auth.canAcquire() ? BASE_NAV : BASE_NAV.filter((n) => n.to !== '/downloads');
+    // /get is the acquisition surface — hidden from listeners (declutter).
+    const base = this.auth.canAcquire() ? BASE_NAV : BASE_NAV.filter((n) => n.to !== '/get');
     return this.auth.isAdmin() ? [...base, { to: '/admin', label: 'Admin' }] : base;
   });
 
@@ -151,11 +153,11 @@ export class LayoutComponent implements OnInit, OnDestroy {
     return this.setup.isOffline() && ONLINE_ONLY_ROUTES.has(route);
   }
 
-  // Active download badge on the desktop "Downloads" nav link — slskd transfers
+  // Active download badge on the desktop "Get" nav link — slskd transfers
   // + in-flight URL acquisitions (the old standalone header indicator's signal,
   // folded into the nav item now that the dedicated header button is gone; the
-  // mobile tab bar already carries the same badge) + the download-inbox triage
-  // queue (issue #411, 0 for anyone who can't curate).
+  // mobile tab bar and the /get Downloads tab carry the same count) + the
+  // download-inbox triage queue (issue #411, 0 for anyone who can't curate).
   readonly downloadCount = computed(
     () =>
       this.transfers.activeDownloadCount() +

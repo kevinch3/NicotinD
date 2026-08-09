@@ -1,0 +1,92 @@
+<div data-testid="library-find-results">
+  @if (loading()) {
+    <div class="text-center py-20">
+      <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
+    </div>
+  } @else if (failed()) {
+    <p class="text-center text-theme-muted py-20" data-testid="library-find-error">
+      Search failed. Pull down to try again.
+    </p>
+  } @else if (isEmpty()) {
+    <p class="text-center text-theme-muted py-20" data-testid="library-find-empty">
+      {{ 'library.find.empty' | t: { query: query() } }}
+    </p>
+  } @else {
+    @if (results().albums.length) {
+      <section class="mb-8" data-testid="library-find-albums">
+        <h2 class="text-sm font-semibold text-theme-secondary mb-3">
+          {{ 'library.find.albums' | t }}
+          <span class="text-theme-muted font-normal">({{ results().albums.length }})</span>
+        </h2>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          @for (album of results().albums; track album.id) {
+            <a [routerLink]="['/library/albums', album.id]"
+              data-testid="album-card"
+              [attr.data-album-id]="album.id"
+              class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
+              <app-cover-art
+                [src]="coverUrl(album.coverArt)"
+                [artist]="album.artist"
+                [album]="album.name"
+                [fill]="true"
+                rounded="rounded"
+                className="mb-2"
+              />
+              <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
+              <p class="text-xs text-theme-muted truncate">
+                {{ album.artist }}{{ album.year ? ' · ' + album.year : '' }}
+              </p>
+            </a>
+          }
+        </div>
+      </section>
+    }
+
+    @if (results().artists.length) {
+      <section class="mb-8" data-testid="library-find-artists">
+        <h2 class="text-sm font-semibold text-theme-secondary mb-3">
+          {{ 'library.find.artists' | t }}
+          <span class="text-theme-muted font-normal">({{ results().artists.length }})</span>
+        </h2>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          @for (artist of results().artists; track artist.id) {
+            <a [routerLink]="['/library/artists', artist.id]"
+              data-testid="artist-card"
+              class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-center cursor-pointer block">
+              <app-cover-art
+                [src]="'/api/cover/' + artist.id + '?size=300&token=' + auth.token()"
+                [artist]="artist.name"
+                [fill]="true"
+                rounded="rounded-full"
+                className="mb-2"
+              />
+              <p class="text-sm text-theme-primary truncate">{{ artist.name }}</p>
+            </a>
+          }
+        </div>
+      </section>
+    }
+
+    @if (results().songs.length) {
+      <section data-testid="library-find-songs">
+        <h2 class="text-sm font-semibold text-theme-secondary mb-3">
+          {{ 'library.find.songs' | t }}
+          <span class="text-theme-muted font-normal">({{ results().songs.length }})</span>
+        </h2>
+        <div class="space-y-0.5">
+          @for (song of results().songs; track song.id; let i = $index) {
+            <app-track-row
+              [track]="toTrack(song)"
+              [indexLabel]="i + 1"
+              [subtitle]="song.album || song.artist"
+              [artists]="song.artists"
+              [duration]="song.duration"
+              [actions]="songMenu.build(song, { removable: true })"
+              (play)="playSong(i)"
+            />
+          }
+        </div>
+      </section>
+    }
+  }
+</div>

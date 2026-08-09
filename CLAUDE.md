@@ -557,17 +557,33 @@ Add detail there, not here.
 - **Unified search**: `GET /api/search?q=` blends local library + parallel slskd network results
   into the one source-agnostic results list. →
   [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md)
-- **Acquire page (acquisition-only, issue #227)**: the page (nav **"Acquire"**, route **`/acquire`**,
-  renamed from `/search`) no longer renders local-library results (the "In your library" album
-  section + local "Songs" finder were removed) — Acquire = "find/add new music", "find what I own" =
-  Library tabs/filters + Radio. The route rename ships a `{ path: 'search', redirectTo: 'acquire' }`
-  redirect (query-param-preserving) so every existing `/search?q=…` link/bookmark still resolves; the
-  component keeps its `SearchComponent` name because the backend is still `/api/search`. The API still
-  returns `local` (unchanged `LibrarySearchProvider`); a non-acquirer (listener, or #235 off) sees a
-  "browse your Library instead" empty state (`data-testid="search-acquisition-off"`). **Left open**
-  (product): whether a lightweight library-find box belongs on the Library page. →
-  [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md) "Unified search",
-  [docs/web-ui.md](docs/web-ui.md)
+- **Merged `/get` workspace (Acquire + Downloads, one nav item)**: "ask for music" and "watch it
+  arrive" are halves of one job, so they're one route with an internal `?tab=find|downloads` instead
+  of two top-level destinations. `GetComponent` is a **shell** — it owns the tab bar, the param and
+  the badge, and mounts the untouched `SearchComponent`/`DownloadsComponent` as children. The `@if`
+  (never `[hidden]`) is load-bearing: destroying the inactive tab is what unregisters its
+  `PullToRefreshService` handler (a stack spliced on the registrant's destroy) and tears down
+  `SearchComponent`'s result poll. Tab state lives in the **URL** (unlike Library's localStorage
+  mode) because "show me my downloads" must be linkable; `/search`, `/acquire` and `/downloads` are
+  kept as **function** `redirectTo`s (a string one can only *preserve* params, never *add* the
+  `tab`). `acquireGuard` now covers the whole route, resolving the old asymmetry where `/downloads`
+  was hard-gated but `/acquire` only soft-gated itself. Nav is four items — **Home · Library · Get ·
+  Settings** — and the mobile bar's column count is derived from the visible tab count (it was a
+  hardcoded `grid-cols-5` with a 4-item listener case); the mobile badge now counts acquire jobs too,
+  matching desktop. Supersedes the #227 split, whose "find what I own" half is now the Library find
+  bar below. → [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md)
+  "Unified search", [docs/web-ui.md](docs/web-ui.md) "The /get workspace"
+- **Library cross-type find bar**: one box above the Library tabs searching **everything you own at
+  once** — albums, artists, songs, grouped by type (`LibraryFindComponent`, its own file because
+  `library.component.ts` is already 759 lines / 7 tabs). A non-empty query **replaces** the tab
+  content (`browseMode()` goes null) rather than filtering the active tab: feedback-log #7 was a user
+  whose album and tracks both existed but who was looking at the wrong result type, and a per-tab
+  filter reproduces that by construction. Debounced into `?find=` so a search is linkable; clearing
+  restores the tab the user was on (`libraryMode` is never written). No matching of its own — the
+  `/api/search` local lane already tokenizes, accent-folds and excludes quarantined rows. **No
+  acquisition handoff** (deliberate: Library is a listening surface). Playlists are out of scope —
+  `LibrarySearchProvider` returns `{artists, albums, songs}` only. The Songs-tab search box stays as
+  a within-tab filter. → [docs/web-ui.md](docs/web-ui.md) "Library find bar"
 - **Deployment-wide acquisition kill-switch (issue #235)**: one authoritative
   `config.acquisitionEnabled` (env `NICOTIND_ACQUISITION=off`, default on) turns the **whole**
   acquisition module off for a lighter streaming/library-only install — orthogonal to the per-user
@@ -674,8 +690,8 @@ Add detail there, not here.
   genre-blind (issue #187 task B4, fixed); the centroid's modal key ("collapses to C major") was
   investigated and is a measured null result, not a bug — see docs/radio.md. This backs the
   **radio/mood landing** (the post-login home route `''`, `pages/radio-landing/`): a last-track
-  resume shortcut (disappears on tap) + one-tap vibe presets + top-genre chips; Search moved to
-  `/search`. Shared scoring with `/songs/:id/similar`. A **missing candidate genre is floored, not
+  resume shortcut (disappears on tap) + one-tap vibe presets + top-genre chips; acquisition search
+  moved to the `/get` Find tab. Shared scoring with `/songs/:id/similar`. A **missing candidate genre is floored, not
   skipped** (`MISSING_GENRE_FLOOR` 0.2, reported in `explainSimilarity().floored`) — skipping
   dropped the genre axis out of the denominator and literally _rewarded_ untagged tracks; the genre
   weight itself was re-measured and raised 10→18 (issue #187 task B3) after `dump-radio.ts` found a

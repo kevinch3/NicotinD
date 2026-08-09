@@ -1,6 +1,45 @@
 <div class="page-shell max-w-6xl">
 
+  <!-- Cross-type find: one box over albums + artists + songs. A non-empty
+       query replaces the tab content (browseMode() goes null) rather than
+       filtering the active tab — looking in the wrong tab is precisely the
+       failure this exists to prevent. -->
+  @if (findAvailable()) {
+    <div class="relative mb-4">
+      <input
+        type="search"
+        data-testid="library-find"
+        class="w-full pl-9 pr-9 py-2 text-sm rounded-lg bg-theme-surface-2 text-theme-primary placeholder:text-theme-muted border border-transparent focus:border-theme focus:outline-none"
+        [placeholder]="'library.find.placeholder' | t"
+        [value]="findInput()"
+        (input)="onFindInput($any($event.target).value)"
+      />
+      <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-theme-muted pointer-events-none" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+      @if (findInput()) {
+        <button
+          type="button"
+          data-testid="library-find-clear"
+          [attr.aria-label]="'library.find.clear' | t"
+          class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-theme-muted hover:text-theme-primary transition"
+          (click)="clearFind()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      }
+    </div>
+  }
+
+  @if (find()) {
+    <app-library-find [query]="find()" />
+  }
+
   <!-- Mode switcher -->
+  @if (!find()) {
   <div class="flex items-center justify-between mb-6">
     <!-- G7: tighter padding on mobile + horizontal scroll so the 5 tabs don't
          crowd/clip the edges on a narrow phone. -->
@@ -18,9 +57,10 @@
       }
     </div>
   </div>
+  }
 
   <!-- ═══ ALBUMS MODE ═══ -->
-  @if (libraryMode() === 'albums') {
+  @if (browseMode() === 'albums') {
     <!-- Consolidated controls: search · sort · filters (one row).
          Sort is the *server* ordering (drives the fetch + pagination); the old
          client-side toolbar sort was dropped because it silently re-sorted each
@@ -152,7 +192,7 @@
   }
 
   <!-- ═══ COMPILATIONS MODE ═══ -->
-  @if (libraryMode() === 'compilations') {
+  @if (browseMode() === 'compilations') {
     <div class="flex flex-wrap items-center gap-2 mb-4">
       <div class="relative flex-1 min-w-[12rem]">
         <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted pointer-events-none"
@@ -240,7 +280,7 @@
   }
 
   <!-- ═══ SINGLES & EPs MODE ═══ -->
-  @if (libraryMode() === 'singles') {
+  @if (browseMode() === 'singles') {
     <div class="flex flex-wrap items-center gap-2 mb-4">
       <div class="relative flex-1 min-w-[12rem]">
         <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted pointer-events-none"
@@ -330,7 +370,7 @@
   }
 
   <!-- ═══ ARTISTS MODE ═══ -->
-  @if (libraryMode() === 'artists') {
+  @if (browseMode() === 'artists') {
     <div class="flex flex-wrap items-center gap-2 mb-4">
       <div class="relative flex-1 min-w-[12rem]">
         <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted pointer-events-none"
@@ -432,7 +472,7 @@
   }
 
   <!-- ═══ GENRE MODE ═══ -->
-  @if (libraryMode() === 'genre') {
+  @if (browseMode() === 'genre') {
     <!-- Genre grid -->
     @if (loadingGenres()) {
       <div class="text-center py-20">
@@ -460,7 +500,7 @@
   }
 
   <!-- ═══ SONGS MODE ═══ -->
-  @if (libraryMode() === 'songs') {
+  @if (browseMode() === 'songs') {
     <app-library-songs
       [filter]="libFilter()"
       [offline]="setup.isOffline()"
@@ -470,7 +510,7 @@
   }
 
   <!-- ═══ PLAYLISTS MODE ═══ -->
-  @if (libraryMode() === 'playlists') {
+  @if (browseMode() === 'playlists') {
     <section data-testid="playlists-list">
       <h2 class="text-lg font-bold text-theme-primary mb-3">Playlists</h2>
       <form class="flex gap-2 mb-5 max-w-md" (submit)="$event.preventDefault(); createPlaylist()">

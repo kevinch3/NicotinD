@@ -296,6 +296,55 @@ Effect 1 (`PlayerComponent` track-load) honours this: its two `audio.play()` cal
 
 Per-user pref lives in the `user_settings.autoplay_on_load` column (default `0`); surfaced through `GET /api/auth/me` (`autoplayOnLoad: boolean`) and mutated by `POST /api/auth/ autoplay` (body `{ enabled: boolean }`). The web toggle sits in Settings → Playback (`data-testid="autoplay-on-load-toggle"`); `AuthService.setAutoplayOnLoad()` writes optimistically and rolls back on HTTP error. Guarded by `auth.test.ts`, `player.service.spec.ts` (`maybeResumeAutoplay` one-shot/quadrant tests), `player.component.spec.ts` ("loading while paused doesn't call play"), and `e2e/tests/player.spec.ts` ("reload leaves the player paused by default").
 
+## The `/get` workspace — Acquire + Downloads merged
+
+Acquire and Downloads were two top-level nav items for two halves of one job: *ask for music* → *watch it arrive*. They are now one route, `/get`, with an internal `?tab=find|downloads`. This is the same defect issue #227 fixed, in reverse — there, one page was trying to be two things; here, one job was split across two pages. The test either way: **can a user state the page's one job in a sentence?**
+
+### The shell, and why `@if` is load-bearing
+
+`GetComponent` (`pages/get/`) is deliberately thin — ~60 lines owning the tab bar, the `?tab=` param, and the active-download badge. Its template is two branches mounting the **untouched** `SearchComponent` and `DownloadsComponent`. Neither child's TypeScript changed, so every `data-testid`, service injection and lifecycle hook survives.
+
+The `@if` must never become `[hidden]`. `PullToRefreshService` is a **stack spliced on the registrant's destroy** (`services/pull-to-refresh.service.ts`), and both children register a handler — Search re-runs the query, Downloads calls `kickPoll()`. Destroying the inactive child is what unregisters its handler, so the pull gesture always refreshes the tab you're actually looking at. The same destroy also stops `SearchComponent`'s result poll and runs its `cleanupSearch(id)`. With `[hidden]` both leak, and the wrong handler wins (the stack returns the *last* registered).
+
+Downloads polling is unaffected by any of this: `TransferService.startPolling()/stopPolling()` are owned by `LayoutComponent`, app-shell-wide, not by the page.
+
+### Tab state is in the URL, unlike Library's
+
+Library keeps its tab in `localStorage`; `/get` keeps its tab in the URL. The difference is intentional — "show me my downloads" has to be linkable, and `/downloads` redirects onto it. `?tab=` is user-editable, so `parseGetTab` treats anything unrecognized (including `'DOWNLOADS'`) as the `find` default rather than rendering a blank pane.
+
+### Redirects need a *function* `redirectTo`
+
+`/search`, `/acquire` and `/downloads` all still resolve. A string `redirectTo` can only **preserve** incoming query params, never **add** one — but `/downloads` has to arrive with `tab=downloads`. Angular's `RedirectFunction` (`(PartialMatchRouteSnapshot) => string | UrlTree`) runs in an injection context, so `redirectToGetTab` in `app.routes.ts` injects the `Router` and builds the UrlTree itself, merging `queryParams` with the tab. That's what keeps a bookmarked `/search?q=…` landing on its query.
+
+### Gating, and the nav going to four
+
+`acquireGuard` now covers the whole merged route. Previously `/downloads` was hard-guarded while `/acquire` only soft-gated itself with an in-template empty state — an asymmetry a merged route can't keep. A listener (or an `NICOTIND_ACQUISITION=off` deployment) simply never sees the nav item, which retires `search-acquisition-off` as a reachable state; the block stays in the template, since it's still correct if the component is ever mounted for a non-acquirer.
+
+Nav is now **Home · Library · Get · Settings**. Two fixes rode along:
+
+- The mobile bar's column count is **derived** (`gridColumns()` → `repeat(N, minmax(0,1fr))`) instead of a hardcoded `grid-cols-5`. The old value was already wrong for listeners, who saw 4 tabs in a 5-column grid with a dead trailing column.
+- The mobile badge now counts in-flight URL acquisitions, matching the desktop formula. They had silently disagreed: a spotdl/yt-dlp job showed a count on desktop and nothing on a phone.
+
+`/get` is deliberately **not** in `ONLINE_ONLY_ROUTES` even though its Find tab needs the network — the Downloads tab never was, and gating the whole item would hide the download feed offline. The app-shell offline banner carries that message.
+
+## Library find bar — cross-type, not per-tab
+
+One box above the Library tabs searching everything you own at once: **Albums, Artists, Songs**, grouped by type, in `LibraryFindComponent` (its own file — `library.component.ts` is already 759 lines across 7 tabs).
+
+A non-empty query **replaces** the tab content rather than filtering the active tab. That's the whole point. `feedback-log-2026-07` item #7 was a user whose album row was clean and whose tracks were all present, but who concluded the release was missing because no album *card* ever surfaced — they were looking at the wrong result type. A filter scoped to the active tab reproduces that failure by construction; a cross-type result set is what closes it. The e2e case asserts exactly that: an artist+title query surfaces an **album card**.
+
+Mechanically:
+
+- `browseMode()` is `computed(() => find() ? null : libraryMode())`. The seven tab-content blocks switched from `libraryMode() === …` to `browseMode() === …`; the tab *bar* still reads `libraryMode()`, so the user's tab stays visibly selected underneath and clearing the box returns them to it. This avoided re-indenting ~480 lines of template to wrap it all in one conditional.
+- Typing is debounced 250 ms into `find`, mirrored to `?find=` with `replaceUrl` so a search is linkable and survives reload without spamming history. `libraryMode` is never written by the find bar.
+- No matching of its own. `/api/search`'s local lane (`LibrarySearchProvider`) already tokenizes, NFD-folds diacritics, ANDs per token over a `name+artist` haystack, and excludes quarantined (`landed_at IS NULL`) rows — it is precisely the matcher the #7 fix installed.
+- A monotonic `generation` counter discards a slow response for a query the user has already typed past, and stops it clearing a spinner the newer request owns.
+- A failed request renders `library-find-error`, **not** the empty state. Collapsing the two would tell a user they don't own music they do own.
+
+Deliberately out of scope: **playlists** (the local lane returns `{artists, albums, songs}` only — adding them is an API change), and any **acquisition handoff** from the results. Library is a listening surface; the bridge to `/get` is the nav item. The Songs-tab search box stays as a within-tab filter.
+
+Offline the bar is hidden (`findAvailable()`), since the local lane is unreachable and the page falls back to on-device preserved tracks.
+
 ## Queue semantics — what a click replaces (issue #233)
 
 A track click used to call the bare `PlayerService.play(track)`, which sets `currentTrack` + `isPlaying` and **never touches `queue`**. So clicking one track left whatever was queued before in place, and `playNext()` pulled that unrelated queue as soon as the deliberately-clicked track ended. The fix is not "always clear the queue" — that would wipe the queue on every album-track click too. It's making the *gesture* decide, via three explicit entry points:

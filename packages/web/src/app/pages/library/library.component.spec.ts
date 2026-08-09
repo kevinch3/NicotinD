@@ -74,6 +74,9 @@ function setup(
       { provide: LibraryApiService, useValue: api },
       {
         provide: AuthService,
+        // canCurate is read by the template's curator-gated controls; a test
+        // that lets change detection run (fake timers flush the scheduler)
+        // renders them, so the stub has to answer.
         useValue: { token: signal('tok'), role: () => 'user', canCurate: () => false },
       },
       {
@@ -513,5 +516,95 @@ describe('LibraryComponent — merged playlists list', () => {
 
     expect(confirmAsk).not.toHaveBeenCalled();
     expect(playlistDelete).not.toHaveBeenCalled();
+  });
+});
+
+describe('LibraryComponent — cross-type find bar', () => {
+  it('starts inert, showing the tabs rather than results', () => {
+    const { component } = setup();
+    expect(component.find()).toBe('');
+    expect(component.browseMode()).toBe(component.libraryMode());
+  });
+
+  it('seeds the query from ?find= so a shared search link opens on its results', async () => {
+    const { component } = setup({ find: 'tangana idolo' });
+    await component.ngOnInit();
+
+    expect(component.find()).toBe('tangana idolo');
+    expect(component.findInput()).toBe('tangana idolo');
+    // browseMode goes null → the tab content is replaced by the results view.
+    expect(component.browseMode()).toBeNull();
+  });
+
+  it('debounces typing into a single committed query', () => {
+    vi.useFakeTimers();
+    try {
+      const { component } = setup();
+      component.onFindInput('t');
+      component.onFindInput('ta');
+      component.onFindInput('tangana');
+
+      // Nothing committed until the debounce elapses — the results component
+      // would otherwise fire a request per keystroke.
+      expect(component.find()).toBe('');
+      vi.advanceTimersByTime(250);
+      expect(component.find()).toBe('tangana');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('mirrors the committed query into the URL and nulls it when cleared', () => {
+    vi.useFakeTimers();
+    try {
+      const { component, navigations } = setup();
+      component.onFindInput('tangana');
+      vi.advanceTimersByTime(250);
+      expect(navigations.at(-1)).toEqual({ find: 'tangana' });
+
+      component.clearFind();
+      // null (not '') so the param is dropped from the URL entirely.
+      expect(navigations.at(-1)).toEqual({ find: null });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clearing restores the tab the user was on rather than resetting it', () => {
+    const { component } = setup();
+    component.setMode('artists');
+    component.onFindInput('x');
+    component.clearFind();
+
+    expect(component.find()).toBe('');
+    expect(component.browseMode()).toBe('artists');
+  });
+
+  it('clearFind cancels a pending debounce so a stale keystroke cannot resurrect the search', () => {
+    vi.useFakeTimers();
+    try {
+      const { component } = setup();
+      component.onFindInput('tangana');
+      component.clearFind();
+      vi.advanceTimersByTime(250);
+
+      expect(component.find()).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('trims whitespace so a space-only query is not treated as a search', () => {
+    vi.useFakeTimers();
+    try {
+      const { component } = setup();
+      component.onFindInput('   ');
+      vi.advanceTimersByTime(250);
+
+      expect(component.find()).toBe('');
+      expect(component.browseMode()).toBe(component.libraryMode());
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

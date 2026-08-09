@@ -1,6 +1,7 @@
 <nav
   data-bottom-chrome
-  class="md:hidden fixed bottom-0 left-0 right-0 z-50 grid grid-cols-5 h-[calc(3.5rem+env(safe-area-inset-bottom))] bg-theme-surface border-t border-theme pb-[env(safe-area-inset-bottom)]"
+  class="md:hidden fixed bottom-0 left-0 right-0 z-50 grid h-[calc(3.5rem+env(safe-area-inset-bottom))] bg-theme-surface border-t border-theme pb-[env(safe-area-inset-bottom)]"
+  [style.grid-template-columns]="gridColumns()"
 >
   @for (tab of tabs(); track tab.to) {
     @if (isDisabled(tab)) {
@@ -19,7 +20,7 @@
       >
         <ng-container [ngTemplateOutlet]="icon" [ngTemplateOutletContext]="{ $implicit: tab.to }" />
         {{ tab.label | t }}
-        @if (tab.to === '/downloads' && activeDownloads() > 0) {
+        @if (tab.to === '/get' && activeDownloads() > 0) {
           <span
             class="absolute top-1 right-[calc(50%-1.25rem)] min-w-4 h-4 px-1 flex items-center justify-center rounded-full bg-theme-accent text-[9px] font-bold text-theme-on-accent"
           >
@@ -47,17 +48,13 @@
         <circle cx="17" cy="16" r="3" />
       </svg>
     }
-    @case ('/downloads') {
+    <!-- The download arrow, not the magnifier: the merged tab is named for
+         what it does (bring music in), and search now lives in Library. -->
+    @case ('/get') {
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
         <polyline points="7 10 12 15 17 10" />
         <line x1="12" y1="15" x2="12" y2="3" />
-      </svg>
-    }
-    @case ('/acquire') {
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="11" cy="11" r="8" />
-        <line x1="21" y1="21" x2="16.65" y2="16.65" />
       </svg>
     }
     @case ('/settings') {

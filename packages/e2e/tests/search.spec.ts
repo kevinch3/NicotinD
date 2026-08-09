@@ -1,22 +1,31 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Source-agnostic acquire UX. The page is now "Acquire" (route /acquire, renamed
- * from /search per issue #227): Soulseek is no longer framed as "the network",
- * the status line is source-neutral, raw peer browsing is demoted behind an
- * "Advanced" disclosure, and there is no longer a "From archive.org"/"From
- * Spotify" hierarchy — every source flows into one blended Results list. With
- * Lidarr/slskd unreachable in e2e the catalog is empty so these are reachable.
+ * Source-agnostic acquire UX. Finding music now lives on the **Find tab of the
+ * merged /get workspace** (Acquire + Downloads became one nav item, since
+ * "ask for music" and "watch it arrive" are halves of one job): Soulseek is no
+ * longer framed as "the network", the status line is source-neutral, raw peer
+ * browsing is demoted behind an "Advanced" disclosure, and there is no longer a
+ * "From archive.org"/"From Spotify" hierarchy — every source flows into one
+ * blended Results list. With Lidarr/slskd unreachable in e2e the catalog is
+ * empty so these are reachable.
  */
 test.describe('acquire', () => {
-  test('the old /search path redirects to /acquire, preserving the query param', async ({
+  test('the legacy /search path redirects to the Find tab, preserving the query param', async ({
     page,
   }) => {
     await page.goto('/search?q=hello');
-    await expect(page).toHaveURL(/\/acquire(\?|$)/);
-    // The redirect is queryParams-preserving so a shared /search?q=… link still
-    // lands on the query it named.
+    await expect(page).toHaveURL(/\/get(\?|$)/);
+    await expect(page).toHaveURL(/tab=find/);
+    // The redirect preserves incoming params, so a shared /search?q=… link
+    // still lands on the query it named.
     await expect(page).toHaveURL(/q=hello/);
+    await expect(page.getByTestId('search-input')).toBeVisible();
+  });
+
+  test('the legacy /acquire path redirects to the Find tab', async ({ page }) => {
+    await page.goto('/acquire');
+    await expect(page).toHaveURL(/tab=find/);
     await expect(page.getByTestId('search-input')).toBeVisible();
   });
 

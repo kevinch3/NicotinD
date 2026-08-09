@@ -23,6 +23,7 @@ import { CoverArtComponent } from '../../components/cover-art/cover-art.componen
 import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { LibrarySongsComponent } from './library-songs.component';
+import { LibraryFindComponent } from './library-find.component';
 import { SetupService } from '../../services/setup.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { resolveAlbumRoute, resolveGenreRoute, resolveArtistRoute } from '../../lib/route-utils';
@@ -69,6 +70,9 @@ const ALBUM_TYPE_OPTIONS: AlbumTypeOption[] = [
 ];
 
 const PAGE_SIZE = 40;
+/** Long enough that typing a multi-word query is one request, short enough to
+ *  feel live. */
+const FIND_DEBOUNCE_MS = 250;
 const RESTORE_CAP = 200;
 const STATE_KEY = 'nicotind-library-state';
 
@@ -114,6 +118,7 @@ function writePersistedState(state: PersistedLibraryState): void {
     FormsModule,
     LibraryFilterPanelComponent,
     LibrarySongsComponent,
+    LibraryFindComponent,
     IconComponent,
     TranslatePipe,
     TvNavGroupDirective,
@@ -165,6 +170,52 @@ export class LibraryComponent implements OnInit, OnDestroy {
   readonly libraryMode = signal<LibraryMode>(
     (localStorage.getItem('nicotind-library-mode') as LibraryMode) ?? 'albums',
   );
+
+  // ─── Cross-type find ─────────────────────────────────────────────
+  // `findInput` is what the user is typing; `find` is the debounced value the
+  // results component consumes. A non-empty `find` replaces the tabs entirely
+  // (see the template) — it's a different view of the library, not a filter on
+  // the current one. Unlike libraryMode this is mirrored into the URL (?find=),
+  // so a search is linkable and survives reload; libraryMode stays in
+  // localStorage and is never written here, so clearing restores the tab the
+  // user was on.
+  readonly findInput = signal('');
+  readonly find = signal('');
+  private findDebounce?: ReturnType<typeof setTimeout>;
+
+  /** The tab whose content should render, or null while a search is active.
+   *  The tab *bar* keeps reading `libraryMode()` so the user's tab stays
+   *  visibly selected underneath — clearing the box returns them to it. */
+  readonly browseMode = computed<LibraryMode | null>(() =>
+    this.find() ? null : this.libraryMode(),
+  );
+
+  /** Offline the local search lane is unreachable (the page falls back to
+   *  on-device preserved tracks), so the bar would be a dead input. */
+  readonly findAvailable = computed(() => !this.setup.isOffline());
+
+  onFindInput(value: string): void {
+    this.findInput.set(value);
+    clearTimeout(this.findDebounce);
+    this.findDebounce = setTimeout(() => this.commitFind(value), FIND_DEBOUNCE_MS);
+  }
+
+  clearFind(): void {
+    clearTimeout(this.findDebounce);
+    this.findInput.set('');
+    this.commitFind('');
+  }
+
+  private commitFind(value: string): void {
+    const trimmed = value.trim();
+    this.find.set(trimmed);
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { find: trimmed || null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
 
   // Offline (backend unreachable): only the Songs tab works — it reads the
   // on-device preserved tracks. Hide the server-backed tabs so the library page
@@ -413,6 +464,15 @@ export class LibraryComponent implements OnInit, OnDestroy {
     // Offline: the only usable tab is Songs (on-device preserved tracks).
     if (this.setup.isOffline()) this.libraryMode.set('songs');
 
+    // Seed the find bar from the URL so a shared/bookmarked ?find= link opens
+    // straight onto its results. Offline the local lane is unreachable, so the
+    // bar is hidden and any inbound ?find= is ignored.
+    const initialFind = this.setup.isOffline()
+      ? ''
+      : (this.route.snapshot.queryParamMap.get('find') ?? '').trim();
+    this.findInput.set(initialFind);
+    this.find.set(initialFind);
+
     // Shared filter from the URL; a legacy `type=starred` (URL or persisted
     // state) folds into it as the starred filter with a `newest` ordering.
     const qp = this.route.snapshot.queryParamMap;
@@ -504,6 +564,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.observer?.disconnect();
     this.tabObserver?.disconnect();
+    clearTimeout(this.findDebounce);
     this.persistState();
   }
 
