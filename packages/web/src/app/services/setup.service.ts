@@ -49,6 +49,8 @@ export class SetupService {
   // reportServerFailure() safe against the probe's own failure re-entering it
   // through the interceptor.
   private verifying = false;
+  /** A verify() that arrived while another was in flight; replayed once after. */
+  private reverifyQueued = false;
   private recoveryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
@@ -58,14 +60,19 @@ export class SetupService {
     // waiting out the recovery poll — and also when `status` is still null,
     // i.e. an OFFLINE LAUNCH skipped the boot probe entirely and the app has
     // never learned the server's setup state (without this, `needsSetup` stayed
-    // unknowable until a full reload). Tracks only the network signal (the rest
-    // is read via untracked) and only fires on the offline→online transition.
-    let wasOnline = this.network.online();
+    // unknowable until a full reload).
+    //
+    // Tracks the reconnect COUNTER, not the `online` value. Diffing `online`
+    // loses the event: signals coalesce, so a quick false→true pair flushes the
+    // effect once with only the final `true` and the "came back online" edge is
+    // invisible — the app then sat offline for the whole 20s poll despite a live
+    // network. The counter is incremented by the actual OS/browser event, so
+    // even coalesced increments leave a changed, greater value. `> 0` skips the
+    // effect's creation pass, where boot's own probe belongs to `check()`; the
+    // rest of the condition is read untracked so only connectivity re-runs this.
     effect(() => {
-      const online = this.network.online();
-      const cameBackOnline = online && !wasOnline;
-      wasOnline = online;
-      if (cameBackOnline && untracked(() => this.serverUnreachable() || this.status() === null)) {
+      const reconnects = this.network.reconnects();
+      if (reconnects > 0 && untracked(() => this.serverUnreachable() || this.status() === null)) {
         void this.verify();
       }
     });
@@ -135,7 +142,17 @@ export class SetupService {
    * exists exactly once.
    */
   private async verify(): Promise<void> {
-    if (this.verifying) return;
+    // A concurrent call is *coalesced*, not dropped. Dropping it stranded the
+    // app offline for a full recovery period: a probe started while the device
+    // was still down is doomed, and if the reconnect fired while that one was
+    // in flight, the good probe was discarded and the doomed one re-armed the
+    // 20s poll. Toggling airplane mode off left the user offline until it
+    // elapsed. Re-running once after the loser settles costs one request and
+    // makes the outcome independent of which probe raced first.
+    if (this.verifying) {
+      this.reverifyQueued = true;
+      return;
+    }
     this.verifying = true;
     try {
       const status = await firstValueFrom(
@@ -151,6 +168,12 @@ export class SetupService {
       this.scheduleRecovery();
     } finally {
       this.verifying = false;
+    }
+    // Replay a coalesced call once, and only while the device is actually up —
+    // otherwise a reconnect that raced a doomed probe never gets its answer.
+    if (this.reverifyQueued) {
+      this.reverifyQueued = false;
+      if (this.network.online()) await this.verify();
     }
   }
 

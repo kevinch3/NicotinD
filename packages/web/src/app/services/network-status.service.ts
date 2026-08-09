@@ -41,6 +41,24 @@ export class NetworkStatusService {
   // never wrongly shows the offline surface before the seed resolves.
   readonly online = signal(true);
 
+  /**
+   * Monotonic count of device *reconnect events* (a transition to connected
+   * reported by the OS/browser), not a derived edge on `online`.
+   *
+   * Signals coalesce: setting `online` false then true before an effect flushes
+   * runs that effect once with only the final `true`, so a consumer diffing the
+   * value sees no transition and misses the reconnect entirely — which stranded
+   * the app in offline mode for a full recovery poll after a quick airplane-mode
+   * toggle. A counter can't lose the event: even coalesced writes leave a
+   * changed, greater value. Starts at 0, so "no reconnect yet" is distinguishable
+   * from "reconnected once".
+   */
+  readonly reconnects = signal(0);
+
+  private markReconnected(): void {
+    this.reconnects.update((n) => n + 1);
+  }
+
   // Resolves once the INITIAL connectivity status is known. On web/Electron the
   // seed is synchronous, so this is already-resolved; on native it settles after
   // the Capacitor plugin's async `getStatus()` resolves (or rejects). The whole
@@ -88,7 +106,10 @@ export class NetworkStatusService {
       // (bootstrap would hang) than proceeding with a best-guess value.
       .finally(() => this.resolveReady());
     void Promise.resolve(
-      plugin.addListener('networkStatusChange', (s) => this.online.set(s.connected)),
+      plugin.addListener('networkStatusChange', (s) => {
+        this.online.set(s.connected);
+        if (s.connected) this.markReconnected();
+      }),
     ).catch(() => {
       /* listener registration is best-effort */
     });
@@ -96,7 +117,10 @@ export class NetworkStatusService {
 
   private initWeb(): void {
     this.online.set(navigator.onLine);
-    window.addEventListener('online', () => this.online.set(true));
+    window.addEventListener('online', () => {
+      this.online.set(true);
+      this.markReconnected();
+    });
     window.addEventListener('offline', () => this.online.set(false));
     // navigator.onLine is synchronous, so the seed is already correct here.
     this.resolveReady();
