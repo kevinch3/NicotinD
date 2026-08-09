@@ -320,7 +320,7 @@ Library keeps its tab in `localStorage`; `/get` keeps its tab in the URL. The di
 
 `acquireGuard` now covers the whole merged route. Previously `/downloads` was hard-guarded while `/acquire` only soft-gated itself with an in-template empty state — an asymmetry a merged route can't keep. A listener (or an `NICOTIND_ACQUISITION=off` deployment) simply never sees the nav item, which retires `search-acquisition-off` as a reachable state; the block stays in the template, since it's still correct if the component is ever mounted for a non-acquirer.
 
-Nav is now **Home · Library · Get · Settings**. Two fixes rode along:
+Nav is now **Home · Library · Add · Settings** (the route is `/get`; the label is `nav.get` → "Add"). Two fixes rode along:
 
 - The mobile bar's column count is **derived** (`gridColumns()` → `repeat(N, minmax(0,1fr))`) instead of a hardcoded `grid-cols-5`. The old value was already wrong for listeners, who saw 4 tabs in a 5-column grid with a dead trailing column.
 - The mobile badge now counts in-flight URL acquisitions, matching the desktop formula. They had silently disagreed: a spotdl/yt-dlp job showed a count on desktop and nothing on a phone.

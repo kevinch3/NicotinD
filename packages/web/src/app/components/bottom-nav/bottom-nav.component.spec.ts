@@ -71,7 +71,7 @@ describe('BottomNavComponent', () => {
     }
   });
 
-  it('includes Get as a tab that stays enabled offline (its Downloads half works)', () => {
+  it('includes Add as a tab that stays enabled offline (its Downloads half works)', () => {
     const { fixture } = setup();
     const getTab = fixture.componentInstance.tabs().find((t) => t.to === '/get');
     expect(getTab).toBeDefined();
@@ -79,7 +79,7 @@ describe('BottomNavComponent', () => {
     expect(getTab?.onlineOnly).toBe(false);
   });
 
-  it('hides the Get tab for a listener (cannot acquire)', () => {
+  it('hides the Add tab for a listener (cannot acquire)', () => {
     const { fixture } = setup({ canAcquire: false });
     const labels = Array.from(
       fixture.nativeElement.querySelectorAll('a, span') as NodeListOf<HTMLElement>,
@@ -120,7 +120,7 @@ describe('BottomNavComponent', () => {
     expect(badge?.textContent?.trim()).toBe('4');
   });
 
-  it('folds the download-review pending count into the Get badge (issue #411)', () => {
+  it('folds the download-review pending count into the Add badge (issue #411)', () => {
     const { fixture } = setup({ active: 1, pending: 2 });
     expect(fixture.componentInstance.activeDownloads()).toBe(3);
     const badge = fixture.nativeElement.querySelector('nav a span') as HTMLElement;

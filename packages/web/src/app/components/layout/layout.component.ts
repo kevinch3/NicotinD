@@ -153,7 +153,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
     return this.setup.isOffline() && ONLINE_ONLY_ROUTES.has(route);
   }
 
-  // Active download badge on the desktop "Get" nav link — slskd transfers
+  // Active download badge on the desktop "Add" nav link — slskd transfers
   // + in-flight URL acquisitions (the old standalone header indicator's signal,
   // folded into the nav item now that the dedicated header button is gone; the
   // mobile tab bar and the /get Downloads tab carry the same count) + the

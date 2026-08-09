@@ -567,7 +567,7 @@ Add detail there, not here.
   mode) because "show me my downloads" must be linkable; `/search`, `/acquire` and `/downloads` are
   kept as **function** `redirectTo`s (a string one can only *preserve* params, never *add* the
   `tab`). `acquireGuard` now covers the whole route, resolving the old asymmetry where `/downloads`
-  was hard-gated but `/acquire` only soft-gated itself. Nav is four items — **Home · Library · Get ·
+  was hard-gated but `/acquire` only soft-gated itself. Nav is four items — **Home · Library · Add ·
   Settings** — and the mobile bar's column count is derived from the visible tab count (it was a
   hardcoded `grid-cols-5` with a 4-item listener case); the mobile badge now counts acquire jobs too,
   matching desktop. Supersedes the #227 split, whose "find what I own" half is now the Library find
