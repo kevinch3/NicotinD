@@ -315,11 +315,13 @@ describe('KeyboardShortcutsService', () => {
     expect(playerStub.playPrev).toHaveBeenCalled();
   });
 
-  it('/ navigates to the Acquire page', () => {
+  it('/ navigates to the Find tab of the merged Get workspace', () => {
     const { router } = setup(false);
     const navigateSpy = vi.spyOn(router, 'navigate');
     dispatchKeydown(window, '/');
-    expect(navigateSpy).toHaveBeenCalledWith(['/acquire']);
+    // The merged route directly, not the legacy /acquire alias — the redirect
+    // would work, but costs a hop and re-enters the page.
+    expect(navigateSpy).toHaveBeenCalledWith(['/get'], { queryParams: { tab: 'find' } });
   });
 
   it('/ is ignored while a text input is focused (so typing a literal "/" in a field works normally)', () => {
