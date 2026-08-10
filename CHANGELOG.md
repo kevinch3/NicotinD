@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.330](https://github.com/kevinch3/NicotinD/compare/v0.1.329...v0.1.330) (2026-08-10)
+
+### Features
+
+* **history:** Library Stats tab over the listening log ([#456](https://github.com/kevinch3/NicotinD/issues/456)) ([155a861](https://github.com/kevinch3/NicotinD/commit/155a86107dafdd6c78efc974e8ebb5b561b5c8e7)), references [#454](https://github.com/kevinch3/NicotinD/issues/454) [#454](https://github.com/kevinch3/NicotinD/issues/454)
 ## [0.1.329](https://github.com/kevinch3/NicotinD/compare/v0.1.328...v0.1.329) (2026-08-10)
 
 ### Features
