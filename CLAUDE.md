@@ -1370,6 +1370,16 @@ Add detail there, not here.
 
 ## Web UI
 
+- **Storybook component catalog**: 36 shared components (19 zero-injection + 17 light-DI)
+  storied and documented, with theme/TV-build/viewport toolbar globals; per-component prose
+  comes from each component's own class JSDoc via Compodoc (not hand-written MDX, which
+  would drift), MDX covers only Foundations + Patterns. Stories run the **real** services
+  behind an HTTP fixture interceptor — no fake service classes. `bun run smoke:storybook` is
+  a second gate beside `build:storybook` because compiling a story is not running one (the
+  first green build shipped 67 of 139 stories that threw on mount). The 11 app-shell
+  components (5–14 injections) are deliberately out of scope. →
+  [docs/storybook.md](docs/storybook.md)
+
 Angular v22 standalone SPA with signals, `HttpClient` + interceptors, and lazy-loaded routes. Built
 via `ng build` (esbuild); tests run on **plain vitest**, never `ng test` (which forbids the
 `vi.mock` five specs rely on — see docs/web-ui.md "Web test harness"). Four type-check surfaces,
