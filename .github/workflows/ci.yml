@@ -86,6 +86,11 @@ jobs:
       - name: Check CI/local gate parity
         run: bun run check:ci-parity
 
+      # Forgetting the auth middleware makes a route public and nothing else
+      # complains — that is how /api/radio and /api/catalog stayed open (#461).
+      - name: Check every /api route group decides about auth
+        run: bun run check:route-auth
+
       - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
         run: bun test packages/api/src packages/slskd-client/src packages/lidarr-client/src packages/core/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
 

@@ -72,6 +72,7 @@ bun run typecheck        # TypeScript type checking (tsc --build + Angular templ
 bun run lint             # ESLint across all packages
 bun run check:claude-md  # fail on CLAUDE.md symbols that don't exist / broken docs links (CI gate)
 bun run check:ci-parity  # fail when the CI `ci` job runs a check `bun run verify` doesn't (CI gate)
+bun run check:route-auth # fail when an /api route group is mounted with no auth decision (CI gate)
 bun run check:shipped-issues # open issues a shipped commit referenced (report, not a gate)
 bun run check:json       # duplicate keys in JSON configs (JSON.parse keeps the last silently)
 bun run check:shared-helpers # a shared helper re-implemented locally instead of imported (CI gate)
@@ -714,9 +715,12 @@ Add detail there, not here.
   `play_events` via `lastPlayedAtMap` (a denormalized `library_songs` column was rejected — that
   table is global, so it would blend every user on a shared server), counting *every* event not just
   `counted=1` (a bailed-on track was still heard). A demotion, never an exclusion — a hard filter
-  empties the pool on a small library. Surfaced in `dump-radio.ts`. **Currently inert in prod**:
-  `/api/radio` isn't behind the auth middleware (issue #461), so there's no identified listener and
-  the route reads the user defensively. A **missing candidate genre is floored, not
+  empties the pool on a small library. Surfaced in `dump-radio.ts`. `/api/radio` and
+  `/api/catalog` were **mounted without the auth middleware** (issue #461 — radio returns library
+  rows, catalog's `/discography` provisions a Lidarr artist), which made this inert; both are now
+  gated and **`check:route-auth`** (a CI gate + `bun run verify` step) fails when any `/api` group is
+  mounted without either `auth` or a reasoned `PUBLIC_ROUTES` entry, since forgetting that line makes
+  a route public and nothing else complains. A **missing candidate genre is floored, not
   skipped** (`MISSING_GENRE_FLOOR` 0.2, reported in `explainSimilarity().floored`) — skipping
   dropped the genre axis out of the denominator and literally _rewarded_ untagged tracks; the genre
   weight itself was re-measured and raised 10→18 (issue #187 task B3) after `dump-radio.ts` found a
