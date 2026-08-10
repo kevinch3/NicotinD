@@ -14,7 +14,9 @@ import {
   type Provider,
 } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
-import { provideRouter } from '@angular/router';
+import { provideRouter, withDisabledInitialNavigation } from '@angular/router';
+import { provideServiceWorker } from '@angular/service-worker';
+import { APP_VERSION } from '../../app/app.config';
 import { fixtureHttpInterceptor } from './http-fixtures';
 import { AuthService } from '../../app/services/auth.service';
 import { PlayerService } from '../../app/services/player.service';
@@ -34,7 +36,14 @@ export interface StoryState {
 export function storyProviders(state: StoryState = {}): Array<Provider | EnvironmentProviders> {
   return [
     provideHttpClient(withInterceptors([fixtureHttpInterceptor])),
-    provideRouter([]),
+    // Initial navigation is disabled because the story URL is `/iframe.html`, which
+    // matches no route — an empty route table made every RouterLink-bearing component
+    // throw NG04002 on mount. Links still resolve; nothing navigates.
+    provideRouter([], withDisabledInitialNavigation()),
+    // UpdateService injects SwUpdate + APP_VERSION. Registration is disabled, so this
+    // supplies an inert SwUpdate rather than a fake service.
+    provideServiceWorker('ngsw-worker.js', { enabled: false }),
+    { provide: APP_VERSION, useValue: '0.0.0-storybook' },
     provideAppInitializer(() => {
       const auth = inject(AuthService);
       const player = inject(PlayerService);

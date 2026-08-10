@@ -48,7 +48,8 @@
     "release:minor": "commit-and-tag-version --release-as minor",
     "release:major": "commit-and-tag-version --release-as major",
     "prepare": "husky",
-    "build:storybook": "bun run --filter @nicotind/web build:storybook"
+    "build:storybook": "bun run --filter @nicotind/web build:storybook",
+    "smoke:storybook": "bun run --filter @nicotind/e2e smoke:storybook"
   },
   "dependencies": {
     "@nicotind/api": "workspace:*",
