@@ -175,6 +175,61 @@ seed with no embedding skips the axis entirely. The `rankCandidates` function
 scores all candidates, sorts by score, and applies a per-artist cap (default 2)
 to prevent any single artist from dominating the radio queue.
 
+## Recently-played demotion (listening history, P3)
+
+Radio subtracts a penalty from any candidate **this listener** played recently,
+so a queue stops recycling the same handful of songs.
+
+**It is not a similarity axis, and that is the whole design decision.** Every
+other field on `SongFeatures` is compared seed-vs-candidate through
+`unitCloseness`; play recency is a property of the *candidate alone*. Running it
+through `add()` would literally mean "prefer songs I've played about as often as
+the seed", which is meaningless. So it is applied **post-normalization**, in the
+same place as `artistPenalty`:
+
+```
+base            = weighted mean of the comparable axes
+after artist    = base − artistPenalty            (same artist)
+final           = after artist − recentPlayPenalty × recentPlayFactor
+```
+
+Because the penalty never enters `weightAcc`, it cannot dilute the real axes —
+an un-played candidate scores exactly as it did before this existed.
+
+**Decay** is `recentPlayFactor(lastPlayedAt, now, window)`: linear from 1 (just
+played) to 0 at the window edge (`RECENT_PLAY_WINDOW_MS`, 7 days), and 0 for
+never-played. Linear rather than exponential on purpose — the value shows up in
+the diagnostic dump, and "half the window elapsed = half the penalty" is a
+sentence a human can check against their own listening. The function is pure and
+takes `now`, so the scorer stays clock-free and testable.
+
+`recentPlayPenalty` defaults to **0.2**, just above `artistPenalty` (0.15):
+hearing the *same track* again soon is more jarring than hearing the same
+artist. It is a **demotion, not an exclusion** — a hard filter would empty the
+pool on a small library, and a genuinely great match should still be able to
+win.
+
+**Per-user by construction.** `lastPlayedAtMap(db, userId, songIds)` reads
+`play_events`, which is private per user (see
+[listening-history.md](listening-history.md)). A denormalized
+`library_songs.local_play_count` was rejected for exactly this reason:
+`library_songs` is global, so it would blend every user's listening on a shared
+server — wrong for a personal radio and a privacy regression. Deriving at query
+time also means no backfill and no invalidation.
+
+It counts **every** play event, not just `counted = 1`: for "don't replay this
+so soon", starting a track and bailing still means you just heard it — the
+opposite of what the stats aggregates want.
+
+**No identified listener → no demotion.** `/api/radio` is not behind the JWT
+middleware today (every other library route is; see
+[issue #461](https://github.com/kevinch3/NicotinD/issues/461)), so the route
+reads the user defensively and an anonymous caller simply gets the pre-existing
+behaviour rather than a 500.
+
+Visible in `scripts/dump-radio.ts` as `[recently played −0.NNN]` on the affected
+rows — an invisible penalty is an unmeasurable one.
+
 ## Filter-seeded radio (a "vibe" instead of a seed song)
 
 The same endpoint also starts radio from a **`LibraryFilter`** — a mood/genre/bpm

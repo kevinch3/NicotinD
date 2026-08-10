@@ -150,6 +150,17 @@ function seedLabel(row: RadioSongRow | null, seed: SongFeatures | null): string 
   return '(no seed)';
 }
 
+/**
+ * Surface the recently-played demotion, so a queue that looks "wrong" can be
+ * told apart from one that is correctly avoiding repeats. Invisible penalties
+ * are unmeasurable, and this dump is how weights get justified before shipping.
+ */
+function recentVerdict(ex: { recentPlayPenaltyApplied: number }): string {
+  return ex.recentPlayPenaltyApplied > 0
+    ? `  [recently played −${ex.recentPlayPenaltyApplied.toFixed(3)}]`
+    : '';
+}
+
 /** The genre set actually used for scoring (mirrors explainSimilarity's own
  *  `seed.genres ?? seed.genre` fallback) — a filter-radio centroid only ever
  *  carries the single modal `.genre`, never a `.genres` array (issue #187 B4). */
@@ -217,7 +228,7 @@ function renderTrackBlock(
   const head = rank !== null ? `${String(rank).padStart(2)}. ` : '    ';
   return [
     `${head}${r.artist} — ${r.title}`,
-    `      score ${score.toFixed(3)}  ${genreVerdict(ex)}`,
+    `      score ${score.toFixed(3)}  ${genreVerdict(ex)}${recentVerdict(ex)}`,
     `      genres: ${genres?.length ? genres.join(', ') : '(none)'} · bpm ${r.bpm ?? '—'} · key ${r.key ?? '—'} · year ${r.year ?? '—'}`,
     `      ${breakdownLine(ex)}`,
   ];

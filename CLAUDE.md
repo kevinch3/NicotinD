@@ -705,7 +705,18 @@ Add detail there, not here.
   investigated and is a measured null result, not a bug — see docs/radio.md. This backs the
   **radio/mood landing** (the post-login home route `''`, `pages/radio-landing/`): a last-track
   resume shortcut (disappears on tap) + one-tap vibe presets + top-genre chips; acquisition search
-  moved to the `/get` Find tab. Shared scoring with `/songs/:id/similar`. A **missing candidate genre is floored, not
+  moved to the `/get` Find tab. Shared scoring with `/songs/:id/similar`. **Recently-played demotion (P3)**: any candidate *this listener* played lately is demoted by
+  `recentPlayPenalty` (0.2) × `recentPlayFactor` (linear decay, 1 = just played → 0 at
+  `RECENT_PLAY_WINDOW_MS` 7d), applied **post-normalization beside `artistPenalty`, never as an
+  `add()` axis** — every other feature is compared seed-vs-candidate, but play recency is a property
+  of the candidate alone, so an axis would mean "prefer songs I've played as often as the seed".
+  Because it never enters `weightAcc` it can't dilute the real axes. Sourced per-user from
+  `play_events` via `lastPlayedAtMap` (a denormalized `library_songs` column was rejected — that
+  table is global, so it would blend every user on a shared server), counting *every* event not just
+  `counted=1` (a bailed-on track was still heard). A demotion, never an exclusion — a hard filter
+  empties the pool on a small library. Surfaced in `dump-radio.ts`. **Currently inert in prod**:
+  `/api/radio` isn't behind the auth middleware (issue #461), so there's no identified listener and
+  the route reads the user defensively. A **missing candidate genre is floored, not
   skipped** (`MISSING_GENRE_FLOOR` 0.2, reported in `explainSimilarity().floored`) — skipping
   dropped the genre axis out of the denominator and literally _rewarded_ untagged tracks; the genre
   weight itself was re-measured and raised 10→18 (issue #187 task B3) after `dump-radio.ts` found a

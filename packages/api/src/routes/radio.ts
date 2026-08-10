@@ -4,11 +4,13 @@ import { parseLibraryFilter, type LibraryFilter, type Song } from '@nicotind/cor
 import { getDatabase } from '../db.js';
 import {
   rankCandidates,
+  recentPlayFactor,
   type ScoredSong,
   type ScoringWeights,
   type SongFeatures,
 } from '../services/radio.service.js';
 import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.js';
+import { lastPlayedAtMap } from '../services/play-history.js';
 import { songFilterWheres } from '../services/library-filter-sql.js';
 import { seedCentroid, type OrderableRow } from '../services/playlist-recipe.js';
 
@@ -179,7 +181,14 @@ export function radioSongs(result: RadioResult): Song[] {
 export function buildSeedRadio(
   db: ReturnType<typeof getDatabase>,
   seedRow: RadioSongRow,
-  opts: { count?: number; excludeIds?: Set<string>; weights?: ScoringWeights } = {},
+  opts: {
+    count?: number;
+    excludeIds?: Set<string>;
+    weights?: ScoringWeights;
+    /** Whose listening history demotes recently-played candidates. */
+    userId?: string;
+    now?: number;
+  } = {},
 ): RadioResult {
   const count = opts.count ?? 10;
   const excludeIds = new Set(opts.excludeIds ?? []);
@@ -289,13 +298,45 @@ export function buildSeedRadio(
     : new Map<string, Float32Array>();
   seed.embedding = embeddings.get(seedRow.id);
 
-  const pool: RadioCandidate[] = candidates.map((r) => ({
-    ...toFeatures(r),
-    embedding: embeddings.get(r.id),
-    _row: r,
-  }));
+  const pool: RadioCandidate[] = attachRecency(
+    db,
+    candidates.map((r) => ({
+      ...toFeatures(r),
+      embedding: embeddings.get(r.id),
+      _row: r,
+    })),
+    opts.userId,
+    opts.now,
+  );
   const ranked = rankCandidates(seed, pool, { count, maxPerArtist: 2, weights: opts.weights });
   return { seed, pool, ranked };
+}
+
+/**
+ * Attach each candidate's "how recently did *this listener* play it" factor, so
+ * the scorer can demote a track you just heard (see radio.service
+ * `recentPlayFactor`). No `userId` — e.g. the dev diagnostic dump — means no
+ * demotion at all rather than a wrong one.
+ *
+ * `now` is threaded rather than read inside the scorer so that module stays
+ * pure and its decay is testable without a clock.
+ */
+function attachRecency<T extends SongFeatures & { _row: RadioSongRow }>(
+  db: ReturnType<typeof getDatabase>,
+  pool: T[],
+  userId: string | undefined,
+  now: number = Date.now(),
+): T[] {
+  if (!userId || pool.length === 0) return pool;
+  const lastPlayed = lastPlayedAtMap(
+    db,
+    userId,
+    pool.map((p) => p._row.id),
+  );
+  for (const p of pool) {
+    p.recentPlayFactor = recentPlayFactor(lastPlayed.get(p._row.id), now);
+  }
+  return pool;
 }
 
 /**
@@ -308,7 +349,14 @@ export function buildSeedRadio(
 export function buildFilterRadio(
   db: ReturnType<typeof getDatabase>,
   filter: LibraryFilter,
-  opts: { count?: number; excludeIds?: Set<string>; weights?: ScoringWeights } = {},
+  opts: {
+    count?: number;
+    excludeIds?: Set<string>;
+    weights?: ScoringWeights;
+    /** Whose listening history demotes recently-played candidates. */
+    userId?: string;
+    now?: number;
+  } = {},
 ): RadioResult {
   const count = opts.count ?? 10;
   const excludeIds = new Set(opts.excludeIds ?? []);
@@ -322,13 +370,37 @@ export function buildFilterRadio(
     .all(...params);
 
   const poolRows = rows.filter((r) => !excludeIds.has(r.id));
-  const pool: RadioCandidate[] = poolRows.map((r) => ({ ...toFeatures(r), _row: r }));
+  const pool: RadioCandidate[] = attachRecency(
+    db,
+    poolRows.map((r) => ({ ...toFeatures(r), _row: r })),
+    opts.userId,
+    opts.now,
+  );
   if (pool.length === 0) return { seed: null, pool, ranked: [] };
+  // Centroid from the raw rows: the seed is a *vibe*, and biasing it by what
+  // the listener recently played would drift the whole target, not just demote
+  // individual repeats.
   const seed = seedCentroid(poolRows.map(toOrderable));
   if (!seed) return { seed: null, pool, ranked: [] };
 
   const ranked = rankCandidates(seed, pool, { count, maxPerArtist: 2, weights: opts.weights });
   return { seed, pool, ranked };
+}
+
+/**
+ * Whose history should demote repeats, or `undefined` when there is no
+ * identified listener.
+ *
+ * `/api/radio` is **not** behind the JWT middleware (see index.ts — every other
+ * library route is, which looks like an oversight but is out of scope to change
+ * here), so `c.get('user')` is genuinely absent in production. Reading it
+ * defensively means an unidentified caller simply gets no recency demotion
+ * rather than a 500 — and it stays correct if the route is authenticated later.
+ */
+function listenerId(c: {
+  get: (k: 'user') => AuthEnv['Variables']['user'] | undefined;
+}): string | undefined {
+  return c.get('user')?.sub;
 }
 
 export function radioRoutes() {
@@ -352,7 +424,9 @@ export function radioRoutes() {
       if (Object.keys(filter).length === 0) {
         return c.json({ error: '"seedId" or a filter is required' }, 400);
       }
-      return c.json(radioSongs(buildFilterRadio(db, filter, { count, excludeIds })));
+      return c.json(
+        radioSongs(buildFilterRadio(db, filter, { count, excludeIds, userId: listenerId(c) })),
+      );
     }
 
     const seedRow = db
@@ -360,7 +434,9 @@ export function radioRoutes() {
       .get(seedId);
     if (!seedRow) return c.json({ error: 'Seed song not found' }, 404);
 
-    return c.json(radioSongs(buildSeedRadio(db, seedRow, { count, excludeIds })));
+    return c.json(
+      radioSongs(buildSeedRadio(db, seedRow, { count, excludeIds, userId: listenerId(c) })),
+    );
   });
 
   return app;

@@ -220,3 +220,42 @@ export function playEventCount(db: Database): number {
   const row = db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM play_events`).get();
   return row?.n ?? 0;
 }
+
+/**
+ * When this listener last played each of `songIds`, epoch ms. Songs never
+ * played are simply absent from the map.
+ *
+ * Per-user by construction: `library_songs` is global but listening is not, so
+ * a global play count would blend everyone on a shared server — wrong for a
+ * personal radio and a privacy regression besides.
+ *
+ * Counts **every** play event, not just `counted = 1`: for "don't replay this
+ * so soon", starting a track and bailing still means you just heard it. That is
+ * the opposite of what the stats aggregates want, which is why this doesn't
+ * reuse their filter.
+ */
+export function lastPlayedAtMap(
+  db: Database,
+  userId: string,
+  songIds: string[],
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (songIds.length === 0) return out;
+
+  // Chunked: SQLite's default SQLITE_MAX_VARIABLE_NUMBER is 999, and a widened
+  // radio pool can exceed that.
+  const CHUNK = 400;
+  for (let i = 0; i < songIds.length; i += CHUNK) {
+    const chunk = songIds.slice(i, i + CHUNK);
+    const rows = db
+      .query<{ song_id: string; last_at: number }, string[]>(
+        `SELECT song_id, MAX(at) AS last_at
+           FROM play_events
+          WHERE user_id = ? AND song_id IN (${chunk.map(() => '?').join(',')})
+          GROUP BY song_id`,
+      )
+      .all(userId, ...chunk);
+    for (const r of rows) out.set(r.song_id, r.last_at);
+  }
+  return out;
+}
