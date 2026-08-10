@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
+import { recordPlayEvents } from '../services/play-history.js';
 import { radioRoutes, buildFilterRadio } from './radio.js';
 
 let testDb: Database = (() => {
@@ -491,5 +492,119 @@ describe('radio /next', () => {
     const ids = (await res.json()).map((s: { id: string }) => s.id);
     // The embedding axis breaks the otherwise-identical tie toward 'aligned'.
     expect(ids.indexOf('aligned')).toBeLessThan(ids.indexOf('opposed'));
+  });
+});
+
+/**
+ * Recently-played demotion end-to-end (P3). The scorer's arithmetic is unit
+ * tested in radio.service.test.ts; what matters here is that the per-user
+ * lookup actually reaches ranking, and that an unidentified caller is
+ * unaffected.
+ */
+describe('radio /next — recently-played demotion', () => {
+  let app: Hono;
+
+  /** Mount with an injected authed user, the way index.ts would if radio were gated. */
+  function appAs(userId: string | null): Hono {
+    const a = new Hono();
+    if (userId) {
+      a.use('*', async (c, next) => {
+        (c as unknown as { set: (k: string, v: unknown) => void }).set('user', { sub: userId });
+        await next();
+      });
+    }
+    a.route('/radio', radioRoutes());
+    return a;
+  }
+
+  beforeEach(() => {
+    testDb = createTestDb();
+    testDb.run("INSERT INTO users (id, username, password_hash) VALUES ('u1','a','x')");
+    // Seed + two equally-good candidates, differing only in recent play.
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A0',
+      album: 'Al',
+      albumId: 'al',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'fresh',
+      title: 'Fresh',
+      artist: 'A1',
+      album: 'Al',
+      albumId: 'al',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'recent',
+      title: 'Recent',
+      artist: 'A2',
+      album: 'Al',
+      albumId: 'al',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    app = appAs('u1');
+  });
+
+  function playedNow(songId: string): void {
+    recordPlayEvents(testDb, 'u1', [
+      {
+        clientEventId: `e-${songId}`,
+        songId,
+        startedAt: Date.now(),
+        msPlayed: 200_000,
+        durationMs: 300_000,
+        reason: 'ended',
+        source: null,
+        device: null,
+        title: null,
+        artist: null,
+        album: null,
+      },
+    ]);
+  }
+
+  it('ranks a just-played track below an equally-good untouched one', async () => {
+    playedNow('recent');
+    const res = await app.request('/radio/next?seedId=seed&count=2');
+    const songs = (await res.json()) as Array<{ id: string }>;
+    expect(songs.map((s) => s.id)).toEqual(['fresh', 'recent']);
+  });
+
+  it('leaves ranking alone when nothing was played recently', async () => {
+    const res = await app.request('/radio/next?seedId=seed&count=2');
+    const songs = (await res.json()) as Array<{ id: string }>;
+    // Both still present — the demotion is a nudge, never an exclusion.
+    expect(songs.map((s) => s.id).sort()).toEqual(['fresh', 'recent']);
+  });
+
+  it('still returns the track — demoted, not excluded', async () => {
+    playedNow('recent');
+    playedNow('fresh');
+    const res = await app.request('/radio/next?seedId=seed&count=5');
+    const songs = (await res.json()) as Array<{ id: string }>;
+    expect(songs.map((s) => s.id).sort()).toEqual(['fresh', 'recent']);
+  });
+
+  it('does not apply another user’s history', async () => {
+    testDb.run("INSERT INTO users (id, username, password_hash) VALUES ('u2','b','y')");
+    playedNow('recent');
+    const other = await appAs('u2').request('/radio/next?seedId=seed&count=2');
+    const songs = (await other.json()) as Array<{ id: string }>;
+    expect(songs).toHaveLength(2);
+  });
+
+  it('serves an unidentified caller without erroring', async () => {
+    // /api/radio is not behind the JWT middleware today, so this is the
+    // production path — it must degrade to "no demotion", not a 500.
+    playedNow('recent');
+    const res = await appAs(null).request('/radio/next?seedId=seed&count=2');
+    expect(res.status).toBe(200);
+    expect((await res.json()) as unknown[]).toHaveLength(2);
   });
 });

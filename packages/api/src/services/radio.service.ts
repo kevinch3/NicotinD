@@ -21,6 +21,18 @@ export interface SongFeatures {
    *  route layer via `loadEmbeddings`. Scored as an extra closeness axis when
    *  both seed and candidate carry one of matching dimensionality. */
   embedding?: Float32Array;
+  /**
+   * How recently *this listener* played this track, 0..1 — 1 = just now,
+   * 0 = outside the window or never. Precomputed by the route via
+   * `recentPlayFactor` so this module stays clock-free and pure.
+   *
+   * Deliberately NOT a similarity axis. Every other field here is compared
+   * seed-vs-candidate; this one is a property of the candidate alone, so
+   * running it through `add()` would mean "prefer songs I've played about as
+   * often as the seed", which is meaningless. It is applied post-normalization
+   * as a penalty, like `artistPenalty`.
+   */
+  recentPlayFactor?: number;
 }
 
 export interface ScoringWeights {
@@ -33,6 +45,10 @@ export interface ScoringWeights {
    *  score is computed: `final = base - artistPenalty` when artists match.
    *  Positive = penalize repeats (radio); negative = boost (similar). */
   artistPenalty: number;
+  /** Post-normalization demotion for a track this listener played recently,
+   *  scaled by `SongFeatures.recentPlayFactor` (0..1). Keeps radio from
+   *  recycling the same handful of songs. */
+  recentPlayPenalty: number;
   energy: number;
   valence: number;
   danceability: number;
@@ -74,7 +90,36 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   embedding: 4,
   // Applied post-normalization as a delta on the 0..1 fit score.
   artistPenalty: 0.15,
+  // Slightly above artistPenalty: hearing the *same track* again soon is more
+  // jarring than hearing the same artist. Sized so a just-played track is
+  // demoted meaningfully but can still win when it is far and away the best
+  // match — a hard exclusion would empty the pool on a small library.
+  recentPlayPenalty: 0.2,
 };
+
+/** Default window over which a play still counts as "recent" (7 days). */
+export const RECENT_PLAY_WINDOW_MS = 7 * 24 * 3_600_000;
+
+/**
+ * How much a past play should still suppress a track, 0..1 — linear decay from
+ * 1 (just played) to 0 at the window edge, and 0 for never-played.
+ *
+ * Linear rather than exponential on purpose: the value is user-visible through
+ * the diagnostic dump, and "half the window elapsed = half the penalty" is a
+ * sentence someone can check against their own listening. Pure, so the clock
+ * stays at the call site.
+ */
+export function recentPlayFactor(
+  lastPlayedAt: number | null | undefined,
+  now: number,
+  windowMs: number = RECENT_PLAY_WINDOW_MS,
+): number {
+  if (lastPlayedAt == null || !Number.isFinite(lastPlayedAt) || windowMs <= 0) return 0;
+  const age = now - lastPlayedAt;
+  if (age <= 0) return 1;
+  if (age >= windowMs) return 0;
+  return 1 - age / windowMs;
+}
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
@@ -202,6 +247,8 @@ export interface SimilarityExplanation {
    *  lets the diagnostic still separate a data gap from a genuine weak match. */
   floored: string[];
   artistPenaltyApplied: boolean;
+  /** Amount subtracted for a recent play by this listener (0 when none). */
+  recentPlayPenaltyApplied: number;
 }
 
 /**
@@ -329,9 +376,15 @@ export function explainSimilarity(
   // Same-artist adjustment in normalized space (penalty for radio, boost for
   // "similar"). The per-artist cap in rankCandidates remains the main lever.
   const artistPenaltyApplied = seed.artistId === candidate.artistId;
-  const score = artistPenaltyApplied ? base - weights.artistPenalty : base;
+  const afterArtist = artistPenaltyApplied ? base - weights.artistPenalty : base;
 
-  return { score, axes, skipped, floored, artistPenaltyApplied };
+  // Recently-played demotion. A property of the candidate alone, so it belongs
+  // here rather than as a comparable axis (see SongFeatures.recentPlayFactor).
+  const factor = candidate.recentPlayFactor ?? 0;
+  const recentPlayPenaltyApplied = factor > 0 ? weights.recentPlayPenalty * factor : 0;
+  const score = afterArtist - recentPlayPenaltyApplied;
+
+  return { score, axes, skipped, floored, artistPenaltyApplied, recentPlayPenaltyApplied };
 }
 
 export function scoreSimilarity(

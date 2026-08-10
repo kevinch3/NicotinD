@@ -5,6 +5,7 @@ import {
   MAX_EVENTS_PER_BATCH,
   MIN_TRACK_MS,
   countsAsPlay,
+  lastPlayedAtMap,
   playEventCount,
   recentPlays,
   recordPlayEvents,
@@ -219,5 +220,43 @@ describe('recentPlays', () => {
       Array.from({ length: 5 }, (_, i) => event({ songId: `s${i}`, startedAt: 1_000 + i })),
     );
     expect(recentPlays(db, 'u1', 3)).toHaveLength(3);
+  });
+});
+
+describe('lastPlayedAtMap', () => {
+  it('returns the most recent play per song, for this user only', () => {
+    recordPlayEvents(db, 'u1', [
+      event({ songId: 'a', startedAt: 1_000 }),
+      event({ songId: 'a', startedAt: 5_000 }),
+      event({ songId: 'b', startedAt: 2_000 }),
+    ]);
+    recordPlayEvents(db, 'u2', [event({ songId: 'a', startedAt: 9_999 })]);
+
+    const map = lastPlayedAtMap(db, 'u1', ['a', 'b']);
+    expect(map.get('a')).toBe(5_000);
+    expect(map.get('b')).toBe(2_000);
+  });
+
+  it('omits songs this user never played', () => {
+    recordPlayEvents(db, 'u1', [event({ songId: 'a' })]);
+    expect(lastPlayedAtMap(db, 'u1', ['a', 'never']).has('never')).toBe(false);
+  });
+
+  it('counts a skip too — starting a track still means you just heard it', () => {
+    recordPlayEvents(db, 'u1', [
+      event({ songId: 'a', startedAt: 3_000, msPlayed: 2_000, reason: 'skipped' }),
+    ]);
+    expect(lastPlayedAtMap(db, 'u1', ['a']).get('a')).toBe(3_000);
+  });
+
+  it('handles an empty id list without querying', () => {
+    expect(lastPlayedAtMap(db, 'u1', []).size).toBe(0);
+  });
+
+  it('chunks past SQLite’s variable limit', () => {
+    const ids = Array.from({ length: 1200 }, (_, i) => `s${i}`);
+    recordPlayEvents(db, 'u1', [event({ songId: 's1199', startedAt: 7_000 })]);
+    const map = lastPlayedAtMap(db, 'u1', ids);
+    expect(map.get('s1199')).toBe(7_000);
   });
 });

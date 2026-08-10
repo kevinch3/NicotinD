@@ -6,6 +6,9 @@ import {
   cosineSim,
   rankCandidates,
   DEFAULT_WEIGHTS,
+  RECENT_PLAY_WINDOW_MS,
+  explainSimilarity,
+  recentPlayFactor,
   type SongFeatures,
   type ScoringWeights,
 } from './radio.service';
@@ -536,5 +539,123 @@ describe('explainSimilarity (per-axis breakdown — the diagnostic seam)', () =>
     for (const a of ex.axes) {
       expect(a.contribution).toBeCloseTo(a.value * a.weight, 10);
     }
+  });
+});
+
+/**
+ * Recently-played demotion (P3). Deliberately NOT a similarity axis: it is a
+ * property of the candidate alone, so it is applied post-normalization like
+ * artistPenalty. See SongFeatures.recentPlayFactor.
+ */
+describe('recentPlayFactor', () => {
+  const NOW = 1_700_000_000_000;
+  const DAY = 24 * 3_600_000;
+
+  it('is 1 for a track playing right now', () => {
+    expect(recentPlayFactor(NOW, NOW)).toBe(1);
+  });
+
+  it('decays linearly across the window', () => {
+    expect(recentPlayFactor(NOW - 3.5 * DAY, NOW)).toBeCloseTo(0.5);
+    expect(recentPlayFactor(NOW - 1.75 * DAY, NOW)).toBeCloseTo(0.75);
+  });
+
+  it('is 0 at and beyond the window edge', () => {
+    expect(recentPlayFactor(NOW - RECENT_PLAY_WINDOW_MS, NOW)).toBe(0);
+    expect(recentPlayFactor(NOW - 90 * DAY, NOW)).toBe(0);
+  });
+
+  it('is 0 for a track never played', () => {
+    expect(recentPlayFactor(null, NOW)).toBe(0);
+    expect(recentPlayFactor(undefined, NOW)).toBe(0);
+  });
+
+  it('treats a future timestamp as just-played rather than going negative', () => {
+    // Clock skew between devices is real; a negative factor would become a boost.
+    expect(recentPlayFactor(NOW + DAY, NOW)).toBe(1);
+  });
+
+  it('never returns a value outside 0..1', () => {
+    for (const age of [-DAY, 0, DAY, 6 * DAY, 7 * DAY, 400 * DAY]) {
+      const f = recentPlayFactor(NOW - age, NOW);
+      expect(f).toBeGreaterThanOrEqual(0);
+      expect(f).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe('recently-played demotion in scoring', () => {
+  const base = (over: Partial<SongFeatures> = {}): SongFeatures => ({
+    duration: 200,
+    artistId: 'a1',
+    bpm: 120,
+    genre: 'Rock',
+    ...over,
+  });
+
+  it('does not change the score when the track was not played recently', () => {
+    const seed = base();
+    const cand = base({ artistId: 'a2' });
+    const without = explainSimilarity(seed, cand);
+    const withZero = explainSimilarity(seed, { ...cand, recentPlayFactor: 0 });
+    expect(withZero.score).toBeCloseTo(without.score);
+    expect(withZero.recentPlayPenaltyApplied).toBe(0);
+  });
+
+  it('subtracts the full penalty for a just-played track', () => {
+    const seed = base();
+    const cand = base({ artistId: 'a2' });
+    const clean = explainSimilarity(seed, cand);
+    const recent = explainSimilarity(seed, { ...cand, recentPlayFactor: 1 });
+    expect(clean.score - recent.score).toBeCloseTo(DEFAULT_WEIGHTS.recentPlayPenalty);
+    expect(recent.recentPlayPenaltyApplied).toBeCloseTo(DEFAULT_WEIGHTS.recentPlayPenalty);
+  });
+
+  it('scales the penalty by the factor', () => {
+    const seed = base();
+    const cand = base({ artistId: 'a2' });
+    const clean = explainSimilarity(seed, cand);
+    const half = explainSimilarity(seed, { ...cand, recentPlayFactor: 0.5 });
+    expect(clean.score - half.score).toBeCloseTo(DEFAULT_WEIGHTS.recentPlayPenalty / 2);
+  });
+
+  it('stacks with the artist penalty rather than replacing it', () => {
+    const seed = base();
+    const sameArtistRecent = explainSimilarity(seed, base({ recentPlayFactor: 1 }));
+    const sameArtistOnly = explainSimilarity(seed, base());
+    expect(sameArtistOnly.score - sameArtistRecent.score).toBeCloseTo(
+      DEFAULT_WEIGHTS.recentPlayPenalty,
+    );
+    expect(sameArtistRecent.artistPenaltyApplied).toBe(true);
+  });
+
+  it('demotes but does not exclude — a great match still beats a poor fresh one', () => {
+    const seed = base({ bpm: 120, genre: 'Rock' });
+    const greatButRecent = base({ artistId: 'a2', bpm: 120, genre: 'Rock', recentPlayFactor: 1 });
+    const poorButFresh = base({ artistId: 'a3', bpm: 40, genre: 'Polka' });
+    // A hard exclusion would empty the pool on a small library; this is a nudge.
+    expect(explainSimilarity(seed, greatButRecent).score).toBeGreaterThan(
+      explainSimilarity(seed, poorButFresh).score,
+    );
+  });
+
+  it('breaks a tie between two otherwise identical candidates', () => {
+    const seed = base();
+    const fresh = base({ artistId: 'a2' });
+    const recent = base({ artistId: 'a2', recentPlayFactor: 1 });
+    expect(explainSimilarity(seed, fresh).score).toBeGreaterThan(
+      explainSimilarity(seed, recent).score,
+    );
+  });
+
+  it('leaves the comparable-axis normalization untouched', () => {
+    // The penalty must not enter weightAcc — otherwise it would dilute every
+    // real axis and change scores for un-played tracks too.
+    const seed = base();
+    const cand = base({ artistId: 'a2' });
+    const a = explainSimilarity(seed, cand);
+    const b = explainSimilarity(seed, { ...cand, recentPlayFactor: 1 });
+    expect(b.axes).toEqual(a.axes);
+    expect(b.skipped).toEqual(a.skipped);
   });
 });
