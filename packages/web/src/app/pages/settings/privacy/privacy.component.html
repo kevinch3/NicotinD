@@ -1,0 +1,100 @@
+<div class="page-shell max-w-2xl" data-testid="privacy-settings">
+  <a routerLink="/settings" class="text-sm text-theme-muted hover:text-theme-primary">{{
+    'common.backToSettings' | t
+  }}</a>
+  <h1 class="page-title mt-2 mb-6">{{ 'privacy.title' | t }}</h1>
+
+  <!-- Transparency first. The controls below only make sense once you know
+       what is actually stored — so this is prose, not a link to a doc. -->
+  <app-settings-group groupId="privacy-what" [title]="'privacy.whatTitle' | t">
+    <div class="flex flex-col gap-3 text-sm text-theme-secondary" data-testid="privacy-what">
+      <p>{{ 'privacy.whatBody' | t }}</p>
+      <ul class="list-disc pl-5 flex flex-col gap-1">
+        <li>{{ 'privacy.whatHistory' | t }}</li>
+        <li>{{ 'privacy.whatAccount' | t }}</li>
+        <li>{{ 'privacy.whatPrivate' | t }}</li>
+      </ul>
+      @if (state(); as s) {
+        <p class="text-theme-muted">
+          {{
+            s.retentionDays > 0
+              ? ('privacy.retentionCapped' | t: { days: s.retentionDays })
+              : ('privacy.retentionForever' | t)
+          }}
+        </p>
+      }
+      <p class="text-theme-muted">{{ 'privacy.whatThirdParty' | t }}</p>
+    </div>
+  </app-settings-group>
+
+  <app-settings-group groupId="privacy-controls" [title]="'privacy.controlsTitle' | t">
+    <div appTvNavGroup [axis]="'vertical'" class="flex flex-col gap-5">
+      <!-- Consent -->
+      <div class="flex items-start justify-between gap-4" data-testid="privacy-consent">
+        <div class="min-w-0">
+          <p class="text-sm font-medium text-theme-primary">{{ 'privacy.collectTitle' | t }}</p>
+          <p class="text-xs text-theme-muted">{{ 'privacy.collectHint' | t }}</p>
+          @if (lockedReason(); as reason) {
+            <p class="text-xs text-theme-accent mt-1" data-testid="privacy-locked">
+              {{ reason | t }}
+            </p>
+          }
+        </div>
+        <button
+          appTvNavItem
+          type="button"
+          role="switch"
+          data-testid="privacy-consent-toggle"
+          [attr.aria-checked]="state()?.historyEnabled ?? false"
+          [disabled]="busy() || !state() || !toggleUsable()"
+          (click)="toggleHistory()"
+          class="shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-40"
+          [class.bg-theme-accent]="state()?.collection?.enabled"
+          [class.bg-theme-surface-2]="!state()?.collection?.enabled"
+        >
+          <span
+            class="block w-5 h-5 rounded-full bg-theme-surface transition-transform"
+            [class.translate-x-5]="state()?.collection?.enabled"
+            [class.translate-x-0.5]="!state()?.collection?.enabled"
+          ></span>
+        </button>
+      </div>
+
+      <!-- Access (Art. 15) -->
+      <div class="flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <p class="text-sm font-medium text-theme-primary">{{ 'privacy.exportTitle' | t }}</p>
+          <p class="text-xs text-theme-muted">{{ 'privacy.exportHint' | t }}</p>
+        </div>
+        <button
+          appTvNavItem
+          type="button"
+          data-testid="privacy-export"
+          [disabled]="busy()"
+          (click)="exportData()"
+          class="shrink-0 px-3 py-1.5 rounded-lg bg-theme-surface-2 text-sm text-theme-primary hover:bg-theme-surface disabled:opacity-50"
+        >
+          {{ 'privacy.exportAction' | t }}
+        </button>
+      </div>
+
+      <!-- Erasure (Art. 17) -->
+      <div class="flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <p class="text-sm font-medium text-theme-primary">{{ 'privacy.deleteHistoryTitle' | t }}</p>
+          <p class="text-xs text-theme-muted">{{ 'privacy.deleteHistoryHint' | t }}</p>
+        </div>
+        <button
+          appTvNavItem
+          type="button"
+          data-testid="privacy-delete-history"
+          [disabled]="busy()"
+          (click)="deleteHistory()"
+          class="shrink-0 px-3 py-1.5 rounded-lg bg-red-500/15 text-sm text-red-400 hover:bg-red-500/25 disabled:opacity-50"
+        >
+          {{ 'privacy.deleteAction' | t }}
+        </button>
+      </div>
+    </div>
+  </app-settings-group>
+</div>

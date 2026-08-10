@@ -278,6 +278,10 @@ function loadConfig() {
     ...(parseBooleanEnv(process.env.NICOTIND_ACQUISITION) !== undefined
       ? { acquisitionEnabled: parseBooleanEnv(process.env.NICOTIND_ACQUISITION) }
       : {}),
+    // Listening-history kill-switch (#454), same env-as-hard-floor semantics.
+    ...(parseBooleanEnv(process.env.NICOTIND_HISTORY) !== undefined
+      ? { historyEnabled: parseBooleanEnv(process.env.NICOTIND_HISTORY) }
+      : {}),
     metadataFix: {
       ...((fileConfig as Record<string, unknown>).metadataFix as Record<string, unknown>),
       ...(metadataFixEnabled !== undefined ? { enabled: metadataFixEnabled } : {}),

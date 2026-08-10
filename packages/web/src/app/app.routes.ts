@@ -136,6 +136,13 @@ export const routes: Routes = [
           import('./pages/settings/devices/devices.component').then((m) => m.DevicesComponent),
       },
       {
+        path: 'settings/privacy',
+        loadComponent: () =>
+          import('./pages/settings/privacy/privacy.component').then(
+            (m) => m.PrivacySettingsComponent,
+          ),
+      },
+      {
         path: 'settings/agent-tokens',
         loadComponent: () =>
           import('./pages/settings/agent-tokens/agent-tokens.component').then(

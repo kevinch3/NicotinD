@@ -786,6 +786,31 @@ export interface RecentPlay {
   playedAt: number;
 }
 
+/** Which level disabled listening-history collection (issue #454). */
+export type HistoryBlocker = 'env' | 'instance' | 'user' | null;
+
+export interface HistoryCollectionState {
+  enabled: boolean;
+  blockedBy: HistoryBlocker;
+}
+
+/** A user's own privacy state — GET /api/privacy. */
+export interface PrivacyState {
+  historyEnabled: boolean;
+  collection: HistoryCollectionState;
+  /** Days a play event is kept; 0 = indefinitely. Instance-wide. */
+  retentionDays: number;
+}
+
+/** Instance privacy controls — GET/PUT /api/admin/history-privacy. */
+export interface AdminHistoryPrivacy {
+  enabled: boolean;
+  /** False when the environment disabled history: a floor an admin cannot lift. */
+  configurable: boolean;
+  retentionDays: number;
+  totalEvents: number;
+}
+
 /** Periods the Library "Stats" tab offers. Mirrors the server's STATS_PERIODS. */
 export type StatsPeriod = '30d' | 'year' | 'all';
 

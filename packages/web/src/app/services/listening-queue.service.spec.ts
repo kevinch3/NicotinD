@@ -174,3 +174,45 @@ describe('ListeningQueueService', () => {
     expect(post).not.toHaveBeenCalled();
   });
 });
+
+/** Consent refusal handling (issue #454). */
+describe('ListeningQueueService — collection refused', () => {
+  const refused = { inserted: 0, duplicates: 0, rejected: 0, collection: { enabled: false } };
+
+  it('stops buffering once the server says collection is off', async () => {
+    const post: PostMock = vi.fn(() => of(refused) as unknown);
+    const { svc } = setup({ post });
+
+    svc.enqueue(event());
+    await Promise.resolve();
+
+    // The refused batch is dropped rather than retried forever...
+    expect(svc.pendingCount()).toBe(0);
+    // ...and nothing further accumulates.
+    svc.enqueue(event());
+    svc.enqueue(event());
+    expect(svc.pendingCount()).toBe(0);
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it('resumes immediately when the user turns collection back on', async () => {
+    const post: PostMock = vi.fn(() => of(refused) as unknown);
+    const { svc } = setup({ post });
+    svc.enqueue(event());
+    await Promise.resolve();
+
+    svc.resetConsentState();
+    svc.enqueue(event());
+    await Promise.resolve();
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps reporting while collection is allowed', async () => {
+    const { svc, post } = setup();
+    svc.enqueue(event());
+    await Promise.resolve();
+    svc.enqueue(event());
+    await Promise.resolve();
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+});

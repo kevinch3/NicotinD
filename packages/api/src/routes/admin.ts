@@ -7,6 +7,13 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { listAudit, recordAudit } from '../services/audit-log.js';
 import type { AcquisitionToggle } from '../services/acquisition-toggle.js';
+import {
+  getInstanceHistoryEnabled,
+  getRetentionDays,
+  setInstanceHistoryEnabled,
+  setRetentionDays,
+} from '../services/privacy.js';
+import { playEventCount } from '../services/play-history.js';
 import { listBackups, runBackup } from '../services/backup.js';
 import {
   exportConfig,
@@ -48,6 +55,8 @@ export interface AdminRoutesDeps {
   version?: string;
   /** Runtime acquisition kill-switch (issue #235); absent → the routes 503. */
   acquisition?: AcquisitionToggle | null;
+  /** Env-level listening-history floor (issue #454); absent → treated as on. */
+  historyEnabled?: () => boolean;
 }
 
 export function adminRoutes(deps: AdminRoutesDeps) {
@@ -378,6 +387,57 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       detail: `requested=${body.enabled} effective=${effective}`,
     });
     return c.json({ enabled: effective, configurable: t.configurable() });
+  });
+
+  // ─── Listening-history privacy controls (issue #454) ─────────────────────
+  // `configurable` is false when the ENVIRONMENT disabled history, mirroring
+  // the acquisition switch: a hard floor an admin cannot lift, rendered
+  // read-only rather than as a control that silently does nothing.
+  app.get('/history-privacy', (c) => {
+    const db = getDatabase();
+    const envEnabled = deps.historyEnabled?.() ?? true;
+    return c.json({
+      enabled: envEnabled && getInstanceHistoryEnabled(db) !== false,
+      configurable: envEnabled,
+      retentionDays: getRetentionDays(db),
+      totalEvents: playEventCount(db),
+    });
+  });
+
+  app.put('/history-privacy', async (c) => {
+    const db = getDatabase();
+    const envEnabled = deps.historyEnabled?.() ?? true;
+    const body = await c.req
+      .json<{ enabled?: unknown; retentionDays?: unknown }>()
+      .catch(() => ({}) as { enabled?: unknown; retentionDays?: unknown });
+
+    if (body.enabled !== undefined) {
+      if (typeof body.enabled !== 'boolean') {
+        return c.json({ error: 'enabled must be a boolean', code: 'VALIDATION_ERROR' }, 400);
+      }
+      if (!envEnabled && body.enabled) {
+        return c.json({ error: 'History is disabled for this deployment', code: 'FORBIDDEN' }, 403);
+      }
+      setInstanceHistoryEnabled(db, body.enabled);
+    }
+
+    if (body.retentionDays !== undefined) {
+      const days = Number(body.retentionDays);
+      if (!Number.isFinite(days) || days < 0) {
+        return c.json({ error: 'retentionDays must be >= 0', code: 'VALIDATION_ERROR' }, 400);
+      }
+      setRetentionDays(db, days);
+    }
+
+    recordAudit(db, c.get('user'), 'privacy.instance.update', {
+      detail: `enabled=${String(body.enabled)} retentionDays=${String(body.retentionDays)}`,
+    });
+    return c.json({
+      enabled: envEnabled && getInstanceHistoryEnabled(db) !== false,
+      configurable: envEnabled,
+      retentionDays: getRetentionDays(db),
+      totalEvents: playEventCount(db),
+    });
   });
 
   app.get('/playlists/auto', (c) => c.json(getAutoPlaylistStatus(getDatabase())));

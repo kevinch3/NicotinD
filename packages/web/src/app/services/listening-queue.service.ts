@@ -1,4 +1,4 @@
-import { Injectable, effect, inject } from '@angular/core';
+import { Injectable, effect, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { ServerConfigService } from './server-config.service';
@@ -50,6 +50,14 @@ export class ListeningQueueService {
 
   private flushing = false;
 
+  /**
+   * Set when the server reports collection is off (issue #454). In-memory and
+   * reset on reload: the point is to stop buffering and POSTing events that
+   * will only be refused, not to cache a policy decision. `resetConsentState`
+   * clears it the moment the user turns collection back on.
+   */
+  private readonly collectionDisabled = signal(false);
+
   constructor() {
     // Reconnect → drain whatever accumulated while offline.
     effect(() => {
@@ -64,8 +72,15 @@ export class ListeningQueueService {
     }
   }
 
+  /** Called when the user re-enables collection, so reporting resumes at once. */
+  resetConsentState(): void {
+    this.collectionDisabled.set(false);
+  }
+
   /** Buffer an event durably, then try to send. */
   enqueue(event: PlayEventPayload): void {
+    // The server refused last time — don't accumulate what it will refuse again.
+    if (this.collectionDisabled()) return;
     const buffered = [...this.read(), event];
     this.write(buffered.slice(-MAX_BUFFERED));
     void this.flush();
@@ -83,10 +98,15 @@ export class ListeningQueueService {
 
     this.flushing = true;
     try {
-      await firstValueFrom(this.http.post(this.server.apiUrl('/api/history/plays'), { events }));
+      const res = (await firstValueFrom(
+        this.http.post(this.server.apiUrl('/api/history/plays'), { events }),
+      )) as { collection?: { enabled: boolean } } | null;
       // Drop exactly what we sent — anything enqueued mid-flight survives.
+      // A refusal counts as sent: retrying rejected events forever is worse
+      // than losing history the user asked us not to keep.
       const sent = new Set(events.map((e) => e.clientEventId));
       this.write(this.read().filter((e) => !sent.has(e.clientEventId)));
+      if (res?.collection?.enabled === false) this.collectionDisabled.set(true);
     } catch {
       // Keep the buffer; the next enqueue/hidden/reconnect retries it.
     } finally {
