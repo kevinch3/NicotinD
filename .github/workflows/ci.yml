@@ -80,6 +80,12 @@ jobs:
       - name: Check for locally re-implemented shared helpers
         run: bun run check:shared-helpers
 
+      # A check this job runs that no local command reaches is invisible until
+      # push — how the web-spec typecheck drifted. This asserts `bun run verify`
+      # still covers every step below.
+      - name: Check CI/local gate parity
+        run: bun run check:ci-parity
+
       - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
         run: bun test packages/api/src packages/slskd-client/src packages/lidarr-client/src packages/core/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
 
