@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.332](https://github.com/kevinch3/NicotinD/compare/v0.1.331...v0.1.332) (2026-08-10)
+
+### Features
+
+* **library:** capture sample rate, bit depth & channel count at scan time ([#459](https://github.com/kevinch3/NicotinD/issues/459)) ([1c5d5ae](https://github.com/kevinch3/NicotinD/commit/1c5d5ae3ba912fef7899f0fdbf91cf3222ee7eab))
 ## [0.1.331](https://github.com/kevinch3/NicotinD/compare/v0.1.330...v0.1.331) (2026-08-10)
 ## [0.1.330](https://github.com/kevinch3/NicotinD/compare/v0.1.329...v0.1.330) (2026-08-10)
 
