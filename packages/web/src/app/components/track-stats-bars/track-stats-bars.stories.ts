@@ -9,7 +9,7 @@ const meta: Meta<TrackStatsBarsComponent> = {
     bpm: 104,
     genre: 'Dream Pop',
     key: '8A',
-    mood: 'wistful',
+    mood: 'relaxed',
     energy: 0.42,
     valence: 0.31,
     danceability: 0.55,
@@ -28,7 +28,7 @@ export const HighEnergy: Story = {
   args: {
     bpm: 172,
     key: '11B',
-    mood: 'driving',
+    mood: 'aggressive',
     energy: 0.93,
     valence: 0.78,
     danceability: 0.88,
@@ -41,7 +41,7 @@ export const AcousticAndQuiet: Story = {
   args: {
     bpm: 68,
     key: '4A',
-    mood: 'calm',
+    mood: 'relaxed',
     energy: 0.12,
     valence: 0.4,
     danceability: 0.18,
