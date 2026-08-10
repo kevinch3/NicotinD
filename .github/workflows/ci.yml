@@ -109,6 +109,19 @@ jobs:
       - name: Build (web)
         run: bun run --filter @nicotind/web build
 
+      - name: Build (Storybook)
+        run: bun run build:storybook
+
+      # The `ci` job otherwise needs no browser; the smoke step below drives one.
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      # `build:storybook` compiles stories; it does not run them. The first green
+      # build of the catalog shipped 67 of 139 stories that threw on mount, which
+      # neither the type check nor webpack can see. This renders every story.
+      - name: Smoke (Storybook stories render)
+        run: bun run smoke:storybook
+
   # Analysis sidecar (packages/analysis): contract + pure-function tests against
   # a fake model registry — no TensorFlow/Essentia download in CI. The gated
   # golden tests (real models) auto-skip without ANALYSIS_MODELS_DIR.
