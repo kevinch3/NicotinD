@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.338](https://github.com/kevinch3/NicotinD/compare/v0.1.337...v0.1.338) (2026-08-10)
+
+### Bug Fixes
+
+* **library:** tell a quarantined album apart from a missing one ([#466](https://github.com/kevinch3/NicotinD/issues/466)) ([#469](https://github.com/kevinch3/NicotinD/issues/469)) ([7e4a3cf](https://github.com/kevinch3/NicotinD/commit/7e4a3cf0aa40d33502826ceccb438a1821d71d0e)), closes [#467](https://github.com/kevinch3/NicotinD/issues/467), references [#337](https://github.com/kevinch3/NicotinD/issues/337) [#468](https://github.com/kevinch3/NicotinD/issues/468)
 ## [0.1.337](https://github.com/kevinch3/NicotinD/compare/v0.1.336...v0.1.337) (2026-08-10)
 ## [0.1.336](https://github.com/kevinch3/NicotinD/compare/v0.1.335...v0.1.336) (2026-08-10)
 
