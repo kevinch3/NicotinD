@@ -572,6 +572,14 @@ export function createApp({
   app.use('/api/admin/*', auth);
   app.use('/api/presence/*', auth);
   app.use('/api/history/*', auth);
+  // Radio + catalog were mounted without auth (issue #461). Radio returns real
+  // library rows; catalog drives outbound Lidarr/MusicBrainz lookups and its
+  // /discography endpoint provisions an artist into Lidarr — all reachable
+  // unauthenticated. Every caller of both is inside the authenticated app
+  // shell, so gating them is a no-op for real clients. `check:route-auth` now
+  // fails the build if a new group is mounted without a decision.
+  app.use('/api/radio/*', auth);
+  app.use('/api/catalog/*', auth);
   app.use('/api/users/*', auth);
   app.use('/api/ws/*', auth);
   app.use('/api/discography/*', auth);

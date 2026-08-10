@@ -221,11 +221,13 @@ It counts **every** play event, not just `counted = 1`: for "don't replay this
 so soon", starting a track and bailing still means you just heard it — the
 opposite of what the stats aggregates want.
 
-**No identified listener → no demotion.** `/api/radio` is not behind the JWT
-middleware today (every other library route is; see
-[issue #461](https://github.com/kevinch3/NicotinD/issues/461)), so the route
-reads the user defensively and an anonymous caller simply gets the pre-existing
-behaviour rather than a 500.
+**No identified listener → no demotion.** The route reads the user defensively
+(`c.get('user')?.sub`), so a caller without one gets the pre-existing behaviour
+rather than a 500. `/api/radio` was not behind the JWT middleware when this
+shipped — which made the demotion inert — and is now gated (issue #461, along
+with `/api/catalog`, found in the same audit). The defensive read stays: it
+costs nothing and keeps the scorer honest if the route is ever exposed to an
+unauthenticated surface.
 
 Visible in `scripts/dump-radio.ts` as `[recently played −0.NNN]` on the affected
 rows — an invisible penalty is an unmeasurable one.
