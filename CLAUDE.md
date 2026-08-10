@@ -1253,7 +1253,13 @@ Add detail there, not here.
   `--follow-tags` push (a rejected branch update rejects the tag too) + self-healing orphan
   detection (a `vX` tag not reachable from master is deleted + re-cut, never silently skipped) —
   fixes the 2026-07-23 freeze where a non-atomic push orphaned `v0.1.244` and wedged every release
-  behind a green-but-silent "already published" skip. **The workflow's own
+  behind a green-but-silent "already published" skip. **The same green-but-silent shape bit the
+  *deploy* side (issue #457)**: `deploy` tolerated `docker-merge.result == 'skipped'`
+  unconditionally for the `workflow_dispatch` case, but a job whose `needs` *failed* also reports
+  `skipped` — so v0.1.329's failed GHCR push produced a **green deploy that redeployed the previous
+  version**. The tolerance is now scoped to `workflow_dispatch` (on a tag push `skipped` can only
+  mean upstream failure), and `docker-merge` verifies every tag it claimed (`vX.Y.Z`/`vX`/`release`)
+  actually resolves before succeeding. **The workflow's own
   `cancel-in-progress` concurrency guard no longer cancels itself (issue
   #360)**: it's scoped off for `master` pushes, since the `release` job's
   version-bump commit is itself a push to `master` that used to retrigger a

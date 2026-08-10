@@ -46,6 +46,46 @@ equivalent, and it can only ever point at a tagged release (Immich's
 `release`/`vN` metatag convention; their docs likewise steer users away from
 `:latest`).
 
+### A green deploy is not proof the image shipped (issue #457)
+
+`v0.1.329` released, its GHCR push 403'd, and the **deploy job still reported
+success** — redeploying the host against the previous `release` image while
+GitHub showed all-green. That version has no image to this day.
+
+The cause was the deploy guard, not the transient 403. `deploy` tolerated
+`needs.docker-merge.result == 'skipped'` unconditionally, because on a manual
+`workflow_dispatch` the docker jobs legitimately don't run and the host should
+just redeploy the current `release` images. But **a downstream job whose `needs`
+failed also reports `skipped`**, so the condition could not distinguish
+"nothing to build" from "the build broke".
+
+Two changes close it:
+
+1. **The `skipped` tolerance is scoped to `workflow_dispatch`.** On a tag push
+   the docker jobs always run, so `skipped` there can only mean upstream
+   failure, and the deploy is now correctly blocked.
+2. **`docker-merge` verifies every tag it claimed actually resolves**
+   (`vX.Y.Z`, `vX`, `release`) before the job succeeds — so a publish hole
+   fails the release rather than being discovered months later by whoever pins
+   to the missing version.
+
+A **push retry was considered and not added**: it would need a third-party
+retry action in the release path, which this repo avoids for the same
+supply-chain reason it downloads a pinned `actionlint` binary instead of using
+a wrapper action. A retry lowers the frequency of the transient failure; only
+(1) stops a failed build from producing a green deploy, which is the actual
+defect.
+
+**Verifying a published tag by hand** (read-only, no auth needed):
+
+```bash
+TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:kevinch3/nicotind:pull&service=ghcr.io" | jq -r .token)
+curl -sI -o /dev/null -w '%{http_code}\n' \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/vnd.oci.image.index.v1+json" \
+  "https://ghcr.io/v2/kevinch3/nicotind/manifests/v0.1.332"
+```
+
 ### The analysis sidecar image
 
 `ghcr.io/kevinch3/nicotind-analysis`, same tag semantics, published by the
