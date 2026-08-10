@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.336](https://github.com/kevinch3/NicotinD/compare/v0.1.335...v0.1.336) (2026-08-10)
+
+### Features
+
+* **privacy:** consent, export, erasure and retention for listening history ([#465](https://github.com/kevinch3/NicotinD/issues/465)) ([bd78174](https://github.com/kevinch3/NicotinD/commit/bd7817484047e603aa12121c300f3d8b698afe9b)), closes [#454](https://github.com/kevinch3/NicotinD/issues/454), references [#235](https://github.com/kevinch3/NicotinD/issues/235) [pre-#454](https://github.com/kevinch3/NicotinD/issues/454)
 ## [0.1.335](https://github.com/kevinch3/NicotinD/compare/v0.1.334...v0.1.335) (2026-08-10)
 
 ### Bug Fixes
