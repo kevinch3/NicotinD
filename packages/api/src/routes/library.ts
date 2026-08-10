@@ -970,13 +970,20 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const db = getDatabase();
     const albumRow = db.query<AlbumRow, [string]>(`${ALBUM_SELECT} WHERE id = ?`).get(id);
     if (!albumRow) {
-      return c.json({ error: 'Album not found' }, 404);
+      return c.json({ error: 'Album not found', code: 'ALBUM_NOT_FOUND' }, 404);
     }
     // Hide the album while it's still in quarantine (a required processing step
     // hasn't finished for one of its tracks) — same "not in the library yet"
     // treatment the grid gives it, so a deep link can't reach a half-processed album.
+    //
+    // The status stays 404 (it is genuinely not in the library yet), but the
+    // `code` distinguishes "still processing" from "no such album": the Downloads
+    // card offers "Open in Library" the instant a download completes, i.e. during
+    // this exact window, and answering a bare "Album not found" told users their
+    // just-downloaded album didn't exist. Measured on prod: median quarantine is
+    // minutes, mean ~14 h.
     if (isAlbumQuarantined(db, id)) {
-      return c.json({ error: 'Album not found' }, 404);
+      return c.json({ error: 'Album is still being processed', code: 'ALBUM_PROCESSING' }, 404);
     }
     const songRows = db
       .query<SongRow, [string]>(

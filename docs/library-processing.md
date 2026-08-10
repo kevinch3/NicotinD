@@ -316,6 +316,23 @@ instantly, un-enriched.
 - **Boot backlog**: `runSyncAndCurate` fires `kickEager()` after the initial
   `scanFull`, and `tick()` runs a gate-only pass whenever a quarantined song exists,
   so a restart processes any quarantined backlog without waiting for the window.
+- **A deep link into quarantine says so** (issue #466): the quarantine hold is
+  invisible to every listing, but `GET /api/library/albums/:id` is reachable by
+  *link* — and the Downloads card offers "Open in Library" the moment the
+  **download** completes, which is precisely the start of the quarantine window.
+  Both that hold and a genuinely absent album used to answer a bare
+  `{ error: 'Album not found' }`, so a user who clicked the button on their
+  brand-new album was told it did not exist. The status stays **404** (it really
+  isn't in the library yet — the grid agrees), but the response now carries a
+  `code`: `ALBUM_PROCESSING` vs `ALBUM_NOT_FOUND`, following the #337 typed-code
+  convention. The web client classifies it with the pure
+  `lib/album-load-state.ts` `albumLoadFailureFor` into `processing` / `missing` /
+  `unavailable` and renders a distinct state for each — the album page previously
+  `catch { /* ignore */ }`-ed **every** failure (500, 401, offline included) into
+  the same "Album not found.", which is why a server error and a processing
+  album were indistinguishable. Prod measurement that motivated this: quarantine
+  lasts ≤1 min for 4,989 of 14,974 songs but **>24 h for 7,195** (mean ~14 h), so
+  this is the common path, not an edge case.
 - **Escape hatch**: `NICOTIND_DISABLE_LANDING_GATE=1` bypasses the gate entirely
   (`requiredGateTasks` returns `[]` → everything lands immediately). The e2e harness
   sets it because its silent-FLAC fixtures can't yield a confident BPM/key and would
