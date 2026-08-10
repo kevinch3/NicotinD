@@ -259,12 +259,17 @@ by how we'd get it:
 
 **Tag-readable (cheap, no analysis)** — surface from `music-metadata`/ffprobe at scan
 time. *Status today:* the scanner (`MMFormat`) captures only **duration, bitrate,
-container, codec** (stored as `duration`/`bit_rate`/`suffix`/`content_type`) plus the
-embedded text tags (title/artist/album/year/track + the enriched genre/bpm/key). The
+container, codec, sample rate, bit depth, channel count** (stored as
+`duration`/`bit_rate`/`suffix`/`content_type`/`sample_rate`/`bit_depth`/`channels`) plus
+the embedded text tags (title/artist/album/year/track + the enriched genre/bpm/key). The
 rest below are **readable but not yet captured/stored** — each needs a column + a
 scan-read line (the cheapest items on this roadmap, no DSP):
-- **Not captured yet**: sample rate, bit depth, channel count (extend `MMFormat` +
-  `library_songs`), comment field.
+- **✅ Captured**: sample rate, bit depth, channel count — read straight off `MMFormat`
+  (`sampleRate`/`bitsPerSample`/`numberOfChannels`) into
+  `library_songs.sample_rate`/`bit_depth`/`channels` and surfaced on `Song`. Purely
+  file-derived, so a rescan overwrites them (no COALESCE preservation). See
+  [library-scanner.md](library-scanner.md) "Container technical details".
+- **Not captured yet**: comment field.
 - **Not captured yet**: loudness-normalization data (ReplayGain tags), time signature
   (`TIME`/tag) when present.
 

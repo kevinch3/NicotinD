@@ -423,6 +423,75 @@ describe('LibraryScanner.persist', () => {
     expect(row?.mood).toBe('party');
   });
 
+  it('stores container technical details (sample rate / bit depth / channels)', () => {
+    const built = buildLibrary([
+      track({
+        relPath: 'A/Album/01.flac',
+        artist: 'A',
+        album: 'Album',
+        title: 'T1',
+        sampleRate: 44100,
+        bitDepth: 24,
+        channels: 2,
+      }),
+    ]);
+    scanner.persist(built, Date.now(), true);
+    const row = db
+      .query<{ sample_rate: number; bit_depth: number; channels: number }, [string]>(
+        'SELECT sample_rate, bit_depth, channels FROM library_songs WHERE id = ?',
+      )
+      .get(built.songs[0]!.id);
+    expect(row).toEqual({ sample_rate: 44100, bit_depth: 24, channels: 2 });
+  });
+
+  it('stores NULL technical details for tracks that report none (lossy/unknown)', () => {
+    const built = buildLibrary([
+      track({ relPath: 'A/Album/01.mp3', artist: 'A', album: 'Album', title: 'T1' }),
+    ]);
+    scanner.persist(built, Date.now(), true);
+    const row = db
+      .query<
+        { sample_rate: number | null; bit_depth: number | null; channels: number | null },
+        [string]
+      >('SELECT sample_rate, bit_depth, channels FROM library_songs WHERE id = ?')
+      .get(built.songs[0]!.id);
+    expect(row).toEqual({ sample_rate: null, bit_depth: null, channels: null });
+  });
+
+  it('overwrites technical details on rescan (no COALESCE preservation)', () => {
+    const first = buildLibrary([
+      track({
+        relPath: 'A/Album/01.flac',
+        artist: 'A',
+        album: 'Album',
+        title: 'T1',
+        sampleRate: 44100,
+        bitDepth: 16,
+        channels: 2,
+      }),
+    ]);
+    scanner.persist(first, Date.now(), true);
+    // Same file re-tagged at a higher resolution — the parse value must win.
+    const second = buildLibrary([
+      track({
+        relPath: 'A/Album/01.flac',
+        artist: 'A',
+        album: 'Album',
+        title: 'T1',
+        sampleRate: 96000,
+        bitDepth: 24,
+        channels: 2,
+      }),
+    ]);
+    scanner.persist(second, Date.now() + 1, true);
+    const row = db
+      .query<{ sample_rate: number; bit_depth: number }, [string]>(
+        'SELECT sample_rate, bit_depth FROM library_songs WHERE id = ?',
+      )
+      .get(first.songs[0]!.id);
+    expect(row).toEqual({ sample_rate: 96000, bit_depth: 24 });
+  });
+
   it('incremental persist does not prune untouched rows', () => {
     scanner.persist(
       buildLibrary([
