@@ -149,17 +149,16 @@ that compiles but does not render is worse than no catalog, because it looks mai
 
 ## Deferred work
 
-Tracked as GitHub issues; see the Storybook label.
+Tracked under the `storybook` label.
 
-1. Story the player / now-playing / layout shell trio.
-2. Story the acquisition modals (`album-hunt`, `metadata-fix`, `folder-browser`,
-   `artist-image-menu`).
-3. Story the review surfaces (`review-inbox`, `track-info-sheet`,
-   `feedback-detail-sheet`, `bottom-nav`).
-4. Visual regression on top of the stories.
-5. `@storybook/addon-a11y` plus triage of its findings.
-6. Interaction tests (`play` functions) for `menu-panel`, `seek-bar`, `selection-bar`.
-7. i18n toolbar global (en/es) driving `TranslateService` in stories.
-8. Catalog the directives and pipes (`TvNavItemDirective`, `TvNavGroupDirective`,
-   `BottomChromeSafeDirective`, the `t` pipe).
-9. Track the `@storybook/angular` Vite builder when it lands.
+| Issue | Work |
+| --- | --- |
+| [#470](https://github.com/kevinch3/NicotinD/issues/470) | Story the player / now-playing / layout shell trio |
+| [#471](https://github.com/kevinch3/NicotinD/issues/471) | Story the acquisition modals (`album-hunt`, `metadata-fix`, `folder-browser`, `artist-image-menu`) |
+| [#472](https://github.com/kevinch3/NicotinD/issues/472) | Story the review surfaces (`review-inbox`, `track-info-sheet`, `feedback-detail-sheet`, `bottom-nav`) |
+| [#473](https://github.com/kevinch3/NicotinD/issues/473) | Visual regression on top of the stories |
+| [#474](https://github.com/kevinch3/NicotinD/issues/474) | `@storybook/addon-a11y` plus triage of its findings |
+| [#475](https://github.com/kevinch3/NicotinD/issues/475) | Interaction tests for `menu-panel`, `seek-bar`, `selection-bar` |
+| [#476](https://github.com/kevinch3/NicotinD/issues/476) | i18n toolbar global (en/es) driving `TranslateService` |
+| [#477](https://github.com/kevinch3/NicotinD/issues/477) | Catalog the shared directives and pipes |
+| [#478](https://github.com/kevinch3/NicotinD/issues/478) | Migrate to a Vite builder when `@storybook/angular` ships one |
