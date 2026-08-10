@@ -19,6 +19,13 @@ The shipped pipeline:
    pipeline. The catalogue + deterministic recipes (playlist-generation.md §2)
    consume the labels directly. §3.4/§5.5 below are therefore not pursued.
 
+> **Runtime unification was investigated and declined.** The sidecar's pinned TensorFlow 2.5 sits
+> beside PyTorch if ML vocal isolation is ever added, which raised the question of consolidating
+> both onto ONNX Runtime. Measured on the prod P4000 and answered **no-go** —
+> [docs/onnx-runtime-spike.md](onnx-runtime-spike.md) records why (Demucs cannot export to ONNX:
+> its STFT front-end uses complex tensors ONNX can't represent). Read it before re-opening the
+> question.
+
 ## Implementation decisions (as built)
 
 - **D1 — energy/loudness are bun-side, not sidecar**: `loudness-analysis.ts`

@@ -1,5 +1,14 @@
 # NicotinD — Intro Video Script
 
+> **Preserved draft, written 2026-07-10 — verify the UI before recording.** This script was
+> salvaged from an unmerged branch and describes the app as it was in early July. The navigation
+> has changed since: Acquire and Downloads were merged into a single **`/get`** workspace with
+> internal *Find* / *Downloads* tabs (#447), and the nav is now **Home · Library · Add · Settings**.
+> So where the shot list says "the search page" or a standalone downloads row, that is today the
+> `/get` **Find** tab and the `/get` **Downloads** tab. The narration itself still holds — the
+> one-box, one-ranked-list, one-Get idea is unchanged. Re-walk the app and update the *left*
+> (on-screen) column before filming.
+
 A single introduction video in **two segments**:
 
 - **Segment A — Set it up** (for self-hosters/installers): what NicotinD is, how to run it, every setup step, environment settings, mandatory vs optional keys, network configuration, and how to upgrade.
