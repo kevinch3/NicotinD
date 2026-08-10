@@ -36,7 +36,7 @@ export const ALLOWLIST: Array<{ match: string; reason: string }> = [
   { match: 'bun install', reason: 'environment setup, not a check' },
   { match: 'actionlint', reason: 'lints the workflow files themselves; needs the CI runner' },
   {
-    match: 'playwright install',
+    match: 'install:browsers',
     reason:
       'environment setup for the Storybook smoke step, not a check; local runs already have the browser',
   },
