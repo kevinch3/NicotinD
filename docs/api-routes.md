@@ -1,0 +1,72 @@
+# API routes
+
+A quick orientation map of the HTTP surface (moved here from the README). The
+machine-readable source of truth is the running server itself: `/openapi.json`
+and the interactive `/doc` explorer.
+
+Public routes (no JWT): `/api/setup/*` (locked after first user), `/api/auth/*`,
+`/api/health`, `/api/ws/playback` (token in query), `/share/:token` (link
+preview), `/openapi.json`, `/doc`.
+
+All other `/api/*` routes require a `Bearer` JWT (30-day sliding session, silent
+refresh on boot) or a read-only share token. The `check:route-auth` CI gate
+fails when an `/api` route group is mounted with no auth decision — see
+[roles.md](roles.md) for the role ladder each guard enforces.
+
+| Method   | Path                                     | Description                                                 |
+| -------- | ---------------------------------------- | ----------------------------------------------------------- |
+| `GET`    | `/api/setup/status`                      | Check if initial setup is needed                            |
+| `POST`   | `/api/setup/complete`                    | Complete initial setup (create admin, configure services)   |
+| `POST`   | `/api/auth/register`                     | Register a new user                                         |
+| `POST`   | `/api/auth/login`                        | Login, returns JWT                                          |
+| `POST`   | `/api/auth/refresh`                      | Sliding-window refresh                                      |
+| `GET`    | `/api/search?q=`                         | Unified search (local library + parallel network sources)   |
+| `GET`    | `/api/search/:id/network`                | Poll for Soulseek results                                   |
+| `POST`   | `/api/acquire`                           | Acquire from a URL (YouTube/Spotify/archive.org) via plugins |
+| `GET`    | `/api/catalog/search`                    | Lidarr/MusicBrainz catalog search                           |
+| `GET`    | `/api/album-hunt/:id`                    | Score + candidates for a catalog album                      |
+| `POST`   | `/api/album-hunt/:id/hunt`               | Two-phase hunt (base + skew queries)                        |
+| `POST`   | `/api/downloads`                         | Enqueue a download from Soulseek                            |
+| `GET`    | `/api/downloads`                         | Active downloads feed (slskd groups + URL jobs, normalized) |
+| `GET`    | `/api/acquire/jobs`                      | URL acquire jobs                                            |
+| `GET`    | `/api/library/artists`                   | Browse artists                                              |
+| `GET`    | `/api/library/albums`                    | Browse albums (excludes in-flight downloads)                |
+| `GET`    | `/api/library/singles`                   | Browse singles & EPs                                        |
+| `GET`    | `/api/library/songs`                     | Whole-library flat song listing (Library "Songs" tab)       |
+| `GET`    | `/api/library/genres`                    | Browse by genre                                             |
+| `GET`    | `/api/library/songs/:id/similar`         | Similar songs (BPM/key/genre scoring)                       |
+| `GET`    | `/api/library/songs/:id/acquisition`     | Acquisition provenance (how/where/when)                     |
+| `GET`    | `/api/library/songs/:id/lyrics`          | Plain + synced lyrics                                       |
+| `POST`   | `/api/library/songs/:id/lyrics/fetch`    | Fetch lyrics from enabled plugins                           |
+| `PUT`    | `/api/library/songs/:id/lyrics`          | Save custom lyrics (admin)                                  |
+| `DELETE` | `/api/library/albums/:id`                | Delete album (folder-first)                                 |
+| `GET`    | `/api/library/untracked`                 | Downloads with `relative_path IS NULL` (admin)              |
+| `GET`    | `/api/stream/:id`                        | Stream audio (Range/206 + seekable transcode cache)         |
+| `GET`    | `/api/cover/:id`                         | Album/artist cover art (override → canonical → folder → embedded) |
+| `GET`    | `/api/radio/next`                        | Smart radio — next track by metadata similarity             |
+| `GET`    | `/api/history/stats`                     | Listening stats (top songs/artists/albums/genres)           |
+| `POST`   | `/api/history/plays`                     | Idempotent batch play-event ingest                          |
+| `GET`    | `/api/playlists`                         | List user's playlists (+ curated for all users)             |
+| `POST`   | `/api/playlists`                         | Create playlist                                             |
+| `GET`    | `/api/playlists/:id`                     | Get playlist (songs)                                        |
+| `POST`   | `/api/playlists/:id/songs`               | Add songs (idempotent)                                      |
+| `DELETE` | `/api/playlists/:id/songs/:songId`       | Remove a song                                               |
+| `GET`    | `/api/share/:token`                      | Read-only share view (album/playlist/artist)                |
+| `POST`   | `/api/share`                             | Mint a share token (short-lived, read-only)                 |
+| `GET`    | `/api/watchlist`                         | Watchlist entries                                           |
+| `POST`   | `/api/watchlist`                         | Toggle watch on a catalog album                             |
+| `GET`    | `/api/plugins`                           | List plugins + capability status                            |
+| `POST`   | `/api/plugins/:id/enable`                | Enable a plugin (admin)                                     |
+| `POST`   | `/api/plugins/:id/disable`               | Disable a plugin (admin)                                    |
+| `GET`    | `/api/system/status`                     | Service health status                                       |
+| `POST`   | `/api/system/scan`                       | Trigger library rescan                                      |
+| `GET`    | `/api/system/logs/stream`                | SSE stream of Docker logs (admin)                           |
+| `GET`    | `/api/admin/review`                      | One-shot admin review snapshot (health, metrics, queues)    |
+| `GET`    | `/api/admin/transcode-library`           | Lossless → Opus library migration (admin)                   |
+| `GET`    | `/api/mcp`                               | MCP endpoint for external agents (agent-token auth)         |
+| `GET`    | `/api/ws/playback`                       | Remote-playback WebSocket                                   |
+
+This table is an orientation aid, not an exhaustive contract — new routes land
+in `/openapi.json` automatically, and per-feature docs describe their routes in
+context (e.g. [radio.md](radio.md), [mcp-agent.md](mcp-agent.md),
+[device-pairing.md](device-pairing.md)).

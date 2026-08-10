@@ -21,6 +21,33 @@ Inlining the slskd entrypoint (making the install a pure "download 2 files"
 flow, no clone) is the remaining gap — see
 [oss-best-practices.md](oss-best-practices.md).
 
+The Docker Compose stack wires NicotinD and the bundled slskd container to the
+same web credentials by default (`slskd` / `slskd`). If you change those, set
+`SLSKD_USERNAME` and `SLSKD_PASSWORD` for both services.
+
+### Volumes
+
+| Volume          | Purpose                                                            |
+| --------------- | ------------------------------------------------------------------ |
+| `music`         | Shared music directory (slskd writes, NicotinD scans and streams)  |
+| `nicotind-data` | NicotinD SQLite database, secrets, and artist-overrides            |
+| `slskd-data`    | slskd application directory (`/app`, including config and state)   |
+| `lidarr-config` | Lidarr database and config (metadata optimization)                 |
+
+### Using a host directory for music
+
+Replace the `music` volume with a bind mount in `docker-compose.override.yml`:
+
+```yaml
+services:
+  nicotind:
+    volumes:
+      - /path/to/your/music:/data/music
+  slskd:
+    volumes:
+      - /path/to/your/music:/data/music
+```
+
 ## The published image
 
 `ghcr.io/kevinch3/nicotind`, multi-arch (`linux/amd64` + `linux/arm64`), built

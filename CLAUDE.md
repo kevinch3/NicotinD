@@ -138,7 +138,8 @@ accurate scope instead of overstating it. `.github/PULL_REQUEST_TEMPLATE.md` pro
 
 **Releasing**: When ready to release, run `bun run release`. It reads the commit history since the
 last tag, determines the version bump, updates `package.json`, generates/updates `CHANGELOG.md`,
-commits, and creates a git tag.
+commits, and creates a git tag. Full pipeline detail (what each tag ships, manual overrides) →
+[docs/releasing.md](docs/releasing.md).
 
 ## Architecture
 
@@ -1521,5 +1522,5 @@ with Severity/Status. Rotate monthly.
 ## Configuration
 
 Config is loaded from `config/default.yml`, overridden by environment variables. See `.env.example`
-for all options. Key vars: `SOULSEEK_USERNAME`, `SOULSEEK_PASSWORD`, `NICOTIND_MODE`,
-`NICOTIND_MUSIC_DIR`.
+for all options and [docs/configuration.md](docs/configuration.md) for the reference table. Key
+vars: `SOULSEEK_USERNAME`, `SOULSEEK_PASSWORD`, `NICOTIND_MODE`, `NICOTIND_MUSIC_DIR`.
