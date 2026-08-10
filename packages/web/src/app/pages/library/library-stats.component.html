@@ -1,0 +1,149 @@
+<div class="space-y-8" data-testid="library-stats">
+  <!-- Period picker. Three presets rather than a date range: "lately", "this
+       year" (the year-review question) and lifetime are the three things people
+       actually ask. -->
+  <div
+    appTvNavGroup
+    [axis]="'horizontal'"
+    class="flex gap-1 p-1 bg-theme-surface-2 rounded-xl w-fit"
+    data-testid="stats-periods"
+  >
+    @for (p of periods; track p.value) {
+      <button
+        appTvNavItem
+        type="button"
+        (click)="setPeriod(p.value)"
+        data-testid="stats-period"
+        [attr.data-period]="p.value"
+        [attr.aria-pressed]="period() === p.value"
+        class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 text-sm rounded-lg transition-colors"
+        [class.bg-theme-surface]="period() === p.value"
+        [class.text-theme-primary]="period() === p.value"
+        [class.text-theme-muted]="period() !== p.value"
+      >
+        {{ p.label | t }}
+      </button>
+    }
+  </div>
+
+  @if (loaded() && !hasHistory()) {
+    <p class="text-sm text-theme-muted" data-testid="stats-empty">{{ 'stats.empty' | t }}</p>
+  }
+
+  @if (hasHistory()) {
+    <!-- Headline totals -->
+    <section class="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="stats-totals">
+      <div class="p-3 rounded-xl bg-theme-surface-2">
+        <p class="text-xl font-bold text-theme-primary">
+          {{ formatDuration(stats()!.totals.msPlayed) }}
+        </p>
+        <p class="text-xs text-theme-muted">{{ 'stats.timeListened' | t }}</p>
+      </div>
+      <div class="p-3 rounded-xl bg-theme-surface-2">
+        <p class="text-xl font-bold text-theme-primary">{{ stats()!.totals.plays }}</p>
+        <p class="text-xs text-theme-muted">{{ 'stats.plays' | t }}</p>
+      </div>
+      <div class="p-3 rounded-xl bg-theme-surface-2">
+        <p class="text-xl font-bold text-theme-primary">{{ stats()!.totals.distinctSongs }}</p>
+        <p class="text-xs text-theme-muted">{{ 'stats.tracks' | t }}</p>
+      </div>
+      <div class="p-3 rounded-xl bg-theme-surface-2">
+        <p class="text-xl font-bold text-theme-primary">{{ stats()!.totals.distinctArtists }}</p>
+        <p class="text-xs text-theme-muted">{{ 'stats.artists' | t }}</p>
+      </div>
+    </section>
+
+    <!-- Top songs -->
+    @if (stats()!.topSongs.length > 0) {
+      <section data-testid="stats-top-songs">
+        <h3 class="section-title mb-2">{{ 'stats.topSongs' | t }}</h3>
+        <ol class="flex flex-col gap-1">
+          @for (song of stats()!.topSongs; track song.songId; let i = $index) {
+            <li class="flex items-center gap-3 text-sm" data-testid="stats-top-song">
+              <span class="w-5 shrink-0 text-right text-xs text-theme-muted">{{ i + 1 }}</span>
+              <span class="min-w-0 flex-1 truncate text-theme-primary">{{ song.title }}</span>
+              <span class="min-w-0 flex-1 truncate text-theme-muted">{{ song.artist }}</span>
+              <span class="shrink-0 text-xs text-theme-muted">
+                {{ 'stats.playCount' | t: { count: song.plays } }}
+              </span>
+            </li>
+          }
+        </ol>
+      </section>
+    }
+
+    <!-- Top artists + albums, side by side on wide screens -->
+    <div class="grid gap-8 sm:grid-cols-2">
+      @if (stats()!.topArtists.length > 0) {
+        <section data-testid="stats-top-artists">
+          <h3 class="section-title mb-2">{{ 'stats.topArtists' | t }}</h3>
+          <ol class="flex flex-col gap-1">
+            @for (a of stats()!.topArtists; track a.artist; let i = $index) {
+              <li class="flex items-center gap-3 text-sm" data-testid="stats-top-artist">
+                <span class="w-5 shrink-0 text-right text-xs text-theme-muted">{{ i + 1 }}</span>
+                <span class="min-w-0 flex-1 truncate text-theme-primary">{{ a.artist }}</span>
+                <span class="shrink-0 text-xs text-theme-muted">
+                  {{ 'stats.playCount' | t: { count: a.plays } }}
+                </span>
+              </li>
+            }
+          </ol>
+        </section>
+      }
+
+      @if (stats()!.topAlbums.length > 0) {
+        <section data-testid="stats-top-albums">
+          <h3 class="section-title mb-2">{{ 'stats.topAlbums' | t }}</h3>
+          <ol class="flex flex-col gap-1">
+            @for (al of stats()!.topAlbums; track al.album; let i = $index) {
+              <li class="flex items-center gap-3 text-sm" data-testid="stats-top-album">
+                <span class="w-5 shrink-0 text-right text-xs text-theme-muted">{{ i + 1 }}</span>
+                <span class="min-w-0 flex-1 truncate text-theme-primary">{{ al.album }}</span>
+                <span class="shrink-0 text-xs text-theme-muted">
+                  {{ 'stats.playCount' | t: { count: al.plays } }}
+                </span>
+              </li>
+            }
+          </ol>
+        </section>
+      }
+    </div>
+
+    <!-- Top genres — reuses the artist/album strip rather than a second chart -->
+    @if (genreSlices().length > 0) {
+      <section data-testid="stats-top-genres">
+        <h3 class="section-title mb-2">{{ 'stats.topGenres' | t }}</h3>
+        <app-genre-distribution-strip
+          [slices]="genreSlices()"
+          [trackCount]="stats()!.totals.distinctSongs"
+          [genreCount]="genreSlices().length"
+        />
+      </section>
+    }
+
+    <!-- Listening clock: bars are percent of the busiest hour, so the shape of
+         the day reads rather than 24 identical slivers. -->
+    <section data-testid="stats-clock">
+      <h3 class="section-title mb-2">{{ 'stats.clock' | t }}</h3>
+      <div class="flex items-end gap-[2px] h-24" role="img" [attr.aria-label]="'stats.clock' | t">
+        @for (bar of clockBars(); track bar.hour) {
+          <div
+            class="flex-1 rounded-t bg-theme-accent/70 min-h-[2px]"
+            data-testid="stats-clock-bar"
+            [attr.data-hour]="bar.hour"
+            [attr.data-plays]="bar.plays"
+            [style.height.%]="bar.percent"
+            [attr.title]="bar.hour + ':00 — ' + bar.plays"
+          ></div>
+        }
+      </div>
+      <div class="flex gap-[2px] mt-1">
+        @for (bar of clockBars(); track bar.hour) {
+          <span class="flex-1 text-center text-[10px] text-theme-muted">{{
+            hourLabel(bar.hour)
+          }}</span>
+        }
+      </div>
+    </section>
+  }
+</div>

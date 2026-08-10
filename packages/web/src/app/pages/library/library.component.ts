@@ -38,6 +38,7 @@ import {
 } from '../../lib/library-filters';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { ArtistImageMenuComponent } from '../../components/artist-image-menu/artist-image-menu.component';
+import { LibraryStatsComponent } from './library-stats.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { chunk } from '../../lib/tv-nav-grid';
@@ -52,7 +53,7 @@ import {
 export type { AlbumListType };
 
 type LibraryMode =
-  'albums' | 'compilations' | 'singles' | 'artists' | 'genre' | 'songs' | 'playlists';
+  'albums' | 'compilations' | 'singles' | 'artists' | 'genre' | 'songs' | 'playlists' | 'stats';
 
 interface AlbumTypeOption {
   value: AlbumListType;
@@ -121,6 +122,7 @@ function writePersistedState(state: PersistedLibraryState): void {
     LibraryFindComponent,
     IconComponent,
     TranslatePipe,
+    LibraryStatsComponent,
     TvNavGroupDirective,
     TvNavItemDirective,
   ],
@@ -158,6 +160,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
     { value: 'genre' as LibraryMode, label: 'library.tab.genre' },
     { value: 'songs' as LibraryMode, label: 'library.tab.songs' },
     { value: 'playlists' as LibraryMode, label: 'library.tab.playlists' },
+    { value: 'stats' as LibraryMode, label: 'library.tab.stats' },
   ];
 
   /** Bumped after a portrait change so the grid's cover URLs re-fetch (#250). */

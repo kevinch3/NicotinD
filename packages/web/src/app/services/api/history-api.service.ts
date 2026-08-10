@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import type { Observable } from 'rxjs';
-import type { RecentPlay } from './api-types';
+import type { ListeningStats, RecentPlay, StatsPeriod } from './api-types';
 
 /**
  * Listening-history reads. The *write* side deliberately does not live here —
@@ -18,5 +18,10 @@ export class HistoryApiService {
   /** The caller's recently listened tracks, newest first. Live songs only. */
   getRecentPlays(limit = 20): Observable<RecentPlay[]> {
     return this.http.get<RecentPlay[]>('/api/history/recent', { params: { limit } });
+  }
+
+  /** Aggregates over the caller's log for one period. */
+  getStats(period: StatsPeriod): Observable<ListeningStats> {
+    return this.http.get<ListeningStats>('/api/history/stats', { params: { period } });
   }
 }

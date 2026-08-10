@@ -154,3 +154,40 @@ describe('GET /recent', () => {
     expect(await recent('/recent?limit=abc')).toHaveLength(1);
   });
 });
+
+describe('GET /stats', () => {
+  it('returns aggregates for the caller', async () => {
+    await post(makeApp('u1'), [event({ songId: 's1' }), event({ songId: 's1' })]);
+
+    const res = await makeApp('u1').request('/stats?period=all');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      period: string;
+      totals: { plays: number };
+      topSongs: Array<{ songId: string }>;
+      clock: number[];
+    };
+    expect(body.period).toBe('all');
+    expect(body.totals.plays).toBe(2);
+    expect(body.topSongs[0]).toMatchObject({ songId: 's1', plays: 2 });
+    expect(body.clock).toHaveLength(24);
+  });
+
+  it('falls back to the default period instead of 400ing on a typo', async () => {
+    const res = await makeApp('u1').request('/stats?period=nonsense');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ period: '30d' });
+  });
+
+  it('defaults the period when none is given', async () => {
+    expect(await (await makeApp('u1').request('/stats')).json()).toMatchObject({ period: '30d' });
+  });
+
+  it('never reports another user\u2019s listening', async () => {
+    await post(makeApp('u1'), [event({ songId: 's1' })]);
+    const body = (await (await makeApp('u2').request('/stats?period=all')).json()) as {
+      totals: { plays: number };
+    };
+    expect(body.totals.plays).toBe(0);
+  });
+});

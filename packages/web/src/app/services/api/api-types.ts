@@ -786,6 +786,23 @@ export interface RecentPlay {
   playedAt: number;
 }
 
+/** Periods the Library "Stats" tab offers. Mirrors the server's STATS_PERIODS. */
+export type StatsPeriod = '30d' | 'year' | 'all';
+
+/** Aggregates over a user's listening log — see docs/listening-history.md. */
+export interface ListeningStats {
+  period: StatsPeriod;
+  from: number;
+  to: number;
+  totals: { plays: number; distinctSongs: number; distinctArtists: number; msPlayed: number };
+  topSongs: Array<{ songId: string; title: string | null; artist: string | null; plays: number }>;
+  topArtists: Array<{ artist: string; plays: number }>;
+  topAlbums: Array<{ album: string; artist: string | null; plays: number }>;
+  topGenres: Array<{ genre: string; plays: number }>;
+  /** Plays per local hour of day; always 24 buckets. */
+  clock: number[];
+}
+
 /** Hold-for-review backlog snapshot (issue #417). */
 export interface PendingReviewStats {
   pending: number;

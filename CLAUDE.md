@@ -815,8 +815,15 @@ Add detail there, not here.
   `isActiveDevice()` (a controller tab mirroring a remote device isn't a play) and repeat-one
   explicitly closes+reopens the session (it never changes `currentTrack`). Both endpoints take **no
   user id** — privacy is structural; admin sees only the `playEvents` row count (the measure-first
-  hook for the keep-forever retention policy). Backs the "Recently played" shelf on the landing page.
-  → [docs/listening-history.md](docs/listening-history.md)
+  hook for the keep-forever retention policy). Backs the "Recently played" shelf on the landing page
+  and the Library **Stats** tab (`listeningStats` + `GET /api/history/stats?period=30d|year|all`,
+  `LibraryStatsComponent`): totals, top songs/artists/albums/genres and a local-hour listening clock,
+  all **derived at read time** (no rollup table — it would need invalidating by the still-open
+  retention/erasure work). `year` is the *calendar* year, not a rolling 365 days (a rolling window
+  mixes two years every January); an unknown `period` falls back to the default rather than 400ing;
+  genres rank through `library_song_genres` not the primary-only `library_songs.genre`; deleted songs
+  still count via the event snapshot; clock bars are percent-of-busiest-hour, since 24 shares of a
+  total are unreadable. → [docs/listening-history.md](docs/listening-history.md)
 - **Likes → auto-maintained "Liked Songs" playlist (issue #225)**: a per-user heart (track row
   `track-like`, track-info `track-info-like`, the `SongMenuService` menu's leading Like/Unlike).
   "Like" is personal so it can't reuse the global `library_songs.starred`; instead a new
