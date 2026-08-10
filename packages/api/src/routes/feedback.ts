@@ -7,7 +7,12 @@
 import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
-import { resolveFeedback, listFeedback } from '../services/generation-feedback.js';
+import {
+  resolveFeedback,
+  listFeedback,
+  listFeedbackSummaries,
+  getFeedback,
+} from '../services/generation-feedback.js';
 import { recordAudit } from '../services/audit-log.js';
 import type {
   GenerationFeedbackResourceType,
@@ -38,6 +43,31 @@ export function feedbackRoutes(): Hono<AuthEnv> {
       offset: q.offset ? Number(q.offset) : undefined,
     });
     return c.json(rows);
+  });
+
+  // GET /api/feedback/summaries — the Admin review queue. Declared BEFORE /:id so
+  // "summaries" isn't swallowed as an id. Ships no output_json (251 KB per row).
+  app.get('/summaries', (c) => {
+    const q = c.req.query();
+    const graded = q.graded === 'true' ? true : q.graded === 'false' ? false : undefined;
+    return c.json(
+      listFeedbackSummaries(getDatabase(), {
+        resourceType: q.resourceType as GenerationFeedbackResourceType | undefined,
+        graded,
+        limit: q.limit ? Number(q.limit) : undefined,
+        offset: q.offset ? Number(q.offset) : undefined,
+      }),
+    );
+  });
+
+  // GET /api/feedback/:id — one full record, for the queue's grading sheet (which
+  // needs the scored candidates the summary omits).
+  app.get('/:id', (c) => {
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id)) return c.json({ error: 'Invalid feedback id' }, 400);
+    const row = getFeedback(getDatabase(), id);
+    if (!row) return c.json({ error: 'No feedback with that id' }, 404);
+    return c.json(row);
   });
 
   // PATCH /api/feedback/:id — grade a pending capture (the toast 👍/👎 lands here).

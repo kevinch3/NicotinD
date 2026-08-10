@@ -1,0 +1,94 @@
+<div data-testid="feedback-queue" appTvNavGroup="vertical">
+  @if (loading()) {
+    <p class="text-sm text-theme-muted px-1 py-2">{{ 'admin.feedbackQueueLoading' | t }}</p>
+  } @else if (rows().length === 0) {
+    <p class="text-sm text-theme-muted px-1 py-2">{{ 'admin.feedbackQueueEmpty' | t }}</p>
+  } @else {
+    <section class="section-flush">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-theme">
+            <th
+              class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+            >
+              {{ 'admin.colWhen' | t }}
+            </th>
+            <th
+              class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+            >
+              {{ 'admin.feedbackColRelease' | t }}
+            </th>
+            <th
+              class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+            >
+              {{ 'admin.feedbackColVerdict' | t }}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of rows(); track row.id) {
+            <tr class="border-b border-theme last:border-0" data-testid="feedback-queue-row">
+              <td class="px-4 py-2.5 text-theme-muted whitespace-nowrap">
+                {{ formatWhen(row.at) }}
+                @if (row.engineVersion) {
+                  <span class="block text-xs opacity-70">v{{ row.engineVersion }}</span>
+                }
+              </td>
+              <td class="px-4 py-2.5 text-theme-secondary">
+                {{ row.artistName ?? '—' }} — {{ row.albumTitle ?? row.resourceRef ?? '—' }}
+              </td>
+              <td class="px-4 py-2.5">
+                @if (row.verdict) {
+                  <span
+                    [class]="
+                      'inline-block rounded px-2 py-0.5 text-xs ' +
+                      (row.verdict === 'good'
+                        ? 'bg-emerald-600/20 text-emerald-500'
+                        : 'bg-red-600/20 text-red-500')
+                    "
+                    >{{ row.verdict === 'good' ? '👍' : '👎' }}</span
+                  >
+                } @else {
+                  <div class="flex gap-2">
+                    <button
+                      appTvNavItem
+                      type="button"
+                      data-testid="feedback-queue-good"
+                      class="rounded border border-theme px-2 py-1 hover:bg-theme-hover transition"
+                      (click)="grade(row, 'good')"
+                      [attr.aria-label]="'admin.feedbackGradeGood' | t"
+                    >
+                      👍
+                    </button>
+                    <button
+                      appTvNavItem
+                      type="button"
+                      data-testid="feedback-queue-bad"
+                      class="rounded border border-theme px-2 py-1 hover:bg-theme-hover transition"
+                      (click)="openSheet(row)"
+                      [attr.aria-label]="'admin.feedbackGradeBad' | t"
+                    >
+                      👎
+                    </button>
+                  </div>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+  }
+
+  <div class="mt-3">
+    <button
+      appTvNavItem
+      type="button"
+      data-testid="feedback-queue-refresh"
+      class="text-sm rounded border border-theme px-3 py-1.5 hover:bg-theme-hover transition"
+      (click)="reload()"
+    >
+      {{ 'admin.feedbackQueueRefresh' | t }}
+    </button>
+  </div>
+</div>

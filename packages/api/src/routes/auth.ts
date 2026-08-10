@@ -399,10 +399,13 @@ export function authRoutes(
       const user = c.get('user');
       const body = c.req.valid('json') as { enabled: boolean };
       const db = getDatabase();
-      db.query('UPDATE user_settings SET feedback_capture = ? WHERE user_id = ?').run(
-        body.enabled ? 1 : 0,
-        user.sub,
-      );
+      // Upsert, not UPDATE: without a settings row a bare UPDATE no-ops while
+      // still returning ok, so the client showed the toggle on and the next
+      // /me flipped it back off (issue #451).
+      db.query(
+        `INSERT INTO user_settings (user_id, feedback_capture) VALUES (?, ?)
+           ON CONFLICT(user_id) DO UPDATE SET feedback_capture = excluded.feedback_capture`,
+      ).run(user.sub, body.enabled ? 1 : 0);
       return c.json({ ok: true }, 200);
     },
   );

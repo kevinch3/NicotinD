@@ -124,4 +124,35 @@ describe('feedback routes', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].id).toBe(graded);
   });
+
+  // Issue #451: the Admin review queue reads these two.
+  describe('review-queue reads', () => {
+    it('GET /summaries returns display fields without the heavy snapshots', async () => {
+      const id = seedPending();
+      const app = authed(feedbackRoutes());
+      const rows = await (await app.request('/summaries?graded=false')).json();
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ id, artistName: 'A', albumTitle: 'B', verdict: null });
+      expect(rows[0].output).toBeUndefined();
+    });
+
+    it('GET /:id returns the full record, 404s an unknown id', async () => {
+      const id = seedPending();
+      const app = authed(feedbackRoutes());
+
+      const res = await app.request(`/${id}`);
+      expect(res.status).toBe(200);
+      expect((await res.json()).output).toBeDefined();
+
+      expect((await app.request(`/${id + 999}`)).status).toBe(404);
+      expect((await app.request('/not-a-number')).status).toBe(400);
+    });
+
+    it('rejects non-admins on both', async () => {
+      const app = authed(feedbackRoutes(), 'user');
+      expect((await app.request('/summaries')).status).toBe(403);
+      expect((await app.request('/1')).status).toBe(403);
+    });
+  });
 });

@@ -77,6 +77,7 @@ export type {
   HuntMatchOutput,
   HuntMatchSnapshot,
   GenerationFeedbackRecord,
+  GenerationFeedbackSummary,
   ResolveFeedbackBody,
   HuntMatchFixture,
 } from '../../../core/src/types/generation-feedback';

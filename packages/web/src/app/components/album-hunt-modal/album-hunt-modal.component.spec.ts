@@ -9,6 +9,7 @@ import type { ArchiveCandidate } from '../../../types/core';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
+import { FeedbackService } from '../../services/feedback.service';
 
 const ALBUM: DiscographyAlbum = {
   lidarrId: 42,
@@ -37,11 +38,14 @@ function candidate(overrides: Partial<FolderCandidate>): FolderCandidate {
 describe('AlbumHuntModalComponent', () => {
   // Two-phase hunt: startHunt() fires huntAlbumBase first, then huntAlbumSkew only
   // when the base phase reports skewNeeded.
-  const huntAlbumBase = vi.fn(() => of({ candidates: [], totalTracks: 0, skewNeeded: false }));
+  const huntAlbumBase = vi.fn((): ReturnType<DownloadsApiService['huntAlbumBase']> =>
+    of({ candidates: [], totalTracks: 0, skewNeeded: false }),
+  );
   const huntAlbumSkew = vi.fn(() => of({ candidates: [] }));
   const huntDownload = vi.fn(() => of({}));
   const archiveSearchAlbum = vi.fn(() => of({ candidates: [] as ArchiveCandidate[] }));
   const acquireSubmit = vi.fn(() => Promise.resolve('job1'));
+  const promptForHunt = vi.fn();
   let archiveEnabled = false;
 
   beforeEach(async () => {
@@ -54,6 +58,7 @@ describe('AlbumHuntModalComponent', () => {
     archiveSearchAlbum.mockClear();
     archiveSearchAlbum.mockReturnValue(of({ candidates: [] }));
     acquireSubmit.mockClear();
+    promptForHunt.mockClear();
     archiveEnabled = false;
 
     await TestBed.configureTestingModule({
@@ -70,6 +75,7 @@ describe('AlbumHuntModalComponent', () => {
           provide: PluginService,
           useValue: { hasArchive: () => archiveEnabled, hasSpotify: () => false },
         },
+        { provide: FeedbackService, useValue: { promptForHunt } },
       ],
     }).compileComponents();
   });
@@ -323,6 +329,34 @@ describe('AlbumHuntModalComponent', () => {
     expect(huntAlbumBase).toHaveBeenCalledWith(
       ALBUM.lidarrId,
       expect.objectContaining({ skewSearch: true }),
+    );
+  });
+
+  // Issue #451: this path did prompt, but nothing asserted it — which is how the
+  // sibling auto-hunt path shipped with no prompt at all.
+  it('offers the generation-feedback grading prompt after a hunt', async () => {
+    huntAlbumBase.mockReturnValue(
+      of({
+        candidates: [candidate({ username: 'peer1' })],
+        totalTracks: 10,
+        skewNeeded: false,
+        feedbackId: 21,
+      }),
+    );
+
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    (c as unknown as { artistName: () => string }).artistName = () => 'Test Artist';
+
+    await c.startHunt();
+
+    expect(promptForHunt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        feedbackId: 21,
+        artistName: 'Test Artist',
+        albumTitle: 'Test Album',
+        candidates: [expect.objectContaining({ username: 'peer1' })],
+      }),
     );
   });
 });
