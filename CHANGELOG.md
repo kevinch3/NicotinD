@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.334](https://github.com/kevinch3/NicotinD/compare/v0.1.333...v0.1.334) (2026-08-10)
+
+### Features
+
+* **radio:** demote tracks this listener played recently ([#462](https://github.com/kevinch3/NicotinD/issues/462)) ([e8f2657](https://github.com/kevinch3/NicotinD/commit/e8f265737e4ad3aa1877a50f041a04bbc81450cc)), references [#461](https://github.com/kevinch3/NicotinD/issues/461) [#461](https://github.com/kevinch3/NicotinD/issues/461)
 ## [0.1.333](https://github.com/kevinch3/NicotinD/compare/v0.1.332...v0.1.333) (2026-08-10)
 
 ### Bug Fixes
