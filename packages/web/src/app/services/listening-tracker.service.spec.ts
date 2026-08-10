@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { ListeningTrackerService, MAX_DELTA_SEC, accumulate } from './listening-tracker.service';
 import { ListeningQueueService, type PlayEventPayload } from './listening-queue.service';
-import type { Track } from '../types/core';
+import type { Track } from './player.service';
 
 const TRACK = { id: 's1', title: 'Track', artist: 'Artist', duration: 300 } as Track;
 

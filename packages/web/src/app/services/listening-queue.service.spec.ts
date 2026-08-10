@@ -26,10 +26,25 @@ function event(over: Partial<PlayEventPayload> = {}): PlayEventPayload {
   };
 }
 
-function setup(opts: { online?: boolean; post?: ReturnType<typeof vi.fn> } = {}) {
+/** The one call shape we assert on: post(url, { events }). Declared so
+ *  `post.mock.calls[n][1]` type-checks — an untyped vi.fn() has a zero-length
+ *  args tuple, which `bun run typecheck:web-spec` (correctly) rejects. */
+type PostMock = ReturnType<
+  typeof vi.fn<(url: string, body: { events: PlayEventPayload[] }) => unknown>
+>;
+
+/** The events body of the nth post call, asserted present. */
+function sentEvents(post: PostMock, n: number): PlayEventPayload[] {
+  const call = post.mock.calls[n];
+  expect(call).toBeDefined();
+  return call![1].events;
+}
+
+function setup(opts: { online?: boolean; post?: PostMock } = {}) {
   const online = signal(opts.online ?? true);
   const reconnects = signal(0);
-  const post = opts.post ?? vi.fn(() => of({ inserted: 1, duplicates: 0, rejected: 0 }));
+  const post: PostMock =
+    opts.post ?? vi.fn(() => of({ inserted: 1, duplicates: 0, rejected: 0 }) as unknown);
 
   TestBed.configureTestingModule({
     providers: [
@@ -53,9 +68,7 @@ describe('ListeningQueueService', () => {
     await Promise.resolve();
 
     expect(post).toHaveBeenCalledTimes(1);
-    expect(post.mock.calls[0][1]).toMatchObject({
-      events: [expect.objectContaining({ songId: 's1' })],
-    });
+    expect(sentEvents(post, 0)).toMatchObject([expect.objectContaining({ songId: 's1' })]);
     expect(svc.pendingCount()).toBe(0);
   });
 
@@ -67,7 +80,7 @@ describe('ListeningQueueService', () => {
   });
 
   it('keeps the buffer when the flush fails, and retries on the next enqueue', async () => {
-    const post = vi.fn(() => throwError(() => new Error('boom')));
+    const post: PostMock = vi.fn(() => throwError(() => new Error('boom')) as unknown);
     const { svc } = setup({ post });
     svc.enqueue(event());
     await Promise.resolve();
@@ -77,7 +90,7 @@ describe('ListeningQueueService', () => {
     svc.enqueue(event());
     await Promise.resolve();
     // Second attempt carried both events.
-    expect((post.mock.calls[1][1] as { events: unknown[] }).events).toHaveLength(2);
+    expect(sentEvents(post, 1)).toHaveLength(2);
   });
 
   it('does not attempt a send while offline', async () => {
@@ -102,7 +115,7 @@ describe('ListeningQueueService', () => {
     await Promise.resolve();
 
     expect(post).toHaveBeenCalledTimes(1);
-    expect((post.mock.calls[0][1] as { events: unknown[] }).events).toHaveLength(2);
+    expect(sentEvents(post, 0)).toHaveLength(2);
   });
 
   it('recovers a buffer left behind by a previous page load', async () => {
