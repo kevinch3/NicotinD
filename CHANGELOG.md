@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.328](https://github.com/kevinch3/NicotinD/compare/v0.1.327...v0.1.328) (2026-08-10)
+
+### Bug Fixes
+
+* **feedback:** fire the capture prompt on the auto-hunt path; add an admin review queue ([#452](https://github.com/kevinch3/NicotinD/issues/452)) ([435887f](https://github.com/kevinch3/NicotinD/commit/435887f9ae0473ad36b7d3305533ded742713945)), references [#451](https://github.com/kevinch3/NicotinD/issues/451)
 ## [0.1.327](https://github.com/kevinch3/NicotinD/compare/v0.1.326...v0.1.327) (2026-08-09)
 
 ### Features
