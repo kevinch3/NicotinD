@@ -1,0 +1,12 @@
+/* Storybook compiles `.storybook/*.ts` and `*.stories.ts`, neither of which the app's
+   `tsconfig.app.json` reaches — the Angular webpack plugin rejects any file missing from
+   the program. This config widens the include set; everything else is inherited. */
+{
+  "extends": "../tsconfig.app.json",
+  "compilerOptions": {
+    "outDir": "../out-tsc/storybook",
+    "types": []
+  },
+  "include": ["../src/**/*.ts", "./*.ts"],
+  "exclude": ["../src/**/*.spec.ts"]
+}

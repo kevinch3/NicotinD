@@ -47,7 +47,8 @@
     "release": "commit-and-tag-version",
     "release:minor": "commit-and-tag-version --release-as minor",
     "release:major": "commit-and-tag-version --release-as major",
-    "prepare": "husky"
+    "prepare": "husky",
+    "build:storybook": "bun run --filter @nicotind/web build:storybook"
   },
   "dependencies": {
     "@nicotind/api": "workspace:*",
@@ -63,6 +64,7 @@
     "@types/bun": "^1.3.14",
     "@typescript-eslint/eslint-plugin": "^8.65.0",
     "@typescript-eslint/parser": "^8.65.0",
+    "ajv": "^8",
     "commit-and-tag-version": "^13.1.0",
     "eslint": "^10.7.0",
     "husky": "^9.1.7",

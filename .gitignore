@@ -44,3 +44,5 @@ packages/desktop/build/icons/
 # Playwright storageState — written here when the suite is run from the repo root
 # instead of packages/e2e (its own .gitignore only covers packages/e2e/.auth/).
 .auth/
+packages/web/storybook-static
+packages/web/documentation.json

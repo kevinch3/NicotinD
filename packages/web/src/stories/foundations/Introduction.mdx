@@ -1,0 +1,30 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Foundations/Introduction" />
+
+# NicotinD component catalog
+
+This is the reference for the shared UI components in `@nicotind/web`. It exists so you can
+pick the right component without reading its source, and see it in every theme the app ships.
+
+## How components are organised
+
+Components are grouped by how much of the app they need in order to render:
+
+- **Presentational** — zero injected services. They take inputs and emit outputs, nothing else.
+- **Light-DI** — one to three injected services. They render here against fixtures.
+- **App-shell** — five to fourteen injected services (`layout` injects fourteen). These are
+  compositions of the app, not shared primitives, and are deliberately **not** in this catalog.
+
+## Adding a component
+
+1. Put the story beside the component: `src/app/components/<name>/<name>.stories.ts`.
+   Implementation, spec and story share one folder.
+2. Set `tags: ['autodocs']` so the inputs/outputs table is generated from Angular metadata
+   rather than hand-maintained.
+3. If the component injects services, add `applicationConfig({ providers: storyProviders() })`
+   to `decorators`.
+4. Write a matching MDX page under `src/stories/components/` for the prose that metadata
+   cannot express: when to use it, when not to, and the gotchas.
+
+See `docs/storybook.md` for the full contributor guide.
