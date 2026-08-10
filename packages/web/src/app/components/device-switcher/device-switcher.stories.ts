@@ -6,6 +6,14 @@ const meta: Meta<DeviceSwitcherComponent> = {
   title: 'Components/DeviceSwitcher',
   component: DeviceSwitcherComponent,
   tags: ['autodocs'],
+  parameters: {
+    docs: {
+      description: {
+        component:
+          'Picks which device plays. Every browser tab registers as a device over `GET /api/ws/playback`; hardware targets (Chromecast, DLNA) appear through the server-side `CastController` as proxy devices, so the same control covers both.',
+      },
+    },
+  },
   decorators: [applicationConfig({ providers: storyProviders() })],
   args: { placement: 'up' },
 };

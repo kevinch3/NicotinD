@@ -7,6 +7,14 @@ const meta: Meta<TrackRowComponent> = {
   title: 'Components/TrackRow',
   component: TrackRowComponent,
   tags: ['autodocs'],
+  parameters: {
+    docs: {
+      description: {
+        component:
+          'The one row component behind every song listing — album, playlist, queue, search, artist Songs, the library Songs tab and the offline list. Its `⋯` menu is built by `SongMenuService.build(song, ctx)`, so common actions are guaranteed everywhere and contextual ones arrive through `SongContext`. `currentTrack` is set synchronously on click, so the row acknowledges a tap before any (HDD-slow) bytes arrive.',
+      },
+    },
+  },
   decorators: [applicationConfig({ providers: storyProviders() })],
   args: {
     track: demoTrack,

@@ -5,6 +5,14 @@ const meta: Meta<TrackStatsBarsComponent> = {
   title: 'Components/TrackStatsBars',
   component: TrackStatsBarsComponent,
   tags: ['autodocs'],
+  parameters: {
+    docs: {
+      description: {
+        component:
+          'The per-track analysis readout: tag-sourced BPM/key/genre alongside the Essentia perceptual axes and ebur128 energy. Every value is independently optional — enrichment is windowed, so a freshly landed track has tags long before it has perceptual axes, and a partially filled bar set is the normal mid-backfill state rather than an error.',
+      },
+    },
+  },
   args: {
     bpm: 104,
     genre: 'Dream Pop',

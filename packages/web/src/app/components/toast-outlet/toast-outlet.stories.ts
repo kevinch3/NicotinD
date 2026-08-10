@@ -15,6 +15,14 @@ const meta: Meta<ToastOutletComponent> = {
   title: 'Components/ToastOutlet',
   component: ToastOutletComponent,
   tags: ['autodocs'],
+  parameters: {
+    docs: {
+      description: {
+        component:
+          "Mounted once in the app shell; renders `ToastService`'s queue. Capped at three: a fourth toast evicts the oldest non-countdown one, and if all three are countdowns the *new* toast is dropped instead — evicting a countdown would fire its `actions[0]` for a toast the user never saw.",
+      },
+    },
+  },
   decorators: [applicationConfig({ providers: storyProviders() })],
 };
 

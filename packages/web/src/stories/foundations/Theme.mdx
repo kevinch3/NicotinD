@@ -1,0 +1,48 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Foundations/Theme" />
+
+# Theme tokens
+
+Every colour in the app comes from a CSS custom property set on `<html>` by
+`[data-theme="…"]`. `ThemeService` writes that attribute; nothing else reads a hard-coded
+colour. Use the **Theme** control in the toolbar to switch any story between all seven
+presets.
+
+## The presets
+
+| Id | Name | Character |
+| --- | --- | --- |
+| `midnight` | Midnight | The default dark theme |
+| `daylight` | Daylight | Light |
+| `warm-paper` | Warm Paper | Light, amber accent |
+| `oled` | OLED Black | True black, for OLED panels |
+| `twilight` | Twilight | Dark, violet accent |
+| `forest` | Forest | Dark, teal accent |
+| `eink` | E-Ink | Monochrome, high contrast |
+
+`eink` is the one to check when adding an icon or a thin border: it thickens every SVG
+stroke through `[data-theme="eink"] svg`, because hairlines are unreadable on e-ink
+panels. The **Icons → All Icons** story is the quickest way to review that rule.
+
+## Using a token
+
+Tailwind utility names resolve to the tokens through `@theme` registration:
+
+```html
+<div class="bg-theme-surface text-theme-primary border border-theme">…</div>
+```
+
+There is a real trap here, documented at length in `styles.css`: `@theme` registers the
+*name*, not a fixed value. The value stays a `var()` that each `[data-theme]` block
+overrides, which is what makes live theme switching work. A token registered with a
+literal colour would freeze on the first theme. Colours that are **not** `@theme`-
+registered (`text-theme-primary`, `border-theme`) are raw `var()` declarations, because
+`@apply` can only resolve `@theme`-registered names.
+
+## Adding a colour
+
+Add the custom property to **every** `[data-theme]` block in `styles.css` — a token
+defined in only some themes falls back silently, which reads as a rendering bug rather
+than a missing definition. Then register it under `@theme` if you need the Tailwind
+utility family generated for it.

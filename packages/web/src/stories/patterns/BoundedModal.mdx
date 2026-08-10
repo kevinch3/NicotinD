@@ -1,0 +1,44 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Patterns/Bounded modal" />
+
+# Bounded modal
+
+A full-screen modal whose content can grow taller than the viewport. Get this wrong and
+the last row of the dialog — usually the confirm button — renders underneath the
+mini-player, where it cannot be tapped.
+
+## The recipe
+
+```html
+<div
+  class="fixed inset-0 z-50 flex bg-black/60 p-4"
+  appBottomChromeSafe
+>
+  <div
+    class="m-auto w-full max-w-lg overflow-y-auto rounded-xl bg-theme-surface"
+    [style.max-height]="'calc(100dvh - 2rem - var(--bottom-chrome-inset))'"
+  >
+    …
+  </div>
+</div>
+```
+
+Three things are load-bearing:
+
+- **`appBottomChromeSafe`** publishes and maintains `--bottom-chrome-inset`, re-measuring
+  on resize and on `transitionend`. The chrome changes height when the mini-player
+  appears, so a one-shot measurement goes stale.
+- **`m-auto`, never `items-center`.** A centred flex child will not shrink below its
+  content height, so a tall dialog overflows the backdrop instead of scrolling inside it.
+  `m-auto` centres while still allowing the child to shrink.
+- **`max-height` off the variable**, paired with `overflow-y-auto` on the same element.
+  One without the other gets you either a clipped dialog or a scrolling page behind the
+  backdrop.
+
+## Also
+
+- Pair it with `ScrollLockService` so the document behind the sheet does not scroll.
+- Register an overlay closer (`registerOverlayCloser`) so Android hardware Back and
+  Escape close the topmost overlay only — see `BackHandlerStack`.
+- `ConfirmDialogComponent` is the worked example; read it before writing a new modal.

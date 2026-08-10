@@ -6,6 +6,14 @@ const meta: Meta<CoverArtComponent> = {
   title: 'Components/CoverArt',
   component: CoverArtComponent,
   tags: ['autodocs'],
+  parameters: {
+    docs: {
+      description: {
+        component:
+          'The single cover-image component. Resolution order is override → canonical → folder → embedded, with sized WebP thumbnails honouring `size`. With no usable cover it draws a placeholder whose gradient angle is `hash(artist:album) % 360` — deterministic per album, so a grid of coverless tiles is not a wall of identical squares — in theme tokens, so it restyles with the theme. Covers are `loading="lazy"` unless `eager` is set.',
+      },
+    },
+  },
   decorators: [applicationConfig({ providers: storyProviders() })],
   args: { artist: 'Nocturnal Signal', album: 'Static Bloom', size: 160 },
 };

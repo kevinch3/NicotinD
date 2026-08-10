@@ -6,6 +6,14 @@ const meta: Meta<UpdateBannerComponent> = {
   title: 'Components/UpdateBanner',
   component: UpdateBannerComponent,
   tags: ['autodocs'],
+  parameters: {
+    docs: {
+      description: {
+        component:
+          'The universal install CTA for a new PWA version, shown once the service worker reports `VERSION_READY`. The Settings → "Check for updates" button is the manual trigger for the same flow, not a replacement for this banner.',
+      },
+    },
+  },
   decorators: [applicationConfig({ providers: storyProviders() })],
 };
 

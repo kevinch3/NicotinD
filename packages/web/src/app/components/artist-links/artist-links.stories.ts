@@ -7,6 +7,14 @@ const meta: Meta<ArtistLinksComponent> = {
   title: 'Components/ArtistLinks',
   component: ArtistLinksComponent,
   tags: ['autodocs'],
+  parameters: {
+    docs: {
+      description: {
+        component:
+          "Renders a song or album's artist credits as clickable links. Credits come from `library_song_artists` / `library_album_artists`, with primaries first and featuring artists after. When a row has no structured credits it falls back to the raw tag string — which is what every row looks like until the `artist-identity` task resolves it.",
+      },
+    },
+  },
   decorators: [applicationConfig({ providers: storyProviders() })],
   args: { artists: demoArtistCredits },
 };

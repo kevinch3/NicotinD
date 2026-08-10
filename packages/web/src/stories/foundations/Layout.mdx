@@ -1,0 +1,45 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Foundations/Layout" />
+
+# Layout rules
+
+Three cross-component rules that no single component's docs can own. Each exists because
+it was broken first.
+
+## Bottom chrome
+
+The mini-player and the mobile tab bar share one `z-50` plane and are marked
+`data-bottom-chrome`. Anything that could extend to the bottom of the viewport has to
+reserve room for them, or its last row renders underneath and is unreachable.
+
+`measureBottomChromeInset()` is the single measuring entry point, and it publishes a
+`--bottom-chrome-inset` CSS variable. Full-screen modal backdrops use
+`BottomChromeSafeDirective`, which re-measures on resize and `transitionend` — the chrome
+changes height when the mini-player appears.
+
+## Bounded panels
+
+A variable-height modal must pair the directive with this recipe:
+
+```html
+<div class="… m-auto" [style.max-height]="'calc(100dvh - var(--bottom-chrome-inset))'">
+```
+
+`m-auto`, never `items-center`. A centred flex child cannot shrink below its content, so
+a tall dialog overflows instead of scrolling, and the overflow goes under the chrome.
+
+## Menu positioning
+
+`MenuPanelComponent` is fixed-position and placed by the pure `computeMenuPosition`,
+which flips the panel above its trigger and clamps it into the viewport, reserving the
+same `bottomInset`. Every `⋯` menu goes through it — a hand-rolled absolute dropdown will
+open under the mini-player on a phone.
+
+## Page shells
+
+Every routed page inside the app shell has a root of
+`page-shell max-w-(6xl|3xl|2xl)` — `6xl` for browse, `3xl` for reading, `2xl` for
+settings forms. Headings use `page-title` / `section-title`; tables use `section-flush`.
+Pre-auth full-screen shells (login, setup, pair, server config) are exempt.
+`page-shell.spec.ts` is the drift guard.

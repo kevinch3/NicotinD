@@ -8,6 +8,14 @@ const meta: Meta<ConfirmHostComponent> = {
   title: 'Components/ConfirmHost',
   component: ConfirmHostComponent,
   tags: ['autodocs'],
+  parameters: {
+    docs: {
+      description: {
+        component:
+          'Mounted once in the app shell; renders whatever `ConfirmService.request()` holds and nothing otherwise. One modal shared by every caller, instead of each page hand-rolling its own confirm.',
+      },
+    },
+  },
   decorators: [applicationConfig({ providers: storyProviders() })],
 };
 

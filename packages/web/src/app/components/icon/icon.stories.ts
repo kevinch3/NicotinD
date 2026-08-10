@@ -32,6 +32,14 @@ const meta: Meta<IconComponent> = {
   title: 'Components/Icon',
   component: IconComponent,
   tags: ['autodocs'],
+  parameters: {
+    docs: {
+      description: {
+        component:
+          'The centralized set of universal-action glyphs used on icon-only buttons. Before it, each glyph was a hand-copied inline `<svg>` (Back lived in three files). The icon is decorative (`aria-hidden`) — the *button* carries the accessible name via `aria-label`/`title`. Glyphs are lucide-style so the `[data-theme=eink] svg` stroke-thickening rule has one shape to thicken.',
+      },
+    },
+  },
   argTypes: { name: { control: 'select', options: ICON_NAMES } },
   args: { name: 'play', size: 18 },
 };

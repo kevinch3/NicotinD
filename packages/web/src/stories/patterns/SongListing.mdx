@@ -1,0 +1,63 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Patterns/Song listing" />
+
+# Song listing
+
+Every list of songs in the app — album, playlist, queue, search, artist Songs, the
+library Songs tab, the offline list — is the same four pieces. Assembling them by hand is
+how listings drift apart.
+
+## The pieces
+
+1. **`TrackRowComponent`** renders the row.
+2. **`SongMenuService.build(song, ctx)`** builds the `⋯` menu. Common actions (Like, Play
+   next, Add to queue, Add to playlist, Song info) are guaranteed; contextual ones arrive
+   through `SongContext`. Never assemble a menu inline — that is how a listing ends up
+   missing Like.
+3. **`createSelection()`** owns multi-select state.
+4. **`SelectionBarComponent`** renders the bulk actions for that selection.
+
+## Sketch
+
+```ts
+readonly selection = createSelection(() => this.songs());
+
+menuFor(song: Song) {
+  return this.songMenu.build(song, { context: 'playlist', playlistId: this.id() });
+}
+```
+
+```html
+@for (song of songs(); track song.id) {
+  <app-track-row
+    [track]="song"
+    [actions]="menuFor(song)"
+    [selectable]="selection.active()"
+    [selected]="selection.has(song.id)"
+    (play)="playWithContext(song)"
+    (selectedChange)="selection.toggle(song.id, $event)" />
+}
+@if (selection.count()) {
+  <app-selection-bar [count]="selection.count()" [total]="songs().length" … />
+}
+```
+
+## Which play call
+
+This is the part that is easy to get wrong, and it decides what a click *replaces*:
+
+- **`playWithContext(song, list)`** — a click on a row inside a list. That list becomes
+  the queue. This is what an in-list row should almost always call.
+- **`playSingle(song)`** — a context-less click. Replaces the queue with just this song.
+- **`play(song)`** — the primitive. Does **not** touch the queue. Only queue-owning
+  callers and `RemotePlaybackService` sync should use it. Album detail and genre detail
+  were both still on it, which is why an unrelated queue resumed the moment the clicked
+  track ended.
+- **`jumpToQueueIndex(i)`** — a tap on a "Next up" row. *Consumes* the queue up to that
+  row rather than leaving the skipped entries to replay.
+
+## Removal
+
+Remove routes through `ConfirmService` → `deleteSongs` → `deletedSongIds()`. The signal
+prunes every listing, so no page needs its own removal handling.

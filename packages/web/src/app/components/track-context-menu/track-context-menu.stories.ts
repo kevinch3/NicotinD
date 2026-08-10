@@ -7,6 +7,14 @@ const meta: Meta<TrackContextMenuComponent> = {
   title: 'Components/TrackContextMenu',
   component: TrackContextMenuComponent,
   tags: ['autodocs'],
+  parameters: {
+    docs: {
+      description: {
+        component:
+          "The long-press / right-click menu for a track, positioned at the pointer rather than anchored to a trigger. For the `⋯` button menu use `TrackRowComponent`'s, which is built by `SongMenuService.build`.",
+      },
+    },
+  },
   decorators: [applicationConfig({ providers: storyProviders() })],
   args: { artist: demoTrack.artist, position: { x: 160, y: 120 }, trackId: demoTrack.id },
 };

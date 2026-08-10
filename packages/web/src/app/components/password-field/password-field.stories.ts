@@ -5,6 +5,14 @@ const meta: Meta<PasswordFieldComponent> = {
   title: 'Components/PasswordField',
   component: PasswordFieldComponent,
   tags: ['autodocs'],
+  parameters: {
+    docs: {
+      description: {
+        component:
+          'A password input with a show/hide toggle. Exists so the reveal affordance, its `aria` wiring and its autocomplete hints are identical on login, registration, setup and every credential field in Extensions.',
+      },
+    },
+  },
   args: { placeholder: 'Password', autocomplete: 'current-password' },
 };
 

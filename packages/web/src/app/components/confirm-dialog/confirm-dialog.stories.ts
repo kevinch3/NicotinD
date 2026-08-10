@@ -5,6 +5,14 @@ const meta: Meta<ConfirmDialogComponent> = {
   title: 'Components/ConfirmDialog',
   component: ConfirmDialogComponent,
   tags: ['autodocs'],
+  parameters: {
+    docs: {
+      description: {
+        component:
+          'The confirmation modal itself. Reach it through `ConfirmService.ask()` rather than mounting it: that is what puts every destructive action behind one confirmation surface, one back-button contract (`registerOverlayCloser`) and one place to change the copy.',
+      },
+    },
+  },
   args: { message: 'Delete “Static Bloom” and all 7 of its tracks?', confirmLabel: 'Delete' },
 };
 
