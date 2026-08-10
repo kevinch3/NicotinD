@@ -29,6 +29,7 @@ import { createPointerDrag } from '../../lib/pointer-drag';
 import { miniPlayerSlideClass } from '../../lib/player-chrome';
 import { SeekBarComponent } from '../seek-bar/seek-bar.component';
 import { TranslateService } from '../../services/translate.service';
+import { ListeningTrackerService } from '../../services/listening-tracker.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { PlayerTransportMiniComponent } from './player-transport-mini/player-transport-mini.component';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
@@ -125,6 +126,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private network = inject(NetworkStatusService);
   private toast = inject(ToastService);
   private i18n = inject(TranslateService);
+  private tracker = inject(ListeningTrackerService);
 
   private audioElA = viewChild<ElementRef<HTMLAudioElement>>('audioElA');
   private audioElB = viewChild<ElementRef<HTMLAudioElement>>('audioElB');
@@ -219,6 +221,21 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       const isActive = this.isActiveDevice();
       const audio = this.audioEl()?.nativeElement;
       if (!audio) return;
+
+      // Listening history: this device only. A controller tab mirroring a remote
+      // device gets its `currentTrack` set by RemotePlaybackService without any
+      // audio here, and counting that would double-count the real player's play.
+      // Runs before the pre-load early return below, since that path is a track
+      // genuinely starting. `isTracking` keeps a token refresh (which re-runs
+      // this effect) from restarting the session; repeat-one restarts itself
+      // explicitly in onEnded.
+      if (isActive) {
+        if (track && !this.tracker.isTracking(track.id)) {
+          this.tracker.start(track, this.listeningSource());
+        } else if (!track) {
+          this.tracker.end('stopped');
+        }
+      }
 
       // onEnded pre-loaded this track synchronously to keep the Android audio session alive.
       if (track && this.lastManualSrc === track.id) {
@@ -593,6 +610,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       const value = audio.currentTime;
       if (Number.isFinite(value) && value >= 0) {
         this.player.setCurrentTime(value);
+        this.tracker.progress(value);
         if ('mediaSession' in navigator && audio.duration > 0 && Number.isFinite(audio.duration)) {
           try {
             navigator.mediaSession.setPositionState({
@@ -683,6 +701,12 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       const token = this.auth.token();
 
       if (repeat === 'one') {
+        // Repeat-one restarts the element without changing `currentTrack`, so
+        // Effect 1 never re-fires — close and reopen the session here or a
+        // looped track logs as one enormous play instead of N of them.
+        const looped = this.player.currentTrack();
+        this.tracker.end('ended');
+        if (looped) this.tracker.start(looped, this.listeningSource());
         audio.currentTime = 0;
         audio.play().catch((err) => {
           if (err.name === 'NotAllowedError') this.handlePlayRejection();
@@ -771,6 +795,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
             }
           }
         }
+        // The track reached its natural end — the one unambiguous completion.
+        this.tracker.end('ended');
         this.player.playNext();
       }
     };
@@ -987,17 +1013,34 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  /**
+   * How the current track was reached, recorded alongside the play so history
+   * can later answer "did radio or my own albums drive my listening". Radio
+   * wins over the context, since a filter-radio vibe keeps the seed's context.
+   */
+  private listeningSource(): string | null {
+    if (this.player.radio() || this.player.radioFilter()) return 'radio';
+    return this.player.context()?.type ?? null;
+  }
+
   handleNext(): void {
-    if (this.isActiveDevice()) this.player.playNext();
-    else this.ws.sendCommand('NEXT');
+    if (this.isActiveDevice()) {
+      // A deliberate skip — closed here rather than in onEnded, which is the
+      // only other way the track can end and means the opposite thing.
+      this.tracker.end('skipped');
+      this.player.playNext();
+    } else this.ws.sendCommand('NEXT');
   }
 
   handlePrev(): void {
     const audio = this.audioEl()?.nativeElement;
     if (this.isActiveDevice()) {
       if (audio && audio.currentTime > 3) {
+        // Restarting the same track, not leaving it — the session continues
+        // (the backward jump is a seek, which `accumulate` already ignores).
         audio.currentTime = 0;
       } else {
+        this.tracker.end('skipped');
         this.player.playPrev();
       }
     } else {

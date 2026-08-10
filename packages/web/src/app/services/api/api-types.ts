@@ -738,6 +738,7 @@ export interface ServiceReview {
    * so an admin can see whether the daily prune is keeping up.
    */
   orphanRows: OrphanCount[];
+  playEvents: number;
   /** Artist-portrait coverage (issue #250). */
   artistImages: ArtistImageCoverage;
   /**
@@ -769,6 +770,20 @@ export interface OrphanCount {
   table: string;
   rows: number;
   orphans: number;
+}
+
+/**
+ * One recently listened track. Title/artist/album come from the live library
+ * where the song still exists, falling back to the snapshot stored on the play
+ * event — see docs/listening-history.md for why the event carries both.
+ */
+export interface RecentPlay {
+  songId: string;
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  duration: number | null;
+  playedAt: number;
 }
 
 /** Hold-for-review backlog snapshot (issue #417). */

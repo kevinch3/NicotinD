@@ -41,6 +41,7 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     incompleteJobsCount: 0,
     untrackedCount: 0,
     orphanRows: [],
+    playEvents: 0,
     artistImages: { visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 },
     downloadReviews: { pending: 0, oldestCreated: null },
     auditTail: [],

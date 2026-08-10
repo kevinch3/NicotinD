@@ -572,6 +572,20 @@
         </div>
       }
 
+      <!-- Listening history size. Retention is deliberately "keep raw forever
+               until a measurement says otherwise" (docs/listening-history.md);
+               this is that measurement, so an operator can see the table's real
+               growth rather than the estimate the design was written against.
+               Hidden at zero — a fresh install has no history to report. -->
+      @if (playEventCount() > 0) {
+        <div class="flex flex-col gap-1 mb-8" data-testid="play-events-panel">
+          <p class="text-xs text-theme-secondary">
+            {{ 'admin.playEvents' | t: { count: playEventCount() } }}
+            <span class="text-theme-muted">{{ 'admin.playEventsHint' | t }}</span>
+          </p>
+        </div>
+      }
+
       <!-- Artist portraits: the single biggest visual signal in the Artists
                grid, and a library can sit half-placeholder indefinitely with no
                in-app way to see it (issue #250). Read-only overview; the fill

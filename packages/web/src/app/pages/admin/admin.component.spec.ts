@@ -78,6 +78,7 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     incompleteJobsCount: 0,
     untrackedCount: 0,
     orphanRows: [],
+    playEvents: 0,
     artistImages: { visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 },
     downloadReviews: { pending: 0, oldestCreated: null },
     auditTail: [],
@@ -114,6 +115,7 @@ function makeSvc(over: Partial<ServiceReview> = {}) {
         (sum, t) => sum + t.orphans,
         0,
       )) as ServiceReviewService['orphanRowCount'],
+    playEventCount: (() => r.playEvents) as ServiceReviewService['playEventCount'],
     artistImages: (() => r.artistImages) as ServiceReviewService['artistImages'],
     artistImageCoverageRatio: (() =>
       r.artistImages.visible > 0

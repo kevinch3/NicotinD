@@ -16,7 +16,14 @@ Every task on this project must satisfy all three gates before being considered 
    Refactors must not reduce coverage. If a change can't reasonably be unit-tested, add an
    integration or e2e test instead — untested code is not shippable.
 
-2. **Every test must run in CI.** Adding a test locally is not enough. Verify the relevant GitHub
+2. **Every test must run in CI.** `bun run verify` runs every gate the CI `ci` job runs, in one
+   command — **use it before pushing** rather than remembering the list. It is kept honest by
+   `check:ci-parity`, which fails when the workflow gains a step `verify` doesn't reach: the
+   web-spec typecheck was CI-only for months, so a spec could drift from the type it asserts
+   against with every local gate green (that is the third instance of this exact class, after
+   #273 and #376). `bun run e2e` is deliberately *not* in `verify` — it is its own CI job and takes
+   minutes; run it before declaring a feature done, per the rest of this gate.
+   Adding a test locally is not enough. Verify the relevant GitHub
    Actions workflow actually executes the new test on push. If a new test file or package is added,
    confirm it's picked up by `.github/workflows/`. Don't close out a task until CI covers the new
    test. **Before declaring a feature ready, also run `bun run e2e` (or the targeted
@@ -60,9 +67,11 @@ library that the API streams from. URL-based acquisition (yt-dlp / spotdl) feeds
 
 ```bash
 bun install              # Install all workspace dependencies
-bun run typecheck        # TypeScript type checking (tsc --build + Angular template check)
+bun run verify           # EVERY gate the CI `ci` job runs, in one command — run this before pushing
+bun run typecheck        # TypeScript type checking (tsc --build + Angular templates + e2e + web specs)
 bun run lint             # ESLint across all packages
 bun run check:claude-md  # fail on CLAUDE.md symbols that don't exist / broken docs links (CI gate)
+bun run check:ci-parity  # fail when the CI `ci` job runs a check `bun run verify` doesn't (CI gate)
 bun run check:shipped-issues # open issues a shipped commit referenced (report, not a gate)
 bun run check:json       # duplicate keys in JSON configs (JSON.parse keeps the last silently)
 bun run check:shared-helpers # a shared helper re-implemented locally instead of imported (CI gate)
@@ -788,6 +797,26 @@ Add detail there, not here.
   `POST /playlists/auto/refresh` (audit-logged) back an Admin panel; the detail page shows
   "Refreshed &lt;date&gt;" from `modified_at`. →
   [docs/automated-playlists.md](docs/automated-playlists.md)
+- **Listening history (per-user play log)**: an append-only `play_events` row per playback session —
+  the app had **no** play tracking at all before (`albumOrderBy('frequent')` fell back to
+  `created DESC`; popularity's local play-count axis had no signal to build on). The client reports
+  **raw facts** (`ListeningTrackerService` session lifecycle + pure `accumulate` counting only
+  forward `timeupdate` motion under `MAX_DELTA_SEC`, so a seek accrues nothing) through a durable
+  localStorage outbox (`ListeningQueueService`, flushed on session end / page-hidden / the
+  `NetworkStatusService.reconnects` counter, so offline listening survives) into an **idempotent**
+  batch `POST /api/history/plays`; the **server** owns the Last.fm counting rule (`countsAsPlay`:
+  half the track or 4 min, 30 s floor) so it stays retunable — a client-side verdict would freeze the
+  threshold forever. `GET /api/stream/:id` is deliberately **not** the signal (N Range hits per
+  track, the 30 s gapless preload streams tracks that never play, preserved tracks play from
+  IndexedDB and never hit it, share tokens attribute to the sharer). No FK on `song_id` *and* a
+  `title`/`artist`/`album` snapshot on each event: ids are `sha1(path)` and re-mint on any
+  move/retag, so a cascade would delete history on a rescan and an id-only row would vanish from a
+  year review (the dangling-`playlist_songs` failure). Every player call site is gated on
+  `isActiveDevice()` (a controller tab mirroring a remote device isn't a play) and repeat-one
+  explicitly closes+reopens the session (it never changes `currentTrack`). Both endpoints take **no
+  user id** — privacy is structural; admin sees only the `playEvents` row count (the measure-first
+  hook for the keep-forever retention policy). Backs the "Recently played" shelf on the landing page.
+  → [docs/listening-history.md](docs/listening-history.md)
 - **Likes → auto-maintained "Liked Songs" playlist (issue #225)**: a per-user heart (track row
   `track-like`, track-info `track-info-like`, the `SongMenuService` menu's leading Like/Unlike).
   "Like" is personal so it can't reuse the global `library_songs.starred`; instead a new
@@ -1291,12 +1320,15 @@ Add detail there, not here.
 Angular v22 standalone SPA with signals, `HttpClient` + interceptors, and lazy-loaded routes. Built
 via `ng build` (esbuild); tests run on **plain vitest**, never `ng test` (which forbids the
 `vi.mock` five specs rely on — see docs/web-ui.md "Web test harness"). Four type-check surfaces,
-none of which covers the others: `tsc --build` (app + packages), `typecheck:web-spec` (specs, which
-`tsconfig.app.json` excludes), `typecheck:template` (**Angular templates** via `ngc` — `tsc`
-never sees a binding expression, so this was "green locally, red at `ng build`" until issue #273
-folded it into `bun run typecheck`), and the **e2e specs** (`@nicotind/e2e typecheck`, issue #376 —
-`packages/e2e` sat in none of the other three, so spec type errors only surfaced when Playwright
-loaded the file; now `tsc --noEmit` with node+bun types, folded into `bun run typecheck` too). The HTTP surface is split into per-domain
+none of which covers the others — **all four are now folded into `bun run typecheck`**, so the local
+command matches what CI enforces: `tsc --build` (app + packages), `typecheck:template` (**Angular
+templates** via `ngc` — `tsc` never sees a binding expression, so this was "green locally, red at
+`ng build`" until issue #273 folded it in), the **e2e specs** (`@nicotind/e2e typecheck`, issue #376
+— `packages/e2e` sat in none of the other three, so spec type errors only surfaced when Playwright
+loaded the file), and `typecheck:web-spec` (**web specs**, which `tsconfig.app.json` excludes and
+vitest transpiles without checking — it was the last surface CI ran but `bun run typecheck` didn't,
+which is exactly how a green local run still landed a red CI: a spec stub drifting from the type it
+asserts against is invisible until that step). The HTTP surface is split into per-domain
 stateless services under `services/api/` (`Auth`/`Search`/`Library`/`Downloads`/`System`/`Playlists`
 ApiService + shared `api-types.ts`) — inject the specific one; there is no monolithic `ApiService`.
 → See [docs/web-ui.md](docs/web-ui.md) for theme system, Angular patterns, and component

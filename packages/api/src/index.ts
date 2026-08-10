@@ -30,6 +30,7 @@ import { settingsRoutes } from './routes/settings.js';
 import { adminRoutes } from './routes/admin.js';
 import { feedbackRoutes } from './routes/feedback.js';
 import { presenceRoutes } from './routes/presence.js';
+import { historyRoutes } from './routes/history.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { devicesRoutes } from './routes/devices.js';
@@ -570,6 +571,7 @@ export function createApp({
   app.use('/api/settings/*', auth);
   app.use('/api/admin/*', auth);
   app.use('/api/presence/*', auth);
+  app.use('/api/history/*', auth);
   app.use('/api/users/*', auth);
   app.use('/api/ws/*', auth);
   app.use('/api/discography/*', auth);
@@ -627,6 +629,7 @@ export function createApp({
   app.route('/api/agent-tokens', agentTokensRoutes());
   app.route('/api/mcp', mcpRoutes(config.musicDir, slskdRef, expandedDataDir, runSyncAndCurate));
   app.route('/api/presence', presenceRoutes());
+  app.route('/api/history', historyRoutes());
   app.route('/api/downloads', downloadRoutes(registry, slskdRef));
   app.route('/api/uploads', uploadRoutes(slskdRef));
   app.route(
