@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.333](https://github.com/kevinch3/NicotinD/compare/v0.1.332...v0.1.333) (2026-08-10)
+
+### Bug Fixes
+
+* **deploy:** a failed image build must not produce a green deploy ([#460](https://github.com/kevinch3/NicotinD/issues/460)) ([12edbd1](https://github.com/kevinch3/NicotinD/commit/12edbd1ccaa345b38d754373429f8b92e6daebbb)), closes [#457](https://github.com/kevinch3/NicotinD/issues/457)
 ## [0.1.332](https://github.com/kevinch3/NicotinD/compare/v0.1.331...v0.1.332) (2026-08-10)
 
 ### Features
