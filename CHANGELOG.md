@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.329](https://github.com/kevinch3/NicotinD/compare/v0.1.328...v0.1.329) (2026-08-10)
+
+### Features
+
+* **history:** per-user listening log + Recently played shelf ([#455](https://github.com/kevinch3/NicotinD/issues/455)) ([8c0fc44](https://github.com/kevinch3/NicotinD/commit/8c0fc44465a5ddfa62c4291ac57bc5acbac5e123)), references [#454](https://github.com/kevinch3/NicotinD/issues/454) [#273](https://github.com/kevinch3/NicotinD/issues/273) [#376](https://github.com/kevinch3/NicotinD/issues/376) [#376](https://github.com/kevinch3/NicotinD/issues/376)
 ## [0.1.328](https://github.com/kevinch3/NicotinD/compare/v0.1.327...v0.1.328) (2026-08-10)
 
 ### Bug Fixes
