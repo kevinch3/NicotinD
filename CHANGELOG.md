@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.335](https://github.com/kevinch3/NicotinD/compare/v0.1.334...v0.1.335) (2026-08-10)
+
+### Bug Fixes
+
+* **api:** put /api/radio and /api/catalog behind auth ([#463](https://github.com/kevinch3/NicotinD/issues/463)) ([71e5c79](https://github.com/kevinch3/NicotinD/commit/71e5c79b11d1e454f808576e611a403aeb2eec4d)), closes [#461](https://github.com/kevinch3/NicotinD/issues/461), references [#232](https://github.com/kevinch3/NicotinD/issues/232)
 ## [0.1.334](https://github.com/kevinch3/NicotinD/compare/v0.1.333...v0.1.334) (2026-08-10)
 
 ### Features
