@@ -33,6 +33,13 @@ export const NicotinDConfigSchema = z.object({
   // today's behavior. Distinct from the per-user role gate (`requireAcquirer`)
   // and the per-plugin opt-in — it removes the subsystem regardless of those.
   acquisitionEnabled: z.boolean().default(true),
+  // Deployment-wide listening-history kill-switch (issue #454). When false, no
+  // play events are recorded for anyone and the per-user consent toggle is
+  // shown as env-locked. Like `acquisitionEnabled` this is a hard floor an
+  // admin cannot lift from the UI — an operator who disabled behavioural
+  // logging must not be overridden by whoever holds an admin account.
+  // Env `NICOTIND_HISTORY=off`; default-on preserves today's behaviour.
+  historyEnabled: z.boolean().default(true),
   metadataFix: z
     .object({
       enabled: z.boolean().default(true),

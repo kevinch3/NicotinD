@@ -3,6 +3,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { recentPlays, recordPlayEvents, type PlayEventInput } from '../services/play-history.js';
 import { STATS_PERIODS, listeningStats, type StatsPeriod } from '../services/listening-stats.js';
+import { historyCollectionState } from '../services/privacy.js';
 
 /**
  * Listening history. Every endpoint is scoped to the caller (`user.sub`) and
@@ -12,7 +13,7 @@ import { STATS_PERIODS, listeningStats, type StatsPeriod } from '../services/lis
  *
  * See docs/listening-history.md.
  */
-export function historyRoutes() {
+export function historyRoutes(historyEnabled: () => boolean = () => true) {
   const app = new Hono<AuthEnv>();
 
   // POST /plays — append a batch of finished playback sessions. Idempotent on
@@ -25,7 +26,17 @@ export function historyRoutes() {
       return c.json({ error: 'events must be an array', code: 'VALIDATION_ERROR' }, 400);
     }
 
-    const result = recordPlayEvents(getDatabase(), user.sub, body.events as PlayEventInput[]);
+    // Consent is enforced HERE, not on the client: a device on an old bundle,
+    // or one whose toggle hasn't synced, must not be able to write history the
+    // user turned off. Reported rather than silently dropped so the client can
+    // stop buffering instead of retrying forever.
+    const db = getDatabase();
+    const state = historyCollectionState(db, user.sub, historyEnabled());
+    if (!state.enabled) {
+      return c.json({ inserted: 0, duplicates: 0, rejected: 0, collection: state });
+    }
+
+    const result = recordPlayEvents(db, user.sub, body.events as PlayEventInput[]);
     return c.json(result);
   });
 

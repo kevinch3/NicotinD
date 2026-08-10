@@ -100,6 +100,11 @@ export function applySchema(db: Database): void {
   // Add autoplay_on_load column to existing user_settings table (opt-in
   // resume-on-page-load; default off — see PlayerService.maybeResumeAutoplay).
   addColumnIfMissing(db, 'user_settings', 'autoplay_on_load', 'INTEGER NOT NULL DEFAULT 0');
+  // Listening-history consent (issue #454). Opt-OUT: default 1, so the Stats
+  // tab and the radio recency demotion work out of the box; a user turns it off
+  // in Settings → Privacy. Gated further by an instance setting and an env
+  // floor — see services/privacy.ts.
+  addColumnIfMissing(db, 'user_settings', 'history_enabled', 'INTEGER NOT NULL DEFAULT 1');
 
   // Generic key/value app settings (JSON values). Used for streaming/transcode
   // preferences; not user-scoped.

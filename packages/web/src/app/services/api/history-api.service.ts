@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import type { Observable } from 'rxjs';
-import type { ListeningStats, RecentPlay, StatsPeriod } from './api-types';
+import type { ListeningStats, PrivacyState, RecentPlay, StatsPeriod } from './api-types';
 
 /**
  * Listening-history reads. The *write* side deliberately does not live here —
@@ -23,5 +23,25 @@ export class HistoryApiService {
   /** Aggregates over the caller's log for one period. */
   getStats(period: StatsPeriod): Observable<ListeningStats> {
     return this.http.get<ListeningStats>('/api/history/stats', { params: { period } });
+  }
+
+  /** What this instance stores about the caller, and what they can change. */
+  getPrivacy(): Observable<PrivacyState> {
+    return this.http.get<PrivacyState>('/api/privacy');
+  }
+
+  /** The caller's own listening-history opt-out. */
+  setHistoryConsent(enabled: boolean): Observable<PrivacyState> {
+    return this.http.put<PrivacyState>('/api/privacy/history-consent', { enabled });
+  }
+
+  /** Right of access (Art. 15) — everything tied to the caller. */
+  exportMyData(): Observable<unknown> {
+    return this.http.get('/api/privacy/export');
+  }
+
+  /** Right to erasure (Art. 17), scoped to the listening log. */
+  deleteMyHistory(): Observable<{ deleted: number }> {
+    return this.http.delete<{ deleted: number }>('/api/privacy/history');
   }
 }

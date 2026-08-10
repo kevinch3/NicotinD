@@ -12,6 +12,7 @@ import type {
   GenreQuery,
   GenreResult,
 } from '@nicotind/core';
+import { maybeRunDailyHistoryRetention } from './privacy.js';
 import { getProcessingSettings } from './processing-settings.js';
 import { isWithinWindow } from './processing-window.js';
 import { readGpu } from './system-metrics.js';
@@ -250,6 +251,11 @@ export class LibraryProcessingService extends EventEmitter {
       now: this.now().getTime(),
     });
     if (swept?.deleted) log.info(swept, 'cover-cache prune');
+    // Daily listening-history retention sweep (issue #454). Same placement and
+    // marker-guard: a storage-limitation policy must not depend on enrichment
+    // being enabled. No-op unless an operator set a cap (default: keep forever).
+    const expired = maybeRunDailyHistoryRetention(this.db, { now: this.now().getTime() });
+    if (expired) log.info({ deleted: expired }, 'history retention prune');
     const settings = getProcessingSettings(this.db);
     if (!settings.enabled) {
       this.publish(settings, 'disabled');

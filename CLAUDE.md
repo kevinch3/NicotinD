@@ -813,6 +813,25 @@ Add detail there, not here.
   `POST /playlists/auto/refresh` (audit-logged) back an Admin panel; the detail page shows
   "Refreshed &lt;date&gt;" from `modified_at`. →
   [docs/automated-playlists.md](docs/automated-playlists.md)
+- **Privacy & data protection (issue #454)**: the listening log made this app hold real personal
+  data, so it gets consent/access/erasure/retention rather than an assurance (`services/privacy.ts`,
+  `/api/privacy`). Consent is **opt-out** with three levels resolved by the pure
+  `resolveHistoryCollection` — env `NICOTIND_HISTORY=off` is a **hard floor an admin cannot lift**
+  (mirrors #235), then an instance setting, then the user's own; `historyCollectionState` reports the
+  *most restrictive* blocker so the UI explains rather than offering a control that does nothing.
+  Enforced **server-side** in `POST /api/history/plays` (a stale client must not write history the
+  user turned off) and the response carries the state so `ListeningQueueService` stops buffering
+  instead of retrying refused events forever. `exportUserData` (Art. 15) reads columns from
+  `PRAGMA table_info` at runtime so a schema change can't silently omit someone's data, redacts
+  secret *values* (`agent_tokens.token_hash`) by an explicit list, and reports `skipped` tables.
+  `deleteUserHistory` (Art. 17) is **scoped to `play_events`** and deliberately does **not** flip the
+  consent flag — "forget what I listened to" ≠ "stop recording"; audit-logged with a count only, never
+  the titles. Retention `history_retention_days` defaults to **0 = keep forever**, swept by
+  `maybeRunDailyHistoryRetention` on the processor tick (marker-guarded like the backup/orphan/cover
+  passes, no grace period, failures logged not swallowed). Settings → Privacy states what's stored in
+  prose — including which third parties metadata lookups contact — because someone deciding whether
+  to opt out shouldn't have to leave the app. **No admin route reads a user's history by design.**
+  → [docs/privacy.md](docs/privacy.md)
 - **Listening history (per-user play log)**: an append-only `play_events` row per playback session —
   the app had **no** play tracking at all before (`albumOrderBy('frequent')` fell back to
   `created DESC`; popularity's local play-count axis had no signal to build on). The client reports

@@ -31,6 +31,7 @@ import { adminRoutes } from './routes/admin.js';
 import { feedbackRoutes } from './routes/feedback.js';
 import { presenceRoutes } from './routes/presence.js';
 import { historyRoutes } from './routes/history.js';
+import { privacyRoutes } from './routes/privacy.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { devicesRoutes } from './routes/devices.js';
@@ -572,6 +573,7 @@ export function createApp({
   app.use('/api/admin/*', auth);
   app.use('/api/presence/*', auth);
   app.use('/api/history/*', auth);
+  app.use('/api/privacy/*', auth);
   // Radio + catalog were mounted without auth (issue #461). Radio returns real
   // library rows; catalog drives outbound Lidarr/MusicBrainz lookups and its
   // /discography endpoint provisions an artist into Lidarr — all reachable
@@ -619,11 +621,16 @@ export function createApp({
     }),
   );
 
+  // The env kill-switch is read live (not captured) so an operator flipping it
+  // takes effect without a restart, matching the acquisition toggle.
+  const historyEnabled = () => config.historyEnabled;
+
   app.route('/api/search', searchRoutes(registry, acquisitionOn));
   app.route(
     '/api/admin',
     adminRoutes({
       acquisition: acquisitionToggle,
+      historyEnabled,
       musicDir: expandedMusicDir,
       dataDir: expandedDataDir,
       lidarr,
@@ -637,7 +644,8 @@ export function createApp({
   app.route('/api/agent-tokens', agentTokensRoutes());
   app.route('/api/mcp', mcpRoutes(config.musicDir, slskdRef, expandedDataDir, runSyncAndCurate));
   app.route('/api/presence', presenceRoutes());
-  app.route('/api/history', historyRoutes());
+  app.route('/api/history', historyRoutes(historyEnabled));
+  app.route('/api/privacy', privacyRoutes(historyEnabled));
   app.route('/api/downloads', downloadRoutes(registry, slskdRef));
   app.route('/api/uploads', uploadRoutes(slskdRef));
   app.route(
