@@ -52,7 +52,11 @@ const ids = Object.values(index.entries)
 
 const server = await serve();
 const base = `http://127.0.0.1:${server.address().port}`;
-const browser = await chromium.launch();
+// `channel: 'chromium'` uses the full Chromium build that `playwright install chromium`
+// provides. The default launch path wants the separately-downloaded
+// `chrome-headless-shell`, which CI does not have — it failed there while passing on
+// any machine that had previously run the e2e suite.
+const browser = await chromium.launch({ channel: 'chromium' });
 const page = await browser.newPage();
 const failures = [];
 

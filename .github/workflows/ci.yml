@@ -113,8 +113,11 @@ jobs:
         run: bun run build:storybook
 
       # The `ci` job otherwise needs no browser; the smoke step below drives one.
+      # Uses the workspace's pinned binary, not `bunx playwright`, which resolves a
+      # floating latest from npm and can install browsers for a different revision
+      # than the @playwright/test the smoke script imports.
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium
 
       # `build:storybook` compiles stories; it does not run them. The first green
       # build of the catalog shipped 67 of 139 stories that threw on mount, which
