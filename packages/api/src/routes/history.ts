@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { recentPlays, recordPlayEvents, type PlayEventInput } from '../services/play-history.js';
+import { STATS_PERIODS, listeningStats, type StatsPeriod } from '../services/listening-stats.js';
 
 /**
  * Listening history. Every endpoint is scoped to the caller (`user.sub`) and
@@ -26,6 +27,18 @@ export function historyRoutes() {
 
     const result = recordPlayEvents(getDatabase(), user.sub, body.events as PlayEventInput[]);
     return c.json(result);
+  });
+
+  // GET /stats?period= — aggregates over the caller's log. An unknown period
+  // falls back to the default rather than 400ing: it comes off a query string,
+  // and a stats page that errors on a typo is worse than one showing 30 days.
+  app.get('/stats', (c) => {
+    const user = c.get('user');
+    const requested = c.req.query('period');
+    const period = (STATS_PERIODS as readonly string[]).includes(requested ?? '')
+      ? (requested as StatsPeriod)
+      : '30d';
+    return c.json(listeningStats(getDatabase(), user.sub, period, Date.now()));
   });
 
   // GET /recent — the caller's recently listened tracks, newest first.

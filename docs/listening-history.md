@@ -1,8 +1,8 @@
 # Listening history
 
-An append-only, per-user log of what was actually listened to. Phase 1 of a program whose later
-phases are a stats page, a radio scoring axis, and install-level analytics — see
-[Roadmap](#roadmap).
+An append-only, per-user log of what was actually listened to, plus the Library **Stats** tab built
+on it. Phases 1-2 of a program whose remaining phases are a radio scoring axis and install-level
+analytics — see [Roadmap](#roadmap).
 
 Before this, the app had **no play tracking of any kind**: no `played_at`, no play count, nothing.
 `albumOrderBy('frequent')` in `routes/library.ts` still fell back to `created DESC` with a comment
@@ -37,6 +37,8 @@ PlayerComponent (owns <audio>)                             [client]
 | Durable outbox | `packages/web/src/app/services/listening-queue.service.ts` |
 | Call sites | `packages/web/src/app/components/player/player.component.ts` |
 | Shelf | `packages/web/src/app/components/recently-played/recently-played.component.ts` |
+| Stats aggregates | `packages/api/src/services/listening-stats.ts` |
+| Stats tab | `packages/web/src/app/pages/library/library-stats.component.ts` |
 | Admin size row | `routes/review.ts` `playEvents` slice → Admin → Library Maintenance |
 
 ## What counts as a play
@@ -127,10 +129,41 @@ and rendered in the Admin panel, so the policy is reviewed against a real number
 tapped, and a tile that can't play is worse than an absent one. The raw log keeps the deleted rows
 regardless, which is what a year review reads.
 
+## Stats (phase 2)
+
+`GET /api/history/stats?period=30d|year|all` → the Library **Stats** tab. Headline totals, top
+songs/artists/albums/genres, and a listening clock.
+
+Everything is **derived at read time** — no rollup table. That is deliberate while the log is young:
+a rollup would need invalidating by the same retention and erasure work that is still open (#454),
+and SQLite answers these in one pass at current sizes. If it stops being cheap, the fix is a
+materialised rollup behind the same function signature.
+
+Design notes worth keeping:
+
+- **`year` means this calendar year**, not the last 365 days. "My 2026" is the question a year review
+  answers; a rolling window would quietly mix two years together every January.
+- **An unknown `period` falls back to the default rather than 400ing.** It comes straight off a query
+  string, and a stats page that errors on a typo is worse than one showing 30 days.
+- **Genres rank through `library_song_genres`**, not `library_songs.genre` — that column holds only
+  the *primary*, so ranking on it would under-report every secondary genre (same reason filters match
+  the set via `EXISTS`).
+- **Deleted songs still count.** Every aggregate `COALESCE`s the live library row with the event's own
+  snapshot, which is the payoff for storing it.
+- **The clock buckets by local hour.** "When do I listen" is a wall-clock question; UTC would smear
+  someone's evening on a server in another timezone. It is always 24 buckets so the chart never has
+  to special-case an empty result.
+- **Clock bars are percent of the busiest hour**, not of the total — 24 shares of a total render as
+  unreadable slivers, and the shape of the day is the point.
+- SQL aliases are `artist_name`/`album_name`, not `artist`/`album`: those names also exist as real
+  columns on both joined tables and SQLite rejects the `GROUP BY` as ambiguous.
+
+The genre block reuses `GenreDistributionStripComponent` from the artist/album pages rather than
+adding a second bar chart.
+
 ## Roadmap
 
-- **P2 — stats page.** Top songs/artists/genres by period, total listening time, listening clock.
-  All aggregates over `play_events`; no schema change.
+- **P2 — stats page.** ✅ Shipped (see above).
 - **P3 — recommendations.** A play-count/recency axis in `SongFeatures` + `explainSimilarity`, a
   `most-played` recipe sort, and a real `albumOrderBy('frequent')`. Deliberately after P2 so it
   ships into a dataset that has history in it.

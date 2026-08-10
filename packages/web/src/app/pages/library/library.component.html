@@ -574,4 +574,12 @@
     </section>
   }
 
+  <!-- ═══ STATS MODE ═══ -->
+  <!-- What you actually listened to (docs/listening-history.md). Its own
+       component: library.component is already 7 tabs long, and the stats view
+       shares none of the grid/filter machinery above. -->
+  @if (browseMode() === 'stats') {
+    <app-library-stats />
+  }
+
 </div>
