@@ -16,6 +16,7 @@ import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { toTrack } from '../../lib/track-utils';
 import { resolveArtistRoute, resolveAlbumRoute } from '../../lib/route-utils';
+import { albumLoadFailureFor, type AlbumLoadFailure } from '../../lib/album-load-state';
 import { createSelection } from '../../lib/selection';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { IconComponent } from '../../components/icon/icon.component';
@@ -85,6 +86,8 @@ export class AlbumDetailComponent implements OnInit {
 
   readonly loadingAlbum = signal(true);
   readonly selectedAlbum = signal<AlbumDetail | null>(null);
+  /** Why the album couldn't be shown; null while loading or once loaded. */
+  readonly loadFailure = signal<AlbumLoadFailure | null>(null);
   readonly deleting = signal(false);
   readonly deleteError = signal<string | null>(null);
 
@@ -151,12 +154,24 @@ export class AlbumDetailComponent implements OnInit {
     try {
       const detail = await firstValueFrom(this.api.getAlbum(albumId));
       this.selectedAlbum.set(detail);
-    } catch {
-      /* ignore */
+      this.loadFailure.set(null);
+    } catch (err) {
+      // Never swallow: a quarantined album, a server error and a genuinely
+      // missing one all used to render the same flat "Album not found.", which
+      // is wrong for the two most common cases (see AlbumLoadFailure).
+      this.loadFailure.set(albumLoadFailureFor(err));
     } finally {
       this.loadingAlbum.set(false);
     }
     this.loadGenreDistribution(albumId);
+  }
+
+  /** Re-attempt the load after a transient failure (or while still processing). */
+  async retryLoad(): Promise<void> {
+    const albumId = this.route.snapshot.paramMap.get('id');
+    if (!albumId) return;
+    this.loadingAlbum.set(true);
+    await this.loadAlbum(albumId);
   }
 
   private async loadGenreDistribution(albumId: string): Promise<void> {

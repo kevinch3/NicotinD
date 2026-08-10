@@ -185,8 +185,35 @@
         />
       }
     </div>
+  } @else if (loadFailure() === 'processing') {
+    <!-- The album landed on disk but is still being analyzed, so the library
+         deliberately hides it. Reached most often from a Downloads card's
+         "Open in Library", which appears as soon as the download finishes. -->
+    <div class="text-center py-20 text-theme-muted" data-testid="album-processing">
+      <div class="text-theme-primary font-semibold mb-2">Still processing</div>
+      This album has downloaded and is being analyzed. It will appear in your
+      library automatically once that finishes.
+      <br/><br/>
+      <button type="button" (click)="retryLoad()"
+        class="inline-block px-4 py-2 bg-theme-surface-2 rounded-lg text-theme-primary hover:bg-theme-hover transition"
+        data-testid="album-processing-retry">
+        Check again
+      </button>
+    </div>
+  } @else if (loadFailure() === 'unavailable') {
+    <div class="text-center py-20 text-theme-muted" data-testid="album-unavailable">
+      <div class="text-theme-primary font-semibold mb-2">Couldn't load this album</div>
+      The server couldn't be reached, or returned an error. Your album may still
+      be there.
+      <br/><br/>
+      <button type="button" (click)="retryLoad()"
+        class="inline-block px-4 py-2 bg-theme-surface-2 rounded-lg text-theme-primary hover:bg-theme-hover transition"
+        data-testid="album-unavailable-retry">
+        Try again
+      </button>
+    </div>
   } @else {
-    <div class="text-center py-20 text-theme-muted">
+    <div class="text-center py-20 text-theme-muted" data-testid="album-not-found">
       Album not found.
       <br/><br/>
       <a routerLink="/library"

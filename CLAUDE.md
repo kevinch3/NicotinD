@@ -529,7 +529,12 @@ Add detail there, not here.
   step never strands a download; `graduatePending` lands a song once each required step is
   satisfied-or-permanently-failed, or after a 24h safety valve; `scanIncremental` fires an eager
   out-of-window `kickEager()` so it lands ASAP; per-download step badges via
-  `GET /api/admin/processing/queue`. → [docs/library-processing.md](docs/library-processing.md),
+  `GET /api/admin/processing/queue`. **A deep link into the window explains itself (issue #466)**:
+  `GET /albums/:id` still 404s a quarantined album but now carries `code: 'ALBUM_PROCESSING'` vs
+  `ALBUM_NOT_FOUND`, and the album page classifies it via the pure `albumLoadFailureFor`
+  (`processing`/`missing`/`unavailable`) instead of `catch {}`-ing every failure into one
+  "Album not found." — the Downloads "Open in Library" link appears exactly when the album is
+  quarantined (prod: >24 h for 7,195 of 14,974 songs). → [docs/library-processing.md](docs/library-processing.md),
   [docs/download-pipeline.md](docs/download-pipeline.md)
 - **Download inbox triage (hold-for-review, issue #411)**: opt-in `holdForReview` processing setting
   holds quarantined downloads until curator approval in the Downloads inbox; `download_reviews`

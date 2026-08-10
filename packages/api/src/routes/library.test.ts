@@ -1730,6 +1730,25 @@ describe('library metadata filters', () => {
       expect(res.status).toBe(404);
     });
 
+    // The Downloads card's "Open in Library" link appears the moment a download
+    // finishes — which is exactly when the album is still quarantined. Both the
+    // quarantine hold and a genuinely absent album answered a bare
+    // "Album not found", so the UI told the user their brand-new album did not
+    // exist. The two must be tellable apart by `code` (the #337 convention).
+    it('distinguishes a quarantined album from a genuinely missing one by code', async () => {
+      seedAlbum('a1');
+      seedQuarantined('s1', 'a1');
+      __resetDownloadSuppressionCache();
+
+      const quarantined = await makeApp().request('/albums/a1');
+      expect(quarantined.status).toBe(404);
+      expect(await quarantined.json()).toMatchObject({ code: 'ALBUM_PROCESSING' });
+
+      const missing = await makeApp().request('/albums/does-not-exist');
+      expect(missing.status).toBe(404);
+      expect(await missing.json()).toMatchObject({ code: 'ALBUM_NOT_FOUND' });
+    });
+
     it('hides an artist whose only songs are all quarantined', async () => {
       seedArtist('ghost');
       seedArtist('real');
