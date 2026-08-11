@@ -1,9 +1,11 @@
 # Acquisition Addon Protocol — slskd becomes an external, Torrentio-style addon
 
-**Status**: Phase 0 (protocol v1 + core addon runtime, #487) and Phase 1 (the
-in-monorepo `packages/slskd-addon` with the moved hunt engine, #488) are **shipped**;
-phases 2–4 pending. Each phase gets its own implementation plan + PR cycle; this document
-is the architecture they all answer to.
+**Status**: Phase 0 (protocol v1 + core addon runtime, #487), Phase 1 (the in-monorepo
+`packages/slskd-addon` with the moved hunt engine, #488) and the **phase-2 cutover spine**
+(#489 — addon-backed provider, job-feed mirroring + HTTP ingest, unattended acquisition
+via the protocol, opt-in compose service; see the phase-2 section for what remains) are
+**shipped**; phases 3–4 pending. Each phase gets its own implementation plan + PR cycle;
+this document is the architecture they all answer to.
 
 ## Context & goal
 
@@ -202,18 +204,46 @@ so a *revived* exhausted job in addon mode may re-pull tracks that landed since;
 organizer dedupe + 24h valve bound the damage. The api-hosted fallback (still what ships)
 keeps the live library read.
 
-### Phase 2 — Core cutover (the user-visible phase)
+### Phase 2 — Core cutover (the user-visible phase) — SPINE SHIPPED (#489)
 
-Core speaks the protocol when the addon is registered: addon-backed search provider;
-discography hunt → `albums/search` + `jobs`; `acquireAlbum`'s hunt half → `POST jobs`
-(guards stay core-side); new `addon-job-poller.ts` (the generic ingest seam extracted from
-`download-watcher.ts`) + `addons/file-fetch.ts`. `routes/downloads.ts` drops its ~15 raw
-`transfers.*` calls for job-level actions; `routes/{settings,setup,system,uploads,mcp}.ts`
-slskd bits → addon status/notify; `acquisition-job-store.ts` key relax + mirror upserts;
-`main.ts` neutral staging dir + no unconditional `new Slskd`. Web: drop the raw slskd
-transfer lane, generic `queries[]` in the hunt modal, delete `slskd-settings.component`.
-Compose gains the addon service. e2e acquisition specs run against the fixture addon.
-Ship gate: side-by-side soak on kpc.
+**Shipped:** the additive cutover spine. With a remote addon registered + enabled, core
+speaks the protocol; without one, the in-process path is untouched (its deletion is
+phase 3).
+
+- `AddonClient` engine surface (search/albums-search/jobs/file-fetch/browse/notify,
+  per-call timeouts); `AddonSearchResult` carries peer health so ranking inputs survive
+  the hop.
+- `AddonSearchProvider` (services/addons/search-provider.ts) adapts the addon's sync
+  search onto the kernel's poll shape; `RemoteAddonPlugin` declares
+  search/browse/download capability accessors and (de)registers the provider in
+  `ProviderRegistry` on init/dispose — blended search, the raw network lane, browse and
+  the enqueue route light up with **zero route changes** (the SlskdPlugin contract).
+- `AddonJobPoller` (services/addons/job-poller.ts): mirrors addon jobs/items into
+  `acquisition_jobs`/`acquisition_job_items` keyed `addon:<id>:<itemId>` (a fallback
+  repoint is an in-place upsert), fetches fileReady completions into
+  `<dataDir>/addon-incoming`, runs them through the same organize→scan pipeline, records
+  provenance under the addon id (`AcquisitionMethod` opened to any string), and releases
+  fully-ingested terminal jobs addon-side. Gated on the #235 kill-switch; cursor + job
+  mapping in `plugin_kv`.
+- `acquireAlbum` addon path: hunt/pick/wanted-scope/fallback run addon-side; every
+  library guard (albumAlreadyComplete, on-disk wanted filtering via the now-exported
+  `onDiskTitles`, artist identity, the feed row + hunt metadata) stays core-side; the
+  addon's per-album 409 is the in-flight guard. Watchlist + auto-acquire pass the live
+  `getAddon` lookup.
+- e2e: the fixture addon grew the engine surface and `addon-acquire.spec.ts` proves the
+  loop — job → feed mirror → HTTP fetch → organize (Opus standardization included) →
+  scan → provenance → the feed's deep-linkable albumId. First CI coverage of a real
+  acquisition ingest.
+- Compose: opt-in `slskd-addon` service (`--profile slskd-addon`, builds from source
+  until the phase-4 image publish); in this topology the addon serves files from
+  slskd's landing dir, and the soak instructions say to disable the in-process slskd
+  plugin so both halves never process the same completions.
+
+**Remaining in #489 (deferred, before phase 3 can start):** the interactive discography
+hunt routes still call the in-process hunter (`albums/search` + `candidateRef` exist for
+them); `routes/downloads.ts`'s raw `transfers.*` actions don't yet proxy addon-keyed
+items; the bespoke slskd web surfaces stay until phase 3; and the **kpc side-by-side
+soak** — the ship gate — is the operator's step.
 
 ### Phase 3 — Delete slskd from core
 

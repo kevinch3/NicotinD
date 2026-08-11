@@ -794,7 +794,7 @@ Add detail there, not here.
   startup-error capture is preserved by a synchronous `error-buffer.ts` + `BufferingErrorHandler`
   (replaces `Sentry.createErrorHandler`/`TraceService`) that replays into the SDK on connect. →
   [docs/observability.md](docs/observability.md)
-- **Acquisition addon protocol (phases 0-1 shipped; 2-4 pending)**: Stremio/Torrentio-style
+- **Acquisition addon protocol (phases 0-1 + the phase-2 spine shipped; 3-4 pending)**: Stremio/Torrentio-style
   open HTTP addon protocol; the slskd bridge **and** the hunt/retry/fallback engine migrate into a
   separately-distributed addon (in-monorepo sidecar first, own repo + image last), leaving core
   with zero slskd code; smart-addon/thin-core seam at `acquireAlbum` (guards core-side), HTTP file
@@ -810,7 +810,16 @@ Add detail there, not here.
   `services/fallback-host.ts` over acquisition-job-store; addon impl over its own
   `addon_jobs` ledger), the watcher's polling half extracted as `TransferPoller`, and the full
   protocol engine (search / albums/search with candidateRef / jobs with Idempotency-Key +
-  wanted-track scoping / file delivery with ETag / browse / share-rescan notify) + Dockerfile. →
+  wanted-track scoping / file delivery with ETag / browse / share-rescan notify) + Dockerfile.
+  **Shipped (issue #489, the cutover spine)**: with a remote addon enabled, core speaks the
+  protocol — `AddonSearchProvider` registers into `ProviderRegistry` (blended/raw/browse/enqueue
+  lanes light up with zero route changes), `AddonJobPoller` mirrors addon jobs into the unified
+  feed (`transfer_key` = `addon:<id>:<itemId>`, repoints are in-place upserts) and ingests
+  fileReady completions over HTTP through the organize→scan pipeline, `acquireAlbum` runs its
+  source half addon-side (guards stay core-side; the addon 409 is the in-flight guard), and an
+  opt-in `slskd-addon` compose profile + the `addon-acquire.spec.ts` e2e loop cover it. Interactive
+  hunt routes, downloads raw-transfer actions, the bespoke slskd web surfaces and the kpc soak
+  remain in #489. →
   [docs/acquisition-addon-protocol.md](docs/acquisition-addon-protocol.md)
 - **OAuth authentication (proposed — not yet implemented)**: Google + Microsoft login as `auth` kind
   plugins with `oauth` capability; auto-creates users by email (no validation); auto-enables when
