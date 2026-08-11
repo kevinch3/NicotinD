@@ -794,12 +794,16 @@ Add detail there, not here.
   startup-error capture is preserved by a synchronous `error-buffer.ts` + `BufferingErrorHandler`
   (replaces `Sentry.createErrorHandler`/`TraceService`) that replays into the SDK on connect. →
   [docs/observability.md](docs/observability.md)
-- **Acquisition addon protocol (proposed — design approved, not yet implemented)**:
-  Stremio/Torrentio-style open HTTP addon protocol; the slskd bridge **and** the hunt/retry/fallback
-  engine migrate into a separately-distributed addon (in-monorepo sidecar first, own repo + image
-  last), leaving core with zero slskd code; smart-addon/thin-core seam at `acquireAlbum` (guards
-  core-side), HTTP file delivery into staging, feed continuity by mirroring addon job items into
-  `acquisition_job_items`, generic addon cards reusing the plugin kernel. →
+- **Acquisition addon protocol (phase 0 shipped; phases 1-4 pending)**: Stremio/Torrentio-style
+  open HTTP addon protocol; the slskd bridge **and** the hunt/retry/fallback engine migrate into a
+  separately-distributed addon (in-monorepo sidecar first, own repo + image last), leaving core
+  with zero slskd code; smart-addon/thin-core seam at `acquireAlbum` (guards core-side), HTTP file
+  delivery into staging, feed continuity by mirroring addon job items into `acquisition_job_items`.
+  **Shipped (issue #487)**: protocol v1 manage/observe surface (`types/addon.ts` DTOs +
+  `validateAddonManifest`), `AddonClient`/`RemoteAddonPlugin`/`addon_registrations` +
+  `loadRegisteredAddons` boot loading, admin register-by-URL routes on `/api/plugins`, the
+  Extensions "Add addon" form + generic `AddonStatusPanelComponent`, and a fixture-addon e2e spec —
+  a remote addon renders as a normal consent-gated extension card with zero addon-specific UI. →
   [docs/acquisition-addon-protocol.md](docs/acquisition-addon-protocol.md)
 - **OAuth authentication (proposed — not yet implemented)**: Google + Microsoft login as `auth` kind
   plugins with `oauth` capability; auto-creates users by email (no validation); auto-enables when

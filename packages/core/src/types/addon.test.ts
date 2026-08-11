@@ -74,7 +74,8 @@ describe('addonManifestSchema', () => {
   });
 
   it('rejects a manifest missing protocolVersion', () => {
-    const { protocolVersion: _drop, ...rest } = base();
+    const rest: Record<string, unknown> = { ...base() };
+    delete rest.protocolVersion;
     expect(() => addonManifestSchema.parse(rest)).toThrow();
   });
 
