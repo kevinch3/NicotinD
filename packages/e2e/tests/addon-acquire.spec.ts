@@ -1,6 +1,13 @@
 import { test, expect } from '@playwright/test';
+import { rmSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ADMIN, bearer } from '../helpers';
 import { startFixtureAddon, FIXTURE_ADDON_TOKEN, type FixtureAddon } from './helpers/fixture-addon';
+
+/** The ingested release lands INSIDE the git-tracked fixtures/music tree —
+ *  it must be removed on the way out or every later run inherits it. */
+const LANDED_DIR = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/music/Addon Artist');
 
 /**
  * Phase 2 of the acquisition addon protocol: with a remote addon registered and
@@ -13,6 +20,7 @@ import { startFixtureAddon, FIXTURE_ADDON_TOKEN, type FixtureAddon } from './hel
 test.describe('acquire through a remote addon', () => {
   let addon: FixtureAddon;
   let auth: Record<string, string>;
+  let landedAlbumId = '';
 
   test.beforeAll(async ({ request }) => {
     addon = await startFixtureAddon();
@@ -35,18 +43,17 @@ test.describe('acquire through a remote addon', () => {
   });
 
   test.afterAll(async ({ request }) => {
-    // Remove the landed release + the registration so the suite stays
-    // order-independent (other specs assert fixture-library contents). The
-    // 1-track release classifies as a single, so resolve it via search rather
-    // than the Albums grid.
-    const found = await request.get('/api/search?q=Addon%20Song', { headers: auth });
-    if (found.ok()) {
-      const body = (await found.json()) as {
-        local?: { songs?: Array<{ albumId?: string | null }> };
-      };
-      const albumId = body.local?.songs?.[0]?.albumId;
-      if (albumId) await request.delete(`/api/library/albums/${albumId}`, { headers: auth });
+    // Remove the landed release (DB + files) + the registration so the suite
+    // stays order-independent. The albumId is captured by the test itself; the
+    // filesystem sweep is the backstop — the release lands inside the
+    // git-tracked fixtures tree, so residue would dirty the working tree and
+    // leak into every later run.
+    if (landedAlbumId) {
+      await request
+        .delete(`/api/library/albums/${landedAlbumId}`, { headers: auth })
+        .catch(() => {});
     }
+    rmSync(LANDED_DIR, { recursive: true, force: true });
     await request.delete('/api/plugins/addons/fixture-addon', { headers: auth });
     await addon.close();
   });
@@ -88,7 +95,10 @@ test.describe('acquire through a remote addon', () => {
             albumId: string | null;
           }>;
           const job = jobs.find((j) => j.albumTitle === 'Addon Album');
-          if (job?.stage === 'done' && job.albumId) albumId = job.albumId;
+          if (job?.stage === 'done' && job.albumId) {
+            albumId = job.albumId;
+            landedAlbumId = job.albumId;
+          }
           return job?.stage ?? '';
         },
         { timeout: 30_000 },

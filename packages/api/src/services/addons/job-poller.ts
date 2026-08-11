@@ -26,6 +26,8 @@ export interface AddonJobPollerDeps {
   organizer: { organizeBatch: (files: CompletedDownloadFile[]) => Promise<unknown> };
   scan?: (relPaths: string[]) => Promise<void> | void;
   intervalMs?: number;
+  /** Deployment-wide acquisition kill-switch (#235) — ticks no-op when off. */
+  isEnabled?: () => boolean;
 }
 
 /** Mirror key for an addon item in `acquisition_job_items.transfer_key`. */
@@ -88,6 +90,7 @@ export class AddonJobPoller {
   /** One poll+ingest pass across every enabled remote addon (public for tests). */
   async tick(): Promise<void> {
     if (this.ticking) return;
+    if (this.deps.isEnabled && !this.deps.isEnabled()) return;
     this.ticking = true;
     try {
       for (const plugin of this.deps.registry.getEnabled('acquisition')) {

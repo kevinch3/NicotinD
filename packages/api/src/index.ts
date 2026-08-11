@@ -505,6 +505,7 @@ export function createApp({
     incomingDir: join(expandedDataDir, 'addon-incoming'),
     organizer: sharedOrganizer,
     scan: scanIncremental,
+    isEnabled: () => acquisitionOnRef.enabled?.() ?? true,
   });
   addonJobPoller.start();
   // why: registerBuiltinPlugins already builds a MusicBrainzClient for Discogs
