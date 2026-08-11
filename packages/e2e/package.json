@@ -15,7 +15,9 @@
     "screens:live": "playwright test --config=playwright.live-screens.config.ts",
     "screens:readme": "bun run scripts/update-readme-screenshots.ts",
     "make-fixtures": "bun run scripts/make-fixtures.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke:storybook": "node scripts/storybook-smoke.mjs",
+    "install:browsers": "playwright install --with-deps chromium"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

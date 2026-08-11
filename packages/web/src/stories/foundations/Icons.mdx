@@ -1,0 +1,36 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Foundations/Icons" />
+
+# Icons
+
+`IconComponent` holds the whole glyph set. The rendered inventory lives in
+**Components → Icon → All Icons**; this page is the rules.
+
+## Adding a glyph
+
+Add the name to the `IconName` union and its `<svg>` path to the component. Glyphs are
+lucide-style: a 24 viewBox and `stroke-width: 2`, so they sit consistently beside the
+app's remaining inline SVGs.
+
+Do not inline a new `<svg>` in a component template. That is what this component
+replaced: Back had been hand-copied into three files and Download into two, and they had
+drifted apart.
+
+## Accessibility
+
+The icon is decorative and marked `aria-hidden`. The accessible name belongs on the
+*button* that contains it, via `aria-label` and `title`:
+
+```html
+<button aria-label="Play" title="Play"><app-icon name="play" /></button>
+```
+
+An icon-only button with no `aria-label` is unusable with a screen reader, and the icon
+itself cannot supply one — it is hidden by design.
+
+## E-ink
+
+`[data-theme="eink"] svg` thickens every stroke. Centralising the glyphs is what gives
+that rule a single shape to target. Check any new glyph in the E-Ink theme before
+shipping it.

@@ -109,6 +109,24 @@ jobs:
       - name: Build (web)
         run: bun run --filter @nicotind/web build
 
+      - name: Build (Storybook)
+        run: bun run build:storybook
+
+      # The `ci` job otherwise needs no browser; the smoke step below drives one.
+      # Runs through the e2e package script so `playwright` resolves to that
+      # workspace's pinned binary. `bunx playwright` resolves a floating latest from
+      # npm and can install browsers for a different revision than the
+      # @playwright/test the smoke script imports; the root node_modules/.bin has no
+      # playwright at all under bun's isolated install.
+      - name: Install Playwright Chromium
+        run: bun run --filter @nicotind/e2e install:browsers
+
+      # `build:storybook` compiles stories; it does not run them. The first green
+      # build of the catalog shipped 67 of 139 stories that threw on mount, which
+      # neither the type check nor webpack can see. This renders every story.
+      - name: Smoke (Storybook stories render)
+        run: bun run smoke:storybook
+
   # Analysis sidecar (packages/analysis): contract + pure-function tests against
   # a fake model registry — no TensorFlow/Essentia download in CI. The gated
   # golden tests (real models) auto-skip without ANALYSIS_MODELS_DIR.

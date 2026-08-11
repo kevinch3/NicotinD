@@ -7,5 +7,5 @@
     "rootDir": "../..",
     "types": ["vitest/globals"]
   },
-  "include": ["src/**/*.d.ts", "src/**/*.spec.ts"]
+  "include": ["src/**/*.d.ts", "src/**/*.spec.ts", "src/**/*.stories.ts", "../../packages/web/.storybook/*.ts"]
 }

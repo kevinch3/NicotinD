@@ -14,7 +14,9 @@
     "test": "vitest run",
     "typecheck:spec": "tsc -p tsconfig.spec.json",
     "typecheck:template": "ngc -p tsconfig.template.json",
-    "generate-icons": "bun run scripts/generate-icons.ts"
+    "generate-icons": "bun run scripts/generate-icons.ts",
+    "storybook": "ng run nicotind-web:storybook",
+    "build:storybook": "ng run nicotind-web:build-storybook"
   },
   "private": true,
   "dependencies": {
@@ -32,15 +34,21 @@
     "tslib": "^2.8.1"
   },
   "devDependencies": {
+    "@angular-devkit/build-angular": "^22",
     "@angular/build": "^22.0.7",
     "@angular/cli": "^22.0.7",
     "@angular/compiler-cli": "^22.0.7",
+    "@compodoc/compodoc": "^2.0.0",
+    "@storybook/addon-docs": "10.5.7",
+    "@storybook/addon-themes": "10.5.7",
+    "@storybook/angular": "10.5.7",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/qrcode": "^1.5.6",
     "jsdom": "^29.1.1",
     "postcss": "^8.5.21",
     "prettier": "^3.9.6",
     "sharp": "^0.35.3",
+    "storybook": "10.5.7",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
     "vitest": "^4.1.10"
