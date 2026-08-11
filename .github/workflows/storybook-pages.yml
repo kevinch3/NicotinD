@@ -1,0 +1,56 @@
+name: Storybook Pages
+
+# The component catalog documents the components as they exist *now*, so it publishes
+# from master rather than from a release tag. Tag-triggered publishing left the catalog
+# lagging to the last release, which is the wrong target for a reference a developer
+# reads before using a component — and stale docs are treated as a bug here.
+#
+# PREREQUISITE: Pages must be enabled for the repo with source "GitHub Actions"
+# (Settings → Pages). A workflow cannot enable it.
+on:
+  push:
+    branches: [master]
+    # Only rebuild when something the catalog renders could have changed. Breakage from
+    # anywhere else is caught by the `ci` job's build + smoke steps on the same push.
+    paths:
+      - 'packages/web/**'
+      - 'packages/core/**'
+      - '.github/workflows/storybook-pages.yml'
+  workflow_dispatch: {}
+
+# Pages accepts one deployment at a time. Queue rather than cancel: a cancelled run
+# would leave the published catalog behind the master it claims to document.
+concurrency:
+  group: storybook-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build Storybook
+        run: bun run build:storybook
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: packages/web/storybook-static
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

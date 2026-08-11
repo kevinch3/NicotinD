@@ -141,11 +141,23 @@ that compiles but does not render is worse than no catalog, because it looks mai
 
 ## Publishing
 
-`deploy.yml`'s `storybook-pages` job publishes the static build per release tag.
+`.github/workflows/storybook-pages.yml` publishes the static build **on every push to
+master** that touches `packages/web/**` or `packages/core/**`.
+
+Not per release tag, which is what this shipped as first. The catalog documents the
+components as they exist now; a developer reads it to decide whether to use a component
+today, so publishing from a tag left it lagging to the last release — stale docs, which
+this repo treats as a bug. Publishing from master also sidesteps the `github-pages`
+environment's default deployment policy, which permits the `master` branch only and
+rejected the tag-triggered deployment outright (`Tag "v0.1.339" is not allowed to deploy
+to github-pages`).
+
+Deployments queue rather than cancel (`cancel-in-progress: false`): a cancelled run would
+leave the published catalog behind the master it claims to document.
 
 > **Manual prerequisite:** GitHub Pages must be enabled for the repository with source
-> "GitHub Actions" (Settings → Pages). A workflow cannot enable it. Until it is set, that
-> job fails — nothing depends on it, so a release is not blocked.
+> "GitHub Actions" (Settings → Pages). A workflow cannot enable it. Until it is set, the
+> workflow fails — nothing depends on it, so nothing else is blocked.
 
 ## Deferred work
 
