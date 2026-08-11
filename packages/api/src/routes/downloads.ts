@@ -4,6 +4,8 @@ import type { SlskdRef } from '../index.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
 import type { Database } from 'bun:sqlite';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
+import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
+import type { PluginRegistry } from '../services/plugins/registry.js';
 import { createLogger } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { requireAcquirer } from '../middleware/current-user.js';
@@ -179,7 +181,20 @@ const SimpleSuccessSchema = z
   })
   .openapi('SimpleSuccess');
 
-export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
+/** Parse a `addon:<id>:<jobId>` sourceRef, if that's what it is. */
+function parseAddonRef(sourceRef: string | null): { addonId: string; addonJobId: string } | null {
+  if (!sourceRef?.startsWith('addon:')) return null;
+  const rest = sourceRef.slice('addon:'.length);
+  const sep = rest.indexOf(':');
+  if (sep <= 0) return null;
+  return { addonId: rest.slice(0, sep), addonJobId: rest.slice(sep + 1) };
+}
+
+export function downloadRoutes(
+  registry: ProviderRegistry,
+  slskdRef: SlskdRef,
+  pluginRegistry?: PluginRegistry,
+) {
   const app = new OpenAPIHono<AuthEnv>();
 
   // The Downloads feed is acquisition — hidden from listeners, gated server-side.
@@ -468,6 +483,59 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
       albumId: job.artistName && job.albumTitle ? albumIdFor(job.artistName, job.albumTitle) : null,
     }));
     return c.json(jobs, 200);
+  });
+
+  /**
+   * Job-level actions for addon-backed jobs (acquisition addon protocol
+   * phase 2): the per-transfer routes below key on `username::filename`, which
+   * addon items don't have — their transfers live addon-side. Resolves the
+   * owning addon from the job's method and proxies cancel/delete; the poller's
+   * next tick mirrors the resulting item states back into the feed.
+   */
+  app.post('/jobs/:id/cancel', async (c) => {
+    const db = getDatabase();
+    const job = db
+      .query<{ id: string; method: string; source_ref: string | null }, [string]>(
+        `SELECT id, method, source_ref FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(c.req.param('id'));
+    if (!job) return c.json({ error: 'Job not found' }, 404);
+    const ref = parseAddonRef(job.source_ref);
+    if (!ref || ref.addonId !== job.method) {
+      return c.json({ error: 'Not an addon job — use the transfer routes' }, 400);
+    }
+    const addon = pluginRegistry?.get(ref.addonId);
+    if (!(addon instanceof RemoteAddonPlugin)) {
+      return c.json({ error: `Addon "${ref.addonId}" is not registered` }, 503);
+    }
+    try {
+      await addon.client.cancelJob(ref.addonJobId);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : 'cancel failed' }, 502);
+    }
+    return c.json({ ok: true });
+  });
+
+  app.delete('/jobs/:id', async (c) => {
+    const db = getDatabase();
+    const job = db
+      .query<{ id: string; method: string; source_ref: string | null }, [string]>(
+        `SELECT id, method, source_ref FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(c.req.param('id'));
+    if (!job) return c.json({ error: 'Job not found' }, 404);
+    const ref = parseAddonRef(job.source_ref);
+    if (!ref || ref.addonId !== job.method) {
+      return c.json({ error: 'Not an addon job — use the transfer routes' }, 400);
+    }
+    const addon = pluginRegistry?.get(ref.addonId);
+    if (addon instanceof RemoteAddonPlugin) {
+      await addon.client.cancelJob(ref.addonJobId).catch(() => {});
+      await addon.client.deleteJob(ref.addonJobId).catch(() => {});
+    }
+    db.run(`DELETE FROM acquisition_job_items WHERE job_id = ?`, [job.id]);
+    db.run(`DELETE FROM acquisition_jobs WHERE id = ?`, [job.id]);
+    return c.json({ ok: true });
   });
 
   // Cancel/Remove a download

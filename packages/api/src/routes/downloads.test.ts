@@ -9,6 +9,8 @@ import { ProviderRegistry } from '../services/provider-registry.js';
 import { SlskdSearchProvider } from '../services/providers/slskd-provider.js';
 import type { SlskdRef } from '../index.js';
 import { applySchema } from '../db.js';
+import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
+import { PluginRegistry } from '../services/plugins/registry.js';
 
 // Mock getDatabase to use an in-memory DB
 const testDb = new Database(':memory:');
@@ -276,5 +278,90 @@ describe('downloads routes', () => {
     const hidden = testDb.query('SELECT id FROM hidden_transfers').all() as Array<{ id: string }>;
     const hiddenIds = hidden.map((h) => h.id);
     expect(hiddenIds).toContain('guid3');
+  });
+});
+
+describe('addon job actions (acquisition addon protocol phase 2)', () => {
+  const MANIFEST = {
+    id: 'fixture-addon',
+    name: 'Fixture',
+    description: 'x',
+    version: '0.1.0',
+    protocolVersion: '1.0.0',
+    kind: 'acquisition',
+    capabilities: ['search', 'download'],
+  } as import('@nicotind/core').AddonManifest;
+
+  function makeAddonApp() {
+    testDb.run('DELETE FROM acquisition_job_items');
+    testDb.run('DELETE FROM acquisition_jobs');
+    testDb.run('DELETE FROM plugins');
+    const calls = { cancelled: [] as string[], deleted: [] as string[] };
+    const client = {
+      baseUrl: 'http://addon:9999',
+      cancelJob: async (id: string) => {
+        calls.cancelled.push(id);
+      },
+      deleteJob: async (id: string) => {
+        calls.deleted.push(id);
+      },
+    } as unknown as import('../services/addons/client.js').AddonClient;
+    const plugin = new RemoteAddonPlugin(MANIFEST, client);
+    const pluginRegistry = new PluginRegistry({ db: testDb, dataDir: '/tmp/nicotind-test' });
+    pluginRegistry.register(plugin);
+
+    const app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route(
+      '/',
+      downloadRoutes(
+        new ProviderRegistry(),
+        { current: makeSlskdMock() } as unknown as SlskdRef,
+        pluginRegistry,
+      ),
+    );
+
+    const jobId = createJob(testDb, {
+      kind: 'album-hunt',
+      method: 'fixture-addon',
+      artistName: 'A',
+      albumTitle: 'B',
+      sourceRef: 'addon:fixture-addon:aj-7',
+      files: [],
+    });
+    return { app, calls, jobId };
+  }
+
+  it('cancels an addon job via the owning addon', async () => {
+    const { app, calls, jobId } = makeAddonApp();
+    const res = await app.request(`/jobs/${jobId}/cancel`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(calls.cancelled).toEqual(['aj-7']);
+  });
+
+  it('deletes an addon job on both sides', async () => {
+    const { app, calls, jobId } = makeAddonApp();
+    const res = await app.request(`/jobs/${jobId}`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    expect(calls.cancelled).toEqual(['aj-7']);
+    expect(calls.deleted).toEqual(['aj-7']);
+    expect(testDb.query(`SELECT id FROM acquisition_jobs`).all()).toHaveLength(0);
+  });
+
+  it('refuses the action for a non-addon job', async () => {
+    const { app } = makeAddonApp();
+    const slskdJob = createJob(testDb, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: 'A',
+      albumTitle: 'C',
+      sourceRef: 'peer',
+      files: [],
+    });
+    const res = await app.request(`/jobs/${slskdJob}/cancel`, { method: 'POST' });
+    expect(res.status).toBe(400);
   });
 });
