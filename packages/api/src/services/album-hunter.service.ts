@@ -2,16 +2,20 @@ import type { Slskd } from '@nicotind/slskd-client';
 import type { LidarrTrack } from '@nicotind/lidarr-client';
 import {
   createLogger,
-  fold,
   baseQueries,
   buildSkewedQueries,
+  normalizeTitle,
   stripTitleQualifiers,
+  titlesOverlap,
 } from '@nicotind/core';
 
 // Re-export the shared query builders so existing importers (track-pick, tests,
 // callers) keep their `./album-hunter.service` import path — the canonical source
 // is now @nicotind/core/hunt-queries.
 export { buildSkewedQueries, stripTitleQualifiers, baseQueries } from '@nicotind/core';
+// Same shim for the title matchers, promoted to @nicotind/core `title-match.ts`
+// (8 non-slskd api files import them from here).
+export { normalizeTitle, titlesOverlap } from '@nicotind/core';
 
 const log = createLogger('album-hunter');
 
@@ -420,27 +424,6 @@ function extractDirectory(filename: string): string {
   const normalized = filename.replace(/\\/g, '/');
   const lastSlash = normalized.lastIndexOf('/');
   return lastSlash >= 0 ? normalized.slice(0, lastSlash) : '';
-}
-
-export function normalizeTitle(title: string): string {
-  // Diacritics are folded (via the shared `fold`) *before* the ASCII-only
-  // `[^\w\s]` strip, so an accented "canción" and a peer's unaccented "cancion"
-  // both reduce to the same string — critical for this Latin-American-heavy
-  // library. `fold` already lowercases + NFD-strips combining marks.
-  return fold(title)
-    .replace(/^\d+[\s.\-]+/, '') // strip leading track numbers
-    .replace(/[^\w\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-export function titlesOverlap(canonical: string, filename: string): boolean {
-  if (canonical === filename) return true;
-  // Check if the canonical words are mostly in the filename
-  const cWords = canonical.split(' ').filter(Boolean);
-  const fWords = new Set(filename.split(' ').filter(Boolean));
-  const overlap = cWords.filter((w) => fWords.has(w)).length;
-  return cWords.length > 0 && overlap / cWords.length >= 0.7;
 }
 
 // Strength of a single (1-track) hunt match: 100 when the full normalized titles
