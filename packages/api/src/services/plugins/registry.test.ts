@@ -303,3 +303,43 @@ describe('PluginRegistry', () => {
     expect(after[0]).toMatchObject({ enabled: true, needsConfig: false });
   });
 });
+
+describe('PluginRegistry remote addons', () => {
+  let db: Database;
+  let registry: PluginRegistry;
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    applySchema(db);
+    registry = new PluginRegistry({ db, dataDir: '/tmp/nicotind-test' });
+  });
+
+  it('surfaces a plugin origin as remote/addonUrl in list()', async () => {
+    const remote = makePlugin(acquisitionManifest({ id: 'fixture-addon' }));
+    (remote as { origin?: { remote: true; url: string } }).origin = {
+      remote: true,
+      url: 'http://addon:9999',
+    };
+    registry.register(remote);
+    registry.register(makePlugin(acquisitionManifest({ id: 'builtin' })));
+    const infos = await registry.list();
+    const addon = infos.find((i) => i.id === 'fixture-addon');
+    const builtin = infos.find((i) => i.id === 'builtin');
+    expect(addon?.remote).toBe(true);
+    expect(addon?.addonUrl).toBe('http://addon:9999');
+    expect(builtin?.remote).toBeUndefined();
+  });
+
+  it('unregister removes the plugin and disposes an initialized one', async () => {
+    const plugin = makePlugin(acquisitionManifest({ id: 'fixture-addon' }));
+    registry.register(plugin);
+    await registry.enable('fixture-addon', 'admin');
+    await registry.unregister('fixture-addon');
+    expect(registry.get('fixture-addon')).toBeUndefined();
+    expect(plugin.disposeCalls).toBe(1);
+  });
+
+  it('unregister throws on an unknown id', async () => {
+    await expect(registry.unregister('nope')).rejects.toThrow(/unknown plugin/);
+  });
+});

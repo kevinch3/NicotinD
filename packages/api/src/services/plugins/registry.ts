@@ -138,6 +138,25 @@ export class PluginRegistry {
     );
   }
 
+  /**
+   * Remove a plugin from the registry (remote addons only in practice —
+   * builtins are registered every boot). Disposes it when initialized. The
+   * caller owns any persisted-state cleanup (`plugins` row, registration row).
+   */
+  async unregister(id: string): Promise<void> {
+    const plugin = this.plugins.get(id);
+    if (!plugin) throw new Error(`unknown plugin "${id}"`);
+    if (this.initialized.has(id)) {
+      try {
+        await plugin.dispose?.();
+      } catch (err) {
+        log.warn({ id, err }, 'plugin dispose failed during unregister');
+      }
+      this.initialized.delete(id);
+    }
+    this.plugins.delete(id);
+  }
+
   /** True when at least one enabled plugin provides the given capability. */
   hasCapability(cap: PluginCapability): boolean {
     return this.getEnabledWithCapability(cap).length > 0;
@@ -264,6 +283,8 @@ export class PluginRegistry {
         configFields: m.configFields,
         configured,
         config,
+        remote: p.origin?.remote,
+        addonUrl: p.origin?.url,
       });
     }
     return infos;
