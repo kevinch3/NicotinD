@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.341](https://github.com/kevinch3/NicotinD/compare/v0.1.340...v0.1.341) (2026-08-11)
+
+### Features
+
+* **storybook:** add the a11y addon and fix the button-name violations ([#484](https://github.com/kevinch3/NicotinD/issues/484)) ([889ec2f](https://github.com/kevinch3/NicotinD/commit/889ec2fcff728c46081cacb8243c342cfb47471b)), closes [#474](https://github.com/kevinch3/NicotinD/issues/474), references [#481](https://github.com/kevinch3/NicotinD/issues/481) [#482](https://github.com/kevinch3/NicotinD/issues/482) [481/#482](https://github.com/kevinch3/NicotinD/issues/482)
 ## [0.1.340](https://github.com/kevinch3/NicotinD/compare/v0.1.339...v0.1.340) (2026-08-11)
 ## [0.1.339](https://github.com/kevinch3/NicotinD/compare/v0.1.338...v0.1.339) (2026-08-11)
 ## [0.1.338](https://github.com/kevinch3/NicotinD/compare/v0.1.337...v0.1.338) (2026-08-10)
