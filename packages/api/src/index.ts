@@ -69,7 +69,7 @@ import { PluginRegistry } from './services/plugins/registry.js';
 import { upsertTrackStatus } from './services/plugins/host-context.js';
 import { recordAcquireJobTrack } from './services/acquire-playlist.js';
 import { registerBuiltinPlugins } from './services/plugins/builtin.js';
-import { loadRegisteredAddons } from './services/addons/manager.js';
+import { activeRemoteAcquisitionAddon, loadRegisteredAddons } from './services/addons/manager.js';
 import { AddonJobPoller } from './services/addons/job-poller.js';
 import { AcquisitionToggle } from './services/acquisition-toggle.js';
 import {
@@ -845,6 +845,7 @@ export function createApp({
       hunter: hunterSvc,
       lidarr,
       slskdRef,
+      getAddon: () => activeRemoteAcquisitionAddon(plugins),
       intervalMs: config.watchlist.intervalMs,
       minMatchPct: config.watchlist.minMatchPct,
       enabled: config.watchlist.enabled,
@@ -868,6 +869,7 @@ export function createApp({
         hunter: hunterSvc,
         lidarr,
         slskdRef,
+        getAddon: () => activeRemoteAcquisitionAddon(plugins),
         intervalMs: config.downloads.autoAcquireIntervalMs,
         maxPerSweep: config.downloads.autoAcquireMaxPerSweep,
         minMatchPct: config.watchlist.minMatchPct,

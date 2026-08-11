@@ -33,6 +33,24 @@ export function addonTransferKey(addonId: string, itemId: string): string {
   return `addon:${addonId}:${itemId}`;
 }
 
+/**
+ * Pre-map an addon job to a core acquisition job (acquireAlbum creates the
+ * feed row with hunt metadata; the poller then mirrors items into it instead
+ * of minting a bare row).
+ */
+export function mapAddonJob(
+  db: Database,
+  addonId: string,
+  addonJobId: string,
+  coreJobId: string,
+): void {
+  db.run(
+    `INSERT INTO plugin_kv (plugin_id, key, value) VALUES (?, ?, ?)
+     ON CONFLICT(plugin_id, key) DO UPDATE SET value = excluded.value`,
+    [`addon-poller:${addonId}`, `jobmap:${addonJobId}`, coreJobId],
+  );
+}
+
 const KIND_BY_INTENT: Record<string, AcquisitionJobKind> = {
   album: 'album-hunt',
   tracks: 'track-search',

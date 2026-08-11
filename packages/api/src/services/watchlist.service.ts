@@ -4,6 +4,7 @@ import type { Lidarr } from '@nicotind/lidarr-client';
 import type { SlskdRef } from '../index.js';
 import type { CatalogService } from './catalog-search.service.js';
 import type { AlbumHunterService } from './album-hunter.service.js';
+import type { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { acquireAlbum } from './album-acquire.js';
 
 const log = createLogger('watchlist');
@@ -34,6 +35,8 @@ export interface WatchlistDeps {
   hunter: AlbumHunterService;
   lidarr: Lidarr;
   slskdRef: SlskdRef;
+  /** Live lookup of the active remote acquisition addon (phase-2 cutover). */
+  getAddon?: () => RemoteAddonPlugin | null;
   intervalMs?: number;
   minMatchPct?: number;
   enabled?: boolean;
@@ -62,6 +65,7 @@ export class WatchlistService {
   private hunter: AlbumHunterService;
   private lidarr: Lidarr;
   private slskdRef: SlskdRef;
+  private getAddon?: () => RemoteAddonPlugin | null;
   private intervalMs: number;
   private minMatchPct: number;
   private enabled: boolean;
@@ -75,6 +79,7 @@ export class WatchlistService {
     this.hunter = deps.hunter;
     this.lidarr = deps.lidarr;
     this.slskdRef = deps.slskdRef;
+    this.getAddon = deps.getAddon;
     this.intervalMs = deps.intervalMs ?? 1_800_000;
     this.minMatchPct = deps.minMatchPct ?? 80;
     this.enabled = deps.enabled ?? true;
@@ -178,7 +183,13 @@ export class WatchlistService {
       // interactive hunt and the Lidarr auto-acquire loop use), then map its
       // outcome to this row's state transitions.
       const outcome = await acquireAlbum(
-        { db: this.db, hunter: this.hunter, lidarr: this.lidarr, slskdRef: this.slskdRef },
+        {
+          db: this.db,
+          hunter: this.hunter,
+          lidarr: this.lidarr,
+          slskdRef: this.slskdRef,
+          getAddon: this.getAddon,
+        },
         {
           lidarrAlbumId: albumId,
           artistName: row.artist_name,

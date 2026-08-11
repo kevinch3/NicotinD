@@ -91,6 +91,16 @@ export async function registerAddon(
   return reg;
 }
 
+/** The enabled remote acquisition addon that can download, if any (first wins). */
+export function activeRemoteAcquisitionAddon(registry: PluginRegistry): RemoteAddonPlugin | null {
+  for (const plugin of registry.getEnabled('acquisition')) {
+    if (plugin instanceof RemoteAddonPlugin && plugin.manifest.capabilities.includes('download')) {
+      return plugin;
+    }
+  }
+  return null;
+}
+
 /** Remove a registered addon: disable, unregister, drop the persisted row. */
 export async function removeAddon(
   registry: PluginRegistry,
