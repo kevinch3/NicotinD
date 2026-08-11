@@ -69,6 +69,7 @@ import { PluginRegistry } from './services/plugins/registry.js';
 import { upsertTrackStatus } from './services/plugins/host-context.js';
 import { recordAcquireJobTrack } from './services/acquire-playlist.js';
 import { registerBuiltinPlugins } from './services/plugins/builtin.js';
+import { loadRegisteredAddons } from './services/addons/manager.js';
 import { AcquisitionToggle } from './services/acquisition-toggle.js';
 import {
   requireAcquisitionEnabledMiddleware,
@@ -487,6 +488,10 @@ export function createApp({
     providerRegistry: registry,
     acoustidApiKey,
   });
+  // Remote addons registered by URL (acquisition addon protocol) — re-register
+  // from their persisted manifest snapshots after the builtins so id
+  // collisions resolve in the builtins' favor.
+  loadRegisteredAddons(plugins, db);
   // why: registerBuiltinPlugins already builds a MusicBrainzClient for Discogs
   // artist-info resolution, but keeps it private to that function — a second
   // instance here (sharing the same on-disk cache file) is cheaper than
@@ -732,7 +737,7 @@ export function createApp({
   app.route('/api/users', usersRoutes(registry));
   app.route('/api/playlists', playlistRoutes());
   app.route('/api/radio', radioRoutes());
-  app.route('/api/plugins', pluginRoutes(plugins, slskdRef));
+  app.route('/api/plugins', pluginRoutes(plugins, slskdRef, db));
   // Metadata search sources, constructed once and shared between the legacy
   // per-source lanes and the source-agnostic blended aggregator.
   const archiveSearch = new ArchiveSearchService();

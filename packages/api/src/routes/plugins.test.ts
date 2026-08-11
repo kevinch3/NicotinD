@@ -34,6 +34,7 @@ function fixturePlugin(over: Partial<PluginManifest> = {}): Plugin {
 function makeApp(
   registry: PluginRegistry,
   role: 'admin' | 'user',
+  db: Database,
   slskdRef: { current: unknown } = { current: null },
 ) {
   const app = new Hono<AuthEnv>();
@@ -41,7 +42,7 @@ function makeApp(
     c.set('user', { sub: 'u1', role, iat: 0, exp: 9999999999 } as AuthEnv['Variables']['user']);
     return next();
   });
-  app.route('/', pluginRoutes(registry, slskdRef as never));
+  app.route('/', pluginRoutes(registry, slskdRef as never, db));
   return app;
 }
 
@@ -57,7 +58,7 @@ describe('plugin routes', () => {
   });
 
   it('GET / lists plugins for any authenticated user', async () => {
-    const res = await makeApp(registry, 'user').request('/');
+    const res = await makeApp(registry, 'user', db).request('/');
     expect(res.status).toBe(200);
     const list = (await res.json()) as Array<{ id: string; enabled: boolean }>;
     expect(list).toHaveLength(1);
@@ -65,18 +66,18 @@ describe('plugin routes', () => {
   });
 
   it('forbids enable for non-admin users', async () => {
-    const res = await makeApp(registry, 'user').request('/slskd/enable', { method: 'POST' });
+    const res = await makeApp(registry, 'user', db).request('/slskd/enable', { method: 'POST' });
     expect(res.status).toBe(403);
     expect(registry.isEnabled('slskd')).toBe(false);
   });
 
   it('returns 404 enabling an unknown plugin', async () => {
-    const res = await makeApp(registry, 'admin').request('/nope/enable', { method: 'POST' });
+    const res = await makeApp(registry, 'admin', db).request('/nope/enable', { method: 'POST' });
     expect(res.status).toBe(404);
   });
 
   it('requires consent before enabling a consent-gated plugin', async () => {
-    const res = await makeApp(registry, 'admin').request('/slskd/enable', {
+    const res = await makeApp(registry, 'admin', db).request('/slskd/enable', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
@@ -88,7 +89,7 @@ describe('plugin routes', () => {
   });
 
   it('enables with consent and records the acting admin', async () => {
-    const res = await makeApp(registry, 'admin').request('/slskd/enable', {
+    const res = await makeApp(registry, 'admin', db).request('/slskd/enable', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ consent: true }),
@@ -103,20 +104,20 @@ describe('plugin routes', () => {
 
   it('disables an enabled plugin', async () => {
     await registry.enable('slskd', 'u1');
-    const res = await makeApp(registry, 'admin').request('/slskd/disable', { method: 'POST' });
+    const res = await makeApp(registry, 'admin', db).request('/slskd/disable', { method: 'POST' });
     expect(res.status).toBe(200);
     expect(registry.isEnabled('slskd')).toBe(false);
   });
 
   it('GET /slskd/status returns a disabled shell when the plugin is off', async () => {
-    const res = await makeApp(registry, 'admin').request('/slskd/status');
+    const res = await makeApp(registry, 'admin', db).request('/slskd/status');
     expect(res.status).toBe(200);
     const json = (await res.json()) as { enabled: boolean; available: boolean };
     expect(json).toMatchObject({ enabled: false, available: false });
   });
 
   it('GET /slskd/status is admin-only', async () => {
-    const res = await makeApp(registry, 'user').request('/slskd/status');
+    const res = await makeApp(registry, 'user', db).request('/slskd/status');
     expect(res.status).toBe(403);
   });
 
@@ -153,7 +154,7 @@ describe('plugin routes', () => {
       options: { get: async () => ({ global: { upload: { slots: 4 } } }) },
       application: { getInfo: async () => ({ version: '1.0', uptime: 5 }) },
     };
-    const res = await makeApp(registry, 'admin', { current: slskd }).request('/slskd/status');
+    const res = await makeApp(registry, 'admin', db, { current: slskd }).request('/slskd/status');
     expect(res.status).toBe(200);
     const json = (await res.json()) as {
       available: boolean;
@@ -176,7 +177,7 @@ describe('plugin routes', () => {
         configSchema: z.object({ format: z.enum(['mp3']) }),
       }),
     );
-    const res = await makeApp(registry, 'admin').request('/ytdlp/config', {
+    const res = await makeApp(registry, 'admin', db).request('/ytdlp/config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ format: 'flac' }),
