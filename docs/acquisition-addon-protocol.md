@@ -1,8 +1,9 @@
 # Acquisition Addon Protocol — slskd becomes an external, Torrentio-style addon
 
-**Status**: Phase 0 (protocol v1 + core addon runtime, #487) is **shipped**; phases 1–4
-pending. Each phase gets its own implementation plan + PR cycle; this document is the
-architecture they all answer to.
+**Status**: Phase 0 (protocol v1 + core addon runtime, #487) and Phase 1 (the
+in-monorepo `packages/slskd-addon` with the moved hunt engine, #488) are **shipped**;
+phases 2–4 pending. Each phase gets its own implementation plan + PR cycle; this document
+is the architecture they all answer to.
 
 ## Context & goal
 
@@ -158,14 +159,48 @@ manifest → card). e2e fixture addon server + `addon-registry.spec.ts`. Modify:
 manifest validation (remote-sourced manifests), `services/plugins/registry.ts`,
 `routes/plugins.ts`, web plugins page.
 
-### Phase 1 — Build the slskd addon in-monorepo (no cutover)
+### Phase 1 — Build the slskd addon in-monorepo (no cutover) — SHIPPED (#488)
 
-`packages/slskd-addon/`: Hono server, protocol routes, own SQLite, slskd supervisor,
-Dockerfile (the `packages/analysis` precedent). Move in (git mv, adapted): the seven
-services listed in decision 3 + their tests, `album-hunter.replay.test.ts` +
-`__fixtures__/hunt-match/` + the feedback-to-fixtures machinery, `core/hunt-queries.ts`
-(deprecated re-export kept until Phase 3), slskd parts of `service-manager` +
-`scripts/download-deps.ts`. Master still ships today's in-process path.
+As designed, with three measured amendments:
+
+- **`hunt-queries.ts` stays in `@nicotind/core`** (not moved as originally sketched): the
+  addon depends on core anyway, and the web keeps its own shim copy — moving it would
+  have broken `packages/web/src/types/core.ts` for nothing.
+- **`normalizeTitle`/`titlesOverlap` were promoted to core first**
+  (`packages/core/src/title-match.ts`): eight non-slskd api files (library-organizer,
+  library-completeness, library-track-select, acquisition-job-store, catalog-search,
+  repair-album-folders…) imported them through the hunter; without the promotion the
+  extraction would have dragged the library layer along.
+- **slskd supervision did not move yet** — `service-manager`/`download-deps.ts` stay
+  untouched until phases 3/4; the addon reaches slskd via config/env.
+
+What shipped: `packages/slskd-addon` — own SQLite (`album_jobs`/`transfer_retries`/
+`hidden_transfers`/`completed_downloads` copies + the `addon_jobs`/`addon_job_items`
+protocol ledger + pushed-config kv), the moved hunt engine (album-hunter with
+`CanonicalTrackRef` replacing `LidarrTrack` — the addon never sees Lidarr; track-hunter +
+track-pick; slskd-status/-config; hidden-transfers; the replay corpus +
+`album-hunter.replay.test.ts`), `AlbumFallbackService` behind the new **`FallbackHost`**
+seam (api implements it over acquisition-job-store + the library in
+`services/fallback-host.ts`; the addon over its own job ledger in
+`addon-fallback-host.ts`), the **`TransferPoller`** (the polling half of
+DownloadWatcher; the api watcher now composes it), and the full protocol engine surface:
+`POST search`, `POST albums/search` (candidateRef TTL cache + literal `queries[]`),
+`POST jobs` (album/tracks/browse-grab, Idempotency-Key + per-album 409, wanted-track
+scoping), `GET jobs` (+ live transfer-state sync), cancel/delete,
+`GET jobs/:id/files/:itemId` (Content-Length + ETag), `GET browse`,
+`POST notify/library-changed` (debounced share rescan). Dockerfile with a
+health-checked `oven/bun` image.
+
+**During phases 1–2 the api imports the moved services from
+`@nicotind/slskd-addon`** through path-preserving shims (e.g.
+`packages/api/src/services/album-hunter.service.ts` is a named re-export) — one source
+of truth, in-process path unchanged, severed in phase 3.
+
+**Accepted limitation (revived jobs, addon mode)**: the addon's `FallbackHost.onDiskTitles`
+returns `[]` — it has no library. The host pre-filters via `wantedTracks` at job creation,
+so a *revived* exhausted job in addon mode may re-pull tracks that landed since; the
+organizer dedupe + 24h valve bound the damage. The api-hosted fallback (still what ships)
+keeps the live library read.
 
 ### Phase 2 — Core cutover (the user-visible phase)
 

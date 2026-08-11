@@ -794,7 +794,7 @@ Add detail there, not here.
   startup-error capture is preserved by a synchronous `error-buffer.ts` + `BufferingErrorHandler`
   (replaces `Sentry.createErrorHandler`/`TraceService`) that replays into the SDK on connect. →
   [docs/observability.md](docs/observability.md)
-- **Acquisition addon protocol (phase 0 shipped; phases 1-4 pending)**: Stremio/Torrentio-style
+- **Acquisition addon protocol (phases 0-1 shipped; 2-4 pending)**: Stremio/Torrentio-style
   open HTTP addon protocol; the slskd bridge **and** the hunt/retry/fallback engine migrate into a
   separately-distributed addon (in-monorepo sidecar first, own repo + image last), leaving core
   with zero slskd code; smart-addon/thin-core seam at `acquireAlbum` (guards core-side), HTTP file
@@ -803,7 +803,14 @@ Add detail there, not here.
   `validateAddonManifest`), `AddonClient`/`RemoteAddonPlugin`/`addon_registrations` +
   `loadRegisteredAddons` boot loading, admin register-by-URL routes on `/api/plugins`, the
   Extensions "Add addon" form + generic `AddonStatusPanelComponent`, and a fixture-addon e2e spec —
-  a remote addon renders as a normal consent-gated extension card with zero addon-specific UI. →
+  a remote addon renders as a normal consent-gated extension card with zero addon-specific UI.
+  **Shipped (issue #488)**: `packages/slskd-addon` — the hunt engine moved wholesale (api imports
+  it back via path-preserving shims until phase 3), `normalizeTitle`/`titlesOverlap` promoted to
+  core `title-match.ts`, the fallback's host touchpoints abstracted as `FallbackHost` (api impl
+  `services/fallback-host.ts` over acquisition-job-store; addon impl over its own
+  `addon_jobs` ledger), the watcher's polling half extracted as `TransferPoller`, and the full
+  protocol engine (search / albums/search with candidateRef / jobs with Idempotency-Key +
+  wanted-track scoping / file delivery with ETag / browse / share-rescan notify) + Dockerfile. →
   [docs/acquisition-addon-protocol.md](docs/acquisition-addon-protocol.md)
 - **OAuth authentication (proposed — not yet implemented)**: Google + Microsoft login as `auth` kind
   plugins with `oauth` capability; auto-creates users by email (no validation); auto-enables when
