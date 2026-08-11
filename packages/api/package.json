@@ -13,6 +13,7 @@
     "@nicotind/core": "workspace:*",
     "@nicotind/lidarr-client": "workspace:*",
     "@nicotind/service-manager": "workspace:*",
+    "@nicotind/slskd-addon": "workspace:*",
     "@nicotind/slskd-client": "workspace:*",
     "@sentry/bun": "^10.67.0",
     "hono": "^4.12.31",

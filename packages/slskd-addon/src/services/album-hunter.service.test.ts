@@ -1,6 +1,5 @@
 import { describe, it, expect, mock } from 'bun:test';
 import type { Slskd } from '@nicotind/slskd-client';
-import type { LidarrTrack } from '@nicotind/lidarr-client';
 import {
   AlbumHunterService,
   buildSkewedQueries,
@@ -11,20 +10,8 @@ import {
   stripTitleQualifiers,
 } from './album-hunter.service';
 
-function track(id: number, title: string): LidarrTrack {
-  return {
-    id,
-    foreignTrackId: `ft${id}`,
-    foreignRecordingId: `fr${id}`,
-    trackFileId: 0,
-    albumId: 1,
-    artistId: 1,
-    trackNumber: String(id),
-    absoluteTrackNumber: id,
-    title,
-    duration: 1000,
-    hasFile: false,
-  };
+function track(_id: number, title: string): { title: string } {
+  return { title };
 }
 
 interface StubFile {
