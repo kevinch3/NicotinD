@@ -487,7 +487,6 @@ export function createApp({
   registerBuiltinPlugins(plugins, {
     config,
     dataDir: expandedDataDir,
-    slskdRef,
     providerRegistry: registry,
     acoustidApiKey,
   });
@@ -537,7 +536,6 @@ export function createApp({
   // installs are default-off — an admin opts into acquisition in Settings →
   // Plugins (the compliance posture). Runs exactly once (persistent marker).
   seedLegacyAcquisitionPlugins(plugins, db, {
-    slskdConfigured: !!(config.soulseek.username && config.soulseek.password),
     ytdlpEnabled: config.acquire.ytdlp.enabled,
     spotdlEnabled: config.acquire.spotdl.enabled,
   });
@@ -753,7 +751,7 @@ export function createApp({
   app.route('/api/users', usersRoutes(registry));
   app.route('/api/playlists', playlistRoutes());
   app.route('/api/radio', radioRoutes());
-  app.route('/api/plugins', pluginRoutes(plugins, slskdRef, db, registry));
+  app.route('/api/plugins', pluginRoutes(plugins, db, registry));
   // Metadata search sources, constructed once and shared between the legacy
   // per-source lanes and the source-agnostic blended aggregator.
   const archiveSearch = new ArchiveSearchService();

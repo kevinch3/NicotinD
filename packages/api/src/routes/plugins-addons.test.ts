@@ -50,7 +50,7 @@ function makeApp(role: 'admin' | 'user') {
     c.set('user', { sub: 'u1', username: 'tester', role } as JwtPayload);
     await next();
   });
-  app.route('/api/plugins', pluginRoutes(registry, { current: null }, db));
+  app.route('/api/plugins', pluginRoutes(registry, db));
   return { app, db, registry };
 }
 

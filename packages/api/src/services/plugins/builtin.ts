@@ -1,9 +1,7 @@
 import { join } from 'node:path';
 import type { NicotinDConfig } from '@nicotind/core';
-import type { SlskdRef } from '../../index.js';
 import type { ProviderRegistry } from '../provider-registry.js';
 import type { PluginRegistry } from './registry.js';
-import { SlskdPlugin } from './slskd/index.js';
 import { SpotdlPlugin } from './spotdl/index.js';
 import { ArchivePlugin } from './archive/index.js';
 import { SpotifyPlugin } from './spotify/index.js';
@@ -33,7 +31,6 @@ export interface BuiltinPluginDeps {
   config: NicotinDConfig;
   /** Expanded (no `~`) data dir — the zero-config cookies file lives under it. */
   dataDir: string;
-  slskdRef: SlskdRef;
   providerRegistry: ProviderRegistry;
   /**
    * The legacy AcoustID API key (from `secrets.json`, not `config` — it
@@ -61,9 +58,7 @@ export interface BuiltinPluginDeps {
  * to miss.
  */
 export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPluginDeps): void {
-  const { config, dataDir, slskdRef, providerRegistry, acoustidApiKey } = deps;
-
-  plugins.register(new SlskdPlugin(slskdRef, providerRegistry));
+  const { config, dataDir, providerRegistry, acoustidApiKey } = deps;
 
   // Zero-config cookies: drop a Netscape cookies.txt at
   // <dataDir>/youtube-cookies.txt and both YouTube-backed downloaders pick it

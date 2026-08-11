@@ -1,7 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom, type Observable } from 'rxjs';
-import type { SlskdStatus } from '@nicotind/core';
 
 /** Mirrors `PluginKind` in `@nicotind/core` — keep the three in sync. A kind
  *  missing here has no group computed and no template section, so its plugins
@@ -137,13 +136,5 @@ export class PluginService {
   /** Live status rows for a remote addon's generic status panel. */
   getAddonStatus(id: string): Observable<AddonStatus> {
     return this.http.get<AddonStatus>(`/api/plugins/${id}/addon-status`);
-  }
-
-  /** Whether the slskd extension is enabled (gates its dedicated settings page). */
-  readonly hasSlskd = computed(() => this.plugins().some((p) => p.id === 'slskd' && p.enabled));
-
-  /** Live slskd status (speeds/limits/counts) for the extension's status panel. */
-  getSlskdStatus(): Observable<SlskdStatus> {
-    return this.http.get<SlskdStatus>('/api/plugins/slskd/status');
   }
 }

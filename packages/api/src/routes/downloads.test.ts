@@ -6,7 +6,7 @@ import { downloadRoutes } from './downloads.js';
 import { albumIdFor } from '../services/library-scanner.js';
 import { createJob } from '../services/acquisition-job-store.js';
 import { ProviderRegistry } from '../services/provider-registry.js';
-import { SlskdSearchProvider } from '../services/providers/slskd-provider.js';
+import { TestNetworkProvider } from '../test-helpers/network-provider.js';
 import type { SlskdRef } from '../index.js';
 import { applySchema } from '../db.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
@@ -68,7 +68,7 @@ describe('downloads routes', () => {
       return next();
     });
     const registry = new ProviderRegistry();
-    registry.register(new SlskdSearchProvider(slskdRef));
+    registry.register(new TestNetworkProvider(slskdRef));
     app.route('/', downloadRoutes(registry, slskdRef));
   });
 

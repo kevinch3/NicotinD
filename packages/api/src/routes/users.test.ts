@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { Hono } from 'hono';
 import { usersRoutes } from './users.js';
 import { ProviderRegistry } from '../services/provider-registry.js';
-import { SlskdSearchProvider } from '../services/providers/slskd-provider.js';
+import { TestNetworkProvider } from '../test-helpers/network-provider.js';
 
 type BrowseDir = { name: string; fileCount: number; files: { filename: string; size: number }[] };
 
@@ -26,9 +26,9 @@ function makeRegistry(browseDirs: BrowseDir[] = [], shouldThrow?: Error) {
       },
       transfers: { enqueue: async () => {} },
     },
-  } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
+  } as unknown as ConstructorParameters<typeof TestNetworkProvider>[0];
   const registry = new ProviderRegistry();
-  registry.register(new SlskdSearchProvider(slskdRef));
+  registry.register(new TestNetworkProvider(slskdRef));
   return registry;
 }
 
@@ -80,10 +80,10 @@ describe('users routes', () => {
 
   it('returns error state when slskdRef.current is null (BrowseUnavailableError)', async () => {
     const slskdRef = { current: null } as unknown as ConstructorParameters<
-      typeof SlskdSearchProvider
+      typeof TestNetworkProvider
     >[0];
     const registry = new ProviderRegistry();
-    registry.register(new SlskdSearchProvider(slskdRef));
+    registry.register(new TestNetworkProvider(slskdRef));
     const app = new Hono();
     app.route('/', usersRoutes(registry));
 

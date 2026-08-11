@@ -6,7 +6,6 @@ const log = createLogger('plugin-migration');
 const MARKER_KEY = 'plugins_migrated';
 
 export interface LegacySeedConfig {
-  slskdConfigured: boolean;
   ytdlpEnabled: boolean;
   spotdlEnabled: boolean;
 }
@@ -37,7 +36,6 @@ export function seedLegacyAcquisitionPlugins(
   const existingInstall = userCount > 0;
 
   if (existingInstall) {
-    if (cfg.slskdConfigured) registry.seedEnabled('slskd', 'system-migration');
     if (cfg.ytdlpEnabled) registry.seedEnabled('ytdlp', 'system-migration');
     if (cfg.spotdlEnabled) registry.seedEnabled('spotdl', 'system-migration');
     log.info('Migrated pre-plugin install — seeded previously-active acquisition plugins enabled');
