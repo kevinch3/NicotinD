@@ -17,7 +17,7 @@
           rounded="rounded-lg"
         />
         <div class="min-w-0 flex-1">
-          <p class="text-xs font-medium text-theme-accent uppercase tracking-wide">{{ 'home.resume' | t }}</p>
+          <p class="text-xs font-medium text-theme-accent-text uppercase tracking-wide">{{ 'home.resume' | t }}</p>
           <p class="text-sm font-semibold text-theme-primary truncate">{{ lastTrack()!.title }}</p>
           <p class="text-xs text-theme-muted truncate">{{ lastTrack()!.artist }}</p>
         </div>
@@ -49,7 +49,7 @@
           [disabled]="starting() !== null"
           data-testid="radio-preset"
           [attr.data-preset-id]="preset.id"
-          class="flex items-center gap-2 px-4 py-2.5 rounded-full bg-theme-surface-2 text-sm font-medium text-theme-primary hover:bg-theme-accent/15 hover:text-theme-accent transition active:scale-95 disabled:opacity-50"
+          class="flex items-center gap-2 px-4 py-2.5 rounded-full bg-theme-surface-2 text-sm font-medium text-theme-primary hover:bg-theme-accent/15 hover:text-theme-accent-text transition active:scale-95 disabled:opacity-50"
         >
           <span aria-hidden="true">{{ preset.emoji }}</span>
           {{ preset.label | t }}
@@ -70,7 +70,7 @@
             (click)="startGenre(genre)"
             [disabled]="starting() !== null"
             data-testid="radio-genre"
-            class="px-4 py-2 rounded-full bg-theme-surface-2/70 text-sm text-theme-secondary hover:bg-theme-accent/15 hover:text-theme-accent transition active:scale-95 disabled:opacity-50"
+            class="px-4 py-2 rounded-full bg-theme-surface-2/70 text-sm text-theme-secondary hover:bg-theme-accent/15 hover:text-theme-accent-text transition active:scale-95 disabled:opacity-50"
           >
             {{ genre }}
           </button>

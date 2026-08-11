@@ -41,7 +41,7 @@
                   [href]="url"
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="text-xs text-theme-accent hover:underline break-all"
+                  class="text-xs text-theme-accent-text hover:underline break-all"
                 >
                   {{ url }}
                 </a>
@@ -74,7 +74,7 @@
       data-testid="artist-info-refresh"
       [disabled]="refreshing()"
       (click)="refresh()"
-      class="ml-1 text-theme-accent hover:underline disabled:opacity-50"
+      class="ml-1 text-theme-accent-text hover:underline disabled:opacity-50"
     >
       {{ refreshing() ? 'Refreshing…' : 'Try fetching from Discogs' }}
     </button>

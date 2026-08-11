@@ -42,7 +42,7 @@
             <p class="text-theme-muted">
               {{ 'devices.tailscaleNotInstalled' | t }}
               <a href="https://tailscale.com/download" target="_blank" rel="noopener"
-                 class="text-theme-accent hover:underline">{{ 'devices.installTailscale' | t }}</a>
+                 class="text-theme-accent-text hover:underline">{{ 'devices.installTailscale' | t }}</a>
               {{ 'devices.installTailscaleSuffix' | t }}
             </p>
           }
@@ -51,7 +51,7 @@
               {{ 'devices.tailscaleNeedsLogin' | t }}
               @if (r.state.authUrl) {
                 <a [href]="r.state.authUrl" target="_blank" rel="noopener"
-                   class="text-theme-accent hover:underline">{{ 'devices.signInTailscale' | t }}</a>
+                   class="text-theme-accent-text hover:underline">{{ 'devices.signInTailscale' | t }}</a>
               } @else {
                 {{ 'devices.tailscaleSignInManual' | t }}
               }
@@ -69,7 +69,7 @@
                 >{{ r.state.command }}</code>
                 <button
                   (click)="copyCommand(r.state.command)"
-                  class="text-theme-accent hover:underline text-xs"
+                  class="text-theme-accent-text hover:underline text-xs"
                   data-testid="operator-copy"
                 >
                   {{ (copied() ? 'devices.copied' : 'devices.copy') | t }}
@@ -77,7 +77,7 @@
                 <button
                   (click)="retryRemoteAccess()"
                   [disabled]="busy()"
-                  class="text-theme-accent hover:underline text-xs disabled:opacity-50"
+                  class="text-theme-accent-text hover:underline text-xs disabled:opacity-50"
                   data-testid="remote-access-retry"
                 >
                   {{ 'devices.retry' | t }}
@@ -90,7 +90,7 @@
               {{ 'devices.funnelNotEnabled' | t }}
               @if (r.state.enableUrl) {
                 <a [href]="r.state.enableUrl" target="_blank" rel="noopener"
-                   class="text-theme-accent hover:underline">{{ 'devices.approveFunnel' | t }}</a>{{ 'devices.approveFunnelSuffix' | t }}
+                   class="text-theme-accent-text hover:underline">{{ 'devices.approveFunnel' | t }}</a>{{ 'devices.approveFunnelSuffix' | t }}
               } @else {
                 {{ 'devices.approveFunnelManual' | t }}
               }
@@ -160,7 +160,7 @@
                 class="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-lg text-sm font-medium text-theme-primary"
               >
                 <span>{{ 'devices.codeExpired' | t }}</span>
-                <span class="text-theme-accent underline">{{ 'devices.generateNewOne' | t }}</span>
+                <span class="text-theme-accent-text underline">{{ 'devices.generateNewOne' | t }}</span>
               </button>
             }
           </div>
@@ -189,7 +189,7 @@
               {{ 'devices.expired' | t }}
             }
             <button (click)="regenerate()" data-testid="pairing-regenerate"
-                    class="text-theme-accent hover:underline">{{ 'devices.generateNewCode' | t }}</button>
+                    class="text-theme-accent-text hover:underline">{{ 'devices.generateNewCode' | t }}</button>
           </p>
         </div>
       </div>

@@ -17,6 +17,20 @@ const THEMES = {
 } as const;
 
 /**
+ * Paint the story canvas with the active theme.
+ *
+ * Storybook's canvas is white and the app's background lives on the layout shell
+ * (`bg-theme-base`), which no story renders. Without this a dark theme puts light text
+ * on white — axe reported ~70 contrast failures that were purely this artifact, against
+ * a background the app never shows.
+ */
+const withThemedCanvas: Decorator = (story) => {
+  document.body.style.backgroundColor = 'var(--theme-bg)';
+  document.body.style.color = 'var(--theme-text-primary)';
+  return story();
+};
+
+/**
  * Toggle `html.tv-build`, the 10-foot surface. This axis has no other review surface —
  * the overscan insets and D-pad focus rings are otherwise only observable on an Android
  * TV emulator (`bun run e2e:tv`).
@@ -34,6 +48,7 @@ const preview: Preview = {
       attributeName: 'data-theme',
     }),
     withTvBuild,
+    withThemedCanvas,
   ],
   globalTypes: {
     tvBuild: {

@@ -149,44 +149,65 @@ bun run a11y:storybook              # report, always exits 0
 bun run a11y:storybook -- --strict  # exit 1 on any violation
 ```
 
-**It is not a CI gate, deliberately.** A new gate that starts red gets disabled rather
-than fixed. `--strict` exists so it can become one once the open findings below are
-resolved.
+`a11y:storybook:strict` **is a CI gate**, in the `ci` job and in `bun run verify`. It
+shipped as a report first and was promoted only once it reached zero violations: a gate
+that starts red gets disabled rather than fixed.
 
-### What the first audit found
+### What the audit found, and what it changed
 
-Over 139 stories, three rules:
+The first run reported three rules over 139 stories. All three are now clean, so
+`a11y:storybook:strict` is a **CI gate** — it was promoted only after reaching zero,
+because a gate that starts red gets disabled rather than fixed.
 
-| Rule | Impact | Status |
+| Rule | Impact | Outcome |
 | --- | --- | --- |
-| `button-name` | critical | **Fixed** — 10 nodes |
-| `color-contrast` | serious | Filed as [#481](https://github.com/kevinch3/NicotinD/issues/481) — 241 nodes across 16 components |
-| `link-in-text-block` | serious | Filed as [#482](https://github.com/kevinch3/NicotinD/issues/482) — 12 nodes, `ChangelogModal` |
+| `button-name` | critical | Fixed — nine icon-only buttons had no accessible name |
+| `color-contrast` | serious | Fixed — 241 nodes → 0 ([#481](https://github.com/kevinch3/NicotinD/issues/481)) |
+| `link-in-text-block` | serious | Fixed — changelog commit links now underlined ([#482](https://github.com/kevinch3/NicotinD/issues/482)) |
 
-`button-name` was a real app defect, not a story artifact: nine icon-only `<button>`s had
-no accessible name at all — the transport controls in `player-transport-mini`,
-`now-playing-transport` and the karaoke overlay, plus the Now Playing close, the
-album-hunt close and the settings-group toggle. A screen reader announced nothing for the
-entire playback transport. Exactly the failure the Icons foundation page warns about, and
-invisible until the catalog rendered those components in isolation.
+**`button-name` was a real app defect**, not a story artifact: the transport controls in
+`player-transport-mini`, `now-playing-transport` and the karaoke overlay, plus Now Playing
+close, album-hunt close and the settings-group toggle, announced nothing to a screen
+reader. Counting them needs care — `title` also supplies an accessible name, in any
+binding form, so a pass looking only for `aria-label` over-reports by roughly 2×.
 
-Counting them needs care: `title` also supplies an accessible name, in any binding form.
-A first pass that only looked for `aria-label` reported 23 unnamed buttons, of which 14
-already had a `[title]`.
+### The contrast work, in the order the measurements forced
 
-Contrast is a theme-token question, not a component one. Measured across the first 40
-stories:
+Going from 241 failing nodes to 0 took four distinct fixes, and the first one was a bug in
+this catalog rather than in the app:
 
-| Theme | Failing nodes |
-| --- | --- |
-| `midnight` (default) | 98 |
-| `oled` | 95 |
-| `daylight` | 6 |
-| `eink` | 0 |
+1. **The story canvas was unthemed** (~70 nodes). Storybook's canvas is white and the
+   app's background lives on the layout shell (`bg-theme-base`), which no story renders —
+   so dark-theme text sat on white. `withThemedCanvas` in `preview.ts` paints the canvas
+   from `--theme-bg`. Without this fix the remaining measurements would have been taken
+   against a background the app never shows.
+2. **`--theme-text-muted` was the single biggest cause** (185 nodes), failing at
+   3.08–4.11 across surfaces. Raised per theme against each theme's *lightest* surface,
+   preserving hue and staying visibly dimmer than `--theme-text-secondary`. `eink` already
+   passed at 9.57.
+3. **Accent needed splitting into two tokens.** Accent-as-text and white-on-accent-fill
+   pull the requirement in opposite directions — one value cannot satisfy both (accent
+   text measured 2.37:1 on warm-paper's surface-2, while white on that same accent needs
+   the fill to stay dark). `--theme-accent-text` is now the text one, registered as
+   `text-theme-accent-text`; `--theme-accent` stays the fill. `WelcomeBanner` also
+   hardcoded `color: #fff` instead of `--theme-on-accent`, which was simply wrong on
+   warm-paper, where on-accent is a dark brown.
+4. **Disabled rows are exempt, not broken.** WCAG 1.4.3 exempts text in an inactive
+   component, but axe applies that only to native `:disabled` controls — a disabled
+   `TrackRow` is a `<div>` with `opacity-40 pointer-events-none`, so its dimmed text read
+   as five failures. Lightening it would defeat the disabled affordance. The row now
+   carries `aria-disabled` (which it should have had regardless — a screen reader could
+   not tell it was unavailable) and the audit excludes `[aria-disabled="true"]`.
 
-Worst measured ratio is **1.24:1** against the 4.5:1 requirement, and `text-theme-muted`
-sits at 3.66:1. It is a dark-theme problem; `eink` is already clean, which is what you
-would expect from a monochrome high-contrast palette.
+Per-theme failing nodes before the fixes, which is what showed contrast to be a
+theme-token problem rather than a component one:
+
+| Theme | Before | After |
+| --- | --- | --- |
+| `midnight` (default) | 98 | 0 |
+| `oled` | 95 | 0 |
+| `daylight` | 6 | 0 |
+| `eink` | 0 | 0 |
 
 ## Publishing
 

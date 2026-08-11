@@ -127,6 +127,11 @@ jobs:
       - name: Smoke (Storybook stories render)
         run: bun run smoke:storybook
 
+      # Promoted to a gate only once it was green (#481/#482). A gate that starts red
+      # gets disabled rather than fixed, which is why it shipped as a report first.
+      - name: Accessibility (axe over every story)
+        run: bun run a11y:storybook:strict
+
   # Analysis sidecar (packages/analysis): contract + pure-function tests against
   # a fake model registry — no TensorFlow/Essentia download in CI. The gated
   # golden tests (real models) auto-skip without ANALYSIS_MODELS_DIR.

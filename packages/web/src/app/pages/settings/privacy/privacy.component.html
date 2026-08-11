@@ -35,7 +35,7 @@
           <p class="text-sm font-medium text-theme-primary">{{ 'privacy.collectTitle' | t }}</p>
           <p class="text-xs text-theme-muted">{{ 'privacy.collectHint' | t }}</p>
           @if (lockedReason(); as reason) {
-            <p class="text-xs text-theme-accent mt-1" data-testid="privacy-locked">
+            <p class="text-xs text-theme-accent-text mt-1" data-testid="privacy-locked">
               {{ reason | t }}
             </p>
           }

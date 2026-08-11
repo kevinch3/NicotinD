@@ -4,6 +4,7 @@
          registers as a child group of the surrounding vertical track list so
          ArrowUp/Down still move between rows. -->
     <div data-testid="track-row" appTvNavGroup [axis]="'horizontal'" [attr.data-playback-state]="playbackState()"
+      [attr.aria-disabled]="disabled() ? 'true' : null"
       [class]="'flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-theme-hover transition group' + (disabled() ? ' opacity-40 pointer-events-none' : '')">
       @if (selectable()) {
         <button type="button" (click)="selectedChange.emit($event)"
@@ -42,7 +43,7 @@
       }
       <div class="flex-1 min-w-0">
         <button type="button" appTvNavItem data-testid="track-row-title" (click)="play.emit()" class="w-full text-left">
-          <p class="text-sm truncate" [class.text-theme-accent]="isCurrent()" [class.text-theme-primary]="!isCurrent()">{{ track().title }}</p>
+          <p class="text-sm truncate" [class.text-theme-accent-text]="isCurrent()" [class.text-theme-primary]="!isCurrent()">{{ track().title }}</p>
         </button>
         @if (artists()?.length) {
           <p class="text-xs text-theme-muted truncate">

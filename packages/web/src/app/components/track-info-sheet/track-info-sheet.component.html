@@ -169,7 +169,7 @@
                 class="rounded-full px-2 py-0.5 text-xs"
                 [class]="
                   first
-                    ? 'bg-theme-accent/15 text-theme-accent font-medium'
+                    ? 'bg-theme-accent/15 text-theme-accent-text font-medium'
                     : 'bg-theme-surface-2 text-theme-secondary'
                 "
                 data-testid="genre-chip"
@@ -219,7 +219,7 @@
             [class]="
               currentLicence() === 'unknown'
                 ? 'bg-theme-surface-2 text-theme-muted'
-                : 'bg-theme-accent/15 text-theme-accent font-medium'
+                : 'bg-theme-accent/15 text-theme-accent-text font-medium'
             "
             data-testid="licence-value"
             >{{ currentLicenceLabel() }}</span
@@ -413,7 +413,7 @@
                   [href]="'https://musicbrainz.org/recording/' + record.detail.mb_recording_id"
                   target="_blank"
                   rel="noopener"
-                  class="text-xs text-theme-accent hover:underline"
+                  class="text-xs text-theme-accent-text hover:underline"
                   >MusicBrainz &nearr;</a
                 >
               }
