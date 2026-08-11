@@ -139,6 +139,55 @@ problems above. Neither a type check nor webpack can see that class of failure. 
 that compiles but does not render is worse than no catalog, because it looks maintained.
 `bun run smoke:storybook` renders every story and fails on any error.
 
+## Accessibility audit
+
+`@storybook/addon-a11y` runs axe per story in the Storybook UI — the right surface while
+fixing one component. The whole-catalog view is a script:
+
+```bash
+bun run a11y:storybook              # report, always exits 0
+bun run a11y:storybook -- --strict  # exit 1 on any violation
+```
+
+**It is not a CI gate, deliberately.** A new gate that starts red gets disabled rather
+than fixed. `--strict` exists so it can become one once the open findings below are
+resolved.
+
+### What the first audit found
+
+Over 139 stories, three rules:
+
+| Rule | Impact | Status |
+| --- | --- | --- |
+| `button-name` | critical | **Fixed** — 10 nodes |
+| `color-contrast` | serious | Filed as [#481](https://github.com/kevinch3/NicotinD/issues/481) — 241 nodes across 16 components |
+| `link-in-text-block` | serious | Filed as [#482](https://github.com/kevinch3/NicotinD/issues/482) — 12 nodes, `ChangelogModal` |
+
+`button-name` was a real app defect, not a story artifact: nine icon-only `<button>`s had
+no accessible name at all — the transport controls in `player-transport-mini`,
+`now-playing-transport` and the karaoke overlay, plus the Now Playing close, the
+album-hunt close and the settings-group toggle. A screen reader announced nothing for the
+entire playback transport. Exactly the failure the Icons foundation page warns about, and
+invisible until the catalog rendered those components in isolation.
+
+Counting them needs care: `title` also supplies an accessible name, in any binding form.
+A first pass that only looked for `aria-label` reported 23 unnamed buttons, of which 14
+already had a `[title]`.
+
+Contrast is a theme-token question, not a component one. Measured across the first 40
+stories:
+
+| Theme | Failing nodes |
+| --- | --- |
+| `midnight` (default) | 98 |
+| `oled` | 95 |
+| `daylight` | 6 |
+| `eink` | 0 |
+
+Worst measured ratio is **1.24:1** against the 4.5:1 requirement, and `text-theme-muted`
+sits at 3.66:1. It is a dark-theme problem; `eink` is already clean, which is what you
+would expect from a monochrome high-contrast palette.
+
 ## Publishing
 
 `.github/workflows/storybook-pages.yml` publishes the static build **on every push to
@@ -169,7 +218,7 @@ Tracked under the `storybook` label.
 | [#471](https://github.com/kevinch3/NicotinD/issues/471) | Story the acquisition modals (`album-hunt`, `metadata-fix`, `folder-browser`, `artist-image-menu`) |
 | [#472](https://github.com/kevinch3/NicotinD/issues/472) | Story the review surfaces (`review-inbox`, `track-info-sheet`, `feedback-detail-sheet`, `bottom-nav`) |
 | [#473](https://github.com/kevinch3/NicotinD/issues/473) | Visual regression on top of the stories |
-| [#474](https://github.com/kevinch3/NicotinD/issues/474) | `@storybook/addon-a11y` plus triage of its findings |
+| ~~[#474](https://github.com/kevinch3/NicotinD/issues/474)~~ | ✅ `@storybook/addon-a11y` plus triage — findings became [#481](https://github.com/kevinch3/NicotinD/issues/481) / [#482](https://github.com/kevinch3/NicotinD/issues/482) |
 | [#475](https://github.com/kevinch3/NicotinD/issues/475) | Interaction tests for `menu-panel`, `seek-bar`, `selection-bar` |
 | [#476](https://github.com/kevinch3/NicotinD/issues/476) | i18n toolbar global (en/es) driving `TranslateService` |
 | [#477](https://github.com/kevinch3/NicotinD/issues/477) | Catalog the shared directives and pipes |

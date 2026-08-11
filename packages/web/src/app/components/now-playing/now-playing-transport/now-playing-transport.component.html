@@ -20,6 +20,8 @@
       appTvNavItem
       (click)="player.toggleShuffle()"
       data-testid="now-playing-shuffle"
+      [attr.aria-label]="(player.shuffle() ? 'nowPlaying.shuffleOff' : 'nowPlaying.shuffleOn') | t"
+      [attr.aria-pressed]="player.shuffle()"
       [attr.aria-pressed]="player.shuffle()"
       [class]="'w-8 h-8 flex items-center justify-center rounded-full transition ' + (player.shuffle() ? 'text-theme-accent' : 'text-theme-muted hover:text-theme-secondary')"
     >
@@ -29,7 +31,7 @@
     </button>
   }
 
-  <button appTvNavItem (click)="prevClicked.emit()" class="w-10 h-10 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition">
+  <button appTvNavItem (click)="prevClicked.emit()" [attr.aria-label]="'nowPlaying.previous' | t" class="w-10 h-10 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="5" width="3" height="14" /><polygon points="21,5 9,12 21,19" /></svg>
   </button>
 
@@ -37,6 +39,7 @@
     appTvNavItem
     (click)="playPauseClicked.emit()"
     data-testid="now-playing-playpause"
+    [attr.aria-label]="(playing() ? 'nowPlaying.pause' : 'nowPlaying.play') | t"
     [attr.data-buffering]="buffering()"
     class="w-14 h-14 rounded-full bg-theme-inverse text-theme-inverse flex items-center justify-center hover:opacity-90 transition"
   >
@@ -49,7 +52,7 @@
     }
   </button>
 
-  <button appTvNavItem (click)="nextClicked.emit()" class="w-10 h-10 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition">
+  <button appTvNavItem (click)="nextClicked.emit()" [attr.aria-label]="'nowPlaying.next' | t" class="w-10 h-10 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="3,5 15,12 3,19" /><rect x="18" y="5" width="3" height="14" /></svg>
   </button>
 

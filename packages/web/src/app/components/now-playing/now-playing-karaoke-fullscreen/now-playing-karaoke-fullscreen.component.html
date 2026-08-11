@@ -178,6 +178,7 @@
       <button
         appTvNavItem
         (click)="prevClicked.emit()"
+        [attr.aria-label]="'nowPlaying.previous' | t"
         class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -188,6 +189,7 @@
       <button
         appTvNavItem
         (click)="playPauseClicked.emit()"
+        [attr.aria-label]="(playing() ? 'nowPlaying.pause' : 'nowPlaying.play') | t"
         [attr.data-buffering]="buffering()"
         class="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm text-white flex items-center justify-center hover:bg-white/30 transition border border-white/10"
       >
@@ -207,6 +209,7 @@
       <button
         appTvNavItem
         (click)="nextClicked.emit()"
+        [attr.aria-label]="'nowPlaying.next' | t"
         class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">

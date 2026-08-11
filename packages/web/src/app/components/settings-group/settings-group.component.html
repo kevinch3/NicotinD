@@ -6,6 +6,8 @@
     type="button"
     (click)="toggle()"
     data-testid="settings-group-toggle"
+      [attr.aria-label]="(open() ? 'Collapse ' : 'Expand ') + title()"
+      [attr.aria-expanded]="open()"
     class="w-full flex items-center gap-2 text-left p-6"
     [attr.aria-expanded]="open()"
   >
