@@ -88,6 +88,157 @@ export const addonManifestSchema: z.ZodType<AddonManifest> = z.object({
   urlPatterns: z.array(z.string()).optional(),
 }) as z.ZodType<AddonManifest>;
 
+/* ————— Search (blended lane) ————— */
+
+export interface AddonSearchRequest {
+  query: string;
+  /** Soft wait budget for the source's own search round-trip. */
+  waitMs?: number;
+}
+
+export const addonSearchRequestSchema = z.object({
+  query: z.string().min(1),
+  waitMs: z.number().int().positive().max(120_000).optional(),
+});
+
+export interface AddonSearchResultFile {
+  filename: string;
+  size: number;
+  bitRateKbps?: number;
+}
+
+/** One source-neutral result row for the blended search lane. */
+export interface AddonSearchResult {
+  kind: 'song' | 'folder';
+  title: string;
+  username: string;
+  directory?: string;
+  filename?: string;
+  size?: number;
+  bitRateKbps?: number;
+  audioFormat?: string;
+  files?: AddonSearchResultFile[];
+}
+
+export interface AddonSearchResponse {
+  results: AddonSearchResult[];
+  complete: boolean;
+}
+
+/* ————— Album hunt lane ————— */
+
+export interface AddonTrackRef {
+  title: string;
+}
+
+export interface AddonAlbumSearchRequest {
+  artist: string;
+  album: string;
+  canonicalTracks: AddonTrackRef[];
+  /** Force the skew pass even when the base pass looks complete. */
+  skew?: boolean;
+}
+
+export const addonAlbumSearchRequestSchema = z.object({
+  artist: z.string().min(1),
+  album: z.string().min(1),
+  canonicalTracks: z.array(z.object({ title: z.string() })),
+  skew: z.boolean().optional(),
+});
+
+export interface AddonAlbumCandidate {
+  /** Opaque short-lived token — pass back in a job request to pick this folder. */
+  candidateRef: string;
+  username: string;
+  directory: string;
+  matchedTracks: number;
+  totalTracks: number;
+  matchPct: number;
+  format: string;
+  estimatedSizeMb: number;
+  isLive: boolean;
+  files: AddonSearchResultFile[];
+}
+
+export interface AddonAlbumSearchResponse {
+  candidates: AddonAlbumCandidate[];
+  /** The literal source queries fired (debug display — the hunt modal shows these). */
+  queries: string[];
+  skewNeeded: boolean;
+}
+
+/* ————— Jobs ————— */
+
+/** `url` is reserved for resolver-shaped addons (phase 2+ of the migration). */
+export type AddonJobIntent = 'album' | 'tracks' | 'browse-grab';
+
+export interface AddonJobRequest {
+  intent: AddonJobIntent;
+  artist?: string;
+  album?: string;
+  /** Full canonical tracklist — what candidates are scored against. */
+  canonicalTracks?: AddonTrackRef[];
+  /** Missing-on-disk subset — what actually gets acquired. Defaults to all. */
+  wantedTracks?: AddonTrackRef[];
+  /** album: acquire this previously-returned candidate instead of auto-picking. */
+  candidateRef?: string;
+  /** album: auto-pick threshold (matchPct floor). */
+  minMatchPct?: number;
+  /** tracks: bare titles to hunt individually. */
+  titles?: string[];
+  /** browse-grab: explicit peer files. */
+  username?: string;
+  files?: { filename: string; size: number }[];
+}
+
+export const addonJobRequestSchema = z.object({
+  intent: z.enum(['album', 'tracks', 'browse-grab']),
+  artist: z.string().optional(),
+  album: z.string().optional(),
+  canonicalTracks: z.array(z.object({ title: z.string() })).optional(),
+  wantedTracks: z.array(z.object({ title: z.string() })).optional(),
+  candidateRef: z.string().optional(),
+  minMatchPct: z.number().min(0).max(100).optional(),
+  titles: z.array(z.string()).optional(),
+  username: z.string().optional(),
+  files: z.array(z.object({ filename: z.string(), size: z.number() })).optional(),
+});
+
+export type AddonJobState = 'active' | 'done' | 'partial' | 'failed' | 'cancelled';
+export type AddonJobItemState = 'queued' | 'downloading' | 'completed' | 'failed' | 'unavailable';
+
+export interface AddonJobItem {
+  /**
+   * Stable across fallback repoints: an addon-internal re-pull from another
+   * peer flips `username`/`filename` on the SAME item, so the host's mirror
+   * upsert reproduces repoint semantics without knowing fallback exists.
+   */
+  itemId: string;
+  title: string | null;
+  username: string;
+  filename: string;
+  size: number;
+  bitRateKbps?: number;
+  audioFormat?: string;
+  state: AddonJobItemState;
+  bytesTransferred?: number;
+  /** File bytes are downloadable via GET jobs/:id/files/:itemId. */
+  fileReady: boolean;
+  updatedAt: number;
+}
+
+export interface AddonJob {
+  id: string;
+  intent: AddonJobIntent;
+  artist: string | null;
+  album: string | null;
+  state: AddonJobState;
+  error: string | null;
+  items: AddonJobItem[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** Adapt an addon manifest to the plugin-manifest shape the kernel validates. */
 export function pluginManifestFromAddon(m: AddonManifest): PluginManifest {
   return {
