@@ -14,6 +14,7 @@
     <button
       appTvNavItem
       data-testid="now-playing-close"
+      [attr.aria-label]="'nowPlaying.close' | t"
       (click)="player.setNowPlayingOpen(false)"
       class="absolute left-0 w-8 h-8 flex items-center justify-center text-theme-muted hover:text-theme-primary transition"
     >

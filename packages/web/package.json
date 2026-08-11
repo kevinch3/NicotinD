@@ -39,6 +39,7 @@
     "@angular/cli": "^22.0.7",
     "@angular/compiler-cli": "^22.0.7",
     "@compodoc/compodoc": "^2.0.0",
+    "@storybook/addon-a11y": "10.5.7",
     "@storybook/addon-docs": "10.5.7",
     "@storybook/addon-themes": "10.5.7",
     "@storybook/angular": "10.5.7",

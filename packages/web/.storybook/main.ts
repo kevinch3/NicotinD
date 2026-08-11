@@ -2,7 +2,7 @@ import type { StorybookConfig } from '@storybook/angular';
 
 const config: StorybookConfig = {
   stories: ['../src/stories/**/*.mdx', '../src/app/**/*.stories.ts'],
-  addons: ['@storybook/addon-docs', '@storybook/addon-themes'],
+  addons: ['@storybook/addon-docs', '@storybook/addon-themes', '@storybook/addon-a11y'],
   framework: { name: '@storybook/angular', options: {} },
   staticDirs: ['../public'],
   docs: { defaultName: 'Docs' },

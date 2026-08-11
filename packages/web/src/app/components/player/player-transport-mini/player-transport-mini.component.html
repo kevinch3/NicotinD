@@ -4,6 +4,8 @@
       <button
         (click)="player.toggleShuffle()"
         data-testid="player-shuffle"
+        [attr.aria-label]="player.shuffle() ? 'Turn shuffle off' : 'Turn shuffle on'"
+        [attr.aria-pressed]="player.shuffle()"
         [attr.data-active]="player.shuffle()"
         [class]="'hidden md:flex w-7 h-7 items-center justify-center rounded-full transition ' +
           (player.shuffle() ? 'text-status-done' : 'text-theme-muted hover:text-theme-secondary')"
@@ -22,6 +24,7 @@
         appTvNavItem
         (click)="prevClicked.emit()"
         data-testid="player-prev"
+        aria-label="Previous track"
         class="w-7 h-7 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -35,6 +38,7 @@
         appTvNavItem
         (click)="playPauseClicked.emit()"
         data-testid="player-playpause"
+        [attr.aria-label]="playing() ? 'Pause' : 'Play'"
         [attr.data-playing]="playing()"
         [attr.data-buffering]="buffering()"
         class="w-8 h-8 rounded-full bg-theme-inverse text-theme-inverse flex items-center justify-center hover:opacity-90 transition"
@@ -58,6 +62,7 @@
         appTvNavItem
         (click)="nextClicked.emit()"
         data-testid="player-next"
+        aria-label="Next track"
         class="w-7 h-7 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -69,6 +74,13 @@
       <!-- Repeat - desktop only -->
       <button
         (click)="player.cycleRepeat()"
+        [attr.aria-label]="
+          player.repeat() === 'one'
+            ? 'Repeat one — change repeat mode'
+            : player.repeat() === 'all'
+              ? 'Repeat all — change repeat mode'
+              : 'Repeat off — change repeat mode'
+        "
         [class]="'hidden md:flex w-7 h-7 items-center justify-center rounded-full transition relative ' +
           (player.repeat() !== 'off' ? 'text-status-done' : 'text-theme-muted hover:text-theme-secondary')"
       >
