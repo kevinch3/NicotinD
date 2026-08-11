@@ -468,9 +468,9 @@ export function mergeAcquisitionJobs(
   for (const job of jobs) {
     if (job.kind === 'url') continue;
     if (buckets.has(job.id)) continue;
-    // No live transfers for this job: only surface it while it's still active
-    // (finished jobs with no transfers are history, not feed).
-    if (job.state !== 'active') continue;
+    // The raw transfers lane is gone (phase 3): every network job renders from
+    // the feed row alone, finished ones included — the server's 7-day TTL prune
+    // bounds the history, and a done card is what carries "Open in Library".
     merged.push({
       key: `job:${job.id}`,
       kind: 'slskd',
@@ -487,8 +487,8 @@ export function mergeAcquisitionJobs(
       unavailable: job.progress.unavailable > 0 ? job.progress.unavailable : undefined,
       error: job.error ?? undefined,
       canRetry: false,
-      canCancel: false,
-      canRemove: false,
+      canCancel: job.stage === 'downloading',
+      canRemove: job.stage === 'done' || job.stage === 'error',
     });
   }
 

@@ -114,9 +114,6 @@ export class DownloadsComponent {
     this.confirmCallback.set(null);
   }
 
-  // Computed — slskd transfers
-  readonly groups = computed(() => groupByAlbum(this.transferService.downloads()));
-
   // Computed — acquire jobs (the finished buckets drive "Clear finished").
   readonly sortedAcquireJobs = computed(() => sortAcquireJobs(this.transferService.acquireJobs()));
   readonly failedAcquireJobs = computed(() =>
@@ -132,7 +129,7 @@ export class DownloadsComponent {
   // counts, and job rows whose transfers vanished from slskd).
   readonly downloadFeed = computed(() =>
     mergeAcquisitionJobs(
-      buildDownloadFeed(this.groups(), this.transferService.acquireJobs()),
+      buildDownloadFeed([], this.transferService.acquireJobs()),
       this.transferService.acquisitionJobs(),
     ),
   );
@@ -145,57 +142,6 @@ export class DownloadsComponent {
 
   // Re-enqueue the failed tracks of a group. slskd resumes the partial files,
   // and the retried transfers get a fresh auto-retry budget on the server.
-  async retryGroup(group: AlbumGroup): Promise<void> {
-    const ids = group.erroredFileIds;
-    if (!ids.length) return;
-    this.retrying.update((prev) => new Set(prev).add(group.key));
-    try {
-      await firstValueFrom(
-        this.api.retryDownloads(ids.map((id) => ({ username: group.username, id }))),
-      );
-    } catch {
-      /* ignore */
-    } finally {
-      this.retrying.update((prev) => {
-        const next = new Set(prev);
-        next.delete(group.key);
-        return next;
-      });
-      this.transferService.kickPoll();
-    }
-  }
-
-  async clearGroup(group: AlbumGroup): Promise<void> {
-    await Promise.all(
-      group.fileIds.map((id) =>
-        firstValueFrom(this.api.cancelDownload(group.username, id)).catch(() => {}),
-      ),
-    );
-    this.transferService.kickPoll();
-  }
-
-  async clearAllFinished(): Promise<void> {
-    try {
-      await firstValueFrom(this.api.cancelAllFinished());
-    } catch {
-      /* ignore */
-    }
-    // Also clear all done/failed acquire jobs
-    const toClear = [...this.failedAcquireJobs(), ...this.doneAcquireJobs()];
-    await Promise.all(
-      toClear.map((j) => firstValueFrom(this.api.deleteAcquireJob(j.id)).catch(() => {})),
-    );
-    this.transferService.kickPoll();
-  }
-
-  async cancelAll(): Promise<void> {
-    try {
-      await firstValueFrom(this.api.cancelAllDownloads());
-    } catch {
-      /* ignore */
-    }
-    this.transferService.kickPoll();
-  }
 
   async triggerScan(): Promise<void> {
     if (this.scanning()) return;
@@ -209,33 +155,16 @@ export class DownloadsComponent {
     }
   }
 
-  removeGroup(group: AlbumGroup): void {
-    this.askConfirm(`Remove "${group.name}" and all its ${group.totalFiles} file(s)?`, async () => {
-      await Promise.all(
-        group.fileIds.map((id) =>
-          firstValueFrom(this.api.cancelDownload(group.username, id)).catch(() => {}),
-        ),
-      );
-      this.transferService.kickPoll();
-    });
-  }
-
   // ─── Unified feed dispatch (routes a DownloadItem action to its source) ───
 
   /**
-   * The slskd folder groups behind a feed card. A collapsed card (one album
-   * spread over several peers/subfolders) carries every member's key, so
-   * actions fan out to all of them.
+   * A network card is a unified job (the raw transfers lane is gone —
+   * phase 3): its actions go to the job endpoints, resolved to the owning
+   * addon server-side. URL cards keep their acquire-job actions.
    */
-  private groupsForItem(item: DownloadItem): AlbumGroup[] {
-    const keys = new Set(item.memberKeys ?? [item.key]);
-    return this.groups().filter((g) => keys.has(g.key));
-  }
 
   onItemRetry(item: DownloadItem): void {
-    if (item.kind === 'slskd') {
-      for (const g of this.groupsForItem(item)) void this.retryGroup(g);
-    } else {
+    if (item.kind !== 'slskd') {
       const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
       if (j) void this.retryAcquireJob(j);
     }
@@ -243,7 +172,7 @@ export class DownloadsComponent {
 
   onItemCancel(item: DownloadItem): void {
     if (item.kind === 'slskd') {
-      for (const g of this.groupsForItem(item)) void this.clearGroup(g);
+      if (item.jobId) void this.cancelJob(item.jobId);
     } else {
       const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
       if (j) void this.dismissAcquireJob(j);
@@ -252,11 +181,56 @@ export class DownloadsComponent {
 
   onItemRemove(item: DownloadItem): void {
     if (item.kind === 'slskd') {
-      for (const g of this.groupsForItem(item)) this.removeGroup(g);
+      if (item.jobId) {
+        this.askConfirm('Remove this download from the feed?', async () => {
+          await firstValueFrom(this.api.deleteJob(item.jobId!)).catch(() => {});
+          await this.transferService.kickPoll();
+        });
+      }
     } else {
       const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
       if (j) void this.dismissAcquireJob(j);
     }
+  }
+
+  private async cancelJob(jobId: string): Promise<void> {
+    try {
+      await firstValueFrom(this.api.cancelJob(jobId));
+    } catch {
+      /* ignore */
+    }
+    await this.transferService.kickPoll();
+  }
+
+  /** Cancel every in-flight card: addon jobs via their job endpoint, URL
+   *  acquire jobs via their delete. */
+  async cancelAll(): Promise<void> {
+    const active = this.downloadFeed().filter((i) => i.stage !== 'done' && i.stage !== 'error');
+    await Promise.all(
+      active.map((i) =>
+        i.kind === 'slskd' && i.jobId
+          ? firstValueFrom(this.api.cancelJob(i.jobId)).catch(() => {})
+          : Promise.resolve(),
+      ),
+    );
+    await this.transferService.kickPoll();
+  }
+
+  /** Clear finished/errored cards from the feed on both sides. */
+  async clearAllFinished(): Promise<void> {
+    const finished = this.downloadFeed().filter((i) => i.stage === 'done' || i.stage === 'error');
+    await Promise.all(
+      finished.map((i) =>
+        i.kind === 'slskd' && i.jobId
+          ? firstValueFrom(this.api.deleteJob(i.jobId)).catch(() => {})
+          : Promise.resolve(),
+      ),
+    );
+    const toClear = [...this.failedAcquireJobs(), ...this.doneAcquireJobs()];
+    await Promise.all(
+      toClear.map((j) => firstValueFrom(this.api.deleteAcquireJob(j.id)).catch(() => {})),
+    );
+    await this.transferService.kickPoll();
   }
 
   // ─── Acquire job actions ─────────────────────────────────────────

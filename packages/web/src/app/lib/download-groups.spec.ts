@@ -655,9 +655,11 @@ describe('mergeAcquisitionJobs', () => {
     expect(merged).toHaveLength(0);
   });
 
-  it('does not append finished jobs with no matching transfers (history, not feed)', () => {
+  it('appends finished jobs too — the feed row alone carries a card since phase 3', () => {
     const merged = mergeAcquisitionJobs([], [acqJob({ state: 'done', stage: 'done' })]);
-    expect(merged).toHaveLength(0);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.stage).toBe('done');
+    expect(merged[0]!.canRemove).toBe(true);
   });
 });
 

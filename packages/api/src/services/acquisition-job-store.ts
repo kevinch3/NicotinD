@@ -902,8 +902,16 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
       (counts.get('organized') ?? 0) +
       (counts.get('scanned') ?? 0);
     const itemRows = db
-      .query<{ track_title: string | null; state: string }, [string]>(
-        `SELECT track_title, state FROM acquisition_job_items WHERE job_id = ? ORDER BY id`,
+      .query<
+        {
+          track_title: string | null;
+          state: string;
+          username: string | null;
+          filename: string | null;
+        },
+        [string]
+      >(
+        `SELECT track_title, state, username, filename FROM acquisition_job_items WHERE job_id = ? ORDER BY id`,
       )
       .all(row.id);
     const quality = rollupJobQuality(db, row.id);
@@ -947,6 +955,8 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
       items: itemRows.map((r) => ({
         title: r.track_title ?? '',
         status: itemStateToTrackStatus(r.state),
+        username: r.username,
+        filename: r.filename,
       })),
     };
   });

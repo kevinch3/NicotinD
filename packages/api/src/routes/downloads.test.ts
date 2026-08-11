@@ -69,7 +69,8 @@ describe('downloads routes', () => {
     });
     const registry = new ProviderRegistry();
     registry.register(new TestNetworkProvider(slskdRef));
-    app.route('/', downloadRoutes(registry, slskdRef));
+    void slskdMock;
+    app.route('/', downloadRoutes(registry));
   });
 
   it('POST / wraps a direct grab in a lightweight acquisition job', async () => {
@@ -105,38 +106,6 @@ describe('downloads routes', () => {
     expect(item.transfer_key).toBe('peerX::@@x\\Music\\Some Artist\\Some Album\\01 Track.flac');
   });
 
-  it('GET / returns all downloads when none are hidden', async () => {
-    const res = await app.request('/');
-    const data = await res.json();
-    expect(res.status).toBe(200);
-    expect(data[0].directories[0].files).toHaveLength(2);
-  });
-
-  it('GET / enriches via stored acquisition-job transfer keys (no album_jobs row needed)', async () => {
-    createJob(testDb, {
-      kind: 'album-hunt',
-      method: 'slskd',
-      artistName: 'Bowie',
-      albumTitle: 'Heathen',
-      username: 'user1',
-      canonicalTracks: ['a', 'b', 'c'],
-      files: [{ filename: 'file1.mp3' }, { filename: 'file2.mp3' }],
-    });
-
-    const res = await app.request('/');
-    const data = (await res.json()) as Array<{
-      directories: Array<{
-        albumJob?: { artistName: string; albumTitle: string; canonicalTrackCount: number };
-      }>;
-    }>;
-    expect(data[0].directories[0].albumJob).toMatchObject({
-      artistName: 'Bowie',
-      albumTitle: 'Heathen',
-      canonicalTrackCount: 3,
-      albumId: albumIdFor('Bowie', 'Heathen'),
-    });
-  });
-
   it('GET /jobs returns the unified job feed with per-state progress', async () => {
     const id = createJob(testDb, {
       kind: 'album-hunt',
@@ -170,114 +139,6 @@ describe('downloads routes', () => {
     expect(jobs[0].artistName).toBe('Bowie');
     expect(jobs[0].albumId).toBe(albumIdFor('Bowie', 'Heathen'));
     expect(jobs[0].progress).toEqual({ expected: 2, delivered: 1, unavailable: 0, failed: 0 });
-  });
-
-  it('GET / leaves direct (non-hunt) folders without albumJob metadata', async () => {
-    const res = await app.request('/');
-    const data = (await res.json()) as Array<{ directories: Array<{ albumJob?: unknown }> }>;
-    expect(data[0].directories[0].albumJob).toBeUndefined();
-  });
-
-  it('GET / does not enrich folders whose job is no longer active', async () => {
-    testDb.run(
-      `INSERT INTO album_jobs
-        (lidarr_album_id, username, directory, canonical_tracks_json, alternates_json,
-         artist_name, album_title, state, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'done', ?)`,
-      [1, 'user1', 'dir1', JSON.stringify(['a', 'b']), '[]', 'Patricio Rey', 'Oktubre', Date.now()],
-    );
-
-    const res = await app.request('/');
-    const data = (await res.json()) as Array<{ directories: Array<{ albumJob?: unknown }> }>;
-    expect(data[0].directories[0].albumJob).toBeUndefined();
-  });
-
-  it('GET / filters out hidden transfers', async () => {
-    testDb.run('INSERT INTO hidden_transfers (id) VALUES (?)', ['guid1']);
-
-    const res = await app.request('/');
-    const data = (await res.json()) as Array<{
-      directories: Array<{ files: Array<{ id: string }> }>;
-    }>;
-
-    expect(data[0].directories[0].files).toHaveLength(1);
-    expect(data[0].directories[0].files[0].id).toBe('guid2');
-  });
-
-  it('DELETE /:username/:id adds to hidden_transfers and calls slskd cancel', async () => {
-    const res = await app.request('/user1/guid1', { method: 'DELETE' });
-    expect(res.status).toBe(200);
-
-    const hidden = testDb.query('SELECT * FROM hidden_transfers WHERE id = ?').get('guid1');
-    expect(hidden).toBeDefined();
-    // remove=true so the transfer actually leaves slskd's list; the hide is the
-    // fallback for the removals slskd refuses (issue #265).
-    expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid1', { remove: true });
-  });
-
-  it('DELETE /finished uses the bulk remove-completed endpoint', async () => {
-    const res = await app.request('/finished', { method: 'DELETE' });
-    expect(res.status).toBe(200);
-
-    expect(slskdMock.transfers.removeCompleted).toHaveBeenCalled();
-    // One bulk call, not one per completed transfer.
-    expect(slskdMock.transfers.cancel).not.toHaveBeenCalled();
-  });
-
-  it('DELETE /finished falls back to per-transfer removal when the bulk call fails', async () => {
-    slskdMock.transfers.removeCompleted = mock(() => Promise.reject(new Error('404')));
-
-    const res = await app.request('/finished', { method: 'DELETE' });
-    expect(res.status).toBe(200);
-
-    // guid1 is the only 'Completed,' transfer in the fixture.
-    expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid1', { remove: true });
-  });
-
-  it('GET / prunes hidden ids slskd no longer reports', async () => {
-    testDb.run('INSERT INTO hidden_transfers (id) VALUES (?)', ['guid1']); // live
-    testDb.run('INSERT INTO hidden_transfers (id) VALUES (?)', ['ghost']); // gone
-
-    await app.request('/');
-
-    const left = (
-      testDb.query('SELECT id FROM hidden_transfers').all() as Array<{ id: string }>
-    ).map((r) => r.id);
-    expect(left).toEqual(['guid1']);
-  });
-
-  it('DELETE / cancels all transfers and hides them', async () => {
-    const res = await app.request('/', { method: 'DELETE' });
-    expect(res.status).toBe(200);
-
-    // Both files should now be in hidden_transfers
-    const hidden = testDb.query('SELECT id FROM hidden_transfers').all() as Array<{ id: string }>;
-    const hiddenIds = hidden.map((h) => h.id);
-    expect(hiddenIds).toContain('guid1');
-    expect(hiddenIds).toContain('guid2');
-
-    // cancel called once per file, asking slskd to drop each from its list too
-    expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid1', { remove: true });
-    expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid2', { remove: true });
-  });
-
-  it('GET / returns 503 when slskd throws (transient unreachable)', async () => {
-    slskdMock.transfers.getDownloads = mock(() => Promise.reject(new Error('FailedToOpenSocket')));
-
-    const res = await app.request('/');
-    expect(res.status).toBe(503);
-  });
-
-  it('DELETE / preserves previously hidden IDs', async () => {
-    // "guid3" was hidden before Cancel All (e.g. from a prior cancelled transfer)
-    testDb.run('INSERT INTO hidden_transfers (id) VALUES (?)', ['guid3']);
-
-    const res = await app.request('/', { method: 'DELETE' });
-    expect(res.status).toBe(200);
-
-    const hidden = testDb.query('SELECT id FROM hidden_transfers').all() as Array<{ id: string }>;
-    const hiddenIds = hidden.map((h) => h.id);
-    expect(hiddenIds).toContain('guid3');
   });
 });
 
@@ -315,14 +176,7 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
       c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
       return next();
     });
-    app.route(
-      '/',
-      downloadRoutes(
-        new ProviderRegistry(),
-        { current: makeSlskdMock() } as unknown as SlskdRef,
-        pluginRegistry,
-      ),
-    );
+    app.route('/', downloadRoutes(new ProviderRegistry(), pluginRegistry));
 
     const jobId = createJob(testDb, {
       kind: 'album-hunt',

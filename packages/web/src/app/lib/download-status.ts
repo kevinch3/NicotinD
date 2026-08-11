@@ -58,7 +58,9 @@ export function getFolderDownloadLabel(
 
   const inProgress = entries.filter((e) => e.state === 'InProgress' || e.state === 'Initializing');
   if (inProgress.length > 0) {
-    const avg = Math.round(inProgress.reduce((s, e) => s + e.percent, 0) / inProgress.length);
+    const avg = Math.round(
+      inProgress.reduce((s, e) => s + (e.percent ?? 0), 0) / inProgress.length,
+    );
     return { label: `↓ ${avg}%`, variant: 'progress', disabled: true };
   }
 

@@ -4,31 +4,39 @@ import { of } from 'rxjs';
 import { TransferService } from './transfer.service';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { SystemApiService } from './api/system-api.service';
-import type { SlskdUserTransferGroup, AcquireJob } from '@nicotind/core';
+import type { AcquireJob, AcquisitionJobView } from '@nicotind/core';
 
-function makeGroup(states: string[][]): SlskdUserTransferGroup {
+function makeJobView(stage: AcquisitionJobView['stage'], id = 'aj-1'): AcquisitionJobView {
   return {
-    username: 'user',
-    directories: states.map((fileStates, i) => ({
-      directory: `/dir${i}`,
-      fileCount: fileStates.length,
-      files: fileStates.map((state, j) => ({
-        id: `${i}-${j}`,
-        username: 'user',
-        filename: `file${j}`,
-        size: 0,
-        state: state as never,
-        bytesTransferred: 0,
-        averageSpeed: 0,
-        percentComplete: 0,
-      })),
-    })),
+    id,
+    kind: 'album-hunt',
+    method: 'slskd',
+    state: stage === 'done' ? 'done' : 'active',
+    stage,
+    artistName: 'Artist',
+    albumTitle: 'Album',
+    lidarrAlbumId: null,
+    sourceRef: null,
+    error: null,
+    createdAt: 0,
+    updatedAt: 0,
+    albumId: null,
+    progress: { expected: 1, delivered: stage === 'done' ? 1 : 0, unavailable: 0, failed: 0 },
+    items: [
+      {
+        title: 'Song',
+        status: stage === 'done' ? 'done' : 'downloading',
+        username: 'peer',
+        filename: 'file0',
+      },
+    ],
+    sources: [{ username: 'peer', fileCount: 1, state: 'downloading' }],
   };
 }
 
 function makeApiMock(overrides: Partial<DownloadsApiService> = {}): DownloadsApiService {
   return {
-    getDownloads: () => of([]),
+    getAcquisitionJobs: () => of([]),
     getAcquireJobs: () => of([]),
     ...overrides,
   } as unknown as DownloadsApiService;
@@ -80,34 +88,26 @@ describe('TransferService.activeDownloadCount', () => {
     expect(service.activeDownloadCount()).toBe(0);
   });
 
-  it('counts a directory with at least one InProgress file', () => {
-    service.downloads.set([makeGroup([['InProgress'], ['Completed']])]);
+  it('counts in-flight network jobs (unified feed since phase 3)', () => {
+    service.acquisitionJobs.set([makeJobView('downloading'), makeJobView('done', 'aj-2')]);
     expect(service.activeDownloadCount()).toBe(1);
   });
 
-  it('counts Queued and Initializing as active', () => {
-    service.downloads.set([makeGroup([['Queued'], ['Initializing'], ['Completed']])]);
-    expect(service.activeDownloadCount()).toBe(2);
+  it('excludes URL jobs (they badge via acquire jobs)', () => {
+    service.acquisitionJobs.set([{ ...makeJobView('downloading'), kind: 'url' }]);
+    expect(service.activeDownloadCount()).toBe(0);
   });
 
-  it('counts across multiple users and directories', () => {
-    service.downloads.set([
-      makeGroup([['InProgress', 'InProgress'], ['Completed']]),
-      makeGroup([['Queued'], ['Initializing']]),
-    ]);
-    expect(service.activeDownloadCount()).toBe(3);
-  });
-
-  it('is 0 when all files are terminal', () => {
-    service.downloads.set([makeGroup([['Completed'], ['Failed'], ['Cancelled']])]);
+  it('is 0 when all jobs are terminal', () => {
+    service.acquisitionJobs.set([makeJobView('done'), makeJobView('done', 'aj-2')]);
     expect(service.activeDownloadCount()).toBe(0);
   });
 
   it('reacts to signal updates', () => {
     expect(service.activeDownloadCount()).toBe(0);
-    service.downloads.set([makeGroup([['InProgress']])]);
+    service.acquisitionJobs.set([makeJobView('downloading')]);
     expect(service.activeDownloadCount()).toBe(1);
-    service.downloads.set([]);
+    service.acquisitionJobs.set([]);
     expect(service.activeDownloadCount()).toBe(0);
   });
 });
@@ -120,7 +120,7 @@ describe('TransferService adaptive polling', () => {
     vi.useFakeTimers();
     pollCount = 0;
     const api = makeApiMock({
-      getDownloads: () => {
+      getAcquisitionJobs: () => {
         pollCount++;
         return of([]);
       },
@@ -171,9 +171,9 @@ describe('TransferService adaptive polling', () => {
   it('uses 3 s interval when a transfer is active', async () => {
     // Mock keeps returning an active group so the signal stays active after each poll.
     setup({
-      getDownloads: () => {
+      getAcquisitionJobs: () => {
         pollCount++;
-        return of([makeGroup([['InProgress']])]);
+        return of([makeJobView('downloading')]);
       },
     });
     service.startPolling();
@@ -227,7 +227,7 @@ describe('TransferService libraryDirty flagging', () => {
   beforeEach(() => {
     getDownloadsMock = vi.fn().mockReturnValue(of([]));
     const api = makeApiMock({
-      getDownloads: getDownloadsMock,
+      getAcquisitionJobs: getDownloadsMock,
       getAcquireJobs: () => of([]),
     });
     TestBed.configureTestingModule({
@@ -240,19 +240,19 @@ describe('TransferService libraryDirty flagging', () => {
     service = TestBed.inject(TransferService);
   });
 
-  it('does not flag libraryDirty on the first poll even if downloads are completed', async () => {
-    getDownloadsMock.mockReturnValue(of([makeGroup([['Completed, Succeeded']])]));
+  it('does not flag libraryDirty on the first poll even if items are completed', async () => {
+    getDownloadsMock.mockReturnValue(of([makeJobView('done')]));
     expect(service.libraryDirty()).toBe(false);
     await service.poll();
     expect(service.libraryDirty()).toBe(false);
   });
 
-  it('flags libraryDirty on subsequent polls when a new completed download appears', async () => {
-    getDownloadsMock.mockReturnValue(of([makeGroup([['InProgress']])]));
+  it('flags libraryDirty on subsequent polls when an item newly completes', async () => {
+    getDownloadsMock.mockReturnValue(of([makeJobView('downloading')]));
     await service.poll();
     expect(service.libraryDirty()).toBe(false);
 
-    getDownloadsMock.mockReturnValue(of([makeGroup([['Completed, Succeeded']])]));
+    getDownloadsMock.mockReturnValue(of([makeJobView('done')]));
     await service.poll();
     expect(service.libraryDirty()).toBe(true);
   });

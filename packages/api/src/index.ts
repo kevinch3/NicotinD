@@ -595,7 +595,7 @@ export function createApp({
   app.route('/api/presence', presenceRoutes());
   app.route('/api/history', historyRoutes(historyEnabled));
   app.route('/api/privacy', privacyRoutes(historyEnabled));
-  app.route('/api/downloads', downloadRoutes(registry, slskdRef, plugins));
+  app.route('/api/downloads', downloadRoutes(registry, plugins));
   app.route('/api/uploads', uploadRoutes(slskdRef));
   app.route(
     '/api/library',
