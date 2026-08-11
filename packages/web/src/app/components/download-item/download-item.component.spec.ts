@@ -34,7 +34,7 @@ class StubPipelineStageBadgeComponent {
 function item(over: Partial<DownloadItem> = {}): DownloadItem {
   return {
     key: 'k',
-    kind: 'slskd',
+    kind: 'network',
     title: 'Album',
     method: 'slskd',
     stage: 'done',
@@ -199,7 +199,7 @@ describe('download-item "Now: / Next:" gating', () => {
   // slskd-sourced row regardless of stage, while leaving it working for the
   // otherwise-identical acquire-sourced row.
   it('is suppressed for slskd-sourced rows even while downloading', () => {
-    expect(canShowNowNext(item({ kind: 'slskd', stage: 'downloading' }))).toBe(false);
+    expect(canShowNowNext(item({ kind: 'network', stage: 'downloading' }))).toBe(false);
   });
 
   it('is shown for an otherwise-identical acquire-sourced row', () => {
@@ -355,7 +355,7 @@ describe('download-item "Now: / Next:" — rendered', () => {
   it('does not render the block for a slskd-kind item, even with a downloading track', () => {
     const fixture = setup(
       item({
-        kind: 'slskd',
+        kind: 'network',
         stage: 'downloading',
         tracks: [{ title: 'Some Track', status: 'downloading' }],
       }),

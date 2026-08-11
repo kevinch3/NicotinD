@@ -219,10 +219,6 @@ function loadConfig() {
     process.env.NICOTIND_DATA_DIR ||
     ((fileConfig as Record<string, unknown>).dataDir as string) ||
     '~/.nicotind';
-  const mode = (process.env.NICOTIND_MODE ||
-    (fileConfig as Record<string, unknown>).mode ||
-    'embedded') as string;
-  const isExternalMode = mode === 'external';
   const secrets = loadOrCreateSecrets(dataDir);
   const metadataFixEnabled = parseBooleanEnv(process.env.NICOTIND_METADATA_FIX_ENABLED);
 
@@ -291,39 +287,6 @@ function loadConfig() {
             },
           }
         : {}),
-    },
-    soulseek: {
-      ...((fileConfig as Record<string, unknown>).soulseek as Record<string, unknown>),
-      ...(secrets.soulseekUsername ? { username: secrets.soulseekUsername } : {}),
-      ...(secrets.soulseekPassword ? { password: secrets.soulseekPassword } : {}),
-      ...(secrets.soulseekListeningPort ? { listeningPort: secrets.soulseekListeningPort } : {}),
-      ...(secrets.soulseekEnableUPnP !== undefined
-        ? { enableUPnP: secrets.soulseekEnableUPnP }
-        : {}),
-      ...(process.env.SOULSEEK_USERNAME ? { username: process.env.SOULSEEK_USERNAME } : {}),
-      ...(process.env.SOULSEEK_PASSWORD ? { password: process.env.SOULSEEK_PASSWORD } : {}),
-      ...(process.env.SOULSEEK_LISTENING_PORT
-        ? { listeningPort: Number(process.env.SOULSEEK_LISTENING_PORT) }
-        : {}),
-      ...(process.env.SOULSEEK_ENABLE_UPNP
-        ? { enableUPnP: parseBooleanEnv(process.env.SOULSEEK_ENABLE_UPNP) }
-        : {}),
-    },
-    slskd: {
-      url: 'http://localhost:5030',
-      port: 5030,
-      ...((fileConfig as Record<string, unknown>).slskd as Record<string, unknown>),
-      username: isExternalMode ? 'slskd' : 'nicotind',
-      password: isExternalMode ? 'slskd' : secrets.slskdPassword,
-      ...(process.env.NICOTIND_SLSKD_URL ? { url: process.env.NICOTIND_SLSKD_URL } : {}),
-      ...(process.env.SLSKD_USERNAME ? { username: process.env.SLSKD_USERNAME } : {}),
-      ...(process.env.SLSKD_INTERNAL_USERNAME
-        ? { username: process.env.SLSKD_INTERNAL_USERNAME }
-        : {}),
-      ...(process.env.SLSKD_INTERNAL_PASSWORD
-        ? { password: process.env.SLSKD_INTERNAL_PASSWORD }
-        : {}),
-      ...(process.env.SLSKD_PASSWORD ? { password: process.env.SLSKD_PASSWORD } : {}),
     },
     acquire: {
       ...((fileConfig as Record<string, unknown>).acquire as Record<string, unknown>),

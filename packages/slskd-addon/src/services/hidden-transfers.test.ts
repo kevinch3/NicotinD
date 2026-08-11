@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import type { SlskdUserTransferGroup } from '@nicotind/core';
+import type { SlskdUserTransferGroup } from '@nicotind/slskd-client';
 import { applySchema } from '../db.js';
 import {
   planHiddenTransferReconciliation,

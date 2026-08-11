@@ -97,15 +97,13 @@ describe('SetupComponent', () => {
   it('completes setup from the quality step (no Soulseek step since phase 3)', () => {
     const comp = TestBed.createComponent(SetupComponent).componentInstance;
     (comp as any).adminData = { username: 'admin', password: 'password' };
-    const spy = vi
-      .spyOn(comp['api'], 'completeSetup')
-      .mockReturnValue(
-        of({
-          token: 'tok',
-          user: { id: '1', username: 'admin', role: 'admin' },
-          needsRestart: false,
-        }),
-      );
+    const spy = vi.spyOn(comp['api'], 'completeSetup').mockReturnValue(
+      of({
+        token: 'tok',
+        user: { id: '1', username: 'admin', role: 'admin' },
+        needsRestart: false,
+      }),
+    );
     comp.step.set('quality');
     comp.handleQualityNext();
     expect(spy).toHaveBeenCalled();

@@ -72,16 +72,6 @@ export function systemRoutes(
     }
   });
 
-  app.post('/restart/:service', async (c) => {
-    const service = c.req.param('service');
-    if (service !== 'slskd') {
-      return c.json({ error: 'Unknown service. Use "slskd"' }, 400);
-    }
-
-    await serviceManager.restartService(service);
-    return c.json({ ok: true, message: `${service} restarted` });
-  });
-
   app.get('/logs/:service', async (c) => {
     const service = c.req.param('service');
     const lines = Number(c.req.query('lines') ?? 100);
@@ -107,7 +97,7 @@ export function systemRoutes(
     }
 
     const service = c.req.param('service');
-    const VALID_SERVICES = ['slskd', 'nicotind'] as const;
+    const VALID_SERVICES = ['nicotind'] as const;
     if (!(VALID_SERVICES as readonly string[]).includes(service)) {
       return c.json(
         { error: `Unknown service. Valid services: ${VALID_SERVICES.join(', ')}` },

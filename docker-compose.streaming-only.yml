@@ -7,8 +7,9 @@
 # server-side (every acquisition route 404s, the pollers never start, the web UI
 # hides its surfaces). This file completes the picture by not *running* the
 # sidecars that exist only to serve acquisition — so a library/streaming install
-# stops paying for slskd, Lidarr and the YouTube PO-token provider in RAM, disk
-# and attack surface.
+# stops paying for Lidarr and the YouTube PO-token provider in RAM, disk and
+# attack surface. (slskd + its addon already sit behind the base file's
+# `slskd-addon` profile since phase 3 — a default deploy runs neither.)
 #
 # Two coupled changes are needed, and either alone is broken:
 #
@@ -31,9 +32,6 @@ services:
     # the project fails to load. `!reset` (compose v2.24+) is the documented way
     # to drop an inherited key outright.
     depends_on: !reset null
-
-  slskd:
-    profiles: ["acquisition"]
 
   lidarr:
     profiles: ["acquisition"]

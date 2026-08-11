@@ -56,38 +56,10 @@ export interface SlskdTransfer {
   endedAt?: string;
 }
 
-/**
- * Canonical hunt metadata for a download folder, attached server-side when the
- * folder's peer directory matches an active album-hunt job. Lets the Downloads
- * UI label a transfer with the real artist/album (and expected track count)
- * instead of the noisy peer folder name (e.g. "(1995) Toque" → "Babasónicos —
- * Trance Zomba"). Absent for direct (non-hunt) Soulseek downloads.
- */
-export interface AlbumJobMeta {
-  artistName: string;
-  albumTitle: string;
-  /** Canonical Lidarr tracklist length — the "of N" the album should contain. */
-  canonicalTrackCount: number;
-  /** Deterministic library album id for the destination album, for deep-linking. */
-  albumId: string;
-  /**
-   * The acquisition job that enqueued this folder — the card's identity.
-   *
-   * why: the feed used to re-derive card identity from `albumId`, so one hunt
-   * whose fallback pulled from five peers rendered as five cards whenever the
-   * derived key failed to line up (issue #261). The server recorded the
-   * transfer↔job link at enqueue time; shipping the job id stops the client
-   * reconstructing it and makes correct grouping automatic for any future
-   * acquisition path, since every path necessarily creates a job.
-   */
-  jobId: string;
-}
-
 export interface SlskdTransferDirectory {
   directory: string;
   fileCount: number;
   files: SlskdTransfer[];
-  albumJob?: AlbumJobMeta;
   /**
    * Dominant bitrate (kbps) of the files in this directory, sourced from the
    * slskd search response at enqueue time (`SlskdFile.bitRate`). Aggregated

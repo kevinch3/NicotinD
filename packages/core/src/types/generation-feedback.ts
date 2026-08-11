@@ -1,5 +1,3 @@
-import type { SlskdSearchResponse } from './slskd.js';
-
 /**
  * Generation-feedback: a dev golden-dataset primitive. Every "generated"/inferred
  * NicotinD output (album-hunt recognition, radio, generated playlists, library
@@ -15,7 +13,21 @@ export type GenerationFeedbackResourceType =
 /** The human's overall grade of a generated result. */
 export type GenerationVerdict = 'good' | 'bad';
 
-/** A slskd peer folder, uniquely identified by peer + directory. */
+/**
+ * Verbatim network search response captured at hunt time. Structural (not the
+ * source's full wire type — that lives with its addon since phase 3): these are
+ * the fields the replayable `scoreFolders` recognizer reads; the capture stores
+ * whatever extra fields the source sent, untouched, as JSON.
+ */
+export interface CapturedSearchResponse {
+  username: string;
+  freeUploadSlots?: number;
+  queueLength?: number;
+  uploadSpeed?: number;
+  files: Array<{ filename: string; size: number; bitRate?: number }>;
+}
+
+/** A peer folder, uniquely identified by peer + directory. */
 export interface FolderRef {
   username: string;
   directory: string;
@@ -64,7 +76,7 @@ export interface SnapshotFolderCandidate {
  * what makes a captured fixture replayable through the pure `scoreFolders`.
  */
 export interface HuntMatchOutput {
-  rawResponses: SlskdSearchResponse[];
+  rawResponses: CapturedSearchResponse[];
   candidates: SnapshotFolderCandidate[];
   chosen?: FolderRef | null;
 }
@@ -128,7 +140,7 @@ export interface ResolveFeedbackBody {
  */
 export interface HuntMatchFixture {
   canonicalTracks: Array<{ title: string }>;
-  rawResponses: SlskdSearchResponse[];
+  rawResponses: CapturedSearchResponse[];
   expected: { correctFolder: FolderRef | null };
   meta: {
     id: number;

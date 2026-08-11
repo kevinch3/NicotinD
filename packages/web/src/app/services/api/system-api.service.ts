@@ -57,10 +57,6 @@ export class SystemApiService {
     return this.http.get<ServiceReview>('/api/admin/review');
   }
 
-  restartService(service: 'slskd') {
-    return this.http.post<{ ok: boolean }>(`/api/system/restart/${service}`, {});
-  }
-
   getServiceLogs(service: string, lines = 100) {
     return this.http.get<{ logs: string[]; hint?: string }>(`/api/system/logs/${service}`, {
       params: { lines },

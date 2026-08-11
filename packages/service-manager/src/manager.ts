@@ -2,7 +2,6 @@ import { createLogger } from '@nicotind/core';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { IServiceStrategy, ServiceHandle } from './strategies/strategy.js';
 import { waitForHealthy } from './health.js';
-import { buildSlskdDefinition } from './services/slskd.js';
 import { buildLidarrDefinition } from './services/lidarr.js';
 
 const log = createLogger('service-manager');
@@ -17,28 +16,9 @@ export class ServiceManager {
     this.config = config;
   }
 
-  async startAll(): Promise<void> {
-    await this.startSlskd();
-  }
-
-  async startSlskd(): Promise<void> {
-    if (this.config.mode === 'external') {
-      log.info('External mode — skipping slskd startup');
-      return;
-    }
-
-    const definition = buildSlskdDefinition(this.config);
-    const handle = await this.strategy.start(definition);
-    this.handles.set('slskd', handle);
-
-    const healthy = await waitForHealthy(
-      definition.healthCheckUrl,
-      definition.healthCheckTimeoutMs,
-    );
-    if (!healthy) {
-      throw new Error('slskd failed to start within timeout');
-    }
-  }
+  /** Lidarr is the only supervised sub-service since phase 3 (#490): slskd is
+   *  the addon's business, spawned/deployed alongside the addon itself. */
+  async startAll(): Promise<void> {}
 
   async startLidarr(apiKey: string): Promise<void> {
     if (this.config.mode === 'external') {
@@ -96,9 +76,7 @@ export class ServiceManager {
     if (!handle) return;
 
     let definition;
-    if (name === 'slskd') {
-      definition = buildSlskdDefinition(this.config);
-    } else if (name === 'lidarr' && this.config.lidarr) {
+    if (name === 'lidarr' && this.config.lidarr) {
       definition = buildLidarrDefinition(this.config, this.config.lidarr.apiKey);
     } else {
       return;

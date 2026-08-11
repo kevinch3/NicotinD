@@ -6,7 +6,7 @@ import type {
   SlskdStatus,
   SlskdTransferCounts,
   SlskdUserTransferGroup,
-} from '@nicotind/core';
+} from '@nicotind/slskd-client';
 
 /**
  * Pure roll-up of slskd data into the extension status panel's shape. Kept

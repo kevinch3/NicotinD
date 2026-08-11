@@ -7,9 +7,7 @@ import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import type { AcquireJob } from '@nicotind/core';
 import {
-  type AlbumGroup,
   type DownloadItem,
-  groupByAlbum,
   buildDownloadFeed,
   mergeAcquisitionJobs,
 } from '../../lib/download-groups';
@@ -129,7 +127,7 @@ export class DownloadsComponent {
   // counts, and job rows whose transfers vanished from slskd).
   readonly downloadFeed = computed(() =>
     mergeAcquisitionJobs(
-      buildDownloadFeed([], this.transferService.acquireJobs()),
+      buildDownloadFeed(this.transferService.acquireJobs()),
       this.transferService.acquisitionJobs(),
     ),
   );
@@ -164,14 +162,14 @@ export class DownloadsComponent {
    */
 
   onItemRetry(item: DownloadItem): void {
-    if (item.kind !== 'slskd') {
+    if (item.kind !== 'network') {
       const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
       if (j) void this.retryAcquireJob(j);
     }
   }
 
   onItemCancel(item: DownloadItem): void {
-    if (item.kind === 'slskd') {
+    if (item.kind === 'network') {
       if (item.jobId) void this.cancelJob(item.jobId);
     } else {
       const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
@@ -180,7 +178,7 @@ export class DownloadsComponent {
   }
 
   onItemRemove(item: DownloadItem): void {
-    if (item.kind === 'slskd') {
+    if (item.kind === 'network') {
       if (item.jobId) {
         this.askConfirm('Remove this download from the feed?', async () => {
           await firstValueFrom(this.api.deleteJob(item.jobId!)).catch(() => {});
@@ -208,7 +206,7 @@ export class DownloadsComponent {
     const active = this.downloadFeed().filter((i) => i.stage !== 'done' && i.stage !== 'error');
     await Promise.all(
       active.map((i) =>
-        i.kind === 'slskd' && i.jobId
+        i.kind === 'network' && i.jobId
           ? firstValueFrom(this.api.cancelJob(i.jobId)).catch(() => {})
           : Promise.resolve(),
       ),
@@ -221,7 +219,7 @@ export class DownloadsComponent {
     const finished = this.downloadFeed().filter((i) => i.stage === 'done' || i.stage === 'error');
     await Promise.all(
       finished.map((i) =>
-        i.kind === 'slskd' && i.jobId
+        i.kind === 'network' && i.jobId
           ? firstValueFrom(this.api.deleteJob(i.jobId)).catch(() => {})
           : Promise.resolve(),
       ),

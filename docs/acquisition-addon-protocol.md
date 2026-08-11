@@ -4,7 +4,7 @@
 `packages/slskd-addon` with the moved hunt engine, #488) and the **phase-2 cutover spine**
 (#489 — addon-backed provider, job-feed mirroring + HTTP ingest, unattended acquisition
 via the protocol, opt-in compose service; see the phase-2 section for what remains) are
-**shipped**; phases 3–4 pending. Each phase gets its own implementation plan + PR cycle;
+**shipped**, and so is phase 3 (core carries zero slskd code); phase 4 (repo split) pending. Each phase gets its own implementation plan + PR cycle;
 this document is the architecture they all answer to.
 
 ## Context & goal
@@ -239,18 +239,49 @@ phase 3).
   slskd's landing dir, and the soak instructions say to disable the in-process slskd
   plugin so both halves never process the same completions.
 
-**Remaining in #489 (deferred, before phase 3 can start):** the interactive discography
-hunt routes still call the in-process hunter (`albums/search` + `candidateRef` exist for
-them); `routes/downloads.ts`'s raw `transfers.*` actions don't yet proxy addon-keyed
-items; the bespoke slskd web surfaces stay until phase 3; and the **kpc side-by-side
-soak** — the ship gate — is the operator's step.
+**#489 remainder — SHIPPED with phase 3:** interactive hunts run through
+`albumsSearch`/`candidateRef` (hunt-download acquires the user's exact pick;
+replace-flow cancels the addon's active job); the downloads feed's job actions
+(`cancel`/`delete`) route addon-keyed items to the addon client. The **kpc side-by-side
+soak** — the ship gate for merging the chain — remains the operator's step.
 
-### Phase 3 — Delete slskd from core
+### Phase 3 — Delete slskd from core — SHIPPED (#490, BREAKING)
 
-Remove `packages/slskd-client` from core's dependency graph, `core/src/types/slskd.ts`,
-every `SlskdRef` thread, ServiceManager slskd files, web slskd type remnants. Compose:
-streaming-only semantics become the **base** file; `docker-compose.acquisition.yml` overlay
-adds the addon. Acceptance: `grep -ri slskd` over core packages returns only docs/history.
+Core now carries **zero** slskd code; a NicotinD without a registered addon is a
+streaming/library install with URL-resolver acquisition only.
+
+- Deleted from core: the in-process `SlskdPlugin` + provider + its watcher half, the
+  hunt/retry/fallback wiring, `SlskdRef` threads, `core/src/types/slskd.ts`,
+  `@nicotind/slskd-client` from `@nicotind/api`'s graph, ServiceManager's slskd
+  strategy + the deps-downloader entry, the `soulseek`/`slskd` config sections, and the
+  raw `transfers.*` lane in `routes/downloads.ts`.
+- Route surface: settings lost `/soulseek*` + `/shares*`; setup lost the Soulseek wizard
+  step; `system` lost the slskd status slice, the restart route and the slskd log
+  stream; `review` lost `services.slskd`; the mcp/library share-rescan hook became the
+  protocol's `notify/library-changed`.
+- Suppression: downloading-album suppression keys on the unified `acquisition_jobs`
+  ledger alone (`getDownloadingGroupKeys(db)`); the raw-transfer key set is gone.
+- Web: `SlskdSettingsComponent`, the admin services card, the wizard step and the raw
+  transfer feed deleted; `TransferService` polls the jobs feed only; finished jobs
+  surface as history cards with cancel/remove mapped to the job actions.
+- Compose: the base file is streaming + Lidarr; `slskd` + `slskd-addon` sit behind the
+  `slskd-addon` profile (`--profile slskd-addon`), so a default deploy runs neither. The
+  planned separate `docker-compose.acquisition.yml` overlay collapsed into that profile —
+  one file, same semantics. `docker-compose.streaming-only.yml` keeps only the
+  Lidarr/bgutil half of its job.
+- The slskd wire types left `@nicotind/core` for `@nicotind/slskd-client` (their
+  natural home; the client + addon are the only consumers). Core's
+  generation-feedback snapshot types now use a structural `CapturedSearchResponse`
+  instead of the slskd wire type. Web's raw-transfer feed machinery
+  (`groupByAlbum`, the collapse helpers, the `DownloadKind` `'slskd'` value — now
+  `'network'`) is deleted; `mergeAcquisitionJobs` renders job rows only.
+- Acceptance: `grep -ri slskd` over core packages returns docs/history, test
+  doubles, and data values (the addon's manifest id used as method/provenance)
+  only.
+
+**Accepted (documented) losses**: hunt feedback capture is dormant until the protocol
+grows a `feedback` capability; addon-mode revived jobs lose the live on-disk wanted
+filter (see the phase-1 limitation above).
 
 ### Phase 4 — Repo split (mechanical)
 

@@ -120,20 +120,6 @@ export const NicotinDConfigSchema = z.object({
     })
     .default({ enabled: true, intervalMs: 1_800_000, minMatchPct: 80 }),
 
-  soulseek: z.object({
-    username: z.string().default(''),
-    password: z.string().default(''),
-    listeningPort: z.number().default(50000),
-    enableUPnP: z.boolean().default(true),
-  }),
-
-  slskd: z.object({
-    url: z.string().url().default('http://localhost:5030'),
-    port: z.number().default(5030),
-    username: z.string().default('nicotind'),
-    password: z.string().default(''),
-  }),
-
   lidarr: z
     .object({
       url: z.string().url().default('http://localhost:8686'),

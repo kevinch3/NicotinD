@@ -126,12 +126,8 @@ function makeServer(port: string, dir: string): WebServer {
     stderr: 'pipe',
     env: {
       NICOTIND_PORT: port,
-      NICOTIND_MODE: 'external', // never spawn slskd; no Soulseek creds set
-      // Point at a dead slskd so the test server can't reach (or mutate) any
-      // real instance on the default :5030. Acquisition is default-off anyway;
-      // boot tolerates an unreachable slskd.
-      NICOTIND_SLSKD_URL: 'http://127.0.0.1:1',
-      NICOTIND_LIDARR_URL: 'http://127.0.0.1:1', // likewise isolate from a real Lidarr
+      NICOTIND_MODE: 'external', // never spawn sub-services
+      NICOTIND_LIDARR_URL: 'http://127.0.0.1:1', // isolate from a real Lidarr
       NICOTIND_DATA_DIR: dir,
       NICOTIND_MUSIC_DIR: resolve(__dirname, 'fixtures/music'),
       // Bypass the process-before-landing gate: the silent-FLAC fixtures can't

@@ -29,14 +29,12 @@ const OUTPUT: HuntMatchOutput = {
   rawResponses: [
     {
       username: 'alice',
-      fileCount: 2,
-      lockedFileCount: 0,
       freeUploadSlots: 1,
       uploadSpeed: 100,
       queueLength: 0,
       files: [
-        { filename: 'A/Album/01 Cancion Animal.flac', size: 1, code: '1' },
-        { filename: 'A/Album/02 De Musica Ligera.flac', size: 1, code: '1' },
+        { filename: 'A/Album/01 Cancion Animal.flac', size: 1 },
+        { filename: 'A/Album/02 De Musica Ligera.flac', size: 1 },
       ],
     },
   ],

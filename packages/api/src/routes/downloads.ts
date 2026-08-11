@@ -115,7 +115,7 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
         await provider.download(username, files);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('slskd request failed')) {
+        if (msg.includes('request failed')) {
           return c.json(
             {
               error: `Download failed for user "${username}" — they may be offline or rejecting transfers`,
@@ -139,7 +139,8 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
           .slice(0, -1); // drop the file basename
         createJob(getDatabase(), {
           kind: 'direct',
-          method: 'slskd',
+          // The provider's name is the source id (the addon's manifest id).
+          method: provider.name,
           artistName: segments.length >= 2 ? segments[segments.length - 2] : null,
           albumTitle: segments.length >= 1 ? segments[segments.length - 1] : null,
           sourceRef: username,

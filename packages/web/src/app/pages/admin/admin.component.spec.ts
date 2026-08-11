@@ -1,10 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { expandAllGroups } from '../../../testing/expand-groups';
-import { By } from '@angular/platform-browser';
 import { vi, beforeEach, describe, it, expect } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { AdminComponent } from './admin.component';
-import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -888,54 +886,6 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     return { fixture };
   }
 
-  it('renders the services grid as an appTvNavGroup with grid axis', async () => {
-    const { fixture } = setup();
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    expandAllGroups(fixture);
-    const el: HTMLElement = fixture.nativeElement;
-    const group = el.querySelector('[appTvNavGroup][axis="grid"]');
-    expect(group).not.toBeNull();
-    // The button that actually gets nav focus is the inner restart button, not
-    // the row wrapper (which has no click handler).
-    const restartButton = group?.querySelector('button[appTvNavItem]');
-    expect(restartButton?.textContent).toContain('admin.restart');
-    fixture.destroy();
-  });
-
-  /**
-   * Behavioural counterpart to the attribute assertions in this block. A
-   * directive-selector attribute survives in the DOM whether or not the
-   * directive is imported, applied, or able to reach its group — which is
-   * exactly how the Extensions page shipped with every group registering zero
-   * items and D-pad nav a silent no-op. Only a real key event moving real
-   * focus proves the wiring.
-   *
-   * `AdminComponent.services` is the fixed one-element list `['slskd']`, so
-   * there is no second item to arrow onto — in production, not just in this
-   * fixture. The equivalent proof is registration: the group's `items()` must
-   * actually contain the restart button. That is precisely what was empty on
-   * the Extensions page.
-   */
-  it('the services grid group actually registers its restart button', async () => {
-    const { fixture } = setup();
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    expandAllGroups(fixture);
-    const el: HTMLElement = fixture.nativeElement;
-    const host = el.querySelector('[appTvNavGroup][axis="grid"]')!;
-    const group = fixture.debugElement
-      .queryAll(By.directive(TvNavGroupDirective))
-      .find((de) => de.nativeElement === host)!
-      .injector.get(TvNavGroupDirective);
-    const items = group.items();
-    expect(items.length).toBeGreaterThan(0);
-    expect(items[0]!.nativeElement.textContent).toContain('admin.restart');
-    fixture.destroy();
-  });
-
   it('renders each log service selector button as an appTvNavItem in a horizontal group', async () => {
     const { fixture } = setup();
     fixture.detectChanges();
@@ -947,24 +897,6 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     expect(group).not.toBeNull();
     const buttons = group?.querySelectorAll('button[appTvNavItem]');
     expect(buttons?.length).toBeGreaterThan(0);
-    fixture.destroy();
-  });
-
-  it('ArrowRight moves focus between log service selector buttons', async () => {
-    const { fixture } = setup();
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    expandAllGroups(fixture);
-    const el: HTMLElement = fixture.nativeElement;
-    const group = el.querySelector('[appTvNavGroup][axis="horizontal"]')!;
-    const buttons: HTMLElement[] = Array.from(group.querySelectorAll('button[appTvNavItem]'));
-    expect(buttons.length).toBeGreaterThan(1);
-    buttons[0]!.focus();
-    buttons[0]!.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }),
-    );
-    expect(document.activeElement).toBe(buttons[1]);
     fixture.destroy();
   });
 

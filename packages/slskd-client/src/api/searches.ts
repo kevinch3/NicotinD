@@ -1,4 +1,4 @@
-import type { SlskdSearch, SlskdSearchResponse } from '@nicotind/core';
+import type { SlskdSearch, SlskdSearchResponse } from '../types.js';
 import type { SlskdClient } from '../client.js';
 
 export class SearchesApi {

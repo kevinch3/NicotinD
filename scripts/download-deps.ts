@@ -1,5 +1,6 @@
 /**
- * Downloads slskd (and optionally Lidarr) binaries for embedded mode.
+ * Downloads the optional Lidarr binary for embedded mode (slskd is the
+ * addon's business since phase 3 — see docs/acquisition-addon-protocol.md).
  * Usage: bun run scripts/download-deps.ts [--force]
  */
 import { existsSync, mkdirSync, chmodSync, createWriteStream } from 'node:fs';
@@ -26,12 +27,6 @@ const LIDARR_PLATFORM_MAP: Record<string, string> = {
   win32: 'windows-core',
 };
 
-const PLATFORM_MAP: Record<string, string> = {
-  linux: 'linux',
-  darwin: 'osx',
-  win32: 'win',
-};
-
 const ARCH_MAP: Record<string, string> = {
   x64: 'x64',
   arm64: 'arm64',
@@ -39,24 +34,11 @@ const ARCH_MAP: Record<string, string> = {
 
 const deps: DepConfig[] = [
   {
-    name: 'slskd',
-    repo: 'slskd/slskd',
-    binaryName: 'slskd',
-    getAssetName: (version, platform, arch) => {
-      const p = PLATFORM_MAP[platform];
-      const a = ARCH_MAP[arch];
-      if (!p || !a) throw new Error(`Unsupported platform: ${platform}/${arch}`);
-      return `slskd-${version}-${p}-${a}.zip`;
-    },
-    extractCmd: (archive, dest) =>
-      `unzip -o "${archive}" "slskd" "wwwroot/*" -d "${dest}"`,
-  },
-  {
     name: 'lidarr',
     repo: 'Lidarr/Lidarr',
     // Lidarr's archive extracts to a top-level `Lidarr/` folder; the executable
     // lives inside it. Powers discography features; optional so a download
-    // failure never blocks slskd.
+    // failure never blocks boot.
     binaryName: join('Lidarr', 'Lidarr'),
     optional: true,
     getAssetName: (version, platform, arch) => {
@@ -103,7 +85,9 @@ async function downloadFile(url: string, dest: string): Promise<void> {
     downloaded += value.length;
     if (totalBytes > 0) {
       const pct = ((downloaded / totalBytes) * 100).toFixed(0);
-      process.stdout.write(`\r  Downloading... ${pct}% (${(downloaded / 1_000_000).toFixed(1)} MB)`);
+      process.stdout.write(
+        `\r  Downloading... ${pct}% (${(downloaded / 1_000_000).toFixed(1)} MB)`,
+      );
     }
   }
   writer.end();

@@ -124,19 +124,3 @@ export const MultiAlbumAcquire: Story = {
     },
   },
 };
-
-/** Transfers matching no job collapse into one row rather than N loose cards. */
-export const UnlinkedTransfers: Story = {
-  args: {
-    item: {
-      ...demoDownloadItem,
-      title: 'Unlinked transfers',
-      subtitle: undefined,
-      jobId: undefined,
-      albumId: undefined,
-      unlinkedCount: 12,
-      tracks: undefined,
-      progress: undefined,
-    },
-  },
-};
