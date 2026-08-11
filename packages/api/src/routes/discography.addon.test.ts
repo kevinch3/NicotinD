@@ -6,10 +6,8 @@ import { applySchema } from '../db.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import { discographyRoutes } from './discography.js';
 import type { DiscographyService } from '../services/discography.service.js';
-import type { AlbumHunterService } from '../services/album-hunter.service.js';
 import type { AlbumHuntOrchestrator } from '../services/source-hunter.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
-import type { SlskdRef } from '../index.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import { AddonRequestError, type AddonClient } from '../services/addons/client.js';
 
@@ -92,14 +90,12 @@ function harness(clientOver: Partial<AddonClient> = {}) {
     '/',
     discographyRoutes({
       discography: {} as DiscographyService,
-      hunter: {} as AlbumHunterService, // must never be touched on the addon path
       sourceHunt: {
         hunt: async () => [],
         enabledSourceIds: () => [],
       } as unknown as AlbumHuntOrchestrator,
       lidarr,
       db,
-      slskdRef: { current: null } as SlskdRef,
       getAddon: () => addon,
     }),
   );

@@ -23,21 +23,13 @@ const mockServiceManager = {
   restartService: mock(() => Promise.resolve()),
 };
 
-const mockSlskdRef = { current: null };
-const mockWatcherRef = { current: null };
-const mockMakeWatcher = mock(() => null);
-
 function buildApp() {
   const app = new Hono();
   app.route(
     '/api/setup',
     setupRoutes({
       config: mockConfig as any,
-      slskdRef: mockSlskdRef as any,
       serviceManager: mockServiceManager as any,
-      watcherRef: mockWatcherRef as any,
-      makeWatcher: mockMakeWatcher as any,
-      saveSecretsFn: mock(() => {}),
       saveLidarrSecretsFn: mock(() => {}),
     }),
   );
@@ -166,11 +158,7 @@ describe('POST /api/setup/complete', () => {
       '/api/setup',
       setupRoutes({
         config: mockConfig as any,
-        slskdRef: mockSlskdRef as any,
         serviceManager: mockServiceManager as any,
-        watcherRef: mockWatcherRef as any,
-        makeWatcher: mockMakeWatcher as any,
-        saveSecretsFn: mock(() => {}),
         saveLidarrSecretsFn,
       }),
     );

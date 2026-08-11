@@ -1,9 +1,7 @@
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import type { Lidarr } from '@nicotind/lidarr-client';
-import type { SlskdRef } from '../index.js';
 import type { CatalogService } from './catalog-search.service.js';
-import type { AlbumHunterService } from './album-hunter.service.js';
 import type { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { acquireAlbum } from './album-acquire.js';
 
@@ -32,11 +30,9 @@ export interface AddWatchInput {
 export interface WatchlistDeps {
   db: Database;
   catalog: CatalogService;
-  hunter: AlbumHunterService;
   lidarr: Lidarr;
-  slskdRef: SlskdRef;
   /** Live lookup of the active remote acquisition addon (phase-2 cutover). */
-  getAddon?: () => RemoteAddonPlugin | null;
+  getAddon: () => RemoteAddonPlugin | null;
   intervalMs?: number;
   minMatchPct?: number;
   enabled?: boolean;
@@ -62,10 +58,8 @@ export interface WatchlistDeps {
 export class WatchlistService {
   private db: Database;
   private catalog: CatalogService;
-  private hunter: AlbumHunterService;
   private lidarr: Lidarr;
-  private slskdRef: SlskdRef;
-  private getAddon?: () => RemoteAddonPlugin | null;
+  private getAddon: () => RemoteAddonPlugin | null;
   private intervalMs: number;
   private minMatchPct: number;
   private enabled: boolean;
@@ -76,9 +70,7 @@ export class WatchlistService {
   constructor(deps: WatchlistDeps) {
     this.db = deps.db;
     this.catalog = deps.catalog;
-    this.hunter = deps.hunter;
     this.lidarr = deps.lidarr;
-    this.slskdRef = deps.slskdRef;
     this.getAddon = deps.getAddon;
     this.intervalMs = deps.intervalMs ?? 1_800_000;
     this.minMatchPct = deps.minMatchPct ?? 80;
@@ -183,13 +175,7 @@ export class WatchlistService {
       // interactive hunt and the Lidarr auto-acquire loop use), then map its
       // outcome to this row's state transitions.
       const outcome = await acquireAlbum(
-        {
-          db: this.db,
-          hunter: this.hunter,
-          lidarr: this.lidarr,
-          slskdRef: this.slskdRef,
-          getAddon: this.getAddon,
-        },
+        { db: this.db, lidarr: this.lidarr, getAddon: this.getAddon },
         {
           lidarrAlbumId: albumId,
           artistName: row.artist_name,

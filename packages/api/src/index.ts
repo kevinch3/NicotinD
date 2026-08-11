@@ -81,15 +81,9 @@ import { AcquireWatcher } from './services/acquire-watcher.js';
 import { DiscographyService } from './services/discography.service.js';
 import { CatalogService } from './services/catalog-search.service.js';
 import { SingleEnrichmentService } from './services/single-enrichment.service.js';
-import { AlbumHunterService } from './services/album-hunter.service.js';
 import { WatchlistService } from './services/watchlist.service.js';
 import { AutoAcquireService } from './services/auto-acquire.service.js';
-import { DownloadWatcher } from './services/download-watcher.js';
-import { DownloadRetryService } from './services/download-retry.service.js';
-import { AlbumFallbackService } from './services/album-fallback.service.js';
-import { makeApiFallbackHost } from './services/fallback-host.js';
 import { reconcileOnBoot as reconcileAcquisitionJobs } from './services/acquisition-job-store.js';
-import { reconcileHiddenTransfers } from './services/hidden-transfers.js';
 import { LibraryProcessingService } from './services/library-processing.service.js';
 import { AudioFeaturesClient } from './services/audio-features-client.js';
 import { ProviderRegistry } from './services/provider-registry.js';
@@ -107,8 +101,6 @@ import { createWebSocketHandlers } from './services/websocket.js';
 import type { AuthEnv } from './middleware/auth.js';
 
 export type SlskdRef = { current: Slskd | null };
-export type WatcherRef = { current: DownloadWatcher | null };
-export type RetryRef = { current: DownloadRetryService | null };
 export type ProcessingRef = { current: LibraryProcessingService | null };
 
 export interface CreateAppOptions {
@@ -117,7 +109,6 @@ export interface CreateAppOptions {
   lidarr: Lidarr | null;
   serviceManager: ServiceManager;
   webDistPath?: string;
-  saveSecretsFn?: (username: string, password: string) => void;
   saveLidarrSecretsFn?: (apiKey: string) => void;
   stagingDir?: string;
   acoustidApiKey?: string;
@@ -130,7 +121,6 @@ export function createApp({
   lidarr,
   serviceManager,
   webDistPath,
-  saveSecretsFn,
   saveLidarrSecretsFn,
   stagingDir,
   acoustidApiKey,
@@ -305,67 +295,11 @@ export function createApp({
     },
   });
 
-  // Download watcher (mutable ref — settings/setup routes can create/replace it).
-  // Uses the shared LibraryOrganizer so slskd and yt-dlp downloads end up in the
-  // same place with the same organization logic.
-  const makeWatcher = (): DownloadWatcher | null => {
-    if (!(slskdRef.current && config.soulseek.username && config.soulseek.password)) {
-      return null;
-    }
-    return new DownloadWatcher(slskdRef.current, {
-      musicDir: config.musicDir,
-      libraryOrganizer: sharedOrganizer,
-      // Park unsortable files outside musicDir so they aren't indexed.
-      unsortedRoot: `${expandedDataDir}/unsorted`,
-      preferFlacSkipMp3: config.downloads.preferFlacSkipMp3,
-      // Index the freshly organized files into the canonical library.
-      scan: scanIncremental,
-    });
-  };
-  const watcherRef: WatcherRef = { current: makeWatcher() };
-
-  // Self-healing retry reconciler — re-enqueues failed slskd transfers (slskd
-  // resumes the partial file) and, once attempts exhaust, hands off to the
-  // cross-peer fallback layer that pulls the missing tracks from another peer.
-  const fallback = slskdRef.current
-    ? new AlbumFallbackService(slskdRef.current, {
-        db,
-        host: makeApiFallbackHost(db),
-        maxFallbackAttempts: config.downloads.fallbackMaxAttempts,
-        autoRetryExhausted: config.downloads.autoRetryExhausted,
-        exhaustedRetryCooldownMs: config.downloads.exhaustedRetryCooldownMs,
-        exhaustedMaxRevives: config.downloads.exhaustedMaxRevives,
-      })
-    : null;
-  const retryRef: RetryRef = {
-    current:
-      slskdRef.current && config.downloads.autoRetryEnabled
-        ? new DownloadRetryService(slskdRef.current, {
-            db,
-            intervalMs: config.downloads.retryIntervalMs,
-            maxAttempts: config.downloads.retryMaxAttempts,
-            cooldownMs: config.downloads.retryCooldownMs,
-            // After each retry pass, let the fallback recover given-up tracks,
-            // then run acquisition-job hygiene (24h idle valve + TTL prune) so
-            // a vanished transfer can never strand a job "downloading" forever.
-            onSweep: fallback
-              ? async () => {
-                  await fallback.sweep();
-                  reconcileAcquisitionJobs(db);
-                }
-              : () => reconcileAcquisitionJobs(db),
-          })
-        : null,
-  };
-
-  // Clearing a download hides it locally when slskd refuses the removal (it
-  // only drops completed transfers, and an in-flight cancellation lands after
-  // the request returns). Re-ask for those on boot and prune the hides whose
-  // transfer is gone, so the ledger can't grow without bound. Fire-and-forget:
-  // an unreachable slskd must never delay startup.
-  if (slskdRef.current) {
-    void reconcileHiddenTransfers(db, slskdRef.current.transfers).catch(() => {});
-  }
+  // The acquisition-jobs hygiene (24h idle valve + TTL prune) used to ride the
+  // retry reconciler's sweep; with the slskd engine addon-side (phase 3) it
+  // runs on its own interval so a vanished transfer can never strand a job.
+  const jobHygieneTimer = setInterval(() => reconcileAcquisitionJobs(db), 60_000);
+  jobHygieneTimer.unref?.();
 
   // Spotify portrait lookup for the artist-image enrichment task. Bridged through
   // a ref because SpotifySearchService is constructed further down (it needs the
@@ -569,11 +503,7 @@ export function createApp({
     '/api/setup',
     setupRoutes({
       config,
-      slskdRef,
       serviceManager,
-      watcherRef,
-      makeWatcher,
-      saveSecretsFn: saveSecretsFn ?? (() => {}),
       saveLidarrSecretsFn: saveLidarrSecretsFn ?? (() => {}),
     }),
   );
@@ -716,10 +646,7 @@ export function createApp({
       musicDir: expandedMusicDir,
     }),
   );
-  app.route(
-    '/api/settings',
-    settingsRoutes(config, slskdRef, makeWatcher, serviceManager, watcherRef),
-  );
+  app.route('/api/settings', settingsRoutes(config));
   app.route('/api/share', shareRoutes(config.jwt.secret, auth));
   // Device pairing (QR link): claim is public (the pairing token is the
   // credential), so /api/devices is deliberately NOT in the blanket-auth list —
@@ -805,9 +732,8 @@ export function createApp({
   // wired when Lidarr is configured; absent → acquisition degrades to heuristic.
   let enrichSingles: ((relPaths: string[]) => Promise<void>) | undefined;
 
-  if (lidarr && slskdRef.current) {
+  if (lidarr) {
     const discographySvc = new DiscographyService(lidarr, db, config.musicDir);
-    const hunterSvc = new AlbumHunterService(slskdRef.current);
     const catalogSvc = new CatalogService(lidarr, config.musicDir);
     const enrichmentSvc = new SingleEnrichmentService({
       db,
@@ -825,13 +751,10 @@ export function createApp({
       discographyRoutes({
         getAddon: () => activeRemoteAcquisitionAddon(plugins),
         discography: discographySvc,
-        hunter: hunterSvc,
         sourceHunt,
         lidarr,
         db,
-        slskdRef,
         dataDir: expandedDataDir,
-        version,
       }),
     );
     app.route('/api/catalog', catalogRoutes({ catalog: catalogSvc }));
@@ -842,9 +765,7 @@ export function createApp({
     const watchlistSvc = new WatchlistService({
       db,
       catalog: catalogSvc,
-      hunter: hunterSvc,
       lidarr,
-      slskdRef,
       getAddon: () => activeRemoteAcquisitionAddon(plugins),
       intervalMs: config.watchlist.intervalMs,
       minMatchPct: config.watchlist.minMatchPct,
@@ -866,10 +787,8 @@ export function createApp({
     if (config.acquisitionEnabled && config.downloads.autoAcquireEnabled) {
       const autoAcquireSvc = new AutoAcquireService({
         db,
-        hunter: hunterSvc,
-        lidarr,
-        slskdRef,
         getAddon: () => activeRemoteAcquisitionAddon(plugins),
+        lidarr,
         intervalMs: config.downloads.autoAcquireIntervalMs,
         maxPerSweep: config.downloads.autoAcquireMaxPerSweep,
         minMatchPct: config.watchlist.minMatchPct,
@@ -908,11 +827,9 @@ export function createApp({
     });
   }
 
-  return { app, watcherRef, retryRef, processingRef, websocket, remoteAccess };
+  return { app, processingRef, websocket, remoteAccess };
 }
 
-export { DownloadWatcher } from './services/download-watcher.js';
-export { DownloadRetryService } from './services/download-retry.service.js';
 export { AutoAcquireService } from './services/auto-acquire.service.js';
 export { initDatabase, getDatabase } from './db.js';
 export { maybeCheckForUpdate } from './services/update-check.js';

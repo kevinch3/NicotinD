@@ -4,32 +4,16 @@ import type { NicotinDConfig } from '@nicotind/core';
 import type { ServiceManager } from '@nicotind/service-manager';
 import { getDatabase } from '../db.js';
 import { signJwt } from '../middleware/auth.js';
-import type { DownloadWatcher } from '../services/download-watcher.js';
-import { updateExternalSoulseekCredentials } from '../services/slskd-config.js';
 import { updateExternalLidarrCredentials } from '../services/lidarr-config.js';
 import { setStreamingSettings } from '../services/streaming-settings.js';
-import type { SlskdRef, WatcherRef } from '../index.js';
 
 interface SetupDeps {
   config: NicotinDConfig;
-  slskdRef: SlskdRef;
   serviceManager: ServiceManager;
-  watcherRef: WatcherRef;
-  /** Builds a fully-wired download watcher (organizer + native scan hook). */
-  makeWatcher: () => DownloadWatcher | null;
-  saveSecretsFn: (username: string, password: string) => void;
   saveLidarrSecretsFn: (apiKey: string) => void;
 }
 
-export function setupRoutes({
-  config,
-  slskdRef,
-  serviceManager,
-  watcherRef,
-  makeWatcher,
-  saveSecretsFn,
-  saveLidarrSecretsFn,
-}: SetupDeps) {
+export function setupRoutes({ config, serviceManager, saveLidarrSecretsFn }: SetupDeps) {
   const app = new Hono();
 
   // GET /api/setup/status — check if setup is needed
@@ -53,7 +37,6 @@ export function setupRoutes({
 
     const body = await c.req.json<{
       admin: { username: string; password: string };
-      soulseek?: { username: string; password: string };
       musicDir?: string;
       transcodeLossless?: { enabled?: boolean; bitRate?: number };
       lidarr?: { url?: string; apiKey?: string };
@@ -121,31 +104,6 @@ export function setupRoutes({
           console.warn('Failed to update external Lidarr credentials:', err);
         }
       }
-    }
-
-    // 5. Configure Soulseek (optional)
-    if (body.soulseek?.username?.trim() && body.soulseek?.password?.trim()) {
-      saveSecretsFn(body.soulseek.username.trim(), body.soulseek.password.trim());
-
-      config.soulseek.username = body.soulseek.username.trim();
-      config.soulseek.password = body.soulseek.password.trim();
-      serviceManager.updateConfig(config);
-
-      if (serviceManager.hasService('slskd')) {
-        await serviceManager.restartService('slskd');
-      } else {
-        await updateExternalSoulseekCredentials(
-          slskdRef.current!,
-          body.soulseek.username.trim(),
-          body.soulseek.password.trim(),
-        );
-      }
-
-      if (watcherRef.current) {
-        watcherRef.current.stop();
-      }
-      watcherRef.current = makeWatcher();
-      watcherRef.current?.start();
     }
 
     // 6. Sign JWT for immediate login

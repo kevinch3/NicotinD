@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import type { Database } from 'bun:sqlite';
-import { createLogger } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
@@ -8,8 +7,6 @@ import { AddonRequestError } from '../services/addons/client.js';
 import { registerAddon, removeAddon } from '../services/addons/manager.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import { recordAudit } from '../services/audit-log.js';
-
-const log = createLogger('routes:plugins');
 
 /**
  * Plugin management API. Listing is readable by any authenticated user (it

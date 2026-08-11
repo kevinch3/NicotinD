@@ -4,7 +4,6 @@ import type { Lidarr } from '@nicotind/lidarr-client';
 import { applySchema } from '../db.js';
 import { WatchlistService } from './watchlist.service.js';
 import type { CatalogService } from './catalog-search.service.js';
-import type { AlbumHunterService } from './album-hunter.service.js';
 
 // The poller must respect the acquisition-plugin toggle: when disabled, a sweep
 // does nothing (it never touches a watching row). When enabled it proceeds (and
@@ -13,9 +12,8 @@ function makeService(db: Database, isAcquisitionEnabled: () => boolean) {
   return new WatchlistService({
     db,
     catalog: {} as unknown as CatalogService,
-    hunter: {} as unknown as AlbumHunterService,
     lidarr: {} as unknown as Lidarr,
-    slskdRef: { current: null },
+    getAddon: () => null,
     isAcquisitionEnabled,
   });
 }

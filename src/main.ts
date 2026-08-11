@@ -118,18 +118,12 @@ async function main() {
   const webDistPath =
     process.env.NICOTIND_WEB_DIST ?? resolve(import.meta.dir, '../packages/web/dist');
 
-  const { app, watcherRef, retryRef, processingRef, websocket, remoteAccess } = createApp({
+  const { app, processingRef, websocket, remoteAccess } = createApp({
     config,
     slskdRef,
     lidarr,
     serviceManager,
     webDistPath,
-    saveSecretsFn: (username: string, password: string) => {
-      const currentSecrets = loadOrCreateSecrets(config.dataDir);
-      currentSecrets.soulseekUsername = username;
-      currentSecrets.soulseekPassword = password;
-      saveSecrets(config.dataDir, currentSecrets);
-    },
     saveLidarrSecretsFn: (apiKey: string) => {
       const currentSecrets = loadOrCreateSecrets(config.dataDir);
       currentSecrets.lidarrApiKey = apiKey;
@@ -146,8 +140,6 @@ async function main() {
     version: pkg.version,
   });
 
-  if (watcherRef.current) watcherRef.current.start();
-  if (retryRef.current) retryRef.current.start();
   if (processingRef.current) processingRef.current.start();
 
   const server = Bun.serve({
@@ -180,23 +172,14 @@ async function main() {
   setInterval(() => void maybeCheckForUpdate(getDatabase()), 3_600_000).unref();
 
   // Graceful shutdown
-  process.on('SIGTERM', async () => {
+  const shutdown = async () => {
     log.info('Shutting down...');
-    if (watcherRef.current) watcherRef.current.stop();
-    if (retryRef.current) retryRef.current.stop();
     if (processingRef.current) processingRef.current.stop();
     await serviceManager.stopAll();
     process.exit(0);
-  });
-
-  process.on('SIGINT', async () => {
-    log.info('Shutting down...');
-    if (watcherRef.current) watcherRef.current.stop();
-    if (retryRef.current) retryRef.current.stop();
-    if (processingRef.current) processingRef.current.stop();
-    await serviceManager.stopAll();
-    process.exit(0);
-  });
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 export interface PersistedSecrets {
