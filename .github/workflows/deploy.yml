@@ -665,39 +665,3 @@ jobs:
             docker compose pull nicotind analysis &&
             docker compose up --build -d
           '
-
-  # Publish the component catalog to GitHub Pages, once per release tag.
-  #
-  # PREREQUISITE: Pages must be enabled for the repo with source "GitHub Actions"
-  # (Settings → Pages). Until that is set this job fails; it cannot be enabled from
-  # a workflow. Nothing else depends on it, so a failure here does not block a release.
-  storybook-pages:
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Build Storybook
-        run: bun run build:storybook
-
-      - uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: packages/web/storybook-static
-
-      - id: deploy
-        uses: actions/deploy-pages@v4
