@@ -70,6 +70,17 @@
       >
         {{ (plugin.enabled ? 'extensions.disable' : 'extensions.enable') | t }}
       </button>
+      @if (plugin.remote) {
+        <button
+          (click)="remove.emit(plugin)"
+          [disabled]="busy"
+          appTvNavItem
+          data-testid="addon-remove"
+          class="px-3 py-1.5 rounded-lg text-xs font-medium text-status-error hover:bg-theme-hover transition disabled:opacity-50"
+        >
+          {{ 'extensions.addonRemove' | t }}
+        </button>
+      }
     </div>
   </div>
 
@@ -140,6 +151,17 @@
         <div class="mt-4 pt-4 border-t border-theme">
           <app-slskd-settings />
         </div>
+      }
+
+      @if (plugin.remote) {
+        <p class="text-[11px] text-theme-muted mt-2 break-all" data-testid="addon-url">
+          {{ plugin.addonUrl }}
+        </p>
+        @if (plugin.enabled) {
+          <div class="mt-4 pt-4 border-t border-theme">
+            <app-addon-status-panel [pluginId]="plugin.id" />
+          </div>
+        }
       }
     </div>
   }

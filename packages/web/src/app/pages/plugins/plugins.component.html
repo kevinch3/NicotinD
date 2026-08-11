@@ -46,11 +46,52 @@
             (toggle)="toggle($event)"
             (save)="saveConfig($event)"
             (fieldChange)="setField(p.id, $event.key, $event.value)"
+            (remove)="removeTarget.set($event)"
           />
         }
         @if (plugins.acquisition().length === 0) {
           <p class="text-sm text-theme-muted">{{ 'extensions.noAcquisition' | t }}</p>
         }
+
+        <form
+          (ngSubmit)="addAddon()"
+          class="mt-4 pt-4 border-t border-theme space-y-3"
+          data-testid="addon-add-form"
+        >
+          <p class="text-sm font-medium text-theme-primary">{{ 'extensions.addAddon' | t }}</p>
+          <p class="text-xs text-theme-muted">{{ 'extensions.addAddonDesc' | t }}</p>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              name="addon-url"
+              [ngModel]="addonUrl()"
+              (ngModelChange)="addonUrl.set($event)"
+              [placeholder]="'extensions.addonUrlPlaceholder' | t"
+              data-testid="addon-url-input"
+              autocomplete="off"
+              class="flex-1 px-3 py-2 rounded-lg bg-theme-surface border border-theme text-sm text-theme-primary focus:outline-none focus:border-theme-accent"
+            />
+            <input
+              type="password"
+              name="addon-token"
+              [ngModel]="addonToken()"
+              (ngModelChange)="addonToken.set($event)"
+              [placeholder]="'extensions.addonTokenPlaceholder' | t"
+              data-testid="addon-token-input"
+              autocomplete="off"
+              class="flex-1 px-3 py-2 rounded-lg bg-theme-surface border border-theme text-sm text-theme-primary focus:outline-none focus:border-theme-accent"
+            />
+            <button
+              type="submit"
+              [disabled]="busy() || !addonUrl().trim() || !addonToken().trim()"
+              appTvNavItem
+              data-testid="addon-add-btn"
+              class="px-4 py-2 rounded-lg text-sm font-medium bg-theme-accent text-theme-on-accent hover:opacity-90 disabled:opacity-50"
+            >
+              {{ 'extensions.addAddonBtn' | t }}
+            </button>
+          </div>
+        </form>
       </div>
     </app-settings-group>
   }
@@ -110,5 +151,14 @@
     [confirmLabel]="'extensions.consentConfirm' | t"
     (confirm)="confirmConsent()"
     (cancel)="consentTarget.set(null)"
+  />
+}
+
+@if (removeTarget(); as p) {
+  <app-confirm-dialog
+    [message]="'extensions.addonRemoveConfirm' | t: { name: p.name }"
+    [confirmLabel]="'extensions.addonRemove' | t"
+    (confirm)="confirmRemoveAddon()"
+    (cancel)="removeTarget.set(null)"
   />
 }

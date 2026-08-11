@@ -44,6 +44,15 @@ export interface PluginInfo {
   configured?: Record<string, boolean>;
   /** Prefill values for non-secret (`text`) fields. */
   config?: Record<string, unknown>;
+  /** True for a registered remote addon (acquisition addon protocol). */
+  remote?: boolean;
+  /** The remote addon's base URL. */
+  addonUrl?: string;
+}
+
+export interface AddonStatus {
+  available: boolean;
+  rows: { key: string; label: string; value: string }[];
 }
 
 /**
@@ -111,6 +120,23 @@ export class PluginService {
   async saveConfig(id: string, config: Record<string, unknown>): Promise<void> {
     await firstValueFrom(this.http.put(`/api/plugins/${id}/config`, config));
     await this.refresh();
+  }
+
+  /** Register a remote addon by URL + bearer token (admin-only server-side). */
+  async addAddon(url: string, token: string): Promise<void> {
+    await firstValueFrom(this.http.post('/api/plugins/addons', { url, token }));
+    await this.refresh();
+  }
+
+  /** Remove a registered remote addon. */
+  async removeAddon(id: string): Promise<void> {
+    await firstValueFrom(this.http.delete(`/api/plugins/addons/${id}`));
+    await this.refresh();
+  }
+
+  /** Live status rows for a remote addon's generic status panel. */
+  getAddonStatus(id: string): Observable<AddonStatus> {
+    return this.http.get<AddonStatus>(`/api/plugins/${id}/addon-status`);
   }
 
   /** Whether the slskd extension is enabled (gates its dedicated settings page). */

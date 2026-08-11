@@ -5,6 +5,7 @@ import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { pluginStatus, type PluginStatus } from '../../lib/plugin-status';
 import { IconComponent } from '../../components/icon/icon.component';
 import { SlskdSettingsComponent } from './slskd/slskd-settings.component';
+import { AddonStatusPanelComponent } from './addon-status-panel.component';
 import { readGroupOpen, writeGroupOpen } from '../../lib/group-state';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
@@ -47,7 +48,14 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 @Component({
   selector: 'app-plugin-card',
   standalone: true,
-  imports: [FormsModule, TvNavItemDirective, IconComponent, SlskdSettingsComponent, TranslatePipe],
+  imports: [
+    FormsModule,
+    TvNavItemDirective,
+    IconComponent,
+    SlskdSettingsComponent,
+    AddonStatusPanelComponent,
+    TranslatePipe,
+  ],
   templateUrl: './plugin-card.component.html',
 })
 export class PluginCardComponent {
@@ -60,6 +68,8 @@ export class PluginCardComponent {
   @Output() readonly toggle = new EventEmitter<PluginInfo>();
   @Output() readonly save = new EventEmitter<PluginInfo>();
   @Output() readonly fieldChange = new EventEmitter<{ key: string; value: string }>();
+  /** Remote addons only: request removal of this addon's registration. */
+  @Output() readonly remove = new EventEmitter<PluginInfo>();
 
   private openState: boolean | null = null;
 
