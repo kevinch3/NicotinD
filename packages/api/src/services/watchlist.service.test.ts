@@ -60,7 +60,8 @@ function makeHarness(opts: {
   const addonClient = {
     baseUrl: 'http://addon:9999',
     albumsSearch: async (req: { artist: string; album: string }) => {
-      const candidates = (await hunt(req)) as FolderCandidate[];
+      void req;
+      const candidates = (await hunt()) as FolderCandidate[];
       return {
         candidates: candidates.map((c, i) => ({
           candidateRef: `ref-${i}`,

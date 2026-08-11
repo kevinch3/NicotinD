@@ -32,7 +32,6 @@ const IDIOM_PAGES = [
   'settings/devices/devices.component.html',
   'settings/agent-tokens/agent-tokens.component.html',
   'plugins/plugins.component.html',
-  'plugins/slskd/slskd-settings.component.html',
   'admin/admin.component.html',
 ];
 

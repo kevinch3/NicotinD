@@ -21,7 +21,7 @@ import type {
   ImportPlan,
 } from './api-types';
 
-/** System surface: status/scan/logs, settings (soulseek/shares/streaming/
+/** System surface: status/scan/logs, settings (streaming/
  *  processing), first-run setup, and admin user management. */
 @Injectable({ providedIn: 'root' })
 export class SystemApiService {
@@ -68,36 +68,6 @@ export class SystemApiService {
   }
 
   // Settings
-  getSoulseekSettings() {
-    return this.http.get<{
-      username: string;
-      configured: boolean;
-      connected: boolean;
-      listeningPort?: number;
-      enableUPnP?: boolean;
-    }>('/api/settings/soulseek');
-  }
-
-  saveSoulseekSettings(
-    username: string,
-    password?: string,
-    network?: { listeningPort: number; enableUPnP: boolean },
-  ) {
-    return this.http.put<{ ok: boolean; message: string; connected?: boolean; username?: string }>(
-      '/api/settings/soulseek',
-      { username, password, ...network },
-    );
-  }
-
-  getSoulseekStatus() {
-    return this.http.get<{ configured: boolean; connected: boolean; username: string | null }>(
-      '/api/settings/soulseek/status',
-    );
-  }
-
-  toggleSoulseekConnection() {
-    return this.http.post<{ connected: boolean }>('/api/settings/soulseek/toggle', {});
-  }
 
   getShares() {
     return this.http.get<{ directories: string[] }>('/api/settings/shares');

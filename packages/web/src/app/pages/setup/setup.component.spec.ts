@@ -94,11 +94,22 @@ describe('SetupComponent', () => {
     expect(comp.step()).toBe('quality');
   });
 
-  it('navigates to soulseek step after quality', () => {
+  it('completes setup from the quality step (no Soulseek step since phase 3)', () => {
     const comp = TestBed.createComponent(SetupComponent).componentInstance;
+    (comp as any).adminData = { username: 'admin', password: 'password' };
+    const spy = vi
+      .spyOn(comp['api'], 'completeSetup')
+      .mockReturnValue(
+        of({
+          token: 'tok',
+          user: { id: '1', username: 'admin', role: 'admin' },
+          needsRestart: false,
+        }),
+      );
     comp.step.set('quality');
     comp.handleQualityNext();
-    expect(comp.step()).toBe('soulseek');
+    expect(spy).toHaveBeenCalled();
+    expect(comp.step()).toBe('done');
   });
 
   it('submits setup with admin + library dir + transcode settings', () => {
@@ -116,7 +127,7 @@ describe('SetupComponent', () => {
       }),
     );
 
-    comp.handleSoulseekNext();
+    comp.handleQualityNext();
 
     expect(spy).toHaveBeenCalledWith({
       admin: { username: 'admin', password: 'password123' },
@@ -133,7 +144,7 @@ describe('SetupComponent', () => {
       of({ token: 'tok', user: { id: '1', username: 'admin', role: 'admin' }, needsRestart: true }),
     );
 
-    comp.handleSoulseekNext();
+    comp.handleQualityNext();
 
     expect(comp.needsRestart()).toBe(true);
     expect(comp.step()).toBe('done');
@@ -147,7 +158,7 @@ describe('SetupComponent', () => {
       throwError(() => ({ error: { error: 'Server error' } })),
     );
 
-    comp.handleSoulseekNext();
+    comp.handleQualityNext();
 
     expect(comp.error()).toBe('Server error');
   });
@@ -158,7 +169,7 @@ describe('SetupComponent', () => {
 
     vi.spyOn(comp['api'], 'completeSetup').mockReturnValue(throwError(() => ({})));
 
-    comp.handleSoulseekNext();
+    comp.handleQualityNext();
 
     // Raw key in this harness (no real catalog loaded) — same convention as above.
     expect(comp.error()).toBe('setup.failed');
@@ -180,13 +191,13 @@ describe('SetupComponent', () => {
     expect(comp.stepNumber()).toBe(2);
     comp.step.set('quality');
     expect(comp.stepNumber()).toBe(3);
-    comp.step.set('soulseek');
+    comp.step.set('done');
     expect(comp.stepNumber()).toBe(4);
   });
 
-  it('has 4 step dots', () => {
+  it('has 3 step dots', () => {
     const comp = TestBed.createComponent(SetupComponent).componentInstance;
-    expect(comp.stepDots()).toEqual([1, 2, 3, 4]);
+    expect(comp.stepDots()).toEqual([1, 2, 3]);
   });
 
   it('does not render the pick-folder button when not in Electron', () => {

@@ -101,73 +101,7 @@
             <div class="flex gap-3">
               <button type="button" (click)="step.set('library')" class="px-5 py-3 rounded-lg border border-zinc-800 text-zinc-400 text-sm font-medium hover:border-zinc-600 transition">{{ 'common.back' | t }}</button>
               <button type="button" (click)="handleQualityNext()" data-testid="setup-next-quality"
-                class="flex-1 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition">{{ 'common.next' | t }}</button>
-            </div>
-          </div>
-        }
-
-        <!-- Step 4: Soulseek -->
-        @if (step() === 'soulseek') {
-          <div class="space-y-4">
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
-              <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-1">{{ 'setup.soulseekNetwork' | t }}</h2>
-              <p class="text-xs text-zinc-600 mb-4">{{ 'setup.soulseekHint' | t }}</p>
-              <div class="flex gap-1 p-1 rounded-lg bg-zinc-800/50 w-fit mb-4">
-                <button type="button" (click)="slskIsNewAccount.set(false); slskConfirmPassword = ''; error.set('')"
-                  [class]="!slskIsNewAccount() ? 'px-3 py-1.5 rounded-md text-xs font-medium transition bg-zinc-700 text-zinc-100' : 'px-3 py-1.5 rounded-md text-xs font-medium transition text-zinc-400 hover:text-zinc-200'">
-                  {{ 'setup.haveAccount' | t }}
-                </button>
-                <button type="button" (click)="slskIsNewAccount.set(true); error.set('')"
-                  [class]="slskIsNewAccount() ? 'px-3 py-1.5 rounded-md text-xs font-medium transition bg-zinc-700 text-zinc-100' : 'px-3 py-1.5 rounded-md text-xs font-medium transition text-zinc-400 hover:text-zinc-200'">
-                  {{ 'setup.createNewAccount' | t }}
-                </button>
-              </div>
-              <div class="space-y-3">
-                <input type="text" [placeholder]="(slskIsNewAccount() ? 'setup.chooseNewUsername' : 'setup.soulseekUsername') | t" [(ngModel)]="slskUsername" name="slskUser" autofocus
-                  class="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm" />
-                <app-password-field [(ngModel)]="slskPassword" name="slskPass" [placeholder]="(slskIsNewAccount() ? 'setup.choosePassword' : 'setup.soulseekPassword') | t" [autocomplete]="'new-password'"
-                  [inputClass]="'px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm'" />
-                @if (slskIsNewAccount()) {
-                  <app-password-field [(ngModel)]="slskConfirmPassword" name="slskConfirm" [placeholder]="'setup.confirmPassword' | t" [autocomplete]="'new-password'"
-                    [inputClass]="'px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm'" />
-                  @if (slskConfirmPassword && slskPassword !== slskConfirmPassword) {
-                    <p class="text-xs text-red-400">{{ 'setup.passwordsDoNotMatch' | t }}</p>
-                  }
-                }
-              </div>
-            </div>
-
-            <!-- Advanced: Lidarr -->
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
-              <button type="button" (click)="showLidarr.set(!showLidarr())"
-                data-testid="setup-advanced-toggle"
-                class="w-full flex items-center justify-between p-4 hover:bg-zinc-800/30 transition">
-                <span class="text-sm font-semibold uppercase tracking-wider text-zinc-400">{{ 'setup.advancedServices' | t }}</span>
-                <svg [class.rotate-180]="showLidarr()" class="w-4 h-4 text-zinc-500 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-              @if (showLidarr()) {
-                <div class="px-4 pb-4 space-y-3">
-                  <p class="text-xs text-zinc-600 mb-2">{{ 'setup.lidarrHint' | t }}</p>
-                  <input type="text" [placeholder]="'setup.lidarrUrlPlaceholder' | t" [(ngModel)]="lidarrUrl" name="lidarrUrl"
-                    data-testid="setup-lidarr-url"
-                    class="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm" />
-                  <app-password-field [(ngModel)]="lidarrApiKey" name="lidarrApiKey" [placeholder]="'setup.lidarrApiKeyPlaceholder' | t" [autocomplete]="'off'"
-                    [testId]="'setup-lidarr-apikey'"
-                    [inputClass]="'px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm'" />
-                </div>
-              }
-            </div>
-
-            @if (error()) { <p class="text-red-400 text-sm">{{ error() }}</p> }
-            <div class="flex gap-3">
-              <button type="button" (click)="step.set('quality')" class="px-5 py-3 rounded-lg border border-zinc-800 text-zinc-400 text-sm font-medium hover:border-zinc-600 transition">{{ 'common.back' | t }}</button>
-              <button type="button" (click)="handleSoulseekNext()" [disabled]="loading()"
-                data-testid="setup-soulseek-next"
-                class="flex-1 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition disabled:opacity-50">
-                {{ soulseekButtonLabel() }}
-              </button>
+                class="flex-1 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition">{{ 'setup.completeSetup' | t }}</button>
             </div>
           </div>
         }
