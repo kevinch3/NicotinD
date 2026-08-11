@@ -4,6 +4,7 @@ import type { Slskd } from '@nicotind/slskd-client';
 import { createLogger, type AddonHealth, type AddonStatusRow } from '@nicotind/core';
 import { buildManifest } from './manifest.js';
 import { storeConfig } from './config.js';
+import { createProtocolRoutes, type ProtocolRouteDeps } from './routes.js';
 
 const log = createLogger('slskd-addon');
 
@@ -17,6 +18,11 @@ export interface AddonServerDeps {
   onConfigChanged?: () => void;
   /** Overridable status source (upgraded once slskd-status moves in). */
   statusRows?: () => Promise<AddonStatusRow[]>;
+  /**
+   * The engine half (search/albums-search/jobs/files/browse/notify). Absent in
+   * minimal deployments/tests — the manage/observe surface still works.
+   */
+  engine?: Pick<ProtocolRouteDeps, 'hunter' | 'trackHunter' | 'downloadsDir'>;
 }
 
 /**
@@ -73,6 +79,10 @@ export function createAddonApp(deps: AddonServerDeps): Hono {
     deps.onConfigChanged?.();
     return c.body(null, 204);
   });
+
+  if (deps.engine) {
+    v1.route('/', createProtocolRoutes({ db: deps.db, slskdRef: deps.slskdRef, ...deps.engine }));
+  }
 
   app.route('/addon/v1', v1);
   return app;

@@ -18,3 +18,14 @@ export {
   type PolledCompletion,
   type TransferPollerOptions,
 } from './services/transfer-poller.js';
+export { createProtocolRoutes, type ProtocolRouteDeps } from './routes.js';
+export * from './services/job-store.js';
+export { makeAddonFallbackHost } from './services/addon-fallback-host.js';
+export {
+  executeJobRequest,
+  filesMatchingTitles,
+  candidateCache,
+  JobConflictError,
+  JobRequestError,
+  type JobEngineDeps,
+} from './services/job-engine.js';
