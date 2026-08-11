@@ -36,8 +36,9 @@
     --theme-border:       #27272a;
     --theme-text-primary: #f4f4f5;
     --theme-text-secondary: #a1a1aa;
-    --theme-text-muted:   #71717a;
-    --theme-accent:       #6366f1;
+    --theme-text-muted:   #8d8d96;
+    --theme-accent:       #6164f1;
+    --theme-accent-text:  #7f82f4;
     --theme-on-accent:    #ffffff;
     --theme-highlight-bg: rgba(245,158,11,0.35);
     --theme-highlight-text: #fef3c7;
@@ -59,8 +60,9 @@
     --theme-border:       #d4d4d8;
     --theme-text-primary: #18181b;
     --theme-text-secondary: #52525b;
-    --theme-text-muted:   #71717a;
-    --theme-accent:       #6366f1;
+    --theme-text-muted:   #65656d;
+    --theme-accent:       #6164f1;
+    --theme-accent-text:  #4b4eef;
     --theme-on-accent:    #ffffff;
     --theme-highlight-bg: #fde68a;
     --theme-highlight-text: #78350f;
@@ -82,8 +84,9 @@
     --theme-border:       #d6c8b8;
     --theme-text-primary: #292524;
     --theme-text-secondary: #57534e;
-    --theme-text-muted:   #78716c;
+    --theme-text-muted:   #67615c;
     --theme-accent:       #d97706;
+    --theme-accent-text:  #945104;
     --theme-on-accent:    #431407;
     --theme-highlight-bg: #fcd34d;
     --theme-highlight-text: #78350f;
@@ -105,8 +108,9 @@
     --theme-border:       #1a1a1a;
     --theme-text-primary: #ffffff;
     --theme-text-secondary: #a3a3a3;
-    --theme-text-muted:   #737373;
+    --theme-text-muted:   #828282;
     --theme-accent:       #818cf8;
+    --theme-accent-text:  #818cf8;
     --theme-on-accent:    #0a0a0a;
     --theme-highlight-bg: #78350f;
     --theme-highlight-text: #fef3c7;
@@ -128,8 +132,9 @@
     --theme-border:       #3d3557;
     --theme-text-primary: #ede9f6;
     --theme-text-secondary: #a39fc4;
-    --theme-text-muted:   #7c7a9a;
+    --theme-text-muted:   #a3a1b8;
     --theme-accent:       #a78bfa;
+    --theme-accent-text:  #ad93fa;
     --theme-on-accent:    #1e1b2e;
     --theme-highlight-bg: rgba(167,139,250,0.35);
     --theme-highlight-text: #f5f3ff;
@@ -151,8 +156,9 @@
     --theme-border:       #243d35;
     --theme-text-primary: #e2f5ed;
     --theme-text-secondary: #7aaa96;
-    --theme-text-muted:   #4d8070;
+    --theme-text-muted:   #75ac9b;
     --theme-accent:       #2dd4bf;
+    --theme-accent-text:  #2dd4bf;
     --theme-on-accent:    #05130f;
     --theme-highlight-bg: rgba(45,212,191,0.28);
     --theme-highlight-text: #ccfbf1;
@@ -180,6 +186,7 @@
     --theme-text-secondary: #000000;
     --theme-text-muted:   #333333;
     --theme-accent:       #000000;
+    --theme-accent-text:  #000000;
     --theme-on-accent:    #ffffff;
     --theme-highlight-bg: #000000;
     --theme-highlight-text: #ffffff;
@@ -298,6 +305,12 @@
    needed) all resolve from this one token. */
 @theme {
   --color-theme-accent: var(--theme-accent);
+  /* Accent used as *text* needs a different value from accent used as a *fill*:
+     white-on-accent and accent-on-background pull the contrast requirement in
+     opposite directions, so one token cannot satisfy both (measured: accent text
+     hits 2.37:1 on warm-paper's surface-2, while white on that same accent needs
+     the fill to stay dark). `text-theme-accent-text` is the text one. */
+  --color-theme-accent-text: var(--theme-accent-text);
   /* `theme-secondary`/`theme-surface`/`theme-muted` get the same `@theme`
      promotion as `theme-accent` above, for the same reason: the now-playing
      queue panel + lyrics panel (player standardization branch) use

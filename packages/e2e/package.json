@@ -18,7 +18,8 @@
     "typecheck": "tsc --noEmit",
     "smoke:storybook": "node scripts/storybook-smoke.mjs",
     "install:browsers": "playwright install --with-deps chromium",
-    "a11y:storybook": "node scripts/storybook-a11y.mjs"
+    "a11y:storybook": "node scripts/storybook-a11y.mjs",
+    "a11y:storybook:strict": "node scripts/storybook-a11y.mjs --strict"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

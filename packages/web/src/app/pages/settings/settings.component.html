@@ -75,7 +75,7 @@
                   <div class="px-2 py-1.5 flex items-center justify-between" style="background: var(--theme-surface, #18181b)">
                     <span class="text-xs font-semibold" style="color: var(--theme-text-primary, #f4f4f5)">{{ preset.name }}</span>
                     @if (themeService.theme() === preset.id) {
-                      <span class="text-theme-accent text-xs">✓</span>
+                      <span class="text-theme-accent-text text-xs">✓</span>
                     }
                   </div>
                 </button>
@@ -421,7 +421,7 @@
                 type="checkbox"
                 [ngModel]="cleanPreserveOnLogout()"
                 (ngModelChange)="cleanPreserveOnLogout.set($event)"
-                class="mt-0.5 rounded border-theme-muted bg-theme-base text-theme-accent focus:ring-theme-accent focus:ring-offset-0"
+                class="mt-0.5 rounded border-theme-muted bg-theme-base text-theme-accent-text focus:ring-theme-accent focus:ring-offset-0"
               />
               <span class="text-sm text-theme-secondary">
                 {{ 'settings.signOutConfirm' | t }}

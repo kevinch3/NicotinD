@@ -105,7 +105,7 @@ describe('RadioLandingComponent', () => {
       expect(preset).toBeTruthy();
       const cls = preset.className;
       expect(cls).toContain('hover:bg-theme-accent/15');
-      expect(cls).toContain('hover:text-theme-accent');
+      expect(cls).toContain('hover:text-theme-accent-text');
       expect(cls).not.toContain('hover:bg-theme-accent ');
       expect(cls).not.toContain('hover:text-theme-on-accent');
     });
@@ -123,7 +123,7 @@ describe('RadioLandingComponent', () => {
       expect(genre).toBeTruthy();
       const cls = genre.className;
       expect(cls).toContain('hover:bg-theme-accent/15');
-      expect(cls).toContain('hover:text-theme-accent');
+      expect(cls).toContain('hover:text-theme-accent-text');
       expect(cls).not.toContain('hover:bg-theme-accent ');
       expect(cls).not.toContain('hover:text-theme-on-accent');
     });

@@ -1376,8 +1376,12 @@ Add detail there, not here.
   would drift), MDX covers only Foundations + Patterns. Stories run the **real** services
   behind an HTTP fixture interceptor — no fake service classes. `bun run smoke:storybook` is
   a second gate beside `build:storybook` because compiling a story is not running one (the
-  first green build shipped 67 of 139 stories that threw on mount). The 11 app-shell
-  components (5–14 injections) are deliberately out of scope. →
+  first green build shipped 67 of 139 stories that threw on mount). `a11y:storybook:strict`
+  is a third gate — axe over every story, promoted from report to gate only once it hit zero
+  (fixing 241 contrast nodes + nine unnamed transport buttons; contrast turned out to be a
+  theme-token problem, and accent needed splitting into `--theme-accent` for fills vs
+  `--theme-accent-text` for text, which pull the requirement in opposite directions). The 11
+  app-shell components (5–14 injections) are deliberately out of scope. →
   [docs/storybook.md](docs/storybook.md)
 
 Angular v22 standalone SPA with signals, `HttpClient` + interceptors, and lazy-loaded routes. Built
