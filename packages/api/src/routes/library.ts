@@ -12,8 +12,6 @@ import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
 import type { LibraryCurator } from '../services/library-curator.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from '../services/album-grouping.js';
-import { transferGroupKeys } from '../services/transfer-group-keys.js';
-import type { SlskdRef } from '../index.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import { deleteAlbum, deleteOne } from '../services/library-deletion.js';
 import { getAcquisitionByPath } from '../services/acquisition-store.js';
@@ -199,8 +197,8 @@ const SINGLE_EP_CLASSIFICATION_SQL = `classification IN ('single','ep')`;
  * create a job row are suppressed too). Used to hide partially-downloaded albums
  * from library listings so the user never sees an incomplete album.
  */
-function getDownloadingGroupKeys(db: Database, extraKeys?: Set<string>): Set<string> {
-  const keys = new Set(extraKeys);
+function getDownloadingGroupKeys(db: Database): Set<string> {
+  const keys = new Set<string>();
   // `album_jobs` UNION the unified `acquisition_jobs` (active only) via the shared
   // job-store helper — the latter also covers track-search/direct jobs.
   for (const { artistName, albumTitle } of jobAlbumPairs(db, { activeOnly: true })) {
@@ -208,11 +206,6 @@ function getDownloadingGroupKeys(db: Database, extraKeys?: Set<string>): Set<str
   }
   return keys;
 }
-
-/** Cache the (potentially slow, network) slskd transfer fetch briefly so a burst
- * of listing requests doesn't hammer slskd. */
-let transferKeysCache: { at: number; keys: Set<string> } | null = null;
-const TRANSFER_KEYS_TTL_MS = 4000;
 
 /** Cache the album id→group-key mapping so a burst of listing requests during an
  * active download doesn't re-scan library_albums each time. Short TTL (like the
@@ -224,9 +217,8 @@ const TRANSFER_KEYS_TTL_MS = 4000;
 let albumKeyCache = new WeakMap<Database, { at: number; byGroupKey: Map<string, string[]> }>();
 const ALBUM_KEY_TTL_MS = 4000;
 
-/** Test hook: clear the cached transfer keys + album map so a test can change state. */
+/** Test hook: clear the cached album map so a test can change state. */
 export function __resetDownloadSuppressionCache(): void {
-  transferKeysCache = null;
   albumKeyCache = new WeakMap();
   quarantineCache = new WeakMap();
 }
@@ -257,30 +249,6 @@ export function albumIdsByGroupKey(db: Database): Map<string, string[]> {
 }
 
 /**
- * Active-transfer group keys, fetched from slskd with a short cache. Returns an
- * empty set when slskd is absent/unreachable (fast path — suppression then keys
- * on album_jobs only). Never throws.
- */
-async function activeTransferKeys(slskdRef?: SlskdRef): Promise<Set<string>> {
-  if (!slskdRef?.current) return new Set();
-  const now = Date.now();
-  if (transferKeysCache && now - transferKeysCache.at < TRANSFER_KEYS_TTL_MS) {
-    return transferKeysCache.keys;
-  }
-  try {
-    const groups = await slskdRef.current.transfers.getDownloads();
-    const keys = transferGroupKeys(groups);
-    transferKeysCache = { at: now, keys };
-    return keys;
-  } catch {
-    // slskd unreachable — degrade to album_jobs-only suppression, cache the miss
-    // briefly so we don't retry on every request.
-    transferKeysCache = { at: now, keys: new Set() };
-    return transferKeysCache.keys;
-  }
-}
-
-/**
  * Returns a SQL WHERE fragment (+ params) excluding actively-downloading albums
  * by id. This must be applied *inside* the query — pushing the exclusion down to
  * SQL keeps LIMIT/OFFSET pagination honest. Filtering post-LIMIT (the old way)
@@ -289,11 +257,8 @@ async function activeTransferKeys(slskdRef?: SlskdRef): Promise<Set<string>> {
  *
  * Fast path: no active downloads → empty fragment, no extra query, no change.
  */
-function downloadingExclusion(
-  db: Database,
-  extraKeys?: Set<string>,
-): { sql: string; params: string[] } {
-  const keys = getDownloadingGroupKeys(db, extraKeys);
+function downloadingExclusion(db: Database): { sql: string; params: string[] } {
+  const keys = getDownloadingGroupKeys(db);
   if (keys.size === 0) return { sql: '', params: [] };
   const byGroupKey = albumIdsByGroupKey(db);
   const excluded: string[] = [];
@@ -366,8 +331,9 @@ interface LibraryRoutesOptions {
   dataDir?: string;
   /** Plugin registry, used to resolve lyrics-capable sources on demand. */
   pluginRegistry?: PluginRegistry;
+  /** Cross-protocol share-rescan notify (the slskd addon since phase 3). */
+  notifyLibraryChanged?: () => Promise<void>;
   /** slskd handle, used to suppress albums with an in-flight (non-job) transfer. */
-  slskdRef?: SlskdRef;
   /** Spotify portrait lookup, when the spotify plugin is configured. Lets the
    *  on-demand artist-image fill reuse the same provider chain as the windowed
    *  enrichment task instead of a Lidarr-only shortcut (issue #250). */
@@ -593,7 +559,6 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     dataDir,
     pluginRegistry,
     audioFeaturesClient,
-    slskdRef,
     lookupArtistImageSpotify,
     lookupArtistImageDiscogs,
     mbClient,
@@ -603,8 +568,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // rescan, not one per file; a no-op (never scheduled) when slskd isn't
   // configured.
   const shareRescan = new ShareRescanScheduler(async () => {
-    const slskd = slskdRef?.current;
-    if (slskd) await slskd.shares.rescan();
+    await options.notifyLibraryChanged?.();
   });
 
   app.get('/artists', (c) => {
@@ -686,7 +650,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
          ORDER BY year DESC NULLS LAST, name COLLATE NOCASE ASC`,
       )
       .all(id, id);
-    const downloadingKeys = getDownloadingGroupKeys(db, await activeTransferKeys(options.slskdRef));
+    const downloadingKeys = getDownloadingGroupKeys(db);
     const visible = allRows.filter(
       (r) =>
         !downloadingKeys.has(
@@ -867,7 +831,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const db = getDatabase();
     // Exclude actively-downloading albums in SQL (pre-LIMIT) to keep pagination
     // correct — see downloadingExclusion(). Also keys on in-flight slskd transfers.
-    const excl = downloadingExclusion(db, await activeTransferKeys(options.slskdRef));
+    const excl = downloadingExclusion(db);
     const wheres = ['hidden = 0', SINGLE_EP_CLASSIFICATION_SQL];
     const params: Array<string | number> = [];
     if (excl.sql) {
@@ -913,7 +877,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     }
     // Exclude actively-downloading albums in SQL (not post-LIMIT) so pagination
     // stays correct — see downloadingExclusion(). Also keys on in-flight transfers.
-    const excl = downloadingExclusion(db, await activeTransferKeys(options.slskdRef));
+    const excl = downloadingExclusion(db);
     if (excl.sql) {
       wheres.push(excl.sql);
       params.push(...excl.params);

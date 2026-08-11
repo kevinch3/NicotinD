@@ -8,6 +8,7 @@ COPY packages/cli/package.json packages/cli/
 COPY packages/core/package.json packages/core/
 COPY packages/service-manager/package.json packages/service-manager/
 COPY packages/slskd-client/package.json packages/slskd-client/
+COPY packages/slskd-addon/package.json packages/slskd-addon/
 COPY packages/lidarr-client/package.json packages/lidarr-client/
 COPY packages/web/package.json packages/web/
 COPY packages/e2e/package.json packages/e2e/
@@ -74,6 +75,7 @@ RUN pip3 install --no-cache-dir --break-system-packages --upgrade yt-dlp spotdl 
 COPY package.json bun.lock bunfig.toml tsconfig.json ./
 COPY packages/core/ packages/core/
 COPY packages/slskd-client/ packages/slskd-client/
+COPY packages/slskd-addon/ packages/slskd-addon/
 COPY packages/lidarr-client/ packages/lidarr-client/
 COPY packages/service-manager/ packages/service-manager/
 COPY packages/api/ packages/api/

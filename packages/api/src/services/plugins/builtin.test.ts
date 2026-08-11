@@ -13,7 +13,6 @@ import {
 import { SpotdlPlugin } from './spotdl/index.js';
 import { AcoustidPlugin } from './acoustid/index.js';
 import { MusicBrainzClient } from '../musicbrainz-client.js';
-import type { SlskdRef } from '../../index.js';
 import type { ProviderRegistry } from '../provider-registry.js';
 import type { NicotinDConfig } from '@nicotind/core';
 

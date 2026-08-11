@@ -10,8 +10,6 @@ import * as realFsNamespace from 'node:fs';
 const realFs = { ...realFsNamespace };
 import { libraryRoutes, __resetDownloadSuppressionCache } from './library.js';
 import type { AuthEnv } from '../middleware/auth.js';
-import type { SlskdUserTransferGroup } from '@nicotind/core';
-import type { SlskdRef } from '../index.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
@@ -20,6 +18,7 @@ import { normalizeArtistForGrouping } from '../services/album-grouping.js';
 import { artistIdFor } from '../services/library-scanner.js';
 
 import { applySchema } from '../db.js';
+import { createJob } from '../services/acquisition-job-store.js';
 
 const sharedDb = new Database(':memory:');
 applySchema(sharedDb);
@@ -407,63 +406,34 @@ describe('library routes', () => {
     expect(res.status).toBe(403);
   });
 
-  it('hides an album with an in-flight slskd transfer from /albums, shows it once settled', async () => {
+  it('hides an album with an active acquisition job from /albums, shows it once settled', async () => {
     sharedDb.run(
       `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, classification, synced_at)
        VALUES ('uv', 'Ultraviolence', 'Lana Del Rey', 'ldr', 12, 1000, 'album', 1)`,
     );
-    const inFlight: SlskdUserTransferGroup[] = [
-      {
-        username: 'peer',
-        directories: [
-          {
-            // A raw (non-album_jobs) grab; the edition qualifier collapses to the card.
-            directory: 'Lana Del Rey\\Ultraviolence (Deluxe Edition)',
-            fileCount: 1,
-            files: [
-              {
-                id: 't1',
-                username: 'peer',
-                filename: '01 - Cruel World.flac',
-                size: 1,
-                state: 'InProgress',
-                bytesTransferred: 0,
-                averageSpeed: 0,
-                percentComplete: 0,
-              },
-            ],
-          },
-        ],
-      },
-    ];
-    const makeApp = (groups: SlskdUserTransferGroup[]) => {
-      const a = new Hono<AuthEnv>();
-      a.use('*', (c, next) => {
-        c.set('user', { sub: 'u', role: 'admin', iat: 0, exp: 9999999999 });
-        return next();
-      });
-      a.route(
-        '/',
-        libraryRoutes('/home/kevinch3/Music', {
-          slskdRef: {
-            current: { transfers: { getDownloads: async () => groups } },
-          } as unknown as SlskdRef,
-        }),
-      );
-      return a;
-    };
+    // Since phase 3, download-suppression keys on the unified job ledger — an
+    // active job for the artist/album hides the row, a finished one shows it.
+    const jobId = createJob(sharedDb, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: 'Lana Del Rey',
+      albumTitle: 'Ultraviolence',
+      sourceRef: 'addon:slskd:aj-uv',
+      files: [{ filename: '01 - Cruel World.flac', size: 1 }],
+    });
 
     __resetDownloadSuppressionCache();
-    const hidden = (await (await makeApp(inFlight).request('/albums')).json()) as Array<{
-      id: string;
-    }>;
+    const hidden = (await (await app.request('/albums')).json()) as Array<{ id: string }>;
     expect(hidden.some((al) => al.id === 'uv')).toBe(false);
 
+    sharedDb.run(`UPDATE acquisition_jobs SET state = 'done' WHERE id = ?`, [jobId]);
     __resetDownloadSuppressionCache();
-    const shown = (await (await makeApp([]).request('/albums')).json()) as Array<{ id: string }>;
+    const shown = (await (await app.request('/albums')).json()) as Array<{ id: string }>;
     expect(shown.some((al) => al.id === 'uv')).toBe(true);
 
     sharedDb.run(`DELETE FROM library_albums WHERE id = 'uv'`);
+    sharedDb.run(`DELETE FROM acquisition_job_items`);
+    sharedDb.run(`DELETE FROM acquisition_jobs`);
   });
 
   it('filters /albums by the album-level licence aggregate and ships it in the DTO', async () => {

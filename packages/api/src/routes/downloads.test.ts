@@ -7,7 +7,6 @@ import { albumIdFor } from '../services/library-scanner.js';
 import { createJob } from '../services/acquisition-job-store.js';
 import { ProviderRegistry } from '../services/provider-registry.js';
 import { TestNetworkProvider } from '../test-helpers/network-provider.js';
-import type { SlskdRef } from '../index.js';
 import { applySchema } from '../db.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import { PluginRegistry } from '../services/plugins/registry.js';
@@ -60,7 +59,7 @@ describe('downloads routes', () => {
 
     slskdMock = makeSlskdMock();
 
-    const slskdRef = { current: slskdMock } as unknown as SlskdRef;
+    const slskdRef = { current: slskdMock } as never;
     app = new Hono<AuthEnv>();
     // Downloads is acquisition-gated; inject an acquiring user (not a listener).
     app.use('*', (c, next) => {

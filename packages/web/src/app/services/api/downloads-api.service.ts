@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { SlskdUserTransferGroup, AcquireJob, AcquisitionJobView } from '@nicotind/core';
+import type { AcquireJob, AcquisitionJobView } from '@nicotind/core';
 import type {
   BrowseJobResult,
   DiscographyResult,
@@ -29,10 +29,6 @@ export class DownloadsApiService {
     return this.http.get<BrowseJobResult>(
       `/api/users/${encodeURIComponent(username)}/browse/${encodeURIComponent(jobId)}`,
     );
-  }
-
-  getUploads() {
-    return this.http.get<SlskdUserTransferGroup[]>('/api/uploads');
   }
 
   /** Unified acquisition-job feed (every download method, with pipeline stage). */

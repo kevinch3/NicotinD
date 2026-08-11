@@ -9,7 +9,6 @@ import type {
   GenreQuery,
   GenreResult,
 } from '@nicotind/core';
-import type { Slskd } from '@nicotind/slskd-client';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { ServiceManager } from '@nicotind/service-manager';
 import { authMiddleware } from './middleware/auth.js';
@@ -18,7 +17,6 @@ import { authRoutes } from './routes/auth.js';
 import { setupRoutes } from './routes/setup.js';
 import { searchRoutes } from './routes/search.js';
 import { downloadRoutes } from './routes/downloads.js';
-import { uploadRoutes } from './routes/uploads.js';
 import { libraryRoutes } from './routes/library.js';
 import { downloadReviewRoutes } from './routes/download-review.js';
 import { ShareRescanScheduler } from './services/share-rescan-scheduler.js';
@@ -100,12 +98,10 @@ import { dirname, join } from 'node:path';
 import { createWebSocketHandlers } from './services/websocket.js';
 import type { AuthEnv } from './middleware/auth.js';
 
-export type SlskdRef = { current: Slskd | null };
 export type ProcessingRef = { current: LibraryProcessingService | null };
 
 export interface CreateAppOptions {
   config: NicotinDConfig;
-  slskdRef: SlskdRef;
   lidarr: Lidarr | null;
   serviceManager: ServiceManager;
   webDistPath?: string;
@@ -117,7 +113,6 @@ export interface CreateAppOptions {
 
 export function createApp({
   config,
-  slskdRef,
   lidarr,
   serviceManager,
   webDistPath,
@@ -428,6 +423,13 @@ export function createApp({
   // from their persisted manifest snapshots after the builtins so id
   // collisions resolve in the builtins' favor.
   loadRegisteredAddons(plugins, db, { providerRegistry: registry });
+  // Library deletions must stop advertising removed files to the Soulseek
+  // network — since phase 3 that crosses the protocol as the addon's
+  // library-changed notify (the addon debounces its own shares.rescan).
+  const notifyAddonLibraryChanged = async (): Promise<void> => {
+    const addon = activeRemoteAcquisitionAddon(plugins);
+    if (addon) await addon.client.notifyLibraryChanged();
+  };
   // The host half of the addon protocol job loop: mirrors every enabled remote
   // addon's jobs into the unified feed tables and ingests finished files over
   // HTTP through the same organize→scan pipeline slskd completions use. Ticks
@@ -591,12 +593,14 @@ export function createApp({
   app.route('/api/feedback', feedbackRoutes());
   // MCP agent (issue #232): agent-token-authenticated (not JWT), refiner-capped.
   app.route('/api/agent-tokens', agentTokensRoutes());
-  app.route('/api/mcp', mcpRoutes(config.musicDir, slskdRef, expandedDataDir, runSyncAndCurate));
+  app.route(
+    '/api/mcp',
+    mcpRoutes(config.musicDir, notifyAddonLibraryChanged, expandedDataDir, runSyncAndCurate),
+  );
   app.route('/api/presence', presenceRoutes());
   app.route('/api/history', historyRoutes(historyEnabled));
   app.route('/api/privacy', privacyRoutes(historyEnabled));
   app.route('/api/downloads', downloadRoutes(registry, plugins));
-  app.route('/api/uploads', uploadRoutes(slskdRef));
   app.route(
     '/api/library',
     libraryRoutes(config.musicDir, {
@@ -606,7 +610,7 @@ export function createApp({
       coverCacheDir: `${expandedDataDir}/cover-cache`,
       dataDir: expandedDataDir,
       pluginRegistry: plugins,
-      slskdRef,
+      notifyLibraryChanged: notifyAddonLibraryChanged,
       audioFeaturesClient,
       mbClient,
       // Same provider chain the windowed artist-image task uses, so the
@@ -620,10 +624,7 @@ export function createApp({
   // Download inbox triage (issue #411): the quarantine-hold review queue.
   // Own ShareRescanScheduler instance, mirroring libraryRoutes' — a deleted
   // file's slskd share entry needs the same debounced rescan on discard.
-  const reviewShareRescan = new ShareRescanScheduler(async () => {
-    const slskd = slskdRef.current;
-    if (slskd) await slskd.shares.rescan();
-  });
+  const reviewShareRescan = new ShareRescanScheduler(notifyAddonLibraryChanged);
   app.route(
     '/api/review',
     downloadReviewRoutes({
@@ -640,7 +641,7 @@ export function createApp({
   );
   app.route(
     '/api/system',
-    systemRoutes(slskdRef, serviceManager, config, {
+    systemRoutes(serviceManager, config, {
       triggerScan: runSyncAndCurate,
       version,
       musicDir: expandedMusicDir,
@@ -668,7 +669,7 @@ export function createApp({
   // /api/admin/* blanket auth + the route's own admin check both apply.
   app.route(
     '/api/admin/review',
-    reviewRoutes(slskdRef, {
+    reviewRoutes({
       version,
       dataDir: expandedDataDir,
       processing: processingRef.current,

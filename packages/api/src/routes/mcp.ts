@@ -11,7 +11,6 @@ import { recordAudit } from '../services/audit-log.js';
 import { deleteAlbum, deleteOne } from '../services/library-deletion.js';
 import { mutateArtistIdentity } from '../services/artist-identity-mutate.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
-import type { SlskdRef } from '../index.js';
 
 /**
  * MCP server for external LLM/agents (issue #232), served **inside the Hono app**
@@ -368,7 +367,7 @@ const PROTOCOL_VERSION = '2024-11-05';
 
 export function mcpRoutes(
   musicDir?: string,
-  slskdRef?: SlskdRef,
+  notifyLibraryChanged?: () => Promise<void>,
   dataDir?: string,
   runSync?: () => Promise<void>,
 ) {
@@ -376,8 +375,7 @@ export function mcpRoutes(
   // Debounced the same way the HTTP delete routes are (share-rescan-scheduler.ts):
   // a burst of MCP deletes triggers one slskd rescan, not one per file.
   const shareRescan = new ShareRescanScheduler(async () => {
-    const slskd = slskdRef?.current;
-    if (slskd) await slskd.shares.rescan();
+    await notifyLibraryChanged?.();
   });
 
   app.post('/', async (c) => {
