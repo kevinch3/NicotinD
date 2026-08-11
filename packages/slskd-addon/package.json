@@ -1,0 +1,13 @@
+{
+  "name": "@nicotind/slskd-addon",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@nicotind/core": "workspace:*",
+    "@nicotind/slskd-client": "workspace:*",
+    "hono": "^4.12.31",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  }
+}

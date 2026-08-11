@@ -51,7 +51,7 @@ jobs:
           if echo "$files" | grep -qE '^(packages/(web|mobile|capacitor-now-playing|capacitor-tv-channels|capacitor-apk-update)/|package\.json$|bun\.lock$|\.nvmrc$|tsconfig.*\.json$|\.github/workflows/deploy\.yml$)'; then
             mob=true
           fi
-          if echo "$files" | grep -qE '^(packages/(web|desktop|api|core|slskd-client|service-manager|lidarr-client)/|src/|config/|package\.json$|bun\.lock$|\.nvmrc$|tsconfig.*\.json$|\.github/workflows/deploy\.yml$)'; then
+          if echo "$files" | grep -qE '^(packages/(web|desktop|api|core|slskd-client|slskd-addon|service-manager|lidarr-client)/|src/|config/|package\.json$|bun\.lock$|\.nvmrc$|tsconfig.*\.json$|\.github/workflows/deploy\.yml$)'; then
             desk=true
           fi
           echo "Result: mobile=$mob desktop=$desk"
