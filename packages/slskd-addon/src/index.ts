@@ -11,3 +11,5 @@ export * from './services/track-pick.js';
 export * from './services/slskd-status.js';
 export * from './services/slskd-config.js';
 export * from './services/hidden-transfers.js';
+export * from './services/album-fallback.service.js';
+export * from './services/download-retry.service.js';

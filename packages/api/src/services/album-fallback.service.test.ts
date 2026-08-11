@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { AlbumFallbackService, type AlternateCandidate } from './album-fallback.service.js';
+import { makeApiFallbackHost } from './fallback-host.js';
 import { albumIdFor } from './library-scanner.js';
 import { createJob, getJob } from './acquisition-job-store.js';
 import type { Slskd } from '@nicotind/slskd-client';
@@ -117,7 +118,7 @@ describe('AlbumFallbackService', () => {
     );
     recordJob(db, [ALT]);
 
-    const svc = new AlbumFallbackService(slskd, { db });
+    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
     await svc.sweep();
 
     expect(enqueue).toHaveBeenCalledTimes(1);
@@ -160,7 +161,7 @@ describe('AlbumFallbackService', () => {
       ],
     });
 
-    const svc = new AlbumFallbackService(slskd, { db });
+    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
     await svc.sweep();
 
     const items = getJob(db, acqId)!.items;
@@ -223,7 +224,7 @@ describe('AlbumFallbackService', () => {
       files: [{ filename: 'Album/01 Song One.flac' }, { filename: 'Album/02 Song Two.flac' }],
     });
 
-    const svc = new AlbumFallbackService(slskd, { db });
+    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
     await svc.sweep();
 
     const items = getJob(db, acqId)!.items;
@@ -279,7 +280,11 @@ describe('AlbumFallbackService', () => {
        VALUES ('s1', 'al', 'Song One', 'A', 'art', 0, 'p/01.opus', 10, '2024-01-01', 1, 1)`,
     );
 
-    const svc = new AlbumFallbackService(slskd, { db, maxFallbackAttempts: 0 });
+    const svc = new AlbumFallbackService(slskd, {
+      db,
+      host: makeApiFallbackHost(db),
+      maxFallbackAttempts: 0,
+    });
     await svc.sweep();
 
     expect(jobState(db)).toBe('exhausted');
@@ -303,7 +308,7 @@ describe('AlbumFallbackService', () => {
     ]);
     recordJob(db, [ALT]);
 
-    const svc = new AlbumFallbackService(slskd, { db });
+    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
     await svc.sweep();
 
     expect(enqueue).not.toHaveBeenCalled();
@@ -339,7 +344,7 @@ describe('AlbumFallbackService', () => {
     ]);
     recordJob(db, [ALT]);
 
-    const svc = new AlbumFallbackService(slskd, { db });
+    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
     await svc.sweep();
 
     expect(enqueue).not.toHaveBeenCalled();
@@ -377,7 +382,7 @@ describe('AlbumFallbackService', () => {
       alternates: [ALT],
     });
 
-    const svc = new AlbumFallbackService(slskd, { db });
+    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
     await svc.sweep();
 
     expect(enqueue).not.toHaveBeenCalled();
@@ -408,7 +413,7 @@ describe('AlbumFallbackService', () => {
       alternates: [ALT],
     });
 
-    const svc = new AlbumFallbackService(slskd, { db });
+    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
     await svc.sweep();
 
     expect(enqueue).toHaveBeenCalledTimes(1);
@@ -441,7 +446,7 @@ describe('AlbumFallbackService', () => {
       { username: 'alt', directory: 'X', files: [{ filename: 'X/unrelated.flac', size: 1 }] },
     ]);
 
-    const svc = new AlbumFallbackService(slskd, { db });
+    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
     await svc.sweep();
 
     expect(enqueue).not.toHaveBeenCalled();
@@ -491,7 +496,7 @@ describe('AlbumFallbackService', () => {
       alternates: [],
     });
 
-    const svc = new AlbumFallbackService(slskd, { db });
+    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
     await svc.sweep();
 
     // Query uses the normalized (folded/lowercased) track title.
@@ -557,7 +562,7 @@ describe('AlbumFallbackService', () => {
       alternates: [],
     });
 
-    await new AlbumFallbackService(slskd, { db }).sweep();
+    await new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) }).sweep();
 
     expect(enqueue).toHaveBeenCalledTimes(1);
     const [user, files] = enqueue.mock.calls[0];
@@ -600,7 +605,11 @@ describe('AlbumFallbackService', () => {
       alternates: [],
     });
 
-    const svc = new AlbumFallbackService(slskd, { db, maxFallbackAttempts: 1 });
+    const svc = new AlbumFallbackService(slskd, {
+      db,
+      host: makeApiFallbackHost(db),
+      maxFallbackAttempts: 1,
+    });
     await svc.sweep(); // wave 1: searches, finds nothing, attempts -> 1
     expect(create).toHaveBeenCalled();
     expect(enqueue).not.toHaveBeenCalled();
@@ -656,7 +665,11 @@ describe('AlbumFallbackService', () => {
     seedSong(db, 'Artist', 'Album', 'Song One');
     seedSong(db, 'Artist', 'Album', 'Song Two');
 
-    const svc = new AlbumFallbackService(slskd, { db, autoRetryExhausted: true });
+    const svc = new AlbumFallbackService(slskd, {
+      db,
+      host: makeApiFallbackHost(db),
+      autoRetryExhausted: true,
+    });
     await svc.sweep();
 
     expect(enqueue).not.toHaveBeenCalled();
@@ -683,7 +696,11 @@ describe('AlbumFallbackService', () => {
     insertExhausted(db);
     seedSong(db, 'Artist', 'Album', 'Song One'); // only track one is on disk
 
-    const svc = new AlbumFallbackService(slskd, { db, autoRetryExhausted: true });
+    const svc = new AlbumFallbackService(slskd, {
+      db,
+      host: makeApiFallbackHost(db),
+      autoRetryExhausted: true,
+    });
     await svc.sweep();
 
     expect(create).toHaveBeenCalledWith('Artist song two');
@@ -698,6 +715,7 @@ describe('AlbumFallbackService', () => {
     insertExhausted(db, { reviveCount: 2 });
     new AlbumFallbackService(slskd, {
       db,
+      host: makeApiFallbackHost(db),
       autoRetryExhausted: true,
       exhaustedMaxRevives: 2,
     }).reviveExhausted();
@@ -709,6 +727,7 @@ describe('AlbumFallbackService', () => {
     insertExhausted(db, { lastRevivedAt: Date.now() });
     new AlbumFallbackService(slskd, {
       db,
+      host: makeApiFallbackHost(db),
       autoRetryExhausted: true,
       exhaustedRetryCooldownMs: 3_600_000,
     }).reviveExhausted();
@@ -718,14 +737,18 @@ describe('AlbumFallbackService', () => {
   it('does not revive a legacy job with no artist', () => {
     const { slskd } = makeSlskd([]);
     insertExhausted(db, { artist: null });
-    new AlbumFallbackService(slskd, { db, autoRetryExhausted: true }).reviveExhausted();
+    new AlbumFallbackService(slskd, {
+      db,
+      host: makeApiFallbackHost(db),
+      autoRetryExhausted: true,
+    }).reviveExhausted();
     expect(jobState(db)).toBe('exhausted');
   });
 
   it('leaves exhausted jobs alone when autoRetryExhausted is off', async () => {
     const { slskd } = makeSlskd([]);
     insertExhausted(db);
-    await new AlbumFallbackService(slskd, { db }).sweep();
+    await new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) }).sweep();
     expect(jobState(db)).toBe('exhausted');
   });
 
@@ -768,7 +791,7 @@ describe('AlbumFallbackService', () => {
       alternates: [],
     });
 
-    const svc = new AlbumFallbackService(slskd, { db });
+    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
     await svc.sweep();
 
     expect(create).not.toHaveBeenCalled();
@@ -838,7 +861,7 @@ describe('AlbumFallbackService — concurrent-peer fan-out (#264)', () => {
       },
     ]);
 
-    const svc = new AlbumFallbackService(slskd, { db });
+    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
     await svc.sweep();
 
     // Only track three — track two is on the wire from `alt`.
@@ -890,7 +913,7 @@ describe('AlbumFallbackService — concurrent-peer fan-out (#264)', () => {
     );
     recordJob(db, [ALT]);
 
-    const svc = new AlbumFallbackService(slskd, { db });
+    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
     await svc.sweep();
     await svc.sweep();
 
@@ -921,6 +944,7 @@ describe('AlbumFallbackService — concurrent-peer fan-out (#264)', () => {
     let clock = 1_000;
     const svc = new AlbumFallbackService(slskd, {
       db,
+      host: makeApiFallbackHost(db),
       stallThresholdMs: 60_000,
       now: () => clock,
       maxFallbackAttempts: 5,

@@ -86,6 +86,7 @@ import { AutoAcquireService } from './services/auto-acquire.service.js';
 import { DownloadWatcher } from './services/download-watcher.js';
 import { DownloadRetryService } from './services/download-retry.service.js';
 import { AlbumFallbackService } from './services/album-fallback.service.js';
+import { makeApiFallbackHost } from './services/fallback-host.js';
 import { reconcileOnBoot as reconcileAcquisitionJobs } from './services/acquisition-job-store.js';
 import { reconcileHiddenTransfers } from './services/hidden-transfers.js';
 import { LibraryProcessingService } from './services/library-processing.service.js';
@@ -328,6 +329,7 @@ export function createApp({
   const fallback = slskdRef.current
     ? new AlbumFallbackService(slskdRef.current, {
         db,
+        host: makeApiFallbackHost(db),
         maxFallbackAttempts: config.downloads.fallbackMaxAttempts,
         autoRetryExhausted: config.downloads.autoRetryExhausted,
         exhaustedRetryCooldownMs: config.downloads.exhaustedRetryCooldownMs,
