@@ -13,3 +13,8 @@ export * from './services/slskd-config.js';
 export * from './services/hidden-transfers.js';
 export * from './services/album-fallback.service.js';
 export * from './services/download-retry.service.js';
+export {
+  TransferPoller,
+  type PolledCompletion,
+  type TransferPollerOptions,
+} from './services/transfer-poller.js';
