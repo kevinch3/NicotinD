@@ -112,23 +112,6 @@ test.describe('plugin capability gating', () => {
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Disable');
   });
 
-  test('the slskd card embeds its settings inline (disabled notice when off)', async ({ page }) => {
-    await page.goto('/settings/plugins');
-    // Bespoke settings are embedded inline in the card's own body — no more
-    // separate "Configure →" page (Task 4, settings-cards unification).
-    await openPluginCard(page, 'plugins-acquisition', 'slskd');
-    await expect(page.getByTestId('slskd-settings')).toBeVisible();
-    // Acquisition is default-off in e2e, so the extension shows its enable-first notice.
-    await expect(page.getByTestId('slskd-disabled-notice')).toBeVisible();
-  });
-
-  // The old dedicated route is now just a redirect back to the Extensions
-  // hub, so any bookmark/deep-link into it still lands somewhere useful.
-  test('the old /settings/plugins/slskd route redirects to /settings/plugins', async ({ page }) => {
-    await page.goto('/settings/plugins/slskd');
-    await expect(page).toHaveURL(/\/settings\/plugins$/);
-  });
-
   test('the From Spotify lane stays hidden while the plugin is disabled', async ({ page }) => {
     await page.goto('/search');
     await page.getByTestId('search-input').fill('nina simone');

@@ -32,17 +32,14 @@ test.describe('onboarding', () => {
     await page.getByTestId('setup-music-dir').fill('/data/music');
     await page.getByTestId('setup-next-library').click();
 
-    // Step 3 — Quality
+    // Step 3 — Quality + Advanced (Lidarr) panel (the wizard's last input step:
+    // Soulseek moved to the slskd addon's Extensions card in phase 3).
     await expect(page.getByText('Streaming Quality')).toBeVisible({ timeout: 10000 });
-    await page.getByTestId('setup-next-quality').click();
-
-    // Step 4 — Soulseek + Advanced (Lidarr) panel
-    await expect(page.getByText('Soulseek Network')).toBeVisible({ timeout: 10000 });
     await page.getByTestId('setup-advanced-toggle').click();
     await expect(page.getByTestId('setup-lidarr-url')).toBeVisible();
     await page.getByTestId('setup-lidarr-url').fill('http://127.0.0.1:1');
     await page.getByTestId('setup-lidarr-apikey').fill('wizard-lidarr-key');
-    await page.getByTestId('setup-soulseek-next').click();
+    await page.getByTestId('setup-next-quality').click();
 
     // Done — completion succeeds even though the (dead) Lidarr is unreachable.
     await expect(page.getByTestId('setup-done')).toBeVisible({ timeout: 30000 });
