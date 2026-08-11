@@ -335,6 +335,7 @@ export class AlbumHuntModalComponent implements OnInit {
               username: candidate.username,
               directory: candidate.directory,
               files: toFiles(candidate),
+              candidateRef: candidate.candidateRef,
             },
             alternates,
             localAlbumId: this.album().localAlbumId,

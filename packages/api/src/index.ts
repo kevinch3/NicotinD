@@ -825,6 +825,7 @@ export function createApp({
     app.route(
       '/api/discography',
       discographyRoutes({
+        getAddon: () => activeRemoteAcquisitionAddon(plugins),
         discography: discographySvc,
         hunter: hunterSvc,
         sourceHunt,

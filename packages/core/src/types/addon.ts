@@ -162,6 +162,10 @@ export interface AddonAlbumCandidate {
   estimatedSizeMb: number;
   isLive: boolean;
   files: AddonSearchResultFile[];
+  /** Peer health — the host's candidate-display/ranking inputs. */
+  freeUploadSlots?: number;
+  queueLength?: number;
+  uploadSpeed?: number;
 }
 
 export interface AddonAlbumSearchResponse {
