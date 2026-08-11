@@ -493,7 +493,7 @@ export function createApp({
   // Remote addons registered by URL (acquisition addon protocol) — re-register
   // from their persisted manifest snapshots after the builtins so id
   // collisions resolve in the builtins' favor.
-  loadRegisteredAddons(plugins, db);
+  loadRegisteredAddons(plugins, db, { providerRegistry: registry });
   // why: registerBuiltinPlugins already builds a MusicBrainzClient for Discogs
   // artist-info resolution, but keeps it private to that function — a second
   // instance here (sharing the same on-disk cache file) is cheaper than
@@ -739,7 +739,7 @@ export function createApp({
   app.route('/api/users', usersRoutes(registry));
   app.route('/api/playlists', playlistRoutes());
   app.route('/api/radio', radioRoutes());
-  app.route('/api/plugins', pluginRoutes(plugins, slskdRef, db));
+  app.route('/api/plugins', pluginRoutes(plugins, slskdRef, db, registry));
   // Metadata search sources, constructed once and shared between the legacy
   // per-source lanes and the source-agnostic blended aggregator.
   const archiveSearch = new ArchiveSearchService();

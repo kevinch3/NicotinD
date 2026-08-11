@@ -4,6 +4,7 @@ import type { SlskdStatus } from '@nicotind/core';
 import { createLogger } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
+import type { ProviderRegistry } from '../services/provider-registry.js';
 import type { SlskdRef } from '../index.js';
 import { buildSlskdStatus } from '../services/slskd-status.js';
 import { AddonRequestError } from '../services/addons/client.js';
@@ -27,7 +28,12 @@ const log = createLogger('routes:plugins');
  * URL + bearer token, `DELETE /addons/:id` removes it; once registered it flows
  * through every plugin route above like a builtin.
  */
-export function pluginRoutes(registry: PluginRegistry, slskdRef: SlskdRef, db: Database) {
+export function pluginRoutes(
+  registry: PluginRegistry,
+  slskdRef: SlskdRef,
+  db: Database,
+  providerRegistry?: ProviderRegistry,
+) {
   const app = new Hono<AuthEnv>();
 
   app.get('/', async (c) => c.json(await registry.list()));
@@ -48,7 +54,12 @@ export function pluginRoutes(registry: PluginRegistry, slskdRef: SlskdRef, db: D
     const token = typeof body.token === 'string' ? body.token.trim() : '';
     if (!url || !token) return c.json({ error: 'url and token are required' }, 400);
     try {
-      const reg = await registerAddon(registry, db, { url, token, addedBy: c.get('user').sub });
+      const reg = await registerAddon(registry, db, {
+        url,
+        token,
+        addedBy: c.get('user').sub,
+        providerRegistry,
+      });
       recordAudit(db, c.get('user'), 'addon.register', {
         targetKind: 'addon',
         targetId: reg.id,
