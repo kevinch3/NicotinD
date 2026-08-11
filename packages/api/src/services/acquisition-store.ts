@@ -94,7 +94,11 @@ export function getAcquisitionByPath(db: Database, relativePath: string): SongAc
     .get(relativePath);
   if (!row) return null;
   return {
-    method: (VALID_METHODS.has(row.method) ? row.method : 'unknown') as AcquisitionMethod,
+    // Any non-empty method is a legitimate source id since remote addons
+    // (#489) — the named set only guards against null/garbage rows.
+    method: (row.method && (VALID_METHODS.has(row.method) || row.method.length > 0)
+      ? row.method
+      : 'unknown') as AcquisitionMethod,
     sourceRef: row.source_ref,
     acquiredAt: row.completed_at,
     storagePath: row.relative_path,

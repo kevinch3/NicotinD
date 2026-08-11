@@ -70,6 +70,7 @@ import { upsertTrackStatus } from './services/plugins/host-context.js';
 import { recordAcquireJobTrack } from './services/acquire-playlist.js';
 import { registerBuiltinPlugins } from './services/plugins/builtin.js';
 import { loadRegisteredAddons } from './services/addons/manager.js';
+import { AddonJobPoller } from './services/addons/job-poller.js';
 import { AcquisitionToggle } from './services/acquisition-toggle.js';
 import {
   requireAcquisitionEnabledMiddleware,
@@ -494,6 +495,18 @@ export function createApp({
   // from their persisted manifest snapshots after the builtins so id
   // collisions resolve in the builtins' favor.
   loadRegisteredAddons(plugins, db, { providerRegistry: registry });
+  // The host half of the addon protocol job loop: mirrors every enabled remote
+  // addon's jobs into the unified feed tables and ingests finished files over
+  // HTTP through the same organize→scan pipeline slskd completions use. Ticks
+  // are no-ops while no remote addon is enabled.
+  const addonJobPoller = new AddonJobPoller({
+    db,
+    registry: plugins,
+    incomingDir: join(expandedDataDir, 'addon-incoming'),
+    organizer: sharedOrganizer,
+    scan: scanIncremental,
+  });
+  addonJobPoller.start();
   // why: registerBuiltinPlugins already builds a MusicBrainzClient for Discogs
   // artist-info resolution, but keeps it private to that function — a second
   // instance here (sharing the same on-disk cache file) is cheaper than

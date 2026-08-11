@@ -34,7 +34,7 @@ export class RemoteAddonPlugin implements Plugin {
 
   constructor(
     readonly addonManifest: AddonManifest,
-    private client: AddonClient,
+    readonly client: AddonClient,
     private providerRegistry?: ProviderRegistry,
   ) {
     this.manifest = pluginManifestFromAddon(addonManifest);
