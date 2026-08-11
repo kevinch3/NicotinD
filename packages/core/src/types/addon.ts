@@ -118,6 +118,10 @@ export interface AddonSearchResult {
   bitRateKbps?: number;
   audioFormat?: string;
   files?: AddonSearchResultFile[];
+  /** Peer health (network sources) — the host's ranking inputs. */
+  freeUploadSlots?: number;
+  queueLength?: number;
+  uploadSpeed?: number;
 }
 
 export interface AddonSearchResponse {

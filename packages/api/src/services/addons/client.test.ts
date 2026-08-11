@@ -92,3 +92,41 @@ describe('AddonClient', () => {
     expect(health.ready).toBe(false);
   });
 });
+
+describe('AddonClient engine surface', () => {
+  it('creates a job with an idempotency key and unwraps the body', async () => {
+    const { fetchFn, captured } = stubFetch(() =>
+      Response.json({ job: { id: 'j1', intent: 'album', items: [] } }),
+    );
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
+    const job = await client.createJob({ intent: 'album', artist: 'A', album: 'B' }, 'key-1');
+    expect(job.id).toBe('j1');
+    expect(captured[0]!.url).toBe('http://addon:9999/addon/v1/jobs');
+    expect(captured[0]!.auth).toBe('Bearer tok');
+  });
+
+  it('lists jobs since a cursor', async () => {
+    const { fetchFn, captured } = stubFetch(() => Response.json({ jobs: [{ id: 'j1' }] }));
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
+    const jobs = await client.listJobs(123);
+    expect(jobs).toHaveLength(1);
+    expect(captured[0]!.url).toBe('http://addon:9999/addon/v1/jobs?since=123');
+  });
+
+  it('fetchFile returns the raw response and throws on non-2xx', async () => {
+    const ok = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      fetchFn: stubFetch(() => new Response('bytes')).fetchFn,
+    });
+    const res = await ok.fetchFile('j1', 't:song one');
+    expect(await res.text()).toBe('bytes');
+
+    const gone = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      fetchFn: stubFetch(() => new Response('x', { status: 410 })).fetchFn,
+    });
+    await expect(gone.fetchFile('j1', 't:x')).rejects.toBeInstanceOf(AddonRequestError);
+  });
+});
