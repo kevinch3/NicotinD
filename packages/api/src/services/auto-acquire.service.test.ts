@@ -5,7 +5,7 @@ import { ADDON_PROTOCOL_VERSION } from '@nicotind/core';
 import { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { AddonRequestError } from './addons/client.js';
 import { AutoAcquireService } from './auto-acquire.service.js';
-import type { FolderCandidate } from './album-hunter.service.js';
+import type { FolderCandidate } from '@nicotind/slskd-addon';
 import type { Lidarr, LidarrAlbum } from '@nicotind/lidarr-client';
 
 function makeDb(): Database {

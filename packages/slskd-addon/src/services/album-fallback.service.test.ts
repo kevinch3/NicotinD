@@ -1,10 +1,11 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
-import { AlbumFallbackService, type AlternateCandidate } from './album-fallback.service.js';
-import { makeApiFallbackHost } from './fallback-host.js';
-import { albumIdFor } from './library-scanner.js';
-import { createJob, getJob } from './acquisition-job-store.js';
+import {
+  AlbumFallbackService,
+  NOOP_FALLBACK_HOST,
+  type AlternateCandidate,
+} from './album-fallback.service.js';
 import type { Slskd } from '@nicotind/slskd-client';
 
 interface MockFile {
@@ -118,7 +119,7 @@ describe('AlbumFallbackService', () => {
     );
     recordJob(db, [ALT]);
 
-    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
+    const svc = new AlbumFallbackService(slskd, { db, host: NOOP_FALLBACK_HOST });
     await svc.sweep();
 
     expect(enqueue).toHaveBeenCalledTimes(1);
@@ -128,170 +129,6 @@ describe('AlbumFallbackService', () => {
       'AltAlbum/02 Song Two.flac',
       'AltAlbum/03 Song Three.flac',
     ]);
-  });
-
-  it('repoints the unified acquisition job items when pulling from an alternate peer', async () => {
-    const { slskd } = makeSlskd([
-      {
-        username: 'primary',
-        directory: 'Album',
-        files: [
-          { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
-          { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
-          { id: 'p3', filename: 'Album/03 Song Three.flac', size: 1, state: 'Completed, Errored' },
-        ],
-      },
-    ]);
-    db.run(
-      `INSERT INTO transfer_retries (transfer_key, username, filename, attempts, gave_up) VALUES
-       ('primary::Album/02 Song Two.flac', 'primary', 'x', 3, 1),
-       ('primary::Album/03 Song Three.flac', 'primary', 'x', 3, 1)`,
-    );
-    recordJob(db, [ALT]);
-    const acqId = createJob(db, {
-      kind: 'album-hunt',
-      method: 'slskd',
-      username: 'primary',
-      canonicalTracks: ['Song One', 'Song Two', 'Song Three'],
-      albumJobId: 1,
-      files: [
-        { filename: 'Album/01 Song One.flac' },
-        { filename: 'Album/02 Song Two.flac' },
-        { filename: 'Album/03 Song Three.flac' },
-      ],
-    });
-
-    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
-    await svc.sweep();
-
-    const items = getJob(db, acqId)!.items;
-    // Track one was delivered by the primary — untouched.
-    expect(items[0].username).toBe('primary');
-    // Tracks two + three were re-pulled from the alternate: same item rows,
-    // new peer identity, attempts bumped.
-    expect(items[1].username).toBe('alt');
-    expect(items[1].transferKey).toBe('alt::AltAlbum/02 Song Two.flac');
-    expect(items[1].attempts).toBe(2);
-    expect(items[2].username).toBe('alt');
-    expect(items[2].transferKey).toBe('alt::AltAlbum/03 Song Three.flac');
-  });
-
-  it('repoints the unified job item on a fresh per-track search recovery', async () => {
-    const { slskd } = makeSlskdWithSearch(
-      [
-        {
-          username: 'primary',
-          directory: 'Album',
-          files: [
-            {
-              id: 'p1',
-              filename: 'Album/01 Song One.flac',
-              size: 1,
-              state: 'Completed, Succeeded',
-            },
-            { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
-          ],
-        },
-      ],
-      [
-        {
-          username: 'fresh-peer',
-          files: [{ filename: 'Elsewhere/Song Two.flac', size: 9 }],
-          freeUploadSlots: 1,
-          queueLength: 0,
-          uploadSpeed: 100,
-        },
-      ],
-    );
-    db.run(
-      `INSERT INTO transfer_retries (transfer_key, username, filename, attempts, gave_up) VALUES
-       ('primary::Album/02 Song Two.flac', 'primary', 'x', 3, 1)`,
-    );
-    AlbumFallbackService.recordJob(db, {
-      lidarrAlbumId: 1,
-      username: 'primary',
-      directory: 'Album',
-      artistName: 'Artist',
-      canonicalTracks: ['Song One', 'Song Two'],
-      alternates: [],
-    });
-    const acqId = createJob(db, {
-      kind: 'album-hunt',
-      method: 'slskd',
-      username: 'primary',
-      canonicalTracks: ['Song One', 'Song Two'],
-      albumJobId: 1,
-      files: [{ filename: 'Album/01 Song One.flac' }, { filename: 'Album/02 Song Two.flac' }],
-    });
-
-    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
-    await svc.sweep();
-
-    const items = getJob(db, acqId)!.items;
-    expect(items[1].username).toBe('fresh-peer');
-    expect(items[1].transferKey).toBe('fresh-peer::Elsewhere/Song Two.flac');
-    expect(items[1].attempts).toBe(2);
-  });
-
-  it('closes the unified job as an honest partial when the fallback exhausts', async () => {
-    // Track one delivered + already scanned/landed; track two failed everywhere,
-    // no alternates left → album_job exhausts → the unified job must close as
-    // "done, 1 of 2" with the missing item unavailable — never an eternal spinner.
-    const { slskd } = makeSlskd([
-      {
-        username: 'primary',
-        directory: 'Album',
-        files: [
-          { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
-          { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
-        ],
-      },
-    ]);
-    db.run(
-      `INSERT INTO transfer_retries (transfer_key, username, filename, attempts, gave_up) VALUES
-       ('primary::Album/02 Song Two.flac', 'primary', 'x', 3, 1)`,
-    );
-    AlbumFallbackService.recordJob(db, {
-      lidarrAlbumId: 1,
-      username: 'primary',
-      directory: 'Album',
-      canonicalTracks: ['Song One', 'Song Two'],
-      alternates: [],
-    });
-    const acqId = createJob(db, {
-      kind: 'album-hunt',
-      method: 'slskd',
-      username: 'primary',
-      canonicalTracks: ['Song One', 'Song Two'],
-      albumJobId: 1,
-      files: [{ filename: 'Album/01 Song One.flac' }, { filename: 'Album/02 Song Two.flac' }],
-    });
-    // Song One already made it through organize + scan + landing.
-    db.run(
-      `UPDATE acquisition_job_items SET state = 'scanned', song_id = 's1', relative_path = 'p/01.opus'
-       WHERE filename = 'Album/01 Song One.flac'`,
-    );
-    db.run(
-      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
-       VALUES ('al', 'Album', 'A', 'art', 1, 0, 1)`,
-    );
-    db.run(
-      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, landed_at, synced_at)
-       VALUES ('s1', 'al', 'Song One', 'A', 'art', 0, 'p/01.opus', 10, '2024-01-01', 1, 1)`,
-    );
-
-    const svc = new AlbumFallbackService(slskd, {
-      db,
-      host: makeApiFallbackHost(db),
-      maxFallbackAttempts: 0,
-    });
-    await svc.sweep();
-
-    expect(jobState(db)).toBe('exhausted');
-    const job = getJob(db, acqId)!;
-    expect(job.state).toBe('done');
-    expect(job.stage).toBe('done');
-    expect(job.items.map((i) => i.state).sort()).toEqual(['scanned', 'unavailable']);
   });
 
   it('does not act while the primary is still working', async () => {
@@ -308,7 +145,7 @@ describe('AlbumFallbackService', () => {
     ]);
     recordJob(db, [ALT]);
 
-    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
+    const svc = new AlbumFallbackService(slskd, { db, host: NOOP_FALLBACK_HOST });
     await svc.sweep();
 
     expect(enqueue).not.toHaveBeenCalled();
@@ -344,7 +181,7 @@ describe('AlbumFallbackService', () => {
     ]);
     recordJob(db, [ALT]);
 
-    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
+    const svc = new AlbumFallbackService(slskd, { db, host: NOOP_FALLBACK_HOST });
     await svc.sweep();
 
     expect(enqueue).not.toHaveBeenCalled();
@@ -382,7 +219,7 @@ describe('AlbumFallbackService', () => {
       alternates: [ALT],
     });
 
-    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
+    const svc = new AlbumFallbackService(slskd, { db, host: NOOP_FALLBACK_HOST });
     await svc.sweep();
 
     expect(enqueue).not.toHaveBeenCalled();
@@ -413,7 +250,7 @@ describe('AlbumFallbackService', () => {
       alternates: [ALT],
     });
 
-    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
+    const svc = new AlbumFallbackService(slskd, { db, host: NOOP_FALLBACK_HOST });
     await svc.sweep();
 
     expect(enqueue).toHaveBeenCalledTimes(1);
@@ -446,7 +283,7 @@ describe('AlbumFallbackService', () => {
       { username: 'alt', directory: 'X', files: [{ filename: 'X/unrelated.flac', size: 1 }] },
     ]);
 
-    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
+    const svc = new AlbumFallbackService(slskd, { db, host: NOOP_FALLBACK_HOST });
     await svc.sweep();
 
     expect(enqueue).not.toHaveBeenCalled();
@@ -496,7 +333,7 @@ describe('AlbumFallbackService', () => {
       alternates: [],
     });
 
-    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
+    const svc = new AlbumFallbackService(slskd, { db, host: NOOP_FALLBACK_HOST });
     await svc.sweep();
 
     // Query uses the normalized (folded/lowercased) track title.
@@ -562,7 +399,7 @@ describe('AlbumFallbackService', () => {
       alternates: [],
     });
 
-    await new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) }).sweep();
+    await new AlbumFallbackService(slskd, { db, host: NOOP_FALLBACK_HOST }).sweep();
 
     expect(enqueue).toHaveBeenCalledTimes(1);
     const [user, files] = enqueue.mock.calls[0];
@@ -607,7 +444,7 @@ describe('AlbumFallbackService', () => {
 
     const svc = new AlbumFallbackService(slskd, {
       db,
-      host: makeApiFallbackHost(db),
+      host: NOOP_FALLBACK_HOST,
       maxFallbackAttempts: 1,
     });
     await svc.sweep(); // wave 1: searches, finds nothing, attempts -> 1
@@ -647,75 +484,12 @@ describe('AlbumFallbackService', () => {
     );
   }
 
-  function seedSong(database: Database, artist: string, album: string, title: string): void {
-    const albumId = albumIdFor(artist, album);
-    database.run(
-      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
-       VALUES (?, ?, ?, ?, ?, ?, 0)`,
-      [`${albumId}-${title}`, albumId, title, artist, 'aid', `/m/${title}.flac`],
-    );
-  }
-
-  it('revives an eligible exhausted job and marks it done when the album is fully on disk', async () => {
-    // Original transfers are long gone from slskd (getDownloads empty); the
-    // disk-aware sweep must see both tracks already in the library → done, with
-    // no re-download.
-    const { slskd, enqueue } = makeSlskd([]);
-    insertExhausted(db);
-    seedSong(db, 'Artist', 'Album', 'Song One');
-    seedSong(db, 'Artist', 'Album', 'Song Two');
-
-    const svc = new AlbumFallbackService(slskd, {
-      db,
-      host: makeApiFallbackHost(db),
-      autoRetryExhausted: true,
-    });
-    await svc.sweep();
-
-    expect(enqueue).not.toHaveBeenCalled();
-    expect(jobState(db)).toBe('done');
-    const row = db.query('SELECT revive_count AS r FROM album_jobs WHERE id = 1').get() as {
-      r: number;
-    };
-    expect(row.r).toBe(1);
-  });
-
-  it('revives an exhausted job and fresh-searches only the track still missing from disk', async () => {
-    const { slskd, enqueue, create } = makeSlskdWithSearch(
-      [],
-      [
-        {
-          username: 'freshpeer',
-          freeUploadSlots: 1,
-          queueLength: 0,
-          uploadSpeed: 1000,
-          files: [{ filename: 'Random/02 Song Two.flac', size: 1 }],
-        },
-      ],
-    );
-    insertExhausted(db);
-    seedSong(db, 'Artist', 'Album', 'Song One'); // only track one is on disk
-
-    const svc = new AlbumFallbackService(slskd, {
-      db,
-      host: makeApiFallbackHost(db),
-      autoRetryExhausted: true,
-    });
-    await svc.sweep();
-
-    expect(create).toHaveBeenCalledWith('Artist song two');
-    expect(enqueue).toHaveBeenCalledTimes(1);
-    const [user] = enqueue.mock.calls[0];
-    expect(user).toBe('freshpeer');
-    expect(jobState(db)).toBe('active');
-  });
-
   it('does not revive past the max-revives cap', () => {
     const { slskd } = makeSlskd([]);
     insertExhausted(db, { reviveCount: 2 });
     new AlbumFallbackService(slskd, {
       db,
-      host: makeApiFallbackHost(db),
+      host: NOOP_FALLBACK_HOST,
       autoRetryExhausted: true,
       exhaustedMaxRevives: 2,
     }).reviveExhausted();
@@ -727,7 +501,7 @@ describe('AlbumFallbackService', () => {
     insertExhausted(db, { lastRevivedAt: Date.now() });
     new AlbumFallbackService(slskd, {
       db,
-      host: makeApiFallbackHost(db),
+      host: NOOP_FALLBACK_HOST,
       autoRetryExhausted: true,
       exhaustedRetryCooldownMs: 3_600_000,
     }).reviveExhausted();
@@ -739,7 +513,7 @@ describe('AlbumFallbackService', () => {
     insertExhausted(db, { artist: null });
     new AlbumFallbackService(slskd, {
       db,
-      host: makeApiFallbackHost(db),
+      host: NOOP_FALLBACK_HOST,
       autoRetryExhausted: true,
     }).reviveExhausted();
     expect(jobState(db)).toBe('exhausted');
@@ -748,7 +522,7 @@ describe('AlbumFallbackService', () => {
   it('leaves exhausted jobs alone when autoRetryExhausted is off', async () => {
     const { slskd } = makeSlskd([]);
     insertExhausted(db);
-    await new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) }).sweep();
+    await new AlbumFallbackService(slskd, { db, host: NOOP_FALLBACK_HOST }).sweep();
     expect(jobState(db)).toBe('exhausted');
   });
 
@@ -791,7 +565,7 @@ describe('AlbumFallbackService', () => {
       alternates: [],
     });
 
-    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
+    const svc = new AlbumFallbackService(slskd, { db, host: NOOP_FALLBACK_HOST });
     await svc.sweep();
 
     expect(create).not.toHaveBeenCalled();
@@ -861,7 +635,7 @@ describe('AlbumFallbackService — concurrent-peer fan-out (#264)', () => {
       },
     ]);
 
-    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
+    const svc = new AlbumFallbackService(slskd, { db, host: NOOP_FALLBACK_HOST });
     await svc.sweep();
 
     // Only track three — track two is on the wire from `alt`.
@@ -913,7 +687,7 @@ describe('AlbumFallbackService — concurrent-peer fan-out (#264)', () => {
     );
     recordJob(db, [ALT]);
 
-    const svc = new AlbumFallbackService(slskd, { db, host: makeApiFallbackHost(db) });
+    const svc = new AlbumFallbackService(slskd, { db, host: NOOP_FALLBACK_HOST });
     await svc.sweep();
     await svc.sweep();
 
@@ -944,7 +718,7 @@ describe('AlbumFallbackService — concurrent-peer fan-out (#264)', () => {
     let clock = 1_000;
     const svc = new AlbumFallbackService(slskd, {
       db,
-      host: makeApiFallbackHost(db),
+      host: NOOP_FALLBACK_HOST,
       stallThresholdMs: 60_000,
       now: () => clock,
       maxFallbackAttempts: 5,

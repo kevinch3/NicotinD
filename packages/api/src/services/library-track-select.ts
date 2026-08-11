@@ -1,4 +1,4 @@
-import { normalizeTitle, titlesOverlap } from './album-hunter.service.js';
+import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 
 // Lossless formats beat any lossy file when choosing the single best copy of a
 // track; within a tier, higher bitrate wins. Soulseek rips routinely leave a

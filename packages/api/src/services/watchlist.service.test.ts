@@ -7,7 +7,7 @@ import { AddonRequestError } from './addons/client.js';
 import { WatchlistService } from './watchlist.service.js';
 import { albumIdFor, artistIdFor } from './library-scanner.js';
 import type { CatalogService } from './catalog-search.service.js';
-import type { FolderCandidate } from './album-hunter.service.js';
+import type { FolderCandidate } from '@nicotind/slskd-addon';
 import type { Lidarr } from '@nicotind/lidarr-client';
 
 function makeDb(): Database {

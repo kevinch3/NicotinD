@@ -4,7 +4,7 @@ import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import { discographyRoutes } from './discography.js';
-import { AlbumFallbackService } from '../services/album-fallback.service.js';
+import { AlbumFallbackService } from '@nicotind/slskd-addon';
 import type { DiscographyService } from '../services/discography.service.js';
 import type { AlbumHuntOrchestrator } from '../services/source-hunter.js';
 import type { Lidarr } from '@nicotind/lidarr-client';

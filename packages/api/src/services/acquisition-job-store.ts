@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import type { TrackStatus } from '@nicotind/core';
 import { fold } from '@nicotind/core';
-import { normalizeTitle, titlesOverlap } from './album-hunter.service.js';
+import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 
 /**
  * Unified acquisition job store (`acquisition_jobs` + `acquisition_job_items`).
