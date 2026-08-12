@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.345](https://github.com/kevinch3/NicotinD/compare/v0.1.344...v0.1.345) (2026-08-12)
+
+### Features
+
+* **addons:** phase 2 spine — core speaks the protocol when an addon is enabled ([#495](https://github.com/kevinch3/NicotinD/issues/495)) ([a89b310](https://github.com/kevinch3/NicotinD/commit/a89b310b45f92809a0c060cbc64eb59d344e0305)), references [#487](https://github.com/kevinch3/NicotinD/issues/487) [#488](https://github.com/kevinch3/NicotinD/issues/488) [#488](https://github.com/kevinch3/NicotinD/issues/488) [#489](https://github.com/kevinch3/NicotinD/issues/489)
 ## [0.1.344](https://github.com/kevinch3/NicotinD/compare/v0.1.343...v0.1.344) (2026-08-12)
 
 ### Features
