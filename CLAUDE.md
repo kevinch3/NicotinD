@@ -794,6 +794,13 @@ Add detail there, not here.
   startup-error capture is preserved by a synchronous `error-buffer.ts` + `BufferingErrorHandler`
   (replaces `Sentry.createErrorHandler`/`TraceService`) that replays into the SDK on connect. →
   [docs/observability.md](docs/observability.md)
+- **Acquisition addon protocol (proposed — design approved, not yet implemented)**:
+  Stremio/Torrentio-style open HTTP addon protocol; the slskd bridge **and** the hunt/retry/fallback
+  engine migrate into a separately-distributed addon (in-monorepo sidecar first, own repo + image
+  last), leaving core with zero slskd code; smart-addon/thin-core seam at `acquireAlbum` (guards
+  core-side), HTTP file delivery into staging, feed continuity by mirroring addon job items into
+  `acquisition_job_items`, generic addon cards reusing the plugin kernel. →
+  [docs/acquisition-addon-protocol.md](docs/acquisition-addon-protocol.md)
 - **OAuth authentication (proposed — not yet implemented)**: Google + Microsoft login as `auth` kind
   plugins with `oauth` capability; auto-creates users by email (no validation); auto-enables when
   env-set creds present; dev bypass provider gated by `OAUTH_DEV_BYPASS` env var;
