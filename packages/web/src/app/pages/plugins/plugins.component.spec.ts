@@ -207,3 +207,93 @@ describe('PluginsComponent — Connectivity section visibility', () => {
     expect(el.textContent).toContain('Tailscale');
   });
 });
+
+describe('PluginsComponent — remote addons (phase 0)', () => {
+  beforeEach(() => TestBed.resetTestingModule());
+
+  const REMOTE: PluginInfo = {
+    id: 'fixture-addon',
+    kind: 'acquisition',
+    name: 'Fixture Addon',
+    enabled: false,
+    remote: true,
+    addonUrl: 'http://addon:9999',
+  } as PluginInfo;
+
+  function makeAddonFixture(calls: { add: unknown[]; remove: string[] }): Fixture {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [PluginsComponent],
+      providers: [
+        provideRouter([]),
+        {
+          provide: PluginService,
+          useValue: {
+            ...PLUGIN_SERVICE_SLSKD_STUB,
+            refresh: () => Promise.resolve(),
+            plugins: signal([REMOTE]),
+            acquisition: signal([REMOTE]),
+            metadata: signal([]),
+            connectivity: signal([]),
+            addAddon: (url: string, token: string) => {
+              calls.add.push([url, token]);
+              return Promise.resolve();
+            },
+            removeAddon: (id: string) => {
+              calls.remove.push(id);
+              return Promise.resolve();
+            },
+            getAddonStatus: () => of({ available: true, rows: [] }),
+          },
+        },
+        { provide: AuthService, useValue: { serverAcquisitionEnabled: signal(true) } },
+      ],
+    });
+    const fixture = TestBed.createComponent(PluginsComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('submits the add-addon form with url + token', async () => {
+    const calls = { add: [] as unknown[], remove: [] as string[] };
+    const fixture = makeAddonFixture(calls);
+    const el = expandAll(fixture);
+    expect(el.querySelector('[data-testid="addon-add-form"]')).not.toBeNull();
+
+    const component = fixture.componentInstance as PluginsComponent;
+    component.addonUrl.set('http://addon:9999');
+    component.addonToken.set('tok');
+    component.addAddon();
+    await fixture.whenStable();
+    expect(calls.add).toEqual([['http://addon:9999', 'tok']]);
+  });
+
+  it('does not submit when url or token is blank', () => {
+    const calls = { add: [] as unknown[], remove: [] as string[] };
+    const fixture = makeAddonFixture(calls);
+    const component = fixture.componentInstance as PluginsComponent;
+    component.addonUrl.set('http://addon:9999');
+    component.addonToken.set('  ');
+    component.addAddon();
+    expect(calls.add).toEqual([]);
+  });
+
+  it('shows Remove on a remote card and removes after confirm', async () => {
+    const calls = { add: [] as unknown[], remove: [] as string[] };
+    const fixture = makeAddonFixture(calls);
+    const el = expandAll(fixture);
+
+    const removeBtn = el.querySelector<HTMLButtonElement>('[data-testid="addon-remove"]');
+    expect(removeBtn).not.toBeNull();
+    removeBtn!.click();
+
+    // No detectChanges here: rendering ConfirmDialogComponent trips the JIT
+    // harness's signal-input caveat (see the class comment in
+    // plugin-card.component.ts) — assert on the signal like the consent specs.
+    const component = fixture.componentInstance as PluginsComponent;
+    expect(component.removeTarget()?.id).toBe('fixture-addon');
+    component.confirmRemoveAddon();
+    await fixture.whenStable();
+    expect(calls.remove).toEqual(['fixture-addon']);
+  });
+});

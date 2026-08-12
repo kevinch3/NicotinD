@@ -157,4 +157,8 @@ export interface PluginInfo {
    * prefill them. `password` fields are intentionally omitted.
    */
   config?: Record<string, unknown>;
+  /** True for a registered remote addon (acquisition addon protocol). */
+  remote?: boolean;
+  /** The remote addon's base URL (shown on its card; admins registered it). */
+  addonUrl?: string;
 }

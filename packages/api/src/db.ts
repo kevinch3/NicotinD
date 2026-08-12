@@ -1265,6 +1265,22 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // Remote acquisition addons registered by URL (acquisition addon protocol —
+  // docs/acquisition-addon-protocol.md). token is the outbound bearer we must
+  // replay on every call, so it is stored plaintext (same class as the Soulseek
+  // creds); manifest_json is the manifest snapshot taken at registration so the
+  // card renders at boot even while the addon is down.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS addon_registrations (
+      id            TEXT PRIMARY KEY,
+      url           TEXT NOT NULL,
+      token         TEXT NOT NULL,
+      manifest_json TEXT NOT NULL,
+      added_at      INTEGER NOT NULL,
+      added_by      TEXT NOT NULL
+    )
+  `);
+
   // Plugin-scoped persistent key/value store (the PluginHostContext.storage
   // surface). Namespaced by plugin id so plugins can't read each other's data.
   db.run(`

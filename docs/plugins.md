@@ -104,6 +104,33 @@ worked example.
   `flushReinit()` awaited by the route) so the change takes effect live — previously the running
   instance kept its init-time config until a disable/enable cycle or restart.
 
+## Remote addons (acquisition addon protocol, phase 0)
+
+An admin can register an **out-of-process** acquisition addon by URL + bearer token
+(`POST /api/plugins/addons`, admin-only, audit-logged; `DELETE /api/plugins/addons/:id`
+removes it). The full protocol + phased migration lives in
+[acquisition-addon-protocol.md](acquisition-addon-protocol.md) — the summary:
+
+- `services/addons/manager.ts` fetches the addon's manifest through `AddonClient`, validates
+  it (`validateAddonManifest` in `@nicotind/core` `types/addon.ts` — the builtin manifest
+  rules plus a same-major protocol-version check), persists the registration + a manifest
+  snapshot in `addon_registrations`, and registers a `RemoteAddonPlugin` in the live
+  registry.
+- `RemoteAddonPlugin` implements the ordinary `Plugin` interface, so **everything in this
+  document applies unchanged**: the addon is default-off, consent-gated when its manifest
+  says so, listed by `GET /api/plugins`, enabled/disabled/configured through the same
+  routes, and rendered by the same card. `Plugin.origin` / `PluginInfo.remote`+`addonUrl`
+  are the only additions. Config is core-owned and pushed down (`PUT /addon/v1/config`) on
+  every (re-)init; `isAvailable()` follows `GET /addon/v1/health`.
+- At boot, `loadRegisteredAddons` re-registers every persisted addon **from its manifest
+  snapshot with no network** — a down addon still renders its card and simply reports
+  unavailable. Invalid/colliding rows are skipped with a warning, never fatal.
+- The registration's bearer token is stored **plaintext** — it is an *outbound* credential
+  that must be replayed on every call (unlike `agent_tokens`, which only verifies inbound
+  and can store a hash). Same credential class as the Soulseek password.
+- `GET /api/plugins/:id/addon-status` (admin) proxies the addon's typed status rows to the
+  generic `AddonStatusPanelComponent`; a down addon degrades to `{available:false}`.
+
 ## First-party plugins
 
 - **slskd** (`services/plugins/slskd/index.ts`) — acquisition plugin (`search·browse·download`,

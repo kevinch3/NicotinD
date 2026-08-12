@@ -1,10 +1,12 @@
 import { Component, inject, signal, effect, OnInit } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { AuthService } from '../../services/auth.service';
 import { PluginService, type PluginInfo } from '../../services/plugin.service';
 import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/plugin-config';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { PluginCardComponent } from './plugin-card.component';
 import { SettingsGroupComponent } from '../../components/settings-group/settings-group.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -28,9 +30,11 @@ import { TranslateService } from '../../services/translate.service';
   selector: 'app-plugins',
   standalone: true,
   imports: [
+    FormsModule,
     RouterLink,
     ConfirmDialogComponent,
     TvNavGroupDirective,
+    TvNavItemDirective,
     PluginCardComponent,
     SettingsGroupComponent,
     TranslatePipe,
@@ -51,6 +55,10 @@ export class PluginsComponent implements OnInit {
   readonly busy = signal(false);
   readonly message = signal<{ type: 'success' | 'error'; text: string } | null>(null);
   readonly consentTarget = signal<PluginInfo | null>(null);
+  /** Remote addon pending removal (confirm dialog). */
+  readonly removeTarget = signal<PluginInfo | null>(null);
+  readonly addonUrl = signal('');
+  readonly addonToken = signal('');
   // Per-plugin editable config values (keyed by plugin id → field key). Seeded
   // from each plugin's non-secret `config`; password fields always start blank.
   readonly configDraft = signal<Record<string, Record<string, string>>>({});
@@ -110,6 +118,27 @@ export class PluginsComponent implements OnInit {
         this.i18n.t('extensions.pluginEnabled', { name: p.name }),
       );
     }
+  }
+
+  addAddon(): void {
+    const url = this.addonUrl().trim();
+    const token = this.addonToken().trim();
+    if (!url || !token) return;
+    void this.run(async () => {
+      await this.plugins.addAddon(url, token);
+      this.addonUrl.set('');
+      this.addonToken.set('');
+    }, this.i18n.t('extensions.addonAdded'));
+  }
+
+  confirmRemoveAddon(): void {
+    const p = this.removeTarget();
+    if (!p) return;
+    this.removeTarget.set(null);
+    void this.run(
+      () => this.plugins.removeAddon(p.id),
+      this.i18n.t('extensions.addonRemoved', { name: p.name }),
+    );
   }
 
   confirmConsent(): void {

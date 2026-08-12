@@ -1,7 +1,8 @@
 # Acquisition Addon Protocol — slskd becomes an external, Torrentio-style addon
 
-**Status**: Approved design, pre-implementation. Each phase below gets its own implementation
-plan + PR cycle; this document is the architecture they all answer to.
+**Status**: Phase 0 (protocol v1 + core addon runtime, #487) is **shipped**; phases 1–4
+pending. Each phase gets its own implementation plan + PR cycle; this document is the
+architecture they all answer to.
 
 ## Context & goal
 
@@ -108,6 +109,36 @@ Endpoints under `/addon/v1/`:
 key (precedent: `acquire_jobs.backend` relaxing to an open plugin id). `DownloadItem`,
 the sources[] disclosure, Now:/Next:, and the bitrate chip read the same tables as today.
 URL resolvers fit as `intent: 'url'` + manifest `urlPatterns` (mirrors `getEnabledForUrl`).
+
+### Phase-0 implemented surface (shipped)
+
+The four manage/observe endpoints are live, exactly as sketched above:
+
+- `GET /addon/v1/manifest` (unauth) → the `AddonManifest` DTO (`@nicotind/core`
+  `types/addon.ts`, zod-parsed by `addonManifestSchema`, coherence-checked by
+  `validateAddonManifest` — same id/kind/capability rules as builtin plugins plus the
+  `addonProtocolSupported` same-major check against `ADDON_PROTOCOL_VERSION` 1.0.0).
+- `GET /addon/v1/health` (unauth) → `{ok, ready, detail?}`; drives `isAvailable()` and the
+  card's status pill.
+- `GET /addon/v1/status` (bearer) → `AddonStatusRow[]` (`{key, label, value}`), rendered by
+  the generic `AddonStatusPanelComponent` — no addon-specific UI.
+- `PUT /addon/v1/config` (bearer) → core pushes the admin-saved config down on every plugin
+  (re-)init; a down addon logs a warning and never fails enable/boot.
+
+Core-side pieces: `AddonClient` (`services/addons/client.ts`, injected `fetchFn`, 10 s
+timeout, typed `AddonRequestError`), `RemoteAddonPlugin` (`remote-addon-plugin.ts`, adapts
+the manifest via `pluginManifestFromAddon` with `defaultEnabled:false`), the
+`addon_registrations` table + `services/addons/store.ts` (the outbound bearer is stored
+**plaintext by necessity** — it must be replayed on every call; same credential class as the
+Soulseek creds), and `services/addons/manager.ts` (`loadRegisteredAddons` at boot from the
+manifest snapshot — no network, a down addon still renders its card;
+`registerAddon`/`removeAddon`). Admin routes on `/api/plugins`: `POST /addons` (register by
+`{url, token}`, audit-logged `addon.register`, 502 on unreachable / 400 on invalid),
+`DELETE /addons/:id` (`addon.remove`), `GET /:id/addon-status` (degrades to
+`{available:false}` rather than 500). The web Extensions page gains an "Add addon" form in
+the Acquisition group and a per-card Remove for `remote` cards; `PluginInfo` carries
+`remote`/`addonUrl`. e2e: `tests/helpers/fixture-addon.ts` + `addon-registry.spec.ts` cover
+register → consent-gated enable → status panel → remove against a live in-process addon.
 
 ## Phasing — in-monorepo addon first, repo split last
 

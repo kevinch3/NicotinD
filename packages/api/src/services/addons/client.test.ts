@@ -1,0 +1,94 @@
+import { describe, expect, it } from 'bun:test';
+import { ADDON_PROTOCOL_VERSION, type AddonManifest } from '@nicotind/core';
+import { AddonClient, AddonRequestError } from './client.js';
+
+const MANIFEST: AddonManifest = {
+  id: 'fixture-addon',
+  name: 'Fixture Addon',
+  description: 'test',
+  version: '0.1.0',
+  protocolVersion: ADDON_PROTOCOL_VERSION,
+  kind: 'acquisition',
+  capabilities: ['search'],
+};
+
+interface Captured {
+  url: string;
+  method: string;
+  auth: string | null;
+  body: string | null;
+}
+
+function stubFetch(
+  respond: (req: Captured) => Response,
+  captured: Captured[] = [],
+): { fetchFn: typeof fetch; captured: Captured[] } {
+  const fetchFn = (async (input: string | URL | Request, init?: RequestInit) => {
+    const req: Captured = {
+      url: String(input),
+      method: init?.method ?? 'GET',
+      auth: new Headers(init?.headers).get('authorization'),
+      body: typeof init?.body === 'string' ? init.body : null,
+    };
+    captured.push(req);
+    return respond(req);
+  }) as typeof fetch;
+  return { fetchFn, captured };
+}
+
+describe('AddonClient', () => {
+  it('fetches the manifest without an auth header and normalizes the base url', async () => {
+    const { fetchFn, captured } = stubFetch(() => Response.json(MANIFEST));
+    const client = new AddonClient({ baseUrl: 'http://addon:9999/', token: 'tok', fetchFn });
+    const manifest = await client.getManifest();
+    expect(manifest.id).toBe('fixture-addon');
+    expect(captured[0]!.url).toBe('http://addon:9999/addon/v1/manifest');
+    expect(captured[0]!.auth).toBeNull();
+  });
+
+  it('sends the bearer token on status', async () => {
+    const { fetchFn, captured } = stubFetch(() =>
+      Response.json([{ key: 'peers', label: 'Peers', value: '42' }]),
+    );
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
+    const rows = await client.getStatus();
+    expect(rows[0]!.value).toBe('42');
+    expect(captured[0]!.auth).toBe('Bearer tok');
+  });
+
+  it('PUTs config with the bearer token', async () => {
+    const { fetchFn, captured } = stubFetch(() => new Response(null, { status: 204 }));
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
+    await client.putConfig({ username: 'kevin' });
+    expect(captured[0]!.method).toBe('PUT');
+    expect(captured[0]!.url).toBe('http://addon:9999/addon/v1/config');
+    expect(JSON.parse(captured[0]!.body!)).toEqual({ username: 'kevin' });
+  });
+
+  it('throws AddonRequestError with the status on a non-2xx', async () => {
+    const { fetchFn } = stubFetch(() => new Response('nope', { status: 401 }));
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'bad', fetchFn });
+    try {
+      await client.getStatus();
+      expect.unreachable();
+    } catch (err) {
+      expect(err).toBeInstanceOf(AddonRequestError);
+      expect((err as AddonRequestError).status).toBe(401);
+    }
+  });
+
+  it('rejects a malformed manifest body', async () => {
+    const { fetchFn } = stubFetch(() => Response.json({ id: 'x' }));
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
+    await expect(client.getManifest()).rejects.toBeInstanceOf(AddonRequestError);
+  });
+
+  it('parses health', async () => {
+    const { fetchFn } = stubFetch(() =>
+      Response.json({ ok: true, ready: false, detail: 'warming' }),
+    );
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
+    const health = await client.getHealth();
+    expect(health.ready).toBe(false);
+  });
+});
