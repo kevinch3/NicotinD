@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.343](https://github.com/kevinch3/NicotinD/compare/v0.1.342...v0.1.343) (2026-08-12)
+## [0.1.342](https://github.com/kevinch3/NicotinD/compare/v0.1.341...v0.1.342) (2026-08-11)
+
+### Bug Fixes
+
+* **a11y:** clear every axe contrast violation and gate on it ([#485](https://github.com/kevinch3/NicotinD/issues/485)) ([62d1ed8](https://github.com/kevinch3/NicotinD/commit/62d1ed82b009008a536f0a88fa489b2b3f7321cc)), closes [#481](https://github.com/kevinch3/NicotinD/issues/481) [#482](https://github.com/kevinch3/NicotinD/issues/482), references [#fff](https://github.com/kevinch3/NicotinD/issues/fff)
 ## [0.1.341](https://github.com/kevinch3/NicotinD/compare/v0.1.340...v0.1.341) (2026-08-11)
 
 ### Features
