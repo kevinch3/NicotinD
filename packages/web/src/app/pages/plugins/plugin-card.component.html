@@ -157,17 +157,6 @@
           </div>
         }
       }
-
-      @if (plugin.remote) {
-        <p class="text-[11px] text-theme-muted mt-2 break-all" data-testid="addon-url">
-          {{ plugin.addonUrl }}
-        </p>
-        @if (plugin.enabled) {
-          <div class="mt-4 pt-4 border-t border-theme">
-            <app-addon-status-panel [pluginId]="plugin.id" />
-          </div>
-        }
-      }
     </div>
   }
 </div>
