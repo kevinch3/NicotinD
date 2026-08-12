@@ -109,6 +109,9 @@ export function createProtocolRoutes(deps: ProtocolRouteDeps): Hono {
             filename: file.filename,
             size: file.size,
             bitRateKbps: file.bitRate,
+            freeUploadSlots: response.freeUploadSlots,
+            queueLength: response.queueLength,
+            uploadSpeed: response.uploadSpeed,
           });
         }
         for (const [dir, files] of byDir) {
@@ -123,6 +126,9 @@ export function createProtocolRoutes(deps: ProtocolRouteDeps): Hono {
               size: f.size,
               bitRateKbps: f.bitRate,
             })),
+            freeUploadSlots: response.freeUploadSlots,
+            queueLength: response.queueLength,
+            uploadSpeed: response.uploadSpeed,
           });
         }
       }

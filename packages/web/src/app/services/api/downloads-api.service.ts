@@ -129,6 +129,8 @@ export class DownloadsApiService {
         username: string;
         directory: string;
         files: Array<{ filename: string; size: number }>;
+        /** Addon-backed hunts: the candidate token of the user's exact pick. */
+        candidateRef?: string;
       };
       alternates: Array<{
         username: string;

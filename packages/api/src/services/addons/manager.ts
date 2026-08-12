@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { createLogger, validateAddonManifest } from '@nicotind/core';
 import type { PluginRegistry } from '../plugins/registry.js';
+import type { ProviderRegistry } from '../provider-registry.js';
 import { AddonClient } from './client.js';
 import { RemoteAddonPlugin } from './remote-addon-plugin.js';
 import {
@@ -26,8 +27,9 @@ const defaultClientFactory: ClientFactory = (url, token) =>
 export function loadRegisteredAddons(
   registry: PluginRegistry,
   db: Database,
-  clientFactory: ClientFactory = defaultClientFactory,
+  opts: { providerRegistry?: ProviderRegistry; clientFactory?: ClientFactory } = {},
 ): void {
+  const clientFactory = opts.clientFactory ?? defaultClientFactory;
   for (const reg of listAddonRegistrations(db)) {
     const errors = validateAddonManifest(reg.manifest);
     if (errors.length > 0) {
@@ -35,7 +37,13 @@ export function loadRegisteredAddons(
       continue;
     }
     try {
-      registry.register(new RemoteAddonPlugin(reg.manifest, clientFactory(reg.url, reg.token)));
+      registry.register(
+        new RemoteAddonPlugin(
+          reg.manifest,
+          clientFactory(reg.url, reg.token),
+          opts.providerRegistry,
+        ),
+      );
     } catch (err) {
       log.warn({ id: reg.id, err }, 'skipping stored addon that failed to register');
     }
@@ -46,6 +54,7 @@ export interface RegisterAddonInput {
   url: string;
   token: string;
   addedBy: string;
+  providerRegistry?: ProviderRegistry;
   clientFactory?: ClientFactory;
 }
 
@@ -78,8 +87,18 @@ export async function registerAddon(
     addedBy: input.addedBy,
   };
   saveAddonRegistration(db, reg);
-  registry.register(new RemoteAddonPlugin(manifest, client));
+  registry.register(new RemoteAddonPlugin(manifest, client, input.providerRegistry));
   return reg;
+}
+
+/** The enabled remote acquisition addon that can download, if any (first wins). */
+export function activeRemoteAcquisitionAddon(registry: PluginRegistry): RemoteAddonPlugin | null {
+  for (const plugin of registry.getEnabled('acquisition')) {
+    if (plugin instanceof RemoteAddonPlugin && plugin.manifest.capabilities.includes('download')) {
+      return plugin;
+    }
+  }
+  return null;
 }
 
 /** Remove a registered addon: disable, unregister, drop the persisted row. */

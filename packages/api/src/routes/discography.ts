@@ -22,11 +22,39 @@ import { setArtwork, pickAlbumCover, pickArtistImage } from '../services/artwork
 import { recordAcquiredArtistIdentity } from '../services/artist-identity-store.js';
 import { createJob, supersedeActiveJobs } from '../services/acquisition-job-store.js';
 import { captureHuntMatchFeedback } from '../services/generation-feedback.js';
-import type { HuntMatchInput } from '@nicotind/core';
+import { normalizeTitle, titlesOverlap } from '@nicotind/core';
+import type { AddonAlbumCandidate, HuntMatchInput } from '@nicotind/core';
 import { join } from 'node:path';
 import type { Lidarr } from '@nicotind/lidarr-client';
+import type { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
+import { AddonRequestError } from '../services/addons/client.js';
+import { mapAddonJob } from '../services/addons/job-poller.js';
+import { onDiskTitles } from '../services/library-completeness.js';
 
 const log = createLogger('discography');
+
+/**
+ * An addon album candidate in the wire shape the hunt modal renders (the
+ * in-process FolderCandidate), plus its candidateRef — the modal passes it
+ * back through hunt-download so the addon acquires the user's exact pick.
+ */
+function wireCandidate(c: AddonAlbumCandidate) {
+  return {
+    candidateRef: c.candidateRef,
+    username: c.username,
+    directory: c.directory,
+    files: c.files.map((f) => ({ filename: f.filename, size: f.size, bitRate: f.bitRateKbps })),
+    matchedTracks: c.matchedTracks,
+    totalTracks: c.totalTracks,
+    matchPct: c.matchPct,
+    format: c.format,
+    estimatedSizeMb: c.estimatedSizeMb,
+    isLive: c.isLive,
+    freeUploadSlots: c.freeUploadSlots ?? 0,
+    queueLength: c.queueLength ?? 0,
+    uploadSpeed: c.uploadSpeed ?? 0,
+  };
+}
 
 export interface DiscographyRoutesOptions {
   discography: DiscographyService;
@@ -44,6 +72,8 @@ export interface DiscographyRoutesOptions {
   dataDir?: string;
   /** App version, stamped on captured feedback so replay can spot scorer drift. */
   version?: string;
+  /** Live lookup of the active remote acquisition addon (phase-2 cutover). */
+  getAddon?: () => RemoteAddonPlugin | null;
 }
 
 export function discographyRoutes({
@@ -55,6 +85,7 @@ export function discographyRoutes({
   slskdRef,
   dataDir,
   version,
+  getAddon,
 }: DiscographyRoutesOptions) {
   const app = new Hono<AuthEnv>();
   const coverCacheDir = dataDir ? join(dataDir, 'cover-cache') : undefined;
@@ -101,6 +132,20 @@ export function discographyRoutes({
 
       const artistName = body.artistName ?? album.artist?.artistName ?? '';
       const albumTitle = body.albumTitle ?? album.title;
+
+      const addon = getAddon?.() ?? null;
+      if (addon) {
+        const res = await addon.client.albumsSearch({
+          artist: artistName,
+          album: albumTitle,
+          canonicalTracks: tracks.map((t) => ({ title: t.title })),
+          skew: body.skewSearch,
+        });
+        return c.json({
+          candidates: res.candidates.map(wireCandidate),
+          totalTracks: tracks.length,
+        });
+      }
 
       const candidates = await hunter.hunt(artistName, albumTitle, tracks, {
         skewSearch: body.skewSearch,
@@ -152,7 +197,10 @@ export function discographyRoutes({
     const { lidarrAlbumId } = c.req.param();
     const albumId = Number(lidarrAlbumId);
     if (Number.isNaN(albumId)) return c.json({ error: 'Invalid album ID' }, 400);
-    if (!slskdRef.current) return c.json({ error: 'Soulseek is not available' }, 503);
+    const trackAddon = getAddon?.() ?? null;
+    if (!trackAddon && !slskdRef.current) {
+      return c.json({ error: 'Soulseek is not available' }, 503);
+    }
 
     const body = await c.req
       .json<{ artistName?: string }>()
@@ -167,7 +215,59 @@ export function discographyRoutes({
       const titles = tracks.map((t) => t.title).filter((t): t is string => !!t?.trim());
       if (titles.length === 0) return c.json({ error: 'No tracks to hunt' }, 404);
 
-      const hunter = new TrackHunterService(slskdRef.current);
+      if (trackAddon) {
+        // The per-track hunt runs addon-side; the response keeps the
+        // TrackHuntResult shape the modal renders. A confident zero-result is
+        // an all-miss result, not an error (matching the in-process path).
+        let job;
+        try {
+          job = await trackAddon.client.createJob({
+            intent: 'tracks',
+            artist: artistName,
+            album: album.title,
+            titles,
+          });
+        } catch (err) {
+          if (err instanceof AddonRequestError && err.status === 400) {
+            return c.json({ requested: titles.length, enqueued: 0, misses: titles, downloads: [] });
+          }
+          throw err;
+        }
+        const found = new Set(job.items.map((i) => i.title));
+        try {
+          const coreJobId = createJob(db, {
+            kind: 'track-search',
+            method: trackAddon.manifest.id,
+            artistName: artistName || null,
+            albumTitle: album.title ?? null,
+            lidarrAlbumId: albumId,
+            releaseMbid: album.foreignAlbumId ?? null,
+            artistMbid: album.artist?.foreignArtistId ?? null,
+            genres: album.genres?.length ? album.genres : (album.artist?.genres ?? null),
+            year: album.releaseDate ? new Date(album.releaseDate).getUTCFullYear() : null,
+            canonicalTracks: titles,
+            sourceRef: `addon:${trackAddon.manifest.id}:${job.id}`,
+            files: [],
+          });
+          mapAddonJob(db, trackAddon.manifest.id, job.id, coreJobId);
+        } catch (err) {
+          log.warn({ albumId, err }, 'Failed to record track-search acquisition job (addon)');
+        }
+        return c.json({
+          requested: titles.length,
+          enqueued: job.items.length,
+          misses: titles.filter((t) => !found.has(t)),
+          downloads: job.items.map((i) => ({
+            username: i.username,
+            filename: i.filename,
+            size: i.size,
+            title: i.title ?? '',
+            bitRate: i.bitRateKbps,
+          })),
+        });
+      }
+
+      const hunter = new TrackHunterService(slskdRef.current!);
       const result = await hunter.huntAndDownload(artistName, titles);
 
       // Wrap whatever actually got enqueued (possibly from several peers) in
@@ -225,6 +325,25 @@ export function discographyRoutes({
 
       const artistName = body.artistName ?? album.artist?.artistName ?? '';
       const albumTitle = body.albumTitle ?? album.title;
+
+      const addon = getAddon?.() ?? null;
+      if (addon) {
+        // The addon runs its own base→skew policy in one call, so the modal's
+        // two-phase animation collapses to a single completed phase. Feedback
+        // capture stays in-process only (the raw responses live addon-side —
+        // the protocol's optional feedback capability is a follow-up).
+        const res = await addon.client.albumsSearch({
+          artist: artistName,
+          album: albumTitle,
+          canonicalTracks: tracks.map((t) => ({ title: t.title })),
+          skew: body.skewSearch,
+        });
+        return c.json({
+          candidates: res.candidates.map(wireCandidate),
+          totalTracks: tracks.length,
+          skewNeeded: false,
+        });
+      }
 
       const { candidates, skewNeeded, responses } = await hunter.huntBase(
         artistName,
@@ -288,6 +407,17 @@ export function discographyRoutes({
       const artistName = body.artistName ?? album.artist?.artistName ?? '';
       const albumTitle = body.albumTitle ?? album.title;
 
+      const addon = getAddon?.() ?? null;
+      if (addon) {
+        const res = await addon.client.albumsSearch({
+          artist: artistName,
+          album: albumTitle,
+          canonicalTracks: tracks.map((t) => ({ title: t.title })),
+          skew: true,
+        });
+        return c.json({ candidates: res.candidates.map(wireCandidate) });
+      }
+
       const candidates = await hunter.huntSkew(artistName, albumTitle, tracks);
 
       return c.json({ candidates });
@@ -336,7 +466,8 @@ export function discographyRoutes({
     const { lidarrAlbumId } = c.req.param();
     const albumId = Number(lidarrAlbumId);
     if (Number.isNaN(albumId)) return c.json({ error: 'Invalid album ID' }, 400);
-    if (!slskdRef.current) return c.json({ error: 'Soulseek is not configured' }, 503);
+    const addon = getAddon?.() ?? null;
+    if (!addon && !slskdRef.current) return c.json({ error: 'Soulseek is not configured' }, 503);
 
     const replace = c.req.query('replace') === 'true';
 
@@ -346,6 +477,8 @@ export function discographyRoutes({
           username: string;
           directory: string;
           files: Array<{ filename: string; size: number }>;
+          /** Addon path: the hunt candidate token the addon resolves the pick by. */
+          candidateRef?: string;
         };
         alternates?: AlternateCandidate[];
         // The local album the user is completing, already resolved by the artist
@@ -424,6 +557,91 @@ export function discographyRoutes({
       }
     }
 
+    // Addon cutover: the user's exact pick (candidateRef) is acquired
+    // addon-side — hunt scoping, enqueue and the per-peer fallback (alternates
+    // come from the addon's own cached hunt siblings, so the web-sent
+    // `alternates` are unused here). Library knowledge stays core-side:
+    // wantedTracks is the canonical titles not already on disk.
+    if (addon) {
+      if (!body.selected.candidateRef) {
+        return c.json({ error: 'Selection expired — run the search again' }, 400);
+      }
+      const titles = tracks.map((t) => t.title);
+      const onDisk =
+        artistName && albumTitle ? onDiskTitles(db, artistName, albumTitle, body.localAlbumId) : [];
+      const wanted = titles.filter((t) => !onDisk.some((d) => titlesOverlap(d, normalizeTitle(t))));
+      if (titles.length > 0 && wanted.length === 0) {
+        return c.json({ ok: true, queued: 0, alreadyComplete: true }, 200);
+      }
+
+      const createAddonSide = () =>
+        addon.client.createJob({
+          intent: 'album',
+          artist: artistName ?? undefined,
+          album: albumTitle ?? undefined,
+          canonicalTracks: titles.map((title) => ({ title })),
+          wantedTracks: wanted.map((title) => ({ title })),
+          candidateRef: body.selected.candidateRef,
+        });
+
+      let addonJob;
+      try {
+        addonJob = await createAddonSide();
+      } catch (err) {
+        if (err instanceof AddonRequestError && err.status === 409) {
+          if (!replace) return c.json({ error: 'already-downloading' }, 409);
+          // Admin re-hunt: supersede the addon's active job, then retry.
+          try {
+            const active = (await addon.client.listJobs()).find(
+              (j) =>
+                j.intent === 'album' &&
+                j.state === 'active' &&
+                j.artist === artistName &&
+                j.album === albumTitle,
+            );
+            if (active) {
+              await addon.client.cancelJob(active.id).catch(() => {});
+              await addon.client.deleteJob(active.id).catch(() => {});
+            }
+            supersedeActiveJobs(db, { lidarrAlbumId: albumId });
+            addonJob = await createAddonSide();
+          } catch (retryErr) {
+            const msg = retryErr instanceof Error ? retryErr.message : 'replace failed';
+            return c.json({ error: msg }, 502);
+          }
+        } else if (err instanceof AddonRequestError && err.status === 400) {
+          return c.json({ error: err.message }, 400);
+        } else {
+          return c.json(
+            { error: `Download failed for user "${body.selected.username}" — they may be offline` },
+            502,
+          );
+        }
+      }
+
+      try {
+        const coreJobId = createJob(db, {
+          kind: 'album-hunt',
+          method: addon.manifest.id,
+          artistName,
+          albumTitle,
+          lidarrAlbumId: albumId,
+          releaseMbid: album?.foreignAlbumId ?? null,
+          artistMbid: album?.artist?.foreignArtistId ?? null,
+          genres: album?.genres?.length ? album.genres : (album?.artist?.genres ?? null),
+          year: album?.releaseDate ? new Date(album.releaseDate).getUTCFullYear() : null,
+          canonicalTracks: titles,
+          sourceRef: `addon:${addon.manifest.id}:${addonJob.id}`,
+          files: [],
+        });
+        mapAddonJob(db, addon.manifest.id, addonJob.id, coreJobId);
+      } catch (err) {
+        log.warn({ albumId, err }, 'Failed to record acquisition job (addon)');
+      }
+
+      return c.json({ ok: true, queued: addonJob.items.length }, 201);
+    }
+
     // Complete-only: never re-download tracks already on disk. When the album is
     // partially present, enqueue ONLY the missing tracks — otherwise the existing
     // tracks come down a second time and any rip whose filename differs slightly
@@ -449,7 +667,7 @@ export function discographyRoutes({
     }
 
     try {
-      await slskdRef.current.transfers.enqueue(body.selected.username, filesToDownload);
+      await slskdRef.current!.transfers.enqueue(body.selected.username, filesToDownload);
     } catch {
       return c.json(
         { error: `Download failed for user "${body.selected.username}" — they may be offline` },

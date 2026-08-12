@@ -262,6 +262,9 @@ export function candidateCache(ttlMs = 15 * 60_000) {
             size: f.size,
             bitRateKbps: f.bitRate,
           })),
+          freeUploadSlots: candidate.freeUploadSlots,
+          queueLength: candidate.queueLength,
+          uploadSpeed: candidate.uploadSpeed,
         };
       });
     },

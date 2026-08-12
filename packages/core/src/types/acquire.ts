@@ -10,7 +10,10 @@ export type TrackStatus = 'pending' | 'downloading' | 'done' | 'skipped' | 'fail
  * (`ytdlp` / `spotdl` / `archive`), plus `slskd` for Soulseek and `unknown`
  * for rows the best-effort backfill couldn't resolve.
  */
-export type AcquisitionMethod = 'slskd' | 'ytdlp' | 'spotdl' | 'archive' | 'unknown';
+// Open to any string since the acquisition addon protocol (#489): a remote
+// addon's id is its method. The named members keep autocomplete + docs value.
+export type AcquisitionMethod =
+  'slskd' | 'ytdlp' | 'spotdl' | 'archive' | 'unknown' | (string & {});
 
 /**
  * Named stages of the acquisition pipeline, surfaced to the user so a download

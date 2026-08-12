@@ -335,6 +335,9 @@ export interface HuntFile {
 }
 
 export interface FolderCandidate {
+  /** Present when the hunt ran through a remote addon — passed back via
+   *  hunt-download so the addon acquires this exact pick. */
+  candidateRef?: string;
   directory: string;
   username: string;
   files: HuntFile[];

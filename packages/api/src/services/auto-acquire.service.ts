@@ -3,6 +3,7 @@ import type { Database } from 'bun:sqlite';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { SlskdRef } from '../index.js';
 import type { AlbumHunterService } from './album-hunter.service.js';
+import type { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { acquireAlbum } from './album-acquire.js';
 
 const log = createLogger('auto-acquire');
@@ -12,6 +13,8 @@ export interface AutoAcquireDeps {
   hunter: AlbumHunterService;
   lidarr: Lidarr;
   slskdRef: SlskdRef;
+  /** Live lookup of the active remote acquisition addon (phase-2 cutover). */
+  getAddon?: () => RemoteAddonPlugin | null;
   /** How often the poller sweeps Lidarr's missing list (default 1h). */
   intervalMs?: number;
   /** Max albums acquired per sweep, so we never flood slskd. */
@@ -45,6 +48,7 @@ export class AutoAcquireService {
   private hunter: AlbumHunterService;
   private lidarr: Lidarr;
   private slskdRef: SlskdRef;
+  private getAddon?: () => RemoteAddonPlugin | null;
   private intervalMs: number;
   private maxPerSweep: number;
   private minMatchPct: number;
@@ -57,6 +61,7 @@ export class AutoAcquireService {
     this.hunter = deps.hunter;
     this.lidarr = deps.lidarr;
     this.slskdRef = deps.slskdRef;
+    this.getAddon = deps.getAddon;
     this.intervalMs = deps.intervalMs ?? 3_600_000;
     this.maxPerSweep = deps.maxPerSweep ?? 3;
     this.minMatchPct = deps.minMatchPct ?? 80;
@@ -100,7 +105,13 @@ export class AutoAcquireService {
         if (!artistName || !album.title) continue;
         try {
           const outcome = await acquireAlbum(
-            { db: this.db, hunter: this.hunter, lidarr: this.lidarr, slskdRef: this.slskdRef },
+            {
+              db: this.db,
+              hunter: this.hunter,
+              lidarr: this.lidarr,
+              slskdRef: this.slskdRef,
+              getAddon: this.getAddon,
+            },
             {
               lidarrAlbumId: album.id,
               artistName,

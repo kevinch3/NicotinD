@@ -52,11 +52,20 @@ describe('acquisition-store', () => {
     expect(getAcquisitionByPath(db, 'a.mp3')?.method).toBe('slskd');
   });
 
-  it('coerces an unrecognized method to "unknown" on read', () => {
+  it('passes an addon-id method through and coerces only an empty one (#489)', () => {
+    // Since the acquisition addon protocol, any registered addon's id is a
+    // legitimate method — the old closed-set coercion would have flattened
+    // every addon-acquired track's provenance to "unknown".
     db.run(
-      `INSERT INTO acquisitions (relative_path, method, stage, started_at) VALUES (?, 'bogus', 'done', 1)`,
+      `INSERT INTO acquisitions (relative_path, method, stage, started_at) VALUES (?, 'my-addon', 'done', 1)`,
       ['a.mp3'],
     );
-    expect(getAcquisitionByPath(db, 'a.mp3')?.method).toBe('unknown');
+    expect(getAcquisitionByPath(db, 'a.mp3')?.method).toBe('my-addon');
+
+    db.run(
+      `INSERT INTO acquisitions (relative_path, method, stage, started_at) VALUES (?, '', 'done', 1)`,
+      ['b.mp3'],
+    );
+    expect(getAcquisitionByPath(db, 'b.mp3')?.method).toBe('unknown');
   });
 });

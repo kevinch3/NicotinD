@@ -69,7 +69,8 @@ import { PluginRegistry } from './services/plugins/registry.js';
 import { upsertTrackStatus } from './services/plugins/host-context.js';
 import { recordAcquireJobTrack } from './services/acquire-playlist.js';
 import { registerBuiltinPlugins } from './services/plugins/builtin.js';
-import { loadRegisteredAddons } from './services/addons/manager.js';
+import { activeRemoteAcquisitionAddon, loadRegisteredAddons } from './services/addons/manager.js';
+import { AddonJobPoller } from './services/addons/job-poller.js';
 import { AcquisitionToggle } from './services/acquisition-toggle.js';
 import {
   requireAcquisitionEnabledMiddleware,
@@ -493,7 +494,20 @@ export function createApp({
   // Remote addons registered by URL (acquisition addon protocol) — re-register
   // from their persisted manifest snapshots after the builtins so id
   // collisions resolve in the builtins' favor.
-  loadRegisteredAddons(plugins, db);
+  loadRegisteredAddons(plugins, db, { providerRegistry: registry });
+  // The host half of the addon protocol job loop: mirrors every enabled remote
+  // addon's jobs into the unified feed tables and ingests finished files over
+  // HTTP through the same organize→scan pipeline slskd completions use. Ticks
+  // are no-ops while no remote addon is enabled.
+  const addonJobPoller = new AddonJobPoller({
+    db,
+    registry: plugins,
+    incomingDir: join(expandedDataDir, 'addon-incoming'),
+    organizer: sharedOrganizer,
+    scan: scanIncremental,
+    isEnabled: () => acquisitionOnRef.enabled?.() ?? true,
+  });
+  addonJobPoller.start();
   // why: registerBuiltinPlugins already builds a MusicBrainzClient for Discogs
   // artist-info resolution, but keeps it private to that function — a second
   // instance here (sharing the same on-disk cache file) is cheaper than
@@ -653,7 +667,7 @@ export function createApp({
   app.route('/api/presence', presenceRoutes());
   app.route('/api/history', historyRoutes(historyEnabled));
   app.route('/api/privacy', privacyRoutes(historyEnabled));
-  app.route('/api/downloads', downloadRoutes(registry, slskdRef));
+  app.route('/api/downloads', downloadRoutes(registry, slskdRef, plugins));
   app.route('/api/uploads', uploadRoutes(slskdRef));
   app.route(
     '/api/library',
@@ -739,7 +753,7 @@ export function createApp({
   app.route('/api/users', usersRoutes(registry));
   app.route('/api/playlists', playlistRoutes());
   app.route('/api/radio', radioRoutes());
-  app.route('/api/plugins', pluginRoutes(plugins, slskdRef, db));
+  app.route('/api/plugins', pluginRoutes(plugins, slskdRef, db, registry));
   // Metadata search sources, constructed once and shared between the legacy
   // per-source lanes and the source-agnostic blended aggregator.
   const archiveSearch = new ArchiveSearchService();
@@ -811,6 +825,7 @@ export function createApp({
     app.route(
       '/api/discography',
       discographyRoutes({
+        getAddon: () => activeRemoteAcquisitionAddon(plugins),
         discography: discographySvc,
         hunter: hunterSvc,
         sourceHunt,
@@ -832,6 +847,7 @@ export function createApp({
       hunter: hunterSvc,
       lidarr,
       slskdRef,
+      getAddon: () => activeRemoteAcquisitionAddon(plugins),
       intervalMs: config.watchlist.intervalMs,
       minMatchPct: config.watchlist.minMatchPct,
       enabled: config.watchlist.enabled,
@@ -855,6 +871,7 @@ export function createApp({
         hunter: hunterSvc,
         lidarr,
         slskdRef,
+        getAddon: () => activeRemoteAcquisitionAddon(plugins),
         intervalMs: config.downloads.autoAcquireIntervalMs,
         maxPerSweep: config.downloads.autoAcquireMaxPerSweep,
         minMatchPct: config.watchlist.minMatchPct,

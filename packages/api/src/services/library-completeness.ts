@@ -75,7 +75,7 @@ function titlesForAlbumId(db: Database, albumId: string): string[] {
  * edition-stripped title match (`matchingLocalAlbums`), so a partial album under a
  * divergent id/edition still counts — not only an exact `albumIdFor` hit.
  */
-function onDiskTitles(
+export function onDiskTitles(
   db: Database,
   artist: string,
   title: string,
