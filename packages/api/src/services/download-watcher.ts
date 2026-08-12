@@ -1,7 +1,6 @@
 import { createLogger } from '@nicotind/core';
 import type { Slskd } from '@nicotind/slskd-client';
-import { basename, join, relative } from 'node:path';
-import { existsSync } from 'node:fs';
+import { TransferPoller, type PolledCompletion } from '@nicotind/slskd-addon';
 import type { CompletedDownloadFile } from './path-inference.js';
 import { LibraryOrganizer } from './library-organizer.js';
 import { AcoustIdLookup } from './acoustid-lookup.js';
@@ -46,26 +45,28 @@ interface DownloadWatcherOptions {
   db?: import('bun:sqlite').Database;
 }
 
+/**
+ * The organize → provenance → scan → job-bookkeeping pipeline for completed
+ * Soulseek downloads. The slskd transfer polling itself moved to the addon
+ * package's `TransferPoller` (#488) — this class composes it and owns
+ * everything downstream of a completion.
+ */
 export class DownloadWatcher {
-  private slskd: Slskd;
   private injectedDb?: import('bun:sqlite').Database;
-  private intervalMs: number;
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private knownCompleted = new Set<string>();
+  private pollerInstance: TransferPoller | null = null;
+  private pollerOptions: { intervalMs: number; rootDir: string | null };
+  private slskd: Slskd;
   private scanDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private scanDebounceMs: number;
   private musicDir: string | null;
   private libraryOrganizer: {
     organizeBatch: (files: CompletedDownloadFile[]) => Promise<unknown>;
   };
-  private checking = false;
   private pendingScanFiles: CompletedDownloadFile[] = [];
   private scan?: (relPaths: string[]) => Promise<void> | void;
 
   constructor(slskd: Slskd, options: DownloadWatcherOptions = {}) {
-    this.slskd = slskd;
     this.injectedDb = options.db;
-    this.intervalMs = options.intervalMs ?? 5_000;
     this.scanDebounceMs = options.scanDebounceMs ?? 10_000;
     this.musicDir = options.musicDir ? this.expandDir(options.musicDir) : null;
     // No jobLookup here: production always injects the shared organizer built
@@ -83,28 +84,33 @@ export class DownloadWatcher {
         preferFlacSkipMp3: options.preferFlacSkipMp3,
       });
     this.scan = options.scan;
+    this.slskd = slskd;
+    // Poller construction is deferred to first use: the module-level
+    // `getDatabase()` fallback must stay lazy (the old watcher never touched
+    // the DB at construction, and tests rely on that).
+    this.pollerOptions = {
+      intervalMs: options.intervalMs ?? 5_000,
+      rootDir: options.musicDir ?? null,
+    };
+  }
+
+  private poller(): TransferPoller {
+    this.pollerInstance ??= new TransferPoller(this.slskd, {
+      db: () => this.getDb(),
+      intervalMs: this.pollerOptions.intervalMs,
+      rootDir: this.pollerOptions.rootDir,
+      onCompleted: (files) => this.handleCompletions(files),
+    });
+    return this.pollerInstance;
   }
 
   start(): void {
-    if (this.timer) return;
-    log.info({ intervalMs: this.intervalMs }, 'Starting download watcher');
-
-    // Pre-populate knownCompleted from the DB so a container restart doesn't
-    // replay every historical "Completed, Succeeded" transfer through organizeBatch,
-    // which would produce hundreds of "Could not locate file on disk" warnings
-    // and risk placing fallback files under incorrect album folder names.
-    this.seedKnownCompleted();
-
-    this.timer = setInterval(() => this.check(), this.intervalMs);
-    // Run immediately on start
-    this.check();
+    log.info('Starting download watcher');
+    this.poller().start();
   }
 
   stop(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
+    this.poller().stop();
     if (this.scanDebounceTimer) {
       clearTimeout(this.scanDebounceTimer);
       this.scanDebounceTimer = null;
@@ -116,126 +122,55 @@ export class DownloadWatcher {
     log.info('Download watcher stopped');
   }
 
-  private seedKnownCompleted(): void {
-    try {
-      const rows = this.getDb()
-        .query<{ transfer_key: string }, []>('SELECT transfer_key FROM completed_downloads')
-        .all();
-      for (const row of rows) {
-        this.knownCompleted.add(row.transfer_key);
-      }
-      if (rows.length) {
-        log.info({ count: rows.length }, 'Seeded known completions from DB');
-      }
-    } catch {
-      // DB may not be ready yet; the watcher will still work correctly, it just
-      // won't skip historical transfers on this boot.
-    }
+  /** One poll+pipeline pass (tests drive this directly). */
+  private async check(): Promise<void> {
+    await this.poller().check();
   }
 
-  private async check(): Promise<void> {
-    if (this.checking) return;
-    this.checking = true;
+  private async handleCompletions(polled: PolledCompletion[]): Promise<void> {
+    const completedFiles: CompletedDownloadFile[] = [];
+    for (const c of polled) {
+      const fileData: CompletedDownloadFile = {
+        username: c.username,
+        directory: c.directory,
+        filename: c.filename,
+        relativePath: c.relativePath,
+        directoryFileCount: c.directoryFileCount,
+        jobMeta: this.resolveJobMeta(c.username, c.filename),
+      };
+      this.markJobItemCompleted(c.username, c.filename);
+      completedFiles.push(fileData);
+      this.pendingScanFiles.push(fileData);
+    }
 
     try {
-      const downloads = await this.slskd.transfers.getDownloads();
-      let newCompletions = false;
-      const completedFiles: CompletedDownloadFile[] = [];
-
-      // Prune keys that slskd no longer tracks so the Set stays bounded
-      const currentKeys = new Set<string>();
-      for (const group of downloads) {
-        for (const dir of group.directories) {
-          for (const file of dir.files) {
-            const transferId =
-              typeof file.id === 'string' && file.id.length > 0
-                ? file.id
-                : `${dir.directory}:${file.filename}`;
-            currentKeys.add(`${group.username}:${transferId}`);
-          }
-        }
-      }
-      for (const key of this.knownCompleted) {
-        if (!currentKeys.has(key)) this.knownCompleted.delete(key);
-      }
-
-      for (const group of downloads) {
-        for (const dir of group.directories) {
-          for (const file of dir.files) {
-            const transferId =
-              typeof file.id === 'string' && file.id.length > 0
-                ? file.id
-                : `${dir.directory}:${file.filename}`;
-            const key = `${group.username}:${transferId}`;
-            if (file.state === 'Completed, Succeeded' && !this.knownCompleted.has(key)) {
-              this.knownCompleted.add(key);
-              newCompletions = true;
-              const relativePath = this.resolveRelativePath(dir.directory, file.filename);
-              const fileData: CompletedDownloadFile = {
-                username: group.username,
-                directory: dir.directory,
-                filename: file.filename,
-                relativePath,
-                directoryFileCount: dir.fileCount,
-                jobMeta: this.resolveJobMeta(group.username, file.filename),
-              };
-              this.markJobItemCompleted(group.username, file.filename);
-              completedFiles.push(fileData);
-              this.pendingScanFiles.push(fileData);
-              this.recordCompletedDownload(
-                key,
-                group.username,
-                dir.directory,
-                file.filename,
-                this.parseCompletedAt(file.endedAt),
-                relativePath,
-              );
-              log.info({ username: group.username, filename: file.filename }, 'Download completed');
-            }
-          }
-        }
-      }
-
-      if (newCompletions) {
-        try {
-          const orgResult = (await this.libraryOrganizer.organizeBatch(completedFiles)) as
-            { dedupedBasenames?: string[] } | undefined;
-          // Drop completed_downloads rows for files auto-dedupe removed from disk,
-          // so the canonical tables don't reference vanished duplicates.
-          for (const basename of orgResult?.dedupedBasenames ?? []) {
-            this.getDb().run('DELETE FROM completed_downloads WHERE basename = ?', [basename]);
-          }
-        } catch (err) {
-          log.warn({ err }, 'Library organization step failed');
-        }
-        // organizeBatch mutates file.relativePath to the post-move path; persist
-        // so the scan and back-fill see the final on-disk location.
-        const acquiredAt = Date.now();
-        for (const file of completedFiles) {
-          if (file.relativePath) {
-            this.updateRelativePath(
-              file.username,
-              file.directory,
-              file.filename,
-              file.relativePath,
-            );
-            // Record acquisition provenance keyed on the final path (== library_songs.path).
-            this.recordSlskdAcquisition(file.relativePath, file.username, acquiredAt);
-            this.markJobItemOrganized(file);
-          }
-        }
-        this.debouncedScan();
+      const orgResult = (await this.libraryOrganizer.organizeBatch(completedFiles)) as
+        { dedupedBasenames?: string[] } | undefined;
+      // Drop completed_downloads rows for files auto-dedupe removed from disk,
+      // so the canonical tables don't reference vanished duplicates.
+      for (const basename of orgResult?.dedupedBasenames ?? []) {
+        this.poller().deleteByBasename(basename);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '';
-      if (msg.includes('Unable to connect') || msg.includes('ConnectionRefused')) {
-        log.debug('slskd not reachable, skipping download check');
-      } else {
-        log.error({ err }, 'Error checking downloads');
-      }
-    } finally {
-      this.checking = false;
+      log.warn({ err }, 'Library organization step failed');
     }
+    // organizeBatch mutates file.relativePath to the post-move path; persist
+    // so the scan and back-fill see the final on-disk location.
+    const acquiredAt = Date.now();
+    for (const file of completedFiles) {
+      if (file.relativePath) {
+        this.poller().updateRelativePath(
+          file.username,
+          file.directory,
+          file.filename,
+          file.relativePath,
+        );
+        // Record acquisition provenance keyed on the final path (== library_songs.path).
+        this.recordSlskdAcquisition(file.relativePath, file.username, acquiredAt);
+        this.markJobItemOrganized(file);
+      }
+    }
+    this.debouncedScan();
   }
 
   private debouncedScan(): void {
@@ -332,35 +267,6 @@ export class DownloadWatcher {
     }
   }
 
-  private parseCompletedAt(endedAt?: string): number {
-    if (!endedAt) return Date.now();
-    const parsed = Date.parse(endedAt);
-    return Number.isFinite(parsed) ? parsed : Date.now();
-  }
-
-  private recordCompletedDownload(
-    transferKey: string,
-    username: string,
-    directory: string,
-    filename: string,
-    completedAt: number,
-    relativePath: string | null,
-  ): void {
-    try {
-      const db = this.getDb();
-      const fileBasename = basename(filename.replace(/\\/g, '/')).toLowerCase();
-
-      db.run(
-        `INSERT OR IGNORE INTO completed_downloads
-          (transfer_key, username, directory, filename, relative_path, basename, completed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [transferKey, username, directory, filename, relativePath, fileBasename, completedAt],
-      );
-    } catch {
-      log.warn('recordCompletedDownload: DB not ready or write failed');
-    }
-  }
-
   /** Injected DB handle if provided (tests), else the module-level singleton. */
   private getDb(): import('bun:sqlite').Database {
     return this.injectedDb ?? getDatabase();
@@ -382,65 +288,10 @@ export class DownloadWatcher {
     }
   }
 
-  private updateRelativePath(
-    username: string,
-    directory: string,
-    filename: string,
-    relativePath: string,
-  ): void {
-    try {
-      this.getDb().run(
-        `UPDATE completed_downloads SET relative_path = ?
-         WHERE username = ? AND directory = ? AND filename = ?`,
-        [relativePath, username, directory, filename],
-      );
-    } catch {
-      // Non-fatal: DB may not be available
-    }
-  }
-
-  private resolveRelativePath(directory: string, filename: string): string | null {
-    if (!this.musicDir) return null;
-
-    const normalizedFilename = filename.replace(/\\/g, '/');
-    const normalizedDirectory = directory.replace(/\\/g, '/');
-    const filenameParts = normalizedFilename.split('/').filter(Boolean);
-    const directoryParts = normalizedDirectory.split('/').filter(Boolean);
-    const baseName = filenameParts[filenameParts.length - 1] ?? basename(normalizedFilename);
-
-    // slskd uses only the leaf segment of the remote path as the local folder name
-    const leafDirectory = directoryParts[directoryParts.length - 1];
-
-    const candidates = [
-      join(this.musicDir, ...filenameParts),
-      join(this.musicDir, ...directoryParts, baseName),
-      ...(leafDirectory ? [join(this.musicDir, leafDirectory, baseName)] : []),
-      join(this.musicDir, baseName),
-    ];
-
-    if (this.isAbsolutePath(normalizedFilename)) {
-      candidates.unshift(normalizedFilename);
-    }
-
-    for (const candidate of candidates) {
-      if (!existsSync(candidate)) continue;
-
-      const relPath = relative(this.musicDir, candidate).replace(/\\/g, '/');
-      if (!relPath || relPath.startsWith('../') || relPath === '..') continue;
-      return relPath;
-    }
-
-    return null;
-  }
-
   private expandDir(dir: string): string {
     if (dir.startsWith('~')) {
-      return join(process.env.HOME ?? '/root', dir.slice(1));
+      return (process.env.HOME ?? '/root') + dir.slice(1);
     }
     return dir;
-  }
-
-  private isAbsolutePath(p: string): boolean {
-    return p.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p);
   }
 }

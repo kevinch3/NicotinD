@@ -6,7 +6,8 @@
  * Reads every GRADED `hunt-match` row from `generation_feedback`, distills each
  * into a `HuntMatchFixture` (canonical tracklist + raw slskd responses + the
  * human-correct folder) via the pure `huntFixtureFromRecord`, and writes one JSON
- * per row to `packages/api/src/services/__fixtures__/hunt-match/<id>.json`.
+ * per row to `packages/slskd-addon/src/services/__fixtures__/hunt-match/<id>.json`
+ * (the corpus moved with the hunt engine — addon protocol phase 1, #488).
  *
  * The committed fixtures are the golden corpus that `album-hunter.replay.test.ts`
  * loads to assert the recognizer still ranks the human-correct folder #1 — the
@@ -24,7 +25,7 @@ import { expandHome } from '@nicotind/core';
 
 export const FIXTURE_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  '../services/__fixtures__/hunt-match',
+  '../../../slskd-addon/src/services/__fixtures__/hunt-match',
 );
 
 function loadDataDir(): string {

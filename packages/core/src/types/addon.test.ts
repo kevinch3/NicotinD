@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  addonAlbumSearchRequestSchema,
+  addonJobRequestSchema,
+  addonSearchRequestSchema,
   ADDON_PROTOCOL_VERSION,
   addonManifestSchema,
   addonProtocolSupported,
@@ -81,5 +84,35 @@ describe('addonManifestSchema', () => {
 
   it('rejects a non-object', () => {
     expect(() => addonManifestSchema.parse('nope')).toThrow();
+  });
+});
+
+describe('addon job/search request schemas', () => {
+  it('accepts an album job request', () => {
+    const parsed = addonJobRequestSchema.parse({
+      intent: 'album',
+      artist: 'A',
+      album: 'B',
+      canonicalTracks: [{ title: 'T1' }],
+      wantedTracks: [{ title: 'T1' }],
+      minMatchPct: 80,
+    });
+    expect(parsed.intent).toBe('album');
+  });
+
+  it('rejects an unknown intent and an out-of-range matchPct', () => {
+    expect(() => addonJobRequestSchema.parse({ intent: 'url' })).toThrow();
+    expect(() => addonJobRequestSchema.parse({ intent: 'album', minMatchPct: 101 })).toThrow();
+  });
+
+  it('accepts search + albums/search requests', () => {
+    expect(addonSearchRequestSchema.parse({ query: 'x' }).query).toBe('x');
+    expect(
+      addonAlbumSearchRequestSchema.parse({
+        artist: 'A',
+        album: 'B',
+        canonicalTracks: [],
+      }).album,
+    ).toBe('B');
   });
 });
