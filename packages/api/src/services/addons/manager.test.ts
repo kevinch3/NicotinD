@@ -82,6 +82,17 @@ describe('addon manager', () => {
     expect(listAddonRegistrations(db)).toHaveLength(0);
   });
 
+  it('rejects an addon that declares no capability this core implements', async () => {
+    await expect(
+      registerAddon(registry, db, {
+        url: 'http://addon:9999',
+        token: 'tok',
+        addedBy: 'admin',
+        clientFactory: factoryFor(manifest({ capabilities: ['resolve'] })),
+      }),
+    ).rejects.toThrow(/no capability this server can use/);
+  });
+
   it('rejects an id collision with an existing plugin', async () => {
     await expect(
       registerAddon(registry, db, {

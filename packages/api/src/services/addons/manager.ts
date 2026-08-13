@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { createLogger, validateAddonManifest } from '@nicotind/core';
+import { createLogger, negotiateCapabilities, validateAddonManifest } from '@nicotind/core';
 import type { PluginRegistry } from '../plugins/registry.js';
 import type { ProviderRegistry } from '../provider-registry.js';
 import { AddonClient } from './client.js';
@@ -12,6 +12,19 @@ import {
 } from './store.js';
 
 const log = createLogger('addon-manager');
+
+/**
+ * Addon capabilities this core version actually consumes (§2 negotiation). An
+ * addon declaring only capabilities outside this set is useless here and is
+ * rejected; capabilities beyond it are ignored, not errors (forward compat).
+ * Widens as core learns to consume more (resolve, metadata kinds) in the
+ * later sub-projects.
+ */
+export const CORE_IMPLEMENTED_ADDON_CAPABILITIES: ReadonlySet<string> = new Set([
+  'search',
+  'browse',
+  'download',
+]);
 
 type ClientFactory = (url: string, token: string) => AddonClient;
 
@@ -34,6 +47,19 @@ export function loadRegisteredAddons(
     const errors = validateAddonManifest(reg.manifest);
     if (errors.length > 0) {
       log.warn({ id: reg.id, errors }, 'skipping stored addon with invalid manifest');
+      continue;
+    }
+    // Re-negotiate at boot: a stored addon whose capabilities this core no
+    // longer implements is disabled with a stated reason, not silently broken.
+    const { active } = negotiateCapabilities(
+      reg.manifest.capabilities,
+      CORE_IMPLEMENTED_ADDON_CAPABILITIES,
+    );
+    if (active.length === 0) {
+      log.warn(
+        { id: reg.id, declared: reg.manifest.capabilities },
+        'disabling stored addon: no capability this core version can use',
+      );
       continue;
     }
     try {
@@ -74,6 +100,18 @@ export async function registerAddon(
   const errors = validateAddonManifest(manifest);
   if (errors.length > 0) {
     throw new Error(`addon manifest rejected: ${errors.join('; ')}`);
+  }
+  const { active, ignored } = negotiateCapabilities(
+    manifest.capabilities,
+    CORE_IMPLEMENTED_ADDON_CAPABILITIES,
+  );
+  if (active.length === 0) {
+    throw new Error(
+      `addon "${manifest.id}" declares no capability this server can use (declared: ${manifest.capabilities.join(', ') || 'none'})`,
+    );
+  }
+  if (ignored.length > 0) {
+    log.info({ id: manifest.id, ignored }, 'addon declares capabilities this core ignores');
   }
   if (registry.get(manifest.id)) {
     throw new Error(`a plugin with id "${manifest.id}" is already registered`);

@@ -20,10 +20,36 @@ import {
 /** The protocol version this core speaks. Addons within the same major work. */
 export const ADDON_PROTOCOL_VERSION = '1.0.0';
 
+/**
+ * Protocol majors this core speaks. Additive-only within a major (§2 policy),
+ * so any 1.x addon is compatible; a future core widens this set to accept an
+ * older major during a deprecation window.
+ */
+export const SUPPORTED_PROTOCOL_MAJORS: ReadonlySet<number> = new Set([1]);
+
 /** True when the addon's declared protocol version is one this core supports. */
 export function addonProtocolSupported(version: string): boolean {
   const m = /^(\d+)\.\d+\.\d+$/.exec(version);
-  return m !== null && Number(m[1]) === 1;
+  return m !== null && SUPPORTED_PROTOCOL_MAJORS.has(Number(m[1]));
+}
+
+/**
+ * Capability negotiation (§2): the active set is `{declared} ∩ {implemented}`.
+ * A declared capability core does not recognize is **ignored, not an error** —
+ * forward compatibility, so a newer addon still works for what today's core
+ * knows. A caller registering an addon rejects an empty `active` set ("nothing
+ * this core can use"). `ignored` is surfaced for logging only.
+ */
+export function negotiateCapabilities(
+  declared: readonly string[],
+  implemented: ReadonlySet<string>,
+): { active: string[]; ignored: string[] } {
+  const active: string[] = [];
+  const ignored: string[] = [];
+  for (const cap of declared) {
+    (implemented.has(cap) ? active : ignored).push(cap);
+  }
+  return { active, ignored };
 }
 
 /** One typed row of the addon's `GET status` panel. */
