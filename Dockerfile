@@ -6,6 +6,7 @@ COPY package.json bun.lock bunfig.toml ./
 COPY packages/api/package.json packages/api/
 COPY packages/cli/package.json packages/cli/
 COPY packages/core/package.json packages/core/
+COPY packages/addon-sdk/package.json packages/addon-sdk/
 COPY packages/service-manager/package.json packages/service-manager/
 COPY packages/slskd-client/package.json packages/slskd-client/
 COPY packages/slskd-addon/package.json packages/slskd-addon/
@@ -27,6 +28,7 @@ COPY packages/desktop/package.json packages/desktop/
 RUN bun install --frozen-lockfile --ignore-scripts
 
 COPY packages/core/ packages/core/
+COPY packages/addon-sdk/ packages/addon-sdk/
 COPY packages/web/ packages/web/
 COPY tsconfig.json ./
 # build-changelog.ts reads repo-root CHANGELOG.md → static JSON for the changelog
@@ -74,6 +76,7 @@ RUN pip3 install --no-cache-dir --break-system-packages --upgrade yt-dlp spotdl 
 # Copy all packages (web needs package.json for workspace resolution)
 COPY package.json bun.lock bunfig.toml tsconfig.json ./
 COPY packages/core/ packages/core/
+COPY packages/addon-sdk/ packages/addon-sdk/
 COPY packages/slskd-client/ packages/slskd-client/
 COPY packages/slskd-addon/ packages/slskd-addon/
 COPY packages/lidarr-client/ packages/lidarr-client/
