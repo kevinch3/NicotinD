@@ -7,7 +7,11 @@ import { createLogger } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getStreamingSettings } from '../services/streaming-settings.js';
 import { ffmpegAvailable, transcodeContentType } from '../services/transcode.js';
-import { getTranscodedFile, pinTranscodeCacheFile } from '../services/transcode-cache.js';
+import {
+  getTranscodedFile,
+  pinTranscodeCacheFile,
+  schedulePinRelease,
+} from '../services/transcode-cache.js';
 import { extractEmbeddedPicture } from '../services/cover-sources.js';
 import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js';
 import { bucketCoverSize, resizeCover } from '../services/cover-thumbnail.js';
@@ -132,11 +136,19 @@ export function streamingRoutes(
         const cached = await getTranscodedFile(transcodeCacheDir, abs, format, kbps, {
           vocalRemoval,
         });
-        // Pin the cache file for the lifetime of the response so a concurrent
-        // prune can't delete the file while the client is still reading it.
-        // Released when the response body stream ends or is cancelled.
-        const release = pinTranscodeCacheFile(cached);
-        return serveFileWithRange(cached, range, transcodeContentType(format), release);
+        // Pin the cache file so a concurrent prune can't unlink it before Bun's
+        // response machinery has opened it. The body must stay a plain Blob:
+        // the previous implementation wrapped it in a ReadableStream to release
+        // the pin at stream end, and Bun serializes an unknown-length stream as
+        // `Transfer-Encoding: chunked`, silently dropping Content-Length — a
+        // chunked 206 is the exact response shape Firefox's and iOS Safari's
+        // media loaders stall on forever (the same failure nativeAppCors()
+        // documents), so every transcoded stream "loaded metadata but never
+        // finished loading". Once Bun has the file open, a POSIX unlink no
+        // longer affects the in-flight send, so the pin only needs to outlive
+        // the open — released on a grace timer, not at stream end.
+        schedulePinRelease(pinTranscodeCacheFile(cached));
+        return serveFileWithRange(cached, range, transcodeContentType(format));
       } catch (err) {
         // Remember the verdict so the next play skips straight to the fallback.
         rememberTranscodeFailure(abs, err);
@@ -321,17 +333,17 @@ export function streamingRoutes(
  * passthrough and transcode-cache paths so both are seekable. `contentTypeOverride`
  * is used for transcoded files, whose extension Bun doesn't always sniff (`.aac`).
  *
- * `onRelease` (when provided) is invoked exactly once when the response body
- * stream is closed or cancelled — used by the transcode cache to keep a file
- * pinned (un-evictable) for the full lifetime of the HTTP transfer. The status
- * / headers of the response are unchanged, so this is wire-compatible with the
- * previous Blob-body implementation.
+ * The body is always the `Bun.file` Blob (or a slice of it), never a wrapping
+ * ReadableStream: Bun serializes an unknown-length stream as
+ * `Transfer-Encoding: chunked` and drops the Content-Length header the route
+ * set, and a chunked 206 stalls Firefox's and iOS Safari's media loaders
+ * forever (see `nativeAppCors()` for the first sighting of this failure class).
+ * Exported for the wire-level contract tests in streaming.test.ts.
  */
-function serveFileWithRange(
+export function serveFileWithRange(
   absPath: string,
   range: string | undefined,
   contentTypeOverride?: string,
-  onRelease?: () => void,
 ): Response {
   const file = Bun.file(absPath);
   const size = file.size;
@@ -342,7 +354,7 @@ function serveFileWithRange(
     status: number,
     extraHeaders: Record<string, string> = {},
   ): Response =>
-    new Response(onRelease ? wrapWithRelease(body, onRelease) : body, {
+    new Response(body, {
       status,
       headers: {
         'content-type': contentType,
@@ -353,11 +365,33 @@ function serveFileWithRange(
 
   if (range) {
     const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
-    if (m) {
-      let start = m[1] ? Number(m[1]) : 0;
-      let end = m[2] ? Number(m[2]) : size - 1;
-      if (Number.isNaN(start)) start = 0;
-      if (Number.isNaN(end) || end >= size) end = size - 1;
+    // `bytes=-` (both halves empty) is malformed — RFC 9110 lets the server
+    // ignore an invalid Range and fall through to the full 200 below.
+    if (m && (m[1] || m[2])) {
+      let start: number;
+      let end: number;
+      if (!m[1]) {
+        // Suffix range (`bytes=-N`): the LAST N bytes of the file. iOS
+        // Safari's media loader (CoreMedia) uses this form to probe container
+        // tail metadata. This branch used to fall into the generic parse as
+        // start=0/end=N — the WRONG bytes under a Content-Range that didn't
+        // match the request — so the parse produced garbage and Safari
+        // re-requested forever: track metadata loaded, the song never finished
+        // loading (the iPhone-PWA report). A zero-length suffix is
+        // unsatisfiable per RFC 9110 §14.1.2.
+        const suffixLen = Number(m[2]);
+        if (suffixLen === 0) {
+          return new Response(null, {
+            status: 416,
+            headers: { 'content-range': `bytes */${size}` },
+          });
+        }
+        start = Math.max(0, size - suffixLen);
+        end = size - 1;
+      } else {
+        start = Number(m[1]);
+        end = m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+      }
       if (start > end || start >= size) {
         return new Response(null, {
           status: 416,
@@ -373,51 +407,6 @@ function serveFileWithRange(
 
   return buildResponse(file, 200, {
     'content-length': String(size),
-  });
-}
-
-/**
- * Wrap a Blob body in a ReadableStream that invokes `onRelease` exactly once
- * when the stream is closed (normal end) or cancelled (client disconnect /
- * abort). Headers on the response are unchanged; the wire body is the same
- * Blob payload. This is the only way to observe the end of a Bun response
- * body in JS without re-architecting the route around `Bun.serve` directly.
- */
-function wrapWithRelease(body: BodyInit, onRelease: () => void): ReadableStream<Uint8Array> {
-  // The route's current contract is Blob-only. If a non-Blob body ever lands
-  // here we release immediately so the pin never leaks, and surface the
-  // situation as a stream error rather than silently dropping the body.
-  if (!(body instanceof Blob)) {
-    onRelease();
-    return new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.error(new Error('wrapWithRelease: non-Blob body passed'));
-      },
-    });
-  }
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        const reader = body.stream().getReader();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            controller.close();
-            onRelease();
-            return;
-          }
-          controller.enqueue(value);
-        }
-      } catch (err) {
-        controller.error(err);
-        onRelease();
-      }
-    },
-    cancel() {
-      // Client disconnected / aborted; release the pin so the prune can
-      // reclaim the file if needed.
-      onRelease();
-    },
   });
 }
 

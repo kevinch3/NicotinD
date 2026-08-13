@@ -314,9 +314,17 @@ Add detail there, not here.
   hand-rolled `<img>` call sites moved onto `<app-cover-art>` for placeholder/fade-in/error state; an artist id with no real photo 404s to the placeholder (no album-cover
   fallback). `nativeAppCors()` is hand-rolled (not `hono/cors`) so its Vary-header append can't
   strip `Content-Length` off Blob-bodied stream responses (the Firefox "never plays" bug).
-  **Transcode cache integrity** (size-in-key, 1 KiB size floor, ffprobe post-check +
-  `-xerror`/`+discardcorrupt`/`-err_detect explode`, in-use pin during pruning, body wrapper that
-  releases the pin on response end, plus a **negative cache** for permanently-unusable sources —
+  **Range handling is RFC 9110-complete**: `serveFileWithRange` serves suffix ranges
+  (`bytes=-N` = the **last** N bytes) correctly — it used to hand back the *head* of the file under
+  a mismatched Content-Range, which stalled iOS Safari's tail-probing media loader forever (the
+  iPhone-PWA "metadata loads, song never finishes loading" bug; masked when auto-preserve was on,
+  since that path is a range-less `fetch()`). **Transcode cache integrity** (size-in-key, 1 KiB
+  size floor, ffprobe post-check +
+  `-xerror`/`+discardcorrupt`/`-err_detect explode`, in-use pin during pruning released via a
+  grace timer (`schedulePinRelease` — the old release-at-stream-end body wrapper made Bun drop
+  `Content-Length` and emit a chunked 206, which Firefox *and* iOS Safari stall on; the Blob body
+  must reach Bun untouched, and a real-socket wire suite in `streaming.test.ts` pins that),
+  plus a **negative cache** for permanently-unusable sources —
   issue #317: the rejection was right but unremembered, so a damaged file re-ran its doomed ffmpeg
   pass on every play; only the typed deterministic `TranscodeOutputRejectedError` is cached, never a
   transient ffmpeg crash/ENOSPC, keyed `path+size+mtime` so a repaired re-download transcodes again

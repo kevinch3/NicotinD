@@ -14,6 +14,7 @@ import {
   getTranscodedFile,
   pinTranscodeCacheFile,
   pruneTranscodeCache,
+  schedulePinRelease,
   transcodeCacheKey,
   _pinRefcountForTests,
   _resetTranscodeCacheForTests,
@@ -240,5 +241,19 @@ describe('transcode cache', () => {
     expect(_pinRefcountForTests('/tmp/x.mp3')).toBe(1);
     release2();
     expect(_pinRefcountForTests('/tmp/x.mp3')).toBe(0);
+  });
+
+  it('schedulePinRelease holds the pin through the grace period, then releases', async () => {
+    // The streaming route releases its pin on a grace timer (the pin only has
+    // to outlive Bun opening the file — see schedulePinRelease's doc). Verify
+    // the timer path actually releases and that it isn't immediate.
+    const release = pinTranscodeCacheFile('/tmp/graced.mp3');
+    schedulePinRelease(release, 15);
+    expect(_pinRefcountForTests('/tmp/graced.mp3')).toBe(1);
+    const deadline = Date.now() + 2000;
+    while (_pinRefcountForTests('/tmp/graced.mp3') > 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    expect(_pinRefcountForTests('/tmp/graced.mp3')).toBe(0);
   });
 });

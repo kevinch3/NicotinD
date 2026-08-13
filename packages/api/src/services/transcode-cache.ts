@@ -86,6 +86,38 @@ export function pinTranscodeCacheFile(outPath: string): () => void {
   };
 }
 
+/**
+ * How long a streaming response's pin outlives the Response being handed to
+ * Bun. Generous — the window it must cover is only the gap between building
+ * the Response and Bun opening the file to send it (milliseconds).
+ */
+export const TRANSCODE_PIN_RELEASE_GRACE_MS = 60_000;
+
+/**
+ * Release a pin after a grace period instead of at response end.
+ *
+ * why not release when the body stream finishes: observing that requires
+ * wrapping the Blob body in a ReadableStream, and Bun serializes an
+ * unknown-length stream as `Transfer-Encoding: chunked` — dropping the
+ * Content-Length that Firefox's and iOS Safari's media loaders need on a 206
+ * (they stall forever without it; see `nativeAppCors()` for the original
+ * sighting of that failure class). Holding the pin to the end of the transfer
+ * is also unnecessary on the POSIX targets this ships to (Docker/Linux,
+ * macOS/Linux desktop): Bun opens the file when it starts sending and holds
+ * that fd for the whole transfer, so a prune's `unlink` mid-send leaves the
+ * in-flight bytes intact — the only window the pin must cover is the gap
+ * before Bun opens the file, which the grace timer covers with huge margin.
+ */
+export function schedulePinRelease(
+  release: () => void,
+  graceMs = TRANSCODE_PIN_RELEASE_GRACE_MS,
+): void {
+  const timer = setTimeout(release, graceMs);
+  // A pending release must never hold the process open (graceful shutdown,
+  // test runners). `release` is idempotent, so firing late is always safe.
+  (timer as unknown as { unref?: () => void }).unref?.();
+}
+
 /** True when the file at `p` is a regular file large enough to serve. */
 function isUsableCacheFile(p: string): boolean {
   try {
