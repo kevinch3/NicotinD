@@ -9,7 +9,7 @@ import { normalizeTitle, stripTitleQualifiers, titlesOverlap } from './album-hun
 // `buildTrackQueries` moved to @nicotind/core (shared with the album skew builder,
 // improved to accent-fold / punctuation-strip / distinctive-token variants). Re-
 // exported so track-hunter + tests keep their `./track-pick` import path.
-export { buildTrackQueries } from '@nicotind/core';
+export { buildTrackQueries } from '@nicotind/addon-sdk';
 
 const AUDIO_EXTENSIONS = new Set([
   '.mp3',

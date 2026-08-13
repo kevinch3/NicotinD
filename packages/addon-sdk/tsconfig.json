@@ -5,6 +5,5 @@
     "rootDir": "src",
     "types": ["bun"]
   },
-  "include": ["src"],
-  "references": [{ "path": "../addon-sdk" }, { "path": "../slskd-client" }]
+  "include": ["src"]
 }

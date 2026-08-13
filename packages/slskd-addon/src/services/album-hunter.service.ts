@@ -6,15 +6,15 @@ import {
   normalizeTitle,
   stripTitleQualifiers,
   titlesOverlap,
-} from '@nicotind/core';
+} from '@nicotind/addon-sdk';
 
 // Re-export the shared query builders so existing importers (track-pick, tests,
 // callers) keep their `./album-hunter.service` import path — the canonical source
 // is now @nicotind/core/hunt-queries.
-export { buildSkewedQueries, stripTitleQualifiers, baseQueries } from '@nicotind/core';
+export { buildSkewedQueries, stripTitleQualifiers, baseQueries } from '@nicotind/addon-sdk';
 // Same shim for the title matchers, promoted to @nicotind/core `title-match.ts`
 // (8 non-slskd api files import them from here).
-export { normalizeTitle, titlesOverlap } from '@nicotind/core';
+export { normalizeTitle, titlesOverlap } from '@nicotind/addon-sdk';
 
 /** The addon never sees Lidarr — a canonical track is just a titled ref
  *  (structurally satisfied by LidarrTrack, so api callers pass through). */

@@ -794,7 +794,7 @@ Add detail there, not here.
   startup-error capture is preserved by a synchronous `error-buffer.ts` + `BufferingErrorHandler`
   (replaces `Sentry.createErrorHandler`/`TraceService`) that replays into the SDK on connect. →
   [docs/observability.md](docs/observability.md)
-- **Acquisition addon protocol (phases 0-3 shipped; 4 = repo split pending)**: Stremio/Torrentio-style
+- **Acquisition addon protocol (phases 0-3 shipped; 4 = repo split underway — SDK extracted)**: Stremio/Torrentio-style
   open HTTP addon protocol; the slskd bridge **and** the hunt/retry/fallback engine migrate into a
   separately-distributed addon (in-monorepo sidecar first, own repo + image last), leaving core
   with zero slskd code; smart-addon/thin-core seam at `acquireAlbum` (guards core-side), HTTP file
@@ -817,9 +817,16 @@ Add detail there, not here.
   feed (`transfer_key` = `addon:<id>:<itemId>`, repoints are in-place upserts) and ingests
   fileReady completions over HTTP through the organize→scan pipeline, `acquireAlbum` runs its
   source half addon-side (guards stay core-side; the addon 409 is the in-flight guard), and an
-  opt-in `slskd-addon` compose profile + the `addon-acquire.spec.ts` e2e loop cover it. Interactive
-  hunt routes, downloads raw-transfer actions, the bespoke slskd web surfaces and the kpc soak
-  remain in #489. →
+  opt-in `slskd-addon` compose profile + the `addon-acquire.spec.ts` e2e loop cover it. #489
+  closed complete (core has zero in-process slskd; soaked + deployed as v0.2.0 on kpc).
+  **Phase 4a shipped**: the addon-facing subset of core is extracted into a publishable leaf
+  package `@nicotind/addon-sdk` (`packages/addon-sdk`, deps `zod`+`pino` only — owns the plugin
+  manifest contract, the v1 protocol DTOs/schemas/`negotiateCapabilities`, capability-risk copy,
+  `hunt-queries`/`title-match`, and its own leaf logger); `@nicotind/core` keeps transparent
+  re-export shims at every old path (one-directional core → addon-sdk, no cycle), and
+  `slskd-addon` now depends on only the SDK (its lone out-of-surface type, the replay
+  `HuntMatchFixture`, became a local addon type). The npm publish + `git subtree split` into the
+  public `kevinch3/nicotind-slskd-addon` repo + prod cutover (4c) remain a documented handoff. →
   [docs/acquisition-addon-protocol.md](docs/acquisition-addon-protocol.md)
 - **OAuth authentication (proposed — not yet implemented)**: Google + Microsoft login as `auth` kind
   plugins with `oauth` capability; auto-creates users by email (no validation); auto-enables when

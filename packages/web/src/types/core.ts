@@ -84,7 +84,7 @@ export * from '../../../core/src/version';
 
 // Value re-export: slskd hunt query builders (pure, browser-safe) — the single
 // source the album-hunt modal shows and the API hunter fires. See hunt-queries.ts.
-export * from '../../../core/src/hunt-queries';
+export * from '../../../addon-sdk/src/hunt-queries';
 
 // Value re-export: pairing / TV sign-in code alphabet (pure, browser-safe) —
 // the API mints codes with it, the Settings scan button validates against it
@@ -100,4 +100,4 @@ export type { IdentifyOutcome, IdentifyFailureKind } from '../../../core/src/plu
 // Value re-export: addon capability → plain-language consent risk lines
 // (pure, browser-safe) — the single source both the consent dialog and the
 // published protocol spec render from. See addon-capability-risk.ts.
-export * from '../../../core/src/addon-capability-risk';
+export * from '../../../addon-sdk/src/addon-capability-risk';

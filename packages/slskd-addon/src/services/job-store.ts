@@ -6,7 +6,7 @@ import {
   type AddonJobItem,
   type AddonJobItemState,
   type AddonJobState,
-} from '@nicotind/core';
+} from '@nicotind/addon-sdk';
 
 /**
  * The protocol job ledger (`addon_jobs`/`addon_job_items`) — what the host

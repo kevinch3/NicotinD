@@ -1,4 +1,4 @@
-import { createLogger } from '@nicotind/core';
+import { createLogger } from '@nicotind/addon-sdk';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { Database } from 'bun:sqlite';
 import { basename, join, relative } from 'node:path';

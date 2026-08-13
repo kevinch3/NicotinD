@@ -1,4 +1,4 @@
-import { createLogger } from '@nicotind/core';
+import { createLogger } from '@nicotind/addon-sdk';
 import type { Slskd } from '@nicotind/slskd-client';
 import { buildTrackQueries, pickBestTrackFile, type TrackPick } from './track-pick.js';
 

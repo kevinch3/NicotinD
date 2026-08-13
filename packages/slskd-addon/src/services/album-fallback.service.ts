@@ -1,4 +1,4 @@
-import { createLogger, normalizeTitle, titlesOverlap } from '@nicotind/core';
+import { createLogger, normalizeTitle, titlesOverlap } from '@nicotind/addon-sdk';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { Database } from 'bun:sqlite';
 

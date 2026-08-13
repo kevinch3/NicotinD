@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Database } from 'bun:sqlite';
 import type { Slskd } from '@nicotind/slskd-client';
-import { createLogger, type AddonHealth, type AddonStatusRow } from '@nicotind/core';
+import { createLogger, type AddonHealth, type AddonStatusRow } from '@nicotind/addon-sdk';
 import { buildManifest } from './manifest.js';
 import { storeConfig } from './config.js';
 import { createProtocolRoutes, type ProtocolRouteDeps } from './routes.js';

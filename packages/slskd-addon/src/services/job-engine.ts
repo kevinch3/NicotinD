@@ -6,7 +6,7 @@ import {
   titlesOverlap,
   type AddonAlbumCandidate,
   type AddonJobRequest,
-} from '@nicotind/core';
+} from '@nicotind/addon-sdk';
 import type { Slskd } from '@nicotind/slskd-client';
 import { AlbumFallbackService, type AlternateCandidate } from './album-fallback.service.js';
 import type { AlbumHunterService, FolderCandidate } from './album-hunter.service.js';

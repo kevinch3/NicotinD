@@ -4,7 +4,9 @@
 `packages/slskd-addon` with the moved hunt engine, #488) and the **phase-2 cutover spine**
 (#489 — addon-backed provider, job-feed mirroring + HTTP ingest, unattended acquisition
 via the protocol, opt-in compose service; see the phase-2 section for what remains) are
-**shipped**, and so is phase 3 (core carries zero slskd code); phase 4 (repo split) pending. Each phase gets its own implementation plan + PR cycle;
+**shipped**, and so is phase 3 (core carries zero slskd code); phase 4 (repo split) is
+underway — its reversible in-repo half (4a, the `@nicotind/addon-sdk` extraction) has landed;
+the npm publish + subtree split + prod cutover (4c) remain. Each phase gets its own implementation plan + PR cycle;
 this document is the architecture they all answer to.
 
 ## Context & goal
@@ -283,12 +285,40 @@ streaming/library install with URL-resolver acquisition only.
 grows a `feedback` capability; addon-mode revived jobs lose the live on-disk wanted
 filter (see the phase-1 limitation above).
 
-### Phase 4 — Repo split (mechanical)
+### Phase 4 — Repo split (published SDK + own image)
 
-`git subtree split` of `packages/slskd-addon` (with `slskd-client` folded inside) → new
-repo, own CI, published Docker image + bun-compiled binary (what embedded/desktop mode
-downloads instead of the slskd zip). Core compose references the published image; the
-package is deleted from the monorepo.
+Sequenced as reversible in-repo engineering first, outward/irreversible steps last:
+
+**4a — extract `@nicotind/addon-sdk` (SHIPPED, in-monorepo).** The addon-facing subset of
+core is now its own leaf package (`packages/addon-sdk`, deps = `zod` + `pino` only), so an
+addon — first-party or third-party — builds against a stable, publishable surface instead
+of all of core. It **owns** the protocol contract + shared hunt helpers: `manifest.ts`
+(the plugin-manifest an addon declares), `addon.ts` (v1 DTOs/schemas/`negotiateCapabilities`),
+`addon-capability-risk.ts`, `addon-protocol-schema.ts`, `hunt-queries.ts`, `title-match.ts`,
+and its own leaf `logger.ts`. `@nicotind/core` keeps thin re-export **shims** at each old
+path (`export * from '@nicotind/addon-sdk/<module>'` via the SDK's subpath `exports` map), so
+every in-monorepo `from '@nicotind/core'` import site resolves unchanged and no barrel entry
+moved — the dependency is one-directional (core → addon-sdk; the SDK never imports core, so
+no cycle). `packages/slskd-addon` now depends on **only** `@nicotind/addon-sdk`; the one edge
+type it took from core outside the SDK surface — `HuntMatchFixture`, used solely by the
+replay test — was made a local addon type (`services/hunt-match-fixture.ts`), since the
+golden-dataset shape is a serialization contract the split-out addon must own standalone.
+`packages/addon-sdk/src` was added to the CI test-package list (the moved `bun:test` files
+would otherwise silently stop running — the Gate 2 drift class).
+
+**4b — stage the split (in-repo).** Decouple `slskd-client` from core the same way (it still
+imports `createLogger`/`Logger` → SDK, and `BrowseDirectory`/`NetworkFile` → local slskd wire
+types), so both packages that leave are core-free; add the SDK's publish hardening
+(build + `files`/`exports` for the compiled artifact), the external-repo CI workflow, and the
+Dockerfile — all as staged files, no outward push.
+
+**4c — cut over (outward, needs credentials + prod).** Publish `@nicotind/addon-sdk` +
+`@nicotind/slskd-client` to npm; `git subtree split` of `packages/slskd-addon` (with
+`slskd-client` folded in) → the new `kevinch3/nicotind-slskd-addon` repo (public); its CI
+publishes a Docker image + bun-compiled binary (what embedded/desktop downloads instead of the
+slskd zip). Core compose references the published image and the package is deleted from the
+monorepo; kpc re-migration + soak. These steps are a documented handoff, not run
+autonomously.
 
 ## Risks (ranked)
 

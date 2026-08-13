@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { createLogger } from '@nicotind/core';
+import { createLogger } from '@nicotind/addon-sdk';
 import type { FallbackHost } from './album-fallback.service.js';
 import {
   addonJobIdForAlbumJob,

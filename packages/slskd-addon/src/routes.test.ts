@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Slskd } from '@nicotind/slskd-client';
-import type { AddonAlbumSearchResponse, AddonJob } from '@nicotind/core';
+import type { AddonAlbumSearchResponse, AddonJob } from '@nicotind/addon-sdk';
 import { applySchema } from './db.js';
 import { createAddonApp } from './server.js';
 import { AlbumHunterService } from './services/album-hunter.service.js';

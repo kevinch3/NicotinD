@@ -1,5 +1,5 @@
 import { Slskd } from '@nicotind/slskd-client';
-import { createLogger, type AddonStatusRow } from '@nicotind/core';
+import { createLogger, type AddonStatusRow } from '@nicotind/addon-sdk';
 import { getDatabase } from './db.js';
 import { resolveConfig } from './config.js';
 import { createAddonApp } from './server.js';

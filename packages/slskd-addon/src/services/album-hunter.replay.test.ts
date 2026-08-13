@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'bun:test';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import type { HuntMatchFixture } from '@nicotind/core';
+import type { HuntMatchFixture } from './hunt-match-fixture.js';
 import { scoreFolders } from './album-hunter.service.js';
 
 // The JSON fixtures live in src/. This test file may execute from src (CI: `bun

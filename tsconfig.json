@@ -17,6 +17,7 @@
   },
   "include": [],
   "references": [
+    { "path": "packages/addon-sdk" },
     { "path": "packages/core" },
     { "path": "packages/service-manager" },
     { "path": "packages/slskd-client" },
