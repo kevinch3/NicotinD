@@ -40,3 +40,4 @@ export * from './utils/expand-home.js';
 
 // Version comparison (shared: server update-check + web APK self-update)
 export * from './version.js';
+export * from './addon-capability-risk.js';
