@@ -4,11 +4,26 @@ FROM oven/bun:1.3.14
 
 WORKDIR /app
 
-# Workspace install scoped to what the addon needs (core + slskd-client).
-COPY package.json bun.lock tsconfig.json ./
-COPY packages/core/package.json packages/core/tsconfig.json ./packages/core/
-COPY packages/slskd-client/package.json ./packages/slskd-client/
-COPY packages/slskd-addon/package.json packages/slskd-addon/tsconfig.json ./packages/slskd-addon/
+# bun resolves the ENTIRE workspace graph from the root lockfile, so every
+# member's package.json must be present even though the addon only imports
+# core + slskd-client at runtime — a "scoped" subset fails with "workspace
+# dependency not found". Mirror the root Dockerfile's manifest copy; --production
+# still keeps the installed dependency set to prod-only.
+COPY package.json bun.lock bunfig.toml tsconfig.json ./
+COPY packages/api/package.json packages/api/
+COPY packages/cli/package.json packages/cli/
+COPY packages/core/package.json packages/core/
+COPY packages/service-manager/package.json packages/service-manager/
+COPY packages/slskd-client/package.json packages/slskd-client/
+COPY packages/slskd-addon/package.json packages/slskd-addon/
+COPY packages/lidarr-client/package.json packages/lidarr-client/
+COPY packages/web/package.json packages/web/
+COPY packages/e2e/package.json packages/e2e/
+COPY packages/mobile/package.json packages/mobile/
+COPY packages/capacitor-now-playing/package.json packages/capacitor-now-playing/
+COPY packages/capacitor-apk-update/package.json packages/capacitor-apk-update/
+COPY packages/capacitor-tv-channels/package.json packages/capacitor-tv-channels/
+COPY packages/desktop/package.json packages/desktop/
 RUN bun install --production --ignore-scripts
 
 COPY packages/core/src ./packages/core/src
