@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import { ADDON_PROTOCOL_VERSION, type AddonManifest } from '@nicotind/core';
-import { AddonClient, AddonRequestError } from './client.js';
+import { AddonCircuitBreaker } from './circuit-breaker.js';
+import {
+  AddonClient,
+  AddonContractError,
+  AddonRequestError,
+  MAX_ADDON_RESPONSE_BYTES,
+} from './client.js';
 
 const MANIFEST: AddonManifest = {
   id: 'fixture-addon',
@@ -80,7 +86,8 @@ describe('AddonClient', () => {
   it('rejects a malformed manifest body', async () => {
     const { fetchFn } = stubFetch(() => Response.json({ id: 'x' }));
     const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
-    await expect(client.getManifest()).rejects.toBeInstanceOf(AddonRequestError);
+    // A malformed manifest is a contract violation, not a transport error.
+    await expect(client.getManifest()).rejects.toBeInstanceOf(AddonContractError);
   });
 
   it('parses health', async () => {
@@ -128,5 +135,154 @@ describe('AddonClient engine surface', () => {
       fetchFn: stubFetch(() => new Response('x', { status: 410 })).fetchFn,
     });
     await expect(gone.fetchFile('j1', 't:x')).rejects.toBeInstanceOf(AddonRequestError);
+  });
+});
+
+describe('AddonClient response hardening (§1 Stream 1)', () => {
+  const jsonHeaders = { 'content-type': 'application/json' };
+
+  it('rejects a JSON response larger than the size cap with AddonContractError', async () => {
+    const huge = JSON.stringify({ pad: 'x'.repeat(MAX_ADDON_RESPONSE_BYTES + 100) });
+    const client = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      fetchFn: stubFetch(() => new Response(huge, { headers: jsonHeaders })).fetchFn,
+    });
+    await expect(client.getStatus()).rejects.toBeInstanceOf(AddonContractError);
+  });
+
+  it('rejects a body whose content-length claims it is over the cap, before reading it', async () => {
+    const client = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      fetchFn: stubFetch(
+        () =>
+          new Response('{}', {
+            headers: { ...jsonHeaders, 'content-length': String(MAX_ADDON_RESPONSE_BYTES + 1) },
+          }),
+      ).fetchFn,
+    });
+    await expect(client.getStatus()).rejects.toBeInstanceOf(AddonContractError);
+  });
+
+  it('rejects a non-JSON body (e.g. an HTML error page) with AddonContractError', async () => {
+    const client = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      fetchFn: stubFetch(
+        () => new Response('<html>nope</html>', { headers: { 'content-type': 'text/html' } }),
+      ).fetchFn,
+    });
+    await expect(client.getStatus()).rejects.toBeInstanceOf(AddonContractError);
+  });
+
+  it('rejects malformed JSON with AddonContractError', async () => {
+    const client = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      fetchFn: stubFetch(() => new Response('{not json', { headers: jsonHeaders })).fetchFn,
+    });
+    await expect(client.getStatus()).rejects.toBeInstanceOf(AddonContractError);
+  });
+
+  it('a void endpoint returning an empty 200 body still resolves', async () => {
+    const client = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      fetchFn: stubFetch(() => new Response('', { status: 200 })).fetchFn,
+    });
+    await expect(client.notifyLibraryChanged()).resolves.toBeUndefined();
+  });
+
+  it('a well-formed JSON response under the cap passes through', async () => {
+    const client = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      fetchFn: stubFetch(
+        () =>
+          new Response(JSON.stringify([{ key: 'k', label: 'L', value: 'v' }]), {
+            headers: jsonHeaders,
+          }),
+      ).fetchFn,
+    });
+    expect(await client.getStatus()).toHaveLength(1);
+  });
+});
+
+describe('AddonClient outcome hook (§4 circuit-breaker feed)', () => {
+  const jsonHeaders = { 'content-type': 'application/json' };
+  function withOutcomes(respond: () => Response) {
+    const outcomes: string[] = [];
+    const client = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      fetchFn: stubFetch(respond).fetchFn,
+      onOutcome: (o) => outcomes.push(o),
+    });
+    return { client, outcomes };
+  }
+
+  it("reports 'ok' on a clean call", async () => {
+    const { client, outcomes } = withOutcomes(() => new Response('[]', { headers: jsonHeaders }));
+    await client.getStatus();
+    expect(outcomes).toEqual(['ok']);
+  });
+
+  it("reports 'contract-violation' on a bad-shape/non-JSON body", async () => {
+    const { client, outcomes } = withOutcomes(
+      () => new Response('<html/>', { headers: { 'content-type': 'text/html' } }),
+    );
+    await expect(client.getStatus()).rejects.toBeInstanceOf(AddonContractError);
+    expect(outcomes).toEqual(['contract-violation']);
+  });
+
+  it("reports 'transient' on a 5xx", async () => {
+    const { client, outcomes } = withOutcomes(() => new Response('err', { status: 503 }));
+    await expect(client.getStatus()).rejects.toBeInstanceOf(AddonRequestError);
+    expect(outcomes).toEqual(['transient']);
+  });
+});
+
+describe('AddonClient → circuit-breaker integration', () => {
+  it('trips the breaker after repeated contract violations from real calls', async () => {
+    const trips: string[] = [];
+    const breaker = new AddonCircuitBreaker({ threshold: 3, onTrip: (id) => trips.push(id) });
+    const client = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      // Every status call returns a non-JSON body → contract violation.
+      fetchFn: stubFetch(
+        () => new Response('<html/>', { headers: { 'content-type': 'text/html' } }),
+      ).fetchFn,
+    });
+    client.bindOutcome((o) => breaker.record('slskd', o));
+
+    for (let i = 0; i < 3; i++) {
+      await client.getStatus().catch(() => {});
+    }
+    expect(trips).toEqual(['slskd']);
+  });
+
+  it('a clean call between violations keeps the breaker from tripping', async () => {
+    const trips: string[] = [];
+    const breaker = new AddonCircuitBreaker({ threshold: 2, onTrip: (id) => trips.push(id) });
+    let bad = true;
+    const client = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      fetchFn: stubFetch(() =>
+        bad
+          ? new Response('<html/>', { headers: { 'content-type': 'text/html' } })
+          : new Response('[]', { headers: { 'content-type': 'application/json' } }),
+      ).fetchFn,
+    });
+    client.bindOutcome((o) => breaker.record('slskd', o));
+
+    await client.getStatus().catch(() => {}); // violation (1)
+    bad = false;
+    await client.getStatus(); // ok → reset
+    bad = true;
+    await client.getStatus().catch(() => {}); // violation (1 again)
+    expect(trips).toEqual([]); // never reached 2 consecutive
   });
 });

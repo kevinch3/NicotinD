@@ -1,8 +1,9 @@
 import type { Database } from 'bun:sqlite';
-import { createLogger, validateAddonManifest } from '@nicotind/core';
+import { createLogger, negotiateCapabilities, validateAddonManifest } from '@nicotind/core';
 import type { PluginRegistry } from '../plugins/registry.js';
 import type { ProviderRegistry } from '../provider-registry.js';
 import { AddonClient } from './client.js';
+import type { AddonCircuitBreaker } from './circuit-breaker.js';
 import { RemoteAddonPlugin } from './remote-addon-plugin.js';
 import {
   deleteAddonRegistration,
@@ -12,6 +13,19 @@ import {
 } from './store.js';
 
 const log = createLogger('addon-manager');
+
+/**
+ * Addon capabilities this core version actually consumes (§2 negotiation). An
+ * addon declaring only capabilities outside this set is useless here and is
+ * rejected; capabilities beyond it are ignored, not errors (forward compat).
+ * Widens as core learns to consume more (resolve, metadata kinds) in the
+ * later sub-projects.
+ */
+export const CORE_IMPLEMENTED_ADDON_CAPABILITIES: ReadonlySet<string> = new Set([
+  'search',
+  'browse',
+  'download',
+]);
 
 type ClientFactory = (url: string, token: string) => AddonClient;
 
@@ -27,7 +41,11 @@ const defaultClientFactory: ClientFactory = (url, token) =>
 export function loadRegisteredAddons(
   registry: PluginRegistry,
   db: Database,
-  opts: { providerRegistry?: ProviderRegistry; clientFactory?: ClientFactory } = {},
+  opts: {
+    providerRegistry?: ProviderRegistry;
+    clientFactory?: ClientFactory;
+    breaker?: AddonCircuitBreaker;
+  } = {},
 ): void {
   const clientFactory = opts.clientFactory ?? defaultClientFactory;
   for (const reg of listAddonRegistrations(db)) {
@@ -36,14 +54,26 @@ export function loadRegisteredAddons(
       log.warn({ id: reg.id, errors }, 'skipping stored addon with invalid manifest');
       continue;
     }
-    try {
-      registry.register(
-        new RemoteAddonPlugin(
-          reg.manifest,
-          clientFactory(reg.url, reg.token),
-          opts.providerRegistry,
-        ),
+    // Re-negotiate at boot: a stored addon whose capabilities this core no
+    // longer implements is disabled with a stated reason, not silently broken.
+    const { active } = negotiateCapabilities(
+      reg.manifest.capabilities,
+      CORE_IMPLEMENTED_ADDON_CAPABILITIES,
+    );
+    if (active.length === 0) {
+      log.warn(
+        { id: reg.id, declared: reg.manifest.capabilities },
+        'disabling stored addon: no capability this core version can use',
       );
+      continue;
+    }
+    try {
+      const client = clientFactory(reg.url, reg.token);
+      if (opts.breaker) {
+        const breaker = opts.breaker;
+        client.bindOutcome((outcome) => breaker.record(reg.id, outcome));
+      }
+      registry.register(new RemoteAddonPlugin(reg.manifest, client, opts.providerRegistry));
     } catch (err) {
       log.warn({ id: reg.id, err }, 'skipping stored addon that failed to register');
     }
@@ -56,6 +86,7 @@ export interface RegisterAddonInput {
   addedBy: string;
   providerRegistry?: ProviderRegistry;
   clientFactory?: ClientFactory;
+  breaker?: AddonCircuitBreaker;
 }
 
 /**
@@ -75,6 +106,18 @@ export async function registerAddon(
   if (errors.length > 0) {
     throw new Error(`addon manifest rejected: ${errors.join('; ')}`);
   }
+  const { active, ignored } = negotiateCapabilities(
+    manifest.capabilities,
+    CORE_IMPLEMENTED_ADDON_CAPABILITIES,
+  );
+  if (active.length === 0) {
+    throw new Error(
+      `addon "${manifest.id}" declares no capability this server can use (declared: ${manifest.capabilities.join(', ') || 'none'})`,
+    );
+  }
+  if (ignored.length > 0) {
+    log.info({ id: manifest.id, ignored }, 'addon declares capabilities this core ignores');
+  }
   if (registry.get(manifest.id)) {
     throw new Error(`a plugin with id "${manifest.id}" is already registered`);
   }
@@ -87,6 +130,11 @@ export async function registerAddon(
     addedBy: input.addedBy,
   };
   saveAddonRegistration(db, reg);
+  if (input.breaker) {
+    const breaker = input.breaker;
+    breaker.reset(manifest.id); // fresh slate for a (re-)registered addon
+    client.bindOutcome((outcome) => breaker.record(manifest.id, outcome));
+  }
   registry.register(new RemoteAddonPlugin(manifest, client, input.providerRegistry));
   return reg;
 }
@@ -106,6 +154,7 @@ export async function removeAddon(
   registry: PluginRegistry,
   db: Database,
   id: string,
+  breaker?: AddonCircuitBreaker,
 ): Promise<void> {
   const plugin = registry.get(id);
   if (!plugin) throw new Error(`unknown plugin "${id}"`);
@@ -113,4 +162,5 @@ export async function removeAddon(
   await registry.disable(id);
   await registry.unregister(id);
   deleteAddonRegistration(db, id);
+  breaker?.reset(id);
 }

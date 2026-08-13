@@ -5,6 +5,7 @@ import type { PluginRegistry } from '../services/plugins/registry.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
 import { AddonRequestError } from '../services/addons/client.js';
 import { registerAddon, removeAddon } from '../services/addons/manager.js';
+import type { AddonCircuitBreaker } from '../services/addons/circuit-breaker.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import { recordAudit } from '../services/audit-log.js';
 
@@ -22,6 +23,7 @@ export function pluginRoutes(
   registry: PluginRegistry,
   db: Database,
   providerRegistry?: ProviderRegistry,
+  breaker?: AddonCircuitBreaker,
 ) {
   const app = new Hono<AuthEnv>();
 
@@ -48,6 +50,7 @@ export function pluginRoutes(
         token,
         addedBy: c.get('user').sub,
         providerRegistry,
+        breaker,
       });
       recordAudit(db, c.get('user'), 'addon.register', {
         targetKind: 'addon',
@@ -77,7 +80,7 @@ export function pluginRoutes(
     const plugin = registry.get(id);
     if (!plugin) return c.json({ error: 'Addon not found' }, 404);
     if (!plugin.origin?.remote) return c.json({ error: 'Not a remote addon' }, 400);
-    await removeAddon(registry, db, id);
+    await removeAddon(registry, db, id, breaker);
     recordAudit(db, c.get('user'), 'addon.remove', { targetKind: 'addon', targetId: id });
     return c.json({ ok: true });
   });
@@ -117,6 +120,7 @@ export function pluginRoutes(
     }
 
     await registry.enable(id, c.get('user').sub);
+    breaker?.reset(id); // a re-enabled addon gets a fresh circuit-breaker slate
     return c.json({ ok: true });
   });
 

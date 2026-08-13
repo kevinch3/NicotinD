@@ -22,11 +22,91 @@ export class AddonRequestError extends Error {
   }
 }
 
+/**
+ * The addon violated the protocol contract — a body that is too large, not
+ * JSON, malformed, or the wrong shape. Distinct from `AddonRequestError`
+ * (transport / HTTP status): a contract violation is the *addon's* fault and is
+ * what the circuit-breaker (§4) counts, whereas a timeout/5xx is transient.
+ */
+export class AddonContractError extends Error {
+  constructor(message: string) {
+    super(`addon contract violation: ${message}`);
+    this.name = 'AddonContractError';
+  }
+}
+
+/**
+ * Cap on a JSON response body core will buffer from an addon
+ * (docs/superpowers/specs/2026-08-13-addon-ecosystem-security-contract-foundation-design.md
+ * §1 Stream 1). File bytes are a separate, larger cap enforced at the ingest
+ * path (Stream 3). 8 MiB is generous for any manage/observe JSON surface.
+ */
+export const MAX_ADDON_RESPONSE_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Read an addon JSON response with a hard byte cap, aborting the stream past it
+ * (a hostile or buggy addon must not be able to OOM core). Enforces the
+ * content-length header first when present, then bounds the actual read
+ * regardless (a lying or absent content-length cannot bypass it). An empty body
+ * resolves to `undefined` so void endpoints (204 / empty 200) work; a non-JSON
+ * or malformed non-empty body is a contract violation.
+ */
+async function readCappedJson(res: Response, maxBytes: number): Promise<unknown> {
+  const declared = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new AddonContractError(`response ${declared} bytes exceeds ${maxBytes} cap`);
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) return undefined;
+
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new AddonContractError(`response exceeds ${maxBytes} byte cap`);
+    }
+    chunks.push(value);
+  }
+
+  if (total === 0) return undefined; // void endpoint
+
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    throw new AddonContractError(`expected JSON, got content-type "${contentType || 'none'}"`);
+  }
+
+  const buf = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    buf.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(buf));
+  } catch {
+    throw new AddonContractError('response body is not valid JSON');
+  }
+}
+
+/**
+ * The outcome of one addon call, for the circuit-breaker (§4): `contract-violation`
+ * is the addon's fault (counts toward tripping); `transient` is a
+ * timeout/5xx/network error (neutral); `ok` is a clean call (resets the streak).
+ */
+export type AddonCallOutcome = 'ok' | 'contract-violation' | 'transient';
+
 export interface AddonClientOptions {
   baseUrl: string;
   token: string;
   fetchFn?: typeof fetch;
   timeoutMs?: number;
+  /** Reports every JSON call's outcome (wire to the circuit-breaker). */
+  onOutcome?: (outcome: AddonCallOutcome) => void;
 }
 
 /**
@@ -39,19 +119,30 @@ export class AddonClient {
   private token: string;
   private fetchFn: typeof fetch;
   private timeoutMs: number;
+  private onOutcome?: (outcome: AddonCallOutcome) => void;
 
   constructor(opts: AddonClientOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/+$/, '');
     this.token = opts.token;
     this.fetchFn = opts.fetchFn ?? fetch;
     this.timeoutMs = opts.timeoutMs ?? 10_000;
+    this.onOutcome = opts.onOutcome;
+  }
+
+  /**
+   * Wire (or rewire) the per-call outcome handler after construction — used to
+   * bind the circuit-breaker once the addon id is known (register-time the id
+   * comes from the fetched manifest, not the constructor).
+   */
+  bindOutcome(handler: (outcome: AddonCallOutcome) => void): void {
+    this.onOutcome = handler;
   }
 
   async getManifest(): Promise<AddonManifest> {
     const body = await this.request('GET', '/addon/v1/manifest', { auth: false });
     const parsed = addonManifestSchema.safeParse(body);
     if (!parsed.success) {
-      throw new AddonRequestError(`addon returned an invalid manifest: ${parsed.error.message}`);
+      throw new AddonContractError(`invalid manifest: ${parsed.error.message}`);
     }
     return parsed.data;
   }
@@ -154,18 +245,23 @@ export class AddonClient {
     path: string,
     opts: { auth: boolean; json?: unknown; timeoutMs?: number; headers?: Record<string, string> },
   ): Promise<unknown> {
-    const res = await this.rawRequest(method, path, opts);
-    if (!res.ok) {
-      throw new AddonRequestError(
-        `addon responded ${res.status} for ${method} ${path}`,
-        res.status,
-      );
-    }
-    if (res.status === 204) return undefined;
     try {
-      return await res.json();
-    } catch {
-      return undefined;
+      const res = await this.rawRequest(method, path, opts);
+      if (!res.ok) {
+        throw new AddonRequestError(
+          `addon responded ${res.status} for ${method} ${path}`,
+          res.status,
+        );
+      }
+      const parsed =
+        res.status === 204 ? undefined : await readCappedJson(res, MAX_ADDON_RESPONSE_BYTES);
+      this.onOutcome?.('ok');
+      return parsed;
+    } catch (err) {
+      // A contract violation is the addon's fault (counts toward the breaker);
+      // anything else (status, timeout, network) is transient/neutral.
+      this.onOutcome?.(err instanceof AddonContractError ? 'contract-violation' : 'transient');
+      throw err;
     }
   }
 

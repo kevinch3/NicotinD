@@ -6,6 +6,7 @@ import {
   ADDON_PROTOCOL_VERSION,
   addonManifestSchema,
   addonProtocolSupported,
+  negotiateCapabilities,
   validateAddonManifest,
   type AddonManifest,
 } from './addon.js';
@@ -114,5 +115,29 @@ describe('addon job/search request schemas', () => {
         canonicalTracks: [],
       }).album,
     ).toBe('B');
+  });
+});
+
+describe('negotiateCapabilities (§2)', () => {
+  const implemented = new Set(['search', 'browse', 'download']);
+
+  it('active = declared ∩ implemented', () => {
+    const { active } = negotiateCapabilities(['search', 'download'], implemented);
+    expect(active.sort()).toEqual(['download', 'search']);
+  });
+
+  it('ignores (does not error on) an unrecognized capability — forward compat', () => {
+    const { active, ignored } = negotiateCapabilities(
+      ['search', 'teleport', 'download'],
+      implemented,
+    );
+    expect(active.sort()).toEqual(['download', 'search']);
+    expect(ignored).toEqual(['teleport']);
+  });
+
+  it('yields an empty active set when nothing intersects (caller then rejects)', () => {
+    const { active, ignored } = negotiateCapabilities(['teleport', 'mine-crypto'], implemented);
+    expect(active).toEqual([]);
+    expect(ignored).toEqual(['teleport', 'mine-crypto']);
   });
 });

@@ -1,8 +1,10 @@
 import type { Database } from 'bun:sqlite';
-import { mkdirSync, createWriteStream } from 'node:fs';
-import { basename, join } from 'node:path';
-import { Readable } from 'node:stream';
+import { mkdirSync, createWriteStream, rmSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { AddonContractError } from './client.js';
+import { MAX_ADDON_FILE_BYTES, safeIncomingPath } from './ingest-path.js';
 import { createLogger, type AddonJob, type AddonJobItem } from '@nicotind/core';
 import type { PluginRegistry } from '../plugins/registry.js';
 import type { CompletedDownloadFile } from '../path-inference.js';
@@ -302,12 +304,42 @@ export class AddonJobPoller {
     job: AddonJob,
     item: AddonJobItem,
   ): Promise<string> {
-    const dir = join(this.deps.incomingDir, plugin.manifest.id, job.id);
-    mkdirSync(dir, { recursive: true });
-    const local = join(dir, basename(item.filename.replace(/\\/g, '/')));
+    // Contain the write to <incoming>/<addon>/<job>/ and reject a traversing
+    // filename before opening any handle (§1 Stream 3).
+    const local = safeIncomingPath(
+      this.deps.incomingDir,
+      plugin.manifest.id,
+      job.id,
+      item.filename,
+    );
+    mkdirSync(dirname(local), { recursive: true });
     const res = await plugin.client.fetchFile(job.id, item.itemId);
     if (!res.body) throw new Error('empty file response');
-    await pipeline(Readable.fromWeb(res.body as never), createWriteStream(local));
+
+    const declared = Number(res.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > MAX_ADDON_FILE_BYTES) {
+      throw new AddonContractError(`delivered file ${declared} bytes exceeds cap`);
+    }
+
+    // Abort the stream past the byte cap so a hostile addon can't fill the disk
+    // with one item (a lying/absent content-length can't bypass this).
+    let written = 0;
+    const capGuard = new Transform({
+      transform(chunk: Buffer, _enc, cb) {
+        written += chunk.byteLength;
+        if (written > MAX_ADDON_FILE_BYTES) {
+          cb(new AddonContractError('delivered file exceeds byte cap'));
+          return;
+        }
+        cb(null, chunk);
+      },
+    });
+    try {
+      await pipeline(Readable.fromWeb(res.body as never), capGuard, createWriteStream(local));
+    } catch (err) {
+      rmSync(local, { force: true }); // never leave a partial/oversized file behind
+      throw err;
+    }
     return local;
   }
 

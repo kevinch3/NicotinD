@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NicotinD Acquisition Addon Protocol",
+  "protocolVersion": "1.0.0",
+  "description": "Generated from the @nicotind/core Zod DTOs. Additive-only within a major; a breaking change bumps the major (see docs/addon-protocol/v1.md).",
+  "$defs": {
+    "Manifest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "protocolVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "acquisition",
+            "metadata",
+            "connectivity"
+          ]
+        },
+        "capabilities": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "configFields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text",
+                  "password"
+                ]
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "help": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "label",
+              "type"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "statusFields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "key",
+              "label"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "compliance": {
+          "type": "object",
+          "properties": {
+            "disclaimer": {
+              "type": "string"
+            },
+            "requiresConsent": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "disclaimer",
+            "requiresConsent"
+          ],
+          "additionalProperties": false
+        },
+        "urlPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "version",
+        "protocolVersion",
+        "kind",
+        "capabilities"
+      ],
+      "additionalProperties": false
+    },
+    "SearchRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "waitMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 120000
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "additionalProperties": false
+    },
+    "AlbumSearchRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "artist": {
+          "type": "string",
+          "minLength": 1
+        },
+        "album": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonicalTracks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "skew": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "artist",
+        "album",
+        "canonicalTracks"
+      ],
+      "additionalProperties": false
+    },
+    "JobRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "intent": {
+          "type": "string",
+          "enum": [
+            "album",
+            "tracks",
+            "browse-grab"
+          ]
+        },
+        "artist": {
+          "type": "string"
+        },
+        "album": {
+          "type": "string"
+        },
+        "canonicalTracks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "wantedTracks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "candidateRef": {
+          "type": "string"
+        },
+        "minMatchPct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "titles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "username": {
+          "type": "string"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "filename": {
+                "type": "string"
+              },
+              "size": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "filename",
+              "size"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "intent"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

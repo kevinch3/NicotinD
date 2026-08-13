@@ -243,6 +243,16 @@ describe('PluginsComponent — remote addons (phase 0)', () => {
     return fixture;
   }
 
+  it('consent risks name each capability in plain language (download → library)', () => {
+    const fixture = makeAddonFixture({ add: [], remove: [] });
+    const risks = (fixture.componentInstance as PluginsComponent).consentRisks({
+      ...REMOTE,
+      capabilities: ['search', 'download'],
+    } as PluginInfo);
+    expect(risks).toHaveLength(2);
+    expect(risks.some((r) => r.toLowerCase().includes('librar'))).toBe(true);
+  });
+
   it('submits the add-addon form with url + token', async () => {
     const calls = { add: [] as unknown[], remove: [] as string[] };
     const fixture = makeAddonFixture(calls);

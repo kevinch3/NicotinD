@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { assertFetchableUrl } from './fetch-guard.js';
 
 /**
  * Proxy for catalog (Lidarr/MusicBrainz) album covers.
@@ -52,9 +53,11 @@ export function proxiedCoverUrl(raw: string | undefined | null): string | undefi
 export function isProxyableCoverUrl(raw: string): boolean {
   if (raw.startsWith(LIDARR_MEDIA_COVER_PREFIX)) return true;
   try {
-    const url = new URL(raw);
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') return false;
-    return ALLOWED_COVER_HOSTS.has(url.hostname);
+    // Shared SSRF guard: enforces the cover-host allowlist AND rejects
+    // private/loopback targets (a no-op for these public art CDNs, but the one
+    // implementation both this proxy and addon-provided URLs go through).
+    assertFetchableUrl(raw, { allowedHosts: ALLOWED_COVER_HOSTS });
+    return true;
   } catch {
     return false;
   }
