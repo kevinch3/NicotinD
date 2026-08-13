@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.347](https://github.com/kevinch3/NicotinD/compare/v0.1.346...v0.1.347) (2026-08-13)
+
+### Bug Fixes
+
+* **slskd-addon:** make the addon image buildable + gate it in CI ([#498](https://github.com/kevinch3/NicotinD/issues/498)) ([101e94d](https://github.com/kevinch3/NicotinD/commit/101e94d0ecb0edff7af351a6801aaef3f02e587b))
 ## [0.1.346](https://github.com/kevinch3/NicotinD/compare/v0.1.345...v0.1.346) (2026-08-12)
 ## [0.1.345](https://github.com/kevinch3/NicotinD/compare/v0.1.344...v0.1.345) (2026-08-12)
 
