@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.2.3](https://github.com/kevinch3/NicotinD/compare/v0.2.2...v0.2.3) (2026-08-13)
+
+### Features
+
+* **addon-security:** protocol security & contract foundation ([#501](https://github.com/kevinch3/NicotinD/issues/501)) ([9b13c79](https://github.com/kevinch3/NicotinD/commit/9b13c79eb9a1edf31315b525e6893642396ef614))
 ## [0.2.2](https://github.com/kevinch3/NicotinD/compare/v0.2.1...v0.2.2) (2026-08-13)
 
 ### Bug Fixes
