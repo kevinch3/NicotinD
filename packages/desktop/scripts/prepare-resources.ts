@@ -45,6 +45,7 @@ const resourcesDir = path.join(desktopRoot, 'resources');
 
 /** The workspace packages the backend entry (`src/main.ts`) transitively imports. */
 const BACKEND_WORKSPACE_PACKAGES = [
+  'addon-sdk',
   'core',
   'slskd-client',
   'service-manager',

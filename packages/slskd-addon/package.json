@@ -4,7 +4,7 @@
   "type": "module",
   "main": "src/index.ts",
   "dependencies": {
-    "@nicotind/core": "workspace:*",
+    "@nicotind/addon-sdk": "workspace:*",
     "@nicotind/slskd-client": "workspace:*",
     "hono": "^4.12.31",
     "yaml": "^2.9.0",

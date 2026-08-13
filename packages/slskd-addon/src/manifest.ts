@@ -1,4 +1,4 @@
-import { ADDON_PROTOCOL_VERSION, type AddonManifest } from '@nicotind/core';
+import { ADDON_PROTOCOL_VERSION, type AddonManifest } from '@nicotind/addon-sdk';
 
 const DISCLAIMER =
   'Soulseek is a peer-to-peer file-sharing network. By enabling it you take ' +

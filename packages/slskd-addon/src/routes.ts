@@ -11,7 +11,7 @@ import {
   createLogger,
   type AddonAlbumSearchResponse,
   type AddonSearchResult,
-} from '@nicotind/core';
+} from '@nicotind/addon-sdk';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { AlbumHunterService } from './services/album-hunter.service.js';
 import type { TrackHunterService } from './services/track-hunter.service.js';

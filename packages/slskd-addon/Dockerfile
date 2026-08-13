@@ -13,6 +13,7 @@ COPY package.json bun.lock bunfig.toml tsconfig.json ./
 COPY packages/api/package.json packages/api/
 COPY packages/cli/package.json packages/cli/
 COPY packages/core/package.json packages/core/
+COPY packages/addon-sdk/package.json packages/addon-sdk/
 COPY packages/service-manager/package.json packages/service-manager/
 COPY packages/slskd-client/package.json packages/slskd-client/
 COPY packages/slskd-addon/package.json packages/slskd-addon/
@@ -27,6 +28,7 @@ COPY packages/desktop/package.json packages/desktop/
 RUN bun install --production --ignore-scripts
 
 COPY packages/core/src ./packages/core/src
+COPY packages/addon-sdk/src ./packages/addon-sdk/src
 COPY packages/slskd-client/src ./packages/slskd-client/src
 COPY packages/slskd-addon/src ./packages/slskd-addon/src
 
