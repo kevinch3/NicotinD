@@ -306,11 +306,15 @@ golden-dataset shape is a serialization contract the split-out addon must own st
 `packages/addon-sdk/src` was added to the CI test-package list (the moved `bun:test` files
 would otherwise silently stop running — the Gate 2 drift class).
 
-**4b — stage the split (in-repo).** Decouple `slskd-client` from core the same way (it still
-imports `createLogger`/`Logger` → SDK, and `BrowseDirectory`/`NetworkFile` → local slskd wire
-types), so both packages that leave are core-free; add the SDK's publish hardening
-(build + `files`/`exports` for the compiled artifact), the external-repo CI workflow, and the
-Dockerfile — all as staged files, no outward push.
+**4b — decouple `slskd-client` from core (SHIPPED, in-monorepo).** `slskd-client` now imports
+`createLogger`/`Logger` from `@nicotind/addon-sdk` and defines `BrowseDirectory`/`NetworkFile`
+as local slskd wire types (in its own `types.ts`; core keeps structurally-identical copies for
+its generic browse lane, so TS structural typing keeps consumers assignable). Both packages that
+leave in the split — `slskd-client` and `slskd-addon` — are now **core-free**, depending only on
+`@nicotind/addon-sdk`. The remaining split prep (the SDK's npm publish hardening —
+build + `files`/`exports` for a compiled artifact — the external-repo CI workflow and Dockerfile)
+is folded into the 4c handoff, since it is tied to the actual publish and needs dual src/dist
+`exports` care to not break in-monorepo resolution.
 
 **4c — cut over (outward, needs credentials + prod).** Publish `@nicotind/addon-sdk` +
 `@nicotind/slskd-client` to npm; `git subtree split` of `packages/slskd-addon` (with

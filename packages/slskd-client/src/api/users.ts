@@ -1,4 +1,4 @@
-import type { BrowseDirectory } from '@nicotind/core';
+import type { BrowseDirectory } from '../types.js';
 import type { SlskdClient } from '../client.js';
 
 interface RawBrowseFile {
