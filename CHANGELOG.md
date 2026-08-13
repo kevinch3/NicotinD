@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.2.2](https://github.com/kevinch3/NicotinD/compare/v0.2.1...v0.2.2) (2026-08-13)
+
+### Bug Fixes
+
+* **web:** remove the broken "tap to resume" autoplay banner ([#500](https://github.com/kevinch3/NicotinD/issues/500)) ([d69ad2a](https://github.com/kevinch3/NicotinD/commit/d69ad2acfa7b231399d15f9c11c4c1205b99356a))
 ## [0.2.1](https://github.com/kevinch3/NicotinD/compare/v0.2.0...v0.2.1) (2026-08-13)
 
 ### Bug Fixes
