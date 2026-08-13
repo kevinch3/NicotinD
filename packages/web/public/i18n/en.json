@@ -785,5 +785,6 @@
   "vibe.fast": "120bpm+",
   "vibe.happy": "Happy",
   "vibe.party": "Party",
-  "vibe.uplifting": "Uplifting"
+  "vibe.uplifting": "Uplifting",
+  "extensions.consentUntrusted": "You're adding an addon from a source NicotinD does not control. Once enabled, it can:"
 }

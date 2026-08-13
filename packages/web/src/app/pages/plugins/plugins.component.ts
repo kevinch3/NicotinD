@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { AuthService } from '../../services/auth.service';
 import { PluginService, type PluginInfo } from '../../services/plugin.service';
+import { capabilityRiskLine } from '@nicotind/core';
 import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/plugin-config';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
@@ -136,6 +137,15 @@ export class PluginsComponent implements OnInit {
       () => this.plugins.removeAddon(p.id),
       this.i18n.t('extensions.addonRemoved', { name: p.name }),
     );
+  }
+
+  /**
+   * Plain-language risk lines for the consent dialog of a remote addon (§3) —
+   * one per declared capability, so the admin sees what enabling an untrusted
+   * addon actually lets it do (e.g. "download" → writes files into your library).
+   */
+  consentRisks(p: PluginInfo): string[] {
+    return p.capabilities.map((c) => capabilityRiskLine(c));
   }
 
   confirmConsent(): void {

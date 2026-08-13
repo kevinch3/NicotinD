@@ -151,7 +151,21 @@
     [confirmLabel]="'extensions.consentConfirm' | t"
     (confirm)="confirmConsent()"
     (cancel)="consentTarget.set(null)"
-  />
+  >
+    @if (p.remote) {
+      <div class="mb-4" data-testid="consent-risks">
+        <p class="text-sm text-theme-primary mb-2">{{ 'extensions.consentUntrusted' | t }}</p>
+        <ul class="space-y-1.5">
+          @for (risk of consentRisks(p); track risk) {
+            <li class="flex gap-2 text-xs text-theme-secondary">
+              <span class="text-theme-muted" aria-hidden="true">•</span>
+              <span>{{ risk }}</span>
+            </li>
+          }
+        </ul>
+      </div>
+    }
+  </app-confirm-dialog>
 }
 
 @if (removeTarget(); as p) {

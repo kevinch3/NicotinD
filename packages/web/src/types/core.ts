@@ -96,3 +96,8 @@ export type { IdentifyResult } from '../../../core/src/plugin/capabilities';
 /** Why an identify attempt produced no match (issue #414) — re-exported from
  *  the same source rather than re-declared, so the taxonomy can't drift. */
 export type { IdentifyOutcome, IdentifyFailureKind } from '../../../core/src/plugin/capabilities';
+
+// Value re-export: addon capability → plain-language consent risk lines
+// (pure, browser-safe) — the single source both the consent dialog and the
+// published protocol spec render from. See addon-capability-risk.ts.
+export * from '../../../core/src/addon-capability-risk';
