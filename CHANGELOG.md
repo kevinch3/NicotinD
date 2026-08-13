@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.2.4](https://github.com/kevinch3/NicotinD/compare/v0.2.3...v0.2.4) (2026-08-13)
+
+### Bug Fixes
+
+* **streaming:** serve suffix ranges correctly and keep Content-Length on transcoded streams ([#502](https://github.com/kevinch3/NicotinD/issues/502)) ([6171da7](https://github.com/kevinch3/NicotinD/commit/6171da75a495947446cfb7855a1b447c375bb4c8))
 ## [0.2.3](https://github.com/kevinch3/NicotinD/compare/v0.2.2...v0.2.3) (2026-08-13)
 
 ### Features
