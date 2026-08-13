@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { SlskdUserTransferGroup, AcquireJob, AcquisitionJobView } from '@nicotind/core';
+import type { AcquireJob, AcquisitionJobView } from '@nicotind/core';
 import type {
   BrowseJobResult,
   DiscographyResult,
@@ -19,14 +19,6 @@ export class DownloadsApiService {
     return this.http.post<{ ok: boolean }>('/api/downloads', { username, files });
   }
 
-  cancelAllDownloads() {
-    return this.http.delete<{ ok: boolean }>('/api/downloads');
-  }
-
-  cancelAllFinished() {
-    return this.http.delete<{ ok: boolean }>('/api/downloads/finished');
-  }
-
   startBrowse(username: string) {
     return this.http.get<{ jobId: string; state: string }>(
       `/api/users/${encodeURIComponent(username)}/browse`,
@@ -39,23 +31,17 @@ export class DownloadsApiService {
     );
   }
 
-  getDownloads() {
-    return this.http.get<SlskdUserTransferGroup[]>('/api/downloads');
-  }
-
-  cancelDownload(username: string, id: string) {
-    return this.http.delete<{ ok: boolean }>(`/api/downloads/${username}/${id}`);
-  }
-
-  retryDownloads(items: Array<{ username: string; id: string }>) {
-    return this.http.post<{ ok: boolean; retried: number }>('/api/downloads/retry', { items });
-  }
-
-  getUploads() {
-    return this.http.get<SlskdUserTransferGroup[]>('/api/uploads');
-  }
-
   /** Unified acquisition-job feed (every download method, with pipeline stage). */
+  /** Cancel an addon-backed job (resolved to its owning addon server-side). */
+  cancelJob(jobId: string) {
+    return this.http.post<{ ok: boolean }>(`/api/downloads/jobs/${jobId}/cancel`, {});
+  }
+
+  /** Remove a job from the feed (and the owning addon, when addon-backed). */
+  deleteJob(jobId: string) {
+    return this.http.delete<{ ok: boolean }>(`/api/downloads/jobs/${jobId}`);
+  }
+
   getAcquisitionJobs() {
     return this.http.get<AcquisitionJobView[]>('/api/downloads/jobs');
   }

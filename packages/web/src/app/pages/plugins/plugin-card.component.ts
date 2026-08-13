@@ -4,7 +4,6 @@ import type { PluginInfo } from '../../services/plugin.service';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { pluginStatus, type PluginStatus } from '../../lib/plugin-status';
 import { IconComponent } from '../../components/icon/icon.component';
-import { SlskdSettingsComponent } from './slskd/slskd-settings.component';
 import { AddonStatusPanelComponent } from './addon-status-panel.component';
 import { readGroupOpen, writeGroupOpen } from '../../lib/group-state';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -40,10 +39,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
  * `SettingsGroupComponent`'s persisted-per-device open/closed state
  * (`lib/group-state.ts`, id `plugin-<plugin.id>`) but as a plain
  * `@Input`/`@Output`-era signal rather than that component's `input()`s, for
- * the same JIT-harness reason above. slskd no longer has its own route —
- * `SlskdSettingsComponent` is embedded directly in this card's body (see its
- * class docstring), so its status poll only runs while the card is expanded
- * (an `@if`-gated body unmounts it on collapse, running `ngOnDestroy`).
+ * the same JIT-harness reason above.
  */
 @Component({
   selector: 'app-plugin-card',
@@ -52,7 +48,6 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
     FormsModule,
     TvNavItemDirective,
     IconComponent,
-    SlskdSettingsComponent,
     AddonStatusPanelComponent,
     TranslatePipe,
   ],

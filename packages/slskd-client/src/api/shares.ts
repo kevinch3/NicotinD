@@ -1,4 +1,4 @@
-import type { SlskdShareDirectory } from '@nicotind/core';
+import type { SlskdShareDirectory } from '../types.js';
 import type { SlskdClient } from '../client.js';
 import type { OptionsApi } from './options.js';
 

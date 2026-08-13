@@ -3,27 +3,15 @@ import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import type { AuthEnv } from '../middleware/auth.js';
 import { requireAcquirer } from '../middleware/current-user.js';
-import type { SlskdRef } from '../index.js';
 import type { DiscographyService } from '../services/discography.service.js';
-import type { AlbumHunterService } from '../services/album-hunter.service.js';
 import type { AlbumHuntOrchestrator } from '../services/source-hunter.js';
-import { TrackHunterService } from '../services/track-hunter.service.js';
-import {
-  AlbumFallbackService,
-  type AlternateCandidate,
-} from '../services/album-fallback.service.js';
 import { albumIdFor, artistIdFor } from '../services/library-scanner.js';
-import {
-  albumAlreadyComplete,
-  filesForCanonicalTracks,
-  filesMissingOnDisk,
-} from '../services/library-completeness.js';
+import { albumAlreadyComplete } from '../services/library-completeness.js';
 import { setArtwork, pickAlbumCover, pickArtistImage } from '../services/artwork-store.js';
 import { recordAcquiredArtistIdentity } from '../services/artist-identity-store.js';
 import { createJob, supersedeActiveJobs } from '../services/acquisition-job-store.js';
-import { captureHuntMatchFeedback } from '../services/generation-feedback.js';
 import { normalizeTitle, titlesOverlap } from '@nicotind/core';
-import type { AddonAlbumCandidate, HuntMatchInput } from '@nicotind/core';
+import type { AddonAlbumCandidate } from '@nicotind/core';
 import { join } from 'node:path';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
@@ -58,7 +46,6 @@ function wireCandidate(c: AddonAlbumCandidate) {
 
 export interface DiscographyRoutesOptions {
   discography: DiscographyService;
-  hunter: AlbumHunterService;
   /**
    * Source-agnostic hunt across the metadata sources (archive.org, Spotify, …).
    * Backs `/hunt/sources` so the modal renders ONE blended candidate list with
@@ -67,24 +54,18 @@ export interface DiscographyRoutesOptions {
   sourceHunt: AlbumHuntOrchestrator;
   lidarr: Lidarr;
   db: Database;
-  slskdRef: SlskdRef;
   /** App data dir — used to purge stale canonical-cover cache when artwork changes. */
   dataDir?: string;
-  /** App version, stamped on captured feedback so replay can spot scorer drift. */
-  version?: string;
-  /** Live lookup of the active remote acquisition addon (phase-2 cutover). */
-  getAddon?: () => RemoteAddonPlugin | null;
+  /** Live lookup of the active remote acquisition addon (the only hunt engine since phase 3). */
+  getAddon: () => RemoteAddonPlugin | null;
 }
 
 export function discographyRoutes({
   discography,
-  hunter,
   sourceHunt,
   lidarr,
   db,
-  slskdRef,
   dataDir,
-  version,
   getAddon,
 }: DiscographyRoutesOptions) {
   const app = new Hono<AuthEnv>();
@@ -133,25 +114,18 @@ export function discographyRoutes({
       const artistName = body.artistName ?? album.artist?.artistName ?? '';
       const albumTitle = body.albumTitle ?? album.title;
 
-      const addon = getAddon?.() ?? null;
-      if (addon) {
-        const res = await addon.client.albumsSearch({
-          artist: artistName,
-          album: albumTitle,
-          canonicalTracks: tracks.map((t) => ({ title: t.title })),
-          skew: body.skewSearch,
-        });
-        return c.json({
-          candidates: res.candidates.map(wireCandidate),
-          totalTracks: tracks.length,
-        });
-      }
-
-      const candidates = await hunter.hunt(artistName, albumTitle, tracks, {
-        skewSearch: body.skewSearch,
+      const addon = getAddon();
+      if (!addon) return c.json({ error: 'No acquisition addon registered' }, 503);
+      const res = await addon.client.albumsSearch({
+        artist: artistName,
+        album: albumTitle,
+        canonicalTracks: tracks.map((t) => ({ title: t.title })),
+        skew: body.skewSearch,
       });
-
-      return c.json({ candidates, totalTracks: tracks.length });
+      return c.json({
+        candidates: res.candidates.map(wireCandidate),
+        totalTracks: tracks.length,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ albumId, err: msg }, 'Album hunt failed');
@@ -197,10 +171,8 @@ export function discographyRoutes({
     const { lidarrAlbumId } = c.req.param();
     const albumId = Number(lidarrAlbumId);
     if (Number.isNaN(albumId)) return c.json({ error: 'Invalid album ID' }, 400);
-    const trackAddon = getAddon?.() ?? null;
-    if (!trackAddon && !slskdRef.current) {
-      return c.json({ error: 'Soulseek is not available' }, 503);
-    }
+    const trackAddon = getAddon();
+    if (!trackAddon) return c.json({ error: 'No acquisition addon registered' }, 503);
 
     const body = await c.req
       .json<{ artistName?: string }>()
@@ -266,38 +238,6 @@ export function discographyRoutes({
           })),
         });
       }
-
-      const hunter = new TrackHunterService(slskdRef.current!);
-      const result = await hunter.huntAndDownload(artistName, titles);
-
-      // Wrap whatever actually got enqueued (possibly from several peers) in
-      // one track-search acquisition job. Best-effort: never fail the hunt.
-      if (result.downloads.length) {
-        try {
-          createJob(db, {
-            kind: 'track-search',
-            method: 'slskd',
-            artistName: artistName || null,
-            albumTitle: album.title ?? null,
-            lidarrAlbumId: albumId,
-            releaseMbid: album.foreignAlbumId ?? null,
-            artistMbid: album.artist?.foreignArtistId ?? null,
-            genres: album.genres?.length ? album.genres : (album.artist?.genres ?? null),
-            year: album.releaseDate ? new Date(album.releaseDate).getUTCFullYear() : null,
-            canonicalTracks: titles,
-            files: result.downloads.map((d) => ({
-              filename: d.filename,
-              size: d.size,
-              trackTitle: d.title,
-              username: d.username,
-              bitRate: d.bitRate,
-            })),
-          });
-        } catch (err) {
-          log.warn({ albumId, err }, 'Failed to record track-search acquisition job');
-        }
-      }
-      return c.json(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ albumId, err: msg }, 'Track hunt failed');
@@ -326,59 +266,22 @@ export function discographyRoutes({
       const artistName = body.artistName ?? album.artist?.artistName ?? '';
       const albumTitle = body.albumTitle ?? album.title;
 
-      const addon = getAddon?.() ?? null;
-      if (addon) {
-        // The addon runs its own base→skew policy in one call, so the modal's
-        // two-phase animation collapses to a single completed phase. Feedback
-        // capture stays in-process only (the raw responses live addon-side —
-        // the protocol's optional feedback capability is a follow-up).
-        const res = await addon.client.albumsSearch({
-          artist: artistName,
-          album: albumTitle,
-          canonicalTracks: tracks.map((t) => ({ title: t.title })),
-          skew: body.skewSearch,
-        });
-        return c.json({
-          candidates: res.candidates.map(wireCandidate),
-          totalTracks: tracks.length,
-          skewNeeded: false,
-        });
-      }
-
-      const { candidates, skewNeeded, responses } = await hunter.huntBase(
-        artistName,
-        albumTitle,
-        tracks,
-        { skewSearch: body.skewSearch },
-      );
-
-      // Feedback capture (admin dev-mode only): snapshot the MB/Lidarr proposal
-      // vs the raw Soulseek responses + scored candidates so the recognizer can
-      // be graded and replayed. Returns a feedbackId only when gated in; the
-      // client shows the grading toast when present. See docs/generation-feedback.md.
-      const proposal: HuntMatchInput = {
-        artistName,
-        albumTitle,
-        lidarrAlbumId: albumId,
-        releaseGroupMbid: album.foreignAlbumId ?? undefined,
-        artistMbid: album.artist?.foreignArtistId ?? undefined,
-        canonicalTracks: tracks.map((t) => ({
-          trackNumber: t.trackNumber ? Number(t.trackNumber) : undefined,
-          title: t.title,
-        })),
-      };
-      const feedbackId = captureHuntMatchFeedback(db, c.get('user'), {
-        input: proposal,
-        rawResponses: responses,
-        candidates,
-        engineVersion: version ?? null,
+      const addon = getAddon();
+      if (!addon) return c.json({ error: 'No acquisition addon registered' }, 503);
+      // The addon runs its own base→skew policy in one call, so the modal's
+      // two-phase animation collapses to a single completed phase. Hunt-match
+      // feedback capture is dormant until the protocol's feedback capability
+      // lands (the raw responses live addon-side).
+      const res = await addon.client.albumsSearch({
+        artist: artistName,
+        album: albumTitle,
+        canonicalTracks: tracks.map((t) => ({ title: t.title })),
+        skew: body.skewSearch,
       });
-
       return c.json({
-        candidates,
+        candidates: res.candidates.map(wireCandidate),
         totalTracks: tracks.length,
-        skewNeeded,
-        feedbackId: feedbackId || undefined,
+        skewNeeded: false,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -408,19 +311,14 @@ export function discographyRoutes({
       const albumTitle = body.albumTitle ?? album.title;
 
       const addon = getAddon?.() ?? null;
-      if (addon) {
-        const res = await addon.client.albumsSearch({
-          artist: artistName,
-          album: albumTitle,
-          canonicalTracks: tracks.map((t) => ({ title: t.title })),
-          skew: true,
-        });
-        return c.json({ candidates: res.candidates.map(wireCandidate) });
-      }
-
-      const candidates = await hunter.huntSkew(artistName, albumTitle, tracks);
-
-      return c.json({ candidates });
+      if (!addon) return c.json({ error: 'No acquisition addon registered' }, 503);
+      const res = await addon.client.albumsSearch({
+        artist: artistName,
+        album: albumTitle,
+        canonicalTracks: tracks.map((t) => ({ title: t.title })),
+        skew: true,
+      });
+      return c.json({ candidates: res.candidates.map(wireCandidate) });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ albumId, err: msg }, 'Album hunt (skew phase) failed');
@@ -466,8 +364,8 @@ export function discographyRoutes({
     const { lidarrAlbumId } = c.req.param();
     const albumId = Number(lidarrAlbumId);
     if (Number.isNaN(albumId)) return c.json({ error: 'Invalid album ID' }, 400);
-    const addon = getAddon?.() ?? null;
-    if (!addon && !slskdRef.current) return c.json({ error: 'Soulseek is not configured' }, 503);
+    const addon = getAddon();
+    if (!addon) return c.json({ error: 'No acquisition addon registered' }, 503);
 
     const replace = c.req.query('replace') === 'true';
 
@@ -480,7 +378,12 @@ export function discographyRoutes({
           /** Addon path: the hunt candidate token the addon resolves the pick by. */
           candidateRef?: string;
         };
-        alternates?: AlternateCandidate[];
+        /** Unused since phase 3 — the addon's cached hunt siblings are the alternates. */
+        alternates?: Array<{
+          username: string;
+          directory: string;
+          files: Array<{ filename: string; size: number }>;
+        }>;
         // The local album the user is completing, already resolved by the artist
         // page. Lets the completeness filter match on-disk tracks precisely even
         // when the canonical Lidarr artist/title diverges from the local tags.
@@ -642,88 +545,7 @@ export function discographyRoutes({
       return c.json({ ok: true, queued: addonJob.items.length }, 201);
     }
 
-    // Complete-only: never re-download tracks already on disk. When the album is
-    // partially present, enqueue ONLY the missing tracks — otherwise the existing
-    // tracks come down a second time and any rip whose filename differs slightly
-    // (an edition/"(Remix)" suffix, a different track-number style) survives the
-    // dedupe and lands as a duplicate version. This is the root-cause fix for
-    // duplicate album versions on (re-)hunts. Falls back to the full folder when
-    // the album isn't on disk yet (a fresh hunt downloads everything).
-    // Scope to the album's canonical tracks before anything else: the chosen
-    // peer folder may hold a whole discography, and enqueuing all of it pulls
-    // other albums and inflates the job tally (issue #262).
-    const albumFiles = filesForCanonicalTracks(
-      body.selected.files,
-      tracks.map((t) => t.title),
-    );
-    const filesToDownload =
-      artistName && albumTitle
-        ? filesMissingOnDisk(db, artistName, albumTitle, albumFiles, body.localAlbumId)
-        : albumFiles;
-
-    if (filesToDownload.length === 0) {
-      // Every file in the chosen folder is already on disk — nothing to fetch.
-      return c.json({ ok: true, queued: 0, alreadyComplete: true }, 200);
-    }
-
-    try {
-      await slskdRef.current!.transfers.enqueue(body.selected.username, filesToDownload);
-    } catch {
-      return c.json(
-        { error: `Download failed for user "${body.selected.username}" — they may be offline` },
-        502,
-      );
-    }
-
-    // Record the album job for fallback. Best-effort: a failure here must not
-    // fail the download that already succeeded.
-    let albumJobId: number | null = null;
-    try {
-      albumJobId = AlbumFallbackService.recordJob(db, {
-        lidarrAlbumId: albumId,
-        username: body.selected.username,
-        directory: body.selected.directory,
-        // Artist name lets the fallback fire a fresh per-track slskd search when
-        // the recorded alternates can't cover a missing track.
-        artistName,
-        albumTitle,
-        canonicalTracks: tracks.map((t) => t.title),
-        // Recovery target: the files we actually enqueued (missing tracks only),
-        // so a folder that downloads in full never triggers a duplicate-dumping
-        // fallback wave and we don't chase tracks already on disk.
-        targetFiles: filesToDownload,
-        alternates: body.alternates ?? [],
-      });
-    } catch (err) {
-      log.warn({ albumId, err }, 'Failed to record album job for fallback');
-    }
-
-    // Wrap the download in a unified acquisition job: stores the exact
-    // transfer↔job linkage plus the Lidarr metadata (genres/year/MBIDs) so the
-    // downloads feed, organizer and enrichment never re-derive it by string
-    // matching. Best-effort, same as the fallback job above.
-    try {
-      createJob(db, {
-        kind: 'album-hunt',
-        method: 'slskd',
-        artistName,
-        albumTitle,
-        lidarrAlbumId: albumId,
-        releaseMbid: album?.foreignAlbumId ?? null,
-        artistMbid: album?.artist?.foreignArtistId ?? null,
-        genres: album?.genres?.length ? album.genres : (album?.artist?.genres ?? null),
-        year: album?.releaseDate ? new Date(album.releaseDate).getUTCFullYear() : null,
-        canonicalTracks: tracks.map((t) => t.title),
-        albumJobId,
-        sourceRef: body.selected.username,
-        username: body.selected.username,
-        files: filesToDownload,
-      });
-    } catch (err) {
-      log.warn({ albumId, err }, 'Failed to record acquisition job');
-    }
-
-    return c.json({ ok: true, queued: body.selected.files.length }, 201);
+    // (unreachable — the addon branch above always returns)
   });
 
   return app;

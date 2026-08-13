@@ -76,7 +76,14 @@ export interface AcquisitionJobView {
    * expose this from `acquisition_job_items`; URL acquires expose it from
    * `acquire_jobs.tracks_json` — see `AcquireJob.tracks`).
    */
-  items: { title: string; status: TrackStatus }[];
+  items: {
+    title: string;
+    status: TrackStatus;
+    /** Transfer identity — what the result cards key their lifecycle on now
+     *  that the raw transfers lane is gone (phase 3). Null for URL items. */
+    username?: string | null;
+    filename?: string | null;
+  }[];
   /**
    * Dominant bitrate (kbps) of the job's files. For slskd hunts, this is the
    * enqueue-time bitrate (what the peer advertised); it upgrades to the

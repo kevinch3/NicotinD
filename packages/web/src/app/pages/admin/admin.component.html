@@ -29,33 +29,6 @@
         </app-metric-pill>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8" appTvNavGroup axis="grid" #servicesGrid="appTvNavGroup">
-        @for (row of chunk(services, servicesGrid.gridColumns()); track $index) {
-          <div role="row" style="display: contents">
-            @for (svc of row; track svc) {
-              <div
-                class="rounded-xl border border-theme bg-theme-surface/50 p-4 flex items-center justify-between gap-4"
-              >
-                <div>
-                  <p class="text-sm font-medium text-theme-primary capitalize">{{ svc }}</p>
-                  <span [class]="'inline-flex items-center gap-1.5 text-xs mt-1 ' + getBadgeColor(svc)">
-                    <span [class]="'w-1.5 h-1.5 rounded-full ' + getDotColor(svc)"></span>
-                    {{ getBadgeLabel(svc) }}
-                  </span>
-                </div>
-                <button
-                  appTvNavItem
-                  (click)="handleRestart(svc)"
-                  [disabled]="restarting()[svc]"
-                  class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
-                >
-                  {{ (restarting()[svc] ? 'admin.restarting' : 'admin.restart') | t }}
-                </button>
-              </div>
-            }
-          </div>
-        }
-      </div>
 
       <!-- Server version + update check (cached daily GitHub poll, drained
                from ServiceReview; "Check now" forces a fresh poll). -->

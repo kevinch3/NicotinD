@@ -5,7 +5,6 @@ import { existsSync, statfsSync } from 'node:fs';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { ServiceManager } from '@nicotind/service-manager';
 import type { AuthEnv } from '../middleware/auth.js';
-import type { SlskdRef } from '../index.js';
 
 const startTime = Date.now();
 
@@ -17,7 +16,6 @@ export type StatfsFn = (path: string) => {
 };
 
 export function systemRoutes(
-  slskdRef: SlskdRef,
   serviceManager: ServiceManager,
   config: NicotinDConfig,
   opts: {
@@ -35,40 +33,10 @@ export function systemRoutes(
   const diskPath = opts.musicDir ?? config.musicDir;
 
   app.get('/status', async (c) => {
-    let slskdHealthy = false;
-    let slskdState = null;
-    let slskdVersion: string | undefined;
-    let slskdUptime: number | undefined;
-    if (slskdRef.current) {
-      try {
-        slskdState = await slskdRef.current.server.getState();
-        slskdHealthy = true;
-      } catch {
-        // slskd not reachable
-      }
-      if (slskdHealthy) {
-        try {
-          const info = await slskdRef.current.application.getInfo();
-          slskdVersion = info.version;
-          slskdUptime = info.uptime;
-        } catch {
-          // /application endpoint unavailable — non-fatal
-        }
-      }
-    }
-
     return c.json({
       nicotind: {
         version: opts.version ?? 'unknown',
         uptime: Math.floor((Date.now() - startTime) / 1000),
-      },
-      slskd: {
-        configured: Boolean(config.soulseek.username && config.soulseek.password),
-        healthy: slskdHealthy,
-        connected: slskdState?.isConnected ?? false,
-        username: slskdState?.username,
-        version: slskdVersion,
-        uptime: slskdUptime,
       },
     });
   });
@@ -104,16 +72,6 @@ export function systemRoutes(
     }
   });
 
-  app.post('/restart/:service', async (c) => {
-    const service = c.req.param('service');
-    if (service !== 'slskd') {
-      return c.json({ error: 'Unknown service. Use "slskd"' }, 400);
-    }
-
-    await serviceManager.restartService(service);
-    return c.json({ ok: true, message: `${service} restarted` });
-  });
-
   app.get('/logs/:service', async (c) => {
     const service = c.req.param('service');
     const lines = Number(c.req.query('lines') ?? 100);
@@ -139,7 +97,7 @@ export function systemRoutes(
     }
 
     const service = c.req.param('service');
-    const VALID_SERVICES = ['slskd', 'nicotind'] as const;
+    const VALID_SERVICES = ['nicotind'] as const;
     if (!(VALID_SERVICES as readonly string[]).includes(service)) {
       return c.json(
         { error: `Unknown service. Valid services: ${VALID_SERVICES.join(', ')}` },

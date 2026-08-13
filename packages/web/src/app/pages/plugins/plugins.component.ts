@@ -20,10 +20,7 @@ import { TranslateService } from '../../services/translate.service';
  *
  * Task 4 (settings-cards unification): the three kind sections are collapsible
  * `<app-settings-group>` cards (groupIds `plugins-acquisition`/`plugins-metadata`/
- * `plugins-connectivity`), and there is no more per-plugin detail route — a
- * plugin with a bespoke settings surface (slskd) embeds it directly inside its
- * own collapsible `PluginCardComponent` body instead (see that component's
- * docstring).
+ * `plugins-connectivity`), and there is no more per-plugin detail route.
  */
 
 @Component({

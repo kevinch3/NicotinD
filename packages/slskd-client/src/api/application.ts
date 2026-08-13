@@ -1,4 +1,4 @@
-import type { SlskdApplicationInfo } from '@nicotind/core';
+import type { SlskdApplicationInfo } from '../types.js';
 import type { SlskdClient } from '../client.js';
 
 export class ApplicationApi {

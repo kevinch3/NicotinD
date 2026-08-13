@@ -145,3 +145,46 @@ describe('AlbumFallbackService host seam', () => {
     expect(calls.closed.map((c) => (c as { state: string }).state)).toEqual(['done']);
   });
 });
+
+describe('addon fallback host — exhausted closure', () => {
+  it('flips non-completed items unavailable and resolves the job partial', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    // A protocol job with one delivered + one missing item, owned by album job 7.
+    const { createAddonJob, addJobItems, getAddonJob, itemIdForTitle } =
+      await import('./job-store.js');
+    const { makeAddonFallbackHost } = await import('./addon-fallback-host.js');
+    createAddonJob(db, {
+      id: 'aj-x',
+      intent: 'album',
+      artist: 'A',
+      album: 'B',
+      albumJobId: 7,
+    });
+    addJobItems(db, 'aj-x', [
+      {
+        itemId: itemIdForTitle('One'),
+        title: 'One',
+        username: 'p',
+        filename: '1.mp3',
+        size: 1,
+      },
+      {
+        itemId: itemIdForTitle('Two'),
+        title: 'Two',
+        username: 'p',
+        filename: '2.mp3',
+        size: 1,
+      },
+    ]);
+    db.run(`UPDATE addon_job_items SET state = 'completed' WHERE item_id = ?`, [
+      itemIdForTitle('One'),
+    ]);
+
+    makeAddonFallbackHost(db).jobClosed(7, 'exhausted');
+
+    const job = getAddonJob(db, 'aj-x')!;
+    expect(job.items.find((i) => i.title === 'Two')!.state).toBe('unavailable');
+    expect(job.state).toBe('partial');
+  });
+});

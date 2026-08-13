@@ -1,4 +1,5 @@
 import { SlskdClient, type SlskdClientOptions } from './client.js';
+export * from './types.js';
 import { SessionApi } from './api/session.js';
 import { SearchesApi } from './api/searches.js';
 import { TransfersApi } from './api/transfers.js';

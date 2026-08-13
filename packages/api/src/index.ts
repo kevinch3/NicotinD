@@ -9,7 +9,6 @@ import type {
   GenreQuery,
   GenreResult,
 } from '@nicotind/core';
-import type { Slskd } from '@nicotind/slskd-client';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { ServiceManager } from '@nicotind/service-manager';
 import { authMiddleware } from './middleware/auth.js';
@@ -18,7 +17,6 @@ import { authRoutes } from './routes/auth.js';
 import { setupRoutes } from './routes/setup.js';
 import { searchRoutes } from './routes/search.js';
 import { downloadRoutes } from './routes/downloads.js';
-import { uploadRoutes } from './routes/uploads.js';
 import { libraryRoutes } from './routes/library.js';
 import { downloadReviewRoutes } from './routes/download-review.js';
 import { ShareRescanScheduler } from './services/share-rescan-scheduler.js';
@@ -81,15 +79,9 @@ import { AcquireWatcher } from './services/acquire-watcher.js';
 import { DiscographyService } from './services/discography.service.js';
 import { CatalogService } from './services/catalog-search.service.js';
 import { SingleEnrichmentService } from './services/single-enrichment.service.js';
-import { AlbumHunterService } from './services/album-hunter.service.js';
 import { WatchlistService } from './services/watchlist.service.js';
 import { AutoAcquireService } from './services/auto-acquire.service.js';
-import { DownloadWatcher } from './services/download-watcher.js';
-import { DownloadRetryService } from './services/download-retry.service.js';
-import { AlbumFallbackService } from './services/album-fallback.service.js';
-import { makeApiFallbackHost } from './services/fallback-host.js';
 import { reconcileOnBoot as reconcileAcquisitionJobs } from './services/acquisition-job-store.js';
-import { reconcileHiddenTransfers } from './services/hidden-transfers.js';
 import { LibraryProcessingService } from './services/library-processing.service.js';
 import { AudioFeaturesClient } from './services/audio-features-client.js';
 import { ProviderRegistry } from './services/provider-registry.js';
@@ -106,18 +98,13 @@ import { dirname, join } from 'node:path';
 import { createWebSocketHandlers } from './services/websocket.js';
 import type { AuthEnv } from './middleware/auth.js';
 
-export type SlskdRef = { current: Slskd | null };
-export type WatcherRef = { current: DownloadWatcher | null };
-export type RetryRef = { current: DownloadRetryService | null };
 export type ProcessingRef = { current: LibraryProcessingService | null };
 
 export interface CreateAppOptions {
   config: NicotinDConfig;
-  slskdRef: SlskdRef;
   lidarr: Lidarr | null;
   serviceManager: ServiceManager;
   webDistPath?: string;
-  saveSecretsFn?: (username: string, password: string) => void;
   saveLidarrSecretsFn?: (apiKey: string) => void;
   stagingDir?: string;
   acoustidApiKey?: string;
@@ -126,11 +113,9 @@ export interface CreateAppOptions {
 
 export function createApp({
   config,
-  slskdRef,
   lidarr,
   serviceManager,
   webDistPath,
-  saveSecretsFn,
   saveLidarrSecretsFn,
   stagingDir,
   acoustidApiKey,
@@ -305,67 +290,11 @@ export function createApp({
     },
   });
 
-  // Download watcher (mutable ref — settings/setup routes can create/replace it).
-  // Uses the shared LibraryOrganizer so slskd and yt-dlp downloads end up in the
-  // same place with the same organization logic.
-  const makeWatcher = (): DownloadWatcher | null => {
-    if (!(slskdRef.current && config.soulseek.username && config.soulseek.password)) {
-      return null;
-    }
-    return new DownloadWatcher(slskdRef.current, {
-      musicDir: config.musicDir,
-      libraryOrganizer: sharedOrganizer,
-      // Park unsortable files outside musicDir so they aren't indexed.
-      unsortedRoot: `${expandedDataDir}/unsorted`,
-      preferFlacSkipMp3: config.downloads.preferFlacSkipMp3,
-      // Index the freshly organized files into the canonical library.
-      scan: scanIncremental,
-    });
-  };
-  const watcherRef: WatcherRef = { current: makeWatcher() };
-
-  // Self-healing retry reconciler — re-enqueues failed slskd transfers (slskd
-  // resumes the partial file) and, once attempts exhaust, hands off to the
-  // cross-peer fallback layer that pulls the missing tracks from another peer.
-  const fallback = slskdRef.current
-    ? new AlbumFallbackService(slskdRef.current, {
-        db,
-        host: makeApiFallbackHost(db),
-        maxFallbackAttempts: config.downloads.fallbackMaxAttempts,
-        autoRetryExhausted: config.downloads.autoRetryExhausted,
-        exhaustedRetryCooldownMs: config.downloads.exhaustedRetryCooldownMs,
-        exhaustedMaxRevives: config.downloads.exhaustedMaxRevives,
-      })
-    : null;
-  const retryRef: RetryRef = {
-    current:
-      slskdRef.current && config.downloads.autoRetryEnabled
-        ? new DownloadRetryService(slskdRef.current, {
-            db,
-            intervalMs: config.downloads.retryIntervalMs,
-            maxAttempts: config.downloads.retryMaxAttempts,
-            cooldownMs: config.downloads.retryCooldownMs,
-            // After each retry pass, let the fallback recover given-up tracks,
-            // then run acquisition-job hygiene (24h idle valve + TTL prune) so
-            // a vanished transfer can never strand a job "downloading" forever.
-            onSweep: fallback
-              ? async () => {
-                  await fallback.sweep();
-                  reconcileAcquisitionJobs(db);
-                }
-              : () => reconcileAcquisitionJobs(db),
-          })
-        : null,
-  };
-
-  // Clearing a download hides it locally when slskd refuses the removal (it
-  // only drops completed transfers, and an in-flight cancellation lands after
-  // the request returns). Re-ask for those on boot and prune the hides whose
-  // transfer is gone, so the ledger can't grow without bound. Fire-and-forget:
-  // an unreachable slskd must never delay startup.
-  if (slskdRef.current) {
-    void reconcileHiddenTransfers(db, slskdRef.current.transfers).catch(() => {});
-  }
+  // The acquisition-jobs hygiene (24h idle valve + TTL prune) used to ride the
+  // retry reconciler's sweep; with the slskd engine addon-side (phase 3) it
+  // runs on its own interval so a vanished transfer can never strand a job.
+  const jobHygieneTimer = setInterval(() => reconcileAcquisitionJobs(db), 60_000);
+  jobHygieneTimer.unref?.();
 
   // Spotify portrait lookup for the artist-image enrichment task. Bridged through
   // a ref because SpotifySearchService is constructed further down (it needs the
@@ -487,7 +416,6 @@ export function createApp({
   registerBuiltinPlugins(plugins, {
     config,
     dataDir: expandedDataDir,
-    slskdRef,
     providerRegistry: registry,
     acoustidApiKey,
   });
@@ -495,6 +423,13 @@ export function createApp({
   // from their persisted manifest snapshots after the builtins so id
   // collisions resolve in the builtins' favor.
   loadRegisteredAddons(plugins, db, { providerRegistry: registry });
+  // Library deletions must stop advertising removed files to the Soulseek
+  // network — since phase 3 that crosses the protocol as the addon's
+  // library-changed notify (the addon debounces its own shares.rescan).
+  const notifyAddonLibraryChanged = async (): Promise<void> => {
+    const addon = activeRemoteAcquisitionAddon(plugins);
+    if (addon) await addon.client.notifyLibraryChanged();
+  };
   // The host half of the addon protocol job loop: mirrors every enabled remote
   // addon's jobs into the unified feed tables and ingests finished files over
   // HTTP through the same organize→scan pipeline slskd completions use. Ticks
@@ -537,7 +472,6 @@ export function createApp({
   // installs are default-off — an admin opts into acquisition in Settings →
   // Plugins (the compliance posture). Runs exactly once (persistent marker).
   seedLegacyAcquisitionPlugins(plugins, db, {
-    slskdConfigured: !!(config.soulseek.username && config.soulseek.password),
     ytdlpEnabled: config.acquire.ytdlp.enabled,
     spotdlEnabled: config.acquire.spotdl.enabled,
   });
@@ -571,11 +505,7 @@ export function createApp({
     '/api/setup',
     setupRoutes({
       config,
-      slskdRef,
       serviceManager,
-      watcherRef,
-      makeWatcher,
-      saveSecretsFn: saveSecretsFn ?? (() => {}),
       saveLidarrSecretsFn: saveLidarrSecretsFn ?? (() => {}),
     }),
   );
@@ -663,12 +593,14 @@ export function createApp({
   app.route('/api/feedback', feedbackRoutes());
   // MCP agent (issue #232): agent-token-authenticated (not JWT), refiner-capped.
   app.route('/api/agent-tokens', agentTokensRoutes());
-  app.route('/api/mcp', mcpRoutes(config.musicDir, slskdRef, expandedDataDir, runSyncAndCurate));
+  app.route(
+    '/api/mcp',
+    mcpRoutes(config.musicDir, notifyAddonLibraryChanged, expandedDataDir, runSyncAndCurate),
+  );
   app.route('/api/presence', presenceRoutes());
   app.route('/api/history', historyRoutes(historyEnabled));
   app.route('/api/privacy', privacyRoutes(historyEnabled));
-  app.route('/api/downloads', downloadRoutes(registry, slskdRef, plugins));
-  app.route('/api/uploads', uploadRoutes(slskdRef));
+  app.route('/api/downloads', downloadRoutes(registry, plugins));
   app.route(
     '/api/library',
     libraryRoutes(config.musicDir, {
@@ -678,7 +610,7 @@ export function createApp({
       coverCacheDir: `${expandedDataDir}/cover-cache`,
       dataDir: expandedDataDir,
       pluginRegistry: plugins,
-      slskdRef,
+      notifyLibraryChanged: notifyAddonLibraryChanged,
       audioFeaturesClient,
       mbClient,
       // Same provider chain the windowed artist-image task uses, so the
@@ -692,10 +624,7 @@ export function createApp({
   // Download inbox triage (issue #411): the quarantine-hold review queue.
   // Own ShareRescanScheduler instance, mirroring libraryRoutes' — a deleted
   // file's slskd share entry needs the same debounced rescan on discard.
-  const reviewShareRescan = new ShareRescanScheduler(async () => {
-    const slskd = slskdRef.current;
-    if (slskd) await slskd.shares.rescan();
-  });
+  const reviewShareRescan = new ShareRescanScheduler(notifyAddonLibraryChanged);
   app.route(
     '/api/review',
     downloadReviewRoutes({
@@ -712,16 +641,13 @@ export function createApp({
   );
   app.route(
     '/api/system',
-    systemRoutes(slskdRef, serviceManager, config, {
+    systemRoutes(serviceManager, config, {
       triggerScan: runSyncAndCurate,
       version,
       musicDir: expandedMusicDir,
     }),
   );
-  app.route(
-    '/api/settings',
-    settingsRoutes(config, slskdRef, makeWatcher, serviceManager, watcherRef),
-  );
+  app.route('/api/settings', settingsRoutes(config));
   app.route('/api/share', shareRoutes(config.jwt.secret, auth));
   // Device pairing (QR link): claim is public (the pairing token is the
   // credential), so /api/devices is deliberately NOT in the blanket-auth list —
@@ -743,7 +669,7 @@ export function createApp({
   // /api/admin/* blanket auth + the route's own admin check both apply.
   app.route(
     '/api/admin/review',
-    reviewRoutes(slskdRef, {
+    reviewRoutes({
       version,
       dataDir: expandedDataDir,
       processing: processingRef.current,
@@ -753,7 +679,7 @@ export function createApp({
   app.route('/api/users', usersRoutes(registry));
   app.route('/api/playlists', playlistRoutes());
   app.route('/api/radio', radioRoutes());
-  app.route('/api/plugins', pluginRoutes(plugins, slskdRef, db, registry));
+  app.route('/api/plugins', pluginRoutes(plugins, db, registry));
   // Metadata search sources, constructed once and shared between the legacy
   // per-source lanes and the source-agnostic blended aggregator.
   const archiveSearch = new ArchiveSearchService();
@@ -807,9 +733,8 @@ export function createApp({
   // wired when Lidarr is configured; absent → acquisition degrades to heuristic.
   let enrichSingles: ((relPaths: string[]) => Promise<void>) | undefined;
 
-  if (lidarr && slskdRef.current) {
+  if (lidarr) {
     const discographySvc = new DiscographyService(lidarr, db, config.musicDir);
-    const hunterSvc = new AlbumHunterService(slskdRef.current);
     const catalogSvc = new CatalogService(lidarr, config.musicDir);
     const enrichmentSvc = new SingleEnrichmentService({
       db,
@@ -827,13 +752,10 @@ export function createApp({
       discographyRoutes({
         getAddon: () => activeRemoteAcquisitionAddon(plugins),
         discography: discographySvc,
-        hunter: hunterSvc,
         sourceHunt,
         lidarr,
         db,
-        slskdRef,
         dataDir: expandedDataDir,
-        version,
       }),
     );
     app.route('/api/catalog', catalogRoutes({ catalog: catalogSvc }));
@@ -844,9 +766,7 @@ export function createApp({
     const watchlistSvc = new WatchlistService({
       db,
       catalog: catalogSvc,
-      hunter: hunterSvc,
       lidarr,
-      slskdRef,
       getAddon: () => activeRemoteAcquisitionAddon(plugins),
       intervalMs: config.watchlist.intervalMs,
       minMatchPct: config.watchlist.minMatchPct,
@@ -868,10 +788,8 @@ export function createApp({
     if (config.acquisitionEnabled && config.downloads.autoAcquireEnabled) {
       const autoAcquireSvc = new AutoAcquireService({
         db,
-        hunter: hunterSvc,
-        lidarr,
-        slskdRef,
         getAddon: () => activeRemoteAcquisitionAddon(plugins),
+        lidarr,
         intervalMs: config.downloads.autoAcquireIntervalMs,
         maxPerSweep: config.downloads.autoAcquireMaxPerSweep,
         minMatchPct: config.watchlist.minMatchPct,
@@ -910,11 +828,9 @@ export function createApp({
     });
   }
 
-  return { app, watcherRef, retryRef, processingRef, websocket, remoteAccess };
+  return { app, processingRef, websocket, remoteAccess };
 }
 
-export { DownloadWatcher } from './services/download-watcher.js';
-export { DownloadRetryService } from './services/download-retry.service.js';
 export { AutoAcquireService } from './services/auto-acquire.service.js';
 export { initDatabase, getDatabase } from './db.js';
 export { maybeCheckForUpdate } from './services/update-check.js';

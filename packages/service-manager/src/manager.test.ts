@@ -23,18 +23,10 @@ function fakeStrategy() {
 const externalConfig = { mode: 'external' } as NicotinDConfig;
 
 describe('ServiceManager', () => {
-  it('skips slskd startup in external mode', async () => {
-    const { strategy, start } = fakeStrategy();
-    const mgr = new ServiceManager(strategy, externalConfig);
-    await mgr.startSlskd();
-    expect(start).not.toHaveBeenCalled();
-  });
-
-  it('startAll only manages slskd (Navidrome is gone)', async () => {
+  it('startAll manages nothing eagerly — slskd left with the addon (phase 3)', async () => {
     const { strategy, start } = fakeStrategy();
     const mgr = new ServiceManager(strategy, externalConfig);
     await mgr.startAll();
-    // external mode → nothing started, and crucially no Navidrome path exists
     expect(start).not.toHaveBeenCalled();
   });
 

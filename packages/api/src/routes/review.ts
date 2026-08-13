@@ -14,7 +14,6 @@
  */
 import { Hono } from 'hono';
 import type { ProcessingStatus } from '@nicotind/core';
-import type { SlskdRef } from '../index.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import {
   collectMetrics,
@@ -108,14 +107,6 @@ export interface ServiceReview {
   hardware: MetricsSnapshot['hardware'];
   load: Pick<MetricsSnapshot, 'cpu' | 'memory' | 'gpu'>;
   services: {
-    slskd: {
-      configured: boolean;
-      healthy: boolean;
-      connected: boolean;
-      username?: string;
-      version?: string;
-      uptime?: number;
-    };
     /** Essentia analysis sidecar — the largest compute consumer (issue #224). */
     analysis: {
       /** NICOTIND_ANALYSIS_URL is set (the sidecar is part of this deployment). */
@@ -163,13 +154,6 @@ export interface ServiceReview {
 
 export interface ReviewSubFns {
   collectMetrics: () => Promise<MetricsSnapshot>;
-  systemStatus: () => Promise<{
-    healthy: boolean;
-    connected: boolean;
-    username?: string;
-    version?: string;
-    uptime?: number;
-  }>;
   scanStatus: () => Promise<{ scanning: boolean; count: number }>;
   /** Analysis-sidecar reachability. Default reads `deps.analysisClient`. */
   analysisStatus: () => Promise<{ configured: boolean; healthy: boolean }>;
@@ -248,34 +232,6 @@ async function safe<T>(
 }
 
 // ─── default implementations of every sub-fetch ───────────────────────────────
-
-async function defaultSystemStatus(slskdRef: SlskdRef) {
-  let healthy = false;
-  let connected = false;
-  let username: string | undefined;
-  let version: string | undefined;
-  let uptime: number | undefined;
-  if (slskdRef.current) {
-    try {
-      const state = await slskdRef.current.server.getState();
-      healthy = true;
-      connected = Boolean(state.isConnected);
-      username = state.username ?? undefined;
-    } catch {
-      healthy = false;
-    }
-    if (healthy) {
-      try {
-        const info = await slskdRef.current.application.getInfo();
-        version = info.version;
-        uptime = info.uptime;
-      } catch {
-        /* /application optional */
-      }
-    }
-  }
-  return { healthy, connected, username, version, uptime };
-}
 
 function defaultScanStatus(): { scanning: boolean; count: number } {
   try {
@@ -482,7 +438,7 @@ async function allNamed<T extends Record<string, Promise<unknown>>>(
 
 // ─── route factory + handler ─────────────────────────────────────────────────
 
-export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
+export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
   const sub = deps.subFns ?? {};
   const version = deps.version ?? 'unknown';
   const fallbackMetrics: MetricsSnapshot = {
@@ -510,11 +466,10 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
     if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
     const errors: string[] = [];
 
-    // Run every sub-fetch in parallel; defer the index count to after slskd /
-    // scan so the cheaper DB queries overlap the network call.
+    // Run every sub-fetch in parallel; defer the index count so the cheaper
+    // DB queries overlap the slower probes.
     const {
       metrics,
-      status,
       scan,
       analysis,
       updateCheck,
@@ -535,12 +490,6 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
         'metrics',
         () => collectMetricsFn({ os: deps.os, probe: deps.gpuProbe }),
         fallbackMetrics,
-      ),
-      status: safe(
-        errors,
-        'systemStatus',
-        () => sub.systemStatus?.() ?? defaultSystemStatus(slskdRef),
-        { healthy: false, connected: false } as Awaited<ReturnType<typeof defaultSystemStatus>>,
       ),
       scan: safe(
         errors,
@@ -645,14 +594,6 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
       hardware: metrics.hardware,
       load: { cpu: metrics.cpu, memory: metrics.memory, gpu: metrics.gpu },
       services: {
-        slskd: {
-          configured: Boolean(slskdRef.current),
-          healthy: status.healthy,
-          connected: status.connected,
-          username: status.username,
-          version: status.version,
-          uptime: status.uptime,
-        },
         analysis,
       },
       library: { scanning: scan.scanning, indexedSongCount },

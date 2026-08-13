@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import type { SlskdUserTransferGroup } from '@nicotind/core';
+import type { SlskdUserTransferGroup } from '@nicotind/slskd-client';
 import { createLogger } from '@nicotind/core';
 
 const log = createLogger('hidden-transfers');

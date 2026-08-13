@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import { normalizeForGrouping } from './album-grouping.js';
-import { normalizeTitle, titlesOverlap } from './album-hunter.service.js';
+import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { albumIdFor, artistIdFor } from './library-scanner.js';
 
 /**

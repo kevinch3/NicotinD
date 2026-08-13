@@ -1,4 +1,4 @@
-import type { SlskdUserTransferGroup } from '@nicotind/core';
+import type { SlskdUserTransferGroup } from '../types.js';
 import type { SlskdClient } from '../client.js';
 
 export class TransfersApi {

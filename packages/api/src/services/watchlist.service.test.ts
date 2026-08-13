@@ -1,12 +1,14 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
+import { ADDON_PROTOCOL_VERSION } from '@nicotind/core';
+import { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
+import { AddonRequestError } from './addons/client.js';
 import { WatchlistService } from './watchlist.service.js';
 import { albumIdFor, artistIdFor } from './library-scanner.js';
 import type { CatalogService } from './catalog-search.service.js';
-import type { AlbumHunterService, FolderCandidate } from './album-hunter.service.js';
+import type { FolderCandidate } from '@nicotind/slskd-addon';
 import type { Lidarr } from '@nicotind/lidarr-client';
-import type { SlskdRef } from '../index.js';
 
 function makeDb(): Database {
   const db = new Database(':memory:');
@@ -50,8 +52,47 @@ function makeHarness(opts: {
   const db = makeDb();
   const tracks = opts.tracks ?? [{ title: 'Song One' }, { title: 'Song Two' }];
 
-  const enqueue = mock(async () => undefined);
+  // Since phase 3 the hunt runs addon-side: `hunt` backs the addon's
+  // albums/search (mapped to protocol candidates) and `enqueue` its job
+  // creation, so the sweep-semantics assertions below survive unchanged.
+  const enqueue = mock(async () => ({ id: 'aj-1', intent: 'album', items: [] }));
   const hunt = mock(async () => opts.candidates ?? []);
+  const addonClient = {
+    baseUrl: 'http://addon:9999',
+    albumsSearch: async (req: { artist: string; album: string }) => {
+      void req;
+      const candidates = (await hunt()) as FolderCandidate[];
+      return {
+        candidates: candidates.map((c, i) => ({
+          candidateRef: `ref-${i}`,
+          username: c.username,
+          directory: c.directory,
+          matchedTracks: c.matchedTracks,
+          totalTracks: c.totalTracks,
+          matchPct: c.matchPct,
+          format: c.format,
+          estimatedSizeMb: c.estimatedSizeMb,
+          isLive: c.isLive,
+          files: c.files.map((f) => ({ filename: f.filename, size: f.size })),
+        })),
+        queries: [],
+        skewNeeded: false,
+      };
+    },
+    createJob: enqueue,
+  };
+  const addon = new RemoteAddonPlugin(
+    {
+      id: 'slskd',
+      name: 'slskd addon',
+      description: 'x',
+      version: '0.1.0',
+      protocolVersion: ADDON_PROTOCOL_VERSION,
+      kind: 'acquisition',
+      capabilities: ['search', 'download'],
+    },
+    addonClient as unknown as import('./addons/client.js').AddonClient,
+  );
   const resolveAlbum = mock(async () => ({
     lidarrAlbumId: opts.resolveAlbumId ?? 99,
     totalTracks: tracks.length,
@@ -63,9 +104,8 @@ function makeHarness(opts: {
   const svc = new WatchlistService({
     db,
     catalog: { resolveAlbum } as unknown as CatalogService,
-    hunter: { hunt } as unknown as AlbumHunterService,
     lidarr: { track: { listByAlbum } } as unknown as Lidarr,
-    slskdRef: { current: { transfers: { enqueue } } } as unknown as SlskdRef,
+    getAddon: () => addon,
     minMatchPct: opts.minMatchPct ?? 80,
   });
 
@@ -140,11 +180,20 @@ describe('WatchlistService', () => {
       await svc.sweep();
 
       expect(hunt).toHaveBeenCalled();
-      expect(enqueue).toHaveBeenCalledWith('good', expect.any(Array));
+      // Since phase 3 the acquire is an addon job: the user's pick travels as a
+      // candidateRef and the unified feed row is recorded core-side (the
+      // fallback job lives in the addon's own db now).
+      expect(enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ intent: 'album', candidateRef: 'ref-0' }),
+        'acquire:99',
+      );
       expect(state(db)).toBe('acquired');
-      // A fallback job is recorded so recovery + auto-retry apply.
-      const job = db.query('SELECT lidarr_album_id AS a FROM album_jobs').get() as { a: number };
-      expect(job.a).toBe(99);
+      const feed = db.query(`SELECT method, lidarr_album_id AS a FROM acquisition_jobs`).get() as {
+        method: string;
+        a: number;
+      };
+      expect(feed.method).toBe('slskd');
+      expect(feed.a).toBe(99);
     });
 
     it('leaves the row watching when no candidate clears the threshold', async () => {
@@ -183,19 +232,22 @@ describe('WatchlistService', () => {
       expect(state(db)).toBe('acquired');
     });
 
-    it('does not double-download when a job is already active for the album', async () => {
-      const { db, svc, enqueue, hunt } = makeHarness({});
+    it("treats the addon's per-album 409 as already-downloading (no duplicate)", async () => {
+      // Since phase 3 the in-flight guard is the addon's own 409 — a duplicate
+      // sweep hunts (it cannot know beforehand) but never double-enqueues.
+      const { db, svc, enqueue, hunt } = makeHarness({
+        candidates: [candidate({ username: 'good', matchPct: 100 })],
+      });
+      enqueue.mockImplementation(async () => {
+        throw new AddonRequestError('conflict', 409);
+      });
       watch(db, { lidarr_album_id: 99 });
-      db.run(
-        `INSERT INTO album_jobs (lidarr_album_id, username, directory, canonical_tracks_json, alternates_json, state, created_at)
-         VALUES (99, 'u', 'd', '[]', '[]', 'active', 0)`,
-      );
 
       await svc.sweep();
 
-      expect(hunt).not.toHaveBeenCalled();
-      expect(enqueue).not.toHaveBeenCalled();
+      expect(hunt).toHaveBeenCalled();
       expect(state(db)).toBe('acquired');
+      expect(db.query(`SELECT id FROM acquisition_jobs`).all()).toHaveLength(0);
     });
 
     it('resolves the Lidarr album id on demand and caches it', async () => {

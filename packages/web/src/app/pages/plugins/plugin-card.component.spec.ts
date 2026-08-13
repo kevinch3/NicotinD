@@ -117,47 +117,4 @@ describe('PluginCardComponent — collapsible body', () => {
     const cardToggle = el.querySelector('[data-testid="plugin-card-toggle"]')!;
     expect(cardToggle.contains(toggleBtn)).toBe(false);
   });
-
-  it('embeds app-slskd-settings only for the slskd plugin, and only when expanded', () => {
-    // Expanding the slskd card mounts SlskdSettingsComponent, which injects
-    // PluginService + SystemApiService directly (no card-level provider) —
-    // stub both so its ngOnInit doesn't hit the real HttpClient.
-    TestBed.configureTestingModule({
-      imports: [PluginCardComponent],
-      providers: [
-        provideRouter([]),
-        {
-          provide: PluginService,
-          useValue: { hasSlskd: () => false, getSlskdStatus: () => of(null) },
-        },
-        {
-          provide: SystemApiService,
-          useValue: {
-            getSoulseekSettings: () => of({ username: '', configured: false, connected: false }),
-            getShares: () => of({ directories: [] }),
-          },
-        },
-      ],
-    });
-    const fixture = TestBed.createComponent(PluginCardComponent);
-    fixture.componentInstance.plugin = basePlugin({ id: 'slskd', name: 'Soulseek' });
-    fixture.detectChanges();
-    const el = fixture.nativeElement as HTMLElement;
-
-    expect(el.querySelector('app-slskd-settings')).toBeNull();
-
-    el.querySelector<HTMLButtonElement>('[data-testid="plugin-card-toggle"]')!.click();
-    fixture.detectChanges();
-    expect(el.querySelector('app-slskd-settings')).not.toBeNull();
-  });
-
-  it('does not embed app-slskd-settings for a non-slskd plugin, even expanded', () => {
-    const fixture = TestBed.createComponent(PluginCardComponent);
-    fixture.componentInstance.plugin = basePlugin({ id: 'discogs' });
-    fixture.detectChanges();
-    const el = fixture.nativeElement as HTMLElement;
-    el.querySelector<HTMLButtonElement>('[data-testid="plugin-card-toggle"]')!.click();
-    fixture.detectChanges();
-    expect(el.querySelector('app-slskd-settings')).toBeNull();
-  });
 });

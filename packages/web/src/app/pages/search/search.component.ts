@@ -399,9 +399,15 @@ export class SearchComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
-    firstValueFrom(this.systemApi.getSoulseekStatus())
-      .then((s) => this.networkConnected.set(s.connected))
-      .catch(() => this.networkConnected.set(false));
+    // Since phase 3 the network source is the slskd addon: "connected" is the
+    // enabled addon's live availability (its health probe), read off the same
+    // plugin list refresh the page already does.
+    void this.plugins.refresh().then(() => {
+      const network = this.plugins
+        .plugins()
+        .find((p) => p.kind === 'acquisition' && p.enabled && p.capabilities.includes('search'));
+      this.networkConnected.set(network ? network.available : false);
+    });
     void this.acquire.refresh();
     void this.watchlist.refresh();
     void this.plugins.refresh();

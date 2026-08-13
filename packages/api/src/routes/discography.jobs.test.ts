@@ -4,12 +4,10 @@ import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import { discographyRoutes } from './discography.js';
-import { AlbumFallbackService } from '../services/album-fallback.service.js';
+import { AlbumFallbackService } from '@nicotind/slskd-addon';
 import type { DiscographyService } from '../services/discography.service.js';
-import type { AlbumHunterService } from '../services/album-hunter.service.js';
 import type { AlbumHuntOrchestrator } from '../services/source-hunter.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
-import type { SlskdRef } from '../index.js';
 
 const noopSourceHunt = {
   hunt: async () => [],
@@ -26,11 +24,10 @@ function makeApp(db: Database): Hono<AuthEnv> {
     '/',
     discographyRoutes({
       discography: {} as DiscographyService,
-      hunter: {} as AlbumHunterService,
+      getAddon: () => null,
       sourceHunt: noopSourceHunt,
       lidarr: {} as Lidarr,
       db,
-      slskdRef: { current: null } as SlskdRef,
     }),
   );
   return app;

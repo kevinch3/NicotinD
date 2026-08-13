@@ -145,8 +145,8 @@ commits, and creates a git tag. Full pipeline detail (what each tag ships, manua
 
 ```
 NicotinD (Hono API :8484)  — native library scanner + streaming, all in-process
-└── slskd (Soulseek client :5030)  ──── shared /data/music folder
-        DownloadWatcher → LibraryOrganizer → LibraryScanner (tags → SQLite)
+└── slskd addon (:8585, opt-in profile) ── slskd (Soulseek client :5030)
+        AddonJobPoller (HTTP fetch) → LibraryOrganizer → LibraryScanner (tags → SQLite)
 ```
 
 > **Navidrome was removed.** NicotinD is now fully native: it scans the music dir itself
@@ -794,7 +794,7 @@ Add detail there, not here.
   startup-error capture is preserved by a synchronous `error-buffer.ts` + `BufferingErrorHandler`
   (replaces `Sentry.createErrorHandler`/`TraceService`) that replays into the SDK on connect. →
   [docs/observability.md](docs/observability.md)
-- **Acquisition addon protocol (phases 0-1 + the phase-2 spine shipped; 3-4 pending)**: Stremio/Torrentio-style
+- **Acquisition addon protocol (phases 0-3 shipped; 4 = repo split pending)**: Stremio/Torrentio-style
   open HTTP addon protocol; the slskd bridge **and** the hunt/retry/fallback engine migrate into a
   separately-distributed addon (in-monorepo sidecar first, own repo + image last), leaving core
   with zero slskd code; smart-addon/thin-core seam at `acquireAlbum` (guards core-side), HTTP file
@@ -1588,4 +1588,5 @@ with Severity/Status. Rotate monthly.
 
 Config is loaded from `config/default.yml`, overridden by environment variables. See `.env.example`
 for all options and [docs/configuration.md](docs/configuration.md) for the reference table. Key
-vars: `SOULSEEK_USERNAME`, `SOULSEEK_PASSWORD`, `NICOTIND_MODE`, `NICOTIND_MUSIC_DIR`.
+vars: `NICOTIND_MODE`, `NICOTIND_MUSIC_DIR`, `NICOTIND_DATA_DIR` (Soulseek creds live on the
+slskd addon since phase 3 — `SLSKD_ADDON_*` envs on that container).

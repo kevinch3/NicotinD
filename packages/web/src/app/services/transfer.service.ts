@@ -3,14 +3,25 @@ import { firstValueFrom } from 'rxjs';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { SystemApiService } from './api/system-api.service';
 import { LibraryApiService } from './api/library-api.service';
-import type { SlskdUserTransferGroup, AcquireJob, AcquisitionJobView } from '@nicotind/core';
+import type { AcquireJob, AcquisitionJobView } from '@nicotind/core';
 import type { TransferEntry } from '../lib/transfer-types';
 import { detectNewCompletion } from '../lib/transfer-utils';
 
 export type { TransferEntry } from '../lib/transfer-types';
 
-// Transfer file states that count as "in flight" for the active-download badge.
-const ACTIVE_STATES = new Set(['InProgress', 'Queued', 'Initializing']);
+/** Map a feed item status onto the transfer-state vocabulary the result cards
+ *  key their lifecycle on (the raw slskd states, kept for compatibility). */
+function itemStatusToTransferState(status: string): string {
+  switch (status) {
+    case 'done':
+      return 'Completed, Succeeded';
+    case 'failed':
+    case 'unavailable':
+      return 'Completed, Errored';
+    default:
+      return 'InProgress';
+  }
+}
 
 @Injectable({ providedIn: 'root' })
 export class TransferService {
@@ -19,23 +30,17 @@ export class TransferService {
   private libraryApi = inject(LibraryApiService);
 
   readonly transfers = signal(new Map<string, TransferEntry>());
-  readonly downloads = signal<SlskdUserTransferGroup[]>([]);
-  readonly uploads = signal<SlskdUserTransferGroup[]>([]);
   readonly acquireJobs = signal<AcquireJob[]>([]);
   /** Unified acquisition jobs (all methods) — post-download stage source for the feed. */
   readonly acquisitionJobs = signal<AcquisitionJobView[]>([]);
   readonly libraryDirty = signal(false);
   readonly deletedSongIds = signal<ReadonlySet<string>>(new Set());
 
-  // Count of download folders with at least one in-flight file. Shared by the
-  // header indicator and the mobile bottom-nav badge so they never drift.
-  readonly activeDownloadCount = computed(() =>
-    this.downloads().reduce(
-      (count, group) =>
-        count +
-        group.directories.filter((dir) => dir.files.some((f) => ACTIVE_STATES.has(f.state))).length,
-      0,
-    ),
+  // Count of in-flight network jobs (unified feed). Shared by the header
+  // indicator and the mobile bottom-nav badge so they never drift.
+  readonly activeDownloadCount = computed(
+    () =>
+      this.acquisitionJobs().filter((j) => j.kind !== 'url' && j.stage === 'downloading').length,
   );
 
   private timerId: ReturnType<typeof setTimeout> | null = null;
@@ -100,22 +105,24 @@ export class TransferService {
 
   async poll(): Promise<void> {
     try {
-      const data = await firstValueFrom(this.api.getDownloads());
+      const jobs = await firstValueFrom(this.api.getAcquisitionJobs());
+      // The per-item transfer map the search result cards key their lifecycle
+      // on — sourced from the unified feed since the raw transfers lane's
+      // removal (phase 3).
       const map = new Map<string, TransferEntry>();
-      for (const group of data) {
-        for (const dir of group.directories) {
-          for (const file of dir.files) {
-            map.set(`${group.username}:${file.filename}`, {
-              state: file.state,
-              percent: file.percentComplete,
-            });
-          }
+      for (const job of jobs) {
+        for (const item of job.items) {
+          if (!item.username || !item.filename) continue;
+          map.set(`${item.username}:${item.filename}`, {
+            state: itemStatusToTransferState(item.status),
+            percent: undefined,
+          });
         }
       }
       const prevTransfers = this.transfers();
       const newCompletion = this.hasPolled && detectNewCompletion(prevTransfers, map);
       this.transfers.set(map);
-      this.downloads.set(data);
+      this.acquisitionJobs.set(jobs);
       this.hasPolled = true;
       if (newCompletion) this.markLibraryDirty();
     } catch {
@@ -134,11 +141,6 @@ export class TransferService {
       this.prevAcquireStates = new Map(jobs.map((j) => [j.id, j.state]));
       this.acquireJobs.set(jobs);
       if (acquireCompletion) this.markLibraryDirty();
-    } catch {
-      // non-fatal
-    }
-    try {
-      this.acquisitionJobs.set(await firstValueFrom(this.api.getAcquisitionJobs()));
     } catch {
       // non-fatal
     }
@@ -180,8 +182,7 @@ export class TransferService {
       this.scanPollTimer = null;
     }
     this.transfers.set(new Map());
-    this.downloads.set([]);
-    this.uploads.set([]);
+    this.acquisitionJobs.set([]);
     this.acquireJobs.set([]);
     this.libraryDirty.set(false);
     this.deletedSongIds.set(new Set());

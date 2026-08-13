@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import type { SlskdUserTransferGroup } from '@nicotind/core';
+import type { SlskdUserTransferGroup } from '@nicotind/slskd-client';
 import {
   buildSlskdStatus,
   computeCounts,

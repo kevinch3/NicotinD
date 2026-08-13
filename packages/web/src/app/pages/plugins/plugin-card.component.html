@@ -147,12 +147,6 @@
         </form>
       }
 
-      @if (plugin.id === 'slskd') {
-        <div class="mt-4 pt-4 border-t border-theme">
-          <app-slskd-settings />
-        </div>
-      }
-
       @if (plugin.remote) {
         <p class="text-[11px] text-theme-muted mt-2 break-all" data-testid="addon-url">
           {{ plugin.addonUrl }}

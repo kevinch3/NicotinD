@@ -6,7 +6,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { searchRoutes } from './search.js';
 import { ProviderRegistry } from '../services/provider-registry.js';
 import { LibrarySearchProvider } from '../services/providers/library-provider.js';
-import { SlskdSearchProvider } from '../services/providers/slskd-provider.js';
+import { TestNetworkProvider } from '../test-helpers/network-provider.js';
 import { applySchema } from '../db.js';
 
 describe('search routes', () => {
@@ -40,11 +40,11 @@ describe('search routes', () => {
           cancel: async () => undefined,
         },
       },
-    } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
+    } as unknown as ConstructorParameters<typeof TestNetworkProvider>[0];
 
     const registry = new ProviderRegistry();
     registry.register(new LibrarySearchProvider(libraryDb));
-    registry.register(new SlskdSearchProvider(slskdRef));
+    registry.register(new TestNetworkProvider(slskdRef));
 
     const app = new Hono();
     app.route('/', searchRoutes(registry));
@@ -83,11 +83,11 @@ describe('search routes', () => {
           cancel: async () => undefined,
         },
       },
-    } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
+    } as unknown as ConstructorParameters<typeof TestNetworkProvider>[0];
 
     const registry = new ProviderRegistry();
     registry.register(new LibrarySearchProvider(libraryDb));
-    registry.register(new SlskdSearchProvider(slskdRef));
+    registry.register(new TestNetworkProvider(slskdRef));
 
     const appFor = (role: Role) => {
       const a = new Hono<AuthEnv>();
@@ -129,11 +129,11 @@ describe('search routes', () => {
           cancel: async () => undefined,
         },
       },
-    } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
+    } as unknown as ConstructorParameters<typeof TestNetworkProvider>[0];
 
     const registry = new ProviderRegistry();
     registry.register(new LibrarySearchProvider(libraryDb));
-    registry.register(new SlskdSearchProvider(slskdRef));
+    registry.register(new TestNetworkProvider(slskdRef));
 
     const a = new Hono<AuthEnv>();
     a.use('*', (c, next) => {
@@ -165,10 +165,10 @@ describe('search routes', () => {
           browseUser: async () => [],
         },
       },
-    } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
+    } as unknown as ConstructorParameters<typeof TestNetworkProvider>[0];
 
     const registry = new ProviderRegistry();
-    registry.register(new SlskdSearchProvider(slskdRef));
+    registry.register(new TestNetworkProvider(slskdRef));
 
     const app = new Hono();
     app.route('/', searchRoutes(registry));

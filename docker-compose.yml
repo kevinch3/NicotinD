@@ -25,9 +25,6 @@ services:
       NICOTIND_PORT: "8484"
       NICOTIND_DATA_DIR: /data/nicotind
       NICOTIND_MUSIC_DIR: /data/music
-      NICOTIND_SLSKD_URL: http://slskd:5030
-      SLSKD_USERNAME: slskd
-      SLSKD_PASSWORD: slskd
       NICOTIND_LIDARR_URL: http://lidarr:8686
       LIDARR_API_KEY: nicotind-lidarr-internal
       NICOTIND_ANALYSIS_URL: http://analysis:8000
@@ -38,8 +35,6 @@ services:
       retries: 3
       start_period: 10s
     depends_on:
-      slskd:
-        condition: service_started
       lidarr:
         condition: service_healthy
     networks:
@@ -78,7 +73,10 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # Soulseek daemon — the slskd ADDON's dependency, not core's (phase 3):
+  # both live behind the `slskd-addon` profile and deploy together.
   slskd:
+    profiles: ["slskd-addon"]
     image: slskd/slskd:0.25.1
     user: "1000:1000"
     volumes:

@@ -94,8 +94,6 @@ export class AdminComponent implements OnInit, OnDestroy {
    *  PATCH-shape endpoints; this service is the snapshot companion. */
   protected readonly reviewSvc = inject(ServiceReviewService);
 
-  readonly services: 'slskd'[] = ['slskd'];
-
   readonly users = signal<AdminUser[]>([]);
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
@@ -111,8 +109,6 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly newUsername = signal('');
   readonly newUserPassword = signal('');
   readonly creating = signal(false);
-
-  readonly restarting = signal<{ slskd: boolean }>({ slskd: false });
 
   // Library-wide metadata optimization (cover/year/release-type from Lidarr).
   readonly optimizingMetadata = signal(false);
@@ -173,7 +169,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly retryAlbum = signal<DiscographyAlbum | null>(null);
   readonly retryArtist = signal('');
 
-  readonly selectedService = signal<'slskd' | 'nicotind'>('nicotind');
+  readonly selectedService = signal<'nicotind'>('nicotind');
   readonly logLines = signal<string[]>([]);
   readonly logStreamStatus = signal<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle');
 
@@ -979,40 +975,6 @@ export class AdminComponent implements OnInit, OnDestroy {
     return new Date(ms).toLocaleString();
   }
 
-  getBadgeColor(svc: 'slskd'): string {
-    const status = this.servicesState();
-    if (!status) return 'text-theme-muted';
-    const health = status.slskd;
-    const connected = health.connected;
-    return connected
-      ? 'text-status-done'
-      : health.healthy
-        ? 'text-status-warn'
-        : 'text-status-error';
-  }
-
-  getDotColor(svc: 'slskd'): string {
-    const status = this.servicesState();
-    if (!status) return 'bg-theme-muted';
-    const health = status.slskd;
-    const connected = health.connected;
-    return connected ? 'bg-emerald-500' : health.healthy ? 'bg-amber-400' : 'bg-red-500';
-  }
-
-  getBadgeLabel(svc: 'slskd'): string {
-    const status = this.servicesState();
-    if (!status) return '—';
-    const health = status.slskd;
-    const connected = health.connected;
-    return this.i18n.t(
-      connected
-        ? 'admin.connected'
-        : health.healthy
-          ? 'admin.disconnectedStatus'
-          : 'admin.unreachable',
-    );
-  }
-
   readonly roles = ROLES;
 
   async setRole(user: AdminUser, newRole: Role): Promise<void> {
@@ -1089,23 +1051,9 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
-  async handleRestart(service: 'slskd'): Promise<void> {
-    this.restarting.update((prev) => ({ ...prev, [service]: true }));
-    try {
-      await firstValueFrom(this.api.restartService(service));
-      setTimeout(() => this.reviewSvc.refresh(), 3000);
-    } catch (err) {
-      this.error.set(
-        err instanceof Error ? err.message : this.i18n.t('admin.restartFailed', { service }),
-      );
-    } finally {
-      this.restarting.update((prev) => ({ ...prev, [service]: false }));
-    }
-  }
+  readonly logServiceOptions: 'nicotind'[] = ['nicotind'];
 
-  readonly logServiceOptions: ('slskd' | 'nicotind')[] = ['slskd', 'nicotind'];
-
-  selectLogService(svc: 'slskd' | 'nicotind'): void {
+  selectLogService(svc: 'nicotind'): void {
     this.selectedService.set(svc);
     this.logLines.set([]);
   }

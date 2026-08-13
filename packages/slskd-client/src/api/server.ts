@@ -1,4 +1,4 @@
-import type { SlskdServerState } from '@nicotind/core';
+import type { SlskdServerState } from '../types.js';
 import type { SlskdClient } from '../client.js';
 
 export class ServerApi {

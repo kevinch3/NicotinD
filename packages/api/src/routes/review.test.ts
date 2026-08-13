@@ -18,12 +18,12 @@ function makeAdminUser(): JwtPayload {
 }
 
 function makeApp(
-  subFns?: Parameters<typeof reviewRoutes>[1] extends infer T
+  subFns?: Parameters<typeof reviewRoutes>[0] extends infer T
     ? T extends { subFns?: infer S }
       ? S
       : never
     : never,
-  deps?: Parameters<typeof reviewRoutes>[1],
+  deps?: Parameters<typeof reviewRoutes>[0],
   role: 'admin' | 'user' = 'admin',
 ) {
   const app = new Hono<AuthEnv>();
@@ -31,7 +31,7 @@ function makeApp(
     c.set('user', { ...makeAdminUser(), role });
     await next();
   });
-  app.route('/', reviewRoutes({ current: null } as never, { ...(deps ?? {}), subFns }));
+  app.route('/', reviewRoutes({ ...(deps ?? {}), subFns }));
   return app;
 }
 
@@ -65,13 +65,6 @@ describe('GET /api/admin/review', () => {
   it('returns the full ServiceReview shape with all sub-fetches happy', async () => {
     const subFns = {
       collectMetrics: mock(async () => emptyMetrics),
-      systemStatus: mock(async () => ({
-        healthy: true,
-        connected: true,
-        username: 'me',
-        version: '0.25.1',
-        uptime: 60,
-      })),
       scanStatus: mock(async () => ({ scanning: false, count: 1234 })),
       indexSongCount: mock(() => 1234),
       updateCheck: mock(async () => ({
@@ -149,8 +142,6 @@ describe('GET /api/admin/review', () => {
     expect(data.version).toBe('0.1.234');
     expect(data.library.scanning).toBe(false);
     expect(data.library.indexedSongCount).toBe(1234);
-    expect(data.services.slskd.healthy).toBe(true);
-    expect(data.services.slskd.connected).toBe(true);
     expect(data.incompleteJobsCount).toBe(0);
     expect(data.untrackedCount).toBe(0);
     expect(data.updateCheck?.latestVersion).toBe('0.1.235');
@@ -166,9 +157,6 @@ describe('GET /api/admin/review', () => {
     const subFns = {
       collectMetrics: mock(async () => {
         throw new Error('metrics broken');
-      }),
-      systemStatus: mock(async () => {
-        throw new Error('slskd down');
       }),
       scanStatus: mock(async () => {
         throw new Error('db busy');
@@ -203,7 +191,6 @@ describe('GET /api/admin/review', () => {
     const data = (await res.json()) as ServiceReview;
     expect(data.errors.length).toBeGreaterThanOrEqual(7);
     expect(data.errors.some((e) => e.startsWith('metrics'))).toBe(true);
-    expect(data.errors.some((e) => e.startsWith('systemStatus'))).toBe(true);
     expect(data.errors.some((e) => e.startsWith('scanStatus'))).toBe(true);
     expect(data.errors.some((e) => e.startsWith('backups'))).toBe(true);
     expect(data.errors.some((e) => e.startsWith('incompleteJobsCount'))).toBe(true);
@@ -212,7 +199,6 @@ describe('GET /api/admin/review', () => {
     // Fallbacks preserved.
     expect(data.load.cpu.percent).toBe(0);
     expect(data.library.indexedSongCount).toBe(0);
-    expect(data.services.slskd.healthy).toBe(false);
     expect(data.incompleteJobsCount).toBe(0);
     expect(data.untrackedCount).toBe(0);
     expect(data.auditTail).toEqual([]);
@@ -227,7 +213,6 @@ describe('GET /api/admin/review', () => {
         gpu: { vendor: 'nvidia', percent: 33, name: 'RTX 4090' },
         hardware: { ...emptyMetrics.hardware, gpuDetected: { vendor: 'nvidia', name: 'RTX 4090' } },
       })),
-      systemStatus: mock(async () => ({ healthy: false, connected: false })),
       scanStatus: mock(async () => ({ scanning: false, count: 0 })),
       indexSongCount: mock(() => 0),
       updateCheck: mock(async () => null),
@@ -264,7 +249,6 @@ describe('GET /api/admin/review', () => {
         gpu: null,
         hardware: { ...emptyMetrics.hardware, gpuDetected: null },
       })),
-      systemStatus: mock(async () => ({ healthy: false, connected: false })),
       scanStatus: mock(async () => ({ scanning: false, count: 0 })),
       indexSongCount: mock(() => 0),
       updateCheck: mock(async () => null),
@@ -295,7 +279,6 @@ describe('GET /api/admin/review', () => {
   it('reports the analysis sidecar as unconfigured when no client is wired', async () => {
     const app = makeApp({
       collectMetrics: mock(async () => emptyMetrics),
-      systemStatus: mock(async () => ({ healthy: false, connected: false })),
       scanStatus: mock(async () => ({ scanning: false, count: 0 })),
       indexSongCount: mock(() => 0),
       updateCheck: mock(async () => null),
@@ -327,7 +310,7 @@ describe('GET /api/admin/review', () => {
       c.set('user', makeAdminUser());
       await next();
     });
-    app.route('/', reviewRoutes({ current: null } as never, { analysisClient: { healthy } }));
+    app.route('/', reviewRoutes({ analysisClient: { healthy } }));
 
     const data = (await (await app.request('/')).json()) as ServiceReview;
 
@@ -343,7 +326,7 @@ describe('GET /api/admin/review', () => {
     });
     app.route(
       '/',
-      reviewRoutes({ current: null } as never, {
+      reviewRoutes({
         analysisClient: {
           healthy: async () => {
             throw new Error('sidecar down');

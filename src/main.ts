@@ -6,7 +6,6 @@ import { parse } from 'yaml';
 import pkg from '../package.json';
 import { NicotinDConfigSchema, createLogger, generateSecret, resolvePort } from '@nicotind/core';
 import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
-import { Slskd } from '@nicotind/slskd-client';
 import { Lidarr } from '@nicotind/lidarr-client';
 import { createApp, getDatabase, maybeCheckForUpdate } from '@nicotind/api';
 
@@ -42,23 +41,19 @@ async function main() {
   const serviceManager = new ServiceManager(strategy, config);
   const startupSecrets = loadOrCreateSecrets(config.dataDir);
 
-  const hasSoulseekCreds = !!(config.soulseek.username && config.soulseek.password);
-
   if (config.mode === 'embedded') {
     // Auto-download binaries if missing
     const dataDir = config.dataDir.startsWith('~')
       ? join(process.env.HOME ?? '/root', config.dataDir.slice(1))
       : config.dataDir;
     const binDir = join(dataDir, 'bin');
-    const slskdBin = join(binDir, 'slskd');
     const lidarrBin = join(binDir, 'Lidarr', 'Lidarr');
 
-    // Only require slskd binary if Soulseek credentials are configured
-    const needsSlskd = hasSoulseekCreds && !existsSync(slskdBin);
     // Lidarr is optional; its download is best-effort inside download-deps.
+    // (slskd is the addon's business since phase 3 — nothing to download here.)
     const needsLidarr = !!config.lidarr && !existsSync(lidarrBin);
 
-    if (needsSlskd || needsLidarr) {
+    if (needsLidarr) {
       log.info('Downloading dependencies (first run)...');
       const { execSync } = await import('node:child_process');
       execSync(`bun run ${resolve(import.meta.dir, '../scripts/download-deps.ts')}`, {
@@ -67,12 +62,6 @@ async function main() {
     }
 
     log.info('Embedded mode — starting services...');
-    if (hasSoulseekCreds) {
-      await serviceManager.startSlskd();
-    } else {
-      log.info('No Soulseek credentials configured — skipping slskd (network search disabled)');
-      log.info('Configure credentials in Settings to enable Soulseek network search');
-    }
     // Only start Lidarr if its binary is actually present — avoids a slow,
     // doomed health-check wait when the (best-effort) download didn't land.
     if (config.lidarr && existsSync(lidarrBin)) {
@@ -82,15 +71,7 @@ async function main() {
     }
   }
 
-  // 3. Initialize clients (slskd wrapped in mutable ref for hot-swap via settings)
-  const slskdRef: { current: Slskd | null } = {
-    current: new Slskd({
-      baseUrl: config.slskd.url,
-      username: config.slskd.username,
-      password: config.slskd.password,
-    }),
-  };
-
+  // 3. Initialize clients
   const lidarr = config.lidarr
     ? new Lidarr({ baseUrl: config.lidarr.url, apiKey: config.lidarr.apiKey })
     : null;
@@ -118,36 +99,28 @@ async function main() {
   const webDistPath =
     process.env.NICOTIND_WEB_DIST ?? resolve(import.meta.dir, '../packages/web/dist');
 
-  const { app, watcherRef, retryRef, processingRef, websocket, remoteAccess } = createApp({
+  const { app, processingRef, websocket, remoteAccess } = createApp({
     config,
-    slskdRef,
     lidarr,
     serviceManager,
     webDistPath,
-    saveSecretsFn: (username: string, password: string) => {
-      const currentSecrets = loadOrCreateSecrets(config.dataDir);
-      currentSecrets.soulseekUsername = username;
-      currentSecrets.soulseekPassword = password;
-      saveSecrets(config.dataDir, currentSecrets);
-    },
     saveLidarrSecretsFn: (apiKey: string) => {
       const currentSecrets = loadOrCreateSecrets(config.dataDir);
       currentSecrets.lidarrApiKey = apiKey;
       saveSecrets(config.dataDir, currentSecrets);
     },
+    // URL-acquire plugins stage downloads here before the organizer ingests
+    // them (the slskd-specific staging path died with the in-process client).
     stagingDir: join(
       config.dataDir.startsWith('~')
         ? join(process.env.HOME ?? '/root', config.dataDir.slice(1))
         : config.dataDir,
-      'slskd',
       'downloads',
     ),
     acoustidApiKey: startupSecrets.acoustidApiKey,
     version: pkg.version,
   });
 
-  if (watcherRef.current) watcherRef.current.start();
-  if (retryRef.current) retryRef.current.start();
   if (processingRef.current) processingRef.current.start();
 
   const server = Bun.serve({
@@ -180,23 +153,14 @@ async function main() {
   setInterval(() => void maybeCheckForUpdate(getDatabase()), 3_600_000).unref();
 
   // Graceful shutdown
-  process.on('SIGTERM', async () => {
+  const shutdown = async () => {
     log.info('Shutting down...');
-    if (watcherRef.current) watcherRef.current.stop();
-    if (retryRef.current) retryRef.current.stop();
     if (processingRef.current) processingRef.current.stop();
     await serviceManager.stopAll();
     process.exit(0);
-  });
-
-  process.on('SIGINT', async () => {
-    log.info('Shutting down...');
-    if (watcherRef.current) watcherRef.current.stop();
-    if (retryRef.current) retryRef.current.stop();
-    if (processingRef.current) processingRef.current.stop();
-    await serviceManager.stopAll();
-    process.exit(0);
-  });
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 export interface PersistedSecrets {
@@ -255,10 +219,6 @@ function loadConfig() {
     process.env.NICOTIND_DATA_DIR ||
     ((fileConfig as Record<string, unknown>).dataDir as string) ||
     '~/.nicotind';
-  const mode = (process.env.NICOTIND_MODE ||
-    (fileConfig as Record<string, unknown>).mode ||
-    'embedded') as string;
-  const isExternalMode = mode === 'external';
   const secrets = loadOrCreateSecrets(dataDir);
   const metadataFixEnabled = parseBooleanEnv(process.env.NICOTIND_METADATA_FIX_ENABLED);
 
@@ -327,39 +287,6 @@ function loadConfig() {
             },
           }
         : {}),
-    },
-    soulseek: {
-      ...((fileConfig as Record<string, unknown>).soulseek as Record<string, unknown>),
-      ...(secrets.soulseekUsername ? { username: secrets.soulseekUsername } : {}),
-      ...(secrets.soulseekPassword ? { password: secrets.soulseekPassword } : {}),
-      ...(secrets.soulseekListeningPort ? { listeningPort: secrets.soulseekListeningPort } : {}),
-      ...(secrets.soulseekEnableUPnP !== undefined
-        ? { enableUPnP: secrets.soulseekEnableUPnP }
-        : {}),
-      ...(process.env.SOULSEEK_USERNAME ? { username: process.env.SOULSEEK_USERNAME } : {}),
-      ...(process.env.SOULSEEK_PASSWORD ? { password: process.env.SOULSEEK_PASSWORD } : {}),
-      ...(process.env.SOULSEEK_LISTENING_PORT
-        ? { listeningPort: Number(process.env.SOULSEEK_LISTENING_PORT) }
-        : {}),
-      ...(process.env.SOULSEEK_ENABLE_UPNP
-        ? { enableUPnP: parseBooleanEnv(process.env.SOULSEEK_ENABLE_UPNP) }
-        : {}),
-    },
-    slskd: {
-      url: 'http://localhost:5030',
-      port: 5030,
-      ...((fileConfig as Record<string, unknown>).slskd as Record<string, unknown>),
-      username: isExternalMode ? 'slskd' : 'nicotind',
-      password: isExternalMode ? 'slskd' : secrets.slskdPassword,
-      ...(process.env.NICOTIND_SLSKD_URL ? { url: process.env.NICOTIND_SLSKD_URL } : {}),
-      ...(process.env.SLSKD_USERNAME ? { username: process.env.SLSKD_USERNAME } : {}),
-      ...(process.env.SLSKD_INTERNAL_USERNAME
-        ? { username: process.env.SLSKD_INTERNAL_USERNAME }
-        : {}),
-      ...(process.env.SLSKD_INTERNAL_PASSWORD
-        ? { password: process.env.SLSKD_INTERNAL_PASSWORD }
-        : {}),
-      ...(process.env.SLSKD_PASSWORD ? { password: process.env.SLSKD_PASSWORD } : {}),
     },
     acquire: {
       ...((fileConfig as Record<string, unknown>).acquire as Record<string, unknown>),

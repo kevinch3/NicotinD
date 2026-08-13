@@ -2,21 +2,7 @@ import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { systemRoutes } from './system.js';
 
-function makeSlskdMock() {
-  return {
-    server: {
-      getState: mock(() =>
-        Promise.resolve({ isConnected: true, username: 'testuser', state: 'Connected' }),
-      ),
-    },
-    application: {
-      getInfo: mock(() => Promise.resolve({ version: '0.25.1', uptime: 3600 })),
-    },
-  };
-}
-
 describe('system routes', () => {
-  let slskdMock: ReturnType<typeof makeSlskdMock>;
   let app: Hono;
 
   const serviceManagerMock = {
@@ -30,69 +16,24 @@ describe('system routes', () => {
   };
 
   beforeEach(() => {
-    slskdMock = makeSlskdMock();
-
     app = new Hono();
     app.route(
       '/',
       systemRoutes(
-        { current: slskdMock } as unknown as Parameters<typeof systemRoutes>[0],
-        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[1],
-        configMock as unknown as Parameters<typeof systemRoutes>[2],
+        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[0],
+        configMock as unknown as Parameters<typeof systemRoutes>[1],
       ),
     );
   });
 
-  it('GET /status includes slskd version and uptime', async () => {
+  it('GET /status reports the server version + uptime (slskd is the addon business now)', async () => {
     const res = await app.request('/status');
-    const data = await res.json();
-
     expect(res.status).toBe(200);
-    expect(data.slskd.version).toBe('0.25.1');
-    expect(data.slskd.uptime).toBe(3600);
-    expect(data.slskd.healthy).toBe(true);
-    expect(data.slskd.connected).toBe(true);
-  });
-
-  it('GET /status omits version/uptime when application.getInfo() throws but keeps healthy=true', async () => {
-    slskdMock.application.getInfo = mock(() => Promise.reject(new Error('endpoint not found')));
-
-    const res = await app.request('/status');
-    const data = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(data.slskd.version).toBeUndefined();
-    expect(data.slskd.uptime).toBeUndefined();
-    expect(data.slskd.healthy).toBe(true);
-  });
-
-  it('GET /status marks slskd as unhealthy when getState throws', async () => {
-    slskdMock.server.getState = mock(() => Promise.reject(new Error('refused')));
-
-    const res = await app.request('/status');
-    const data = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(data.slskd.healthy).toBe(false);
-    expect(data.slskd.connected).toBe(false);
-  });
-
-  it('GET /status works when slskdRef is null', async () => {
-    app = new Hono();
-    app.route(
-      '/',
-      systemRoutes(
-        { current: null } as unknown as Parameters<typeof systemRoutes>[0],
-        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[1],
-        configMock as unknown as Parameters<typeof systemRoutes>[2],
-      ),
-    );
-
-    const res = await app.request('/status');
-    const data = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(data.slskd.healthy).toBe(false);
+    const data = (await res.json()) as Record<string, unknown> & {
+      nicotind: { version: string; uptime: number };
+    };
+    expect(data.nicotind.version).toBeDefined();
+    expect('slskd' in data).toBe(false);
   });
 
   it('GET /disk reports total/free/used bytes for the music dir', async () => {
@@ -100,9 +41,8 @@ describe('system routes', () => {
     app.route(
       '/',
       systemRoutes(
-        { current: null } as unknown as Parameters<typeof systemRoutes>[0],
-        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[1],
-        configMock as unknown as Parameters<typeof systemRoutes>[2],
+        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[0],
+        configMock as unknown as Parameters<typeof systemRoutes>[1],
         {
           musicDir: '/music',
           // 1000 blocks * 1024 = ~1 MiB total, 400 avail => 600 used.
@@ -125,9 +65,8 @@ describe('system routes', () => {
     app.route(
       '/',
       systemRoutes(
-        { current: null } as unknown as Parameters<typeof systemRoutes>[0],
-        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[1],
-        configMock as unknown as Parameters<typeof systemRoutes>[2],
+        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[0],
+        configMock as unknown as Parameters<typeof systemRoutes>[1],
         {
           musicDir: '/nonexistent',
           statfs: () => {

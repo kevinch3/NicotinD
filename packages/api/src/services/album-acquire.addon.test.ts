@@ -3,10 +3,10 @@ import { Database } from 'bun:sqlite';
 import { ADDON_PROTOCOL_VERSION, type AddonManifest } from '@nicotind/core';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import { applySchema } from '../db.js';
+import { albumIdFor, artistIdFor } from './library-scanner.js';
 import { acquireAlbum } from './album-acquire.js';
 import { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { AddonRequestError, type AddonClient } from './addons/client.js';
-import type { AlbumHunterService } from './album-hunter.service.js';
 
 const MANIFEST: AddonManifest = {
   id: 'fixture-addon',
@@ -53,13 +53,7 @@ function makeDeps(clientOver: Partial<AddonClient> = {}) {
     ...clientOver,
   } as unknown as AddonClient;
   const addon = new RemoteAddonPlugin(MANIFEST, client);
-  const deps = {
-    db,
-    hunter: null as unknown as AlbumHunterService, // must never be touched on the addon path
-    lidarr: lidarrStub(),
-    slskdRef: { current: null },
-    getAddon: () => addon,
-  };
+  const deps = { db, lidarr: lidarrStub(), getAddon: () => addon };
   return { db, deps, jobRequests };
 }
 
@@ -125,6 +119,23 @@ describe('acquireAlbum via a remote addon', () => {
     });
     expect(await acquireAlbum(h.deps, INPUT)).toBe('no-candidate');
     expect(h.jobRequests).toHaveLength(0);
+  });
+
+  it('returns already-complete when the album is on disk (no addon call)', async () => {
+    const albumId = albumIdFor('Artist', 'Album');
+    h.db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, created, synced_at)
+       VALUES (?, 'Album', 'Artist', ?, 2, 0, '2024-01-01', 0)`,
+      [albumId, artistIdFor('Artist')],
+    );
+    expect(await acquireAlbum(h.deps, INPUT)).toBe('already-complete');
+    expect(h.jobRequests).toHaveLength(0);
+  });
+
+  it('returns slskd-unavailable when no addon is enabled (phase 3: addon-only)', async () => {
+    expect(
+      await acquireAlbum({ db: h.db, lidarr: h.deps.lidarr, getAddon: () => null }, INPUT),
+    ).toBe('slskd-unavailable');
   });
 
   it('returns slskd-unavailable when the addon search fails', async () => {

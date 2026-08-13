@@ -8,14 +8,6 @@ import { PluginsComponent } from './plugins.component';
 import { PluginService, type PluginInfo } from '../../services/plugin.service';
 import { AuthService } from '../../services/auth.service';
 
-// Expanding the `slskd` card (part of `expandAll` below) mounts
-// `SlskdSettingsComponent`, which calls `PluginService.hasSlskd()`/
-// `getSlskdStatus()` from `ngOnInit` — the mock must carry them too.
-const PLUGIN_SERVICE_SLSKD_STUB = {
-  hasSlskd: () => false,
-  getSlskdStatus: () => of(null),
-};
-
 /**
  * Issue #235. With the deployment-wide kill-switch off, every acquisition route
  * hard-404s and the pollers never start — so listing acquisition extensions
@@ -23,9 +15,9 @@ const PLUGIN_SERVICE_SLSKD_STUB = {
  * downloaded until you enable an extension here" framing is actively wrong.
  */
 const ACQ: PluginInfo = {
-  id: 'slskd',
+  id: 'archive',
   kind: 'acquisition',
-  name: 'Soulseek',
+  name: 'Archive.org',
   enabled: false,
 } as PluginInfo;
 const META: PluginInfo = {
@@ -53,7 +45,6 @@ function makeFixture(acquisitionEnabled: boolean): Fixture {
       {
         provide: PluginService,
         useValue: {
-          ...PLUGIN_SERVICE_SLSKD_STUB,
           refresh: () => Promise.resolve(),
           plugins: signal([ACQ, META, META2]),
           acquisition: signal([ACQ]),
@@ -106,7 +97,7 @@ describe('PluginsComponent — acquisition kill-switch (#235)', () => {
     expect(collapsed.querySelector('[data-testid="extensions-acquisition-off"]')).toBeNull();
 
     const el = expandAll(fixture);
-    expect(el.textContent).toContain('Soulseek');
+    expect(el.textContent).toContain('Archive.org');
   });
 
   it('hides the section and explains why when acquisition is off', () => {
@@ -118,7 +109,7 @@ describe('PluginsComponent — acquisition kill-switch (#235)', () => {
     // Naming the env var is the point — otherwise an admin can't act on it.
     expect(note!.textContent).toContain('NICOTIND_ACQUISITION=off');
     // The acquisition plugin itself must not be listed anywhere.
-    expect(el.textContent).not.toContain('Soulseek');
+    expect(el.textContent).not.toContain('Archive.org');
   });
 
   it('still shows unrelated extension kinds when acquisition is off', () => {
@@ -182,7 +173,6 @@ describe('PluginsComponent — Connectivity section visibility', () => {
         {
           provide: PluginService,
           useValue: {
-            ...PLUGIN_SERVICE_SLSKD_STUB,
             refresh: () => Promise.resolve(),
             plugins: signal([]),
             acquisition: signal([]),
@@ -229,7 +219,6 @@ describe('PluginsComponent — remote addons (phase 0)', () => {
         {
           provide: PluginService,
           useValue: {
-            ...PLUGIN_SERVICE_SLSKD_STUB,
             refresh: () => Promise.resolve(),
             plugins: signal([REMOTE]),
             acquisition: signal([REMOTE]),

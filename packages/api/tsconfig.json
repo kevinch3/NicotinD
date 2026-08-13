@@ -8,7 +8,6 @@
   "include": ["src"],
   "references": [
     { "path": "../core" },
-    { "path": "../slskd-client" },
     { "path": "../slskd-addon" },
     { "path": "../lidarr-client" },
     { "path": "../service-manager" }

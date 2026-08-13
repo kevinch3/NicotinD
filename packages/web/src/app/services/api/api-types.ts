@@ -34,7 +34,6 @@ export interface SetupResult {
 
 export interface SetupBody {
   admin: { username: string; password: string };
-  soulseek?: { username: string; password: string };
   musicDir?: string;
   transcodeLossless?: { enabled?: boolean; bitRate?: number };
   lidarr?: { url?: string; apiKey?: string };

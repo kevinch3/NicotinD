@@ -13,7 +13,6 @@ import {
 import { SpotdlPlugin } from './spotdl/index.js';
 import { AcoustidPlugin } from './acoustid/index.js';
 import { MusicBrainzClient } from '../musicbrainz-client.js';
-import type { SlskdRef } from '../../index.js';
 import type { ProviderRegistry } from '../provider-registry.js';
 import type { NicotinDConfig } from '@nicotind/core';
 
@@ -35,7 +34,6 @@ function makeDeps(over: Partial<BuiltinPluginDeps> = {}): BuiltinPluginDeps {
   return {
     config,
     dataDir: '/tmp/nicotind-test',
-    slskdRef: { current: null } as SlskdRef,
     providerRegistry: {} as ProviderRegistry,
     ...over,
   };
@@ -58,7 +56,7 @@ describe('registerBuiltinPlugins', () => {
         .getAll()
         .map((p) => p.manifest.id)
         .sort(),
-    ).toEqual(['acoustid', 'archive', 'discogs', 'lrclib', 'slskd', 'spotdl', 'spotify', 'ytdlp']);
+    ).toEqual(['acoustid', 'archive', 'discogs', 'lrclib', 'spotdl', 'spotify', 'ytdlp']);
   });
 
   // Regression: spotdl was constructed without `{ registry }`, so its live read

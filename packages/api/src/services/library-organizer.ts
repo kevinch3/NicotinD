@@ -33,7 +33,7 @@ import {
 } from './path-sanitize.js';
 import { isAbsolute } from 'node:path';
 import type { AcoustIdLookup } from './acoustid-lookup.js';
-import { normalizeTitle } from './album-hunter.service.js';
+import { normalizeTitle } from '@nicotind/core';
 import { reconcileAlbumFolder } from './album-reconcile.js';
 import { albumGroupKey } from './album-grouping.js';
 import { isLosslessFile, transcodeToOpus } from './post-download-transcode.js';

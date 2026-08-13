@@ -93,7 +93,7 @@ export const demoGenreSlices: GenreSlice[] = [
 
 export const demoDownloadItem: DownloadItem = {
   key: 'job-4821',
-  kind: 'slskd',
+  kind: 'network',
   title: 'Static Bloom',
   subtitle: 'Nocturnal Signal',
   method: 'slskd',

@@ -1,7 +1,7 @@
 import type { Lidarr, LidarrAlbum, LidarrArtist } from '@nicotind/lidarr-client';
 import { createLogger, NicotinDError } from '@nicotind/core';
 import { addArtistFromLookup } from './lidarr-provision.js';
-import { normalizeTitle } from './album-hunter.service.js';
+import { normalizeTitle } from '@nicotind/core';
 import { tokenize, matchesAllTokens } from './search-tokens.js';
 import { proxiedCoverUrl } from './remote-cover.js';
 

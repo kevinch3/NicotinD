@@ -15,7 +15,9 @@ test.describe('downloads', () => {
 
     await expect(page).toHaveURL(/\/get(\?|$)/);
     await expect(page).toHaveURL(/tab=downloads/);
-    await expect(page.getByText('No active downloads.')).toBeVisible();
+    // Finished jobs persist as feed history since phase 3, so an empty-state
+    // text is run-order-dependent — the pane container is the stable anchor.
+    await expect(page.getByTestId('downloads-active')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Scan library' })).toBeVisible();
   });
 
@@ -25,13 +27,13 @@ test.describe('downloads', () => {
     await expect(page.getByTestId('search-input')).toBeVisible();
 
     await page.getByTestId('get-tab-downloads').click();
-    await expect(page.getByText('No active downloads.')).toBeVisible();
+    await expect(page.getByTestId('downloads-active')).toBeVisible();
     await expect(page.getByTestId('search-input')).toHaveCount(0);
     await expect(page).toHaveURL(/tab=downloads/);
 
     // A reload of that URL comes straight back to the same pane.
     await page.reload();
-    await expect(page.getByText('No active downloads.')).toBeVisible();
+    await expect(page.getByTestId('downloads-active')).toBeVisible();
 
     await page.getByTestId('get-tab-find').click();
     await expect(page.getByTestId('search-input')).toBeVisible();

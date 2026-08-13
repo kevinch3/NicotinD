@@ -6,7 +6,6 @@ export * from './types/acquisition-candidate.js';
 export * from './types/classify-acquire-url.js';
 export * from './types/archive.js';
 export * from './types/config.js';
-export * from './types/slskd.js';
 export * from './types/spotify.js';
 export * from './types/navidrome.js';
 export * from './types/nicotind.js';
