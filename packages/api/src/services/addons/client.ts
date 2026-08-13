@@ -93,11 +93,20 @@ async function readCappedJson(res: Response, maxBytes: number): Promise<unknown>
   }
 }
 
+/**
+ * The outcome of one addon call, for the circuit-breaker (§4): `contract-violation`
+ * is the addon's fault (counts toward tripping); `transient` is a
+ * timeout/5xx/network error (neutral); `ok` is a clean call (resets the streak).
+ */
+export type AddonCallOutcome = 'ok' | 'contract-violation' | 'transient';
+
 export interface AddonClientOptions {
   baseUrl: string;
   token: string;
   fetchFn?: typeof fetch;
   timeoutMs?: number;
+  /** Reports every JSON call's outcome (wire to the circuit-breaker). */
+  onOutcome?: (outcome: AddonCallOutcome) => void;
 }
 
 /**
@@ -110,12 +119,14 @@ export class AddonClient {
   private token: string;
   private fetchFn: typeof fetch;
   private timeoutMs: number;
+  private onOutcome?: (outcome: AddonCallOutcome) => void;
 
   constructor(opts: AddonClientOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/+$/, '');
     this.token = opts.token;
     this.fetchFn = opts.fetchFn ?? fetch;
     this.timeoutMs = opts.timeoutMs ?? 10_000;
+    this.onOutcome = opts.onOutcome;
   }
 
   async getManifest(): Promise<AddonManifest> {
@@ -225,15 +236,24 @@ export class AddonClient {
     path: string,
     opts: { auth: boolean; json?: unknown; timeoutMs?: number; headers?: Record<string, string> },
   ): Promise<unknown> {
-    const res = await this.rawRequest(method, path, opts);
-    if (!res.ok) {
-      throw new AddonRequestError(
-        `addon responded ${res.status} for ${method} ${path}`,
-        res.status,
-      );
+    try {
+      const res = await this.rawRequest(method, path, opts);
+      if (!res.ok) {
+        throw new AddonRequestError(
+          `addon responded ${res.status} for ${method} ${path}`,
+          res.status,
+        );
+      }
+      const parsed =
+        res.status === 204 ? undefined : await readCappedJson(res, MAX_ADDON_RESPONSE_BYTES);
+      this.onOutcome?.('ok');
+      return parsed;
+    } catch (err) {
+      // A contract violation is the addon's fault (counts toward the breaker);
+      // anything else (status, timeout, network) is transient/neutral.
+      this.onOutcome?.(err instanceof AddonContractError ? 'contract-violation' : 'transient');
+      throw err;
     }
-    if (res.status === 204) return undefined;
-    return readCappedJson(res, MAX_ADDON_RESPONSE_BYTES);
   }
 
   private async rawRequest(

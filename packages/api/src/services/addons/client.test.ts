@@ -207,3 +207,37 @@ describe('AddonClient response hardening (§1 Stream 1)', () => {
     expect(await client.getStatus()).toHaveLength(1);
   });
 });
+
+describe('AddonClient outcome hook (§4 circuit-breaker feed)', () => {
+  const jsonHeaders = { 'content-type': 'application/json' };
+  function withOutcomes(respond: () => Response) {
+    const outcomes: string[] = [];
+    const client = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      fetchFn: stubFetch(respond).fetchFn,
+      onOutcome: (o) => outcomes.push(o),
+    });
+    return { client, outcomes };
+  }
+
+  it("reports 'ok' on a clean call", async () => {
+    const { client, outcomes } = withOutcomes(() => new Response('[]', { headers: jsonHeaders }));
+    await client.getStatus();
+    expect(outcomes).toEqual(['ok']);
+  });
+
+  it("reports 'contract-violation' on a bad-shape/non-JSON body", async () => {
+    const { client, outcomes } = withOutcomes(
+      () => new Response('<html/>', { headers: { 'content-type': 'text/html' } }),
+    );
+    await expect(client.getStatus()).rejects.toBeInstanceOf(AddonContractError);
+    expect(outcomes).toEqual(['contract-violation']);
+  });
+
+  it("reports 'transient' on a 5xx", async () => {
+    const { client, outcomes } = withOutcomes(() => new Response('err', { status: 503 }));
+    await expect(client.getStatus()).rejects.toBeInstanceOf(AddonRequestError);
+    expect(outcomes).toEqual(['transient']);
+  });
+});
