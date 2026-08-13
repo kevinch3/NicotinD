@@ -1,11 +1,17 @@
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { streamingRoutes } from './streaming.js';
 import { applySchema } from '../db.js';
+import {
+  transcodeCacheKey,
+  _pinRefcountForTests,
+  _resetTranscodeCacheForTests,
+} from '../services/transcode-cache.js';
+import { _resetFfmpegProbe } from '../services/transcode.js';
 
 let musicDir: string;
 let dataDir: string;
@@ -206,14 +212,13 @@ describe('streaming routes', () => {
     expect(res.headers.get('content-type')).toBe('image/jpeg');
   });
 
-  it('keeps a transcode-cache response Content-Length/Range intact while pinning the file', async () => {
-    // The route wraps a Blob body in a ReadableStream so it can release the
-    // transcode-cache pin when the response ends. The wire format must remain
-    // identical (Content-Length on 200, Content-Range on 206, no
+  it('keeps a failed-transcode fallback response Content-Length/Range intact', async () => {
+    // The transcode here fails (fake audio bytes, or ffmpeg absent) and the
+    // route falls back to the original passthrough — the wire format must
+    // remain intact (Content-Length on 200, Content-Range on 206, no
     // transfer-encoding) so browsers can keep using duration from the
-    // container parse. The transcode here fails (fake audio bytes) and the
-    // route falls back to the original — the same assertions on the passthrough
-    // path are the proof the body wrapper didn't change the wire contract.
+    // container parse. The successful transcode-cache path has its own
+    // wire-contract suite below (it needs a real Bun.serve socket).
     db.run(
       `INSERT INTO app_settings (key, value) VALUES ('streaming', ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
@@ -257,6 +262,160 @@ describe('streaming routes', () => {
     expect((await app.request('/cover/lone-alb')).status).toBe(200);
     // … but the artist id does not.
     expect((await app.request('/cover/lone-art')).status).toBe(404);
+  });
+});
+
+describe('streaming routes — range parsing (RFC 9110)', () => {
+  // File is AUDIO_BYTES = [1..10] (10 bytes). iOS Safari's media loader
+  // (CoreMedia) probes container tail metadata with suffix ranges; serving the
+  // HEAD of the file for `bytes=-N` (the old parse: start=0, end=N) hands back
+  // wrong bytes under a mismatched Content-Range, and Safari re-requests
+  // forever — track metadata loads, the song never finishes loading.
+  it('serves a suffix range (bytes=-N) as the LAST N bytes', async () => {
+    const res = await app.request('/stream/song-1', { headers: { range: 'bytes=-4' } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get('content-range')).toBe('bytes 6-9/10');
+    expect(res.headers.get('content-length')).toBe('4');
+    const buf = new Uint8Array(await res.arrayBuffer());
+    expect(Array.from(buf)).toEqual([7, 8, 9, 10]);
+  });
+
+  it('clamps an over-long suffix range to the whole file', async () => {
+    const res = await app.request('/stream/song-1', { headers: { range: 'bytes=-999' } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get('content-range')).toBe('bytes 0-9/10');
+    expect(new Uint8Array(await res.arrayBuffer()).length).toBe(10);
+  });
+
+  it('rejects a zero-length suffix range (bytes=-0) with 416', async () => {
+    const res = await app.request('/stream/song-1', { headers: { range: 'bytes=-0' } });
+    expect(res.status).toBe(416);
+    expect(res.headers.get('content-range')).toBe('bytes */10');
+  });
+
+  it('ignores a malformed bytes=- range and serves the full file as 200', async () => {
+    const res = await app.request('/stream/song-1', { headers: { range: 'bytes=-' } });
+    expect(res.status).toBe(200);
+    expect(new Uint8Array(await res.arrayBuffer()).length).toBe(10);
+  });
+
+  it('still serves an open-ended range (bytes=N-) to the end of the file', async () => {
+    const res = await app.request('/stream/song-1', { headers: { range: 'bytes=6-' } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get('content-range')).toBe('bytes 6-9/10');
+    expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual([7, 8, 9, 10]);
+  });
+});
+
+describe('streaming routes — wire contract over a real socket', () => {
+  // In-process `app.request()` cannot catch the regression these tests guard:
+  // Bun drops an explicitly-set Content-Length and switches to
+  // `Transfer-Encoding: chunked` at *wire serialization time* whenever the
+  // response body is a bare ReadableStream instead of a Blob. A chunked 206
+  // stalls Firefox's and iOS Safari's media loaders forever (metadata loads,
+  // the song never finishes loading), so these run through a real Bun.serve
+  // socket where the wire behaviour is observable.
+  const TRUE_BIN = existsSync('/usr/bin/true') ? '/usr/bin/true' : '/bin/true';
+  let server: ReturnType<typeof Bun.serve> | null = null;
+  let prevFfmpegPath: string | undefined;
+
+  beforeAll(() => {
+    prevFfmpegPath = process.env.NICOTIND_FFMPEG_PATH;
+    server = Bun.serve({ port: 0, fetch: app.fetch });
+  });
+
+  afterAll(() => {
+    server?.stop();
+    if (prevFfmpegPath === undefined) delete process.env.NICOTIND_FFMPEG_PATH;
+    else process.env.NICOTIND_FFMPEG_PATH = prevFfmpegPath;
+    _resetFfmpegProbe();
+    _resetTranscodeCacheForTests();
+  });
+
+  const wireUrl = (path: string) => `http://127.0.0.1:${server!.port}${path}`;
+
+  it('passthrough responses carry Content-Length on the wire (200 and 206)', async () => {
+    const full = await fetch(wireUrl('/stream/song-1'));
+    expect(full.status).toBe(200);
+    expect(full.headers.get('content-length')).toBe('10');
+    expect(full.headers.get('transfer-encoding')).toBeNull();
+    await full.arrayBuffer();
+
+    const partial = await fetch(wireUrl('/stream/song-1'), { headers: { range: 'bytes=2-5' } });
+    expect(partial.status).toBe(206);
+    expect(partial.headers.get('content-length')).toBe('4');
+    expect(partial.headers.get('transfer-encoding')).toBeNull();
+    await partial.arrayBuffer();
+  });
+
+  it('a transcode-cache hit keeps Content-Length on the wire and pins the file', async () => {
+    // Hermetic transcode path: point the ffmpeg probe at /usr/bin/true so
+    // `ffmpegAvailable()` is true without ffmpeg, and pre-seed a usable cache
+    // file at the exact key the route computes — `getTranscodedFile` then
+    // returns the seeded file without ever spawning a transcoder.
+    mkdirSync(join(musicDir, 'Pin'), { recursive: true });
+    const srcRel = 'Pin/pin.mp3';
+    writeFileSync(join(musicDir, srcRel), AUDIO_BYTES);
+    seedSong('song-pin', srcRel);
+
+    const abs = resolve(join(resolve(musicDir), srcRel));
+    const st = statSync(abs);
+    const key = transcodeCacheKey(abs, st.mtimeMs, st.size, 'mp3', 192, false);
+    const cacheDir = join(dataDir, 'transcode-cache');
+    mkdirSync(cacheDir, { recursive: true });
+    const cachePath = join(cacheDir, `${key}.mp3`);
+    writeFileSync(cachePath, new Uint8Array(2048).fill(7));
+
+    process.env.NICOTIND_FFMPEG_PATH = TRUE_BIN;
+    _resetFfmpegProbe();
+    db.run(
+      `INSERT INTO app_settings (key, value) VALUES ('streaming', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [
+        JSON.stringify({
+          transcodeEnabled: true,
+          forceTranscode: true,
+          format: 'mp3',
+          maxBitRate: 192,
+        }),
+      ],
+    );
+    try {
+      const full = await fetch(wireUrl('/stream/song-pin'));
+      expect(full.status).toBe(200);
+      expect(full.headers.get('content-type')).toBe('audio/mpeg');
+      // 2048 = the seeded cache file, NOT the 10-byte original: proof the
+      // transcode-cache path (the pinned one) actually served this response.
+      expect(full.headers.get('content-length')).toBe('2048');
+      expect(full.headers.get('transfer-encoding')).toBeNull();
+      expect(new Uint8Array(await full.arrayBuffer()).length).toBe(2048);
+
+      const partial = await fetch(wireUrl('/stream/song-pin'), {
+        headers: { range: 'bytes=0-1' },
+      });
+      expect(partial.status).toBe(206);
+      expect(partial.headers.get('content-range')).toBe('bytes 0-1/2048');
+      expect(partial.headers.get('content-length')).toBe('2');
+      expect(partial.headers.get('transfer-encoding')).toBeNull();
+      await partial.arrayBuffer();
+
+      const suffix = await fetch(wireUrl('/stream/song-pin'), {
+        headers: { range: 'bytes=-100' },
+      });
+      expect(suffix.status).toBe(206);
+      expect(suffix.headers.get('content-range')).toBe('bytes 1948-2047/2048');
+      await suffix.arrayBuffer();
+
+      // The pin is grace-timed (60s default), so it is still held here — the
+      // prune cannot unlink the file before Bun opened it.
+      expect(_pinRefcountForTests(cachePath)).toBeGreaterThan(0);
+    } finally {
+      db.run(`DELETE FROM app_settings WHERE key = 'streaming'`);
+      if (prevFfmpegPath === undefined) delete process.env.NICOTIND_FFMPEG_PATH;
+      else process.env.NICOTIND_FFMPEG_PATH = prevFfmpegPath;
+      _resetFfmpegProbe();
+      _resetTranscodeCacheForTests();
+    }
   });
 });
 
