@@ -44,7 +44,13 @@ const repoRoot = path.resolve(desktopRoot, '..', '..');
 const resourcesDir = path.join(desktopRoot, 'resources');
 
 /** The workspace packages the backend entry (`src/main.ts`) transitively imports. */
-const BACKEND_WORKSPACE_PACKAGES = ['core', 'slskd-client', 'service-manager', 'lidarr-client', 'api'] as const;
+const BACKEND_WORKSPACE_PACKAGES = [
+  'core',
+  'slskd-client',
+  'service-manager',
+  'lidarr-client',
+  'api',
+] as const;
 
 interface WorkspacePackageJson {
   name: string;
@@ -157,14 +163,31 @@ function stageBackend(): void {
     const pkgDestRoot = path.join(backendDir, 'packages', pkg);
     mkdirSync(pkgDestRoot, { recursive: true });
     cpSync(path.join(pkgSrcRoot, 'src'), path.join(pkgDestRoot, 'src'), { recursive: true });
-    copyFileSync(path.join(pkgSrcRoot, 'package.json'), path.join(pkgDestRoot, 'package.json'));
 
-    const pkgJson = readJson<WorkspacePackageJson>(path.join(pkgSrcRoot, 'package.json'));
+    // Strip devDependencies from the staged manifest. The backend is a RUNTIME
+    // artifact (`bun run src/main.ts`, type imports erased), so it needs no
+    // dev/type/test deps — and a dev-only workspace dep left in place makes
+    // `bun install --production` fail resolving a package that was never staged
+    // (e.g. api's type-only `@nicotind/slskd-addon`, which is not a
+    // BACKEND_WORKSPACE_PACKAGE). why: --production skips *installing* devDeps
+    // but still *resolves* their workspace: references.
+    const pkgJson = readJson<WorkspacePackageJson & { devDependencies?: unknown }>(
+      path.join(pkgSrcRoot, 'package.json'),
+    );
+    delete pkgJson.devDependencies;
+    writeFileSync(path.join(pkgDestRoot, 'package.json'), JSON.stringify(pkgJson, null, 2) + '\n');
+
     workspacePackageNames.push(pkgJson.name);
   }
 
-  const rootPkg = readJson<{ version: string; dependencies?: Record<string, string> }>(path.join(repoRoot, 'package.json'));
-  const backendPkg = buildBackendPackageJson(rootPkg.dependencies, workspacePackageNames, rootPkg.version);
+  const rootPkg = readJson<{ version: string; dependencies?: Record<string, string> }>(
+    path.join(repoRoot, 'package.json'),
+  );
+  const backendPkg = buildBackendPackageJson(
+    rootPkg.dependencies,
+    workspacePackageNames,
+    rootPkg.version,
+  );
   writeFileSync(path.join(backendDir, 'package.json'), JSON.stringify(backendPkg, null, 2) + '\n');
 
   // Production install: resolves the external deps above (hono, zod,
@@ -228,7 +251,9 @@ async function stageFfmpeg(): Promise<void> {
     );
   }
   if (!ffmpegSrc) {
-    throw new Error("'ffmpeg-static' resolved to null — no static ffmpeg binary for this platform/arch");
+    throw new Error(
+      "'ffmpeg-static' resolved to null — no static ffmpeg binary for this platform/arch",
+    );
   }
   if (!existsSync(ffmpegSrc)) {
     throw new Error(`'ffmpeg-static' reported ${ffmpegSrc} but that file does not exist`);
@@ -257,7 +282,9 @@ function stageIcons(): void {
   const dest = path.join(resourcesDir, 'icons');
   rmSync(dest, { recursive: true, force: true });
   if (!existsSync(iconSrc)) {
-    console.warn(`⚠ No icon pack at ${iconSrc} (stage-icons skipped?) — packaged app will lack window/tray icons.`);
+    console.warn(
+      `⚠ No icon pack at ${iconSrc} (stage-icons skipped?) — packaged app will lack window/tray icons.`,
+    );
     return;
   }
   cpSync(iconSrc, dest, { recursive: true });
@@ -265,7 +292,9 @@ function stageIcons(): void {
 }
 
 async function main(): Promise<void> {
-  console.log(`Preparing packages/desktop/resources/ (platform=${process.platform}, arch=${process.arch})…`);
+  console.log(
+    `Preparing packages/desktop/resources/ (platform=${process.platform}, arch=${process.arch})…`,
+  );
   mkdirSync(resourcesDir, { recursive: true });
 
   stageWeb();
@@ -279,7 +308,9 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
   main().catch((err: unknown) => {
-    console.error(`\n✗ prepare-resources failed: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(
+      `\n✗ prepare-resources failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
     process.exit(1);
   });
 }

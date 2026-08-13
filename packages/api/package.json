@@ -13,7 +13,6 @@
     "@nicotind/core": "workspace:*",
     "@nicotind/lidarr-client": "workspace:*",
     "@nicotind/service-manager": "workspace:*",
-    "@nicotind/slskd-addon": "workspace:*",
     "@sentry/bun": "^10.67.0",
     "hono": "^4.12.31",
     "jose": "^6.2.3",
@@ -22,5 +21,8 @@
     "node-id3": "^0.2.9",
     "sharp": "^0.35.3",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@nicotind/slskd-addon": "workspace:*"
   }
 }
