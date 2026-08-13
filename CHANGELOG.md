@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.2.0](https://github.com/kevinch3/NicotinD/compare/v0.1.347...v0.2.0) (2026-08-13)
+
+### ⚠ BREAKING CHANGES
+
+* /api/settings/soulseek*, /api/settings/shares* and the
+  setup wizard's Soulseek step are removed; configure Soulseek on the slskd
+  addon's Extensions card instead.
+* the built-in Soulseek (slskd) extension no longer exists;
+  deploy the slskd addon (docker compose --profile slskd-addon) and register
+  it under Settings → Extensions to keep acquiring from Soulseek.
+* the raw per-transfer download endpoints are removed; use
+  the job-level actions.
+* the SOULSEEK_USERNAME/SOULSEEK_PASSWORD/NICOTIND_SLSKD_URL
+  envs and the soulseek/slskd config sections are gone; Soulseek acquisition
+  requires the external slskd addon (docker compose --profile slskd-addon),
+  registered via Extensions.
+
+### Features
+
+* phase 3 — delete slskd from core ([#496](https://github.com/kevinch3/NicotinD/issues/496)) ([58678d0](https://github.com/kevinch3/NicotinD/commit/58678d03c50b65cced953ee791036ce0aa0999d7)), references [#487](https://github.com/kevinch3/NicotinD/issues/487) [#488](https://github.com/kevinch3/NicotinD/issues/488) [#488](https://github.com/kevinch3/NicotinD/issues/488) [#489](https://github.com/kevinch3/NicotinD/issues/489) [#490](https://github.com/kevinch3/NicotinD/issues/490) [#490](https://github.com/kevinch3/NicotinD/issues/490) [#490](https://github.com/kevinch3/NicotinD/issues/490) [#490](https://github.com/kevinch3/NicotinD/issues/490) [#490](https://github.com/kevinch3/NicotinD/issues/490) [#490](https://github.com/kevinch3/NicotinD/issues/490) [#490](https://github.com/kevinch3/NicotinD/issues/490)
 ## [0.1.347](https://github.com/kevinch3/NicotinD/compare/v0.1.346...v0.1.347) (2026-08-13)
 
 ### Bug Fixes
