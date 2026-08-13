@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.2.1](https://github.com/kevinch3/NicotinD/compare/v0.2.0...v0.2.1) (2026-08-13)
+
+### Bug Fixes
+
+* **desktop:** unbreak resource staging — strip devDeps + demote api's addon dep ([#499](https://github.com/kevinch3/NicotinD/issues/499)) ([455b002](https://github.com/kevinch3/NicotinD/commit/455b002486b71b5e7f5434ec7767f18f7288d94e))
 ## [0.2.0](https://github.com/kevinch3/NicotinD/compare/v0.1.347...v0.2.0) (2026-08-13)
 
 ### ⚠ BREAKING CHANGES
