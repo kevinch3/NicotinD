@@ -164,7 +164,7 @@
       "name": "@nicotind/slskd-client",
       "version": "0.1.0",
       "dependencies": {
-        "@nicotind/core": "workspace:*",
+        "@nicotind/addon-sdk": "workspace:*",
       },
     },
     "packages/web": {

@@ -1,4 +1,4 @@
-import { createLogger, type Logger } from '@nicotind/core';
+import { createLogger, type Logger } from '@nicotind/addon-sdk';
 
 export interface SlskdClientOptions {
   baseUrl: string;

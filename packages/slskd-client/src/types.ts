@@ -162,3 +162,21 @@ export interface SlskdShareDirectory {
   path: string;
   fileCount?: number;
 }
+
+// Browse wire shapes (GET user browse). Kept here rather than imported from the
+// host: slskd-client must stand alone in the external addon repo (phase 4), and
+// these are slskd's own on-the-wire shapes. Core keeps structurally-identical
+// definitions for its generic browse lane — TS structural typing keeps them
+// assignable, so no downstream nominal match is needed.
+export interface NetworkFile {
+  filename: string; // full file path, e.g. "Music\\Babasonicos\\Repuesto de Fe\\01 - Impacto.mp3"
+  size: number;
+  bitRate?: number;
+  length?: number;
+}
+
+export interface BrowseDirectory {
+  name: string; // full directory path, e.g. "Music\\Babasonicos\\Repuesto de Fe"
+  fileCount: number;
+  files: NetworkFile[];
+}
