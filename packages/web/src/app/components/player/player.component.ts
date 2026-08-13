@@ -519,7 +519,13 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       // Browser revoked autoplay while screen is locked — resume when app returns.
       this.resumePendingAfterVisible = true;
     } else {
-      this.player.setAutoplayBlocked(true);
+      // No dedicated "tap to resume" banner (removed — it was a rarely-hit,
+      // easy-to-break vestige of a stricter autoplay policy, and the Now
+      // Playing sheet's copy of it grabbed the wrong <audio> element via
+      // `document.querySelector('audio')`, so tapping it silently did
+      // nothing). Just fall back to paused: the normal Play button is a
+      // fresh user gesture and will succeed.
+      this.player.pause();
     }
   }
 
@@ -581,7 +587,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
           if (audioEl) {
             if (!this.player.isPlaying()) this.player.resume();
             if (audioEl.paused) {
-              audioEl.play().catch(() => this.player.setAutoplayBlocked(true));
+              audioEl.play().catch(() => this.player.pause());
             }
           }
         }
@@ -808,7 +814,6 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         clearTimeout(this.backgroundPauseTimer);
         this.backgroundPauseTimer = null;
       }
-      this.player.setAutoplayBlocked(false);
       if (!this.player.isPlaying()) {
         this.player.resume();
       }
@@ -1102,16 +1107,6 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     const target = event.target as HTMLElement;
     if (target.closest('button') || target.closest('[data-seek]')) return;
     this.barDrag.start(event);
-  }
-
-  unblockAutoplay(): void {
-    const audio = this.audioEl()?.nativeElement;
-    if (audio) {
-      audio
-        .play()
-        .then(() => this.player.setAutoplayBlocked(false))
-        .catch(() => {});
-    }
   }
 
   formatTime(s: number): string {

@@ -12,22 +12,6 @@
     <div data-bottom-chrome [class]="'fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] md:bottom-0 left-0 right-0 bg-theme-surface border-t border-theme z-50 transition-transform duration-300 ease-out ' +
       slideClass()">
 
-      <!-- Autoplay blocked banner -->
-      @if (player.autoplayBlocked()) {
-        <div
-          class="absolute inset-0 bg-theme-surface/95 flex items-center justify-center z-10 cursor-pointer"
-          (click)="unblockAutoplay()"
-        >
-          <div class="flex items-center gap-3 px-4">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-status-warn flex-shrink-0">
-              <circle cx="12" cy="12" r="10" />
-              <polygon points="10,8 16,12 10,16" fill="currentColor" />
-            </svg>
-            <span class="text-sm text-theme-secondary">{{ 'player.tapToStart' | t }}</span>
-          </div>
-        </div>
-      }
-
       <!-- Grab handle ("notch") — pull up / tap to open Now Playing. Wired to the
            same open gesture as the bar so the visible hatch is actually draggable
            (it had no handler before); `touch-none` keeps the browser from

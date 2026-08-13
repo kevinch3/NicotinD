@@ -80,7 +80,6 @@ export class PlayerService {
   readonly currentTime = signal(0);
   readonly duration = signal(0);
   readonly seekTo = signal<number | null>(null);
-  readonly autoplayBlocked = signal(false);
   // Karaoke vocal mute: when true, streams include ?vocals=off for center-channel
   // cancellation. Persists across tracks until toggled off or player cleared.
   readonly vocalsMuted = signal(false);
@@ -507,10 +506,6 @@ export class PlayerService {
 
   clearSeek(): void {
     this.seekTo.set(null);
-  }
-
-  setAutoplayBlocked(blocked: boolean): void {
-    this.autoplayBlocked.set(blocked);
   }
 
   setBuffering(value: boolean): void {

@@ -115,7 +115,7 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   looking at the whole extracted tree together, not any single component in isolation:
   - `NowPlayingHeaderComponent` — drag-to-dismiss handle + device switcher.
   - `NowPlayingCoverArtComponent` — cover art, title/artist, track-info button, context menu trigger.
-  - `NowPlayingTransportComponent` — seek bar, transport buttons, autoplay-blocked banner.
+  - `NowPlayingTransportComponent` — seek bar, transport buttons.
   - `NowPlayingPanelTabsComponent` — the **Queue/Lyrics tab switcher** (below).
   - `NowPlayingQueuePanelComponent` — the "Next up" list: Clear, drag-reorder, per-row remove.
     Owns `clearQueue`/`removeFromQueue`/`jumpToTrack`/the HTML5 DnD handlers itself
@@ -290,9 +290,11 @@ own full-viewport layout rather than adopting `page-shell`.
 
 ## Boot — player restore is paused by default (opt-in autoplay)
 
-`PlayerService.restoreState()` (called from `provideAppInitializer` in `app.config.ts`) loads the last track/queue/history/currentTime from `nicotind_player_state` but **leaves `isPlaying` false**. The autoplay decision is deferred until `GET /api/auth/me` resolves, at which point `player.maybeResumeAutoplay(profile.autoplayOnLoad)` resumes only when the per-user `autoplay_on_load` setting is enabled. Without the setting, the page never attempts a gesture-less `audio.play()` on load, so the browser-polity block + "Tap to resume" banner overlay are gone and the user always presses play themselves.
+`PlayerService.restoreState()` (called from `provideAppInitializer` in `app.config.ts`) loads the last track/queue/history/currentTime from `nicotind_player_state` but **leaves `isPlaying` false**. The autoplay decision is deferred until `GET /api/auth/me` resolves, at which point `player.maybeResumeAutoplay(profile.autoplayOnLoad)` resumes only when the per-user `autoplay_on_load` setting is enabled. Without the setting, the page never attempts a gesture-less `audio.play()` on load, so the user always presses play themselves.
 
 Effect 1 (`PlayerComponent` track-load) honours this: its two `audio.play()` calls are gated on `untracked(() => player.isPlaying())` so a freshly loaded track sits paused (`audio.src` set, `restoredTime` still applied by `onDuration`). Effect 5 (play/pause sync) remains the single authoritative driver of starting/stopping playback in response to `isPlaying`.
+
+**No "tap to resume" banner (removed).** A rejected `audio.play()` (browser autoplay policy, `NotAllowedError`) used to flip a `PlayerService.autoplayBlocked` signal and show a dedicated banner/button over the mini-player and the Now Playing sheet whose only job was to re-issue `audio.play()` from a real click. It was a vestige from before playback restore was paused-by-default (above) — the gesture-less resume path that used to make it common is gone, so it fired rarely, and its Now Playing sheet copy had rotted unnoticed: `unblockAutoplay()` there grabbed the wrong element via `document.querySelector('audio')` (the component always renders two `<audio>` elements and alternates which is active — see the dual-buffer gapless-swap comments on `PlayerComponent.audioEl`), so tapping it silently did nothing. `handlePlayRejection()` now just falls back to paused (`player.pause()`) while the screen is visible — the ordinary Play button is a fresh gesture and succeeds. The screen-locked case (`document.visibilityState === 'hidden'`) is unrelated and unchanged: it still queues a resume for when the app returns to the foreground.
 
 Per-user pref lives in the `user_settings.autoplay_on_load` column (default `0`); surfaced through `GET /api/auth/me` (`autoplayOnLoad: boolean`) and mutated by `POST /api/auth/ autoplay` (body `{ enabled: boolean }`). The web toggle sits in Settings → Playback (`data-testid="autoplay-on-load-toggle"`); `AuthService.setAutoplayOnLoad()` writes optimistically and rolls back on HTTP error. Guarded by `auth.test.ts`, `player.service.spec.ts` (`maybeResumeAutoplay` one-shot/quadrant tests), `player.component.spec.ts` ("loading while paused doesn't call play"), and `e2e/tests/player.spec.ts` ("reload leaves the player paused by default").
 

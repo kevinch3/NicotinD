@@ -27,10 +27,8 @@ export class NowPlayingTransportComponent {
   readonly buffered = input<{ start: number; end: number }[]>([]);
   readonly playing = input(false);
   readonly buffering = input(false);
-  readonly autoplayBlocked = input(false);
 
   readonly seek = output<number>();
-  readonly unblockAutoplay = output<void>();
   readonly playPauseClicked = output<void>();
   readonly nextClicked = output<void>();
   readonly prevClicked = output<void>();

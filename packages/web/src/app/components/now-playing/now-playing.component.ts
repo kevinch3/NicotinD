@@ -652,14 +652,4 @@ export class NowPlayingComponent {
       coverArt: t?.coverArt ?? null,
     });
   }
-
-  unblockAutoplay(): void {
-    const audio = document.querySelector('audio');
-    if (audio) {
-      audio
-        .play()
-        .then(() => this.player.setAutoplayBlocked(false))
-        .catch(() => {});
-    }
-  }
 }
