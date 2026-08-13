@@ -196,15 +196,6 @@ describe('PlayerComponent', () => {
   // ─── PWA screen-lock: play-rejection handling ──────────────────────────────
 
   describe('screen lock — play() rejection handling', () => {
-    it('does not set autoplayBlocked when play is rejected during screen lock', () => {
-      playerService.setAutoplayBlocked(false);
-      setVisibility('hidden');
-
-      component['handlePlayRejection']();
-
-      expect(playerService.autoplayBlocked()).toBe(false);
-    });
-
     it('schedules resume when play is rejected during screen lock', () => {
       playerService.isPlaying.set(true);
       setVisibility('hidden');
@@ -217,13 +208,16 @@ describe('PlayerComponent', () => {
       expect(mockPlay).toHaveBeenCalled();
     });
 
-    it('sets autoplayBlocked when play is rejected while the screen is visible', () => {
-      playerService.setAutoplayBlocked(false);
+    // No dedicated "tap to resume" banner — a rejected play while the screen
+    // is visible just falls back to paused (the normal Play button is a
+    // fresh gesture and will succeed).
+    it('falls back to paused when play is rejected while the screen is visible', () => {
+      playerService.isPlaying.set(true);
       setVisibility('visible');
 
       component['handlePlayRejection']();
 
-      expect(playerService.autoplayBlocked()).toBe(true);
+      expect(playerService.isPlaying()).toBe(false);
     });
 
     it('does not queue a resume when play is rejected while screen is visible', () => {
@@ -328,8 +322,8 @@ describe('PlayerComponent', () => {
 
     // Effect 1 must not call audio.play() on its own — only Effect 5 (which
     // drives isPlaying sync) gets to start playback. Otherwise restoring a
-    // track on page load would autoplay (with the rejected-play banner
-    // overlay), even before the user has pressed anything. The seek position
+    // track on page load would autoplay (and get silently rejected by the
+    // browser), even before the user has pressed anything. The seek position
     // is still restored by onDuration; the audio just stays paused.
     it('loading a track while isPlaying=false sets audio.src but does not call audio.play()', () => {
       playerService.isPlaying.set(false);
@@ -362,15 +356,6 @@ describe('PlayerComponent', () => {
 
       expect(playerService.isPlaying()).toBe(false);
       vi.useRealTimers();
-    });
-
-    it('autoplayBlocked is set to true when play is rejected on a visible screen', () => {
-      playerService.setAutoplayBlocked(false);
-      setVisibility('visible');
-
-      component['handlePlayRejection']();
-
-      expect(playerService.autoplayBlocked()).toBe(true);
     });
 
     it('loadedmetadata event updates the duration signal', () => {
@@ -609,7 +594,7 @@ describe('PlayerComponent', () => {
       ]);
     });
 
-    it('handlePlayRejection clears buffering (banner replaces the spinner)', () => {
+    it('handlePlayRejection clears buffering (falls back to the paused state)', () => {
       playerService.setBuffering(true);
       setVisibility('visible');
       component['handlePlayRejection']();

@@ -68,17 +68,6 @@ describe('NowPlayingTransportComponent', () => {
     expect(playPause.getAttribute('data-buffering')).toBe('true');
   });
 
-  it('shows the autoplay-blocked banner and emits unblockAutoplay on click', () => {
-    const fixture = TestBed.createComponent(NowPlayingTransportComponent);
-    setInputValue(fixture.componentInstance.autoplayBlocked, true);
-    fixture.detectChanges();
-    let called = false;
-    fixture.componentInstance.unblockAutoplay.subscribe(() => (called = true));
-    const banner = fixture.nativeElement.querySelector('button');
-    banner.click();
-    expect(called).toBe(true);
-  });
-
   it('emits nextClicked and prevClicked from the transport row', () => {
     const fixture = TestBed.createComponent(NowPlayingTransportComponent);
     fixture.detectChanges();

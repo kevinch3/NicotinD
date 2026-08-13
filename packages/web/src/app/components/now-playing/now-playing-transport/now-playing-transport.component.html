@@ -6,14 +6,6 @@
   </div>
 </div>
 
-@if (autoplayBlocked()) {
-  <div class="flex justify-center mb-4">
-    <button (click)="unblockAutoplay.emit()" class="px-4 py-2 bg-amber-500/20 border border-amber-500/40 rounded-lg text-amber-300 text-sm">
-      {{ 'nowPlaying.tapToStart' | t }}
-    </button>
-  </div>
-}
-
 <div class="flex items-center justify-center gap-6 mb-6" appTvNavGroup [axis]="'horizontal'">
   @if (!isTv) {
     <button
