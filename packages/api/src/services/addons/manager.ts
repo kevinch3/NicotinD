@@ -3,6 +3,7 @@ import { createLogger, negotiateCapabilities, validateAddonManifest } from '@nic
 import type { PluginRegistry } from '../plugins/registry.js';
 import type { ProviderRegistry } from '../provider-registry.js';
 import { AddonClient } from './client.js';
+import type { AddonCircuitBreaker } from './circuit-breaker.js';
 import { RemoteAddonPlugin } from './remote-addon-plugin.js';
 import {
   deleteAddonRegistration,
@@ -40,7 +41,11 @@ const defaultClientFactory: ClientFactory = (url, token) =>
 export function loadRegisteredAddons(
   registry: PluginRegistry,
   db: Database,
-  opts: { providerRegistry?: ProviderRegistry; clientFactory?: ClientFactory } = {},
+  opts: {
+    providerRegistry?: ProviderRegistry;
+    clientFactory?: ClientFactory;
+    breaker?: AddonCircuitBreaker;
+  } = {},
 ): void {
   const clientFactory = opts.clientFactory ?? defaultClientFactory;
   for (const reg of listAddonRegistrations(db)) {
@@ -63,13 +68,12 @@ export function loadRegisteredAddons(
       continue;
     }
     try {
-      registry.register(
-        new RemoteAddonPlugin(
-          reg.manifest,
-          clientFactory(reg.url, reg.token),
-          opts.providerRegistry,
-        ),
-      );
+      const client = clientFactory(reg.url, reg.token);
+      if (opts.breaker) {
+        const breaker = opts.breaker;
+        client.bindOutcome((outcome) => breaker.record(reg.id, outcome));
+      }
+      registry.register(new RemoteAddonPlugin(reg.manifest, client, opts.providerRegistry));
     } catch (err) {
       log.warn({ id: reg.id, err }, 'skipping stored addon that failed to register');
     }
@@ -82,6 +86,7 @@ export interface RegisterAddonInput {
   addedBy: string;
   providerRegistry?: ProviderRegistry;
   clientFactory?: ClientFactory;
+  breaker?: AddonCircuitBreaker;
 }
 
 /**
@@ -125,6 +130,11 @@ export async function registerAddon(
     addedBy: input.addedBy,
   };
   saveAddonRegistration(db, reg);
+  if (input.breaker) {
+    const breaker = input.breaker;
+    breaker.reset(manifest.id); // fresh slate for a (re-)registered addon
+    client.bindOutcome((outcome) => breaker.record(manifest.id, outcome));
+  }
   registry.register(new RemoteAddonPlugin(manifest, client, input.providerRegistry));
   return reg;
 }
@@ -144,6 +154,7 @@ export async function removeAddon(
   registry: PluginRegistry,
   db: Database,
   id: string,
+  breaker?: AddonCircuitBreaker,
 ): Promise<void> {
   const plugin = registry.get(id);
   if (!plugin) throw new Error(`unknown plugin "${id}"`);
@@ -151,4 +162,5 @@ export async function removeAddon(
   await registry.disable(id);
   await registry.unregister(id);
   deleteAddonRegistration(db, id);
+  breaker?.reset(id);
 }

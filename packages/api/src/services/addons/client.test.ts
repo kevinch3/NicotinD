@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { ADDON_PROTOCOL_VERSION, type AddonManifest } from '@nicotind/core';
+import { AddonCircuitBreaker } from './circuit-breaker.js';
 import {
   AddonClient,
   AddonContractError,
@@ -239,5 +240,49 @@ describe('AddonClient outcome hook (§4 circuit-breaker feed)', () => {
     const { client, outcomes } = withOutcomes(() => new Response('err', { status: 503 }));
     await expect(client.getStatus()).rejects.toBeInstanceOf(AddonRequestError);
     expect(outcomes).toEqual(['transient']);
+  });
+});
+
+describe('AddonClient → circuit-breaker integration', () => {
+  it('trips the breaker after repeated contract violations from real calls', async () => {
+    const trips: string[] = [];
+    const breaker = new AddonCircuitBreaker({ threshold: 3, onTrip: (id) => trips.push(id) });
+    const client = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      // Every status call returns a non-JSON body → contract violation.
+      fetchFn: stubFetch(
+        () => new Response('<html/>', { headers: { 'content-type': 'text/html' } }),
+      ).fetchFn,
+    });
+    client.bindOutcome((o) => breaker.record('slskd', o));
+
+    for (let i = 0; i < 3; i++) {
+      await client.getStatus().catch(() => {});
+    }
+    expect(trips).toEqual(['slskd']);
+  });
+
+  it('a clean call between violations keeps the breaker from tripping', async () => {
+    const trips: string[] = [];
+    const breaker = new AddonCircuitBreaker({ threshold: 2, onTrip: (id) => trips.push(id) });
+    let bad = true;
+    const client = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      fetchFn: stubFetch(() =>
+        bad
+          ? new Response('<html/>', { headers: { 'content-type': 'text/html' } })
+          : new Response('[]', { headers: { 'content-type': 'application/json' } }),
+      ).fetchFn,
+    });
+    client.bindOutcome((o) => breaker.record('slskd', o));
+
+    await client.getStatus().catch(() => {}); // violation (1)
+    bad = false;
+    await client.getStatus(); // ok → reset
+    bad = true;
+    await client.getStatus().catch(() => {}); // violation (1 again)
+    expect(trips).toEqual([]); // never reached 2 consecutive
   });
 });

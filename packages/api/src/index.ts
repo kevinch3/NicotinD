@@ -69,6 +69,7 @@ import { recordAcquireJobTrack } from './services/acquire-playlist.js';
 import { registerBuiltinPlugins } from './services/plugins/builtin.js';
 import { activeRemoteAcquisitionAddon, loadRegisteredAddons } from './services/addons/manager.js';
 import { AddonJobPoller } from './services/addons/job-poller.js';
+import { AddonCircuitBreaker } from './services/addons/circuit-breaker.js';
 import { AcquisitionToggle } from './services/acquisition-toggle.js';
 import {
   requireAcquisitionEnabledMiddleware,
@@ -422,7 +423,16 @@ export function createApp({
   // Remote addons registered by URL (acquisition addon protocol) — re-register
   // from their persisted manifest snapshots after the builtins so id
   // collisions resolve in the builtins' favor.
-  loadRegisteredAddons(plugins, db, { providerRegistry: registry });
+  // Auto-disable an addon that repeatedly violates the protocol contract (§4).
+  // Transient failures (timeout/5xx) never count; only the addon's own fault does.
+  const addonBreakerLog = createLogger('addon-breaker');
+  const addonBreaker = new AddonCircuitBreaker({
+    onTrip: (id, reason) => {
+      addonBreakerLog.warn({ addon: id, reason }, 'auto-disabling addon after contract violations');
+      void plugins.disable(id).catch(() => {});
+    },
+  });
+  loadRegisteredAddons(plugins, db, { providerRegistry: registry, breaker: addonBreaker });
   // Library deletions must stop advertising removed files to the Soulseek
   // network — since phase 3 that crosses the protocol as the addon's
   // library-changed notify (the addon debounces its own shares.rescan).
@@ -679,7 +689,7 @@ export function createApp({
   app.route('/api/users', usersRoutes(registry));
   app.route('/api/playlists', playlistRoutes());
   app.route('/api/radio', radioRoutes());
-  app.route('/api/plugins', pluginRoutes(plugins, db, registry));
+  app.route('/api/plugins', pluginRoutes(plugins, db, registry, addonBreaker));
   // Metadata search sources, constructed once and shared between the legacy
   // per-source lanes and the source-agnostic blended aggregator.
   const archiveSearch = new ArchiveSearchService();

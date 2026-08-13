@@ -129,6 +129,15 @@ export class AddonClient {
     this.onOutcome = opts.onOutcome;
   }
 
+  /**
+   * Wire (or rewire) the per-call outcome handler after construction — used to
+   * bind the circuit-breaker once the addon id is known (register-time the id
+   * comes from the fetched manifest, not the constructor).
+   */
+  bindOutcome(handler: (outcome: AddonCallOutcome) => void): void {
+    this.onOutcome = handler;
+  }
+
   async getManifest(): Promise<AddonManifest> {
     const body = await this.request('GET', '/addon/v1/manifest', { auth: false });
     const parsed = addonManifestSchema.safeParse(body);
