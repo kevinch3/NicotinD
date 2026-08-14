@@ -53,7 +53,13 @@ test.describe('hostile addon rejection', () => {
   });
 
   test('rejects an addon declaring no capability this core can use', async ({ request }) => {
-    const res = await tryRegister(request, { ...baseManifest, capabilities: ['resolve'] });
+    // A metadata capability: core consumes acquisition caps from addons
+    // (search/browse/download/resolve), not metadata ones, so this negotiates empty.
+    const res = await tryRegister(request, {
+      ...baseManifest,
+      kind: 'metadata',
+      capabilities: ['lyrics'],
+    });
     expect(res.status()).toBe(400);
   });
 

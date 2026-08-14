@@ -176,9 +176,16 @@ export function mergeAcquisitionJobs(
   jobs: AcquisitionJobView[],
 ): DownloadItem[] {
   const merged: DownloadItem[] = [...items];
+  // A URL job rendered by the in-process `acquire_jobs` lane shares its id with
+  // this `acquisition_jobs` mirror (same UUID), so skip it here to avoid a double
+  // card. An *addon*-backed URL job has no `acquire_jobs` row — it isn't in this
+  // set, so it renders through the unified lane like a network job (fixing #509
+  // cause 1). Once yt-dlp/spotdl migrate, no URL job has an acquire-lane item and
+  // this set is empty — the old blanket `kind==='url'` skip becomes a no-op.
+  const acquireKeys = new Set(items.map((i) => i.key));
 
   for (const job of jobs) {
-    if (job.kind === 'url') continue;
+    if (job.kind === 'url' && acquireKeys.has(job.id)) continue;
     merged.push({
       key: `job:${job.id}`,
       kind: 'network',

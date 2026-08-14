@@ -203,13 +203,17 @@ export interface AddonAlbumSearchResponse {
 
 /* ————— Jobs ————— */
 
-/** `url` is reserved for resolver-shaped addons (phase 2+ of the migration). */
-export type AddonJobIntent = 'album' | 'tracks' | 'browse-grab';
+/** `url` is the resolver-shaped intent (yt-dlp/spotdl/archive URL acquisition). */
+export type AddonJobIntent = 'album' | 'tracks' | 'browse-grab' | 'url';
 
 export interface AddonJobRequest {
   intent: AddonJobIntent;
   artist?: string;
   album?: string;
+  /** url: the URL to resolve into downloadable audio. */
+  url?: string;
+  /** url: playlist/album/single classification hint (source-specific). */
+  as?: 'playlist' | 'album' | 'single';
   /** Full canonical tracklist — what candidates are scored against. */
   canonicalTracks?: AddonTrackRef[];
   /** Missing-on-disk subset — what actually gets acquired. Defaults to all. */
@@ -226,9 +230,11 @@ export interface AddonJobRequest {
 }
 
 export const addonJobRequestSchema = z.object({
-  intent: z.enum(['album', 'tracks', 'browse-grab']),
+  intent: z.enum(['album', 'tracks', 'browse-grab', 'url']),
   artist: z.string().optional(),
   album: z.string().optional(),
+  url: z.string().optional(),
+  as: z.enum(['playlist', 'album', 'single']).optional(),
   canonicalTracks: z.array(z.object({ title: z.string() })).optional(),
   wantedTracks: z.array(z.object({ title: z.string() })).optional(),
   candidateRef: z.string().optional(),

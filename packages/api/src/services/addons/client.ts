@@ -10,6 +10,7 @@ import {
   type AddonSearchResponse,
   type AddonStatusRow,
 } from '@nicotind/core';
+import type { AddonTransport, AddonCallOutcome } from './transport.js';
 
 /** A failed request to an addon — carries the HTTP status when there was one. */
 export class AddonRequestError extends Error {
@@ -93,12 +94,9 @@ async function readCappedJson(res: Response, maxBytes: number): Promise<unknown>
   }
 }
 
-/**
- * The outcome of one addon call, for the circuit-breaker (§4): `contract-violation`
- * is the addon's fault (counts toward tripping); `transient` is a
- * timeout/5xx/network error (neutral); `ok` is a clean call (resets the streak).
- */
-export type AddonCallOutcome = 'ok' | 'contract-violation' | 'transient';
+// `AddonCallOutcome` moved to ./transport.ts (shared by both transports);
+// re-exported here so existing `from './client.js'` importers keep working.
+export type { AddonCallOutcome } from './transport.js';
 
 export interface AddonClientOptions {
   baseUrl: string;
@@ -114,7 +112,7 @@ export interface AddonClientOptions {
  * (docs/acquisition-addon-protocol.md). Only `manifest` and `health` are
  * unauthenticated; everything else sends the registration's bearer token.
  */
-export class AddonClient {
+export class AddonClient implements AddonTransport {
   readonly baseUrl: string;
   private token: string;
   private fetchFn: typeof fetch;

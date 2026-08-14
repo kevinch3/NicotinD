@@ -68,6 +68,7 @@ import { upsertTrackStatus } from './services/plugins/host-context.js';
 import { recordAcquireJobTrack } from './services/acquire-playlist.js';
 import { registerBuiltinPlugins } from './services/plugins/builtin.js';
 import { activeRemoteAcquisitionAddon, loadRegisteredAddons } from './services/addons/manager.js';
+import { registerBundledAddons } from './services/addons/bundled/registry.js';
 import { AddonJobPoller } from './services/addons/job-poller.js';
 import { AddonCircuitBreaker } from './services/addons/circuit-breaker.js';
 import { AcquisitionToggle } from './services/acquisition-toggle.js';
@@ -433,6 +434,16 @@ export function createApp({
     },
   });
   loadRegisteredAddons(plugins, db, { providerRegistry: registry, breaker: addonBreaker });
+  // First-party bundled addons (archive.org) — registered through the same lane
+  // as external addons, in-process, non-removable, disabled until the admin
+  // enables the consent-gated card. Needs a staging dir to download into.
+  if (stagingDir) {
+    registerBundledAddons(plugins, {
+      stagingDir,
+      providerRegistry: registry,
+      breaker: addonBreaker,
+    });
+  }
   // Library deletions must stop advertising removed files to the Soulseek
   // network — since phase 3 that crosses the protocol as the addon's
   // library-changed notify (the addon debounces its own shares.rescan).
@@ -820,7 +831,7 @@ export function createApp({
     scanIncremental,
     enrichSingles,
   });
-  app.route('/api/acquire', acquireRoutes(acquireWatcher));
+  app.route('/api/acquire', acquireRoutes(acquireWatcher, plugins, db));
 
   // Serve web UI static files
   if (webDistPath) {

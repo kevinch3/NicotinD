@@ -6,6 +6,7 @@ import {
   methodForBackend,
   buildDownloadFeed,
   mergeAcquisitionJobs,
+  type DownloadItem,
 } from './download-groups';
 
 function job(over: Partial<AcquireJob> = {}): AcquireJob {
@@ -224,9 +225,33 @@ describe('mergeAcquisitionJobs', () => {
     expect(merged[0]!.tracks).toEqual(items);
   });
 
-  it('skips url-kind jobs (the AcquireJob lane already renders them)', () => {
-    const merged = mergeAcquisitionJobs([], [acqJob({ kind: 'url', method: 'spotdl' })]);
-    expect(merged).toHaveLength(0);
+  it('renders an addon-backed url job (no acquire-lane twin)', () => {
+    // An addon url job has only an acquisition_jobs row → it renders through the
+    // unified lane like a network job (#509 cause 1).
+    const merged = mergeAcquisitionJobs(
+      [],
+      [acqJob({ id: 'u1', kind: 'url', method: 'bundled-archive' })],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.key).toBe('job:u1');
+  });
+
+  it('skips a url job already rendered by the in-process acquire lane', () => {
+    // The in-process url job shares its id with an acquire-lane card (same UUID)
+    // → skip the mirror to avoid a double card.
+    const acquireItem = {
+      key: 'u2',
+      kind: 'acquire',
+      title: 't',
+      method: 'spotdl',
+      stage: 'downloading',
+    } as DownloadItem;
+    const merged = mergeAcquisitionJobs(
+      [acquireItem],
+      [acqJob({ id: 'u2', kind: 'url', method: 'spotdl' })],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged.every((m) => m.kind !== 'network')).toBe(true); // only the acquire card, no mirror
   });
 
   it('renders finished jobs too — the feed row alone carries a card since phase 3', () => {

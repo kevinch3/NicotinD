@@ -25,6 +25,7 @@ export const CORE_IMPLEMENTED_ADDON_CAPABILITIES: ReadonlySet<string> = new Set(
   'search',
   'browse',
   'download',
+  'resolve',
 ]);
 
 type ClientFactory = (url: string, token: string) => AddonClient;
@@ -159,6 +160,7 @@ export async function removeAddon(
   const plugin = registry.get(id);
   if (!plugin) throw new Error(`unknown plugin "${id}"`);
   if (!plugin.origin?.remote) throw new Error(`plugin "${id}" is not a remote addon`);
+  if (plugin.origin.bundled) throw new Error(`bundled addon "${id}" cannot be removed`);
   await registry.disable(id);
   await registry.unregister(id);
   deleteAddonRegistration(db, id);

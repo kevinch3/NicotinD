@@ -357,8 +357,37 @@ running addon onto the published image + soak (a host/prod step). The npm publis
 - Phase 3: the grep acceptance check; streaming-only base compose boots with no slskd or
   addon anywhere.
 
+## Resolve addons (sub-project C — the `url` seam + bundled addons)
+
+The reserved `url` job intent is now implemented, so URL resolvers (yt-dlp/spotdl/archive) become
+addons too. **First spec shipped**: the `url`/`resolve` protocol seam + **archive.org migrated to a
+bundled built-in addon**.
+
+- **`AddonTransport` interface**: extracted from the concrete HTTP `AddonClient`. Two impls —
+  `HttpAddonTransport` (external addons) and `LocalAddonTransport` (bundled first-party addons,
+  direct in-process calls; `fetchFile` wraps `Bun.file(path)`, no HTTP/byte-copy). `RemoteAddonPlugin`,
+  the poller, the search provider and the manager depend on the interface, so a bundled addon flows
+  through the identical lanes.
+- **Bundled archive addon** (`services/addons/bundled/archive/`): the resolve engine (`engine.ts`) +
+  a `BundledAddon` job model whose `createJob` returns immediately and resolves in the background.
+  Boot-registered by `registerBundledAddons` through the same `registerAddon` path (id
+  `bundled-archive`, non-removable via the `origin.bundled` flag — a `local:` transport target —,
+  disabled until the admin enables the consent-gated card; no `addon_registrations` row). `resolve`
+  was added to `CORE_IMPLEMENTED_ADDON_CAPABILITIES`.
+- **Protocol additions**: `AddonJobIntent += 'url'`; `AddonJobRequest.url?` + `as?`; the tagless
+  `ResolveResult.meta` rides the existing `AddonJob.artist/album` fields. `KIND_BY_INTENT` maps
+  `url → 'url'`; the poller backfills the feed row's artist/album once the background resolve supplies
+  them (else tagless archive files land `unsorted`).
+- **Routing + feed**: `POST /api/acquire` prefers `resolveAddonForUrl` (urlPattern match) and eagerly
+  mirrors a `kind:url` row (in-flight card at submit — #509 cause 2), falling back to in-process
+  resolve plugins. The web `mergeAcquisitionJobs` no longer blanket-skips `kind:url` — it skips only a
+  url job already rendered by the in-process `acquire_jobs` lane, so an addon url job renders through
+  the unified lane (#509 cause 1). The in-process archive plugin was retired.
+- **Follow-ups**: yt-dlp external addon + `nicotind-pot-provider` (C2); spotdl external addon (C3);
+  retiring `acquire_jobs`/`AcquireWatcher` once C2/C3 land.
+
 ## Out of scope
 
-- Migrating yt-dlp/spotdl/archive/spotify onto the protocol (the DTOs allow it later).
+- Migrating yt-dlp/spotdl/spotify onto the protocol as *external* addons (C2/C3 — the DTOs allow it).
 - SSE/webhook progress transport (polling first).
 - Addon marketplace/discovery UX — v1 is "paste a URL + token".

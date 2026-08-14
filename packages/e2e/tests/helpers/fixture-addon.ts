@@ -53,7 +53,18 @@ export interface FixtureAddon {
  * health, bearer-guarded status + config. Runs on an ephemeral port in the
  * Playwright worker; the NicotinD server reaches it over 127.0.0.1.
  */
-export async function startFixtureAddon(): Promise<FixtureAddon> {
+export interface FixtureAddonOptions {
+  /** Manifest id (default `fixture-addon`) — set unique to run alongside another. */
+  id?: string;
+  /** Manifest capabilities (default: the search/browse/download set). */
+  capabilities?: string[];
+  /** URL patterns for a resolve addon (so `resolveAddonForUrl` routes to it). */
+  urlPatterns?: string[];
+}
+
+export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise<FixtureAddon> {
+  const id = opts.id ?? 'fixture-addon';
+  const capabilities = opts.capabilities ?? ['search', 'browse', 'download'];
   const configPushes: unknown[] = [];
   const jobs: FixtureJob[] = [];
   let nextJob = 1;
@@ -79,13 +90,14 @@ export async function startFixtureAddon(): Promise<FixtureAddon> {
 
     if (path === '/addon/v1/manifest') {
       return json(200, {
-        id: 'fixture-addon',
+        id,
         name: 'Fixture Addon',
         description: 'An e2e test acquisition addon.',
         version: '0.1.0',
         protocolVersion: '1.0.0',
         kind: 'acquisition',
-        capabilities: ['search', 'browse', 'download'],
+        capabilities,
+        ...(opts.urlPatterns ? { urlPatterns: opts.urlPatterns } : {}),
         configFields: [{ key: 'username', label: 'Username', type: 'text' }],
         statusFields: [{ key: 'peers', label: 'Peers' }],
         compliance: { disclaimer: 'Fixture addon for tests.', requiresConsent: true },

@@ -80,7 +80,7 @@ test.describe('plugin capability gating', () => {
 
   test('the archive.org plugin ships registered and default-off', async ({ page }) => {
     await page.goto('/settings/plugins');
-    const card = await openPluginCard(page, 'plugins-acquisition', 'archive');
+    const card = await openPluginCard(page, 'plugins-acquisition', 'bundled-archive');
     // Compliance posture: a fresh install enables nothing.
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
   });

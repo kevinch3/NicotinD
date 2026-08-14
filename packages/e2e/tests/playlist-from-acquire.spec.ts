@@ -46,7 +46,7 @@ test.describe('Playlist-from-acquire (web surface)', () => {
     // header, but the card itself only mounts once its kind GROUP (archive is
     // `acquisition`) is expanded — both start collapsed (Task 4).
     await expandGroup(page, 'plugins-acquisition');
-    const card = page.locator('[data-testid="plugin-card"][data-plugin-id="archive"]');
+    const card = page.locator('[data-testid="plugin-card"][data-plugin-id="bundled-archive"]');
     // Wait for the card to render before reading it — `textContent()` does not
     // wait, so on a slow plugin-list load this read raced the mount and returned
     // null, silently skipping the cleanup and leaking an enabled plugin into the
@@ -65,7 +65,7 @@ test.describe('Playlist-from-acquire (web surface)', () => {
     // link-intent card never renders (plugin capability gating).
     await page.goto('/settings/plugins');
     await expandGroup(page, 'plugins-acquisition');
-    const card = page.locator('[data-testid="plugin-card"][data-plugin-id="archive"]');
+    const card = page.locator('[data-testid="plugin-card"][data-plugin-id="bundled-archive"]');
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
     await card.getByTestId('plugin-toggle').click();
     // The archive plugin declares `requiresConsent: true`, so this dialog ALWAYS

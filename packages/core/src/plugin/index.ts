@@ -25,7 +25,7 @@ import type {
 export interface Plugin {
   readonly manifest: PluginManifest;
   /** Present iff this plugin adapts a remote addon (acquisition addon protocol). */
-  readonly origin?: { remote: true; url: string };
+  readonly origin?: { remote: true; url: string; bundled?: boolean };
   /** Called once when the plugin is enabled (or at boot if already enabled). */
   init(ctx: PluginHostContext): Promise<void>;
   /** Requirements satisfied + ready to serve right now (binary present, etc.). */

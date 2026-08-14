@@ -83,12 +83,14 @@ describe('addon manager', () => {
   });
 
   it('rejects an addon that declares no capability this core implements', async () => {
+    // A metadata capability: core consumes acquisition caps (search/browse/
+    // download/resolve) from addons, not metadata ones, so this negotiates empty.
     await expect(
       registerAddon(registry, db, {
         url: 'http://addon:9999',
         token: 'tok',
         addedBy: 'admin',
-        clientFactory: factoryFor(manifest({ capabilities: ['resolve'] })),
+        clientFactory: factoryFor(manifest({ kind: 'metadata', capabilities: ['lyrics'] })),
       }),
     ).rejects.toThrow(/no capability this server can use/);
   });
