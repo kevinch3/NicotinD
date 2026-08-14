@@ -3,7 +3,6 @@ import type { NicotinDConfig } from '@nicotind/core';
 import type { ProviderRegistry } from '../provider-registry.js';
 import type { PluginRegistry } from './registry.js';
 import { SpotdlPlugin } from './spotdl/index.js';
-import { ArchivePlugin } from './archive/index.js';
 import { SpotifyPlugin } from './spotify/index.js';
 import { YtdlpPlugin } from './ytdlp/index.js';
 import { LrclibPlugin } from './lrclib/index.js';
@@ -82,12 +81,8 @@ export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPlu
       { registry: plugins },
     ),
   );
-  plugins.register(
-    new ArchivePlugin({
-      enabled: config.acquire.archive.enabled,
-      preferredFormats: config.acquire.archive.preferredFormats,
-    }),
-  );
+  // archive.org is now the bundled built-in addon (services/addons/bundled/archive),
+  // registered via registerBundledAddons — no longer an in-process plugin.
   // Metadata-only fallback lane — no `resolve`, so it never competes for URLs.
   plugins.register(
     new SpotifyPlugin({
