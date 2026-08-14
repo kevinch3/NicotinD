@@ -16,6 +16,7 @@ const VALID_METHODS: ReadonlySet<string> = new Set([
   'ytdlp',
   'spotdl',
   'archive',
+  'import',
   'unknown',
 ]);
 

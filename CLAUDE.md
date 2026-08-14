@@ -1038,6 +1038,13 @@ Add detail there, not here.
   [docs/download-pipeline.md](docs/download-pipeline.md)
 - **Library quality auditor**: assert (audit) + clean (repair/retag) + prevent (ingest sanitize) for
   DJ-pool/VA-source pollution across DB + disk. → [docs/library-audit.md](docs/library-audit.md)
+- **Import music from folder (admin)**: `LibraryImportService` runs a server-side folder through
+  the same organize → scan → quarantine pipeline as a download (chunk-wise, copy-by-default with
+  opt-in move under a disk-truth deletion rule, staging-copy mandatory because the organizer
+  consumes its inputs); `kind='import'` mirror row in `acquisition_jobs` gives it a Downloads-feed
+  card ("Imported" badge), admin-only and deliberately independent of the acquisition kill-switch
+  (streaming-only installs are the likeliest importers) — UI is the Admin "Import music" card with
+  preview + progress. → [docs/import.md](docs/import.md)
 - **Downloading albums suppressed from listing**: listings exclude albums with active `album_jobs`
   or in-flight transfers via an SQL `WHERE` exclusion. →
   [docs/design-patterns.md](docs/design-patterns.md)

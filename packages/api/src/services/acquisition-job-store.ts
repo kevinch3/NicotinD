@@ -84,7 +84,8 @@ export function jobCanonicalTracklists(
   return out;
 }
 
-export type AcquisitionJobKind = 'album-hunt' | 'auto-acquire' | 'direct' | 'track-search' | 'url';
+export type AcquisitionJobKind =
+  'album-hunt' | 'auto-acquire' | 'direct' | 'track-search' | 'url' | 'import';
 export type AcquisitionJobItemState =
   'downloading' | 'completed' | 'organized' | 'scanned' | 'failed' | 'unavailable';
 
@@ -896,11 +897,29 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
       .all(row.id)) {
       counts.set(r.state, r.c);
     }
-    const expected = [...counts.values()].reduce((a, b) => a + b, 0);
-    const delivered =
+    let expected = [...counts.values()].reduce((a, b) => a + b, 0);
+    let delivered =
       (counts.get('completed') ?? 0) +
       (counts.get('organized') ?? 0) +
       (counts.get('scanned') ?? 0);
+    // Import jobs mirror item-less (20k item rows would bloat every feed
+    // poll); their file tallies live on the authoritative import_jobs row.
+    // Guarded like rollupJobQuality: a missing row degrades to zero progress.
+    if (row.kind === 'import' && expected === 0) {
+      try {
+        const imp = db
+          .query<{ files_total: number; files_done: number }, [string]>(
+            `SELECT files_total, files_done FROM import_jobs WHERE id = ?`,
+          )
+          .get(row.id);
+        if (imp) {
+          expected = imp.files_total;
+          delivered = imp.files_done;
+        }
+      } catch {
+        /* feed rendering must never fail on the fallback */
+      }
+    }
     const itemRows = db
       .query<
         {

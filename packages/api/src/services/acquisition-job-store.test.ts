@@ -392,6 +392,26 @@ describe('reconcileOrganizedItems (#262)', () => {
   });
 });
 
+describe('listJobFeed import fallback', () => {
+  it("reads an item-less import job's progress from import_jobs", () => {
+    const id = createJob(db, { id: 'imp-1', kind: 'import', method: 'import' });
+    db.run(
+      `INSERT INTO import_jobs (id, source_path, state, files_total, files_done, created_at, updated_at)
+       VALUES ('imp-1', '/mnt/imports', 'running', 120, 45, 1, 1)`,
+    );
+    const job = listJobFeed(db).find((j) => j.id === id)!;
+    expect(job.kind).toBe('import');
+    expect(job.progress.expected).toBe(120);
+    expect(job.progress.delivered).toBe(45);
+  });
+
+  it('degrades to zero progress when the import row is missing', () => {
+    const id = createJob(db, { id: 'imp-2', kind: 'import', method: 'import' });
+    const job = listJobFeed(db).find((j) => j.id === id)!;
+    expect(job.progress).toEqual({ expected: 0, delivered: 0, unavailable: 0, failed: 0 });
+  });
+});
+
 describe('listJobFeed sources (#261)', () => {
   it('groups items by peer so one job can render one card with N sources', () => {
     const id = createJob(db, {

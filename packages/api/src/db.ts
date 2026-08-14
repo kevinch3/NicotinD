@@ -451,6 +451,45 @@ export function applySchema(db: Database): void {
   // has already recovered the ones that are the only provenance for a live song.
   addColumnIfMissing(db, 'acquisitions', 'orphaned_at', 'INTEGER');
 
+  // Admin folder-import jobs (docs/import.md). Separate from acquire_jobs —
+  // that table is URL-shaped (url NOT NULL, a state CHECK, and AcquireWatcher's
+  // orphan sweep / retry both assume URL jobs). Each import job also mirrors an
+  // item-less row into acquisition_jobs (kind='import', same id) so the
+  // Downloads feed renders it; import_jobs stays authoritative. No CHECK
+  // constraints (dropping one later needs a table rebuild — see acquire_jobs).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS import_jobs (
+      id               TEXT PRIMARY KEY,
+      source_path      TEXT NOT NULL,
+      remove_originals INTEGER NOT NULL DEFAULT 0,
+      state            TEXT NOT NULL DEFAULT 'queued',
+      stage            TEXT,
+      error            TEXT,
+      files_total      INTEGER NOT NULL DEFAULT 0,
+      files_done       INTEGER NOT NULL DEFAULT 0,
+      bytes_total      INTEGER NOT NULL DEFAULT 0,
+      current_dir      TEXT,
+      summary_json     TEXT,
+      dest_albums_json TEXT,
+      started_by       TEXT,
+      created_at       INTEGER NOT NULL,
+      updated_at       INTEGER NOT NULL
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_import_jobs_state ON import_jobs (state)`);
+  // One row per source directory — the resume unit: a Retry skips 'done' rows,
+  // so a 20k-file import interrupted mid-way re-imports only what's left.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS import_job_dirs (
+      job_id     TEXT NOT NULL REFERENCES import_jobs(id) ON DELETE CASCADE,
+      source_dir TEXT NOT NULL,
+      file_count INTEGER NOT NULL,
+      state      TEXT NOT NULL DEFAULT 'pending',
+      error      TEXT,
+      PRIMARY KEY (job_id, source_dir)
+    )
+  `);
+
   // Watchlist: albums the user asked to auto-acquire. A background poller
   // (WatchlistService) periodically hunts each `watching` row and, when a
   // confidently-complete folder is found, fires the normal album-hunt download
