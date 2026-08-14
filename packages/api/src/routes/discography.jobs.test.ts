@@ -4,7 +4,6 @@ import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import { discographyRoutes } from './discography.js';
-import { AlbumFallbackService } from '@nicotind/slskd-addon';
 import type { DiscographyService } from '../services/discography.service.js';
 import type { AlbumHuntOrchestrator } from '../services/source-hunter.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
@@ -34,15 +33,25 @@ function makeApp(db: Database): Hono<AuthEnv> {
 }
 
 function record(db: Database, albumTitle: string, state: string) {
-  AlbumFallbackService.recordJob(db, {
-    lidarrAlbumId: 1,
-    username: 'p',
-    directory: 'D',
-    artistName: 'Soda Stereo',
-    albumTitle,
-    canonicalTracks: ['x'],
-    alternates: [],
-  });
+  // Seed an album_jobs row directly (was AlbumFallbackService.recordJob before
+  // api dropped its @nicotind/slskd-addon dependency — the addon owns that
+  // service now; this mirrors its INSERT).
+  db.run(
+    `INSERT INTO album_jobs
+       (lidarr_album_id, username, directory, artist_name, album_title, canonical_tracks_json, target_files_json, alternates_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      1,
+      'p',
+      'D',
+      'Soda Stereo',
+      albumTitle,
+      JSON.stringify(['x']),
+      null,
+      JSON.stringify([]),
+      Date.now(),
+    ],
+  );
   db.run('UPDATE album_jobs SET state = ? WHERE album_title = ?', [state, albumTitle]);
 }
 

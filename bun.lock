@@ -54,9 +54,6 @@
         "sharp": "^0.35.3",
         "zod": "^4.4.3",
       },
-      "devDependencies": {
-        "@nicotind/slskd-addon": "workspace:*",
-      },
     },
     "packages/capacitor-apk-update": {
       "name": "@nicotind/capacitor-apk-update",

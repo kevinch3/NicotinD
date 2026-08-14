@@ -814,9 +814,10 @@ Add detail there, not here.
   a remote addon renders as a normal consent-gated extension card with zero addon-specific UI.
   **Shipped (issue #488)**: `packages/slskd-addon` — the hunt engine moved wholesale (api imports
   it back via path-preserving shims until phase 3), `normalizeTitle`/`titlesOverlap` promoted to
-  core `title-match.ts`, the fallback's host touchpoints abstracted as `FallbackHost` (api impl
-  `services/fallback-host.ts` over acquisition-job-store; addon impl over its own
-  `addon_jobs` ledger), the watcher's polling half extracted as `TransferPoller`, and the full
+  core `title-match.ts`, the fallback's host touchpoints abstracted as `FallbackHost` (the addon
+  implements it over its own `addon_jobs` ledger; the transitional api-side impl was dead once the
+  hunt ran addon-side and was removed in the phase-4 decouple), the watcher's polling half extracted
+  as `TransferPoller`, and the full
   protocol engine (search / albums/search with candidateRef / jobs with Idempotency-Key +
   wanted-track scoping / file delivery with ETag / browse / share-rescan notify) + Dockerfile.
   **Shipped (issue #489, the cutover spine)**: with a remote addon enabled, core speaks the

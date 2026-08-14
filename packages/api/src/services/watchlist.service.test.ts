@@ -7,8 +7,24 @@ import { AddonRequestError } from './addons/client.js';
 import { WatchlistService } from './watchlist.service.js';
 import { albumIdFor, artistIdFor } from './library-scanner.js';
 import type { CatalogService } from './catalog-search.service.js';
-import type { FolderCandidate } from '@nicotind/slskd-addon';
 import type { Lidarr } from '@nicotind/lidarr-client';
+
+// Local fixture shape (the addon owns the real FolderCandidate; api no longer
+// depends on @nicotind/slskd-addon — the hunt runs addon-side over the protocol).
+interface FolderCandidate {
+  directory: string;
+  username: string;
+  files: Array<{ filename: string; size: number }>;
+  matchedTracks: number;
+  totalTracks: number;
+  matchPct: number;
+  format: string;
+  estimatedSizeMb: number;
+  isLive: boolean;
+  freeUploadSlots: number;
+  queueLength: number;
+  uploadSpeed: number;
+}
 
 function makeDb(): Database {
   const db = new Database(':memory:');
