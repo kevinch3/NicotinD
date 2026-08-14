@@ -1097,9 +1097,12 @@ Add detail there, not here.
 - **URL acquisition (yt-dlp / spotdl / archive)**: `POST /api/acquire` routes a URL first to a
   `resolve`-capable **addon** via `resolveAddonForUrl` (the bundled **archive** addon —
   `services/addons/bundled/archive/`, an in-process `LocalAddonTransport` over the same
-  `AddonJobPoller`/feed lane as external addons; yt-dlp/spotdl migrate next), eagerly mirroring a
+  `AddonJobPoller`/feed lane as external addons) or an **external** `resolve` addon selected by
+  priority-ordered `urlPatterns` — **yt-dlp is now the external `nicotind-ytdlp-addon`** (own repo +
+  published image, the low-priority `priority:-10` catch-all `^https?://` resolver; core carries no
+  yt-dlp code); spotdl migrates next. Eagerly mirrors a
   `kind:url` `acquisition_jobs` row so the Downloads card shows in-flight at submit (#509 cause 2);
-  it falls back to an in-process `resolve` plugin otherwise. The unified feed no longer blanket-skips
+  it falls back to an in-process `resolve` plugin (still spotdl) otherwise. The unified feed no longer blanket-skips
   `kind:url` (renders an addon url job like a network one, #509 cause 1). Both paths reach the same
   organizer + scan pipeline; entered via a link-intent card in
   the search omnibox (merged with search, no separate URL box); idempotent submit reuses an
@@ -1168,8 +1171,10 @@ Add detail there, not here.
   method/source/time at download time; surfaced per track. →
   [docs/download-pipeline.md](docs/download-pipeline.md)
 - **Plugin architecture (acquisition as opt-in plugins)**: kind-agnostic kernel + `PluginRegistry`;
-  acquisition is default-off; plugins = slskd/yt-dlp/spotdl/archive/spotify/lrclib/discogs; `auth`
-  kind planned for OAuth. Config saves re-init the running plugin live; yt-dlp/spotdl probe/spawn
+  acquisition is default-off; in-process plugins = spotdl/spotify/lrclib/discogs/acoustid (slskd +
+  yt-dlp are now **external addons**, archive a **bundled addon** — all speaking the addon protocol,
+  not the `Plugin` interface); `auth`
+  kind planned for OAuth. Config saves re-init the running plugin live; spotdl probes/spawns
   with an augmented PATH (`acquireEnv`: bundled-ffmpeg dir + brew/pip bins — GUI apps inherit a
   minimal PATH) + an admin-editable `binaryPath` field. UI labelled **Extensions**, one section per kind
   (Acquisition / Metadata / Connectivity) — each a collapsible `SettingsGroupComponent` card

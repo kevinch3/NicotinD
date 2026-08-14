@@ -130,26 +130,8 @@ export const NicotinDConfigSchema = z.object({
 
   acquire: z
     .object({
-      ytdlp: z
-        .object({
-          // On by default — the production image ships the binary. Availability
-          // is still gated on the binary actually being present at runtime.
-          enabled: z.boolean().default(true),
-          binaryPath: z.string().default('yt-dlp'),
-          format: z.enum(['mp3', 'opus', 'bestaudio']).default('bestaudio'),
-          extraArgs: z.array(z.string()).default([]),
-          // Netscape cookies.txt handed to yt-dlp (`--cookies`) when the file
-          // exists — the escape hatch for YouTube's "confirm you're not a bot"
-          // IP flagging. Empty = `<dataDir>/youtube-cookies.txt` (see index.ts).
-          cookiesFile: z.string().default(''),
-        })
-        .default({
-          enabled: true,
-          binaryPath: 'yt-dlp',
-          format: 'bestaudio',
-          extraArgs: [],
-          cookiesFile: '',
-        }),
+      // yt-dlp is no longer in-process config — it's the external
+      // nicotind-ytdlp-addon (registered under Extensions → Add addon).
       spotdl: z
         .object({
           enabled: z.boolean().default(true),
@@ -181,13 +163,6 @@ export const NicotinDConfigSchema = z.object({
         .default({ enabled: true, clientId: '', clientSecret: '' }),
     })
     .default({
-      ytdlp: {
-        enabled: true,
-        binaryPath: 'yt-dlp',
-        format: 'bestaudio',
-        extraArgs: [],
-        cookiesFile: '',
-      },
       spotdl: { enabled: true, binaryPath: 'spotdl', cookiesFile: '' },
       archive: { enabled: true, preferredFormats: ['MP3', 'FLAC'] },
       spotify: { enabled: true, clientId: '', clientSecret: '' },

@@ -383,8 +383,22 @@ bundled built-in addon**.
   resolve plugins. The web `mergeAcquisitionJobs` no longer blanket-skips `kind:url` — it skips only a
   url job already rendered by the in-process `acquire_jobs` lane, so an addon url job renders through
   the unified lane (#509 cause 1). The in-process archive plugin was retired.
-- **Follow-ups**: yt-dlp external addon + `nicotind-pot-provider` (C2); spotdl external addon (C3);
-  retiring `acquire_jobs`/`AcquireWatcher` once C2/C3 land.
+- **yt-dlp external addon (C2 — SHIPPED)**: yt-dlp left core entirely for
+  `kevinch3/nicotind-ytdlp-addon` (own repo + published GHCR image), consuming the published
+  `@nicotind/addon-sdk`. It declares an optional `AddonManifest.priority` (default 0) and the
+  catch-all `urlPatterns: ['^https?://']` at `priority: -10`, so specific addons (archive, a future
+  spotdl) win their URLs and yt-dlp takes everything else. Core added `priority` to the manifest +
+  schema (A1) and made `resolveAddonForUrl` collect all pattern matches and pick the
+  highest-priority (A2). The in-process `YtdlpPlugin` + its `config.acquire.ytdlp` block + the
+  `legacy-seed` yt-dlp path were removed (A3); `docker-compose.yml` gained an opt-in `ytdlp-addon`
+  profile (the addon + a dedicated `ytdlp-pot-provider` companion sharing its netns for the bgutil
+  PO-token flow — the core `bgutil-provider` now serves only in-process spotdl). Registered like the
+  slskd addon (Extensions → Add addon, `http://ytdlp-addon:8586`). The addon carries a documented
+  `intent: 'url' as unknown as …` cast until `@nicotind/addon-sdk@^0.1.1` (with the `url` intent)
+  publishes.
+- **Follow-ups**: spotdl external addon (C3, reuses the pot-provider + priority routing —
+  claims `spotify.com` at default priority so it beats the yt-dlp catch-all); retiring
+  `acquire_jobs`/`AcquireWatcher` once C3 lands.
 
 ## Out of scope
 

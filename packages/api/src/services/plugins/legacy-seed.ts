@@ -6,13 +6,12 @@ const log = createLogger('plugin-migration');
 const MARKER_KEY = 'plugins_migrated';
 
 export interface LegacySeedConfig {
-  ytdlpEnabled: boolean;
   spotdlEnabled: boolean;
 }
 
 /**
  * One-time migration of pre-plugin deployments. Before the plugin model, slskd
- * was active whenever credentials were set and yt-dlp/spotdl whenever enabled in
+ * was active whenever credentials were set and spotdl whenever enabled in
  * config. On the **first** plugin-model boot of an **existing** install (users
  * already registered) we seed those plugins enabled so the upgrade is seamless.
  *
@@ -36,7 +35,6 @@ export function seedLegacyAcquisitionPlugins(
   const existingInstall = userCount > 0;
 
   if (existingInstall) {
-    if (cfg.ytdlpEnabled) registry.seedEnabled('ytdlp', 'system-migration');
     if (cfg.spotdlEnabled) registry.seedEnabled('spotdl', 'system-migration');
     log.info('Migrated pre-plugin install — seeded previously-active acquisition plugins enabled');
   } else {

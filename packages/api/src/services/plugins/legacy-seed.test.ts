@@ -25,12 +25,13 @@ function acqPlugin(id: string): Plugin {
 
 function makeRegistry(db: Database): PluginRegistry {
   const r = new PluginRegistry({ db, dataDir: '/tmp/x' });
-  r.register(acqPlugin('ytdlp'));
+  // yt-dlp is an external addon now; spotdl is the only in-process acquisition
+  // plugin the legacy migration still seeds.
   r.register(acqPlugin('spotdl'));
   return r;
 }
 
-const FULL = { ytdlpEnabled: true, spotdlEnabled: true };
+const FULL = { spotdlEnabled: true };
 
 describe('seedLegacyAcquisitionPlugins', () => {
   let db: Database;
@@ -49,23 +50,17 @@ describe('seedLegacyAcquisitionPlugins', () => {
   it('seeds configured plugins enabled on an existing install (users present)', () => {
     addUser();
     seedLegacyAcquisitionPlugins(registry, db, FULL);
-    expect(registry.isEnabled('ytdlp')).toBe(true);
     expect(registry.isEnabled('spotdl')).toBe(true);
   });
 
   it('leaves a fresh install (no users) default-off', () => {
     seedLegacyAcquisitionPlugins(registry, db, FULL);
-    expect(registry.isEnabled('ytdlp')).toBe(false);
     expect(registry.isEnabled('spotdl')).toBe(false);
   });
 
   it('only seeds the plugins that were actually configured', () => {
     addUser();
-    seedLegacyAcquisitionPlugins(registry, db, {
-      ytdlpEnabled: true,
-      spotdlEnabled: false,
-    });
-    expect(registry.isEnabled('ytdlp')).toBe(true);
+    seedLegacyAcquisitionPlugins(registry, db, { spotdlEnabled: false });
     expect(registry.isEnabled('spotdl')).toBe(false);
   });
 
@@ -75,15 +70,15 @@ describe('seedLegacyAcquisitionPlugins', () => {
     // User registers, server restarts → second call must be a no-op.
     addUser();
     seedLegacyAcquisitionPlugins(registry, db, FULL);
-    expect(registry.isEnabled('ytdlp')).toBe(false);
+    expect(registry.isEnabled('spotdl')).toBe(false);
   });
 
   it('does not override an admin choice on subsequent boots', () => {
     addUser();
     seedLegacyAcquisitionPlugins(registry, db, FULL);
-    // Admin disables ytdlp; a later boot must not re-enable it.
-    db.run(`UPDATE plugins SET enabled = 0 WHERE id = 'ytdlp'`);
+    // Admin disables spotdl; a later boot must not re-enable it.
+    db.run(`UPDATE plugins SET enabled = 0 WHERE id = 'spotdl'`);
     seedLegacyAcquisitionPlugins(registry, db, FULL);
-    expect(registry.isEnabled('ytdlp')).toBe(false);
+    expect(registry.isEnabled('spotdl')).toBe(false);
   });
 });

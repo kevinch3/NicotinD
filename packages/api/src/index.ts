@@ -493,7 +493,6 @@ export function createApp({
   // installs are default-off — an admin opts into acquisition in Settings →
   // Plugins (the compliance posture). Runs exactly once (persistent marker).
   seedLegacyAcquisitionPlugins(plugins, db, {
-    ytdlpEnabled: config.acquire.ytdlp.enabled,
     spotdlEnabled: config.acquire.spotdl.enabled,
   });
   // Default-on metadata plugins: seed enabled idempotently (no-op once a row

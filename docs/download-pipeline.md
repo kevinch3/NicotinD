@@ -170,6 +170,15 @@ Rows predating the organizer have `relative_path IS NULL` and are invisible to d
 
 ## URL acquisition (yt-dlp / spotdl / archive.org)
 
+> **Migration status (2026-08):** **yt-dlp** and **archive.org** are no longer in-process resolve
+> plugins — `POST /api/acquire` now prefers a `resolve`-capable **addon** via `resolveAddonForUrl`
+> (priority-ordered `urlPatterns`), falling back to the in-process plugin lane below only for what
+> remains there. **archive.org** is a *bundled* addon (`services/addons/bundled/archive/`); **yt-dlp**
+> is the *external* `nicotind-ytdlp-addon` (own repo + image, the `priority:-10` `^https?://`
+> catch-all). Only **spotdl** stays an in-process `resolve` plugin. The descriptions in this section
+> that name yt-dlp/archive describe the historical in-process path; the current owners are the addons.
+> See [acquisition-addon-protocol.md](acquisition-addon-protocol.md) "Resolve addons".
+
 `POST /api/acquire` routes a pasted/shared URL to an enabled `resolve`-capable **plugin** via `registry.getEnabledForUrl()` — **no hardcoded backend detection** (the old `detectBackend` enum that special-cased `spotify.com → spotdl, else yt-dlp` is gone). The resolve plugins are **yt-dlp**, **spotdl**, and the pure-JS **archive.org** backend (pasting an `archive.org` item URL routes to the last). Plugins **stage files only**; `AcquireWatcher` (`packages/api/src/services/acquire-watcher.ts`) owns the job records + ingest, running staged files through the **same shared `LibraryOrganizer` + incremental scan** as Soulseek downloads. The route returns **503** when no enabled plugin can handle/serve the URL. → See [plugins.md](plugins.md) for the plugin model.
 
 **Untagged sources carry their metadata out-of-band (archive.org).** Most resolve plugins embed artist/album into the files themselves (yt-dlp via `--parse-metadata`/`--embed-metadata`, spotdl via Spotify tags), so the shared `LibraryOrganizer` files them straight from tags. **archive.org streams raw bytes with no embedded tags** — the item's artist/album live only in the metadata API, not in the file. So a `resolve` may return a **`ResolveResult`** (`{ paths, meta: { artist, album } }`, `@nicotind/core`) instead of a bare `string[]`; `AcquireWatcher.ingest` attaches that `meta` to each `CompletedDownloadFile.jobMeta`, which `LibraryOrganizer.applyJobCanonicalName` already prefers over tag/folder-string guessing (`library-organizer.ts`). Without it, a tagless archive item had no discoverable artist, so the organizer dropped its files in `<dataDir>/unsorted` (outside the music dir, never scanned) **while the job still reported success** — the "download succeeded (toast) but the file is nowhere in the library or on disk" report (macOS/Electron, 2026-07-16). yt-dlp/spotdl still return bare `string[]` and keep tag-based filing unchanged.

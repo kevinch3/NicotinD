@@ -28,7 +28,6 @@ function makeDeps(over: Partial<BuiltinPluginDeps> = {}): BuiltinPluginDeps {
       spotdl: { enabled: false, binaryPath: 'spotdl', cookiesFile: '' },
       archive: { enabled: false, preferredFormats: [] },
       spotify: { enabled: false, clientId: '', clientSecret: '' },
-      ytdlp: { enabled: false, binaryPath: 'yt-dlp', format: '', extraArgs: [], cookiesFile: '' },
     },
   } as unknown as NicotinDConfig;
   return {
@@ -56,7 +55,7 @@ describe('registerBuiltinPlugins', () => {
         .getAll()
         .map((p) => p.manifest.id)
         .sort(),
-    ).toEqual(['acoustid', 'discogs', 'lrclib', 'spotdl', 'spotify', 'ytdlp']);
+    ).toEqual(['acoustid', 'discogs', 'lrclib', 'spotdl', 'spotify']);
   });
 
   // Regression: spotdl was constructed without `{ registry }`, so its live read

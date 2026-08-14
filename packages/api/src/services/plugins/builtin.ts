@@ -4,7 +4,6 @@ import type { ProviderRegistry } from '../provider-registry.js';
 import type { PluginRegistry } from './registry.js';
 import { SpotdlPlugin } from './spotdl/index.js';
 import { SpotifyPlugin } from './spotify/index.js';
-import { YtdlpPlugin } from './ytdlp/index.js';
 import { LrclibPlugin } from './lrclib/index.js';
 import { DiscogsPlugin } from './discogs/index.js';
 import { parseDiscogsRef, type DiscogsRef } from './discogs/matching.js';
@@ -65,10 +64,9 @@ export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPlu
   // flagged server IPs. An explicit config path overrides the convention.
   const defaultCookiesFile = join(dataDir, 'youtube-cookies.txt');
 
-  // Register specific-URL plugins before the catch-all yt-dlp so that
-  // getEnabledForUrl's find() returns the right handler.
-  // (spotdl: spotify.com only; ytdlp: everything else. archive.org is now the
-  // bundled archive addon, resolved ahead of these in-process plugins.)
+  // spotdl is the last in-process URL-resolve plugin (spotify.com only). yt-dlp
+  // (the catch-all) is now the external nicotind-ytdlp-addon, and archive.org the
+  // bundled archive addon — both resolved via resolveAddonForUrl ahead of this.
   plugins.register(
     new SpotdlPlugin(
       {
@@ -92,15 +90,10 @@ export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPlu
       clientSecret: config.acquire.spotify.clientSecret,
     }),
   );
-  plugins.register(
-    new YtdlpPlugin({
-      enabled: config.acquire.ytdlp.enabled,
-      binaryPath: config.acquire.ytdlp.binaryPath,
-      format: config.acquire.ytdlp.format,
-      extraArgs: config.acquire.ytdlp.extraArgs,
-      cookiesFile: config.acquire.ytdlp.cookiesFile || defaultCookiesFile,
-    }),
-  );
+  // yt-dlp is now an external acquisition addon (nicotind-ytdlp-addon) speaking
+  // the addon protocol's `url`/`resolve` seam — core carries no yt-dlp code.
+  // Register it via Extensions → Add addon; it becomes the low-priority catch-all
+  // URL resolver (`urlPatterns: ['^https?://']`, priority -10).
   // Metadata source — lyrics from LRCLIB. Default-on (keyless, benign); seeded
   // enabled on first boot only, so an admin's later disable is preserved.
   plugins.register(new LrclibPlugin());

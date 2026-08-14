@@ -32,15 +32,8 @@ downloads:
 # (SLSKD_ADDON_* envs on that container) — core holds none of it.
 
 acquire:
-  ytdlp:
-    enabled: true
-    binaryPath: yt-dlp
-    format: bestaudio
-    extraArgs: []
-    # Netscape cookies.txt for YouTube's "confirm you're not a bot" gate on
-    # flagged server IPs. Empty = auto-use <dataDir>/youtube-cookies.txt when
-    # that file exists. See docs/download-pipeline.md.
-    cookiesFile: ''
+  # yt-dlp is now the external nicotind-ytdlp-addon (register it under
+  # Extensions → Add addon) — core carries no yt-dlp config.
   spotdl:
     enabled: true
     binaryPath: spotdl
