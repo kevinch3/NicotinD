@@ -198,7 +198,8 @@
           "enum": [
             "album",
             "tracks",
-            "browse-grab"
+            "browse-grab",
+            "url"
           ]
         },
         "artist": {
@@ -206,6 +207,17 @@
         },
         "album": {
           "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "as": {
+          "type": "string",
+          "enum": [
+            "playlist",
+            "album",
+            "single"
+          ]
         },
         "canonicalTracks": {
           "type": "array",
