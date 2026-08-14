@@ -915,7 +915,9 @@ Add detail there, not here.
   still count via the event snapshot; clock bars are percent-of-busiest-hour, since 24 shares of a
   total are unreadable. → [docs/listening-history.md](docs/listening-history.md)
 - **Likes → auto-maintained "Liked Songs" playlist (issue #225)**: a per-user heart (track row
-  `track-like`, track-info `track-info-like`, the `SongMenuService` menu's leading Like/Unlike).
+  `track-like`, track-info `track-info-like`, the `SongMenuService` menu's leading Like/Unlike, and
+  — for quick interaction without a menu detour — the mini-player `player-like` and the Now Playing
+  sheet's `now-playing-like`, both TV-aware; see docs/song-actions.md "On the player itself").
   "Like" is personal so it can't reuse the global `library_songs.starred`; instead a new
   `PlaylistKind` value `liked` (one per user, lazily created on first like) makes **the playlist
   itself the store** — membership = liked, newest-first via decreasing `position`, no new table
