@@ -59,6 +59,7 @@ const KIND_BY_INTENT: Record<string, AcquisitionJobKind> = {
   album: 'album-hunt',
   tracks: 'track-search',
   'browse-grab': 'direct',
+  url: 'url',
 };
 
 /**
@@ -116,6 +117,7 @@ export class AddonJobPoller {
     for (const job of jobs) {
       maxUpdated = Math.max(maxUpdated, job.updatedAt);
       const coreJobId = this.ensureCoreJob(addonId, job);
+      this.updateJobMeta(coreJobId, job);
       this.mirrorItems(addonId, coreJobId, job);
       recomputeStage(db, coreJobId);
       await this.ingestReadyItems(plugin, coreJobId, job);
@@ -140,6 +142,24 @@ export class AddonJobPoller {
     this.kvSet(addonId, `jobmap:${job.id}`, coreJobId);
     log.info({ addonId, addonJob: job.id, coreJobId }, 'mirroring addon job into the feed');
     return coreJobId;
+  }
+
+  /**
+   * Backfill the feed row's artist/album once the addon supplies them. A `url`
+   * resolve job is created (route-side, at submit) with no meta; the addon fills
+   * `artist`/`album` from `ResolveResult.meta` when its background resolve lands.
+   * Without this the tagless-source files (archive.org has no ID3) reach the
+   * organizer with no album/artist and land in `unsorted` — the "downloaded but
+   * vanished" report. `COALESCE` never overwrites a meta the row already carries.
+   */
+  private updateJobMeta(coreJobId: string, job: AddonJob): void {
+    if (job.artist == null && job.album == null) return;
+    this.deps.db.run(
+      `UPDATE acquisition_jobs
+         SET artist_name = COALESCE(artist_name, ?), album_title = COALESCE(album_title, ?), updated_at = ?
+       WHERE id = ? AND (artist_name IS NULL OR album_title IS NULL)`,
+      [job.artist, job.album, Date.now(), coreJobId],
+    );
   }
 
   /**

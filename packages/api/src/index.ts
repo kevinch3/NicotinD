@@ -831,7 +831,7 @@ export function createApp({
     scanIncremental,
     enrichSingles,
   });
-  app.route('/api/acquire', acquireRoutes(acquireWatcher));
+  app.route('/api/acquire', acquireRoutes(acquireWatcher, plugins, db));
 
   // Serve web UI static files
   if (webDistPath) {
