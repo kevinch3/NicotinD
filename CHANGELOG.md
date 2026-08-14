@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.3](https://github.com/kevinch3/NicotinD/compare/v0.3.2...v0.3.3) (2026-08-14)
+
+### Features
+
+* resolve-addons url seam + archive as a bundled built-in addon ([#511](https://github.com/kevinch3/NicotinD/issues/511)) ([3b52ab3](https://github.com/kevinch3/NicotinD/commit/3b52ab3930186ece100ea76306c323f2960ca7f2)), closes [#509](https://github.com/kevinch3/NicotinD/issues/509), references [#486](https://github.com/kevinch3/NicotinD/issues/486) [#509](https://github.com/kevinch3/NicotinD/issues/509) [#509](https://github.com/kevinch3/NicotinD/issues/509)
 ## [0.3.2](https://github.com/kevinch3/NicotinD/compare/v0.3.1...v0.3.2) (2026-08-14)
 
 ### Features
