@@ -707,7 +707,7 @@
   "slskd.limitsHintBefore": "Los límites de velocidad y los slots se configuran en slskd mismo (su ",
   "slskd.limitsHintAfter": "). Las velocidades en vivo se actualizan cada pocos segundos.",
   "slskd.waitingStatus": "Esperando el estado de slskd…",
-  "slskd.unreachableNotice": "El servicio slskd no está accesible. Si corre por separado, inicialo y recargá esta página; en modo embebido arranca automáticamente una vez configuradas las credenciales de Soulseek.",
+  "slskd.unreachableNotice": "El complemento slskd no está accesible. Corre como un servicio aparte: inicialo y verificá que esté registrado en Extensiones, luego recargá esta página.",
   "slskd.notConfigured": "Sin configurar",
   "slskd.disconnected": "Desconectado",
   "slskd.connect": "Conectar",

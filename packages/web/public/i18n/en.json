@@ -707,7 +707,7 @@
   "slskd.limitsHintBefore": "Speed limits and slots are configured in slskd itself (its ",
   "slskd.limitsHintAfter": "). Live speeds update every few seconds.",
   "slskd.waitingStatus": "Waiting for slskd status…",
-  "slskd.unreachableNotice": "The slskd service is not reachable. If it runs separately, start it and reload this page; in embedded mode it starts automatically once Soulseek credentials are configured.",
+  "slskd.unreachableNotice": "The slskd addon is not reachable. It runs as a separate service — start it and make sure it's registered under Extensions, then reload this page.",
   "slskd.notConfigured": "Not configured",
   "slskd.disconnected": "Disconnected",
   "slskd.connect": "Connect",

@@ -55,39 +55,38 @@ docker compose up -d
 ```
 
 Open `http://localhost:8484` — the setup wizard creates the admin account and
-(optionally) Soulseek credentials. No `.env` or manual config needed: the stack
-runs from the published multi-arch image (`ghcr.io/kevinch3/nicotind`,
-amd64 + arm64). Install, upgrade, rollback, image tags, GPU passthrough, and
-the lighter streaming-only profile: **[docs/deployment.md](docs/deployment.md)**.
+picks the music dir. No `.env` or manual config needed: the stack runs from the
+published multi-arch image (`ghcr.io/kevinch3/nicotind`, amd64 + arm64). Soulseek
+acquisition is opt-in — enable the `slskd-addon` profile and register the addon
+under Extensions (see below). Install, upgrade, rollback, image tags, GPU
+passthrough, and the lighter streaming-only profile:
+**[docs/deployment.md](docs/deployment.md)**.
 
 ## How it works
 
 ```
-docker compose up
-┌──────────────────────────────────────────────────────┐
-│  ┌──────────────────────────────────────────────┐    │
-│  │  nicotind  :8484                             │    │
-│  │  (API + web UI + native library + streaming) │    │
-│  └─────────────────────┬────────────────────────┘    │
-│            ┌───────────┘                             │
-│            ▼                                         │
-│  ┌──────────────┐                                    │
-│  │  slskd       │         shared volume              │
-│  │  :5030       │ ─────►  /data/music ◄── Library    │
-│  │  (internal)  │                       Scanner      │
-│  └──────────────┘                                    │
-│                                                      │
-│  Exposed to host: only port 8484                     │
-└──────────────────────────────────────────────────────┘
+docker compose up                    docker compose --profile slskd-addon up
+┌───────────────────────────────────┐   ┌────────────────────────────────────┐
+│  nicotind  :8484  (only exposed)   │   │  slskd addon  :8585   (opt-in)      │
+│  API + web UI + native library     │   │  own repo + image:                 │
+│  scanner + streaming               │◄──┤  ghcr.io/kevinch3/                 │
+│                                    │   │       nicotind-slskd-addon         │
+│  /data/music ◄── Library Scanner   │   │  drives slskd → Soulseek, delivers │
+│                                    │   │  finished files to core over HTTP  │
+└────────────────────────────────────┘   └────────────────────────────────────┘
+       acquisition addon protocol (HTTP) — core carries zero slskd code
 ```
 
 **NicotinD** (the only exposed service) is a Hono API + Angular web UI with the
 native `LibraryScanner`, range-served audio streaming with an on-the-fly
 transcode cache, cover art resolution, remote-playback WebSocket, and windowed
-background enrichment. **slskd** (internal) downloads into the shared music
-volume; NicotinD's `DownloadWatcher` organizes completed transfers and scans
-them into the canonical SQLite library. URL acquisition (yt-dlp / spotdl /
-archive.org) feeds the same pipeline.
+background enrichment. Soulseek acquisition is an **external, Torrentio-style
+addon** — a separately-hosted service ([its own repo](https://github.com/kevinch3/nicotind-slskd-addon))
+that speaks the acquisition addon protocol; core has no slskd code and talks to
+it over HTTP. It downloads via slskd and delivers finished files back to core,
+whose `DownloadWatcher` organizes and scans them into the canonical SQLite
+library. URL acquisition (yt-dlp / spotdl / archive.org) is in-process and feeds
+the same pipeline.
 
 ## Feature highlights
 
@@ -107,7 +106,7 @@ Each line links to the design doc with the full story.
 - **Metadata curation** — Lidarr/MusicBrainz/Discogs candidates, cover picker, genre overrides + radar, artist identity fixes, licence tracking → [docs/metadata-optimize.md](docs/metadata-optimize.md), [docs/music-licence.md](docs/music-licence.md)
 - **Multi-user + roles** — `listener < user < refiner < admin` ladder, per-user settings, presence, audit log → [docs/roles.md](docs/roles.md)
 - **MCP agent access** — external LLM agents curate the library through scoped, revocable tokens → [docs/mcp-agent.md](docs/mcp-agent.md)
-- **Plugin architecture** — acquisition/metadata/connectivity as opt-in plugins (slskd, yt-dlp, spotdl, archive, spotify, LRCLIB, Discogs) → [docs/plugins.md](docs/plugins.md)
+- **Plugin + addon architecture** — in-process acquisition/metadata/connectivity plugins (yt-dlp, spotdl, archive, spotify, LRCLIB, Discogs) plus external, Torrentio-style acquisition **addons** registered by URL (slskd is the first) → [docs/plugins.md](docs/plugins.md), [docs/acquisition-addon-protocol.md](docs/acquisition-addon-protocol.md)
 - **Ops built in** — daily backups, config export/import, update check, Sentry opt-in, i18n (en/es) → [docs/backup-restore.md](docs/backup-restore.md), [docs/config-export.md](docs/config-export.md), [docs/observability.md](docs/observability.md), [docs/i18n.md](docs/i18n.md)
 
 ## 📚 Documentation

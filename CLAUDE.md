@@ -57,9 +57,11 @@ Every task on this project must satisfy all three gates before being considered 
 
 ## What is NicotinD?
 
-NicotinD is a unified music acquisition + streaming platform that orchestrates **slskd** (Soulseek
-P2P client) behind a single API, web UI, and CLI, and **natively scans/streams** the music library
-itself (Navidrome was removed — see Architecture). Downloads from Soulseek land in a shared folder;
+NicotinD is a unified music acquisition + streaming platform. Acquisition sources are external,
+Torrentio-style **addons** (the **slskd** Soulseek addon is the first — it lives in its own repo and
+core carries zero slskd code, talking to it over the acquisition addon protocol); NicotinD
+**natively scans/streams** the music library itself (Navidrome was removed — see Architecture).
+Downloads land in a shared folder;
 the DownloadWatcher organizes and incrementally scans completed transfers into the canonical SQLite
 library that the API streams from. URL-based acquisition (yt-dlp / spotdl) feeds the same pipeline.
 
@@ -160,8 +162,8 @@ NicotinD (Hono API :8484)  — native library scanner + streaming, all in-proces
 | Package                     | Purpose                                                                                                             |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `@nicotind/core`            | Shared types (Zod schemas), logger (pino), crypto utils, error classes                                              |
-| `@nicotind/slskd-client`    | Typed HTTP client wrapping slskd's REST API (`/api/v0/*`)                                                           |
-| `@nicotind/service-manager` | Strategy pattern for managing sub-service lifecycle (child_process or Docker)                                       |
+| `@nicotind/addon-sdk`       | Published npm SDK: acquisition addon protocol v1 DTOs/schemas + hunt-query helpers + logger for building addons     |
+| `@nicotind/service-manager` | Strategy pattern for managing sub-service lifecycle (child_process or Docker) — Lidarr only since the slskd split    |
 | `@nicotind/api`             | Hono API server — routes, JWT auth, unified search, download watcher, native library scanner + streaming, SQLite DB |
 | `@nicotind/web`             | Angular v22 web UI (standalone components, signals, Tailwind)                                                       |
 | `@nicotind/cli`             | Commander.js CLI (Phase 3)                                                                                          |
@@ -763,8 +765,9 @@ Add detail there, not here.
   hardware state into the existing WS `PlaybackStateManager` as a proxy device. No browser Cast SDK,
   no native mobile plugin, opt-in discovery with manual-IP fallback for Docker. →
   [docs/cast-integration.md](docs/cast-integration.md)
-- **Service modes**: `embedded` (spawn slskd as child process) or `external`; the library/streaming
-  stack is in-process. → [docs/design-patterns.md](docs/design-patterns.md)
+- **Service modes**: `embedded` (best-effort download/manage **Lidarr** — slskd left for its addon
+  in phase 3/4, so this no longer spawns it) or `external`; the library/streaming stack is
+  in-process. → [docs/design-patterns.md](docs/design-patterns.md)
 - **Auth flow**: NicotinD issues its own JWTs (30-day sliding sessions, silent refresh on boot);
   share tokens are short-lived, read-only, non-refreshable. The `authGuard` preserves the attempted
   URL as a `returnUrl` param when bouncing to `/login`; login sanitizes it (pure
@@ -1160,8 +1163,7 @@ Add detail there, not here.
   acquisition is default-off; plugins = slskd/yt-dlp/spotdl/archive/spotify/lrclib/discogs; `auth`
   kind planned for OAuth. Config saves re-init the running plugin live; yt-dlp/spotdl probe/spawn
   with an augmented PATH (`acquireEnv`: bundled-ffmpeg dir + brew/pip bins — GUI apps inherit a
-  minimal PATH) + an admin-editable `binaryPath` field; embedded slskd auto-shares the music dir
-  (merge-preserving `slskd.yml` regeneration). UI labelled **Extensions**, one section per kind
+  minimal PATH) + an admin-editable `binaryPath` field. UI labelled **Extensions**, one section per kind
   (Acquisition / Metadata / Connectivity) — each a collapsible `SettingsGroupComponent` card
   (groupIds `plugins-acquisition`/`plugins-metadata`/`plugins-connectivity`), and each plugin itself
   a collapsible `PluginCardComponent` (header row — name, one unified derived status pill

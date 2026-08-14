@@ -133,6 +133,13 @@ removes it). The full protocol + phased migration lives in
 
 ## First-party plugins
 
+> **Superseded (phase 4).** The in-process **slskd** plugin below (and its
+> `services/plugins/slskd/*`, `buildSlskdDefinition`/`slskd.yml` regeneration, `slskd-config.ts`,
+> and `/api/settings/soulseek*`/`shares*` routes) was **removed** when slskd became an external,
+> Torrentio-style addon in its own repo. Core now registers slskd by URL as a remote addon (see the
+> `RemoteAddonPlugin` section above and [acquisition-addon-protocol.md](acquisition-addon-protocol.md)).
+> The slskd notes below are retained for historical context only.
+
 - **slskd** (`services/plugins/slskd/index.ts`) — acquisition plugin (`search·browse·download`,
   consent-gated) wrapping the Soulseek client. It owns a single `SlskdSearchProvider` and
   **(de)registers it in the legacy `ProviderRegistry` on `init`/`dispose`** — so the unified-search

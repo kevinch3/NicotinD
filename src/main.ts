@@ -164,13 +164,8 @@ async function main() {
 }
 
 export interface PersistedSecrets {
-  slskdPassword: string;
   lidarrApiKey: string;
   jwtSecret: string;
-  soulseekUsername?: string;
-  soulseekPassword?: string;
-  soulseekListeningPort?: number;
-  soulseekEnableUPnP?: boolean;
   acoustidApiKey?: string;
 }
 
@@ -186,7 +181,6 @@ export function loadOrCreateSecrets(dataDir: string): PersistedSecrets {
   }
 
   const secrets: PersistedSecrets = {
-    slskdPassword: generateSecret(16),
     lidarrApiKey: generateSecret(24),
     jwtSecret: generateSecret(32),
   };
