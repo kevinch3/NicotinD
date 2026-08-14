@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.0](https://github.com/kevinch3/NicotinD/compare/v0.2.7...v0.3.0) (2026-08-14)
+
+### ⚠ BREAKING CHANGES
+
+* an acquisition (slskd) deployment must run the external
+  slskd-addon image (compose --profile slskd-addon pulls it); the addon is no
+  longer built from the monorepo. Streaming-only deploys are unaffected.
+
+  No behavior change for core: typecheck x4, 2983 tests, lint, check:claude-md,
+  check:ci-parity, both compose configs, and the root docker image all green.
+
+### Features
+
+* phase 4 cutover — delete slskd packages, point compose at the published image ([#507](https://github.com/kevinch3/NicotinD/issues/507)) ([bb42316](https://github.com/kevinch3/NicotinD/commit/bb4231679fea1dc442819818375d13d88eb0e8aa)), references [#491](https://github.com/kevinch3/NicotinD/issues/491) [#486](https://github.com/kevinch3/NicotinD/issues/486)
 ## [0.2.7](https://github.com/kevinch3/NicotinD/compare/v0.2.6...v0.2.7) (2026-08-14)
 ## [0.2.6](https://github.com/kevinch3/NicotinD/compare/v0.2.5...v0.2.6) (2026-08-13)
 ## [0.2.5](https://github.com/kevinch3/NicotinD/compare/v0.2.4...v0.2.5) (2026-08-13)
