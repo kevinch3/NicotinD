@@ -25,10 +25,11 @@ interface SubmitBody {
 }
 
 /**
- * URL acquisition routes. Backend selection is no longer hardcoded — the watcher
- * routes the URL to whichever enabled `resolve`-capable plugin handles it
- * (`registry.getEnabledForUrl`). When none is enabled/available the submit
- * returns 503 so the UI can hide the acquire box.
+ * URL acquisition routes. Backend selection is not hardcoded: the POST first
+ * routes the URL to a `resolve`-capable **addon** (`resolveAddonForUrl` — the
+ * bundled archive addon, later external yt-dlp/spotdl) and eagerly mirrors a
+ * `kind:url` job; failing that it falls back to an in-process `resolve` plugin
+ * via the watcher. When neither handles it the submit returns 503.
  */
 export function acquireRoutes(watcher: AcquireWatcher, registry: PluginRegistry, db: Database) {
   const app = new Hono<AuthEnv>();

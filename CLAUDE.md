@@ -1092,8 +1092,14 @@ Add detail there, not here.
   [docs/observability.md](docs/observability.md)
 - **Untracked downloads**: `relative_path IS NULL` rows are backfilled by a script; listed at
   `GET /api/library/untracked` (admin). → [docs/download-pipeline.md](docs/download-pipeline.md)
-- **URL acquisition (yt-dlp / spotdl / archive)**: `POST /api/acquire` routes a URL to an enabled
-  `resolve`-capable plugin → the same organizer + scan pipeline; entered via a link-intent card in
+- **URL acquisition (yt-dlp / spotdl / archive)**: `POST /api/acquire` routes a URL first to a
+  `resolve`-capable **addon** via `resolveAddonForUrl` (the bundled **archive** addon —
+  `services/addons/bundled/archive/`, an in-process `LocalAddonTransport` over the same
+  `AddonJobPoller`/feed lane as external addons; yt-dlp/spotdl migrate next), eagerly mirroring a
+  `kind:url` `acquisition_jobs` row so the Downloads card shows in-flight at submit (#509 cause 2);
+  it falls back to an in-process `resolve` plugin otherwise. The unified feed no longer blanket-skips
+  `kind:url` (renders an addon url job like a network one, #509 cause 1). Both paths reach the same
+  organizer + scan pipeline; entered via a link-intent card in
   the search omnibox (merged with search, no separate URL box); idempotent submit reuses an
   in-flight job for the same URL, a truncated result (fewer files than the source reported) still
   finishes `done` but carries a warning + Retry instead of reading as an unqualified success,

@@ -67,7 +67,8 @@ export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPlu
 
   // Register specific-URL plugins before the catch-all yt-dlp so that
   // getEnabledForUrl's find() returns the right handler.
-  // (spotdl: spotify.com only; archive: archive.org only; ytdlp: everything else)
+  // (spotdl: spotify.com only; ytdlp: everything else. archive.org is now the
+  // bundled archive addon, resolved ahead of these in-process plugins.)
   plugins.register(
     new SpotdlPlugin(
       {
