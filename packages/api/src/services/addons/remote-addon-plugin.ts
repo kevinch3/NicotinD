@@ -10,7 +10,7 @@ import {
   type PluginManifest,
   type SearchCapability,
 } from '@nicotind/core';
-import type { AddonClient } from './client.js';
+import type { AddonTransport } from './transport.js';
 import type { ProviderRegistry } from '../provider-registry.js';
 import { AddonSearchProvider } from './search-provider.js';
 
@@ -34,7 +34,7 @@ export class RemoteAddonPlugin implements Plugin {
 
   constructor(
     readonly addonManifest: AddonManifest,
-    readonly client: AddonClient,
+    readonly client: AddonTransport,
     private providerRegistry?: ProviderRegistry,
   ) {
     this.manifest = pluginManifestFromAddon(addonManifest);
