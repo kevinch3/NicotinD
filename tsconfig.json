@@ -20,8 +20,6 @@
     { "path": "packages/addon-sdk" },
     { "path": "packages/core" },
     { "path": "packages/service-manager" },
-    { "path": "packages/slskd-client" },
-    { "path": "packages/slskd-addon" },
     { "path": "packages/lidarr-client" },
     { "path": "packages/api" },
     { "path": "packages/cli" },

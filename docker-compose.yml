@@ -148,16 +148,15 @@ services:
       - internal
     restart: unless-stopped
 
-  # The slskd acquisition addon (acquisition addon protocol phase 2 —
-  # docs/acquisition-addon-protocol.md). Opt-in while the cutover soaks:
+  # The slskd acquisition addon (acquisition addon protocol —
+  # docs/acquisition-addon-protocol.md). Opt-in:
   # `docker compose --profile slskd-addon up -d`, then register it in
   # Settings → Extensions → "Add a remote addon" with the URL
-  # http://slskd-addon:8585 and the token you set below. No published image
-  # yet (that lands with the phase-4 repo split) — this builds from source.
+  # http://slskd-addon:8585 and the token you set below. Phase 4 shipped the
+  # repo split, so this pulls the published image from its own repo
+  # (github.com/kevinch3/nicotind-slskd-addon); build from source there.
   slskd-addon:
-    build:
-      context: .
-      dockerfile: packages/slskd-addon/Dockerfile
+    image: ghcr.io/kevinch3/nicotind-slskd-addon:latest
     profiles: ["slskd-addon"]
     environment:
       SLSKD_ADDON_TOKEN: ${SLSKD_ADDON_TOKEN:-change-me}

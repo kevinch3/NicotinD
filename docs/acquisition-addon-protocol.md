@@ -4,9 +4,10 @@
 `packages/slskd-addon` with the moved hunt engine, #488) and the **phase-2 cutover spine**
 (#489 — addon-backed provider, job-feed mirroring + HTTP ingest, unattended acquisition
 via the protocol, opt-in compose service; see the phase-2 section for what remains) are
-**shipped**, and so is phase 3 (core carries zero slskd code); phase 4 (repo split) is
-underway — its reversible in-repo half (4a, the `@nicotind/addon-sdk` extraction) has landed;
-the npm publish + subtree split + prod cutover (4c) remain. Each phase gets its own implementation plan + PR cycle;
+**shipped**, and so is phase 3 (core carries zero slskd code) and phase 4 (repo split): the addon
+lives in `kevinch3/nicotind-slskd-addon` with its own CI + published GHCR image, `@nicotind/addon-sdk`
+is on npm, and `packages/slskd-addon` + `packages/slskd-client` are gone from the monorepo (only the
+deploy-host re-migration onto the published image remains). Each phase gets its own implementation plan + PR cycle;
 this document is the architecture they all answer to.
 
 ## Context & goal
@@ -316,13 +317,17 @@ build + `files`/`exports` for a compiled artifact — the external-repo CI workf
 is folded into the 4c handoff, since it is tied to the actual publish and needs dual src/dist
 `exports` care to not break in-monorepo resolution.
 
-**4c — cut over (outward, needs credentials + prod).** Publish `@nicotind/addon-sdk` +
-`@nicotind/slskd-client` to npm; `git subtree split` of `packages/slskd-addon` (with
-`slskd-client` folded in) → the new `kevinch3/nicotind-slskd-addon` repo (public); its CI
-publishes a Docker image + bun-compiled binary (what embedded/desktop downloads instead of the
-slskd zip). Core compose references the published image and the package is deleted from the
-monorepo; kpc re-migration + soak. These steps are a documented handoff, not run
-autonomously.
+**4c — cut over (SHIPPED, outward).** The external repo `kevinch3/nicotind-slskd-addon` (public)
+was assembled via `git subtree split` (each package keeps its history) as a self-contained Bun
+workspace: `slskd-addon` + `slskd-client` + a transitionally-vendored `addon-sdk`, with its own CI
+that builds and publishes `ghcr.io/kevinch3/nicotind-slskd-addon` on `main`/tags. `@nicotind/addon-sdk`
+is published to **npm** (`@nicotind/addon-sdk@0.1.0`). Core's compose `slskd-addon` service now
+references the **published image** (not a source build), and `packages/slskd-addon` +
+`packages/slskd-client` are **deleted from the monorepo** — core keeps only the npm-published
+`addon-sdk`. Remaining: on the deploy host, make the GHCR package pullable and re-migrate the
+running addon onto the published image + soak (a host/prod step). The npm publish of
+`@nicotind/slskd-client` (so the external repo can drop its vendored SDK/client copies) is optional
+— the external repo works standalone as-is.
 
 ## Risks (ranked)
 
