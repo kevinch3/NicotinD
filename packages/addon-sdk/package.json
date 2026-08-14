@@ -5,6 +5,14 @@
   "main": "src/index.ts",
   "description": "Acquisition addon protocol SDK for NicotinD — protocol v1 DTOs/schemas, capability risk copy, hunt-query helpers, and a logger for building third-party addons.",
   "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kevinch3/NicotinD.git",
+    "directory": "packages/addon-sdk"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./manifest": "./src/manifest.ts",
