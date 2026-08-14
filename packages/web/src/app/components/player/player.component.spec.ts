@@ -9,6 +9,7 @@ import {
 } from './player.component';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
+import { LikeService } from '../../services/like.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService } from '../../services/preserve.service';
@@ -34,6 +35,7 @@ describe('PlayerComponent', () => {
   let fakeAudio: HTMLAudioElement;
   let mockPlay: ReturnType<typeof vi.fn>;
   let mockPause: ReturnType<typeof vi.fn>;
+  let likes: { isLiked: ReturnType<typeof vi.fn>; toggle: ReturnType<typeof vi.fn> };
 
   // Shared signal — lets tests control isActiveDevice without re-providing
   const isActiveDevice = signal(true);
@@ -73,12 +75,14 @@ describe('PlayerComponent', () => {
 
     setVisibility('visible');
     isActiveDevice.set(true);
+    likes = { isLiked: vi.fn().mockReturnValue(false), toggle: vi.fn() };
 
     await TestBed.configureTestingModule({
       imports: [PlayerComponent],
       providers: [
         PlayerService,
         { provide: AuthService, useValue: { token: signal('test-token') } },
+        { provide: LikeService, useValue: likes },
         {
           provide: RemotePlaybackService,
           useValue: {
@@ -400,6 +404,55 @@ describe('PlayerComponent', () => {
       expect(controls.classList.contains('flex-1')).toBe(false);
       // Desktop reclaims flex-1 to host the inline progress bar.
       expect(controls.classList.contains('md:flex-1')).toBe(true);
+    });
+  });
+
+  // ─── Like button — quick interaction on the mini-player itself ────────────
+
+  describe('like button', () => {
+    it('renders the heart for the current track and toggles it via LikeService', () => {
+      playerService.currentTrack.set(TRACK);
+      fixture.detectChanges();
+
+      const heart: HTMLButtonElement = fixture.nativeElement.querySelector(
+        '[data-testid="player-like"]',
+      );
+      expect(heart).toBeTruthy();
+      expect(heart.getAttribute('aria-pressed')).toBe('false');
+
+      heart.click();
+      expect(likes.toggle).toHaveBeenCalledWith(TRACK.id);
+    });
+
+    it('reflects the liked state via aria-pressed', () => {
+      playerService.currentTrack.set(TRACK);
+      likes.isLiked.mockReturnValue(true);
+      fixture.detectChanges();
+
+      const heart: HTMLButtonElement = fixture.nativeElement.querySelector(
+        '[data-testid="player-like"]',
+      );
+      expect(heart.getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('renders nothing when no track is loaded', () => {
+      playerService.currentTrack.set(null);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="player-like"]')).toBeNull();
+    });
+
+    it('does not hijack the swipe-to-open gesture (onBarPointerDown bails on a button target)', () => {
+      playerService.currentTrack.set(TRACK);
+      fixture.detectChanges();
+      const dragStartSpy = vi.spyOn(component['barDrag'], 'start');
+
+      const heart: HTMLButtonElement = fixture.nativeElement.querySelector(
+        '[data-testid="player-like"]',
+      );
+      heart.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+
+      expect(dragStartSpy).not.toHaveBeenCalled();
     });
   });
 

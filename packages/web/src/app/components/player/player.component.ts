@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
+import { LikeService } from '../../services/like.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
@@ -117,6 +118,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
 
   readonly player = inject(PlayerService);
   readonly auth = inject(AuthService);
+  readonly likes = inject(LikeService);
   readonly remote = inject(RemotePlaybackService);
   private ws = inject(PlaybackWsService);
   private zone = inject(NgZone);
@@ -1007,6 +1009,14 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     if (this.visibilityChangeHandler) {
       document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
     }
+  }
+
+  /** Quick-interaction like/unlike on the mini-player bar (bug: the like
+   *  button was only reachable via the ⋯ menu / track row / track-info sheet
+   *  — see docs/song-actions.md). */
+  toggleLike(): void {
+    const id = this.player.currentTrack()?.id;
+    if (id) void this.likes.toggle(id);
   }
 
   handlePlayPause(): void {
