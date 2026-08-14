@@ -27,7 +27,7 @@ export interface ArchiveBundledDeps {
 }
 
 const MANIFEST: AddonManifest = {
-  id: 'bundled:archive',
+  id: 'bundled-archive',
   name: 'archive.org',
   description: 'Download audio from an archive.org item by URL (Internet Archive).',
   version: '1.0.0',

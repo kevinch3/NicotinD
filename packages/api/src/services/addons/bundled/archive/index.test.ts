@@ -44,7 +44,7 @@ async function waitSettled(
 describe('makeArchiveBundledAddon', () => {
   it('declares an archive url pattern + resolve capability', () => {
     const addon = makeArchiveBundledAddon({ stagingDir: staging(), fetchFn, downloadFile });
-    expect(addon.manifest.id).toBe('bundled:archive');
+    expect(addon.manifest.id).toBe('bundled-archive');
     expect(addon.manifest.capabilities).toContain('resolve');
     const re = new RegExp(addon.manifest.urlPatterns![0]!);
     expect(re.test('https://archive.org/details/rec1')).toBe(true);
