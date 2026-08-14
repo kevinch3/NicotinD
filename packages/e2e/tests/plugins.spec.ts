@@ -26,26 +26,31 @@ async function openPluginCard(page: Page, groupId: string, pluginId: string): Pr
 
 /**
  * The compliance-critical contract: acquisition UI only appears when a backing
- * plugin is enabled. yt-dlp is a consent-gated `resolve` plugin, default-off.
+ * plugin is enabled. The link-intent card is gated on `hasResolve()` (any enabled
+ * `resolve`-capable plugin), not on the URL matching a specific one. spotdl is the
+ * last in-process consent-gated `resolve` plugin, default-off (yt-dlp/archive are
+ * addons now), so it's the one that drives this gate.
  */
 test.describe('plugin capability gating', () => {
-  const ytdlpCard = async (page: Page) => openPluginCard(page, 'plugins-acquisition', 'ytdlp');
+  const spotdlCard = async (page: Page) => openPluginCard(page, 'plugins-acquisition', 'spotdl');
 
   test.afterEach(async ({ page }) => {
-    // Leave yt-dlp disabled so the suite stays order-independent.
+    // Leave spotdl disabled so the suite stays order-independent.
     await page.goto('/settings/plugins');
-    const card = await ytdlpCard(page);
+    const card = await spotdlCard(page);
     if ((await card.getByTestId('plugin-toggle').textContent())?.trim() === 'Disable') {
       await card.getByTestId('plugin-toggle').click();
       await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
     }
   });
 
-  test('enabling yt-dlp reveals the link-intent card for a pasted URL; disabling hides it', async ({
+  test('enabling a resolve plugin reveals the link-intent card for a pasted URL; disabling hides it', async ({
     page,
   }) => {
     const pasteUrl = async () => {
-      await page.getByTestId('search-input').fill('https://youtu.be/dQw4w9WgXcQ');
+      await page
+        .getByTestId('search-input')
+        .fill('https://open.spotify.com/album/1DFixLWuPkv3KT3TnV35m3');
       await page.getByTestId('search-submit').click();
     };
 
@@ -55,9 +60,9 @@ test.describe('plugin capability gating', () => {
     await pasteUrl();
     await expect(page.getByTestId('link-intent-card')).toHaveCount(0);
 
-    // Enable yt-dlp (consent-gated) on the admin plugins page.
+    // Enable spotdl (consent-gated) on the admin plugins page.
     await page.goto('/settings/plugins');
-    const card = await ytdlpCard(page);
+    const card = await spotdlCard(page);
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
     await card.getByTestId('plugin-toggle').click();
     await page.getByTestId('confirm-ok').click(); // acknowledge the disclaimer
@@ -70,7 +75,7 @@ test.describe('plugin capability gating', () => {
 
     // Disabling it removes the capability again.
     await page.goto('/settings/plugins');
-    const card2 = await ytdlpCard(page);
+    const card2 = await spotdlCard(page);
     await card2.getByTestId('plugin-toggle').click();
     await expect(card2.getByTestId('plugin-toggle')).toHaveText('Enable');
     await page.goto('/search');
