@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.2](https://github.com/kevinch3/NicotinD/compare/v0.3.1...v0.3.2) (2026-08-14)
+
+### Features
+
+* **web:** add a Like heart to the player for quick interaction ([#510](https://github.com/kevinch3/NicotinD/issues/510)) ([c1d4f87](https://github.com/kevinch3/NicotinD/commit/c1d4f8765f57c980afa5669d58247d8363da3723))
 ## [0.3.1](https://github.com/kevinch3/NicotinD/compare/v0.3.0...v0.3.1) (2026-08-14)
 ## [0.3.0](https://github.com/kevinch3/NicotinD/compare/v0.2.7...v0.3.0) (2026-08-14)
 
