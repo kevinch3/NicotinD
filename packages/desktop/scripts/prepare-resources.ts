@@ -47,7 +47,6 @@ const resourcesDir = path.join(desktopRoot, 'resources');
 const BACKEND_WORKSPACE_PACKAGES = [
   'addon-sdk',
   'core',
-  'slskd-client',
   'service-manager',
   'lidarr-client',
   'api',

@@ -9,7 +9,6 @@
         "@nicotind/core": "workspace:*",
         "@nicotind/lidarr-client": "workspace:*",
         "@nicotind/service-manager": "workspace:*",
-        "@nicotind/slskd-client": "workspace:*",
         "yaml": "^2.9.0",
       },
       "devDependencies": {
@@ -144,24 +143,6 @@
       "dependencies": {
         "@nicotind/core": "workspace:*",
         "yaml": "^2.8.3",
-      },
-    },
-    "packages/slskd-addon": {
-      "name": "@nicotind/slskd-addon",
-      "version": "0.1.0",
-      "dependencies": {
-        "@nicotind/addon-sdk": "workspace:*",
-        "@nicotind/slskd-client": "workspace:*",
-        "hono": "^4.12.31",
-        "yaml": "^2.9.0",
-        "zod": "^4.4.3",
-      },
-    },
-    "packages/slskd-client": {
-      "name": "@nicotind/slskd-client",
-      "version": "0.1.0",
-      "dependencies": {
-        "@nicotind/addon-sdk": "workspace:*",
       },
     },
     "packages/web": {
@@ -929,10 +910,6 @@
     "@nicotind/mobile": ["@nicotind/mobile@workspace:packages/mobile"],
 
     "@nicotind/service-manager": ["@nicotind/service-manager@workspace:packages/service-manager"],
-
-    "@nicotind/slskd-addon": ["@nicotind/slskd-addon@workspace:packages/slskd-addon"],
-
-    "@nicotind/slskd-client": ["@nicotind/slskd-client@workspace:packages/slskd-client"],
 
     "@nicotind/web": ["@nicotind/web@workspace:packages/web"],
 

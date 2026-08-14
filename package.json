@@ -58,7 +58,6 @@
     "@nicotind/core": "workspace:*",
     "@nicotind/lidarr-client": "workspace:*",
     "@nicotind/service-manager": "workspace:*",
-    "@nicotind/slskd-client": "workspace:*",
     "yaml": "^2.9.0"
   },
   "devDependencies": {

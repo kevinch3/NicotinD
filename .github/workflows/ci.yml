@@ -92,7 +92,7 @@ jobs:
         run: bun run check:route-auth
 
       - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
-        run: bun test packages/api/src packages/slskd-client/src packages/slskd-addon/src packages/lidarr-client/src packages/core/src packages/addon-sdk/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
+        run: bun test packages/api/src packages/lidarr-client/src packages/core/src packages/addon-sdk/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
 
       - name: Test (e2e playground helpers)
         run: bun test packages/e2e/playground
@@ -315,19 +315,9 @@ jobs:
           else
             echo "analysis=false" >> "$GITHUB_OUTPUT"
           fi
-          # The slskd-addon image builds off the whole workspace (root lockfile +
-          # every member manifest), so a dep-graph change can break it too — not
-          # just an edit under packages/slskd-addon/. CI never built this image
-          # before, which is how a "scoped" manifest copy that couldn't resolve
-          # the workspace shipped unbuilt.
-          if echo "$files" | grep -qE '^(packages/slskd-addon/|bun\.lock|package\.json|\.github/workflows/(ci|deploy)\.yml)$'; then
-            echo "addon=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "addon=false" >> "$GITHUB_OUTPUT"
-          fi
 
       - uses: docker/setup-buildx-action@v3
-        if: steps.f.outputs.build == 'true' || steps.f.outputs.analysis == 'true' || steps.f.outputs.addon == 'true'
+        if: steps.f.outputs.build == 'true' || steps.f.outputs.analysis == 'true'
 
       - name: Build image (amd64, no push)
         if: steps.f.outputs.build == 'true'
@@ -351,19 +341,6 @@ jobs:
           push: false
           cache-from: type=gha,scope=analysis-linux-amd64
           cache-to: type=gha,mode=max,scope=analysis-linux-amd64
-
-      # The slskd-addon image (phase 3 deployment path). Build context is the
-      # repo root — the addon Dockerfile installs from the root workspace.
-      - name: Build slskd-addon image (amd64, no push)
-        if: steps.f.outputs.addon == 'true'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: packages/slskd-addon/Dockerfile
-          platforms: linux/amd64
-          push: false
-          cache-from: type=gha,scope=slskd-addon-linux-amd64
-          cache-to: type=gha,mode=max,scope=slskd-addon-linux-amd64
 
   release:
     runs-on: ubuntu-latest
