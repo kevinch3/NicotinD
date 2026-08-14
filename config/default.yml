@@ -26,17 +26,10 @@ downloads:
   # unattended. See docs/auto-acquisition-plan.md.
   autoAcquireEnabled: false
   autoAcquireIntervalMs: 3600000 # sweep Lidarr's missing list hourly
-  autoAcquireMaxPerSweep: 3 # cap so a large missing list never floods slskd
+  autoAcquireMaxPerSweep: 3 # cap so a large missing list never floods the addon
 
-soulseek:
-  username: ''
-  password: ''
-
-# Internal service settings (auto-generated passwords if not set)
-slskd:
-  url: http://localhost:5030
-  port: 5030
-  username: nicotind
+# Soulseek/slskd config lives on the external slskd addon since phase 4
+# (SLSKD_ADDON_* envs on that container) — core holds none of it.
 
 acquire:
   ytdlp:

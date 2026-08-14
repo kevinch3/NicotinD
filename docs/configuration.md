@@ -9,7 +9,7 @@ of truth; this page summarizes the ones most installs touch.
 | `NICOTIND_PORT`                        | `8484`                  | API server port                                                |
 | `NICOTIND_DATA_DIR`                    | `~/.nicotind`           | Data directory (SQLite DB, secrets, artist-overrides)          |
 | `NICOTIND_MUSIC_DIR`                   | `~/Music`               | Shared music folder                                            |
-| `NICOTIND_MODE`                        | `embedded`              | `embedded` (manage sub-services) or `external` (connect to existing) |
+| `NICOTIND_MODE`                        | `embedded`              | `embedded` (best-effort manage Lidarr; slskd is its own addon) or `external` (connect to existing) |
 | `NICOTIND_ACQUISITION`                 | `on`                    | Deployment-wide acquisition kill-switch (`off` = streaming-only install) |
 | `NICOTIND_METADATA_FIX_ENABLED`        | `true`                  | Auto-repair missing MP3 tags after download                    |
 | `NICOTIND_METADATA_FIX_MIN_SCORE`      | `85`                    | Minimum MusicBrainz match score (0-100) for auto-fill          |

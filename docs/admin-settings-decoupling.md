@@ -38,12 +38,11 @@ configuring an extension). This refactor draws clean lines.
   verbatim onto `SlskdSettingsComponent`, now embedded inline in the slskd `PluginCardComponent`'s
   collapsible body rather than behind its own route (Task 4, settings-cards unification).
 
-**Backend storage is unchanged.** slskd credentials still live in `secrets.json` behind the
-admin-gated `/api/settings/soulseek*` and `/api/settings/shares*` routes (wired to embedded-mode via
-`slskd-config.ts`). We deliberately relocated the *UI* only — migrating creds into the `plugins`
-table's `config_json` would touch the embedded-mode credential wiring and need a data migration, for
-no user-visible gain. If that migration is ever wanted, it's the "purer ownership" alternative noted
-in the plan.
+> **Superseded (phase 4).** The in-process slskd plugin described below was removed when slskd
+> became an external addon — the `/api/settings/soulseek*` / `/api/settings/shares*` routes and
+> `slskd-config.ts` no longer exist in this repo. slskd credentials now live on the addon container
+> (`SLSKD_ADDON_*`), not in core `secrets.json`. The historical notes below are kept for context.
+> See [acquisition-addon-protocol.md](acquisition-addon-protocol.md).
 
 ## slskd status panel (Nicotine+-inspired)
 

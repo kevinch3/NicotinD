@@ -14,16 +14,19 @@ docker compose up -d
 # open http://localhost:8484 → setup wizard
 ```
 
-The clone is still needed because the compose stack bind-mounts one in-repo
-file (`scripts/slskd-entrypoint.sh`). **Nothing is built locally** — compose
-pulls the published server image and the published analysis sidecar image.
-Inlining the slskd entrypoint (making the install a pure "download 2 files"
-flow, no clone) is the remaining gap — see
+The clone is still needed because the (opt-in) `slskd-addon` profile bind-mounts
+one in-repo file (`scripts/slskd-entrypoint.sh`). **Nothing is built locally** —
+compose pulls the published server image, the published analysis sidecar image,
+and (for acquisition) the published `ghcr.io/kevinch3/nicotind-slskd-addon`
+image. Inlining the slskd entrypoint (making the install a pure "download N
+files" flow, no clone) is the remaining gap — see
 [oss-best-practices.md](oss-best-practices.md).
 
-The Docker Compose stack wires NicotinD and the bundled slskd container to the
-same web credentials by default (`slskd` / `slskd`). If you change those, set
-`SLSKD_USERNAME` and `SLSKD_PASSWORD` for both services.
+Soulseek acquisition is opt-in (`docker compose --profile slskd-addon up -d`).
+The `slskd` container and the `slskd-addon` service both live behind that
+profile; the addon connects to slskd and holds its credentials via `SLSKD_ADDON_*`
+env vars on the addon container (`SLSKD_ADDON_SLSKD_USERNAME`/`_PASSWORD` for the
+slskd web API, `SLSKD_ADDON_TOKEN` for core→addon auth). Core carries none of it.
 
 ### Volumes
 

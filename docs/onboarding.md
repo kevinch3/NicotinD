@@ -23,15 +23,16 @@ The setup wizard at `/setup` runs when no users exist in the database. It guides
 | 1 | Admin Account | Admin username + password |
 | 2 | Library | Music directory (auto-defaults to `~/Music`) |
 | 3 | Quality | Lossless → Opus conversion toggle + bitrate (128/192/256 kbps) |
-| 4 | Soulseek | Optional Soulseek credentials |
 | — | Advanced Services (collapsed) | Lidarr URL + API key for metadata enrichment |
+
+The wizard ends at Quality since phase 3 — Soulseek is configured on the slskd
+addon's Extensions card (SLSKD_ADDON_* on the addon container), not here.
 
 **Backend endpoint:** `POST /api/setup/complete`
 
 ```json
 {
   "admin": { "username": "...", "password": "..." },
-  "soulseek": { "username": "...", "password": "..." },
   "musicDir": "/mnt/music",
   "transcodeLossless": { "enabled": true, "bitrate": 192 },
   "lidarr": { "url": "http://localhost:8686", "apiKey": "..." }
