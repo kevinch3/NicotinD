@@ -159,10 +159,12 @@ removes it). The full protocol + phased migration lives in
   `download` capability) on `/api/discography/*` + `/api/watchlist/*`, and the watchlist poller
   skips its sweep via the injected `isAcquisitionEnabled` predicate. Generalizing the engine onto
   capability interfaces is deferred (the seam exists; the payoff is a second searchable source).
-- **spotdl** (`services/plugins/spotdl/index.ts`) — URL-acquisition plugin (`resolve`,
-  consent-gated). **yt-dlp left core** for the external `nicotind-ytdlp-addon`; the description below
-  is the historical two-plugin shape (spotdl is the last in-process resolve plugin). It declares
-  `canHandle(url)` = `*.spotify.com`, `requirements.binaries`, and a config schema. Their
+- **~~yt-dlp / spotdl~~ (both left core)** — the two URL-acquisition plugins are now **external
+  addons** (`nicotind-ytdlp-addon` = the `^https?://` catch-all; `nicotind-spotdl-addon` =
+  `spotify.com`), registered under Extensions → Add addon. There is **no in-process resolve plugin
+  left**; archive.org is a bundled addon. The description below is the historical in-process shape,
+  kept for the shared-process-runner design it documents. The old plugins declared
+  `canHandle(url)`, `requirements.binaries`, and a config schema. Their
   `resolve(url, jobId)` stages files via the **shared process runner** (`services/plugins/acquire/
 process.ts` — `runAcquireProcess` + progress parsing + audio collection; the injectable `spawn`
   keeps it testable without process-global mocks) and **returns the staged absolute paths**. The

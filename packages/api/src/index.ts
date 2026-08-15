@@ -76,7 +76,6 @@ import {
   requireAcquisitionEnabledMiddleware,
   requireAcquisitionMiddleware,
 } from './services/plugins/gate.js';
-import { seedLegacyAcquisitionPlugins } from './services/plugins/legacy-seed.js';
 import { AcquireWatcher } from './services/acquire-watcher.js';
 import { DiscographyService } from './services/discography.service.js';
 import { CatalogService } from './services/catalog-search.service.js';
@@ -488,13 +487,9 @@ export function createApp({
   // re-checked inside on every call, so a live plugin toggle takes effect
   // without a restart.
   artistImagePluginRef.lookup = makePluginArtistImageLookup({ db, lidarr, plugins });
-  // One-time migration: seed the previously-implicit acquisition plugins enabled
-  // ONLY on an existing (pre-plugin) install, so upgrades stay seamless. Fresh
-  // installs are default-off — an admin opts into acquisition in Settings →
-  // Plugins (the compliance posture). Runs exactly once (persistent marker).
-  seedLegacyAcquisitionPlugins(plugins, db, {
-    spotdlEnabled: config.acquire.spotdl.enabled,
-  });
+  // (The pre-plugin acquisition migration was retired with the last in-process
+  // acquisition plugin — spotdl/yt-dlp are external addons now, so there is
+  // nothing left to seed enabled on an upgrade.)
   // Default-on metadata plugins: seed enabled idempotently (no-op once a row
   // exists), then initEnabled() activates them on this same boot.
   plugins.seedEnabled('lrclib', 'system');

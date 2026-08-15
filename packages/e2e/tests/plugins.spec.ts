@@ -26,43 +26,43 @@ async function openPluginCard(page: Page, groupId: string, pluginId: string): Pr
 
 /**
  * The compliance-critical contract: acquisition UI only appears when a backing
- * plugin is enabled. The link-intent card is gated on `hasResolve()` (any enabled
- * `resolve`-capable plugin), not on the URL matching a specific one. spotdl is the
- * last in-process consent-gated `resolve` plugin, default-off (yt-dlp/archive are
- * addons now), so it's the one that drives this gate.
+ * resolve source is enabled. The link-intent card is gated on `hasResolve()` (any
+ * enabled `resolve`-capable plugin/addon), not on the URL matching a specific one.
+ * Every URL resolver is an addon now (yt-dlp/spotdl external, archive bundled), so
+ * the bundled-archive addon — consent-gated, default-off, always present — is the
+ * one that drives this gate in the e2e environment (no external addon registered).
  */
 test.describe('plugin capability gating', () => {
-  const spotdlCard = async (page: Page) => openPluginCard(page, 'plugins-acquisition', 'spotdl');
+  const archiveCard = async (page: Page) =>
+    openPluginCard(page, 'plugins-acquisition', 'bundled-archive');
 
   test.afterEach(async ({ page }) => {
-    // Leave spotdl disabled so the suite stays order-independent.
+    // Leave the archive addon disabled so the suite stays order-independent.
     await page.goto('/settings/plugins');
-    const card = await spotdlCard(page);
+    const card = await archiveCard(page);
     if ((await card.getByTestId('plugin-toggle').textContent())?.trim() === 'Disable') {
       await card.getByTestId('plugin-toggle').click();
       await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
     }
   });
 
-  test('enabling a resolve plugin reveals the link-intent card for a pasted URL; disabling hides it', async ({
+  test('enabling a resolve source reveals the link-intent card for a pasted URL; disabling hides it', async ({
     page,
   }) => {
     const pasteUrl = async () => {
-      await page
-        .getByTestId('search-input')
-        .fill('https://open.spotify.com/album/1DFixLWuPkv3KT3TnV35m3');
+      await page.getByTestId('search-input').fill('https://archive.org/details/some-item');
       await page.getByTestId('search-submit').click();
     };
 
-    // Baseline: no resolve plugin -> pasting a URL just searches, no card.
+    // Baseline: no resolve source -> pasting a URL just searches, no card.
     await page.goto('/search');
     await expect(page.getByTestId('search-input')).toBeVisible();
     await pasteUrl();
     await expect(page.getByTestId('link-intent-card')).toHaveCount(0);
 
-    // Enable spotdl (consent-gated) on the admin plugins page.
+    // Enable the bundled archive addon (consent-gated) on the admin plugins page.
     await page.goto('/settings/plugins');
-    const card = await spotdlCard(page);
+    const card = await archiveCard(page);
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
     await card.getByTestId('plugin-toggle').click();
     await page.getByTestId('confirm-ok').click(); // acknowledge the disclaimer
@@ -75,7 +75,7 @@ test.describe('plugin capability gating', () => {
 
     // Disabling it removes the capability again.
     await page.goto('/settings/plugins');
-    const card2 = await spotdlCard(page);
+    const card2 = await archiveCard(page);
     await card2.getByTestId('plugin-toggle').click();
     await expect(card2.getByTestId('plugin-toggle')).toHaveText('Enable');
     await page.goto('/search');

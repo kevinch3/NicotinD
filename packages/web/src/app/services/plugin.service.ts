@@ -88,12 +88,16 @@ export class PluginService {
   /** The Spotify metadata plugin is enabled (gates the Spotify fallback lane). */
   readonly hasSpotify = computed(() => this.plugins().some((p) => p.id === 'spotify' && p.enabled));
   /**
-   * spotDL is enabled **and** available (binary present) — gates whether a
-   * Spotify match downloads in one click. When false, the lane shows a manual
-   * note instead (the download path is spotDL).
+   * A spotDL resolver is enabled **and** available — gates whether a Spotify
+   * match downloads in one click. When false, the lane shows a manual note
+   * instead (the download path is spotDL). spotDL is the external
+   * `spotdl-addon` now (was the in-process `spotdl` plugin pre phase-4); accept
+   * either id so the one-click path lights up when the addon is registered.
    */
   readonly hasSpotdl = computed(() =>
-    this.plugins().some((p) => p.id === 'spotdl' && p.enabled && p.available),
+    this.plugins().some(
+      (p) => (p.id === 'spotdl' || p.id === 'spotdl-addon') && p.enabled && p.available,
+    ),
   );
 
   async refresh(): Promise<void> {

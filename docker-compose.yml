@@ -214,6 +214,39 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # The spotDL acquisition addon (resolves Spotify track/album/playlist URLs via
+  # spotDL). Opt-in: `docker compose --profile spotdl-addon up -d`, then register
+  # it in Settings → Extensions → "Add a remote addon" with the URL
+  # http://spotdl-addon:8587 and the token you set below. Core carries no spotdl
+  # code — it claims spotify.com URLs at the default priority, beating the yt-dlp
+  # catch-all. Own repo + published image: github.com/kevinch3/nicotind-spotdl-addon.
+  spotdl-addon:
+    image: ghcr.io/kevinch3/nicotind-spotdl-addon:latest
+    profiles: ["spotdl-addon"]
+    environment:
+      SPOTDL_ADDON_TOKEN: ${SPOTDL_ADDON_TOKEN:-change-me}
+      # Optional — raise spotDL's Spotify rate limits over its shared client.
+      SPOTDL_ADDON_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTDL_ADDON_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+    volumes:
+      - spotdl-addon-data:/data
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # PO-token provider dedicated to the spotdl-addon (spotDL drives yt-dlp under
+  # the hood; shares the addon's netns so the baked bgutil plugin reaches it at
+  # 127.0.0.1:4416).
+  spotdl-pot-provider:
+    image: ghcr.io/kevinch3/nicotind-pot-provider:${NICOTIND_IMAGE_TAG:-release}
+    profiles: ["spotdl-addon"]
+    runtime: runc
+    network_mode: "service:spotdl-addon"
+    depends_on:
+      spotdl-addon:
+        condition: service_started
+    restart: unless-stopped
+
   lidarr:
     # Pinned (was :latest): a silent Lidarr major bump can break the API
     # client. Bump deliberately after checking the Lidarr changelog.
@@ -252,4 +285,5 @@ volumes:
   slskd-data:
   slskd-addon-data:
   ytdlp-addon-data:
+  spotdl-addon-data:
   lidarr-config:
