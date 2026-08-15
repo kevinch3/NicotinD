@@ -409,6 +409,16 @@ bundled built-in addon**.
   dedicated `spotdl-pot-provider` companion). Same documented `intent: 'url' as unknown as …` cast
   pending addon-sdk 0.1.1. **With C1/C2/C3 shipped, every URL/network acquisition source is now an
   addon — core carries zero source code.**
+- **Orphaned-job reconcile (issue #515)**: the yt-dlp/spotdl addons keep jobs **in-memory**, so an
+  addon restart mid-download drops them — and core's cursor-based poll only *updates* jobs the addon
+  still lists, so a dropped job sat "downloading" until the 24h valve (real prod symptom right after
+  the v0.3.5 cutover deploy: ghost cards + a raw `addon:<id>:<uuid>` title + an "Unknown source"
+  chip). `AddonJobPoller.reconcileOrphanedJobs` now re-checks stale (`>ORPHAN_STALE_MS`, 5 min) active
+  addon jobs via `getJob` and **fails the ones the addon 404s** (a slow-but-live job the addon still
+  returns is left alone). Web-side, `methodForBackend` maps the `-addon`/`bundled-archive` ids to the
+  base method (fixes the chip) and the feed shows a friendly `"<Source> download"` label instead of
+  the opaque `addon:` key until metadata resolves. Follow-up: persist the addons' job store (like
+  slskd) so a restart reports failed rather than forgetting.
 - **Follow-ups**: retiring `acquire_jobs`/`AcquireWatcher` (the last in-process resolve lane is gone,
   so the URL path can move fully onto the `AddonJobPoller` feed); publishing `@nicotind/addon-sdk@0.1.1`
   with the `url` intent to drop the cast in all three external addons.

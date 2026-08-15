@@ -5,6 +5,7 @@ import type {
   PipelineStage,
   TrackStatus,
 } from '@nicotind/core';
+import { methodBadge } from './acquisition-method';
 
 // ─── Unified download feed ──────────────────────────────────────────────
 //
@@ -84,9 +85,13 @@ export interface DownloadItem {
   canRemove: boolean;
 }
 
-/** Map an acquisition-plugin backend id to an AcquisitionMethod. */
+/** Map an acquisition-plugin/addon backend id to an AcquisitionMethod. Accepts
+ *  both the legacy in-process ids (`ytdlp`/`spotdl`/`archive`) and the addon ids
+ *  they became (`ytdlp-addon`/`spotdl-addon`/`bundled-archive`) — otherwise an
+ *  addon-backed URL job renders as "Unknown source". */
 export function methodForBackend(backend: string): AcquisitionMethod {
-  return backend === 'ytdlp' || backend === 'spotdl' || backend === 'archive' ? backend : 'unknown';
+  const base = backend === 'bundled-archive' ? 'archive' : backend.replace(/-addon$/, '');
+  return base === 'ytdlp' || base === 'spotdl' || base === 'archive' ? base : 'unknown';
 }
 
 /** Acquire job `state` → stage, preferring the job's own fine-grained `stage`. */
@@ -186,12 +191,23 @@ export function mergeAcquisitionJobs(
 
   for (const job of jobs) {
     if (job.kind === 'url' && acquireKeys.has(job.id)) continue;
+    const method = methodForBackend(job.method ?? '');
+    // sourceRef for an addon URL job is the opaque `addon:<id>:<uuid>` key — never
+    // a display title. Until the addon resolves real artist/album metadata, show a
+    // friendly source label ("Spotify download") instead of leaking that key.
+    const rawTitle = job.albumTitle ?? job.artistName ?? job.sourceRef ?? job.id;
+    const title =
+      job.albumTitle || job.artistName
+        ? rawTitle
+        : rawTitle.startsWith('addon:')
+          ? `${methodBadge(method).label} download`
+          : rawTitle;
     merged.push({
       key: `job:${job.id}`,
       kind: 'network',
-      title: job.albumTitle ?? job.artistName ?? job.sourceRef ?? job.id,
+      title,
       subtitle: job.artistName ?? undefined,
-      method: (job.method as AcquisitionMethod) ?? 'unknown',
+      method,
       stage: job.stage,
       albumId: job.albumId ?? undefined,
       jobId: job.id,

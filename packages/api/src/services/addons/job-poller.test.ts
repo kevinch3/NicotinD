@@ -6,9 +6,9 @@ import { join } from 'node:path';
 import { ADDON_PROTOCOL_VERSION, type AddonJob, type AddonManifest } from '@nicotind/core';
 import { applySchema } from '../../db.js';
 import { PluginRegistry } from '../plugins/registry.js';
-import type { AddonClient } from './client.js';
+import { AddonRequestError, type AddonClient } from './client.js';
 import { RemoteAddonPlugin } from './remote-addon-plugin.js';
-import { AddonJobPoller, addonTransferKey } from './job-poller.js';
+import { AddonJobPoller, addonTransferKey, parseAddonJobId } from './job-poller.js';
 import type { CompletedDownloadFile } from '../path-inference.js';
 
 const MANIFEST: AddonManifest = {
@@ -49,7 +49,7 @@ function makeJob(over: Partial<AddonJob> = {}): AddonJob {
   };
 }
 
-function harness(jobs: () => AddonJob[]) {
+function harness(jobs: () => AddonJob[], getJob?: (id: string) => Promise<AddonJob>) {
   const db = new Database(':memory:');
   applySchema(db);
   const registry = new PluginRegistry({ db, dataDir: '/tmp/nicotind-test' });
@@ -57,6 +57,12 @@ function harness(jobs: () => AddonJob[]) {
   const client = {
     baseUrl: 'http://addon:9999',
     listJobs: async () => jobs(),
+    // Default: the addon no longer knows any job (the orphan case after a restart).
+    getJob:
+      getJob ??
+      (async (id: string): Promise<AddonJob> => {
+        throw new AddonRequestError(`addon responded 404 for GET /addon/v1/jobs/${id}`, 404);
+      }),
     fetchFile: async () => new Response('audio-bytes'),
     deleteJob: async (id: string) => {
       deleted.push(id);
@@ -184,6 +190,60 @@ describe('AddonJobPoller', () => {
 
       // Fully ingested + terminal → released addon-side.
       expect(h.deleted).toEqual(['aj-1']);
+    });
+  });
+
+  // The yt-dlp/spotdl addons keep jobs in memory, so a restart mid-download drops
+  // them. The cursor-based poll only updates jobs the addon still lists, so a
+  // dropped job sits "downloading" forever. reconcileOrphanedJobs re-checks stale
+  // active jobs via getJob and fails the ones the addon 404s.
+  describe('orphaned-job reconcile', () => {
+    const STALE = Date.now() - 10 * 60_000;
+
+    function insertActiveUrlJob(h: ReturnType<typeof harness>, id: string, addonJobId: string) {
+      h.db.run(
+        `INSERT INTO acquisition_jobs (id, kind, method, state, stage, source_ref, created_at, updated_at)
+         VALUES (?, 'url', 'fixture-addon', 'active', 'downloading', ?, ?, ?)`,
+        [id, `addon:fixture-addon:${addonJobId}`, STALE, STALE],
+      );
+    }
+
+    it('fails a stale active job the addon 404s (dropped on restart)', async () => {
+      h = harness(() => []); // default getJob throws 404
+      await h.registry.enable('fixture-addon', 'admin');
+      insertActiveUrlJob(h, 'ghost-1', 'gone-uuid');
+
+      await h.poller.tick();
+
+      const job = h.db
+        .query<{ state: string; error: string | null }, [string]>(
+          `SELECT state, error FROM acquisition_jobs WHERE id = ?`,
+        )
+        .get('ghost-1')!;
+      expect(job.state).toBe('failed');
+      expect(job.error).toContain('restarted');
+    });
+
+    it('leaves a stale active job the addon still knows about', async () => {
+      h = harness(
+        () => [],
+        async () => makeJob(), // addon still has the job → not orphaned
+      );
+      await h.registry.enable('fixture-addon', 'admin');
+      insertActiveUrlJob(h, 'live-1', 'live-uuid');
+
+      await h.poller.tick();
+
+      const job = h.db
+        .query<{ state: string }, [string]>(`SELECT state FROM acquisition_jobs WHERE id = ?`)
+        .get('live-1')!;
+      expect(job.state).toBe('active');
+    });
+
+    it('parseAddonJobId extracts the addon-side id from the source_ref', () => {
+      expect(parseAddonJobId('addon:fixture-addon:abc-123', 'fixture-addon')).toBe('abc-123');
+      expect(parseAddonJobId('peer', 'fixture-addon')).toBeNull();
+      expect(parseAddonJobId(null, 'fixture-addon')).toBeNull();
     });
   });
 });

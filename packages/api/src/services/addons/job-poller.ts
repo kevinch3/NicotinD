@@ -3,7 +3,7 @@ import { mkdirSync, createWriteStream, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { AddonContractError } from './client.js';
+import { AddonContractError, AddonRequestError } from './client.js';
 import { MAX_ADDON_FILE_BYTES, safeIncomingPath } from './ingest-path.js';
 import { createLogger, type AddonJob, type AddonJobItem } from '@nicotind/core';
 import type { PluginRegistry } from '../plugins/registry.js';
@@ -19,6 +19,20 @@ import {
 } from '../acquisition-job-store.js';
 
 const log = createLogger('addon-job-poller');
+
+/**
+ * How long an addon job may sit `active` (unchanged) before the poller re-checks
+ * it via getJob. Comfortably longer than a normal single-track resolve so a
+ * slow-but-live download is never re-checked needlessly; the getJob 404 — not
+ * this timeout — is what actually fails an orphaned job.
+ */
+const ORPHAN_STALE_MS = 5 * 60_000;
+
+/** Extract the addon-side job id from a `addon:<addonId>:<jobId>` source_ref. */
+export function parseAddonJobId(sourceRef: string | null, addonId: string): string | null {
+  const prefix = `addon:${addonId}:`;
+  return sourceRef && sourceRef.startsWith(prefix) ? sourceRef.slice(prefix.length) : null;
+}
 
 export interface AddonJobPollerDeps {
   db: Database;
@@ -125,6 +139,59 @@ export class AddonJobPoller {
     }
 
     if (maxUpdated > (cursor ?? 0)) this.kvSet(addonId, 'poll_cursor', String(maxUpdated));
+    await this.reconcileOrphanedJobs(plugin);
+  }
+
+  /**
+   * Fail active jobs the addon no longer knows about. An addon's job store may be
+   * in-memory (the yt-dlp/spotdl addons are), so a restart mid-download drops the
+   * job — but core's cursor-based poll only ever *updates* jobs the addon still
+   * lists, so a dropped job sits "downloading" until the 24h idle valve. Here we
+   * re-check each stale active job via getJob and fail the ones the addon 404s, so
+   * a deploy/crash surfaces as a prompt failure instead of a ghost card. The
+   * staleness gate leaves a genuinely slow-but-live job (getJob returns it)
+   * untouched — only an addon-forgotten job (404) is failed.
+   */
+  private async reconcileOrphanedJobs(plugin: RemoteAddonPlugin): Promise<void> {
+    const { db } = this.deps;
+    const addonId = plugin.manifest.id;
+    const cutoff = Date.now() - ORPHAN_STALE_MS;
+    const rows = db
+      .query<{ id: string; source_ref: string | null }, [string, number]>(
+        `SELECT id, source_ref FROM acquisition_jobs
+         WHERE method = ? AND state = 'active' AND updated_at < ?`,
+      )
+      .all(addonId, cutoff);
+    for (const row of rows) {
+      const addonJobId = parseAddonJobId(row.source_ref, addonId);
+      if (!addonJobId) continue;
+      try {
+        await plugin.client.getJob(addonJobId);
+        // Still known to the addon — leave it; the normal poll owns its lifecycle.
+      } catch (err) {
+        // Only a definitive 404 (addon has no such job) fails it; a network blip
+        // or other error is left for the next tick.
+        if (err instanceof AddonRequestError && err.status === 404) {
+          this.failOrphanedJob(row.id, addonId);
+        }
+      }
+    }
+  }
+
+  private failOrphanedJob(coreJobId: string, addonId: string): void {
+    const now = Date.now();
+    const msg = 'The addon no longer has this job (it likely restarted mid-download).';
+    this.deps.db.run(
+      `UPDATE acquisition_jobs SET state = 'failed', stage = 'error', error = ?, updated_at = ?
+       WHERE id = ? AND state = 'active'`,
+      [msg, now, coreJobId],
+    );
+    this.deps.db.run(
+      `UPDATE acquisition_job_items SET state = 'unavailable', updated_at = ?
+       WHERE job_id = ? AND state NOT IN ('scanned', 'organized')`,
+      [now, coreJobId],
+    );
+    log.info({ addonId, coreJobId }, 'failed an orphaned addon job (addon 404)');
   }
 
   /** The core acquisition_jobs row mirroring an addon job (created on first sight). */
