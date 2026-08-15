@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.9](https://github.com/kevinch3/NicotinD/compare/v0.3.8...v0.3.9) (2026-08-15)
+
+### Bug Fixes
+
+* **addons:** slskd catalog id is the manifest id (slskd), not the service name ([#524](https://github.com/kevinch3/NicotinD/issues/524)) ([9104eb9](https://github.com/kevinch3/NicotinD/commit/9104eb90d2d5942c2940c5f22e08318d50ecea89)), references [#517](https://github.com/kevinch3/NicotinD/issues/517) [#517](https://github.com/kevinch3/NicotinD/issues/517)
 ## [0.3.8](https://github.com/kevinch3/NicotinD/compare/v0.3.7...v0.3.8) (2026-08-15)
 
 ### Features
