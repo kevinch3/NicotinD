@@ -8,6 +8,13 @@ import { registerAddon, removeAddon } from '../services/addons/manager.js';
 import type { AddonCircuitBreaker } from '../services/addons/circuit-breaker.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import { recordAudit } from '../services/audit-log.js';
+import {
+  ADDON_CATALOG,
+  catalogInstallState,
+  type AddonCatalogInstallState,
+  type CatalogRegistrationView,
+} from '@nicotind/core';
+import { listAddonRegistrations } from '../services/addons/store.js';
 
 /**
  * Plugin management API. Listing is readable by any authenticated user (it
@@ -28,6 +35,24 @@ export function pluginRoutes(
   const app = new Hono<AuthEnv>();
 
   app.get('/', async (c) => c.json(await registry.list()));
+
+  // The curated addon marketplace (issue #517). Readable by any authed user
+  // like GET / — it only exposes the static catalog + each entry's install
+  // state (diffed against the live registrations). The compose snippet is
+  // rendered client-side from the entry (pure `renderComposeSnippet`); the
+  // minted-token install flow is a separate admin route (PR2).
+  app.get('/catalog', (c) => {
+    // PR1: registrations are all active (the pending status column arrives in
+    // PR2 with the minted-token install flow).
+    const registrations: CatalogRegistrationView[] = listAddonRegistrations(db).map((r) => ({
+      id: r.id,
+    }));
+    const entries = ADDON_CATALOG.map((entry) => ({
+      ...entry,
+      state: catalogInstallState(entry, registrations) satisfies AddonCatalogInstallState,
+    }));
+    return c.json({ entries });
+  });
 
   app.post('/addons', async (c) => {
     // why: the `/:id/*` guard below needs a subpath, so this single-segment

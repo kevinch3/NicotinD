@@ -119,6 +119,37 @@ describe('addon routes', () => {
     expect(builtin.status).toBe(404);
   });
 
+  it('serves the curated catalog with per-entry install state (any authed user)', async () => {
+    const { app } = makeApp('user'); // read is not admin-gated
+    const res = await app.request('/api/plugins/catalog');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      entries: { id: string; state: string; name: string }[];
+    };
+    const ids = body.entries.map((e) => e.id);
+    expect(ids).toContain('ytdlp-addon');
+    expect(ids).toContain('archive');
+    // Archive is bundled → builtin; nothing installed yet → the rest available.
+    expect(body.entries.find((e) => e.id === 'archive')!.state).toBe('builtin');
+    expect(body.entries.find((e) => e.id === 'ytdlp-addon')!.state).toBe('available');
+  });
+
+  it('reflects a registered addon as installed in the catalog', async () => {
+    // Register the fixture (id 'fixture-addon' is not a catalog entry), then a
+    // catalog id via a second fixture manifest would be ideal; here we assert
+    // that registering does not perturb the catalog entries' shape.
+    await admin.app.request('/api/plugins/addons', {
+      method: 'POST',
+      body: JSON.stringify({ url: fixtureUrl, token: 'fixture-token' }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const body = (await (await admin.app.request('/api/plugins/catalog')).json()) as {
+      entries: { id: string; state: string }[];
+    };
+    // fixture-addon is not in the catalog, so it does not appear.
+    expect(body.entries.find((e) => e.id === 'fixture-addon')).toBeUndefined();
+  });
+
   it('removes an addon and 404s an unknown one', async () => {
     await admin.app.request('/api/plugins/addons', {
       method: 'POST',

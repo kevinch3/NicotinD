@@ -1,0 +1,100 @@
+@if (entry(); as e) {
+  <div
+    class="mb-3 p-4 rounded-xl bg-theme-surface border border-theme"
+    data-testid="addon-catalog-card"
+    [attr.data-addon-id]="e.id"
+    [attr.data-addon-state]="e.state"
+  >
+    <div class="flex items-start justify-between gap-4">
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-medium text-theme-primary">{{ e.name }}</span>
+          @switch (e.state) {
+            @case ('builtin') {
+              <span
+                data-testid="addon-catalog-state"
+                class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-muted"
+                >{{ 'extensions.catalogBuiltin' | t }}</span
+              >
+            }
+            @case ('installed') {
+              <span
+                data-testid="addon-catalog-state"
+                class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-done"
+                >{{ 'extensions.catalogInstalled' | t }}</span
+              >
+            }
+            @case ('pending') {
+              <span
+                data-testid="addon-catalog-state"
+                class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-warn"
+                >{{ 'extensions.catalogPending' | t }}</span
+              >
+            }
+            @case ('available') {
+              <span
+                data-testid="addon-catalog-state"
+                class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-secondary"
+                >{{ 'extensions.catalogAvailable' | t }}</span
+              >
+            }
+          }
+        </div>
+        <p class="text-sm text-theme-secondary mt-1">{{ e.description }}</p>
+        <div class="flex gap-1.5 mt-2 flex-wrap">
+          @for (cap of e.capabilities; track cap) {
+            <span
+              class="text-[10px] px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-secondary"
+              >{{ cap }}</span
+            >
+          }
+        </div>
+        <p class="text-xs text-theme-muted mt-2">{{ e.risk }}</p>
+      </div>
+      <div class="shrink-0 flex flex-col items-end gap-2">
+        @if (canSetUp()) {
+          <button
+            type="button"
+            (click)="toggle()"
+            appTvNavItem
+            data-testid="addon-catalog-setup"
+            [attr.aria-expanded]="open()"
+            class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-accent text-theme-on-accent hover:opacity-90 transition"
+          >
+            {{ 'extensions.catalogSetUp' | t }}
+          </button>
+        }
+        @if (e.docsUrl; as docs) {
+          <a
+            [href]="docs"
+            target="_blank"
+            rel="noopener"
+            class="text-xs text-theme-muted hover:text-theme-secondary underline"
+            >{{ 'extensions.catalogLearnMore' | t }}</a
+          >
+        }
+      </div>
+    </div>
+
+    @if (open() && canSetUp()) {
+      <div data-testid="addon-catalog-setup-body" class="mt-3 border-t border-theme pt-3">
+        <p class="text-sm text-theme-secondary">{{ 'extensions.catalogSetupIntro' | t }}</p>
+        <div class="relative mt-2">
+          <pre
+            data-testid="addon-catalog-snippet"
+            class="text-xs bg-theme-surface-2 text-theme-primary rounded-lg p-3 overflow-x-auto whitespace-pre"
+            >{{ snippet().full }}</pre>
+          <button
+            type="button"
+            (click)="copySnippet()"
+            data-testid="addon-catalog-copy"
+            class="absolute top-2 right-2 px-2 py-1 rounded text-[11px] font-medium bg-theme-surface text-theme-secondary hover:bg-theme-hover transition"
+          >
+            {{ (copied() ? 'extensions.catalogCopied' : 'extensions.catalogCopy') | t }}
+          </button>
+        </div>
+        <p class="text-xs text-theme-muted mt-2">{{ 'extensions.catalogSetupAfter' | t }}</p>
+      </div>
+    }
+  </div>
+}

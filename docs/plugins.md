@@ -131,6 +131,27 @@ removes it). The full protocol + phased migration lives in
 - `GET /api/plugins/:id/addon-status` (admin) proxies the addon's typed status rows to the
   generic `AddonStatusPanelComponent`; a down addon degrades to `{available:false}`.
 
+### Curated marketplace (issue #517, PR1)
+
+Registering an addon by hand is an ops chore (edit compose + `*_ADDON_TOKEN`, `up --profile`,
+copy the token, paste URL+token). The **"Available add-ons"** section on Extensions removes the
+discovery half now, and later PRs remove the token copy-paste entirely.
+
+- `packages/core/src/addon-catalog.ts` holds the **curated, in-repo** list `ADDON_CATALOG`
+  (slskd / ytdlp / spotdl / archive) — deliberately a short vetted list, **not** an open/
+  user-submitted registry, so the compliance posture stays curated + consent-gated. Each entry's
+  `id` **must equal** the addon manifest id it registers as (that equality drives the install-state
+  diff). Images/ports/profiles mirror `docker-compose.yml` — keep them in sync.
+- Pure, browser-safe helpers shared by the API route and the web card: `renderComposeSnippet(entry,
+  token)` emits the paste-able compose block (the addon service + its pot-provider companion for
+  ytdlp/spotdl) with the token baked in, and `catalogInstallState(entry, registrations)` diffs the
+  catalog against the live registrations → `builtin | installed | pending | available`.
+- `GET /api/plugins/catalog` (any authed user, like `GET /`) serves the entries + each one's install
+  state. The web `AddonCatalogService` + `AddonCatalogCardComponent` render the admin-only section;
+  "Set up" reveals the snippet (a placeholder token in PR1). The minted-token + auto-detect install
+  flow (`POST /catalog/:id/install`, a `pending` registration status, and a reachability promoter)
+  is PR2.
+
 ## First-party plugins
 
 > **Superseded (phase 4).** The in-process **slskd** plugin below (and its

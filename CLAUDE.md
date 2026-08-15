@@ -1186,7 +1186,14 @@ Add detail there, not here.
   is down) are embedded inline in its own card body once expanded, so its ~3s status poll only runs
   while that card is open (`/settings/plugins/slskd` now just redirects to `/settings/plugins`). All
   first-party plugins are constructed in `registerBuiltinPlugins`
-  (`services/plugins/builtin.ts`), not inline in `index.ts`, covered by a test. →
+  (`services/plugins/builtin.ts`), not inline in `index.ts`, covered by a test. **Curated addon
+  marketplace (issue #517)**: `ADDON_CATALOG` (`packages/core/src/addon-catalog.ts`) is a short,
+  vetted, in-repo list (slskd/ytdlp/spotdl/archive — **not** an open registry, so the compliance
+  posture holds); pure `renderComposeSnippet` + `catalogInstallState` (browser-safe) back
+  `GET /api/plugins/catalog` and the admin-only "Available add-ons" Extensions section
+  (`AddonCatalogService`/`AddonCatalogCardComponent`) — PR1 removes the discovery friction (shows the
+  paste-able compose snippet); the minted-token + `pending`-registration auto-detect install flow is
+  PR2. →
   [docs/plugins.md](docs/plugins.md)
 - **Discogs metadata plugin (genre + artist-info)**: `metadata`-kind, default-off + consent-gated
   plugin (`services/plugins/discogs/`) that resolves release genres/styles from Discogs (strong on
