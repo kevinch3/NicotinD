@@ -41,10 +41,12 @@ services:
       - internal
     restart: unless-stopped
 
-  # PO-token provider for YouTube downloads (yt-dlp / spotdl). YouTube demands
+  # PO-token provider for in-process spotdl's YouTube fetches. YouTube demands
   # "proof of origin" tokens from unrecognized clients; the pip-installed
   # bgutil-ytdlp-pot-provider plugin (see Dockerfile) fetches them from this
-  # companion service. It shares the nicotind container's network namespace so
+  # companion service. (yt-dlp is now the external ytdlp-addon, which brings its
+  # own pot-provider companion — see the ytdlp-addon profile below.)
+  # It shares the nicotind container's network namespace so
   # the plugin's default base URL (http://127.0.0.1:4416) just works — no
   # per-invocation extractor-args plumbing through spotdl/yt-dlp needed.
   bgutil-provider:
@@ -179,6 +181,39 @@ services:
       - internal
     restart: unless-stopped
 
+  # The yt-dlp acquisition addon (acquisition addon protocol — resolves audio
+  # from any yt-dlp-supported URL: YouTube, SoundCloud, Bandcamp, …). Opt-in:
+  # `docker compose --profile ytdlp-addon up -d`, then register it in Settings →
+  # Extensions → "Add a remote addon" with the URL http://ytdlp-addon:8586 and
+  # the token you set below. Core carries no yt-dlp code — it becomes the
+  # low-priority catch-all URL resolver (priority -10). Own repo + published
+  # image: github.com/kevinch3/nicotind-ytdlp-addon.
+  ytdlp-addon:
+    image: ghcr.io/kevinch3/nicotind-ytdlp-addon:latest
+    profiles: ["ytdlp-addon"]
+    environment:
+      YTDLP_ADDON_TOKEN: ${YTDLP_ADDON_TOKEN:-change-me}
+      # Its own pot-provider companion (below) shares this container's network
+      # namespace, so the addon's default http://127.0.0.1:4416 just works.
+    volumes:
+      - ytdlp-addon-data:/data
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # PO-token provider dedicated to the ytdlp-addon (mirrors the core-side
+  # bgutil-provider that serves in-process spotdl). Shares the addon's network
+  # namespace so the baked bgutil yt-dlp plugin reaches it at 127.0.0.1:4416.
+  ytdlp-pot-provider:
+    image: ghcr.io/kevinch3/nicotind-pot-provider:${NICOTIND_IMAGE_TAG:-release}
+    profiles: ["ytdlp-addon"]
+    runtime: runc
+    network_mode: "service:ytdlp-addon"
+    depends_on:
+      ytdlp-addon:
+        condition: service_started
+    restart: unless-stopped
+
   lidarr:
     # Pinned (was :latest): a silent Lidarr major bump can break the API
     # client. Bump deliberately after checking the Lidarr changelog.
@@ -216,4 +251,5 @@ volumes:
   music:
   slskd-data:
   slskd-addon-data:
+  ytdlp-addon-data:
   lidarr-config:

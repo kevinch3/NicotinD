@@ -159,9 +159,10 @@ removes it). The full protocol + phased migration lives in
   `download` capability) on `/api/discography/*` + `/api/watchlist/*`, and the watchlist poller
   skips its sweep via the injected `isAcquisitionEnabled` predicate. Generalizing the engine onto
   capability interfaces is deferred (the seam exists; the payoff is a second searchable source).
-- **yt-dlp** (`services/plugins/ytdlp/index.ts`) + **spotdl** (`services/plugins/spotdl/index.ts`)
-  — URL-acquisition plugins (`resolve`, consent-gated). Each declares `canHandle(url)` (spotdl =
-  `*.spotify.com`, yt-dlp = everything else), `requirements.binaries`, and a config schema. Their
+- **spotdl** (`services/plugins/spotdl/index.ts`) — URL-acquisition plugin (`resolve`,
+  consent-gated). **yt-dlp left core** for the external `nicotind-ytdlp-addon`; the description below
+  is the historical two-plugin shape (spotdl is the last in-process resolve plugin). It declares
+  `canHandle(url)` = `*.spotify.com`, `requirements.binaries`, and a config schema. Their
   `resolve(url, jobId)` stages files via the **shared process runner** (`services/plugins/acquire/
 process.ts` — `runAcquireProcess` + progress parsing + audio collection; the injectable `spawn`
   keeps it testable without process-global mocks) and **returns the staged absolute paths**. The

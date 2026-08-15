@@ -7,6 +7,35 @@ import { PluginRegistry } from '../plugins/registry.js';
 import { registerBundledAddons } from './bundled/registry.js';
 import { resolveAddonForUrl } from './resolve-router.js';
 import { removeAddon } from './manager.js';
+import { RemoteAddonPlugin } from './remote-addon-plugin.js';
+import { LocalAddonTransport } from './local-transport.js';
+import type { BundledAddon } from './bundled/types.js';
+
+function catchAllResolveAddon(): BundledAddon {
+  return {
+    manifest: {
+      id: 'catch-all',
+      name: 'Catch All',
+      description: 'test',
+      version: '1.0.0',
+      protocolVersion: '1.0.0',
+      kind: 'acquisition',
+      capabilities: ['resolve'],
+      urlPatterns: ['^https?://'],
+      priority: -10,
+      compliance: { disclaimer: 'test', requiresConsent: false },
+    },
+    createJob: async () => {
+      throw new Error('not used');
+    },
+    getJob: async () => {
+      throw new Error('not used');
+    },
+    listJobs: async () => [],
+    cancelJob: async () => {},
+    filePath: async () => '/tmp/x',
+  };
+}
 
 describe('bundled archive addon + resolveAddonForUrl', () => {
   let db: Database;
@@ -37,5 +66,20 @@ describe('bundled archive addon + resolveAddonForUrl', () => {
 
   it('refuses to remove a bundled addon', async () => {
     await expect(removeAddon(registry, db, 'bundled-archive')).rejects.toThrow(/cannot be removed/);
+  });
+
+  it('prefers a higher-priority addon over a catch-all for an overlapping url', async () => {
+    const addon = catchAllResolveAddon();
+    registry.register(new RemoteAddonPlugin(addon.manifest, new LocalAddonTransport(addon)));
+    await registry.enable('bundled-archive', 'u');
+    await registry.enable('catch-all', 'u');
+    // archive.org matches BOTH; archive (priority 0) beats the catch-all (-10).
+    expect(resolveAddonForUrl(registry, 'https://archive.org/details/x')?.addonManifest.id).toBe(
+      'bundled-archive',
+    );
+    // youtube matches only the catch-all.
+    expect(
+      resolveAddonForUrl(registry, 'https://www.youtube.com/watch?v=x')?.addonManifest.id,
+    ).toBe('catch-all');
   });
 });

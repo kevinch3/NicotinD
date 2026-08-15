@@ -77,6 +77,15 @@ describe('addonManifestSchema', () => {
     expect(parsed.compliance?.requiresConsent).toBe(true);
   });
 
+  it('accepts an optional url-routing priority', () => {
+    const parsed = addonManifestSchema.parse(base({ urlPatterns: ['^https?://'], priority: -10 }));
+    expect(parsed.priority).toBe(-10);
+  });
+
+  it('rejects a non-integer priority', () => {
+    expect(() => addonManifestSchema.parse(base({ priority: 1.5 }))).toThrow();
+  });
+
   it('rejects a manifest missing protocolVersion', () => {
     const rest: Record<string, unknown> = { ...base() };
     delete rest.protocolVersion;

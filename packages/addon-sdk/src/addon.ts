@@ -88,6 +88,12 @@ export interface AddonManifest {
   compliance?: PluginCompliance;
   /** For resolve-capable addons: regexes of URLs the addon can handle. */
   urlPatterns?: string[];
+  /**
+   * URL-routing priority (default 0): when several enabled resolve addons match
+   * a URL, the highest priority wins. A catch-all addon (e.g. yt-dlp, matching
+   * `^https?://`) declares a negative priority so specific addons beat it.
+   */
+  priority?: number;
 }
 
 const configFieldSchema = z.object({
@@ -112,6 +118,7 @@ export const addonManifestSchema: z.ZodType<AddonManifest> = z.object({
   statusFields: z.array(z.object({ key: z.string().min(1), label: z.string().min(1) })).optional(),
   compliance: z.object({ disclaimer: z.string(), requiresConsent: z.boolean() }).optional(),
   urlPatterns: z.array(z.string()).optional(),
+  priority: z.number().int().optional(),
 }) as z.ZodType<AddonManifest>;
 
 /* ————— Search (blended lane) ————— */
