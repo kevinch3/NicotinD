@@ -52,17 +52,42 @@
         <p class="text-xs text-theme-muted mt-2">{{ e.risk }}</p>
       </div>
       <div class="shrink-0 flex flex-col items-end gap-2">
-        @if (canSetUp()) {
-          <button
-            type="button"
-            (click)="toggle()"
-            appTvNavItem
-            data-testid="addon-catalog-setup"
-            [attr.aria-expanded]="open()"
-            class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-accent text-theme-on-accent hover:opacity-90 transition"
-          >
-            {{ 'extensions.catalogSetUp' | t }}
-          </button>
+        @switch (e.state) {
+          @case ('available') {
+            <button
+              type="button"
+              (click)="doInstall()"
+              [disabled]="busy()"
+              appTvNavItem
+              data-testid="addon-catalog-install"
+              class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-accent text-theme-on-accent hover:opacity-90 transition disabled:opacity-50"
+            >
+              {{ 'extensions.catalogInstall' | t }}
+            </button>
+          }
+          @case ('pending') {
+            <button
+              type="button"
+              (click)="checkNow()"
+              [disabled]="busy()"
+              appTvNavItem
+              data-testid="addon-catalog-check"
+              class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+            >
+              {{ 'extensions.catalogCheckNow' | t }}
+            </button>
+          }
+          @case ('installed') {
+            <button
+              type="button"
+              (click)="requestEnable()"
+              appTvNavItem
+              data-testid="addon-catalog-enable"
+              class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-accent text-theme-on-accent hover:opacity-90 transition"
+            >
+              {{ 'extensions.catalogEnable' | t }}
+            </button>
+          }
         }
         @if (e.docsUrl; as docs) {
           <a
@@ -76,24 +101,41 @@
       </div>
     </div>
 
-    @if (open() && canSetUp()) {
+    <!-- The setup snippet + waiting state, once an install has been started. -->
+    @if (e.state === 'pending') {
       <div data-testid="addon-catalog-setup-body" class="mt-3 border-t border-theme pt-3">
-        <p class="text-sm text-theme-secondary">{{ 'extensions.catalogSetupIntro' | t }}</p>
-        <div class="relative mt-2">
-          <pre
-            data-testid="addon-catalog-snippet"
-            class="text-xs bg-theme-surface-2 text-theme-primary rounded-lg p-3 overflow-x-auto whitespace-pre"
-            >{{ snippet().full }}</pre>
+        @if (snippet(); as snip) {
+          <p class="text-sm text-theme-secondary">{{ 'extensions.catalogSetupIntro' | t }}</p>
+          <div class="relative mt-2">
+            <pre
+              data-testid="addon-catalog-snippet"
+              class="text-xs bg-theme-surface-2 text-theme-primary rounded-lg p-3 overflow-x-auto whitespace-pre"
+              >{{ snip.full }}</pre>
+            <button
+              type="button"
+              (click)="copySnippet()"
+              data-testid="addon-catalog-copy"
+              class="absolute top-2 right-2 px-2 py-1 rounded text-[11px] font-medium bg-theme-surface text-theme-secondary hover:bg-theme-hover transition"
+            >
+              {{ (copied() ? 'extensions.catalogCopied' : 'extensions.catalogCopy') | t }}
+            </button>
+          </div>
+          <p class="text-xs text-theme-muted mt-2" data-testid="addon-catalog-waiting">
+            {{ 'extensions.catalogWaiting' | t: { name: e.name } }}
+          </p>
+        } @else {
+          <!-- Page reload lost the in-memory snippet; re-installing is idempotent. -->
+          <p class="text-sm text-theme-secondary">{{ 'extensions.catalogPendingHint' | t }}</p>
           <button
             type="button"
-            (click)="copySnippet()"
-            data-testid="addon-catalog-copy"
-            class="absolute top-2 right-2 px-2 py-1 rounded text-[11px] font-medium bg-theme-surface text-theme-secondary hover:bg-theme-hover transition"
+            (click)="doInstall()"
+            [disabled]="busy()"
+            data-testid="addon-catalog-show-setup"
+            class="mt-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
           >
-            {{ (copied() ? 'extensions.catalogCopied' : 'extensions.catalogCopy') | t }}
+            {{ 'extensions.catalogShowSetup' | t }}
           </button>
-        </div>
-        <p class="text-xs text-theme-muted mt-2">{{ 'extensions.catalogSetupAfter' | t }}</p>
+        }
       </div>
     }
   </div>

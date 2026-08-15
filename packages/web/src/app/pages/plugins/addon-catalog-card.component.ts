@@ -1,20 +1,33 @@
-import { Component, input, signal, computed } from '@angular/core';
+import {
+  Component,
+  input,
+  output,
+  signal,
+  computed,
+  inject,
+  effect,
+  OnDestroy,
+} from '@angular/core';
 // why: this card is nested inside plugins.component, and the JIT vitest harness
 // throws NG0950 on a required input of a nested component (see
 // src/testing/signal-input.ts). An optional input + a template guard is the
 // robust contract; callers always bind an entry in practice.
-import { renderComposeSnippet } from '@nicotind/core';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
-import type { AddonCatalogItem } from '../../services/addon-catalog.service';
+import {
+  AddonCatalogService,
+  type AddonCatalogItem,
+  type AddonInstallResult,
+} from '../../services/addon-catalog.service';
 
 /**
  * One card in the Extensions "Available add-ons" marketplace (issue #517).
  *
- * PR1 is read-only: it shows the vetted entry + its install state and, on
- * "Set up", the generated docker-compose snippet (a placeholder token here — the
- * minted-token one-click install arrives in PR2). Builtin (archive) and
- * already-installed entries render a static badge with no setup step.
+ * Flow: **Install** mints a token server-side + writes a pending registration
+ * and returns the compose snippet with that token baked in (no copy-paste of a
+ * token). The admin pastes the snippet + brings the container up; the card polls
+ * until the server auto-detects it (promotes pending → installed), then offers
+ * **Enable** (which runs the parent page's consent flow via `enableRequested`).
  */
 @Component({
   selector: 'app-addon-catalog-card',
@@ -22,35 +35,91 @@ import type { AddonCatalogItem } from '../../services/addon-catalog.service';
   imports: [TranslatePipe, TvNavItemDirective],
   templateUrl: './addon-catalog-card.component.html',
 })
-export class AddonCatalogCardComponent {
+export class AddonCatalogCardComponent implements OnDestroy {
+  private readonly catalog = inject(AddonCatalogService);
   readonly entry = input<AddonCatalogItem>();
-  readonly open = signal(false);
+  /** The parent page owns the consent dialog + PluginService, so enabling is
+   *  delegated up with the addon id. */
+  readonly enableRequested = output<string>();
+
+  readonly busy = signal(false);
   readonly copied = signal(false);
+  /** The install response (minted token + snippet), kept while pending. */
+  readonly install = signal<AddonInstallResult | null>(null);
 
-  /** The compose snippet for this entry. PR1 uses a placeholder token; PR2 will
-   *  swap in a server-minted one via the install route. */
-  readonly snippet = computed(() => {
+  /** The snippet to display — the real minted-token one once installed. */
+  readonly snippet = computed(() => this.install()?.composeSnippet ?? null);
+
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor() {
+    // Stop polling the moment the server reports the container detected.
+    effect(() => {
+      if (this.entry()?.state === 'installed') this.stopPoll();
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.stopPoll();
+  }
+
+  /** Mint the token + pending registration, reveal the snippet, start polling. */
+  async doInstall(): Promise<void> {
     const e = this.entry();
-    return e
-      ? renderComposeSnippet(e, 'change-me-to-a-long-random-secret')
-      : { services: '', volumes: [], command: '', full: '' };
-  });
+    if (!e || this.busy()) return;
+    this.busy.set(true);
+    try {
+      const result = await this.catalog.install(e.id);
+      this.install.set(result);
+      await this.catalog.refresh(); // flip the card to 'pending'
+      this.startPoll();
+    } finally {
+      this.busy.set(false);
+    }
+  }
 
-  /** Non-builtin, not-yet-installed entries are the ones with a setup step. */
-  readonly canSetUp = computed(() => this.entry()?.state === 'available');
+  /** "Check now" — ask the server to re-detect immediately. */
+  async checkNow(): Promise<void> {
+    const e = this.entry();
+    if (!e || this.busy()) return;
+    this.busy.set(true);
+    try {
+      await this.catalog.check(e.id);
+      await this.catalog.refresh();
+    } finally {
+      this.busy.set(false);
+    }
+  }
 
-  toggle(): void {
-    this.open.update((v) => !v);
+  requestEnable(): void {
+    const e = this.entry();
+    if (e) this.enableRequested.emit(e.id);
   }
 
   async copySnippet(): Promise<void> {
+    const full = this.snippet()?.full;
+    if (!full) return;
     try {
-      await navigator.clipboard.writeText(this.snippet().full);
+      await navigator.clipboard.writeText(full);
       this.copied.set(true);
       setTimeout(() => this.copied.set(false), 1500);
     } catch {
       // Clipboard unavailable (insecure context / denied) — the text stays
       // selectable in the <pre>, so this is a non-fatal nicety.
+    }
+  }
+
+  private startPoll(): void {
+    this.stopPoll();
+    // A short cadence while the admin brings the container up. GET /catalog
+    // promotes server-side, so a plain refresh detects activation.
+    this.pollTimer = setInterval(() => void this.catalog.refresh(), 5000);
+  }
+
+  private stopPoll(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
     }
   }
 }

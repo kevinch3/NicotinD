@@ -147,10 +147,25 @@ discovery half now, and later PRs remove the token copy-paste entirely.
   ytdlp/spotdl) with the token baked in, and `catalogInstallState(entry, registrations)` diffs the
   catalog against the live registrations → `builtin | installed | pending | available`.
 - `GET /api/plugins/catalog` (any authed user, like `GET /`) serves the entries + each one's install
-  state. The web `AddonCatalogService` + `AddonCatalogCardComponent` render the admin-only section;
-  "Set up" reveals the snippet (a placeholder token in PR1). The minted-token + auto-detect install
-  flow (`POST /catalog/:id/install`, a `pending` registration status, and a reachability promoter)
-  is PR2.
+  state. The web `AddonCatalogService` + `AddonCatalogCardComponent` render the admin-only section.
+
+**One-click install (PR2).** "Install" removes the token copy-paste entirely:
+
+- `POST /api/plugins/catalog/:id/install` (admin, audited) mints an opaque token (`mintAddonToken`,
+  `randomBytes`), writes a **`pending`** `addon_registrations` row (new `status` + `catalog_id`
+  columns, additive via `addColumnIfMissing`) with a catalog **stub** manifest, and returns the
+  compose snippet with the token already baked in. Idempotent: re-installing while pending returns
+  the *same* token (so a re-click can't rotate it mid-paste); an already-`active` id 409s. The stored
+  url is the **catalog's** `addonUrl` (client input ignored) — no new SSRF surface.
+- `promotePendingAddons(registry, db)` fetches each pending addon's live manifest; only if its id
+  matches the pending row **and** it validates + negotiates a usable capability does it flip the row
+  to `active` (real manifest) and register the plugin (disabled — enabling stays the consent step).
+  An unreachable/mismatched addon stays pending and is retried. It runs on a 60s `main.ts` interval,
+  on every `GET /catalog` (so opening Extensions auto-detects), and on demand via
+  `POST /catalog/:id/check` ("Check now"). `loadRegisteredAddons` skips pending rows at boot.
+- The card walks Install → paste snippet + `up` → **Pending** (polls) → **Installed → Enable**
+  (delegated to the page's existing consent dialog via `enableRequested`). Zero new privilege: no
+  Docker socket, curated urls only, token plaintext like every registration token.
 
 ## First-party plugins
 

@@ -1191,9 +1191,12 @@ Add detail there, not here.
   vetted, in-repo list (slskd/ytdlp/spotdl/archive — **not** an open registry, so the compliance
   posture holds); pure `renderComposeSnippet` + `catalogInstallState` (browser-safe) back
   `GET /api/plugins/catalog` and the admin-only "Available add-ons" Extensions section
-  (`AddonCatalogService`/`AddonCatalogCardComponent`) — PR1 removes the discovery friction (shows the
-  paste-able compose snippet); the minted-token + `pending`-registration auto-detect install flow is
-  PR2. →
+  (`AddonCatalogService`/`AddonCatalogCardComponent`). **One-click install**:
+  `POST /api/plugins/catalog/:id/install` mints a token (`mintAddonToken`), writes a `pending`
+  `addon_registrations` row (additive `status`/`catalog_id`), and returns the snippet with the token
+  baked in (no copy-paste); `promotePendingAddons` (60s interval + on `GET /catalog` +
+  `POST /catalog/:id/check`) auto-activates it once its container answers — Install → paste → Pending
+  → Enable. Zero new privilege (no Docker socket, curated urls only). →
   [docs/plugins.md](docs/plugins.md)
 - **Discogs metadata plugin (genre + artist-info)**: `metadata`-kind, default-off + consent-gated
   plugin (`services/plugins/discogs/`) that resolves release genres/styles from Discogs (strong on

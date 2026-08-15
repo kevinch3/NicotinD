@@ -67,7 +67,11 @@ import { PluginRegistry } from './services/plugins/registry.js';
 import { upsertTrackStatus } from './services/plugins/host-context.js';
 import { recordAcquireJobTrack } from './services/acquire-playlist.js';
 import { registerBuiltinPlugins } from './services/plugins/builtin.js';
-import { activeRemoteAcquisitionAddon, loadRegisteredAddons } from './services/addons/manager.js';
+import {
+  activeRemoteAcquisitionAddon,
+  loadRegisteredAddons,
+  promotePendingAddons,
+} from './services/addons/manager.js';
 import { registerBundledAddons } from './services/addons/bundled/registry.js';
 import { AddonJobPoller } from './services/addons/job-poller.js';
 import { AddonCircuitBreaker } from './services/addons/circuit-breaker.js';
@@ -443,6 +447,18 @@ export function createApp({
       breaker: addonBreaker,
     });
   }
+  // Background promoter for one-click catalog installs (issue #517 PR2): a
+  // `pending` registration flips to `active` once its container answers its
+  // manifest. GET /catalog promotes interactively too; this is the safety net
+  // for an admin who installed and walked away. A no-op when nothing is pending.
+  const addonPromoteTimer = setInterval(() => {
+    void promotePendingAddons(plugins, db, {
+      providerRegistry: registry,
+      breaker: addonBreaker,
+    }).catch(() => {});
+  }, 60_000);
+  addonPromoteTimer.unref();
+
   // Library deletions must stop advertising removed files to the Soulseek
   // network — since phase 3 that crosses the protocol as the addon's
   // library-changed notify (the addon debounces its own shares.rescan).

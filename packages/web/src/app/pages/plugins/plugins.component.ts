@@ -155,6 +155,17 @@ export class PluginsComponent implements OnInit {
     return p.capabilities.map((c) => capabilityRiskLine(c));
   }
 
+  /**
+   * A catalog card's "Enable" (issue #517 PR2): the server has auto-detected the
+   * addon and registered it (disabled). Refresh the plugin list so the freshly
+   * registered plugin is present, then run the normal (consent-gated) enable.
+   */
+  async enableFromCatalog(id: string): Promise<void> {
+    await this.plugins.refresh();
+    const p = this.plugins.plugins().find((x) => x.id === id);
+    if (p) this.toggle(p);
+  }
+
   confirmConsent(): void {
     const p = this.consentTarget();
     if (!p) return;

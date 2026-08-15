@@ -1,5 +1,11 @@
+import { randomBytes } from 'node:crypto';
 import type { Database } from 'bun:sqlite';
-import { createLogger, negotiateCapabilities, validateAddonManifest } from '@nicotind/core';
+import {
+  createLogger,
+  negotiateCapabilities,
+  validateAddonManifest,
+  type AddonManifest,
+} from '@nicotind/core';
 import type { PluginRegistry } from '../plugins/registry.js';
 import type { ProviderRegistry } from '../provider-registry.js';
 import { AddonClient } from './client.js';
@@ -50,6 +56,9 @@ export function loadRegisteredAddons(
 ): void {
   const clientFactory = opts.clientFactory ?? defaultClientFactory;
   for (const reg of listAddonRegistrations(db)) {
+    // A pending catalog install (issue #517 PR2) has only a stub manifest until
+    // its container is up — the promoter registers it for real once reachable.
+    if (reg.status === 'pending') continue;
     const errors = validateAddonManifest(reg.manifest);
     if (errors.length > 0) {
       log.warn({ id: reg.id, errors }, 'skipping stored addon with invalid manifest');
@@ -129,6 +138,7 @@ export async function registerAddon(
     manifest,
     addedAt: Math.floor(Date.now() / 1000),
     addedBy: input.addedBy,
+    status: 'active',
   };
   saveAddonRegistration(db, reg);
   if (input.breaker) {
@@ -138,6 +148,144 @@ export async function registerAddon(
   }
   registry.register(new RemoteAddonPlugin(manifest, client, input.providerRegistry));
   return reg;
+}
+
+/**
+ * Mint an opaque install token (issue #517 PR2). It is the addon's outbound
+ * bearer, baked into the generated compose snippet's env — so it is a shared
+ * secret, stored plaintext like every other registration token. Uses the same
+ * entropy source as `mintAgentToken`.
+ */
+export function mintAddonToken(): string {
+  return `nca_addon_${randomBytes(24).toString('hex')}`;
+}
+
+/** A catalog entry's minimal install shape (avoids a core→catalog type dep). */
+export interface PendingInstallInput {
+  /** Catalog id — becomes the registration id (must equal the addon manifest id). */
+  id: string;
+  name: string;
+  kind: AddonManifest['kind'];
+  capabilities: AddonManifest['capabilities'];
+  description: string;
+  addonUrl: string;
+}
+
+/**
+ * Write a `pending` registration for a catalog install before the container is
+ * up. Idempotent: re-installing while still pending returns the SAME token (so
+ * a re-click doesn't rotate the token out from under an admin mid-paste). If an
+ * `active` registration already exists, throws — it's already installed.
+ *
+ * The stored manifest is a catalog **stub** (never validated — pending rows are
+ * skipped at boot); `promotePendingAddons` replaces it with the real fetched
+ * manifest on activation.
+ */
+export function createPendingRegistration(
+  db: Database,
+  entry: PendingInstallInput,
+  addedBy: string,
+): { token: string; reused: boolean } {
+  const existing = listAddonRegistrations(db).find((r) => r.id === entry.id);
+  if (existing?.status === 'active') {
+    throw new Error(`addon "${entry.id}" is already installed`);
+  }
+  if (existing?.status === 'pending') {
+    return { token: existing.token, reused: true };
+  }
+  const token = mintAddonToken();
+  const stub: AddonManifest = {
+    id: entry.id,
+    name: entry.name,
+    description: entry.description,
+    version: '0.0.0',
+    protocolVersion: '0.0.0',
+    kind: entry.kind,
+    capabilities: entry.capabilities,
+  };
+  saveAddonRegistration(db, {
+    id: entry.id,
+    url: entry.addonUrl,
+    token,
+    manifest: stub,
+    addedAt: Math.floor(Date.now() / 1000),
+    addedBy,
+    status: 'pending',
+    catalogId: entry.id,
+  });
+  return { token, reused: false };
+}
+
+export interface PromoteOptions {
+  providerRegistry?: ProviderRegistry;
+  clientFactory?: ClientFactory;
+  breaker?: AddonCircuitBreaker;
+}
+
+/**
+ * Try to activate every `pending` registration (issue #517 PR2). For each, fetch
+ * the live manifest; on success — and only if its id matches the pending row and
+ * it validates + negotiates a usable capability — flip the row to `active` with
+ * the real manifest and register the plugin (disabled; enabling stays the
+ * admin's consent-gated step). An unreachable/invalid addon stays pending and is
+ * retried next tick. Returns the ids promoted this pass.
+ */
+export async function promotePendingAddons(
+  registry: PluginRegistry,
+  db: Database,
+  opts: PromoteOptions = {},
+): Promise<string[]> {
+  const clientFactory = opts.clientFactory ?? defaultClientFactory;
+  const promoted: string[] = [];
+  for (const reg of listAddonRegistrations(db)) {
+    if (reg.status !== 'pending') continue;
+    let manifest: AddonManifest;
+    const client = clientFactory(reg.url, reg.token);
+    try {
+      manifest = await client.getManifest();
+    } catch {
+      continue; // container not up yet — retry next tick
+    }
+    // Guard: the reachable addon must be the one we installed. A different addon
+    // answering this URL must not silently claim the pending registration.
+    if (manifest.id !== reg.id) {
+      log.warn(
+        { expected: reg.id, got: manifest.id, url: reg.url },
+        'pending addon URL served a different manifest id — leaving pending',
+      );
+      continue;
+    }
+    const errors = validateAddonManifest(manifest);
+    if (errors.length > 0) {
+      log.warn({ id: reg.id, errors }, 'pending addon manifest invalid — leaving pending');
+      continue;
+    }
+    const { active } = negotiateCapabilities(
+      manifest.capabilities,
+      CORE_IMPLEMENTED_ADDON_CAPABILITIES,
+    );
+    if (active.length === 0) {
+      log.warn({ id: reg.id }, 'pending addon declares no usable capability — leaving pending');
+      continue;
+    }
+    // Persist the real manifest + flip to active, then register (disabled).
+    saveAddonRegistration(db, { ...reg, manifest, status: 'active' });
+    try {
+      if (opts.breaker) {
+        const breaker = opts.breaker;
+        breaker.reset(reg.id);
+        client.bindOutcome((outcome) => breaker.record(reg.id, outcome));
+      }
+      if (!registry.get(reg.id)) {
+        registry.register(new RemoteAddonPlugin(manifest, client, opts.providerRegistry));
+      }
+      promoted.push(reg.id);
+      log.info({ id: reg.id }, 'pending addon reachable — activated');
+    } catch (err) {
+      log.warn({ id: reg.id, err }, 'pending addon activated in DB but failed to register');
+    }
+  }
+  return promoted;
 }
 
 /** The enabled remote acquisition addon that can download, if any (first wins). */
