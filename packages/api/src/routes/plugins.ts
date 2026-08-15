@@ -3,12 +3,13 @@ import type { Database } from 'bun:sqlite';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
-import { AddonRequestError } from '../services/addons/client.js';
+import { AddonRequestError, AddonContractError } from '../services/addons/client.js';
 import {
   registerAddon,
   removeAddon,
   createPendingRegistration,
   promotePendingAddons,
+  previewAddonManifest,
 } from '../services/addons/manager.js';
 import type { AddonCircuitBreaker } from '../services/addons/circuit-breaker.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
@@ -117,6 +118,30 @@ export function pluginRoutes(
     await removeAddon(registry, db, id, breaker);
     recordAudit(db, c.get('user'), 'addon.remove', { targetKind: 'addon', targetId: id });
     return c.json({ ok: true });
+  });
+
+  // Preview an addon's manifest without registering it (issue #517 PR3): the
+  // "see what it is before you commit + consent" step for the from-URL flow.
+  // Persists nothing. Admin-only (under the /:id/* guard, :id='addons').
+  app.post('/addons/preview', async (c) => {
+    let body: { url?: unknown; token?: unknown };
+    try {
+      body = await c.req.json<{ url?: unknown; token?: unknown }>();
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400);
+    }
+    const url = typeof body.url === 'string' ? body.url.trim() : '';
+    const token = typeof body.token === 'string' ? body.token.trim() : '';
+    if (!url) return c.json({ error: 'url is required' }, 400);
+    try {
+      const manifest = await previewAddonManifest(url, token);
+      return c.json({ manifest });
+    } catch (err) {
+      if (err instanceof AddonRequestError || err instanceof AddonContractError) {
+        return c.json({ error: `Addon not reachable: ${err.message}` }, 502);
+      }
+      return c.json({ error: err instanceof Error ? err.message : 'Preview failed' }, 400);
+    }
   });
 
   // Install a catalog entry (issue #517 PR2): mint a token, write a `pending`

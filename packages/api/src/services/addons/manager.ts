@@ -288,6 +288,26 @@ export async function promotePendingAddons(
   return promoted;
 }
 
+/**
+ * Fetch + validate an addon's manifest **without persisting anything** (issue
+ * #517 PR3): the "paste a URL → see what it is before you commit + consent"
+ * step. Throws `AddonRequestError`/`AddonContractError` (unreachable) or a plain
+ * Error (invalid manifest), which the route maps to 502/400.
+ */
+export async function previewAddonManifest(
+  url: string,
+  token: string,
+  clientFactory?: ClientFactory,
+): Promise<AddonManifest> {
+  const client = (clientFactory ?? defaultClientFactory)(url, token);
+  const manifest = await client.getManifest();
+  const errors = validateAddonManifest(manifest);
+  if (errors.length > 0) {
+    throw new Error(`addon manifest rejected: ${errors.join('; ')}`);
+  }
+  return manifest;
+}
+
 /** The enabled remote acquisition addon that can download, if any (first wins). */
 export function activeRemoteAcquisitionAddon(registry: PluginRegistry): RemoteAddonPlugin | null {
   for (const plugin of registry.getEnabled('acquisition')) {

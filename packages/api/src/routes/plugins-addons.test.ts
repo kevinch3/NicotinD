@@ -214,6 +214,54 @@ describe('addon routes', () => {
     });
   });
 
+  describe('addon preview (issue #517 PR3)', () => {
+    it('returns the manifest without persisting anything', async () => {
+      const res = await admin.app.request('/api/plugins/addons/preview', {
+        method: 'POST',
+        body: JSON.stringify({ url: fixtureUrl }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { manifest: { id: string; name: string } };
+      expect(body.manifest.id).toBe('fixture-addon');
+      expect(body.manifest.name).toBe('Fixture Addon');
+      // Nothing was registered.
+      const list = (await (await admin.app.request('/api/plugins')).json()) as { id: string }[];
+      expect(list.find((p) => p.id === 'fixture-addon')).toBeUndefined();
+    });
+
+    it('400s a missing url, 502s an unreachable addon, 403s a non-admin', async () => {
+      expect(
+        (
+          await admin.app.request('/api/plugins/addons/preview', {
+            method: 'POST',
+            body: JSON.stringify({}),
+            headers: { 'Content-Type': 'application/json' },
+          })
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await admin.app.request('/api/plugins/addons/preview', {
+            method: 'POST',
+            body: JSON.stringify({ url: 'http://127.0.0.1:1' }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+        ).status,
+      ).toBe(502);
+      const { app } = makeApp('user');
+      expect(
+        (
+          await app.request('/api/plugins/addons/preview', {
+            method: 'POST',
+            body: JSON.stringify({ url: fixtureUrl }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+        ).status,
+      ).toBe(403);
+    });
+  });
+
   it('removes an addon and 404s an unknown one', async () => {
     await admin.app.request('/api/plugins/addons', {
       method: 'POST',
