@@ -108,6 +108,36 @@ describe('AddonCatalogCardComponent', () => {
     expect(el.querySelector('[data-testid="addon-catalog-snippet"]')).toBeNull();
   });
 
+  it('draws a highlight ring when deep-linked and offers a share link', async () => {
+    // Both signal inputs must land before the first detectChanges (JIT harness).
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [AddonCatalogCardComponent],
+      providers: [{ provide: AddonCatalogService, useValue: catalogMock }],
+    });
+    const fixture = TestBed.createComponent(AddonCatalogCardComponent);
+    setInputValue(fixture.componentInstance.entry, baseEntry({ state: 'available' }));
+    setInputValue(fixture.componentInstance.highlight, true);
+    fixture.detectChanges();
+
+    const card = fixture.nativeElement.querySelector(
+      '[data-testid="addon-catalog-card"]',
+    ) as HTMLElement;
+    expect(card.classList.contains('ring-2')).toBe(true);
+
+    (
+      fixture.nativeElement.querySelector(
+        '[data-testid="addon-catalog-share"]',
+      ) as HTMLButtonElement
+    ).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const link = fixture.nativeElement.querySelector(
+      '[data-testid="addon-catalog-share-link"]',
+    ) as HTMLInputElement;
+    expect(link.value).toContain('/extensions/install?catalog=ytdlp-addon');
+  });
+
   it('Enable emits the addon id up to the parent page', () => {
     const fixture = render(baseEntry({ state: 'installed' }));
     let emitted: string | null = null;

@@ -1,6 +1,8 @@
 @if (entry(); as e) {
   <div
     class="mb-3 p-4 rounded-xl bg-theme-surface border border-theme"
+    [class.ring-2]="highlight()"
+    [class.ring-theme-accent]="highlight()"
     data-testid="addon-catalog-card"
     [attr.data-addon-id]="e.id"
     [attr.data-addon-state]="e.state"
@@ -98,8 +100,36 @@
             >{{ 'extensions.catalogLearnMore' | t }}</a
           >
         }
+        @if (e.state !== 'builtin') {
+          <button
+            type="button"
+            (click)="toggleShare()"
+            data-testid="addon-catalog-share"
+            class="text-xs text-theme-muted hover:text-theme-secondary underline"
+          >
+            {{ 'extensions.catalogShare' | t }}
+          </button>
+        }
       </div>
     </div>
+
+    @if (shareOpen()) {
+      <div data-testid="addon-catalog-share-panel" class="mt-3 border-t border-theme pt-3">
+        <p class="text-xs text-theme-muted mb-2">{{ 'extensions.catalogShareHint' | t }}</p>
+        <div class="flex items-start gap-3 flex-wrap">
+          @if (qrDataUrl(); as qr) {
+            <img [src]="qr" alt="" width="120" height="120" class="rounded bg-white p-1" />
+          }
+          <input
+            type="text"
+            readonly
+            [value]="shareLink()"
+            data-testid="addon-catalog-share-link"
+            class="flex-1 min-w-0 px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-xs text-theme-primary"
+          />
+        </div>
+      </div>
+    }
 
     <!-- The setup snippet + waiting state, once an install has been started. -->
     @if (e.state === 'pending') {

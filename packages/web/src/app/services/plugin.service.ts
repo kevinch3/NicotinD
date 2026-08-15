@@ -54,6 +54,16 @@ export interface AddonStatus {
   rows: { key: string; label: string; value: string }[];
 }
 
+/** The manifest fields the from-URL preview surfaces before consent (issue #517). */
+export interface AddonManifestPreview {
+  id: string;
+  name: string;
+  description: string;
+  kind: PluginKind;
+  capabilities: PluginCapability[];
+  compliance?: { disclaimer: string; requiresConsent: boolean };
+}
+
 /**
  * Reads `/api/plugins` and exposes plugin state + the set of capabilities the
  * enabled plugins provide. UI surfaces gate on these computeds so an acquisition
@@ -123,6 +133,20 @@ export class PluginService {
   async saveConfig(id: string, config: Record<string, unknown>): Promise<void> {
     await firstValueFrom(this.http.put(`/api/plugins/${id}/config`, config));
     await this.refresh();
+  }
+
+  /**
+   * Preview an addon's manifest without registering it (issue #517 PR3) — the
+   * "see what it is before you commit + consent" step. Persists nothing.
+   */
+  async previewAddon(url: string, token: string): Promise<AddonManifestPreview> {
+    const res = await firstValueFrom(
+      this.http.post<{ manifest: AddonManifestPreview }>('/api/plugins/addons/preview', {
+        url,
+        token,
+      }),
+    );
+    return res.manifest;
   }
 
   /** Register a remote addon by URL + bearer token (admin-only server-side). */

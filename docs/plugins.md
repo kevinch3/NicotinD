@@ -167,6 +167,18 @@ discovery half now, and later PRs remove the token copy-paste entirely.
   (delegated to the page's existing consent dialog via `enableRequested`). Zero new privilege: no
   Docker socket, curated urls only, token plaintext like every registration token.
 
+**Preview + shareable link (PR3).**
+
+- `POST /api/plugins/addons/preview {url, token?}` (admin) fetches + validates a manifest **without
+  persisting** (`previewAddonManifest`) so the from-URL "Add addon" form shows name/capabilities/
+  disclaimer + capability risk lines **before** the admin commits + consents (it used to register
+  blind). 502 unreachable / 400 invalid.
+- A shareable install link `/extensions/install?catalog=<id>` (a function `redirectTo` that renames
+  `catalog`→`install`) deep-links into the marketplace with the entry **ring-highlighted** — the
+  target an addon README's "Add to NicotinD" button/QR uses. Each card exposes the link + a lazy QR
+  (`renderQrDataUrl`). Web-only (no `nicotind://` scheme); `adminGuard` on `/settings/plugins` does
+  the auth.
+
 ## First-party plugins
 
 > **Superseded (phase 4).** The in-process **slskd** plugin below (and its

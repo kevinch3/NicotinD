@@ -14,6 +14,7 @@ import {
 // robust contract; callers always bind an entry in practice.
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
+import { renderQrDataUrl } from '../../lib/qr';
 import {
   AddonCatalogService,
   type AddonCatalogItem,
@@ -38,11 +39,16 @@ import {
 export class AddonCatalogCardComponent implements OnDestroy {
   private readonly catalog = inject(AddonCatalogService);
   readonly entry = input<AddonCatalogItem>();
+  /** Deep-linked from a shareable install link (issue #517 PR3) — draws a ring. */
+  readonly highlight = input(false);
   /** The parent page owns the consent dialog + PluginService, so enabling is
    *  delegated up with the addon id. */
   readonly enableRequested = output<string>();
 
   readonly busy = signal(false);
+  /** The shareable install link + its QR (rendered lazily on first open). */
+  readonly shareOpen = signal(false);
+  readonly qrDataUrl = signal<string | null>(null);
   readonly copied = signal(false);
   /** The install response (minted token + snippet), kept while pending. */
   readonly install = signal<AddonInstallResult | null>(null);
@@ -94,6 +100,22 @@ export class AddonCatalogCardComponent implements OnDestroy {
   requestEnable(): void {
     const e = this.entry();
     if (e) this.enableRequested.emit(e.id);
+  }
+
+  /** The shareable install link an addon README's "Add to NicotinD" button uses. */
+  readonly shareLink = computed(() => {
+    const e = this.entry();
+    if (!e) return '';
+    const origin = typeof location !== 'undefined' ? location.origin : '';
+    return `${origin}/extensions/install?catalog=${encodeURIComponent(e.id)}`;
+  });
+
+  async toggleShare(): Promise<void> {
+    const next = !this.shareOpen();
+    this.shareOpen.set(next);
+    if (next && !this.qrDataUrl()) {
+      this.qrDataUrl.set(await renderQrDataUrl(this.shareLink()));
+    }
   }
 
   async copySnippet(): Promise<void> {

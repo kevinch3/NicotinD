@@ -12,6 +12,7 @@ import {
   createPendingRegistration,
   promotePendingAddons,
   mintAddonToken,
+  previewAddonManifest,
 } from './manager.js';
 
 function manifest(over: Partial<AddonManifest> = {}): AddonManifest {
@@ -230,6 +231,28 @@ describe('addon manager', () => {
       expect(listAddonRegistrations(db).find((r) => r.id === 'fixture-addon')?.status).toBe(
         'pending',
       );
+    });
+  });
+
+  describe('preview (issue #517 PR3)', () => {
+    it('returns a validated manifest without persisting', async () => {
+      const m = await previewAddonManifest(
+        'http://addon:9999',
+        '',
+        factoryFor(manifest({ name: 'Previewed' })),
+      );
+      expect(m.name).toBe('Previewed');
+      expect(listAddonRegistrations(db)).toHaveLength(0);
+    });
+
+    it('throws on an invalid manifest', async () => {
+      await expect(
+        previewAddonManifest(
+          'http://addon:9999',
+          '',
+          factoryFor(manifest({ protocolVersion: '9.0.0' })),
+        ),
+      ).rejects.toThrow(/rejected/);
     });
   });
 });

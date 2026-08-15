@@ -1196,7 +1196,10 @@ Add detail there, not here.
   `addon_registrations` row (additive `status`/`catalog_id`), and returns the snippet with the token
   baked in (no copy-paste); `promotePendingAddons` (60s interval + on `GET /catalog` +
   `POST /catalog/:id/check`) auto-activates it once its container answers — Install → paste → Pending
-  → Enable. Zero new privilege (no Docker socket, curated urls only). →
+  → Enable. `POST /api/plugins/addons/preview` (`previewAddonManifest`) shows a manifest before the
+  from-URL consent; a shareable `/extensions/install?catalog=<id>` link (+ QR via `renderQrDataUrl`)
+  deep-links the marketplace with the entry highlighted. Zero new privilege (no Docker socket,
+  curated urls only). →
   [docs/plugins.md](docs/plugins.md)
 - **Discogs metadata plugin (genre + artist-info)**: `metadata`-kind, default-off + consent-gated
   plugin (`services/plugins/discogs/`) that resolves release genres/styles from Discogs (strong on
