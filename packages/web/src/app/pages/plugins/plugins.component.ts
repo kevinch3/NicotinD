@@ -9,6 +9,8 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { PluginCardComponent } from './plugin-card.component';
+import { AddonCatalogCardComponent } from './addon-catalog-card.component';
+import { AddonCatalogService } from '../../services/addon-catalog.service';
 import { SettingsGroupComponent } from '../../components/settings-group/settings-group.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TranslateService } from '../../services/translate.service';
@@ -34,6 +36,7 @@ import { TranslateService } from '../../services/translate.service';
     TvNavGroupDirective,
     TvNavItemDirective,
     PluginCardComponent,
+    AddonCatalogCardComponent,
     SettingsGroupComponent,
     TranslatePipe,
   ],
@@ -41,6 +44,8 @@ import { TranslateService } from '../../services/translate.service';
 })
 export class PluginsComponent implements OnInit {
   readonly plugins = inject(PluginService);
+  readonly catalog = inject(AddonCatalogService);
+  readonly isAdmin = inject(AuthService).isAdmin;
   private readonly i18n = inject(TranslateService);
   /**
    * Deployment-wide acquisition kill-switch (issue #235). When off, every
@@ -78,6 +83,8 @@ export class PluginsComponent implements OnInit {
 
   ngOnInit(): void {
     void this.plugins.refresh();
+    // The marketplace section is admin-only; only fetch the catalog for admins.
+    if (this.isAdmin()) void this.catalog.refresh();
   }
 
   /** This plugin's editable config values (empty when it has no config form).

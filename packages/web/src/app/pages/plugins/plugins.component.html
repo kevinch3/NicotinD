@@ -19,14 +19,26 @@
   @if (message()) {
     <div
       class="mb-4 px-4 py-2.5 rounded-xl text-sm"
-      [class]="
-        message()!.type === 'error'
-          ? 'status-error'
-          : 'status-done'
-      "
+      [class]="message()!.type === 'error' ? 'status-error' : 'status-done'"
     >
       {{ message()!.text }}
     </div>
+  }
+
+  @if (isAdmin() && catalog.items().length) {
+    <app-settings-group
+      data-testid="extensions-catalog-section"
+      groupId="plugins-catalog"
+      icon="download"
+      [title]="'extensions.catalogTitle' | t"
+      [description]="'extensions.catalogDesc' | t"
+    >
+      <div appTvNavGroup axis="vertical">
+        @for (entry of catalog.items(); track entry.id) {
+          <app-addon-catalog-card [entry]="entry" />
+        }
+      </div>
+    </app-settings-group>
   }
 
   @if (acquisitionEnabled()) {
@@ -142,7 +154,6 @@
       </div>
     </app-settings-group>
   }
-
 </div>
 
 @if (consentTarget(); as p) {
