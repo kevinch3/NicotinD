@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.6](https://github.com/kevinch3/NicotinD/compare/v0.3.5...v0.3.6) (2026-08-15)
+
+### Bug Fixes
+
+* **addons:** reconcile orphaned addon jobs + fix URL-job feed rendering ([#516](https://github.com/kevinch3/NicotinD/issues/516)) ([2d32694](https://github.com/kevinch3/NicotinD/commit/2d3269473dc7f228aecd46b975c29a225cf09098))
 ## [0.3.5](https://github.com/kevinch3/NicotinD/compare/v0.3.4...v0.3.5) (2026-08-15)
 
 ### Features
