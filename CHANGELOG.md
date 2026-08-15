@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.5](https://github.com/kevinch3/NicotinD/compare/v0.3.4...v0.3.5) (2026-08-15)
+
+### Features
+
+* **addons:** remove the in-process spotdl plugin (external addon cutover) ([#514](https://github.com/kevinch3/NicotinD/issues/514)) ([0e1b328](https://github.com/kevinch3/NicotinD/commit/0e1b32884ed4c6e26395b3579e720c8e8fbb3945))
 ## [0.3.4](https://github.com/kevinch3/NicotinD/compare/v0.3.3...v0.3.4) (2026-08-15)
 
 ### Features
