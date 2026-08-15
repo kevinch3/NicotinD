@@ -41,6 +41,14 @@ describe('methodForBackend', () => {
     expect(methodForBackend('archive')).toBe('archive');
     expect(methodForBackend('mystery')).toBe('unknown');
   });
+
+  // Regression: URL resolvers became addons with suffixed ids, so an addon-backed
+  // download rendered as "Unknown source" until these were mapped to the base method.
+  it('maps the addon backend ids to their base method', () => {
+    expect(methodForBackend('ytdlp-addon')).toBe('ytdlp');
+    expect(methodForBackend('spotdl-addon')).toBe('spotdl');
+    expect(methodForBackend('bundled-archive')).toBe('archive');
+  });
 });
 
 describe('acquireJobLabel', () => {
@@ -172,6 +180,30 @@ describe('mergeAcquisitionJobs', () => {
     expect(card.albumId).toBe('album-id-1');
     expect(card.progress).toEqual({ done: 1, total: 2 });
     expect(card.canCancel).toBe(true);
+  });
+
+  // Regression: an in-flight addon URL job (no resolved metadata yet) rendered
+  // with an "Unknown source" chip and the raw `addon:<id>:<uuid>` transfer key as
+  // its title. It should show the mapped source chip + a friendly label.
+  it('renders an addon URL job with a mapped source chip and no raw addon key', () => {
+    const merged = mergeAcquisitionJobs(
+      [],
+      [
+        acqJob({
+          id: 'u1',
+          kind: 'url',
+          method: 'spotdl-addon',
+          artistName: null,
+          albumTitle: null,
+          sourceRef: 'addon:spotdl-addon:767ce23a-e417-47c8-9a5b-f09129ec3443',
+        }),
+      ],
+    );
+    expect(merged).toHaveLength(1);
+    const card = merged[0]!;
+    expect(card.method).toBe('spotdl');
+    expect(card.title).toBe('Spotify download');
+    expect(card.title).not.toContain('addon:');
   });
 
   /**
