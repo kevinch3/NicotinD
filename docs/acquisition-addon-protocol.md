@@ -396,9 +396,22 @@ bundled built-in addon**.
   slskd addon (Extensions → Add addon, `http://ytdlp-addon:8586`). The addon carries a documented
   `intent: 'url' as unknown as …` cast until `@nicotind/addon-sdk@^0.1.1` (with the `url` intent)
   publishes.
-- **Follow-ups**: spotdl external addon (C3, reuses the pot-provider + priority routing —
-  claims `spotify.com` at default priority so it beats the yt-dlp catch-all); retiring
-  `acquire_jobs`/`AcquireWatcher` once C3 lands.
+- **spotdl external addon (C3 — SHIPPED)**: spotdl left core for `kevinch3/nicotind-spotdl-addon`
+  (own repo + published GHCR image), built by mirroring the C2 ytdlp-addon scaffold. It declares
+  `urlPatterns: ['spotify\\.com']` at the **default** priority (0), so it beats the yt-dlp catch-all
+  (`priority: -10`) for Spotify URLs. Optional Spotify creds are the addon's **own** env
+  (`SPOTDL_ADDON_CLIENT_ID`/`SECRET` → `SPOTIPY_*` on spawn) — it does **not** reach into core's
+  spotify plugin (that coupling — the removed `SpotdlPlugin`'s `readSpotifyCredentials`/`spotifyEnvFor`
+  — is gone). Dockerfile = spotdl + Deno (its embedded yt-dlp needs a JS runtime; also `unzip` for the
+  Deno installer) + the bgutil pot-provider plugin. The in-process `SpotdlPlugin` + `config.acquire.spotdl`
+  were removed, and with spotdl the last in-process acquisition plugin the whole `legacy-seed`
+  migration was retired. `docker-compose.yml` gained an opt-in `spotdl-addon` profile (addon +
+  dedicated `spotdl-pot-provider` companion). Same documented `intent: 'url' as unknown as …` cast
+  pending addon-sdk 0.1.1. **With C1/C2/C3 shipped, every URL/network acquisition source is now an
+  addon — core carries zero source code.**
+- **Follow-ups**: retiring `acquire_jobs`/`AcquireWatcher` (the last in-process resolve lane is gone,
+  so the URL path can move fully onto the `AddonJobPoller` feed); publishing `@nicotind/addon-sdk@0.1.1`
+  with the `url` intent to drop the cast in all three external addons.
 
 ## Out of scope
 

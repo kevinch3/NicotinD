@@ -1,5 +1,14 @@
 # Spotify metadata fallback (download via spotDL)
 
+> **Migration note (2026-08):** spotDL is no longer an in-process plugin — it's the external
+> **`nicotind-spotdl-addon`** (own repo + published image), registered under Extensions → Add addon,
+> claiming `spotify.com` URLs at the default addon priority. The `spotify` *metadata* plugin (finding
+> the album) stays in core; only the *download* half moved to the addon, which holds its **own**
+> optional Spotify creds (`SPOTDL_ADDON_CLIENT_ID`/`SECRET`) rather than reading core's spotify
+> plugin. The in-process pieces this doc describes (`SpotdlPlugin`, the creds-forwarding coupling)
+> were removed in the phase-4 spotdl cutover; the sections below are historical.
+> See [acquisition-addon-protocol.md](acquisition-addon-protocol.md) "Resolve addons".
+
 A fallback **metadata lane**: when Soulseek (a unified search or an album hunt)
 comes up empty, search the Spotify catalog for the matching album and download it
 with **spotDL**. Spotify exposes metadata only (no audio), and spotDL already

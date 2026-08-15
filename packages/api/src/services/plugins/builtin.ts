@@ -2,7 +2,6 @@ import { join } from 'node:path';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { ProviderRegistry } from '../provider-registry.js';
 import type { PluginRegistry } from './registry.js';
-import { SpotdlPlugin } from './spotdl/index.js';
 import { SpotifyPlugin } from './spotify/index.js';
 import { LrclibPlugin } from './lrclib/index.js';
 import { DiscogsPlugin } from './discogs/index.js';
@@ -58,30 +57,11 @@ export interface BuiltinPluginDeps {
 export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPluginDeps): void {
   const { config, dataDir, providerRegistry, acoustidApiKey } = deps;
 
-  // Zero-config cookies: drop a Netscape cookies.txt at
-  // <dataDir>/youtube-cookies.txt and both YouTube-backed downloaders pick it
-  // up (only when the file exists) — the unblock for YouTube's bot-check on
-  // flagged server IPs. An explicit config path overrides the convention.
-  const defaultCookiesFile = join(dataDir, 'youtube-cookies.txt');
-
-  // spotdl is the last in-process URL-resolve plugin (spotify.com only). yt-dlp
-  // (the catch-all) is now the external nicotind-ytdlp-addon, and archive.org the
-  // bundled archive addon — both resolved via resolveAddonForUrl ahead of this.
-  plugins.register(
-    new SpotdlPlugin(
-      {
-        enabled: config.acquire.spotdl.enabled,
-        binaryPath: config.acquire.spotdl.binaryPath,
-        cookiesFile: config.acquire.spotdl.cookiesFile || defaultCookiesFile,
-      },
-      // Live read of the spotify card's Client ID/Secret at spawn time — the
-      // user enters them once on the spotify extension and spotDL inherits
-      // them (higher Spotify rate limits than its built-in shared client).
-      { registry: plugins },
-    ),
-  );
-  // archive.org is now the bundled built-in addon (services/addons/bundled/archive),
-  // registered via registerBundledAddons — no longer an in-process plugin.
+  // Every URL-resolve source is now an addon, not an in-process plugin: spotdl
+  // (spotify.com) is the external nicotind-spotdl-addon, yt-dlp (the catch-all)
+  // the external nicotind-ytdlp-addon, and archive.org the bundled archive addon
+  // — all resolved via resolveAddonForUrl. Register the externals via
+  // Extensions → Add addon.
   // Metadata-only fallback lane — no `resolve`, so it never competes for URLs.
   plugins.register(
     new SpotifyPlugin({

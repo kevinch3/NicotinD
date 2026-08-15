@@ -130,16 +130,9 @@ export const NicotinDConfigSchema = z.object({
 
   acquire: z
     .object({
-      // yt-dlp is no longer in-process config — it's the external
-      // nicotind-ytdlp-addon (registered under Extensions → Add addon).
-      spotdl: z
-        .object({
-          enabled: z.boolean().default(true),
-          binaryPath: z.string().default('spotdl'),
-          // Same cookies file, handed to spotdl as `--cookie-file`.
-          cookiesFile: z.string().default(''),
-        })
-        .default({ enabled: true, binaryPath: 'spotdl', cookiesFile: '' }),
+      // yt-dlp and spotdl are no longer in-process config — they're the external
+      // nicotind-ytdlp-addon / nicotind-spotdl-addon (registered under
+      // Extensions → Add addon).
       archive: z
         .object({
           // Pure-JS plugin (no binary). `enabled` only feeds isAvailable(); the
@@ -163,7 +156,6 @@ export const NicotinDConfigSchema = z.object({
         .default({ enabled: true, clientId: '', clientSecret: '' }),
     })
     .default({
-      spotdl: { enabled: true, binaryPath: 'spotdl', cookiesFile: '' },
       archive: { enabled: true, preferredFormats: ['MP3', 'FLAC'] },
       spotify: { enabled: true, clientId: '', clientSecret: '' },
     }),

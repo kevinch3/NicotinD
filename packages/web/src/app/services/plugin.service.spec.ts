@@ -71,6 +71,18 @@ describe('PluginService', () => {
     expect(svc.hasSpotdl()).toBe(true);
   });
 
+  it('hasSpotdl also lights up for the external spotdl-addon id', async () => {
+    // spotDL is the external `spotdl-addon` now (was the in-process `spotdl`
+    // plugin) — the one-click Spotify path must recognize the addon id too.
+    get.mockReturnValue(
+      of([
+        plugin({ id: 'spotdl-addon', capabilities: ['resolve'], enabled: true, available: true }),
+      ]),
+    );
+    await svc.refresh();
+    expect(svc.hasSpotdl()).toBe(true);
+  });
+
   it('saveConfig PUTs the payload and refreshes', async () => {
     await svc.saveConfig('spotify', { clientId: 'id' });
     expect(put).toHaveBeenCalledWith('/api/plugins/spotify/config', { clientId: 'id' });
