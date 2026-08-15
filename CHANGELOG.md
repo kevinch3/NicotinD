@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.7](https://github.com/kevinch3/NicotinD/compare/v0.3.6...v0.3.7) (2026-08-15)
+
+### Features
+
+* **addons:** curated addon marketplace — read-only "Available add-ons" section ([#519](https://github.com/kevinch3/NicotinD/issues/519)) ([4264987](https://github.com/kevinch3/NicotinD/commit/4264987691791da9f4ddf9aec75e29558e0962c3)), closes [#518](https://github.com/kevinch3/NicotinD/issues/518), references [#517](https://github.com/kevinch3/NicotinD/issues/517) [#517](https://github.com/kevinch3/NicotinD/issues/517)
 ## [0.3.6](https://github.com/kevinch3/NicotinD/compare/v0.3.5...v0.3.6) (2026-08-15)
 
 ### Bug Fixes
