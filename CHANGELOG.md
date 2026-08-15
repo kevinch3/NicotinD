@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.4](https://github.com/kevinch3/NicotinD/compare/v0.3.3...v0.3.4) (2026-08-15)
+
+### Features
+
+* **addons:** yt-dlp becomes an external addon (core cutover) ([#513](https://github.com/kevinch3/NicotinD/issues/513)) ([1131a3d](https://github.com/kevinch3/NicotinD/commit/1131a3d43fafe788a069f193026aff0e3c9bee7c)), references [#486](https://github.com/kevinch3/NicotinD/issues/486)
 ## [0.3.3](https://github.com/kevinch3/NicotinD/compare/v0.3.2...v0.3.3) (2026-08-14)
 
 ### Features
