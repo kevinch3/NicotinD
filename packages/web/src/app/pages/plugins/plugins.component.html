@@ -35,7 +35,7 @@
     >
       <div appTvNavGroup axis="vertical">
         @for (entry of catalog.items(); track entry.id) {
-          <app-addon-catalog-card [entry]="entry" />
+          <app-addon-catalog-card [entry]="entry" (enableRequested)="enableFromCatalog($event)" />
         }
       </div>
     </app-settings-group>

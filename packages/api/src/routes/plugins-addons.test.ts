@@ -150,6 +150,70 @@ describe('addon routes', () => {
     expect(body.entries.find((e) => e.id === 'fixture-addon')).toBeUndefined();
   });
 
+  describe('catalog install (issue #517 PR2)', () => {
+    it('mints a token + pending row and returns a snippet with the token baked in', async () => {
+      const res = await admin.app.request('/api/plugins/catalog/ytdlp-addon/install', {
+        method: 'POST',
+      });
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as {
+        token: string;
+        addonUrl: string;
+        composeSnippet: { full: string };
+        reused: boolean;
+      };
+      expect(body.token).toMatch(/^nca_addon_/);
+      expect(body.addonUrl).toBe('http://ytdlp-addon:8586');
+      expect(body.composeSnippet.full).toContain(body.token);
+      expect(body.composeSnippet.full).not.toContain('change-me');
+      expect(body.reused).toBe(false);
+
+      // The catalog now reports it pending (container not up in the test).
+      const cat = (await (await admin.app.request('/api/plugins/catalog')).json()) as {
+        entries: { id: string; state: string }[];
+      };
+      expect(cat.entries.find((e) => e.id === 'ytdlp-addon')!.state).toBe('pending');
+    });
+
+    it('re-installing returns the same token (idempotent)', async () => {
+      const first = (await (
+        await admin.app.request('/api/plugins/catalog/ytdlp-addon/install', { method: 'POST' })
+      ).json()) as { token: string };
+      const again = (await (
+        await admin.app.request('/api/plugins/catalog/ytdlp-addon/install', { method: 'POST' })
+      ).json()) as { token: string; reused: boolean };
+      expect(again.reused).toBe(true);
+      expect(again.token).toBe(first.token);
+    });
+
+    it('404s an unknown catalog id and 400s a builtin', async () => {
+      expect(
+        (await admin.app.request('/api/plugins/catalog/nope/install', { method: 'POST' })).status,
+      ).toBe(404);
+      expect(
+        (await admin.app.request('/api/plugins/catalog/archive/install', { method: 'POST' }))
+          .status,
+      ).toBe(400);
+    });
+
+    it('rejects a non-admin install', async () => {
+      const { app } = makeApp('user');
+      const res = await app.request('/api/plugins/catalog/ytdlp-addon/install', { method: 'POST' });
+      expect(res.status).toBe(403);
+    });
+
+    it('check reports the state and does not promote an unreachable addon', async () => {
+      await admin.app.request('/api/plugins/catalog/ytdlp-addon/install', { method: 'POST' });
+      const res = await admin.app.request('/api/plugins/catalog/ytdlp-addon/check', {
+        method: 'POST',
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { state: string; promoted: boolean };
+      expect(body.state).toBe('pending');
+      expect(body.promoted).toBe(false);
+    });
+  });
+
   it('removes an addon and 404s an unknown one', async () => {
     await admin.app.request('/api/plugins/addons', {
       method: 'POST',

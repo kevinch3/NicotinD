@@ -11,6 +11,15 @@ export interface AddonRegistration {
   manifest: AddonManifest;
   addedAt: number;
   addedBy: string;
+  /**
+   * `active` = manifest fetched + plugin registered. `pending` (issue #517 PR2)
+   * = a catalog install minted a token before the container is up; the manifest
+   * snapshot is a catalog stub until the promoter fetches the real one. Defaults
+   * to `active` so every pre-PR2 row keeps its behavior.
+   */
+  status: 'active' | 'pending';
+  /** The catalog entry this row was installed from (issue #517), if any. */
+  catalogId?: string;
 }
 
 interface Row {
@@ -20,6 +29,8 @@ interface Row {
   manifest_json: string;
   added_at: number;
   added_by: string;
+  status: 'active' | 'pending' | null;
+  catalog_id: string | null;
 }
 
 export function listAddonRegistrations(db: Database): AddonRegistration[] {
@@ -34,6 +45,8 @@ export function listAddonRegistrations(db: Database): AddonRegistration[] {
         manifest: JSON.parse(row.manifest_json) as AddonManifest,
         addedAt: row.added_at,
         addedBy: row.added_by,
+        status: row.status ?? 'active',
+        catalogId: row.catalog_id ?? undefined,
       });
     } catch {
       // A corrupt snapshot must never take the boot path down with it.
@@ -45,13 +58,23 @@ export function listAddonRegistrations(db: Database): AddonRegistration[] {
 
 export function saveAddonRegistration(db: Database, reg: AddonRegistration): void {
   db.run(
-    `INSERT INTO addon_registrations (id, url, token, manifest_json, added_at, added_by)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO addon_registrations (id, url, token, manifest_json, added_at, added_by, status, catalog_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        url = excluded.url, token = excluded.token,
        manifest_json = excluded.manifest_json,
-       added_at = excluded.added_at, added_by = excluded.added_by`,
-    [reg.id, reg.url, reg.token, JSON.stringify(reg.manifest), reg.addedAt, reg.addedBy],
+       added_at = excluded.added_at, added_by = excluded.added_by,
+       status = excluded.status, catalog_id = excluded.catalog_id`,
+    [
+      reg.id,
+      reg.url,
+      reg.token,
+      JSON.stringify(reg.manifest),
+      reg.addedAt,
+      reg.addedBy,
+      reg.status,
+      reg.catalogId ?? null,
+    ],
   );
 }
 

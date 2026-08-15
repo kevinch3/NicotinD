@@ -5,7 +5,14 @@ import { applySchema } from '../../db.js';
 import { PluginRegistry } from '../plugins/registry.js';
 import { AddonClient } from './client.js';
 import { listAddonRegistrations, saveAddonRegistration } from './store.js';
-import { loadRegisteredAddons, registerAddon, removeAddon } from './manager.js';
+import {
+  loadRegisteredAddons,
+  registerAddon,
+  removeAddon,
+  createPendingRegistration,
+  promotePendingAddons,
+  mintAddonToken,
+} from './manager.js';
 
 function manifest(over: Partial<AddonManifest> = {}): AddonManifest {
   return {
@@ -114,6 +121,7 @@ describe('addon manager', () => {
       manifest: manifest(),
       addedAt: 1,
       addedBy: 'admin',
+      status: 'active',
     });
     saveAddonRegistration(db, {
       id: 'broken',
@@ -122,6 +130,7 @@ describe('addon manager', () => {
       manifest: manifest({ id: 'broken', protocolVersion: '9.0.0' }),
       addedAt: 2,
       addedBy: 'admin',
+      status: 'active',
     });
     loadRegisteredAddons(registry, db);
     expect(registry.get('fixture-addon')).toBeDefined();
@@ -139,5 +148,88 @@ describe('addon manager', () => {
     await removeAddon(registry, db, 'fixture-addon');
     expect(registry.get('fixture-addon')).toBeUndefined();
     expect(listAddonRegistrations(db)).toHaveLength(0);
+  });
+
+  describe('one-click install (issue #517 PR2)', () => {
+    const ENTRY = {
+      id: 'fixture-addon',
+      name: 'Fixture',
+      kind: 'acquisition' as const,
+      capabilities: ['search' as const],
+      description: 'x',
+      addonUrl: 'http://addon:9999',
+    };
+
+    it('mintAddonToken is opaque, prefixed, and unique', () => {
+      const a = mintAddonToken();
+      const b = mintAddonToken();
+      expect(a).toMatch(/^nca_addon_[0-9a-f]{48}$/);
+      expect(a).not.toBe(b);
+    });
+
+    it('createPendingRegistration writes a pending row not registered at boot', () => {
+      const { token, reused } = createPendingRegistration(db, ENTRY, 'admin');
+      expect(reused).toBe(false);
+      expect(token).toMatch(/^nca_addon_/);
+      const row = listAddonRegistrations(db).find((r) => r.id === 'fixture-addon')!;
+      expect(row.status).toBe('pending');
+      expect(row.catalogId).toBe('fixture-addon');
+      // A pending row is skipped at boot (stub manifest, not yet reachable).
+      loadRegisteredAddons(registry, db);
+      expect(registry.get('fixture-addon')).toBeUndefined();
+    });
+
+    it('re-installing while pending returns the SAME token (idempotent)', () => {
+      const first = createPendingRegistration(db, ENTRY, 'admin');
+      const second = createPendingRegistration(db, ENTRY, 'admin');
+      expect(second.reused).toBe(true);
+      expect(second.token).toBe(first.token);
+    });
+
+    it('refuses to re-install an already-active addon', async () => {
+      await registerAddon(registry, db, {
+        url: 'http://addon:9999',
+        token: 'tok',
+        addedBy: 'admin',
+        clientFactory: factoryFor(manifest()),
+      });
+      expect(() => createPendingRegistration(db, ENTRY, 'admin')).toThrow(/already installed/);
+    });
+
+    it('promotes a pending addon once its manifest is reachable', async () => {
+      createPendingRegistration(db, ENTRY, 'admin');
+      const promoted = await promotePendingAddons(registry, db, {
+        clientFactory: factoryFor(manifest()),
+      });
+      expect(promoted).toEqual(['fixture-addon']);
+      expect(listAddonRegistrations(db).find((r) => r.id === 'fixture-addon')?.status).toBe(
+        'active',
+      );
+      expect(registry.get('fixture-addon')?.origin?.remote).toBe(true);
+      // Activated, but still disabled — enabling stays the consent-gated step.
+      expect(registry.get('fixture-addon')).toBeDefined();
+    });
+
+    it('leaves a pending addon pending when unreachable', async () => {
+      createPendingRegistration(db, ENTRY, 'admin');
+      const promoted = await promotePendingAddons(registry, db, {
+        clientFactory: factoryFor(new Error('ECONNREFUSED')),
+      });
+      expect(promoted).toEqual([]);
+      expect(listAddonRegistrations(db).find((r) => r.id === 'fixture-addon')?.status).toBe(
+        'pending',
+      );
+    });
+
+    it('refuses to promote when the URL serves a different manifest id', async () => {
+      createPendingRegistration(db, ENTRY, 'admin');
+      const promoted = await promotePendingAddons(registry, db, {
+        clientFactory: factoryFor(manifest({ id: 'impostor' })),
+      });
+      expect(promoted).toEqual([]);
+      expect(listAddonRegistrations(db).find((r) => r.id === 'fixture-addon')?.status).toBe(
+        'pending',
+      );
+    });
   });
 });

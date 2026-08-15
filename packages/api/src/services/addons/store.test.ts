@@ -27,6 +27,7 @@ function reg(over: Partial<AddonRegistration> = {}): AddonRegistration {
     manifest: MANIFEST,
     addedAt: 1_700_000_000,
     addedBy: 'admin',
+    status: 'active',
     ...over,
   };
 }
