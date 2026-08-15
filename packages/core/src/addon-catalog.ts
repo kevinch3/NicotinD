@@ -98,7 +98,11 @@ export interface AddonCatalogEntry {
  */
 export const ADDON_CATALOG: readonly AddonCatalogEntry[] = [
   {
-    id: 'slskd-addon',
+    // id MUST equal the addon's manifest id (what it registers as), which is
+    // the bare `slskd` — NOT the compose service name `slskd-addon`. Getting
+    // this wrong makes an installed slskd read as "available" and an install
+    // strand a never-promotable pending row (verified on prod, v0.3.8).
+    id: 'slskd',
     name: 'Soulseek (slskd)',
     description:
       'Search + download music from the Soulseek P2P network. The primary acquisition source.',

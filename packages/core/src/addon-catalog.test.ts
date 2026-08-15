@@ -31,6 +31,19 @@ describe('ADDON_CATALOG', () => {
       expect(e.addonUrl).toContain(`//${addonSvc.name}:`);
     }
   });
+
+  // Regression (verified on prod v0.3.8): the catalog id MUST equal the addon's
+  // *manifest* id (what it registers as) — which for slskd is the bare `slskd`,
+  // distinct from its compose service name `slskd-addon`. A mismatch makes an
+  // installed addon read as "available" and strands its install as a
+  // never-promotable pending row (the id-match guard rejects the real manifest).
+  it('slskd catalog id is the manifest id, not the compose service name', () => {
+    const slskd = catalogEntry('slskd')!;
+    expect(slskd).toBeDefined();
+    expect(catalogEntry('slskd-addon')).toBeUndefined();
+    expect(slskd.composeServices[0]!.name).toBe('slskd-addon');
+    expect(slskd.addonUrl).toBe('http://slskd-addon:8585');
+  });
 });
 
 describe('catalogEntry', () => {
@@ -90,7 +103,7 @@ describe('renderComposeSnippet', () => {
   });
 
   it('renders slskd depends_on with a service_started condition', () => {
-    const snip = renderComposeSnippet(catalogEntry('slskd-addon')!, TOKEN);
+    const snip = renderComposeSnippet(catalogEntry('slskd')!, TOKEN);
     expect(snip.services).toContain('depends_on:');
     expect(snip.services).toContain('slskd:');
     expect(snip.services).toContain('condition: service_started');
