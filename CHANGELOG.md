@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.8](https://github.com/kevinch3/NicotinD/compare/v0.3.7...v0.3.8) (2026-08-15)
+
+### Features
+
+* **addons:** addon manifest preview + shareable install link/QR ([#523](https://github.com/kevinch3/NicotinD/issues/523)) ([f99f7b2](https://github.com/kevinch3/NicotinD/commit/f99f7b224005f550b17fcab76d3de30176438493)), closes [#522](https://github.com/kevinch3/NicotinD/issues/522), references [#517](https://github.com/kevinch3/NicotinD/issues/517) [#517](https://github.com/kevinch3/NicotinD/issues/517)
+* **addons:** one-click addon install — token mint + pending registration + auto-detect ([#521](https://github.com/kevinch3/NicotinD/issues/521)) ([de421db](https://github.com/kevinch3/NicotinD/commit/de421dba706b504e576717716f30eb2bd08ca8b5)), closes [#520](https://github.com/kevinch3/NicotinD/issues/520), references [#517](https://github.com/kevinch3/NicotinD/issues/517) [#517](https://github.com/kevinch3/NicotinD/issues/517)
 ## [0.3.7](https://github.com/kevinch3/NicotinD/compare/v0.3.6...v0.3.7) (2026-08-15)
 
 ### Features
