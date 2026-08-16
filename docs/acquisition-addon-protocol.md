@@ -417,8 +417,14 @@ bundled built-in addon**.
   addon jobs via `getJob` and **fails the ones the addon 404s** (a slow-but-live job the addon still
   returns is left alone). Web-side, `methodForBackend` maps the `-addon`/`bundled-archive` ids to the
   base method (fixes the chip) and the feed shows a friendly `"<Source> download"` label instead of
-  the opaque `addon:` key until metadata resolves. Follow-up: persist the addons' job store (like
-  slskd) so a restart reports failed rather than forgetting.
+  the opaque `addon:` key until metadata resolves. **Root cause now fixed at the source (issue #515):**
+  the yt-dlp/spotdl addons persist their job store to SQLite (`<dataDir>/jobs.db`) and, on boot, mark
+  any still-`active` job **failed** — so a restart reports an honest failure the addon itself owns,
+  and `reconcileOrphanedJobs` is now the backstop rather than the only defense (slskd was always
+  immune — it persisted from day one). The "retryable failed URL cards" half of #515 was **not built**:
+  `acquisition_jobs` has no `url` column and the addon `source_ref` is the opaque `addon:<id>:<jobId>`
+  key, so a Retry would need url-persistence plumbing for marginal benefit over re-pasting the URL
+  (which already re-submits idempotently).
 - **Follow-ups**: retiring `acquire_jobs`/`AcquireWatcher` (the last in-process resolve lane is gone,
   so the URL path can move fully onto the `AddonJobPoller` feed); publishing `@nicotind/addon-sdk@0.1.1`
   with the `url` intent to drop the cast in all three external addons.
