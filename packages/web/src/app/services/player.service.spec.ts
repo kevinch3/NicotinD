@@ -399,6 +399,10 @@ describe('PlayerService', () => {
 
   describe('radio', () => {
     const flush = () => new Promise((r) => setTimeout(r, 0));
+    const track4: Track = { id: 't4', title: 'Track 4', artist: 'Artist D' };
+    const track5: Track = { id: 't5', title: 'Track 5', artist: 'Artist E' };
+    const track6: Track = { id: 't6', title: 'Track 6', artist: 'Artist F' };
+    const track7: Track = { id: 't7', title: 'Track 7', artist: 'Artist G' };
 
     it('toggleRadio flips the flag', () => {
       expect(service.radio()).toBe(false);
@@ -414,6 +418,7 @@ describe('PlayerService', () => {
       service.queue.set([]);
 
       service.toggleRadio();
+      TestBed.flushEffects(); // the eager fill rides the trigger effect
       await flush();
 
       expect(service.queue().map((t) => t.id)).toEqual(['t2', 't3']);
@@ -430,6 +435,30 @@ describe('PlayerService', () => {
       expect(service.queue().length).toBeGreaterThan(0);
     });
 
+    // The endless-radio regression (#reported on APK): the first batch arrived,
+    // the second never did — the drain effect and toggleRadio had forked guards.
+    it('keeps replenishing across consecutive drains', async () => {
+      const batches = [
+        [track2, track3, track4],
+        [track5, track6, track7],
+      ];
+      let calls = 0;
+      service.setRadioProvider(async () => batches[Math.min(calls++, batches.length - 1)]);
+      service.play(track1);
+      service.radio.set(true);
+      service.queue.set([]);
+      TestBed.flushEffects();
+      await flush();
+      expect(service.queue().map((t) => t.id)).toEqual(['t2', 't3', 't4']);
+
+      service.playNext(); // t2 current, queue drains to 2 → threshold hit again
+      TestBed.flushEffects();
+      await flush();
+
+      expect(calls).toBe(2);
+      expect(service.queue().map((t) => t.id)).toEqual(['t3', 't4', 't5', 't6', 't7']);
+    });
+
     it('does not replenish when radio is off', async () => {
       let calls = 0;
       service.setRadioProvider(async () => {
@@ -444,11 +473,11 @@ describe('PlayerService', () => {
       expect(calls).toBe(0);
     });
 
-    it('does not replenish while repeating', async () => {
+    it('replenishes even while repeating — radio wins over repeat', async () => {
       let calls = 0;
       service.setRadioProvider(async () => {
         calls++;
-        return [track2];
+        return [track2, track3, track4];
       });
       service.play(track1);
       service.radio.set(true);
@@ -457,7 +486,149 @@ describe('PlayerService', () => {
       TestBed.flushEffects();
       await flush();
 
+      expect(calls).toBe(1);
+      expect(service.queue().length).toBe(3);
+    });
+
+    it('does not fetch when toggled on with nothing loaded', async () => {
+      let calls = 0;
+      service.setRadioProvider(async () => {
+        calls++;
+        return [track2];
+      });
+      service.toggleRadio();
+      TestBed.flushEffects();
+      await flush();
+
       expect(calls).toBe(0);
+    });
+
+    describe('bounded retry', () => {
+      const flushAsync = () => vi.advanceTimersByTimeAsync(0);
+      beforeEach(() => vi.useFakeTimers());
+      afterEach(() => vi.useRealTimers());
+
+      it('retries a failed fetch after the retry delay', async () => {
+        let calls = 0;
+        service.setRadioProvider(async () => {
+          calls++;
+          if (calls === 1) throw new Error('offline');
+          return [track2, track3, track4];
+        });
+        service.play(track1);
+        service.radio.set(true);
+        service.queue.set([]);
+        TestBed.flushEffects();
+        await flushAsync();
+        expect(calls).toBe(1);
+        expect(service.queue()).toEqual([]);
+
+        await vi.advanceTimersByTimeAsync(30_000); // retry timer bumps the nonce
+        TestBed.flushEffects();
+        await flushAsync();
+
+        expect(calls).toBe(2);
+        expect(service.queue().length).toBe(3);
+      });
+
+      it('treats an empty result as a failure and retries', async () => {
+        let calls = 0;
+        service.setRadioProvider(async () => {
+          calls++;
+          return calls === 1 ? [] : [track2, track3, track4];
+        });
+        service.play(track1);
+        service.radio.set(true);
+        service.queue.set([]);
+        TestBed.flushEffects();
+        await flushAsync();
+        expect(service.queue()).toEqual([]);
+
+        await vi.advanceTimersByTimeAsync(30_000);
+        TestBed.flushEffects();
+        await flushAsync();
+
+        expect(service.queue().length).toBe(3);
+      });
+
+      it('gives up after the retry cap; radio stays on', async () => {
+        let calls = 0;
+        service.setRadioProvider(async () => {
+          calls++;
+          throw new Error('offline');
+        });
+        service.play(track1);
+        service.radio.set(true);
+        service.queue.set([]);
+        TestBed.flushEffects();
+        await flushAsync();
+
+        for (let i = 0; i < 5; i++) {
+          await vi.advanceTimersByTimeAsync(30_000);
+          TestBed.flushEffects();
+          await flushAsync();
+        }
+
+        expect(calls).toBe(1 + 3); // initial attempt + RADIO_MAX_RETRIES
+        expect(service.radio()).toBe(true); // a later drain/toggle can still try
+      });
+    });
+
+    describe('resume after exhaustion', () => {
+      it('resumes when a replenish lands after the queue ran dry', async () => {
+        let resolveFetch!: (tracks: Track[]) => void;
+        service.setRadioProvider(() => new Promise((r) => (resolveFetch = r)));
+        service.play(track1);
+        service.radio.set(true);
+        service.queue.set([]); // drain → replenish in flight
+        TestBed.flushEffects();
+
+        service.playNext(); // last track ends before the fetch lands
+        expect(service.isPlaying()).toBe(false);
+
+        resolveFetch([track2, track3, track4]);
+        await flush();
+
+        expect(service.isPlaying()).toBe(true);
+        expect(service.currentTrack()?.id).toBe('t2');
+        expect(service.queue().map((t) => t.id)).toEqual(['t3', 't4']);
+      });
+
+      it('never resumes after a user pause following the stop', async () => {
+        let resolveFetch!: (tracks: Track[]) => void;
+        service.setRadioProvider(() => new Promise((r) => (resolveFetch = r)));
+        service.play(track1);
+        service.radio.set(true);
+        service.queue.set([]);
+        TestBed.flushEffects();
+
+        service.playNext(); // exhaustion stop
+        service.pause(); // explicit user gesture afterwards
+
+        resolveFetch([track2, track3, track4]);
+        await flush();
+
+        expect(service.isPlaying()).toBe(false);
+        expect(service.currentTrack()?.id).toBe('t1'); // no auto-advance
+        expect(service.queue().length).toBe(3); // tracks still queued for later
+      });
+
+      it('a mid-track user pause is untouched by a landing replenish', async () => {
+        let resolveFetch!: (tracks: Track[]) => void;
+        service.setRadioProvider(() => new Promise((r) => (resolveFetch = r)));
+        service.play(track1);
+        service.radio.set(true);
+        service.queue.set([]);
+        TestBed.flushEffects();
+
+        service.pause(); // track still current, user just paused
+
+        resolveFetch([track2, track3, track4]);
+        await flush();
+
+        expect(service.isPlaying()).toBe(false);
+        expect(service.currentTrack()?.id).toBe('t1');
+      });
     });
   });
 

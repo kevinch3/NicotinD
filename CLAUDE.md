@@ -21,7 +21,7 @@ Every task on this project must satisfy all three gates before being considered 
    `check:ci-parity`, which fails when the workflow gains a step `verify` doesn't reach: the
    web-spec typecheck was CI-only for months, so a spec could drift from the type it asserts
    against with every local gate green (that is the third instance of this exact class, after
-   #273 and #376). `bun run e2e` is deliberately *not* in `verify` — it is its own CI job and takes
+   #273 and #376). `bun run e2e` is deliberately _not_ in `verify` — it is its own CI job and takes
    minutes; run it before declaring a feature done, per the rest of this gate.
    Adding a test locally is not enough. Verify the relevant GitHub
    Actions workflow actually executes the new test on push. If a new test file or package is added,
@@ -129,8 +129,8 @@ must follow this format:
 
 **Enforcement**: A `commit-msg` hook via husky + commitlint rejects non-conforming messages.
 
-**Closing issues (issue #257)**: put **`Closes #N` in the PR body** — that's an *action* GitHub
-honours on merge. `(#N)` in a commit subject is only a *reference*: it links, and the issue stays
+**Closing issues (issue #257)**: put **`Closes #N` in the PR body** — that's an _action_ GitHub
+honours on merge. `(#N)` in a commit subject is only a _reference_: it links, and the issue stays
 open forever. Using the latter where the former was meant is why six issues were once found
 already-shipped but still open, and five more after them; the docs gate held while the tracker
 silently didn't. For **partial** work use `Refs #N` and comment what's left, so the issue keeps an
@@ -163,7 +163,7 @@ NicotinD (Hono API :8484)  — native library scanner + streaming, all in-proces
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `@nicotind/core`            | Shared types (Zod schemas), logger (pino), crypto utils, error classes                                              |
 | `@nicotind/addon-sdk`       | Published npm SDK: acquisition addon protocol v1 DTOs/schemas + hunt-query helpers + logger for building addons     |
-| `@nicotind/service-manager` | Strategy pattern for managing sub-service lifecycle (child_process or Docker) — Lidarr only since the slskd split    |
+| `@nicotind/service-manager` | Strategy pattern for managing sub-service lifecycle (child_process or Docker) — Lidarr only since the slskd split   |
 | `@nicotind/api`             | Hono API server — routes, JWT auth, unified search, download watcher, native library scanner + streaming, SQLite DB |
 | `@nicotind/web`             | Angular v22 web UI (standalone components, signals, Tailwind)                                                       |
 | `@nicotind/cli`             | Commander.js CLI (Phase 3)                                                                                          |
@@ -203,7 +203,7 @@ Add detail there, not here.
   code (`unanimousLicence`, else NULL) computed in the scanner reduce, so Albums/Compilations filter
   to "entirely Public Domain" (artists stay any-track) + an album-page badge. →
   [docs/music-licence.md](docs/music-licence.md)
-- **Popularity / hotness per song (issue #220)**: the first *extrinsic* signal — a normalized 0–1
+- **Popularity / hotness per song (issue #220)**: the first _extrinsic_ signal — a normalized 0–1
   `library_songs.popularity` (+ `popularity_source`) from **ListenBrainz** (`ListenBrainzClient`,
   `POST /1/popularity/recording`, MBID-native + credential-free — chosen over Spotify's 0–100 which
   needs creds + an id hop). `normalizePopularity` log-scales a global listen count
@@ -317,14 +317,14 @@ Add detail there, not here.
   fallback). `nativeAppCors()` is hand-rolled (not `hono/cors`) so its Vary-header append can't
   strip `Content-Length` off Blob-bodied stream responses (the Firefox "never plays" bug).
   **Range handling is RFC 9110-complete**: `serveFileWithRange` serves suffix ranges
-  (`bytes=-N` = the **last** N bytes) correctly — it used to hand back the *head* of the file under
+  (`bytes=-N` = the **last** N bytes) correctly — it used to hand back the _head_ of the file under
   a mismatched Content-Range, which stalled iOS Safari's tail-probing media loader forever (the
   iPhone-PWA "metadata loads, song never finishes loading" bug; masked when auto-preserve was on,
   since that path is a range-less `fetch()`). **Transcode cache integrity** (size-in-key, 1 KiB
   size floor, ffprobe post-check +
   `-xerror`/`+discardcorrupt`/`-err_detect explode`, in-use pin during pruning released via a
   grace timer (`schedulePinRelease` — the old release-at-stream-end body wrapper made Bun drop
-  `Content-Length` and emit a chunked 206, which Firefox *and* iOS Safari stall on; the Blob body
+  `Content-Length` and emit a chunked 206, which Firefox _and_ iOS Safari stall on; the Blob body
   must reach Bun untouched, and a real-socket wire suite in `streaming.test.ts` pins that),
   plus a **negative cache** for permanently-unusable sources —
   issue #317: the rejection was right but unremembered, so a damaged file re-ran its doomed ffmpeg
@@ -377,7 +377,7 @@ Add detail there, not here.
   `queue`, so a standalone track click left an unrelated queue in place and it resumed the moment
   the clicked track ended. The gesture now decides: `play()` is the queue-untouched **primitive**
   (queue-owning callers + `RemotePlaybackService` sync only), `playSingle()` **replaces** the queue
-  for a context-less click, `playWithContext()` makes *that list* the queue for every in-list row
+  for a context-less click, `playWithContext()` makes _that list_ the queue for every in-list row
   click (album detail + genre detail were still on the primitive — fixed), and `jumpToQueueIndex()`
   **consumes** the queue up to a tapped "Next up" row instead of leaving it there to replay.
   `startRadio(track)` clears the queue too, so radio starts now rather than after the stale queue
@@ -403,13 +403,12 @@ Add detail there, not here.
   `services/artist-image-fill.ts` `fillArtistImages`; copying its resolve→persist sequence would
   have risked dropping the `clearCoverNegativeCache` eviction, which stores the portrait while the
   UI keeps showing the placeholder. **Gap 4**: the upload/from-album control is now the shared
-  `ArtistImageMenuComponent`, used by the artist page *and* each Artists-grid tile (curator-gated) —
+  `ArtistImageMenuComponent`, used by the artist page _and_ each Artists-grid tile (curator-gated) —
   one component, not a copy, because a second one drifts on the busy-guard and the cache-bust (the
   portrait URL is byte-identical after a change); `albums` is passed on the page but **lazily
   fetched** on a tile, and a "Fetch automatically" entry finally gives that auto-fetch route a web
   caller. → [docs/library-scanner.md](docs/library-scanner.md)
-  short-circuit staying at the call-site SQL not the chain). **Coverage is visible (issue #250 gap
-  3)**: `artistImageCoverage` → the `artistImages` slice on `GET /api/admin/review` → an Admin row
+  short-circuit staying at the call-site SQL not the chain). **Coverage is visible (issue #250 gap 3)**: `artistImageCoverage` → the `artistImages` slice on `GET /api/admin/review` → an Admin row
   ("N of M artists have a portrait" + bar), hidden at full coverage; `missing` **reuses**
   `NEEDS_PORTRAIT_SQL` so the number an admin reads is by construction the number a fill acts on,
   and `withPortrait` is computed directly rather than by subtraction because a curator upload lives
@@ -504,10 +503,10 @@ Add detail there, not here.
   a GPU one** (issue #224): throughput is flat within 1 % from concurrency 1→8 because the sidecar
   serialises inference, and peak GPU memory is identical too. The real pressure is that TF **never
   releases** grown memory, so the sidecar ratchets from ~85 MiB to **7,631 MiB of an 8,192 MiB card
-  after the first inference and holds it while idle** — `gpuBusyPercent` gates on *utilisation*, so
-  it can't protect a co-tenant from that *allocation*. **The Admin GPU pill now surfaces VRAM
+  after the first inference and holds it while idle** — `gpuBusyPercent` gates on _utilisation_, so
+  it can't protect a co-tenant from that _allocation_. **The Admin GPU pill now surfaces VRAM
   used/total** (`MetricPillComponent` `gpuMemoryLabel`, from `nvidia-smi memory.used/total` already
-  collected in `system-metrics.ts`) so that 93 %-held allocation is *visible* even at ~0 %
+  collected in `system-metrics.ts`) so that 93 %-held allocation is _visible_ even at ~0 %
   utilisation — visible even at ~0 % utilisation. **The reduction itself now ships too**, correcting
   the issue's own premise: Essentia exposes no `ConfigProto`/`memory_limit` surface (it constructs TF
   predictors directly), so `packages/analysis/app/idle_release.py`'s `RegistryHolder` +
@@ -525,7 +524,7 @@ Add detail there, not here.
   [docs/audio-ml-enrichment.md](docs/audio-ml-enrichment.md) "Measured GPU behaviour". A `paused` flag (+ `ProcessingPhase 'paused'`) is the temporary
   runtime halt distinct from `enabled: false`: it skips window/background enrichment but **still
   clears quarantine** (a pause must never leave new music invisible) and `runNow()` overrides it.
-  **`gpuBusyPercent` (0 = off) is the *automatic* counterpart**: `tick()` reads the existing cached
+  **`gpuBusyPercent` (0 = off) is the _automatic_ counterpart**: `tick()` reads the existing cached
   `readGpu` probe and yields the pass (`ProcessingPhase 'gpu-busy'`) while another tenant is using
   the card — the reference host shares one P4000 with Immich ML + Ollama, and enrichment is the
   tenant that can always wait. Unknown/throwing utilisation **never** yields (else a box without
@@ -596,7 +595,7 @@ Add detail there, not here.
   `PullToRefreshService` handler (a stack spliced on the registrant's destroy) and tears down
   `SearchComponent`'s result poll. Tab state lives in the **URL** (unlike Library's localStorage
   mode) because "show me my downloads" must be linkable; `/search`, `/acquire` and `/downloads` are
-  kept as **function** `redirectTo`s (a string one can only *preserve* params, never *add* the
+  kept as **function** `redirectTo`s (a string one can only _preserve_ params, never _add_ the
   `tab`). `acquireGuard` now covers the whole route, resolving the old asymmetry where `/downloads`
   was hard-gated but `/acquire` only soft-gated itself. Nav is four items — **Home · Library · Add ·
   Settings** — and the mobile bar's column count is derived from the visible tab count (it was a
@@ -627,12 +626,12 @@ Add detail there, not here.
   Extensions **hides its Acquisition section** when off (a toggle that can't do anything, and the
   "nothing is downloaded until you enable one" framing is wrong), and
   **`docker-compose.streaming-only.yml`** actually runs lighter — it resolves to `nicotind` +
-  `analysis` only, dropping slskd/Lidarr/bgutil; it needs *both* `profiles:` on those services and
+  `analysis` only, dropping slskd/Lidarr/bgutil; it needs _both_ `profiles:` on those services and
   `depends_on: !reset null` on nicotind, because compose **merges** `depends_on` rather than
   replacing it (`[]` silently keeps the base entries). **Now runtime-togglable**: `AcquisitionToggle` +
   `GET`/`PUT /api/admin/acquisition` (audit-logged). The "can't tear down live"
   worry was overstated — the pollers already re-check `isAcquisitionEnabled()` per tick, so they
-  self-disable; they just needed starting whenever the *env* permits. The real change was three
+  self-disable; they just needed starting whenever the _env_ permits. The real change was three
   capture sites going `boolean` → `() => boolean` (gate middleware, `searchRoutes`, `/me`). The env
   var is a **hard floor an admin cannot lift** (`configurable: false`), so a streaming-only install
   can't be re-enabled by an admin account; the read is un-memoized because a stale cache means the
@@ -683,11 +682,11 @@ Add detail there, not here.
   two MCP delete tools call, so wiring `rmSync` to an agent never became a second copy. **`merge_artist`
   (issue #339) got the same extraction**: the rename/merge/single/split decision logic inline in
   `POST /artists/identity` is now `services/artist-identity-mutate.ts` `mutateArtistIdentity(db,
-  {dataDir}, body)` — mints the alias/identity row + carries curation, but leaves the resync and
+{dataDir}, body)` — mints the alias/identity row + carries curation, but leaves the resync and
   `recordAudit` to the caller (route vs. MCP tool), same split as the deletion service. Only the
   merge mode is exposed as an MCP tool (`mergeInto`, an unambiguous single target name an LLM can
   supply) — rename/single/split stay curator-UI-only for now. `mcpRoutes(musicDir, slskdRef, dataDir,
-  runSync)` wires both dependency pairs explicitly. → [docs/mcp-agent.md](docs/mcp-agent.md)
+runSync)` wires both dependency pairs explicitly. → [docs/mcp-agent.md](docs/mcp-agent.md)
 - **Presence tracking (admin-only, ephemeral)**: in-memory `PresenceService` tracks `isConnected` /
   `amountOfDevices` / `amountOfSessions` per user via 60s HTTP heartbeats + stale cleanup; merged
   into `GET /api/admin/users`. → [docs/presence-tracking.md](docs/presence-tracking.md)
@@ -713,7 +712,10 @@ Add detail there, not here.
   mid-backfill) of BPM, Camelot key (incl. ±2/diagonal moves), multi-genre set closeness
   (`genreSetCloseness`, max pairwise lexical), year, duration, artist diversity, the perceptual
   axes, and cached-embedding cosine (`embedding-store.ts`); a widened pool (+genre-LIKE,
-  +un-analyzed seat) feeds it; `PlayerService.radio` auto-appends when the queue drains.
+  +un-analyzed seat) feeds it; `PlayerService.radio` auto-appends when the queue drains —
+  regardless of repeat (radio wins while on; the guards all live in `replenishRadio`, since a
+  per-caller guard fork once stalled radio after one batch), with a bounded retry + a
+  resume-after-drain so a failed fetch or late append can't dead-end playback.
   **Filter-seeded radio**: the same route also starts a mood/genre/bpm "vibe" with **no seed song**
   — a `LibraryFilter` (parsed from the shared serialize grammar) constrains the pool via
   `songFilterWheres`, seeded by its `seedCentroid`; `PlayerService.radioFilter` keeps auto-replenish
@@ -722,14 +724,14 @@ Add detail there, not here.
   investigated and is a measured null result, not a bug — see docs/radio.md. This backs the
   **radio/mood landing** (the post-login home route `''`, `pages/radio-landing/`): a last-track
   resume shortcut (disappears on tap) + one-tap vibe presets + top-genre chips; acquisition search
-  moved to the `/get` Find tab. Shared scoring with `/songs/:id/similar`. **Recently-played demotion (P3)**: any candidate *this listener* played lately is demoted by
+  moved to the `/get` Find tab. Shared scoring with `/songs/:id/similar`. **Recently-played demotion (P3)**: any candidate _this listener_ played lately is demoted by
   `recentPlayPenalty` (0.2) × `recentPlayFactor` (linear decay, 1 = just played → 0 at
   `RECENT_PLAY_WINDOW_MS` 7d), applied **post-normalization beside `artistPenalty`, never as an
   `add()` axis** — every other feature is compared seed-vs-candidate, but play recency is a property
   of the candidate alone, so an axis would mean "prefer songs I've played as often as the seed".
   Because it never enters `weightAcc` it can't dilute the real axes. Sourced per-user from
   `play_events` via `lastPlayedAtMap` (a denormalized `library_songs` column was rejected — that
-  table is global, so it would blend every user on a shared server), counting *every* event not just
+  table is global, so it would blend every user on a shared server), counting _every_ event not just
   `counted=1` (a bailed-on track was still heard). A demotion, never an exclusion — a hard filter
   empties the pool on a small library. Surfaced in `dump-radio.ts`. `/api/radio` and
   `/api/catalog` were **mounted without the auth middleware** (issue #461 — radio returns library
@@ -754,7 +756,7 @@ Add detail there, not here.
   heals (issue #433)**: `heartbeat` returns whether the device was known and `websocket.ts`
   re-registers when it wasn't — the client only sends `REGISTER` from `onopen`, which never fires
   again on a still-OPEN socket, so a routine 90s stale-prune (Android WebView throttles the 30s
-  heartbeat timer behind a TV screensaver) used to remove the TV *permanently*; and `onClose`
+  heartbeat timer behind a TV screensaver) used to remove the TV _permanently_; and `onClose`
   unregisters only if no other connection still holds that device id, since the client reuses one
   stable id across reconnects and a dead socket's late close was evicting the live one. →
   [docs/remote-playback.md](docs/remote-playback.md)
@@ -790,7 +792,7 @@ Add detail there, not here.
   Devices now has the camera button (issue #434)**: the scanner existed but its only call site was
   the `/server` page, reachable from Settings behind a link labelled "Switch server" — nowhere a
   user looks to authorize a device. A `canScanBarcode()`-gated scan card feeds the pure
-  `parseApproveCode` (accepts the TV's `/approve#c=…` link *and* the bare printed code, validated
+  `parseApproveCode` (accepts the TV's `/approve#c=…` link _and_ the bare printed code, validated
   against the alphabet, `/pair` QRs rejected) and routes to `/approve#c=…` — the same entry point
   the OS camera app would open, so `ApproveLoginComponent` stays the one confirm-and-post site. The
   alphabet moved to `@nicotind/core` `pairing-code.ts` (`isPairingCodeShape`) so the minter and the
@@ -873,12 +875,12 @@ Add detail there, not here.
   `/api/privacy`). Consent is **opt-out** with three levels resolved by the pure
   `resolveHistoryCollection` — env `NICOTIND_HISTORY=off` is a **hard floor an admin cannot lift**
   (mirrors #235), then an instance setting, then the user's own; `historyCollectionState` reports the
-  *most restrictive* blocker so the UI explains rather than offering a control that does nothing.
+  _most restrictive_ blocker so the UI explains rather than offering a control that does nothing.
   Enforced **server-side** in `POST /api/history/plays` (a stale client must not write history the
   user turned off) and the response carries the state so `ListeningQueueService` stops buffering
   instead of retrying refused events forever. `exportUserData` (Art. 15) reads columns from
   `PRAGMA table_info` at runtime so a schema change can't silently omit someone's data, redacts
-  secret *values* (`agent_tokens.token_hash`) by an explicit list, and reports `skipped` tables.
+  secret _values_ (`agent_tokens.token_hash`) by an explicit list, and reports `skipped` tables.
   `deleteUserHistory` (Art. 17) is **scoped to `play_events`** and deliberately does **not** flip the
   consent flag — "forget what I listened to" ≠ "stop recording"; audit-logged with a count only, never
   the titles. Retention `history_retention_days` defaults to **0 = keep forever**, swept by
@@ -898,7 +900,7 @@ Add detail there, not here.
   half the track or 4 min, 30 s floor) so it stays retunable — a client-side verdict would freeze the
   threshold forever. `GET /api/stream/:id` is deliberately **not** the signal (N Range hits per
   track, the 30 s gapless preload streams tracks that never play, preserved tracks play from
-  IndexedDB and never hit it, share tokens attribute to the sharer). No FK on `song_id` *and* a
+  IndexedDB and never hit it, share tokens attribute to the sharer). No FK on `song_id` _and_ a
   `title`/`artist`/`album` snapshot on each event: ids are `sha1(path)` and re-mint on any
   move/retag, so a cascade would delete history on a rescan and an id-only row would vanish from a
   year review (the dangling-`playlist_songs` failure). Every player call site is gated on
@@ -909,7 +911,7 @@ Add detail there, not here.
   and the Library **Stats** tab (`listeningStats` + `GET /api/history/stats?period=30d|year|all`,
   `LibraryStatsComponent`): totals, top songs/artists/albums/genres and a local-hour listening clock,
   all **derived at read time** (no rollup table — it would need invalidating by the still-open
-  retention/erasure work). `year` is the *calendar* year, not a rolling 365 days (a rolling window
+  retention/erasure work). `year` is the _calendar_ year, not a rolling 365 days (a rolling window
   mixes two years every January); an unknown `period` falls back to the default rather than 400ing;
   genres rank through `library_song_genres` not the primary-only `library_songs.genre`; deleted songs
   still count via the event snapshot; clock bars are percent-of-busiest-hour, since 24 shares of a
@@ -970,7 +972,7 @@ Add detail there, not here.
   both score 100%, and the final tiebreaker (total folder size) **actively preferred the dump**
   (issue #271, prod `album_job` 463 = 254 files enqueued for a 14-track album; the source of #262's
   "233 unavailable"). `compareCandidates` now demotes `isBloatedFolder` candidates (>`BLOAT_RATIO`×
-  track count in *audio* files — cue/scans and deluxe editions untouched) right after the match
+  track count in _audio_ files — cue/scans and deluxe editions untouched) right after the match
   bucket and **ahead of peer health** (bloat is a property of the match, not the peer), and
   tiebreaks on **per-track** rather than total size ("better rip" was always the intent).
   Demotion never a filter — a dump may be the only source, and is safe to pick because #262's
@@ -1071,11 +1073,11 @@ Add detail there, not here.
 - **Reactive network / offline detection (fixes Android offline-launch ANR)**:
   `NetworkStatusService` is one live `online` signal (`@capacitor/network` on native via
   `getCapacitorPlugin`, `navigator.onLine` + window events on web) **plus a monotonic `reconnects`
-  counter**: the reconnect fast path must react to the connectivity *event*, not to a diff of
+  counter**: the reconnect fast path must react to the connectivity _event_, not to a diff of
   `online` — signals coalesce, so a quick false→true pair flushes the effect once with only the
   final `true`, the edge is invisible, and the app sat offline for the full 20 s recovery poll
   despite a live network (a fast airplane-mode toggle is exactly that pair). `verify()` also
-  *coalesces* a concurrent call instead of dropping it, so a reconnect racing an already-doomed
+  _coalesces_ a concurrent call instead of dropping it, so a reconnect racing an already-doomed
   in-flight probe still gets its answer. `SetupService.isOffline` becomes
   a `computed` (`!online || serverUnreachable`) so the library source swap, nav gating, redirect +
   the app-shell offline banner (inline in `layout.component.html`, `data-testid="offline-banner"`)
@@ -1145,7 +1147,7 @@ Add detail there, not here.
   stored at enqueue time — never re-derived by folder-string matching; items repoint in place on
   fallback re-pulls, and a job closes as an honest partial when remaining tracks are unobtainable.
   **Lifecycle hygiene (issue #262)**: `markItemsScanned` only sees the current scan batch's paths, so
-  an item organized by any *other* batch was never revisited and stranded its job at
+  an item organized by any _other_ batch was never revisited and stranded its job at
   `active/scanning` forever (prod: 20 of 28 stranded items already had a `library_songs` row at their
   exact path). `reconcileOrganizedItems` re-resolves them on every hygiene pass, ahead of the 24h
   idle valve so a landed file is rescued rather than written off; both it and `markItemsScanned`
@@ -1169,7 +1171,7 @@ Add detail there, not here.
   at read time — the re-derivation is why one hunt kept splitting into several cards (prod: one Luis
   Fonsi job rendering as five). `collapseJobMembers` folds a job's peer folders into one card with a
   `Sources (N)` disclosure fed by `listJobFeed`'s new `sources[]`; transfers matching no job collapse
-  into a single `collapseUnlinked` "Unlinked transfers" row instead of N loose cards. Two *separate*
+  into a single `collapseUnlinked` "Unlinked transfers" row instead of N loose cards. Two _separate_
   jobs for the same album now correctly stay two cards. The Downloads header also shows a **disk-availability pill**
   (`used / total`, green→red fill) fed by `GET /api/system/disk` (statfs of the music dir). →
   [docs/download-pipeline.md](docs/download-pipeline.md) → "Now: / Next: track display",
@@ -1301,7 +1303,7 @@ Add detail there, not here.
   cascade** (a rescan rebuilds `library_songs` wholesale, so a cascade would wipe curator data), which
   left orphan rows accumulating forever. Measuring prod first dissolved the apparent tension: the
   curator tables (genres/artists/overrides) have **zero** orphans — the scanner rebuilds them — while
-  the *regenerable* ones do grow (1,057 orphan embeddings = 5.16 MB; embeddings are 46% of the DB).
+  the _regenerable_ ones do grow (1,057 orphan embeddings = 5.16 MB; embeddings are 46% of the DB).
   `services/orphan-prune.ts` therefore prunes only `library_embeddings` +
   `library_song_analysis_failures` (never `library_lyrics` — network-sourced + user-editable), via
   **mark→unmark→sweep** on an `orphaned_at` column with a 30-day grace, so a delete-then-re-download
@@ -1309,12 +1311,12 @@ Add detail there, not here.
   library and skips any table over a 50% orphan ratio. Counts surface via `GET /api/admin/review`
   `orphanRows` → an Admin panel row (hidden at zero). **`scan_cache` joins them (issue #313)** — the
   first **path**-keyed entry (`OrphanTable.references`), and the one table where an orphan is
-  *provably* unreachable since the lookup is by path; `saveScanCache` also clears `orphaned_at` on
+  _provably_ unreachable since the lookup is by path; `saveScanCache` also clears `orphaned_at` on
   upsert so correctness doesn't depend on unmark-before-sweep. **`acquisitions` joins them too
   (issue #319)** — the product call ("should provenance outlive the deleted file?") landed on
   **prune**, since an orphaned provenance row has no per-track surface and 3,696 of 14,580 live songs
-  already carry none. It is safe because `repointOrphanedAcquisitions` runs *first* in the daily pass
-  and *recovers* the 17 of 4,586 orphans that are the **only** surviving provenance for a still-live
+  already carry none. It is safe because `repointOrphanedAcquisitions` runs _first_ in the daily pass
+  and _recovers_ the 17 of 4,586 orphans that are the **only** surviving provenance for a still-live
   song (file replaced by a different-format copy, `opus → mp3` dominating) — stem-unique **and**
   target-has-no-row, since a wrong re-point is worse than missing provenance — so only
   genuinely-deleted rows reach the 30-day sweep. →
@@ -1367,8 +1369,8 @@ Add detail there, not here.
   detection (a `vX` tag not reachable from master is deleted + re-cut, never silently skipped) —
   fixes the 2026-07-23 freeze where a non-atomic push orphaned `v0.1.244` and wedged every release
   behind a green-but-silent "already published" skip. **The same green-but-silent shape bit the
-  *deploy* side (issue #457)**: `deploy` tolerated `docker-merge.result == 'skipped'`
-  unconditionally for the `workflow_dispatch` case, but a job whose `needs` *failed* also reports
+  _deploy_ side (issue #457)**: `deploy` tolerated `docker-merge.result == 'skipped'`
+  unconditionally for the `workflow_dispatch` case, but a job whose `needs` _failed_ also reports
   `skipped` — so v0.1.329's failed GHCR push produced a **green deploy that redeployed the previous
   version**. The tolerance is now scoped to `workflow_dispatch` (on a tag push `skipped` can only
   mean upstream failure), and `docker-merge` verifies every tag it claimed (`vX.Y.Z`/`vX`/`release`)
@@ -1394,7 +1396,7 @@ Add detail there, not here.
 - **Additive schema migrations (`addColumnIfMissing`)**: `applySchema` runs every boot, so it must
   be idempotent — but the 38 `try { ALTER … ADD COLUMN } catch {}` blocks that said so swallowed a
   **genuine** migration error (typo'd type, bad default) exactly as silently as the expected
-  duplicate-column case. The helper checks `PRAGMA table_info`, making "already there" a *condition*
+  duplicate-column case. The helper checks `PRAGMA table_info`, making "already there" a _condition_
   so a real bug throws loudly at boot (issue #275); it **returns whether it added**, so the two
   one-time backfills stay gated on the add rather than re-scanning the table every boot. Additive
   columns only — the 3 table-`RENAME` rebuilds are deliberately untouched, and there is no
@@ -1416,7 +1418,7 @@ Add detail there, not here.
   `library_artist_aliases` is `alias_norm`, …). Secrets are redacted unless `?secrets=1`, and a
   redacted bundle **skips blanked columns on update** so it can't wipe working credentials. Import is
   **additive-merge only** (replace would delete the target's users on a wrong-bundle import),
-  always dry-run-previewed through the *same* reconciliation code as the apply, one transaction, with
+  always dry-run-previewed through the _same_ reconciliation code as the apply, one transaction, with
   a non-key constraint collision counted as `skip` rather than fatal. Distinct from the daily DB
   backup (whole-DB, same-host recovery). → [docs/config-export.md](docs/config-export.md)
 - **Admin audit log**: `audit_log` table + `recordAudit` called explicitly at destructive mutation
@@ -1478,47 +1480,48 @@ conventions.
 source of truth), `TranslateService` + `{{ 'key' | t }}`, lookup falling through active → base →
 the key itself so a partial translation shows English rather than raw keys. Chosen over
 `@angular/localize` because that is compile-time (N builds/locale) and this build is shared by PWA
-+ Capacitor + Electron. **The pipe is `pure: false` by measurement**: a pure pipe memoizes on its
-args, so a language switch never re-invokes `transform` and the UI keeps the old language — the
-spec asserts the switch reaches the DOM. Language is **per-device** (localStorage), because login /
-setup / share render before any user exists. Converted so far: login page + Settings picker + app
-shell (navs/offline) + library tabs/sort + home vibes + the **Acquire page** primary copy
-(`acquire.*`) + **Player/Now-Playing/Settings** (`player.*`/`nowPlaying.*`/`settings.*` — the phase-2
-high-traffic slice, incl. the first TS-side `this.i18n.t(key, params)` call sites for toasts/dialogs
-built outside a template) + **Devices/remote-access settings** (issue #338, `devices.*` — the
-pairing panel, paired-devices list, and the admin Tailscale Funnel state machine; a shared
-`common.backToSettings` key was added for the "← Settings" back-link) + **onboarding/setup wizard**
-(`setup.*`, all five wizard steps,
-plus `common.back`/`common.next`) + **Admin panel** (issue #338, `admin.*` — 215 keys, every
-section; `processingTaskDefs` moved from a pre-translated `label` to a `labelKey` so the task list
-stays reactive to a live language switch, matching the rest of the page) + **Acquire's Advanced
-disclosure** (issue #338, the raw Soulseek folder-browser section — closes the #338 long tail;
-deliberately leaves the shared `getFolderBtn`/`getSongBtn`/`getGroupFileBtn` download-status-label
-helpers untranslated since they're used by other components, not scoped to this one page) +
-**Extensions / Agent tokens / slskd settings** (issue #380, `extensions.*`/`agentTokens.*`/`slskd.*`
-— the settings-adjacent trio #338 skipped: kind groups, status pills, config forms + consent dialog;
-mint/shown-once/revoke; the slskd status panel, connection + shares forms and both notices — the
-`common.backToSettings` back-link finally picked up on both pages; per-plugin manifest strings
-(name/description/config-field labels) stay untranslated since they're server data, not web copy);
-**es.json is at full parity** with the base. Extraction is a phased pass — **API
-error `code` fields (issue #337, client mapping started)**: `NicotinDError`'s existing `code` extended
-onto the inline `c.json({ error })` responses in `routes/auth.ts`/`devices.ts`/`settings.ts`/
-`agent-tokens.ts` — additive `{ error, code }`, the ~24 other route files untouched. The web client
-now maps the subset of codes whose English message is stable across every call site
-(`lib/http-error.ts` `ERROR_CODE_I18N_KEYS` + `errorMessageForCode`/`httpErrorMessageI18n`) —
-generic per-site-varying codes (`VALIDATION_ERROR`/`FORBIDDEN`/`NOT_FOUND`/…) intentionally still
-fall through to the raw server string. Converted: login/register, the `/pair` claim flow
-(`claimPairing` now throws `PairingClaimError` carrying `code`), and `auth.interceptor.ts`'s
-force-logout check, which used to string-match the English `error` body and is now on the stable
-`code` instead. → [docs/i18n.md](docs/i18n.md)
-**Bundle budget**: `angular.json` carried the untouched Angular scaffold defaults (500 kB/1 MB), so
-the build warned on every run and the next real regression was invisible. Measured before deciding
-(issue #256): initial is 735 kB **raw** but **188 kB transfer**, and **42 % is Sentry** — eager on
-purpose (`main.ts` inits it before `bootstrapApplication` to catch startup failures; prod ships a
-hardcoded DSN), so deferring it is a product trade, not cleanup. Budget raised to a number the
-project stands behind (780 kB, verified it still fires), `qrcode` made lazy (devices chunk 38.9 →
-14 kB), and its CJS bailout declared via `allowedCommonJsDependencies` — the build is now
-warning-free. → [docs/web-ui.md](docs/web-ui.md) "Bundle size budget"
+
+- Capacitor + Electron. **The pipe is `pure: false` by measurement**: a pure pipe memoizes on its
+  args, so a language switch never re-invokes `transform` and the UI keeps the old language — the
+  spec asserts the switch reaches the DOM. Language is **per-device** (localStorage), because login /
+  setup / share render before any user exists. Converted so far: login page + Settings picker + app
+  shell (navs/offline) + library tabs/sort + home vibes + the **Acquire page** primary copy
+  (`acquire.*`) + **Player/Now-Playing/Settings** (`player.*`/`nowPlaying.*`/`settings.*` — the phase-2
+  high-traffic slice, incl. the first TS-side `this.i18n.t(key, params)` call sites for toasts/dialogs
+  built outside a template) + **Devices/remote-access settings** (issue #338, `devices.*` — the
+  pairing panel, paired-devices list, and the admin Tailscale Funnel state machine; a shared
+  `common.backToSettings` key was added for the "← Settings" back-link) + **onboarding/setup wizard**
+  (`setup.*`, all five wizard steps,
+  plus `common.back`/`common.next`) + **Admin panel** (issue #338, `admin.*` — 215 keys, every
+  section; `processingTaskDefs` moved from a pre-translated `label` to a `labelKey` so the task list
+  stays reactive to a live language switch, matching the rest of the page) + **Acquire's Advanced
+  disclosure** (issue #338, the raw Soulseek folder-browser section — closes the #338 long tail;
+  deliberately leaves the shared `getFolderBtn`/`getSongBtn`/`getGroupFileBtn` download-status-label
+  helpers untranslated since they're used by other components, not scoped to this one page) +
+  **Extensions / Agent tokens / slskd settings** (issue #380, `extensions.*`/`agentTokens.*`/`slskd.*`
+  — the settings-adjacent trio #338 skipped: kind groups, status pills, config forms + consent dialog;
+  mint/shown-once/revoke; the slskd status panel, connection + shares forms and both notices — the
+  `common.backToSettings` back-link finally picked up on both pages; per-plugin manifest strings
+  (name/description/config-field labels) stay untranslated since they're server data, not web copy);
+  **es.json is at full parity** with the base. Extraction is a phased pass — **API
+  error `code` fields (issue #337, client mapping started)**: `NicotinDError`'s existing `code` extended
+  onto the inline `c.json({ error })` responses in `routes/auth.ts`/`devices.ts`/`settings.ts`/
+  `agent-tokens.ts` — additive `{ error, code }`, the ~24 other route files untouched. The web client
+  now maps the subset of codes whose English message is stable across every call site
+  (`lib/http-error.ts` `ERROR_CODE_I18N_KEYS` + `errorMessageForCode`/`httpErrorMessageI18n`) —
+  generic per-site-varying codes (`VALIDATION_ERROR`/`FORBIDDEN`/`NOT_FOUND`/…) intentionally still
+  fall through to the raw server string. Converted: login/register, the `/pair` claim flow
+  (`claimPairing` now throws `PairingClaimError` carrying `code`), and `auth.interceptor.ts`'s
+  force-logout check, which used to string-match the English `error` body and is now on the stable
+  `code` instead. → [docs/i18n.md](docs/i18n.md)
+  **Bundle budget**: `angular.json` carried the untouched Angular scaffold defaults (500 kB/1 MB), so
+  the build warned on every run and the next real regression was invisible. Measured before deciding
+  (issue #256): initial is 735 kB **raw** but **188 kB transfer**, and **42 % is Sentry** — eager on
+  purpose (`main.ts` inits it before `bootstrapApplication` to catch startup failures; prod ships a
+  hardcoded DSN), so deferring it is a product trade, not cleanup. Budget raised to a number the
+  project stands behind (780 kB, verified it still fires), `qrcode` made lazy (devices chunk 38.9 →
+  14 kB), and its CJS bailout declared via `allowedCommonJsDependencies` — the build is now
+  warning-free. → [docs/web-ui.md](docs/web-ui.md) "Bundle size budget"
 
 ## Mobile app (Capacitor Android + iOS)
 
@@ -1588,7 +1591,7 @@ attributes — **adding a `data-testid` is the standard for new e2e-targeted ele
 writing a spec, check docs/e2e.md "What the e2e environment does NOT give you"** (the Playwright
 `request` fixture is unauthenticated — log in + `bearer(token)` explicitly; no resolve plugin is
 enabled on a fresh server — capability-gated UI needs the spec to enable one). **The web bundle is
-built automatically** at config-eval time (`ensureWebBuild()`) — Hono serves the *prebuilt*
+built automatically** at config-eval time (`ensureWebBuild()`) — Hono serves the _prebuilt_
 `packages/web/dist` with no dev server or watch, so the suite used to silently test the previous
 bundle and report pre-fix behaviour as the actual value (issue #253); `E2E_SKIP_BUILD=1` is the
 fast path, and `E2E_BASE_URL` never builds. CI is split: `ci.yml`
@@ -1602,7 +1605,7 @@ screens. The flow catalogue + recurring routines live in
 
 **TV surface (issue #436/#438)**: the TV is a route-level fork —
 three screens (moods / browse / player) plus minimal settings, no form controls anywhere, one
-button contract — because every TV defect so far reduces to two bug *classes*, not N bugs: a
+button contract — because every TV defect so far reduces to two bug _classes_, not N bugs: a
 native control eating the arrow keys (a remote has no Tab to escape with), or a nav group
 clamping and swallowing the press. Enforced by extending the e2e:tv reachability audit to fail
 on any focusable native form control (a native input carries neither `appTvNavItem` nor
@@ -1612,7 +1615,7 @@ live). The fork keys off **`isTvBuild()`, never `isTvUi()`**: `app.routes.ts` is
 still mounted on TV but **headless** — it owns the `<audio>` engine, not just the bar. →
 [docs/tv-ux.md](docs/tv-ux.md)
 
-**Android TV emulator lane (`bun run e2e:tv`)**: a *second*, local-only Playwright lane driving the
+**Android TV emulator lane (`bun run e2e:tv`)**: a _second_, local-only Playwright lane driving the
 real APK on an AVD via Playwright's `_android` API (`chromium.connectOverCDP` does **not** work — a
 WebView exposes no browser-level target). It exists for the one thing the Chromium suite
 structurally cannot model: **an Android WebView has spatial navigation and desktop Chrome does not**,

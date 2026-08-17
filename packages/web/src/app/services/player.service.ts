@@ -52,6 +52,15 @@ export type RadioProvider = (seed: {
 // Replenish the queue once it drops to this many remaining tracks.
 const RADIO_MIN_QUEUE = 2;
 
+// A failed or empty replenish while the queue is still low retries after this
+// long. Without it, a queue that never changes again (last tracks played out)
+// never re-triggers the drain effect, dead-ending radio until the user toggles.
+const RADIO_RETRY_MS = 30_000;
+
+// Consecutive failed/empty replenishes before radio stops retrying. A
+// successful append — or toggling radio — resets the count.
+const RADIO_MAX_RETRIES = 3;
+
 // How long buffering must persist before surfaces show a spinner. HDD
 // spin-up/seek (multi-second) is the target; cached tracks that start in
 // <250ms must never flash a loader.
@@ -67,8 +76,9 @@ export class PlayerService {
   readonly history = signal<Track[]>([]);
   readonly shuffle = signal(false);
   readonly repeat = signal<'off' | 'all' | 'one'>('off');
-  // Radio: when the queue runs low (and repeat is off), auto-append more tracks
-  // from the library so playback never stops. Persisted across sessions.
+  // Radio: when the queue runs low, auto-append more tracks from the library so
+  // playback never stops — regardless of repeat (radio wins while it's on).
+  // Persisted across sessions.
   readonly radio = signal(false);
   // When radio was started from a filter ("happy rock", "120bpm+ danceable")
   // rather than a seed song, this holds that filter so auto-replenish keeps
@@ -130,17 +140,19 @@ export class PlayerService {
       }
     });
 
-    // Radio: when the queue drains to RADIO_MIN_QUEUE (and we're not repeating),
-    // pull more tracks from the library so playback continues. Reads queue()/radio()
-    // so it re-runs on any drain (next track, manual removal); the actual fetch +
-    // queue append happens async (untracked) so it never loops on its own write.
+    // Radio trigger: re-runs on any queue write (drain, manual removal), on the
+    // radio toggle itself (eager fill on turn-on), and on the bounded retry
+    // nonce. Deliberately trigger-only — every guard lives in replenishRadio()
+    // so all entry points share one decision path (a per-caller guard fork is
+    // how the repeat-guard asymmetry bug shipped: the effect required
+    // repeat==='off' while toggleRadio's eager fill didn't, so radio stalled
+    // after one batch whenever repeat was on). The fetch + append happen async
+    // (untracked) so the effect never loops on its own write.
     effect(() => {
-      const queueLen = this.queue().length;
-      const radioOn = this.radio();
-      if (!radioOn || queueLen > RADIO_MIN_QUEUE) return;
-      const hasCurrent = untracked(() => this.currentTrack()) !== null;
-      const repeating = untracked(() => this.repeat()) !== 'off';
-      if (hasCurrent && !repeating) untracked(() => void this.replenishRadio());
+      this.queue();
+      this.radio();
+      this.radioRetryNonce();
+      untracked(() => void this.replenishRadio());
     });
 
     const capturePosition = () => {
@@ -217,6 +229,7 @@ export class PlayerService {
 
   /** Queue-untouched primitive — user gestures use playSingle/playWithContext. */
   play(track: Track): void {
+    this.radioResumePending = false;
     this.currentTrack.set(track);
     this.isPlaying.set(true);
   }
@@ -240,10 +253,12 @@ export class PlayerService {
   }
 
   pause(): void {
+    this.radioResumePending = false;
     this.isPlaying.set(false);
   }
 
   resume(): void {
+    this.radioResumePending = false;
     this.isPlaying.set(true);
   }
 
@@ -260,6 +275,7 @@ export class PlayerService {
    * replenishes from the current track). Clears any filter "vibe". */
   startRadio(track: Track): void {
     this.radioFilter.set(null);
+    this.resetRadioRetry(); // a fresh user-started radio gets a fresh retry budget
     // A leftover queue would play out before radio ever kicked in.
     this.playSingle(track);
     if (!this.radio()) this.toggleRadio();
@@ -272,11 +288,13 @@ export class PlayerService {
     if (tracks.length === 0) return;
     const [first, ...rest] = tracks;
     this.radioFilter.set(filter);
+    this.resetRadioRetry(); // a fresh user-started vibe gets a fresh retry budget
     this.context.set(null);
     this.play(first);
     this.queue.set(rest);
-    // Set directly (not toggleRadio) — we already loaded a queue, so an eager
-    // replenish would be wasteful; the drain effect handles later top-ups.
+    // Set directly (not toggleRadio, which resets the retry budget for a user
+    // gesture). The trigger effect fires on this write; replenishRadio's
+    // threshold guard makes it a no-op while the loaded queue is still deep.
     this.radio.set(true);
   }
 
@@ -317,6 +335,9 @@ export class PlayerService {
       // player chrome back. The track stays current, so it does NOT move into
       // history. (play() on the ended <audio> element restarts it from 0.)
       this.isPlaying.set(false);
+      // With radio on this stop is exhaustion, not a user pause: an in-flight
+      // replenish that lands late may auto-advance into the fresh tracks.
+      if (this.radio()) this.radioResumePending = true;
     }
   }
 
@@ -338,6 +359,8 @@ export class PlayerService {
   }
 
   clear(): void {
+    this.radioResumePending = false;
+    this.resetRadioRetry();
     this.currentTrack.set(null);
     this.isPlaying.set(false);
     this.queue.set([]);
@@ -396,6 +419,15 @@ export class PlayerService {
 
   private radioProvider: RadioProvider | null = null;
   private replenishing = false;
+  // Bumped by the retry timer so the trigger effect re-runs replenishRadio.
+  private readonly radioRetryNonce = signal(0);
+  private radioRetryFailures = 0;
+  private radioRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  // True only when playback stopped because the queue ran dry while radio was
+  // on — the one case where a late replenish may auto-advance. Any user gesture
+  // (play/pause/resume) or radio-off clears it, so a user pause is never
+  // overridden.
+  private radioResumePending = false;
 
   /** Register the source of "more tracks" for Radio (library access lives in a component). */
   setRadioProvider(provider: RadioProvider): void {
@@ -404,20 +436,30 @@ export class PlayerService {
 
   toggleRadio(): void {
     this.radio.update((r) => !r);
-    // Turning it on with a low queue should fill immediately, not wait for a drain.
-    if (this.radio()) untracked(() => void this.replenishRadio());
-    else this.radioFilter.set(null); // turning radio off ends the filter "vibe"
+    // The trigger effect sees the radio() write and handles the eager fill on
+    // turn-on; both directions get a fresh retry budget.
+    this.resetRadioRetry();
+    if (!this.radio()) {
+      this.radioFilter.set(null); // turning radio off ends the filter "vibe"
+      this.radioResumePending = false;
+    }
   }
 
   toggleVocalMute(): void {
     this.vocalsMuted.update((v) => !v);
   }
 
-  /** Append fresh library tracks to the queue, skipping anything already lined up. */
+  /** Append fresh library tracks to the queue, skipping anything already lined
+   * up. Self-guarding — every trigger (drain, radio toggle, retry) funnels here,
+   * so the guard set can't fork per-caller again. Note there is deliberately no
+   * repeat guard: repeat 'one' never drains the queue via playback, and radio
+   * preempting repeat 'all''s context reload is the intended semantics. */
   private async replenishRadio(): Promise<void> {
-    if (!this.radioProvider || this.replenishing) return;
+    if (!this.radio() || !this.radioProvider || this.replenishing) return;
+    if (this.currentTrack() === null) return;
     if (this.queue().length > RADIO_MIN_QUEUE) return;
     this.replenishing = true;
+    let appended = false;
     try {
       const more = await this.radioProvider({
         currentTrack: this.currentTrack(),
@@ -431,12 +473,46 @@ export class PlayerService {
           .map((t) => t.id),
       ]);
       const fresh = more.filter((t) => t.id && !seen.has(t.id));
-      if (fresh.length) this.queue.update((q) => [...q, ...fresh]);
+      if (fresh.length) {
+        this.queue.update((q) => [...q, ...fresh]);
+        appended = true;
+      }
     } catch {
-      // Non-fatal — radio simply doesn't extend this time.
+      // Handled below as a retry — radio must not dead-end on one bad fetch.
     } finally {
       this.replenishing = false;
     }
+    if (appended) {
+      this.radioRetryFailures = 0;
+      // The last track ended while the fetch was in flight: playback paused on
+      // exhaustion, so advance into the fresh tracks (never after a user pause
+      // — any gesture clears the flag).
+      if (this.radioResumePending) {
+        this.radioResumePending = false;
+        this.playNext();
+      }
+    } else if (this.radio() && this.queue().length <= RADIO_MIN_QUEUE) {
+      this.scheduleRadioRetry();
+    }
+  }
+
+  /** Arm one bounded retry after a failed/empty replenish left the queue low. */
+  private scheduleRadioRetry(): void {
+    if (this.radioRetryTimer !== null) return;
+    if (this.radioRetryFailures >= RADIO_MAX_RETRIES) return;
+    this.radioRetryFailures++;
+    this.radioRetryTimer = setTimeout(() => {
+      this.radioRetryTimer = null;
+      this.radioRetryNonce.update((n) => n + 1);
+    }, RADIO_RETRY_MS);
+  }
+
+  private resetRadioRetry(): void {
+    if (this.radioRetryTimer !== null) {
+      clearTimeout(this.radioRetryTimer);
+      this.radioRetryTimer = null;
+    }
+    this.radioRetryFailures = 0;
   }
 
   playWithContext(
