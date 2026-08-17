@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.12](https://github.com/kevinch3/NicotinD/compare/v0.3.11...v0.3.12) (2026-08-17)
+
+### Features
+
+* **hunt:** surface slskd rate-limiting as "keep trying" vs a genuine miss ([#526](https://github.com/kevinch3/NicotinD/issues/526)) ([eb834ac](https://github.com/kevinch3/NicotinD/commit/eb834aca0cc90120112162ea7ed68426accf859c)), references [#hunt-429](https://github.com/kevinch3/NicotinD/issues/hunt-429)
 ## [0.3.11](https://github.com/kevinch3/NicotinD/compare/v0.3.10...v0.3.11) (2026-08-17)
 
 ### Features
