@@ -57,10 +57,27 @@ describe('PlayerTransportMiniComponent', () => {
     const player = TestBed.inject(PlayerService);
     fixture.nativeElement.querySelector('[data-testid="player-shuffle"]').click();
     expect(player.toggleShuffle).toHaveBeenCalled();
-    // Repeat button has no data-testid in the current markup — it's the last
-    // button in the row (shuffle, prev, play/pause, next, repeat).
-    const buttons = fixture.nativeElement.querySelectorAll('button');
-    (buttons[buttons.length - 1] as HTMLElement).click();
+    fixture.nativeElement.querySelector('[data-testid="player-repeat"]').click();
     expect(player.cycleRepeat).toHaveBeenCalled();
+  });
+
+  it('renders active shuffle/repeat as a solid accent fill, never color alone (e-ink legibility)', () => {
+    TestBed.overrideProvider(PlayerService, {
+      useValue: {
+        shuffle: () => true,
+        repeat: () => 'all',
+        toggleShuffle: vi.fn(),
+        cycleRepeat: vi.fn(),
+      },
+    });
+    const fixture = TestBed.createComponent(PlayerTransportMiniComponent);
+    fixture.detectChanges();
+    for (const id of ['player-shuffle', 'player-repeat']) {
+      const el = fixture.nativeElement.querySelector(`[data-testid="${id}"]`) as HTMLElement;
+      expect(el.className).toContain('bg-theme-accent');
+      expect(el.className).toContain('text-theme-on-accent');
+      expect(el.getAttribute('aria-pressed')).toBe('true');
+      expect(el.getAttribute('data-active')).toBe('true');
+    }
   });
 });

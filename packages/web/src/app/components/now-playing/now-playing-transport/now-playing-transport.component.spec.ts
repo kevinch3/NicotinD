@@ -100,6 +100,39 @@ describe('NowPlayingTransportComponent', () => {
     expect(group.contains(navItems[0])).toBe(true);
   });
 
+  it('renders active toggles as a solid accent fill, never color alone (e-ink legibility)', () => {
+    TestBed.overrideProvider(PlayerService, {
+      useValue: {
+        shuffle: () => true,
+        repeat: () => 'one',
+        radio: () => true,
+        toggleShuffle: vi.fn(),
+        cycleRepeat: vi.fn(),
+        toggleRadio: vi.fn(),
+      },
+    });
+    const fixture = TestBed.createComponent(NowPlayingTransportComponent);
+    fixture.detectChanges();
+    const q = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-testid="${id}"]`) as HTMLElement;
+    for (const id of ['now-playing-shuffle', 'now-playing-repeat', 'now-playing-radio']) {
+      expect(q(id).className).toContain('bg-theme-accent');
+      expect(q(id).className).toContain('text-theme-on-accent');
+    }
+    // The repeat-one badge sits on its own accent chip so it reads over the fill.
+    expect(q('now-playing-repeat').textContent).toContain('1');
+  });
+
+  it('renders inactive toggles without the accent fill', () => {
+    const fixture = TestBed.createComponent(NowPlayingTransportComponent);
+    fixture.detectChanges();
+    const q = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-testid="${id}"]`) as HTMLElement;
+    for (const id of ['now-playing-shuffle', 'now-playing-repeat', 'now-playing-radio']) {
+      expect(q(id).className).not.toContain('bg-theme-accent');
+    }
+  });
+
   it('delegates repeat and radio toggles to PlayerService directly', () => {
     const fixture = TestBed.createComponent(NowPlayingTransportComponent);
     fixture.detectChanges();
