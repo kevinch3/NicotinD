@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.11](https://github.com/kevinch3/NicotinD/compare/v0.3.10...v0.3.11) (2026-08-17)
+
+### Features
+
+* **library:** import music from a server folder through the download pipeline ([#512](https://github.com/kevinch3/NicotinD/issues/512)) ([8abea4d](https://github.com/kevinch3/NicotinD/commit/8abea4d19c61058396e21b8141ccd8390a698681))
 ## [0.3.10](https://github.com/kevinch3/NicotinD/compare/v0.3.9...v0.3.10) (2026-08-16)
 ## [0.3.9](https://github.com/kevinch3/NicotinD/compare/v0.3.8...v0.3.9) (2026-08-15)
 
