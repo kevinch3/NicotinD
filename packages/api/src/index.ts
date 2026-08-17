@@ -36,6 +36,8 @@ import { devicesRoutes } from './routes/devices.js';
 import { agentTokensRoutes } from './routes/agent-tokens.js';
 import { mcpRoutes } from './routes/mcp.js';
 import { remoteAccessRoutes } from './routes/remote-access.js';
+import { importRoutes } from './routes/import.js';
+import { LibraryImportService } from './services/library-import.service.js';
 import { reviewRoutes } from './routes/review.js';
 import { RemoteAccess } from './services/tailscale.js';
 import { shareMetaHandler } from './routes/share-meta.js';
@@ -842,6 +844,20 @@ export function createApp({
     enrichSingles,
   });
   app.route('/api/acquire', acquireRoutes(acquireWatcher, plugins, db));
+
+  // Admin folder import (docs/import.md): the fourth caller of the shared
+  // organize → scan seam. Mounted under /api/admin so the blanket auth applies;
+  // deliberately NOT behind requireAcquisitionEnabled — importing files the
+  // admin already owns must work on a streaming-only install.
+  const libraryImport = new LibraryImportService({
+    db,
+    dataDir: expandedDataDir,
+    musicDir: expandedMusicDir,
+    organizeBatch: (files) => sharedOrganizer.organizeBatch(files),
+    scanIncremental,
+    acquisitionEnabled: acquisitionOn,
+  });
+  app.route('/api/admin/import', importRoutes({ db, service: libraryImport }));
 
   // Serve web UI static files
   if (webDistPath) {

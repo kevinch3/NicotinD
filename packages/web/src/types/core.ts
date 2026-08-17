@@ -12,6 +12,15 @@ export type {
   TrackStatus,
 } from '../../../core/src/types/acquire';
 
+export type {
+  ImportJob,
+  ImportJobDir,
+  ImportJobState,
+  ImportJobSummary,
+  ImportPreview,
+  ImportSourceErrorCode,
+} from '../../../core/src/types/import';
+
 export type { ArchiveCandidate } from '../../../core/src/types/archive';
 
 export type {

@@ -26,9 +26,12 @@ Two tables, written by `packages/api/src/services/acquisition-job-store.ts`
 
 - **`acquisition_jobs`** — one row per acquisition. `id` is a uuid (for
   `kind='url'` it will mirror `acquire_jobs.id`; `acquire_jobs` stays
-  authoritative for the URL engine). Carries `kind`
-  (`album-hunt | auto-acquire | direct | track-search | url`), `method`
-  (`slskd | ytdlp | spotdl | archive`), `state`
+  authoritative for the URL engine; `kind='import'` likewise mirrors an
+  **item-less** row for an admin folder import — `import_jobs` is
+  authoritative and `listJobFeed` reads that row's `files_total/files_done`
+  as the progress, see [docs/import.md](import.md)). Carries `kind`
+  (`album-hunt | auto-acquire | direct | track-search | url | import`), `method`
+  (`slskd | ytdlp | spotdl | archive | import`), `state`
   (`active | done | failed | superseded`), `stage`
   (`downloading | organizing | scanning | processing | done | error`), the
   hunt metadata (`artist_name`, `album_title`, `lidarr_album_id`,

@@ -13,6 +13,8 @@ const BADGES: Record<AcquisitionMethod, MethodBadge> = {
   ytdlp: { label: 'YouTube', glyph: '▶' },
   spotdl: { label: 'Spotify', glyph: '♫' },
   archive: { label: 'archive.org', glyph: '🏛' },
+  // The admin folder-import flow (docs/import.md) — files the user already had.
+  import: { label: 'Imported', glyph: '📁' },
   unknown: { label: 'Unknown source', glyph: '?' },
 };
 

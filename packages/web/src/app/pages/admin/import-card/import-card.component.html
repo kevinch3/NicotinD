@@ -1,0 +1,175 @@
+<div class="flex flex-col gap-4">
+  <p class="text-xs text-theme-muted">{{ 'admin.musicImportHint' | t }}</p>
+
+  <!-- Source path + actions -->
+  <div class="flex flex-col gap-2">
+    <label class="text-xs font-medium text-theme-secondary" for="music-import-path">
+      {{ 'admin.musicImportPathLabel' | t }}
+    </label>
+    <div class="flex flex-wrap items-center gap-2">
+      <input
+        id="music-import-path"
+        type="text"
+        [(ngModel)]="path"
+        [placeholder]="'admin.musicImportPathPlaceholder' | t"
+        data-testid="music-import-path"
+        class="flex-1 min-w-48 px-3 py-1.5 rounded-lg text-xs bg-theme-surface-2 text-theme-primary border border-theme-border focus:outline-none focus:border-theme-accent"
+      />
+      @if (isElectron()) {
+        <button
+          (click)="browse()"
+          data-testid="music-import-browse"
+          class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition"
+        >
+          {{ 'admin.musicImportBrowse' | t }}
+        </button>
+      }
+      <button
+        (click)="runPreview()"
+        [disabled]="previewLoading() || !path.trim() || !!activeJob()"
+        data-testid="music-import-preview-btn"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+      >
+        {{ (previewLoading() ? 'admin.musicImportPreviewing' : 'admin.musicImportPreviewBtn') | t }}
+      </button>
+      <button
+        (click)="start()"
+        [disabled]="submitting() || !path.trim() || !!activeJob()"
+        data-testid="music-import-start"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-accent text-theme-on-accent hover:opacity-90 transition disabled:opacity-50"
+      >
+        {{ 'admin.musicImportStartBtn' | t }}
+      </button>
+    </div>
+    <label class="flex items-center gap-2 text-xs text-theme-secondary">
+      <input type="checkbox" [(ngModel)]="removeOriginals" data-testid="music-import-remove-originals" />
+      {{ 'admin.musicImportRemoveOriginals' | t }}
+    </label>
+    <p class="text-xs text-theme-muted">{{ 'admin.musicImportRemoveOriginalsHint' | t }}</p>
+  </div>
+
+  @if (error(); as msg) {
+    <p class="text-xs text-red-400" data-testid="music-import-error">{{ msg }}</p>
+  }
+
+  <!-- Preview summary -->
+  @if (preview(); as p) {
+    <div
+      class="rounded-lg bg-theme-surface-2 p-3 text-xs text-theme-secondary flex flex-col gap-1"
+      data-testid="music-import-preview"
+    >
+      <span>
+        {{
+          'admin.musicImportPreviewSummary'
+            | t
+              : {
+                  albums: p.albumFolders,
+                  files: p.files,
+                  size: formatBytes(p.bytes),
+                }
+        }}
+      </span>
+      @if (p.unsupportedFiles > 0) {
+        <span>{{ 'admin.musicImportPreviewUnsupported' | t: { count: p.unsupportedFiles } }}</span>
+      }
+      @if (!p.disk.sufficient) {
+        <span class="text-red-400">
+          {{
+            'admin.musicImportPreviewInsufficient'
+              | t: { required: formatBytes(p.disk.requiredBytes) }
+          }}
+        </span>
+      }
+      @for (warning of p.warnings; track warning) {
+        <span class="text-amber-400">{{ warning }}</span>
+      }
+    </div>
+  }
+
+  <!-- Active job -->
+  @if (activeJob(); as job) {
+    <div class="flex flex-col gap-2" data-testid="music-import-active">
+      <div class="flex items-center justify-between text-xs text-theme-secondary">
+        <span>
+          {{
+            'admin.musicImportProgress' | t: { done: job.filesDone, total: job.filesTotal }
+          }}
+          @if (job.currentDir) {
+            <span class="text-theme-muted">· {{ job.currentDir }}</span>
+          }
+        </span>
+        <button
+          (click)="cancel(job)"
+          data-testid="music-import-cancel"
+          class="px-2 py-1 rounded text-xs text-theme-secondary hover:bg-theme-hover transition"
+        >
+          {{ 'admin.musicImportCancel' | t }}
+        </button>
+      </div>
+      <div class="h-1.5 rounded-full bg-theme-surface-2 overflow-hidden">
+        <div
+          class="h-full bg-theme-accent transition-all"
+          [style.width.%]="progressPct(job)"
+        ></div>
+      </div>
+    </div>
+  }
+
+  <!-- Recent jobs -->
+  @if (finishedJobs().length > 0) {
+    <ul class="flex flex-col divide-y divide-theme-border" data-testid="music-import-jobs">
+      @for (job of finishedJobs(); track job.id) {
+        <li class="py-2 flex flex-col gap-1 text-xs">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-theme-primary truncate" [title]="job.sourcePath">{{
+              job.sourcePath
+            }}</span>
+            <span class="flex items-center gap-2 shrink-0">
+              <span
+                class="text-theme-muted"
+                [class.text-red-400]="job.state === 'failed'"
+                >{{ 'admin.musicImportState.' + job.state | t }}</span
+              >
+              <button
+                (click)="retry(job)"
+                data-testid="music-import-retry"
+                class="px-2 py-0.5 rounded text-theme-secondary hover:bg-theme-hover transition"
+              >
+                {{ 'admin.musicImportRetry' | t }}
+              </button>
+              <button
+                (click)="remove(job)"
+                data-testid="music-import-delete"
+                class="px-2 py-0.5 rounded text-theme-secondary hover:bg-theme-hover transition"
+              >
+                {{ 'admin.musicImportDelete' | t }}
+              </button>
+            </span>
+          </div>
+          @if (job.summary; as s) {
+            <span class="text-theme-muted">
+              {{
+                'admin.musicImportSummary'
+                  | t
+                    : {
+                        imported: s.imported,
+                        duplicates: s.skippedDuplicate,
+                        unsorted: s.unsorted,
+                        failed: s.failed,
+                      }
+              }}
+              @if (job.removeOriginals) {
+                · {{ 'admin.musicImportRemovedOriginals' | t: { count: s.removedOriginals } }}
+              }
+            </span>
+          }
+          @if (job.error) {
+            <span class="text-amber-400" data-testid="music-import-job-warning">{{
+              job.error
+            }}</span>
+          }
+        </li>
+      }
+    </ul>
+  }
+</div>

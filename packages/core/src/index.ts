@@ -1,5 +1,6 @@
 // Types
 export * from './types/acquire.js';
+export * from './types/import.js';
 export * from './types/addon.js';
 export * from './title-match.js';
 export * from './types/acquisition-candidate.js';

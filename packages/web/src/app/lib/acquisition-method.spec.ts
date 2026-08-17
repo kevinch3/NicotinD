@@ -6,6 +6,7 @@ describe('methodBadge', () => {
     expect(methodBadge('ytdlp').label).toBe('YouTube');
     expect(methodBadge('spotdl').label).toBe('Spotify');
     expect(methodBadge('archive').label).toBe('archive.org');
+    expect(methodBadge('import').label).toBe('Imported');
   });
 
   it('falls back to the unknown badge for null/undefined/unrecognized', () => {
@@ -15,7 +16,7 @@ describe('methodBadge', () => {
   });
 
   it('provides a glyph for every method', () => {
-    for (const m of ['slskd', 'ytdlp', 'spotdl', 'archive', 'unknown'] as const) {
+    for (const m of ['slskd', 'ytdlp', 'spotdl', 'archive', 'import', 'unknown'] as const) {
       expect(methodBadge(m).glyph.length).toBeGreaterThan(0);
     }
   });

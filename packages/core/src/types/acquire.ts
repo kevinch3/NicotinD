@@ -12,8 +12,10 @@ export type TrackStatus = 'pending' | 'downloading' | 'done' | 'skipped' | 'fail
  */
 // Open to any string since the acquisition addon protocol (#489): a remote
 // addon's id is its method. The named members keep autocomplete + docs value.
+// 'import' is the admin folder-import flow (docs/import.md) — naming it here
+// makes the web badge map's missing arm a compile error, not a silent gap.
 export type AcquisitionMethod =
-  'slskd' | 'ytdlp' | 'spotdl' | 'archive' | 'unknown' | (string & {});
+  'slskd' | 'ytdlp' | 'spotdl' | 'archive' | 'import' | 'unknown' | (string & {});
 
 /**
  * Named stages of the acquisition pipeline, surfaced to the user so a download
@@ -42,7 +44,8 @@ export interface AcquireAlbumDestination {
 }
 
 /** How a unified acquisition job was initiated. */
-export type AcquisitionJobKind = 'album-hunt' | 'auto-acquire' | 'direct' | 'track-search' | 'url';
+export type AcquisitionJobKind =
+  'album-hunt' | 'auto-acquire' | 'direct' | 'track-search' | 'url' | 'import';
 
 /**
  * Read model of one unified acquisition job (`GET /api/downloads/jobs`).
