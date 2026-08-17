@@ -199,7 +199,23 @@
       }
 
       @if (state() === 'results') {
-        @if (filteredCandidates().length === 0) {
+        @if (rateLimited() && candidates().length === 0) {
+          <div data-testid="hunt-rate-limited" class="p-8 text-center text-theme-muted text-sm">
+            <p class="text-theme-secondary">The download source is busy right now.</p>
+            <p class="mt-1">
+              It rate-limited the search, so this may be incomplete — it’s not that the album isn’t
+              out there. Give it a moment and try again.
+            </p>
+            <button
+              type="button"
+              (click)="startHunt()"
+              data-testid="hunt-rate-limited-retry"
+              class="mt-4 px-4 py-2 rounded-lg text-sm font-medium bg-theme-accent text-theme-on-accent hover:opacity-90"
+            >
+              Try again
+            </button>
+          </div>
+        } @else if (filteredCandidates().length === 0) {
           <div data-testid="hunt-no-results" class="p-8 text-center text-theme-muted text-sm">
             No candidates match your filters. Try lowering the minimum match % or enabling live
             recordings.
@@ -213,7 +229,10 @@
                   }
                 </p>
                 @if (r.misses.length) {
-                  <ul data-testid="track-hunt-misses" class="mt-2 space-y-0.5 text-xs text-theme-muted">
+                  <ul
+                    data-testid="track-hunt-misses"
+                    class="mt-2 space-y-0.5 text-xs text-theme-muted"
+                  >
                     @for (miss of r.misses; track miss) {
                       <li class="truncate">· {{ miss }}</li>
                     }

@@ -98,7 +98,7 @@ export class DownloadsApiService {
     lidarrAlbumId: number,
     overrides: { artistName?: string; albumTitle?: string } = {},
   ) {
-    return this.http.post<{ candidates: FolderCandidate[] }>(
+    return this.http.post<{ candidates: FolderCandidate[]; rateLimited?: boolean }>(
       `/api/discography/albums/${lidarrAlbumId}/hunt/skew`,
       overrides,
     );

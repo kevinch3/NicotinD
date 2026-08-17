@@ -63,6 +63,19 @@ never resolves.
 
 ---
 
+## Hunt rate-limiting — slskd 429 (keep-trying vs no-results)
+
+slskd rate-limits `POST /searches`; firing every base+skew query at once (an unbounded `Promise.all`)
+tripped it, and each swallowed 429 dropped a query — so a thin-seeded album could hunt to **nothing**
+that looked identical to a genuine miss. The **slskd addon** now creates searches through a bounded
+pool + retries a 429 with backoff, and reports **`rateLimited`** on the `albums/search` response
+(true only when a query stayed 429 after retries). Core threads it through
+`POST /api/discography/albums/:id/hunt(/skew)` (`res.rateLimited ?? false`) into `HuntResult`, and the
+album-hunt modal shows a distinct **"the source is busy — keep trying" empty state + a retry toast**
+(`data-testid="hunt-rate-limited"`) instead of the normal "no results" (`hunt-no-results`), so an
+incomplete throttled hunt is never mistaken for "the album isn't out there". The throttle fix itself
+lives in the addon repo (`kevinch3/nicotind-slskd-addon`); core only consumes the signal.
+
 ## Album hunt — soft-ban bypass ("skew search")
 
 `AlbumHunterService.hunt` (`packages/api/src/services/album-hunter.service.ts`) normally fires `Artist Album` / `Artist - Album` against slskd. slskd/Soulseek silently returns **zero** responses for some exact phrases (a server-side soft ban) even when the files exist.

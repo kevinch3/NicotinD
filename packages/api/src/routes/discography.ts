@@ -125,6 +125,9 @@ export function discographyRoutes({
       return c.json({
         candidates: res.candidates.map(wireCandidate),
         totalTracks: tracks.length,
+        // The source throttled the search burst (slskd 429) so the hunt may be
+        // incomplete — the modal keeps trying instead of reporting no results.
+        rateLimited: res.rateLimited ?? false,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -318,7 +321,10 @@ export function discographyRoutes({
         canonicalTracks: tracks.map((t) => ({ title: t.title })),
         skew: true,
       });
-      return c.json({ candidates: res.candidates.map(wireCandidate) });
+      return c.json({
+        candidates: res.candidates.map(wireCandidate),
+        rateLimited: res.rateLimited ?? false,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ albumId, err: msg }, 'Album hunt (skew phase) failed');

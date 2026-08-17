@@ -10,6 +10,7 @@ import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
 import { FeedbackService } from '../../services/feedback.service';
+import { ToastService } from '../../services/toast.service';
 import { baseQueries, skewedQueries } from '../../lib/hunt-queries';
 import { mergeCandidates } from '../../lib/merge-candidates';
 import {
@@ -64,6 +65,7 @@ export class AlbumHuntModalComponent implements OnInit {
   private acquire = inject(AcquireService);
   private plugins = inject(PluginService);
   private feedback = inject(FeedbackService);
+  private toast = inject(ToastService);
 
   readonly album = input.required<DiscographyAlbum>();
   readonly artistName = input.required<string>();
@@ -78,6 +80,10 @@ export class AlbumHuntModalComponent implements OnInit {
   readonly totalTracks = signal(0);
   readonly errorMsg = signal('');
   readonly selectedCandidate = signal<FolderCandidate | null>(null);
+  // The source (slskd) throttled the search burst with 429s, so the hunt may be
+  // incomplete — the empty state reads "still searching, keep trying" instead of
+  // a genuine "no results". Set from the hunt response's `rateLimited`.
+  readonly rateLimited = signal(false);
 
   // §C1/§F2 per-track fallback for the no-candidates dead-end.
   readonly trackHuntState = signal<'idle' | 'running' | 'done' | 'error'>('idle');
@@ -233,6 +239,7 @@ export class AlbumHuntModalComponent implements OnInit {
     this.candidates.set([]);
     this.selectedCandidate.set(null);
     this.errorMsg.set('');
+    this.rateLimited.set(false);
 
     const artist = this.artistName();
     const album = this.album().title;
@@ -279,10 +286,23 @@ export class AlbumHuntModalComponent implements OnInit {
           // Merge skew candidates with base on the frontend: de-dupe by
           // username::directory, keep the higher-scoring instance, then re-rank.
           this.candidates.set(mergeCandidates(baseResult.candidates, skewResult.candidates));
+          if (skewResult.rateLimited) this.rateLimited.set(true);
         }
       } else if (this.skewSearch()) {
         // Base was confident — skew not needed; mark rows as skipped.
         this._setPhaseState(skewedQueries(artist, album), 'skipped');
+      }
+      if (baseResult.rateLimited) this.rateLimited.set(true);
+
+      // The source throttled the search burst (slskd 429), so an empty result is
+      // "still searching — keep trying", not a genuine miss. Offer a one-tap retry.
+      if (this.candidates().length === 0 && this.rateLimited()) {
+        this.toast.show({
+          message:
+            'The download source is busy right now (rate-limited) — the search may be incomplete. Give it a moment and try again.',
+          kind: 'info',
+          actions: [{ label: 'Try again', callback: () => void this.startHunt() }],
+        });
       }
 
       this.state.set('results');
