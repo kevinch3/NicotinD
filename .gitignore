@@ -46,3 +46,4 @@ packages/desktop/build/icons/
 .auth/
 packages/web/storybook-static
 packages/web/documentation.json
+.angular/

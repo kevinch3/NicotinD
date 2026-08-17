@@ -206,6 +206,13 @@ export interface AddonAlbumSearchResponse {
   /** The literal source queries fired (debug display — the hunt modal shows these). */
   queries: string[];
   skewNeeded: boolean;
+  /**
+   * The source throttled the search burst (e.g. slskd 429s a slew of concurrent
+   * searches) and some queries were dropped after retries, so the hunt may be
+   * incomplete. The UI treats an empty/partial result as "still searching — keep
+   * trying" rather than a genuine "no results". Additive + optional.
+   */
+  rateLimited?: boolean;
 }
 
 /* ————— Jobs ————— */

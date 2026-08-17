@@ -10,6 +10,7 @@ import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
 import { FeedbackService } from '../../services/feedback.service';
+import { ToastService } from '../../services/toast.service';
 
 const ALBUM: DiscographyAlbum = {
   lidarrId: 42,
@@ -46,9 +47,11 @@ describe('AlbumHuntModalComponent', () => {
   const archiveSearchAlbum = vi.fn(() => of({ candidates: [] as ArchiveCandidate[] }));
   const acquireSubmit = vi.fn(() => Promise.resolve('job1'));
   const promptForHunt = vi.fn();
+  const toastShow = vi.fn();
   let archiveEnabled = false;
 
   beforeEach(async () => {
+    toastShow.mockClear();
     huntAlbumBase.mockClear();
     huntAlbumBase.mockReturnValue(of({ candidates: [], totalTracks: 0, skewNeeded: false }));
     huntAlbumSkew.mockClear();
@@ -76,6 +79,7 @@ describe('AlbumHuntModalComponent', () => {
           useValue: { hasArchive: () => archiveEnabled, hasSpotify: () => false },
         },
         { provide: FeedbackService, useValue: { promptForHunt } },
+        { provide: ToastService, useValue: { show: toastShow } },
       ],
     }).compileComponents();
   });
@@ -330,6 +334,41 @@ describe('AlbumHuntModalComponent', () => {
       ALBUM.lidarrId,
       expect.objectContaining({ skewSearch: true }),
     );
+  });
+
+  // #hunt-429: an empty result that is rate-limited (slskd throttled the search)
+  // is "keep trying", not a genuine miss — the modal flags it + raises a retry
+  // toast, and the template renders the distinct empty state off `rateLimited()`
+  // (the DOM branch is covered by typecheck; ngOnInit re-fires the hunt on
+  // detectChanges, so these assert component state, per the file's convention).
+  it('flags rateLimited + raises a keep-trying toast when the source throttled the search', async () => {
+    huntAlbumBase.mockReturnValue(
+      of({ candidates: [], totalTracks: 10, skewNeeded: false, rateLimited: true }),
+    );
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    (c as unknown as { artistName: () => string }).artistName = () => 'Test Artist';
+
+    await c.startHunt();
+
+    expect(c.rateLimited()).toBe(true);
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'info', actions: expect.any(Array) }),
+    );
+  });
+
+  it('does not flag rateLimited (nor toast) on a genuine empty result', async () => {
+    huntAlbumBase.mockReturnValue(
+      of({ candidates: [], totalTracks: 10, skewNeeded: false, rateLimited: false }),
+    );
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    (c as unknown as { artistName: () => string }).artistName = () => 'Test Artist';
+
+    await c.startHunt();
+
+    expect(c.rateLimited()).toBe(false);
+    expect(toastShow).not.toHaveBeenCalled();
   });
 
   // Issue #451: this path did prompt, but nothing asserted it — which is how the

@@ -355,6 +355,9 @@ export interface HuntResult {
   candidates: FolderCandidate[];
   totalTracks: number;
   skewNeeded?: boolean;
+  /** The source throttled the search burst (slskd 429) so the hunt may be
+   *  incomplete — the modal keeps trying rather than reporting no results. */
+  rateLimited?: boolean;
   /** Present only for an admin with feedback-capture on: the pending
    * generation_feedback row id to grade via the capture toast. */
   feedbackId?: number;
