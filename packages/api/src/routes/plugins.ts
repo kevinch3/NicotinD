@@ -3,11 +3,26 @@ import type { Database } from 'bun:sqlite';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
-import { AddonRequestError } from '../services/addons/client.js';
-import { registerAddon, removeAddon } from '../services/addons/manager.js';
+import { AddonRequestError, AddonContractError } from '../services/addons/client.js';
+import {
+  registerAddon,
+  removeAddon,
+  createPendingRegistration,
+  promotePendingAddons,
+  previewAddonManifest,
+} from '../services/addons/manager.js';
 import type { AddonCircuitBreaker } from '../services/addons/circuit-breaker.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import { recordAudit } from '../services/audit-log.js';
+import {
+  ADDON_CATALOG,
+  catalogEntry,
+  catalogInstallState,
+  renderComposeSnippet,
+  type AddonCatalogInstallState,
+  type CatalogRegistrationView,
+} from '@nicotind/core';
+import { listAddonRegistrations } from '../services/addons/store.js';
 
 /**
  * Plugin management API. Listing is readable by any authenticated user (it
@@ -28,6 +43,26 @@ export function pluginRoutes(
   const app = new Hono<AuthEnv>();
 
   app.get('/', async (c) => c.json(await registry.list()));
+
+  // The curated addon marketplace (issue #517). Readable by any authed user
+  // like GET / — it only exposes the static catalog + each entry's install
+  // state (diffed against the live registrations). The compose snippet is
+  // rendered client-side from the entry (pure `renderComposeSnippet`); the
+  // minted-token install flow is a separate admin route (PR2).
+  app.get('/catalog', async (c) => {
+    // Opening Extensions is the natural "did my container come up yet?" moment,
+    // so promote any reachable pending installs before reporting state.
+    await promotePendingAddons(registry, db, { providerRegistry, breaker }).catch(() => []);
+    const registrations: CatalogRegistrationView[] = listAddonRegistrations(db).map((r) => ({
+      id: r.id,
+      status: r.status,
+    }));
+    const entries = ADDON_CATALOG.map((entry) => ({
+      ...entry,
+      state: catalogInstallState(entry, registrations) satisfies AddonCatalogInstallState,
+    }));
+    return c.json({ entries });
+  });
 
   app.post('/addons', async (c) => {
     // why: the `/:id/*` guard below needs a subpath, so this single-segment
@@ -83,6 +118,70 @@ export function pluginRoutes(
     await removeAddon(registry, db, id, breaker);
     recordAudit(db, c.get('user'), 'addon.remove', { targetKind: 'addon', targetId: id });
     return c.json({ ok: true });
+  });
+
+  // Preview an addon's manifest without registering it (issue #517 PR3): the
+  // "see what it is before you commit + consent" step for the from-URL flow.
+  // Persists nothing. Admin-only (under the /:id/* guard, :id='addons').
+  app.post('/addons/preview', async (c) => {
+    let body: { url?: unknown; token?: unknown };
+    try {
+      body = await c.req.json<{ url?: unknown; token?: unknown }>();
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400);
+    }
+    const url = typeof body.url === 'string' ? body.url.trim() : '';
+    const token = typeof body.token === 'string' ? body.token.trim() : '';
+    if (!url) return c.json({ error: 'url is required' }, 400);
+    try {
+      const manifest = await previewAddonManifest(url, token);
+      return c.json({ manifest });
+    } catch (err) {
+      if (err instanceof AddonRequestError || err instanceof AddonContractError) {
+        return c.json({ error: `Addon not reachable: ${err.message}` }, 502);
+      }
+      return c.json({ error: err instanceof Error ? err.message : 'Preview failed' }, 400);
+    }
+  });
+
+  // Install a catalog entry (issue #517 PR2): mint a token, write a `pending`
+  // registration, and hand back the compose snippet with that token baked in.
+  // The admin brings the container up; the promoter auto-activates it. Admin-
+  // only (covered by the /:id/* guard, :id='catalog') + audited.
+  app.post('/catalog/:id/install', (c) => {
+    const entry = catalogEntry(c.req.param('id'));
+    if (!entry) return c.json({ error: 'Unknown catalog addon' }, 404);
+    if (entry.builtin) return c.json({ error: 'This addon is built-in — nothing to install' }, 400);
+    try {
+      const { token, reused } = createPendingRegistration(db, entry, c.get('user').sub);
+      if (!reused) {
+        recordAudit(db, c.get('user'), 'addon.install', {
+          targetKind: 'addon',
+          targetId: entry.id,
+          detail: entry.addonUrl,
+        });
+      }
+      const snippet = renderComposeSnippet(entry, token);
+      return c.json({ token, addonUrl: entry.addonUrl, composeSnippet: snippet, reused }, 201);
+    } catch (err) {
+      // Already installed (active) is the only throw createPendingRegistration makes.
+      return c.json({ error: err instanceof Error ? err.message : 'Install failed' }, 409);
+    }
+  });
+
+  // Manual "Check now" — promote reachable pending installs on demand. Returns
+  // this entry's fresh state so the card can flip to Installed immediately.
+  app.post('/catalog/:id/check', async (c) => {
+    const id = c.req.param('id');
+    if (!catalogEntry(id)) return c.json({ error: 'Unknown catalog addon' }, 404);
+    const promoted = await promotePendingAddons(registry, db, { providerRegistry, breaker });
+    const reg = listAddonRegistrations(db).find((r) => r.id === id);
+    const state: AddonCatalogInstallState = !reg
+      ? 'available'
+      : reg.status === 'pending'
+        ? 'pending'
+        : 'installed';
+    return c.json({ state, promoted: promoted.includes(id) });
   });
 
   /** Live status rows for the generic addon status panel. Degrades to

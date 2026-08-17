@@ -2,10 +2,7 @@ import { join } from 'node:path';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { ProviderRegistry } from '../provider-registry.js';
 import type { PluginRegistry } from './registry.js';
-import { SpotdlPlugin } from './spotdl/index.js';
-import { ArchivePlugin } from './archive/index.js';
 import { SpotifyPlugin } from './spotify/index.js';
-import { YtdlpPlugin } from './ytdlp/index.js';
 import { LrclibPlugin } from './lrclib/index.js';
 import { DiscogsPlugin } from './discogs/index.js';
 import { parseDiscogsRef, type DiscogsRef } from './discogs/matching.js';
@@ -60,34 +57,11 @@ export interface BuiltinPluginDeps {
 export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPluginDeps): void {
   const { config, dataDir, providerRegistry, acoustidApiKey } = deps;
 
-  // Zero-config cookies: drop a Netscape cookies.txt at
-  // <dataDir>/youtube-cookies.txt and both YouTube-backed downloaders pick it
-  // up (only when the file exists) — the unblock for YouTube's bot-check on
-  // flagged server IPs. An explicit config path overrides the convention.
-  const defaultCookiesFile = join(dataDir, 'youtube-cookies.txt');
-
-  // Register specific-URL plugins before the catch-all yt-dlp so that
-  // getEnabledForUrl's find() returns the right handler.
-  // (spotdl: spotify.com only; archive: archive.org only; ytdlp: everything else)
-  plugins.register(
-    new SpotdlPlugin(
-      {
-        enabled: config.acquire.spotdl.enabled,
-        binaryPath: config.acquire.spotdl.binaryPath,
-        cookiesFile: config.acquire.spotdl.cookiesFile || defaultCookiesFile,
-      },
-      // Live read of the spotify card's Client ID/Secret at spawn time — the
-      // user enters them once on the spotify extension and spotDL inherits
-      // them (higher Spotify rate limits than its built-in shared client).
-      { registry: plugins },
-    ),
-  );
-  plugins.register(
-    new ArchivePlugin({
-      enabled: config.acquire.archive.enabled,
-      preferredFormats: config.acquire.archive.preferredFormats,
-    }),
-  );
+  // Every URL-resolve source is now an addon, not an in-process plugin: spotdl
+  // (spotify.com) is the external nicotind-spotdl-addon, yt-dlp (the catch-all)
+  // the external nicotind-ytdlp-addon, and archive.org the bundled archive addon
+  // — all resolved via resolveAddonForUrl. Register the externals via
+  // Extensions → Add addon.
   // Metadata-only fallback lane — no `resolve`, so it never competes for URLs.
   plugins.register(
     new SpotifyPlugin({
@@ -96,15 +70,10 @@ export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPlu
       clientSecret: config.acquire.spotify.clientSecret,
     }),
   );
-  plugins.register(
-    new YtdlpPlugin({
-      enabled: config.acquire.ytdlp.enabled,
-      binaryPath: config.acquire.ytdlp.binaryPath,
-      format: config.acquire.ytdlp.format,
-      extraArgs: config.acquire.ytdlp.extraArgs,
-      cookiesFile: config.acquire.ytdlp.cookiesFile || defaultCookiesFile,
-    }),
-  );
+  // yt-dlp is now an external acquisition addon (nicotind-ytdlp-addon) speaking
+  // the addon protocol's `url`/`resolve` seam — core carries no yt-dlp code.
+  // Register it via Extensions → Add addon; it becomes the low-priority catch-all
+  // URL resolver (`urlPatterns: ['^https?://']`, priority -10).
   // Metadata source — lyrics from LRCLIB. Default-on (keyless, benign); seeded
   // enabled on first boot only, so an admin's later disable is preserved.
   plugins.register(new LrclibPlugin());

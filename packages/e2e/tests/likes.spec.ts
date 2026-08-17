@@ -50,4 +50,38 @@ test.describe('likes', () => {
     await heartAgain.click();
     await expect(heartAgain).toHaveAttribute('aria-pressed', 'false');
   });
+
+  test('like from the mini-player / Now Playing heart mirrors the track row (quick interaction)', async ({
+    page,
+  }) => {
+    // The like heart used to be reachable only via the row / track-info sheet /
+    // ⋯ menu — a bug, since the player is the surface a listener is already
+    // looking at. Both the mini-player bar and the full-screen Now Playing
+    // sheet now carry their own heart, wired to the same LikeService.
+    await page.goto('/library');
+    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).first().click();
+    await expect(page).toHaveURL(/\/library\/albums\//);
+    await page.getByTestId('play-album').click();
+    await expect(page.getByTestId('player-title')).toBeVisible();
+
+    const playerHeart = page.getByTestId('player-like');
+    await expect(playerHeart).toHaveAttribute('aria-pressed', 'false');
+    await playerHeart.click();
+    await expect(playerHeart).toHaveAttribute('aria-pressed', 'true');
+
+    // Mirrors onto the row for the same (currently playing) track.
+    const row = page.getByTestId('track-row').first();
+    await expect(row.getByTestId('track-like')).toHaveAttribute('aria-pressed', 'true');
+
+    // Open Now Playing — its own heart reads the same liked state...
+    await page.getByTestId('player-title').click();
+    const nowPlayingHeart = page.getByTestId('now-playing-like');
+    await expect(nowPlayingHeart).toHaveAttribute('aria-pressed', 'true');
+
+    // ...and unliking from there flips the mini-player heart back too.
+    await nowPlayingHeart.click();
+    await expect(nowPlayingHeart).toHaveAttribute('aria-pressed', 'false');
+    await page.getByTestId('now-playing-close').click();
+    await expect(playerHeart).toHaveAttribute('aria-pressed', 'false');
+  });
 });

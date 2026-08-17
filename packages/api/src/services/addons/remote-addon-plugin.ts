@@ -10,7 +10,7 @@ import {
   type PluginManifest,
   type SearchCapability,
 } from '@nicotind/core';
-import type { AddonClient } from './client.js';
+import type { AddonTransport } from './transport.js';
 import type { ProviderRegistry } from '../provider-registry.js';
 import { AddonSearchProvider } from './search-provider.js';
 
@@ -25,7 +25,7 @@ const log = createLogger('remote-addon');
  */
 export class RemoteAddonPlugin implements Plugin {
   readonly manifest: PluginManifest;
-  readonly origin: { remote: true; url: string };
+  readonly origin: { remote: true; url: string; bundled?: boolean };
   readonly search?: SearchCapability;
   readonly browse?: BrowseCapability;
   readonly download?: DownloadCapability;
@@ -34,11 +34,16 @@ export class RemoteAddonPlugin implements Plugin {
 
   constructor(
     readonly addonManifest: AddonManifest,
-    readonly client: AddonClient,
+    readonly client: AddonTransport,
     private providerRegistry?: ProviderRegistry,
   ) {
     this.manifest = pluginManifestFromAddon(addonManifest);
-    this.origin = { remote: true, url: client.baseUrl };
+    // A `local:` transport target marks a bundled first-party addon (in-process,
+    // ships with core) — non-removable, unlike a user-registered remote addon.
+    const bundled = client.baseUrl.startsWith('local:');
+    this.origin = bundled
+      ? { remote: true, url: client.baseUrl, bundled: true }
+      : { remote: true, url: client.baseUrl };
     // Capability accessors mirror what the manifest declares, all served by one
     // provider adapter — same shape as SlskdPlugin, so the search/browse/
     // enqueue routes light up for a remote addon with zero route changes.

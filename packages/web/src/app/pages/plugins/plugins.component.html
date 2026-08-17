@@ -19,14 +19,30 @@
   @if (message()) {
     <div
       class="mb-4 px-4 py-2.5 rounded-xl text-sm"
-      [class]="
-        message()!.type === 'error'
-          ? 'status-error'
-          : 'status-done'
-      "
+      [class]="message()!.type === 'error' ? 'status-error' : 'status-done'"
     >
       {{ message()!.text }}
     </div>
+  }
+
+  @if (isAdmin() && catalog.items().length) {
+    <app-settings-group
+      data-testid="extensions-catalog-section"
+      groupId="plugins-catalog"
+      icon="download"
+      [title]="'extensions.catalogTitle' | t"
+      [description]="'extensions.catalogDesc' | t"
+    >
+      <div appTvNavGroup axis="vertical">
+        @for (entry of catalog.items(); track entry.id) {
+          <app-addon-catalog-card
+            [entry]="entry"
+            [highlight]="entry.id === highlightId()"
+            (enableRequested)="enableFromCatalog($event)"
+          />
+        }
+      </div>
+    </app-settings-group>
   }
 
   @if (acquisitionEnabled()) {
@@ -65,7 +81,7 @@
               type="text"
               name="addon-url"
               [ngModel]="addonUrl()"
-              (ngModelChange)="addonUrl.set($event)"
+              (ngModelChange)="addonUrl.set($event); addonPreview.set(null)"
               [placeholder]="'extensions.addonUrlPlaceholder' | t"
               data-testid="addon-url-input"
               autocomplete="off"
@@ -82,6 +98,16 @@
               class="flex-1 px-3 py-2 rounded-lg bg-theme-surface border border-theme text-sm text-theme-primary focus:outline-none focus:border-theme-accent"
             />
             <button
+              type="button"
+              (click)="previewAddon()"
+              [disabled]="busy() || !addonUrl().trim()"
+              appTvNavItem
+              data-testid="addon-preview-btn"
+              class="px-4 py-2 rounded-lg text-sm font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover disabled:opacity-50"
+            >
+              {{ 'extensions.addonPreviewBtn' | t }}
+            </button>
+            <button
               type="submit"
               [disabled]="busy() || !addonUrl().trim() || !addonToken().trim()"
               appTvNavItem
@@ -91,6 +117,37 @@
               {{ 'extensions.addAddonBtn' | t }}
             </button>
           </div>
+
+          @if (addonPreview(); as m) {
+            <div
+              data-testid="addon-preview"
+              class="mt-2 p-3 rounded-lg bg-theme-surface-2 border border-theme"
+            >
+              <p class="text-sm font-medium text-theme-primary">{{ m.name }}</p>
+              <p class="text-xs text-theme-secondary mt-0.5">{{ m.description }}</p>
+              <div class="flex gap-1.5 mt-2 flex-wrap">
+                @for (cap of m.capabilities; track cap) {
+                  <span
+                    class="text-[10px] px-1.5 py-0.5 rounded bg-theme-surface text-theme-secondary"
+                    >{{ cap }}</span
+                  >
+                }
+              </div>
+              @if (m.compliance?.disclaimer; as disc) {
+                <p class="text-xs text-status-warn mt-2">{{ disc }}</p>
+              }
+              @if (previewRisks().length) {
+                <ul class="mt-2 space-y-1">
+                  @for (risk of previewRisks(); track risk) {
+                    <li class="flex gap-2 text-xs text-theme-secondary">
+                      <span class="text-theme-muted" aria-hidden="true">•</span
+                      ><span>{{ risk }}</span>
+                    </li>
+                  }
+                </ul>
+              }
+            </div>
+          }
         </form>
       </div>
     </app-settings-group>
@@ -142,7 +199,6 @@
       </div>
     </app-settings-group>
   }
-
 </div>
 
 @if (consentTarget(); as p) {

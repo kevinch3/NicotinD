@@ -43,3 +43,6 @@ export * from './utils/expand-home.js';
 export * from './version.js';
 export * from './addon-capability-risk.js';
 export * from './addon-protocol-schema.js';
+
+// Curated addon catalog (issue #517) — marketplace entries + compose snippet gen
+export * from './addon-catalog.js';

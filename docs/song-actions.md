@@ -63,6 +63,26 @@ already exists).
   track-info sheet (`track-info-like`), and the `⋯` menu. The playlists page
   shows a heart badge (`liked-badge-inline`) and hides Rename/Delete for the
   liked row; the detail page treats `liked` as read-only (`readOnly()` computed).
+- **On the player itself (quick interaction)**: the original #225 rollout left
+  Like reachable only via a `⋯` menu detour — no heart on the player it names
+  in its own "Directions to explore" section. Two more hearts close that gap,
+  both reading `LikeService.isLiked`/`toggle` directly off
+  `PlayerService.currentTrack()`, so no `Song` object needs threading through:
+  the mini-player bar (`PlayerComponent`, `data-testid="player-like"`, in the
+  track-info column next to the title — a `<button>`, so the existing
+  `onBarPointerDown` bail-on-`closest('button')` guard keeps it from
+  double-firing the swipe-to-open-Now-Playing gesture) and the full-screen
+  Now Playing sheet (`NowPlayingCoverArtComponent`,
+  `data-testid="now-playing-like"`, beside the title next to the existing
+  track-info button). Both are `nowPlaying.like`/`unlike` and
+  `player.like`/`unlike` i18n keys (en+es). The Now Playing heart is hidden on
+  TV (`@if (!isTv)`, mirroring the transport's shuffle/repeat cut) — the root
+  nav group's ArrowUp order is a fixed sequence
+  (`now-playing-tv.spec.ts`: playpause → track info → next-up chip → close),
+  and inserting another direct item would shift every step of it; TV users can
+  still reach Like via the track row / `⋯` menu. The mini-player heart needs
+  no such gate since `PlayerComponent`'s whole bar is already `isTvBuild()`-gated
+  off on TV.
 
 ## Selection
 

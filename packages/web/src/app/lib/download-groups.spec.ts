@@ -6,6 +6,7 @@ import {
   methodForBackend,
   buildDownloadFeed,
   mergeAcquisitionJobs,
+  type DownloadItem,
 } from './download-groups';
 
 function job(over: Partial<AcquireJob> = {}): AcquireJob {
@@ -39,6 +40,14 @@ describe('methodForBackend', () => {
     expect(methodForBackend('spotdl')).toBe('spotdl');
     expect(methodForBackend('archive')).toBe('archive');
     expect(methodForBackend('mystery')).toBe('unknown');
+  });
+
+  // Regression: URL resolvers became addons with suffixed ids, so an addon-backed
+  // download rendered as "Unknown source" until these were mapped to the base method.
+  it('maps the addon backend ids to their base method', () => {
+    expect(methodForBackend('ytdlp-addon')).toBe('ytdlp');
+    expect(methodForBackend('spotdl-addon')).toBe('spotdl');
+    expect(methodForBackend('bundled-archive')).toBe('archive');
   });
 });
 
@@ -173,6 +182,30 @@ describe('mergeAcquisitionJobs', () => {
     expect(card.canCancel).toBe(true);
   });
 
+  // Regression: an in-flight addon URL job (no resolved metadata yet) rendered
+  // with an "Unknown source" chip and the raw `addon:<id>:<uuid>` transfer key as
+  // its title. It should show the mapped source chip + a friendly label.
+  it('renders an addon URL job with a mapped source chip and no raw addon key', () => {
+    const merged = mergeAcquisitionJobs(
+      [],
+      [
+        acqJob({
+          id: 'u1',
+          kind: 'url',
+          method: 'spotdl-addon',
+          artistName: null,
+          albumTitle: null,
+          sourceRef: 'addon:spotdl-addon:767ce23a-e417-47c8-9a5b-f09129ec3443',
+        }),
+      ],
+    );
+    expect(merged).toHaveLength(1);
+    const card = merged[0]!;
+    expect(card.method).toBe('spotdl');
+    expect(card.title).toBe('Spotify download');
+    expect(card.title).not.toContain('addon:');
+  });
+
   /**
    * Issue #261: card identity used to be re-derived from `albumId` at read
    * time, so the same album acquired twice collapsed into one card. Identity
@@ -224,9 +257,33 @@ describe('mergeAcquisitionJobs', () => {
     expect(merged[0]!.tracks).toEqual(items);
   });
 
-  it('skips url-kind jobs (the AcquireJob lane already renders them)', () => {
-    const merged = mergeAcquisitionJobs([], [acqJob({ kind: 'url', method: 'spotdl' })]);
-    expect(merged).toHaveLength(0);
+  it('renders an addon-backed url job (no acquire-lane twin)', () => {
+    // An addon url job has only an acquisition_jobs row → it renders through the
+    // unified lane like a network job (#509 cause 1).
+    const merged = mergeAcquisitionJobs(
+      [],
+      [acqJob({ id: 'u1', kind: 'url', method: 'bundled-archive' })],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.key).toBe('job:u1');
+  });
+
+  it('skips a url job already rendered by the in-process acquire lane', () => {
+    // The in-process url job shares its id with an acquire-lane card (same UUID)
+    // → skip the mirror to avoid a double card.
+    const acquireItem = {
+      key: 'u2',
+      kind: 'acquire',
+      title: 't',
+      method: 'spotdl',
+      stage: 'downloading',
+    } as DownloadItem;
+    const merged = mergeAcquisitionJobs(
+      [acquireItem],
+      [acqJob({ id: 'u2', kind: 'url', method: 'spotdl' })],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged.every((m) => m.kind !== 'network')).toBe(true); // only the acquire card, no mirror
   });
 
   it('renders finished jobs too — the feed row alone carries a card since phase 3', () => {

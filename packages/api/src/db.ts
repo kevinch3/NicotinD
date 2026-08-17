@@ -1319,6 +1319,12 @@ export function applySchema(db: Database): void {
       added_by      TEXT NOT NULL
     )
   `);
+  // issue #517 PR2 — one-click install: a catalog install mints a token + writes
+  // a `pending` row before its container is up. `status` distinguishes those from
+  // `active` registrations (existing rows default active); `catalog_id` links the
+  // row back to its catalog entry so the promoter can re-render the snippet.
+  addColumnIfMissing(db, 'addon_registrations', 'status', "TEXT NOT NULL DEFAULT 'active'");
+  addColumnIfMissing(db, 'addon_registrations', 'catalog_id', 'TEXT');
 
   // Plugin-scoped persistent key/value store (the PluginHostContext.storage
   // surface). Namespaced by plugin id so plugins can't read each other's data.

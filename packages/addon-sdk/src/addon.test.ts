@@ -77,6 +77,15 @@ describe('addonManifestSchema', () => {
     expect(parsed.compliance?.requiresConsent).toBe(true);
   });
 
+  it('accepts an optional url-routing priority', () => {
+    const parsed = addonManifestSchema.parse(base({ urlPatterns: ['^https?://'], priority: -10 }));
+    expect(parsed.priority).toBe(-10);
+  });
+
+  it('rejects a non-integer priority', () => {
+    expect(() => addonManifestSchema.parse(base({ priority: 1.5 }))).toThrow();
+  });
+
   it('rejects a manifest missing protocolVersion', () => {
     const rest: Record<string, unknown> = { ...base() };
     delete rest.protocolVersion;
@@ -102,8 +111,23 @@ describe('addon job/search request schemas', () => {
   });
 
   it('rejects an unknown intent and an out-of-range matchPct', () => {
-    expect(() => addonJobRequestSchema.parse({ intent: 'url' })).toThrow();
+    expect(() => addonJobRequestSchema.parse({ intent: 'nonsense' })).toThrow();
     expect(() => addonJobRequestSchema.parse({ intent: 'album', minMatchPct: 101 })).toThrow();
+  });
+
+  it('accepts a url resolve job request with an as hint', () => {
+    const parsed = addonJobRequestSchema.parse({
+      intent: 'url',
+      url: 'https://archive.org/details/x',
+      as: 'album',
+    });
+    expect(parsed.intent).toBe('url');
+    expect(parsed.url).toBe('https://archive.org/details/x');
+    expect(parsed.as).toBe('album');
+  });
+
+  it('rejects an unknown as value on a url request', () => {
+    expect(() => addonJobRequestSchema.parse({ intent: 'url', url: 'u', as: 'nope' })).toThrow();
   });
 
   it('accepts search + albums/search requests', () => {

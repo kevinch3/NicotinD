@@ -357,8 +357,80 @@ running addon onto the published image + soak (a host/prod step). The npm publis
 - Phase 3: the grep acceptance check; streaming-only base compose boots with no slskd or
   addon anywhere.
 
+## Resolve addons (sub-project C — the `url` seam + bundled addons)
+
+The reserved `url` job intent is now implemented, so URL resolvers (yt-dlp/spotdl/archive) become
+addons too. **First spec shipped**: the `url`/`resolve` protocol seam + **archive.org migrated to a
+bundled built-in addon**.
+
+- **`AddonTransport` interface**: extracted from the concrete HTTP `AddonClient`. Two impls —
+  `HttpAddonTransport` (external addons) and `LocalAddonTransport` (bundled first-party addons,
+  direct in-process calls; `fetchFile` wraps `Bun.file(path)`, no HTTP/byte-copy). `RemoteAddonPlugin`,
+  the poller, the search provider and the manager depend on the interface, so a bundled addon flows
+  through the identical lanes.
+- **Bundled archive addon** (`services/addons/bundled/archive/`): the resolve engine (`engine.ts`) +
+  a `BundledAddon` job model whose `createJob` returns immediately and resolves in the background.
+  Boot-registered by `registerBundledAddons` through the same `registerAddon` path (id
+  `bundled-archive`, non-removable via the `origin.bundled` flag — a `local:` transport target —,
+  disabled until the admin enables the consent-gated card; no `addon_registrations` row). `resolve`
+  was added to `CORE_IMPLEMENTED_ADDON_CAPABILITIES`.
+- **Protocol additions**: `AddonJobIntent += 'url'`; `AddonJobRequest.url?` + `as?`; the tagless
+  `ResolveResult.meta` rides the existing `AddonJob.artist/album` fields. `KIND_BY_INTENT` maps
+  `url → 'url'`; the poller backfills the feed row's artist/album once the background resolve supplies
+  them (else tagless archive files land `unsorted`).
+- **Routing + feed**: `POST /api/acquire` prefers `resolveAddonForUrl` (urlPattern match) and eagerly
+  mirrors a `kind:url` row (in-flight card at submit — #509 cause 2), falling back to in-process
+  resolve plugins. The web `mergeAcquisitionJobs` no longer blanket-skips `kind:url` — it skips only a
+  url job already rendered by the in-process `acquire_jobs` lane, so an addon url job renders through
+  the unified lane (#509 cause 1). The in-process archive plugin was retired.
+- **yt-dlp external addon (C2 — SHIPPED)**: yt-dlp left core entirely for
+  `kevinch3/nicotind-ytdlp-addon` (own repo + published GHCR image), consuming the published
+  `@nicotind/addon-sdk`. It declares an optional `AddonManifest.priority` (default 0) and the
+  catch-all `urlPatterns: ['^https?://']` at `priority: -10`, so specific addons (archive, a future
+  spotdl) win their URLs and yt-dlp takes everything else. Core added `priority` to the manifest +
+  schema (A1) and made `resolveAddonForUrl` collect all pattern matches and pick the
+  highest-priority (A2). The in-process `YtdlpPlugin` + its `config.acquire.ytdlp` block + the
+  `legacy-seed` yt-dlp path were removed (A3); `docker-compose.yml` gained an opt-in `ytdlp-addon`
+  profile (the addon + a dedicated `ytdlp-pot-provider` companion sharing its netns for the bgutil
+  PO-token flow — the core `bgutil-provider` now serves only in-process spotdl). Registered like the
+  slskd addon (Extensions → Add addon, `http://ytdlp-addon:8586`). The addon carries a documented
+  `intent: 'url' as unknown as …` cast until `@nicotind/addon-sdk@^0.1.1` (with the `url` intent)
+  publishes.
+- **spotdl external addon (C3 — SHIPPED)**: spotdl left core for `kevinch3/nicotind-spotdl-addon`
+  (own repo + published GHCR image), built by mirroring the C2 ytdlp-addon scaffold. It declares
+  `urlPatterns: ['spotify\\.com']` at the **default** priority (0), so it beats the yt-dlp catch-all
+  (`priority: -10`) for Spotify URLs. Optional Spotify creds are the addon's **own** env
+  (`SPOTDL_ADDON_CLIENT_ID`/`SECRET` → `SPOTIPY_*` on spawn) — it does **not** reach into core's
+  spotify plugin (that coupling — the removed `SpotdlPlugin`'s `readSpotifyCredentials`/`spotifyEnvFor`
+  — is gone). Dockerfile = spotdl + Deno (its embedded yt-dlp needs a JS runtime; also `unzip` for the
+  Deno installer) + the bgutil pot-provider plugin. The in-process `SpotdlPlugin` + `config.acquire.spotdl`
+  were removed, and with spotdl the last in-process acquisition plugin the whole `legacy-seed`
+  migration was retired. `docker-compose.yml` gained an opt-in `spotdl-addon` profile (addon +
+  dedicated `spotdl-pot-provider` companion). Same documented `intent: 'url' as unknown as …` cast
+  pending addon-sdk 0.1.1. **With C1/C2/C3 shipped, every URL/network acquisition source is now an
+  addon — core carries zero source code.**
+- **Orphaned-job reconcile (issue #515)**: the yt-dlp/spotdl addons keep jobs **in-memory**, so an
+  addon restart mid-download drops them — and core's cursor-based poll only *updates* jobs the addon
+  still lists, so a dropped job sat "downloading" until the 24h valve (real prod symptom right after
+  the v0.3.5 cutover deploy: ghost cards + a raw `addon:<id>:<uuid>` title + an "Unknown source"
+  chip). `AddonJobPoller.reconcileOrphanedJobs` now re-checks stale (`>ORPHAN_STALE_MS`, 5 min) active
+  addon jobs via `getJob` and **fails the ones the addon 404s** (a slow-but-live job the addon still
+  returns is left alone). Web-side, `methodForBackend` maps the `-addon`/`bundled-archive` ids to the
+  base method (fixes the chip) and the feed shows a friendly `"<Source> download"` label instead of
+  the opaque `addon:` key until metadata resolves. **Root cause now fixed at the source (issue #515):**
+  the yt-dlp/spotdl addons persist their job store to SQLite (`<dataDir>/jobs.db`) and, on boot, mark
+  any still-`active` job **failed** — so a restart reports an honest failure the addon itself owns,
+  and `reconcileOrphanedJobs` is now the backstop rather than the only defense (slskd was always
+  immune — it persisted from day one). The "retryable failed URL cards" half of #515 was **not built**:
+  `acquisition_jobs` has no `url` column and the addon `source_ref` is the opaque `addon:<id>:<jobId>`
+  key, so a Retry would need url-persistence plumbing for marginal benefit over re-pasting the URL
+  (which already re-submits idempotently).
+- **Follow-ups**: retiring `acquire_jobs`/`AcquireWatcher` (the last in-process resolve lane is gone,
+  so the URL path can move fully onto the `AddonJobPoller` feed); publishing `@nicotind/addon-sdk@0.1.1`
+  with the `url` intent to drop the cast in all three external addons.
+
 ## Out of scope
 
-- Migrating yt-dlp/spotdl/archive/spotify onto the protocol (the DTOs allow it later).
+- Migrating yt-dlp/spotdl/spotify onto the protocol as *external* addons (C2/C3 — the DTOs allow it).
 - SSE/webhook progress transport (polling first).
 - Addon marketplace/discovery UX — v1 is "paste a URL + token".

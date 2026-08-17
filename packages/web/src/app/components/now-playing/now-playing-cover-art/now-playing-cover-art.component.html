@@ -32,6 +32,28 @@
       >
         {{ track.title }}
       </h2>
+      @if (!isTv) {
+        <!-- Like heart on the player itself (quick interaction — no ⋯ menu
+             detour). Hidden on TV to keep the root nav group's ArrowUp order
+             intact; see the component's isTv comment. -->
+        <button
+          type="button"
+          (click)="toggleLike(track.id)"
+          data-testid="now-playing-like"
+          [attr.aria-pressed]="likes.isLiked(track.id)"
+          [attr.aria-label]="(likes.isLiked(track.id) ? 'nowPlaying.unlike' : 'nowPlaying.like') | t"
+          [attr.title]="(likes.isLiked(track.id) ? 'nowPlaying.unlike' : 'nowPlaying.like') | t"
+          [class]="'shrink-0 p-0.5 transition ' + (likes.isLiked(track.id)
+            ? 'text-rose-500 hover:text-rose-400'
+            : 'text-theme-muted hover:text-rose-400')"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24"
+            [attr.fill]="likes.isLiked(track.id) ? 'currentColor' : 'none'"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+          </svg>
+        </button>
+      }
       <!-- G4: visible affordance to open Track info (was long-press only). -->
       <button
         appTvNavItem

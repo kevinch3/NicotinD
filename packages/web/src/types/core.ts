@@ -110,3 +110,8 @@ export type { IdentifyOutcome, IdentifyFailureKind } from '../../../core/src/plu
 // (pure, browser-safe) — the single source both the consent dialog and the
 // published protocol spec render from. See addon-capability-risk.ts.
 export * from '../../../addon-sdk/src/addon-capability-risk';
+
+// Value re-export: the curated addon catalog + compose-snippet renderer (issue
+// #517, pure + browser-safe) — the Extensions marketplace renders install cards
+// and the paste-able snippet from the same source the API route serves.
+export * from '../../../core/src/addon-catalog';

@@ -119,6 +119,11 @@
           "items": {
             "type": "string"
           }
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
         }
       },
       "required": [
@@ -198,7 +203,8 @@
           "enum": [
             "album",
             "tracks",
-            "browse-grab"
+            "browse-grab",
+            "url"
           ]
         },
         "artist": {
@@ -206,6 +212,17 @@
         },
         "album": {
           "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "as": {
+          "type": "string",
+          "enum": [
+            "playlist",
+            "album",
+            "single"
+          ]
         },
         "canonicalTracks": {
           "type": "array",

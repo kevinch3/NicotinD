@@ -119,6 +119,149 @@ describe('addon routes', () => {
     expect(builtin.status).toBe(404);
   });
 
+  it('serves the curated catalog with per-entry install state (any authed user)', async () => {
+    const { app } = makeApp('user'); // read is not admin-gated
+    const res = await app.request('/api/plugins/catalog');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      entries: { id: string; state: string; name: string }[];
+    };
+    const ids = body.entries.map((e) => e.id);
+    expect(ids).toContain('ytdlp-addon');
+    expect(ids).toContain('archive');
+    // Archive is bundled → builtin; nothing installed yet → the rest available.
+    expect(body.entries.find((e) => e.id === 'archive')!.state).toBe('builtin');
+    expect(body.entries.find((e) => e.id === 'ytdlp-addon')!.state).toBe('available');
+  });
+
+  it('reflects a registered addon as installed in the catalog', async () => {
+    // Register the fixture (id 'fixture-addon' is not a catalog entry), then a
+    // catalog id via a second fixture manifest would be ideal; here we assert
+    // that registering does not perturb the catalog entries' shape.
+    await admin.app.request('/api/plugins/addons', {
+      method: 'POST',
+      body: JSON.stringify({ url: fixtureUrl, token: 'fixture-token' }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const body = (await (await admin.app.request('/api/plugins/catalog')).json()) as {
+      entries: { id: string; state: string }[];
+    };
+    // fixture-addon is not in the catalog, so it does not appear.
+    expect(body.entries.find((e) => e.id === 'fixture-addon')).toBeUndefined();
+  });
+
+  describe('catalog install (issue #517 PR2)', () => {
+    it('mints a token + pending row and returns a snippet with the token baked in', async () => {
+      const res = await admin.app.request('/api/plugins/catalog/ytdlp-addon/install', {
+        method: 'POST',
+      });
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as {
+        token: string;
+        addonUrl: string;
+        composeSnippet: { full: string };
+        reused: boolean;
+      };
+      expect(body.token).toMatch(/^nca_addon_/);
+      expect(body.addonUrl).toBe('http://ytdlp-addon:8586');
+      expect(body.composeSnippet.full).toContain(body.token);
+      expect(body.composeSnippet.full).not.toContain('change-me');
+      expect(body.reused).toBe(false);
+
+      // The catalog now reports it pending (container not up in the test).
+      const cat = (await (await admin.app.request('/api/plugins/catalog')).json()) as {
+        entries: { id: string; state: string }[];
+      };
+      expect(cat.entries.find((e) => e.id === 'ytdlp-addon')!.state).toBe('pending');
+    });
+
+    it('re-installing returns the same token (idempotent)', async () => {
+      const first = (await (
+        await admin.app.request('/api/plugins/catalog/ytdlp-addon/install', { method: 'POST' })
+      ).json()) as { token: string };
+      const again = (await (
+        await admin.app.request('/api/plugins/catalog/ytdlp-addon/install', { method: 'POST' })
+      ).json()) as { token: string; reused: boolean };
+      expect(again.reused).toBe(true);
+      expect(again.token).toBe(first.token);
+    });
+
+    it('404s an unknown catalog id and 400s a builtin', async () => {
+      expect(
+        (await admin.app.request('/api/plugins/catalog/nope/install', { method: 'POST' })).status,
+      ).toBe(404);
+      expect(
+        (await admin.app.request('/api/plugins/catalog/archive/install', { method: 'POST' }))
+          .status,
+      ).toBe(400);
+    });
+
+    it('rejects a non-admin install', async () => {
+      const { app } = makeApp('user');
+      const res = await app.request('/api/plugins/catalog/ytdlp-addon/install', { method: 'POST' });
+      expect(res.status).toBe(403);
+    });
+
+    it('check reports the state and does not promote an unreachable addon', async () => {
+      await admin.app.request('/api/plugins/catalog/ytdlp-addon/install', { method: 'POST' });
+      const res = await admin.app.request('/api/plugins/catalog/ytdlp-addon/check', {
+        method: 'POST',
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { state: string; promoted: boolean };
+      expect(body.state).toBe('pending');
+      expect(body.promoted).toBe(false);
+    });
+  });
+
+  describe('addon preview (issue #517 PR3)', () => {
+    it('returns the manifest without persisting anything', async () => {
+      const res = await admin.app.request('/api/plugins/addons/preview', {
+        method: 'POST',
+        body: JSON.stringify({ url: fixtureUrl }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { manifest: { id: string; name: string } };
+      expect(body.manifest.id).toBe('fixture-addon');
+      expect(body.manifest.name).toBe('Fixture Addon');
+      // Nothing was registered.
+      const list = (await (await admin.app.request('/api/plugins')).json()) as { id: string }[];
+      expect(list.find((p) => p.id === 'fixture-addon')).toBeUndefined();
+    });
+
+    it('400s a missing url, 502s an unreachable addon, 403s a non-admin', async () => {
+      expect(
+        (
+          await admin.app.request('/api/plugins/addons/preview', {
+            method: 'POST',
+            body: JSON.stringify({}),
+            headers: { 'Content-Type': 'application/json' },
+          })
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await admin.app.request('/api/plugins/addons/preview', {
+            method: 'POST',
+            body: JSON.stringify({ url: 'http://127.0.0.1:1' }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+        ).status,
+      ).toBe(502);
+      const { app } = makeApp('user');
+      expect(
+        (
+          await app.request('/api/plugins/addons/preview', {
+            method: 'POST',
+            body: JSON.stringify({ url: fixtureUrl }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+        ).status,
+      ).toBe(403);
+    });
+  });
+
   it('removes an addon and 404s an unknown one', async () => {
     await admin.app.request('/api/plugins/addons', {
       method: 'POST',

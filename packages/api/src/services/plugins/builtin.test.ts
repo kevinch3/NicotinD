@@ -10,7 +10,6 @@ import {
   makeDiscogsArtistResolver,
   type BuiltinPluginDeps,
 } from './builtin.js';
-import { SpotdlPlugin } from './spotdl/index.js';
 import { AcoustidPlugin } from './acoustid/index.js';
 import { MusicBrainzClient } from '../musicbrainz-client.js';
 import type { ProviderRegistry } from '../provider-registry.js';
@@ -25,10 +24,8 @@ function makeDeps(over: Partial<BuiltinPluginDeps> = {}): BuiltinPluginDeps {
   const config = {
     dataDir: '/tmp/nicotind-test',
     acquire: {
-      spotdl: { enabled: false, binaryPath: 'spotdl', cookiesFile: '' },
       archive: { enabled: false, preferredFormats: [] },
       spotify: { enabled: false, clientId: '', clientSecret: '' },
-      ytdlp: { enabled: false, binaryPath: 'yt-dlp', format: '', extraArgs: [], cookiesFile: '' },
     },
   } as unknown as NicotinDConfig;
   return {
@@ -56,30 +53,7 @@ describe('registerBuiltinPlugins', () => {
         .getAll()
         .map((p) => p.manifest.id)
         .sort(),
-    ).toEqual(['acoustid', 'archive', 'discogs', 'lrclib', 'spotdl', 'spotify', 'ytdlp']);
-  });
-
-  // Regression: spotdl was constructed without `{ registry }`, so its live read
-  // of the spotify plugin's stored credentials never happened and the documented
-  // SPOTIPY_* forwarding was dead code. The bug lived in the wiring, not in
-  // `spotifyEnvFor` (which was correct and unit-tested all along) — so the test
-  // has to assert against the instance the registration actually built.
-  it('wires the registry into spotdl so it reads the spotify credentials live', () => {
-    const spotdl = plugins.get('spotdl') as SpotdlPlugin;
-    expect(spotdl.spotifyEnv()).toBeNull(); // nothing stored yet
-
-    plugins.setConfig('spotify', { clientId: 'id-123', clientSecret: 'secret-456' });
-
-    expect(spotdl.spotifyEnv()).toEqual({
-      SPOTIPY_CLIENT_ID: 'id-123',
-      SPOTIPY_CLIENT_SECRET: 'secret-456',
-    });
-  });
-
-  it('leaves spotdl on its built-in shared client when only one credential is stored', () => {
-    const spotdl = plugins.get('spotdl') as SpotdlPlugin;
-    plugins.setConfig('spotify', { clientId: 'id-123' });
-    expect(spotdl.spotifyEnv()).toBeNull();
+    ).toEqual(['acoustid', 'discogs', 'lrclib', 'spotify']);
   });
 
   it('seeds the acoustid plugin from the legacy secrets.json key', () => {

@@ -7,6 +7,14 @@ import { of } from 'rxjs';
 import { PluginsComponent } from './plugins.component';
 import { PluginService, type PluginInfo } from '../../services/plugin.service';
 import { AuthService } from '../../services/auth.service';
+import { AddonCatalogService } from '../../services/addon-catalog.service';
+
+// The marketplace section (issue #517) is admin-only; these specs run as a
+// non-admin so the catalog never renders and the existing assertions hold.
+const CATALOG_MOCK = {
+  provide: AddonCatalogService,
+  useValue: { items: signal([]), loaded: signal(false), refresh: () => Promise.resolve() },
+};
 
 /**
  * Issue #235. With the deployment-wide kill-switch off, every acquisition route
@@ -54,8 +62,9 @@ function makeFixture(acquisitionEnabled: boolean): Fixture {
       },
       {
         provide: AuthService,
-        useValue: { serverAcquisitionEnabled: signal(acquisitionEnabled) },
+        useValue: { serverAcquisitionEnabled: signal(acquisitionEnabled), isAdmin: signal(false) },
       },
+      CATALOG_MOCK,
     ],
   });
   const fixture = TestBed.createComponent(PluginsComponent);
@@ -187,7 +196,11 @@ describe('PluginsComponent — Connectivity section visibility', () => {
             ]),
           },
         },
-        { provide: AuthService, useValue: { serverAcquisitionEnabled: signal(true) } },
+        {
+          provide: AuthService,
+          useValue: { serverAcquisitionEnabled: signal(true), isAdmin: signal(false) },
+        },
+        CATALOG_MOCK,
       ],
     });
     const fixture = TestBed.createComponent(PluginsComponent);
@@ -235,7 +248,11 @@ describe('PluginsComponent — remote addons (phase 0)', () => {
             getAddonStatus: () => of({ available: true, rows: [] }),
           },
         },
-        { provide: AuthService, useValue: { serverAcquisitionEnabled: signal(true) } },
+        {
+          provide: AuthService,
+          useValue: { serverAcquisitionEnabled: signal(true), isAdmin: signal(false) },
+        },
+        CATALOG_MOCK,
       ],
     });
     const fixture = TestBed.createComponent(PluginsComponent);

@@ -1,14 +1,20 @@
 import { Component, inject, signal, effect, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { RouterLink, ActivatedRoute } from '@angular/router';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { AuthService } from '../../services/auth.service';
-import { PluginService, type PluginInfo } from '../../services/plugin.service';
+import {
+  PluginService,
+  type PluginInfo,
+  type AddonManifestPreview,
+} from '../../services/plugin.service';
 import { capabilityRiskLine } from '@nicotind/core';
 import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/plugin-config';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { PluginCardComponent } from './plugin-card.component';
+import { AddonCatalogCardComponent } from './addon-catalog-card.component';
+import { AddonCatalogService } from '../../services/addon-catalog.service';
 import { SettingsGroupComponent } from '../../components/settings-group/settings-group.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TranslateService } from '../../services/translate.service';
@@ -34,6 +40,7 @@ import { TranslateService } from '../../services/translate.service';
     TvNavGroupDirective,
     TvNavItemDirective,
     PluginCardComponent,
+    AddonCatalogCardComponent,
     SettingsGroupComponent,
     TranslatePipe,
   ],
@@ -41,7 +48,12 @@ import { TranslateService } from '../../services/translate.service';
 })
 export class PluginsComponent implements OnInit {
   readonly plugins = inject(PluginService);
+  readonly catalog = inject(AddonCatalogService);
+  readonly isAdmin = inject(AuthService).isAdmin;
   private readonly i18n = inject(TranslateService);
+  private readonly route = inject(ActivatedRoute);
+  /** The catalog id a shareable install link deep-linked to (issue #517 PR3). */
+  readonly highlightId = signal<string | null>(null);
   /**
    * Deployment-wide acquisition kill-switch (issue #235). When off, every
    * acquisition route hard-404s and the pollers never start — so listing
@@ -57,6 +69,9 @@ export class PluginsComponent implements OnInit {
   readonly removeTarget = signal<PluginInfo | null>(null);
   readonly addonUrl = signal('');
   readonly addonToken = signal('');
+  /** Manifest preview for the from-URL flow (issue #517 PR3) — shown before the
+   *  admin commits + consents. Cleared whenever the URL changes. */
+  readonly addonPreview = signal<AddonManifestPreview | null>(null);
   // Per-plugin editable config values (keyed by plugin id → field key). Seeded
   // from each plugin's non-secret `config`; password fields always start blank.
   readonly configDraft = signal<Record<string, Record<string, string>>>({});
@@ -78,6 +93,11 @@ export class PluginsComponent implements OnInit {
 
   ngOnInit(): void {
     void this.plugins.refresh();
+    // The marketplace section is admin-only; only fetch the catalog for admins.
+    if (this.isAdmin()) void this.catalog.refresh();
+    // A shareable install link (issue #517 PR3) deep-links here with ?install=<id>.
+    const install = this.route.snapshot.queryParamMap.get('install');
+    if (install) this.highlightId.set(install);
   }
 
   /** This plugin's editable config values (empty when it has no config form).
@@ -118,6 +138,21 @@ export class PluginsComponent implements OnInit {
     }
   }
 
+  /** Fetch + show the manifest before registering (issue #517 PR3). */
+  previewAddon(): void {
+    const url = this.addonUrl().trim();
+    if (!url) return;
+    this.addonPreview.set(null);
+    void this.run(async () => {
+      this.addonPreview.set(await this.plugins.previewAddon(url, this.addonToken().trim()));
+    }, this.i18n.t('extensions.addonPreviewOk'));
+  }
+
+  /** Plain-language risk lines for a previewed remote addon's capabilities. */
+  previewRisks(): string[] {
+    return this.addonPreview()?.capabilities.map((c) => capabilityRiskLine(c)) ?? [];
+  }
+
   addAddon(): void {
     const url = this.addonUrl().trim();
     const token = this.addonToken().trim();
@@ -126,6 +161,7 @@ export class PluginsComponent implements OnInit {
       await this.plugins.addAddon(url, token);
       this.addonUrl.set('');
       this.addonToken.set('');
+      this.addonPreview.set(null);
     }, this.i18n.t('extensions.addonAdded'));
   }
 
@@ -146,6 +182,17 @@ export class PluginsComponent implements OnInit {
    */
   consentRisks(p: PluginInfo): string[] {
     return p.capabilities.map((c) => capabilityRiskLine(c));
+  }
+
+  /**
+   * A catalog card's "Enable" (issue #517 PR2): the server has auto-detected the
+   * addon and registered it (disabled). Refresh the plugin list so the freshly
+   * registered plugin is present, then run the normal (consent-gated) enable.
+   */
+  async enableFromCatalog(id: string): Promise<void> {
+    await this.plugins.refresh();
+    const p = this.plugins.plugins().find((x) => x.id === id);
+    if (p) this.toggle(p);
   }
 
   confirmConsent(): void {

@@ -1,0 +1,172 @@
+@if (entry(); as e) {
+  <div
+    class="mb-3 p-4 rounded-xl bg-theme-surface border border-theme"
+    [class.ring-2]="highlight()"
+    [class.ring-theme-accent]="highlight()"
+    data-testid="addon-catalog-card"
+    [attr.data-addon-id]="e.id"
+    [attr.data-addon-state]="e.state"
+  >
+    <div class="flex items-start justify-between gap-4">
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-medium text-theme-primary">{{ e.name }}</span>
+          @switch (e.state) {
+            @case ('builtin') {
+              <span
+                data-testid="addon-catalog-state"
+                class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-muted"
+                >{{ 'extensions.catalogBuiltin' | t }}</span
+              >
+            }
+            @case ('installed') {
+              <span
+                data-testid="addon-catalog-state"
+                class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-done"
+                >{{ 'extensions.catalogInstalled' | t }}</span
+              >
+            }
+            @case ('pending') {
+              <span
+                data-testid="addon-catalog-state"
+                class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-warn"
+                >{{ 'extensions.catalogPending' | t }}</span
+              >
+            }
+            @case ('available') {
+              <span
+                data-testid="addon-catalog-state"
+                class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-secondary"
+                >{{ 'extensions.catalogAvailable' | t }}</span
+              >
+            }
+          }
+        </div>
+        <p class="text-sm text-theme-secondary mt-1">{{ e.description }}</p>
+        <div class="flex gap-1.5 mt-2 flex-wrap">
+          @for (cap of e.capabilities; track cap) {
+            <span
+              class="text-[10px] px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-secondary"
+              >{{ cap }}</span
+            >
+          }
+        </div>
+        <p class="text-xs text-theme-muted mt-2">{{ e.risk }}</p>
+      </div>
+      <div class="shrink-0 flex flex-col items-end gap-2">
+        @switch (e.state) {
+          @case ('available') {
+            <button
+              type="button"
+              (click)="doInstall()"
+              [disabled]="busy()"
+              appTvNavItem
+              data-testid="addon-catalog-install"
+              class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-accent text-theme-on-accent hover:opacity-90 transition disabled:opacity-50"
+            >
+              {{ 'extensions.catalogInstall' | t }}
+            </button>
+          }
+          @case ('pending') {
+            <button
+              type="button"
+              (click)="checkNow()"
+              [disabled]="busy()"
+              appTvNavItem
+              data-testid="addon-catalog-check"
+              class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+            >
+              {{ 'extensions.catalogCheckNow' | t }}
+            </button>
+          }
+          @case ('installed') {
+            <button
+              type="button"
+              (click)="requestEnable()"
+              appTvNavItem
+              data-testid="addon-catalog-enable"
+              class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-accent text-theme-on-accent hover:opacity-90 transition"
+            >
+              {{ 'extensions.catalogEnable' | t }}
+            </button>
+          }
+        }
+        @if (e.docsUrl; as docs) {
+          <a
+            [href]="docs"
+            target="_blank"
+            rel="noopener"
+            class="text-xs text-theme-muted hover:text-theme-secondary underline"
+            >{{ 'extensions.catalogLearnMore' | t }}</a
+          >
+        }
+        @if (e.state !== 'builtin') {
+          <button
+            type="button"
+            (click)="toggleShare()"
+            data-testid="addon-catalog-share"
+            class="text-xs text-theme-muted hover:text-theme-secondary underline"
+          >
+            {{ 'extensions.catalogShare' | t }}
+          </button>
+        }
+      </div>
+    </div>
+
+    @if (shareOpen()) {
+      <div data-testid="addon-catalog-share-panel" class="mt-3 border-t border-theme pt-3">
+        <p class="text-xs text-theme-muted mb-2">{{ 'extensions.catalogShareHint' | t }}</p>
+        <div class="flex items-start gap-3 flex-wrap">
+          @if (qrDataUrl(); as qr) {
+            <img [src]="qr" alt="" width="120" height="120" class="rounded bg-white p-1" />
+          }
+          <input
+            type="text"
+            readonly
+            [value]="shareLink()"
+            data-testid="addon-catalog-share-link"
+            class="flex-1 min-w-0 px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-xs text-theme-primary"
+          />
+        </div>
+      </div>
+    }
+
+    <!-- The setup snippet + waiting state, once an install has been started. -->
+    @if (e.state === 'pending') {
+      <div data-testid="addon-catalog-setup-body" class="mt-3 border-t border-theme pt-3">
+        @if (snippet(); as snip) {
+          <p class="text-sm text-theme-secondary">{{ 'extensions.catalogSetupIntro' | t }}</p>
+          <div class="relative mt-2">
+            <pre
+              data-testid="addon-catalog-snippet"
+              class="text-xs bg-theme-surface-2 text-theme-primary rounded-lg p-3 overflow-x-auto whitespace-pre"
+              >{{ snip.full }}</pre>
+            <button
+              type="button"
+              (click)="copySnippet()"
+              data-testid="addon-catalog-copy"
+              class="absolute top-2 right-2 px-2 py-1 rounded text-[11px] font-medium bg-theme-surface text-theme-secondary hover:bg-theme-hover transition"
+            >
+              {{ (copied() ? 'extensions.catalogCopied' : 'extensions.catalogCopy') | t }}
+            </button>
+          </div>
+          <p class="text-xs text-theme-muted mt-2" data-testid="addon-catalog-waiting">
+            {{ 'extensions.catalogWaiting' | t: { name: e.name } }}
+          </p>
+        } @else {
+          <!-- Page reload lost the in-memory snippet; re-installing is idempotent. -->
+          <p class="text-sm text-theme-secondary">{{ 'extensions.catalogPendingHint' | t }}</p>
+          <button
+            type="button"
+            (click)="doInstall()"
+            [disabled]="busy()"
+            data-testid="addon-catalog-show-setup"
+            class="mt-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+          >
+            {{ 'extensions.catalogShowSetup' | t }}
+          </button>
+        }
+      </div>
+    }
+  </div>
+}

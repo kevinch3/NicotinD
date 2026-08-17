@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.10](https://github.com/kevinch3/NicotinD/compare/v0.3.9...v0.3.10) (2026-08-16)
+## [0.3.9](https://github.com/kevinch3/NicotinD/compare/v0.3.8...v0.3.9) (2026-08-15)
+
+### Bug Fixes
+
+* **addons:** slskd catalog id is the manifest id (slskd), not the service name ([#524](https://github.com/kevinch3/NicotinD/issues/524)) ([9104eb9](https://github.com/kevinch3/NicotinD/commit/9104eb90d2d5942c2940c5f22e08318d50ecea89)), references [#517](https://github.com/kevinch3/NicotinD/issues/517) [#517](https://github.com/kevinch3/NicotinD/issues/517)
+## [0.3.8](https://github.com/kevinch3/NicotinD/compare/v0.3.7...v0.3.8) (2026-08-15)
+
+### Features
+
+* **addons:** addon manifest preview + shareable install link/QR ([#523](https://github.com/kevinch3/NicotinD/issues/523)) ([f99f7b2](https://github.com/kevinch3/NicotinD/commit/f99f7b224005f550b17fcab76d3de30176438493)), closes [#522](https://github.com/kevinch3/NicotinD/issues/522), references [#517](https://github.com/kevinch3/NicotinD/issues/517) [#517](https://github.com/kevinch3/NicotinD/issues/517)
+* **addons:** one-click addon install — token mint + pending registration + auto-detect ([#521](https://github.com/kevinch3/NicotinD/issues/521)) ([de421db](https://github.com/kevinch3/NicotinD/commit/de421dba706b504e576717716f30eb2bd08ca8b5)), closes [#520](https://github.com/kevinch3/NicotinD/issues/520), references [#517](https://github.com/kevinch3/NicotinD/issues/517) [#517](https://github.com/kevinch3/NicotinD/issues/517)
+## [0.3.7](https://github.com/kevinch3/NicotinD/compare/v0.3.6...v0.3.7) (2026-08-15)
+
+### Features
+
+* **addons:** curated addon marketplace — read-only "Available add-ons" section ([#519](https://github.com/kevinch3/NicotinD/issues/519)) ([4264987](https://github.com/kevinch3/NicotinD/commit/4264987691791da9f4ddf9aec75e29558e0962c3)), closes [#518](https://github.com/kevinch3/NicotinD/issues/518), references [#517](https://github.com/kevinch3/NicotinD/issues/517) [#517](https://github.com/kevinch3/NicotinD/issues/517)
+## [0.3.6](https://github.com/kevinch3/NicotinD/compare/v0.3.5...v0.3.6) (2026-08-15)
+
+### Bug Fixes
+
+* **addons:** reconcile orphaned addon jobs + fix URL-job feed rendering ([#516](https://github.com/kevinch3/NicotinD/issues/516)) ([2d32694](https://github.com/kevinch3/NicotinD/commit/2d3269473dc7f228aecd46b975c29a225cf09098))
+## [0.3.5](https://github.com/kevinch3/NicotinD/compare/v0.3.4...v0.3.5) (2026-08-15)
+
+### Features
+
+* **addons:** remove the in-process spotdl plugin (external addon cutover) ([#514](https://github.com/kevinch3/NicotinD/issues/514)) ([0e1b328](https://github.com/kevinch3/NicotinD/commit/0e1b32884ed4c6e26395b3579e720c8e8fbb3945))
+## [0.3.4](https://github.com/kevinch3/NicotinD/compare/v0.3.3...v0.3.4) (2026-08-15)
+
+### Features
+
+* **addons:** yt-dlp becomes an external addon (core cutover) ([#513](https://github.com/kevinch3/NicotinD/issues/513)) ([1131a3d](https://github.com/kevinch3/NicotinD/commit/1131a3d43fafe788a069f193026aff0e3c9bee7c)), references [#486](https://github.com/kevinch3/NicotinD/issues/486)
+## [0.3.3](https://github.com/kevinch3/NicotinD/compare/v0.3.2...v0.3.3) (2026-08-14)
+
+### Features
+
+* resolve-addons url seam + archive as a bundled built-in addon ([#511](https://github.com/kevinch3/NicotinD/issues/511)) ([3b52ab3](https://github.com/kevinch3/NicotinD/commit/3b52ab3930186ece100ea76306c323f2960ca7f2)), closes [#509](https://github.com/kevinch3/NicotinD/issues/509), references [#486](https://github.com/kevinch3/NicotinD/issues/486) [#509](https://github.com/kevinch3/NicotinD/issues/509) [#509](https://github.com/kevinch3/NicotinD/issues/509)
+## [0.3.2](https://github.com/kevinch3/NicotinD/compare/v0.3.1...v0.3.2) (2026-08-14)
+
+### Features
+
+* **web:** add a Like heart to the player for quick interaction ([#510](https://github.com/kevinch3/NicotinD/issues/510)) ([c1d4f87](https://github.com/kevinch3/NicotinD/commit/c1d4f8765f57c980afa5669d58247d8363da3723))
 ## [0.3.1](https://github.com/kevinch3/NicotinD/compare/v0.3.0...v0.3.1) (2026-08-14)
 ## [0.3.0](https://github.com/kevinch3/NicotinD/compare/v0.2.7...v0.3.0) (2026-08-14)
 

@@ -69,7 +69,12 @@ import { PluginRegistry } from './services/plugins/registry.js';
 import { upsertTrackStatus } from './services/plugins/host-context.js';
 import { recordAcquireJobTrack } from './services/acquire-playlist.js';
 import { registerBuiltinPlugins } from './services/plugins/builtin.js';
-import { activeRemoteAcquisitionAddon, loadRegisteredAddons } from './services/addons/manager.js';
+import {
+  activeRemoteAcquisitionAddon,
+  loadRegisteredAddons,
+  promotePendingAddons,
+} from './services/addons/manager.js';
+import { registerBundledAddons } from './services/addons/bundled/registry.js';
 import { AddonJobPoller } from './services/addons/job-poller.js';
 import { AddonCircuitBreaker } from './services/addons/circuit-breaker.js';
 import { AcquisitionToggle } from './services/acquisition-toggle.js';
@@ -77,7 +82,6 @@ import {
   requireAcquisitionEnabledMiddleware,
   requireAcquisitionMiddleware,
 } from './services/plugins/gate.js';
-import { seedLegacyAcquisitionPlugins } from './services/plugins/legacy-seed.js';
 import { AcquireWatcher } from './services/acquire-watcher.js';
 import { DiscographyService } from './services/discography.service.js';
 import { CatalogService } from './services/catalog-search.service.js';
@@ -435,6 +439,28 @@ export function createApp({
     },
   });
   loadRegisteredAddons(plugins, db, { providerRegistry: registry, breaker: addonBreaker });
+  // First-party bundled addons (archive.org) — registered through the same lane
+  // as external addons, in-process, non-removable, disabled until the admin
+  // enables the consent-gated card. Needs a staging dir to download into.
+  if (stagingDir) {
+    registerBundledAddons(plugins, {
+      stagingDir,
+      providerRegistry: registry,
+      breaker: addonBreaker,
+    });
+  }
+  // Background promoter for one-click catalog installs (issue #517 PR2): a
+  // `pending` registration flips to `active` once its container answers its
+  // manifest. GET /catalog promotes interactively too; this is the safety net
+  // for an admin who installed and walked away. A no-op when nothing is pending.
+  const addonPromoteTimer = setInterval(() => {
+    void promotePendingAddons(plugins, db, {
+      providerRegistry: registry,
+      breaker: addonBreaker,
+    }).catch(() => {});
+  }, 60_000);
+  addonPromoteTimer.unref();
+
   // Library deletions must stop advertising removed files to the Soulseek
   // network — since phase 3 that crosses the protocol as the addon's
   // library-changed notify (the addon debounces its own shares.rescan).
@@ -479,14 +505,9 @@ export function createApp({
   // re-checked inside on every call, so a live plugin toggle takes effect
   // without a restart.
   artistImagePluginRef.lookup = makePluginArtistImageLookup({ db, lidarr, plugins });
-  // One-time migration: seed the previously-implicit acquisition plugins enabled
-  // ONLY on an existing (pre-plugin) install, so upgrades stay seamless. Fresh
-  // installs are default-off — an admin opts into acquisition in Settings →
-  // Plugins (the compliance posture). Runs exactly once (persistent marker).
-  seedLegacyAcquisitionPlugins(plugins, db, {
-    ytdlpEnabled: config.acquire.ytdlp.enabled,
-    spotdlEnabled: config.acquire.spotdl.enabled,
-  });
+  // (The pre-plugin acquisition migration was retired with the last in-process
+  // acquisition plugin — spotdl/yt-dlp are external addons now, so there is
+  // nothing left to seed enabled on an upgrade.)
   // Default-on metadata plugins: seed enabled idempotently (no-op once a row
   // exists), then initEnabled() activates them on this same boot.
   plugins.seedEnabled('lrclib', 'system');
@@ -822,7 +843,7 @@ export function createApp({
     scanIncremental,
     enrichSingles,
   });
-  app.route('/api/acquire', acquireRoutes(acquireWatcher));
+  app.route('/api/acquire', acquireRoutes(acquireWatcher, plugins, db));
 
   // Admin folder import (docs/import.md): the fourth caller of the shared
   // organize → scan seam. Mounted under /api/admin so the blanket auth applies;

@@ -131,6 +131,54 @@ removes it). The full protocol + phased migration lives in
 - `GET /api/plugins/:id/addon-status` (admin) proxies the addon's typed status rows to the
   generic `AddonStatusPanelComponent`; a down addon degrades to `{available:false}`.
 
+### Curated marketplace (issue #517, PR1)
+
+Registering an addon by hand is an ops chore (edit compose + `*_ADDON_TOKEN`, `up --profile`,
+copy the token, paste URL+token). The **"Available add-ons"** section on Extensions removes the
+discovery half now, and later PRs remove the token copy-paste entirely.
+
+- `packages/core/src/addon-catalog.ts` holds the **curated, in-repo** list `ADDON_CATALOG`
+  (slskd / ytdlp / spotdl / archive) — deliberately a short vetted list, **not** an open/
+  user-submitted registry, so the compliance posture stays curated + consent-gated. Each entry's
+  `id` **must equal** the addon manifest id it registers as (that equality drives the install-state
+  diff). Images/ports/profiles mirror `docker-compose.yml` — keep them in sync.
+- Pure, browser-safe helpers shared by the API route and the web card: `renderComposeSnippet(entry,
+  token)` emits the paste-able compose block (the addon service + its pot-provider companion for
+  ytdlp/spotdl) with the token baked in, and `catalogInstallState(entry, registrations)` diffs the
+  catalog against the live registrations → `builtin | installed | pending | available`.
+- `GET /api/plugins/catalog` (any authed user, like `GET /`) serves the entries + each one's install
+  state. The web `AddonCatalogService` + `AddonCatalogCardComponent` render the admin-only section.
+
+**One-click install (PR2).** "Install" removes the token copy-paste entirely:
+
+- `POST /api/plugins/catalog/:id/install` (admin, audited) mints an opaque token (`mintAddonToken`,
+  `randomBytes`), writes a **`pending`** `addon_registrations` row (new `status` + `catalog_id`
+  columns, additive via `addColumnIfMissing`) with a catalog **stub** manifest, and returns the
+  compose snippet with the token already baked in. Idempotent: re-installing while pending returns
+  the *same* token (so a re-click can't rotate it mid-paste); an already-`active` id 409s. The stored
+  url is the **catalog's** `addonUrl` (client input ignored) — no new SSRF surface.
+- `promotePendingAddons(registry, db)` fetches each pending addon's live manifest; only if its id
+  matches the pending row **and** it validates + negotiates a usable capability does it flip the row
+  to `active` (real manifest) and register the plugin (disabled — enabling stays the consent step).
+  An unreachable/mismatched addon stays pending and is retried. It runs on a 60s `main.ts` interval,
+  on every `GET /catalog` (so opening Extensions auto-detects), and on demand via
+  `POST /catalog/:id/check` ("Check now"). `loadRegisteredAddons` skips pending rows at boot.
+- The card walks Install → paste snippet + `up` → **Pending** (polls) → **Installed → Enable**
+  (delegated to the page's existing consent dialog via `enableRequested`). Zero new privilege: no
+  Docker socket, curated urls only, token plaintext like every registration token.
+
+**Preview + shareable link (PR3).**
+
+- `POST /api/plugins/addons/preview {url, token?}` (admin) fetches + validates a manifest **without
+  persisting** (`previewAddonManifest`) so the from-URL "Add addon" form shows name/capabilities/
+  disclaimer + capability risk lines **before** the admin commits + consents (it used to register
+  blind). 502 unreachable / 400 invalid.
+- A shareable install link `/extensions/install?catalog=<id>` (a function `redirectTo` that renames
+  `catalog`→`install`) deep-links into the marketplace with the entry **ring-highlighted** — the
+  target an addon README's "Add to NicotinD" button/QR uses. Each card exposes the link + a lazy QR
+  (`renderQrDataUrl`). Web-only (no `nicotind://` scheme); `adminGuard` on `/settings/plugins` does
+  the auth.
+
 ## First-party plugins
 
 > **Superseded (phase 4).** The in-process **slskd** plugin below (and its
@@ -159,9 +207,12 @@ removes it). The full protocol + phased migration lives in
   `download` capability) on `/api/discography/*` + `/api/watchlist/*`, and the watchlist poller
   skips its sweep via the injected `isAcquisitionEnabled` predicate. Generalizing the engine onto
   capability interfaces is deferred (the seam exists; the payoff is a second searchable source).
-- **yt-dlp** (`services/plugins/ytdlp/index.ts`) + **spotdl** (`services/plugins/spotdl/index.ts`)
-  — URL-acquisition plugins (`resolve`, consent-gated). Each declares `canHandle(url)` (spotdl =
-  `*.spotify.com`, yt-dlp = everything else), `requirements.binaries`, and a config schema. Their
+- **~~yt-dlp / spotdl~~ (both left core)** — the two URL-acquisition plugins are now **external
+  addons** (`nicotind-ytdlp-addon` = the `^https?://` catch-all; `nicotind-spotdl-addon` =
+  `spotify.com`), registered under Extensions → Add addon. There is **no in-process resolve plugin
+  left**; archive.org is a bundled addon. The description below is the historical in-process shape,
+  kept for the shared-process-runner design it documents. The old plugins declared
+  `canHandle(url)`, `requirements.binaries`, and a config schema. Their
   `resolve(url, jobId)` stages files via the **shared process runner** (`services/plugins/acquire/
 process.ts` — `runAcquireProcess` + progress parsing + audio collection; the injectable `spawn`
   keeps it testable without process-global mocks) and **returns the staged absolute paths**. The

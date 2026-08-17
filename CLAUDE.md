@@ -915,7 +915,9 @@ Add detail there, not here.
   still count via the event snapshot; clock bars are percent-of-busiest-hour, since 24 shares of a
   total are unreadable. → [docs/listening-history.md](docs/listening-history.md)
 - **Likes → auto-maintained "Liked Songs" playlist (issue #225)**: a per-user heart (track row
-  `track-like`, track-info `track-info-like`, the `SongMenuService` menu's leading Like/Unlike).
+  `track-like`, track-info `track-info-like`, the `SongMenuService` menu's leading Like/Unlike, and
+  — for quick interaction without a menu detour — the mini-player `player-like` and the Now Playing
+  sheet's `now-playing-like`, both TV-aware; see docs/song-actions.md "On the player itself").
   "Like" is personal so it can't reuse the global `library_songs.starred`; instead a new
   `PlaylistKind` value `liked` (one per user, lazily created on first like) makes **the playlist
   itself the store** — membership = liked, newest-first via decreasing `position`, no new table
@@ -1002,13 +1004,12 @@ Add detail there, not here.
   auto-acquires each album through the shared `acquireAlbum` core (same hunt/select/enqueue/fallback
   guards as the watchlist poller + interactive hunt), so it's idempotent and re-entrant. →
   [docs/auto-acquisition-plan.md](docs/auto-acquisition-plan.md)
-- **Spotify metadata fallback (via spotDL)**: metadata-only lane that hands a `spotify.com/album`
-  URL to `/api/acquire`; the `spotify` plugin gates it. The user's **Spotify Client ID/Secret**
-  (entered once on the spotify extension card) is the single source of truth: `SpotdlPlugin` reads
-  it live via `PluginRegistry.getConfig('spotify')` and forwards it as
-  `SPOTIPY_CLIENT_ID`/`SPOTIPY_CLIENT_SECRET` on spawn (omitted when absent), so spotDL uses the
-  user's own rate limits for better metadata matches; a hint under the spotdl card points there
-  (`data-testid="spotdl-uses-spotify-credentials"`). For audio quality, `run()` passes
+- **Spotify metadata fallback (via the spotDL addon)**: metadata-only lane that hands a
+  `spotify.com/album` URL to `/api/acquire`; the `spotify` metadata plugin gates finding the album,
+  and the **external `nicotind-spotdl-addon`** (registered under Extensions) resolves the download.
+  spotDL is no longer in-process (its former `SpotdlPlugin` was removed in the phase-4 spotdl
+  cutover); the addon holds its **own optional Spotify Client ID/Secret** (`SPOTDL_ADDON_CLIENT_ID`/
+  `SECRET` → `SPOTIPY_*` on spawn) rather than reaching into core's spotify plugin. It passes
   `--bitrate disable` so the source stream is copied without a second lossy re-encode. →
   [docs/spotify-fallback.md](docs/spotify-fallback.md)
 - **Idempotent hunt — one album = one download**: 409 guards + only-missing-tracks enqueue; "already
@@ -1099,8 +1100,18 @@ Add detail there, not here.
   [docs/observability.md](docs/observability.md)
 - **Untracked downloads**: `relative_path IS NULL` rows are backfilled by a script; listed at
   `GET /api/library/untracked` (admin). → [docs/download-pipeline.md](docs/download-pipeline.md)
-- **URL acquisition (yt-dlp / spotdl / archive)**: `POST /api/acquire` routes a URL to an enabled
-  `resolve`-capable plugin → the same organizer + scan pipeline; entered via a link-intent card in
+- **URL acquisition (yt-dlp / spotdl / archive)**: `POST /api/acquire` routes a URL first to a
+  `resolve`-capable **addon** via `resolveAddonForUrl` (the bundled **archive** addon —
+  `services/addons/bundled/archive/`, an in-process `LocalAddonTransport` over the same
+  `AddonJobPoller`/feed lane as external addons) or an **external** `resolve` addon selected by
+  priority-ordered `urlPatterns` — **yt-dlp and spotdl are now external addons**
+  (`nicotind-ytdlp-addon` = the `priority:-10` catch-all `^https?://` resolver; `nicotind-spotdl-addon`
+  = `spotify.com` at default priority so it beats the catch-all; both own repos + published images,
+  core carries no yt-dlp/spotdl code). Eagerly mirrors a
+  `kind:url` `acquisition_jobs` row so the Downloads card shows in-flight at submit (#509 cause 2);
+  no in-process `resolve` plugin remains. The unified feed no longer blanket-skips
+  `kind:url` (renders an addon url job like a network one, #509 cause 1). Both paths reach the same
+  organizer + scan pipeline; entered via a link-intent card in
   the search omnibox (merged with search, no separate URL box); idempotent submit reuses an
   in-flight job for the same URL, a truncated result (fewer files than the source reported) still
   finishes `done` but carries a warning + Retry instead of reading as an unqualified success,
@@ -1167,10 +1178,10 @@ Add detail there, not here.
   method/source/time at download time; surfaced per track. →
   [docs/download-pipeline.md](docs/download-pipeline.md)
 - **Plugin architecture (acquisition as opt-in plugins)**: kind-agnostic kernel + `PluginRegistry`;
-  acquisition is default-off; plugins = slskd/yt-dlp/spotdl/archive/spotify/lrclib/discogs; `auth`
-  kind planned for OAuth. Config saves re-init the running plugin live; yt-dlp/spotdl probe/spawn
-  with an augmented PATH (`acquireEnv`: bundled-ffmpeg dir + brew/pip bins — GUI apps inherit a
-  minimal PATH) + an admin-editable `binaryPath` field. UI labelled **Extensions**, one section per kind
+  acquisition is default-off; in-process plugins = spotify/lrclib/discogs/acoustid (slskd + yt-dlp +
+  **spotdl** are now **external addons**, archive a **bundled addon** — all speaking the addon
+  protocol, not the `Plugin` interface; core carries no yt-dlp/spotdl/slskd code); `auth`
+  kind planned for OAuth. Config saves re-init the running plugin live. UI labelled **Extensions**, one section per kind
   (Acquisition / Metadata / Connectivity) — each a collapsible `SettingsGroupComponent` card
   (groupIds `plugins-acquisition`/`plugins-metadata`/`plugins-connectivity`), and each plugin itself
   a collapsible `PluginCardComponent` (header row — name, one unified derived status pill
@@ -1182,8 +1193,21 @@ Add detail there, not here.
   is down) are embedded inline in its own card body once expanded, so its ~3s status poll only runs
   while that card is open (`/settings/plugins/slskd` now just redirects to `/settings/plugins`). All
   first-party plugins are constructed in `registerBuiltinPlugins`
-  (`services/plugins/builtin.ts`), not inline in `index.ts`, so cross-plugin construction deps
-  (spotdl reading spotify's creds) are covered by a test. → [docs/plugins.md](docs/plugins.md)
+  (`services/plugins/builtin.ts`), not inline in `index.ts`, covered by a test. **Curated addon
+  marketplace (issue #517)**: `ADDON_CATALOG` (`packages/core/src/addon-catalog.ts`) is a short,
+  vetted, in-repo list (slskd/ytdlp/spotdl/archive — **not** an open registry, so the compliance
+  posture holds); pure `renderComposeSnippet` + `catalogInstallState` (browser-safe) back
+  `GET /api/plugins/catalog` and the admin-only "Available add-ons" Extensions section
+  (`AddonCatalogService`/`AddonCatalogCardComponent`). **One-click install**:
+  `POST /api/plugins/catalog/:id/install` mints a token (`mintAddonToken`), writes a `pending`
+  `addon_registrations` row (additive `status`/`catalog_id`), and returns the snippet with the token
+  baked in (no copy-paste); `promotePendingAddons` (60s interval + on `GET /catalog` +
+  `POST /catalog/:id/check`) auto-activates it once its container answers — Install → paste → Pending
+  → Enable. `POST /api/plugins/addons/preview` (`previewAddonManifest`) shows a manifest before the
+  from-URL consent; a shareable `/extensions/install?catalog=<id>` link (+ QR via `renderQrDataUrl`)
+  deep-links the marketplace with the entry highlighted. Zero new privilege (no Docker socket,
+  curated urls only). →
+  [docs/plugins.md](docs/plugins.md)
 - **Discogs metadata plugin (genre + artist-info)**: `metadata`-kind, default-off + consent-gated
   plugin (`services/plugins/discogs/`) that resolves release genres/styles from Discogs (strong on
   Latin/regional/pre-2000/DJ-pool — the residual gap #187's MusicBrainz couldn't close). `client.ts`
@@ -1204,13 +1228,6 @@ Add detail there, not here.
   ids generalize into `library_external_ids` (not a third per-provider table). **Flagship Larralde
   case stays unresolved** (measured — Discogs had no corroborated release; remains #187 A2's to
   fix). → [docs/discogs-plugin.md](docs/discogs-plugin.md)
-- **spotDL inherits the Spotify plugin's credentials**: `SpotdlPlugin` reads
-  `plugins.getConfig('spotify')` live at spawn time and forwards the Client ID/Secret as
-  `SPOTIPY_CLIENT_ID` / `SPOTIPY_CLIENT_SECRET` env vars, raising spotDL's Spotify rate limits over
-  its built-in shared client (better metadata matches → higher-quality YouTube audio). One source of
-  truth — the user enters the key in the spotify card once; the spotdl card has no creds field and
-  shows a one-line hint pointing at the spotify card. →
-  [docs/spotify-fallback.md](docs/spotify-fallback.md)
 - **Quality chip on download cards ("· 320 kbps" / "FLAC · 1411 kbps")**: every `DownloadItem`
   carries an optional `bitrateKbps` + `audioFormat` rendered as a small inline chip next to the
   method badge (`data-testid="download-bitrate"`). slskd captures `SlskdFile.bitRate` at enqueue →

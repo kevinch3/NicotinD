@@ -1,8 +1,11 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
+import { Database } from 'bun:sqlite';
 import type { Role } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import { errorHandler } from '../middleware/error-handler.js';
+import { applySchema } from '../db.js';
+import { PluginRegistry } from '../services/plugins/registry.js';
 import { acquireRoutes } from './acquire.js';
 import {
   NoAcquisitionPluginError,
@@ -103,7 +106,12 @@ function makeApp(watcher: ReturnType<typeof makeMockWatcher>, role: Role = 'user
     c.set('user', { sub: 'user1', role, iat: 0, exp: 9999999999 });
     return next();
   });
-  app.route('/', acquireRoutes(watcher as unknown as AcquireWatcher));
+  // Empty registry → no resolve addon matches → the route falls back to the
+  // watcher (the in-process path these tests exercise).
+  const db = new Database(':memory:');
+  applySchema(db);
+  const registry = new PluginRegistry({ db, dataDir: '/tmp/nic-acq-test' });
+  app.route('/', acquireRoutes(watcher as unknown as AcquireWatcher, registry, db));
   return app;
 }
 

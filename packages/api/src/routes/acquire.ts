@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Database } from 'bun:sqlite';
 import type { AuthEnv } from '../middleware/auth.js';
 import { requireAcquirer } from '../middleware/current-user.js';
 import {
@@ -6,6 +7,10 @@ import {
   NoAcquisitionPluginError,
   PluginUnavailableError,
 } from '../services/acquire-watcher.js';
+import type { PluginRegistry } from '../services/plugins/registry.js';
+import { resolveAddonForUrl } from '../services/addons/resolve-router.js';
+import { mapAddonJob } from '../services/addons/job-poller.js';
+import { createJob } from '../services/acquisition-job-store.js';
 
 interface SubmitBody {
   url: string;
@@ -20,12 +25,13 @@ interface SubmitBody {
 }
 
 /**
- * URL acquisition routes. Backend selection is no longer hardcoded — the watcher
- * routes the URL to whichever enabled `resolve`-capable plugin handles it
- * (`registry.getEnabledForUrl`). When none is enabled/available the submit
- * returns 503 so the UI can hide the acquire box.
+ * URL acquisition routes. Backend selection is not hardcoded: the POST first
+ * routes the URL to a `resolve`-capable **addon** (`resolveAddonForUrl` — the
+ * bundled archive addon, later external yt-dlp/spotdl) and eagerly mirrors a
+ * `kind:url` job; failing that it falls back to an in-process `resolve` plugin
+ * via the watcher. When neither handles it the submit returns 503.
  */
-export function acquireRoutes(watcher: AcquireWatcher) {
+export function acquireRoutes(watcher: AcquireWatcher, registry: PluginRegistry, db: Database) {
   const app = new Hono<AuthEnv>();
 
   // Acquisition is hidden from listeners — gate the whole group server-side.
@@ -53,12 +59,36 @@ export function acquireRoutes(watcher: AcquireWatcher) {
       return c.json({ error: 'url must be a valid URL' }, 400);
     }
 
+    // Prefer a resolve-capable addon (bundled archive, and later the external
+    // yt-dlp/spotdl addons). The addon resolves in the background; we eagerly
+    // mirror an `acquisition_jobs` row so the Downloads card appears in-flight
+    // right away (fixing #509 cause 2), and map it so the poller reuses the row.
+    const addon = resolveAddonForUrl(registry, url.href);
+    if (addon) {
+      try {
+        const addonJob = await addon.client.createJob({
+          intent: 'url',
+          url: url.href,
+          as: body.as,
+        });
+        const coreJobId = createJob(db, {
+          kind: 'url',
+          method: addon.addonManifest.id,
+          sourceRef: `addon:${addon.addonManifest.id}:${addonJob.id}`,
+          files: [],
+        });
+        mapAddonJob(db, addon.addonManifest.id, addonJob.id, coreJobId);
+        return c.json({ jobId: coreJobId }, 201);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to start acquire job';
+        return c.json({ error: message }, 500);
+      }
+    }
+
     try {
-      // Thread the authenticated user id through to the watcher so a playlist
-      // URL (Spotify playlist, YouTube playlist, archive.org with as=playlist)
-      // can generate a per-user native playlist on completion. The playlist is
-      // `kind='user'` and lives under this user's account, matching the
-      // existing private-playlists model.
+      // Fall back to an in-process resolve plugin (yt-dlp/spotdl until they
+      // migrate). Thread the authenticated user id through so a playlist URL can
+      // generate a per-user native playlist on completion.
       const jobId = await watcher.submit(url.href, undefined, {
         userId: c.var.user.sub,
         as: body.as,

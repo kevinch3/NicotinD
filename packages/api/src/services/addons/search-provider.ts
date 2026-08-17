@@ -8,7 +8,7 @@ import type {
   ProviderType,
 } from '@nicotind/core';
 import { BrowseUnavailableError, createLogger } from '@nicotind/core';
-import type { AddonClient } from './client.js';
+import type { AddonTransport } from './transport.js';
 import { inferMetadataFromPath } from '../path-inference.js';
 
 const log = createLogger('addon-provider');
@@ -29,7 +29,7 @@ export class AddonSearchProvider implements ISearchProvider, IBrowseProvider {
 
   constructor(
     addonId: string,
-    private client: AddonClient,
+    private client: AddonTransport,
   ) {
     this.name = addonId;
   }

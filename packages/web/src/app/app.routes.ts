@@ -20,6 +20,18 @@ function redirectToGetTab(tab: GetTab): RedirectFunction {
     inject(Router).createUrlTree(['/get'], { queryParams: { ...queryParams, tab } });
 }
 
+/** Shareable addon install link (issue #517 PR3): `/extensions/install?catalog=<id>`
+ *  (as an addon README's "Add to NicotinD" button would use) deep-links into the
+ *  Extensions marketplace with the entry highlighted. Translates `catalog` →
+ *  `install` so the plugins page can act on it; adminGuard on the target does the
+ *  auth. A function redirect so it can rename the param a string form can't. */
+function redirectToInstall(): RedirectFunction {
+  return ({ queryParams }) =>
+    inject(Router).createUrlTree(['/settings/plugins'], {
+      queryParams: { install: queryParams['catalog'] ?? queryParams['id'] },
+    });
+}
+
 export const routes: Routes = [
   {
     path: 'server',
@@ -162,6 +174,11 @@ export const routes: Routes = [
         canActivate: [adminGuard],
       },
     ],
+  },
+  {
+    path: 'extensions/install',
+    pathMatch: 'full',
+    redirectTo: redirectToInstall(),
   },
   { path: '**', redirectTo: '' },
 ];
