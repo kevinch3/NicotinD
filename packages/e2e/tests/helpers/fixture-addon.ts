@@ -5,13 +5,43 @@ import { fileURLToPath } from 'node:url';
 
 export const FIXTURE_ADDON_TOKEN = 'fixture-token';
 
+const HERE = dirname(fileURLToPath(import.meta.url));
+
 /** A committed silent FLAC tagged "Addon Artist / Addon Album / Addon Song" —
  *  lives OUTSIDE fixtures/music so the boot scan never indexes it; it enters
  *  the library only through the addon ingest loop under test. */
-const ADDON_FLAC = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '../../fixtures/addon/addon-song.flac',
-);
+const ADDON_FLAC = join(HERE, '../../fixtures/addon/addon-song.flac');
+
+/** What the fixture addon delivers + advertises. Parameterized so a hunt test
+ *  can download a specific named album (e.g. Rick Astley) end-to-end; the tags
+ *  in `flacPath` are what actually land in the library (the scanner reads tags,
+ *  not the wire filename). */
+export interface FixturePayload {
+  flacPath: string;
+  artist: string;
+  album: string;
+  title: string;
+  /** slskd-style backslash path the addon reports for the file. */
+  filename: string;
+}
+
+const DEFAULT_PAYLOAD: FixturePayload = {
+  flacPath: ADDON_FLAC,
+  artist: 'Addon Artist',
+  album: 'Addon Album',
+  title: 'Addon Song',
+  filename: 'Music\\Addon Album\\Addon Song.flac',
+};
+
+/** A committed silent FLAC tagged as the canonical rickroll — for the hunt→
+ *  download e2e that acquires "Rick Astley — Whenever You Need Somebody". */
+export const RICK_ASTLEY_PAYLOAD: FixturePayload = {
+  flacPath: join(HERE, '../../fixtures/addon/rick-astley.flac'),
+  artist: 'Rick Astley',
+  album: 'Whenever You Need Somebody',
+  title: 'Never Gonna Give You Up',
+  filename: 'Music\\Rick Astley\\Whenever You Need Somebody\\01 Never Gonna Give You Up.flac',
+};
 
 interface FixtureJobItem {
   itemId: string;
@@ -44,6 +74,9 @@ export interface FixtureAddon {
   configPushes: unknown[];
   /** Flip every job to completed + fileReady (the "download finished" hook). */
   completeJobs(): void;
+  /** Make `/albums/search` report the search was throttled (429) — an empty +
+   *  rate-limited result, so the UI shows "keep trying" not "no results". */
+  setRateLimited(v: boolean): void;
   jobs: FixtureJob[];
   close(): Promise<void>;
 }
@@ -60,14 +93,20 @@ export interface FixtureAddonOptions {
   capabilities?: string[];
   /** URL patterns for a resolve addon (so `resolveAddonForUrl` routes to it). */
   urlPatterns?: string[];
+  /** What the addon delivers + advertises (default: the "Addon Artist" song). */
+  payload?: FixturePayload;
 }
 
 export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise<FixtureAddon> {
   const id = opts.id ?? 'fixture-addon';
   const capabilities = opts.capabilities ?? ['search', 'browse', 'download'];
+  const payload = opts.payload ?? DEFAULT_PAYLOAD;
+  const payloadBytes = readFileSync(payload.flacPath);
+  const payloadSize = payloadBytes.length;
   const configPushes: unknown[] = [];
   const jobs: FixtureJob[] = [];
   let nextJob = 1;
+  let rateLimited = false;
 
   const server: Server = createServer((req, res) => {
     const path = req.url?.split('?')[0] ?? '';
@@ -141,6 +180,37 @@ export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise
       );
     }
 
+    // Album hunt (protocol albums/search): scored folder candidates, or — when
+    // rate-limited — an empty result flagged `rateLimited` so the host UI shows
+    // "keep trying" rather than "no results" (#hunt-429).
+    if (path === '/addon/v1/albums/search' && req.method === 'POST') {
+      return readBody(() => {
+        if (rateLimited)
+          return json(200, { candidates: [], queries: [], skewNeeded: false, rateLimited: true });
+        json(200, {
+          candidates: [
+            {
+              candidateRef: 'fixture-candidate-1',
+              username: 'fixture-peer',
+              directory: payload.filename.split('\\').slice(0, -1).join('\\'),
+              matchPct: 100,
+              matchedTracks: 1,
+              totalTracks: 1,
+              format: 'FLAC',
+              estimatedSizeMb: 1,
+              isLive: false,
+              freeUploadSlots: 1,
+              queueLength: 0,
+              uploadSpeed: 100000,
+              files: [{ filename: payload.filename, size: payloadSize, bitRateKbps: 900 }],
+            },
+          ],
+          queries: [`${payload.artist} ${payload.album}`],
+          skewNeeded: false,
+        });
+      });
+    }
+
     if (path === '/addon/v1/jobs' && req.method === 'POST') {
       return readBody((body) => {
         const b = (body ?? {}) as { intent?: string; artist?: string; album?: string };
@@ -148,19 +218,19 @@ export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise
         const job: FixtureJob = {
           id: `fixture-job-${nextJob++}`,
           intent: b.intent ?? 'browse-grab',
-          artist: b.artist ?? 'Addon Artist',
-          album: b.album ?? 'Addon Album',
+          artist: b.artist ?? payload.artist,
+          album: b.album ?? payload.album,
           state: 'active',
           error: null,
           createdAt: now,
           updatedAt: now,
           items: [
             {
-              itemId: 't:addon song',
-              title: 'Addon Song',
+              itemId: `t:${payload.title.toLowerCase()}`,
+              title: payload.title,
               username: 'fixture-peer',
-              filename: 'Music\\Addon Album\\Addon Song.flac',
-              size: 12604,
+              filename: payload.filename,
+              size: payloadSize,
               bitRateKbps: 900,
               audioFormat: 'FLAC',
               state: 'downloading',
@@ -185,7 +255,7 @@ export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise
       const item = job?.items.find((i) => i.itemId === decodeURIComponent(fileMatch[2]!));
       if (!job || !item) return json(404, { error: 'not found' });
       if (!item.fileReady) return json(409, { error: 'not ready' });
-      const bytes = readFileSync(ADDON_FLAC);
+      const bytes = payloadBytes;
       res.writeHead(200, {
         'Content-Type': 'application/octet-stream',
         'Content-Length': String(bytes.length),
@@ -226,6 +296,9 @@ export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise
           item.updatedAt = now;
         }
       }
+    },
+    setRateLimited(v: boolean) {
+      rateLimited = v;
     },
     close: () => new Promise((resolve, reject) => server.close((e) => (e ? reject(e) : resolve()))),
   };
