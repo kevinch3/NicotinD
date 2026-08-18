@@ -135,6 +135,7 @@ describe('GET /recent', () => {
 
   it('ships the live cover-art id so the shelf can render real covers', async () => {
     testDb.run(`UPDATE library_songs SET cover_art = 'cov-a' WHERE id = 'a'`);
+    testDb.run(`UPDATE library_albums SET cover_art = 'cov-al' WHERE id = 'al'`);
     await post(makeApp('u1'), [
       event({ songId: 'a', startedAt: 1_000 }),
       event({ songId: 'b', startedAt: 2_000 }),
@@ -143,8 +144,17 @@ describe('GET /recent', () => {
     const res = await makeApp('u1').request('/recent');
     const body = (await res.json()) as Array<{ songId: string; coverArt: string | null }>;
     expect(body.find((r) => r.songId === 'a')?.coverArt).toBe('cov-a');
-    // A coverless song reports null, not undefined-dropped — the client branches on it.
-    expect(body.find((r) => r.songId === 'b')?.coverArt).toBeNull();
+    // No song-level cover id → the album's, matching every other song listing.
+    expect(body.find((r) => r.songId === 'b')?.coverArt).toBe('cov-al');
+  });
+
+  it('falls back to the album id when neither song nor album carry a cover id', async () => {
+    await post(makeApp('u1'), [event({ songId: 'a' })]);
+    const res = await makeApp('u1').request('/recent');
+    const body = (await res.json()) as Array<{ coverArt: string | null }>;
+    // The cover route resolves entity ids to folder/embedded art, so the album
+    // id is a servable last resort rather than a guaranteed 404.
+    expect(body[0]?.coverArt).toBe('al');
   });
 
   it('never returns another user’s history', async () => {

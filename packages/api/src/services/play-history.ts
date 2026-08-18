@@ -54,7 +54,11 @@ export interface RecentPlay {
   artist: string | null;
   album: string | null;
   duration: number | null;
-  /** Live cover-art id (`library_songs.cover_art`) for `/api/cover/:id`. */
+  /**
+   * Live cover-art id for `/api/cover/:id` — song's own, else the album's, else
+   * the album id (the cover route resolves entity ids to folder/embedded art),
+   * matching the fallback chain every other song listing uses.
+   */
   coverArt: string | null;
   playedAt: number;
 }
@@ -190,7 +194,7 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
               COALESCE(s.artist, p.artist)       AS artist,
               COALESCE(al.name, p.album)         AS album,
               s.duration                         AS duration,
-              s.cover_art                        AS cover_art,
+              COALESCE(s.cover_art, al.cover_art, s.album_id) AS cover_art,
               MAX(p.at)                          AS played_at
          FROM play_events p
          JOIN library_songs s   ON s.id = p.song_id
