@@ -25,9 +25,15 @@ function setCapacitor(stub: CapStub | undefined): void {
   (globalThis as { Capacitor?: CapStub }).Capacitor = stub;
 }
 
+// These specs replace the global `window` with plain-object stubs. Restore the real one
+// rather than `delete`-ing it: leaving the worker with no `window` at all only stays
+// harmless while every spec file gets a fresh global. Surfaced by an `isolate: false`
+// trial (see vitest.config.ts), where it broke six unrelated specs.
+const realWindow = (globalThis as { window?: unknown }).window;
+
 afterEach(() => {
   delete (globalThis as { Capacitor?: CapStub }).Capacitor;
-  delete (globalThis as { window?: unknown }).window;
+  (globalThis as { window?: unknown }).window = realWindow;
 });
 
 describe('platform helpers', () => {

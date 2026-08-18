@@ -16,10 +16,11 @@
     "screens:readme": "bun run scripts/update-readme-screenshots.ts",
     "make-fixtures": "bun run scripts/make-fixtures.ts",
     "typecheck": "tsc --noEmit",
-    "smoke:storybook": "node scripts/storybook-smoke.mjs",
+    "smoke:storybook": "node scripts/storybook-gates.mjs --smoke",
+    "gates:storybook": "node scripts/storybook-gates.mjs --smoke --a11y --strict",
     "install:browsers": "playwright install --with-deps chromium",
-    "a11y:storybook": "node scripts/storybook-a11y.mjs",
-    "a11y:storybook:strict": "node scripts/storybook-a11y.mjs --strict"
+    "a11y:storybook": "node scripts/storybook-gates.mjs --a11y",
+    "a11y:storybook:strict": "node scripts/storybook-gates.mjs --a11y --strict"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

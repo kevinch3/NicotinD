@@ -42,12 +42,35 @@ export const ALLOWLIST: Array<{ match: string; reason: string }> = [
   },
 ];
 
+/**
+ * The jobs whose checks a developer is expected to reach with `bun run verify`.
+ *
+ * This was a single hardcoded `'ci'` until that job was split — it had grown into the
+ * workflow's entire critical path by accumulating the web unit tests and the Storybook
+ * catalog gates. Splitting it moved gates into new jobs, and a list is what keeps them
+ * covered: a gate that quietly leaves this list is exactly the drift this file exists to
+ * catch, only with a job boundary hiding it.
+ *
+ * `e2e`, `desktop-smoke`, `analysis` and `docker` are deliberately absent. `bun run e2e`
+ * is not part of `verify` by design (CLAUDE.md quality gate 2), and the other three need
+ * a runner (Python, Docker, a packaged Electron app) rather than a local command.
+ */
+export const GATE_JOBS = ['ci', 'web-test', 'storybook'] as const;
+
+/**
+ * The job that cuts the release tag. Every gate job must block it, or splitting a gate
+ * out silently stops it gating the release — the #457 shape, where a job that did not
+ * actually pass still let a deploy through.
+ */
+export const RELEASE_JOB = 'release';
+
 export interface WorkflowStep {
   name?: string;
   run?: string;
 }
 
 export interface MissingCheck {
+  job: string;
   step: string;
   command: string;
 }
@@ -92,7 +115,7 @@ export function isCovered(command: string, chain: string): boolean {
   return chain.includes(command);
 }
 
-/** Every `ci`-job command the verify chain fails to reach. */
+/** Every command in `job` that the verify chain fails to reach. */
 export function missingChecks(
   workflowYaml: string,
   scripts: Record<string, string>,
@@ -104,11 +127,28 @@ export function missingChecks(
     for (const command of commandsIn(step.run ?? '')) {
       if (ALLOWLIST.some((a) => command.includes(a.match))) continue;
       if (!isCovered(command, chain)) {
-        missing.push({ step: step.name ?? '(unnamed step)', command });
+        missing.push({ job, step: step.name ?? '(unnamed step)', command });
       }
     }
   }
   return missing;
+}
+
+/**
+ * Gate jobs that `release` does not list in `needs`.
+ *
+ * Splitting a gate into its own job is only safe if the release waits for it too;
+ * forgetting that line makes the new job advisory and nothing else complains.
+ */
+export function gateJobsNotBlockingRelease(workflowYaml: string): string[] {
+  const workflow = parse(workflowYaml) as {
+    jobs?: Record<string, { needs?: string[] | string }>;
+  };
+  const release = workflow.jobs?.[RELEASE_JOB];
+  if (!release) throw new Error(`no \`${RELEASE_JOB}\` job in the workflow — has it been renamed?`);
+  const raw = release.needs ?? [];
+  const needs = new Set(Array.isArray(raw) ? raw : [raw]);
+  return GATE_JOBS.filter((j) => !needs.has(j));
 }
 
 if (import.meta.main) {
@@ -117,12 +157,12 @@ if (import.meta.main) {
     scripts: Record<string, string>;
   };
 
-  const missing = missingChecks(workflow, scripts);
+  const missing = GATE_JOBS.flatMap((job) => missingChecks(workflow, scripts, job));
   if (missing.length > 0) {
     console.error(
-      `\nThe \`ci\` job runs ${missing.length} check(s) that \`bun run verify\` does not:\n`,
+      `\nThe gate jobs run ${missing.length} check(s) that \`bun run verify\` does not:\n`,
     );
-    for (const m of missing) console.error(`  ✗ ${m.step}\n      ${m.command}`);
+    for (const m of missing) console.error(`  ✗ [${m.job}] ${m.step}\n      ${m.command}`);
     console.error(
       `\nA check CI runs but no local command does is invisible until push — that is how\n` +
         `the web-spec typecheck drifted (see the header of scripts/check-ci-parity.ts).\n` +
@@ -131,5 +171,17 @@ if (import.meta.main) {
     process.exit(1);
   }
 
-  console.log('CI parity: every `ci` job check is reachable from `bun run verify`.');
+  const unblocking = gateJobsNotBlockingRelease(workflow);
+  if (unblocking.length > 0) {
+    console.error(
+      `\n${unblocking.length} gate job(s) do not block \`${RELEASE_JOB}\`: ${unblocking.join(', ')}\n\n` +
+        `A gate that does not gate is advisory. Add it to the \`${RELEASE_JOB}\` job's \`needs\`.\n`,
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    `CI parity: every check in ${GATE_JOBS.join(', ')} is reachable from \`bun run verify\`, ` +
+      `and all of them block \`${RELEASE_JOB}\`.`,
+  );
 }

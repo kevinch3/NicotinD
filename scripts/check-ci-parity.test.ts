@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { commandsIn, isCovered, jobSteps, missingChecks, verifyChain } from './check-ci-parity.js';
+import {
+  GATE_JOBS,
+  commandsIn,
+  gateJobsNotBlockingRelease,
+  isCovered,
+  jobSteps,
+  missingChecks,
+  verifyChain,
+} from './check-ci-parity.js';
 
 const ROOT = resolve(import.meta.dir, '..');
 
@@ -19,16 +27,31 @@ jobs:
       - name: Test
         run: bun test packages/api/src scripts
       - uses: actions/checkout@v4
+  web-test:
+    steps:
+      - name: Test (web)
+        run: bun run --filter @nicotind/web test
+  storybook:
+    steps:
+      - name: Storybook gates (render smoke + axe)
+        run: bun run gates:storybook
   e2e:
     steps:
       - name: Run e2e
         run: bun run --filter @nicotind/e2e test
+  release:
+    needs: [ci, web-test, storybook, e2e]
+    steps:
+      - name: Release
+        run: bun run release
 `;
 
 const SCRIPTS = {
   typecheck: 'tsc --build && bun run --filter @nicotind/web typecheck:spec',
   test: 'bun test packages src scripts',
-  verify: 'bun run typecheck && bun run test',
+  'test:web': 'bun run --filter @nicotind/web test',
+  'gates:storybook': 'bun run --filter @nicotind/e2e gates:storybook',
+  verify: 'bun run typecheck && bun run test && bun run test:web && bun run gates:storybook',
 };
 
 describe('jobSteps', () => {
@@ -99,7 +122,11 @@ describe('missingChecks', () => {
   it('catches a CI step that no local command reaches', () => {
     const withoutSpecCheck = { ...SCRIPTS, typecheck: 'tsc --build' };
     expect(missingChecks(WORKFLOW, withoutSpecCheck)).toEqual([
-      { step: 'Typecheck (web specs)', command: 'bun run --filter @nicotind/web typecheck:spec' },
+      {
+        job: 'ci',
+        step: 'Typecheck (web specs)',
+        command: 'bun run --filter @nicotind/web typecheck:spec',
+      },
     ]);
   });
 
@@ -109,17 +136,64 @@ describe('missingChecks', () => {
     );
   });
 
-  it('only guards the `ci` job — e2e is its own job with its own runner', () => {
-    expect(missingChecks(WORKFLOW, SCRIPTS).some((m) => m.command.includes('e2e'))).toBe(false);
+  it('guards gate jobs beyond `ci` — a gate that moved jobs stays covered', () => {
+    // Before the `ci` split this returned [] no matter what the other jobs ran.
+    // (`web-test` cannot be demonstrated the same way: its `--filter @nicotind/web test`
+    // resolves to the root `test` script under the deliberately coarse matcher, so it is
+    // covered by `verify` through that name alone.)
+    const withoutGates = {
+      ...SCRIPTS,
+      verify: 'bun run typecheck && bun run test && bun run test:web',
+    };
+    const missed = GATE_JOBS.flatMap((job) => missingChecks(WORKFLOW, withoutGates, job));
+    expect(missed).toEqual([
+      {
+        job: 'storybook',
+        step: 'Storybook gates (render smoke + axe)',
+        command: 'bun run gates:storybook',
+      },
+    ]);
+  });
+
+  it('leaves `e2e` alone — `bun run e2e` is deliberately not in `verify`', () => {
+    expect(GATE_JOBS).not.toContain('e2e');
+    const missed = GATE_JOBS.flatMap((job) => missingChecks(WORKFLOW, SCRIPTS, job));
+    expect(missed.some((m) => m.command.includes('@nicotind/e2e test'))).toBe(false);
+  });
+});
+
+describe('gateJobsNotBlockingRelease', () => {
+  it('passes when every gate job is in `release`s needs', () => {
+    expect(gateJobsNotBlockingRelease(WORKFLOW)).toEqual([]);
+  });
+
+  /**
+   * The regression this half exists for: splitting a gate out of `ci` and forgetting the
+   * `needs` line leaves it advisory — it can fail while the release tag is still cut.
+   */
+  it('names the gate jobs a release would not wait for', () => {
+    const dropped = WORKFLOW.replace('needs: [ci, web-test, storybook, e2e]', 'needs: [ci, e2e]');
+    expect(gateJobsNotBlockingRelease(dropped)).toEqual(['web-test', 'storybook']);
+  });
+
+  it('throws rather than silently passing when the release job was renamed', () => {
+    expect(() => gateJobsNotBlockingRelease('jobs:\n  ci:\n    steps: []\n')).toThrow(
+      /no `release` job/,
+    );
   });
 });
 
 describe('the real repository', () => {
-  it('has a verify chain covering every check the ci job runs', () => {
+  it('has a verify chain covering every check the gate jobs run', () => {
     const workflow = readFileSync(resolve(ROOT, '.github/workflows/ci.yml'), 'utf8');
     const { scripts } = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')) as {
       scripts: Record<string, string>;
     };
-    expect(missingChecks(workflow, scripts)).toEqual([]);
+    expect(GATE_JOBS.flatMap((job) => missingChecks(workflow, scripts, job))).toEqual([]);
+  });
+
+  it('blocks the release on every gate job', () => {
+    const workflow = readFileSync(resolve(ROOT, '.github/workflows/ci.yml'), 'utf8');
+    expect(gateJobsNotBlockingRelease(workflow)).toEqual([]);
   });
 });

@@ -7,10 +7,14 @@ import {
   setMusicDir,
 } from './native-capabilities';
 
+// See platform.spec.ts: restore the real `window`, never delete it — the stubs below are
+// process-wide globals, not per-file ones.
+const realWindow = (globalThis as { window?: unknown }).window;
+
 describe('native-capabilities', () => {
   afterEach(() => {
     delete (globalThis as { nicotind?: unknown }).nicotind;
-    delete (globalThis as { window?: unknown }).window;
+    (globalThis as { window?: unknown }).window = realWindow;
     delete (globalThis as { Capacitor?: unknown }).Capacitor;
   });
 

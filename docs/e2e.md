@@ -197,8 +197,12 @@ Use read-only/login-style specs only — do not seed or destroy prod data.
 
 The `e2e` job in `.github/workflows/deploy.yml` installs deps + the Chromium
 browser, builds web (the Hono server serves `packages/web/dist`), runs the suite,
-and uploads the Playwright HTML report on failure. `release` and `deploy` depend on
-`[ci, e2e]`, so a red e2e run blocks the deploy.
+and uploads the Playwright HTML report on failure. `release` depends on every gate job
+(`ci`, `web-test`, `storybook`, `e2e`, `analysis`, `docker`, `desktop-package`), so a red
+e2e run blocks the deploy. `e2e` is deliberately **not** in `check-ci-parity.ts`'s
+`GATE_JOBS`: `bun run e2e` is not part of `bun run verify` by design (CLAUDE.md quality
+gate 2), so it is gated in CI without being expected to run in the local one-command
+sweep.
 
 The CI `ci` job also runs `bun test packages/e2e/playground` — the **pure logic**
 of the playground harness below (observation model, report rendering, the response +
