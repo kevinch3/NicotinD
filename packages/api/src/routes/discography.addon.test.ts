@@ -193,6 +193,32 @@ describe('discography routes through a remote addon', () => {
     expect(((await res.json()) as { error: string }).error).toBe('already-downloading');
   });
 
+  // Issue #531: the 502 body used to be only the "they may be offline" guess,
+  // discarding the addon's actual reason — the toast (and the log) said nothing
+  // actionable while every one-click download was failing (#530).
+  it('hunt-download 502 carries the addon error detail', async () => {
+    h = harness({
+      createJob: mock(async () => {
+        throw new AddonRequestError('slskd rejected the enqueue', 503);
+      }) as unknown as AddonClient['createJob'],
+    });
+    const res = await h.app.request(
+      '/albums/42/hunt-download',
+      jsonPost({
+        selected: {
+          username: 'peer',
+          directory: 'd',
+          files: [{ filename: 'f', size: 1 }],
+          candidateRef: 'ref-1',
+        },
+      }),
+    );
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain('peer');
+    expect(body.error).toContain('slskd rejected the enqueue');
+  });
+
   it('hunt-tracks runs addon-side and keeps the TrackHuntResult shape', async () => {
     const res = await h.app.request('/albums/42/hunt-tracks', jsonPost({}));
     expect(res.status).toBe(200);

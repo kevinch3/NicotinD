@@ -183,7 +183,8 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
     if (!job) return c.json({ error: 'Job not found' }, 404);
     const ref = parseAddonRef(job.source_ref);
     if (!ref || ref.addonId !== job.method) {
-      return c.json({ error: 'Not an addon job — use the transfer routes' }, 400);
+      log.warn({ jobId: job.id, method: job.method }, 'cancel requested for a non-addon job');
+      return c.json({ error: 'This download has nothing left to cancel' }, 400);
     }
     const addon = pluginRegistry?.get(ref.addonId);
     if (!(addon instanceof RemoteAddonPlugin)) {
@@ -205,14 +206,17 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
       )
       .get(c.req.param('id'));
     if (!job) return c.json({ error: 'Job not found' }, 404);
+    // The feed row is core-owned and always deletable (issue #533 — legacy
+    // peer-ref rows and url mirrors used to 400 here, pointing at per-transfer
+    // routes that no longer exist, so Remove silently no-opped). The addon
+    // half is best-effort and only applies when the ref actually names one.
     const ref = parseAddonRef(job.source_ref);
-    if (!ref || ref.addonId !== job.method) {
-      return c.json({ error: 'Not an addon job — use the transfer routes' }, 400);
-    }
-    const addon = pluginRegistry?.get(ref.addonId);
-    if (addon instanceof RemoteAddonPlugin) {
-      await addon.client.cancelJob(ref.addonJobId).catch(() => {});
-      await addon.client.deleteJob(ref.addonJobId).catch(() => {});
+    if (ref && ref.addonId === job.method) {
+      const addon = pluginRegistry?.get(ref.addonId);
+      if (addon instanceof RemoteAddonPlugin) {
+        await addon.client.cancelJob(ref.addonJobId).catch(() => {});
+        await addon.client.deleteJob(ref.addonJobId).catch(() => {});
+      }
     }
     db.run(`DELETE FROM acquisition_job_items WHERE job_id = ?`, [job.id]);
     db.run(`DELETE FROM acquisition_jobs WHERE id = ?`, [job.id]);

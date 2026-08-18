@@ -8,9 +8,10 @@ import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { TransferService } from '../../services/transfer.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+import { ToastService } from '../../services/toast.service';
 import type { AcquireJob } from '@nicotind/core';
 
-function setup(opts: { acquireJobs?: AcquireJob[] } = {}) {
+function setup(opts: { acquireJobs?: AcquireJob[]; api?: Record<string, unknown> } = {}) {
   let scanned = false;
   let registeredHandler: (() => Promise<void> | void) | null = null;
   const transferStub = {
@@ -30,11 +31,14 @@ function setup(opts: { acquireJobs?: AcquireJob[] } = {}) {
     trigger: vi.fn(),
   };
 
+  const toastShow = vi.fn().mockReturnValue('toast-id');
+
   TestBed.configureTestingModule({
     imports: [DownloadsComponent],
     providers: [
       provideRouter([]),
-      { provide: DownloadsApiService, useValue: {} },
+      { provide: DownloadsApiService, useValue: opts.api ?? {} },
+      { provide: ToastService, useValue: { show: toastShow, dismiss: vi.fn() } },
       {
         provide: SystemApiService,
         useValue: {
@@ -60,6 +64,7 @@ function setup(opts: { acquireJobs?: AcquireJob[] } = {}) {
     wasScanned: () => scanned,
     transferService: transferStub,
     getRegisteredHandler: () => registeredHandler,
+    toastShow,
   };
 }
 
@@ -120,5 +125,33 @@ describe('DownloadsComponent — active feed', () => {
     expect(handler).not.toBeNull();
     await handler!();
     expect(transferService.kickPoll).toHaveBeenCalled();
+  });
+
+  // Issue #533: a failed job delete was `.catch(() => {})`-ed, so Remove
+  // silently no-opped — the user-visible "old downloads I can't remove".
+  it('surfaces a failed feed-row removal as an error toast', async () => {
+    const { throwError } = await import('rxjs');
+    const { component, toastShow } = setup({
+      api: {
+        deleteJob: () => throwError(() => ({ status: 400, error: { error: 'Job not found' } })),
+      },
+    });
+    component.onItemRemove({
+      key: 'job:j1',
+      kind: 'network',
+      title: 'X',
+      method: 'slskd',
+      stage: 'done',
+      jobId: 'j1',
+      canRetry: false,
+      canCancel: false,
+      canRemove: true,
+    } as never);
+    component.onConfirm();
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'error', message: expect.stringContaining('Job not found') }),
+    );
   });
 });

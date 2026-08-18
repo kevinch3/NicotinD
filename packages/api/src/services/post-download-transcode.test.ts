@@ -50,6 +50,35 @@ function makeFlac(path: string): void {
   makeAudio(path, 'flac');
 }
 
+/** A real multi-second FLAC with audible content (several frames to corrupt). */
+function makeLongFlac(path: string): void {
+  execFileSync(
+    'ffmpeg',
+    [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=440:sample_rate=44100:duration=3',
+      '-c:a',
+      'flac',
+      path,
+    ],
+    { stdio: 'ignore' },
+  );
+}
+
+/** Flip a byte run at ~70% of the file — damages one audio frame, not the
+ *  STREAMINFO header, mirroring the prod "invalid sync code" rips (#534). */
+async function corruptOneFrame(path: string): Promise<void> {
+  const buf = Buffer.from(await Bun.file(path).arrayBuffer());
+  const start = Math.floor(buf.length * 0.7);
+  for (let i = start; i < Math.min(start + 64, buf.length); i++) buf[i] = buf[i]! ^ 0xff;
+  await Bun.write(path, buf);
+}
+
 describe('isLossless', () => {
   it('recognizes lossless suffixes with or without a leading dot', () => {
     for (const s of ['flac', '.flac', 'WAV', '.AIFF', 'alac', 'ape', 'wv']) {
@@ -126,5 +155,34 @@ describe('transcodeToOpus', () => {
     expect(existsSync(bogus)).toBe(true);
     expect(existsSync(join(root, 'not-audio.opus'))).toBe(false);
     expect(existsSync(join(root, 'not-audio.nicotind-transcode.opus'))).toBe(false);
+  });
+
+  // Issue #534: strict mode (`-err_detect explode -xerror`) rejected FLACs with
+  // a single damaged frame although they decode fine leniently — the prod
+  // Jason Mraz rip stayed un-standardized with 19 opaque "code 183" warnings.
+  it.skipIf(!ffmpegAvailable())(
+    'transcodes an imperfect-but-playable FLAC via the lenient retry',
+    async () => {
+      const root = tmpRoot();
+      const flac = join(root, 'glitchy.flac');
+      makeLongFlac(flac);
+      await corruptOneFrame(flac);
+
+      const out = await transcodeToOpus(flac, 128);
+
+      expect(out).toBe(join(root, 'glitchy.opus'));
+      expect(existsSync(out)).toBe(true);
+      expect(existsSync(flac)).toBe(false);
+    },
+  );
+
+  it.skipIf(!ffmpegAvailable())('carries the ffmpeg stderr detail in the error', async () => {
+    const root = tmpRoot();
+    const bogus = join(root, 'not-audio.flac');
+    await Bun.write(bogus, 'this is not a flac');
+
+    // The opaque "exited with code N" alone is what made #534 undiagnosable —
+    // the message must carry an ffmpeg diagnostic, whichever line ends stderr.
+    await expect(transcodeToOpus(bogus)).rejects.toThrow(/invalid data|no packets/i);
   });
 });

@@ -52,6 +52,11 @@ export async function isLosslessFile(absPath: string): Promise<boolean> {
  *
  * Integrity (same contract as the streaming transcode in `./transcode.ts`):
  *   - `-xerror` + `+discardcorrupt` so a damaged source fails fast
+ *   - a strict-mode failure is retried once WITHOUT `explode`/`-xerror` (issue
+ *     #534): a single damaged frame — common in Soulseek rips — decodes fine
+ *     leniently, and rejecting it left the file un-standardized forever. The
+ *     duration check below still guards the lenient output, so a genuinely
+ *     truncated source is rejected in both modes.
  *   - post-write ffprobe vs music-metadata source duration; an obviously
  *     truncated output is rejected without renaming, so the library never
  *     ingests a too-short file. This file ends up IN the library (not just
@@ -59,23 +64,21 @@ export async function isLosslessFile(absPath: string): Promise<boolean> {
  *     the streaming equivalent — the user can't tell a single track in the
  *     library is short without playing it.
  */
-export function transcodeToOpus(absPath: string, bitRate = 128): Promise<string> {
+export async function transcodeToOpus(absPath: string, bitRate = 128): Promise<string> {
   const ext = extname(absPath);
   const base = ext ? absPath.slice(0, -ext.length) : absPath;
   const destPath = `${base}.opus`;
   // Distinct temp name so an interrupted run never half-writes the destination
   // (which may equal absPath only if the source were already .opus — excluded).
   const tmpPath = `${base}.nicotind-transcode.opus`;
-  const args = [
+  const ffmpegArgs = (strict: boolean) => [
     '-hide_banner',
     '-loglevel',
     'error',
     '-y',
     '-fflags',
     '+discardcorrupt',
-    '-err_detect',
-    'explode',
-    '-xerror',
+    ...(strict ? ['-err_detect', 'explode', '-xerror'] : []),
     '-i',
     absPath,
     '-vn',
@@ -89,48 +92,76 @@ export function transcodeToOpus(absPath: string, bitRate = 128): Promise<string>
     'ogg',
     tmpPath,
   ];
-  return new Promise<string>((resolve, reject) => {
-    const proc = spawn(ffmpegBinary(), args, { stdio: 'ignore' });
+
+  const strictRun = await runFfmpeg(ffmpegArgs(true), tmpPath);
+  if (strictRun.code !== 0) {
+    const lenientRun = await runFfmpeg(ffmpegArgs(false), tmpPath);
+    if (lenientRun.code !== 0) {
+      cleanup(tmpPath);
+      const detail = lenientRun.stderrTail || strictRun.stderrTail;
+      throw new Error(
+        `ffmpeg exited with code ${lenientRun.code} transcoding ${absPath}${detail ? `: ${detail}` : ''}`,
+      );
+    }
+    log.info(
+      { absPath, strictError: strictRun.stderrTail },
+      'strict transcode failed — lenient retry succeeded (imperfect source frame)',
+    );
+  }
+
+  // Exit 0 isn't enough — ffmpeg can succeed on a truncated source and
+  // produce a valid-but-short Opus file that the browser will play for
+  // 1-2 s then "end". Validate before swapping the library file. A probe
+  // failure is a best-effort no-op pass (the strict flags above already turn
+  // obvious damage into a non-zero exit); a probe that *ran* and failed the
+  // duration check rejects.
+  let durationOk = true;
+  try {
+    durationOk = await validateOpusOutput(absPath, tmpPath);
+  } catch (err) {
+    log.debug({ err, absPath }, 'post-download transcode output duration probe skipped');
+  }
+  if (!durationOk) {
+    cleanup(tmpPath);
+    throw new Error(
+      `Opus output failed duration check: source ${absPath} produced suspiciously short output at ${tmpPath}`,
+    );
+  }
+  try {
+    // Promote temp → final, then drop the original. If dest === source path
+    // (impossible here since ext changed) we'd skip the unlink.
+    renameSync(tmpPath, destPath);
+    if (absPath !== destPath) rmSync(absPath, { force: true });
+    log.debug({ from: absPath, to: destPath, bitRate }, 'transcoded lossless → opus');
+    return destPath;
+  } catch (err) {
+    cleanup(tmpPath);
+    throw err;
+  }
+}
+
+/** Cap kept stderr so a pathological input can't balloon the error object. */
+const STDERR_TAIL_CHARS = 400;
+
+/** Spawn ffmpeg capturing a bounded stderr tail — an opaque "exited with code
+ *  183" with the real reason discarded is the exact bug class track-analysis.ts
+ *  already fixed; this brings the ingest transcode onto the same contract. */
+function runFfmpeg(
+  args: string[],
+  tmpPath: string,
+): Promise<{ code: number | null; stderrTail: string }> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegBinary(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    proc.stderr?.on('data', (chunk: Buffer) => {
+      stderr = (stderr + chunk.toString()).slice(-STDERR_TAIL_CHARS);
+    });
     proc.on('error', (err) => {
       cleanup(tmpPath);
       reject(err);
     });
-    proc.on('close', async (code) => {
-      if (code !== 0) {
-        cleanup(tmpPath);
-        reject(new Error(`ffmpeg exited with code ${code} transcoding ${absPath}`));
-        return;
-      }
-      // Exit 0 isn't enough — ffmpeg can succeed on a truncated source and
-      // produce a valid-but-short Opus file that the browser will play for
-      // 1-2 s then "end". Validate before swapping the library file.
-      try {
-        const ok = await validateOpusOutput(absPath, tmpPath);
-        if (!ok) {
-          cleanup(tmpPath);
-          reject(
-            new Error(
-              `Opus output failed duration check: source ${absPath} produced suspiciously short output at ${tmpPath}`,
-            ),
-          );
-          return;
-        }
-      } catch (err) {
-        // Best-effort: a missing probe is a no-op pass (the strict flags above
-        // already turn obvious damage into a non-zero exit).
-        log.debug({ err, absPath }, 'post-download transcode output duration probe skipped');
-      }
-      try {
-        // Promote temp → final, then drop the original. If dest === source path
-        // (impossible here since ext changed) we'd skip the unlink.
-        renameSync(tmpPath, destPath);
-        if (absPath !== destPath) rmSync(absPath, { force: true });
-        log.debug({ from: absPath, to: destPath, bitRate }, 'transcoded lossless → opus');
-        resolve(destPath);
-      } catch (err) {
-        cleanup(tmpPath);
-        reject(err as Error);
-      }
+    proc.on('close', (code) => {
+      resolve({ code, stderrTail: stderr.trim().split('\n').at(-1)?.trim() ?? '' });
     });
   });
 }

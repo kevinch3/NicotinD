@@ -653,7 +653,10 @@ Add detail there, not here.
   blended song-first Results list is **capped** (`RESULTS_CAP`, "Show all N" escape) so it can't
   dominate the page. The Advanced Soulseek peer lane is **gated on the network actually being an
   available source** (`networkAvailable() || hasNetwork()`), so a user without the slskd extension
-  never sees a nonsensical "No Soulseek results" empty state for a source they don't have. →
+  never sees a nonsensical "No Soulseek results" empty state for a source they don't have. The
+  one-click Get (`AutoHuntService`) sends the addon `candidateRef` and self-heals across up to 3
+  candidates on retriable enqueue failures, surfacing the server's reason on exhaustion (#530/#531
+  — post-cutover it 400'd on every click with a generic toast and zero logs). →
   [docs/design-patterns.md](docs/design-patterns.md), [docs/album-hunt.md](docs/album-hunt.md)
 - **Inline download lifecycle**: result cards go idle → progress % → "Open in Library", driven by
   `TransferService` (adaptive polling) + a `libraryDirty` signal; completed Downloads-feed rows
@@ -1046,7 +1049,9 @@ Add detail there, not here.
   [docs/download-pipeline.md](docs/download-pipeline.md), [docs/album-hunt.md](docs/album-hunt.md)
 - **Lossless → Opus standardization**: lossless downloads transcoded to Opus in place (default-on
   192 kbps) + a library migration path; detection is codec-aware (`isLosslessFile` probes .m4a for
-  ALAC, which browsers can't decode); gated on ffmpeg. The env/YAML-only config is exposed read-only
+  ALAC, which browsers can't decode); gated on ffmpeg; a strict-mode (`explode`) failure retries
+  once leniently gated on the duration check, with the ffmpeg stderr tail in the error (#534 — a
+  one-bad-frame rip used to stay FLAC forever behind an opaque "code 183"). The env/YAML-only config is exposed read-only
   via `GET /api/settings/downloads` so the **acquire flow shows an accurate reminder** (Results
   header note + per-row "→ Opus Nk" chip on lossless picks), gated on `enabled && ffmpegAvailable`
   so it never claims a transcode that won't run for a lossy pick. →
@@ -1188,7 +1193,10 @@ Add detail there, not here.
   Fonsi job rendering as five). `collapseJobMembers` folds a job's peer folders into one card with a
   `Sources (N)` disclosure fed by `listJobFeed`'s new `sources[]`; transfers matching no job collapse
   into a single `collapseUnlinked` "Unlinked transfers" row instead of N loose cards. Two *separate*
-  jobs for the same album now correctly stay two cards. The Downloads header also shows a **disk-availability pill**
+  jobs for the same album now correctly stay two cards. `methodForBackend` maps every addon id
+  incl. `slskd` (#532 — hunt cards rendered "?Unknown source" post-cutover), and every feed row is
+  removable: `DELETE /jobs/:id` always drops the core row (addon proxy best-effort), with removal
+  failures toasted instead of swallowed (#533). The Downloads header also shows a **disk-availability pill**
   (`used / total`, green→red fill) fed by `GET /api/system/disk` (statfs of the music dir). →
   [docs/download-pipeline.md](docs/download-pipeline.md) → "Now: / Next: track display",
   [docs/web-ui.md](docs/web-ui.md)

@@ -49,6 +49,14 @@ describe('methodForBackend', () => {
     expect(methodForBackend('spotdl-addon')).toBe('spotdl');
     expect(methodForBackend('bundled-archive')).toBe('archive');
   });
+
+  // Issue #532: same regression class for the network lane — every album-hunt
+  // card since the slskd cutover rendered "?Unknown source" although the
+  // Soulseek badge existed all along.
+  it('maps the slskd addon ids to the Soulseek method', () => {
+    expect(methodForBackend('slskd')).toBe('slskd');
+    expect(methodForBackend('slskd-addon')).toBe('slskd');
+  });
 });
 
 describe('acquireJobLabel', () => {

@@ -4,6 +4,8 @@ import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { TransferService } from '../../services/transfer.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+import { ToastService } from '../../services/toast.service';
+import { httpErrorMessage } from '../../lib/http-error';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import type { AcquireJob } from '@nicotind/core';
 import {
@@ -51,6 +53,7 @@ export class DownloadsComponent {
   private transferService = inject(TransferService);
   private readonly p2r = inject(PullToRefreshService);
   private readonly review = inject(DownloadReviewService);
+  private readonly toasts = inject(ToastService);
 
   readonly retrying = signal(new Set<string>());
   readonly scanning = signal(false);
@@ -181,7 +184,16 @@ export class DownloadsComponent {
     if (item.kind === 'network') {
       if (item.jobId) {
         this.askConfirm('Remove this download from the feed?', async () => {
-          await firstValueFrom(this.api.deleteJob(item.jobId!)).catch(() => {});
+          // Surface a failed removal (issue #533) — swallowing it here is how
+          // "old downloads I can't remove" shipped without a single error.
+          try {
+            await firstValueFrom(this.api.deleteJob(item.jobId!));
+          } catch (err) {
+            this.toasts.show({
+              message: httpErrorMessage(err, 'Could not remove this download'),
+              kind: 'error',
+            });
+          }
           await this.transferService.kickPoll();
         });
       }
@@ -217,17 +229,31 @@ export class DownloadsComponent {
   /** Clear finished/errored cards from the feed on both sides. */
   async clearAllFinished(): Promise<void> {
     const finished = this.downloadFeed().filter((i) => i.stage === 'done' || i.stage === 'error');
+    let failures = 0;
     await Promise.all(
       finished.map((i) =>
         i.kind === 'network' && i.jobId
-          ? firstValueFrom(this.api.deleteJob(i.jobId)).catch(() => {})
+          ? firstValueFrom(this.api.deleteJob(i.jobId)).catch(() => {
+              failures++;
+            })
           : Promise.resolve(),
       ),
     );
     const toClear = [...this.failedAcquireJobs(), ...this.doneAcquireJobs()];
     await Promise.all(
-      toClear.map((j) => firstValueFrom(this.api.deleteAcquireJob(j.id)).catch(() => {})),
+      toClear.map((j) =>
+        firstValueFrom(this.api.deleteAcquireJob(j.id)).catch(() => {
+          failures++;
+        }),
+      ),
     );
+    // One aggregate toast, not one per row — but never silence (issue #533).
+    if (failures > 0) {
+      this.toasts.show({
+        message: `Could not clear ${failures} ${failures === 1 ? 'download' : 'downloads'}`,
+        kind: 'error',
+      });
+    }
     await this.transferService.kickPoll();
   }
 

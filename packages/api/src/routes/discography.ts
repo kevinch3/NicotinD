@@ -473,6 +473,11 @@ export function discographyRoutes({
     // wantedTracks is the canonical titles not already on disk.
     if (addon) {
       if (!body.selected.candidateRef) {
+        // A selection without the hunt token cannot be resolved addon-side —
+        // either the candidates predate the addon cutover or the addon's hunt
+        // cache expired. Logged because the web flattening this very reason is
+        // what kept #530 invisible.
+        log.warn({ albumId }, 'hunt-download rejected: selection has no candidateRef');
         return c.json({ error: 'Selection expired — run the search again' }, 400);
       }
       const titles = tracks.map((t) => t.title);
@@ -516,13 +521,25 @@ export function discographyRoutes({
             addonJob = await createAddonSide();
           } catch (retryErr) {
             const msg = retryErr instanceof Error ? retryErr.message : 'replace failed';
+            log.warn({ albumId, err: msg }, 'hunt-download replace failed');
             return c.json({ error: msg }, 502);
           }
         } else if (err instanceof AddonRequestError && err.status === 400) {
+          log.warn({ albumId, err: err.message }, 'hunt-download rejected by the addon');
           return c.json({ error: err.message }, 400);
         } else {
+          // Keep the offline framing (it is the dominant real cause) but carry
+          // the addon's own reason — "they may be offline" alone made a
+          // systemic addon failure indistinguishable from one flaky peer.
+          const detail = err instanceof Error && err.message ? `: ${err.message}` : '';
+          log.warn(
+            { albumId, username: body.selected.username, err },
+            'hunt-download enqueue failed addon-side',
+          );
           return c.json(
-            { error: `Download failed for user "${body.selected.username}" — they may be offline` },
+            {
+              error: `Download failed for user "${body.selected.username}" — they may be offline${detail}`,
+            },
             502,
           );
         }
