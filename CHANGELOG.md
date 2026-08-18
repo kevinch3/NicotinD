@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.15](https://github.com/kevinch3/NicotinD/compare/v0.3.14...v0.3.15) (2026-08-18)
+
+### Features
+
+* **admin:** last connection + consolidate the user management table ([#529](https://github.com/kevinch3/NicotinD/issues/529)) ([9e0f0f4](https://github.com/kevinch3/NicotinD/commit/9e0f0f4f8cc6be2e122e84aed8c9d5cf2c9e8f31))
 ## [0.3.14](https://github.com/kevinch3/NicotinD/compare/v0.3.13...v0.3.14) (2026-08-18)
 
 ### Bug Fixes
