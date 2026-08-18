@@ -1,7 +1,9 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { vi } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { RecentlyPlayedComponent } from './recently-played.component';
+import { AuthService } from '../../services/auth.service';
 import { HistoryApiService } from '../../services/api/history-api.service';
 import { PlayerService } from '../../services/player.service';
 import type { RecentPlay } from '../../services/api/api-types';
@@ -13,6 +15,7 @@ function play(over: Partial<RecentPlay> = {}): RecentPlay {
     artist: 'Artist',
     album: 'Album',
     duration: 180,
+    coverArt: 'cov1',
     playedAt: 1_700_000_000_000,
     ...over,
   };
@@ -30,6 +33,7 @@ function setup(rows: RecentPlay[] | 'error') {
         },
       },
       { provide: PlayerService, useValue: { playWithContext } },
+      { provide: AuthService, useValue: { token: signal('test-token') } },
     ],
   });
   const fixture = TestBed.createComponent(RecentlyPlayedComponent);
@@ -81,6 +85,30 @@ describe('RecentlyPlayedComponent', () => {
     expect(tracks.map((t: { id: string }) => t.id)).toEqual(['a', 'b', 'c']);
     expect(index).toBe(1);
     expect(context).toMatchObject({ type: 'adhoc' });
+  });
+
+  // Asserted on the method (not the child's rendered <img>): the JIT vitest
+  // harness can't bind a child component's signal inputs — see cover-art's own
+  // note on `input()` — so the DOM under <app-cover-art> is not reachable here.
+  it('builds the standard /api/cover URL from the coverArt id (not a bare id, not none)', async () => {
+    const { fixture } = setup([play({ coverArt: 'cov1' }), play({ songId: 'x', coverArt: null })]);
+    await fixture.whenStable();
+
+    const comp = fixture.componentInstance;
+    expect(comp.coverSrc(play({ coverArt: 'cov1' }))).toBe(
+      '/api/cover/cov1?size=300&token=test-token',
+    );
+    // No cover id → undefined, so <app-cover-art> renders its gradient placeholder.
+    expect(comp.coverSrc(play({ coverArt: null }))).toBeUndefined();
+  });
+
+  it('threads the coverArt id onto the queued tracks so the player shows the cover', async () => {
+    const { fixture, playWithContext } = setup([play({ coverArt: 'cov1' })]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="recently-played-item"]').click();
+    expect(playWithContext.mock.calls[0][0][0]).toMatchObject({ coverArt: 'cov1' });
   });
 
   it('tolerates a play with no live metadata', async () => {
