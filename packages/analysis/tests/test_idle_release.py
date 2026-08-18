@@ -129,8 +129,9 @@ def test_holder_peek_does_not_touch_the_guard() -> None:
 
 def test_holder_peek_does_not_reload_an_idle_dropped_registry() -> None:
     """Unlike `get()`, `peek()` must not resurrect a released registry — a
-    health check reading `None` back is correct ("unavailable"); reloading it
-    just to answer a health probe would undo the idle release immediately."""
+    health check reading `None` back is correct (reported as ok-but-cold,
+    `loaded: false`, since #539); reloading it just to answer a health probe
+    would undo the idle release immediately."""
     clock = FakeClock()
     guard = IdleReleaseGuard(10.0, now=clock)
     calls = 0
@@ -147,3 +148,26 @@ def test_holder_peek_does_not_reload_an_idle_dropped_registry() -> None:
     assert holder.peek() is None
     assert calls == 0
     assert holder.is_loaded() is False
+
+
+def test_holder_can_serve_distinguishes_idle_drop_from_boot_failure() -> None:
+    """Regression for issue #539: `/health` only exposed `is_loaded()`, so the
+    deliberate idle release read as `"unavailable"` — the same as a boot-time
+    load failure. The API's health gate then skipped every sidecar task, and
+    since `/analyze` is the only call that reloads, the sidecar reported
+    unreachable forever (livelock, observed on prod host `kpc`). `can_serve()`
+    is the health-probe truth: would the next `get()` return a registry?"""
+    clock = FakeClock()
+    guard = IdleReleaseGuard(10.0, now=clock)
+    holder = RegistryHolder(initial="reg", factory=lambda: "reloaded", guard=guard)
+
+    assert holder.can_serve() is True
+
+    clock.advance(10.0)
+    assert holder.release_if_idle() is True
+    # Idle-dropped: not loaded, but one get() away from serving again.
+    assert holder.is_loaded() is False
+    assert holder.can_serve() is True
+
+    failed = RegistryHolder(initial=None, factory=lambda: "never", guard=guard)
+    assert failed.can_serve() is False

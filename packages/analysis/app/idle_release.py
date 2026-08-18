@@ -85,6 +85,14 @@ class RegistryHolder(Generic[T]):
     def is_loaded(self) -> bool:
         return self._value is not None
 
+    def can_serve(self) -> bool:
+        """Whether the next `get()` would return a registry — loaded now, or
+        idle-dropped and lazily reloadable. This is the health-probe truth
+        (issue #539): an idle release must read as healthy-but-cold, never as
+        the permanent boot-failure "unavailable" state, or the caller's health
+        gate blocks the very `/analyze` call that would trigger the reload."""
+        return self._value is not None or self._idle_dropped
+
     def peek(self) -> T | None:
         """Read the current value WITHOUT touching the guard or reloading.
 

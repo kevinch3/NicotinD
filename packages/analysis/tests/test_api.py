@@ -207,3 +207,34 @@ def test_frequent_healthchecks_do_not_prevent_idle_release(tmp_path: Path) -> No
 
     assert holder.release_if_idle() is True
     assert client.get("/health").json()["loaded"] is False
+
+
+def test_health_stays_ok_after_idle_release(tmp_path: Path) -> None:
+    """Regression for issue #539: after an idle release, `/health` reported
+    `status: "unavailable"` — indistinguishable from a boot-time load failure.
+    Every consumer (Docker HEALTHCHECK, `AudioFeaturesClient`, the enrichment
+    availability gate) read that as an outage, and the gate then prevented the
+    only call that reloads the registry (`/analyze`), so the sidecar stayed
+    "unreachable" forever on prod. A cold-but-reloadable registry must report
+    `status: "ok"` (with `loaded: false` for observability); `"unavailable"`
+    is reserved for the never-loaded-at-boot case."""
+    from app.main import create_app
+
+    clock = {"t": 0.0}
+    app = create_app(
+        registry=FakeRegistry(),
+        music_dir=str(tmp_path),
+        registry_factory=lambda: FakeRegistry(),
+        idle_release_sec=10.0,
+        now=lambda: clock["t"],
+    )
+    client = TestClient(app)
+
+    clock["t"] += 10.0
+    assert app.state.registry_holder.release_if_idle() is True
+
+    body = client.get("/health").json()
+    assert body["status"] == "ok"
+    assert body["loaded"] is False
+    assert body["device"] is None
+    assert body["modelVersions"] == {}
