@@ -2,6 +2,7 @@ import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { firstValueFrom, catchError, of } from 'rxjs';
 import type { LibraryFilter } from '@nicotind/core';
 import { PlayerService } from '../../services/player.service';
+import { AuthService } from '../../services/auth.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ToastService } from '../../services/toast.service';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
@@ -69,6 +70,7 @@ export class RadioLandingComponent implements OnInit {
   private player = inject(PlayerService);
   private api = inject(LibraryApiService);
   private toast = inject(ToastService);
+  private auth = inject(AuthService);
 
   readonly presets = VIBE_PRESETS;
 
@@ -92,6 +94,17 @@ export class RadioLandingComponent implements OnInit {
     const rows = await firstValueFrom(this.api.getGenres().pipe(catchError(() => of([]))));
     // Already ordered by song_count desc server-side; keep the most-populated few.
     this.genres.set(rows.slice(0, 8).map((g) => g.value));
+  }
+
+  /**
+   * `Track.coverArt` is a cover *id*, never a URL — build the standard
+   * `/api/cover/:id?size=&token=` URL like every other cover call site. The raw
+   * id used to be passed straight into <img src>, which 404s into the letter
+   * placeholder while the player (building the URL properly) showed the cover.
+   */
+  resumeCoverSrc(): string | undefined {
+    const coverArt = this.lastTrack()?.coverArt;
+    return coverArt ? `/api/cover/${coverArt}?size=160&token=${this.auth.token()}` : undefined;
   }
 
   /** Resume radio from the last-played track, then hide the resume block. */

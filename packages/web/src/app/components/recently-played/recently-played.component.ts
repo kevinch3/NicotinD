@@ -1,5 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { catchError, firstValueFrom, of } from 'rxjs';
+import { AuthService } from '../../services/auth.service';
 import { HistoryApiService } from '../../services/api/history-api.service';
 import { PlayerService, type Track } from '../../services/player.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
@@ -37,6 +38,7 @@ import type { RecentPlay } from '../../services/api/api-types';
               class="shrink-0 w-28 text-left group active:scale-95 transition"
             >
               <app-cover-art
+                [src]="coverSrc(play)"
                 [artist]="play.artist ?? ''"
                 [album]="play.album ?? ''"
                 [size]="112"
@@ -57,6 +59,7 @@ import type { RecentPlay } from '../../services/api/api-types';
 export class RecentlyPlayedComponent implements OnInit {
   private api = inject(HistoryApiService);
   private player = inject(PlayerService);
+  private auth = inject(AuthService);
 
   readonly plays = signal<RecentPlay[]>([]);
 
@@ -77,6 +80,17 @@ export class RecentlyPlayedComponent implements OnInit {
     if (tracks.length === 0) return;
     this.player.playWithContext(tracks, index, { type: 'adhoc', name: 'Recently played' });
   }
+
+  /**
+   * `coverArt` is a cover *id*, never a URL — build the standard
+   * `/api/cover/:id?size=&token=` URL like every other cover call site (passing
+   * the bare id as an <img src> 404s into the letter placeholder).
+   */
+  coverSrc(play: RecentPlay): string | undefined {
+    return play.coverArt
+      ? `/api/cover/${play.coverArt}?size=300&token=${this.auth.token()}`
+      : undefined;
+  }
 }
 
 /** A recent play is already a live library song — enough to build a Track. */
@@ -86,6 +100,7 @@ function toTrack(play: RecentPlay): Track {
     title: play.title ?? '',
     artist: play.artist ?? '',
     album: play.album ?? undefined,
+    coverArt: play.coverArt ?? undefined,
     duration: play.duration ?? undefined,
   };
 }

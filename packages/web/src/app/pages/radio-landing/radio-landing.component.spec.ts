@@ -1,9 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
 import { RadioLandingComponent } from './radio-landing.component';
+import { AuthService } from '../../services/auth.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ToastService } from '../../services/toast.service';
 import { PlayerService, type Track } from '../../services/player.service';
@@ -39,6 +40,7 @@ function setup(overrides: { getFilterRadio?: () => unknown; getGenres?: () => un
       provideRouter([]),
       { provide: LibraryApiService, useValue: { getFilterRadio, getGenres } },
       { provide: ToastService, useValue: { show: toastShow } },
+      { provide: AuthService, useValue: { token: signal('test-token') } },
     ],
     schemas: [NO_ERRORS_SCHEMA],
   });
@@ -66,6 +68,20 @@ describe('RadioLandingComponent', () => {
     component.onResume();
     expect(startRadio).toHaveBeenCalledWith(track);
     expect(component.showResume()).toBe(false);
+  });
+
+  // Asserted on the method, not the child <app-cover-art>'s <img> — the JIT
+  // vitest harness can't bind a child component's signal inputs.
+  it('builds the standard /api/cover URL for the resume tile (the raw cover id 404s)', () => {
+    const { component, player } = setup();
+    player.play({ id: 't1', title: 'Last', artist: 'A', coverArt: 'cov9' });
+    expect(component.resumeCoverSrc()).toBe('/api/cover/cov9?size=160&token=test-token');
+  });
+
+  it('resume tile has no cover URL when the last track carries no cover id', () => {
+    const { component, player } = setup();
+    player.play({ id: 't1', title: 'Last', artist: 'A' });
+    expect(component.resumeCoverSrc()).toBeUndefined();
   });
 
   it('starting a preset fetches filter radio and hands it to the player', async () => {

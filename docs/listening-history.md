@@ -127,7 +127,11 @@ and rendered in the Admin panel, so the policy is reviewed against a real number
 
 `recentPlays` restricts to songs that are still live, landed and unhidden — that shelf exists to be
 tapped, and a tile that can't play is worse than an absent one. The raw log keeps the deleted rows
-regardless, which is what a year review reads.
+regardless, which is what a year review reads. Because the join is against the live library anyway,
+each row also ships the song's `coverArt` **id** (`library_songs.cover_art`) so the shelf renders
+real covers; the client builds the `/api/cover/:id?size=&token=` URL itself, like every other cover
+call site — `Track.coverArt`/`RecentPlay.coverArt` are always ids, never URLs (passing the raw id as
+an `<img src>` is exactly the bug that left the home tiles on their letter placeholders).
 
 ## Stats (phase 2)
 

@@ -54,6 +54,8 @@ export interface RecentPlay {
   artist: string | null;
   album: string | null;
   duration: number | null;
+  /** Live cover-art id (`library_songs.cover_art`) for `/api/cover/:id`. */
+  coverArt: string | null;
   playedAt: number;
 }
 
@@ -178,6 +180,7 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
         artist: string | null;
         album: string | null;
         duration: number | null;
+        cover_art: string | null;
         played_at: number;
       },
       [string, number]
@@ -187,6 +190,7 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
               COALESCE(s.artist, p.artist)       AS artist,
               COALESCE(al.name, p.album)         AS album,
               s.duration                         AS duration,
+              s.cover_art                        AS cover_art,
               MAX(p.at)                          AS played_at
          FROM play_events p
          JOIN library_songs s   ON s.id = p.song_id
@@ -207,6 +211,7 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
       artist: r.artist,
       album: r.album,
       duration: r.duration,
+      coverArt: r.cover_art,
       playedAt: r.played_at,
     }));
 }

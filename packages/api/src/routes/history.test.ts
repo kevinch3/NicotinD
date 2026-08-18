@@ -133,6 +133,20 @@ describe('GET /recent', () => {
     expect(body.map((r) => r.songId)).toEqual(['b', 'a']);
   });
 
+  it('ships the live cover-art id so the shelf can render real covers', async () => {
+    testDb.run(`UPDATE library_songs SET cover_art = 'cov-a' WHERE id = 'a'`);
+    await post(makeApp('u1'), [
+      event({ songId: 'a', startedAt: 1_000 }),
+      event({ songId: 'b', startedAt: 2_000 }),
+    ]);
+
+    const res = await makeApp('u1').request('/recent');
+    const body = (await res.json()) as Array<{ songId: string; coverArt: string | null }>;
+    expect(body.find((r) => r.songId === 'a')?.coverArt).toBe('cov-a');
+    // A coverless song reports null, not undefined-dropped — the client branches on it.
+    expect(body.find((r) => r.songId === 'b')?.coverArt).toBeNull();
+  });
+
   it('never returns another user’s history', async () => {
     await post(makeApp('u1'), [event({ songId: 'mine' })]);
     const res = await makeApp('u2').request('/recent');

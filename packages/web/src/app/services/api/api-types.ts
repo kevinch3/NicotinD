@@ -788,6 +788,8 @@ export interface RecentPlay {
   artist: string | null;
   album: string | null;
   duration: number | null;
+  /** Live cover-art id for `/api/cover/:id` (null when the song has no cover). */
+  coverArt: string | null;
   playedAt: number;
 }
 
