@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.20](https://github.com/kevinch3/NicotinD/compare/v0.3.19...v0.3.20) (2026-08-18)
+
+### Features
+
+* **web:** shape-matched skeleton loaders for every fetching list view ([#544](https://github.com/kevinch3/NicotinD/issues/544)) ([c6a0639](https://github.com/kevinch3/NicotinD/commit/c6a0639b780b8d5bdc51e1f6586e5132f33f9f61))
 ## [0.3.19](https://github.com/kevinch3/NicotinD/compare/v0.3.18...v0.3.19) (2026-08-18)
 
 ### Bug Fixes
