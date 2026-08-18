@@ -102,6 +102,14 @@ export interface CreateJobInput {
   canonicalTracks?: string[] | null;
   albumJobId?: number | null;
   sourceRef?: string | null;
+  /**
+   * The submitted link, for `kind:'url'` jobs. Persisted separately from
+   * `sourceRef` (which holds the `addon:<id>:<jobId>` back-reference) so an
+   * addon-run URL job still records what was pasted — that's what makes a
+   * re-paste of an in-flight link recognisable instead of starting a second
+   * download of the same thing.
+   */
+  sourceUrl?: string | null;
   /** Peer the items were enqueued from (slskd). Per-file username overrides this. */
   username?: string | null;
   files?: Array<{
@@ -191,8 +199,9 @@ export function createJob(db: Database, input: CreateJobInput): string {
     db.run(
       `INSERT INTO acquisition_jobs
          (id, kind, method, artist_name, album_title, lidarr_album_id, release_mbid, artist_mbid,
-          genres_json, year, canonical_tracks_json, album_job_id, source_ref, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          genres_json, year, canonical_tracks_json, album_job_id, source_ref, source_url,
+          created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.kind,
@@ -207,6 +216,7 @@ export function createJob(db: Database, input: CreateJobInput): string {
         input.canonicalTracks?.length ? JSON.stringify(input.canonicalTracks) : null,
         input.albumJobId ?? null,
         input.sourceRef ?? null,
+        input.sourceUrl ?? null,
         now,
         now,
       ],

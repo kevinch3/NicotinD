@@ -214,6 +214,40 @@ describe('mergeAcquisitionJobs', () => {
     expect(card.title).not.toContain('addon:');
   });
 
+  // `GET /api/acquire/jobs` now also projects addon-run URL jobs (so the Acquire
+  // page's link card can see the job a pasted link started, instead of leaving
+  // Get armed and inviting duplicate downloads). That projection shares the job
+  // id, so the feed must render exactly one card — and it must be the unified
+  // one, which carries the friendly title, the sources list and the job routes.
+  it('renders an addon URL job once, from the unified lane, when both lanes carry it', () => {
+    const merged = mergeAcquisitionJobs(
+      [acquireJobToDownloadItem(job({ id: 'u1', backend: 'spotdl-addon', label: null }))],
+      [
+        acqJob({
+          id: 'u1',
+          kind: 'url',
+          method: 'spotdl-addon',
+          artistName: null,
+          albumTitle: null,
+          sourceRef: 'addon:spotdl-addon:767ce23a',
+        }),
+      ],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.key).toBe('job:u1');
+    expect(merged[0]!.title).toBe('Spotify download');
+  });
+
+  it('still lets the in-process acquire lane own a non-addon URL job', () => {
+    const merged = mergeAcquisitionJobs(
+      [acquireJobToDownloadItem(job({ id: 'u2', label: 'My playlist' }))],
+      [acqJob({ id: 'u2', kind: 'url', method: 'ytdlp', sourceRef: 'https://youtu.be/x' })],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.key).toBe('u2');
+    expect(merged[0]!.title).toBe('My playlist');
+  });
+
   /**
    * Issue #261: card identity used to be re-derived from `albumId` at read
    * time, so the same album acquired twice collapsed into one card. Identity

@@ -250,6 +250,17 @@ export function applySchema(db: Database): void {
   addColumnIfMissing(db, 'acquisition_job_items', 'bit_rate_kbps', 'INTEGER');
   addColumnIfMissing(db, 'acquisition_job_items', 'audio_format', 'TEXT');
 
+  // The submitted URL for kind='url' jobs run by an **addon** (yt-dlp/spotdl/
+  // archive). Those never get an `acquire_jobs` row — that table belongs to the
+  // in-process engine — so without this column the job carries no record of the
+  // link that started it, and a re-paste of the same URL could not be recognised
+  // as already in flight (the duplicate-download bug). `source_ref` can't hold
+  // it: it stores the `addon:<id>:<jobId>` back-reference the poller keys on.
+  addColumnIfMissing(db, 'acquisition_jobs', 'source_url', 'TEXT');
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_acquisition_jobs_source_url ON acquisition_jobs (source_url)`,
+  );
+
   db.run(`
     CREATE TABLE IF NOT EXISTS completed_downloads (
       transfer_key TEXT PRIMARY KEY,

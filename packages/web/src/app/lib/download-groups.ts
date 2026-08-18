@@ -183,14 +183,21 @@ export function mergeAcquisitionJobs(
   items: DownloadItem[],
   jobs: AcquisitionJobView[],
 ): DownloadItem[] {
-  const merged: DownloadItem[] = [...items];
+  // An **addon**-run URL job has no `acquire_jobs` row; the unified lane is its
+  // only rich source (peer/source breakdown, the friendly "Spotify download"
+  // title, the job-scoped cancel/remove routes), so it always wins for those.
+  // `GET /api/acquire/jobs` projects those same jobs so the Acquire page's link
+  // card can track a pasted URL — that projection shares the job id, and
+  // without this filter the very same download would render as two cards here.
+  const addonUrlIds = new Set(
+    jobs.filter((j) => j.kind === 'url' && j.sourceRef?.startsWith('addon:')).map((j) => j.id),
+  );
+  const merged: DownloadItem[] = items.filter((i) => !addonUrlIds.has(i.key));
   // A URL job rendered by the in-process `acquire_jobs` lane shares its id with
   // this `acquisition_jobs` mirror (same UUID), so skip it here to avoid a double
-  // card. An *addon*-backed URL job has no `acquire_jobs` row — it isn't in this
-  // set, so it renders through the unified lane like a network job (fixing #509
-  // cause 1). Once yt-dlp/spotdl migrate, no URL job has an acquire-lane item and
-  // this set is empty — the old blanket `kind==='url'` skip becomes a no-op.
-  const acquireKeys = new Set(items.map((i) => i.key));
+  // card. That lane stays authoritative for in-process jobs — it carries the
+  // per-track list, destination albums and generated playlist id.
+  const acquireKeys = new Set(merged.map((i) => i.key));
 
   for (const job of jobs) {
     if (job.kind === 'url' && acquireKeys.has(job.id)) continue;
