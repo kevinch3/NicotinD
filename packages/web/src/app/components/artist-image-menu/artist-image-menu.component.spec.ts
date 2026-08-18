@@ -59,10 +59,14 @@ function make(opts: { albums?: unknown[]; getArtistFails?: boolean; sources?: st
       { provide: AuthService, useValue: { token: () => 'tok', canCurate: () => true } },
     ],
   });
-  const c = TestBed.createComponent(ArtistImageMenuComponent).componentInstance;
+  const fixture = TestBed.createComponent(ArtistImageMenuComponent);
+  const c = fixture.componentInstance;
   setInputValue(c.artistId, 'ar1');
   if (opts.albums) setInputValue(c.albums, opts.albums as never);
-  return { c, calls };
+  // `fixture` is returned so a case can assert on the rendered DOM. Every case
+  // here used to drive the component class only, which is exactly how a trigger
+  // that never rendered survived a 14-case suite — see the projection test below.
+  return { c, calls, fixture };
 }
 
 const fileEvent = (files: File[]) => ({ target: { files, value: 'x' } }) as unknown as Event;
@@ -172,6 +176,47 @@ describe('ArtistImageMenuComponent', () => {
       // Force the not-yet-loaded state: a fresh service before any response.
       g.c.imageSources.sources.set(null);
       expect(g.c.imageSources.autoFetchUnavailable()).toBe(false);
+    });
+  });
+
+  /**
+   * The control is only useful if a user can reach it, and this suite could not
+   * see that: every other case calls a method on the component class, so the
+   * trigger was projected with the wrong attribute (`trigger` instead of
+   * `menuTrigger`) and rendered nowhere on the artist page or the Artists grid
+   * while all 14 cases stayed green.
+   */
+  describe('the trigger actually renders (regression)', () => {
+    it('projects the trigger into the menu panel’s trigger slot', () => {
+      const { fixture } = make({ albums: [{ id: 'a1', name: 'One', artist: 'X' }] });
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+
+      const trigger = el.querySelector('[data-testid="artist-image-menu-trigger"]');
+      expect(trigger).not.toBeNull();
+      // The load-bearing assertion. The button is in this component's template
+      // either way, so its mere existence proves nothing — what broke is that it
+      // never landed inside MenuPanelComponent's `[menuTrigger]` slot, whose host
+      // carries `data-menu-trigger` and owns the click that opens the panel.
+      // MenuPanelComponent has no catch-all <ng-content>, so a mis-named
+      // attribute is dropped silently rather than failing anywhere.
+      expect(trigger!.closest('[data-menu-trigger]')).not.toBeNull();
+    });
+
+    it('opens the menu when that trigger is clicked', () => {
+      const { fixture } = make({ albums: [{ id: 'a1', name: 'One', artist: 'X' }] });
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+
+      expect(el.querySelector('[data-testid="artist-image-upload"]')).toBeNull();
+      (el.querySelector('[data-testid="artist-image-menu-trigger"]') as HTMLElement).click();
+      fixture.detectChanges();
+
+      // Reached through the real click path, so the trigger is wired and not
+      // merely present. Asserted on the projected button's own testid: the
+      // panel's `panelTestId` is an `input()`, which never populates under this
+      // project's JIT harness.
+      expect(el.querySelector('[data-testid="artist-image-upload"]')).not.toBeNull();
     });
   });
 });

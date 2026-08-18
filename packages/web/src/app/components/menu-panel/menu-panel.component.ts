@@ -19,6 +19,16 @@ import { BackButtonService } from '../../services/native/back-button.service';
  * off-screen on narrow viewports. Project the trigger with `[menuTrigger]` and
  * the panel body with `[menuPanel]`.
  *
+ * **Those two attribute names are exact, and getting one wrong fails silently.**
+ * There is no catch-all `<ng-content>`, so content carrying any other attribute is
+ * dropped: it renders nowhere, and typecheck, lint, Storybook and the host
+ * component's own spec all stay green. `ArtistImageMenuComponent` shipped with
+ * `trigger` instead of `menuTrigger`, which left the artist-photo edit control
+ * invisible on the artist page and on every Artists-grid tile — behind a 14-case
+ * suite that passed, because every case drove the component class and none
+ * asserted the DOM. `menu-panel-projection.spec.ts` is the drift guard that now
+ * scans every call site for both slots.
+ *
  * The panel renders `position: fixed` and is measured after it mounts, then the
  * top-left is set + clamped (and flips above the trigger when there's no room
  * below). It stays `visibility:hidden` for the one frame before it's measured to
