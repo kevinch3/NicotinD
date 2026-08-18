@@ -134,9 +134,14 @@ def create_app(
 
     @app.get("/health")
     def health() -> dict[str, object]:
-        loaded = holder.is_loaded()
         rhythm_ok = rhythm_state["analyzer"] is not None
-        if not loaded:
+        # can_serve(), not is_loaded(): an idle-released registry reloads on
+        # the next /analyze, so it must report "ok" (cold, loaded=false) —
+        # "unavailable" is reserved for a boot-time load failure, which never
+        # recovers. Reporting the idle state as unavailable livelocked prod:
+        # the API's health gate skipped every task, so the reloading /analyze
+        # call never came (issue #539).
+        if not holder.can_serve():
             return {
                 "status": "unavailable",
                 "device": None,
@@ -148,7 +153,15 @@ def create_app(
         # frequent Docker healthcheck poll (every 30s) keeps the registry "in
         # use" forever and idle-release never fires (issue #224 follow-up).
         reg = holder.peek()
-        assert reg is not None
+        if reg is None:
+            # Idle-released: healthy, one /analyze away from a warm registry.
+            return {
+                "status": "ok",
+                "device": None,
+                "modelVersions": {},
+                "rhythm": rhythm_ok,
+                "loaded": False,
+            }
         return {
             "status": "ok",
             "device": reg.device(),

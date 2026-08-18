@@ -94,7 +94,9 @@ export class AudioFeaturesClient {
     return this.lastHealthy;
   }
 
-  /** Cached health probe: true only when the sidecar reports models loaded.
+  /** Cached health probe: true when the sidecar reports `status: 'ok'` —
+   *  which since #539 includes the idle-released (cold, lazily-reloading)
+   *  state, so this gate never blocks the /analyze that would rewarm it.
    *  Concurrent callers share one in-flight probe. */
   async healthy(): Promise<boolean> {
     if (this.healthProbe) return this.healthProbe;

@@ -357,6 +357,23 @@ count as activity) stays reserved for `/analyze`. `test_frequent_healthchecks_do
 (`test_api.py`) pins this down: polling `/health` every 3s across a 10s idle window must still let
 `release_if_idle()` fire.
 
+**The peek() fix then exposed the mirror bug (issue #539, found on `kpc` the day after v0.3.17
+deployed)**: once the release finally *did* fire, `/health` reported the idle-dropped state as
+`status: "unavailable"` — the same status as a boot-time model-load failure — because it only
+exposed `holder.is_loaded()`. Every consumer read that as an outage: the Dockerfile `HEALTHCHECK`
+(greps the body for `ok`) flagged the container `unhealthy`, `AudioFeaturesClient.probeHealth`
+(`body.status === 'ok'`) turned the Admin row into "configured but unreachable", and the
+`audioFeaturesAvailable()` gate made every sidecar enrichment task skip. That last consumer closes
+a **livelock**: the only call that reloads the registry is `/analyze` (via `holder.get()`), and the
+gate now guaranteed it never came — so 15 idle minutes after the last analysis the sidecar reported
+unreachable forever, one HTTP request away from working. Fixed sidecar-side (deliberately no
+protocol/consumer change, so an older core polling a newer sidecar can't regress):
+`RegistryHolder.can_serve()` (`loaded ∨ idle-dropped`) is the health-probe truth, and `/health` now
+reports `status: "ok", loaded: false` for the cold-but-reloadable state — `"unavailable"` stays
+reserved for the never-loaded-at-boot case, which genuinely never recovers.
+`test_health_stays_ok_after_idle_release` (`test_api.py`) and
+`test_holder_can_serve_distinguishes_idle_drop_from_boot_failure` (`test_idle_release.py`) pin it.
+
 A second, **unverified-on-hardware** lever also ships as an opt-in: `TF_GPU_ALLOCATOR=cuda_malloc_async`
 (TF's stream-ordered allocator, which — unlike the default BFC allocator under
 `TF_FORCE_GPU_ALLOW_GROWTH`— *can* return pages to the driver) is documented as a commented-out

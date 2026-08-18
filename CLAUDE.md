@@ -526,7 +526,12 @@ Add detail there, not here.
   every 30s and read the registry via `get()`, which touches the idle guard on every call — so the
   healthcheck alone kept resetting the idle timer forever. Fixed with `RegistryHolder.peek()` (reads
   without touching the guard or reloading), now used by `/health`; `get()` stays reserved for
-  `/analyze`, the one caller that should count as activity. A second, **unverified-on-hardware**
+  `/analyze`, the one caller that should count as activity. **The mirror bug (issue #539)**: once
+  release fired, `/health` reported the idle-dropped state `status:"unavailable"` — same as a boot
+  load failure — so the API's health gate skipped every task and the reloading `/analyze` never came
+  (livelock: "configured but unreachable" forever on kpc). `RegistryHolder.can_serve()` now backs
+  `/health`: cold-but-reloadable reports `status:"ok", loaded:false`; `"unavailable"` is reserved
+  for the never-loaded-at-boot case. A second, **unverified-on-hardware**
   lever — `TF_GPU_ALLOCATOR=cuda_malloc_async` — ships as a commented-out `docker-compose.gpu.yml`
   override, not baked into the image, pending a `kpc` measurement. →
   [docs/audio-ml-enrichment.md](docs/audio-ml-enrichment.md) "Measured GPU behaviour". A `paused` flag (+ `ProcessingPhase 'paused'`) is the temporary
