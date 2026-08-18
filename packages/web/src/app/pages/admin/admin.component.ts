@@ -473,6 +473,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     { id: 'genre-discogs', labelKey: 'admin.taskGenreDiscogs' },
     { id: 'genre-audio', labelKey: 'admin.taskGenreAudio' },
     { id: 'popularity', labelKey: 'admin.taskPopularity' },
+    { id: 'artist-origin', labelKey: 'admin.taskArtistOrigin' },
   ];
 
   /** Whether a task is required to finish before a download lands in the library. */
