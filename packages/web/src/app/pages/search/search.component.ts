@@ -278,6 +278,11 @@ export class SearchComponent implements OnInit, OnDestroy {
   // docs/source-agnostic-acquisition.md.
   readonly linkIntent = signal<LinkIntent | null>(null);
   readonly linkSubmitError = signal<string | null>(null);
+  // In-flight POST /api/acquire for this card. The server dedupes a re-submitted
+  // URL, but the request still takes a round-trip during which `linkJob()` is
+  // null and the Get button would otherwise stay armed — so a double-click fires
+  // two submits. This disables the button the instant it is pressed.
+  readonly linkSubmitting = signal(false);
   // Archive.org items don't expose a playlist signal at the URL level, so the
   // link-intent card surfaces a "Treat as playlist" toggle. Spotify/YouTube
   // playlist URLs auto-detect via the server-side classifier and ignore this
@@ -476,6 +481,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       // intent, so a fresh archive.org URL starts on the safe "album" default
       // and the user opts in only when they want.
       this.treatAsPlaylist.set(false);
+      this.linkSubmitting.set(false);
       this.linkIntent.set(intent);
       this.resetResultSurfaces();
       return;
@@ -706,7 +712,12 @@ export class SearchComponent implements OnInit, OnDestroy {
       window.open(intent.url, '_blank', 'noopener');
       return;
     }
+    // Re-entrancy guard: without it a double-tap posts twice before the first
+    // response lands, and the acquire list can't yet show the job that would
+    // have hidden the button.
+    if (this.linkSubmitting() || this.linkJob()) return;
     this.linkSubmitError.set(null);
+    this.linkSubmitting.set(true);
     try {
       // Archive items only — pass `as: 'playlist'` when the user opted in via
       // the toggle. Other sources carry the playlist signal in the URL and
@@ -716,6 +727,8 @@ export class SearchComponent implements OnInit, OnDestroy {
       await this.acquire.submit(intent.url, undefined, { as });
     } catch (err: unknown) {
       this.linkSubmitError.set(err instanceof Error ? err.message : 'Failed to start download');
+    } finally {
+      this.linkSubmitting.set(false);
     }
   }
 
@@ -727,13 +740,16 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   async retryLinkJob(): Promise<void> {
     const job = this.linkJob();
-    if (!job) return;
+    if (!job || this.linkSubmitting()) return;
     this.linkSubmitError.set(null);
+    this.linkSubmitting.set(true);
     try {
       await firstValueFrom(this.downloadsApi.retryAcquireJob(job.id));
       await this.acquire.refresh();
     } catch (err: unknown) {
       this.linkSubmitError.set(err instanceof Error ? err.message : 'Retry failed');
+    } finally {
+      this.linkSubmitting.set(false);
     }
   }
 
@@ -741,6 +757,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.linkIntent.set(null);
     this.linkSubmitError.set(null);
     this.treatAsPlaylist.set(false);
+    this.linkSubmitting.set(false);
   }
 
   // archive.org search lane — fired in parallel with the network search. Gated on

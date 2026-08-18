@@ -443,6 +443,72 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
     });
   });
 
+  it('does not submit twice while the first submit is still in flight', async () => {
+    // The regression this pins: the acquire job list only shows the new job on
+    // the next poll, so between click and response there is nothing to hide the
+    // Get button — a second click used to start a second download of the same link.
+    let resolveSubmit!: (id: string) => void;
+    const { component, acquireSubmit } = setup(
+      {},
+      { submit: () => new Promise<string>((res) => (resolveSubmit = res)) },
+    );
+    component.linkIntent.set({
+      url: 'https://youtu.be/dQw4w9WgXcQ',
+      source: 'youtube',
+      sourceLabel: 'YouTube',
+      host: 'youtu.be',
+    });
+
+    const first = component.submitLinkIntent();
+    expect(component.linkSubmitting()).toBe(true);
+    await component.submitLinkIntent(); // second click, still in flight
+    expect(acquireSubmit).toHaveBeenCalledTimes(1);
+
+    resolveSubmit('job1');
+    await first;
+    expect(component.linkSubmitting()).toBe(false);
+  });
+
+  it('does not resubmit once a job for the link already exists', async () => {
+    const { component, acquireSubmit, acquireJobs } = setup();
+    component.linkIntent.set({
+      url: 'https://youtu.be/dQw4w9WgXcQ',
+      source: 'youtube',
+      sourceLabel: 'YouTube',
+      host: 'youtu.be',
+    });
+    acquireJobs.set([
+      {
+        id: 'job1',
+        backend: 'ytdlp',
+        url: 'https://youtu.be/dQw4w9WgXcQ',
+        label: null,
+        state: 'running',
+        progress: null,
+        error: null,
+        created_at: 0,
+      },
+    ]);
+
+    await component.submitLinkIntent();
+
+    expect(acquireSubmit).not.toHaveBeenCalled();
+  });
+
+  it('clears the in-flight guard after a failed submit so the user can retry', async () => {
+    const { component } = setup({}, { submit: () => Promise.reject(new Error('boom')) });
+    component.linkIntent.set({
+      url: 'https://example.com/track.mp3',
+      source: 'link',
+      sourceLabel: 'Link',
+      host: 'example.com',
+    });
+
+    await component.submitLinkIntent();
+
+    expect(component.linkSubmitting()).toBe(false);
+  });
+
   it('surfaces a submit failure on the card instead of throwing', async () => {
     const { component } = setup(
       {},

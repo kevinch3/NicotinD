@@ -1146,8 +1146,21 @@ Add detail there, not here.
   no in-process `resolve` plugin remains. The unified feed no longer blanket-skips
   `kind:url` (renders an addon url job like a network one, #509 cause 1). Both paths reach the same
   organizer + scan pipeline; entered via a link-intent card in
-  the search omnibox (merged with search, no separate URL box); idempotent submit reuses an
-  in-flight job for the same URL, a truncated result (fewer files than the source reported) still
+  the search omnibox (merged with search, no separate URL box); **idempotent submit reuses an
+  in-flight job for the same URL on _both_ paths** — the watcher's `acquire_jobs` guard was the only
+  one, so post-cutover every re-click of **Get** on a YouTube/Spotify link started another download
+  (the addon branch had no guard, and `GET /api/acquire/jobs` read only `acquire_jobs`, so the link
+  card never saw the job it had just started and kept the button armed — the Downloads tab, reading
+  `acquisition_jobs`, was the only surface that showed it, which is what "the list fills in too
+  late" was). Now: an additive `acquisition_jobs.source_url` records the pasted link (`source_ref`
+  holds the `addon:<id>:<jobId>` poller key), `findInFlightAddonUrlJob` returns the running job as
+  **200 `{reused:true}`** instead of a second one, the addon gets an `Idempotency-Key` of
+  `url:<href>` (and its 409 reads as in-flight, not an error), `services/addon-url-jobs.ts`
+  **projects** addon url jobs into `AcquireJob` for `/api/acquire/jobs` + `/jobs/:id`
+  (cancel/delete/retry too) — a read-only projection, so the poller stays the only writer — and
+  `mergeAcquisitionJobs` drops the acquire-lane twin of an `addon:`-ref'd url job so the feed still
+  renders one card; web-side, `linkSubmitting` disables **Get** for the request round-trip. A
+  truncated result (fewer files than the source reported) still
   finishes `done` but carries a warning + Retry instead of reading as an unqualified success,
   tagless sources (archive.org streams raw bytes with no ID3) return a `ResolveResult`
   (`{ paths, meta }`) so `ingest` threads the item's artist/album onto `jobMeta` (else the organizer
