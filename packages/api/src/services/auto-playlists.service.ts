@@ -20,6 +20,7 @@ import {
   type OrderableRow,
 } from './playlist-recipe.js';
 import { expandGenreWhere } from './curated-playlists.js';
+import { songFilterWheres } from './library-filter-sql.js';
 import { createLogger } from '@nicotind/core';
 
 const log = createLogger('auto-playlists');
@@ -127,19 +128,26 @@ function firstAdminId(db: Database): string | null {
   return admin?.id ?? null;
 }
 
-/** Query candidate rows for a recipe (hidden excluded), mapped to OrderableRow. */
-function candidatesFor(db: Database, recipe: PlaylistRecipe): OrderableRow[] {
+/** Query candidate rows for a recipe (hidden excluded), mapped to OrderableRow.
+ *  Exported for tests. */
+export function candidatesFor(db: Database, recipe: PlaylistRecipe): OrderableRow[] {
+  // Origin restriction composes through the shared filter SQL (one query
+  // path with the library tabs), never a hand-rolled EXISTS here.
+  const extra = recipe.countries?.length
+    ? songFilterWheres({ countries: recipe.countries }, 's')
+    : { wheres: [], params: [] };
+  const extraSql = extra.wheres.length ? ` AND ${extra.wheres.join(' AND ')}` : '';
   const rows = db
-    .query<RecipeRow, []>(
+    .query<RecipeRow, Array<string | number>>(
       `SELECT s.id AS id, s.artist AS artist, s.artist_id AS artistId,
               s.bpm AS bpm, s.key AS key, s.year AS year, s.duration AS duration,
               s.energy AS energy, s.valence AS valence, s.danceability AS danceability,
               s.instrumental AS instrumental, s.acousticness AS acousticness,
               s.created AS created
          FROM library_songs s
-        WHERE s.hidden = 0 AND s.landed_at IS NOT NULL AND (${expandGenreWhere(recipe.where)})`,
+        WHERE s.hidden = 0 AND s.landed_at IS NOT NULL AND (${expandGenreWhere(recipe.where)})${extraSql}`,
     )
-    .all();
+    .all(...extra.params);
   return rows.map(toOrderable);
 }
 

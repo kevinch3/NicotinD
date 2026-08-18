@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
+import { upsertArtistOrigin } from './artist-origins.js';
 import {
+  candidatesFor,
   refreshAutoPlaylists,
   maybeRefreshAutoPlaylists,
   getAutoPlaylistCadence,
@@ -62,6 +64,39 @@ function seed(): void {
   // A spread of workout-range + electronic tracks across many artists.
   for (let i = 0; i < 30; i++) insertSong(`s${i}`, { bpm: 128 + (i % 10) });
 }
+
+describe('candidatesFor (origin countries)', () => {
+  it('restricts a countries recipe to credited-artist origins via the shared filter SQL', () => {
+    seed();
+    upsertArtistOrigin(db, { artistId: 'art-s0', country: 'AR', source: 'musicbrainz' });
+    upsertArtistOrigin(db, { artistId: 'art-s1', country: 'DE', source: 'musicbrainz' });
+    const rows = candidatesFor(db, {
+      slug: 'test-ar',
+      name: 'Test AR',
+      description: '',
+      palette: { from: '#000000', to: '#ffffff' },
+      where: '1=1',
+      countries: ['AR'],
+      targetSize: 10,
+      maxPerArtist: 2,
+    });
+    expect(rows.map((r) => r.id)).toEqual(['s0']);
+  });
+
+  it('a recipe without countries is unchanged', () => {
+    seed();
+    const rows = candidatesFor(db, {
+      slug: 'test-all',
+      name: 'Test All',
+      description: '',
+      palette: { from: '#000000', to: '#ffffff' },
+      where: '1=1',
+      targetSize: 10,
+      maxPerArtist: 2,
+    });
+    expect(rows).toHaveLength(30);
+  });
+});
 
 describe('refreshAutoPlaylists', () => {
   beforeEach(seed);
