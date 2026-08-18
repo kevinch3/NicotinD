@@ -143,6 +143,16 @@ describe('seedCentroid', () => {
     expect(c!.genre).toBe('Rock');
     expect(c!.artistId).toBe('');
   });
+
+  it('takes the modal origin country; undefined when no row has one', () => {
+    const c = seedCentroid([
+      row({ originCountries: ['AR'] }),
+      row({ originCountries: ['AR'] }),
+      row({ originCountries: ['DE'] }),
+    ]);
+    expect(c!.originCountries).toEqual(['AR']);
+    expect(seedCentroid([row({}), row({})])!.originCountries).toBeUndefined();
+  });
 });
 
 describe('orderTracks — energy-arc', () => {

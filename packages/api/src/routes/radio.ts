@@ -56,6 +56,7 @@ export interface RadioSongRow {
   instrumental: number | null;
   mood: string | null;
   genres_all: string | null;
+  origin_countries: string | null;
 }
 
 export const RADIO_SONG_SELECT = `
@@ -67,7 +68,11 @@ export const RADIO_SONG_SELECT = `
          s.instrumental, s.mood,
          (SELECT GROUP_CONCAT(genre, '; ') FROM (
             SELECT genre FROM library_song_genres WHERE song_id = s.id ORDER BY position
-          )) AS genres_all
+          )) AS genres_all,
+         (SELECT GROUP_CONCAT(DISTINCT o.country) FROM library_artist_origins o
+          WHERE o.country IS NOT NULL AND o.artist_id IN (
+            SELECT artist_id FROM library_song_artists WHERE song_id = s.id
+            UNION SELECT s.artist_id)) AS origin_countries
   FROM library_songs s
   LEFT JOIN library_albums a ON a.id = s.album_id
 `;
@@ -76,6 +81,11 @@ export const RADIO_SONG_SELECT = `
 export function genresOf(r: RadioSongRow): string[] | undefined {
   if (r.genres_all) return r.genres_all.split('; ');
   return r.genre ? [r.genre] : undefined;
+}
+
+/** Credited-artist origin set from the aggregated column. */
+export function originCountriesOf(r: RadioSongRow): string[] | undefined {
+  return r.origin_countries ? r.origin_countries.split(',') : undefined;
 }
 
 function rowToSong(r: RadioSongRow): Song & SongFeatures {
@@ -117,6 +127,7 @@ export function toFeatures(r: RadioSongRow): SongFeatures {
     key: r.key ?? undefined,
     genre: r.genre ?? undefined,
     genres: genresOf(r),
+    originCountries: originCountriesOf(r),
     duration: r.duration,
     year: r.year ?? undefined,
     artistId: r.artist_id,
@@ -142,6 +153,9 @@ export function toOrderable(r: RadioSongRow): OrderableRow {
     // it low.
     genre: r.genre ?? undefined,
     genres: genresOf(r),
+    // Same lesson as the genre line above: a column omitted here never reaches
+    // seedCentroid and the axis silently dies for filter radio.
+    originCountries: originCountriesOf(r),
     year: r.year ?? undefined,
     duration: r.duration,
     energy: r.energy ?? undefined,

@@ -281,12 +281,14 @@ export function seedCentroid(rows: readonly OrderableRow[]): SongFeatures | null
   };
   const meanOf = (pick: (r: OrderableRow) => number | undefined): number | undefined =>
     mean(rows.map(pick).filter((v): v is number => typeof v === 'number'));
+  const modalOrigin = mode(rows.map((r) => r.originCountries?.[0]));
   return {
     bpm: meanOf((r) => r.bpm),
     year: meanOf((r) => r.year),
     duration: mean(rows.map((r) => r.duration).filter((v) => v > 0)) ?? 0,
     genre: mode(rows.map((r) => r.genre)),
     key: mode(rows.map((r) => r.key)),
+    ...(modalOrigin ? { originCountries: [modalOrigin] } : {}),
     energy: meanOf((r) => r.energy),
     valence: meanOf((r) => r.valence),
     danceability: meanOf((r) => r.danceability),
