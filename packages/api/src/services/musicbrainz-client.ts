@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { createLogger, normalizeLicence } from '@nicotind/core';
+import { createLogger, normalizeLicence, normalizeMbCountry } from '@nicotind/core';
 import type { MbGenre } from './genre-resolve.js';
 
 const log = createLogger('musicbrainz-client');
@@ -62,7 +62,8 @@ type CacheEntry =
   | { type: 'release-group'; result: MBReleaseGroup | null }
   | { type: 'release-group-search'; result: MBReleaseGroupHit[] }
   | { type: 'licence'; result: string | null }
-  | { type: 'discogs-url'; result: string | null };
+  | { type: 'discogs-url'; result: string | null }
+  | { type: 'origin'; result: string | null };
 
 const MB_BASE = 'https://musicbrainz.org/ws/2';
 const MIN_INTERVAL_MS = 1050; // MusicBrainz allows 1 req/sec; add 50ms buffer
@@ -414,6 +415,31 @@ export class MusicBrainzClient {
     }
     this.setCached(key, { type: 'discogs-url', result: discogsUrl });
     return discogsUrl;
+  }
+
+  /**
+   * Resolve an artist's origin country (ISO 3166-1 alpha-2) from the bare
+   * artist entity: `country` first, else a country-typed `area`'s iso code.
+   * `ok:false` = transient fetch failure (retry later, never cached);
+   * `ok:true, country:null` = MB has no usable country (a confirmed miss).
+   */
+  async getArtistOrigin(mbid: string): Promise<{ ok: boolean; country: string | null }> {
+    const key = `origin:${mbid}`;
+    const cached = this.cache.get(key);
+    if (cached?.type === 'origin') return { ok: true, country: cached.result };
+
+    const data = await this.fetch<{
+      country?: string;
+      area?: { type?: string; 'iso-3166-1-codes'?: string[] };
+    }>(`${MB_BASE}/artist/${encodeURIComponent(mbid)}?fmt=json`);
+    if (data === null) return { ok: false, country: null };
+
+    const raw =
+      data.country ??
+      (data.area?.type === 'Country' ? data.area?.['iso-3166-1-codes']?.[0] : undefined);
+    const country = normalizeMbCountry(raw);
+    this.setCached(key, { type: 'origin', result: country });
+    return { ok: true, country };
   }
 
   private async fetch<T>(url: string): Promise<T | null> {

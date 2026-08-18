@@ -177,6 +177,7 @@ function makeAdminMocks(review: Partial<ServiceReview> = {}) {
       'genre-audio': 0,
       'genre-discogs': 0,
       popularity: 0,
+      'artist-origin': 0,
     },
     availability: {
       bpm: true,
@@ -191,6 +192,7 @@ function makeAdminMocks(review: Partial<ServiceReview> = {}) {
       'genre-audio': true,
       'genre-discogs': true,
       popularity: true,
+      'artist-origin': true,
     },
     skipped: 0,
     quarantined: 0,

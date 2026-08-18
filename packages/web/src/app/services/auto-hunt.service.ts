@@ -13,6 +13,11 @@ import {
 
 const AUTO_THRESHOLD = 60;
 const COUNTDOWN_SECONDS = 3;
+// Bounded self-heal (issue #530): on a retriable enqueue failure (peer offline,
+// 5xx) advance to the next confident candidate — but never more than 3 total
+// attempts, so a systemic failure (addon down) fails fast with its real reason
+// instead of burning through the whole candidate list.
+const MAX_DOWNLOAD_ATTEMPTS = 3;
 
 @Injectable({ providedIn: 'root' })
 export class AutoHuntService {
@@ -197,54 +202,78 @@ export class AutoHuntService {
   ): Promise<void> {
     this.toasts.dismiss(countdownToastId);
 
-    const [best, ...rest] = candidates;
     const toFiles = (c: FolderCandidate) =>
       c.files.map((f) => ({ filename: f.filename, size: f.size }));
+    // Only confident candidates are worth an unattended attempt; the addon's
+    // own cross-peer fallback covers post-enqueue stalls, this loop covers
+    // enqueue-time failures.
+    const attempts = candidates
+      .filter((c) => c.matchPct >= AUTO_THRESHOLD)
+      .slice(0, MAX_DOWNLOAD_ATTEMPTS);
 
-    try {
-      const res = await firstValueFrom(
-        this.api.huntDownload(
-          album.lidarrId,
-          {
-            selected: {
-              username: best.username,
-              directory: best.directory,
-              files: toFiles(best),
+    for (let i = 0; i < attempts.length; i++) {
+      const pick = attempts[i];
+      try {
+        const res = await firstValueFrom(
+          this.api.huntDownload(
+            album.lidarrId,
+            {
+              selected: {
+                username: pick.username,
+                directory: pick.directory,
+                files: toFiles(pick),
+                candidateRef: pick.candidateRef,
+              },
+              alternates: candidates
+                .filter((c) => c !== pick)
+                .map((c) => ({
+                  username: c.username,
+                  directory: c.directory,
+                  files: toFiles(c),
+                })),
+              localAlbumId: album.localAlbumId,
             },
-            alternates: rest.map((c) => ({
-              username: c.username,
-              directory: c.directory,
-              files: toFiles(c),
-            })),
-            localAlbumId: album.localAlbumId,
-          },
-          false,
-        ),
-      );
+            false,
+          ),
+        );
 
-      if (classifyHuntDownloadResult(res) === 'already-complete') {
+        if (classifyHuntDownloadResult(res) === 'already-complete') {
+          this.toasts.show({
+            message: `You already have "${album.title}"`,
+            kind: 'info',
+          });
+          return;
+        }
+
+        this.transfer.kickPoll();
         this.toasts.show({
-          message: `You already have "${album.title}"`,
-          kind: 'info',
+          message: `Downloading "${album.title}"`,
+          kind: 'success',
         });
         return;
-      }
-
-      this.transfer.kickPoll();
-      this.toasts.show({
-        message: `Downloading "${album.title}"`,
-        kind: 'success',
-      });
-    } catch (err) {
-      const outcome = classifyHuntDownloadError(err);
-      if (outcome.kind === 'already-complete') {
-        this.toasts.show({ message: `You already have "${album.title}"`, kind: 'info' });
-      } else if (outcome.kind === 'already-downloading') {
-        this.toasts.show({ message: `"${album.title}" is already downloading`, kind: 'info' });
-      } else {
+      } catch (err) {
+        const outcome = classifyHuntDownloadError(err);
+        if (outcome.kind === 'already-complete') {
+          this.toasts.show({ message: `You already have "${album.title}"`, kind: 'info' });
+          return;
+        }
+        if (outcome.kind === 'already-downloading') {
+          this.toasts.show({ message: `"${album.title}" is already downloading`, kind: 'info' });
+          return;
+        }
+        const next = attempts[i + 1];
+        if (outcome.retriable && next) {
+          this.toasts.show({
+            message: `"${pick.username}" unavailable — trying "${next.username}"…`,
+            kind: 'info',
+          });
+          continue;
+        }
         let dlErrId!: string;
         dlErrId = this.toasts.show({
-          message: `Download failed for "${album.title}"`,
+          message: outcome.message
+            ? `Download failed for "${album.title}" — ${outcome.message}`
+            : `Download failed for "${album.title}"`,
           kind: 'error',
           actions: [
             {
@@ -262,6 +291,7 @@ export class AutoHuntService {
             },
           ],
         });
+        return;
       }
     }
   }

@@ -29,6 +29,8 @@ export interface PlaylistRecipe extends CuratedPlaylistDef {
   sort?: PlaylistSort;
   /** 'weekly' → reseed each ISO week; 'static' → stable slug-derived seed. Default 'weekly'. */
   cadence?: 'weekly' | 'static';
+  /** Restrict to credited-artist origin countries (docs/artist-origin.md). */
+  countries?: string[];
 }
 
 /**
@@ -121,6 +123,19 @@ export const RECIPES: PlaylistRecipe[] = [
     palette: { from: '#f953c6', to: '#ffcc33' },
     where: 's.valence >= 0.6 AND s.danceability >= 0.55',
     sort: 'energy-arc',
+    targetSize: 40,
+    maxPerArtist: 2,
+  },
+  // Origin-country shelf (docs/artist-origin.md) — the worked example; which
+  // origin shelves exist is an owner (curation) decision, so add/adjust freely.
+  {
+    slug: 'rio-de-la-plata',
+    name: 'Río de la Plata',
+    description: 'Cuarteto, cumbia y rock rioplatense — hecho en casa.',
+    palette: { from: '#75aadb', to: '#fcbf49' },
+    where: '1=1',
+    countries: ['AR', 'UY'],
+    sort: 'shuffle',
     targetSize: 40,
     maxPerArtist: 2,
   },
@@ -281,12 +296,14 @@ export function seedCentroid(rows: readonly OrderableRow[]): SongFeatures | null
   };
   const meanOf = (pick: (r: OrderableRow) => number | undefined): number | undefined =>
     mean(rows.map(pick).filter((v): v is number => typeof v === 'number'));
+  const modalOrigin = mode(rows.map((r) => r.originCountries?.[0]));
   return {
     bpm: meanOf((r) => r.bpm),
     year: meanOf((r) => r.year),
     duration: mean(rows.map((r) => r.duration).filter((v) => v > 0)) ?? 0,
     genre: mode(rows.map((r) => r.genre)),
     key: mode(rows.map((r) => r.key)),
+    ...(modalOrigin ? { originCountries: [modalOrigin] } : {}),
     energy: meanOf((r) => r.energy),
     valence: meanOf((r) => r.valence),
     danceability: meanOf((r) => r.danceability),

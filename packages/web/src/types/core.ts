@@ -80,6 +80,10 @@ export type {
 // module (model + serialization + Camelot/mood vocab) shared with the API.
 export * from '../../../core/src/types/library-filter';
 
+// Value re-export: origin vocabulary (ISO codes, cultural regions, closeness,
+// flag emoji) — pure and browser-safe like library-filter above.
+export * from '../../../core/src/types/origin';
+
 // Value re-export: licence vocabulary (codes/labels/badges + normalizeLicence),
 // a pure, browser-safe module shared with the API scanner + filter.
 export * from '../../../core/src/types/licence';

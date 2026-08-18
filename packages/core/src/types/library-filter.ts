@@ -11,6 +11,7 @@
  */
 
 import { LICENCE_VOCAB } from './licence.js';
+import { isCountryCode } from './origin.js';
 
 /** Perceptual 0–1 axes filterable via three fixed buckets. */
 export const PERCEPTUAL_AXES = [
@@ -47,6 +48,8 @@ export interface LibraryFilter {
   primaryGenreOnly?: boolean;
   /** Licence codes from LICENCE_VOCAB; 'unknown' matches SQL-NULL (un-licenced) rows. */
   licences?: string[];
+  /** ISO country codes of credited artists; 'unknown' matches artists with no known origin. */
+  countries?: string[];
   /** Entity-level starred (album/artist/song starred, not any-track). */
   starred?: boolean;
   /** Track duration bounds in seconds. */
@@ -141,6 +144,7 @@ export function serializeLibraryFilter(f: LibraryFilter): Record<string, string 
     if (f.primaryGenreOnly) q['primaryOnly'] = 'true';
   }
   if (f.licences?.length) q['licence'] = f.licences.join(',');
+  if (f.countries?.length) q['country'] = f.countries.join(',');
   if (f.starred) q['starred'] = 'true';
   if (f.durationMin !== undefined) q['durMin'] = String(f.durationMin);
   if (f.durationMax !== undefined) q['durMax'] = String(f.durationMax);
@@ -216,6 +220,11 @@ export function parseLibraryFilter(
     .filter((l) => (LICENCE_VOCAB as readonly string[]).includes(l));
   if (licences.length) f.licences = [...new Set(licences)];
 
+  const countries = list(query['country'])
+    .map((c) => (c.toLowerCase() === 'unknown' ? 'unknown' : c.toUpperCase()))
+    .filter((c) => c === 'unknown' || isCountryCode(c));
+  if (countries.length) f.countries = [...new Set(countries)];
+
   if (first(query['starred']) === 'true') f.starred = true;
 
   const durMin = num(query['durMin']);
@@ -240,6 +249,7 @@ export const LIBRARY_FILTER_PARAM_KEYS: readonly string[] = [
   'genre',
   'primaryOnly',
   'licence',
+  'country',
   'starred',
   'durMin',
   'durMax',
@@ -257,6 +267,7 @@ export function activeLibraryFilterCount(f: LibraryFilter): number {
   if (f.yearMin !== undefined || f.yearMax !== undefined) n++;
   if (f.genres?.length) n++;
   if (f.licences?.length) n++;
+  if (f.countries?.length) n++;
   if (f.starred) n++;
   if (f.durationMin !== undefined || f.durationMax !== undefined) n++;
   return n;

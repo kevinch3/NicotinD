@@ -50,6 +50,9 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
     // keyed on the recording MBID. No creds, MBID-native. Default-on, never a
     // gate (an extrinsic network signal must never strand a fresh download).
     popularity: true,
+    // Artist origin country from MusicBrainz (docs/artist-origin.md). Per-artist,
+    // one cached MB call under the shared 1 req/s limiter, never a gate.
+    'artist-origin': true,
   },
   // Steps that must finish before a fresh download is added to the library.
   // Fast, offline, no-sidecar analysis (bpm/key/energy) plus genre are gated by

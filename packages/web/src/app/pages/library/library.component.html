@@ -95,6 +95,7 @@
       <app-library-filter-panel
         [filter]="libFilter()"
         [genres]="genreOptions()"
+        [countryOptions]="countryOptions()"
         [extraCount]="albumExtraFilterCount()"
         (filterChange)="onFilterChange($event)"
         (panelOpened)="ensureGenresLoaded()">
@@ -236,6 +237,7 @@
         testIdPrefix="library-compilations"
         [filter]="libFilter()"
         [genres]="genreOptions()"
+        [countryOptions]="countryOptions()"
         (filterChange)="onFilterChange($event)"
         (panelOpened)="ensureGenresLoaded()" />
 
@@ -324,6 +326,7 @@
         testIdPrefix="library-singles"
         [filter]="libFilter()"
         [genres]="genreOptions()"
+        [countryOptions]="countryOptions()"
         (filterChange)="onFilterChange($event)"
         (panelOpened)="ensureGenresLoaded()" />
 
@@ -414,6 +417,7 @@
         testIdPrefix="library-artists"
         [filter]="libFilter()"
         [genres]="genreOptions()"
+        [countryOptions]="countryOptions()"
         (filterChange)="onFilterChange($event)"
         (panelOpened)="ensureGenresLoaded()" />
 
@@ -508,6 +512,7 @@
       [filter]="libFilter()"
       [offline]="setup.isOffline()"
       [genres]="genreOptions()"
+        [countryOptions]="countryOptions()"
       (filterChange)="onFilterChange($event)"
       (ensureGenres)="ensureGenresLoaded()" />
   }

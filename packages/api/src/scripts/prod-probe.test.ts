@@ -108,6 +108,11 @@ describe('openReadOnlyDb — read-only is asserted, not assumed', () => {
   beforeEach(() => {
     rmSync(path, { force: true });
     const seed = new Database(path);
+    // Throwaway seed: under the default journal/sync settings every DDL of the
+    // full applySchema fsyncs, which blows bun's 5s hook timeout on a busy CI
+    // runner disk (issue #538). Only the file's readability matters here.
+    seed.run('PRAGMA journal_mode = MEMORY');
+    seed.run('PRAGMA synchronous = OFF');
     applySchema(seed);
     seed.close();
   });

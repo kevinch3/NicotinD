@@ -53,6 +53,25 @@ describe('songFilterWheres', () => {
     });
   });
 
+  it('countries filter emits the credited-artist EXISTS', () => {
+    const f = songFilterWheres({ countries: ['AR', 'UY'] });
+    expect(f.wheres).toHaveLength(1);
+    expect(f.wheres[0]).toContain('library_artist_origins');
+    expect(f.wheres[0]).toContain('library_song_artists');
+    expect(f.wheres[0]).toContain('s.artist_id'); // primary-artist UNION, matching the radio pool
+    expect(f.params).toEqual(['AR', 'UY']);
+  });
+
+  it("the 'unknown' bucket is a NOT EXISTS, OR-composed with positives", () => {
+    const f = songFilterWheres({ countries: ['AR', 'unknown'] });
+    expect(f.wheres).toHaveLength(1);
+    expect(f.wheres[0]).toMatch(/EXISTS[\s\S]*OR NOT EXISTS/);
+    expect(f.params).toEqual(['AR']);
+    const onlyUnknown = songFilterWheres({ countries: ['unknown'] });
+    expect(onlyUnknown.wheres[0]).toContain('NOT EXISTS');
+    expect(onlyUnknown.params).toEqual([]);
+  });
+
   it('filters licences with an IN list', () => {
     expect(songFilterWheres({ licences: ['public-domain', 'cc-by'] })).toEqual({
       wheres: ['s.licence IN (?, ?)'],
@@ -132,6 +151,14 @@ describe('albumFilterWheres', () => {
       wheres: ['library_albums.licence IS NULL'],
       params: [],
     });
+  });
+
+  it('routes countries through the any-track EXISTS on the ls alias', () => {
+    const frag = albumFilterWheres({ countries: ['AR'] });
+    expect(frag.wheres).toHaveLength(1);
+    expect(frag.wheres[0]).toContain('FROM library_songs ls');
+    expect(frag.wheres[0]).toContain('ls.artist_id');
+    expect(frag.params).toEqual(['AR']);
   });
 
   it('combines album-level licence with an any-track song condition', () => {

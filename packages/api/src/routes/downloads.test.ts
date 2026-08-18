@@ -217,4 +217,44 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
     const res = await app.request(`/jobs/${slskdJob}/cancel`, { method: 'POST' });
     expect(res.status).toBe(400);
   });
+
+  // Issue #533: DELETE used to 400 on any row without an `addon:` source_ref —
+  // every pre-cutover row (peer-username refs) and every url mirror row — and
+  // the referenced "transfer routes" no longer exist, so those cards were
+  // permanently un-removable ("old downloads I can't remove").
+  it('DELETE removes a legacy peer-ref row without touching any addon', async () => {
+    const { app, calls } = makeAddonApp();
+    const legacy = createJob(testDb, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: 'Bandana',
+      albumTitle: 'Vivir intentando',
+      sourceRef: 'chaozz777',
+      files: [],
+    });
+    const res = await app.request(`/jobs/${legacy}`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    expect(calls.cancelled).toEqual([]);
+    expect(calls.deleted).toEqual([]);
+    expect(testDb.query(`SELECT id FROM acquisition_jobs WHERE id = ?`).all(legacy)).toHaveLength(
+      0,
+    );
+  });
+
+  it('DELETE removes a url-mirror row (sourceRef is the URL)', async () => {
+    const { app } = makeAddonApp();
+    const urlJob = createJob(testDb, {
+      kind: 'url',
+      method: 'spotdl-addon',
+      artistName: null,
+      albumTitle: null,
+      sourceRef: 'https://open.spotify.com/album/xyz',
+      files: [],
+    });
+    const res = await app.request(`/jobs/${urlJob}`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    expect(testDb.query(`SELECT id FROM acquisition_jobs WHERE id = ?`).all(urlJob)).toHaveLength(
+      0,
+    );
+  });
 });

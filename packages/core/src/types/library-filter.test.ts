@@ -106,6 +106,15 @@ describe('serializeLibraryFilter / parseLibraryFilter', () => {
       expect(LIBRARY_FILTER_PARAM_KEYS).toContain(key);
     }
   });
+
+  it('serializes and parses countries incl. the unknown bucket', () => {
+    const q = serializeLibraryFilter({ countries: ['AR', 'unknown'] });
+    expect(q['country']).toBe('AR,unknown');
+    expect(parseLibraryFilter({ country: 'ar,unknown,ZZ' })).toEqual({
+      countries: ['AR', 'unknown'],
+    });
+    expect(LIBRARY_FILTER_PARAM_KEYS).toContain('country');
+  });
 });
 
 describe('isEmptyLibraryFilter / activeLibraryFilterCount', () => {
@@ -120,6 +129,11 @@ describe('isEmptyLibraryFilter / activeLibraryFilterCount', () => {
     // bpm(1) + keys(1) + moods(1) + energy(1) + valence(1) + year(1) + genres(1) + licences(1) + starred(1) + duration(1)
     expect(activeLibraryFilterCount(fullFilter)).toBe(10);
     expect(activeLibraryFilterCount({ bpmMin: 100, bpmMax: 120 })).toBe(1);
+  });
+
+  it('counts countries as one active group', () => {
+    expect(activeLibraryFilterCount({ countries: ['AR'] })).toBe(1);
+    expect(isEmptyLibraryFilter({ countries: [] })).toBe(true);
   });
 });
 

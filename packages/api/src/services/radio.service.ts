@@ -1,3 +1,4 @@
+import { originSetCloseness } from '@nicotind/core';
 import { keyToCamelot } from './key-detection.js';
 
 export interface SongFeatures {
@@ -7,6 +8,8 @@ export interface SongFeatures {
   genre?: string;
   /** Full genre set (primary first). When present it drives the genre axis. */
   genres?: string[];
+  /** ISO countries of the credited artists (docs/artist-origin.md). */
+  originCountries?: string[];
   duration: number;
   year?: number;
   artistId: string;
@@ -37,6 +40,7 @@ export interface SongFeatures {
 
 export interface ScoringWeights {
   genre: number;
+  origin: number;
   bpm: number;
   key: number;
   year: number;
@@ -74,6 +78,10 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   // change on any of the other 9 seeds at any tested value — see docs/radio.md
   // "Genre weight re-measure (task B3)".
   genre: 18,
+  // Origin/nationality axis (docs/artist-origin.md): equal to bpm so it can
+  // break the culture-blind tie when genre is broad/missing, under genre so a
+  // right genre still leads. Starting point pending a dump-radio A/B.
+  origin: 8,
   bpm: 8,
   key: 6,
   year: 2,
@@ -264,6 +272,14 @@ export interface SimilarityExplanation {
 export const MISSING_GENRE_FLOOR = 0.2;
 
 /**
+ * Same treatment for the origin axis: a candidate with no known origin scores
+ * this floor (never skipped) when the seed's origin is known — else missing
+ * data is mathematically rewarded, exactly the genre-floor bug. Safe because
+ * `backfill-artist-origins.ts` makes "unknown" a shrinking transient.
+ */
+export const MISSING_ORIGIN_FLOOR = 0.2;
+
+/**
  * Pure, IO-free per-axis breakdown of `scoreSimilarity`. `scoreSimilarity`
  * delegates to this (single source of truth for the axis math); the extra
  * `axes`/`skipped` detail it records is what the radio diagnostic dump reads to
@@ -312,6 +328,18 @@ export function explainSimilarity(
     add('genre', MISSING_GENRE_FLOOR, weights.genre);
   } else {
     add('genre', genreValue, weights.genre);
+  }
+
+  // Origin: max pairwise tiered closeness over the credited-artist country
+  // sets. Floored (not skipped) when the seed knows its origin and the
+  // candidate doesn't — see MISSING_ORIGIN_FLOOR.
+  const originValue = originSetCloseness(seed.originCountries, candidate.originCountries);
+  const seedHasOrigin = (seed.originCountries ?? []).filter(Boolean).length > 0;
+  if (originValue === null && seedHasOrigin) {
+    floored.push('origin');
+    add('origin', MISSING_ORIGIN_FLOOR, weights.origin);
+  } else {
+    add('origin', originValue, weights.origin);
   }
 
   // BPM proximity: ±5% ≈ near-full score, scaled linearly.

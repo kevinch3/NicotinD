@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.17](https://github.com/kevinch3/NicotinD/compare/v0.3.16...v0.3.17) (2026-08-18)
+
+### Features
+
+* artist origin (nationality) metadata - radio axis, filter, recipes, artist page ([#536](https://github.com/kevinch3/NicotinD/issues/536)) ([888b77c](https://github.com/kevinch3/NicotinD/commit/888b77c593d46c1386241af0a04ebeca96e0399d)), references [#538](https://github.com/kevinch3/NicotinD/issues/538)
 ## [0.3.16](https://github.com/kevinch3/NicotinD/compare/v0.3.15...v0.3.16) (2026-08-18)
 
 ### Bug Fixes

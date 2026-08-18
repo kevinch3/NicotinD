@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { recordPlayEvents } from '../services/play-history.js';
+import { upsertArtistOrigin } from '../services/artist-origins.js';
 import { radioRoutes, buildFilterRadio } from './radio.js';
 
 let testDb: Database = (() => {
@@ -447,6 +448,52 @@ describe('radio /next', () => {
     // came back genre-less — meaning genre was SKIPPED for every candidate,
     // not merely weighted low. A genre-uniform pool's centroid must reflect it.
     expect(result.seed?.genre).toBe('Rock');
+  });
+
+  it('ranks a same-country candidate above a cross-world one when all else is equal', async () => {
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A',
+      albumId: 'a1',
+      album: 'A1',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'compat',
+      title: 'Compat',
+      artist: 'B',
+      albumId: 'a2',
+      album: 'A2',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'foreign',
+      title: 'Foreign',
+      artist: 'C',
+      albumId: 'a3',
+      album: 'A3',
+      bpm: 120,
+    });
+    upsertArtistOrigin(testDb, { artistId: 'A', country: 'AR', source: 'musicbrainz' });
+    upsertArtistOrigin(testDb, { artistId: 'B', country: 'AR', source: 'musicbrainz' });
+    upsertArtistOrigin(testDb, { artistId: 'C', country: 'GB', source: 'musicbrainz' });
+    const res = await app.request('/radio/next?seedId=seed&limit=2');
+    expect(res.status).toBe(200);
+    const songs = (await res.json()) as Array<{ id: string }>;
+    expect(songs.map((s) => s.id)).toEqual(['compat', 'foreign']);
+  });
+
+  it('filter radio: the centroid carries the modal origin for an origin-uniform pool', () => {
+    seedSong(testDb, { id: 'o1', title: 'O1', artist: 'A', albumId: 'a1', album: 'A1', bpm: 120 });
+    seedSong(testDb, { id: 'o2', title: 'O2', artist: 'B', albumId: 'a2', album: 'A2', bpm: 122 });
+    upsertArtistOrigin(testDb, { artistId: 'A', country: 'AR', source: 'musicbrainz' });
+    upsertArtistOrigin(testDb, { artistId: 'B', country: 'AR', source: 'musicbrainz' });
+    const result = buildFilterRadio(testDb, { bpmMin: 1 }, {});
+    // toOrderable is the documented silent-kill spot (issue #187 B4's lesson):
+    // a column left out of it never reaches seedCentroid, and the axis silently
+    // dies for every filter-radio candidate.
+    expect(result.seed?.originCountries).toEqual(['AR']);
   });
 
   it('still returns results when embeddings are present for some songs', async () => {

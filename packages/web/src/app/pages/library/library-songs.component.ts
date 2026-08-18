@@ -91,6 +91,7 @@ export class LibrarySongsComponent implements OnInit, OnDestroy {
   readonly offline = input(false);
   /** Genre vocabulary for the filter panel (lazy-loaded by the parent). */
   readonly genres = input<string[]>([]);
+  readonly countryOptions = input<Array<{ country: string; artists: number }>>([]);
   readonly filterChange = output<LibraryFilter>();
   readonly ensureGenres = output<void>();
 

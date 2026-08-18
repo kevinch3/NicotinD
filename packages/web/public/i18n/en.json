@@ -274,6 +274,7 @@
   "admin.taskKey": "Musical key",
   "admin.taskLicence": "Licence / rights (from file tags)",
   "admin.taskPopularity": "Popularity (ListenBrainz)",
+  "admin.taskArtistOrigin": "Artist origins",
   "admin.title": "Admin",
   "admin.totalCount": "{count} total",
   "admin.transcodeHint": "Re-encode streams to a smaller format/bitrate",

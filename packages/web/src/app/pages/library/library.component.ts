@@ -322,6 +322,20 @@ export class LibraryComponent implements OnInit, OnDestroy {
 
   ensureGenresLoaded(): void {
     if (!this.genresFetched() && !this.loadingGenres()) void this.fetchGenres();
+    this.ensureCountriesLoaded();
+  }
+
+  // Origin-country facets for the shared panel, lazy-loaded with the genres.
+  readonly countryOptions = signal<Array<{ country: string; artists: number }>>([]);
+  private countriesFetched = false;
+
+  ensureCountriesLoaded(): void {
+    if (this.countriesFetched) return;
+    this.countriesFetched = true;
+    this.api.originCountries().subscribe({
+      next: (facets) => this.countryOptions.set(facets.countries),
+      error: () => (this.countriesFetched = false),
+    });
   }
 
   setMinSongCount(n: number | null): void {

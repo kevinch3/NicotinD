@@ -35,6 +35,7 @@ export interface CarryResult {
   artwork: boolean;
   overrideFile: boolean;
   meta: boolean;
+  origin: boolean;
   genreOverride: boolean;
 }
 
@@ -89,6 +90,7 @@ export function carryArtistCuration(
     artwork: false,
     overrideFile: false,
     meta: false,
+    origin: false,
     genreOverride: false,
   };
   // A rename that normalises to the same id (an accent or case fix) keeps the
@@ -112,6 +114,13 @@ export function carryArtistCuration(
     `UPDATE OR IGNORE library_artist_meta SET artist_id = ?
       WHERE artist_id = ?
         AND NOT EXISTS (SELECT 1 FROM library_artist_meta t WHERE t.artist_id = ?)`,
+    [toId, fromId, toId],
+  );
+
+  result.origin = moved(
+    `UPDATE OR IGNORE library_artist_origins SET artist_id = ?
+      WHERE artist_id = ?
+        AND NOT EXISTS (SELECT 1 FROM library_artist_origins t WHERE t.artist_id = ?)`,
     [toId, fromId, toId],
   );
 
