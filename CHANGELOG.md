@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.18](https://github.com/kevinch3/NicotinD/compare/v0.3.17...v0.3.18) (2026-08-18)
+
+### Bug Fixes
+
+* **downloads:** repair post-cutover hunt and feed regressions ([#537](https://github.com/kevinch3/NicotinD/issues/537)) ([b1832fb](https://github.com/kevinch3/NicotinD/commit/b1832fb810455830509e9fd7933aa64d6835833b)), references [#530](https://github.com/kevinch3/NicotinD/issues/530) [#531](https://github.com/kevinch3/NicotinD/issues/531) [#532](https://github.com/kevinch3/NicotinD/issues/532) [#533](https://github.com/kevinch3/NicotinD/issues/533) [#534](https://github.com/kevinch3/NicotinD/issues/534)
 ## [0.3.17](https://github.com/kevinch3/NicotinD/compare/v0.3.16...v0.3.17) (2026-08-18)
 
 ### Features
