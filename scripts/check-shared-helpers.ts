@@ -45,6 +45,7 @@ export interface SharedHelper {
  */
 export const SHARED_HELPERS: SharedHelper[] = [
   { name: 'expandHome', canonical: 'packages/core/src/utils/expand-home.ts' },
+  { name: 'timeAgo', canonical: 'packages/web/src/app/lib/relative-time.ts' },
 ];
 
 export interface HelperViolation {
@@ -64,7 +65,9 @@ export function findLocalDeclarations(
   source: string,
   name: string,
 ): Array<{ line: number; text: string }> {
-  const pattern = new RegExp(`^\\s*(?:export\\s+)?(?:function\\s+${name}\\s*\\(|const\\s+${name}\\s*[=:])`);
+  const pattern = new RegExp(
+    `^\\s*(?:export\\s+)?(?:function\\s+${name}\\s*\\(|const\\s+${name}\\s*[=:])`,
+  );
   const out: Array<{ line: number; text: string }> = [];
   source.split('\n').forEach((text, i) => {
     if (pattern.test(text)) out.push({ line: i + 1, text: text.trim() });
@@ -103,9 +106,7 @@ async function main(): Promise<void> {
       console.error(`  ${v.file}:${v.line}  declares \`${v.name}\``);
       console.error(`    → import it from the canonical module instead (${canonical}).\n`);
     }
-    console.error(
-      'A duplicated helper drifts silently — see issue #301, where one copy returned',
-    );
+    console.error('A duplicated helper drifts silently — see issue #301, where one copy returned');
     console.error("'' for every absolute path and a documented CLI gate never ran in Docker.");
     process.exit(1);
   }

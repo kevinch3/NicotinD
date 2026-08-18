@@ -177,7 +177,14 @@ const USER_TABLES: Array<{ table: string; column: string; redact?: string[] }> =
 
 export interface UserDataExport {
   exportedAt: number;
-  user: { id: string; username: string; role: string; status: string; createdAt: string | null };
+  user: {
+    id: string;
+    username: string;
+    role: string;
+    status: string;
+    createdAt: string | null;
+    lastSeenAt: number | null;
+  };
   tables: Record<string, Array<Record<string, unknown>>>;
   /** Tables checked but absent from this schema version — a visible gap, not a silent one. */
   skipped: string[];
@@ -186,16 +193,28 @@ export interface UserDataExport {
 /**
  * Right of access (Art. 15): everything tied to this user, as JSON.
  *
- * Columns are read from `PRAGMA table_info` at runtime rather than hardcoded,
- * the same technique as the admin config export — a schema change must not
- * silently start omitting a column from someone's data request.
+ * For the `USER_TABLES` below, columns are read from `PRAGMA table_info` at runtime
+ * rather than hardcoded — the same technique as the admin config export, so a schema
+ * change cannot silently start omitting a column from someone's data request.
+ *
+ * The `users` row itself is the exception: it is not in `USER_TABLES` (it is keyed by
+ * `id`, not a `user_id`) and is projected explicitly below, so **a new `users` column
+ * must be added to this SELECT and to `UserDataExport['user']` by hand** or it will be
+ * missing from the export. `last_seen_at` is the first column that hit this.
  */
 export function exportUserData(db: Database, userId: string): UserDataExport {
   const user = db
     .query<
-      { id: string; username: string; role: string; status: string; created_at: string | null },
+      {
+        id: string;
+        username: string;
+        role: string;
+        status: string;
+        created_at: string | null;
+        last_seen_at: number | null;
+      },
       [string]
-    >('SELECT id, username, role, status, created_at FROM users WHERE id = ?')
+    >('SELECT id, username, role, status, created_at, last_seen_at FROM users WHERE id = ?')
     .get(userId);
   if (!user) throw new Error(`User not found: ${userId}`);
 
@@ -232,6 +251,7 @@ export function exportUserData(db: Database, userId: string): UserDataExport {
       role: user.role,
       status: user.status,
       createdAt: user.created_at,
+      lastSeenAt: user.last_seen_at,
     },
     tables,
     skipped,

@@ -97,7 +97,28 @@ _everyone_ when the whole module is off. UI surfaces gate on these:
   track-info sheet's artist-identity / genre / lyrics editors, and the artist page's
   genre-override modal (`POST`/`DELETE /api/library/artists/:id/genre`, `requireCurator`).
 - **Admin unchanged** (`isAdmin()`): the Admin nav link/routes, Extensions, and admin-only
-  Settings sections. User management uses a four-value role `<select>`.
+  Settings sections. See "User management table" below for how a role is changed.
+
+## User management table (Admin)
+
+One row per user, five columns, none hidden at any viewport — see
+[docs/presence-tracking.md](presence-tracking.md) for the full anatomy and the "last connection"
+column behind it. Two things matter for roles specifically:
+
+- **The role control *is* the Role column.** It used to be rendered twice — a static badge in Role
+  and a native `<select>` in Actions — and is now one `MenuPanelComponent` picker styled as the
+  badge. That also removed the last native form control from the row, which is why the old
+  `<select>` had to sit outside the `appTvNavGroup`.
+- **Your own row is a plain badge, not a disabled control.** `PUT /users/:id/role` still 400s a
+  self-change server-side; the UI just doesn't offer something that cannot work.
+
+Every remaining action (Enable/Disable, Reset password, Delete) is behind one `⋯` menu; Delete
+routes through the shared `ConfirmService` host rather than a modal this page hand-rolls. All four
+mutations remain `recordAudit`-ed.
+
+The e2e selector contract (`packages/e2e/tests/roles.spec.ts` + `tests/admin-users.spec.ts`):
+`user-role-trigger`, `user-role-option-<role>`, `user-role-static`, `user-actions-toggle`,
+`user-action-{status,reset-pw,delete}`, and the table wrapper `users-table`.
 
 ## Audit log (admin)
 

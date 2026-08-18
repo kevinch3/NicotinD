@@ -14,7 +14,7 @@ Admin-only, ephemeral visibility into which users are currently active on the ap
 
 ## Design decisions
 
-- **In-memory only.** Presence is ephemeral, high-churn data. Writing to SQLite on every heartbeat is wasteful and creates stale-on-restart problems. The `PresenceService` holds a `Map<sessionId, Session>` that resets on server restart — which is correct, because all sessions are gone too.
+- **In-memory only — for live session state.** Presence is ephemeral, high-churn data. Writing session state to SQLite on every heartbeat is wasteful and creates stale-on-restart problems. The `PresenceService` holds a `Map<sessionId, Session>` that resets on server restart — which is correct, because all sessions are gone too. The **derived** `users.last_seen_at` timestamp *is* persisted; see [Persisted last-seen vs ephemeral presence](#persisted-last-seen-vs-ephemeral-presence) for why that is not a contradiction.
 - **HTTP heartbeat, not WebSocket.** Presence is admin-only visibility, not real-time UX. A 60-second HTTP POST is simpler than a persistent WS per tab, avoids a second WS connection, and is sufficient for dashboard-level accuracy (data is at most ~2 min stale).
 - **Admin-only.** Non-admin users cannot read presence data for other users. The heartbeat endpoint is open to all authenticated users (they report their own presence), but the admin user list is the only consumer of the aggregated stats.
 - **Client-generated tabId.** Each tab generates a UUID in `sessionStorage` so the server can distinguish multiple tabs on the same device without assigning state.
@@ -67,7 +67,38 @@ Body: { deviceId: string, tabId: string }
 Response: 204 No Content
 ```
 
-The endpoint is lightweight — upsert into the in-memory Map, return immediately.
+The endpoint is lightweight — upsert into the in-memory Map, then a throttled `users.last_seen_at` stamp (see below), return immediately.
+
+## Persisted last-seen vs ephemeral presence
+
+`users.last_seen_at` (epoch ms, nullable, added by `addColumnIfMissing`) is the one piece of presence-adjacent data that **is** written to SQLite. It is not a walking-back of the in-memory decision above — the two answer different questions:
+
+| | Presence (`PresenceService`) | `users.last_seen_at` |
+|---|---|---|
+| Question | *Who is connected right now?* | *When was this account last used?* |
+| Scope | A fact about the current process | A fact about history |
+| On restart | Correctly reset — the sessions are gone too | Must survive, or every user reads "never" after each deploy |
+
+Persisting session state would be stale-on-restart. Persisting the derived timestamp is the only way to be correct at all: before it existed, an admin could see that a user was offline but never *how long* they had been gone, which is the actual question asked about a dormant account. Nothing else in the schema could answer it — `paired_devices.last_seen_at` only covers QR-paired devices, `play_events` is gated behind history consent, `audit_log` never records a plain listener, and JWTs are stateless with no sessions table.
+
+**The original cost objection is answered by throttling, not ignored.** `services/user-last-seen.ts` memoizes the last write per user and skips the `UPDATE` entirely inside `LAST_SEEN_THROTTLE_MS` (5 minutes), so a user with six tabs open across two devices produces **at most one write per five minutes**, not six per minute. The common path stays a Map upsert.
+
+Three write sites, via `touchLastSeen`:
+
+| Site | Mode | Why |
+|---|---|---|
+| `POST /api/presence/heartbeat` | throttled | The fidelity signal — a tab open for days keeps it fresh |
+| `POST /api/auth/login` | **forced** | A login is a discrete, rare, password-gated event; the exact moment is the point |
+| `POST /api/auth/refresh` | throttled | Covers clients that authenticate without running the web presence service |
+
+Two details that are load-bearing:
+
+- **It is best-effort and never blocks the caller**, the same contract as `agent_tokens.last_used_at` — a telemetry write must not be able to fail a login or a heartbeat. The route passes `getDatabase` **unresolved** (a thunk) precisely because resolving it is itself a throwing operation: calling it at the call site would put that throw *outside* `touchLastSeen`'s catch, turning a 204 heartbeat into a 500.
+- **A failed write does not enter the throttle map**, so a transient error retries on the next beat rather than suppressing writes for the whole window.
+
+There is deliberately **no backfill**: "joined" is not "last seen", and there is no historical source to derive it from. `NULL` renders as "Never".
+
+`last_seen_at` is personal data and is included in the Art. 15 export (`exportUserData`) — note that the `users` row there is projected by an explicit `SELECT`, not the `PRAGMA table_info` loop used for `USER_TABLES`, so a new `users` column must be added to it by hand. It is operational metadata rather than listening history, so the `NICOTIND_HISTORY` consent chain does not gate it.
 
 ### Admin API enrichment (`packages/api/src/routes/admin.ts`)
 
@@ -80,6 +111,7 @@ The endpoint is lightweight — upsert into the in-memory Map, return immediatel
   role: string,
   status: string,
   created_at: string,
+  last_seen_at: number | null,  // persisted; null = never connected
   // added by presence merge:
   isConnected: boolean,
   amountOfDevices: number,
@@ -88,6 +120,8 @@ The endpoint is lightweight — upsert into the in-memory Map, return immediatel
 ```
 
 Users with no active sessions get `isConnected: false, amountOfDevices: 0, amountOfSessions: 0`.
+
+**Ordering** is `compareUsersByActivity`: online first → `last_seen_at` DESC (NULLs *last*, because NULL is "unknown", not "infinitely long ago") → `created_at` ASC. It runs in JS **after** the presence merge, not in SQL, because `isConnected` is not a column — SQL cannot express the primary key of this ordering. The query's `ORDER BY created_at ASC` is now only the stable base the comparator falls through to.
 
 ## Client implementation
 
@@ -109,6 +143,7 @@ export interface AdminUser {
   role: string;
   status: string;
   created_at: string;
+  last_seen_at: number | null;
   isConnected: boolean;
   amountOfDevices: number;
   amountOfSessions: number;
@@ -117,15 +152,24 @@ export interface AdminUser {
 
 ### Admin UI (`packages/web/src/app/pages/admin/admin.component.html`)
 
-Add three columns after "Status" in the user table:
+The user table is **five columns, none of them hidden at any viewport**:
 
 | Column | Render |
 |--------|--------|
-| Online | Green dot if `isConnected`, grey dot otherwise |
-| Devices | Count (e.g. `2`) |
-| Sessions | Count (e.g. `3`) |
+| User | Username + `(you)`, with `Joined <date>` as a muted second line |
+| Role | The role control itself — a `MenuPanelComponent` picker styled as the badge (`user-role-trigger` / `user-role-option-<role>`); your own row renders a non-interactive badge (`user-role-static`) |
+| Status | `active` / `disabled` dot + label |
+| Activity | Dot + `Online` and a muted `N devices · N sessions`, or the relative last connection (`Never` when `last_seen_at` is null), absolute time in the `title` |
+| ⋯ | `user-actions-toggle` opening Disable/Enable, Reset password, Delete |
 
-All three columns hidden on mobile (`hidden sm:table-cell`) to keep the table compact.
+It previously had eight columns, four of which (Online / Devices / Sessions / Joined) were `hidden sm:table-cell`. That was wrong in practice: on a phone the admin lost exactly the data they had come to look at. **The principle is consolidate, not hide** — Devices/Sessions became the muted second line of Activity, and Joined the muted second line of User, so a ~360 px viewport shows everything without horizontal scroll.
+
+Two structural constraints worth knowing before editing this table:
+
+- The D-pad group is one `axis="vertical"` `appTvNavGroup` on a wrapper `<div>` (`data-testid="users-table"`), **never** on `<table>`/`<tr>`/`<td>`: `TvNavGroupDirective` force-sets `role="toolbar"` via a host binding, which would clobber the table's implicit ARIA roles. Items register by DI, so they are still found across `<td>` and component boundaries.
+- **No `appTvNavGroup` inside a `[menuPanel]`.** `MenuPanelComponent` already owns ArrowUp/Down there and stops propagation (issue #389); a nested group double-moves focus on every press.
+
+Role and status render through `admin.role.*` / `admin.status.*` keys rather than the raw server string, which is what the rest of the page does.
 
 ## Edge cases
 
@@ -133,7 +177,9 @@ All three columns hidden on mobile (`hidden sm:table-cell`) to keep the table co
 |----------|----------|
 | Tab closed normally | No more heartbeats → stale cleanup evicts after 120s |
 | Network drop (laptop lid, wifi loss) | Same — no heartbeat → stale cleanup |
-| Server restart | All sessions gone (in-memory) — correct, they are |
+| Server restart | All sessions gone (in-memory) — correct, they are. `last_seen_at` survives, which is the point of persisting it |
+| Never connected | `last_seen_at IS NULL` → "Never". Deliberately not backfilled from `created_at` |
+| DB unavailable on a heartbeat | The stamp is skipped silently; the heartbeat still returns 204 |
 | Same browser, 3 tabs | Same `deviceId`, different `tabId` → 1 device, 3 sessions |
 | Phone + laptop | Different `deviceId`s → 2 devices, 2 sessions |
 | JWT expires | Client stops sending heartbeats (auth interceptor logs out) → stale cleanup |
@@ -153,8 +199,11 @@ The existing playback WS (`GET /api/ws/playback`) only connects when remote play
 | File | Role |
 |------|------|
 | `packages/api/src/services/presence.ts` | In-memory session registry + stale cleanup |
-| `packages/api/src/routes/presence.ts` | `POST /api/presence/heartbeat` endpoint |
-| `packages/api/src/routes/admin.ts` | Enriches `GET /api/admin/users` with presence fields |
+| `packages/api/src/services/user-last-seen.ts` | `touchLastSeen` — throttled, best-effort `users.last_seen_at` stamp |
+| `packages/api/src/routes/presence.ts` | `POST /api/presence/heartbeat` endpoint (+ throttled stamp) |
+| `packages/api/src/routes/auth.ts` | Stamps on login (forced) and refresh (throttled) |
+| `packages/api/src/routes/admin.ts` | Enriches `GET /api/admin/users`; owns `compareUsersByActivity` |
+| `packages/api/src/db.ts` | `users.last_seen_at` additive migration |
 | `packages/api/src/index.ts` | Route registration |
 
 ## Client-side code map
@@ -164,6 +213,8 @@ The existing playback WS (`GET /api/ws/playback`) only connects when remote play
 | `packages/web/src/app/services/presence.service.ts` | Heartbeat interval (token-gated `effect`), deviceId/tabId management |
 | `packages/web/src/app/services/api/system-api.service.ts` | `postHeartbeat()` → `POST /api/presence/heartbeat` |
 | `packages/web/src/app/app.ts` | Calls `presence.initialize()` once at bootstrap |
-| `packages/web/src/app/services/api/api-types.ts` | `AdminUser` type with presence fields |
-| `packages/web/src/app/pages/admin/admin.component.ts` | Reads enriched user data |
-| `packages/web/src/app/pages/admin/admin.component.html` | Online / Devices / Sessions columns |
+| `packages/web/src/app/services/api/api-types.ts` | `AdminUser` type with presence + `last_seen_at` |
+| `packages/web/src/app/lib/user-activity.ts` | `userActivityLabel` / `userActivityDetail` — the Activity cell's logic, pure so it is testable below e2e |
+| `packages/web/src/app/lib/relative-time.ts` | `timeAgo` — the shared relative-time helper |
+| `packages/web/src/app/pages/admin/admin.component.ts` | Reads enriched user data; role picker + ⋯ menu handlers |
+| `packages/web/src/app/pages/admin/admin.component.html` | The five-column users table |

@@ -239,6 +239,12 @@ export interface AdminUser {
   role: string;
   status: string;
   created_at: string;
+  /**
+   * Durable "last connection" (epoch ms), null = never connected. Persisted in
+   * `users.last_seen_at` — unlike the three presence fields below, it survives a
+   * server restart. See docs/presence-tracking.md.
+   */
+  last_seen_at: number | null;
   // Ephemeral presence, merged server-side from PresenceService (see docs/presence-tracking.md).
   isConnected: boolean;
   amountOfDevices: number;

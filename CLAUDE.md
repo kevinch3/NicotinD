@@ -688,9 +688,20 @@ Add detail there, not here.
   merge mode is exposed as an MCP tool (`mergeInto`, an unambiguous single target name an LLM can
   supply) — rename/single/split stay curator-UI-only for now. `mcpRoutes(musicDir, slskdRef, dataDir,
   runSync)` wires both dependency pairs explicitly. → [docs/mcp-agent.md](docs/mcp-agent.md)
-- **Presence tracking (admin-only, ephemeral)**: in-memory `PresenceService` tracks `isConnected` /
-  `amountOfDevices` / `amountOfSessions` per user via 60s HTTP heartbeats + stale cleanup; merged
-  into `GET /api/admin/users`. → [docs/presence-tracking.md](docs/presence-tracking.md)
+- **Presence tracking + last connection (admin-only)**: in-memory `PresenceService` tracks
+  `isConnected` / `amountOfDevices` / `amountOfSessions` per user via 60s HTTP heartbeats + stale
+  cleanup; merged into `GET /api/admin/users` and ordered by `compareUsersByActivity` in JS, since
+  SQL can't see the presence map. Session state stays ephemeral, but the *derived*
+  `users.last_seen_at` **is** persisted (`touchLastSeen`, throttled to ≤1 write/user/5min, forced on
+  login, best-effort like `agent_tokens.last_used_at`) — an in-memory map reports "never" for every
+  user after each deploy, which is the one question an admin asks about a dormant account. The Admin
+  users table is five columns with **nothing `hidden sm:table-cell`** (Online/Devices/Sessions folded
+  into one Activity cell, Joined under the username), the role picker replaced the badge that
+  duplicated it, and the rest sit behind a `⋯` `MenuPanelComponent`.
+  → [docs/presence-tracking.md](docs/presence-tracking.md), [docs/roles.md](docs/roles.md)
+- **Shared relative time (`lib/relative-time.ts`)**: one `timeAgo` for the Downloads feed + the Admin
+  users table (`check:shared-helpers`-registered); the translator is an optional param so the module
+  stays pure and an un-i18n'd caller keeps its English. → [docs/web-ui.md](docs/web-ui.md)
 - **Onboarding**: expanded setup wizard for self-hosters (music dir + quality + Lidarr); first-login
   welcome banner for admin-provisioned app users. → [docs/onboarding.md](docs/onboarding.md)
 - **Now Playing queue — clear + drag-reorder + per-row remove**: "Next up" supports a Clear link,

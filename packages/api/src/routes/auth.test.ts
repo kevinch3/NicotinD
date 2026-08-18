@@ -190,6 +190,94 @@ describe('POST /login, /register — stable error codes (issue #236)', () => {
   });
 });
 
+describe('users.last_seen_at stamping', () => {
+  let app: Awaited<ReturnType<typeof makeApp>>;
+
+  async function makeApp() {
+    const { authRoutes } = await import('./auth.js');
+    return authRoutes(SECRET, '30d', true);
+  }
+
+  function lastSeen(id: string): number | null {
+    return (
+      testDb
+        .query<{ last_seen_at: number | null }, [string]>(
+          'SELECT last_seen_at FROM users WHERE id = ?',
+        )
+        .get(id)?.last_seen_at ?? null
+    );
+  }
+
+  beforeAll(async () => {
+    app = await makeApp();
+    const realHash = await hashPassword('correcthorse');
+    testDb.run(
+      "INSERT INTO users (id, username, password_hash, role) VALUES ('user-seen', 'seenuser', ?, 'user')",
+      [realHash],
+    );
+    testDb.run("INSERT INTO user_settings (user_id) VALUES ('user-seen')");
+  });
+
+  beforeEach(async () => {
+    const { resetLastSeenThrottle } = await import('../services/user-last-seen.js');
+    resetLastSeenThrottle();
+    testDb.run("UPDATE users SET last_seen_at = NULL WHERE id = 'user-seen'");
+  });
+
+  it('stamps last_seen_at on a successful login', async () => {
+    expect(lastSeen('user-seen')).toBeNull();
+
+    const res = await app.request('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'seenuser', password: 'correcthorse' }),
+    });
+    expect(res.status).toBe(200);
+    expect(lastSeen('user-seen')).toBeGreaterThan(0);
+  });
+
+  it('does not stamp last_seen_at when the credentials are wrong', async () => {
+    const res = await app.request('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'seenuser', password: 'wrong' }),
+    });
+    expect(res.status).toBe(401);
+    expect(lastSeen('user-seen')).toBeNull();
+  });
+
+  it('stamps last_seen_at on refresh, then throttles the next one', async () => {
+    const token = await signJwt(
+      { sub: 'user-seen', username: 'seenuser', role: 'user' },
+      SECRET,
+      '1h',
+    );
+
+    expect(
+      (
+        await app.request('/refresh', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      ).status,
+    ).toBe(200);
+    const first = lastSeen('user-seen');
+    expect(first).toBeGreaterThan(0);
+
+    // A refresh fires on every app boot; the throttle is what keeps that from
+    // being one SQLite write per boot per tab.
+    expect(
+      (
+        await app.request('/refresh', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      ).status,
+    ).toBe(200);
+    expect(lastSeen('user-seen')).toBe(first);
+  });
+});
+
 describe('POST /dismiss-welcome', () => {
   let app: Awaited<ReturnType<typeof makeApp>>;
 

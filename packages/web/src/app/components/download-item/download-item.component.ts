@@ -7,18 +7,7 @@ import { currentAndNextTracks } from '../../lib/track-status';
 import { formatQuality } from '../../lib/download-status';
 import { PipelineStageBadgeComponent } from '../pipeline-stage-badge/pipeline-stage-badge.component';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
-
-/** Relative "Xm ago" from a ms timestamp. */
-function timeAgo(ms: number): string {
-  const diff = Date.now() - ms;
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return days === 1 ? 'Yesterday' : `${days}d ago`;
-}
+import { timeAgo } from '../../lib/relative-time';
 
 /**
  * Layout-critical classes for the row, exported and *bound* (not hardcoded in
