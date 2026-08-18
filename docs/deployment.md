@@ -530,6 +530,53 @@ live.
 
 ## CI coverage
 
+### Job layout (why there are three gate jobs, not one)
+
+`ci.yml` ran one `ci` job holding every static gate, the web unit tests **and** the
+Storybook catalog gates, serially on one runner. Measured on two consecutive master runs
+it took **10m09** (and **14m16** on a bad one) while `e2e` finished in 4m55,
+`desktop-package` in 57s and `docker` in 9s — every other job idled, and the workflow's
+wall clock was `ci` plus the 20s `release`. The end-to-end commit→deployed time was that
+plus `deploy.yml`'s ~5m38.
+
+The gates are now three jobs that run beside each other:
+
+| Job | Holds | Why separate |
+| --- | --- | --- |
+| `ci` | actionlint, typecheck, lint, format, the `check:*` gates, API/core unit tests | fast, no browser, no minutes-long step |
+| `web-test` | the Angular vitest suite | 135s of CPU sharing nothing with the static gates |
+| `storybook` | `build:storybook` + the merged render-smoke/axe gate | browser-driven; needs only `storybook-static`, never the `ng build` dist |
+
+`Build (web)` left the gate jobs entirely — `e2e`, `desktop-package` and `desktop-smoke`
+each already run `ng build`, so the production build is still covered three times over.
+
+Two invariants keep the split honest, both enforced by `bun run check:ci-parity`:
+
+- **Every gate job's checks stay reachable from `bun run verify`.** The script's
+  `GATE_JOBS` list replaced a hardcoded `'ci'`; without that, moving a gate into a new job
+  would have quietly dropped it from parity coverage — the same drift that shipped three
+  times before (#273, #376, and one more after them).
+- **Every gate job blocks `release`.** A gate that is not in the `release` job's `needs` is
+  advisory: it can fail while the tag is cut anyway. That is the #457 shape, so it is a
+  check rather than a habit.
+
+### Caching
+
+Nothing was cached before — `actions/cache` appeared zero times across all three
+workflows, so all 11 `bun install` invocations re-downloaded the dependency tree and every
+browser job re-fetched Chromium (22s typically, but **4m24** on one observed run).
+`setup-bun` caches the bun binary only, never `~/.bun/install/cache`. Both are cached now,
+and `bun-version` is pinned via a workflow-level `BUN_VERSION` rather than `latest`:
+a drifting toolchain makes the cache key unstable and a green run unreproducible. The bun
+key hashes `bunfig.toml` alongside `bun.lock` because `[install] peer = false` changes the
+resolved tree.
+
+Caching the Playwright browser does **not** cover the `--with-deps` apt-get half, which is
+where that 4m24 came from. If it recurs, the next step is splitting `playwright
+install-deps` from `playwright install chromium`.
+
+### The rest
+
 `ci.yml`'s `docker` job lints both compose files on every push/PR
 (`docker compose config -q`) and rebuilds the image (amd64, no push) whenever a
 container input (`Dockerfile`, `.dockerignore`, `docker-compose*.yml`, the two

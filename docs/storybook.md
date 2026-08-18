@@ -14,9 +14,12 @@ Visual regression is deferred to an issue and is cheap to add now that stories e
 bun run --filter @nicotind/web storybook       # dev server on :6006
 bun run build:storybook                        # static build → packages/web/storybook-static
 bun run smoke:storybook                        # render every story, fail on any that throws
+bun run gates:storybook                        # render smoke + axe in one pass (what CI runs)
 ```
 
-Both build and smoke run in the CI `ci` job and in `bun run verify`.
+All of it runs in the CI **`storybook`** job and in `bun run verify`. It used to live in
+the `ci` job; that job had become the workflow's entire critical path, and these gates
+were the slowest half of it — see [deployment.md](deployment.md) "CI coverage".
 
 ## What is in it
 
@@ -149,9 +152,50 @@ bun run a11y:storybook              # report, always exits 0
 bun run a11y:storybook -- --strict  # exit 1 on any violation
 ```
 
-`a11y:storybook:strict` **is a CI gate**, in the `ci` job and in `bun run verify`. It
-shipped as a report first and was promoted only once it reached zero violations: a gate
+`a11y:storybook:strict` **is a CI gate**, in the `storybook` job and in `bun run verify`.
+It shipped as a report first and was promoted only once it reached zero violations: a gate
 that starts red gets disabled rather than fixed.
+
+## One traversal, not two (`storybook-gates.mjs`)
+
+Smoke and axe were two scripts, and about half of each was byte-identical — the same
+static server, the same `index.json` enumeration, the same `iframe.html` URL. The cost was
+not the duplication but the **second full traversal**: two browsers, 138 navigations each,
+114s + 159s of CI to ask two questions about the same page.
+
+They are now one script over one traversal, with the shared plumbing in
+`packages/e2e/scripts/lib/storybook-runner.mjs` (registered in `check:shared-helpers`, so
+a third copy fails the build). Flags select the checks — `--smoke`, `--a11y`, `--strict` —
+and the exit contributions stay independent: smoke always gates, axe only under
+`--strict`. Running both no longer lets a smoke failure hide the axe report, which the old
+`smoke && a11y` shell chain did.
+
+Two things make it fast, both measured against the old scripts on the same build:
+
+- **A pool of contexts.** `visitStories` drives `min(4, availableParallelism())` context+
+  page pairs over a shared work queue. `STORYBOOK_GATE_CONCURRENCY=1` restores serial
+  order when debugging. Completion order is no longer stable, so every report collection
+  is sorted before printing.
+- **Waiting on first render, not `networkidle`.** The old `waitUntil: 'networkidle'` cost a
+  hard ~500ms quiet window per story, twice. It is now `waitUntil: 'load'` (still enough
+  for stylesheets, which axe's contrast rules need) plus a wait for `#storybook-root` to
+  have content — the exact condition the smoke check asserts on — or for Storybook's error
+  box to become visible, so a broken story reports immediately instead of timing out.
+
+**Measured: 273s → 61s, with identical output.** Verified both directions on the same
+build: clean catalog reports 138 stories / 0 failing / 0 axe rules under old and new
+alike; and with a deliberately broken component plus a deliberate contrast regression,
+both report the **same 7 story ids and the same 16 nodes across the same 2 components**.
+Detection is not weaker for being faster.
+
+### The one thing the faster wait broke, and why it is handled here
+
+`@storybook/addon-a11y` is configured in `.storybook/main.ts`, so a story iframe runs axe
+**by itself** on mount. `networkidle` hid that by accident — its quiet window outlasted the
+addon's scan. Reaching the page sooner means `AxeBuilder` can start while the addon still
+holds the page's single axe instance, and axe throws "Axe is already running"; nine stories
+hit it on the first merged run. `analyzeWithRetry` retries that specific error and nothing
+else. Do not "fix" it by going back to `networkidle` — that only makes the race rarer.
 
 ### What the audit found, and what it changed
 

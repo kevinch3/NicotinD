@@ -686,6 +686,19 @@ Clicking the version string in the **desktop header** (`layout.component`, `data
 
 The Angular service worker (`provideServiceWorker('ngsw-worker.js')`, registered via `registerWhenStable:30000`) ships in every production browser build. It only re-checks `/ngsw.json` on initialization and on navigation requests — Chromium self-schedules around 24 h, so a user who keeps the tab open for the whole weekend between NicotinD releases sees the new **Reload to update** banner only when they navigate or open a new tab. The first symptom reported in real use was "I deployed a new version and my browser kept showing the old one", then "I had to reload manually to even see the toast". The fix is `UpdateService.checkForUpdate()`, wired into a Settings → Account **Check for updates** button (`data-testid="settings-check-update"`).
 
+**Pool and isolation (measured).** `pool: 'threads'` + `maxWorkers: '100%'` took the suite
+from 134.7s to 113.1s; nothing here needs process isolation, so `forks` was pure spawn
+overhead. `isolate: false` is the much bigger lever — **14.1s**, a 9x win, because
+`test-setup.ts` imports `@angular/compiler` and that is re-evaluated for each of the 193
+spec files — and it is deliberately **not** taken: three specs in
+`desktop-window-controls.component.spec.ts` need `vi.mock` of `lib/platform` to resolve
+per-file, and a shared module registry breaks that. Two *real* bugs it surfaced were
+fixed rather than left: `platform.spec.ts` and `native-capabilities.spec.ts` swapped the
+global `window` for stubs and then `delete`d it instead of restoring the real one, which
+is a latent landmine under any shared-worker config. Re-evaluate behind
+`bun run check:isolated-specs --web`; `web-test` is its own CI job now, so the remaining
+2 minutes are off the critical path.
+
 ### Design
 
 - **Service**: `UpdateService` (`packages/web/src/app/services/update.service.ts`) bridges Angular's `SwUpdate` to signals. Exposes:

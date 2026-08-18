@@ -16,8 +16,20 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Pinned, not `latest`: a drifting toolchain makes the dependency cache key below
+  # unstable (every bump is a cold install for every job) and makes a green run
+  # unreproducible. Bump deliberately.
+  BUN_VERSION: '1.3.11'
 
 jobs:
+  # Static gates + unit tests. Deliberately holds nothing browser-driven and nothing
+  # that takes minutes: this job used to be the workflow's entire critical path (10m09
+  # steady-state, 14m16 on a bad run) while every other job finished and idled, because
+  # `Test (web)` and the Storybook catalog gates ran serially at the end of it. Those
+  # are now `web-test` and `storybook`, running beside this one.
+  #
+  # Anything added here must be reachable from `bun run verify` — `check:ci-parity`
+  # enforces that across every job in its GATE_JOBS list, which this is one of.
   ci:
     runs-on: ubuntu-latest
     steps:
@@ -41,7 +53,15 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: |
+            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
       - name: Install dependencies
         run: bun install
@@ -97,40 +117,82 @@ jobs:
       - name: Test (e2e playground helpers)
         run: bun test packages/e2e/playground
 
-      # Specs are excluded from tsconfig.app.json and vitest transpiles without
-      # type-checking, so without this step a spec stub can drift from the type
-      # it asserts against indefinitely while every test still passes.
-      - name: Typecheck (web specs)
-        run: bun run --filter @nicotind/web typecheck:spec
+  # Split out of `ci` (see the header comment there). 135s of vitest shares nothing
+  # with the type/lint gates, so it runs beside them rather than after them.
+  web-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: |
+            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
+
+      - name: Install dependencies
+        run: bun install
 
       - name: Test (web)
         run: bun run --filter @nicotind/web test
 
-      - name: Build (web)
-        run: bun run --filter @nicotind/web build
+  # Also split out of `ci`: the Storybook catalog gates are browser-driven and were the
+  # slowest half of that job (build + browser install + smoke + axe). They need only
+  # `packages/web/storybook-static`, never the `ng build` dist, so this job does not
+  # build the web app — `e2e`, `desktop-package` and `desktop-smoke` each still do.
+  storybook:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: |
+            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
+
+      - name: Install dependencies
+        run: bun install
 
       - name: Build (Storybook)
         run: bun run build:storybook
 
-      # The `ci` job otherwise needs no browser; the smoke step below drives one.
-      # Runs through the e2e package script so `playwright` resolves to that
-      # workspace's pinned binary. `bunx playwright` resolves a floating latest from
-      # npm and can install browsers for a different revision than the
-      # @playwright/test the smoke script imports; the root node_modules/.bin has no
-      # playwright at all under bun's isolated install.
+      # Browsers are a ~170MB download; `setup-bun` obviously does not cache them and
+      # nothing else did either, so this step ran cold in every browser job. It spiked
+      # to 4m24 on one run against a 22s norm. Keyed on the lockfile, which is what
+      # changes when the pinned @playwright/test moves.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      # Runs through the e2e package script so `playwright` resolves to that workspace's
+      # pinned binary. `bunx playwright` resolves a floating latest from npm and can
+      # install browsers for a different revision than the @playwright/test the gate
+      # script imports; the root node_modules/.bin has no playwright at all under bun's
+      # isolated install.
       - name: Install Playwright Chromium
         run: bun run --filter @nicotind/e2e install:browsers
 
-      # `build:storybook` compiles stories; it does not run them. The first green
-      # build of the catalog shipped 67 of 139 stories that threw on mount, which
-      # neither the type check nor webpack can see. This renders every story.
-      - name: Smoke (Storybook stories render)
-        run: bun run smoke:storybook
-
-      # Promoted to a gate only once it was green (#481/#482). A gate that starts red
-      # gets disabled rather than fixed, which is why it shipped as a report first.
-      - name: Accessibility (axe over every story)
-        run: bun run a11y:storybook:strict
+      # `build:storybook` compiles stories; it does not run them. The first green build
+      # of the catalog shipped 67 of 139 stories that threw on mount, which neither the
+      # type check nor webpack can see. This renders every story and runs axe over it in
+      # the same traversal — see packages/e2e/scripts/storybook-gates.mjs.
+      - name: Storybook gates (render smoke + axe)
+        run: bun run gates:storybook
 
   # Analysis sidecar (packages/analysis): contract + pure-function tests against
   # a fake model registry — no TensorFlow/Essentia download in CI. The gated
@@ -160,7 +222,15 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: |
+            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
       - uses: actions/setup-node@v4
         with:
@@ -168,6 +238,14 @@ jobs:
 
       - name: Install dependencies
         run: bun install
+
+      # See the note in the `storybook` job: the browser download was uncached in every
+      # job that needed one.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
       - name: Install Playwright browser
         run: bunx playwright install --with-deps chromium
@@ -207,7 +285,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: |
+            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -226,7 +312,15 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: |
+            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
       - uses: actions/setup-node@v4
         with:
@@ -251,6 +345,14 @@ jobs:
       # sandbox helper isn't root-owned. The binary itself is already present
       # (electron's postinstall ran during `bun install`); the smoke test
       # launches it with `--no-sandbox` in CI (see smoke.spec.ts).
+      # See the note in the `storybook` job: the browser download was uncached in every
+      # job that needed one.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
       - name: Install Playwright OS deps
         run: bunx playwright install --with-deps chromium
         working-directory: packages/desktop
@@ -344,7 +446,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [ci, e2e, analysis, docker, desktop-package]
+    needs: [ci, web-test, storybook, e2e, analysis, docker, desktop-package]
     if: "github.event_name == 'push' && github.ref == 'refs/heads/master' && !startsWith(github.event.head_commit.message, 'chore(release):')"
     permissions:
       contents: write
@@ -356,7 +458,15 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: |
+            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
       - name: Install dependencies
         run: bun install

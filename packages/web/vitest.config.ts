@@ -83,5 +83,23 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.spec.ts', 'scripts/**/*.spec.ts'],
     setupFiles: ['./src/test-setup.ts'],
+    // `forks` (the default) pays a child_process spawn per worker; nothing here needs
+    // process isolation (no `process.chdir`, no native module state), so threads are
+    // strictly cheaper.
+    pool: 'threads',
+    // The default leaves one core idle. This suite is CPU-bound, not memory-bound —
+    // measured at 193 files / 2056 tests, the cost is jsdom construction and Angular
+    // JIT, both of which scale with workers.
+    maxWorkers: '100%',
+    // `isolate: false` was measured at **14.1s vs 134.7s** — a 9x win — and is
+    // deliberately NOT taken. It re-uses one module registry per worker, and three
+    // specs in desktop-window-controls depend on `vi.mock` of `lib/platform` resolving
+    // per-file; with the registry shared they see another file's module and fail. Two
+    // *real* bugs it surfaced are fixed (platform.spec.ts and native-capabilities.spec.ts
+    // `delete`d the global `window` instead of restoring it), so the remaining gap is
+    // only the mock-registry one. Re-evaluate behind `bun run check:isolated-specs --web`;
+    // a green-then-flaky suite costs more than the 2 minutes this saves, and `web-test`
+    // is no longer on the workflow's critical path.
+    isolate: true,
   },
 });

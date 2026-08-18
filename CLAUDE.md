@@ -16,9 +16,12 @@ Every task on this project must satisfy all three gates before being considered 
    Refactors must not reduce coverage. If a change can't reasonably be unit-tested, add an
    integration or e2e test instead — untested code is not shippable.
 
-2. **Every test must run in CI.** `bun run verify` runs every gate the CI `ci` job runs, in one
+2. **Every test must run in CI.** `bun run verify` runs every gate the CI **gate jobs**
+   (`ci` + `web-test` + `storybook` — see `GATE_JOBS`) run, in one
    command — **use it before pushing** rather than remembering the list. It is kept honest by
-   `check:ci-parity`, which fails when the workflow gains a step `verify` doesn't reach: the
+   `check:ci-parity`, which fails when any gate job gains a step `verify` doesn't reach **or
+   stops blocking `release`** (a gate that isn't in `release`'s `needs` is advisory — the #457
+   shape): the
    web-spec typecheck was CI-only for months, so a spec could drift from the type it asserts
    against with every local gate green (that is the third instance of this exact class, after
    #273 and #376). `bun run e2e` is deliberately *not* in `verify` — it is its own CI job and takes
@@ -69,11 +72,11 @@ library that the API streams from. URL-based acquisition (yt-dlp / spotdl) feeds
 
 ```bash
 bun install              # Install all workspace dependencies
-bun run verify           # EVERY gate the CI `ci` job runs, in one command — run this before pushing
+bun run verify           # EVERY gate the CI gate jobs run, in one command — run this before pushing
 bun run typecheck        # TypeScript type checking (tsc --build + Angular templates + e2e + web specs)
 bun run lint             # ESLint across all packages
 bun run check:claude-md  # fail on CLAUDE.md symbols that don't exist / broken docs links (CI gate)
-bun run check:ci-parity  # fail when the CI `ci` job runs a check `bun run verify` doesn't (CI gate)
+bun run check:ci-parity  # fail when a gate job runs a check `verify` doesn't, or doesn't block release (CI gate)
 bun run check:route-auth # fail when an /api route group is mounted with no auth decision (CI gate)
 bun run check:shipped-issues # open issues a shipped commit referenced (report, not a gate)
 bun run check:json       # duplicate keys in JSON configs (JSON.parse keeps the last silently)
@@ -1464,7 +1467,12 @@ Add detail there, not here.
   is a third gate — axe over every story, promoted from report to gate only once it hit zero
   (fixing 241 contrast nodes + nine unnamed transport buttons; contrast turned out to be a
   theme-token problem, and accent needed splitting into `--theme-accent` for fills vs
-  `--theme-accent-text` for text, which pull the requirement in opposite directions). The 11
+  `--theme-accent-text` for text, which pull the requirement in opposite directions). Both
+  gates are **one traversal** (`storybook-gates.mjs` + `lib/storybook-runner.mjs`, flags
+  `--smoke`/`--a11y`/`--strict`) across a pool of contexts, waiting on first render instead
+  of `networkidle` — 273s → 61s with byte-identical detection, verified red *and* green
+  against a deliberately broken story; they run in their own `storybook` CI job, not `ci`.
+  The 11
   app-shell components (5–14 injections) are deliberately out of scope. →
   [docs/storybook.md](docs/storybook.md)
 

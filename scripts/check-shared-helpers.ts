@@ -46,6 +46,14 @@ export interface SharedHelper {
 export const SHARED_HELPERS: SharedHelper[] = [
   { name: 'expandHome', canonical: 'packages/core/src/utils/expand-home.ts' },
   { name: 'timeAgo', canonical: 'packages/web/src/app/lib/relative-time.ts' },
+  // The Storybook gates were two scripts sharing ~50 duplicated lines — the static
+  // server, the story enumeration, the iframe URL — until they were merged into one
+  // traversal. Registered at the moment of extraction, which is when a copy is most
+  // likely to reappear. (`serve` is deliberately not listed: too generic a name to
+  // assert on repo-wide.)
+  { name: 'readStories', canonical: 'packages/e2e/scripts/lib/storybook-runner.mjs' },
+  { name: 'visitStories', canonical: 'packages/e2e/scripts/lib/storybook-runner.mjs' },
+  { name: 'storyUrl', canonical: 'packages/e2e/scripts/lib/storybook-runner.mjs' },
 ];
 
 export interface HelperViolation {
@@ -75,11 +83,22 @@ export function findLocalDeclarations(
   return out;
 }
 
+async function* concatScans(globs: Glob[], cwd: string): AsyncGenerator<string> {
+  for (const glob of globs) {
+    for await (const rel of glob.scan({ cwd })) yield rel;
+  }
+}
+
 async function main(): Promise<void> {
   const violations: HelperViolation[] = [];
-  const glob = new Glob('packages/*/src/**/*.ts');
+  // Two patterns: package sources, plus the `scripts/` dirs where build/CI helpers
+  // live (the Storybook gate runner is `.mjs` and sits outside any `src` tree).
+  const globs = [new Glob('packages/*/src/**/*.ts'), new Glob('packages/*/scripts/**/*.{ts,mjs}')];
+  const seen = new Set<string>();
 
-  for await (const rel of glob.scan({ cwd: repoRoot })) {
+  for await (const rel of concatScans(globs, repoRoot)) {
+    if (seen.has(rel)) continue;
+    seen.add(rel);
     if (rel.includes('node_modules') || rel.includes('/dist/')) continue;
     let source: string;
     try {
