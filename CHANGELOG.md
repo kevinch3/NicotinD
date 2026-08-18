@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.19](https://github.com/kevinch3/NicotinD/compare/v0.3.18...v0.3.19) (2026-08-18)
+
+### Bug Fixes
+
+* **analysis:** report idle-released registry as ok in /health, not unavailable ([#542](https://github.com/kevinch3/NicotinD/issues/542)) ([fd81db6](https://github.com/kevinch3/NicotinD/commit/fd81db6a6d4c9db89390740b5e8cf7dc99a906fb)), references [#224](https://github.com/kevinch3/NicotinD/issues/224) [#539](https://github.com/kevinch3/NicotinD/issues/539)
 ## [0.3.18](https://github.com/kevinch3/NicotinD/compare/v0.3.17...v0.3.18) (2026-08-18)
 
 ### Bug Fixes
