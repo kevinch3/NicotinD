@@ -5,6 +5,7 @@ import {
   MOOD_VOCAB,
   LICENCE_VOCAB,
   LICENCE_LABELS,
+  countryFlagEmoji,
   PERCEPTUAL_AXES,
   activeLibraryFilterCount,
   type LibraryFilter,
@@ -34,6 +35,8 @@ export class LibraryFilterPanelComponent {
   readonly filter = input<LibraryFilter>({});
   /** Genre options for the multi-select (host lazy-loads via panelOpened). */
   readonly genres = input<string[]>([]);
+  /** Origin-country facets (host lazy-loads via panelOpened); empty hides the section. */
+  readonly countryOptions = input<Array<{ country: string; artists: number }>>([]);
   /** data-testid prefix so multiple panels stay distinguishable in e2e. */
   readonly testIdPrefix = input('library');
   /** Count of active page-specific filters projected via the content slot. */
@@ -124,6 +127,26 @@ export class LibraryFilterPanelComponent {
 
   licenceLabel(code: string): string {
     return LICENCE_LABELS[code as LicenceCode] ?? code;
+  }
+
+  // Localized country names come free from the platform; core ships codes only.
+  private readonly regionNames = new Intl.DisplayNames([navigator.language || 'en'], {
+    type: 'region',
+  });
+
+  countryLabel(code: string): string {
+    return `${countryFlagEmoji(code)} ${this.regionNames.of(code) ?? code}`.trim();
+  }
+
+  toggleCountry(code: string): void {
+    const f = this.filter();
+    const current = f.countries ?? [];
+    const next = current.includes(code) ? current.filter((c) => c !== code) : [...current, code];
+    this.emitFilter(next.length ? { ...f, countries: next } : this.without(f, 'countries'));
+  }
+
+  isCountryActive(code: string): boolean {
+    return this.filter().countries?.includes(code) ?? false;
   }
 
   toggleLicence(code: string): void {

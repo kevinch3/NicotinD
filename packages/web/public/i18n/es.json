@@ -274,6 +274,7 @@
   "admin.taskKey": "Tonalidad musical",
   "admin.taskLicence": "Licencia / derechos (desde etiquetas del archivo)",
   "admin.taskPopularity": "Popularidad (ListenBrainz)",
+  "admin.taskArtistOrigin": "Orígenes de artistas",
   "admin.title": "Administración",
   "admin.totalCount": "{count} en total",
   "admin.transcodeHint": "Recodifica los streams a un formato/bitrate menor",

@@ -42,6 +42,7 @@ import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-
 import { ArtistIdentityModalComponent } from '../../components/artist-identity-modal/artist-identity-modal.component';
 import { ArtistGenreModalComponent } from '../../components/artist-genre-modal/artist-genre-modal.component';
 import { ArtistInfoComponent } from '../../components/artist-info/artist-info.component';
+import { ArtistOriginComponent } from '../../components/artist-origin/artist-origin.component';
 import {
   GenreDistributionStripComponent,
   type GenreSlice,
@@ -83,6 +84,7 @@ const SONGS_PAGE_SIZE = 60;
     ArtistIdentityModalComponent,
     ArtistGenreModalComponent,
     ArtistInfoComponent,
+    ArtistOriginComponent,
     GenreDistributionStripComponent,
     TvNavGroupDirective,
     TvNavItemDirective,
@@ -134,6 +136,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     // refresh on curator-locked bios.
     metaExists: boolean;
     manualOverride: boolean;
+    origin: { country: string | null; source: string } | null;
   } | null>(null);
   readonly albums = signal<Album[]>([]);
   readonly singlesAndEps = signal<Album[]>([]);
@@ -170,6 +173,12 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   onGenreSaved(): void {
     this.genreOpen.set(false);
     void this.loadArtist(this.artistId);
+  }
+
+  /** A saved origin keeps the artist id — patch the signal, no reload needed. */
+  onOriginChanged(origin: { country: string | null; source: string }): void {
+    const current = this.artist();
+    if (current) this.artist.set({ ...current, origin });
   }
 
   onArtistInfoUpdated(info: { bio: string | null; urls: string[] }): void {
@@ -241,6 +250,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   readonly songFilter = signal<LibraryFilter>({});
   readonly hasActiveSongFilter = computed(() => !isEmptyLibraryFilter(this.songFilter()));
   readonly genreOptions = signal<string[]>([]);
+  readonly countryOptions = signal<Array<{ country: string; artists: number }>>([]);
   private songsOffset = 0;
   // Public: bound by the template into <app-artist-image-menu> (#250 gap 4).
   artistId = '';
@@ -279,12 +289,20 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   }
 
   ensureGenresLoaded(): void {
-    if (this.genreOptions().length) return;
-    void firstValueFrom(this.api.getGenres())
-      .then((genres) => this.genreOptions.set(genres.map((g) => g.value)))
-      .catch(() => {
-        /* panel simply shows no genre section */
-      });
+    if (!this.genreOptions().length) {
+      void firstValueFrom(this.api.getGenres())
+        .then((genres) => this.genreOptions.set(genres.map((g) => g.value)))
+        .catch(() => {
+          /* panel simply shows no genre section */
+        });
+    }
+    if (!this.countryOptions().length) {
+      void firstValueFrom(this.api.originCountries())
+        .then((facets) => this.countryOptions.set(facets.countries))
+        .catch(() => {
+          /* panel simply shows no origin section */
+        });
+    }
   }
 
   // Lazy page loader — mirrors the library grid (offset + appendUnique + done).

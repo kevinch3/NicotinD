@@ -139,6 +139,27 @@ describe('LibraryFilterPanelComponent', () => {
     expect(emitted()).toEqual({});
   });
 
+  it('toggles an origin country on immutably', () => {
+    const fixture = setup({});
+    const emitted = lastEmitted(fixture);
+    fixture.componentInstance.toggleCountry('AR');
+    expect(emitted()?.countries).toEqual(['AR']);
+  });
+
+  it('drops the countries key when the last one clears', () => {
+    const fixture = setup({ countries: ['AR'] });
+    const emitted = lastEmitted(fixture);
+    fixture.componentInstance.toggleCountry('AR');
+    expect(emitted()?.countries).toBeUndefined();
+  });
+
+  it('labels a country with its flag + localized name, and counts it in the badge', () => {
+    const fixture = setup({ countries: ['AR'] });
+    expect(fixture.componentInstance.countryLabel('AR')).toContain('🇦🇷');
+    const badge = fixture.debugElement.query(By.css('[data-testid="library-filter-count"]'));
+    expect(badge.nativeElement.textContent.trim()).toBe('1');
+  });
+
   // Visual-contract assertions: pin the panel's outer/idle styling so a refactor
   // can't silently regress the toolbar-height unification (see plan §B).
   describe('visual contract', () => {
