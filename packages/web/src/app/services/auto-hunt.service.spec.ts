@@ -19,6 +19,7 @@ function candidate(matchPct: number, username = 'peer1'): FolderCandidate {
   return {
     username,
     directory: `/Music/${username}`,
+    candidateRef: `ref-${username}`,
     files: [{ filename: 'track1.flac', size: 1000 }],
     matchedTracks: 10,
     totalTracks: 10,
@@ -284,6 +285,118 @@ describe('AutoHuntService', () => {
       expect.objectContaining({ artistName: 'Pink Floyd' }),
     );
     expect(show).toHaveBeenCalledWith(expect.objectContaining({ countdown: 3 }));
+  });
+
+  // Issue #530: the addon-cutover server requires the hunt candidate token —
+  // without it every one-click download 400s ("Selection expired") while the
+  // manual modal (which sends it) works.
+  it('sends the chosen candidate’s candidateRef', async () => {
+    huntAlbumBase.mockReturnValue(
+      of({ candidates: [candidate(85)], totalTracks: 10, skewNeeded: false }),
+    );
+    huntDownload.mockReturnValue(of({ queued: 1 }));
+
+    let downloadCb: (() => void) | undefined;
+    show.mockImplementation((config) => {
+      downloadCb ??= config.actions?.[0]?.callback;
+      return 'toast-id';
+    });
+
+    svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
+    await Promise.resolve();
+    downloadCb?.();
+    await Promise.resolve();
+
+    expect(huntDownload).toHaveBeenCalledWith(
+      42,
+      expect.objectContaining({
+        selected: expect.objectContaining({ candidateRef: 'ref-peer1' }),
+      }),
+      false,
+    );
+  });
+
+  describe('bounded auto-retry on enqueue failure (issue #530)', () => {
+    /** Run the hunt and fire the countdown toast's Download Now action. */
+    async function runDownload(cands: FolderCandidate[]): Promise<void> {
+      huntAlbumBase.mockReturnValue(of({ candidates: cands, totalTracks: 10, skewNeeded: false }));
+      let downloadCb: (() => void) | undefined;
+      show.mockImplementation((config) => {
+        downloadCb ??= config.actions?.[0]?.callback;
+        return 'toast-id';
+      });
+      svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
+      await Promise.resolve();
+      downloadCb?.();
+      // Each retry hop chains another request; flush a few microtask rounds.
+      for (let i = 0; i < 8; i++) await Promise.resolve();
+    }
+
+    const offline = (user: string) => ({
+      status: 502,
+      error: { error: `Download failed for user "${user}" — they may be offline` },
+    });
+
+    it('tries the next viable candidate when the first peer is unavailable', async () => {
+      huntDownload
+        .mockReturnValueOnce(throwError(() => offline('peer1')))
+        .mockReturnValueOnce(of({ queued: 1 }));
+
+      await runDownload([candidate(85, 'peer1'), candidate(80, 'peer2')]);
+
+      expect(huntDownload).toHaveBeenCalledTimes(2);
+      expect(huntDownload).toHaveBeenLastCalledWith(
+        42,
+        expect.objectContaining({
+          selected: expect.objectContaining({ username: 'peer2', candidateRef: 'ref-peer2' }),
+        }),
+        false,
+      );
+      const lastToast = show.mock.calls.at(-1)?.[0];
+      expect(lastToast?.kind).toBe('success');
+    });
+
+    it('stops after 3 attempts and surfaces the last reason', async () => {
+      huntDownload.mockReturnValue(throwError(() => offline('somebody')));
+
+      await runDownload([
+        candidate(85, 'peer1'),
+        candidate(80, 'peer2'),
+        candidate(75, 'peer3'),
+        candidate(70, 'peer4'),
+      ]);
+
+      expect(huntDownload).toHaveBeenCalledTimes(3);
+      const lastToast = show.mock.calls.at(-1)?.[0];
+      expect(lastToast?.kind).toBe('error');
+      expect(lastToast?.message).toContain('they may be offline');
+    });
+
+    it('does not retry a terminal 400 and surfaces its message', async () => {
+      huntDownload.mockReturnValue(
+        throwError(() => ({
+          status: 400,
+          error: { error: 'Selection expired — run the search again' },
+        })),
+      );
+
+      await runDownload([candidate(85, 'peer1'), candidate(80, 'peer2')]);
+
+      expect(huntDownload).toHaveBeenCalledTimes(1);
+      const lastToast = show.mock.calls.at(-1)?.[0];
+      expect(lastToast?.kind).toBe('error');
+      expect(lastToast?.message).toContain('Selection expired');
+    });
+
+    it('never retries with a below-threshold candidate', async () => {
+      huntDownload.mockReturnValue(throwError(() => offline('peer1')));
+
+      await runDownload([candidate(85, 'peer1'), candidate(45, 'peer2')]);
+
+      expect(huntDownload).toHaveBeenCalledTimes(1);
+      const lastToast = show.mock.calls.at(-1)?.[0];
+      expect(lastToast?.kind).toBe('error');
+    });
   });
 
   // Issue #451: this path creates the generation_feedback row server-side but

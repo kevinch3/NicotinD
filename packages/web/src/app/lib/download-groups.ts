@@ -86,12 +86,15 @@ export interface DownloadItem {
 }
 
 /** Map an acquisition-plugin/addon backend id to an AcquisitionMethod. Accepts
- *  both the legacy in-process ids (`ytdlp`/`spotdl`/`archive`) and the addon ids
- *  they became (`ytdlp-addon`/`spotdl-addon`/`bundled-archive`) — otherwise an
- *  addon-backed URL job renders as "Unknown source". */
+ *  both the legacy in-process ids (`ytdlp`/`spotdl`/`archive`/`slskd`) and the
+ *  addon ids they became (`ytdlp-addon`/`spotdl-addon`/`bundled-archive`/
+ *  `slskd-addon`) — otherwise an addon-backed job renders as "Unknown source"
+ *  (issues #509, #532). */
 export function methodForBackend(backend: string): AcquisitionMethod {
   const base = backend === 'bundled-archive' ? 'archive' : backend.replace(/-addon$/, '');
-  return base === 'ytdlp' || base === 'spotdl' || base === 'archive' ? base : 'unknown';
+  return base === 'ytdlp' || base === 'spotdl' || base === 'archive' || base === 'slskd'
+    ? base
+    : 'unknown';
 }
 
 /** Acquire job `state` → stage, preferring the job's own fine-grained `stage`. */
