@@ -52,6 +52,7 @@ import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album
 import { SourceChipComponent } from '../../components/source-chip/source-chip.component';
 import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
+import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
@@ -204,6 +205,7 @@ function escapeHtml(text: string): string {
     AlbumHuntModalComponent,
     SourceChipComponent,
     CoverArtComponent,
+    SkeletonComponent,
     TranslatePipe,
     TvNavGroupDirective,
     TvNavItemDirective,

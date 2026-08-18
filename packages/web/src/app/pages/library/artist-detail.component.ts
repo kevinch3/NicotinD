@@ -61,6 +61,8 @@ import { resolveAlbumRoute } from '../../lib/route-utils';
 import { NavigationService } from '../../services/navigation.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 
@@ -72,6 +74,8 @@ const SONGS_PAGE_SIZE = 60;
   selector: 'app-artist-detail',
   standalone: true,
   imports: [
+    SkeletonComponent,
+    TranslatePipe,
     ArtistImageMenuComponent,
     RouterLink,
     AlbumHuntModalComponent,

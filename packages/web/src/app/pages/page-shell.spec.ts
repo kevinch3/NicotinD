@@ -79,3 +79,38 @@ describe('page title drift guard (issue #385)', () => {
     expect(read(rel)).not.toContain('text-2xl font-bold text-theme-primary');
   });
 });
+
+// Every list view that fetches used to render the same copy-pasted spinner —
+// `border-2 border-theme border-t-zinc-300 rounded-full animate-spin` — centred
+// in `py-20` dead space beside the grid it stood in for. They are now
+// `<app-skeleton>`; this guard stops copy #13.
+//
+// Scoped to *list* loaders on purpose. A spinner still means "an action you
+// started is in progress", and those are deliberately untouched:
+//   - search.component.html — the per-card `resolvingAlbum()` overlay
+//   - album-hunt-modal      — searching + "Queuing downloads…" progress
+//   - artist-image-menu     — upload in flight
+//   - downloads / admin     — scan-in-progress icons next to a live count
+//   - track-row, player-*, now-playing-*, folder-browser, layout — buffering
+//     and pull-to-refresh, which encode state in their motion
+// See docs/web-ui.md "List loading skeletons" for the full split rule.
+const NO_LIST_SPINNER = [
+  'library/library.component.html',
+  'library/album-detail.component.html',
+  'library/artist-detail.component.html',
+  'library/genre-detail.component.html',
+  'library/playlist-detail.component.html',
+  'library/library-songs.component.html',
+  'library/library-find.component.html',
+  'share/share-view.component.html',
+];
+
+describe('list loaders are skeletons, not spinners', () => {
+  it.each(NO_LIST_SPINNER)('%s has no copy-pasted list spinner left', (rel) => {
+    expect(read(rel)).not.toMatch(/border-t-zinc-300[^"]*animate-spin/);
+  });
+
+  it.each(NO_LIST_SPINNER)('%s renders a skeleton for its loading state', (rel) => {
+    expect(read(rel)).toContain('<app-skeleton');
+  });
+});

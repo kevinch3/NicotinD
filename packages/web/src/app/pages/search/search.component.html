@@ -262,12 +262,17 @@
 
   <!-- Loading spinner -->
   @if (loading()) {
-    <div class="text-center py-12">
-      <span
-        class="inline-block w-5 h-5 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin"
-      ></span>
-      <p class="text-zinc-500 text-sm mt-3">{{ 'acquire.searching' | t }}</p>
-    </div>
+    <!-- The words stay: this is a multi-second network fan-out across every
+         acquisition source, not a local read, so "Searching…" is doing real
+         work that a placeholder shape cannot. The skeleton previews the catalog
+         grid below it, which is a narrower column scale than the library's. -->
+    <p class="text-zinc-500 text-sm mb-3">{{ 'acquire.searching' | t }}</p>
+    <app-skeleton
+      variant="album-tile"
+      [count]="4"
+      containerClass="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
+      [label]="'common.loadingResults' | t"
+    />
   }
 
   <!-- Metadata (catalog) results — the primary, MusicBrainz/Lidarr-backed path.

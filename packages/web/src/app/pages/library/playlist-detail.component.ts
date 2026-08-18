@@ -17,12 +17,16 @@ import { SongMenuService } from '../../services/song-menu.service';
 import { SongPickerComponent } from '../../components/song-picker/song-picker.component';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import type { PlaylistDetail, Song } from '../../services/api/api-types';
+import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 
 @Component({
   selector: 'app-playlist-detail',
   standalone: true,
   imports: [
+    SkeletonComponent,
+    TranslatePipe,
     TrackRowComponent,
     ConfirmDialogComponent,
     SelectionBarComponent,

@@ -521,6 +521,63 @@
   animation: loading-bar 1.5s infinite linear;
 }
 
+/* ─── Skeleton loaders ───────────────────────────────────────────────────
+   Shape-matched list placeholders (app-skeleton). A spinner means an action
+   the user started is in progress; a skeleton means content is coming and its
+   shape is already known — see docs/web-ui.md "List loading skeletons".
+
+   The dip is deliberately shallower and the curve smoother than Tailwind's
+   `animate-pulse` (opacity .5 on cubic-bezier(0.4,0,0.6,1), which decelerates
+   INTO the trough and so dwells there, reading as a flash): ease-in-out sweeps
+   through the minimum, so at the same nominal amplitude it reads as a breath.
+   Loudness comes from the block's contrast against the page as much as from the
+   opacity range — `--theme-surface-2` over `--theme-bg` is one step, which is
+   why 0.6 is enough to be alive without being busy.
+
+   These rules are UNLAYERED (matching .animate-loading-bar / .eq-bars above),
+   so they beat Tailwind's `@layer utilities`: a `bg-*` utility on a
+   .skeleton-block silently loses. Set tone with .skeleton-block-soft, never a
+   Tailwind bg class. */
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.skeleton-block {
+  background-color: var(--theme-surface-2);
+  animation: skeleton-pulse 1.8s ease-in-out infinite;
+}
+
+/* Secondary line (subtitle / duration / metadata): mixed toward the page bg so
+   a tile's placeholder reads as a hierarchy rather than a solid slab. Applied
+   WITH .skeleton-block (which supplies the animation); declared after it so the
+   equal-specificity background-color wins. */
+.skeleton-block-soft {
+  background-color: color-mix(in srgb, var(--theme-surface-2) 55%, var(--theme-bg));
+}
+
+/* The app's first prefers-reduced-motion rule, and deliberately scoped to
+   skeletons rather than a blanket `* { animation: none }`: the buffering
+   spinner, .eq-bars and .animate-loading-bar all encode *state* in their
+   motion, so freezing them destroys information. A skeleton's motion is
+   decorative — the shape already says "loading". */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-block {
+    animation: none;
+  }
+}
+
+/* E-paper ghosts on repaint and each frame costs a full refresh. The eink theme
+   already drops transparency for the same class of reason. */
+[data-theme='eink'] .skeleton-block {
+  animation: none;
+}
+
 /* ─── Karaoke mode ───────────────────────────────────────────────────── */
 .karaoke-scroll {
   scrollbar-width: none; /* Firefox */

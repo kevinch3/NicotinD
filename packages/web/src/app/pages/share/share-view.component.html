@@ -1,7 +1,15 @@
 <!-- Loading -->
 @if (state() === 'loading') {
-  <div class="min-h-screen flex items-center justify-center bg-theme-base">
-    <span class="inline-block w-6 h-6 border-2 border-theme-secondary border-t-transparent rounded-full animate-spin"></span>
+  <!-- Laid out as the real page frame rather than a centred spinner, so the
+       content does not jump in from the middle of the viewport when it lands.
+       Rows here are the page's own (px-2 py-3, no cover) rather than
+       TrackRowComponent's, so the row pitch is approximate — close enough that
+       nothing visibly shifts, and not worth an eighth variant for one page. -->
+  <div class="min-h-screen bg-theme-base pb-24">
+    <div class="page-shell max-w-3xl">
+      <app-skeleton variant="detail-header" label="Loading shared music" />
+      <app-skeleton variant="track-row" [count]="8" [trackCover]="false" />
+    </div>
   </div>
 }
 

@@ -6,6 +6,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { SongMenuService } from '../../services/song-menu.service';
+import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -29,7 +30,7 @@ const EMPTY: LocalResults = { artists: [], albums: [], songs: [] };
 // quarantined rows. Playlists are not in that lane, so they're out of scope.
 @Component({
   selector: 'app-library-find',
-  imports: [RouterLink, CoverArtComponent, TrackRowComponent, TranslatePipe],
+  imports: [RouterLink, CoverArtComponent, TrackRowComponent, TranslatePipe, SkeletonComponent],
   templateUrl: './library-find.component.html',
 })
 export class LibraryFindComponent {

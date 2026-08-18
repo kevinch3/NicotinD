@@ -11,11 +11,8 @@
   </button>
 
   @if (loading()) {
-    <div class="text-center py-20">
-      <span
-        class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"
-      ></span>
-    </div>
+    <app-skeleton variant="artist-header" [label]="'common.loadingAlbums' | t" />
+    <app-skeleton variant="album-tile" />
   } @else if (artist()) {
     <!-- Artist header -->
     <div class="flex items-center gap-5 mb-8">
@@ -326,11 +323,8 @@
           </div>
 
           @if (songsLoadingMore()) {
-            <div class="flex justify-center py-6">
-              <span
-                class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"
-              ></span>
-            </div>
+            <!-- Continuation of an already-announced list: decorative. -->
+            <app-skeleton variant="track-row" [count]="3" containerClass="block space-y-0.5 mt-0.5" />
           }
           @if (songsLoaded() && visibleSongs().length === 0 && !songsLoadingMore()) {
             <p class="text-center text-theme-muted py-16">
@@ -344,11 +338,12 @@
 
     <!-- Discography section (requires Lidarr) -->
     @if (discographyLoading()) {
-      <div class="mt-10 flex items-center gap-2 text-theme-muted text-sm">
-        <span
-          class="inline-block w-4 h-4 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"
-        ></span>
-        Loading full discography…
+      <!-- Opt-in load with its own explanatory line, kept because the user
+           pressed a button and the fetch also provisions the artist in Lidarr.
+           The grid below is the same 5-col scale as the default album-tile. -->
+      <div class="mt-10">
+        <p class="text-theme-muted text-sm mb-3">Loading full discography…</p>
+        <app-skeleton variant="album-tile" [count]="8" />
       </div>
     }
 

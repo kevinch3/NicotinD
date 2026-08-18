@@ -23,6 +23,7 @@ import { CoverArtComponent } from '../../components/cover-art/cover-art.componen
 import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { LibrarySongsComponent } from './library-songs.component';
+import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { LibraryFindComponent } from './library-find.component';
 import { SetupService } from '../../services/setup.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
@@ -120,6 +121,7 @@ function writePersistedState(state: PersistedLibraryState): void {
     LibraryFilterPanelComponent,
     LibrarySongsComponent,
     LibraryFindComponent,
+    SkeletonComponent,
     IconComponent,
     TranslatePipe,
     LibraryStatsComponent,

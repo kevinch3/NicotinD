@@ -19,5 +19,13 @@ type Story = StoryObj<RecentlyPlayedComponent>;
  *
  * `GET /api/stream/:id` is deliberately *not* the signal: preloads, preserved offline
  * tracks and share tokens would all attribute wrongly.
+ *
+ * **There is no Loading story on purpose.** The shelf shows a `shelf-tile` skeleton
+ * while fetching, but *only* when a persisted last-played track says this listener has
+ * history — otherwise a fresh install would flash a shelf it is about to hide again.
+ * Staging that here would mean a pending HTTP fixture, and the story interceptor answers
+ * synchronously; adding a delay would put timing into the `smoke:storybook` gate for no
+ * extra coverage. The gate logic has four rendering tests in the spec, and the skeleton's
+ * shape is `Components/Skeleton` → `Shelf`.
  */
 export const Default: Story = {};

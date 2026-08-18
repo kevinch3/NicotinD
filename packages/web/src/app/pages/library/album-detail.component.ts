@@ -29,12 +29,16 @@ import {
   type GenreSlice,
 } from '../../components/genre-distribution-strip/genre-distribution-strip.component';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 
 @Component({
   selector: 'app-album-detail',
   imports: [
+    SkeletonComponent,
+    TranslatePipe,
     TrackRowComponent,
     ConfirmDialogComponent,
     RouterLink,

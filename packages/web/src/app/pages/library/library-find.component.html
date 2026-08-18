@@ -1,8 +1,10 @@
 <div data-testid="library-find-results">
   @if (loading()) {
-    <div class="text-center py-20">
-      <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
-    </div>
+    <!-- Find groups results by type, so the skeleton previews the two shapes it
+         actually renders (a cover grid + a song stack). Only the first is
+         labelled; two live regions on one screen compete. -->
+    <app-skeleton variant="album-tile" [count]="5" [label]="'common.loadingResults' | t" />
+    <app-skeleton variant="track-row" [count]="5" containerClass="block space-y-0.5 mt-6" />
   } @else if (failed()) {
     <p class="text-center text-theme-muted py-20" data-testid="library-find-error">
       Search failed. Pull down to try again.

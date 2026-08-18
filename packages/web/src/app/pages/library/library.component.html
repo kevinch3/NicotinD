@@ -125,9 +125,7 @@
     </div>
 
     @if (loading()) {
-      <div class="text-center py-20">
-        <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
-      </div>
+      <app-skeleton variant="album-tile" [label]="'common.loadingAlbums' | t" />
     }
 
     @if (!loading() && albums().length === 0) {
@@ -249,9 +247,7 @@
     </div>
 
     @if (loadingCompilations()) {
-      <div class="text-center py-20">
-        <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
-      </div>
+      <app-skeleton variant="album-tile" [label]="'common.loadingAlbums' | t" />
     } @else {
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid" #compilationsGrid="appTvNavGroup">
         @for (row of chunk(compilationsWindow.visible(), compilationsGrid.gridColumns()); track $index) {
@@ -338,9 +334,7 @@
     </div>
 
     @if (loadingSingles()) {
-      <div class="text-center py-20">
-        <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
-      </div>
+      <app-skeleton variant="album-tile" [label]="'common.loadingAlbums' | t" />
     } @else {
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid" #singlesGrid="appTvNavGroup">
         @for (row of chunk(singlesWindow.visible(), singlesGrid.gridColumns()); track $index) {
@@ -429,9 +423,7 @@
     </div>
 
     @if (loadingArtists()) {
-      <div class="text-center py-20">
-        <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
-      </div>
+      <app-skeleton variant="artist-tile" [label]="'common.loadingArtists' | t" />
     } @else {
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid" #artistsGrid="appTvNavGroup">
         @for (row of chunk(artistsWindow.visible(), artistsGrid.gridColumns()); track $index) {
@@ -482,9 +474,7 @@
   @if (browseMode() === 'genre') {
     <!-- Genre grid -->
     @if (loadingGenres()) {
-      <div class="text-center py-20">
-        <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
-      </div>
+      <app-skeleton variant="genre-tile" [label]="'common.loadingGenres' | t" />
     } @else {
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3" appTvNavGroup axis="grid" #genresGrid="appTvNavGroup">
         @for (row of chunk(genres(), genresGrid.gridColumns()); track $index) {
