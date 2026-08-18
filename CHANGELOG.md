@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.16](https://github.com/kevinch3/NicotinD/compare/v0.3.15...v0.3.16) (2026-08-18)
+
+### Bug Fixes
+
+* **web:** render the artist photo edit control ([#535](https://github.com/kevinch3/NicotinD/issues/535)) ([9cd77e2](https://github.com/kevinch3/NicotinD/commit/9cd77e257da2a82a78a29e133bd328de99958d7e))
 ## [0.3.15](https://github.com/kevinch3/NicotinD/compare/v0.3.14...v0.3.15) (2026-08-18)
 
 ### Features
