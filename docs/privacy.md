@@ -56,6 +56,17 @@ the admin config export. A schema change must not silently start omitting a colu
 data request. Tables absent from the running schema are reported in `skipped`, so a gap is visible
 rather than silent.
 
+**One exception, and it is a trap.** That runtime column discovery covers the `USER_TABLES` list
+only. The `users` row itself is not in that list (it is keyed by `id`, not a `user_id`) and is
+projected by an explicit `SELECT` into a hardcoded `UserDataExport['user']` shape — so **a new
+`users` column must be added to both by hand or it is silently missing from the export**.
+`last_seen_at` is the first column that hit this, and there is a test pinning it.
+
+`last_seen_at` (the Admin user list's "last connection", see
+[docs/presence-tracking.md](presence-tracking.md)) is personal data and is exported. It is
+**operational metadata, not listening history**, so the history consent chain above does not gate
+it: it records that an account connected, never what it played. It is removed with the user row.
+
 `redact` names columns whose *value* is a secret (today: `agent_tokens.token_hash`). The export
 shows that a credential exists — it is the user's data — without handing over the credential. The
 list is explicit rather than name-pattern-matched, so a rename breaks a test instead of quietly

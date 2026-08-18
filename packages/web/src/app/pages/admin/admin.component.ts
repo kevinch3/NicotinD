@@ -29,6 +29,10 @@ import type {
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { ToastService } from '../../services/toast.service';
+import { ConfirmService } from '../../services/confirm.service';
+import { MenuPanelComponent } from '../../components/menu-panel/menu-panel.component';
+import type { Translator } from '../../lib/relative-time';
+import { userActivityLabel, userActivityDetail } from '../../lib/user-activity';
 import {
   progressPercent,
   phaseLabel,
@@ -77,6 +81,7 @@ type DuplicateSong = {
     BottomChromeSafeDirective,
     FeedbackQueueComponent,
     ImportCardComponent,
+    MenuPanelComponent,
   ],
   templateUrl: './admin.component.html',
 })
@@ -88,6 +93,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   private auth = inject(AuthService);
   private server = inject(ServerConfigService);
   private toast = inject(ToastService);
+  private confirm = inject(ConfirmService);
   readonly i18n = inject(TranslateService);
   /** One consolidated snapshot for every read-only Admin telemetry — replaces
    *  the per-section loaders the page used to manage (systemStatus, scanStatus,
@@ -103,9 +109,6 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly resetTarget = signal<AdminUser | null>(null);
   readonly newPassword = signal('');
   readonly resetting = signal(false);
-
-  readonly deleteTarget = signal<AdminUser | null>(null);
-  readonly deleting = signal(false);
 
   readonly showCreateUser = signal(false);
   readonly newUsername = signal('');
@@ -213,7 +216,13 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.reviewDispose = dispose;
   }
 
-  currentUserId(): string | null {
+  /**
+   * A `computed`, not a method: every users-table row calls it three times (the
+   * "(you)" marker, the role cell, and two disabled bindings), and as a method
+   * that meant base64-decoding + JSON.parsing the JWT on every one of those on
+   * every change-detection pass. Still read as `currentUserId()` in the template.
+   */
+  readonly currentUserId = computed<string | null>(() => {
     const token = this.auth.token();
     if (!token) return null;
     try {
@@ -222,7 +231,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     } catch {
       return null;
     }
-  }
+  });
 
   ngOnInit(): void {
     this.loadUsers();
@@ -979,6 +988,35 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   readonly roles = ROLES;
 
+  /** Bound once so the pure activity helpers get a stable translator reference. */
+  private readonly translate: Translator = (key, params) => this.i18n.t(key, params);
+
+  /**
+   * Shared by the static self badge and the role-picker trigger, so the two
+   * cannot drift — they are the same badge, one of which happens to be clickable.
+   */
+  roleBadgeClass(role: string): string {
+    return (
+      'inline-block px-2 py-0.5 rounded text-xs font-medium border border-theme ' +
+      (role === 'admin' ? 'status-warn' : 'bg-theme-surface-2 text-theme-secondary')
+    );
+  }
+
+  /** "Online" / "3d ago" / "Never" — see lib/user-activity.ts. */
+  activityLabel(user: AdminUser): string {
+    return userActivityLabel(user, this.translate);
+  }
+
+  /** "2 devices · 3 sessions" while connected, else '' (the row renders nothing). */
+  activityDetail(user: AdminUser): string {
+    return userActivityDetail(user, this.translate);
+  }
+
+  /** Absolute last-connection time for the Activity cell's tooltip. */
+  lastSeenExact(user: AdminUser): string {
+    return user.last_seen_at === null ? '' : new Date(user.last_seen_at).toLocaleString();
+  }
+
   async setRole(user: AdminUser, newRole: Role): Promise<void> {
     if (newRole === user.role) return;
     const prevRole = user.role;
@@ -1026,8 +1064,10 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (!username || !password) return;
     this.creating.set(true);
     try {
-      const user = await firstValueFrom(this.api.createUser(username, password));
-      this.users.update((prev) => [...prev, user]);
+      await firstValueFrom(this.api.createUser(username, password));
+      // Reload rather than appending: the list is ordered by activity
+      // server-side, and a never-connected new user does not simply belong last.
+      await this.loadUsers();
       this.showCreateUser.set(false);
       this.newUsername.set('');
       this.newUserPassword.set('');
@@ -1038,18 +1078,21 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
-  async handleDeleteUser(): Promise<void> {
-    const target = this.deleteTarget();
-    if (!target) return;
-    this.deleting.set(true);
+  /**
+   * Deleting a user routes through the app-wide confirm host rather than a
+   * modal this page hand-rolls — same shape as every other destructive action
+   * (`ConfirmService`, mounted once in the layout).
+   */
+  async confirmDeleteUser(user: AdminUser): Promise<void> {
+    const ok = await this.confirm.ask(
+      this.i18n.t('admin.deleteUserConfirm', { username: user.username }),
+    );
+    if (!ok) return;
     try {
-      await firstValueFrom(this.api.deleteUser(target.id));
-      this.users.update((prev) => prev.filter((u) => u.id !== target.id));
-      this.deleteTarget.set(null);
+      await firstValueFrom(this.api.deleteUser(user.id));
+      this.users.update((prev) => prev.filter((u) => u.id !== user.id));
     } catch (err) {
       this.error.set(err instanceof Error ? err.message : this.i18n.t('admin.deleteUserFailed'));
-    } finally {
-      this.deleting.set(false);
     }
   }
 

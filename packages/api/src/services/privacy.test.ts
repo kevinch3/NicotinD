@@ -244,6 +244,19 @@ describe('exportUserData', () => {
     expect(bundleTables(exportUserData(db, 'u1'))).toContain('playlists');
   });
 
+  it('includes last_seen_at — the users row is projected by hand, not by PRAGMA', () => {
+    // The PRAGMA-driven column discovery only covers USER_TABLES; the `users`
+    // header row has an explicit SELECT, so a new column there is silently
+    // dropped from an Art. 15 request unless it is added by hand. This is the
+    // regression guard for that.
+    db.run(`UPDATE users SET last_seen_at = 1700000000000 WHERE id = 'u1'`);
+    expect(exportUserData(db, 'u1').user.lastSeenAt).toBe(1_700_000_000_000);
+  });
+
+  it('reports a never-connected account as null rather than omitting the field', () => {
+    expect(exportUserData(db, 'u1').user).toHaveProperty('lastSeenAt', null);
+  });
+
   it('throws for an unknown user rather than returning an empty bundle', () => {
     // An empty bundle would read as "we hold nothing about you", which is a
     // very different claim from "no such user".

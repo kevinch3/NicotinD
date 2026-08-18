@@ -3,6 +3,7 @@ import { asRole, hashPassword, verifyPassword } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { authMiddleware, signJwt } from '../middleware/auth.js';
 import type { AuthEnv } from '../middleware/auth.js';
+import { touchLastSeen } from '../services/user-last-seen.js';
 
 const AuthRequestSchema = z.object({
   username: z.string().min(1).openapi({ example: 'admin' }),
@@ -218,6 +219,9 @@ export function authRoutes(
         return c.json({ error: 'Account disabled', code: 'ACCOUNT_DISABLED' }, 403);
       }
 
+      // A login is a discrete event, so it bypasses the heartbeat throttle.
+      touchLastSeen(db, user.id, Date.now(), { force: true });
+
       const token = await signJwt(
         { sub: user.id, username: user.username, role: user.role as 'admin' | 'user' },
         jwtSecret,
@@ -290,6 +294,10 @@ export function authRoutes(
           user.deviceId,
         );
       }
+
+      // Sliding-session refresh is the coverage for clients that authenticate
+      // without running the web presence heartbeat. Throttled, unlike login.
+      touchLastSeen(db, user.sub);
 
       const token = await signJwt(
         {

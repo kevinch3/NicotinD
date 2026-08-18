@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
+import { getDatabase } from '../db.js';
 import { presenceService } from '../services/presence.js';
+import { touchLastSeen } from '../services/user-last-seen.js';
 
 /**
  * Presence heartbeat endpoint. Any authenticated (non-share) user reports their own
@@ -24,6 +26,11 @@ export function presenceRoutes() {
     }
 
     presenceService.heartbeat(user.sub, body.deviceId, body.tabId);
+    // Persist the "last connection" the in-memory registry forgets on restart.
+    // Throttled inside touchLastSeen — not a write per beat per tab. `getDatabase`
+    // is passed unresolved so an uninitialised DB is a silent no-op here rather
+    // than a 500 on a heartbeat.
+    touchLastSeen(getDatabase, user.sub);
     return c.body(null, 204);
   });
 

@@ -59,6 +59,31 @@ export interface AdminRoutesDeps {
   historyEnabled?: () => boolean;
 }
 
+/** The subset of an admin user row the activity ordering reads. */
+export interface UserActivityOrderable {
+  isConnected: boolean;
+  last_seen_at: number | null;
+  created_at: string;
+}
+
+/**
+ * Order the admin user list by usefulness rather than signup date: currently
+ * connected first, then most-recently-seen, then oldest account. A user who has
+ * never connected (`last_seen_at` NULL) sorts last within the offline group
+ * rather than first — NULL is "unknown", not "infinitely long ago".
+ *
+ * Pure and exported so the ordering is unit-testable without an HTTP round-trip.
+ */
+export function compareUsersByActivity(a: UserActivityOrderable, b: UserActivityOrderable): number {
+  if (a.isConnected !== b.isConnected) return a.isConnected ? -1 : 1;
+  if (a.last_seen_at !== b.last_seen_at) {
+    if (a.last_seen_at === null) return 1;
+    if (b.last_seen_at === null) return -1;
+    return b.last_seen_at - a.last_seen_at;
+  }
+  return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
+}
+
 export function adminRoutes(deps: AdminRoutesDeps) {
   const app = new Hono<AuthEnv>();
 
@@ -103,14 +128,23 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       detail: username,
     });
 
+    // Read created_at back rather than minting an ISO string: the column default is
+    // SQLite's datetime('now') ("YYYY-MM-DD HH:MM:SS", no T/Z) and the web's
+    // formatDate() appends a "Z" to it. An ISO string here produced "…ZZ", i.e. an
+    // Invalid Date in the Joined line of a freshly created row.
+    const created = db
+      .query<{ created_at: string }, [string]>('SELECT created_at FROM users WHERE id = ?')
+      .get(id);
+
     return c.json(
       {
         id,
         username,
         role: 'user',
         status: 'active',
-        created_at: new Date().toISOString(),
-        // A just-created user has no active sessions yet.
+        created_at: created!.created_at,
+        // A just-created user has never connected and has no active sessions yet.
+        last_seen_at: null,
         isConnected: false,
         amountOfDevices: 0,
         amountOfSessions: 0,
@@ -124,10 +158,17 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     const db = getDatabase();
     const users = db
       .query<
-        { id: string; username: string; role: string; status: string; created_at: string },
+        {
+          id: string;
+          username: string;
+          role: string;
+          status: string;
+          created_at: string;
+          last_seen_at: number | null;
+        },
         []
       >(
-        "SELECT id, username, role, COALESCE(status, 'active') as status, created_at FROM users ORDER BY created_at ASC",
+        "SELECT id, username, role, COALESCE(status, 'active') as status, created_at, last_seen_at FROM users ORDER BY created_at ASC",
       )
       .all();
 
@@ -141,6 +182,10 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       };
       return { ...u, ...p };
     });
+    // Sort after the merge, not in SQL: `isConnected` lives in the in-memory
+    // presence map, which SQL cannot see. The SELECT's created_at ASC is the
+    // stable base the comparator falls through to.
+    enriched.sort(compareUsersByActivity);
     return c.json(enriched);
   });
 

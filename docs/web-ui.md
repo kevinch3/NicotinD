@@ -235,6 +235,41 @@ targeted by an opacity modifier or `@apply`d from a theme color that isn't `@the
   idiom for a table: border + horizontal-scroll container, with cell padding doing the interior
   spacing (no `p-*` on the section itself, unlike a card).
 
+### Consolidate columns, don't hide them (the Admin users table)
+
+`hidden sm:table-cell` reads as a tidy way to fit a wide table on a phone, and it is a trap: the
+Admin users table hid Online, Devices, Sessions and Joined below `sm:`, which is exactly the data
+an admin opens that page to see, and exactly the viewport they are most likely on when they open it
+in a hurry. The fix was **fewer columns, not fewer visible columns** — three presence columns folded
+into one "Activity" cell with a muted second line, and Joined became the muted second line under the
+username. Five columns, all always rendered, no horizontal scroll at 390 px, nothing lost.
+
+Use it as the reference when a table starts to feel too wide: merge related columns into a
+two-line cell before reaching for a responsive-hide class. `tests/admin-users.spec.ts` pins both
+halves (five `<th>`, every `<td>` visible at 390 px, no page-level horizontal overflow).
+
+The same change is the reference for two component idioms:
+
+- **`MenuPanelComponent` works as a *picker*, not just an action list.** The role control is a
+  menu-panel trigger styled as the badge it replaced. Prefer it over a native `<select>` in the app
+  shell: a `<select>` swallows arrow keys, which is unrecoverable on a remote (no Tab to escape
+  with), and it can't carry the badge's colour variants. Remember the projection slots are strictly
+  `[menuTrigger]` / `[menuPanel]` — there is **no catch-all `<ng-content>`**, so a mis-named trigger
+  attribute renders nothing at all, silently.
+- **Never nest an `appTvNavGroup` inside a `[menuPanel]`**, and never put one on a
+  `<table>`/`<tr>`/`<td>`. The panel already owns ArrowUp/Down and stops propagation (issue #389),
+  so a nested group double-moves focus per press; and `TvNavGroupDirective` force-sets
+  `role="toolbar"` via a host binding, which would clobber a table's implicit ARIA roles. Wrap the
+  table in a `<div>` and put the group there.
+
+### `lib/relative-time.ts`
+
+The one "Just now / 5m ago / Yesterday / 4d ago" helper, shared by the Downloads feed and the Admin
+users table, and registered in `check:shared-helpers` so a second copy fails CI. The translator is
+an **optional parameter** rather than an injected service: that keeps the module pure (testable as a
+plain function, no Angular DI) and lets a surface that hasn't been through the i18n pass call it and
+get the original English wording verbatim.
+
 **Tier criteria** — pick one when adding a routed page, based on what the page *is*, not how wide it
 happens to look today:
 

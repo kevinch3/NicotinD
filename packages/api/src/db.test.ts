@@ -357,6 +357,58 @@ describe('applySchema — landing backfill', () => {
   });
 });
 
+describe('applySchema — users.last_seen_at migration', () => {
+  function cols(db: Database): string[] {
+    return (db.query('PRAGMA table_info(users)').all() as Array<{ name: string }>).map(
+      (c) => c.name,
+    );
+  }
+
+  it('adds the column to a legacy users table without inventing a value', () => {
+    const db = new Database(':memory:');
+    // A users table from before this column existed.
+    db.run(`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user', created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    db.run("INSERT INTO users (id, username, password_hash) VALUES ('u1', 'alice', 'x')");
+    expect(cols(db)).not.toContain('last_seen_at');
+
+    applySchema(db);
+
+    expect(cols(db)).toContain('last_seen_at');
+    // Deliberately NOT backfilled from created_at — "joined" is not "last seen",
+    // and there is no historical source for it (presence was in-memory only).
+    expect(
+      db
+        .query<{ last_seen_at: number | null }, [string]>(
+          'SELECT last_seen_at FROM users WHERE id = ?',
+        )
+        .get('u1')?.last_seen_at ?? null,
+    ).toBeNull();
+  });
+
+  it('is idempotent across restarts and preserves a stamped value', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      "INSERT INTO users (id, username, password_hash, last_seen_at) VALUES ('u1', 'alice', 'x', 4242)",
+    );
+
+    applySchema(db);
+
+    expect(
+      db
+        .query<{ last_seen_at: number | null }, [string]>(
+          'SELECT last_seen_at FROM users WHERE id = ?',
+        )
+        .get('u1')?.last_seen_at,
+    ).toBe(4242);
+  });
+});
+
 describe('applySchema — hold-for-review bootstrap exemption (#417)', () => {
   it('arms the marker on a database that already has a landed song', () => {
     const db = new Database(':memory:');

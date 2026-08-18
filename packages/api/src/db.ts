@@ -94,6 +94,11 @@ export function applySchema(db: Database): void {
   // Add status column to existing users table (safe if column already exists)
   addColumnIfMissing(db, 'users', 'status', "TEXT NOT NULL DEFAULT 'active'");
 
+  // Last connection (epoch ms), stamped by services/user-last-seen.ts. NULL = never
+  // seen since this column landed — there is nothing to backfill it from, since
+  // presence has always been in-memory only (docs/presence-tracking.md).
+  addColumnIfMissing(db, 'users', 'last_seen_at', 'INTEGER');
+
   // Add welcome_dismissed column to existing user_settings table
   addColumnIfMissing(db, 'user_settings', 'welcome_dismissed', 'INTEGER NOT NULL DEFAULT 0');
 

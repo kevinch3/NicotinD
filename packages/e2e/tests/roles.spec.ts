@@ -5,7 +5,7 @@ import { ADMIN, bearer, expandGroup } from '../helpers';
  * End-to-end proof that an admin changing a user's role **through the admin UI**
  * actually changes what that user sees. A freshly-created user starts as `user`
  * (acquisition visible); the admin demotes them to `listener` via the role
- * `<select>`; after the user reloads, the boot-time session refresh re-reads the
+ * picker in the Role column; after the user reloads, the boot-time session refresh re-reads the
  * new role from the DB (see auth `/refresh`) and the Downloads acquisition
  * surface disappears from their view + its route bounces home.
  */
@@ -46,20 +46,23 @@ test.describe('admin role switching affects the user view', () => {
     await expect(userPage.getByTestId('radio-landing')).toBeVisible();
     await expect(userPage.locator(acquisitionNav)).toBeVisible();
 
-    // Admin demotes them to `listener` through the role <select> in the users
+    // Admin demotes them to `listener` through the role picker in the users
     // table, scoped to the target's row. Wait for the persist to land.
     await page.goto('/admin');
     // The users table lives inside the collapsible "User Management" settings
     // group, which starts collapsed by default — expand it first.
     await expandGroup(page, 'user-management');
     const row = page.locator('tr', { hasText: target.username });
-    const select = row.getByTestId('user-role-select');
-    await expect(select).toBeVisible();
+    // The role control replaced the badge that used to duplicate it; the panel
+    // renders inside the trigger's wrapper, so it stays inside this row.
+    const roleTrigger = row.getByTestId('user-role-trigger');
+    await expect(roleTrigger).toBeVisible();
+    await roleTrigger.click();
     const [roleRes] = await Promise.all([
       page.waitForResponse(
         (r) => r.url().includes(`/role`) && r.request().method() === 'PUT' && r.ok(),
       ),
-      select.selectOption('listener'),
+      row.getByTestId('user-role-option-listener').click(),
     ]);
     expect(roleRes.ok()).toBeTruthy();
 
