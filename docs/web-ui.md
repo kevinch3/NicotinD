@@ -401,6 +401,11 @@ Guarded by `player.service.spec.ts` (`playSingle` / `playWithContext` / `jumpToQ
 
 ## Playback loading feedback (HDD-aware loaders)
 
+> This section is about **spinners** — feedback for an action already in flight.
+> For the placeholders that stand in for *not-yet-arrived list content*, see
+> "List loading skeletons" below; that section carries the rule for which
+> feedback a given surface should use.
+
 Libraries often sit on HDDs: starting an uncached track or seeking into an
 untranscoded region can take multiple seconds. All loading feedback derives
 from one source of truth on `PlayerService`:
@@ -663,6 +668,172 @@ Three rules, all documented on the helper itself:
 
 This exercises the real production template/CSS — it only swaps out *how* the
 input value gets in.
+
+## List loading skeletons
+
+Every list view that fetches data renders a **shape-matched skeleton** while it
+waits, via one `SkeletonComponent` (`components/skeleton/`). Before this, all of
+them rendered the same copy-pasted spinner —
+`border-2 border-theme border-t-zinc-300 rounded-full animate-spin` — centred in
+`text-center py-20` dead space as a *sibling* of the grid it stood in for. That
+string appeared twelve times across seven templates, and a 5-column poster wall
+resolved out of an empty page, so the layout jumped hard on arrival.
+
+### The split rule (why some spinners stayed)
+
+> A **spinner** means an action the user started is in progress.
+> A **skeleton** means content is coming and its shape is already known.
+
+Applied honestly, that leaves a lot of spinners in place. The ones deliberately
+**not** migrated, and why:
+
+| Site | Why it stays a spinner |
+| --- | --- |
+| `admin.component.html:1` | Not a spinner at all — a `<p>{{ 'admin.loadingUsers' \| t }}</p>`. It also stands in for a whole *settings page* (five group cards, metric pills, a log viewer, three tables), not a list. **A `<div>` row stack cannot match a `<table>`'s auto-layout column widths**, so a table skeleton would jump — which is why there is no `table-row` variant. |
+| `search.component.html` `resolvingAlbum()` overlay | An action on one specific card. |
+| `search.component.html` peer/track counter | Live progress with an incrementing count — reporting, not placeholding. |
+| `album-hunt-modal` (searching, "Queuing downloads…") | Process reporting with a per-query phase list. |
+| `downloads.component.html:14`, `admin.component.html:69` | Scan-in-progress icons next to a live song count. |
+| `artist-image-menu`, `folder-browser` | Upload / fetch in flight. |
+| `song-picker` "Searching…" | Debounced typeahead — a skeleton would strobe on every keystroke. |
+| `playlist-detail` proposals | That section legitimately renders *nothing* when there are no proposals; a skeleton would promise content that often isn't coming. |
+| `radio-landing` vibe presets | Per-button in-progress. Its genre chips have no loading state and keep none: `@if (genres().length > 0)` means absent-not-empty, and there is no `currentTrack`-style proxy to tell "will be non-empty" from "will stay empty". |
+| `track-row`, `player-*`, `now-playing-*`, `layout` | Buffering and pull-to-refresh — these encode *state* in their motion. |
+| `library.component.html` `.animate-loading-bar` | Already not a spinner, and it reads "fetching more". |
+
+`pages/page-shell.spec.ts` guards the migrated set against regrowth and carries
+that exclusion list inline, so it can be audited rather than just trusted.
+
+### Variants
+
+Each variant owns **both** its container classes and its item markup, so
+shape-matching is a property of the component rather than of the caller. A
+primitive that call sites assembled into grids would recreate the copy-paste as
+a dozen hand-built placeholder blocks drifting from the lists they mirror.
+
+**The host element *is* the container** — `<app-skeleton>` carries the grid/stack
+classes itself and drops into the same DOM position as the real list container,
+with no wrapper div. Consequence: every variant's class string must begin with an
+explicit display class, because an unknown element is `inline` by default and a
+stacked variant would silently lose its vertical rhythm. There is a spec for it.
+
+| variant | container | default count | mirrors |
+| --- | --- | --- | --- |
+| `album-tile` | `grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4` | 10 | Albums / Singles / Compilations, discography, find |
+| `artist-tile` | same 5-col grid | 10 | Artists tab |
+| `genre-tile` | `grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3` | 8 | Genres tab |
+| `track-row` | `block space-y-0.5` | 8 | every song listing |
+| `shelf-tile` | `flex gap-3 overflow-x-auto pb-2 -mx-1 px-1` | 6 | Recently played |
+| `detail-header` | `flex flex-col sm:flex-row items-center sm:items-end gap-6 mb-8` | 1 | album / playlist / share |
+| `artist-header` | `flex items-center gap-5 mb-8` | 1 | artist page |
+
+Inputs: `variant`, `count` (clamped 1..60; header variants ignore it), `label`,
+`containerClass` (replaces the default wholesale — search's catalog grid is a
+narrower column scale than the library's, and is the one call site that needs
+it), `trackCover` (mirrors `TrackRowComponent.showCover`; the album page passes
+`false`), `testId`. **No input is `input.required`** — a required input on a
+nested component throws `NG0950` under the JIT vitest harness and takes down the
+*host page's* whole spec (see `src/testing/signal-input.ts`), and this renders
+inside `LibraryComponent` and friends, all of which have full-template specs.
+
+### The line-height ledger (what makes shape-match real)
+
+> A text placeholder is a short bar **vertically centred in a box of the real
+> element's line-height** — never a bar of arbitrary height.
+
+`text-sm` = 20px, `text-xs` = 16px, `text-2xl` (`page-title`) = 32px. Worked
+example, `album-tile` against `library.component.html`:
+
+```
+p-3 (12) + cover + mb-2 (8) + 20 (text-sm title) + 16 (text-xs subtitle) + p-3 (12)
+```
+
+which is the real tile exactly, so the grid does not reflow when data lands.
+`Components/Skeleton` → `ShapeMatchAlbumGrid` and `ShapeMatchTrackList` put real
+content beside the skeleton in one container; if the rows stop terminating at the
+same y-offset, a ledger is wrong and that is where it shows.
+
+One deliberate approximation: `share-view` renders its own rows (`px-2 py-3`, no
+cover) rather than `TrackRowComponent`, so its row pitch is close but not exact.
+Not worth an eighth variant for one public page.
+
+### Motion
+
+**Opacity 1 → 0.6, 1.8s, `ease-in-out`**, defined once on `.skeleton-block` in
+`styles.css` — not Tailwind's `animate-pulse`. Four reasons, in order of weight:
+
+1. `animate-pulse` is `1 → .5 → 1` on `cubic-bezier(0.4, 0, 0.6, 1)`, a curve
+   that *decelerates into* both extremes and so dwells at the trough — it reads
+   as a flash. `ease-in-out` sweeps through the minimum, so at the same nominal
+   amplitude it reads as a breath.
+2. One selector must own colour, animation and the reduced-motion opt-out
+   together, or a call site can render a themed block and forget the animation.
+3. The block colour has to be a theme token anyway, so a CSS rule exists either
+   way.
+4. One place to retune amplitude app-wide.
+
+`.skeleton-block-soft` mixes toward the page background for secondary lines, so a
+tile reads as a hierarchy rather than a solid slab.
+
+**Caveat:** these rules are *unlayered* (matching `.animate-loading-bar` and
+`.eq-bars` in the same file), so they beat Tailwind's `@layer utilities` — a
+`bg-*` utility on a `.skeleton-block` silently loses. Set tone with
+`skeleton-block-soft`, never a Tailwind bg class.
+
+**Sync.** CSS animations start at the first style flush after the element enters
+the render tree, and Angular's `@for` materialises every item in one
+change-detection pass — so all placeholders mounted by the same `@if` flip share
+a start time and pulse in lockstep. That synchrony is what makes a page of
+skeletons read as one surface. **Never add an `animation-delay`** (that is the
+`.eq-bars` idiom and the opposite of what this wants), and **never render a
+skeleton adjacent to one already animating** — they would be out of phase. The
+two "load more" call sites are safe by construction: they render below
+already-loaded real rows, never beside a running skeleton.
+
+**Reduced motion.** This is the app's *first* `prefers-reduced-motion` rule, and
+it is scoped to skeletons rather than a blanket `* { animation: none }` on
+purpose: the buffering spinner, `.eq-bars` and `.animate-loading-bar` all encode
+state in their motion, so freezing them destroys information. A skeleton's motion
+is decorative — the shape already says "loading". The eink theme freezes it too,
+because e-paper ghosts on repaint.
+
+### Accessibility
+
+The whole contract is the pure `skeletonAria(label)`:
+
+| `label` | host attributes |
+| --- | --- |
+| non-empty | `role="status"`, `aria-busy="true"`, `aria-label="<label>"` |
+| empty (default) | `aria-hidden="true"` |
+
+The two are mutually exclusive by construction — a hidden live region is a
+contradiction, and there is a spec asserting they never co-occur.
+
+Why this survives `a11y:storybook:strict` at zero: placeholder blocks contain
+**no text nodes**, so `color-contrast` never applies. That is the reason the name
+comes from `aria-label` rather than an `.sr-only` string — a clipped text node is
+exactly what axe reports as a contrast *incomplete*, and the strict gate is
+per-rule, not per-severity. `aria-hidden-focus` only fires on focusable
+descendants, and a spec asserts every variant renders none.
+
+**Composition rule:** when a page renders two skeletons (a header plus its list),
+only the **first** takes a `label`. Two live regions on one screen compete. This
+is also why `label` must not be required.
+
+**Honest limitation:** a live region inserted into the DOM at the same moment its
+content appears is announced unreliably across screen readers. This is still
+strictly better than the bare `<span>` spinner it replaced, which was 100%
+silent. Don't paper over it with a delayed live region — that is a second
+mechanism to maintain.
+
+### Drift guards
+
+- `components/skeleton/skeleton-shape.spec.ts` — reads the real page templates
+  off disk and asserts each variant's container string still appears in the list
+  it mirrors. Same idiom (and the same class-order-sensitivity caveat) as
+  `page-shell.spec.ts`.
+- `pages/page-shell.spec.ts` — the migrated templates must not regrow the spinner
+  literal, and must render an `<app-skeleton>`.
 
 ## Changelog Modal
 

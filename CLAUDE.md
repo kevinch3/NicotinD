@@ -962,6 +962,9 @@ Add detail there, not here.
   pre-auth full-screen shells like login/setup/pair/server-config are exempt); grouped pages share
   `SettingsGroupComponent` cards, tables use `section-flush`, headings `page-title`/`section-title`;
   `page-shell.spec.ts` is the drift guard. → [docs/web-ui.md](docs/web-ui.md) "Page & section idioms"
+- **List loading skeletons**: one shape-matched `SkeletonComponent` (seven list variants) replaces the
+  copy-pasted list spinner on every fetching list; a spinner now means only "an action you started is
+  in progress". → [docs/web-ui.md](docs/web-ui.md) "List loading skeletons"
 - **Catalog (metadata-driven) search**: `CatalogService` returns artist/album cards from
   Lidarr/MusicBrainz, scoped to the matched artist, resolving into album-hunt (typed 404 +
   raw-network fallback for absent compilations). On a catalog miss (`ALBUM_NOT_IN_LIDARR`), the

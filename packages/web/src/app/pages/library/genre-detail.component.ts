@@ -27,11 +27,15 @@ import { PreserveService } from '../../services/preserve.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { SongMenuService } from '../../services/song-menu.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 
 @Component({
   selector: 'app-genre-detail',
   imports: [
+    SkeletonComponent,
+    TranslatePipe,
     TrackRowComponent,
     ConfirmDialogComponent,
     RouterLink,

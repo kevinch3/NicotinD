@@ -1,9 +1,10 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { catchError, firstValueFrom, of } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { HistoryApiService } from '../../services/api/history-api.service';
 import { PlayerService, type Track } from '../../services/player.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
+import { SkeletonComponent } from '../skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import type { RecentPlay } from '../../services/api/api-types';
 
@@ -20,12 +21,35 @@ import type { RecentPlay } from '../../services/api/api-types';
  *
  * See docs/listening-history.md.
  */
+/**
+ * Whether the shelf should show its loading skeleton.
+ *
+ * Gated on evidence that history exists, not on `loading` alone: an
+ * unconditional skeleton would make the shelf appear-then-vanish on a fresh
+ * install, which is precisely the "empty box on the landing screen" that the
+ * hide-when-empty rule above exists to prevent. A persisted last-played track
+ * is the app's existing proxy for "this user has listened before"
+ * (`radio-landing`'s `showResume`), so this adds no new persisted state.
+ */
+export function shouldShowRecentSkeleton(loading: boolean, hasPlayedBefore: boolean): boolean {
+  return loading && hasPlayedBefore;
+}
+
 @Component({
   selector: 'app-recently-played',
   standalone: true,
-  imports: [CoverArtComponent, TranslatePipe],
+  imports: [CoverArtComponent, SkeletonComponent, TranslatePipe],
   template: `
-    @if (plays().length > 0) {
+    @if (showSkeleton()) {
+      <section data-testid="recently-played-skeleton">
+        <h2 class="text-lg font-bold text-theme-primary mb-3">{{ 'home.recentlyPlayed' | t }}</h2>
+        <app-skeleton
+          variant="shelf-tile"
+          [count]="6"
+          [label]="'common.loadingRecentlyPlayed' | t"
+        />
+      </section>
+    } @else if (plays().length > 0) {
       <section data-testid="recently-played">
         <h2 class="text-lg font-bold text-theme-primary mb-3">{{ 'home.recentlyPlayed' | t }}</h2>
         <div class="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
@@ -62,6 +86,14 @@ export class RecentlyPlayedComponent implements OnInit {
   private auth = inject(AuthService);
 
   readonly plays = signal<RecentPlay[]>([]);
+  readonly loading = signal(true);
+
+  // A computed, so boot ordering isn't load-bearing: PlayerService.restoreState()
+  // runs in provideAppInitializer today, but if it ever moved later the skeleton
+  // would simply appear a tick late rather than break.
+  readonly showSkeleton = computed(() =>
+    shouldShowRecentSkeleton(this.loading(), this.player.currentTrack() !== null),
+  );
 
   ngOnInit(): void {
     void this.load();
@@ -69,10 +101,14 @@ export class RecentlyPlayedComponent implements OnInit {
 
   /** Non-fatal: an unreachable history endpoint just leaves the shelf hidden. */
   private async load(): Promise<void> {
-    const rows = await firstValueFrom(
-      this.api.getRecentPlays(20).pipe(catchError(() => of([] as RecentPlay[]))),
-    );
-    this.plays.set(rows);
+    try {
+      const rows = await firstValueFrom(
+        this.api.getRecentPlays(20).pipe(catchError(() => of([] as RecentPlay[]))),
+      );
+      this.plays.set(rows);
+    } finally {
+      this.loading.set(false);
+    }
   }
 
   onPlay(index: number): void {

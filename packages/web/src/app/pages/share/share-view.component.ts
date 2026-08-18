@@ -15,6 +15,7 @@ import { firstValueFrom } from 'rxjs';
 import { ShareSessionService, type ShareResourceType } from '../../services/share-session.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { AuthService } from '../../services/auth.service';
+import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import {
   mapSharedAlbum,
   mapSharedArtist,
@@ -39,7 +40,7 @@ type PageState = 'loading' | 'active' | 'expired' | 'error';
 @Component({
   selector: 'app-share-view',
   templateUrl: './share-view.component.html',
-  imports: [],
+  imports: [SkeletonComponent],
 })
 export class ShareViewComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);

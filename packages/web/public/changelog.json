@@ -1,5 +1,31 @@
 [
   {
+    "version": "0.3.15",
+    "date": "2026-08-18",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.14...v0.3.15",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**admin:** last connection + consolidate the user management table ([#529](https://github.com/kevinch3/NicotinD/issues/529)) ([9e0f0f4](https://github.com/kevinch3/NicotinD/commit/9e0f0f4f8cc6be2e122e84aed8c9d5cf2c9e8f31))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.14",
+    "date": "2026-08-18",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.13...v0.3.14",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**web:** real cover art on home resume + recently-played tiles ([#528](https://github.com/kevinch3/NicotinD/issues/528)) ([5074d20](https://github.com/kevinch3/NicotinD/commit/5074d200f23213d002569ac52563da0630ef2748))"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.3.13",
     "date": "2026-08-17",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.12...v0.3.13",
@@ -554,24 +580,5 @@
         ]
       }
     ]
-  },
-  {
-    "version": "0.1.321",
-    "date": "2026-08-08",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.320...v0.1.321",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** stop the collapsed TV player bleeding its blurred backdrop (refs [#439](https://github.com/kevinch3/NicotinD/issues/439)) ([#440](https://github.com/kevinch3/NicotinD/issues/440)) ([d077edc](https://github.com/kevinch3/NicotinD/commit/d077edca6a4400c2e6e4fa3c5befbc3900b4c0eb)), references [#399](https://github.com/kevinch3/NicotinD/issues/399)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.320",
-    "date": "2026-08-07",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.319...v0.1.320",
-    "sections": []
   }
 ]

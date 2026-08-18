@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { vi } from 'vitest';
-import { of, throwError } from 'rxjs';
-import { RecentlyPlayedComponent } from './recently-played.component';
+import { Subject, of, throwError } from 'rxjs';
+import { RecentlyPlayedComponent, shouldShowRecentSkeleton } from './recently-played.component';
 import { AuthService } from '../../services/auth.service';
 import { HistoryApiService } from '../../services/api/history-api.service';
 import { PlayerService } from '../../services/player.service';
@@ -32,7 +32,7 @@ function setup(rows: RecentPlay[] | 'error') {
           getRecentPlays: () => (rows === 'error' ? throwError(() => new Error('down')) : of(rows)),
         },
       },
-      { provide: PlayerService, useValue: { playWithContext } },
+      { provide: PlayerService, useValue: { playWithContext, currentTrack: signal(null) } },
       { provide: AuthService, useValue: { token: signal('test-token') } },
     ],
   });
@@ -120,5 +120,88 @@ describe('RecentlyPlayedComponent', () => {
 
     fixture.nativeElement.querySelector('[data-testid="recently-played-item"]').click();
     expect(playWithContext.mock.calls[0][0][0]).toMatchObject({ title: '', artist: '' });
+  });
+});
+
+describe('shouldShowRecentSkeleton', () => {
+  // The whole point of the gate: a fresh install must never flash a shelf it is
+  // about to hide again. That is the first row.
+  it('stays hidden while loading if the user has never played anything', () => {
+    expect(shouldShowRecentSkeleton(true, false)).toBe(false);
+  });
+
+  it('shows while loading once there is evidence of past listening', () => {
+    expect(shouldShowRecentSkeleton(true, true)).toBe(true);
+  });
+
+  it('never shows once loading has finished', () => {
+    expect(shouldShowRecentSkeleton(false, true)).toBe(false);
+    expect(shouldShowRecentSkeleton(false, false)).toBe(false);
+  });
+});
+
+describe('RecentlyPlayedComponent — loading window', () => {
+  /** Setup whose response is held open, so the loading state is observable. */
+  function deferredSetup(hasPlayedBefore: boolean) {
+    const subject = new Subject<RecentPlay[]>();
+    TestBed.configureTestingModule({
+      imports: [RecentlyPlayedComponent],
+      providers: [
+        { provide: HistoryApiService, useValue: { getRecentPlays: () => subject.asObservable() } },
+        {
+          provide: PlayerService,
+          useValue: {
+            playWithContext: vi.fn(),
+            currentTrack: signal(hasPlayedBefore ? { id: 'x', title: 'X', artist: 'Y' } : null),
+          },
+        },
+        { provide: AuthService, useValue: { token: signal('test-token') } },
+      ],
+    });
+    const fixture = TestBed.createComponent(RecentlyPlayedComponent);
+    fixture.detectChanges();
+    const q = (sel: string) => fixture.nativeElement.querySelector(sel);
+    return {
+      fixture,
+      subject,
+      skeleton: () => q('[data-testid="recently-played-skeleton"]'),
+      shelf: () => q('[data-testid="recently-played"]'),
+    };
+  }
+
+  it('shows neither shelf nor skeleton on a fresh install', () => {
+    const { skeleton, shelf } = deferredSetup(false);
+    expect(skeleton()).toBeNull();
+    expect(shelf()).toBeNull();
+  });
+
+  it('shows the skeleton in place of the shelf for a returning listener', () => {
+    const { skeleton, shelf } = deferredSetup(true);
+    expect(skeleton()).not.toBeNull();
+    expect(shelf()).toBeNull();
+  });
+
+  it('swaps the skeleton for real tiles once rows land', async () => {
+    const { fixture, subject, skeleton, shelf } = deferredSetup(true);
+    subject.next([play({ songId: 'a' })]);
+    subject.complete();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(skeleton()).toBeNull();
+    expect(shelf()).not.toBeNull();
+  });
+
+  // The pre-existing "stays hidden on error" contract must survive the new flag:
+  // a failed fetch has to clear `loading`, or the skeleton pulses forever.
+  it('hides both when the endpoint fails, leaving no stuck skeleton', async () => {
+    const { fixture, subject, skeleton, shelf } = deferredSetup(true);
+    subject.next([]);
+    subject.complete();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(skeleton()).toBeNull();
+    expect(shelf()).toBeNull();
   });
 });

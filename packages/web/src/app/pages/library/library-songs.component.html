@@ -171,9 +171,9 @@
     </div>
 
     @if (songsLoadingMore()) {
-      <div class="flex justify-center py-6">
-        <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
-      </div>
+      <!-- Continuation of a list that is already on screen and already
+           announced, so this one stays decorative (no label). -->
+      <app-skeleton variant="track-row" [count]="3" containerClass="block space-y-0.5 mt-0.5" />
     }
     @if (songsLoaded() && visibleSongs().length === 0 && !songsLoadingMore()) {
       <p class="text-center text-theme-muted py-16">

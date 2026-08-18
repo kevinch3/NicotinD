@@ -1,9 +1,10 @@
 <div class="page-shell max-w-6xl">
 
   @if (loadingAlbum()) {
-    <div class="text-center py-20">
-      <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
-    </div>
+    <!-- Only the header is labelled: two live regions on one screen compete.
+         trackCover mirrors the real rows below, which pass [showCover]="false". -->
+    <app-skeleton variant="detail-header" [label]="'common.loadingSongs' | t" />
+    <app-skeleton variant="track-row" [count]="10" [trackCover]="false" />
   } @else if (selectedAlbum()) {
     <button type="button" (click)="goBack()" aria-label="Back" title="Back"
       class="inline-flex items-center justify-center w-9 h-9 rounded-lg text-theme-muted hover:text-theme-secondary hover:bg-theme-surface-2 transition mb-6">

@@ -1,0 +1,109 @@
+@switch (variant()) {
+  @case ('album-tile') {
+    @for (i of items(); track i) {
+      <div class="p-3 rounded-lg bg-theme-surface/30">
+        <div class="skeleton-block w-full aspect-square rounded mb-2"></div>
+        <!-- Each text placeholder is a short bar centred in a box of the real
+             element's line-height (text-sm = 20px, text-xs = 16px), so the tile
+             is exactly as tall loaded as loading and nothing reflows. -->
+        <div class="h-5 flex items-center">
+          <span class="skeleton-block block h-3 rounded" [class]="barWidth(i)"></span>
+        </div>
+        <div class="h-4 flex items-center">
+          <span class="skeleton-block skeleton-block-soft block h-2.5 w-1/2 rounded"></span>
+        </div>
+      </div>
+    }
+  }
+
+  @case ('artist-tile') {
+    @for (i of items(); track i) {
+      <div class="flex flex-col items-center gap-2 p-3 rounded-xl">
+        <div class="skeleton-block w-20 h-20 rounded-full"></div>
+        <div class="w-full flex flex-col items-center">
+          <div class="h-5 flex items-center w-full justify-center">
+            <span class="skeleton-block block h-3 rounded" [class]="barWidth(i)"></span>
+          </div>
+          <div class="h-4 flex items-center">
+            <span class="skeleton-block skeleton-block-soft block h-2.5 w-14 rounded"></span>
+          </div>
+        </div>
+      </div>
+    }
+  }
+
+  @case ('genre-tile') {
+    @for (i of items(); track i) {
+      <div class="flex flex-col items-start gap-1 p-4 rounded-xl bg-theme-surface border border-theme">
+        <div class="h-5 flex items-center w-full">
+          <span class="skeleton-block block h-3 rounded" [class]="barWidth(i)"></span>
+        </div>
+        <div class="h-4 flex items-center">
+          <span class="skeleton-block skeleton-block-soft block h-2.5 w-16 rounded"></span>
+        </div>
+      </div>
+    }
+  }
+
+  @case ('track-row') {
+    @for (i of items(); track i) {
+      <div class="flex items-center gap-3 px-3 py-2 rounded-lg">
+        <span class="skeleton-block skeleton-block-soft h-3 w-4 rounded shrink-0"></span>
+        @if (trackCover()) {
+          <span class="skeleton-block w-9 h-9 rounded shrink-0"></span>
+        }
+        <span class="flex-1 min-w-0">
+          <span class="h-5 flex items-center">
+            <span class="skeleton-block block h-3 rounded" [class]="barWidth(i)"></span>
+          </span>
+          <span class="h-4 flex items-center">
+            <span class="skeleton-block skeleton-block-soft block h-2.5 w-1/3 rounded"></span>
+          </span>
+        </span>
+        <span class="skeleton-block skeleton-block-soft h-3 w-7 rounded shrink-0"></span>
+      </div>
+    }
+  }
+
+  @case ('shelf-tile') {
+    @for (i of items(); track i) {
+      <div class="shrink-0 w-28">
+        <div class="skeleton-block w-28 h-28 rounded-lg"></div>
+        <div class="mt-1.5 h-4 flex items-center">
+          <span class="skeleton-block block h-2.5 rounded" [class]="barWidth(i)"></span>
+        </div>
+        <div class="h-4 flex items-center">
+          <span class="skeleton-block skeleton-block-soft block h-2.5 w-2/3 rounded"></span>
+        </div>
+      </div>
+    }
+  }
+
+  @case ('detail-header') {
+    <div class="skeleton-block w-48 h-48 rounded-lg flex-shrink-0"></div>
+    <div class="flex flex-col justify-end items-center sm:items-start w-full max-w-xs">
+      <!-- page-title is text-2xl → a 32px line box. -->
+      <div class="h-8 flex items-center w-full justify-center sm:justify-start">
+        <span class="skeleton-block block h-4 w-3/4 rounded"></span>
+      </div>
+      <div class="mt-1 h-6 flex items-center">
+        <span class="skeleton-block skeleton-block-soft block h-3 w-32 rounded"></span>
+      </div>
+      <div class="mt-1 h-5 flex items-center">
+        <span class="skeleton-block skeleton-block-soft block h-2.5 w-12 rounded"></span>
+      </div>
+    </div>
+  }
+
+  @case ('artist-header') {
+    <div class="skeleton-block w-20 h-20 rounded-full flex-shrink-0"></div>
+    <div class="flex flex-col min-w-0 w-full max-w-xs">
+      <div class="h-8 flex items-center">
+        <span class="skeleton-block block h-4 w-2/3 rounded"></span>
+      </div>
+      <div class="mt-1 h-5 flex items-center">
+        <span class="skeleton-block skeleton-block-soft block h-2.5 w-24 rounded"></span>
+      </div>
+    </div>
+  }
+}

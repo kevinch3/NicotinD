@@ -41,9 +41,7 @@
   }
   
   @if (loadingGenreSongs()) {
-    <div class="text-center py-20">
-      <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
-    </div>
+    <app-skeleton variant="track-row" [label]="'common.loadingSongs' | t" />
   } @else {
     @if (selection.active()) {
       <app-selection-bar

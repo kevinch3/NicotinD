@@ -5,9 +5,8 @@
   </button>
 
   @if (loading()) {
-    <div class="text-center py-20">
-      <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
-    </div>
+    <app-skeleton variant="detail-header" [label]="'common.loadingSongs' | t" />
+    <app-skeleton variant="track-row" [count]="10" />
   } @else if (playlist(); as pl) {
     <div class="flex items-start gap-4 mb-6">
       @if (pl.coverArt) {

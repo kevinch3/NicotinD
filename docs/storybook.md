@@ -20,13 +20,13 @@ Both build and smoke run in the CI `ci` job and in `bun run verify`.
 
 ## What is in it
 
-36 components, split by how much of the app they need in order to render:
+37 components, split by how much of the app they need in order to render:
 
-- **Presentational (19)** — zero injected services: `artist-links`, `changelog-modal`,
+- **Presentational (20)** — zero injected services: `artist-links`, `changelog-modal`,
   `confirm-dialog`, `desktop-window-controls`, `disk-pill`, `download-item`,
   `genre-distribution-strip`, `genre-radar`, `icon`, `library-filter-panel`,
   `metric-pill`, `password-field`, `pipeline-stage-badge`, `seek-bar`, `selection-bar`,
-  `settings-group`, `settings-group-header`, `source-chip`, `track-stats-bars`.
+  `settings-group`, `settings-group-header`, `skeleton`, `source-chip`, `track-stats-bars`.
 - **Light-DI (17)** — one to three injected services, rendered against fixtures:
   `add-to-playlist`, `artist-genre-modal`, `artist-identity-modal`, `artist-info`,
   `confirm-host`, `cover-art`, `desktop-title-bar-overlay`, `device-switcher`,
@@ -164,6 +164,19 @@ because a gate that starts red gets disabled rather than fixed.
 | `button-name` | critical | Fixed — nine icon-only buttons had no accessible name |
 | `color-contrast` | serious | Fixed — 241 nodes → 0 ([#481](https://github.com/kevinch3/NicotinD/issues/481)) |
 | `link-in-text-block` | serious | Fixed — changelog commit links now underlined ([#482](https://github.com/kevinch3/NicotinD/issues/482)) |
+
+### Keeping it at zero: the skeleton's contract
+
+`SkeletonComponent` was the first component added after the gate went green, and it
+is the shape most likely to break it — a decorative `aria-hidden` subtree that also
+has to announce when it *is* the page's loading state. It holds at zero because the
+subtree is **textless**: the accessible name comes from `aria-label` on the host, not
+an `.sr-only` string, since a clipped text node is exactly what axe reports as a
+`color-contrast` *incomplete*. `role="status"` and `aria-hidden` are mutually
+exclusive by construction (`skeletonAria`), and no variant renders anything focusable,
+so `aria-hidden-focus` cannot fire. Both branches have their own story
+(`LabelledAndDecorative`) so the gate exercises each. Full rationale in
+[web-ui.md](web-ui.md) "List loading skeletons".
 
 **`button-name` was a real app defect**, not a story artifact: the transport controls in
 `player-transport-mini`, `now-playing-transport` and the karaoke overlay, plus Now Playing
