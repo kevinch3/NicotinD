@@ -120,6 +120,26 @@ export function songFilterWheres(f: LibraryFilter, alias = 's'): FilterSqlFragme
     wheres.push(...lic.wheres);
     params.push(...lic.params);
   }
+  if (f.countries?.length) {
+    // Credited artists = the junction rows UNIONed with the primary artist_id,
+    // matching the radio pool query so filter and scoring agree on what "the
+    // song's artists" means (the junction is only populated after a rescan).
+    const positive = f.countries.filter((x) => x !== 'unknown');
+    const artistIds = `SELECT artist_id FROM library_song_artists WHERE song_id = ${alias}.id UNION SELECT ${alias}.artist_id`;
+    const parts: string[] = [];
+    if (positive.length) {
+      parts.push(
+        `EXISTS (SELECT 1 FROM library_artist_origins lo WHERE lo.artist_id IN (${artistIds}) AND lo.country IN (${placeholders(positive.length)}))`,
+      );
+      params.push(...positive);
+    }
+    if (f.countries.includes('unknown')) {
+      parts.push(
+        `NOT EXISTS (SELECT 1 FROM library_artist_origins lo WHERE lo.artist_id IN (${artistIds}) AND lo.country IS NOT NULL)`,
+      );
+    }
+    if (parts.length) wheres.push(parts.length === 1 ? parts[0]! : `(${parts.join(' OR ')})`);
+  }
   if (f.durationMin !== undefined) {
     wheres.push(`${alias}.duration >= ?`);
     params.push(f.durationMin);
