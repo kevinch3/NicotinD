@@ -78,7 +78,12 @@ import type {
   CoverCandidatesResponse,
   ApplyCoverRequest,
 } from '@nicotind/core';
-import { parseLibraryFilter, isLicenceCode } from '@nicotind/core';
+import { parseLibraryFilter, isLicenceCode, normalizeMbCountry } from '@nicotind/core';
+import {
+  getArtistOrigin,
+  listOriginFacets,
+  upsertArtistOrigin,
+} from '../services/artist-origins.js';
 import {
   albumFilterWheres,
   artistFilterWheres,
@@ -667,11 +672,13 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     attachAlbumArtists(db, albums);
     attachAlbumArtists(db, singlesAndEps);
     const meta = getArtistMeta(db, id);
+    const origin = getArtistOrigin(db, id);
     return c.json({
       artist: {
         ...rowToArtist(artistRow),
         bio: meta?.bio ?? null,
         urls: meta?.urls ?? [],
+        origin: origin ? { country: origin.country, source: origin.source } : null,
         // Issue #213: tell the web whether a library_artist_meta row exists
         // at all. `metaExists=false` means *never fetched* (different from a
         // tombstoned row, which is `metaExists=true && bio=null`) — the
@@ -682,6 +689,37 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       albums,
       singlesAndEps,
     });
+  });
+
+  /**
+   * Curator origin correction (docs/artist-origin.md). `country: null` writes a
+   * permanent **user tombstone** ("no origin", e.g. MB was wrong) — distinct
+   * from deleting the row, which would reopen the artist to the enrichment
+   * task. A `source='user'` row is never overwritten by the background fill.
+   */
+  app.put('/artists/:id/origin', async (c) => {
+    requireCurator(c);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const exists = db
+      .query<{ id: string }, [string]>(`SELECT id FROM library_artists WHERE id = ?`)
+      .get(id);
+    if (!exists) return c.json({ error: 'Artist not found', code: 'NOT_FOUND' }, 404);
+    const body = await c.req.json<{ country?: string | null }>().catch(() => null);
+    if (!body || !('country' in body)) {
+      return c.json({ error: 'country required', code: 'VALIDATION_ERROR' }, 400);
+    }
+    const country = body.country == null ? null : normalizeMbCountry(body.country);
+    if (body.country != null && country === null) {
+      return c.json({ error: 'Not an ISO 3166-1 alpha-2 code', code: 'VALIDATION_ERROR' }, 400);
+    }
+    upsertArtistOrigin(db, { artistId: id, country, source: 'user' });
+    return c.json({ origin: { country, source: 'user' } });
+  });
+
+  /** Origin facets: countries present in the library + the unknown count. */
+  app.get('/origin-countries', (c) => {
+    return c.json(listOriginFacets(getDatabase()));
   });
 
   /**
