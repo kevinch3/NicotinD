@@ -67,6 +67,25 @@ describe('carryArtistCuration (#305)', () => {
     expect(existsSync(join(OVERRIDES(), 'old.jpg'))).toBe(false);
   });
 
+  it('moves the origin row and never clobbers the destination', () => {
+    db.run(
+      `INSERT INTO library_artist_origins (artist_id, country, source, checked_at)
+       VALUES ('old', 'AR', 'user', 1)`,
+    );
+    const r1 = carryArtistCuration(db, undefined, { fromId: 'old', toId: 'new' });
+    expect(r1.origin).toBe(true);
+    expect(
+      db.query(`SELECT artist_id FROM library_artist_origins WHERE artist_id = 'new'`).get(),
+    ).toBeTruthy();
+
+    db.run(
+      `INSERT INTO library_artist_origins (artist_id, country, source, checked_at)
+       VALUES ('old2', 'CL', 'musicbrainz', 1)`,
+    );
+    const r2 = carryArtistCuration(db, undefined, { fromId: 'old2', toId: 'new' });
+    expect(r2.origin).toBe(false); // 'new' already has its own origin
+  });
+
   /**
    * A merge lands on an artist that may already be curated, and the
    * destination's choice is the more deliberate one — it was set on the artist
@@ -129,7 +148,13 @@ describe('carryArtistCuration (#305)', () => {
   it('is a no-op when the id does not actually change', () => {
     seedArtwork('same');
     const r = carryArtistCuration(db, dataDir, { fromId: 'same', toId: 'same' });
-    expect(r).toEqual({ artwork: false, overrideFile: false, meta: false, genreOverride: false });
+    expect(r).toEqual({
+      artwork: false,
+      overrideFile: false,
+      meta: false,
+      origin: false,
+      genreOverride: false,
+    });
     expect(db.query(`SELECT id FROM library_artwork`).all()).toEqual([{ id: 'same' }]);
   });
 
