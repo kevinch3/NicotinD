@@ -152,13 +152,18 @@ describe('MusicBrainzClient getArtistOrigin', () => {
     expect(await client.getArtistOrigin('mbid-3')).toEqual({ ok: true, country: null });
   });
 
+  // The fetch is mocked, but the 503 branch it exercises is not: the client really does
+  // `await sleep(5000)` to back off, against bun's 5000ms default test timeout. That is a
+  // coin flip — pristine master failed this 2 runs out of 3 — and when it loses, the
+  // timed-out test leaves its stub installed and breaks the *next* test's `calls` array
+  // too. Give the backoff room rather than racing it.
   it('reports a transient failure as ok:false and does not cache it', async () => {
     mockFetchFail();
     const client = new MusicBrainzClient(cacheFile, 'test/1.0');
     expect(await client.getArtistOrigin('mbid-4')).toEqual({ ok: false, country: null });
     mockFetch({ id: 'mbid-4', country: 'UY' });
     expect(await client.getArtistOrigin('mbid-4')).toEqual({ ok: true, country: 'UY' });
-  });
+  }, 15_000);
 
   it('caches a confirmed answer (second call makes no fetch)', async () => {
     const calls = mockFetch({ id: 'mbid-5', country: 'BR' });
