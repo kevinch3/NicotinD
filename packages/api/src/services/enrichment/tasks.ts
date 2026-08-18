@@ -47,6 +47,8 @@ import { artistIdFor } from '../library-scanner.js';
 import { ListenBrainzClient, normalizePopularity } from '../listenbrainz-client.js';
 import { getMbid, upsertMbid } from '../mbid-store.js';
 import { upsertArtistMeta } from '../artist-meta-store.js';
+import { upsertArtistOrigin } from '../artist-origins.js';
+import { MusicBrainzClient, MB_USER_AGENT } from '../musicbrainz-client.js';
 import type { ArtistInfoResult, GenreQuery, GenreResult } from '@nicotind/core';
 import {
   recordAnalysisFailure,
@@ -150,6 +152,12 @@ export interface EnrichmentContext {
    * request failed transiently (retry next window, do not ledger). Never throws.
    */
   lookupPopularity: (recordingMbids: string[]) => Promise<Map<string, number | null>>;
+  /**
+   * MB artist-origin lookup (docs/artist-origin.md). `ok:false` = transient
+   * failure (retry next window, write nothing); `ok:true, country:null` = MB
+   * confirmed no usable country (tombstone). Null member when unavailable.
+   */
+  lookupArtistOrigin: ((mbid: string) => Promise<{ ok: boolean; country: string | null }>) | null;
   /** Returns a Spotify portrait url for an artist name, or null. Null when Spotify
    *  isn't configured — the artist-image task then relies on Lidarr alone. */
   lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
@@ -431,6 +439,8 @@ export function createEnrichmentContext(deps: {
   lookupGenreForRelease?: ((query: GenreQuery) => Promise<GenreResult | null>) | null;
   /** Sidecar client, or null when NICOTIND_ANALYSIS_URL isn't configured. */
   audioFeaturesClient?: AudioFeaturesClient | null;
+  /** MB artist-origin lookup override (tests); defaults to the shared-cache client. */
+  lookupArtistOrigin?: ((mbid: string) => Promise<{ ok: boolean; country: string | null }>) | null;
   /** Data dir — locates the ListenBrainz popularity cache (issue #220). */
   dataDir?: string;
 }): EnrichmentContext {
@@ -462,6 +472,7 @@ export function createEnrichmentContext(deps: {
     resolveArtistIdentity: deps.lidarr ? makeLidarrArtistIdentityResolver(deps.lidarr) : null,
     lookupLicence: makeLicenceLookup(),
     lookupPopularity: makePopularityLookup(deps.dataDir ?? null),
+    lookupArtistOrigin: deps.lookupArtistOrigin ?? makeArtistOriginLookup(deps.dataDir ?? null),
     fileExists: (abs) => existsSync(abs),
   };
 }
@@ -1088,6 +1099,101 @@ const artistInfoTask: EnrichmentTask = {
   },
 };
 
+/** Build the MB origin lookup over the shared on-disk MB cache. */
+export function makeArtistOriginLookup(
+  dataDir: string | null,
+): (mbid: string) => Promise<{ ok: boolean; country: string | null }> {
+  const client = new MusicBrainzClient(
+    dataDir ? join(dataDir, 'musicbrainz-cache.json') : 'musicbrainz-cache.json',
+    MB_USER_AGENT,
+  );
+  return (mbid) => client.getArtistOrigin(mbid);
+}
+
+/** Re-check a no-MBID / no-country origin tombstone at most this often. */
+export const ORIGIN_RECHECK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+const ORIGIN_PENDING_WHERE = `
+  a.hidden = 0
+  AND NOT EXISTS (
+    SELECT 1 FROM library_artist_origins o
+    WHERE o.artist_id = a.id
+      AND (o.country IS NOT NULL OR o.source = 'user' OR o.checked_at > ?))`;
+
+/**
+ * Fill artist origin countries from MusicBrainz (docs/artist-origin.md).
+ * Per-artist like artist-info, never a landing gate. A tombstone (country
+ * NULL) re-enters the pending set after ORIGIN_RECHECK_TTL_MS so a
+ * later-acquired MBID eventually fills it, without livelocking the LIMIT
+ * batch on unresolvable artists.
+ */
+const artistOriginTask: EnrichmentTask = {
+  id: 'artist-origin',
+  label: 'Artist origins',
+  available: (ctx) => (ctx.lookupArtistOrigin ? true : 'No origin lookup available'),
+  countPending: (db) =>
+    Number(
+      (
+        db
+          .query<{ n: number }, [number]>(
+            `SELECT COUNT(*) AS n FROM library_artists a WHERE ${ORIGIN_PENDING_WHERE}`,
+          )
+          .get(Date.now() - ORIGIN_RECHECK_TTL_MS) ?? { n: 0 }
+      ).n,
+    ),
+  run: async (db, ctx, limit) => {
+    if (!ctx.lookupArtistOrigin) return { applied: 0, labels: [], failed: 0, errorSample: null };
+    const rows = db
+      .query<ArtistNameRow, [number, number]>(
+        `SELECT id, name FROM library_artists a WHERE ${ORIGIN_PENDING_WHERE}
+         ORDER BY a.album_count DESC, a.name LIMIT ?`,
+      )
+      .all(Date.now() - ORIGIN_RECHECK_TTL_MS, limit);
+
+    const labels: string[] = [];
+    const tally: FailureTally = { failed: 0, sample: null };
+    let applied = 0;
+    for (const artist of rows) {
+      const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
+      let mbid = mbidRow?.mbid ?? null;
+      if (!mbid && ctx.lidarr) {
+        const resolved = await resolveMbidViaLidarr(ctx.lidarr, artist.name);
+        if (resolved) {
+          mbid = resolved.mbid;
+          upsertMbid(db, {
+            scope: 'artist',
+            key: normalizeArtistForGrouping(artist.name),
+            mbid,
+            source: 'lidarr',
+            confidence: resolved.confidence,
+          });
+        }
+      }
+      if (!mbid) {
+        // TTL-tombstone, not permanent: reopens once ORIGIN_RECHECK_TTL_MS lapses.
+        upsertArtistOrigin(db, { artistId: artist.id, country: null, source: 'musicbrainz' });
+        continue;
+      }
+      try {
+        const res = await ctx.lookupArtistOrigin(mbid);
+        if (!res.ok) continue; // transient — nothing written, retried next window
+        upsertArtistOrigin(db, {
+          artistId: artist.id,
+          country: res.country,
+          source: 'musicbrainz',
+        });
+        if (res.country) {
+          applied++;
+          labels.push(`${artist.name} → ${res.country}`);
+        }
+      } catch (err) {
+        recordFailure(tally, err);
+      }
+    }
+    return { applied, labels, failed: tally.failed, errorSample: tally.sample };
+  },
+};
+
 /**
  * SQL predicate (against the alias `name`) selecting compound artist strings that
  * *might* be splittable — a cheap superset of {@link splitOnDelimiters}. False
@@ -1696,6 +1802,7 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   audioFeaturesTask,
   artistImageTask,
   artistInfoTask,
+  artistOriginTask,
   artistIdentityTask,
   licenceTask,
   genreDiscogsTask,

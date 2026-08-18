@@ -119,6 +119,7 @@
         testIdPrefix="library-songs"
         [filter]="filter()"
         [genres]="genres()"
+        [countryOptions]="countryOptions()"
         (filterChange)="onFilterChange($event)"
         (panelOpened)="ensureGenres.emit()" />
 

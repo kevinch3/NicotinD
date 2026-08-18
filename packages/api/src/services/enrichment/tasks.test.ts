@@ -21,6 +21,8 @@ import { artistIdFor } from '../library-scanner.js';
 import { getMbid, upsertMbid } from '../mbid-store.js';
 import { albumGroupKey } from '../album-grouping.js';
 import { getArtistMeta, upsertArtistMeta } from '../artist-meta-store.js';
+import { getArtistOrigin, upsertArtistOrigin } from '../artist-origins.js';
+import { ORIGIN_RECHECK_TTL_MS } from './tasks.js';
 
 let db: Database;
 
@@ -85,6 +87,7 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     resolveArtistIdentity: null,
     lookupLicence: async () => null,
     lookupPopularity: async () => new Map(),
+    lookupArtistOrigin: null,
     fileExists: () => true,
     ...overrides,
   };
@@ -566,6 +569,81 @@ describe('artist-image task', () => {
     const c = ctx({ lidarr: lidarrWithPosters({ Radiohead: 'https://x/p.jpg' }) });
     const res = await artistImage.run(db, c, 25);
     expect(res.applied).toBe(0);
+  });
+});
+
+describe('artist-origin task', () => {
+  const artistOrigin = getTask('artist-origin')!;
+
+  it('is unavailable without a lookup', () => {
+    expect(artistOrigin.available(ctx())).toBe('No origin lookup available');
+  });
+
+  it('fills origin for an artist with a cached MBID', async () => {
+    seedArtist('a1', { name: 'Ana Tijoux' });
+    upsertMbid(db, {
+      scope: 'artist',
+      key: 'ana tijoux',
+      mbid: 'mb-1',
+      source: 'tag',
+      confidence: 1,
+    });
+    const c = ctx({ lookupArtistOrigin: async () => ({ ok: true, country: 'CL' }) });
+    const result = await artistOrigin.run(db, c, 10);
+    expect(result.applied).toBe(1);
+    expect(getArtistOrigin(db, 'a1')).toMatchObject({ country: 'CL', source: 'musicbrainz' });
+  });
+
+  it('tombstones a confirmed no-country answer and leaves pending', async () => {
+    seedArtist('a1', { name: 'Nowhere Band' });
+    upsertMbid(db, {
+      scope: 'artist',
+      key: 'nowhere band',
+      mbid: 'mb-2',
+      source: 'tag',
+      confidence: 1,
+    });
+    const c = ctx({ lookupArtistOrigin: async () => ({ ok: true, country: null }) });
+    const result = await artistOrigin.run(db, c, 10);
+    expect(result.applied).toBe(0);
+    expect(getArtistOrigin(db, 'a1')).toMatchObject({ country: null, source: 'musicbrainz' });
+    expect(artistOrigin.countPending(db)).toBe(0);
+  });
+
+  it('writes nothing on a transient failure so the artist retries', async () => {
+    seedArtist('a1', { name: 'Flaky' });
+    upsertMbid(db, { scope: 'artist', key: 'flaky', mbid: 'mb-3', source: 'tag', confidence: 1 });
+    const c = ctx({ lookupArtistOrigin: async () => ({ ok: false, country: null }) });
+    await artistOrigin.run(db, c, 10);
+    expect(getArtistOrigin(db, 'a1')).toBe(null);
+    expect(artistOrigin.countPending(db)).toBe(1);
+  });
+
+  it('tombstones a no-MBID artist (no batch livelock) and the TTL reopens it', async () => {
+    seedArtist('a1', { name: 'Unresolvable' });
+    const c = ctx({ lookupArtistOrigin: async () => ({ ok: true, country: 'AR' }) });
+    await artistOrigin.run(db, c, 10);
+    expect(getArtistOrigin(db, 'a1')).toMatchObject({ country: null });
+    expect(artistOrigin.countPending(db)).toBe(0);
+    db.run(`UPDATE library_artist_origins SET checked_at = ?`, [
+      Date.now() - ORIGIN_RECHECK_TTL_MS - 1,
+    ]);
+    expect(artistOrigin.countPending(db)).toBe(1);
+  });
+
+  it('never overwrites a user row', async () => {
+    seedArtist('a1', { name: 'Corrected' });
+    upsertMbid(db, {
+      scope: 'artist',
+      key: 'corrected',
+      mbid: 'mb-4',
+      source: 'tag',
+      confidence: 1,
+    });
+    upsertArtistOrigin(db, { artistId: 'a1', country: 'UY', source: 'user' });
+    const c = ctx({ lookupArtistOrigin: async () => ({ ok: true, country: 'AR' }) });
+    await artistOrigin.run(db, c, 10);
+    expect(getArtistOrigin(db, 'a1')).toMatchObject({ country: 'UY', source: 'user' });
   });
 });
 
@@ -1864,6 +1942,7 @@ describe('registry', () => {
       'artist-identity',
       'artist-image',
       'artist-info',
+      'artist-origin',
       'audio-features',
       'bpm',
       'energy',

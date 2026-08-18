@@ -62,6 +62,11 @@
             </button>
           }
         </div>
+        <app-artist-origin
+          [artistId]="artist()!.id"
+          [origin]="artist()!.origin"
+          (changed)="onOriginChanged($event)"
+        />
         <p class="text-theme-muted text-sm mt-0.5">
           {{ albums().length }} album{{ albums().length !== 1 ? 's' : '' }}
         </p>
@@ -269,6 +274,7 @@
               testIdPrefix="artist-songs"
               [filter]="songFilter()"
               [genres]="genreOptions()"
+              [countryOptions]="countryOptions()"
               (filterChange)="onSongFilterChange($event)"
               (panelOpened)="ensureGenresLoaded()"
             />

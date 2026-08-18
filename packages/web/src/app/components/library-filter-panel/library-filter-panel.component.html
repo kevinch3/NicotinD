@@ -110,6 +110,36 @@
       </div>
     </div>
 
+    <!-- Origin country (only countries present in the library; hidden with no data) -->
+    @if (countryOptions().length) {
+      <div>
+        <p class="text-theme-muted text-xs mb-1.5">Origin</p>
+        <div class="flex flex-wrap gap-1">
+          @for (opt of countryOptions(); track opt.country) {
+            <button type="button"
+              [attr.data-testid]="testIdPrefix() + '-filter-country-' + opt.country"
+              (click)="toggleCountry(opt.country)"
+              class="px-2 py-0.5 text-xs rounded-full transition"
+              [class.bg-theme-accent]="isCountryActive(opt.country)"
+              [class.text-theme-on-accent]="isCountryActive(opt.country)"
+              [class.bg-theme-surface-2]="!isCountryActive(opt.country)"
+              [class.text-theme-secondary]="!isCountryActive(opt.country)">
+              {{ countryLabel(opt.country) }} ({{ opt.artists }})
+            </button>
+          }
+          <button type="button" [attr.data-testid]="testIdPrefix() + '-filter-country-unknown'"
+            (click)="toggleCountry('unknown')"
+            class="px-2 py-0.5 text-xs rounded-full transition"
+            [class.bg-theme-accent]="isCountryActive('unknown')"
+            [class.text-theme-on-accent]="isCountryActive('unknown')"
+            [class.bg-theme-surface-2]="!isCountryActive('unknown')"
+            [class.text-theme-secondary]="!isCountryActive('unknown')">
+            Unknown
+          </button>
+        </div>
+      </div>
+    }
+
     <!-- Perceptual axes -->
     @for (row of axisOptions; track row.axis) {
       <div class="flex items-center justify-between gap-2 text-theme-secondary">

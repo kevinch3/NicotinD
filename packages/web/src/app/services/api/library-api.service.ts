@@ -285,6 +285,28 @@ export class LibraryApiService {
       );
   }
 
+  /** Origin-country facets: countries present in the library + the unknown count. */
+  originCountries() {
+    return this.http.get<{
+      countries: Array<{ country: string; artists: number }>;
+      unknownArtists: number;
+    }>('/api/library/origin-countries');
+  }
+
+  /** Curator origin correction; null = permanent user "no origin" tombstone. */
+  setArtistOrigin(id: string, country: string | null) {
+    return this.http
+      .put<{ origin: { country: string | null; source: string } }>(
+        `/api/library/artists/${encodeURIComponent(id)}/origin`,
+        { country },
+      )
+      .pipe(
+        // An origin edit changes what the countries filter returns, so the
+        // cached artist/album lists must not replay stale for the 30s TTL.
+        tap(() => this.invalidateLibraryReads()),
+      );
+  }
+
   /** Force a re-fetch of this artist's bio/links from Discogs (curator; issue #195). */
   refreshArtistInfo(id: string) {
     return this.http.post<ArtistInfoResponse>(
@@ -381,6 +403,8 @@ export class LibraryApiService {
         // a curator edit — auto-fetch must not touch it.
         metaExists: boolean;
         manualOverride: boolean;
+        /** Origin country (docs/artist-origin.md); null row-absent = not yet resolved. */
+        origin: { country: string | null; source: string } | null;
       };
       albums: Album[];
       singlesAndEps: Album[];

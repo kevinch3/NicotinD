@@ -203,6 +203,13 @@ Add detail there, not here.
   code (`unanimousLicence`, else NULL) computed in the scanner reduce, so Albums/Compilations filter
   to "entirely Public Domain" (artists stay any-track) + an album-page badge. →
   [docs/music-licence.md](docs/music-licence.md)
+- **Artist origin / nationality (standard metadata)**: `library_artist_origins` (MB-first via
+  `library_mbids`, TTL tombstones, `source='user'` permanent, carried by `carryArtistCuration`);
+  core `origin.ts` = ISO vocab + musical-cultural regions + `originCloseness`; a weight-8 radio
+  axis with `MISSING_ORIGIN_FLOOR`, a `LibraryFilter.countries` filter (`unknown` bucket), recipe
+  `countries`, and an artist-page flag line with curator edit
+  (`PUT /api/library/artists/:id/origin`, null = user tombstone). →
+  [docs/artist-origin.md](docs/artist-origin.md)
 - **Popularity / hotness per song (issue #220)**: the first *extrinsic* signal — a normalized 0–1
   `library_songs.popularity` (+ `popularity_source`) from **ListenBrainz** (`ListenBrainzClient`,
   `POST /1/popularity/recording`, MBID-native + credential-free — chosen over Spotify's 0–100 which

@@ -123,6 +123,52 @@ describe('MusicBrainzClient getLicence', () => {
   });
 });
 
+function mockFetchFail(): string[] {
+  const calls: string[] = [];
+  globalThis.fetch = (async (url: string) => {
+    calls.push(url);
+    return { ok: false, status: 503, json: async () => ({}) } as unknown as Response;
+  }) as unknown as typeof fetch;
+  return calls;
+}
+
+describe('MusicBrainzClient getArtistOrigin', () => {
+  it('returns the country field when present', async () => {
+    const calls = mockFetch({ id: 'mbid-1', country: 'AR' });
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    expect(await client.getArtistOrigin('mbid-1')).toEqual({ ok: true, country: 'AR' });
+    expect(calls[0]).toContain('/artist/mbid-1');
+  });
+
+  it('falls back to a country-typed area iso code', async () => {
+    mockFetch({ id: 'mbid-2', area: { type: 'Country', 'iso-3166-1-codes': ['CL'] } });
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    expect(await client.getArtistOrigin('mbid-2')).toEqual({ ok: true, country: 'CL' });
+  });
+
+  it('normalizes MB special codes to a confirmed miss', async () => {
+    mockFetch({ id: 'mbid-3', country: 'XW' });
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    expect(await client.getArtistOrigin('mbid-3')).toEqual({ ok: true, country: null });
+  });
+
+  it('reports a transient failure as ok:false and does not cache it', async () => {
+    mockFetchFail();
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    expect(await client.getArtistOrigin('mbid-4')).toEqual({ ok: false, country: null });
+    mockFetch({ id: 'mbid-4', country: 'UY' });
+    expect(await client.getArtistOrigin('mbid-4')).toEqual({ ok: true, country: 'UY' });
+  });
+
+  it('caches a confirmed answer (second call makes no fetch)', async () => {
+    const calls = mockFetch({ id: 'mbid-5', country: 'BR' });
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    await client.getArtistOrigin('mbid-5');
+    expect(await client.getArtistOrigin('mbid-5')).toEqual({ ok: true, country: 'BR' });
+    expect(calls).toHaveLength(1);
+  });
+});
+
 describe('MusicBrainzClient searchReleaseGroups', () => {
   it('maps release-group hits from artist-credit/primary-type/first-release-date/score', async () => {
     mockFetch({

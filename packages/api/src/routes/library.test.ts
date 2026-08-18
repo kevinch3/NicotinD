@@ -13,6 +13,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
+import { getArtistOrigin, upsertArtistOrigin } from '../services/artist-origins.js';
 import { getMbid, upsertMbid } from '../services/mbid-store.js';
 import { normalizeArtistForGrouping } from '../services/album-grouping.js';
 import { artistIdFor } from '../services/library-scanner.js';
@@ -2375,5 +2376,103 @@ describe('artist-info routes', () => {
     const row = getArtistMeta(testDb, artistId);
     expect(row?.bio).toBeNull();
     expect(row?.source).toBe('discogs');
+  });
+});
+
+describe('artist origin routes', () => {
+  const appFor = (role: 'listener' | 'user' | 'refiner' | 'admin') => {
+    const a = new Hono<AuthEnv>();
+    a.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role, iat: 0, exp: 9999999999 });
+      return next();
+    });
+    a.route('/', libraryRoutes('/home/kevinch3/Music'));
+    return a;
+  };
+
+  const seedOriginArtist = (id: string, name: string): void => {
+    sharedDb.run(`DELETE FROM library_artists WHERE id = ?`, [id]);
+    sharedDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES (?, ?, 1, 1)`,
+      [id, name],
+    );
+  };
+
+  beforeEach(() => {
+    sharedDb.run(`DELETE FROM library_artist_origins`);
+  });
+
+  it('GET /artists/:id carries the origin', async () => {
+    seedOriginArtist('art-og', 'Ana Tijoux');
+    upsertArtistOrigin(sharedDb, { artistId: 'art-og', country: 'CL', source: 'musicbrainz' });
+    const res = await appFor('user').request('/artists/art-og');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { artist: { origin: unknown } };
+    expect(body.artist.origin).toEqual({ country: 'CL', source: 'musicbrainz' });
+  });
+
+  it('GET /artists/:id reports a missing origin as null', async () => {
+    seedOriginArtist('art-og2', 'No Origin Yet');
+    const res = await appFor('user').request('/artists/art-og2');
+    const body = (await res.json()) as { artist: { origin: unknown } };
+    expect(body.artist.origin).toBe(null);
+  });
+
+  it('PUT /artists/:id/origin writes a permanent user row; null = user tombstone', async () => {
+    seedOriginArtist('art-og3', 'Correctable');
+    const res = await appFor('refiner').request('/artists/art-og3/origin', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ country: 'ar' }),
+    });
+    expect(res.status).toBe(200);
+    expect(getArtistOrigin(sharedDb, 'art-og3')).toMatchObject({ country: 'AR', source: 'user' });
+
+    const cleared = await appFor('refiner').request('/artists/art-og3/origin', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ country: null }),
+    });
+    expect(cleared.status).toBe(200);
+    expect(getArtistOrigin(sharedDb, 'art-og3')).toMatchObject({ country: null, source: 'user' });
+  });
+
+  it('PUT rejects a non-ISO code with 400 and gates on curator', async () => {
+    seedOriginArtist('art-og4', 'Gated');
+    const bad = await appFor('refiner').request('/artists/art-og4/origin', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ country: 'Argentina' }),
+    });
+    expect(bad.status).toBe(400);
+
+    const forbidden = await appFor('user').request('/artists/art-og4/origin', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ country: 'AR' }),
+    });
+    expect(forbidden.status).toBe(403);
+    expect(getArtistOrigin(sharedDb, 'art-og4')).toBe(null);
+  });
+
+  it('PUT 404s an unknown artist', async () => {
+    const res = await appFor('refiner').request('/artists/no-such-artist/origin', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ country: 'AR' }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /origin-countries returns the facets', async () => {
+    seedOriginArtist('art-og5', 'Facet Artist');
+    upsertArtistOrigin(sharedDb, { artistId: 'art-og5', country: 'CL', source: 'user' });
+    const res = await appFor('user').request('/origin-countries');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      countries: Array<{ country: string; artists: number }>;
+      unknownArtists: number;
+    };
+    expect(body.countries.find((c) => c.country === 'CL')?.artists).toBe(1);
   });
 });

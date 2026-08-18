@@ -1278,6 +1278,19 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // Artist origin (nationality) side table — survives rescans like
+  // library_artist_meta. country NULL = tombstone (MB confirmed no country /
+  // curator said stateless); no row = never attempted (task retries).
+  // source='user' rows are permanent — the enrichment task never overwrites.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_artist_origins (
+      artist_id  TEXT PRIMARY KEY,
+      country    TEXT,
+      source     TEXT NOT NULL,   -- 'musicbrainz' | 'user'
+      checked_at INTEGER NOT NULL
+    )
+  `);
+
   // Audit trail written by normalize-library.ts and future automation.
   // navidrome_id is null until NavidromeSyncer backfills it via path join.
   db.run(`

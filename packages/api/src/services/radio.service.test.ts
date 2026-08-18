@@ -402,6 +402,34 @@ describe('explainSimilarity (per-axis breakdown — the diagnostic seam)', () =>
     expect(ex.floored).toContain('genre');
   });
 
+  it('scores same-country candidates above cross-world ones (the cuarteto/Queen case)', () => {
+    const base = { duration: 200, artistId: 'x' };
+    const seed: SongFeatures = { ...base, bpm: 120, originCountries: ['AR'] };
+    const sameCountry: SongFeatures = { ...base, artistId: 'y', bpm: 120, originCountries: ['AR'] };
+    const crossWorld: SongFeatures = { ...base, artistId: 'z', bpm: 120, originCountries: ['GB'] };
+    expect(scoreSimilarity(seed, sameCountry)).toBeGreaterThan(scoreSimilarity(seed, crossWorld));
+  });
+
+  it('skips the origin axis when the seed has no origin', () => {
+    const base = { duration: 200, artistId: 'x' };
+    const ex = explainSimilarity(
+      { ...base, bpm: 120 },
+      { ...base, artistId: 'y', bpm: 120, originCountries: ['AR'] },
+    );
+    expect(ex.skipped).toContain('origin');
+  });
+
+  it('floors an origin-less candidate when the seed has origin', async () => {
+    const { MISSING_ORIGIN_FLOOR } = await import('./radio.service.js');
+    const base = { duration: 200, artistId: 'x' };
+    const ex = explainSimilarity(
+      { ...base, bpm: 120, originCountries: ['AR'] },
+      { ...base, artistId: 'y', bpm: 120 },
+    );
+    expect(ex.floored).toContain('origin');
+    expect(ex.axes.find((a) => a.axis === 'origin')?.value).toBe(MISSING_ORIGIN_FLOOR);
+  });
+
   it('still skips genre when the SEED has none (nothing to compare against)', async () => {
     const { explainSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');
     const ex = explainSimilarity(
