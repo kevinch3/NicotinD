@@ -12,7 +12,7 @@
 import type { HttpEvent, HttpInterceptorFn, HttpRequest } from '@angular/common/http';
 import { HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { type Observable, of, throwError } from 'rxjs';
-import { demoGenreSlices, demoSongs, DEMO_ARTIST_ID } from './fixtures';
+import { demoGenreSlices, demoSongs, DEMO_ARTIST_ID, demoProvenance } from './fixtures';
 
 /** URL suffix → response body. First match wins, so put specific routes first. */
 const ROUTES: Array<[RegExp, () => unknown]> = [
@@ -30,6 +30,15 @@ const ROUTES: Array<[RegExp, () => unknown]> = [
     /\/api\/library\/artists\/[^/]+$/,
     () => ({ id: DEMO_ARTIST_ID, name: 'Nocturnal Signal', albumCount: 4, songCount: 47 }),
   ],
+  // Sub-routes of /api/library/songs MUST come before the list route below: that
+  // pattern is unanchored, so it also matches `/songs/:id/provenance` and
+  // `/songs/:id/lyrics` and hands them `{songs,total}`. A component that then
+  // does `@for (r of provenance())` throws "not iterable" — which is exactly how
+  // the track-info-sheet stories first failed. Returning the right *shape* per
+  // route is the fixture's whole job.
+  [/\/api\/library\/songs\/[^/]+\/provenance$/, () => demoProvenance],
+  [/\/api\/library\/songs\/[^/]+\/lyrics$/, () => null],
+  [/\/api\/library\/identify\/available$/, () => ({ available: true })],
   [/\/api\/library\/songs/, () => ({ songs: demoSongs, total: demoSongs.length })],
   [/\/api\/search/, () => ({ songs: demoSongs, albums: [], artists: [] })],
   [/\/api\/history\/plays/, () => ({ accepted: 0, collection: 'on' })],
