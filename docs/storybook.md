@@ -136,6 +136,13 @@ thing worth testing.
 Neither service polls until `startPolling()` is called, so a story that injects them stays
 inert: no timer to stop, no request to intercept.
 
+`reviewQueue` seeds `DownloadReviewService.queue`. The inbox's constructor calls
+`review.start()`, whose refresh 404s against the fixture transport — and *by design*
+"keeps the last-known badge/queue rather than flashing to zero/empty", so the seed survives
+through the component's real lifecycle rather than around it. Note the inbox is
+**self-gating** (`canCurate() && queue().length > 0`), so the empty and listener stories
+render nothing on purpose; that is what lets the Downloads page mount it unconditionally.
+
 `feedbackSheet` seeds `FeedbackSheetService.payload()`. That sheet is a globally-hosted
 overlay opened from a toast action, so it renders **nothing** until a payload is set — a
 story without the seed is a blank canvas that still passes the render smoke, which is why
@@ -428,7 +435,7 @@ Tracked under the `storybook` label.
 | --- | --- |
 | [#470](https://github.com/kevinch3/NicotinD/issues/470) | Story the player / now-playing / layout shell trio |
 | [#471](https://github.com/kevinch3/NicotinD/issues/471) | Story the acquisition modals (`album-hunt`, `metadata-fix`, `folder-browser`, `artist-image-menu`) |
-| [#472](https://github.com/kevinch3/NicotinD/issues/472) | Story the review surfaces — `bottom-nav` ✅, `feedback-detail-sheet` ✅, `track-info-sheet` ✅; `review-inbox` remains |
+| ~~[#472](https://github.com/kevinch3/NicotinD/issues/472)~~ | ✅ Review surfaces storied. Its identify-failure criterion was misattributed — those chips live in `metadata-fix-modal` (#471), not `review-inbox` |
 | [#473](https://github.com/kevinch3/NicotinD/issues/473) | Visual regression on top of the stories |
 | ~~[#474](https://github.com/kevinch3/NicotinD/issues/474)~~ | ✅ `@storybook/addon-a11y` plus triage — findings became [#481](https://github.com/kevinch3/NicotinD/issues/481) / [#482](https://github.com/kevinch3/NicotinD/issues/482) |
 | ~~[#475](https://github.com/kevinch3/NicotinD/issues/475)~~ | ✅ Interaction tests for `menu-panel` + `seek-bar` (`selection-bar` deliberately excluded — see above) |
