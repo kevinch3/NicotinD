@@ -124,6 +124,25 @@ the `t` pipe (`recently-played`) — most translated copy lives in the app-shell
 that are deliberately out of catalog scope, so this Foundations page is where the global
 is actually exercised.
 
+## Seeding download state (`StoryState`)
+
+`storyProviders({ downloadingTransfers, activeAcquireJobs, pendingReviews })` seeds the
+three independent sources behind the download badge. They are set as the **upstream**
+signals, not the derived count: `TransferService.activeDownloadCount` and
+`AcquireService.activeJobs` are `computed()`, so writing the derived value is impossible —
+and faking it would bypass the very kind/state filter the badge depends on, which is the
+thing worth testing.
+
+Neither service polls until `startPolling()` is called, so a story that injects them stays
+inert: no timer to stop, no request to intercept.
+
+The fixtures are **fully typed** (`downloadingJob`, `runningAcquireJob`) rather than a
+`Partial<...> as X` cast. That is not ceremony — the first draft used a cast and the type
+checker immediately caught a missing required field (`sources`) once the cast was removed.
+A cast compiles today and silently stops matching the real shape the moment a field is
+added, which is the same drift the "no fake service classes" rule at the top of
+`story-providers.ts` exists to avoid.
+
 ## Storying a directive
 
 Storybook renders a *component*, so a directive needs a host component written for the
@@ -403,7 +422,7 @@ Tracked under the `storybook` label.
 | --- | --- |
 | [#470](https://github.com/kevinch3/NicotinD/issues/470) | Story the player / now-playing / layout shell trio |
 | [#471](https://github.com/kevinch3/NicotinD/issues/471) | Story the acquisition modals (`album-hunt`, `metadata-fix`, `folder-browser`, `artist-image-menu`) |
-| [#472](https://github.com/kevinch3/NicotinD/issues/472) | Story the review surfaces (`review-inbox`, `track-info-sheet`, `feedback-detail-sheet`, `bottom-nav`) |
+| [#472](https://github.com/kevinch3/NicotinD/issues/472) | Story the review surfaces — `bottom-nav` ✅ done; `review-inbox`, `track-info-sheet`, `feedback-detail-sheet` remain |
 | [#473](https://github.com/kevinch3/NicotinD/issues/473) | Visual regression on top of the stories |
 | ~~[#474](https://github.com/kevinch3/NicotinD/issues/474)~~ | ✅ `@storybook/addon-a11y` plus triage — findings became [#481](https://github.com/kevinch3/NicotinD/issues/481) / [#482](https://github.com/kevinch3/NicotinD/issues/482) |
 | ~~[#475](https://github.com/kevinch3/NicotinD/issues/475)~~ | ✅ Interaction tests for `menu-panel` + `seek-bar` (`selection-bar` deliberately excluded — see above) |

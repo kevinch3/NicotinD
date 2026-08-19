@@ -20,6 +20,11 @@ import { APP_VERSION } from '../../app/app.config';
 import { fixtureHttpInterceptor } from './http-fixtures';
 import { AuthService } from '../../app/services/auth.service';
 import { TranslateService } from '../../app/services/translate.service';
+import { TransferService } from '../../app/services/transfer.service';
+import { AcquireService } from '../../app/services/acquire.service';
+import { DownloadReviewService } from '../../app/services/download-review.service';
+import type { AcquireJob } from '../../app/services/acquire.service';
+import type { AcquisitionJobView } from '../../types/core';
 import { getStoryLang } from './story-lang';
 import { PlayerService } from '../../app/services/player.service';
 import type { Track } from '../../app/services/player.service';
@@ -33,6 +38,61 @@ export interface StoryState {
   /** Drives the buffering spinner / track-row buffering indicator. */
   buffering?: boolean;
   queue?: Track[];
+  /**
+   * Counts behind the download badge. Seeded as the *upstream* signals rather
+   * than the derived count, because `activeDownloadCount`/`activeJobs` are
+   * `computed()` — writing the derived value is impossible, and faking it would
+   * bypass the very filter (kind/state) the badge depends on.
+   *
+   * Neither service polls until `startPolling()` is called, so a story that
+   * injects them stays inert; no timer to stop, no request to intercept.
+   */
+  downloadingTransfers?: number;
+  activeAcquireJobs?: number;
+  pendingReviews?: number;
+}
+
+/**
+ * Fully-typed fixtures rather than a cast.
+ *
+ * A `Partial<...> as X` would compile today and silently stop matching the real
+ * shape the moment a required field is added or a union member renamed — which
+ * is the same drift the "no fake service classes" rule at the top of this file
+ * exists to avoid. Building the real object means the type checker keeps these
+ * honest.
+ */
+function downloadingJob(id: string): AcquisitionJobView {
+  return {
+    id,
+    kind: 'album-hunt',
+    method: 'slskd',
+    state: 'active',
+    stage: 'downloading',
+    artistName: 'Bola de Nieve',
+    albumTitle: 'Bola de Nieve',
+    lidarrAlbumId: null,
+    sourceRef: null,
+    error: null,
+    createdAt: 0,
+    updatedAt: 0,
+    albumId: null,
+    progress: { expected: 12, delivered: 5, unavailable: 0, failed: 0 },
+    items: [],
+    sources: [],
+  };
+}
+
+function runningAcquireJob(id: string): AcquireJob {
+  return {
+    id,
+    backend: 'ytdlp',
+    url: 'https://example.invalid/track',
+    label: 'A track',
+    state: 'running',
+    progress: { done: 1, total: 3 },
+    error: null,
+    created_at: 0,
+  };
 }
 
 export function storyProviders(state: StoryState = {}): Array<Provider | EnvironmentProviders> {
@@ -64,6 +124,20 @@ export function storyProviders(state: StoryState = {}): Array<Provider | Environ
         player.bufferingVisible.set(state.buffering);
       }
       if (state.queue !== undefined) player.queue.set(state.queue);
+
+      if (state.downloadingTransfers !== undefined) {
+        inject(TransferService).acquisitionJobs.set(
+          Array.from({ length: state.downloadingTransfers }, (_, i) => downloadingJob(`job-${i}`)),
+        );
+      }
+      if (state.activeAcquireJobs !== undefined) {
+        inject(AcquireService).jobs.set(
+          Array.from({ length: state.activeAcquireJobs }, (_, i) => runningAcquireJob(`acq-${i}`)),
+        );
+      }
+      if (state.pendingReviews !== undefined) {
+        inject(DownloadReviewService).pending.set(state.pendingReviews);
+      }
 
       // Load the REAL catalogs, not a stub: Storybook serves `public/` via
       // `staticDirs`, so `/i18n/en.json` and `/i18n/es.json` are the same files
