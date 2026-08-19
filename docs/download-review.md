@@ -254,6 +254,23 @@ seeds the plugin's `apiKey` at registration time
 — an existing deployment that had already set this secret gets AcoustID
 identify for free without re-entering a key.
 
+### The image must carry `fpcalc` (issue #548)
+
+`fpcalc` is spawned by bare name (`acoustid-lookup.ts`'s `binaryPath` default),
+and the Dockerfile's apt line did not install `libchromaprint-tools` — so every
+identify in a container answered `fpcalc-missing`, whose own remediation text
+("install `libchromaprint-tools`") is un-actionable inside an image you only
+pull. It went unnoticed because the plugin is `defaultEnabled: false` *and*
+needs an API key, so only a deliberately-configured deployment ever reached the
+failure.
+
+The image now installs the package. The general hazard — a binary spawned by
+bare name with nothing tying it to the image that must provide it — is guarded
+by `scripts/dockerfile-runtime-binaries.test.ts`, which pairs each binary with
+its Debian package **and** re-derives the premise from the source that spawns
+it, so renaming the default fails the test rather than silently voiding the
+mapping. Add an entry there when introducing a new spawned binary.
+
 ## Identify outcome taxonomy (issue #414)
 
 `identifyTrack` answers `IdentifyResult | null`, which collapsed four
@@ -264,7 +281,7 @@ match" toast:
 | --- | --- | --- |
 | `match` | AcoustID matched | accept the suggested tags |
 | `no-match` | AcoustID answered, has no such recording | retag by hand |
-| `fpcalc-missing` | the binary isn't installed | install `libchromaprint-tools` — no file is at fault |
+| `fpcalc-missing` | the binary isn't installed | install `libchromaprint-tools` — no file is at fault. The Docker image ships it (see "The image must carry `fpcalc`" below), so in a container this points at a wrong `binaryPath`, not a missing package |
 | `undecodable` | `fpcalc` ran and rejected *this file* | likely a truncated/corrupt download — a discard candidate |
 | `source-error` | HTTP/network failure, unconfigured key | retry later; says nothing about the file |
 | `file-missing` | the row's path is not on disk | a scan/organizer problem, not a metadata one |

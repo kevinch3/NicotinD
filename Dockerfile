@@ -45,10 +45,13 @@ LABEL org.opencontainers.image.source="https://github.com/kevinch3/NicotinD" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 
 # Install curl (healthchecks), ffmpeg, docker CLI (log streaming via mounted
-# socket), python3/pip (for yt-dlp + spotdl URL acquisition), and unzip (for
-# the Deno installer below).
+# socket), python3/pip (for yt-dlp + spotdl URL acquisition), unzip (for the
+# Deno installer below), and libchromaprint-tools, which provides the `fpcalc`
+# binary AcoustID identify spawns (issue #548 — without it every identify
+# returns `fpcalc-missing`, whose "install libchromaprint-tools" remediation a
+# container operator cannot act on).
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates ffmpeg python3 python3-pip unzip && \
+    apt-get install -y --no-install-recommends curl ca-certificates ffmpeg libchromaprint-tools python3 python3-pip unzip && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=docker:cli /usr/local/bin/docker /usr/local/bin/docker
 
