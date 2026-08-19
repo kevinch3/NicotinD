@@ -88,39 +88,58 @@ test.describe('offline network detection', () => {
     await expect(page).toHaveURL(/\/library/);
   });
 
-  test('switches into offline mode by itself when the server dies mid-session, and recovers', async ({
-    page,
-    context,
-  }) => {
-    // Mid-session server loss: the device network stays up (navigator.onLine is
-    // true throughout) but the API stops answering. The next API call fails at
-    // the network level → the interceptor reports it → SetupService verifies
-    // with a probe → the app flips itself into offline mode: banner shown and
-    // the shell redirected to the offline-capable Library. No reload involved.
-    await page.goto('/library');
-    // Deliberately NOT expectBootedShell() here, unlike the first test. Adding
-    // it made this test fail on CI (503ms pass -> 5.6s timeout), which revealed
-    // that its trigger is not what its name says: it installs route.abort()
-    // while the app's own boot API calls are still in flight, and *those*
-    // aborted calls are what drive it offline. Waiting for a booted shell
-    // removes the trigger, and the later nav click does not reliably issue a
-    // fresh request to replace it. Left as-is because it is green and this PR
-    // is not the place to redesign it — see the follow-up issue.
-    await expect(page.getByTestId('offline-banner')).toHaveCount(0);
+  // `serviceWorkers: 'block'` here is load-bearing, not hygiene (issue #564).
+  // Once ngsw-worker.js takes control after boot, fetches originate from the
+  // service worker, and Playwright's `page.route` does not intercept those — so
+  // `route.abort()` silently becomes a no-op and the app never sees a failure.
+  // That is exactly why this spec previously installed its abort mid-boot:
+  // before the SW is in control, an abort still lands. Measured both ways: with
+  // the SW active the aborted /api/search never fails and no /api/setup/status
+  // probe is made (banner count 0); with it blocked, both happen and the banner
+  // appears. Blocking is a faithful stand-in rather than a cheat — against a
+  // genuinely dead server the SW's own network fetch fails too, which is the
+  // situation being modelled.
+  test.describe('mid-session server loss', () => {
+    test.use({ serviceWorkers: 'block' });
 
-    await page.route('**/api/**', (route) => route.abort());
-    // Trigger an API call by navigating to Home (radio landing fetches data).
-    await page.getByTestId('desktop-nav').getByRole('link').first().click();
+    test('switches into offline mode by itself when the server dies mid-session, and recovers', async ({
+      page,
+      context,
+    }) => {
+      // Mid-session server loss: the device network stays up (navigator.onLine
+      // is true throughout) but the API stops answering. The next API call fails
+      // at the network level -> the interceptor reports it -> SetupService
+      // verifies with a probe -> the app flips itself into offline mode.
+      //
+      // Boot fully first (issue #564). Without that wait the abort landed while
+      // the app's own BOOT requests were still in flight, and those aborted boot
+      // calls — not anything mid-session — were what drove it offline. The test
+      // passed, but could not have caught a regression in the path it names.
+      await page.goto('/library');
+      await expectBootedShell(page);
+      await expect(page.getByTestId('offline-banner')).toHaveCount(0);
 
-    await expect(page.getByTestId('offline-banner')).toBeVisible();
-    await expect(page).toHaveURL(/\/library/);
+      // Only now does the server "die".
+      await page.route('**/api/**', (route) => route.abort());
 
-    // Server comes back + a device online event fires (the reconnect fast path):
-    // the app re-probes immediately and leaves offline mode on its own.
-    await page.unroute('**/api/**');
-    await flipConnectivity(context, page, true);
-    await flipConnectivity(context, page, false);
+      // A genuinely post-boot API call. The library find bar is the right
+      // trigger: it goes through Angular's HttpClient (a raw fetch() would
+      // bypass the interceptor, so `reportServerFailure` would never run),
+      // /api/search is never served from the library read cache, and it needs no
+      // navigation — so what fails is unambiguously a mid-session request rather
+      // than a route load.
+      await page.getByTestId('library-find').fill('anything');
 
-    await expect(page.getByTestId('offline-banner')).toHaveCount(0);
+      await expect(page.getByTestId('offline-banner')).toBeVisible();
+      await expect(page).toHaveURL(/\/library/);
+
+      // Server comes back + a device online event fires (the reconnect fast
+      // path): the app re-probes immediately and leaves offline mode on its own.
+      await page.unroute('**/api/**');
+      await flipConnectivity(context, page, true);
+      await flipConnectivity(context, page, false);
+
+      await expect(page.getByTestId('offline-banner')).toHaveCount(0);
+    });
   });
 });
