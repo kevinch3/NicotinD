@@ -153,6 +153,62 @@ focus *wiring* — that the roving tabindex moves and that exactly one item is t
 not real D-pad behaviour. That gap is exactly what hid issue #436; the only place the real
 behaviour is exercised is `bun run e2e:tv` against the emulator.
 
+## Interaction tests (play functions)
+
+Three components have behaviour a static story cannot show, because the interesting part
+only happens on interaction. Those stories carry a `play` function using `storybook/test`.
+
+**They gate CI already, with no new machinery.** That was the open question in
+[#475](https://github.com/kevinch3/NicotinD/issues/475), and it was settled by measuring
+rather than reasoning: a story with a deliberately failing `play` was built and run
+through `smoke:storybook`, which failed with the assertion text. So a play failure is a
+console error, the smoke gate already treats console errors as failures, and the existing
+`storybook` job covers them. No `@storybook/test-runner`, no extra CI step, and no new
+dependency — `storybook/test` is a subpath export of the `storybook` package already
+installed.
+
+**The gate waits for `play` to finish** (`playSettled` in `storybook-gates.mjs`). Rendering
+is not the end of a story that has a play function: `play` runs after render and is async,
+so an assertion that throws lands on the page *after* the runner has moved on, and the
+console listener attributes it to whichever story is being visited then. Observed for
+real while writing these: a menu-panel geometry failure was reported against
+`components-metricpill--gpu-busy`. Detection worked; the id sent you to the wrong
+component. The wait polls Storybook's `StoryRender.phase` for a terminal value and is a
+no-op for the ~150 stories with no play function.
+
+**Measure that phase, don't assume it.** The first version of `playSettled` guessed
+`played`/`completed`; the real settled phase in Storybook 10.5.7 is **`finished`**. A wrong
+phase list does not fail loudly — it simply never matches, so every story burns the full
+`RENDER_TIMEOUT_MS` before the swallowed timeout lets it through. The gate still behaved
+correctly (15s is longer than any play function) while costing **~10 minutes a run**: right
+answer, wrong reason. Measured after fixing: smoke **16s**, a11y **31s**. If a Storybook
+upgrade renames the phase, re-measure with
+`window.__STORYBOOK_PREVIEW__.storyRenders.map((r) => r.phase)`.
+
+**What is covered, and why those assertions:**
+
+- **`menu-panel` / `NearViewportBottom`** — asserts **geometry**, not a CSS class: the
+  panel's bottom edge is at or above the trigger's top, and the panel is fully inside the
+  viewport. A class-based assertion would keep passing while the panel rendered off-screen,
+  which is the only failure that matters.
+- **`seek-bar` / `ScrubEmitsPreviewThenOneSeek`** — `preview` fires per drag tick, `seek`
+  exactly once on commit. Driven through the native `input`/`change` events the component
+  binds, so it tests the wiring rather than the class's methods (the component spec already
+  covers those directly). Outputs are observed through a small host wrapper that records
+  them into the DOM, rather than a spy passed via args, so the test does not depend on how
+  the Angular renderer binds outputs.
+
+Both are **mutation-verified**: disabling the flip in `computeMenuPosition` fails the first
+with `expected 712 to be less than or equal to 589`, and emitting `seek` on every drag tick
+fails the second with `expected 3 to be +0`.
+
+**`selection-bar` was deliberately not given one.** #475 asks for a shift-click range
+assertion via `selectedChange`, but that component has no such output and no shift-click
+logic — it is presentational (count/total plus action buttons). The range behaviour lives
+in `createSelection()` (`lib/selection.ts`), which already has five dedicated unit tests
+covering both click directions, deselecting a range, and anchor advance. A browser-level
+test there would duplicate solid coverage at a much higher cost.
+
 ## Integration constraints
 
 Three things about `@storybook/angular` that cost a build cycle each. Change them only
@@ -350,7 +406,7 @@ Tracked under the `storybook` label.
 | [#472](https://github.com/kevinch3/NicotinD/issues/472) | Story the review surfaces (`review-inbox`, `track-info-sheet`, `feedback-detail-sheet`, `bottom-nav`) |
 | [#473](https://github.com/kevinch3/NicotinD/issues/473) | Visual regression on top of the stories |
 | ~~[#474](https://github.com/kevinch3/NicotinD/issues/474)~~ | ✅ `@storybook/addon-a11y` plus triage — findings became [#481](https://github.com/kevinch3/NicotinD/issues/481) / [#482](https://github.com/kevinch3/NicotinD/issues/482) |
-| [#475](https://github.com/kevinch3/NicotinD/issues/475) | Interaction tests for `menu-panel`, `seek-bar`, `selection-bar` |
+| ~~[#475](https://github.com/kevinch3/NicotinD/issues/475)~~ | ✅ Interaction tests for `menu-panel` + `seek-bar` (`selection-bar` deliberately excluded — see above) |
 | ~~[#476](https://github.com/kevinch3/NicotinD/issues/476)~~ | ✅ i18n toolbar global (en/es) driving `TranslateService` |
 | ~~[#477](https://github.com/kevinch3/NicotinD/issues/477)~~ | ✅ Catalog the shared directives and pipes |
 | [#478](https://github.com/kevinch3/NicotinD/issues/478) | Migrate to a Vite builder when `@storybook/angular` ships one |

@@ -62,6 +62,40 @@ function ready() {
 }
 
 /**
+ * True once no story render is still mid-`play`.
+ *
+ * Rendering is not the end of the story when it has a play function: `play` runs
+ * after render and is async. Without waiting for it, an assertion that throws
+ * lands on `page` *after* the runner has moved to the next story, and the
+ * console listener attributes it to whichever story is being visited then —
+ * observed for real: a menu-panel geometry failure was reported against
+ * `components-metricpill--gpu-busy`. The failure was detected, but the id sent
+ * you to the wrong component.
+ *
+ * Storybook's `StoryRender` exposes `phase`, and the settled value is
+ * **`finished`** — measured against this Storybook (10.5.7) rather than assumed.
+ * That matters: a wrong phase list does not fail loudly, it just never matches,
+ * so every story burns the full `RENDER_TIMEOUT_MS` before the swallowed timeout
+ * lets it through. The gate still behaves correctly (15s is longer than any play
+ * function) while costing ~10 minutes a run — right answer, wrong reason. If a
+ * Storybook upgrade renames the phase, re-measure with
+ * `window.__STORYBOOK_PREVIEW__.storyRenders.map((r) => r.phase)`.
+ *
+ * `errored`/`aborted` are included so a genuinely failed render settles too.
+ * Unknown shape (an internals change) returns true rather than hanging the gate.
+ */
+// The phase list is inlined rather than hoisted to a const: this predicate is
+// serialized and evaluated in the browser, so it cannot close over Node-side
+// bindings.
+function playSettled() {
+  const renders = window.__STORYBOOK_PREVIEW__?.storyRenders;
+  if (!Array.isArray(renders)) return true;
+  return renders.every(
+    (r) => !r?.phase || ['finished', 'errored', 'aborted'].includes(r.phase),
+  );
+}
+
+/**
  * Run axe over one story, retrying while `@storybook/addon-a11y`'s own scan holds the
  * page's single axe instance.
  *
@@ -119,6 +153,8 @@ const { errors: visitErrors } = await visitStories({
     try {
       await page.goto(storyUrl(base, story), { waitUntil: 'load' });
       await page.waitForFunction(ready, undefined, { timeout: RENDER_TIMEOUT_MS });
+      // Then let any play function finish, so its errors are attributed here.
+      await page.waitForFunction(playSettled, undefined, { timeout: RENDER_TIMEOUT_MS });
     } catch {
       // Fall through: the root/error-box reads below turn this into a reported
       // failure ("story rendered nothing") rather than an aborted run.
