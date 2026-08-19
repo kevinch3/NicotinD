@@ -78,6 +78,23 @@ Recurring wrong assumptions that have shipped red CI. Check every new spec
 against these before pushing; if you discover a new one, add it here in the
 same PR that hit it.
 
+- **An absence assertion passes vacuously on a page that has not rendered.**
+  `expect(x).toHaveCount(0)` / `not.toBeVisible()` cannot distinguish "this
+  element is correctly absent" from "nothing has rendered yet", so it is **not**
+  a barrier and must never be used as one. This produced the longest-lived e2e
+  flake in the repo (#362, then #483 after the first fix): `offline.spec.ts`
+  opened with `toHaveCount(0)` on the offline banner, which let it drop the
+  network while the SPA was still booting. That is *unrecoverable*, not merely
+  early — once offline, the remaining lazy route chunks can never load, so the
+  shell never mounts and the banner can never appear, which is exactly the
+  "element(s) not found" timeout that was reported. It only flaked in the full
+  suite because that is where boot is slow enough to lose the race. **Assert a
+  positive signal first** (`offline.spec.ts` uses `expectBootedShell`, waiting
+  on the shell's own `desktop-nav`), then assert absence. Note the first fix
+  attempt — dispatching the DOM events explicitly — was correct but addressed a
+  different, real problem, and the flake survived it; if a flake persists after
+  a plausible fix, the plausible fix was not the whole cause.
+
 - **The suite tests the last `ng build`, not your working tree.** The managed
   `webServer` runs `bun run src/main.ts`, and Hono serves the prebuilt
   `packages/web/dist` — there is no dev server and no watch. Editing Angular
