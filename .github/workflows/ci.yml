@@ -179,7 +179,13 @@ jobs:
       # install browsers for a different revision than the @playwright/test the gate
       # script imports; the root node_modules/.bin has no playwright at all under bun's
       # isolated install.
+      - name: Install Playwright OS deps
+        uses: ./.github/actions/playwright-deps
+        with:
+          install-command: bun run --filter @nicotind/e2e install:deps
+
       - name: Install Playwright Chromium
+        timeout-minutes: 5
         run: bun run --filter @nicotind/e2e install:browsers
 
       # `build:storybook` compiles stories; it does not run them. The first green build
@@ -242,13 +248,15 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
-      # --with-deps runs apt-get, whose mirror retries have no bound of their
-      # own — an unreachable Azure mirror once blocked this step silently for
-      # hours (issue #556). A healthy run takes ~2m30s; fail fast instead.
+      - name: Install Playwright OS deps
+        uses: ./.github/actions/playwright-deps
+        with:
+          install-command: bun run --filter @nicotind/e2e install:deps
+
+      # Browser binary only — no apt, and served by the cache above on a hit.
       - name: Install Playwright browser
-        timeout-minutes: 10
-        run: bunx playwright install --with-deps chromium
-        working-directory: packages/e2e
+        timeout-minutes: 5
+        run: bun run --filter @nicotind/e2e install:browsers
 
       - name: Build (web)
         run: bun run --filter @nicotind/web build
@@ -352,11 +360,15 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
-      # Same apt-mirror hang bound as the e2e job's install (issue #556).
       - name: Install Playwright OS deps
-        timeout-minutes: 10
-        run: bunx playwright install --with-deps chromium
-        working-directory: packages/desktop
+        uses: ./.github/actions/playwright-deps
+        with:
+          install-command: bun run --filter @nicotind/desktop install:deps
+
+      # Browser binary only — no apt, and served by the cache above on a hit.
+      - name: Install Playwright browser
+        timeout-minutes: 5
+        run: bun run --filter @nicotind/desktop install:browsers
 
       - name: Run desktop smoke test
         run: xvfb-run -a bun run --filter @nicotind/desktop test:smoke

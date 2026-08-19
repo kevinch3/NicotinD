@@ -204,6 +204,55 @@ e2e run blocks the deploy. `e2e` is deliberately **not** in `check-ci-parity.ts`
 gate 2), so it is gated in CI without being expected to run in the local one-command
 sweep.
 
+**Playwright install is split into an apt half and a download half (issues #556,
+#561).** `playwright install --with-deps chromium` runs `apt-get` under the hood, and
+apt's mirror retries have no bound of their own — an unreachable Azure mirror once
+blocked the step silently for hours. #556 bounded the *step* (`timeout-minutes`), which
+made the hang visible instead of a 6-hour stall but left every hit burning the full
+10-minute cap and reddening PRs that touch neither Playwright nor CI (it hit two
+unrelated PRs in one afternoon). The `~/.cache/ms-playwright` cache doesn't help: it
+caches the browser *download*, while `--with-deps` runs apt on every run regardless of a
+cache hit. So the steps are now:
+
+The bounded install lives in **one composite action**, `.github/actions/playwright-deps`,
+used by all **three** jobs that need Playwright: `e2e`, `desktop-smoke` and
+**`storybook`**. That third site is why it is an action rather than a copied block —
+it runs its own `playwright install --with-deps` through a workspace script, carried
+**no `timeout-minutes` at all**, and was missed by both #556 and the first pass of
+#561; it was caught only by watching it hang for ~40 minutes on a live run. A fourth
+copy would be missed the same way.
+
+The `--with-deps` shorthand is also gone: `install:deps` (apt) and `install:browsers`
+(binary, cache-served) are separate workspace scripts in both `packages/e2e` and
+`packages/desktop`, so the apt half and the download half can be bounded differently
+and a failure names which one broke.
+
+1. **The apt step** — three layers, each added because the
+   previous one was measured to be insufficient:
+   - **Drops `azure.archive.ubuntu.com` from `/etc/apt/apt-mirrors.txt`.** This is the
+     root cause. apt *does* eventually fall through to the canonical archive, but only
+     after minutes of `Ign:` retries, and those minutes are what consume the budget.
+   - **An `apt.conf.d` drop-in** bounding `Acquire::Retries` + `Acquire::{http,https}::Timeout`,
+     so a stalled mirror fails in seconds.
+   - **A per-attempt `timeout`, not just a per-step one**, then up to 3 attempts with a
+     10s/20s backoff. The step bound alone is not enough: a single hung apt run was
+     observed eating the entire 6-minute step budget, so the retry loop never reached
+     attempt 2 and the retries bought nothing. Bounding the *attempt* is what makes a
+     retry reachable, which is what lets a transient outage **self-heal** rather than
+     needing a human re-run (the #556 mitigation explicitly relied on someone re-running
+     onto a fresh runner, which an unattended flow can't do).
+
+   **Caveat worth knowing:** `timeout` signals the direct child, so a KILLed attempt can
+   leave the `apt-get` grandchild running and holding the dpkg lock; the next attempt
+   then fails *fast* on that lock rather than hanging. That is still the behaviour we
+   want (fail fast, don't burn the budget), but it means the retry mainly buys recovery
+   from *quick* failures — the mirror fix above is what prevents the hang itself.
+2. **`Install Playwright browser`** — `playwright install chromium`, no apt, served by
+   the cache on a hit.
+
+Splitting them also makes the failure legible: an apt failure and a CDN failure used to
+be indistinguishable under one step name.
+
 The CI `ci` job also runs `bun test packages/e2e/playground` — the **pure logic**
 of the playground harness below (observation model, report rendering, the response +
 console classifiers, the friction/journey model). The playground _flows_ need a live
