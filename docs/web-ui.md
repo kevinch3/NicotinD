@@ -470,6 +470,15 @@ which appends `ngsw-bypass=1` — Angular's own documented escape hatch;
 that param. All `/api/stream` call sites (`PlayerComponent`, `PreserveService`,
 share view) go through this one method now — never hand-build a stream URL.
 
+**The rule covers every streaming `/api` endpoint, not just audio (issue
+#545).** The Admin panel's two `EventSource` connections
+(`/api/admin/processing/stream`, `/api/system/logs/:service/stream`) were
+hand-built without the param and hit the identical Firefox failure — the SW
+intercepts an SSE connection exactly as unconditionally as a Range request.
+They now go through `ServerConfigService.sseUrl(path, token)`, the SSE sibling
+of `streamUrl()`: one helper so a future SSE endpoint can't re-omit it. Never
+hand-build an SSE URL either.
+
 **Firefox "never plays" bug #3 — the track-load effect aborted its own load in
 a ~300 ms loop.** `setBuffering(true)`'s guard (`if (timer !== null ||
 this.bufferingVisible()) return`) *read* `bufferingVisible` while running

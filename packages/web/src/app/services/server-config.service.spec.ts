@@ -24,6 +24,22 @@ describe('ServerConfigService', () => {
     expect(url).toContain('ngsw-bypass=1');
   });
 
+  it('builds an SSE url with the caller token and ngsw-bypass', () => {
+    const url = svc.sseUrl('/api/admin/processing/stream', 'jwt');
+    expect(url).toBe('/api/admin/processing/stream?token=jwt&ngsw-bypass=1');
+  });
+
+  it('url-encodes the token in an SSE url', () => {
+    const url = svc.sseUrl('/api/system/logs/nicotind/stream', 'a b+c');
+    expect(url).toContain('token=a%20b%2Bc');
+  });
+
+  it('always appends ngsw-bypass on SSE urls (issue #545)', () => {
+    // Same Driver.handleFetch() interception that broke /api/stream in Firefox
+    // also throws on an EventSource connection to an /api SSE endpoint.
+    expect(svc.sseUrl('/api/system/logs/nicotind/stream', null)).toContain('ngsw-bypass=1');
+  });
+
   it('remembers, lists and forgets servers through the registry', () => {
     svc.remember('https://a.example', 'Home');
     svc.remember('https://b.example');

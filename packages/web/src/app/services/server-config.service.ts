@@ -99,4 +99,15 @@ export class ServerConfigService {
     const params = `token=${token}&ngsw-bypass=1${opts?.vocalsOff ? '&vocals=off' : ''}`;
     return this.apiUrl(`/api/stream/${id}?${params}`);
   }
+
+  /**
+   * Absolute URL for an `EventSource` (SSE) endpoint. Every streaming `/api`
+   * path needs the same `ngsw-bypass` escape hatch `streamUrl()` documents —
+   * the service worker intercepts SSE connections too and throws in Firefox
+   * (issue #545). Routing all SSE call sites through one helper is what stops
+   * the next endpoint from re-omitting it.
+   */
+  sseUrl(path: string, token: string | null): string {
+    return this.apiUrl(`${path}?token=${encodeURIComponent(token ?? '')}&ngsw-bypass=1`);
+  }
 }
