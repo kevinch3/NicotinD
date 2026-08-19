@@ -98,7 +98,14 @@ test.describe('offline network detection', () => {
     // with a probe → the app flips itself into offline mode: banner shown and
     // the shell redirected to the offline-capable Library. No reload involved.
     await page.goto('/library');
-    await expectBootedShell(page);
+    // Deliberately NOT expectBootedShell() here, unlike the first test. Adding
+    // it made this test fail on CI (503ms pass -> 5.6s timeout), which revealed
+    // that its trigger is not what its name says: it installs route.abort()
+    // while the app's own boot API calls are still in flight, and *those*
+    // aborted calls are what drive it offline. Waiting for a booted shell
+    // removes the trigger, and the later nav click does not reliably issue a
+    // fresh request to replace it. Left as-is because it is green and this PR
+    // is not the place to redesign it — see the follow-up issue.
     await expect(page.getByTestId('offline-banner')).toHaveCount(0);
 
     await page.route('**/api/**', (route) => route.abort());

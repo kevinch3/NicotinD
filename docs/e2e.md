@@ -94,6 +94,13 @@ same PR that hit it.
   attempt — dispatching the DOM events explicitly — was correct but addressed a
   different, real problem, and the flake survived it; if a flake persists after
   a plausible fix, the plausible fix was not the whole cause.
+  **Do not apply the wait blindly to every spec.** Adding it to the same file's
+  *third* test (server-dies-mid-session) turned a 503ms pass into a 5.6s CI
+  timeout, because that test's real trigger is `route.abort()` landing while the
+  app's own boot requests are still in flight — the boot wait removes the very
+  thing that drives it offline. A vacuous absence assertion is a defect when a
+  test races past it, but some tests genuinely act during boot; fix the one with
+  the bug, and check the others still fail for the right reason.
 
 - **The suite tests the last `ng build`, not your working tree.** The managed
   `webServer` runs `bun run src/main.ts`, and Hono serves the prebuilt
