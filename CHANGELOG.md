@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.22](https://github.com/kevinch3/NicotinD/compare/v0.3.21...v0.3.22) (2026-08-19)
+
+### Features
+
+* **pot-provider:** publish the bgutil version as an image label ([#553](https://github.com/kevinch3/NicotinD/issues/553)) ([d9272db](https://github.com/kevinch3/NicotinD/commit/d9272db2361cff4f58eb4708e6a4d4ed7ffce2a6)), references [#550](https://github.com/kevinch3/NicotinD/issues/550) [#551](https://github.com/kevinch3/NicotinD/issues/551)
 ## [0.3.21](https://github.com/kevinch3/NicotinD/compare/v0.3.20...v0.3.21) (2026-08-19)
 
 ### Bug Fixes
