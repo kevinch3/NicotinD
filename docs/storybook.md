@@ -460,7 +460,7 @@ Tracked under the `storybook` label.
 | Issue | Work |
 | --- | --- |
 | [#470](https://github.com/kevinch3/NicotinD/issues/470) | Story the player / now-playing / layout shell trio |
-| [#471](https://github.com/kevinch3/NicotinD/issues/471) | Story the acquisition modals — `artist-image-menu` ✅, `metadata-fix` identify failures ✅, `folder-browser` ✅; `album-hunt` remains |
+| ~~[#471](https://github.com/kevinch3/NicotinD/issues/471)~~ | ✅ Acquisition modals storied. Its time-stepping-fixture prerequisite proved unnecessary — see above |
 | ~~[#472](https://github.com/kevinch3/NicotinD/issues/472)~~ | ✅ Review surfaces storied. Its identify-failure criterion was misattributed — those chips live in `metadata-fix-modal` (#471), not `review-inbox` |
 | [#473](https://github.com/kevinch3/NicotinD/issues/473) | Visual regression on top of the stories |
 | ~~[#474](https://github.com/kevinch3/NicotinD/issues/474)~~ | ✅ `@storybook/addon-a11y` plus triage — findings became [#481](https://github.com/kevinch3/NicotinD/issues/481) / [#482](https://github.com/kevinch3/NicotinD/issues/482) |
