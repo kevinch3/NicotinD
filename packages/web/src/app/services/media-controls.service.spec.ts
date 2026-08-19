@@ -177,18 +177,9 @@ describe('MediaControlsService — web (@jofr) path', () => {
   });
 
   it('routes metadata to @jofr on web, testing artwork URLs first', async () => {
-    const OriginalImage = globalThis.Image;
-    globalThis.Image = class {
-      onload?: () => void;
-      _src = '';
-      set src(val: string) {
-        this._src = val;
-        if (this.onload) this.onload();
-      }
-      get src() {
-        return this._src;
-      }
-    } as any;
+    // The reachability probe is a real `fetch` rather than an <img> load — see
+    // the "artwork reachability probe (issue #441)" block below for why.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
 
     new MediaControlsService().setMetadata(META);
     await flush();
@@ -197,7 +188,62 @@ describe('MediaControlsService — web (@jofr) path', () => {
     expect(jofr.session.setMetadata).toHaveBeenCalledWith(META);
     expect(jofr.thenProbe).not.toHaveBeenCalled();
 
-    globalThis.Image = OriginalImage;
+    vi.unstubAllGlobals();
+  });
+
+  // Issue #441: the app hard-crashed at launch when the restored track's cover
+  // could not be fetched natively. The old guard used `new Image()`, but an
+  // <img> load can be served from the WebView's HTTP cache without touching the
+  // network — while the @jofr plugin fetches via Java's HttpURLConnection, a
+  // different client on a different thread with a different cache. A cached
+  // image therefore "proved" reachability that did not exist, the plugin's own
+  // fetch threw, and the process died before the WebView ever appeared.
+  describe('artwork reachability probe (issue #441)', () => {
+    it('withholds artwork when the cover cannot be reached', async () => {
+      const fetchMock = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
+      vi.stubGlobal('fetch', fetchMock);
+
+      new MediaControlsService().setMetadata(META);
+      await flush();
+
+      // Controls still work, just without art — never a crash.
+      expect(jofr.session.setMetadata).toHaveBeenCalledWith({ ...META, artwork: [] });
+      expect(jofr.session.setMetadata).not.toHaveBeenCalledWith(META);
+      vi.unstubAllGlobals();
+    });
+
+    it('withholds artwork when the cover 404s', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+
+      new MediaControlsService().setMetadata(META);
+      await flush();
+
+      expect(jofr.session.setMetadata).not.toHaveBeenCalledWith(META);
+      vi.unstubAllGlobals();
+    });
+
+    it('sends artwork once the cover is confirmed reachable', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+
+      new MediaControlsService().setMetadata(META);
+      await flush();
+
+      expect(jofr.session.setMetadata).toHaveBeenCalledWith(META);
+      vi.unstubAllGlobals();
+    });
+
+    it("probes with cache: 'no-store', so a cached cover cannot mask a dead server", async () => {
+      // The whole point: the probe must hit the network, or it repeats the
+      // original bug in a new form.
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+      vi.stubGlobal('fetch', fetchMock);
+
+      new MediaControlsService().setMetadata(META);
+      await flush();
+
+      expect(fetchMock).toHaveBeenCalledWith('big', expect.objectContaining({ cache: 'no-store' }));
+      vi.unstubAllGlobals();
+    });
   });
 
   it('has no native diagnostics on web', async () => {
