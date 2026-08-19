@@ -254,20 +254,35 @@ jobs:
       # every run even on a `~/.cache/ms-playwright` hit, and an apt failure and
       # a CDN failure used to look identical in one step name.
       - name: Install Playwright OS deps (apt)
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: |
           set -euo pipefail
+          # The runner's apt sources are `mirror+file:/etc/apt/apt-mirrors.txt`,
+          # whose first entry is the azure.archive.ubuntu.com edge that goes
+          # unreachable. apt does eventually fall through to the canonical
+          # archive, but only after minutes of `Ign:` retries — which is what
+          # actually consumed the step budget. Drop the flaky edge so apt goes
+          # straight to a mirror that answers.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+            if ! grep -q '[^[:space:]]' /etc/apt/apt-mirrors.txt; then
+              echo 'http://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+            fi
+          fi
           sudo tee /etc/apt/apt.conf.d/99-bounded-retries >/dev/null <<'APTCONF'
           Acquire::Retries "2";
           Acquire::http::Timeout "20";
           Acquire::https::Timeout "20";
           APTCONF
+          # Each ATTEMPT is bounded, not just the step: a single hung apt run
+          # once ate the whole step budget, so the retry loop below never
+          # reached attempt 2 and the retries bought nothing.
           for attempt in 1 2 3; do
-            if bunx playwright install-deps chromium; then
+            if timeout --signal=KILL 150 bunx playwright install-deps chromium; then
               exit 0
             fi
             if [ "${attempt}" -lt 3 ]; then
-              echo "::warning::playwright install-deps failed (attempt ${attempt}/3); retrying"
+              echo "::warning::playwright install-deps failed or timed out (attempt ${attempt}/3); retrying"
               sleep $((attempt * 10))
             fi
           done
@@ -395,20 +410,35 @@ jobs:
       # every run even on a `~/.cache/ms-playwright` hit, and an apt failure and
       # a CDN failure used to look identical in one step name.
       - name: Install Playwright OS deps (apt)
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: |
           set -euo pipefail
+          # The runner's apt sources are `mirror+file:/etc/apt/apt-mirrors.txt`,
+          # whose first entry is the azure.archive.ubuntu.com edge that goes
+          # unreachable. apt does eventually fall through to the canonical
+          # archive, but only after minutes of `Ign:` retries — which is what
+          # actually consumed the step budget. Drop the flaky edge so apt goes
+          # straight to a mirror that answers.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+            if ! grep -q '[^[:space:]]' /etc/apt/apt-mirrors.txt; then
+              echo 'http://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+            fi
+          fi
           sudo tee /etc/apt/apt.conf.d/99-bounded-retries >/dev/null <<'APTCONF'
           Acquire::Retries "2";
           Acquire::http::Timeout "20";
           Acquire::https::Timeout "20";
           APTCONF
+          # Each ATTEMPT is bounded, not just the step: a single hung apt run
+          # once ate the whole step budget, so the retry loop below never
+          # reached attempt 2 and the retries bought nothing.
           for attempt in 1 2 3; do
-            if bunx playwright install-deps chromium; then
+            if timeout --signal=KILL 150 bunx playwright install-deps chromium; then
               exit 0
             fi
             if [ "${attempt}" -lt 3 ]; then
-              echo "::warning::playwright install-deps failed (attempt ${attempt}/3); retrying"
+              echo "::warning::playwright install-deps failed or timed out (attempt ${attempt}/3); retrying"
               sleep $((attempt * 10))
             fi
           done

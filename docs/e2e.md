@@ -214,12 +214,26 @@ unrelated PRs in one afternoon). The `~/.cache/ms-playwright` cache doesn't help
 caches the browser *download*, while `--with-deps` runs apt on every run regardless of a
 cache hit. So the steps are now:
 
-1. **`Install Playwright OS deps (apt)`** — writes an `apt.conf.d` drop-in bounding
-   `Acquire::Retries` + `Acquire::{http,https}::Timeout` so a dead mirror fails in
-   seconds rather than consuming the step budget, then retries the install up to 3× with
-   a 10s/20s backoff so a transient outage **self-heals** instead of needing a human
-   re-run (the #556 mitigation explicitly relied on someone re-running onto a fresh
-   runner, which an unattended flow can't do).
+1. **`Install Playwright OS deps (apt)`** — three layers, each added because the
+   previous one was measured to be insufficient:
+   - **Drops `azure.archive.ubuntu.com` from `/etc/apt/apt-mirrors.txt`.** This is the
+     root cause. apt *does* eventually fall through to the canonical archive, but only
+     after minutes of `Ign:` retries, and those minutes are what consume the budget.
+   - **An `apt.conf.d` drop-in** bounding `Acquire::Retries` + `Acquire::{http,https}::Timeout`,
+     so a stalled mirror fails in seconds.
+   - **A per-attempt `timeout`, not just a per-step one**, then up to 3 attempts with a
+     10s/20s backoff. The step bound alone is not enough: a single hung apt run was
+     observed eating the entire 6-minute step budget, so the retry loop never reached
+     attempt 2 and the retries bought nothing. Bounding the *attempt* is what makes a
+     retry reachable, which is what lets a transient outage **self-heal** rather than
+     needing a human re-run (the #556 mitigation explicitly relied on someone re-running
+     onto a fresh runner, which an unattended flow can't do).
+
+   **Caveat worth knowing:** `timeout` signals the direct child, so a KILLed attempt can
+   leave the `apt-get` grandchild running and holding the dpkg lock; the next attempt
+   then fails *fast* on that lock rather than hanging. That is still the behaviour we
+   want (fail fast, don't burn the budget), but it means the retry mainly buys recovery
+   from *quick* failures — the mirror fix above is what prevents the hang itself.
 2. **`Install Playwright browser`** — `playwright install chromium`, no apt, served by
    the cache on a hit.
 
