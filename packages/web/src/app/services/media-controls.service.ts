@@ -1,7 +1,11 @@
 import { Injectable } from '@angular/core';
 import type { MediaMetadataInit } from '../lib/media-metadata';
-import { getCapacitorPlugin, isIosNative } from '../lib/platform';
-import { toNativeMetadata, type NativeNowPlayingMetadata } from '../lib/now-playing';
+import { getCapacitorPlugin, isIosNative, isNativePlatform } from '../lib/platform';
+import {
+  pickArtworkUrl,
+  toNativeMetadata,
+  type NativeNowPlayingMetadata,
+} from '../lib/now-playing';
 
 export type MediaAction =
   'play' | 'pause' | 'nexttrack' | 'previoustrack' | 'seekto' | 'seekforward' | 'seekbackward';
@@ -128,24 +132,49 @@ export class MediaControlsService {
       return;
     }
 
-    // Android/Web: guard against a 404 cover URL killing the app.
-    // The @jofr plugin synchronously fetches the URL on the Capacitor thread;
-    // if it 404s, Java's HttpURLConnection throws FileNotFoundException,
-    // crashing the app. Test the URL first via an Image object.
+    // Android/Web: guard against an unreachable cover URL killing the app. The
+    // @jofr plugin fetches the URL on the Capacitor thread via Java's
+    // HttpURLConnection; anything it throws (404 -> FileNotFoundException,
+    // connection failure -> IOException) propagates as a FATAL EXCEPTION and
+    // the process dies — at launch, before the WebView ever appears, since
+    // metadata for the restored track is set during startup (issue #441).
     if (!meta.artwork || meta.artwork.length === 0) {
       this.run((s) => s.setMetadata(meta));
       return;
     }
 
-    // Set metadata without artwork immediately so controls stay responsive
+    // Set metadata without artwork immediately so controls stay responsive.
     this.run((s) => s.setMetadata({ ...meta, artwork: [] }));
 
-    const img = new Image();
-    img.onload = () => {
-      // If the image resolves, we're safe to pass it to the native plugin
-      this.run((s) => s.setMetadata(meta));
-    };
-    img.src = meta.artwork[0].src;
+    const probeUrl = pickArtworkUrl(meta.artwork);
+    if (!probeUrl) return;
+
+    // `fetch` with `cache: 'no-store'`, not `new Image()`. An <img> load can be
+    // served from the WebView's HTTP cache without touching the network, so it
+    // proved nothing about whether Java — a different client, on a different
+    // thread, with a different cache — could reach the server. That mismatch is
+    // what still crashed the app after the original 404 guard: cover in cache,
+    // server gone. Forcing a real request makes the probe predictive, and it
+    // covers the offline case for free (the fetch simply fails).
+    //
+    // Probes the same URL the plugin will actually use (the largest, via the
+    // shared `pickArtworkUrl`) rather than `artwork[0]`, which was a different
+    // image than the one being validated.
+    //
+    // Residual: the network can still die between probe and native fetch. That
+    // window can't be closed from here — a plugin that crashes its host on any
+    // artwork failure is the real defect (see #226, which replaces it).
+    // `no-store` only where a stale-cache false positive can actually kill the
+    // app. On web a failed cover just doesn't render, so bypassing the HTTP
+    // cache there would mean an extra full-size cover request on every track
+    // change and buy nothing.
+    void fetch(probeUrl, isNativePlatform() ? { cache: 'no-store' } : {})
+      .then((res) => {
+        if (res.ok) this.run((s) => s.setMetadata(meta));
+      })
+      .catch(() => {
+        /* leave the controls art-less rather than risk killing the app */
+      });
   }
 
   setPlaybackState(state: 'playing' | 'paused' | 'none'): void {
