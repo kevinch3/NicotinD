@@ -175,6 +175,11 @@ requires gridcells inside a row — so the story was both inaccurate and inacces
 `a11y:storybook:strict` failed it. The gate caught a wrapper drifting from the thing it
 was supposed to document.
 
+The same wrapper pattern covers **component-internal state**: `metadata-fix-modal`'s
+`identifyFailures` is populated by the identify call's response, not by a service, so its
+stories reach the component through a `viewChild` and set it directly — showing the
+*result* without performing the call.
+
 Covered: `TvNavGroupDirective`/`TvNavItemDirective` (grid + vertical axes) and
 `BottomChromeSafeDirective`. The `t` pipe is storied on the Internationalization page,
 where the catalogs it reads already live.
@@ -438,7 +443,7 @@ Tracked under the `storybook` label.
 | Issue | Work |
 | --- | --- |
 | [#470](https://github.com/kevinch3/NicotinD/issues/470) | Story the player / now-playing / layout shell trio |
-| [#471](https://github.com/kevinch3/NicotinD/issues/471) | Story the acquisition modals — `artist-image-menu` ✅; `album-hunt`, `metadata-fix`, `folder-browser` remain |
+| [#471](https://github.com/kevinch3/NicotinD/issues/471) | Story the acquisition modals — `artist-image-menu` ✅, `metadata-fix` identify failures ✅; `album-hunt`, `folder-browser` remain (both need the time-stepping fixture) |
 | ~~[#472](https://github.com/kevinch3/NicotinD/issues/472)~~ | ✅ Review surfaces storied. Its identify-failure criterion was misattributed — those chips live in `metadata-fix-modal` (#471), not `review-inbox` |
 | [#473](https://github.com/kevinch3/NicotinD/issues/473) | Visual regression on top of the stories |
 | ~~[#474](https://github.com/kevinch3/NicotinD/issues/474)~~ | ✅ `@storybook/addon-a11y` plus triage — findings became [#481](https://github.com/kevinch3/NicotinD/issues/481) / [#482](https://github.com/kevinch3/NicotinD/issues/482) |
