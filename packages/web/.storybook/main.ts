@@ -1,7 +1,15 @@
 import type { StorybookConfig } from '@storybook/angular';
 
 const config: StorybookConfig = {
-  stories: ['../src/stories/**/*.mdx', '../src/app/**/*.stories.ts'],
+  // `src/stories/**` holds the hand-written Foundations/Patterns pages. Those were
+  // MDX-only until a Foundations page needed a *rendered* example (the i18n
+  // language global, issue #476) rather than prose, so code stories are picked up
+  // there too.
+  stories: [
+    '../src/stories/**/*.mdx',
+    '../src/stories/**/*.stories.ts',
+    '../src/app/**/*.stories.ts',
+  ],
   addons: ['@storybook/addon-docs', '@storybook/addon-themes', '@storybook/addon-a11y'],
   framework: { name: '@storybook/angular', options: {} },
   staticDirs: ['../public'],
