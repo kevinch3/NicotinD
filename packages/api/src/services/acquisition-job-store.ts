@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite';
 import type { TrackStatus } from '@nicotind/core';
 import { fold } from '@nicotind/core';
 import { normalizeTitle, titlesOverlap } from '@nicotind/core';
+import { albumIdFor } from './library-scanner.js';
 
 /**
  * Unified acquisition job store (`acquisition_jobs` + `acquisition_job_items`).
@@ -886,6 +887,50 @@ function rollupJobQuality(
   }
   if (rows.length === 0) return undefined;
   return { bitRate: rows[0].bit_rate, audioFormat: rows[0].format };
+}
+
+/**
+ * The album a job's files actually landed in, for the card's "Open in Library"
+ * deep link (issue #468).
+ *
+ * `albumIdFor(artistName, albumTitle)` alone is a *guess*: those names exist on
+ * the job whether or not anything was ever filed — including the
+ * `unfiledWarning` path where a job completes having filed nothing — so the
+ * card offered a link that could not work under any timing (measured on prod:
+ * 20 of 431 named jobs, 19 of which never landed at all). This is the same
+ * anti-pattern #261 fixed for card identity: prefer what the server observed
+ * over what a read-time re-derivation infers.
+ *
+ * Order: the album the job's own scanned items point at (`song_id` →
+ * `library_songs.album_id` — the observed truth, and the one that stays right
+ * when the names were only ever approximate), then the derived id **but only
+ * if that album really exists**, then null so the caller renders no link.
+ */
+export function resolveJobAlbumId(
+  db: Database,
+  jobId: string,
+  artistName: string | null,
+  albumTitle: string | null,
+): string | null {
+  const landed = db
+    .query<{ album_id: string; c: number }, [string]>(
+      `SELECT s.album_id AS album_id, COUNT(*) c
+         FROM acquisition_job_items i
+         JOIN library_songs s ON s.id = i.song_id
+        WHERE i.job_id = ? AND i.song_id IS NOT NULL AND s.album_id IS NOT NULL
+        GROUP BY s.album_id
+        ORDER BY c DESC, s.album_id
+        LIMIT 1`,
+    )
+    .get(jobId);
+  if (landed) return landed.album_id;
+
+  if (!artistName || !albumTitle) return null;
+  const derived = albumIdFor(artistName, albumTitle);
+  const exists = db
+    .query<{ id: string }, [string]>(`SELECT id FROM library_albums WHERE id = ?`)
+    .get(derived);
+  return exists ? derived : null;
 }
 
 /**

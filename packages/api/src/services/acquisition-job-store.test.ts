@@ -17,6 +17,7 @@ import {
   reconcileOrganizedItems,
   recomputeStage,
   repointItem,
+  resolveJobAlbumId,
   supersedeActiveJobs,
   transferKeyFor,
 } from './acquisition-job-store.js';
@@ -798,5 +799,66 @@ describe('backfillDirectJobAlbum (issue #223 — direct grab lands with a real "
     backfillDirectJobAlbum(db, jobId);
     const job = getJob(db, jobId)!;
     expect(job.artistName).toBe('raw'); // untouched — nothing landed
+  });
+});
+
+describe('resolveJobAlbumId (issue #468)', () => {
+  function jobWithItem(artist: string, album: string, songId: string | null): string {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: artist,
+      albumTitle: album,
+      sourceRef: 'peer',
+      files: [{ trackTitle: 'A', username: 'peer', filename: 'a.flac' }],
+    });
+    if (songId) {
+      db.run(`UPDATE acquisition_job_items SET song_id = ?, state = 'scanned' WHERE job_id = ?`, [
+        songId,
+        id,
+      ]);
+    }
+    return id;
+  }
+
+  function insertAlbum(id: string, name: string, artist: string): void {
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES (?, ?, ?, 'art', 1, 0, 1)`,
+      [id, name, artist],
+    );
+  }
+
+  it('returns null when the derived album does not exist in the library', () => {
+    // The 19-of-20 prod case: a job completes but files nothing (the
+    // unfiledWarning path), yet artistName/albumTitle still derive an id, so
+    // the card offered an "Open in Library" link that cannot work.
+    const id = jobWithItem('Ghost Artist', 'Ghost Album', null);
+    expect(resolveJobAlbumId(db, id, 'Ghost Artist', 'Ghost Album')).toBeNull();
+  });
+
+  it('returns the derived id when that album really is in the library', () => {
+    const albumId = albumIdFor('Bowie', 'Heathen');
+    insertAlbum(albumId, 'Heathen', 'Bowie');
+    const id = jobWithItem('Bowie', 'Heathen', null);
+    expect(resolveJobAlbumId(db, id, 'Bowie', 'Heathen')).toBe(albumId);
+  });
+
+  it('prefers the album the job actually landed in over the name-derived guess', () => {
+    // The names are only a guess; the item's song_id is the observed truth.
+    insertAlbum('landed-alb', 'Heathen (Deluxe)', 'Bowie');
+    db.run(
+      `INSERT INTO library_songs (id, album_id, artist_id, path, artist, title, synced_at)
+       VALUES ('song1', 'landed-alb', 'art', 'p/1.opus', 'Bowie', 'A', 1)`,
+    );
+    const derived = albumIdFor('Bowie', 'Heathen');
+    insertAlbum(derived, 'Heathen', 'Bowie');
+    const id = jobWithItem('Bowie', 'Heathen', 'song1');
+    expect(resolveJobAlbumId(db, id, 'Bowie', 'Heathen')).toBe('landed-alb');
+  });
+
+  it('returns null when the job has no names and nothing landed', () => {
+    const id = jobWithItem('X', 'Y', null);
+    expect(resolveJobAlbumId(db, id, null, null)).toBeNull();
   });
 });
