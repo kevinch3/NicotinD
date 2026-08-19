@@ -136,8 +136,40 @@ describe('downloads routes', () => {
     expect(jobs[0].id).toBe(id);
     expect(jobs[0].kind).toBe('album-hunt');
     expect(jobs[0].artistName).toBe('Bowie');
-    expect(jobs[0].albumId).toBe(albumIdFor('Bowie', 'Heathen'));
+    // No such album is in the library, so the feed offers no deep link rather
+    // than a name-derived id that cannot resolve (issue #468).
+    expect(jobs[0].albumId).toBeNull();
     expect(jobs[0].progress).toEqual({ expected: 2, delivered: 1, unavailable: 0, failed: 0 });
+  });
+
+  it('GET /jobs deep-links to the album once the job has actually landed', async () => {
+    const id = createJob(testDb, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: 'Bowie',
+      albumTitle: 'Heathen',
+      username: 'user1',
+      files: [{ filename: 'file1.mp3' }],
+    });
+    const albumId = albumIdFor('Bowie', 'Heathen');
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES (?, 'Heathen', 'Bowie', 'art', 1, 0, 1)`,
+      [albumId],
+    );
+    testDb.run(
+      `INSERT INTO library_songs (id, album_id, artist_id, path, artist, title, synced_at)
+       VALUES ('s9', ?, 'art', 'p/1.opus', 'Bowie', 'A', 1)`,
+      [albumId],
+    );
+    testDb.run(
+      `UPDATE acquisition_job_items SET state = 'scanned', song_id = 's9' WHERE job_id = ?`,
+      [id],
+    );
+
+    const res = await app.request('/jobs');
+    const jobs = (await res.json()) as Array<{ id: string; albumId: string | null }>;
+    expect(jobs.find((j) => j.id === id)!.albumId).toBe(albumId);
   });
 });
 

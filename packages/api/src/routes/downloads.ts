@@ -6,8 +6,7 @@ import type { PluginRegistry } from '../services/plugins/registry.js';
 import { createLogger } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { requireAcquirer } from '../middleware/current-user.js';
-import { albumIdFor } from '../services/library-scanner.js';
-import { createJob, listJobFeed } from '../services/acquisition-job-store.js';
+import { createJob, listJobFeed, resolveJobAlbumId } from '../services/acquisition-job-store.js';
 
 const log = createLogger('downloads');
 
@@ -161,7 +160,7 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
     const db = getDatabase();
     const jobs = listJobFeed(db).map((job) => ({
       ...job,
-      albumId: job.artistName && job.albumTitle ? albumIdFor(job.artistName, job.albumTitle) : null,
+      albumId: resolveJobAlbumId(db, job.id, job.artistName, job.albumTitle),
     }));
     return c.json(jobs, 200);
   });
