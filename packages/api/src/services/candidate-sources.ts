@@ -10,6 +10,7 @@ import type { MusicBrainzClient } from './musicbrainz-client.js';
 import type { PluginRegistry } from './plugins/registry.js';
 import { readAudioTags } from './audio-tags.js';
 import { fold } from './search-tokens.js';
+import { computeIdentifyAvailable } from './identify.js';
 
 const log = createLogger('candidate-sources');
 
@@ -101,22 +102,6 @@ function dedupeAndRank(candidates: MetadataCandidate[]): MetadataCandidate[] {
     if (!existing || c.score > existing.score) best.set(key, c);
   }
   return [...best.values()].sort((a, b) => b.score - a.score);
-}
-
-/**
- * Cheap "can the user hit Identify" check for the `identify` capability
- * (AcoustID). Deliberately does NOT call `plugin.isAvailable()` — that spawns
- * the `fpcalc` binary as a probe subprocess, which is fine for the Extensions
- * status pill (polled rarely) but too expensive to run on every candidate
- * gather. "Enabled + has an API key configured" is a good enough proxy: the
- * binary check happens for real when the user actually clicks Identify.
- */
-function computeIdentifyAvailable(plugins: PluginRegistry | null | undefined): boolean {
-  if (!plugins) return false;
-  return plugins.getEnabledWithCapability('identify').some((p) => {
-    const cfg = plugins.getConfig(p.manifest.id) as { apiKey?: string };
-    return Boolean(cfg.apiKey);
-  });
 }
 
 /**

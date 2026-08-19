@@ -488,9 +488,13 @@ Add detail there, not here.
 - **On-demand track analysis (BPM + genre)**: per-track analyze/verify in the track-info drawer +
   bulk backfill scripts; writes DB **and** file tag. BPM detection is **sidecar-first** (Essentia
   `POST /rhythm` — the local music-tempo fallback makes frequent half/double-tempo octave errors);
-  historical octave errors are repaired by `analyze-bpm.ts --recheck`. →
+  historical octave errors are repaired by `analyze-bpm.ts --recheck`. The drawer also has a
+  curator-gated **AcoustID fingerprint identify + apply** (`services/identify.ts` shared with the
+  review inbox; `buildIdentifyApplyTags` echoes the approved suggestion, never clears tags) for a
+  file whose tags are wrong or missing. →
   [docs/library-scanner.md](docs/library-scanner.md),
-  [docs/library-processing.md](docs/library-processing.md)
+  [docs/library-processing.md](docs/library-processing.md),
+  [docs/download-review.md](docs/download-review.md)
 - **Windowed library processing**: resumable background enrichment
   (bpm/genre/key/energy/audio-features/artist-image/genre-audio) via an extensible task registry,
   run only inside a daily window; ffmpeg/sidecar failures are diagnosed (stderr tail surfaced, not

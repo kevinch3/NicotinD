@@ -254,6 +254,35 @@ seeds the plugin's `apiKey` at registration time
 — an existing deployment that had already set this secret gets AcoustID
 identify for free without re-entering a key.
 
+### The capability also serves the library track-info sheet
+
+The identify helpers (`identifyPlugin`/`identifyOne`/`computeIdentifyAvailable`)
+live in `services/identify.ts`, shared by this inbox and the general-purpose
+track-info identify in `routes/library.ts`:
+
+- `GET /api/library/identify/available` — the sheet's cheap availability flag
+  (same no-`isAvailable()` reasoning as `computeIdentifyAvailable`).
+- `POST /api/library/songs/:id/identify` (curator) — identical contract to the
+  review route, but for any library song.
+- `POST /api/library/songs/:id/identify/apply` (curator) — per-song apply. The
+  body **echoes the curator-approved suggestion** (matching how the review
+  retag trusts free-text title/artist) rather than re-running identify
+  server-side, which would burn a second fpcalc+HTTP round-trip and could
+  return a different match than the one approved. `buildIdentifyApplyTags`
+  maps it onto `AudioTags` (`acoustId → acoustIdId`, `recordingId →
+  mbRecordingId`, `releaseId → mbReleaseId` — the organizer's persist set);
+  empty/placeholder strings and out-of-range numbers are **ignored, never
+  written**, so a thin match can't wipe an existing tag; nothing applicable →
+  400. On success it writes tags, runs the incremental rescan
+  (`LibraryRoutesOptions.scanIncremental`, mirroring `DownloadReviewDeps`),
+  and `recordAudit`s `song.identify_apply`.
+
+Web-side, the track-info sheet (`TrackInfoSheetComponent`) renders the
+Identify button + suggestion card (curator-gated, hidden when unavailable);
+the failure-kind → i18n-key mapping is the shared
+`lib/identify-failure.ts` `identifyFailureKey`, reusing the `review.identify*`
+strings so the two surfaces can't drift.
+
 ### The image must carry `fpcalc` (issue #548)
 
 `fpcalc` is spawned by bare name (`acoustid-lookup.ts`'s `binaryPath` default),

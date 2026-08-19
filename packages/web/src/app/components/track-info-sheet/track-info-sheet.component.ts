@@ -11,8 +11,15 @@ import type {
 } from '@nicotind/core';
 import { LICENCE_VOCAB, LICENCE_LABELS } from '@nicotind/core';
 import { LibraryApiService } from '../../services/api/library-api.service';
-import type { ProvenanceRecord, Song, ArtistIdentityResult } from '../../services/api/api-types';
+import type {
+  ProvenanceRecord,
+  Song,
+  ArtistIdentityResult,
+  IdentifySuggestion,
+} from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
+import { TranslateService } from '../../services/translate.service';
+import { identifyFailureKey } from '../../lib/identify-failure';
 import { LikeService } from '../../services/like.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { methodBadge } from '../../lib/acquisition-method';
@@ -38,6 +45,7 @@ const ACTION_LABELS: Record<string, string> = {
 export class TrackInfoSheetComponent implements OnInit {
   private api = inject(LibraryApiService);
   private auth = inject(AuthService);
+  private i18n = inject(TranslateService);
   private server = inject(ServerConfigService);
   private router = inject(Router);
   readonly likes = inject(LikeService);
@@ -52,11 +60,11 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly displayCoverArt = input<string | null>(null);
   readonly close = output<void>();
 
-  // Song the sheet renders from: the caller's Song when given, otherwise the
-  // one we lazily fetch by id (callers like the player pass only a songId, so
-  // without this the stored bpm/genre would never load → always "Unknown").
+  // Song the sheet renders from: a freshly fetched one when we have it (set
+  // lazily for songId-only callers like the player, and refetched after an
+  // identify apply so the header reflects the new tags), else the caller's.
   private readonly loadedSong = signal<Song | null>(null);
-  readonly effectiveSong = computed(() => this.song() ?? this.loadedSong());
+  readonly effectiveSong = computed(() => this.loadedSong() ?? this.song());
 
   // Identity header — prefer the full Song, fall back to the display inputs.
   readonly headerTitle = computed(() => this.effectiveSong()?.title ?? this.displayTitle());
@@ -95,6 +103,14 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly currentLicenceLabel = computed(
     () => LICENCE_LABELS[this.currentLicence() as LicenceCode] ?? 'Unknown',
   );
+  // AcoustID fingerprint identify (curator) — see routes/library.ts identify.
+  readonly identifyAvailable = signal(false);
+  readonly identifying = signal(false);
+  readonly identifySuggestion = signal<IdentifySuggestion | null>(null);
+  readonly identifyFailure = signal<{ kind: string; detail?: string } | null>(null);
+  readonly applyingIdentify = signal(false);
+  readonly identifyApplied = signal(false);
+
   // Curation actions (artist-identity fix, apply genre, edit lyrics) — refiner+admin.
   readonly canCurate = computed(() => this.auth.canCurate());
 
@@ -201,6 +217,12 @@ export class TrackInfoSheetComponent implements OnInit {
           }
         },
         error: () => this.loadedSong.set(null),
+      });
+    }
+    if (this.canCurate()) {
+      this.api.getIdentifyAvailable().subscribe({
+        next: (r) => this.identifyAvailable.set(r.available),
+        error: () => this.identifyAvailable.set(false),
       });
     }
     this.api.getSongProvenance(this.songId()).subscribe({
@@ -337,6 +359,68 @@ export class TrackInfoSheetComponent implements OnInit {
 
   onLicenceSelect(event: Event): void {
     this.applyLicence((event.target as HTMLSelectElement).value);
+  }
+
+  /** Fingerprint the file via AcoustID and hold the match for review (curator). */
+  identifyNow(): void {
+    if (this.identifying()) return;
+    this.identifying.set(true);
+    this.identifyFailure.set(null);
+    this.api.identifyLibrarySong(this.songId()).subscribe({
+      next: ({ result, outcome }) => {
+        this.identifying.set(false);
+        if (result) {
+          this.identifySuggestion.set(result);
+        } else {
+          const kind = outcome?.kind ?? 'no-match';
+          this.identifyFailure.set({
+            kind,
+            detail: outcome && outcome.kind !== 'match' ? outcome.detail : undefined,
+          });
+        }
+      },
+      error: () => {
+        this.identifying.set(false);
+        this.identifyFailure.set({ kind: 'source-error' });
+      },
+    });
+  }
+
+  /** Human copy for the current identify failure (shared #414 taxonomy). */
+  identifyFailureLabel(): string {
+    const failure = this.identifyFailure();
+    return failure ? this.i18n.t(identifyFailureKey(failure.kind)) : '';
+  }
+
+  /** Write the approved suggestion to the file + rescan, then refetch the song. */
+  applyIdentifyNow(): void {
+    const s = this.identifySuggestion();
+    if (!s || this.applyingIdentify()) return;
+    this.applyingIdentify.set(true);
+    this.api
+      .applyIdentify(this.songId(), {
+        title: s.title,
+        artist: s.artist,
+        album: s.album,
+        albumArtist: s.albumArtist,
+        year: s.year,
+        trackNumber: s.trackNumber,
+        acoustId: s.acoustId,
+        recordingId: s.recordingId,
+        releaseId: s.releaseId,
+      })
+      .subscribe({
+        next: () => {
+          this.applyingIdentify.set(false);
+          this.identifyApplied.set(true);
+          this.identifySuggestion.set(null);
+          this.api.getSong(this.songId()).subscribe({
+            next: (song) => this.loadedSong.set(song),
+            error: () => {},
+          });
+        },
+        error: () => this.applyingIdentify.set(false),
+      });
   }
 
   methodLabel(method: AcquisitionMethod): string {

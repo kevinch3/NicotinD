@@ -3,6 +3,29 @@
 // to. Split out of the former monolithic api.service.ts so the per-domain
 // services and their consumers share one types module.
 
+/**
+ * An AcoustID identify result as the API actually ships it — IdentifyResult
+ * plus the albumArtist/trackNumber extras the engine's AcoustIdResult carries
+ * (see api's acoustid-lookup.ts).
+ */
+export type IdentifySuggestion = import('../../../types/core').IdentifyResult & {
+  albumArtist?: string;
+  trackNumber?: number;
+};
+
+/** Body of POST /songs/:id/identify/apply — the curator-approved fields. */
+export interface IdentifyApplyFields {
+  title?: string;
+  artist?: string;
+  album?: string;
+  albumArtist?: string;
+  year?: number;
+  trackNumber?: number;
+  acoustId?: string;
+  recordingId?: string;
+  releaseId?: string;
+}
+
 export interface ArtistCredit {
   id: string;
   name: string;
