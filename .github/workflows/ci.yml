@@ -242,7 +242,11 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
+      # --with-deps runs apt-get, whose mirror retries have no bound of their
+      # own — an unreachable Azure mirror once blocked this step silently for
+      # hours (issue #556). A healthy run takes ~2m30s; fail fast instead.
       - name: Install Playwright browser
+        timeout-minutes: 10
         run: bunx playwright install --with-deps chromium
         working-directory: packages/e2e
 
@@ -348,7 +352,9 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
+      # Same apt-mirror hang bound as the e2e job's install (issue #556).
       - name: Install Playwright OS deps
+        timeout-minutes: 10
         run: bunx playwright install --with-deps chromium
         working-directory: packages/desktop
 
