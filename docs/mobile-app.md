@@ -258,7 +258,9 @@ Wiring (so it stays maintainable and testable):
   one being handed over. Metadata minus artwork is always sent first, so the controls stay responsive
   either way. **Residual**: the network can still die between probe and native fetch; that window
   can't be closed from the JS side — a plugin that crashes its host on any artwork failure is the
-  real defect, and replacing it is tracked in #226.
+  real defect, and replacing it is tracked in #226. `no-store` is applied **only on native**: on web
+  a failed cover merely doesn't render, so bypassing the HTTP cache there would add a full-size cover
+  request per track change and buy nothing.
 - Manifest permissions: `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `POST_NOTIFICATIONS`,
   `WAKE_LOCK`.
 

@@ -60,6 +60,15 @@ function asIos(plugin: ReturnType<typeof nativePlugin>): void {
   };
 }
 
+/** Android native: no NicotindNowPlaying plugin, so the @jofr path is used. */
+function asAndroid(): void {
+  (globalThis as { Capacitor?: CapStub }).Capacitor = {
+    isNativePlatform: () => true,
+    getPlatform: () => 'android',
+    Plugins: {},
+  };
+}
+
 afterEach(() => {
   delete (globalThis as { Capacitor?: CapStub }).Capacitor;
 });
@@ -232,9 +241,10 @@ describe('MediaControlsService — web (@jofr) path', () => {
       vi.unstubAllGlobals();
     });
 
-    it("probes with cache: 'no-store', so a cached cover cannot mask a dead server", async () => {
-      // The whole point: the probe must hit the network, or it repeats the
-      // original bug in a new form.
+    it("probes native with cache: 'no-store', so a cached cover cannot mask a dead server", async () => {
+      // The whole point: on native the probe must hit the network, or it
+      // repeats the original bug in a new form.
+      asAndroid();
       const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
       vi.stubGlobal('fetch', fetchMock);
 
@@ -242,6 +252,19 @@ describe('MediaControlsService — web (@jofr) path', () => {
       await flush();
 
       expect(fetchMock).toHaveBeenCalledWith('big', expect.objectContaining({ cache: 'no-store' }));
+      vi.unstubAllGlobals();
+    });
+
+    it('does not bypass the HTTP cache on web, where a failed cover cannot crash anything', async () => {
+      // Guards a cost this fix would otherwise add: a full-size cover request
+      // on every track change, for no benefit outside the native crash path.
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+      vi.stubGlobal('fetch', fetchMock);
+
+      new MediaControlsService().setMetadata(META);
+      await flush();
+
+      expect(fetchMock).toHaveBeenCalledWith('big', {});
       vi.unstubAllGlobals();
     });
   });

@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import type { MediaMetadataInit } from '../lib/media-metadata';
-import { getCapacitorPlugin, isIosNative } from '../lib/platform';
+import { getCapacitorPlugin, isIosNative, isNativePlatform } from '../lib/platform';
 import {
   pickArtworkUrl,
   toNativeMetadata,
@@ -164,7 +164,11 @@ export class MediaControlsService {
     // Residual: the network can still die between probe and native fetch. That
     // window can't be closed from here — a plugin that crashes its host on any
     // artwork failure is the real defect (see #226, which replaces it).
-    void fetch(probeUrl, { cache: 'no-store' })
+    // `no-store` only where a stale-cache false positive can actually kill the
+    // app. On web a failed cover just doesn't render, so bypassing the HTTP
+    // cache there would mean an extra full-size cover request on every track
+    // change and buy nothing.
+    void fetch(probeUrl, isNativePlatform() ? { cache: 'no-store' } : {})
       .then((res) => {
         if (res.ok) this.run((s) => s.setMetadata(meta));
       })
