@@ -73,6 +73,21 @@ These are documented in full elsewhere; `CLAUDE.md` links straight to them.
   is what closed it. When quoting or discussing an issue you are **not** closing, break the pattern
   (`cl<!---->ose #436`, "closing 436", or just reword) — this is the exact failure mode #257 exists
   to prevent, arriving from the opposite direction.
+
+  **It applies to the commit message too, and that is the half that is easy to miss.** The PR
+  documenting the paragraph above escaped the keyword in its *body* and still closed #436 a second
+  time, because its **commit message** carried the unescaped phrase — GitHub honours closing
+  keywords on any commit landing on the default branch. Two closes, two vectors:
+
+  | Vector | Triggers a close? |
+  | --- | --- |
+  | PR body (including inside a blockquote or backticks) | **yes** |
+  | Commit message on the default branch | **yes** |
+  | The text of a committed `.md` file | no |
+
+  So an issue you are deliberately leaving open needs the keyword broken in **both** the PR body and
+  every commit message — check with
+  `git log -1 --format=%B \| grep -iE '(close|fix|resolve)[sd]? #'` before pushing.
 - **JSON config duplicate-key gate (`check-json-configs.ts`)**: `JSON.parse` accepts duplicate keys and silently keeps the **last** one, which makes a whole class of damage invisible to every other check — most realistically from a merge resolved by keeping both sides of a conflict, which is the natural resolution for the additive edits these files actually get. **Found empirically, not hypothesised**: test-merging the open PR queue produced two `"typecheck"` entries in `package.json`, and the *second* won — silently discarding the Angular-template type-check that the PR introducing it exists to add. `JSON.parse` called that document valid; only Bun's own parser warned, in passing. `bun run check:json` (CI) scans `package.json`, every workspace manifest, `angular.json`, `ngsw-config.json` and the i18n catalogs (a duplicate there silently drops a translation, and the base catalog is meant to be a clean artefact a provider can import); tsconfigs are excluded because they are JSONC. **Detection is a hand scanner, not a `JSON.parse` reviver** — the reviver *cannot* see duplicates, because the parser resolves them while building the object and calls the reviver once per *surviving* member; the reviver version reported zero duplicates on a document that had them, and a test established that before it shipped. A gate rather than a report (unlike `check-shipped-issues.ts`): a duplicate key is never intentional, so there is no false-positive class to cry wolf with.
 
 - **Shared-helper duplication gate (`check-shared-helpers.ts`)**: `expandHome` was copy-pasted into 32 files, and one copy drifted to `… : ''` instead of `… : p`, returning an **empty string for every absolute path**. That copy lived in `check-fragments.ts`, which CLAUDE.md documents as a CLI gate — so the gate had never once run in a Docker deployment (`NICOTIND_DATA_DIR=/data/nicotind` collapsed to `''`, and the script exited with a plausible-looking "Database not found"; issue #301). What made it expensive is the *shape* of the failure rather than the duplication: the broken copy took the `~` branch under a developer's default `~/.nicotind` and worked perfectly, so it was reachable only with an absolute path — i.e. only in production. Issue #306 consolidated the copies (canonical helper now `@nicotind/core` `utils/expand-home.ts`, since one consumer is a *service* and importing it from `scripts/lib/` would invert the layering); `bun run check:shared-helpers` (CI) is what stops copy #33, scanning `packages/*/src/**/*.ts` for a local `function foo(` / `const foo =` declaration of any name in the `SHARED_HELPERS` registry. Imports, call sites, comments and longer names that merely *contain* the helper name are all deliberately silent — otherwise the gate cries wolf on all 30 legitimate consumers. **Add a registry entry whenever you extract a previously-duplicated helper**: that is the moment the duplication is most likely to grow back. A gate rather than a report: re-declaring a helper that already exists in core is never the intended thing, and if a local definition genuinely is wanted the fix is to give it a different name — two functions with one name and two behaviours is the exact bug this prevents.
