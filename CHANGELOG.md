@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.26](https://github.com/kevinch3/NicotinD/compare/v0.3.25...v0.3.26) (2026-08-19)
+
+### Features
+
+* **storybook:** story the download-review inbox ([#576](https://github.com/kevinch3/NicotinD/issues/576)) ([b882231](https://github.com/kevinch3/NicotinD/commit/b882231d6804ac203f48978d6b23a0e8b8d2b966)), references [#471](https://github.com/kevinch3/NicotinD/issues/471)
 ## [0.3.25](https://github.com/kevinch3/NicotinD/compare/v0.3.24...v0.3.25) (2026-08-19)
 
 ### Features
