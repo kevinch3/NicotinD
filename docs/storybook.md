@@ -175,6 +175,15 @@ requires gridcells inside a row — so the story was both inaccurate and inacces
 `a11y:storybook:strict` failed it. The gate caught a wrapper drifting from the thing it
 was supposed to document.
 
+**Storying a component can surface real a11y defects in it.** `metadata-fix-modal`'s cover
+picker repeated the option label in both the button's `title` and the `<img alt>`, so a
+screen reader announced it twice — axe's `image-redundant-alt`, 6 nodes, caught the moment
+the component first had stories. The image is decorative (the button carries the name, and
+the current option adds a visible caption), so the fix was `alt=""` plus a real
+`aria-label` on the button. Expect this: the catalog's first a11y pass found 241 contrast
+nodes for the same reason, and the right response is to fix the component rather than
+narrow the gate.
+
 The same wrapper pattern covers **component-internal state**: `metadata-fix-modal`'s
 `identifyFailures` is populated by the identify call's response, not by a service, so its
 stories reach the component through a `viewChild` and set it directly — showing the
