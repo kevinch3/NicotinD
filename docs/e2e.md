@@ -214,7 +214,20 @@ unrelated PRs in one afternoon). The `~/.cache/ms-playwright` cache doesn't help
 caches the browser *download*, while `--with-deps` runs apt on every run regardless of a
 cache hit. So the steps are now:
 
-1. **`Install Playwright OS deps (apt)`** — three layers, each added because the
+The bounded install lives in **one composite action**, `.github/actions/playwright-deps`,
+used by all **three** jobs that need Playwright: `e2e`, `desktop-smoke` and
+**`storybook`**. That third site is why it is an action rather than a copied block —
+it runs its own `playwright install --with-deps` through a workspace script, carried
+**no `timeout-minutes` at all**, and was missed by both #556 and the first pass of
+#561; it was caught only by watching it hang for ~40 minutes on a live run. A fourth
+copy would be missed the same way.
+
+The `--with-deps` shorthand is also gone: `install:deps` (apt) and `install:browsers`
+(binary, cache-served) are separate workspace scripts in both `packages/e2e` and
+`packages/desktop`, so the apt half and the download half can be bounded differently
+and a failure names which one broke.
+
+1. **The apt step** — three layers, each added because the
    previous one was measured to be insufficient:
    - **Drops `azure.archive.ubuntu.com` from `/etc/apt/apt-mirrors.txt`.** This is the
      root cause. apt *does* eventually fall through to the canonical archive, but only

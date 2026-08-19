@@ -18,7 +18,8 @@
     "typecheck": "tsc --noEmit",
     "smoke:storybook": "node scripts/storybook-gates.mjs --smoke",
     "gates:storybook": "node scripts/storybook-gates.mjs --smoke --a11y --strict",
-    "install:browsers": "playwright install --with-deps chromium",
+    "install:deps": "playwright install-deps chromium",
+    "install:browsers": "playwright install chromium",
     "a11y:storybook": "node scripts/storybook-gates.mjs --a11y",
     "a11y:storybook:strict": "node scripts/storybook-gates.mjs --a11y --strict"
   },

@@ -1,0 +1,61 @@
+name: Install Playwright OS deps
+description: >-
+  Install Playwright's apt dependencies with every network failure mode bounded.
+  Extracted because three jobs need it (e2e, desktop-smoke, storybook) and the
+  third was missed twice — see the notes below.
+
+inputs:
+  install-command:
+    description: >-
+      Command that runs `playwright install-deps`. Callers pass the workspace
+      script rather than `bunx playwright`, because bunx resolves a floating
+      latest from npm and can install for a different revision than the pinned
+      @playwright/test the job actually imports.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Three layers, each added because the previous one was measured insufficient:
+    #
+    # 1. The runner's apt sources are `mirror+file:/etc/apt/apt-mirrors.txt`, whose
+    #    first entry is the azure.archive.ubuntu.com edge that goes unreachable.
+    #    apt does fall through to the canonical archive, but only after minutes of
+    #    `Ign:` retries — and those minutes are what consume the budget. Dropping
+    #    the flaky edge is the root-cause fix (issue #561).
+    # 2. Bounding apt's own Acquire retries/timeouts, so a stalled mirror fails in
+    #    seconds (issue #556 diagnosed this; it bounded only the step).
+    # 3. Bounding each ATTEMPT, not just the step. A single hung apt run was
+    #    observed eating an entire 6-minute step budget, so the retry loop never
+    #    reached attempt 2 and the retries bought nothing.
+    #
+    # Caveat: `timeout` signals the direct child, so a KILLed attempt can leave
+    # apt-get holding the dpkg lock; the next attempt then fails *fast* on that
+    # lock rather than hanging. That is the behaviour we want, but it means the
+    # retry mainly recovers from quick failures — layer 1 prevents the hang.
+    - name: Install Playwright OS deps (apt)
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -f /etc/apt/apt-mirrors.txt ]; then
+          sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+          if ! grep -q '[^[:space:]]' /etc/apt/apt-mirrors.txt; then
+            echo 'http://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
+        fi
+        sudo tee /etc/apt/apt.conf.d/99-bounded-retries >/dev/null <<'APTCONF'
+        Acquire::Retries "2";
+        Acquire::http::Timeout "20";
+        Acquire::https::Timeout "20";
+        APTCONF
+        for attempt in 1 2 3; do
+          if timeout --signal=KILL 150 ${{ inputs.install-command }}; then
+            exit 0
+          fi
+          if [ "${attempt}" -lt 3 ]; then
+            echo "::warning::playwright install-deps failed or timed out (attempt ${attempt}/3); retrying"
+            sleep $((attempt * 10))
+          fi
+        done
+        echo "::error::playwright install-deps failed after 3 attempts"
+        exit 1
