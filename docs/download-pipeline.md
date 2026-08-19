@@ -284,6 +284,14 @@ absolute server path, and leaking either as a title is what the chain replaces. 
 to feed it — `AcquisitionJobView.sourceUrl` (the column was already stored for the #509 idempotency
 guard, just never shipped to the client) and `displayTitle`.
 
+Unlike `artist_name`/`album_title`, the display title is **not** first-writer-wins: an addon
+legitimately refines it (the bundled archive.org addon sets a placeholder from the URL identifier at
+`createJob` and replaces it with the real item title once its background resolve lands), so
+COALESCE-ing it would pin the card to the placeholder forever — the opposite of the upgrade the
+whole chain is ordered around. Overwriting is safe precisely because it is display-only and the
+addon owns it; the stored value is length-clamped like the error text, since both are untrusted
+third-party output.
+
 **`acquisition_jobs.display_title` is its own column, not an overload of `album_title`.** The latter
 is *filing* metadata: `resolveJobAlbumId` turns it into an album id via `albumIdFor`, and the
 poller's `jobMeta()` hands it to the organizer as the album to file under. A playlist name there
@@ -316,7 +324,15 @@ Three rules make it hold:
   this link."
 - `failOrphanedJob` writes `error = COALESCE(error, …)`. Releasing a terminal job is exactly what
   makes the later `getJob` 404, so without this the generic "it likely restarted mid-download" guess
-  would overwrite the accurate reason on every job that fails this way.
+  would overwrite the accurate reason on every job that fails this way. The mirror is correspondingly
+  **two-way** — an active job's error tracks the addon's current one, *including being cleared* —
+  because a one-way write would let a transient note ("retrying: 429") outlive its condition and then
+  be preserved by that very COALESCE as the job's permanent verdict.
+
+An **import** card is excluded from the widened controls: it is a mirror row with no addon behind it
+(`import_jobs` is authoritative and has its own routes), so the job-scoped cancel always 400s — and
+that failure is now toasted rather than swallowed — and dropping the mirror mid-run would orphan a
+live job.
 
 `reconcileOnBoot` carries a backstop for the remaining case — an addon that never reports a terminal
 state at all — closing an item-less job left `active` past the 24 h valve (the item-driven valve

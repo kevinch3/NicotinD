@@ -436,6 +436,34 @@ describe('mergeAcquisitionJobs', () => {
         expect(mergeAcquisitionJobs([], [acqJob({ stage })])[0]!.canRemove).toBe(true);
       }
     });
+
+    /**
+     * An import card is a mirror row with no addon behind it: the job-scoped
+     * cancel route always 400s for one, and that failure is now toasted rather
+     * than swallowed — so offering the button would be a visible regression.
+     */
+    it('never offers Cancel on an import card', () => {
+      for (const stage of ['queued', 'downloading', 'scanning'] as const) {
+        const card = mergeAcquisitionJobs(
+          [],
+          [acqJob({ kind: 'import', method: 'import', stage })],
+        )[0]!;
+        expect(card.canCancel).toBe(false);
+      }
+    });
+
+    it('only lets a finished import be removed — import_jobs owns a live one', () => {
+      const running = mergeAcquisitionJobs(
+        [],
+        [acqJob({ kind: 'import', method: 'import', stage: 'organizing' })],
+      )[0]!;
+      expect(running.canRemove).toBe(false);
+      const finished = mergeAcquisitionJobs(
+        [],
+        [acqJob({ kind: 'import', method: 'import', stage: 'done' })],
+      )[0]!;
+      expect(finished.canRemove).toBe(true);
+    });
   });
 
   it('still lets the in-process acquire lane own a non-addon URL job', () => {

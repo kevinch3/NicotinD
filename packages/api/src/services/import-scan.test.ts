@@ -341,6 +341,30 @@ describe('scanImportArchive', () => {
     expect(scanImportArchive(path, { maxFiles: 2 }).truncated).toBe(true);
   });
 
+  /**
+   * A zip made by macOS Finder — the single most common way a user produces one
+   * — carries a `__MACOSX/` tree with an AppleDouble `._<name>` sidecar per
+   * file. Those end in `.mp3`, so without the walk's dot-entry rule the file
+   * count doubles, the reserved disk doubles, and a 4 KB resource fork per
+   * track reaches the organizer as if it were audio.
+   */
+  it('skips macOS AppleDouble sidecars, exactly as the folder walk does', () => {
+    const path = write([
+      { name: 'Album/01 - One.mp3', data: Buffer.alloc(100) },
+      { name: 'Album/02 - Two.mp3', data: Buffer.alloc(100) },
+      { name: '__MACOSX/Album/._01 - One.mp3', data: Buffer.alloc(4096) },
+      { name: '__MACOSX/Album/._02 - Two.mp3', data: Buffer.alloc(4096) },
+      { name: 'Album/.hidden.mp3', data: Buffer.alloc(50) },
+    ]);
+    const res = scanImportArchive(path);
+    expect(res.files).toBe(2);
+    expect(res.bytes).toBe(200);
+    expect(res.dirs.map((d) => d.dir)).toEqual(['Album']);
+    // Skipped silently, like the walk — not reported to the user as
+    // "unsupported files" they might go looking for.
+    expect(res.unsupportedFiles).toBe(0);
+  });
+
   it('files a root-level entry under "." like the walk does', () => {
     const path = write([{ name: 'loose.opus', data: Buffer.alloc(10) }]);
     expect(scanImportArchive(path).dirs.map((d) => d.dir)).toEqual(['.']);

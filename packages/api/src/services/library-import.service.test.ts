@@ -479,28 +479,46 @@ describe('archive import', () => {
   it('names the Downloads card by the archive stem, not "Album.zip"', async () => {
     const { service } = makeService();
     const id = service.submit(seedZip('Bootleg Rips 2019.zip'));
-    await waitForTerminal(service, id);
-    const row = db
+    // Asserted at submit, before the run finishes: a single-album import later
+    // clears the placeholder so the card can upgrade to the real album, and
+    // asserting only "does not contain .zip" at the end would be satisfied by
+    // the null that clearing produces — i.e. it would pass with the whole
+    // display-title derivation deleted.
+    const atSubmit = db
       .query<{ display_title: string | null }, [string]>(
         `SELECT display_title FROM acquisition_jobs WHERE id = ?`,
       )
       .get(id)!;
-    // A single-album import upgrades to the album itself; either way it is
-    // never the absolute path or the filename with its extension.
-    expect(row.display_title ?? '').not.toContain('.zip');
+    expect(atSubmit.display_title).toBe('Bootleg Rips 2019');
+    await waitForTerminal(service, id);
   });
 
   /**
    * Copy-vs-move has no meaning per file here: extraction always materializes
    * new bytes, so the full uncompressed size must be free even in move mode.
+   *
+   * The free space is set to the margin plus a little — enough for a same-device
+   * folder move (which reserves only the margin) and NOT enough once the
+   * source's bytes are added. So this fails if, and only if, the
+   * archive-forces-cross-device rule is present; a `bavail: 1` fixture would
+   * have thrown either way and proven nothing.
    */
   it('reserves the full uncompressed size even in move mode', () => {
-    const { service } = makeService({
-      statfs: () => ({ bsize: 1, blocks: 1, bavail: 1 }),
-    });
-    expect(() => service.submit(seedZip(), { removeOriginals: true })).toThrow(
-      ImportInsufficientSpaceError,
-    );
+    const headroom = 500 * 1024 * 1024 + 8; // IMPORT_DISK_MARGIN_BYTES + 8 bytes
+    const statfs = () => ({ bsize: 1, blocks: headroom, bavail: headroom });
+
+    // Control: a same-device folder move under the same free space is allowed,
+    // because it only renames bytes around.
+    seed('Album/01.mp3', 'audio:one');
+    seed('Album/02.mp3', 'audio:two');
+    expect(() =>
+      makeService({ statfs }).service.submit(sourceDir, { removeOriginals: true }),
+    ).not.toThrow();
+
+    // The archive, whose 18 uncompressed bytes exceed the 8 spare, is refused.
+    expect(() =>
+      makeService({ statfs }).service.submit(seedZip(), { removeOriginals: true }),
+    ).toThrow(ImportInsufficientSpaceError);
   });
 
   it('deletes the archive itself in move mode, only after everything landed', async () => {

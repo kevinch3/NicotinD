@@ -245,6 +245,9 @@ export function mergeAcquisitionJobs(
     // it holds the opaque `addon:<id>:<uuid>` key or an absolute import path.
     const derived = downloadTitleFor(job);
     const title = renderDownloadTitle(derived, method);
+    // An admin import is a mirror row (docs/import.md): `import_jobs` owns its
+    // lifecycle and its own routes, so the job-scoped controls don't apply.
+    const isImport = job.kind === 'import';
     merged.push({
       key: `job:${job.id}`,
       kind: 'network',
@@ -271,12 +274,17 @@ export function mergeAcquisitionJobs(
       canRetry: job.kind === 'url' && job.stage === 'error',
       // 'queued' counts: an addon URL job is mirrored at submit, before the
       // addon has fetched a byte, and a link that never resolves must not be
-      // left with no control at all.
-      canCancel: job.stage === 'downloading' || job.stage === 'queued',
+      // left with no control at all. An **import** is excluded: its card is a
+      // mirror row with no addon behind it, so the job cancel route it would
+      // call ("this download has nothing left to cancel") always 400s — and
+      // that failure is now toasted rather than swallowed.
+      canCancel: !isImport && (job.stage === 'downloading' || job.stage === 'queued'),
       // Removal is unconditional core-side (`DELETE /api/downloads/jobs/:id`
       // always drops the row, best-efforting the addon half), so gating it on a
       // stage the row can get stuck at is what made a ghost card undismissable.
-      canRemove: true,
+      // An import in flight is the exception: `import_jobs` is authoritative
+      // there, and dropping the mirror mid-run would orphan a live job.
+      canRemove: !isImport || job.stage === 'done' || job.stage === 'error',
     });
   }
 

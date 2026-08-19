@@ -194,9 +194,10 @@ describe('downloadTitleFor', () => {
     expect(downloadTitleFor({})).toEqual({ kind: 'source' });
   });
 
-  /** Internals must never surface: they are what the chain exists to replace. */
-  it('never leaks an addon key or a job id', () => {
-    const t = downloadTitleFor({ sourceUrl: 'https://open.spotify.com/album/4aawyAB9vmqN3uQ7' });
-    expect(JSON.stringify(t)).not.toContain('addon:');
+  /** A blank-ish value is not a title: whitespace must fall through, not win. */
+  it('treats a blank field as absent and keeps descending', () => {
+    expect(
+      text(downloadTitleFor({ displayTitle: '   ', albumTitle: '', artistName: 'Bowie' })),
+    ).toBe('Bowie');
   });
 });

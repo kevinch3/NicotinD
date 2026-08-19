@@ -31,7 +31,7 @@ import {
   fstatSync,
   rmSync,
 } from 'node:fs';
-import { createInflateRaw } from 'node:zlib';
+import { createInflateRaw, crc32 } from 'node:zlib';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { basename, extname, join, sep } from 'node:path';
@@ -82,6 +82,8 @@ export interface ZipEntry {
   name: string;
   compressedSize: number;
   uncompressedSize: number;
+  /** CRC-32 of the uncompressed bytes, as the archive declares them. */
+  crc: number;
   /** 0 = stored, 8 = deflate. Anything else is rejected at extraction. */
   method: number;
   /** Byte offset of this entry's LOCAL header. */
@@ -134,6 +136,16 @@ export function readZipCentralDirectory(path: string): ZipEntry[] {
         'That ZIP uses the ZIP64 extension, which is not supported — split it into smaller archives.',
       );
     }
+    // Both fields are attacker-controlled 32-bit values used directly as an
+    // allocation size and a seek offset — unbounded, a 30-byte file claiming a
+    // 4 GiB central directory makes the server allocate and read 4 GiB
+    // synchronously. The file's own length is the only honest bound.
+    if (cdOffset > size || cdSize > size || cdOffset + cdSize > size) {
+      throw new ArchiveError(
+        'ARCHIVE_UNREADABLE',
+        'That ZIP archive is truncated or corrupt (its directory points outside the file).',
+      );
+    }
 
     const central = Buffer.alloc(cdSize);
     readSync(fd, central, 0, cdSize, cdOffset);
@@ -154,6 +166,7 @@ export function readZipCentralDirectory(path: string): ZipEntry[] {
       const nameLen = central.readUInt16LE(p + 28);
       const extraLen = central.readUInt16LE(p + 30);
       const commentLen = central.readUInt16LE(p + 32);
+      const crcDeclared = central.readUInt32LE(p + 16);
       const externalAttr = central.readUInt32LE(p + 38);
       const localOffset = central.readUInt32LE(p + 42);
       const name = central.toString('utf8', p + 46, p + 46 + nameLen);
@@ -161,6 +174,7 @@ export function readZipCentralDirectory(path: string): ZipEntry[] {
         name,
         compressedSize,
         uncompressedSize,
+        crc: crcDeclared,
         method,
         localOffset,
         isDirectory: name.endsWith('/'),
@@ -288,26 +302,55 @@ export async function extractZipEntry(
   // the range read doesn't ask for [start, start-1].
   const end = start + entry.compressedSize - 1;
   let written = 0;
-  const cap = new Transform({
+  let running = 0;
+  // The cap is the entry's OWN declared size, not just the absolute ceiling.
+  // Everything upstream — `assertArchiveWithinLimits` and the import's disk
+  // preflight — is computed from the central directory, so an archive that
+  // *understates* its expansion would otherwise sail through both and then
+  // inflate freely. Bounding the write at what was declared makes the lie
+  // detectable at the exact moment it is told.
+  const cap = Math.min(entry.uncompressedSize, MAX_ARCHIVE_ENTRY_BYTES);
+  const guard = new Transform({
     transform(chunk: Buffer, _enc, cb) {
       written += chunk.byteLength;
-      if (written > MAX_ARCHIVE_ENTRY_BYTES) {
-        cb(new ArchiveError('ARCHIVE_TOO_LARGE', `Archive entry ${entry.name} is too large.`));
+      if (written > cap) {
+        cb(
+          new ArchiveError(
+            'ARCHIVE_TOO_LARGE',
+            `Archive entry ${entry.name} expands past the ${entry.uncompressedSize} bytes it declares.`,
+          ),
+        );
         return;
       }
+      running = crc32(chunk, running);
       cb(null, chunk);
     },
   });
   try {
     if (entry.compressedSize === 0) {
       await pipeline(emptyStream(), createWriteStream(dest));
-      return;
-    }
-    const source = createReadStream(archivePath, { start, end });
-    if (entry.method === 0) {
-      await pipeline(source, cap, createWriteStream(dest));
     } else {
-      await pipeline(source, createInflateRaw(), cap, createWriteStream(dest));
+      const source = createReadStream(archivePath, { start, end });
+      if (entry.method === 0) {
+        await pipeline(source, guard, createWriteStream(dest));
+      } else {
+        await pipeline(source, createInflateRaw(), guard, createWriteStream(dest));
+      }
+    }
+    // Verify what actually landed against what the archive promised. Without
+    // this a truncated or inconsistent archive yields a silently corrupt track
+    // that reaches the organizer, the tagger and the user's library.
+    if (written !== entry.uncompressedSize) {
+      throw new ArchiveError(
+        'ARCHIVE_UNREADABLE',
+        `Archive entry ${entry.name} yielded ${written} bytes but declares ${entry.uncompressedSize}.`,
+      );
+    }
+    if (entry.compressedSize > 0 && running !== entry.crc) {
+      throw new ArchiveError(
+        'ARCHIVE_UNREADABLE',
+        `Archive entry ${entry.name} failed its CRC check — the archive is damaged.`,
+      );
     }
   } catch (err) {
     rmSync(dest, { force: true });

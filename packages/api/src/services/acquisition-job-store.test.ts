@@ -456,6 +456,48 @@ describe('listJobFeed sources (#261)', () => {
   });
 });
 
+describe('listJobFeed title inputs', () => {
+  /**
+   * The three fields the shared `downloadTitleFor` chain reads. Shipping them
+   * is the whole reason a card can be named anything better than
+   * "<Source> download", and none of them existed on the read model before.
+   */
+  it('ships displayTitle, sourceUrl and the albums the files landed in', () => {
+    const id = createJob(db, {
+      kind: 'url',
+      method: 'ytdlp-addon',
+      displayTitle: 'Summer Mix 2024',
+      sourceUrl: 'https://www.youtube.com/playlist?list=PL123',
+      username: 'peer1',
+      files: [{ filename: 'a\\01.flac', trackTitle: 'One' }],
+    });
+    seedSong('s1', 'p/01.opus', true);
+    db.run(`UPDATE acquisition_job_items SET state = 'scanned', song_id = 's1' WHERE job_id = ?`, [
+      id,
+    ]);
+
+    const job = listJobFeed(db).find((j) => j.id === id)!;
+    expect(job.displayTitle).toBe('Summer Mix 2024');
+    expect(job.sourceUrl).toBe('https://www.youtube.com/playlist?list=PL123');
+    expect(job.destinationAlbums).toEqual([
+      { albumId: 'al', albumArtist: 'Bowie', albumTitle: 'Heathen' },
+    ]);
+  });
+
+  it('reports no destinations for a job whose files have not landed', () => {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'peer1',
+      files: [{ filename: 'a\\01.flac' }],
+    });
+    const job = listJobFeed(db).find((j) => j.id === id)!;
+    expect(job.destinationAlbums).toEqual([]);
+    expect(job.displayTitle).toBeNull();
+    expect(job.sourceUrl).toBeNull();
+  });
+});
+
 describe('listJobFeed', () => {
   it('maps every acquisition_job_items state onto the shared TrackStatus union', () => {
     const id = createJob(db, {

@@ -77,13 +77,23 @@ Guards, each reusing an existing precedent rather than inventing one:
 | Symlink entries (a `link → /etc/shadow` body) | Detected from the external attributes' Unix mode and skipped + tallied, exactly as the folder walk skips filesystem symlinks. |
 | Encrypted entries | General-purpose bit 0, rejected as `ARCHIVE_ENCRYPTED` before any inflate. |
 | Decompression bomb | The declared uncompressed total is checked against `IMPORT_MAX_ARCHIVE_BYTES` and a ratio ceiling, both from the central directory. The ratio is only consulted past a 64 MiB floor: real audio zips at ~1:1, a bomb is 10⁶:1, and a small archive of silence is harmless. |
-| Runaway single entry | `MAX_ARCHIVE_ENTRY_BYTES`, checked against the declared size *and* enforced on the write stream, with the partial file removed — the same shape as the addon delivery cap. |
+| Runaway single entry | The write stream is bounded by the entry's **own declared size** (not merely the absolute ceiling), so an archive that *understates* its expansion — the case that would otherwise sail through both the bomb guard and the disk preflight, since both read only the central directory — fails at the moment it exceeds what it promised. The partial file is removed. |
+| A silently corrupt track | Every extraction is verified against the declared length **and** the declared CRC-32 before the file is accepted. A truncated or damaged archive fails the import instead of landing unplayable audio in the library. |
 | ZIP64 | Refused (`ARCHIVE_UNSUPPORTED`). Reading its sentinel values as real offsets is a corrupt read; refusing is honest. |
 
 Typed rejection codes (`ImportSourceErrorCode`, all 400s): `ARCHIVE_UNREADABLE` (not a zip /
-truncated), `ARCHIVE_ENCRYPTED`, `ARCHIVE_UNSUPPORTED` (ZIP64 or an unusual method),
-`ARCHIVE_TOO_LARGE`. Each asks for a different action from the operator, which is why they are
-distinct codes rather than one "bad archive".
+truncated / failed its CRC), `ARCHIVE_ENCRYPTED`, `ARCHIVE_UNSUPPORTED` (ZIP64, an unusual method,
+or an unsafe entry name), `ARCHIVE_TOO_LARGE`. Each asks for a different action from the operator,
+which is why they are distinct codes rather than one "bad archive". They reach the client through an
+`ArchiveError` arm in `importErrorResponse`: `validateImportSource` is extension-only and never
+opens the file, so an archive's real problems surface from the *scan*, and without that arm every
+one of them fell through as an unknown error — a 500 plus a Sentry event for a password-protected
+zip.
+
+Parity with the folder walk extends to what is **skipped**: dot-prefixed names and the `__MACOSX/`
+tree. A zip made by macOS Finder — the most common way a user produces one — carries an AppleDouble
+`._<track>.mp3` sidecar per file, and those end in `.mp3`. Counting them would double the file
+count, double the reserved disk, and hand the organizer a 4 KB resource fork per track.
 
 **Move mode is archive-level and all-or-nothing.** You cannot delete a track out of a zip, so the
 unit of removal is the archive file, and it is removed only once every chunk succeeded *and* nothing

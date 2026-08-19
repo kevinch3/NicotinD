@@ -591,8 +591,12 @@ export class LibraryImportService {
     for (const dir of chunk.dirs) {
       for (const file of dir.files) {
         const src = source.originOf(file.rel);
-        const dst = source.destFor(stagingRoot, file.rel);
         try {
+          // Inside the try: `destFor` can itself reject (an archive entry whose
+          // name fails the traversal guard), and one bad entry must cost one
+          // file, not the whole chunk — the same contract a vanished source
+          // file already had.
+          const dst = source.destFor(stagingRoot, file.rel);
           mkdirSync(dirname(dst), { recursive: true });
           const mode = await source.stage(file.rel, dst, removeOriginals);
           staged.push({ src, dst, mode });

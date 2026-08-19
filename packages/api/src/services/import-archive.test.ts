@@ -132,6 +132,24 @@ describe('readZipCentralDirectory', () => {
     expect(secret!.isEncrypted).toBe(true);
   });
 
+  /**
+   * `cdSize`/`cdOffset` are 32-bit fields read straight out of the trailer and
+   * used as an allocation size and a seek offset. Unbounded, a 30-byte file
+   * claiming a 4 GiB directory makes the server allocate and read 4 GiB.
+   */
+  it('refuses a directory that points outside the file, rather than allocating it', () => {
+    const buf = buildZip([{ name: 'x.mp3', data: Buffer.from('x'), method: 0 }]);
+    buf.writeUInt32LE(0x0f000000, buf.length - 22 + 12); // cdSize ≈ 250 MB
+    const path = join(dir, 'huge-cd.zip');
+    writeFileSync(path, buf);
+    try {
+      readZipCentralDirectory(path);
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect((err as ArchiveError).code).toBe('ARCHIVE_UNREADABLE');
+    }
+  });
+
   it('refuses a file that is not a ZIP at all', () => {
     const path = join(dir, 'nope.zip');
     writeFileSync(path, 'just some text, definitely not a zip');
@@ -259,6 +277,47 @@ describe('extractZipEntry', () => {
     await expect(extractZipEntry(path, entry, join(dir, 'w.mp3'))).rejects.toThrow(
       /unsupported compression/,
     );
+  });
+
+  /**
+   * The declared sizes are attacker-controlled and are what BOTH the bomb guard
+   * and the import's disk preflight are computed from. Bounding the write at the
+   * declared size is what makes an understatement detectable at the moment it is
+   * told, rather than after the disk is full.
+   */
+  it('refuses an entry that expands past the size it declares', async () => {
+    const data = Buffer.alloc(4000, 1);
+    const path = zipAt('lie.zip', [{ name: 'big.mp3', data, method: 8, declaredUncompressed: 10 }]);
+    const out = join(dir, 'big.mp3');
+    try {
+      await extractZipEntry(path, entryNamed(path, 'big.mp3'), out);
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect((err as ArchiveError).code).toBe('ARCHIVE_TOO_LARGE');
+    }
+    expect(existsSync(out)).toBe(false);
+  });
+
+  it('refuses an entry that yields fewer bytes than it declares', async () => {
+    const data = Buffer.from('short');
+    const path = zipAt('trunc.zip', [
+      { name: 'x.mp3', data, method: 0, declaredUncompressed: 999 },
+    ]);
+    const out = join(dir, 'x.mp3');
+    await expect(extractZipEntry(path, entryNamed(path, 'x.mp3'), out)).rejects.toThrow(
+      /declares 999/,
+    );
+    expect(existsSync(out)).toBe(false);
+  });
+
+  /** A silently corrupt track reaching the library is worse than a failed import. */
+  it('refuses an entry whose bytes do not match its declared CRC', async () => {
+    const data = Buffer.from('the real content');
+    const path = zipAt('badcrc.zip', [{ name: 'c.mp3', data, method: 0 }]);
+    const entry = { ...entryNamed(path, 'c.mp3'), crc: 0xdeadbeef };
+    const out = join(dir, 'c.mp3');
+    await expect(extractZipEntry(path, entry, out)).rejects.toThrow(/CRC/);
+    expect(existsSync(out)).toBe(false);
   });
 
   it('leaves no partial file behind when the stream fails', async () => {

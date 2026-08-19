@@ -244,6 +244,15 @@ export function scanImportArchive(
       result.unsupportedFiles += 1;
       continue;
     }
+    // The folder walk skips every dot-prefixed name outright (`.DS_Store`,
+    // `.thumbnails`), and parity matters most here: a zip made by macOS Finder
+    // carries a `__MACOSX/` tree with an AppleDouble `._<name>` sidecar per
+    // file. Those end in `.mp3`, so without this the most common way a user
+    // makes an archive doubles the file count, doubles the reserved disk, and
+    // feeds the organizer a 4 KB resource fork per track. Skipped silently,
+    // exactly as the walk skips them — they are not "unsupported files" the
+    // user needs to hear about.
+    if (isSkippedArchiveSegment(rel)) continue;
     if (!isAudioFile(rel)) {
       result.unsupportedFiles += 1;
       continue;
@@ -284,6 +293,11 @@ export function archiveEntryIndex(archivePath: string): Map<string, ZipEntry> {
     index.set(archiveEntryRel(entry.name), entry);
   }
   return index;
+}
+
+/** True when any path segment is one the scan deliberately never stages. */
+export function isSkippedArchiveSegment(rel: string): boolean {
+  return rel.split('/').some((seg) => seg.startsWith('.') || seg === '__MACOSX');
 }
 
 export interface ImportChunk {

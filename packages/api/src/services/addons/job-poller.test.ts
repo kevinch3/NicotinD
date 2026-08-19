@@ -248,6 +248,68 @@ describe('AddonJobPoller', () => {
   });
 
   /**
+   * Protocol 1.1's `AddonJob.title`: the addon's own display name for the job
+   * (a playlist name, a video title). Display-only — it must never leak into
+   * `album_title`, which mints an album id and steers the organizer.
+   */
+  describe('display title (protocol 1.1)', () => {
+    it("stores the addon's title without touching the filing album", async () => {
+      h = harness(() => [makeJob({ artist: null, album: null, title: 'Summer Mix 2024' })]);
+      await h.registry.enable('fixture-addon', 'admin');
+      await h.poller.tick();
+      const row = h.db
+        .query<{ display_title: string | null; album_title: string | null }, []>(
+          `SELECT display_title, album_title FROM acquisition_jobs`,
+        )
+        .get()!;
+      expect(row.display_title).toBe('Summer Mix 2024');
+      expect(row.album_title).toBeNull();
+    });
+
+    /**
+     * Not first-writer-wins, unlike artist/album: the bundled archive.org addon
+     * sets a placeholder from the URL at createJob and replaces it with the real
+     * item title once its background resolve lands. COALESCE pinned the card to
+     * the placeholder forever.
+     */
+    it('lets the addon refine its title on a later poll', async () => {
+      let title = 'Gd1977 05 08';
+      h = harness(() => [makeJob({ title, updatedAt: title.length })]);
+      await h.registry.enable('fixture-addon', 'admin');
+      await h.poller.tick();
+      title = 'Grateful Dead Live at Barton Hall';
+      await h.poller.tick();
+      const row = h.db
+        .query<{ display_title: string | null }, []>(`SELECT display_title FROM acquisition_jobs`)
+        .get()!;
+      expect(row.display_title).toBe('Grateful Dead Live at Barton Hall');
+    });
+
+    it('bounds an absurd title rather than storing it whole', async () => {
+      h = harness(() => [makeJob({ title: 'x'.repeat(5000) })]);
+      await h.registry.enable('fixture-addon', 'admin');
+      await h.poller.tick();
+      const row = h.db
+        .query<{ display_title: string }, []>(`SELECT display_title FROM acquisition_jobs`)
+        .get()!;
+      expect(row.display_title.length).toBeLessThanOrEqual(500);
+    });
+
+    it('leaves the column null for an addon that sends no title', async () => {
+      h = harness(() => [makeJob()]);
+      await h.registry.enable('fixture-addon', 'admin');
+      await h.poller.tick();
+      const row = h.db
+        .query<{ display_title: string | null; artist_name: string }, []>(
+          `SELECT display_title, artist_name FROM acquisition_jobs`,
+        )
+        .get()!;
+      expect(row.display_title).toBeNull();
+      expect(row.artist_name).toBe('Artist'); // artist/album still mirror
+    });
+  });
+
+  /**
    * The beatport regression. yt-dlp's addon manifest is the `^https?://`
    * catch-all, so every link no specific addon claims is handed to it — a
    * beatport release page included, which it cannot download. The addon
@@ -307,6 +369,24 @@ describe('AddonJobPoller', () => {
       const row = await tickWith(urlJob({ state: 'active', error: 'retrying: 429 from source' }));
       expect(row.state).toBe('active');
       expect(row.error).toBe('retrying: 429 from source');
+    });
+
+    /**
+     * The mirror is two-way. A one-way write would let a transient note outlive
+     * its condition and then become the job's permanent verdict, because
+     * `failOrphanedJob` deliberately COALESCEs rather than overwrites.
+     */
+    it('clears a transient reason once the addon clears its own', async () => {
+      let error: string | null = 'retrying: 429 from source';
+      h = harness(() => [urlJob({ state: 'active', error, updatedAt: error ? 1 : 2 })]);
+      await h.registry.enable('fixture-addon', 'admin');
+      await h.poller.tick();
+      error = null;
+      await h.poller.tick();
+      const row = h.db
+        .query<{ error: string | null }, []>(`SELECT error FROM acquisition_jobs`)
+        .get()!;
+      expect(row.error).toBeNull();
     });
 
     it('closes a terminal job as an honest partial, never stuck downloading', async () => {

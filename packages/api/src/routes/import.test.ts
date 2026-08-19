@@ -6,6 +6,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { errorHandler } from '../middleware/error-handler.js';
 import { applySchema } from '../db.js';
 import { listAudit } from '../services/audit-log.js';
+import { ArchiveError } from '../services/import-archive.js';
 import {
   ImportAlreadyRunningError,
   ImportInsufficientSpaceError,
@@ -44,12 +45,18 @@ function makeMockService(overrides: Partial<Record<string, unknown>> = {}) {
     submitted: [] as Array<{ path: string; opts: unknown }>,
     preview(path: string) {
       if (path === '/bad') throw new ImportSourceInvalidError('NOT_FOUND');
+      if (path === '/locked.zip') {
+        throw new ArchiveError('ARCHIVE_ENCRYPTED', 'That archive is password-protected.');
+      }
       return { sourcePath: path, files: 3 };
     },
     submit(path: string, opts: unknown) {
       if (path === '/bad') throw new ImportSourceInvalidError('INSIDE_LIBRARY');
       if (path === '/busy') throw new ImportAlreadyRunningError();
       if (path === '/full') throw new ImportInsufficientSpaceError(1000, 10);
+      if (path === '/broken.zip') {
+        throw new ArchiveError('ARCHIVE_UNREADABLE', 'That file is not a readable ZIP archive.');
+      }
       this.submitted.push({ path, opts });
       return 'job-new';
     },
@@ -127,6 +134,27 @@ describe('import routes', () => {
     const ok = await post(app, '/preview', { path: '/mnt/imports' });
     expect(ok.status).toBe(200);
     expect((await ok.json()).files).toBe(3);
+  });
+
+  /**
+   * An archive is only opened during the scan, so its rejections arrive as
+   * `ArchiveError` rather than through the extension-only `validateImportSource`.
+   * Without a route arm for it, a password-protected zip answered
+   * 500 "Internal server error" and filed a Sentry event — and the four
+   * user-facing ARCHIVE_* messages were unreachable dead code.
+   */
+  it('maps an archive rejection to 400 + its typed code, not a 500', async () => {
+    const app = makeApp(makeMockService());
+    const locked = await post(app, '/preview', { path: '/locked.zip' });
+    expect(locked.status).toBe(400);
+    expect(await locked.json()).toMatchObject({
+      code: 'ARCHIVE_ENCRYPTED',
+      error: 'That archive is password-protected.',
+    });
+
+    const broken = await post(app, '/', { path: '/broken.zip' });
+    expect(broken.status).toBe(400);
+    expect((await broken.json()).code).toBe('ARCHIVE_UNREADABLE');
   });
 
   it('submit returns 202 with the job id and records an audit row', async () => {

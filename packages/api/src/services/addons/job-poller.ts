@@ -213,7 +213,7 @@ export class AddonJobPoller {
       method: addonId,
       artistName: job.artist,
       albumTitle: job.album,
-      displayTitle: job.title ?? null,
+      displayTitle: job.title == null ? null : clampAddonText(job.title),
       sourceRef: `addon:${addonId}:${job.id}`,
       files: [],
     });
@@ -236,16 +236,28 @@ export class AddonJobPoller {
    * protocol grew a separate field instead of overloading `album`.
    */
   private updateJobMeta(coreJobId: string, job: AddonJob): void {
-    if (job.artist == null && job.album == null && job.title == null) return;
-    this.deps.db.run(
-      `UPDATE acquisition_jobs
-         SET artist_name = COALESCE(artist_name, ?),
-             album_title = COALESCE(album_title, ?),
-             display_title = COALESCE(display_title, ?),
-             updated_at = ?
-       WHERE id = ? AND (artist_name IS NULL OR album_title IS NULL OR display_title IS NULL)`,
-      [job.artist, job.album, job.title ?? null, Date.now(), coreJobId],
-    );
+    const now = Date.now();
+    if (job.artist != null || job.album != null) {
+      this.deps.db.run(
+        `UPDATE acquisition_jobs
+           SET artist_name = COALESCE(artist_name, ?), album_title = COALESCE(album_title, ?), updated_at = ?
+         WHERE id = ? AND (artist_name IS NULL OR album_title IS NULL)`,
+        [job.artist, job.album, now, coreJobId],
+      );
+    }
+    // The display title is the one field that must NOT be first-writer-wins.
+    // An addon legitimately refines it: the bundled archive.org addon sets a
+    // placeholder from the URL identifier at `createJob` and replaces it with
+    // the real item title once its background resolve lands. COALESCE would
+    // pin the card to the placeholder forever — the opposite of the upgrade
+    // the whole title chain is ordered around. Overwriting is safe precisely
+    // because it is display-only and the addon owns it.
+    if (job.title != null) {
+      this.deps.db.run(
+        `UPDATE acquisition_jobs SET display_title = ?, updated_at = ? WHERE id = ?`,
+        [clampAddonText(job.title), now, coreJobId],
+      );
+    }
   }
 
   /**
@@ -404,16 +416,19 @@ export class AddonJobPoller {
     const { db } = this.deps;
     const now = Date.now();
 
-    // The addon's error text is the only explanation the user will ever get
-    // ("Unsupported URL: …"), so it lands on the row even while still active.
-    if (job.error) {
-      db.run(`UPDATE acquisition_jobs SET error = ?, updated_at = ? WHERE id = ?`, [
-        clampAddonError(job.error),
-        now,
-        coreJobId,
-      ]);
+    // Mirror the addon's CURRENT error verbatim — including clearing it when the
+    // addon does. A one-way write would let a transient note ("retrying: 429")
+    // outlive the condition and then become the job's permanent verdict, since
+    // `failOrphanedJob` deliberately COALESCEs rather than overwrites. Scoped to
+    // an active row so a reason already recorded for a closed job is never
+    // reopened.
+    if (job.state === 'active') {
+      db.run(
+        `UPDATE acquisition_jobs SET error = ?, updated_at = ? WHERE id = ? AND state = 'active'`,
+        [job.error ? clampAddonText(job.error) : null, now, coreJobId],
+      );
+      return;
     }
-    if (job.state === 'active') return;
 
     // Terminal addon-side: anything still in flight is never arriving, so it
     // becomes `unavailable` and the job can close as an honest partial —
@@ -426,6 +441,14 @@ export class AddonJobPoller {
       [now, coreJobId],
     );
     recomputeStage(db, coreJobId);
+    // The addon's closing word, for a job that DOES have items — `recomputeStage`
+    // sets state/stage but never touches `error`, so a partial's reason would
+    // otherwise be lost.
+    db.run(`UPDATE acquisition_jobs SET error = ?, updated_at = ? WHERE id = ?`, [
+      job.error ? clampAddonText(job.error) : null,
+      now,
+      coreJobId,
+    ]);
 
     // An item-less terminal job is the case `recomputeStage` cannot rule on —
     // there is nothing to derive from. It is never a success: the addon either
@@ -439,7 +462,7 @@ export class AddonJobPoller {
     db.run(
       `UPDATE acquisition_jobs SET state = 'failed', stage = 'error', error = ?, updated_at = ?
        WHERE id = ? AND state != 'superseded'`,
-      [job.error ? clampAddonError(job.error) : emptyOutcomeMessage(job.state), now, coreJobId],
+      [job.error ? clampAddonText(job.error) : emptyOutcomeMessage(job.state), now, coreJobId],
     );
   }
 
@@ -559,17 +582,18 @@ export class AddonJobPoller {
 }
 
 /**
- * Addon error text is untrusted third-party output — a yt-dlp stderr dump can
- * run to kilobytes. The card truncates it visually; this bounds what we store,
- * so one bad job can't bloat the feed table (and every poll that reads it).
+ * Addon-supplied prose (an error, a display title) is untrusted third-party
+ * output — a yt-dlp stderr dump runs to kilobytes. The card truncates it
+ * visually; this bounds what we *store*, so one bad job can't bloat the feed
+ * table and every poll that reads it.
  */
-export const MAX_ADDON_ERROR_CHARS = 500;
+export const MAX_ADDON_TEXT_CHARS = 500;
 
-function clampAddonError(text: string): string {
+function clampAddonText(text: string): string {
   const trimmed = text.trim();
-  return trimmed.length <= MAX_ADDON_ERROR_CHARS
+  return trimmed.length <= MAX_ADDON_TEXT_CHARS
     ? trimmed
-    : `${trimmed.slice(0, MAX_ADDON_ERROR_CHARS - 1)}…`;
+    : `${trimmed.slice(0, MAX_ADDON_TEXT_CHARS - 1)}…`;
 }
 
 /** Why an addon job that delivered nothing at all ended, in the user's terms. */
