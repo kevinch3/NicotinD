@@ -671,10 +671,39 @@ jobs:
       # genuine host. If the host's SSH key changes (reinstall/reprovision),
       # ssh-keyscan will pick up the new key automatically — no manual secret
       # rotation needed. This is strictly safer than the old flag.
+      #
+      # Retried, because "Tailscale is running and connected" only means the
+      # local daemon authenticated — it does NOT mean the peer path to the
+      # deploy host is established yet (direct/DERP negotiation is still in
+      # flight, or the host is briefly asleep). `ssh-keyscan` is a one-shot
+      # probe with no retry of its own and exits 1 on no answer, so under
+      # `bash -e` a momentary blip failed the WHOLE deploy — after every image
+      # had already been built, pushed and manifest-verified. That is what
+      # killed v0.3.18 and v0.3.20 (identical exit 1 here ~1h apart, with
+      # v0.3.19 succeeding in between: the host flaps, it is not cleanly down).
+      # Same bounded-backoff convention the release job's git push already uses.
       - name: Pin deploy host SSH key
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts \
+               && [ -s ~/.ssh/known_hosts ]; then
+              echo "Pinned deploy host key on attempt $attempt."
+              exit 0
+            fi
+            # Truncate: a failed scan can leave a partial/empty append, and the
+            # -s check above must test THIS attempt, not a previous remnant.
+            : > ~/.ssh/known_hosts
+            if [ "$attempt" -lt 5 ]; then
+              delay=$((2 ** attempt))
+              echo "ssh-keyscan found no key (attempt $attempt/5); retrying in ${delay}s..."
+              sleep "$delay"
+            fi
+          done
+          echo "::error::Could not reach the deploy host over Tailscale after 5 attempts." \
+               "Every image for this tag is already published to GHCR — only this deploy" \
+               "step needs re-running once the host is reachable (Actions -> Re-run failed jobs)."
+          exit 1
 
       - name: Deploy via SSH
         run: |
