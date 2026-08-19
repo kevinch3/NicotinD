@@ -1411,7 +1411,11 @@ Add detail there, not here.
   #550)**: the plugin/provider pairing gate (`check:bgutil-pin`) compared core's baked pip plugin
   against the provider, but phase 4 moved every downloader out, so it was guarding a copy nothing
   ran; it retired with that copy. The provider image stays — the ytdlp/spotdl addons consume it, and
-  **their** pins are the ones that can actually break a download, currently unguarded (issue #551).
+  **their** pins are the ones that can actually break a download (issue #551). The canonical version
+  is now published **on the artifact** as `LABEL org.nicotind.bgutil.version`, wired to the `ARG` (a
+  literal would report the old version after a bump, and a source-to-source check would pass while
+  the published image is stale); `pot-provider-pin.test.ts` pins that contract. The addon-side
+  assertions still need wiring once a release publishes a labelled image.
   → [docs/deployment.md](docs/deployment.md) "We build the PO-token provider ourselves"
 - **Published Docker image (deployment)**: multi-arch GHCR image (`release`/`vX`/`vX.Y.Z` tags, no
   `latest`) published per release tag via native-runner digest builds + one manifest merge; compose

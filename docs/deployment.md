@@ -270,8 +270,35 @@ The invariant itself is real and unchanged: plugin and provider must be the same
 version or the service starts and YouTube downloads quietly stop working. It now
 applies where the downloaders actually live — `nicotind-ytdlp-addon` and
 `nicotind-spotdl-addon`, each baking its own `ARG BGUTIL_VERSION` against the
-`nicotind-pot-provider` image it runs beside. **Neither is currently guarded by
-anything but a comment** — tracked as issue #551.
+`nicotind-pot-provider` image it runs beside (issue #551).
+
+#### The pin is published on the artifact
+
+Those repos cannot read a file in this one, and a source-to-source check would
+pass while the *published* image is stale — so the canonical version rides on
+the image itself:
+
+```
+ghcr.io/kevinch3/nicotind-pot-provider   LABEL org.nicotind.bgutil.version=<version>
+```
+
+wired to `BGUTIL_VERSION` rather than repeated as a literal (a hardcoded label
+would keep reporting the old version after a bump, so every consumer's check
+would pass against a lie — `scripts/pot-provider-pin.test.ts` pins both that and
+the stage-scoped `ARG` re-declaration, without which the label silently
+interpolates to an empty string).
+
+A consumer reads it without cloning anything:
+
+```bash
+docker buildx imagetools inspect ghcr.io/kevinch3/nicotind-pot-provider:release \
+  --format '{{ index .Image.Config.Labels "org.nicotind.bgutil.version" }}'
+```
+
+**Consumer-side checks are not wired up yet.** The label only exists on images
+built after this change, so each addon repo's CI assertion has to land once a
+release has published a labelled provider. Until then the addon pins are still
+guarded by nothing but a comment.
 
 ### We build the PO-token provider ourselves (issue #238)
 

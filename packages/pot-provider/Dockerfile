@@ -46,6 +46,14 @@ COPY --from=source --chown=node:node /src/server/src/ src/
 RUN npx tsc
 
 FROM install AS server
+# Republish the pin ON the artifact (issue #551). The plugin baked into the
+# ytdlp/spotdl addon images must match the server version here, and those repos
+# cannot read this Dockerfile — but any build can inspect a label. A source-file
+# check would also pass while the *published* image is stale; this cannot.
+# ARG is re-declared because a top-level one is out of scope inside a stage —
+# without this the label interpolates to an empty string.
+ARG BGUTIL_VERSION
+LABEL org.nicotind.bgutil.version="${BGUTIL_VERSION}"
 COPY --from=build_node /app/build /app/build
 EXPOSE 4416
 ENTRYPOINT ["/usr/local/bin/node", "build/main.js"]
