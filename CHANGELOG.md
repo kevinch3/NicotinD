@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.23](https://github.com/kevinch3/NicotinD/compare/v0.3.22...v0.3.23) (2026-08-19)
+
+### Features
+
+* **library:** acoustid fingerprint identify + apply in the track-info sheet ([#555](https://github.com/kevinch3/NicotinD/issues/555)) ([799e6b2](https://github.com/kevinch3/NicotinD/commit/799e6b2b24d5c7df34c8cc0b3cb328f2a59999a6))
 ## [0.3.22](https://github.com/kevinch3/NicotinD/compare/v0.3.21...v0.3.22) (2026-08-19)
 
 ### Features
