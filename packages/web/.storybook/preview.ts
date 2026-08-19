@@ -1,5 +1,6 @@
 import type { Decorator, Preview } from '@storybook/angular';
 import { withThemeByDataAttribute } from '@storybook/addon-themes';
+import { setStoryLang } from '../src/stories/support/story-lang';
 
 // Tailwind and the theme tokens arrive via the `browserTarget` in angular.json — the
 // angular-cli preset reads that target's `styles: ["src/styles.css"]` and its PostCSS
@@ -40,6 +41,20 @@ const withTvBuild: Decorator = (story, context) => {
   return story();
 };
 
+/**
+ * Select the catalog language. Spanish strings run 20-30% longer than English,
+ * which is exactly the layout break a component catalog should surface before
+ * it ships — Storybook otherwise renders English only.
+ *
+ * The decorator only records the choice; `storyProviders()` applies it inside
+ * the story's own Angular injector (see `story-lang.ts` for why it cannot be
+ * passed directly).
+ */
+const withLang: Decorator = (story, context) => {
+  setStoryLang(String(context.globals['lang'] ?? 'en'));
+  return story();
+};
+
 const preview: Preview = {
   decorators: [
     withThemeByDataAttribute({
@@ -48,9 +63,22 @@ const preview: Preview = {
       attributeName: 'data-theme',
     }),
     withTvBuild,
+    withLang,
     withThemedCanvas,
   ],
   globalTypes: {
+    lang: {
+      description: 'Catalog language (runtime i18n, real public/i18n bundles)',
+      toolbar: {
+        title: 'Language',
+        icon: 'globe',
+        items: [
+          { value: 'en', title: 'English' },
+          { value: 'es', title: 'Espanol' },
+        ],
+        dynamicTitle: true,
+      },
+    },
     tvBuild: {
       description: 'Render inside the Android TV build (html.tv-build)',
       toolbar: {
@@ -64,7 +92,7 @@ const preview: Preview = {
       },
     },
   },
-  initialGlobals: { tvBuild: 'off' },
+  initialGlobals: { tvBuild: 'off', lang: 'en' },
   parameters: {
     // The app is zoneless (Angular 22 default, no zone.js dependency). Without this,
     // stories bootstrap with zone-based change detection and drift from the real app.

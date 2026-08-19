@@ -99,6 +99,30 @@ can stay green while the real service is broken — which would make the catalog
 | Theme | writes `data-theme` on `<html>`, all seven presets | The presets had no surface where they could be compared |
 | TV build | toggles `html.tv-build` | Overscan insets and D-pad focus rings were only observable on an Android TV emulator |
 | Viewport | mobile / tablet / desktop | `menu-panel` flip, `selection-bar` and `settings-group` are responsive |
+| Language | `en` / `es`, applied to `TranslateService` | Spanish runs 20-30% longer than English, so a translation that overflows its container was invisible until it shipped |
+
+**How the Language global reaches the render.** The decorator can't set the language
+directly: `TranslateService` is `providedIn: 'root'`, so every story gets its own instance
+inside its own Angular application and a decorator has no handle on it. So `withLang`
+records the choice in `story-lang.ts` and `storyProviders()`'s app initializer applies it —
+the same shape as `withTvBuild`, which also reaches the render through shared state. The
+initializer **returns** the load promise, so Angular waits for it; otherwise the first
+paint renders raw keys.
+
+The catalogs are the **real** `public/i18n/*.json`, already served through `staticDirs` —
+not a stub with invented strings, which would leave the story testing copy that doesn't
+ship.
+
+**Verified, not assumed.** The `t` pipe is `pure: false`; a pure pipe memoizes on its
+arguments, so it would never re-run on a language change and the panel would silently keep
+showing English. Confirmed by rendering `iframe.html?globals=lang:en` vs `lang:es` and
+diffing the text — they differ, and the Spanish side is real copy rather than raw keys.
+`Foundations/Internationalization` is the story that shows it: the eight highest-growth
+strings (measured against the shipped bundles, not picked by eye) in a 320px column, the
+narrowest real container in the app. Note that only one *component* story currently uses
+the `t` pipe (`recently-played`) — most translated copy lives in the app-shell components
+that are deliberately out of catalog scope, so this Foundations page is where the global
+is actually exercised.
 
 ## Integration constraints
 
@@ -298,6 +322,6 @@ Tracked under the `storybook` label.
 | [#473](https://github.com/kevinch3/NicotinD/issues/473) | Visual regression on top of the stories |
 | ~~[#474](https://github.com/kevinch3/NicotinD/issues/474)~~ | ✅ `@storybook/addon-a11y` plus triage — findings became [#481](https://github.com/kevinch3/NicotinD/issues/481) / [#482](https://github.com/kevinch3/NicotinD/issues/482) |
 | [#475](https://github.com/kevinch3/NicotinD/issues/475) | Interaction tests for `menu-panel`, `seek-bar`, `selection-bar` |
-| [#476](https://github.com/kevinch3/NicotinD/issues/476) | i18n toolbar global (en/es) driving `TranslateService` |
+| ~~[#476](https://github.com/kevinch3/NicotinD/issues/476)~~ | ✅ i18n toolbar global (en/es) driving `TranslateService` |
 | [#477](https://github.com/kevinch3/NicotinD/issues/477) | Catalog the shared directives and pipes |
 | [#478](https://github.com/kevinch3/NicotinD/issues/478) | Migrate to a Vite builder when `@storybook/angular` ships one |

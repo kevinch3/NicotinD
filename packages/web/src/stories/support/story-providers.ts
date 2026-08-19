@@ -19,6 +19,8 @@ import { provideServiceWorker } from '@angular/service-worker';
 import { APP_VERSION } from '../../app/app.config';
 import { fixtureHttpInterceptor } from './http-fixtures';
 import { AuthService } from '../../app/services/auth.service';
+import { TranslateService } from '../../app/services/translate.service';
+import { getStoryLang } from './story-lang';
 import { PlayerService } from '../../app/services/player.service';
 import type { Track } from '../../app/services/player.service';
 
@@ -47,6 +49,7 @@ export function storyProviders(state: StoryState = {}): Array<Provider | Environ
     provideAppInitializer(() => {
       const auth = inject(AuthService);
       const player = inject(PlayerService);
+      const translate = inject(TranslateService);
 
       // A signed-in admin is the default because it is the only role that renders every
       // affordance; role-gated stories narrow it explicitly.
@@ -61,6 +64,14 @@ export function storyProviders(state: StoryState = {}): Array<Provider | Environ
         player.bufferingVisible.set(state.buffering);
       }
       if (state.queue !== undefined) player.queue.set(state.queue);
+
+      // Load the REAL catalogs, not a stub: Storybook serves `public/` via
+      // `staticDirs`, so `/i18n/en.json` and `/i18n/es.json` are the same files
+      // the app ships. A stub with invented strings would stop the story
+      // testing the actual copy, which is the whole point of the lang global.
+      // Returned so Angular waits for it — otherwise the first paint renders
+      // raw keys and a screenshot catches the wrong frame.
+      return translate.init().then(() => translate.use(getStoryLang()));
     }),
   ];
 }
