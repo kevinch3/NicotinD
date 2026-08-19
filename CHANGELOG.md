@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.27](https://github.com/kevinch3/NicotinD/compare/v0.3.26...v0.3.27) (2026-08-19)
+
+### Features
+
+* **storybook:** story the artist image menu ([#577](https://github.com/kevinch3/NicotinD/issues/577)) ([af37c77](https://github.com/kevinch3/NicotinD/commit/af37c774ec231a30976471a4c0ea671d898feb46)), references [#422](https://github.com/kevinch3/NicotinD/issues/422) [#471](https://github.com/kevinch3/NicotinD/issues/471)
 ## [0.3.26](https://github.com/kevinch3/NicotinD/compare/v0.3.25...v0.3.26) (2026-08-19)
 
 ### Features
