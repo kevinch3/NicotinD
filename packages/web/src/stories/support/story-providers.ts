@@ -25,6 +25,10 @@ import { AcquireService } from '../../app/services/acquire.service';
 import { DownloadReviewService } from '../../app/services/download-review.service';
 import type { AcquireJob } from '../../app/services/acquire.service';
 import type { AcquisitionJobView } from '../../types/core';
+import {
+  FeedbackSheetService,
+  type FeedbackSheetPayload,
+} from '../../app/services/feedback-sheet.service';
 import { getStoryLang } from './story-lang';
 import { PlayerService } from '../../app/services/player.service';
 import type { Track } from '../../app/services/player.service';
@@ -50,6 +54,13 @@ export interface StoryState {
   downloadingTransfers?: number;
   activeAcquireJobs?: number;
   pendingReviews?: number;
+  /**
+   * Opens the hunt-feedback detail sheet. The sheet renders nothing until
+   * `FeedbackSheetService.payload()` is non-null — it is a globally-hosted
+   * overlay opened from a toast action — so a story without this seeds an
+   * empty canvas rather than the sheet.
+   */
+  feedbackSheet?: FeedbackSheetPayload;
 }
 
 /**
@@ -137,6 +148,9 @@ export function storyProviders(state: StoryState = {}): Array<Provider | Environ
       }
       if (state.pendingReviews !== undefined) {
         inject(DownloadReviewService).pending.set(state.pendingReviews);
+      }
+      if (state.feedbackSheet !== undefined) {
+        inject(FeedbackSheetService).payload.set(state.feedbackSheet);
       }
 
       // Load the REAL catalogs, not a stub: Storybook serves `public/` via

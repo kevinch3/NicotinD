@@ -136,6 +136,12 @@ thing worth testing.
 Neither service polls until `startPolling()` is called, so a story that injects them stays
 inert: no timer to stop, no request to intercept.
 
+`feedbackSheet` seeds `FeedbackSheetService.payload()`. That sheet is a globally-hosted
+overlay opened from a toast action, so it renders **nothing** until a payload is set — a
+story without the seed is a blank canvas that still passes the render smoke, which is why
+the stories were verified by reading their rendered text (3 / 2 / 1 candidates) rather than
+by the gate alone.
+
 The fixtures are **fully typed** (`downloadingJob`, `runningAcquireJob`) rather than a
 `Partial<...> as X` cast. That is not ceremony — the first draft used a cast and the type
 checker immediately caught a missing required field (`sources`) once the cast was removed.
@@ -422,7 +428,7 @@ Tracked under the `storybook` label.
 | --- | --- |
 | [#470](https://github.com/kevinch3/NicotinD/issues/470) | Story the player / now-playing / layout shell trio |
 | [#471](https://github.com/kevinch3/NicotinD/issues/471) | Story the acquisition modals (`album-hunt`, `metadata-fix`, `folder-browser`, `artist-image-menu`) |
-| [#472](https://github.com/kevinch3/NicotinD/issues/472) | Story the review surfaces — `bottom-nav` ✅ done; `review-inbox`, `track-info-sheet`, `feedback-detail-sheet` remain |
+| [#472](https://github.com/kevinch3/NicotinD/issues/472) | Story the review surfaces — `bottom-nav` ✅, `feedback-detail-sheet` ✅; `review-inbox`, `track-info-sheet` remain |
 | [#473](https://github.com/kevinch3/NicotinD/issues/473) | Visual regression on top of the stories |
 | ~~[#474](https://github.com/kevinch3/NicotinD/issues/474)~~ | ✅ `@storybook/addon-a11y` plus triage — findings became [#481](https://github.com/kevinch3/NicotinD/issues/481) / [#482](https://github.com/kevinch3/NicotinD/issues/482) |
 | ~~[#475](https://github.com/kevinch3/NicotinD/issues/475)~~ | ✅ Interaction tests for `menu-panel` + `seek-bar` (`selection-bar` deliberately excluded — see above) |
