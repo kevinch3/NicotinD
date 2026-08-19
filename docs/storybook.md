@@ -136,6 +136,10 @@ thing worth testing.
 Neither service polls until `startPolling()` is called, so a story that injects them stays
 inert: no timer to stop, no request to intercept.
 
+`artistImageSources` seeds `ArtistImageSourcesService.sources`, which gates "Fetch
+automatically" (issue #422): `null` is the pre-load optimistic state and `[]` means no
+provider can resolve a portrait, so the control is disabled rather than offered and failing.
+
 `reviewQueue` seeds `DownloadReviewService.queue`. The inbox's constructor calls
 `review.start()`, whose refresh 404s against the fixture transport — and *by design*
 "keeps the last-known badge/queue rather than flashing to zero/empty", so the seed survives
@@ -434,7 +438,7 @@ Tracked under the `storybook` label.
 | Issue | Work |
 | --- | --- |
 | [#470](https://github.com/kevinch3/NicotinD/issues/470) | Story the player / now-playing / layout shell trio |
-| [#471](https://github.com/kevinch3/NicotinD/issues/471) | Story the acquisition modals (`album-hunt`, `metadata-fix`, `folder-browser`, `artist-image-menu`) |
+| [#471](https://github.com/kevinch3/NicotinD/issues/471) | Story the acquisition modals — `artist-image-menu` ✅; `album-hunt`, `metadata-fix`, `folder-browser` remain |
 | ~~[#472](https://github.com/kevinch3/NicotinD/issues/472)~~ | ✅ Review surfaces storied. Its identify-failure criterion was misattributed — those chips live in `metadata-fix-modal` (#471), not `review-inbox` |
 | [#473](https://github.com/kevinch3/NicotinD/issues/473) | Visual regression on top of the stories |
 | ~~[#474](https://github.com/kevinch3/NicotinD/issues/474)~~ | ✅ `@storybook/addon-a11y` plus triage — findings became [#481](https://github.com/kevinch3/NicotinD/issues/481) / [#482](https://github.com/kevinch3/NicotinD/issues/482) |
