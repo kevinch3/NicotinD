@@ -36,6 +36,9 @@ fails when an `/api` route group is mounted with no auth decision — see
 | `GET`    | `/api/library/genres`                    | Browse by genre                                             |
 | `GET`    | `/api/library/songs/:id/similar`         | Similar songs (BPM/key/genre scoring)                       |
 | `GET`    | `/api/library/songs/:id/acquisition`     | Acquisition provenance (how/where/when)                     |
+| `GET`    | `/api/library/identify/available`        | Whether an identify (AcoustID) source is configured         |
+| `POST`   | `/api/library/songs/:id/identify`        | Fingerprint-identify a song via AcoustID (curator)          |
+| `POST`   | `/api/library/songs/:id/identify/apply`  | Write the approved identify tags + rescan (curator)         |
 | `GET`    | `/api/library/songs/:id/lyrics`          | Plain + synced lyrics                                       |
 | `POST`   | `/api/library/songs/:id/lyrics/fetch`    | Fetch lyrics from enabled plugins                           |
 | `PUT`    | `/api/library/songs/:id/lyrics`          | Save custom lyrics (admin)                                  |

@@ -10,7 +10,7 @@
 import { relative } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Hono } from 'hono';
-import type { IdentifyCapability, IdentifyOutcome, IdentifyResult } from '@nicotind/core';
+import type { IdentifyOutcome, IdentifyResult } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import { requireCurator } from '../middleware/current-user.js';
@@ -29,6 +29,7 @@ import {
   reviewHoldActive,
 } from '../services/download-review-store.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from '../services/song-path.js';
+import { identifyOne, identifyPlugin } from '../services/identify.js';
 
 export interface DownloadReviewDeps {
   musicDir?: string;
@@ -42,12 +43,6 @@ export interface DownloadReviewDeps {
   scanIncremental?: (relPaths: string[]) => Promise<void>;
   /** Overridable for tests; defaults to services/audio-tags.js `writeAudioTags`. */
   writeTags?: (abs: string, tags: AudioTags) => Promise<boolean>;
-}
-
-function identifyPlugin(deps: DownloadReviewDeps): IdentifyCapability | null {
-  const hits = deps.plugins?.getEnabledWithCapability('identify') ?? [];
-  const p = hits[0] as { identify?: IdentifyCapability } | undefined;
-  return p?.identify ?? null;
 }
 
 /**
@@ -140,17 +135,6 @@ export function downloadReviewRoutes(deps: DownloadReviewDeps): Hono<AuthEnv> {
     return c.json({ ok: true, deletedCount: result.deletedCount });
   });
 
-  /**
-   * One identify attempt, always as a typed outcome (issue #414). Falls back to
-   * mapping a plain `identifyTrack` null onto `no-match` for a plugin that
-   * doesn't implement the detailed variant.
-   */
-  async function identifyOne(plugin: IdentifyCapability, abs: string): Promise<IdentifyOutcome> {
-    if (plugin.identifyTrackDetailed) return plugin.identifyTrackDetailed(abs);
-    const result = await plugin.identifyTrack(abs);
-    return result ? { kind: 'match', result } : { kind: 'no-match' };
-  }
-
   // Fingerprint one track via the enabled `identify` plugin (AcoustID) — the
   // rescue path when tags are garbage or missing, so a curator can confirm
   // what a mis-tagged file actually is before retagging it.
@@ -163,7 +147,7 @@ export function downloadReviewRoutes(deps: DownloadReviewDeps): Hono<AuthEnv> {
       .get(id);
     if (!song) return c.json({ error: 'Song not found' }, 404);
 
-    const plugin = identifyPlugin(deps);
+    const plugin = identifyPlugin(deps.plugins);
     if (!plugin) return c.json({ error: 'AcoustID not available' }, 503);
     if (!deps.musicDir) return c.json({ error: 'Music directory not configured' }, 503);
 
@@ -187,7 +171,7 @@ export function downloadReviewRoutes(deps: DownloadReviewDeps): Hono<AuthEnv> {
     const db = getDatabase();
     const albumId = c.req.param('id');
 
-    const plugin = identifyPlugin(deps);
+    const plugin = identifyPlugin(deps.plugins);
     if (!plugin) return c.json({ error: 'AcoustID not available' }, 503);
     if (!deps.musicDir) return c.json({ error: 'Music directory not configured' }, 503);
 

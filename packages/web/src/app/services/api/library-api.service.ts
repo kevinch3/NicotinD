@@ -14,10 +14,12 @@ import type {
   ApplyCoverRequest,
   LibraryFilter,
   ArtistInfoResponse,
+  IdentifyOutcome,
 } from '@nicotind/core';
 import { serializeLibraryFilter, isEmptyLibraryFilter } from '@nicotind/core';
 import type { Album, AlbumDetail, Song, ProvenanceRecord, ArtistIdentityResult } from './api-types';
 import type { LibraryFragmentReport, MissplitPreview } from './api-types';
+import type { IdentifyApplyFields, IdentifySuggestion } from './api-types';
 
 type QueryParams = Record<string, string | number | boolean | string[]>;
 
@@ -554,6 +556,33 @@ export class LibraryApiService {
       `/api/library/songs/${id}/licence`,
       { licence },
     );
+  }
+
+  /** Whether an identify (AcoustID) source is enabled + configured. */
+  getIdentifyAvailable() {
+    return this.http.get<{ available: boolean }>(`/api/library/identify/available`);
+  }
+
+  /** Fingerprint-identify a library song via AcoustID (curator). */
+  identifyLibrarySong(id: string) {
+    return this.http.post<{ result: IdentifySuggestion | null; outcome: IdentifyOutcome }>(
+      `/api/library/songs/${id}/identify`,
+      {},
+    );
+  }
+
+  /** Write a curator-approved identify suggestion to the file + rescan. */
+  applyIdentify(id: string, fields: IdentifyApplyFields) {
+    return this.http
+      .post<{
+        ok: boolean;
+        rescanned: boolean;
+      }>(`/api/library/songs/${id}/identify/apply`, fields)
+      .pipe(
+        // A retag can change artist/album, re-grouping the Artists/Albums
+        // listings — the same #210/#237 staleness shape applyGenre guards.
+        tap(() => this.invalidateLibraryReads()),
+      );
   }
 
   /** Stored lyrics for a song; null when none have been fetched yet. */

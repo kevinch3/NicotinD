@@ -280,6 +280,62 @@
           }
         }
 
+        <!-- AcoustID fingerprint identify (curator): rescue for wrong/missing tags -->
+        @if (canCurate() && identifyAvailable()) {
+          <div class="flex gap-2 items-center">
+            <span class="text-theme-muted w-16 flex-shrink-0">Tags</span>
+            <span class="text-theme-secondary text-xs">Wrong or missing metadata?</span>
+            <button
+              class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs disabled:opacity-50"
+              [disabled]="identifying()"
+              (click)="identifyNow()"
+              data-testid="identify-song-button"
+            >
+              {{ identifying() ? 'Identifying...' : 'Identify (fingerprint)' }}
+            </button>
+          </div>
+          @if (identifySuggestion(); as s) {
+            <div class="flex flex-col gap-1 pl-16" data-testid="identify-suggestion">
+              <div class="flex gap-2 items-center">
+                <span class="text-theme-muted text-xs">Match</span>
+                <span class="text-theme-secondary">
+                  {{ s.artist || 'Unknown artist' }} — {{ s.title || 'Unknown title' }}
+                </span>
+                <span class="text-theme-muted text-xs">{{ (s.score * 100).toFixed(0) }}%</span>
+                <button
+                  class="ml-auto px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs disabled:opacity-50"
+                  [disabled]="applyingIdentify()"
+                  (click)="applyIdentifyNow()"
+                  data-testid="apply-identify-button"
+                >
+                  {{ applyingIdentify() ? 'Applying...' : 'Apply' }}
+                </button>
+              </div>
+              @if (s.album || s.year) {
+                <p class="text-xs text-theme-muted">
+                  {{ s.album }}{{ s.album && s.year ? ' · ' : '' }}{{ s.year }}
+                </p>
+              }
+              <p class="text-xs text-theme-muted">
+                Applying rewrites this file's tags and may move the song under a different artist
+                or album.
+              </p>
+            </div>
+          }
+          @if (identifyApplied()) {
+            <p class="text-xs text-theme-secondary pl-16" data-testid="identify-applied">
+              Applied — tags written and library updated.
+            </p>
+          }
+          @if (identifyFailure(); as f) {
+            <p class="text-xs text-theme-muted pl-16" data-testid="identify-failure">
+              {{ identifyFailureLabel() }}@if (f.detail) {
+                <span class="opacity-70"> · {{ f.detail }}</span>
+              }
+            </p>
+          }
+        }
+
         <!-- Perceptual/harmonic features (Sims-style bars) -->
         @if (effectiveSong(); as s) {
           <app-track-stats-bars

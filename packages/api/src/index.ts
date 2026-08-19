@@ -646,6 +646,7 @@ export function createApp({
       notifyLibraryChanged: notifyAddonLibraryChanged,
       audioFeaturesClient,
       mbClient,
+      scanIncremental,
       // Same provider chain the windowed artist-image task uses, so the
       // on-demand fill isn't a Lidarr-only shortcut (issue #250).
       lookupArtistImageSpotify: (name) =>

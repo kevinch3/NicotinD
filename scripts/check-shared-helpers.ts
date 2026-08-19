@@ -54,6 +54,15 @@ export const SHARED_HELPERS: SharedHelper[] = [
   { name: 'readStories', canonical: 'packages/e2e/scripts/lib/storybook-runner.mjs' },
   { name: 'visitStories', canonical: 'packages/e2e/scripts/lib/storybook-runner.mjs' },
   { name: 'storyUrl', canonical: 'packages/e2e/scripts/lib/storybook-runner.mjs' },
+  // AcoustID identify helpers, extracted from routes/download-review.ts and
+  // candidate-sources.ts when the track-info sheet gained identify — the
+  // review inbox and the library routes must share one implementation.
+  { name: 'identifyPlugin', canonical: 'packages/api/src/services/identify.ts' },
+  { name: 'identifyOne', canonical: 'packages/api/src/services/identify.ts' },
+  { name: 'computeIdentifyAvailable', canonical: 'packages/api/src/services/identify.ts' },
+  // Failure-kind → i18n key for identify outcomes (#414 taxonomy), extracted
+  // from the metadata-fix modal so the track-info sheet can't drift on copy.
+  { name: 'identifyFailureKey', canonical: 'packages/web/src/app/lib/identify-failure.ts' },
 ];
 
 export interface HelperViolation {

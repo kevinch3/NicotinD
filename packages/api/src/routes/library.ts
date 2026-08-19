@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import { existsSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 import type { Song, Album, Artist } from '@nicotind/core';
@@ -18,7 +18,7 @@ import { getAcquisitionByPath } from '../services/acquisition-store.js';
 import { PlaylistService } from '../services/playlist.service.js';
 import { analyzeBpm, verifyGenre } from '../services/track-analysis.js';
 import type { AudioFeaturesClient } from '../services/audio-features-client.js';
-import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
+import { readAudioTags, writeAudioTags, type AudioTags } from '../services/audio-tags.js';
 import { getLyrics, setLyrics, deleteLyrics } from '../services/lyrics-store.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
 import { getMbid, upsertMbid } from '../services/mbid-store.js';
@@ -91,6 +91,13 @@ import {
 } from '../services/library-filter-sql.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../services/musicbrainz-client.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from '../services/song-path.js';
+import {
+  buildIdentifyApplyTags,
+  computeIdentifyAvailable,
+  identifyOne,
+  identifyPlugin,
+  type IdentifyApplyBody,
+} from '../services/identify.js';
 
 const log = createLogger('library');
 
@@ -325,7 +332,7 @@ function isAlbumQuarantined(db: Database, albumId: string): boolean {
   );
 }
 
-interface LibraryRoutesOptions {
+export interface LibraryRoutesOptions {
   curator?: LibraryCurator;
   runSync?: () => Promise<void>;
   /** Lidarr client for genre verification + metadata optimization; null when unconfigured. */
@@ -355,6 +362,11 @@ interface LibraryRoutesOptions {
    *  (issue #411) — null/absent omits the musicbrainz source rather than
    *  failing the request. */
   mbClient?: MusicBrainzClient | null;
+  /** Incremental rescan hook, run after an identify apply retags a file
+   *  (mirrors DownloadReviewDeps.scanIncremental). */
+  scanIncremental?: (relPaths: string[]) => Promise<void>;
+  /** Overridable for tests; defaults to services/audio-tags.js `writeAudioTags`. */
+  writeTags?: (abs: string, tags: AudioTags) => Promise<boolean>;
 }
 
 interface AlbumRow {
@@ -567,6 +579,8 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     lookupArtistImageSpotify,
     lookupArtistImageDiscogs,
     mbClient,
+    scanIncremental,
+    writeTags,
   } = options;
   // A deleted file's slskd share entry doesn't go away on its own — see
   // ShareRescanScheduler. Debounced so an album/bulk delete triggers one
@@ -2069,6 +2083,73 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       detail: value ?? 'cleared',
     });
     return c.json({ ok: true, licence: value });
+  });
+
+  // Cheap "can the user hit Identify" flag for the track-info sheet — see
+  // computeIdentifyAvailable for why this never probes the fpcalc binary.
+  app.get('/identify/available', (c) => {
+    return c.json({ available: computeIdentifyAvailable(pluginRegistry) });
+  });
+
+  // Fingerprint one library song via the enabled `identify` plugin (AcoustID)
+  // — the track-info rescue path for a file whose tags are garbage or missing.
+  // Same contract as the review inbox's identify (routes/download-review.ts).
+  app.post('/songs/:id/identify', async (c) => {
+    requireCurator(c);
+    const db = getDatabase();
+    const id = c.req.param('id');
+    const song = db
+      .query<{ path: string }, [string]>(`SELECT path FROM library_songs WHERE id = ?`)
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+
+    const plugin = identifyPlugin(pluginRegistry);
+    if (!plugin) return c.json({ error: 'AcoustID not available' }, 503);
+    if (!musicDir) return c.json({ error: 'Music directory not configured' }, 503);
+
+    const md = expandDir(musicDir);
+    const abs = resolveSongPath(md, song.path);
+    if (!isUnderMusicDir(md, abs) || !existsSync(abs)) {
+      return c.json({ error: 'Song file not found' }, 404);
+    }
+
+    const outcome = await identifyOne(plugin, abs);
+    return c.json({ result: outcome.kind === 'match' ? outcome.result : null, outcome });
+  });
+
+  // Write a curator-approved identify suggestion back to the file, then rescan
+  // so library_songs reflects it. The body echoes the suggestion the curator
+  // saw — deliberately not re-identified server-side, since a second
+  // fingerprint round-trip could return a different match than the approved one.
+  app.post('/songs/:id/identify/apply', async (c) => {
+    const user = requireCurator(c);
+    const db = getDatabase();
+    const id = c.req.param('id');
+    const body = await c.req.json<IdentifyApplyBody>().catch(() => ({}) as IdentifyApplyBody);
+    const song = db
+      .query<{ path: string }, [string]>(`SELECT path FROM library_songs WHERE id = ?`)
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+    if (!musicDir) return c.json({ error: 'Music directory not configured' }, 503);
+
+    const md = expandDir(musicDir);
+    const abs = resolveSongPath(md, song.path);
+    if (!isUnderMusicDir(md, abs) || !existsSync(abs)) {
+      return c.json({ error: 'Song file not found' }, 404);
+    }
+
+    const tags = buildIdentifyApplyTags(body);
+    if (!tags) return c.json({ error: 'No applicable fields' }, 400);
+
+    const ok = await (writeTags ?? writeAudioTags)(abs, tags);
+    if (!ok) return c.json({ error: 'Failed to write tags' }, 500);
+    if (scanIncremental) await scanIncremental([relative(md, abs)]);
+    recordAudit(db, user, 'song.identify_apply', {
+      targetKind: 'song',
+      targetId: id,
+      detail: [tags.artist, tags.title].filter(Boolean).join(' — ') || undefined,
+    });
+    return c.json({ ok: true, rescanned: Boolean(scanIncremental) });
   });
 
   // Stored lyrics for a song (any user — the library is shared). Returns the

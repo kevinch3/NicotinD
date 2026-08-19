@@ -7,6 +7,7 @@ import { TrackInfoSheetComponent } from './track-info-sheet.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { AuthService } from '../../services/auth.service';
 import { LikeService } from '../../services/like.service';
+import { TranslateService } from '../../services/translate.service';
 
 // Instantiated without detectChanges so ngOnInit (which reads required inputs +
 // fetches provenance) never runs; the analysis methods are exercised directly.
@@ -28,6 +29,11 @@ describe('TrackInfoSheetComponent (analysis)', () => {
   );
   const setLicence = vi.fn(() => of({ ok: true, licence: 'cc-by' as string | null }));
   const getSong = vi.fn(() => of({ id: 'song-1', bpm: 128, genre: 'Latin' } as never));
+  const getIdentifyAvailable = vi.fn(() => of({ available: true }));
+  const identifyLibrarySong = vi.fn(() =>
+    of({ result: null, outcome: { kind: 'no-match' } } as never),
+  );
+  const applyIdentify = vi.fn(() => of({ ok: true, rescanned: true }));
   const role = signal<string | null>('admin');
 
   beforeEach(async () => {
@@ -41,6 +47,13 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     setLicence.mockReturnValue(of({ ok: true, licence: 'cc-by' as string | null }));
     getSong.mockClear();
     getSong.mockReturnValue(of({ id: 'song-1', bpm: 128, genre: 'Latin' } as never));
+    getIdentifyAvailable.mockClear();
+    identifyLibrarySong.mockClear();
+    identifyLibrarySong.mockReturnValue(
+      of({ result: null, outcome: { kind: 'no-match' } } as never),
+    );
+    applyIdentify.mockClear();
+    applyIdentify.mockReturnValue(of({ ok: true, rescanned: true }));
     role.set('admin');
 
     await TestBed.configureTestingModule({
@@ -58,8 +71,12 @@ describe('TrackInfoSheetComponent (analysis)', () => {
             getSongProvenance: vi.fn(() => of([])),
             getSongAcquisition: vi.fn(() => of(null)),
             getLyrics: vi.fn(() => of(null)),
+            getIdentifyAvailable,
+            identifyLibrarySong,
+            applyIdentify,
           },
         },
+        { provide: TranslateService, useValue: { t: (k: string) => k } },
         {
           provide: AuthService,
           useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) },
@@ -184,6 +201,102 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     c.ngOnInit();
     for (const r of c.featureRows()) expect(r.value).toBeNull();
   });
+
+  it('ngOnInit loads the identify availability flag for a curator', () => {
+    const c = create();
+    c.ngOnInit();
+    expect(getIdentifyAvailable).toHaveBeenCalled();
+    expect(c.identifyAvailable()).toBe(true);
+  });
+
+  it('identifyNow() stores the suggestion on a match', () => {
+    const result = {
+      acoustId: 'ac-1',
+      score: 0.95,
+      title: 'Real Title',
+      artist: 'Real Artist',
+      album: 'Real Album',
+    };
+    identifyLibrarySong.mockReturnValueOnce(
+      of({ result, outcome: { kind: 'match' as const, result } } as never),
+    );
+    const c = create();
+    c.identifyNow();
+    expect(identifyLibrarySong).toHaveBeenCalledWith('song-1');
+    expect(c.identifySuggestion()?.title).toBe('Real Title');
+    expect(c.identifyFailure()).toBeNull();
+    expect(c.identifying()).toBe(false);
+  });
+
+  it('identifyNow() stores a typed failure and clears the spinner', () => {
+    identifyLibrarySong.mockReturnValueOnce(
+      of({ result: null, outcome: { kind: 'undecodable' as const, detail: 'bad data' } } as never),
+    );
+    const c = create();
+    c.identifyNow();
+    expect(c.identifySuggestion()).toBeNull();
+    expect(c.identifyFailure()).toEqual({ kind: 'undecodable', detail: 'bad data' });
+    expect(c.identifyFailureLabel()).toBe('review.identifyUndecodable');
+    expect(c.identifying()).toBe(false);
+  });
+
+  it('identifyNow() clears the spinner on transport error', () => {
+    identifyLibrarySong.mockReturnValueOnce(throwError(() => new Error('boom')));
+    const c = create();
+    c.identifyNow();
+    expect(c.identifying()).toBe(false);
+    expect(c.identifyFailure()?.kind).toBe('source-error');
+  });
+
+  it('applyIdentifyNow() sends the suggestion fields, marks applied, and refetches the song', () => {
+    const result = {
+      acoustId: 'ac-1',
+      score: 0.9,
+      title: 'Real Title',
+      artist: 'Real Artist',
+      album: 'Real Album',
+      albumArtist: 'Real Artist',
+      year: 2001,
+      trackNumber: 3,
+      recordingId: 'rec-1',
+      releaseId: 'rel-1',
+    };
+    identifyLibrarySong.mockReturnValueOnce(
+      of({ result, outcome: { kind: 'match' as const, result } } as never),
+    );
+    getSong.mockReturnValue(of({ id: 'song-1', title: 'Real Title' } as never));
+    const c = create();
+    c.identifyNow();
+    c.applyIdentifyNow();
+    expect(applyIdentify).toHaveBeenCalledWith('song-1', {
+      title: 'Real Title',
+      artist: 'Real Artist',
+      album: 'Real Album',
+      albumArtist: 'Real Artist',
+      year: 2001,
+      trackNumber: 3,
+      acoustId: 'ac-1',
+      recordingId: 'rec-1',
+      releaseId: 'rel-1',
+    });
+    expect(c.identifyApplied()).toBe(true);
+    expect(c.identifySuggestion()).toBeNull();
+    expect(getSong).toHaveBeenCalledWith('song-1');
+    expect(c.effectiveSong()?.title).toBe('Real Title');
+  });
+
+  it('applyIdentifyNow() clears the busy flag on error', () => {
+    const result = { acoustId: 'ac-1', score: 0.9, title: 'T' };
+    identifyLibrarySong.mockReturnValueOnce(
+      of({ result, outcome: { kind: 'match' as const, result } } as never),
+    );
+    applyIdentify.mockReturnValueOnce(throwError(() => new Error('boom')));
+    const c = create();
+    c.identifyNow();
+    c.applyIdentifyNow();
+    expect(c.applyingIdentify()).toBe(false);
+    expect(c.identifyApplied()).toBe(false);
+  });
 });
 
 describe('TrackInfoSheetComponent (multi-genre chips)', () => {
@@ -205,8 +318,12 @@ describe('TrackInfoSheetComponent (multi-genre chips)', () => {
             getSongProvenance: vi.fn(() => of([])),
             getSongAcquisition: vi.fn(() => of(null)),
             getLyrics: vi.fn(() => of(null)),
+            getIdentifyAvailable: vi.fn(() => of({ available: false })),
+            identifyLibrarySong: vi.fn(() => of({ result: null, outcome: { kind: 'no-match' } })),
+            applyIdentify: vi.fn(() => of({ ok: true, rescanned: true })),
           },
         },
+        { provide: TranslateService, useValue: { t: (k: string) => k } },
         {
           provide: AuthService,
           useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) },

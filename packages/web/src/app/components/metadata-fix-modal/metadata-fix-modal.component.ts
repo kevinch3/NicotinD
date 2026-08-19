@@ -23,6 +23,7 @@ import { ToastService } from '../../services/toast.service';
 import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { httpErrorMessage } from '../../lib/http-error';
+import { identifyFailureKey } from '../../lib/identify-failure';
 import {
   defaultQuery,
   candidateToRequest,
@@ -346,18 +347,7 @@ export class MetadataFixModalComponent implements OnInit {
    * which is the point of #414, since they used to be indistinguishable.
    */
   identifyFailureLabel(kind: string): string {
-    switch (kind) {
-      case 'fpcalc-missing':
-        return this.i18n.t('review.identifyFpcalcMissing');
-      case 'undecodable':
-        return this.i18n.t('review.identifyUndecodable');
-      case 'source-error':
-        return this.i18n.t('review.identifySourceError');
-      case 'file-missing':
-        return this.i18n.t('review.identifyFileMissing');
-      default:
-        return this.i18n.t('review.identifyNoMatch');
-    }
+    return this.i18n.t(identifyFailureKey(kind));
   }
 
   /** Narrow an outcome to its diagnostic detail (the match arm carries none). */
