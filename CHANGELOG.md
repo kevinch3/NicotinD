@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.29](https://github.com/kevinch3/NicotinD/compare/v0.3.28...v0.3.29) (2026-08-19)
+
+### Features
+
+* **storybook:** story the album hunt modal ([#580](https://github.com/kevinch3/NicotinD/issues/580)) ([bc70110](https://github.com/kevinch3/NicotinD/commit/bc701102abc8d7ef14f7e1390e27c77e2bf5324c)), references [#471](https://github.com/kevinch3/NicotinD/issues/471)
+* **storybook:** story the peer folder browser ([#579](https://github.com/kevinch3/NicotinD/issues/579)) ([2a015ac](https://github.com/kevinch3/NicotinD/commit/2a015acf745c18a73e84b1ac07674605eefe4262)), references [#471](https://github.com/kevinch3/NicotinD/issues/471) [#471](https://github.com/kevinch3/NicotinD/issues/471)
 ## [0.3.28](https://github.com/kevinch3/NicotinD/compare/v0.3.27...v0.3.28) (2026-08-19)
 
 ### Features
