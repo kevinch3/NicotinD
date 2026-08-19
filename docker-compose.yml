@@ -41,40 +41,6 @@ services:
       - internal
     restart: unless-stopped
 
-  # PO-token provider for in-process spotdl's YouTube fetches. YouTube demands
-  # "proof of origin" tokens from unrecognized clients; the pip-installed
-  # bgutil-ytdlp-pot-provider plugin (see Dockerfile) fetches them from this
-  # companion service. (yt-dlp is now the external ytdlp-addon, which brings its
-  # own pot-provider companion — see the ytdlp-addon profile below.)
-  # It shares the nicotind container's network namespace so
-  # the plugin's default base URL (http://127.0.0.1:4416) just works — no
-  # per-invocation extractor-args plumbing through spotdl/yt-dlp needed.
-  bgutil-provider:
-    # Pinned: the provider version must pair with the pip-installed
-    # bgutil-ytdlp-pot-provider plugin baked into the nicotind image (see
-    # Dockerfile) — a mismatch silently breaks YouTube downloads. Set
-    # BGUTIL_VERSION in `.env` to move both at once; `bun run check:bgutil-pin`
-    # (CI) fails if the two baked defaults ever drift apart. See issue #238.
-    # Our own build of the same upstream source (issue #238) — GPL-3.0, built by
-    # the `docker-pot-provider` job in deploy.yml from the BGUTIL_VERSION pin
-    # below, so the provider tracks our release cadence instead of a third
-    # party's. Override to `brainicism/bgutil-ytdlp-pot-provider:${BGUTIL_VERSION}`
-    # to fall back to upstream's image.
-    image: ghcr.io/kevinch3/nicotind-pot-provider:${NICOTIND_IMAGE_TAG:-release}
-    # why explicit `runtime: runc`: a host whose Docker daemon's default
-    # runtime is the NVIDIA container runtime (e.g. after `nvidia-ctk runtime
-    # configure --runtime=nvidia --set-as-default`) will try to bind-mount
-    # `/run/nvidia-persistenced/socket` into every container. The bgutil-provider
-    # image is a plain Node.js app with no CUDA dependency — that mount fails
-    # on hosts without NVIDIA drivers and the container can't start. The
-    # compose file is the contract, so don't depend on the host's default.
-    runtime: runc
-    network_mode: "service:nicotind"
-    depends_on:
-      nicotind:
-        condition: service_started
-    restart: unless-stopped
-
   # Soulseek daemon — the slskd ADDON's dependency, not core's (phase 3):
   # both live behind the `slskd-addon` profile and deploy together.
   slskd:
@@ -201,12 +167,26 @@ services:
       - internal
     restart: unless-stopped
 
-  # PO-token provider dedicated to the ytdlp-addon (mirrors the core-side
-  # bgutil-provider that serves in-process spotdl). Shares the addon's network
-  # namespace so the baked bgutil yt-dlp plugin reaches it at 127.0.0.1:4416.
+  # PO-token provider dedicated to the ytdlp-addon. YouTube demands "proof of
+  # origin" tokens from unrecognized clients; the bgutil plugin baked into the
+  # addon image fetches them from here. Shares the addon's network namespace so
+  # the plugin's default base URL (http://127.0.0.1:4416) just works — no
+  # per-invocation extractor-args plumbing needed.
   ytdlp-pot-provider:
+    # Our own build of the upstream provider (issue #238, GPL-3.0), published by
+    # the `docker-pot-provider` job in deploy.yml so it tracks our release
+    # cadence rather than a third party's. Override to
+    # `brainicism/bgutil-ytdlp-pot-provider:<version>` to fall back to upstream.
     image: ghcr.io/kevinch3/nicotind-pot-provider:${NICOTIND_IMAGE_TAG:-release}
     profiles: ["ytdlp-addon"]
+    # why explicit `runtime: runc`: a host whose Docker daemon's default runtime
+    # is the NVIDIA container runtime (e.g. after `nvidia-ctk runtime configure
+    # --runtime=nvidia --set-as-default`) will try to bind-mount
+    # `/run/nvidia-persistenced/socket` into every container. This image is a
+    # plain Node.js app with no CUDA dependency — that mount fails on hosts
+    # without NVIDIA drivers and the container can't start. The compose file is
+    # the contract, so don't depend on the host's default. Same for the
+    # spotdl-pot-provider below.
     runtime: runc
     network_mode: "service:ytdlp-addon"
     depends_on:

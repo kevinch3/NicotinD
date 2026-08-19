@@ -44,35 +44,20 @@ LABEL org.opencontainers.image.source="https://github.com/kevinch3/NicotinD" \
       org.opencontainers.image.description="NicotinD — self-hosted music acquisition + streaming server" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 
-# Install curl (healthchecks), ffmpeg, docker CLI (log streaming via mounted
-# socket), python3/pip (for yt-dlp + spotdl URL acquisition), unzip (for the
-# Deno installer below), and libchromaprint-tools, which provides the `fpcalc`
-# binary AcoustID identify spawns (issue #548 — without it every identify
-# returns `fpcalc-missing`, whose "install libchromaprint-tools" remediation a
-# container operator cannot act on).
+# Install curl (healthchecks), ffmpeg (transcode + enrichment), docker CLI (log
+# streaming via mounted socket), and libchromaprint-tools, which provides the
+# `fpcalc` binary AcoustID identify spawns (issue #548 — without it every
+# identify returns `fpcalc-missing`, whose "install libchromaprint-tools"
+# remediation a container operator cannot act on).
+#
+# No python3/pip, no Deno, no yt-dlp/spotdl (issue #550): phase 4 moved every
+# downloader into its own addon image, each of which brings that stack itself.
+# Core spawns none of them — `dockerfile-runtime-binaries.test.ts` re-derives
+# that premise, so restoring an in-process downloader fails there and says so.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates ffmpeg libchromaprint-tools python3 python3-pip unzip && \
+    apt-get install -y --no-install-recommends curl ca-certificates ffmpeg libchromaprint-tools && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=docker:cli /usr/local/bin/docker /usr/local/bin/docker
-
-# Deno: yt-dlp needs a JS runtime to solve YouTube's player signature
-# challenges — without one, many YouTube downloads fail outright.
-RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
-
-# yt-dlp + spotdl power the /api/acquire URL downloader. Installed system-wide
-# via pip (Debian externally-managed env needs --break-system-packages). They
-# land on PATH as `yt-dlp` / `spotdl`, matching the default acquire.binaryPath.
-# --upgrade keeps yt-dlp at the latest release each image build — YouTube
-# breaks older versions continuously. bgutil-ytdlp-pot-provider is the yt-dlp
-# plugin that fetches PO tokens from the bgutil companion service (see
-# docker-compose.yml); it applies to spotdl too (same python env). The plugin
-# is PINNED to match the bgutil-provider image tag in docker-compose.yml —
-# plugin and provider must stay in step; a mismatch silently breaks YouTube
-# downloads. `bun run check:bgutil-pin` (CI) fails if the two defaults drift,
-# and BGUTIL_VERSION overrides both (build-arg here, compose interpolation
-# there) so an operator bumps one value, not two. See issue #238.
-ARG BGUTIL_VERSION=1.3.1
-RUN pip3 install --no-cache-dir --break-system-packages --upgrade yt-dlp spotdl "bgutil-ytdlp-pot-provider==${BGUTIL_VERSION}"
 
 # Copy all packages (web needs package.json for workspace resolution)
 COPY package.json bun.lock bunfig.toml tsconfig.json ./

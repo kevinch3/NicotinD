@@ -330,6 +330,6 @@ uses Playwright's runner (not bun's), so it's excluded from every `bun test` glo
 
 ## Out of scope for v1 (later releases)
 
-Soulseek (slskd) + Lidarr acquisition, URL acquisition (yt-dlp/spotdl/deno/bgutil), the Essentia ML
+Soulseek (slskd) + Lidarr acquisition, URL acquisition (the yt-dlp/spotdl addon images), the Essentia ML
 analysis sidecar, macOS signing/notarization (+ full macOS auto-update), Windows, and a dedicated
 desktop app icon (currently reuses the PWA brand mark).

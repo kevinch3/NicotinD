@@ -102,5 +102,5 @@ own replay habit (`dump-radio.ts`, `album-hunter.replay.test.ts`).
   does — `POST $NICOTIND_SLSKD_URL/api/v0/session` with the `SLSKD_USERNAME`/`SLSKD_PASSWORD` env
   vars, then send the returned token as `Bearer`. `GET /api/v0/transfers/downloads` is the ground
   truth for anything about the Downloads feed.
-- Containers are `nicotind-{nicotind,slskd,lidarr,analysis,bgutil-provider}-1`. Avoid `find /` — it
+- Containers are `nicotind-{nicotind,slskd,lidarr,analysis}-1`. Avoid `find /` — it
   times out.

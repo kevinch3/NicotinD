@@ -31,9 +31,9 @@ live re-init.
   x86_64-only wheels; arm64 hosts disable the service). GPU stays a source
   build (`--build-arg GPU=1`) via override.
 - ~~**Pin infra images**~~ — **done**: `lidarr` pinned to a version tag,
-  `bgutil` provider image pinned in step with the pip plugin pin in the
-  Dockerfile (bump together). Digest-pinning + a Renovate-style bump flow
-  remains open. (S)
+  `bgutil` provider image pinned by its own `ARG` (the core-side pip pin it was
+  once compared against went away with #550; the addon-side pairing is unguarded
+  — issue #551). Digest-pinning + a Renovate-style bump flow remains open. (S)
 - **Inline the slskd entrypoint** — the last reason the install needs a git
   clone is the `scripts/slskd-entrypoint.sh` bind mount; inlining it (compose
   `command`/config or baking a tiny image) makes the install a true

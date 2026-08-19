@@ -79,11 +79,6 @@ jobs:
       - name: Format check
         run: bun run format:check
 
-      # The pip plugin and the companion PO-token service must be the same
-      # version; a mismatch silently breaks YouTube downloads (issue #238).
-      - name: Check bgutil provider/plugin version pairing
-        run: bun run check:bgutil-pin
-
       # CLAUDE.md loads into every request, so a symbol it names that no longer
       # exists is read as ground truth and sends work down a path that isn't
       # there. Renames are the usual source (issue #255).

@@ -7,8 +7,8 @@
 # server-side (every acquisition route 404s, the pollers never start, the web UI
 # hides its surfaces). This file completes the picture by not *running* the
 # sidecars that exist only to serve acquisition — so a library/streaming install
-# stops paying for Lidarr and the YouTube PO-token provider in RAM, disk and
-# attack surface. (slskd + its addon already sit behind the base file's
+# stops paying for Lidarr in RAM, disk and attack surface. (slskd + its addon
+# already sit behind the base file's
 # `slskd-addon` profile since phase 3 — a default deploy runs neither.)
 #
 # Two coupled changes are needed, and either alone is broken:
@@ -34,8 +34,4 @@ services:
     depends_on: !reset null
 
   lidarr:
-    profiles: ["acquisition"]
-
-  # Only exists to mint YouTube PO tokens for yt-dlp/spotdl, i.e. acquisition.
-  bgutil-provider:
     profiles: ["acquisition"]
