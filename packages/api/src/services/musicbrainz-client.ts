@@ -68,14 +68,23 @@ type CacheEntry =
 const MB_BASE = 'https://musicbrainz.org/ws/2';
 const MIN_INTERVAL_MS = 1050; // MusicBrainz allows 1 req/sec; add 50ms buffer
 
+/** Injected so tests need no real delays — mirrors DiscogsClient's deps style. */
+export interface MusicBrainzClientDeps {
+  /** Replaces the real timer behind both the rate limit and the 503 backoff. */
+  sleep?: (ms: number) => Promise<void>;
+}
+
 export class MusicBrainzClient {
   private cache = new Map<string, CacheEntry>();
   private lastCallAt = 0;
+  private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(
     private cacheFile: string,
     private userAgent: string,
+    deps: MusicBrainzClientDeps = {},
   ) {
+    this.sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     if (existsSync(cacheFile)) {
       try {
         const raw = JSON.parse(readFileSync(cacheFile, 'utf-8')) as Record<string, CacheEntry>;
@@ -453,7 +462,7 @@ export class MusicBrainzClient {
       });
       if (res.status === 503) {
         log.warn({ url }, 'MusicBrainz 503 — backing off 5s');
-        await sleep(5000);
+        await this.sleep(5000);
         return null;
       }
       if (!res.ok) {
@@ -470,7 +479,7 @@ export class MusicBrainzClient {
   private async rateLimit(): Promise<void> {
     const now = Date.now();
     const elapsed = now - this.lastCallAt;
-    if (elapsed < MIN_INTERVAL_MS) await sleep(MIN_INTERVAL_MS - elapsed);
+    if (elapsed < MIN_INTERVAL_MS) await this.sleep(MIN_INTERVAL_MS - elapsed);
     this.lastCallAt = Date.now();
   }
 
@@ -488,8 +497,4 @@ export class MusicBrainzClient {
       log.warn({ err }, 'Failed to persist MB cache');
     }
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

@@ -22,6 +22,16 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+/**
+ * Every client in this file injects a no-op sleep (issue #541). The real
+ * 1050ms rate limit and 5s 503 backoff made two tests pass in isolation but
+ * fail in the full suite — the backoff blew bun's 5s timeout, and the delays
+ * shifted the order the fake fetch recorded requests in.
+ */
+function testClient(): MusicBrainzClient {
+  return new MusicBrainzClient(cacheFile, 'test/1.0', { sleep: async () => {} });
+}
+
 describe('MusicBrainzClient cache', () => {
   it('loads a persisted cache file and serves an artist hit without any network call', async () => {
     writeFileSync(
@@ -34,7 +44,7 @@ describe('MusicBrainzClient cache', () => {
       }),
     );
 
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     const artist = await client.searchArtist('Daft Punk');
 
     expect(artist).toEqual({ id: 'mbid-1', name: 'Daft Punk', score: 100 });
@@ -46,7 +56,7 @@ describe('MusicBrainzClient cache', () => {
       JSON.stringify({ 'artist:nobody at all': { type: 'artist', result: null } }),
     );
 
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     expect(await client.searchArtist('Nobody At All')).toBeNull();
   });
 
@@ -61,14 +71,14 @@ describe('MusicBrainzClient cache', () => {
       }),
     );
 
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     // Different casing must resolve to the same cached entry (no network).
     expect((await client.searchArtist('DAFT PUNK'))?.id).toBe('mbid-1');
   });
 
   it('starts fresh (no throw) when the cache file is corrupt', () => {
     writeFileSync(cacheFile, '{ not valid json');
-    expect(() => new MusicBrainzClient(cacheFile, 'test/1.0')).not.toThrow();
+    expect(() => testClient()).not.toThrow();
   });
 });
 
@@ -89,7 +99,7 @@ describe('MusicBrainzClient getLicence', () => {
         { type: 'license', url: { resource: 'https://creativecommons.org/licenses/by-sa/4.0/' } },
       ],
     });
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     expect(await client.getLicence({ mbRecordingId: 'rec-1' })).toBe('cc-by-sa');
     expect(calls[0]).toContain('/recording/rec-1');
     expect(calls[0]).toContain('inc=url-rels');
@@ -97,13 +107,13 @@ describe('MusicBrainzClient getLicence', () => {
 
   it('returns null when there is no license relation', async () => {
     mockFetch({ relations: [{ type: 'stream', url: { resource: 'https://x' } }] });
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     expect(await client.getLicence({ mbRecordingId: 'rec-2' })).toBeNull();
   });
 
   it('returns null (no network) when neither id nor artist+title is given', async () => {
     // fetch stays the throwing default from beforeEach — it must not be called.
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     expect(await client.getLicence({})).toBeNull();
   });
 
@@ -116,7 +126,7 @@ describe('MusicBrainzClient getLicence', () => {
         },
       ],
     });
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     expect(await client.getLicence({ mbReleaseId: 'rel-9' })).toBe('cc0');
     expect(await client.getLicence({ mbReleaseId: 'rel-9' })).toBe('cc0');
     expect(calls).toHaveLength(1);
@@ -135,39 +145,37 @@ function mockFetchFail(): string[] {
 describe('MusicBrainzClient getArtistOrigin', () => {
   it('returns the country field when present', async () => {
     const calls = mockFetch({ id: 'mbid-1', country: 'AR' });
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     expect(await client.getArtistOrigin('mbid-1')).toEqual({ ok: true, country: 'AR' });
     expect(calls[0]).toContain('/artist/mbid-1');
   });
 
   it('falls back to a country-typed area iso code', async () => {
     mockFetch({ id: 'mbid-2', area: { type: 'Country', 'iso-3166-1-codes': ['CL'] } });
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     expect(await client.getArtistOrigin('mbid-2')).toEqual({ ok: true, country: 'CL' });
   });
 
   it('normalizes MB special codes to a confirmed miss', async () => {
     mockFetch({ id: 'mbid-3', country: 'XW' });
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     expect(await client.getArtistOrigin('mbid-3')).toEqual({ ok: true, country: null });
   });
 
-  // The fetch is mocked, but the 503 branch it exercises is not: the client really does
-  // `await sleep(5000)` to back off, against bun's 5000ms default test timeout. That is a
-  // coin flip — pristine master failed this 2 runs out of 3 — and when it loses, the
-  // timed-out test leaves its stub installed and breaks the *next* test's `calls` array
-  // too. Give the backoff room rather than racing it.
+  // The 503 branch's 5s backoff now runs through the injected no-op sleep, so this
+  // needs no extended timeout (issue #541 — it used to be a coin flip against bun's
+  // 5000ms default, and a loss left its stub installed for the next test).
   it('reports a transient failure as ok:false and does not cache it', async () => {
     mockFetchFail();
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     expect(await client.getArtistOrigin('mbid-4')).toEqual({ ok: false, country: null });
     mockFetch({ id: 'mbid-4', country: 'UY' });
     expect(await client.getArtistOrigin('mbid-4')).toEqual({ ok: true, country: 'UY' });
-  }, 15_000);
+  });
 
   it('caches a confirmed answer (second call makes no fetch)', async () => {
     const calls = mockFetch({ id: 'mbid-5', country: 'BR' });
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     await client.getArtistOrigin('mbid-5');
     expect(await client.getArtistOrigin('mbid-5')).toEqual({ ok: true, country: 'BR' });
     expect(calls).toHaveLength(1);
@@ -196,7 +204,7 @@ describe('MusicBrainzClient searchReleaseGroups', () => {
         },
       ],
     });
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     const hits = await client.searchReleaseGroups('Daft Punk', 'Discovery');
 
     expect(hits).toEqual([
@@ -230,7 +238,7 @@ describe('MusicBrainzClient searchReleaseGroups', () => {
         },
       ],
     });
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     await client.searchReleaseGroups('Daft Punk', 'Discovery');
     await client.searchReleaseGroups('Daft Punk', 'Discovery');
     expect(calls).toHaveLength(1);
@@ -242,7 +250,7 @@ describe('MusicBrainzClient searchReleaseGroups', () => {
 // URL-escapes — Lucene never sees it).
 it('escapes Lucene phrase quotes/backslashes in the query', async () => {
   const calls = mockFetch({ 'release-groups': [] });
-  const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+  const client = testClient();
   await client.searchReleaseGroups('AC\\DC', 'Song "Two" of Three');
 
   expect(calls).toHaveLength(1);
@@ -283,7 +291,7 @@ describe('MusicBrainzClient getCanonicalTracklist', () => {
         ],
       },
     );
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
 
     const tracks = await client.getCanonicalTracklist('rg-1');
 
@@ -300,7 +308,7 @@ describe('MusicBrainzClient getCanonicalTracklist', () => {
       { releases: [{ id: 'boot', status: 'Bootleg', media: [{ 'track-count': 3 }] }] },
       { media: [{ tracks: [{ position: 1, title: 'Only' }] }] },
     );
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
 
     expect(await client.getCanonicalTracklist('rg-2')).toHaveLength(1);
     expect(calls[1]).toContain('/release/boot');
@@ -308,7 +316,7 @@ describe('MusicBrainzClient getCanonicalTracklist', () => {
 
   it('returns an empty list (and caches it) when the group has no releases', async () => {
     const calls = twoHopFetch({ releases: [] }, {});
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
 
     expect(await client.getCanonicalTracklist('rg-3')).toEqual([]);
     await client.getCanonicalTracklist('rg-3');
@@ -324,7 +332,7 @@ describe('MusicBrainzClient getArtistDiscogsUrl', () => {
         { type: 'discogs', url: { resource: 'https://www.discogs.com/artist/72872-Aphex-Twin' } },
       ],
     });
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     expect(await client.getArtistDiscogsUrl('mbid-1')).toBe(
       'https://www.discogs.com/artist/72872-Aphex-Twin',
     );
@@ -334,7 +342,7 @@ describe('MusicBrainzClient getArtistDiscogsUrl', () => {
 
   it('returns null when there is no discogs relation', async () => {
     mockFetch({ relations: [{ type: 'official homepage', url: { resource: 'https://x' } }] });
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     expect(await client.getArtistDiscogsUrl('mbid-2')).toBeNull();
   });
 
@@ -342,9 +350,54 @@ describe('MusicBrainzClient getArtistDiscogsUrl', () => {
     const calls = mockFetch({
       relations: [{ type: 'discogs', url: { resource: 'https://www.discogs.com/artist/1' } }],
     });
-    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    const client = testClient();
     expect(await client.getArtistDiscogsUrl('mbid-3')).toBe('https://www.discogs.com/artist/1');
     expect(await client.getArtistDiscogsUrl('mbid-3')).toBe('https://www.discogs.com/artist/1');
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe('MusicBrainzClient injected sleep (issue #541)', () => {
+  it('backs off a 503 through the injected sleep instead of a real 5s timer', async () => {
+    // Regression: the 5s backoff was a real setTimeout, so under full-suite
+    // timing this test sat past bun's 5s default timeout and failed only in
+    // the suite (it passed in isolation). The delay must be injectable.
+    const slept: number[] = [];
+    globalThis.fetch = (async () => new Response('', { status: 503 })) as unknown as typeof fetch;
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0', {
+      sleep: async (ms) => {
+        slept.push(ms);
+      },
+    });
+
+    const started = Date.now();
+    const res = await client.getArtistOrigin('mbid-503');
+
+    expect(res.ok).toBe(false);
+    expect(slept).toContain(5000);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('rate-limits through the injected sleep, so request order is deterministic', async () => {
+    // Regression: the real 1050ms rate-limit delay shifted the order in which
+    // the fake fetch recorded calls, breaking a sibling assertion on calls[1].
+    const slept: number[] = [];
+    const calls: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      calls.push(url);
+      return new Response(JSON.stringify({ artists: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0', {
+      sleep: async (ms) => {
+        slept.push(ms);
+      },
+    });
+
+    const started = Date.now();
+    await client.searchArtist('a');
+    await client.searchArtist('b');
+
+    expect(calls.length).toBe(2);
+    expect(Date.now() - started).toBeLessThan(1000);
   });
 });
