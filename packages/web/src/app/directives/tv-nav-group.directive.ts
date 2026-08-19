@@ -505,13 +505,28 @@ export class TvNavGroupDirective {
     // ArrowUp inside a 'horizontal' group): the group has no opinion, so the
     // event keeps bubbling un-prevented for whoever else wants it.
     if (next === null) return;
-    // The group DID recognize this key, so it owns the press even when the
-    // result is clamped to where focus already is (an edge). preventDefault is
-    // therefore unconditional here: an edge press must be a true no-op for
-    // D-pad users, not something the global ArrowLeft/Right seek shortcut
-    // picks up and turns into a ±10s jump. Only the focus move stays gated —
-    // re-focusing the already-focused entry would be pointless churn.
-    event.preventDefault();
+    // The group DID recognize this key, so it owns the press — with one
+    // exception at the edges (issue #436).
+    //
+    // A clamped press used to be preventDefault'd unconditionally, so that an
+    // edge press stayed a true no-op rather than leaking to the global seek
+    // shortcut and becoming a ±10s jump. But preventDefault also stops the
+    // WebView's spatial navigation from ever seeing the key — and spatial nav
+    // is the only thing that carries focus OUT of a group. The result was a
+    // trap: on an album page, DOWN from the last track row went nowhere, and
+    // the mini-player below it was unreachable by D-pad.
+    //
+    // The seek shortcut binds ArrowLeft/Right *only*, so letting a clamped
+    // ArrowUp/Down through restores vertical escape without reintroducing the
+    // jump. A clamped ArrowLeft/Right (horizontal axis) stays prevented, and so
+    // do Home/End, which spatial nav does not act on.
+    //
+    // Note the grid axis already behaves this way: `onGridKeydown` leaves
+    // `next === null` when Up/Down has no row to jump to, so it never prevented
+    // the escape. This brings the linear axis in line with it.
+    const clampedVerticalArrow =
+      next === current && (event.key === 'ArrowUp' || event.key === 'ArrowDown');
+    if (!clampedVerticalArrow) event.preventDefault();
     if (next === current) return;
     const target = entries[next]!;
     // Moving real focus synchronously triggers the target's own focusin →

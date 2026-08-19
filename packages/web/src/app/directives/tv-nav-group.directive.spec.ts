@@ -72,19 +72,19 @@ describe('TvNavGroupDirective + TvNavItemDirective', () => {
     const event = keydown(buttons[0]!, 'ArrowUp');
     fixture.detectChanges();
     expect(document.activeElement).toBe(buttons[0]);
-    // The group navigates by ArrowUp on this axis, so it owns the press even
-    // at the edge — otherwise it leaks to the global seek shortcut.
-    expect(event.defaultPrevented).toBe(true);
+    // Focus does not move, but the press is NOT prevented — see the issue #436
+    // cases below. The seek-shortcut leak this used to guard against is
+    // ArrowLeft/Right only, which the horizontal-axis test still pins.
+    expect(event.defaultPrevented).toBe(false);
   });
 
-  it('ArrowDown at the last item does not move focus (no wrap) but IS preventDefaulted', () => {
+  it('ArrowDown at the last item does not move focus (no wrap)', () => {
     const { fixture, buttons } = setup();
     buttons[2]!.focus();
     fixture.detectChanges();
     const event = keydown(buttons[2]!, 'ArrowDown');
     fixture.detectChanges();
     expect(document.activeElement).toBe(buttons[2]);
-    expect(event.defaultPrevented).toBe(true);
   });
 
   it('a key this axis does not navigate by is left un-prevented and keeps bubbling', () => {
@@ -113,6 +113,72 @@ describe('TvNavGroupDirective + TvNavItemDirective', () => {
     fixture.detectChanges();
     expect(buttons[2]!.getAttribute('tabindex')).toBe('0');
     expect(buttons[0]!.getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('ArrowDown clamped at the last item is left un-prevented so spatial nav can escape (issue #436)', () => {
+    // The WebView's spatial navigation is what carries focus OUT of a list and
+    // down into the player chrome. preventDefault stopped the WebView seeing
+    // the press at all, so focus was trapped: DOWN x8 on the last track row
+    // never left the list, and the mini-player below was unreachable by D-pad.
+    const { fixture, buttons } = setup();
+    buttons[2]!.focus();
+    fixture.detectChanges();
+    const event = keydown(buttons[2]!, 'ArrowDown');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[2]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('ArrowUp clamped at the first item is left un-prevented too (issue #436)', () => {
+    const { fixture, buttons } = setup();
+    buttons[0]!.focus();
+    const event = keydown(buttons[0]!, 'ArrowUp');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[0]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('a clamped Home/End is still prevented — they are not spatial-nav keys', () => {
+    const { fixture, buttons } = setup();
+    buttons[0]!.focus();
+    fixture.detectChanges();
+    const event = keydown(buttons[0]!, 'Home');
+    fixture.detectChanges();
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('a clamped ArrowRight in a HORIZONTAL group is still prevented — the seek guard (issue #436)', async () => {
+    // The counter-test for the #436 fix. Vertical escape must not come at the
+    // cost of the thing the unconditional preventDefault was protecting: the
+    // global shortcut binds ArrowLeft/Right, so an un-prevented edge press on a
+    // horizontal group would turn every clamp into a +/-10s seek.
+    TestBed.resetTestingModule();
+    @Component({
+      standalone: true,
+      imports: [TvNavGroupDirective, TvNavItemDirective],
+      template: `
+        <div appTvNavGroup axis="horizontal">
+          @for (label of items; track label) {
+            <button appTvNavItem>{{ label }}</button>
+          }
+        </div>
+      `,
+    })
+    class SeekGuardHost {
+      items = ['a', 'b'];
+    }
+    TestBed.configureTestingModule({ imports: [SeekGuardHost] });
+    const fixture = TestBed.createComponent(SeekGuardHost);
+    fixture.detectChanges();
+    const buttons: HTMLButtonElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('button'),
+    );
+    buttons[1]!.focus();
+    fixture.detectChanges();
+    const event = keydown(buttons[1]!, 'ArrowRight');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(buttons[1]);
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it('a horizontal group responds to ArrowLeft/ArrowRight instead of ArrowUp/ArrowDown', async () => {
@@ -480,13 +546,16 @@ describe('TvNavGroupDirective nested child groups (issue #356)', () => {
     expect(document.activeElement).toBe(jump(0));
   });
 
-  it('ArrowDown at the last row does not move focus (no wrap) but IS preventDefaulted', () => {
+  it('ArrowDown at the last row does not move focus (no wrap) and stays un-prevented', () => {
+    // Un-prevented since issue #436: a nested group clamping at its last row is
+    // the exact shape of the trap (a track list inside a page), so the escape
+    // has to work here too, not just on a flat group.
     const { fixture, jump } = setupQueue();
     jump(2).focus();
     const event = keydown(jump(2), 'ArrowDown');
     fixture.detectChanges();
     expect(document.activeElement).toBe(jump(2));
-    expect(event.defaultPrevented).toBe(true);
+    expect(event.defaultPrevented).toBe(false);
   });
 
   it("Home/End jump to the first/last row's active item", () => {

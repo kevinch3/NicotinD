@@ -21,11 +21,21 @@ to one of two consequences of that:
    The project rule this follows from — _"forms stay Tab-order-only by design; native inputs are
    never wrapped in `appTvNavItem`"_ — is correct on desktop and meaningless on TV.
 
-2. **A nav group clamps and swallows the press.** `TvNavGroupDirective.onKeydown` `preventDefault()`s
-   unconditionally at a group edge (deliberately, so an edge press can't leak into the global
-   ArrowLeft/Right seek shortcut). That also stops the WebView's spatial navigation from carrying
-   focus _out_ of the group. Measured (issue #436): from the last track row, `DPAD_DOWN` ×8 never
-   left `rowIndex=6 of 7`.
+2. **A nav group clamps and swallows the press.** `TvNavGroupDirective.onKeydown` used to
+   `preventDefault()` unconditionally at a group edge (deliberately, so an edge press can't leak
+   into the global ArrowLeft/Right seek shortcut). That also stopped the WebView's spatial
+   navigation from carrying focus _out_ of the group. Measured (issue #436): from the last track
+   row, `DPAD_DOWN` ×8 never left `rowIndex=6 of 7`.
+
+   **The clamp is now fixed as this document proposed**: a clamped ▲ ▼ is left un-prevented so
+   spatial nav can carry focus out, while a clamped ◀ ▶ stays guarded, since only the horizontal
+   pair collides with the seek shortcut (`KeyboardShortcutsService` binds ArrowLeft/Right only).
+   Home/End stay prevented — spatial nav does not act on them. The grid axis already behaved this
+   way (`onGridKeydown` leaves `next === null` when Up/Down has no row to jump to), so this brings
+   the linear axis in line with it rather than inventing a new rule.
+
+   **Not measured on the emulator**, per the caution below: the unit tests pin the clamp contract in
+   both directions, but the trap itself only bites where spatial navigation exists.
 
 Both are **one bug class each**, not one bug each. Patching individual controls cannot hold, because
 nothing stops the next `<select>` being added by someone with no reason to think about remotes.
