@@ -783,6 +783,11 @@ Add detail there, not here.
   present-axis normalization) from genre-_scored-0_ (weight loss), flags un-split concatenated genre
   tags (`looksConcatenatedGenre`) + key-detection instability + filter-radio centroid
   genre-blindness. → [docs/radio.md](docs/radio.md), [docs/web-ui.md](docs/web-ui.md)
+- **Radio evaluation polls (public, admin-created)**: an admin freezes N radio scenarios
+  (seed + next-up snapshots incl. per-axis explanations — mandatory, the pool is
+  `ORDER BY RANDOM()`) behind a public `/poll/:token` wizard; anonymous raters thumb each
+  suggestion (previews via short-lived read-only share JWTs), `export-radio-poll.ts` distills
+  consensus-graded datasets for weight tuning. → [docs/radio-eval-polls.md](docs/radio-eval-polls.md)
 - **Remote playback (cast, Spotify-Connect-style)**: per-user `PlaybackStateManager` broadcasts
   state/commands over `GET /api/ws/playback`; each browser tab is a device. **A pruned device now
   heals (issue #433)**: `heartbeat` returns whether the device was known and `websocket.ts`

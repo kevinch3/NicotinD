@@ -1424,6 +1424,57 @@ export function applySchema(db: Database): void {
   // off — invisible to non-admins.
   addColumnIfMissing(db, 'user_settings', 'feedback_capture', 'INTEGER NOT NULL DEFAULT 0');
 
+  // Radio evaluation polls (docs/radio-eval-polls.md): an admin freezes N radio
+  // scenarios behind a public token URL and anonymous raters grade each next-up
+  // suggestion. Own tables (not generation_feedback rows) because feedback rows
+  // are one authenticated admin per row, while a poll is anonymous multi-rater.
+  // snapshot_json is mandatory: the radio pool is ORDER BY RANDOM(), so votes
+  // are only comparable against a frozen queue. Written by
+  // services/radio-poll-store.ts.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS radio_polls (
+      id             TEXT PRIMARY KEY,
+      token          TEXT NOT NULL UNIQUE,
+      name           TEXT NOT NULL,
+      created_by     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at     INTEGER NOT NULL,
+      expires_at     INTEGER,
+      closed_at      INTEGER,
+      settings_json  TEXT NOT NULL,
+      engine_version TEXT
+    )
+  `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS radio_poll_scenarios (
+      id            TEXT PRIMARY KEY,
+      poll_id       TEXT NOT NULL REFERENCES radio_polls(id) ON DELETE CASCADE,
+      position      INTEGER NOT NULL,
+      kind          TEXT NOT NULL CHECK (kind IN ('seed','filter')),
+      seed_song_id  TEXT,
+      snapshot_json TEXT NOT NULL,
+      UNIQUE (poll_id, position)
+    )
+  `);
+  // rater_key is an anonymous per-device UUID, deliberately NOT a users FK —
+  // votes carry no identity by design (see docs/radio-eval-polls.md "Anonymity").
+  // The UNIQUE key makes a re-vote an upsert (change of mind, never a double count).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS radio_poll_votes (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      scenario_id       TEXT NOT NULL REFERENCES radio_poll_scenarios(id) ON DELETE CASCADE,
+      rater_key         TEXT NOT NULL,
+      candidate_song_id TEXT NOT NULL,
+      verdict           TEXT NOT NULL CHECK (verdict IN ('up','down')),
+      note              TEXT,
+      at                INTEGER NOT NULL,
+      UNIQUE (scenario_id, rater_key, candidate_song_id)
+    )
+  `);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_radio_poll_votes_scenario
+       ON radio_poll_votes (scenario_id)`,
+  );
+
   // Listening history: one append-only row per playback session, per user.
   // Written by services/play-history.ts from client-reported raw facts; the
   // "did this count as a play" rule is applied here at insert, never by the

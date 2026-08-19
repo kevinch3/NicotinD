@@ -76,6 +76,22 @@ export type {
   HuntMatchFixture,
 } from '../../../core/src/types/generation-feedback';
 
+export type {
+  RadioPollVerdict,
+  RadioPollSettings,
+  RadioPollScenarioSnapshot,
+  RadioPollCandidateSnapshot,
+  RadioPollExplanation,
+  PublicPollTrack,
+  PublicPollScenario,
+  PublicPollView,
+  PublicPollVoteBody,
+  RadioPollSummary,
+  RadioPollCandidateResult,
+  RadioPollScenarioResult,
+  RadioPollResults,
+} from '../../../core/src/types/radio-poll';
+
 // Value re-export (not just types): library-filter is a pure, browser-safe
 // module (model + serialization + Camelot/mood vocab) shared with the API.
 export * from '../../../core/src/types/library-filter';

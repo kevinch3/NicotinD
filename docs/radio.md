@@ -311,6 +311,16 @@ load. Sequencing on top of selection lives in `playlist-recipe.ts`:
 `orderTracks('energy-arc')` (ramp-up → peak → ramp-down) and the energy term
 inside `harmonicChain`.
 
+## Human-graded dataset (radio evaluation polls)
+
+The developer-only dump below answers "why did the engine rank this here?"; the
+**human** counterpart is [radio-eval-polls.md](radio-eval-polls.md) — an admin
+freezes real radio scenarios behind a public link and anonymous raters thumb
+each next-up suggestion, producing a `(seed, candidate, verdict)` dataset with
+the per-axis explanations attached. Weight changes can now be scored against
+human consensus (export script + `--weights` A/B) instead of only against a
+developer's read of a dump.
+
 ## Diagnostic dump (developer tool)
 
 `scripts/dump-radio.ts` generates a radio the **exact** way `GET /api/radio/next`

@@ -53,6 +53,7 @@ import { SettingsGroupComponent } from '../../components/settings-group/settings
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 import { FeedbackQueueComponent } from './feedback-queue/feedback-queue.component';
 import { ImportCardComponent } from './import-card/import-card.component';
+import { RadioPollsCardComponent } from './radio-polls/radio-polls-card.component';
 
 /** A copy in a duplicate group — shape returned by the maintenance duplicates API. */
 type DuplicateSong = {
@@ -81,6 +82,7 @@ type DuplicateSong = {
     BottomChromeSafeDirective,
     FeedbackQueueComponent,
     ImportCardComponent,
+    RadioPollsCardComponent,
     MenuPanelComponent,
   ],
   templateUrl: './admin.component.html',

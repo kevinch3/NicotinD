@@ -1,0 +1,190 @@
+<!-- Loading -->
+@if (state() === 'loading') {
+  <div class="min-h-screen bg-theme-base pb-24">
+    <div class="page-shell max-w-2xl">
+      <app-skeleton variant="detail-header" label="Loading poll" />
+      <app-skeleton variant="track-row" [count]="5" [trackCover]="false" />
+    </div>
+  </div>
+}
+
+<!-- Closed / expired / error -->
+@if (state() === 'closed' || state() === 'expired' || state() === 'error') {
+  <div class="min-h-screen flex flex-col items-center justify-center bg-theme-base gap-4 text-center px-4"
+    data-testid="poll-unavailable">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+      class="text-theme-muted" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+    <p class="text-theme-primary font-semibold text-lg">
+      @if (state() === 'closed') { {{ 'poll.closed' | t }} }
+      @else if (state() === 'expired') { {{ 'poll.expired' | t }} }
+      @else { {{ 'poll.notFound' | t }} }
+    </p>
+    <p class="text-theme-muted text-sm">{{ 'poll.unavailableHint' | t }}</p>
+  </div>
+}
+
+@if (state() === 'active' && view(); as v) {
+  <div class="min-h-screen bg-theme-base pb-16">
+    <div class="page-shell max-w-2xl">
+
+      <!-- Intro -->
+      @if (step() === 'intro') {
+        <div class="flex flex-col items-center text-center gap-5 pt-12">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            class="text-theme-secondary" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/>
+          </svg>
+          <h1 class="page-title">{{ v.poll.name }}</h1>
+          <p class="text-theme-secondary text-sm max-w-md leading-relaxed">{{ 'poll.introBody' | t }}</p>
+          <p class="text-theme-muted text-xs">
+            {{ 'poll.introCount' | t: { count: v.scenarios.length } }}
+          </p>
+          <button (click)="start()" data-testid="poll-intro-start"
+            class="mt-2 px-6 py-2.5 rounded-full bg-theme-accent text-theme-on-accent font-semibold text-sm hover:opacity-90 transition">
+            {{ 'poll.start' | t }}
+          </button>
+        </div>
+      }
+
+      <!-- One scenario step -->
+      @if (scenario(); as sc) {
+        <div data-testid="poll-scenario" class="pt-6">
+          <p class="text-xs text-theme-muted mb-4 text-center" data-testid="poll-progress">
+            {{ 'poll.progress' | t: { current: scenarioIndex() + 1, total: scenarioCount() } }}
+          </p>
+
+          <!-- Fake Now Playing card: the seed -->
+          @if (sc.seed; as seed) {
+            <div class="rounded-xl bg-theme-surface border border-theme p-4 flex items-center gap-4 mb-6"
+              data-testid="poll-seed-card">
+              <img [src]="coverUrl(seed.coverArt)" alt=""
+                class="w-20 h-20 rounded-lg object-cover flex-shrink-0 shadow" />
+              <div class="flex-1 min-w-0">
+                <p class="text-[11px] uppercase tracking-wide text-theme-muted mb-1">{{ 'poll.nowPlaying' | t }}</p>
+                <p class="text-base font-semibold text-theme-primary truncate">{{ seed.title }}</p>
+                <p class="text-sm text-theme-muted truncate">{{ seed.artist }}</p>
+              </div>
+              <button (click)="togglePlay(seed.id)" data-testid="poll-play"
+                class="w-10 h-10 rounded-full bg-theme-surface-2 flex items-center justify-center hover:bg-theme-hover transition text-theme-primary flex-shrink-0"
+                [title]="'poll.preview' | t">
+                @if (playingId() === seed.id) {
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+                  </svg>
+                } @else {
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5,3 19,12 5,21"/>
+                  </svg>
+                }
+              </button>
+            </div>
+          }
+
+          <p class="text-[11px] uppercase tracking-wide text-theme-muted mb-2">{{ 'poll.nextUp' | t }}</p>
+
+          <!-- Candidate rows -->
+          <div class="divide-y divide-theme-border rounded-xl border border-theme bg-theme-surface overflow-hidden mb-4">
+            @for (c of sc.candidates; track c.id) {
+              <div class="flex items-center gap-3 px-3 py-3" data-testid="poll-candidate-row">
+                <button (click)="togglePlay(c.id)" data-testid="poll-play"
+                  class="w-9 h-9 rounded-full bg-theme-surface-2 flex items-center justify-center hover:bg-theme-hover transition text-theme-primary flex-shrink-0"
+                  [title]="'poll.preview' | t">
+                  @if (playingId() === c.id) {
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+                    </svg>
+                  } @else {
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <polygon points="5,3 19,12 5,21"/>
+                    </svg>
+                  }
+                </button>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-theme-primary truncate">{{ c.title }}</p>
+                  <p class="text-xs text-theme-muted truncate">
+                    {{ c.artist }} · {{ formatTime(c.duration) }}
+                  </p>
+                </div>
+                <div class="flex items-center gap-1.5 flex-shrink-0">
+                  <button (click)="vote(c.id, 'up')" data-testid="poll-vote-up"
+                    [attr.aria-pressed]="verdictFor(c.id) === 'up'"
+                    [class]="'w-9 h-9 rounded-full flex items-center justify-center transition border '
+                      + (verdictFor(c.id) === 'up'
+                        ? 'bg-theme-accent text-theme-on-accent border-transparent'
+                        : 'text-theme-muted border-theme hover:text-theme-primary hover:bg-theme-hover')"
+                    [title]="'poll.thumbsUp' | t">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+                    </svg>
+                  </button>
+                  <button (click)="vote(c.id, 'down')" data-testid="poll-vote-down"
+                    [attr.aria-pressed]="verdictFor(c.id) === 'down'"
+                    [class]="'w-9 h-9 rounded-full flex items-center justify-center transition border '
+                      + (verdictFor(c.id) === 'down'
+                        ? 'bg-red-500 text-white border-transparent'
+                        : 'text-theme-muted border-theme hover:text-theme-primary hover:bg-theme-hover')"
+                    [title]="'poll.thumbsDown' | t">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+
+          @if (playbackFailed()) {
+            <p class="text-xs text-theme-muted mb-3">{{ 'poll.playbackFailed' | t }}</p>
+          }
+          @if (submitError()) {
+            <p class="text-xs text-red-400 mb-3" data-testid="poll-submit-error">{{ 'poll.submitFailed' | t }}</p>
+          }
+
+          <!-- Wizard nav -->
+          <div class="flex items-center justify-between mt-2">
+            <button (click)="back()"
+              class="px-4 py-2 rounded-full text-sm text-theme-secondary hover:text-theme-primary transition">
+              {{ 'common.back' | t }}
+            </button>
+            <div class="flex items-center gap-1.5" aria-hidden="true">
+              @for (s of v.scenarios; track s.id; let i = $index) {
+                <span [class]="'w-1.5 h-1.5 rounded-full ' + (i === scenarioIndex() ? 'bg-theme-accent' : 'bg-theme-surface-2')"></span>
+              }
+            </div>
+            <button (click)="next()" data-testid="poll-next"
+              [disabled]="!currentComplete() || submitting()"
+              class="px-6 py-2 rounded-full bg-theme-accent text-theme-on-accent font-semibold text-sm hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed">
+              @if (scenarioIndex() + 1 === scenarioCount()) { {{ 'poll.finish' | t }} }
+              @else { {{ 'common.next' | t }} }
+            </button>
+          </div>
+          @if (!currentComplete()) {
+            <p class="text-[11px] text-theme-muted text-center mt-3">{{ 'poll.rateAllHint' | t }}</p>
+          }
+        </div>
+      }
+
+      <!-- Done -->
+      @if (step() === 'done') {
+        <div class="flex flex-col items-center text-center gap-4 pt-16" data-testid="poll-done">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            class="text-theme-accent" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <h2 class="text-lg font-semibold text-theme-primary">{{ 'poll.doneTitle' | t }}</h2>
+          <p class="text-theme-muted text-sm max-w-md">{{ 'poll.doneBody' | t }}</p>
+        </div>
+      }
+    </div>
+
+    <div class="text-center py-4 text-xs text-theme-muted">
+      {{ 'poll.footer' | t }}
+    </div>
+  </div>
+
+  <audio #audioEl (ended)="onEnded()"></audio>
+}

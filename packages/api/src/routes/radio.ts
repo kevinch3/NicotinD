@@ -88,7 +88,7 @@ export function originCountriesOf(r: RadioSongRow): string[] | undefined {
   return r.origin_countries ? r.origin_countries.split(',') : undefined;
 }
 
-function rowToSong(r: RadioSongRow): Song & SongFeatures {
+export function rowToSong(r: RadioSongRow): Song & SongFeatures {
   return {
     id: r.id,
     title: r.title,
