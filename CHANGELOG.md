@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.25](https://github.com/kevinch3/NicotinD/compare/v0.3.24...v0.3.25) (2026-08-19)
+
+### Features
+
+* **storybook:** story the track-info sheet ([#575](https://github.com/kevinch3/NicotinD/issues/575)) ([65141ca](https://github.com/kevinch3/NicotinD/commit/65141cad47f7d8345fb76aef89c8529cc436eb44))
 ## [0.3.24](https://github.com/kevinch3/NicotinD/compare/v0.3.23...v0.3.24) (2026-08-19)
 
 ### Features
