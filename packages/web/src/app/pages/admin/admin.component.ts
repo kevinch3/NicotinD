@@ -388,9 +388,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   private connectProcessingStream(): void {
     const token = this.auth.token();
     if (!token) return;
-    const src = new EventSource(
-      this.server.apiUrl(`/api/admin/processing/stream?token=${encodeURIComponent(token)}`),
-    );
+    const src = new EventSource(this.server.sseUrl('/api/admin/processing/stream', token));
     this.processingStream = src;
     src.onmessage = (e) => {
       try {
@@ -1109,11 +1107,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (!token) return;
     this.disconnectLogStream();
     const service = this.selectedService();
-    const src = new EventSource(
-      this.server.apiUrl(
-        `/api/system/logs/${service}/stream?token=${encodeURIComponent(token ?? '')}`,
-      ),
-    );
+    const src = new EventSource(this.server.sseUrl(`/api/system/logs/${service}/stream`, token));
     this.logEventSource = src;
     this.logStreamStatus.set('connecting');
 

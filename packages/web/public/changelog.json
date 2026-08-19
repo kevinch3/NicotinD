@@ -1,5 +1,97 @@
 [
   {
+    "version": "0.3.22",
+    "date": "2026-08-19",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.21...v0.3.22",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**pot-provider:** publish the bgutil version as an image label ([#553](https://github.com/kevinch3/NicotinD/issues/553)) ([d9272db](https://github.com/kevinch3/NicotinD/commit/d9272db2361cff4f58eb4708e6a4d4ed7ffce2a6)), references [#550](https://github.com/kevinch3/NicotinD/issues/550) [#551](https://github.com/kevinch3/NicotinD/issues/551)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.21",
+    "date": "2026-08-19",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.20...v0.3.21",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**acquire:** make addon URL submits idempotent and visible to the link card ([#546](https://github.com/kevinch3/NicotinD/issues/546)) ([32a6194](https://github.com/kevinch3/NicotinD/commit/32a61947d8dc2c81c3f096b0dd65bf29200a62f8))",
+          "**docker:** install libchromaprint-tools so AcoustID identify works ([#549](https://github.com/kevinch3/NicotinD/issues/549)) ([66a440e](https://github.com/kevinch3/NicotinD/commit/66a440e7ef0957b89374b3be8edea8940e0e66f2))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.20",
+    "date": "2026-08-18",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.19...v0.3.20",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**web:** shape-matched skeleton loaders for every fetching list view ([#544](https://github.com/kevinch3/NicotinD/issues/544)) ([c6a0639](https://github.com/kevinch3/NicotinD/commit/c6a0639b780b8d5bdc51e1f6586e5132f33f9f61))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.19",
+    "date": "2026-08-18",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.18...v0.3.19",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**analysis:** report idle-released registry as ok in /health, not unavailable ([#542](https://github.com/kevinch3/NicotinD/issues/542)) ([fd81db6](https://github.com/kevinch3/NicotinD/commit/fd81db6a6d4c9db89390740b5e8cf7dc99a906fb)), references [#224](https://github.com/kevinch3/NicotinD/issues/224) [#539](https://github.com/kevinch3/NicotinD/issues/539)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.18",
+    "date": "2026-08-18",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.17...v0.3.18",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**downloads:** repair post-cutover hunt and feed regressions ([#537](https://github.com/kevinch3/NicotinD/issues/537)) ([b1832fb](https://github.com/kevinch3/NicotinD/commit/b1832fb810455830509e9fd7933aa64d6835833b)), references [#530](https://github.com/kevinch3/NicotinD/issues/530) [#531](https://github.com/kevinch3/NicotinD/issues/531) [#532](https://github.com/kevinch3/NicotinD/issues/532) [#533](https://github.com/kevinch3/NicotinD/issues/533) [#534](https://github.com/kevinch3/NicotinD/issues/534)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.17",
+    "date": "2026-08-18",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.16...v0.3.17",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "artist origin (nationality) metadata - radio axis, filter, recipes, artist page ([#536](https://github.com/kevinch3/NicotinD/issues/536)) ([888b77c](https://github.com/kevinch3/NicotinD/commit/888b77c593d46c1386241af0a04ebeca96e0399d)), references [#538](https://github.com/kevinch3/NicotinD/issues/538)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.16",
+    "date": "2026-08-18",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.15...v0.3.16",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**web:** render the artist photo edit control ([#535](https://github.com/kevinch3/NicotinD/issues/535)) ([9cd77e2](https://github.com/kevinch3/NicotinD/commit/9cd77e257da2a82a78a29e133bd328de99958d7e))"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.3.15",
     "date": "2026-08-18",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.14...v0.3.15",
@@ -487,96 +579,6 @@
         "title": "Features",
         "items": [
           "**history:** per-user listening log + Recently played shelf ([#455](https://github.com/kevinch3/NicotinD/issues/455)) ([8c0fc44](https://github.com/kevinch3/NicotinD/commit/8c0fc44465a5ddfa62c4291ac57bc5acbac5e123)), references [#454](https://github.com/kevinch3/NicotinD/issues/454) [#273](https://github.com/kevinch3/NicotinD/issues/273) [#376](https://github.com/kevinch3/NicotinD/issues/376) [#376](https://github.com/kevinch3/NicotinD/issues/376)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.328",
-    "date": "2026-08-10",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.327...v0.1.328",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**feedback:** fire the capture prompt on the auto-hunt path; add an admin review queue ([#452](https://github.com/kevinch3/NicotinD/issues/452)) ([435887f](https://github.com/kevinch3/NicotinD/commit/435887f9ae0473ad36b7d3305533ded742713945)), references [#451](https://github.com/kevinch3/NicotinD/issues/451)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.327",
-    "date": "2026-08-09",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.326...v0.1.327",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** merge Acquire + Downloads into /get; add a Library cross-type find bar ([#447](https://github.com/kevinch3/NicotinD/issues/447)) ([16368ef](https://github.com/kevinch3/NicotinD/commit/16368ef703d0b13775182e65800bf088e89b5bb0)), closes [#444](https://github.com/kevinch3/NicotinD/issues/444), references [#227](https://github.com/kevinch3/NicotinD/issues/227) [#7](https://github.com/kevinch3/NicotinD/issues/7)"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** derive lyricsOpen from activePanel so the persisted Now Playing panel matches the screen ([#450](https://github.com/kevinch3/NicotinD/issues/450)) ([7ae7771](https://github.com/kevinch3/NicotinD/commit/7ae7771f14313ea59d66602e55a2d77a03a37ac3)), closes [#446](https://github.com/kevinch3/NicotinD/issues/446)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.326",
-    "date": "2026-08-09",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.325...v0.1.326",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** recover from a coalesced offline/online flip instead of stalling 20s ([#449](https://github.com/kevinch3/NicotinD/issues/449)) ([878a101](https://github.com/kevinch3/NicotinD/commit/878a1010255626db52c33ffef1829ea987c664fc)), closes [#448](https://github.com/kevinch3/NicotinD/issues/448), references [#447](https://github.com/kevinch3/NicotinD/issues/447)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.325",
-    "date": "2026-08-08",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.324...v0.1.325",
-    "sections": []
-  },
-  {
-    "version": "0.1.324",
-    "date": "2026-08-08",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.323...v0.1.324",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** the TV surface — five routes, no form controls ([#442](https://github.com/kevinch3/NicotinD/issues/442)) ([0154175](https://github.com/kevinch3/NicotinD/commit/0154175cb6e53cd80b909ca5de94a48fc90ec65e)), references [#436](https://github.com/kevinch3/NicotinD/issues/436) [#438](https://github.com/kevinch3/NicotinD/issues/438) [#436](https://github.com/kevinch3/NicotinD/issues/436) [#387](https://github.com/kevinch3/NicotinD/issues/387) [#438](https://github.com/kevinch3/NicotinD/issues/438)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.323",
-    "date": "2026-08-08",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.322...v0.1.323",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**review:** distinguish fpcalc failure from a fingerprint no-match ([#430](https://github.com/kevinch3/NicotinD/issues/430)) ([52b7bcd](https://github.com/kevinch3/NicotinD/commit/52b7bcd86d8d5644b3f7ff3dc38bc13ac053c5bc)), closes [#414](https://github.com/kevinch3/NicotinD/issues/414)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.322",
-    "date": "2026-08-08",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.321...v0.1.322",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**review:** hold-for-review is inert while acquisition is off + [#411](https://github.com/kevinch3/NicotinD/issues/411) ledger minors ([#427](https://github.com/kevinch3/NicotinD/issues/427)) ([d1000f9](https://github.com/kevinch3/NicotinD/commit/d1000f9b682670f0b22b635839c75c92637ebe95)), closes [#416](https://github.com/kevinch3/NicotinD/issues/416), references [#235](https://github.com/kevinch3/NicotinD/issues/235)"
         ]
       }
     ]
