@@ -78,6 +78,20 @@ Recurring wrong assumptions that have shipped red CI. Check every new spec
 against these before pushing; if you discover a new one, add it here in the
 same PR that hit it.
 
+- **`page.route` does not intercept service-worker-initiated requests, so an
+  abort silently stops working once the SW takes control.** The app registers
+  `ngsw-worker.js`, and after boot it controls the page's fetches. A spec that
+  installs `page.route('**/api/**', r => r.abort())` and expects the app to see
+  network failures is therefore a **no-op after boot** — the request is made, no
+  `requestfailed` fires, and nothing downstream reacts. Measured on
+  `offline.spec.ts`: with the SW active the aborted `/api/search` never fails and
+  no `/api/setup/status` probe is made (banner count 0); with
+  `test.use({ serviceWorkers: 'block' })` both happen and the banner appears.
+  This is *why* that spec historically installed its abort mid-boot — before the
+  SW is in control, an abort still lands — which coupled it to boot timing.
+  Block the SW for the test instead; it is a faithful stand-in, since against a
+  genuinely dead server the SW's own network fetch fails too.
+
 - **An absence assertion passes vacuously on a page that has not rendered.**
   `expect(x).toHaveCount(0)` / `not.toBeVisible()` cannot distinguish "this
   element is correctly absent" from "nothing has rendered yet", so it is **not**
