@@ -619,9 +619,10 @@ jobs:
           context: packages/pot-provider
           platforms: linux/amd64
           push: true
-          # No build-args: the pin is the Dockerfile's own ARG default, which
-          # `check:bgutil-pin` holds equal to the pip plugin's. Passing it here
-          # too would create a third place to forget.
+          # No build-args: the pin is the Dockerfile's own ARG default. Passing
+          # it here too would create a second place to forget. The addons that
+          # consume this image bake their own matching plugin pin — that pairing
+          # is currently unguarded, see issue #551.
           tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha,scope=pot-provider-linux-amd64
           cache-to: type=gha,mode=max,scope=pot-provider-linux-amd64

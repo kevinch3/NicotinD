@@ -197,7 +197,11 @@ Historical gotcha: the `enabled` flag used to be dead config — only binary pre
 
 ### YouTube bot-check mitigation (PO tokens + cookies)
 
-Found in real use 2026-07-13: **every** spotdl job failed with "Download produced no audio files". spotdl resolves Spotify metadata fine, but each YouTube fetch died on yt-dlp's `Sign in to confirm you're not a bot` — YouTube had bot-flagged the server's egress IP (all player clients + IPv4/IPv6 affected, so it's the IP, not the client fingerprint). Three stacked mitigations, all baked into the deployment:
+Found in real use 2026-07-13: **every** spotdl job failed with "Download produced no audio files". spotdl resolves Spotify metadata fine, but each YouTube fetch died on yt-dlp's `Sign in to confirm you're not a bot` — YouTube had bot-flagged the server's egress IP (all player clients + IPv4/IPv6 affected, so it's the IP, not the client fingerprint). Three stacked mitigations, all baked into the deployment. **Since the phase-4
+cutover they live in the `nicotind-ytdlp-addon` / `nicotind-spotdl-addon` images
+rather than core's** — the description below is of that stack, wherever it is
+built; core stopped carrying any of it in issue #550, having stopped running the
+downloaders that needed it.
 
 1. **Deno in the image** (Dockerfile): yt-dlp needs a JS runtime to solve YouTube's player signature challenges; without one many downloads fail regardless of bot-flagging. The pip line also `--upgrade`s yt-dlp every image build (YouTube continuously breaks old versions) and installs `bgutil-ytdlp-pot-provider`.
 2. **PO-token provider** (docker-compose `bgutil-provider` service): YouTube demands "proof of origin" tokens from unrecognized clients; the bgutil companion service generates them and the pip-installed yt-dlp plugin fetches them automatically (spotdl included — same python env). The service runs with `network_mode: "service:nicotind"` so the plugin's default base URL `http://127.0.0.1:4416` works with zero per-invocation config (extractor-args can't be threaded through spotdl).

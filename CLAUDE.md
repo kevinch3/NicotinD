@@ -642,7 +642,8 @@ Add detail there, not here.
   Extensions **hides its Acquisition section** when off (a toggle that can't do anything, and the
   "nothing is downloaded until you enable one" framing is wrong), and
   **`docker-compose.streaming-only.yml`** actually runs lighter — it resolves to `nicotind` +
-  `analysis` only, dropping slskd/Lidarr/bgutil; it needs *both* `profiles:` on those services and
+  `analysis` only, dropping slskd/Lidarr (the bgutil provider left core entirely in #550); it needs
+  *both* `profiles:` on those services and
   `depends_on: !reset null` on nicotind, because compose **merges** `depends_on` rather than
   replacing it (`[]` silently keeps the base entries). **Now runtime-togglable**: `AcquisitionToggle` +
   `GET`/`PUT /api/admin/acquisition` (audit-logged). The "can't tear down live"
@@ -1170,7 +1171,8 @@ Add detail there, not here.
   job resumes the same job id/staging dir instead of re-downloading from scratch (spotdl
   additionally passes `--overwrite skip` on top of that generic mechanism), and YouTube's bot-check
   is mitigated by Deno + the bgutil PO-token sidecar + optional `<dataDir>/youtube-cookies.txt`
-  cookies. → [docs/download-pipeline.md](docs/download-pipeline.md),
+  cookies — all of which now live in the **ytdlp/spotdl addon images**, not core's (issue #550).
+  → [docs/download-pipeline.md](docs/download-pipeline.md),
   [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md)
 - **Playlist-from-acquisition**: a URL acquire job classified as a playlist (Spotify
   `/playlist/<id>`, YouTube `/playlist`, YouTube `watch?v=…&list=…`, archive.org with `as=playlist`)
@@ -1403,11 +1405,14 @@ Add detail there, not here.
   third-party image whose tag had to be hand-synced with the pip plugin baked into ours; it is now
   `ghcr.io/kevinch3/nicotind-pot-provider`, built by a `docker-pot-provider` job mirroring
   `docker-analysis`, from **pinned upstream source** (`packages/pot-provider/Dockerfile`, GPL-3.0 ⊂
-  AGPL-3.0-only) rather than vendored. `check:bgutil-pin` now compares two files **we** control
-  instead of one third-party tag. Verified end-to-end — a "starts but mints invalid tokens" provider
-  is the exact silent failure the issue exists to prevent — by minting a real PO token against
-  YouTube's live attestation endpoint. →
-  [docs/deployment.md](docs/deployment.md) "We build the PO-token provider ourselves"
+  AGPL-3.0-only) rather than vendored. Verified end-to-end — a "starts but mints invalid tokens"
+  provider is the exact silent failure the issue exists to prevent — by minting a real PO token
+  against YouTube's live attestation endpoint. **The image outlived its core-side consumer (issue
+  #550)**: the plugin/provider pairing gate (`check:bgutil-pin`) compared core's baked pip plugin
+  against the provider, but phase 4 moved every downloader out, so it was guarding a copy nothing
+  ran; it retired with that copy. The provider image stays — the ytdlp/spotdl addons consume it, and
+  **their** pins are the ones that can actually break a download, currently unguarded (issue #551).
+  → [docs/deployment.md](docs/deployment.md) "We build the PO-token provider ourselves"
 - **Published Docker image (deployment)**: multi-arch GHCR image (`release`/`vX`/`vX.Y.Z` tags, no
   `latest`) published per release tag via native-runner digest builds + one manifest merge; compose
   pulls it (build-from-source is an override), the deploy host pulls too, `/api/health` reports the

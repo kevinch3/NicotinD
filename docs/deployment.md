@@ -259,16 +259,19 @@ components (Immich digest-pins theirs): `slskd` (already pinned),
 `linuxserver/lidarr` (was `:latest` — a silent Lidarr major can break the API
 client). The PO-token provider **is no longer one of them**: we build it (below).
 
-**That pairing is now enforced, not just documented (issue #238).** The two
-halves live in different files built by different systems — the pip plugin in
-the `Dockerfile` (baked into our image by CI) and the companion service tag in
-`docker-compose.yml` (resolved at deploy time) — and a mismatch does not fail
-loudly: the service starts and YouTube downloads quietly stop working. Two
-changes: **`BGUTIL_VERSION` overrides both** (a build-arg on each side) so an
-operator bumps one value, and **`bun run check:bgutil-pin`** runs in CI and
-fails when the two baked defaults drift apart. It is a gate rather than a report
-because there is exactly one correct answer — the strings match or they don't —
-so there is no false-positive class to cry wolf with.
+**That pairing was enforced by `check:bgutil-pin` (issue #238), and the gate has
+since been retired (issue #550).** It compared the pip plugin baked into the
+*core* `Dockerfile` against `packages/pot-provider/Dockerfile`. Phase 4 moved
+every downloader into its own addon image, so core stopped running yt-dlp at all
+— the gate was guarding a copy nothing executed, and it retired together with
+that copy.
+
+The invariant itself is real and unchanged: plugin and provider must be the same
+version or the service starts and YouTube downloads quietly stop working. It now
+applies where the downloaders actually live — `nicotind-ytdlp-addon` and
+`nicotind-spotdl-addon`, each baking its own `ARG BGUTIL_VERSION` against the
+`nicotind-pot-provider` image it runs beside. **Neither is currently guarded by
+anything but a comment** — tracked as issue #551.
 
 ### We build the PO-token provider ourselves (issue #238)
 
@@ -284,10 +287,10 @@ there is one shape to learn for our side-car images.
   target), so a version bump is a tag change rather than a rewrite. Vendoring a
   whole Node service into this monorepo would make its dependency updates ours.
   Upstream is **GPL-3.0**, compatible with this project's AGPL-3.0-only.
-- **The drift gate got better, not weaker.** `check:bgutil-pin` used to compare
-  the pip pin against a *third-party image tag*; both halves are now files in
-  this repo (`Dockerfile` vs `packages/pot-provider/Dockerfile`), so the thing
-  being compared is something we control.
+- **The drift gate got better, then obsolete.** `check:bgutil-pin` first compared
+  the pip pin against a *third-party image tag*, then against a second file in
+  this repo — something we control. #550 then removed the core-side pin it read,
+  and the gate with it; see the paragraph above for where the invariant moved.
 - **Two deviations from upstream's Dockerfile**, both because ours must also
   build on a daemon without buildx: `/app` is chowned before dropping to the
   `node` user (upstream's BuildKit cache mount side-steps the ordering, so
@@ -493,8 +496,9 @@ exist only to serve it:
 docker compose -f docker-compose.yml -f docker-compose.streaming-only.yml up -d
 ```
 
-Resolves to **`nicotind` + `analysis` only** — slskd, Lidarr and the bgutil
-PO-token provider are dropped, saving their RAM, disk and attack surface. The
+Resolves to **`nicotind` + `analysis` only** — slskd and Lidarr are dropped,
+saving their RAM, disk and attack surface. (The bgutil PO-token provider used to
+need dropping here too; since #550 it is not part of core's stack at all.) The
 `analysis` sidecar deliberately stays: audio enrichment is a *library* feature,
 not an acquisition one.
 

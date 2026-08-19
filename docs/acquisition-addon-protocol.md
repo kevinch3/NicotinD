@@ -392,7 +392,8 @@ bundled built-in addon**.
   highest-priority (A2). The in-process `YtdlpPlugin` + its `config.acquire.ytdlp` block + the
   `legacy-seed` yt-dlp path were removed (A3); `docker-compose.yml` gained an opt-in `ytdlp-addon`
   profile (the addon + a dedicated `ytdlp-pot-provider` companion sharing its netns for the bgutil
-  PO-token flow — the core `bgutil-provider` now serves only in-process spotdl). Registered like the
+  PO-token flow; the core-side `bgutil-provider` served in-process spotdl until #550 removed both).
+  Registered like the
   slskd addon (Extensions → Add addon, `http://ytdlp-addon:8586`). The addon carries a documented
   `intent: 'url' as unknown as …` cast until `@nicotind/addon-sdk@^0.1.1` (with the `url` intent)
   publishes.
