@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.28](https://github.com/kevinch3/NicotinD/compare/v0.3.27...v0.3.28) (2026-08-19)
+
+### Features
+
+* **storybook:** story the typed identify failures ([#578](https://github.com/kevinch3/NicotinD/issues/578)) ([ff5a1d8](https://github.com/kevinch3/NicotinD/commit/ff5a1d865b832b6f21d335827ce6eb4fdff92042)), references [#471](https://github.com/kevinch3/NicotinD/issues/471) [#472](https://github.com/kevinch3/NicotinD/issues/472)
 ## [0.3.27](https://github.com/kevinch3/NicotinD/compare/v0.3.26...v0.3.27) (2026-08-19)
 
 ### Features
