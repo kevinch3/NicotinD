@@ -1,4 +1,5 @@
 import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import { expect, userEvent, within, waitFor } from 'storybook/test';
 import { MenuPanelComponent } from './menu-panel.component';
 import { storyProviders } from '../../../stories/support/story-providers';
 
@@ -57,4 +58,34 @@ export const NearViewportBottom: Story = {
         </app-menu-panel>
       </div>`,
   }),
+  /**
+   * Opens the menu and asserts the flip actually happened (issue #475).
+   *
+   * The assertion is on **geometry**, deliberately, not on a CSS class or a
+   * style attribute: `computeMenuPosition` exists to keep the panel on screen,
+   * and a class-based check would keep passing while the panel rendered off the
+   * bottom of the viewport — which is the only failure anyone would care about.
+   */
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole('button', { name: '⋯' });
+    await userEvent.click(trigger);
+
+    const panel = await waitFor(() => {
+      const el = canvasElement.querySelector<HTMLElement>('[data-menu-panel-root]');
+      if (!el) throw new Error('panel did not open');
+      // Placement runs after a measure pass, so the panel is briefly hidden.
+      if (getComputedStyle(el).visibility !== 'visible') throw new Error('not positioned yet');
+      return el;
+    });
+
+    const panelBox = panel.getBoundingClientRect();
+    const triggerBox = trigger.getBoundingClientRect();
+
+    // Flipped: the panel's bottom edge is at or above the trigger's top edge.
+    expect(panelBox.bottom).toBeLessThanOrEqual(triggerBox.top + 1);
+    // And it is fully on screen, which is the property the flip is for.
+    expect(panelBox.top).toBeGreaterThanOrEqual(0);
+    expect(panelBox.bottom).toBeLessThanOrEqual(window.innerHeight);
+  },
 };
