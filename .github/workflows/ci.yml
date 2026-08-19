@@ -242,12 +242,43 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
-      # --with-deps runs apt-get, whose mirror retries have no bound of their
-      # own — an unreachable Azure mirror once blocked this step silently for
-      # hours (issue #556). A healthy run takes ~2m30s; fail fast instead.
+      # apt is the only unbounded network dependency left in this job, and
+      # nothing bounds apt *itself* — #556 bounded the step wrapping it, which
+      # made a dead Azure mirror fail visibly instead of stalling for hours, but
+      # every hit still burned the full 10-minute cap and reddened an unrelated
+      # PR (issue #561). So: bound apt's own retries/timeouts so a bad mirror
+      # fails in seconds, then retry the whole thing, so a transient outage
+      # self-heals rather than needing a human re-run.
+      #
+      # Split from the browser download deliberately: `--with-deps` runs apt on
+      # every run even on a `~/.cache/ms-playwright` hit, and an apt failure and
+      # a CDN failure used to look identical in one step name.
+      - name: Install Playwright OS deps (apt)
+        timeout-minutes: 6
+        run: |
+          set -euo pipefail
+          sudo tee /etc/apt/apt.conf.d/99-bounded-retries >/dev/null <<'APTCONF'
+          Acquire::Retries "2";
+          Acquire::http::Timeout "20";
+          Acquire::https::Timeout "20";
+          APTCONF
+          for attempt in 1 2 3; do
+            if bunx playwright install-deps chromium; then
+              exit 0
+            fi
+            if [ "${attempt}" -lt 3 ]; then
+              echo "::warning::playwright install-deps failed (attempt ${attempt}/3); retrying"
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "::error::playwright install-deps failed after 3 attempts"
+          exit 1
+        working-directory: packages/e2e
+
+      # Browser binary only — no apt, and served by the cache above on a hit.
       - name: Install Playwright browser
-        timeout-minutes: 10
-        run: bunx playwright install --with-deps chromium
+        timeout-minutes: 5
+        run: bunx playwright install chromium
         working-directory: packages/e2e
 
       - name: Build (web)
@@ -352,10 +383,43 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
-      # Same apt-mirror hang bound as the e2e job's install (issue #556).
-      - name: Install Playwright OS deps
-        timeout-minutes: 10
-        run: bunx playwright install --with-deps chromium
+      # apt is the only unbounded network dependency left in this job, and
+      # nothing bounds apt *itself* — #556 bounded the step wrapping it, which
+      # made a dead Azure mirror fail visibly instead of stalling for hours, but
+      # every hit still burned the full 10-minute cap and reddened an unrelated
+      # PR (issue #561). So: bound apt's own retries/timeouts so a bad mirror
+      # fails in seconds, then retry the whole thing, so a transient outage
+      # self-heals rather than needing a human re-run.
+      #
+      # Split from the browser download deliberately: `--with-deps` runs apt on
+      # every run even on a `~/.cache/ms-playwright` hit, and an apt failure and
+      # a CDN failure used to look identical in one step name.
+      - name: Install Playwright OS deps (apt)
+        timeout-minutes: 6
+        run: |
+          set -euo pipefail
+          sudo tee /etc/apt/apt.conf.d/99-bounded-retries >/dev/null <<'APTCONF'
+          Acquire::Retries "2";
+          Acquire::http::Timeout "20";
+          Acquire::https::Timeout "20";
+          APTCONF
+          for attempt in 1 2 3; do
+            if bunx playwright install-deps chromium; then
+              exit 0
+            fi
+            if [ "${attempt}" -lt 3 ]; then
+              echo "::warning::playwright install-deps failed (attempt ${attempt}/3); retrying"
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "::error::playwright install-deps failed after 3 attempts"
+          exit 1
+        working-directory: packages/desktop
+
+      # Browser binary only — no apt, and served by the cache above on a hit.
+      - name: Install Playwright browser
+        timeout-minutes: 5
+        run: bunx playwright install chromium
         working-directory: packages/desktop
 
       - name: Run desktop smoke test

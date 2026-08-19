@@ -204,6 +204,28 @@ e2e run blocks the deploy. `e2e` is deliberately **not** in `check-ci-parity.ts`
 gate 2), so it is gated in CI without being expected to run in the local one-command
 sweep.
 
+**Playwright install is split into an apt half and a download half (issues #556,
+#561).** `playwright install --with-deps chromium` runs `apt-get` under the hood, and
+apt's mirror retries have no bound of their own — an unreachable Azure mirror once
+blocked the step silently for hours. #556 bounded the *step* (`timeout-minutes`), which
+made the hang visible instead of a 6-hour stall but left every hit burning the full
+10-minute cap and reddening PRs that touch neither Playwright nor CI (it hit two
+unrelated PRs in one afternoon). The `~/.cache/ms-playwright` cache doesn't help: it
+caches the browser *download*, while `--with-deps` runs apt on every run regardless of a
+cache hit. So the steps are now:
+
+1. **`Install Playwright OS deps (apt)`** — writes an `apt.conf.d` drop-in bounding
+   `Acquire::Retries` + `Acquire::{http,https}::Timeout` so a dead mirror fails in
+   seconds rather than consuming the step budget, then retries the install up to 3× with
+   a 10s/20s backoff so a transient outage **self-heals** instead of needing a human
+   re-run (the #556 mitigation explicitly relied on someone re-running onto a fresh
+   runner, which an unattended flow can't do).
+2. **`Install Playwright browser`** — `playwright install chromium`, no apt, served by
+   the cache on a hit.
+
+Splitting them also makes the failure legible: an apt failure and a CDN failure used to
+be indistinguishable under one step name.
+
 The CI `ci` job also runs `bun test packages/e2e/playground` — the **pure logic**
 of the playground harness below (observation model, report rendering, the response +
 console classifiers, the friction/journey model). The playground _flows_ need a live
