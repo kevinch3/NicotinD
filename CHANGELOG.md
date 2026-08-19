@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.21](https://github.com/kevinch3/NicotinD/compare/v0.3.20...v0.3.21) (2026-08-19)
+
+### Bug Fixes
+
+* **acquire:** make addon URL submits idempotent and visible to the link card ([#546](https://github.com/kevinch3/NicotinD/issues/546)) ([32a6194](https://github.com/kevinch3/NicotinD/commit/32a61947d8dc2c81c3f096b0dd65bf29200a62f8))
+* **docker:** install libchromaprint-tools so AcoustID identify works ([#549](https://github.com/kevinch3/NicotinD/issues/549)) ([66a440e](https://github.com/kevinch3/NicotinD/commit/66a440e7ef0957b89374b3be8edea8940e0e66f2))
 ## [0.3.20](https://github.com/kevinch3/NicotinD/compare/v0.3.19...v0.3.20) (2026-08-18)
 
 ### Features
