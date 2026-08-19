@@ -57,16 +57,33 @@ describe('methodForBackend', () => {
     expect(methodForBackend('slskd')).toBe('slskd');
     expect(methodForBackend('slskd-addon')).toBe('slskd');
   });
+
+  // Same regression class again: `import_jobs` has always mirrored a feed row
+  // with `method: 'import'`, so the 'Imported' badge was unreachable and every
+  // admin import rendered "? Unknown source".
+  it('maps the admin folder-import method to its own badge', () => {
+    expect(methodForBackend('import')).toBe('import');
+  });
 });
 
 describe('acquireJobLabel', () => {
   it('prefers the explicit label', () => {
     expect(acquireJobLabel(job({ label: 'My Playlist' }))).toBe('My Playlist');
   });
-  it('shortens the URL when no label', () => {
-    expect(acquireJobLabel(job({ url: 'https://archive.org/details/foo' }))).toContain(
-      'archive.org',
+  // The lane converged onto the shared title chain: a link with a human slug in
+  // its path is named from that slug rather than echoed back as a shortened URL.
+  it('names an unlabelled job from the human part of its URL', () => {
+    expect(acquireJobLabel(job({ url: 'https://archive.org/details/gd1977-05-08' }))).toBe(
+      'Gd1977 05 08',
     );
+  });
+
+  it('reports the shape of an opaque link instead of humanizing an id', () => {
+    expect(
+      acquireJobLabel(
+        job({ backend: 'spotdl', url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M' }),
+      ),
+    ).toBe('Spotify playlist');
   });
 });
 
@@ -162,6 +179,8 @@ function acqJob(over: Partial<AcquisitionJobView> = {}): AcquisitionJobView {
     stage: 'downloading',
     artistName: 'Artist',
     albumTitle: 'Album',
+    displayTitle: null,
+    sourceUrl: null,
     lidarrAlbumId: null,
     sourceRef: 'peer',
     error: null,
@@ -171,6 +190,7 @@ function acqJob(over: Partial<AcquisitionJobView> = {}): AcquisitionJobView {
     progress: { expected: 2, delivered: 1, unavailable: 0, failed: 0 },
     items: [],
     sources: [],
+    destinationAlbums: [],
     ...over,
   };
 }
@@ -191,8 +211,9 @@ describe('mergeAcquisitionJobs', () => {
   });
 
   // Regression: an in-flight addon URL job (no resolved metadata yet) rendered
-  // with an "Unknown source" chip and the raw `addon:<id>:<uuid>` transfer key as
-  // its title. It should show the mapped source chip + a friendly label.
+  // with an "Unknown source" chip and the raw `addon:<id>:<uuid>` transfer key
+  // as its title. It shows the mapped source chip and — since the title chain —
+  // the shape of the link rather than the bare word "download".
   it('renders an addon URL job with a mapped source chip and no raw addon key', () => {
     const merged = mergeAcquisitionJobs(
       [],
@@ -203,6 +224,7 @@ describe('mergeAcquisitionJobs', () => {
           method: 'spotdl-addon',
           artistName: null,
           albumTitle: null,
+          sourceUrl: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M',
           sourceRef: 'addon:spotdl-addon:767ce23a-e417-47c8-9a5b-f09129ec3443',
         }),
       ],
@@ -210,7 +232,7 @@ describe('mergeAcquisitionJobs', () => {
     expect(merged).toHaveLength(1);
     const card = merged[0]!;
     expect(card.method).toBe('spotdl');
-    expect(card.title).toBe('Spotify download');
+    expect(card.title).toBe('Spotify playlist');
     expect(card.title).not.toContain('addon:');
   });
 
@@ -236,6 +258,184 @@ describe('mergeAcquisitionJobs', () => {
     expect(merged).toHaveLength(1);
     expect(merged[0]!.key).toBe('job:u1');
     expect(merged[0]!.title).toBe('Spotify download');
+    expect(merged[0]!.title).not.toContain('addon:');
+  });
+
+  /**
+   * The user report: "download items titles are too generic". Every rung of
+   * `downloadTitleFor` is exercised through the card, because the chain only
+   * pays off if the adapter actually consults it.
+   */
+  describe('card titles', () => {
+    it("prefers the addon's own display title over everything else", () => {
+      const merged = mergeAcquisitionJobs(
+        [],
+        [
+          acqJob({
+            kind: 'url',
+            method: 'ytdlp-addon',
+            artistName: null,
+            albumTitle: null,
+            displayTitle: 'Summer Mix 2024',
+            sourceUrl: 'https://www.youtube.com/playlist?list=PL123',
+          }),
+        ],
+      );
+      expect(merged[0]!.title).toBe('Summer Mix 2024');
+    });
+
+    it('names a finished job by the album its files landed in', () => {
+      const merged = mergeAcquisitionJobs(
+        [],
+        [
+          acqJob({
+            kind: 'url',
+            method: 'ytdlp-addon',
+            artistName: null,
+            albumTitle: null,
+            stage: 'done',
+            destinationAlbums: [
+              { albumId: 'a1', albumArtist: 'Daft Punk', albumTitle: 'Discovery' },
+            ],
+          }),
+        ],
+      );
+      expect(merged[0]!.title).toBe('Discovery');
+      expect(merged[0]!.subtitle).toBe('Daft Punk');
+    });
+
+    // The user's own suggestion: the uploader's folder describes the release.
+    it("names a peer grab by the uploader's folder when no metadata exists", () => {
+      const merged = mergeAcquisitionJobs(
+        [],
+        [
+          acqJob({
+            kind: 'direct',
+            artistName: null,
+            albumTitle: null,
+            items: [
+              {
+                title: 'x',
+                status: 'downloading',
+                username: 'peer',
+                filename: '@@abc\\music\\Los Tekis - (1995) Toque [FLAC]\\01.mp3',
+              },
+            ],
+          }),
+        ],
+      );
+      expect(merged[0]!.title).toBe('Los Tekis - (1995) Toque');
+    });
+
+    // The beatport report: yt-dlp claims every unmatched link, so the card used
+    // to read "YouTube download" and say nothing about what was asked for.
+    it('names an unrecognized link from the human part of its path', () => {
+      const merged = mergeAcquisitionJobs(
+        [],
+        [
+          acqJob({
+            kind: 'url',
+            method: 'ytdlp-addon',
+            artistName: null,
+            albumTitle: null,
+            sourceUrl:
+              'https://www.beatport.com/es/release/rodopiado-veneno-feat-sophia-ardessore/7142216',
+          }),
+        ],
+      );
+      expect(merged[0]!.title).toBe('Rodopiado Veneno Feat Sophia Ardessore');
+      expect(merged[0]!.subtitle).toBe('beatport.com');
+    });
+
+    it('names an import by its source folder, never the absolute server path', () => {
+      const merged = mergeAcquisitionJobs(
+        [],
+        [
+          acqJob({
+            kind: 'import',
+            method: 'import',
+            artistName: null,
+            albumTitle: null,
+            displayTitle: 'Bootleg Rips 2019',
+            sourceRef: '/mnt/media/incoming/Bootleg Rips 2019',
+          }),
+        ],
+      );
+      expect(merged[0]!.method).toBe('import');
+      expect(merged[0]!.title).toBe('Bootleg Rips 2019');
+      expect(merged[0]!.title).not.toContain('/mnt');
+    });
+
+    it('falls back to a bare artist name, and never repeats it in the subtitle', () => {
+      const merged = mergeAcquisitionJobs(
+        [],
+        [acqJob({ albumTitle: null, artistName: 'Lone Artist' })],
+      );
+      expect(merged[0]!.title).toBe('Lone Artist');
+      expect(merged[0]!.subtitle).toBeUndefined();
+    });
+  });
+
+  it('offers "View N albums" instead of a single link when a job spanned albums', () => {
+    const merged = mergeAcquisitionJobs(
+      [],
+      [
+        acqJob({
+          stage: 'done',
+          destinationAlbums: [
+            { albumId: 'a1', albumArtist: 'X', albumTitle: 'One' },
+            { albumId: 'a2', albumArtist: 'Y', albumTitle: 'Two' },
+          ],
+        }),
+      ],
+    );
+    expect(merged[0]!.destinationAlbums).toHaveLength(2);
+    // Both controls rendering at once would be the bug; the acquire lane has
+    // always nulled the singular id in this case.
+    expect(merged[0]!.albumId).toBeUndefined();
+  });
+
+  it('keeps the single deep-link when exactly one album received the files', () => {
+    const merged = mergeAcquisitionJobs(
+      [],
+      [
+        acqJob({
+          stage: 'done',
+          destinationAlbums: [{ albumId: 'a1', albumArtist: 'X', albumTitle: 'One' }],
+        }),
+      ],
+    );
+    expect(merged[0]!.albumId).toBe('album-id-1');
+  });
+
+  /**
+   * A stuck card must always have an escape. The addon-URL ghost card (a link
+   * yt-dlp cannot download) had `canRetry: false`, `canCancel` gated on
+   * 'downloading' and `canRemove` gated on a terminal stage — so a job stuck
+   * mid-stage offered nothing at all.
+   */
+  describe('card controls', () => {
+    it('lets a queued job be cancelled — it is mirrored before the addon starts', () => {
+      const merged = mergeAcquisitionJobs([], [acqJob({ kind: 'url', stage: 'queued' })]);
+      expect(merged[0]!.canCancel).toBe(true);
+    });
+
+    it('offers Retry on a failed URL acquire, which the acquire route supports', () => {
+      const merged = mergeAcquisitionJobs([], [acqJob({ kind: 'url', stage: 'error' })]);
+      expect(merged[0]!.canRetry).toBe(true);
+      expect(merged[0]!.jobId).toBe('aj1');
+    });
+
+    it('never offers Retry on a network hunt, which has no re-submit endpoint', () => {
+      const merged = mergeAcquisitionJobs([], [acqJob({ kind: 'album-hunt', stage: 'error' })]);
+      expect(merged[0]!.canRetry).toBe(false);
+    });
+
+    it('is always removable — the delete route drops the row at any stage', () => {
+      for (const stage of ['queued', 'downloading', 'scanning', 'error', 'done'] as const) {
+        expect(mergeAcquisitionJobs([], [acqJob({ stage })])[0]!.canRemove).toBe(true);
+      }
+    });
   });
 
   it('still lets the in-process acquire lane own a non-addon URL job', () => {

@@ -63,6 +63,13 @@ export const SHARED_HELPERS: SharedHelper[] = [
   // Failure-kind → i18n key for identify outcomes (#414 taxonomy), extracted
   // from the metadata-fix modal so the track-info sheet can't drift on copy.
   { name: 'identifyFailureKey', canonical: 'packages/web/src/app/lib/identify-failure.ts' },
+  // "Which albums did this job land in?" — extracted from the acquire-lane
+  // projection when the unified feed needed the same answer to name its cards.
+  { name: 'jobDestinationAlbums', canonical: 'packages/api/src/services/job-destinations.ts' },
+  // The Downloads-card title chain, shared by the API read model and the web
+  // adapter so the two can never disagree about what a download is called.
+  { name: 'downloadTitleFor', canonical: 'packages/core/src/utils/download-title.ts' },
+  { name: 'isGenericFolderName', canonical: 'packages/core/src/utils/folder-name.ts' },
 ];
 
 export interface HelperViolation {

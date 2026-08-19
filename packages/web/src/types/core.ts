@@ -95,6 +95,13 @@ export * from '../../../core/src/roles';
 // and the native APK self-update.
 export * from '../../../core/src/version';
 
+// Value re-export: the Downloads-card title chain (pure, browser-safe). One
+// shared derivation so the API read model and the web adapter can never
+// disagree about what a download is called. See docs/download-pipeline.md.
+export * from '../../../core/src/utils/download-title';
+export * from '../../../core/src/utils/folder-name';
+export * from '../../../core/src/types/classify-acquire-url';
+
 // Value re-export: slskd hunt query builders (pure, browser-safe) — the single
 // source the album-hunt modal shows and the API hunter fires. See hunt-queries.ts.
 export * from '../../../addon-sdk/src/hunt-queries';

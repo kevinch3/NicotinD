@@ -1078,13 +1078,22 @@ Add detail there, not here.
   [docs/download-pipeline.md](docs/download-pipeline.md)
 - **Library quality auditor**: assert (audit) + clean (repair/retag) + prevent (ingest sanitize) for
   DJ-pool/VA-source pollution across DB + disk. → [docs/library-audit.md](docs/library-audit.md)
-- **Import music from folder (admin)**: `LibraryImportService` runs a server-side folder through
-  the same organize → scan → quarantine pipeline as a download (chunk-wise, copy-by-default with
-  opt-in move under a disk-truth deletion rule, staging-copy mandatory because the organizer
-  consumes its inputs); `kind='import'` mirror row in `acquisition_jobs` gives it a Downloads-feed
-  card ("Imported" badge), admin-only and deliberately independent of the acquisition kill-switch
-  (streaming-only installs are the likeliest importers) — UI is the Admin "Import music" card with
-  preview + progress. → [docs/import.md](docs/import.md)
+- **Import music from a folder or archive (internal/API-only)**: `LibraryImportService` runs a
+  server-side folder **or `.zip`** through the same organize → scan → quarantine pipeline as a
+  download (chunk-wise, copy-by-default with opt-in move under a disk-truth deletion rule,
+  staging-copy mandatory because the organizer consumes its inputs); `kind='import'` mirror row in
+  `acquisition_jobs` gives it a Downloads-feed card ("Imported" badge — unreachable until
+  `methodForBackend` learned `'import'`), admin-only and deliberately independent of the acquisition
+  kill-switch (streaming-only installs are the likeliest importers). **The Admin "Import music" card
+  was removed** — import is an operator action, so `/api/admin/import` is the whole surface.
+  Archives are read by a hand-rolled, dependency-free `import-archive.ts` over `node:zlib`:
+  **central-directory-first** (only it is authoritative when a streaming zipper writes a data
+  descriptor, and it yields the uncompressed total *before* inflating, which keeps the disk preflight
+  honest and makes a bomb detectable up front), extraction streams **straight into staging** rather
+  than a temp dir (no doubled peak disk), `safeArchivePath` guards traversal without flattening the
+  album tree, symlink/encrypted/ZIP64/oversized entries are refused with typed codes, and move mode
+  deletes the **archive** only once nothing was left unconsumed. →
+  [docs/import.md](docs/import.md)
 - **Downloading albums suppressed from listing**: listings exclude albums with active `album_jobs`
   or in-flight transfers via an SQL `WHERE` exclusion. →
   [docs/design-patterns.md](docs/design-patterns.md)
@@ -1171,7 +1180,13 @@ Add detail there, not here.
   (`{ paths, meta }`) so `ingest` threads the item's artist/album onto `jobMeta` (else the organizer
   drops them in `<dataDir>/unsorted` outside the music dir while the job falsely reads "done") and a
   job that files nothing is marked `done` **with a warning** rather than a clean success,
-  restart-orphaned jobs are failed at boot (never stuck "running"), Retry on any truncated acquire
+  restart-orphaned jobs are failed at boot (never stuck "running"), **the poller mirrors the addon's
+  own `state`/`error` onto the feed row** (`applyAddonOutcome` — it read neither before, and
+  `recomputeStage` deliberately no-ops on an item-less job, so a beatport link handed to yt-dlp's
+  `^https?://` catch-all sat at "Downloading 0 of 0" forever with no reason and no Remove; ordering
+  is load-bearing — after ingest, before the release that deletes the addon job and its error text —
+  and `failOrphanedJob` now COALESCEs so the generic "restarted mid-download" guess can't clobber the
+  real one), Retry on any truncated acquire
   job resumes the same job id/staging dir instead of re-downloading from scratch (spotdl
   additionally passes `--overwrite skip` on top of that generic mechanism), and YouTube's bot-check
   is mitigated by Deno + the bgutil PO-token sidecar + optional `<dataDir>/youtube-cookies.txt`
@@ -1226,9 +1241,19 @@ Add detail there, not here.
   jobs for the same album now correctly stay two cards. `methodForBackend` maps every addon id
   incl. `slskd` (#532 — hunt cards rendered "?Unknown source" post-cutover), and every feed row is
   removable: `DELETE /jobs/:id` always drops the core row (addon proxy best-effort), with removal
-  failures toasted instead of swallowed (#533). The Downloads header also shows a **disk-availability pill**
-  (`used / total`, green→red fill) fed by `GET /api/system/disk` (statfs of the music dir). →
-  [docs/download-pipeline.md](docs/download-pipeline.md) → "Now: / Next: track display",
+  failures toasted instead of swallowed (#533) — so `canRemove` is now unconditional rather than
+  gated on a stage a stuck card could never reach, `canCancel` accepts `queued`, and a failed URL
+  acquire finally offers the **Retry** the acquire route always supported. The Downloads header also
+  shows a **disk-availability pill** (`used / total`, green→red fill) fed by `GET /api/system/disk`
+  (statfs of the music dir). **Card titles are one shared pure chain**
+  (`downloadTitleFor`, `@nicotind/core`): addon display title → canonical album → landed albums →
+  the source/peer folder (`isGenericFolderName`-guarded; a Soulseek uploader's folder describes the
+  release) → a bare artist → the pasted link (humanized slug, but a structured "Spotify playlist"
+  rather than a guessed base62 id) → the source label. It replaced a literal `"<Source> download"`
+  that merely repeated the method chip; `AcquisitionJobView` gained `displayTitle`/`sourceUrl`/
+  `destinationAlbums` to feed it, and `acquisition_jobs.display_title` is its own column because
+  `album_title` is *filing* metadata (a playlist name there mints a phantom album). →
+  [docs/download-pipeline.md](docs/download-pipeline.md) → "Card titles" / "Now: / Next: track display",
   [docs/web-ui.md](docs/web-ui.md)
 - **Acquisition provenance (how/where/when)**: the `acquisitions` side-table records
   method/source/time at download time; surfaced per track. →

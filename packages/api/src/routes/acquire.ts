@@ -89,6 +89,10 @@ export function acquireRoutes(watcher: AcquireWatcher, registry: PluginRegistry,
     const coreJobId = createJob(db, {
       kind: 'url',
       method: addonId,
+      // Nothing is downloading yet — the addon resolves in the background — and
+      // the column default says otherwise. A link the addon cannot handle would
+      // otherwise render "Downloading 0 of 0" for as long as the row lived.
+      stage: 'queued',
       sourceRef: `addon:${addonId}:${addonJob.id}`,
       sourceUrl: url,
       files: [],

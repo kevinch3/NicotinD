@@ -38,6 +38,7 @@ export * from './utils/logger.js';
 export * from './utils/crypto.js';
 export * from './utils/errors.js';
 export * from './utils/folder-name.js';
+export * from './utils/download-title.js';
 export * from './utils/expand-home.js';
 
 // Version comparison (shared: server update-check + web APK self-update)

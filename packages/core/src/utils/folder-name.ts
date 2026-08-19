@@ -25,3 +25,46 @@ export function parseYearFromFolder(raw: string): number | undefined {
   const year = Number(matches[matches.length - 1]);
   return Number.isFinite(year) ? year : undefined;
 }
+
+/**
+ * Folder names that are generic/technical containers rather than a release —
+ * Soulseek peers routinely file under `music/`, `downloads/`, `CD1/`. Shared
+ * (issue: it lived privately in the API's `path-inference` while the download
+ * title chain needed exactly the same judgement) so the two can never drift
+ * into disagreeing about what counts as a name.
+ */
+const GENERIC_FOLDER_NAMES = new Set([
+  'src',
+  'source',
+  'downloads',
+  'download',
+  'music',
+  'audio',
+  'mp3',
+  'flac',
+  'wav',
+  'm4a',
+  'ogg',
+  'aac',
+  'misc',
+  'mixed',
+  'files',
+  'shared',
+  'uploads',
+  'media',
+  'new',
+  'old',
+  'temp',
+  'tmp',
+  'data',
+  'unsorted',
+]);
+
+export function isGenericFolderName(folderName: string): boolean {
+  const lower = folderName.toLowerCase().trim();
+  if (lower.length <= 2) return true;
+  if (GENERIC_FOLDER_NAMES.has(lower)) return true;
+  // Pure numbers / disc markers ("01", "1", "CD1") name a part, not a release.
+  if (/^(cd|disc|disk)?\s*\d{1,2}$/i.test(lower)) return true;
+  return false;
+}

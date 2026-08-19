@@ -184,9 +184,12 @@ describe('acquire route — addon seam', () => {
       // missing here reads as "nothing happened" and invites another click.
       expect(jobs[0]!.url).toBe('https://stub.test/track');
       expect(jobs[0]!.backend).toBe('bundled-stub');
-      // 'running', not 'queued': the mirror row is created at `downloading`
-      // stage, and the card renders "Starting…" until the first item lands.
-      expect(jobs[0]!.state).toBe('running');
+      // 'queued', not 'running': the addon resolves in the background and has
+      // not fetched a byte at submit time. The row used to take the column
+      // default (`downloading`), which rendered "Downloading 0 of 0" — for a
+      // link the addon cannot handle, forever (the beatport report).
+      expect(jobs[0]!.state).toBe('queued');
+      expect(jobs[0]!.stage).toBe('queued');
     });
 
     it('GET /jobs/:id resolves an addon-run url job', async () => {

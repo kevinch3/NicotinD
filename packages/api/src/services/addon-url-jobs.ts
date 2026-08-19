@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import type { AcquireJob, AcquireAlbumDestination, TrackStatus } from '@nicotind/core';
 import { parseAddonJobId } from './addons/job-poller.js';
+import { jobDestinationAlbums } from './job-destinations.js';
 
 /**
  * URL acquires that run **addon-side** (yt-dlp / spotdl / archive since the
@@ -55,11 +56,12 @@ interface UrlJobRow {
   stage: string | null;
   source_url: string | null;
   album_title: string | null;
+  display_title: string | null;
   error: string | null;
   created_at: number;
 }
 
-const SELECT_URL_JOBS = `SELECT id, method, state, stage, source_url, album_title, error, created_at
+const SELECT_URL_JOBS = `SELECT id, method, state, stage, source_url, album_title, display_title, error, created_at
    FROM acquisition_jobs
    WHERE kind = 'url' AND source_url IS NOT NULL
      AND source_ref LIKE 'addon:%'`;
@@ -129,31 +131,18 @@ function project(db: Database, row: UrlJobRow): AcquireJob {
     .all(row.id)
     .map((r) => ({ title: r.track_title ?? '', status: itemStatus(r.state) }));
 
-  // Where the files actually landed, so "Open in Library" resolves. Derived from
-  // the scanned items rather than a storage_path — the addon pipeline organizes
-  // per file and never records one.
-  let destinationAlbums: AcquireAlbumDestination[] = [];
-  try {
-    destinationAlbums = db
-      .query<{ id: string; name: string; artist: string }, [string]>(
-        `SELECT DISTINCT al.id, al.name, al.artist
-           FROM acquisition_job_items i
-           JOIN library_songs s ON s.id = i.song_id
-           JOIN library_albums al ON al.id = s.album_id
-          WHERE i.job_id = ?`,
-      )
-      .all(row.id)
-      .map((r) => ({ albumId: r.id, albumArtist: r.artist, albumTitle: r.name }));
-  } catch {
-    // A minimal DB without the library tables must still render the feed.
-  }
+  // Where the files actually landed, so "Open in Library" resolves — shared
+  // with the unified feed, which names its cards from the same answer.
+  const destinationAlbums: AcquireAlbumDestination[] = jobDestinationAlbums(db, row.id);
   const single = destinationAlbums.length === 1 ? destinationAlbums[0]! : null;
 
   return {
     id: row.id,
     backend: row.method,
     url: row.source_url!,
-    label: row.album_title,
+    // The addon's own display name wins: a playlist is named by its playlist
+    // title, not by the album its tracks happen to be filed under.
+    label: row.display_title ?? row.album_title,
     state: acquireStateFor(row.state, row.stage),
     stage: acquireStageFor(row.stage),
     storage_path: null,

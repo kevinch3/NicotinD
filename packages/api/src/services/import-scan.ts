@@ -6,9 +6,16 @@
  */
 import { lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { extname, join, relative, sep } from 'node:path';
-import type { ImportSourceErrorCode } from '@nicotind/core';
+import type { ImportSourceErrorCode, ImportSourceKind } from '@nicotind/core';
 import { AUDIO_EXTENSIONS } from './plugins/acquire/process.js';
 import { expandDir, isUnderMusicDir } from './song-path.js';
+import {
+  archiveEntryRel,
+  assertArchiveWithinLimits,
+  looksLikeArchive,
+  readZipCentralDirectory,
+  type ZipEntry,
+} from './import-archive.js';
 
 /** Walk caps: past these the preview reports `truncated` and submit refuses. */
 export const IMPORT_MAX_FILES = 100_000;
@@ -43,7 +50,8 @@ export interface ImportScanResult {
 }
 
 export type ValidateImportSourceResult =
-  { ok: true; realPath: string } | { ok: false; code: ImportSourceErrorCode };
+  | { ok: true; realPath: string; kind: ImportSourceKind }
+  | { ok: false; code: ImportSourceErrorCode };
 
 /**
  * Validate a candidate import source path. Realpaths both sides so a symlink
@@ -52,6 +60,11 @@ export type ValidateImportSourceResult =
  * would feed the organizer its own output, and importing a folder that
  * *contains* the library (e.g. `/`) would re-ingest the whole library plus the
  * data dir. Equality counts as "inside".
+ *
+ * A source is a **folder or a supported archive file** (docs/import.md). Every
+ * containment rule applies identically to an archive — a zip sitting inside the
+ * music dir is still refused; the direction that asks whether the source
+ * *contains* the library is simply always false for a file.
  */
 export function validateImportSource(
   rawPath: string,
@@ -64,7 +77,9 @@ export function validateImportSource(
   } catch {
     return { ok: false, code: 'NOT_FOUND' };
   }
-  if (!statSync(real).isDirectory()) return { ok: false, code: 'NOT_DIR' };
+  const isDir = statSync(real).isDirectory();
+  if (!isDir && !looksLikeArchive(real)) return { ok: false, code: 'NOT_DIR' };
+  const kind: ImportSourceKind = isDir ? 'dir' : 'archive';
   const musicReal = safeRealpath(expandDir(musicDir));
   const dataReal = safeRealpath(expandDir(dataDir));
   if (real === musicReal || isUnderMusicDir(musicReal, real)) {
@@ -75,7 +90,7 @@ export function validateImportSource(
     return { ok: false, code: 'INSIDE_DATA_DIR' };
   }
   if (isUnderMusicDir(real, dataReal)) return { ok: false, code: 'CONTAINS_DATA_DIR' };
-  return { ok: true, realPath: real };
+  return { ok: true, realPath: real, kind };
 }
 
 function safeRealpath(path: string): string {
@@ -185,6 +200,90 @@ export function scanImportSource(root: string, limits: ImportScanLimits = {}): I
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([dir, files]) => ({ dir, files, bytes: files.reduce((n, f) => n + f.size, 0) }));
   return { dirs, ...result };
+}
+
+/**
+ * Scan an archive into the SAME `ImportScanResult` shape the folder walk
+ * produces — same dirs/files/bytes/tallies, same caps, same audio-only rule.
+ * That equality is load-bearing: `planImportChunks`, the resume-by-directory
+ * contract and the disk preflight all stay untouched because an archive is just
+ * another way of enumerating the same tree.
+ *
+ * `bytes` is the UNCOMPRESSED total (from the central directory), because that
+ * is what will actually land on disk — using the file's size would under-reserve
+ * space by however well the archive compressed.
+ */
+export function scanImportArchive(
+  archivePath: string,
+  limits: ImportScanLimits = {},
+): ImportScanResult {
+  const maxFiles = limits.maxFiles ?? IMPORT_MAX_FILES;
+  const maxDepth = limits.maxDepth ?? IMPORT_MAX_DEPTH;
+  const entries = readZipCentralDirectory(archivePath);
+  assertArchiveWithinLimits(entries);
+
+  const byDir = new Map<string, ImportScanFile[]>();
+  const result = {
+    files: 0,
+    bytes: 0,
+    unsupportedFiles: 0,
+    skippedSymlinks: 0,
+    truncated: false,
+  };
+
+  for (const entry of entries) {
+    if (entry.isDirectory) continue;
+    // A symlink entry stores its target as its body; following one would smuggle
+    // in a path the folder walk pointedly refuses to follow.
+    if (entry.isSymlink) {
+      result.skippedSymlinks += 1;
+      continue;
+    }
+    const rel = archiveEntryRel(entry.name);
+    if (!rel || rel.split('/').some((seg) => seg === '..')) {
+      result.unsupportedFiles += 1;
+      continue;
+    }
+    if (!isAudioFile(rel)) {
+      result.unsupportedFiles += 1;
+      continue;
+    }
+    const segments = rel.split('/');
+    // Depth is counted the same way the walk counts it: directories below root.
+    if (segments.length - 1 > maxDepth) {
+      result.truncated = true;
+      break;
+    }
+    if (result.files >= maxFiles) {
+      result.truncated = true;
+      break;
+    }
+    const dir = segments.length > 1 ? segments.slice(0, -1).join('/') : '.';
+    const list = byDir.get(dir) ?? [];
+    if (list.length === 0) byDir.set(dir, list);
+    list.push({ rel, size: entry.uncompressedSize });
+    result.files += 1;
+    result.bytes += entry.uncompressedSize;
+  }
+
+  const dirs: ImportScanDir[] = [...byDir.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([dir, files]) => ({
+      dir,
+      files: [...files].sort((a, b) => a.rel.localeCompare(b.rel)),
+      bytes: files.reduce((n, f) => n + f.size, 0),
+    }));
+  return { dirs, ...result };
+}
+
+/** Central-directory entries keyed by their sanitized relative path. */
+export function archiveEntryIndex(archivePath: string): Map<string, ZipEntry> {
+  const index = new Map<string, ZipEntry>();
+  for (const entry of readZipCentralDirectory(archivePath)) {
+    if (entry.isDirectory || entry.isSymlink) continue;
+    index.set(archiveEntryRel(entry.name), entry);
+  }
+  return index;
 }
 
 export interface ImportChunk {

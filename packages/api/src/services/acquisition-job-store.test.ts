@@ -677,6 +677,31 @@ describe('recomputeStage', () => {
     expect(recomputeStage(db, id)).toBe('error');
     expect(getJob(db, id)?.state).toBe('failed');
   });
+
+  /**
+   * The early return is deliberate, and pinned so nobody "fixes" it: this
+   * function derives the stage FROM items, so with none it has no information.
+   * Every URL job is legitimately item-less between submit and the addon's
+   * first resolve — ruling `error` here would fail every one in its first
+   * seconds. The item-less verdict belongs to whoever *does* know: the poller's
+   * `applyAddonOutcome`, and `reconcileOnBoot`'s valve as the backstop.
+   */
+  it('refuses to rule on a job with no items, leaving its stage untouched', () => {
+    const id = createJob(db, { kind: 'url', method: 'ytdlp-addon', stage: 'queued', files: [] });
+    expect(recomputeStage(db, id)).toBe('queued');
+    expect(getJob(db, id)?.state).toBe('active');
+  });
+});
+
+describe('createJob stage', () => {
+  it('defaults to downloading — an enqueue really does have files moving', () => {
+    expect(getJob(db, seedJob())?.stage).toBe('downloading');
+  });
+
+  it("honours an explicit 'queued' for a job created before its source resolved", () => {
+    const id = createJob(db, { kind: 'url', method: 'ytdlp-addon', stage: 'queued', files: [] });
+    expect(getJob(db, id)?.stage).toBe('queued');
+  });
 });
 
 describe('supersedeActiveJobs', () => {
@@ -688,6 +713,38 @@ describe('supersedeActiveJobs', () => {
 });
 
 describe('reconcileOnBoot', () => {
+  /**
+   * The item-driven valve cannot see an item-less job (no rows to select), and
+   * `recomputeStage` refuses to rule on one — so an addon URL job whose addon
+   * never reported a terminal state stayed `active` forever and, being
+   * non-terminal, was never pruned either. A permanent, undismissable card.
+   */
+  it('gives up on an item-less job left active past the valve', () => {
+    const id = createJob(db, { kind: 'url', method: 'ytdlp-addon', stage: 'queued', files: [] });
+    db.run(`UPDATE acquisition_jobs SET created_at = 1, updated_at = 1 WHERE id = ?`, [id]);
+    reconcileOnBoot(db);
+    const job = getJob(db, id)!;
+    expect(job.state).toBe('failed');
+    expect(job.stage).toBe('error');
+    expect(job.error).toContain('never started');
+  });
+
+  it('leaves a young item-less job alone — that is every URL job at submit', () => {
+    const id = createJob(db, { kind: 'url', method: 'ytdlp-addon', stage: 'queued', files: [] });
+    reconcileOnBoot(db);
+    expect(getJob(db, id)?.state).toBe('active');
+  });
+
+  it('keeps the reason a poller already recorded rather than overwriting it', () => {
+    const id = createJob(db, { kind: 'url', method: 'ytdlp-addon', stage: 'queued', files: [] });
+    db.run(
+      `UPDATE acquisition_jobs SET created_at = 1, updated_at = 1, error = 'Unsupported URL' WHERE id = ?`,
+      [id],
+    );
+    reconcileOnBoot(db);
+    expect(getJob(db, id)?.error).toBe('Unsupported URL');
+  });
+
   it('closes out jobs whose non-terminal items have been idle past the valve', () => {
     const id = seedJob();
     db.run(`UPDATE acquisition_job_items SET updated_at = 1`); // ancient

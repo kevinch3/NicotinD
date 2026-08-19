@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "NicotinD Acquisition Addon Protocol",
-  "protocolVersion": "1.0.0",
+  "protocolVersion": "1.1.0",
   "description": "Generated from the @nicotind/core Zod DTOs. Additive-only within a major; a breaking change bumps the major (see docs/addon-protocol/v1.md).",
   "$defs": {
     "Manifest": {

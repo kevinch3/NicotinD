@@ -168,7 +168,12 @@ export class DownloadsComponent {
     if (item.kind !== 'network') {
       const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
       if (j) void this.retryAcquireJob(j);
+      return;
     }
+    // An addon-run URL acquire renders in the network lane but retries through
+    // the acquire endpoint (which re-submits the stored link). Without this the
+    // Retry button would render and do nothing.
+    if (item.jobId) void this.retryJobById(item.jobId);
   }
 
   onItemCancel(item: DownloadItem): void {
@@ -206,10 +211,36 @@ export class DownloadsComponent {
   private async cancelJob(jobId: string): Promise<void> {
     try {
       await firstValueFrom(this.api.cancelJob(jobId));
-    } catch {
-      /* ignore */
+    } catch (err) {
+      // Swallowing this is how "the X does nothing" shipped (same shape as
+      // #533's removal fix) — a cancel against an already-released addon job
+      // 502s, and the user deserves to know rather than clicking again.
+      this.toasts.show({
+        message: httpErrorMessage(err, 'Could not cancel this download'),
+        kind: 'error',
+      });
     }
     await this.transferService.kickPoll();
+  }
+
+  /** Retry a unified-feed job by id (addon URL acquires; see `onItemRetry`). */
+  private async retryJobById(jobId: string): Promise<void> {
+    this.retrying.update((prev) => new Set(prev).add(jobId));
+    try {
+      await firstValueFrom(this.api.retryAcquireJob(jobId));
+    } catch (err) {
+      this.toasts.show({
+        message: httpErrorMessage(err, 'Could not retry this download'),
+        kind: 'error',
+      });
+    } finally {
+      this.retrying.update((prev) => {
+        const next = new Set(prev);
+        next.delete(jobId);
+        return next;
+      });
+      await this.transferService.kickPoll();
+    }
   }
 
   /** Cancel every in-flight card: addon jobs via their job endpoint, URL

@@ -18,7 +18,7 @@ const LONGEST = [
   'admin.gatedStepsHint',
   'agentTokens.subtitle',
   'settings.generationFeedbackHint',
-  'admin.musicImportRemoveOriginalsHint',
+  'admin.holdForReviewHint',
   'settings.autoPreserveExplainOff',
   'admin.backupHint',
 ];

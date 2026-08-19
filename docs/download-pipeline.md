@@ -213,7 +213,7 @@ A `watch?v=…&list=…` or `playlist?list=…` URL downloads the whole playlist
 
 - **Partial failures don't sink the job.** yt-dlp runs with `--ignore-errors`, so unavailable/private/deleted videos are skipped instead of aborting at the first one. Crucially, **success is decided by whether audio files landed, not by the exit code** — yt-dlp exits non-zero whenever *any* item failed, even after downloading every other item, so the runner (`acquire/process.ts`) ignores the exit code when `collectAudioPaths` found files and only rejects on `0 files AND non-zero exit`. `AcquireWatcher.run` then marks the job failed only when the resolve produced zero files. A playlist where 40/41 items succeed ingests those 40. Earlier iterations that trusted `--ignore-errors` to yield a zero exit, or that keyed off the exit code, discarded all 40 — the staged files were cleaned up unused.
 - **A truncated result still gets flagged, not silently absorbed.** The plugin's return value only carries the paths that landed — not the total the source reported (spotdl logs `Found 16 songs`; that's parsed by `parseSpotdlProgress` and persisted live to `acquire_jobs.progress` via `emitProgress`, same column the in-progress bar reads). Once `resolve()` settles, `AcquireWatcher.run` re-reads that last-known `progress.total` and compares it to `paths.length`: if fewer files landed than were expected, the job still finishes `state: 'done'` (the files that did land are real and worth keeping), but its `error` field carries a human-readable warning (`"Downloaded 1 of 16 tracks — the rest failed or were skipped."`) instead of staying `null`. Found in real use 2026-07-10: a 16-track Spotify album where spotdl only matched 1 track on YouTube read as an unqualified "Done" with no indication anything was wrong. The web's `error` display on `DownloadItemComponent` already renders regardless of stage, so no template change was needed there; `acquireJobToDownloadItem` was updated so `canRetry` also covers `state === 'done' && error` (not just `state === 'failed'`), giving the row a **Retry** button instead of forcing the user to re-paste the link.
-- **The job label shows the playlist name.** yt-dlp emits `[download] Downloading playlist: <name>` at the start; `parseYtdlpPlaylistTitle` captures it and the plugin calls `ctx.emitLabel(jobId, name)` → `acquire_jobs.label`, so the Downloads row shows the playlist title instead of the raw URL (the web falls back to a shortened URL when `label` is null). `emitLabel` is part of `PluginHostContext`.
+- **The job label shows the playlist name.** yt-dlp emits `[download] Downloading playlist: <name>` at the start; `parseYtdlpPlaylistTitle` captures it and the plugin calls `ctx.emitLabel(jobId, name)` → `acquire_jobs.label`, so the Downloads row shows the playlist title instead of the raw URL. `emitLabel` is part of `PluginHostContext`. **This is the in-process lane, which no longer runs** (phase 4 moved yt-dlp/spotdl into external addons): an addon supplies the same thing through the protocol's `AddonJob.title` instead — see "Card titles" below.
 - **Actionable errors.** When a run does fail, the runner stores the captured `ERROR:` lines (the real cause) rather than the last 2 KB of download-progress spam.
 - **Playlist URL submissions auto-generate a per-user native playlist.** When the URL classifier (`classifyAcquireUrl` in `@nicotind/core`) marks the submission as a playlist — Spotify `/playlist/<id>`, YouTube `/playlist`, YouTube `watch?v=…&list=…`, or archive.org with `as=playlist` — the post-ingest step materializes a `kind='user'` playlist owned by the submitter from the landed tracks in download order. The Downloads card then offers an "Open playlist" deep-link to `/library/playlists/<id>`. See [docs/playlist-from-acquisition.md](playlist-from-acquisition.md) for the full flow, the per-source behavior, and the dedupe / retry contract.
 
@@ -241,11 +241,100 @@ The fix, in the same three places:
 2. `services/addon-url-jobs.ts` **projects** those rows into the `AcquireJob` shape and `GET /api/acquire/jobs` returns them alongside the watcher's. It is a projection, never a second write path — the poller stays the only writer, so there is no state to keep in sync. `GET/DELETE /jobs/:id` and `POST /jobs/:id/retry` fall through to the addon equivalents (cancel + delete addon-side best-effort, retry = re-submit the stored URL, which the in-flight guard makes a no-op while the original still runs). `created_at` is converted to unix **seconds**, the unit `acquire_jobs` (and therefore `AcquireJob`) uses.
 3. The web's `submitLinkIntent()` sets a `linkSubmitting` signal that disables **Get** for the duration of the request and bails when a `linkJob()` already exists.
 
-Because the projection shares the job id with the unified feed row, `mergeAcquisitionJobs` would otherwise render an addon URL download as two cards. It now filters the acquire-lane item out for jobs whose `sourceRef` starts with `addon:`, so the **unified** lane stays authoritative for those (it carries the friendly "Spotify download" title, the sources list and the job-scoped routes) while the acquire lane stays authoritative for in-process URL jobs (per-track list, destination albums, generated playlist id).
+Because the projection shares the job id with the unified feed row, `mergeAcquisitionJobs` would otherwise render an addon URL download as two cards. It now filters the acquire-lane item out for jobs whose `sourceRef` starts with `addon:`, so the **unified** lane stays authoritative for those (it carries the title chain below, the sources list and the job-scoped routes) while the acquire lane stays authoritative for in-process URL jobs (per-track list, destination albums, generated playlist id).
+
+#### Card titles (`downloadTitleFor`)
+
+Every acquisition backend lands in one feed, so **one deterministic, pure chain names every card**
+(`packages/core/src/utils/download-title.ts`, shared by the API read model and the web adapter).
+It replaced a per-lane guess whose answer for a URL acquire was the literal string
+`"<Source> download"` — which duplicates the method chip rendered immediately to its left, so three
+simultaneous YouTube links were three rows all reading "YouTube download", and a beatport link the
+addon could not download said nothing about what had been asked for.
+
+The rungs, first non-empty wins, ordered by **quality** rather than recency so a card's title only
+ever improves as a job progresses instead of flapping:
+
+1. `displayTitle` — the source's own name for the job (see the protocol field below), or an import's
+   source folder / archive stem.
+2. `albumTitle` (+ `artistName` as the subtitle) — what hunts, auto-acquire and track-search carry
+   from Lidarr at enqueue time.
+3. `destinationAlbums` — the albums the files actually landed in. One renders its title + artist,
+   several render `"<first> +N more"`.
+4. The **source folder**: the modal directory across the job's items, `cleanFolderName`d and skipped
+   when it is a generic container (`music`, `downloads`, `CD1` — `isGenericFolderName`, now shared
+   with `path-inference` rather than copied). For a Soulseek grab this is the uploader's own folder
+   ("Los Tekis - (1995) Toque"), which is how they described the release; it deliberately outranks a
+   bare artist name for that reason.
+5. `artistName` alone.
+6. The **pasted link**. Spotify and YouTube name their content only by opaque id, so those decline to
+   a *structured* `{kind:'source', urlKind}` — "Spotify playlist", "YouTube video" — rather than
+   humanizing a base62 blob, which would be worse than saying nothing. Every other host tends to
+   carry a human slug: the deepest path segment that passes `isHumanSlug` (rejects pure digits, route
+   words like `release`, ≤2-char locale prefixes, and separator-less mixed-case-with-digits ids) is
+   run through `humanizeSlug`, so
+   `beatport.com/es/release/rodopiado-veneno-feat-sophia-ardessore/7142216` reads **"Rodopiado Veneno
+   Feat Sophia Ardessore"** with the host as its subtitle.
+7. `{kind:'source'}` — rendered by the web from its own method label, so the one piece of English
+   copy lives at the call site (`renderDownloadTitle`) and can be localized, instead of being baked
+   into the derivation.
+
+`sourceRef` and the job id are never rungs: the first is the opaque `addon:<id>:<uuid>` key or an
+absolute server path, and leaking either as a title is what the chain replaces. Two feed fields exist
+to feed it — `AcquisitionJobView.sourceUrl` (the column was already stored for the #509 idempotency
+guard, just never shipped to the client) and `displayTitle`.
+
+**`acquisition_jobs.display_title` is its own column, not an overload of `album_title`.** The latter
+is *filing* metadata: `resolveJobAlbumId` turns it into an album id via `albumIdFor`, and the
+poller's `jobMeta()` hands it to the organizer as the album to file under. A playlist name there
+would mint a phantom album and mis-file every track in it. Same reason the protocol grew
+`AddonJob.title` (1.1, optional) rather than reusing `AddonJob.album`; the bundled archive.org addon
+is its reference implementation, setting it from the item identifier at `createJob` and upgrading it
+to the real item title once the background resolve lands. Core degrades through the rungs above for
+addons that don't send it.
+
+#### Addon job outcomes reach the card
+
+The poller mirrors the addon's **own verdict** — `AddonJob.state` and `.error` — onto the feed row
+(`applyAddonOutcome`). It used to read neither, deriving the row's lifecycle purely from mirrored
+*items*; that works for a job that produces files and fails completely for one that does not.
+`recomputeStage` deliberately no-ops on an item-less job (it derives stage *from* items, and every
+URL job is legitimately item-less between submit and the addon's first resolve), and
+`acquisition_jobs.stage` defaults to `downloading` — so a link the addon could never handle (yt-dlp
+is the `^https?://` catch-all, and it has no beatport extractor) left a card reading **"Downloading
+0 of 0" forever**, with no reason shown and no Remove button. The addon knew; core never asked.
+
+Three rules make it hold:
+
+- The call sits **after** `ingestReadyItems` (so files delivered on the same tick organize first and
+  a genuinely finished job closes `done`, not a false partial) and **before** `maybeReleaseAddonJob`
+  — which deletes the addon-side job and with it the only copy of `job.error`.
+- A terminal addon job marks any item still `downloading` as `unavailable`, so the job closes as an
+  honest partial instead of hanging on a track nobody is sending. An **item-less** terminal job is
+  the case `recomputeStage` cannot rule on, and is never a success: `failed`/`cancelled` carry the
+  addon's own text, `done`/`partial` with zero items reports "No downloadable audio was found at
+  this link."
+- `failOrphanedJob` writes `error = COALESCE(error, …)`. Releasing a terminal job is exactly what
+  makes the later `getJob` 404, so without this the generic "it likely restarted mid-download" guess
+  would overwrite the accurate reason on every job that fails this way.
+
+`reconcileOnBoot` carries a backstop for the remaining case — an addon that never reports a terminal
+state at all — closing an item-less job left `active` past the 24 h valve (the item-driven valve
+cannot see it, and being non-terminal it was never pruned either). An addon URL job is now also
+created at stage `queued` rather than taking the `downloading` default, since nothing is downloading
+at submit; `canCancel` accepts `queued`, `canRemove` is unconditional (the delete route drops the row
+at any stage), and a failed URL acquire finally offers **Retry**, which
+`POST /api/acquire/jobs/:id/retry` has supported all along.
+
+A host-side blocklist of unsupported sites was considered and **rejected**: the protocol makes URL
+support the addon's own declaration (`urlPatterns`), yt-dlp's extractor set changes every release so
+a baked-in list would produce false rejections with no override, and beatport is one host — the same
+ghost card appeared for a private video, a geo-block or a rate-limit. Core's obligation is to stop
+discarding the answer it is already given.
 
 #### Unified Active feed (`DownloadItem`)
 
-The Downloads → **Active** tab is one feed, not two sections: slskd album groups and URL acquire jobs both map into a normalized `DownloadItem` (`lib/download-groups.ts` — `groupToDownloadItem` / `acquireJobToDownloadItem`, merged + stage-sorted by `buildDownloadFeed`). Admin folder imports (`kind='import'`, [docs/import.md](import.md)) also surface here through their item-less `acquisition_jobs` mirror row — an "Imported" method badge, progress read from `import_jobs`, and the same Open-in-Library link for a single-album import — with zero feed-code changes beyond the badge arm. Each row (`components/download-item/`) shows the four facets the redesign called for — **how** (method badge from `lib/acquisition-method.ts`), **what stage** (`components/pipeline-stage-badge/`, label/tone from the pure `lib/pipeline-stage.ts`), **when** (started), **where** (storage path, behind a "Where?" toggle) — plus retry / cancel / remove that the component emits and the page dispatches by `item.kind`. slskd method is always `slskd` and its stage derives from the group's transfer state (job-level — organize/scan run as a batch); acquire rows read `method`/`stage`/`storage_path` straight off the job. Rows carry `data-testid="download-item"` + `data-method`/`data-stage` for e2e.
+The Downloads → **Active** tab is one feed, not two sections: slskd album groups and URL acquire jobs both map into a normalized `DownloadItem` (`lib/download-groups.ts` — `groupToDownloadItem` / `acquireJobToDownloadItem`, merged + stage-sorted by `buildDownloadFeed`). Admin imports (`kind='import'`, [docs/import.md](import.md)) also surface here through their item-less `acquisition_jobs` mirror row — an "Imported" method badge, progress read from `import_jobs`, and the same Open-in-Library link for a single-album import. (The badge arm was in fact unreachable until `methodForBackend` learned `'import'`: every import rendered "? Unknown source" with its absolute source path as the title.) Each row (`components/download-item/`) shows the four facets the redesign called for — **how** (method badge from `lib/acquisition-method.ts`), **what stage** (`components/pipeline-stage-badge/`, label/tone from the pure `lib/pipeline-stage.ts`), **when** (started), **where** (storage path, behind a "Where?" toggle) — plus retry / cancel / remove that the component emits and the page dispatches by `item.kind`. slskd method is always `slskd` and its stage derives from the group's transfer state (job-level — organize/scan run as a batch); acquire rows read `method`/`stage`/`storage_path` straight off the job. Rows carry `data-testid="download-item"` + `data-method`/`data-stage` for e2e.
 
 Once a row is complete, it also offers an **"Open in Library"** deep-link to the destination album (`data-testid="download-open-album"`), so "Done" is an action, not a dead end. The target is the deterministic `albumId` the API already ships — `dir.albumJob.albumId` for slskd hunts, `job.albumId` for URL acquires — plumbed through `AlbumGroup` → `DownloadItem` and resolved to `/library/albums/:id` via `resolveAlbumRoute` (`lib/route-utils.ts`). The gating predicate `canOpenInLibrary(item)` (exported from `components/download-item/`, unit-tested since the JIT harness can't render a required `input()`) shows the link only when `stage === 'done'` **and** an `albumId` is present, so direct (non-hunt) slskd downloads — which carry no id — show no link. **The id is no longer a bare name derivation (issue #468).** `albumIdFor(artistName, albumTitle)` is a *guess*: those names sit on the job whether or not anything was ever filed — including the `unfiledWarning` path, where a job completes having filed nothing — so the card offered a link that could not work under any timing. Measured on prod: **20 of 431** named `album_jobs` derived an id for an album that does not exist, **19** of which never landed at all. The feed now calls `resolveJobAlbumId(db, jobId, artistName, albumTitle)`, which prefers **what the server observed** over what a read-time re-derivation infers — the same correction #261 made for card identity. Order: the album the job's own scanned items point at (`acquisition_job_items.song_id` → `library_songs.album_id`, which also stays right when the names were only ever approximate), then the derived id **but only if that album actually exists in `library_albums`**, then `null` so `canOpenInLibrary` renders no link at all. Note this needs no schema column — `song_id` was already on the item rows; the missing piece was reading it instead of re-deriving. A residual name/tag divergence still lands on the album-detail page's existing "Album not found → back to library" fallback rather than erroring.
 

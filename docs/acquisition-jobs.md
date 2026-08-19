@@ -27,17 +27,26 @@ Two tables, written by `packages/api/src/services/acquisition-job-store.ts`
 - **`acquisition_jobs`** — one row per acquisition. `id` is a uuid (for
   `kind='url'` it will mirror `acquire_jobs.id`; `acquire_jobs` stays
   authoritative for the URL engine; `kind='import'` likewise mirrors an
-  **item-less** row for an admin folder import — `import_jobs` is
+  **item-less** row for an admin import — `import_jobs` is
   authoritative and `listJobFeed` reads that row's `files_total/files_done`
   as the progress, see [docs/import.md](import.md)). Carries `kind`
   (`album-hunt | auto-acquire | direct | track-search | url | import`), `method`
   (`slskd | ytdlp | spotdl | archive | import`), `state`
   (`active | done | failed | superseded`), `stage`
-  (`downloading | organizing | scanning | processing | done | error`), the
+  (`queued | downloading | organizing | scanning | processing | done | error`;
+  the column defaults to `downloading`, and a job created *before* its source has
+  resolved anything — an addon URL job, an import — passes `queued` instead), the
   hunt metadata (`artist_name`, `album_title`, `lidarr_album_id`,
   `release_mbid`, `artist_mbid`, `genres_json`, `year`,
   `canonical_tracks_json`), `album_job_id` (the owned fallback-engine row, see
-  below) and `source_ref` (primary peer or URL).
+  below), `source_ref` (primary peer or the `addon:<id>:<jobId>` back-reference),
+  `source_url` (the submitted link, for `kind='url'`) and `display_title` (what
+  the Downloads card is *called* — deliberately not `album_title`, which is
+  filing metadata; see docs/download-pipeline.md "Card titles").
+
+  The read model (`listJobFeed` → `AcquisitionJobView`) ships `displayTitle`,
+  `sourceUrl` and `destinationAlbums` alongside these, which is what lets the
+  shared `downloadTitleFor` chain name a card without a second round-trip.
 - **`acquisition_job_items`** — one row per expected file. `transfer_key` is
   the **exact** enqueued `username::filename` string — backslashes and case
   preserved, never normalized (the same contract `transfer_retries` proves

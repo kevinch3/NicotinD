@@ -81,6 +81,8 @@ function downloadingJob(id: string): AcquisitionJobView {
     stage: 'downloading',
     artistName: 'Bola de Nieve',
     albumTitle: 'Bola de Nieve',
+    displayTitle: null,
+    sourceUrl: null,
     lidarrAlbumId: null,
     sourceRef: null,
     error: null,
@@ -90,6 +92,7 @@ function downloadingJob(id: string): AcquisitionJobView {
     progress: { expected: 12, delivered: 5, unavailable: 0, failed: 0 },
     items: [],
     sources: [],
+    destinationAlbums: [],
   };
 }
 

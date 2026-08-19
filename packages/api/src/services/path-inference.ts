@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { cleanFolderName } from '@nicotind/core';
+import { cleanFolderName, isGenericFolderName } from '@nicotind/core';
 import { looksLikeFilenameTag } from './path-sanitize.js';
 
 export interface CompletedDownloadFile {
@@ -74,46 +74,6 @@ export function extractAlbumName(folderName: string, artist: string | undefined)
 }
 
 /**
- * Folder names that are generic/technical and should not be used as album names.
- * Soulseek peers frequently organize under "music/", "downloads/", etc.
- */
-const GENERIC_FOLDER_NAMES = new Set([
-  'src',
-  'source',
-  'downloads',
-  'download',
-  'music',
-  'audio',
-  'mp3',
-  'flac',
-  'wav',
-  'm4a',
-  'ogg',
-  'aac',
-  'misc',
-  'mixed',
-  'files',
-  'shared',
-  'uploads',
-  'media',
-  'new',
-  'old',
-  'temp',
-  'tmp',
-  'data',
-  'unsorted',
-]);
-
-function looksLikeGenericFolder(folderName: string): boolean {
-  const lower = folderName.toLowerCase().trim();
-  if (lower.length <= 2) return true;
-  if (GENERIC_FOLDER_NAMES.has(lower)) return true;
-  // Pure numbers ≤3 digits (track/disc counts like "01", "1", "CD1")
-  if (/^(cd|disc|disk)?\s*\d{1,2}$/i.test(lower)) return true;
-  return false;
-}
-
-/**
  * Derives an album name from a peer-side directory path.
  * Returns undefined when the folder is generic, looks like a filename,
  * or would just echo the artist name.
@@ -123,12 +83,7 @@ export function inferFolderAlbum(
   artist: string | undefined,
 ): string | undefined {
   const leaf = leafFolderName(directory);
-  if (
-    !leaf ||
-    !hasUsableValue(leaf) ||
-    looksLikeFilenameTag(leaf) ||
-    looksLikeGenericFolder(leaf)
-  ) {
+  if (!leaf || !hasUsableValue(leaf) || looksLikeFilenameTag(leaf) || isGenericFolderName(leaf)) {
     return undefined;
   }
   const album = extractAlbumName(leaf, artist);

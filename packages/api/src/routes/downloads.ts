@@ -160,7 +160,13 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
     const db = getDatabase();
     const jobs = listJobFeed(db).map((job) => ({
       ...job,
-      albumId: resolveJobAlbumId(db, job.id, job.artistName, job.albumTitle),
+      // The feed already knows where a job's files landed; only a job with no
+      // single destination (nothing landed yet, or several albums) needs the
+      // dominant-album resolve and its extra join.
+      albumId:
+        job.destinationAlbums.length === 1
+          ? job.destinationAlbums[0]!.albumId
+          : resolveJobAlbumId(db, job.id, job.artistName, job.albumTitle),
     }));
     return c.json(jobs, 200);
   });
