@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.24](https://github.com/kevinch3/NicotinD/compare/v0.3.23...v0.3.24) (2026-08-19)
+
+### Features
+
+* **storybook:** add an en/es language toolbar global ([#567](https://github.com/kevinch3/NicotinD/issues/567)) ([fe738cc](https://github.com/kevinch3/NicotinD/commit/fe738ccbc8ffc214773de8e89fd6d2c6ae3586a4))
+* **storybook:** catalog the shared directives and the t pipe ([#568](https://github.com/kevinch3/NicotinD/issues/568)) ([2503366](https://github.com/kevinch3/NicotinD/commit/25033661e8a2cc09d89649756e7d06dbd3525ca6))
+* **storybook:** interaction tests for menu-panel and seek-bar ([#572](https://github.com/kevinch3/NicotinD/issues/572)) ([a8d4bf7](https://github.com/kevinch3/NicotinD/commit/a8d4bf7477f54fc64b5b4ab122e5044b474f10b4))
+* **storybook:** story bottom-nav and seed download state ([#573](https://github.com/kevinch3/NicotinD/issues/573)) ([a9076b7](https://github.com/kevinch3/NicotinD/commit/a9076b7e8e4f86b3de04859fdbe65213c2119dce)), references [#472](https://github.com/kevinch3/NicotinD/issues/472)
+* **storybook:** story the hunt-feedback grading sheet ([#574](https://github.com/kevinch3/NicotinD/issues/574)) ([da95d3d](https://github.com/kevinch3/NicotinD/commit/da95d3da515e93483ea3588183cc7c1a69557e03)), references [#472](https://github.com/kevinch3/NicotinD/issues/472)
+
+### Bug Fixes
+
+* **downloads:** only deep-link a job to an album it actually landed in ([#560](https://github.com/kevinch3/NicotinD/issues/560)) ([2350276](https://github.com/kevinch3/NicotinD/commit/23502760d2eb1856b4b202824ade412c98f38be0)), references [#261](https://github.com/kevinch3/NicotinD/issues/261)
+* **mobile:** prove the cover URL reachable before handing it to the media session ([#566](https://github.com/kevinch3/NicotinD/issues/566)) ([7d692e8](https://github.com/kevinch3/NicotinD/commit/7d692e8ad52940b8188674c97c845391af59d14b))
+* **tv:** let a clamped vertical arrow escape a nav group ([#569](https://github.com/kevinch3/NicotinD/issues/569)) ([6a467cd](https://github.com/kevinch3/NicotinD/commit/6a467cd2090bbcf385914500d5240d202ad29dc6)), references [#436](https://github.com/kevinch3/NicotinD/issues/436)
+* **web:** route admin SSE streams through an ngsw-bypass helper ([#558](https://github.com/kevinch3/NicotinD/issues/558)) ([5c1cbf5](https://github.com/kevinch3/NicotinD/commit/5c1cbf5a4e3abf4b663b0437e812c8072a9f54ee))
 ## [0.3.23](https://github.com/kevinch3/NicotinD/compare/v0.3.22...v0.3.23) (2026-08-19)
 
 ### Features
