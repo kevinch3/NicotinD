@@ -76,3 +76,38 @@ type Story = StoryObj<I18nLongestComponent>;
 
 /** The eight highest-growth strings, in a 320px column. */
 export const LongestStrings: Story = {};
+
+/**
+ * The `t` pipe itself (issue #477): key in, copy out, falling through
+ * active -> base -> **the key itself**.
+ *
+ * That last step is the one worth seeing. A missing key renders as the raw key
+ * rather than blank, so a gap in a translation is visible in the UI instead of
+ * silently erasing a label — which is why `es.json` being at full parity is a
+ * checkable claim rather than a hope. The last row below is a key that exists in
+ * no catalog; switch the **Language** global and the real rows change while it
+ * stays put.
+ */
+export const TranslatePipeFallback: Story = {
+  render: () => ({
+    template: `
+      <div class="space-y-2 w-[420px]">
+        @for (key of keys; track key) {
+          <div class="flex items-center gap-3 text-sm">
+            <code class="text-[10px] text-theme-muted w-[190px] shrink-0">{{ key }}</code>
+            <span class="text-theme-primary">{{ key | t }}</span>
+          </div>
+        }
+      </div>
+    `,
+    props: {
+      keys: [
+        'home.recentlyPlayed',
+        'common.back',
+        'common.next',
+        'library.find.placeholder',
+        'this.key.does.not.exist',
+      ],
+    },
+  }),
+};

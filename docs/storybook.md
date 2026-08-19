@@ -124,6 +124,35 @@ the `t` pipe (`recently-played`) — most translated copy lives in the app-shell
 that are deliberately out of catalog scope, so this Foundations page is where the global
 is actually exercised.
 
+## Storying a directive
+
+Storybook renders a *component*, so a directive needs a host component written for the
+story. The wrapper lives beside the story in `src/stories/foundations/Directives.stories.ts`,
+is never exported to the app, and stays as thin as it can **while still reproducing the
+real usage** — a wrapper that invents simpler markup documents the wrapper rather than the
+directive.
+
+That last clause is not theoretical. The first version of the grid story dropped the
+`role="row"` (`display: contents`) wrapper that every real grid in
+`library.component.html` has. A grid-axis group makes each item a `gridcell`, and ARIA
+requires gridcells inside a row — so the story was both inaccurate and inaccessible, and
+`a11y:storybook:strict` failed it. The gate caught a wrapper drifting from the thing it
+was supposed to document.
+
+Covered: `TvNavGroupDirective`/`TvNavItemDirective` (grid + vertical axes) and
+`BottomChromeSafeDirective`. The `t` pipe is storied on the Internationalization page,
+where the catalogs it reads already live.
+
+**The bottom-chrome story renders its own `data-bottom-chrome` bar.** Storybook has no
+mini-player, and `measureBottomChromeInset()` measures whatever carries that attribute —
+with nothing to measure the inset is 0 and the with/without panels would look identical,
+documenting nothing. With the simulated bar the guarded panel reserves 72px.
+
+**TV caveat.** Desktop Chromium has **no spatial navigation**. These stories document the
+focus *wiring* — that the roving tabindex moves and that exactly one item is tabbable —
+not real D-pad behaviour. That gap is exactly what hid issue #436; the only place the real
+behaviour is exercised is `bun run e2e:tv` against the emulator.
+
 ## Integration constraints
 
 Three things about `@storybook/angular` that cost a build cycle each. Change them only
@@ -323,5 +352,5 @@ Tracked under the `storybook` label.
 | ~~[#474](https://github.com/kevinch3/NicotinD/issues/474)~~ | ✅ `@storybook/addon-a11y` plus triage — findings became [#481](https://github.com/kevinch3/NicotinD/issues/481) / [#482](https://github.com/kevinch3/NicotinD/issues/482) |
 | [#475](https://github.com/kevinch3/NicotinD/issues/475) | Interaction tests for `menu-panel`, `seek-bar`, `selection-bar` |
 | ~~[#476](https://github.com/kevinch3/NicotinD/issues/476)~~ | ✅ i18n toolbar global (en/es) driving `TranslateService` |
-| [#477](https://github.com/kevinch3/NicotinD/issues/477) | Catalog the shared directives and pipes |
+| ~~[#477](https://github.com/kevinch3/NicotinD/issues/477)~~ | ✅ Catalog the shared directives and pipes |
 | [#478](https://github.com/kevinch3/NicotinD/issues/478) | Migrate to a Vite builder when `@storybook/angular` ships one |
