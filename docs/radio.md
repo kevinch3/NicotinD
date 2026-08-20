@@ -5,6 +5,50 @@ when the queue runs low. It replaces the old "shuffle 200 recent songs"
 provider with a server-side scoring engine that uses BPM, key, genre, year,
 and duration to find tracks that flow naturally from whatever is playing.
 
+## How the next track is chosen — in plain language
+
+Radio picks the next track in three steps. This is the reference explanation to
+link when someone asks "why did it play that?"; the formula itself is versioned
+(see "Calibration history" below).
+
+**1. Gather candidates.** From your own library only, radio collects a few
+hundred candidates that plausibly fit the current song: tracks sharing a genre
+with it, tracks in a similar tempo range, tracks with similar energy, a small
+guaranteed seat for not-yet-analyzed tracks, and a random top-up. Tracks
+shorter than 60 seconds never enter (intros, skits, ads), junk genre tags
+("Other", "Unknown") don't count as genres, and hidden/quarantined tracks are
+never considered.
+
+**2. Score each candidate 0–1 against the current song.** Each criterion below
+produces a closeness between 0 and 1; the final score is the weighted average
+of the criteria *both tracks actually carry* — a track missing BPM analysis
+competes on what it has instead of being punished for missing data.
+
+| Criterion        | Plain meaning                                                                                                             | Weight |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Genre            | Do the two tracks share a style? Any shared genre (even a secondary one) counts fully; no usable genre → a low 0.2 floor. | 18     |
+| Sound embedding  | Does it actually *sound* similar — an ML fingerprint of the audio itself.                                                  | 8      |
+| Origin           | Are the artists from musically related countries/scenes?                                                                   | 8      |
+| Key              | Would a DJ call the musical keys compatible (Camelot wheel)?                                                               | 6      |
+| Energy           | Same intensity — a quiet ballad shouldn't follow a banger.                                                                 | 5      |
+| BPM              | Similar tempo (the pool is already tempo-filtered, so this is a mild nudge).                                               | 4      |
+| Valence          | Same emotional brightness (happy vs melancholy).                                                                           | 4      |
+| Duration         | A 4-minute song follows a 4-minute song, not a 40-second interlude.                                                        | 3      |
+| Danceability     | Same groove factor.                                                                                                        | 3      |
+| Instrumentalness | Vocal tracks with vocal tracks, instrumentals with instrumentals.                                                          | 3      |
+| Acousticness     | Acoustic textures with acoustic textures.                                                                                  | 2      |
+| Year             | Same era, loosely (20-year scale).                                                                                         | 2      |
+
+**3. Apply penalties and pick.** A candidate by the *same artist* as the seed
+loses 0.15, and a track *you* played in the last 7 days loses up to 0.2 (fading
+with time) — nudges, never exclusions. The top scorers win, capped at 2 tracks
+per artist.
+
+**What this affects**: the radio queue (Now Playing radio toggle +
+auto-replenish), filter/"vibe" radio and the landing-page presets, and the
+"similar songs" suggestions. **What it does not affect**: library
+search/filters, playlists, stats, or anything about acquisition.
+
 ## How it works
 
 When `radio` is toggled on (Now Playing sheet), `PlayerService` watches the
@@ -24,17 +68,18 @@ Each factor produces a 0–1 score; the result is a **weight-normalized** blend
 
 | Factor                     | Logic                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Weight |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Genre                      | `genreSetCloseness`: **max pairwise `genreCloseness` across the two full genre sets** (`SongFeatures.genres`, primary-first from `library_song_genres`; falls back to the single `genre`). Per pair: exact (case-fold) = 1.0, token-set containment (e.g. "Deep House" ⊇ "House") = 0.6, partial overlap = Jaccard×0.5, disjoint = 0. A shared _secondary_ genre scores like a shared primary — a track tagged "Electronic; House" is an exact match for a "House" seed. **Candidate has no genre while the seed does → `MISSING_GENRE_FLOOR` (0.2), not skipped** (see below). | 10     |
-| BPM proximity              | 1 − clamp(\|Δbpm\| / seedBpm × 5, 0, 1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 8      |
+| Genre                      | `genreSetCloseness`: **max pairwise `genreCloseness` across the two full genre sets** (`SongFeatures.genres`, primary-first from `library_song_genres`; falls back to the single `genre`). Per pair: exact (case-fold) = 1.0, token-set containment (e.g. "Deep House" ⊇ "House") = 0.6, partial overlap = Jaccard×0.5, disjoint = 0. A shared _secondary_ genre scores like a shared primary — a track tagged "Electronic; House" is an exact match for a "House" seed. **Candidate has no genre while the seed does → `MISSING_GENRE_FLOOR` (0.2), not skipped** (see below). Junk vocab (`JUNK_GENRES`: "Other", "Unknown", …) is filtered out before comparing — two junk tags are *no* match, not a perfect one (issue #583). | 18     |
+| Origin                     | `originSetCloseness` over the credited artists' country sets (docs/artist-origin.md); floored at `MISSING_ORIGIN_FLOOR` (0.2) when the seed knows its origin and the candidate doesn't.                                                                                                                                                                                                                                                                                                                                                                       | 8      |
+| BPM proximity              | 1 − clamp(\|Δbpm\| / seedBpm × 5, 0, 1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 4      |
 | Key compatibility          | Camelot wheel: same=1.0, A↔B=0.8, ±1 same-ring=0.7, ±2 same-ring=0.4, diagonal (±1 + ring swap)=0.4, else 0                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 6      |
 | Year proximity             | 1 − clamp(\|Δyear\| / 20, 0, 1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 2      |
-| Duration similarity        | 1 − clamp(\|Δdur\| / seedDur, 0, 1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 1      |
+| Duration similarity        | 1 − clamp(\|Δdur\| / seedDur, 0, 1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 3      |
 | Energy closeness           | 1 − \|Δenergy\| (only when both sides present)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 5      |
 | Valence closeness          | 1 − \|Δvalence\| (only when both sides present)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 4      |
 | Danceability closeness     | 1 − \|Δdanceability\| (only when both sides present)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 3      |
 | Instrumentalness closeness | 1 − \|Δinstrumental\| (only when both sides present)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 3      |
 | Acousticness closeness     | 1 − \|Δacousticness\| (only when both sides present)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 2      |
-| Embedding cosine           | `(cosineSim(seedVec, candVec) + 1) / 2` (only when both carry an Essentia embedding of matching dim)                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 4      |
+| Embedding cosine           | `(cosineSim(seedVec, candVec) + 1) / 2` (only when both carry an Essentia embedding of matching dim)                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 8      |
 | Artist diversity           | same artist → subtract `artistPenalty` from the normalized score                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | 0.15   |
 
 **Weight normalization (why raw sums were wrong mid-backfill).** Each factor is
@@ -55,7 +100,8 @@ _missing data was rewarded_. With 13% of the real library carrying no genre at a
 the José Larralde incoherence (issue #185). The floor degrades gracefully: an
 untagged track is neither excluded from the pool nor treated as a match. Two
 boundaries matter — a seed with **no** genre still _skips_ the axis (there is
-nothing to compare against), and **no other axis floors**, preserving the
+nothing to compare against; a junk-only genre set — "Other", "Unknown", … — counts
+as none on either side, issue #583), and **no other axis floors**, preserving the
 un-analyzed-candidate guarantee above. `explainSimilarity` reports these in a
 separate `floored[]` list so the diagnostic can still tell a data gap apart from a
 genuine weak match.
@@ -157,7 +203,8 @@ The same `camelotCompatibility` powers `harmonicChain` in
 The `/api/radio/next` endpoint builds a diverse pool in several passes:
 
 1. Shares ANY genre with the seed's full set (primary column OR a
-   `library_song_genres` EXISTS, up to 150 random)
+   `library_song_genres` EXISTS, up to 150 random; junk tags — `JUNK_GENRES`,
+   e.g. "Other" — are dropped from the seed's set first, issue #583)
    1b. **Genre variants** — `LOWER(genre) LIKE '%<longest seed token>%'` (up to 100),
    so "Deep House" also pulls "House"/"Tech House" for `genreCloseness` to score
    (tokens shorter than 4 chars are skipped as non-selective; `longestGenreToken`)
@@ -168,6 +215,14 @@ The `/api/radio/next` endpoint builds a diverse pool in several passes:
    guaranteed seat so a mid-backfill library stays discoverable and Radio doesn't
    tunnel on the already-analyzed slice
 5. Random backfill if the pool is still small
+
+Every pass shares two gates: only landed, non-hidden tracks; and **duration ≥
+60 s** (`minCandidateDurationSec`, env `NICOTIND_RADIO_MIN_DURATION` overrides
+— the e2e suite sets `0` because its silent fixtures are ~30 s). Sub-minute
+files are intros/skits/ads/language lessons, not songs (issue #583: prod had
+193 landed sub-60 s tracks, and two 46 s lessons ranked top-2 in a real poll
+scenario); demoting them by duration *closeness* alone measurably wasn't
+enough, so they never become candidates at all.
 
 Cached embeddings for the seed + whole pool are then loaded in one query
 (`loadEmbeddings`, keyed on the seed's model) and attached before ranking; a
@@ -319,7 +374,48 @@ freezes real radio scenarios behind a public link and anonymous raters thumb
 each next-up suggestion, producing a `(seed, candidate, verdict)` dataset with
 the per-axis explanations attached. Weight changes can now be scored against
 human consensus (export script + `--weights` A/B) instead of only against a
-developer's read of a dump.
+developer's read of a dump. `scripts/eval-radio-poll.ts` is that measurement:
+it replays every poll's frozen scenarios under the current (or
+`--weights`-overridden) weight set and reports per-poll + pooled agreement AUC,
+grouped by `formula_version` (see "Calibration history").
+
+## Calibration history (formula versions)
+
+`RADIO_FORMULA_VERSION` (`radio.service.ts`) names the scoring formula. It is
+stamped onto every evaluation poll (`radio_polls.formula_version`) so votes
+graded under different formulas are never pooled into one number, and it must
+be bumped on ANY change to `DEFAULT_WEIGHTS`, an axis formula, a floor/penalty,
+or a pool rule. The per-scenario snapshots still store the exact weight set
+used — the version is the human/grouping label, not the ground truth.
+
+- **v1** (original → 2026-08): genre 18 (10 before #187 B3) / origin 8 / bpm 8
+  / key 6 / year 2 / duration 1 / energy 5 / valence 4 / danceability 3 /
+  instrumental 3 / acousticness 2 / embedding 4; junk genre tags matched
+  (`"Other" = "Other"` → 1.0); no pool duration floor.
+- **v2** (2026-08-20, issue #583): calibrated against the first human poll data
+  — 3 polls, 28 scenarios, 70 votes from 3 raters (one rater per poll: a small,
+  preliminary dataset). Findings: v1 ordered its own top-5 *worse than random*
+  (within-scenario pairwise AUC 0.43 against the votes, and up-rate *rose* with
+  rank); the genre axis was saturated (max-pairwise = 1.0 for any shared genre,
+  junk included — Welsh language lessons ranked #1 via `"Other" = "Other"`;
+  prod had 261 landed "Other" songs); 46 s lessons and a 4 s clip reached real
+  queues while duration carried weight 1; embedding was the strongest positive
+  discriminator (point-biserial r = +0.32) at the smallest perceptual weight;
+  bpm closeness was consistently *negative* within the served queue. Changes:
+  duration 1→3, bpm 8→4, embedding 4→8; junk genres no longer match
+  (`isRealGenre`); the pool excludes sub-60 s tracks. Replay agreement (v2
+  weights over the frozen v1 top-5s): pooled AUC 0.43 → 0.55 — honest but
+  modest, because the biggest fix (the pool duration floor) removes bad
+  candidates *before* scoring and is invisible to a replay of already-served
+  candidates. 70 votes cannot support a fully fitted weight vector
+  (leave-one-poll-out cross-validation collapses to ~0.5 AUC), so only these
+  surgical, pre-registered moves shipped.
+
+Measure any weight idea against the accumulated votes before shipping it:
+
+```bash
+bun run packages/api/src/scripts/eval-radio-poll.ts --weights bpm=2,embedding=12
+```
 
 ## Diagnostic dump (developer tool)
 
@@ -406,8 +502,10 @@ scoring engine benefits both features.
 
 | File                                                                  | Role                                                                                                                                                                                                                                                           |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/api/src/services/radio.service.ts`                          | Pure scoring: `scoreSimilarity` (delegates to) `explainSimilarity` (per-axis breakdown), `genreCloseness`, `cosineSim`, `camelotCompatibility`, `rankCandidates`, `MISSING_GENRE_FLOOR`, types                                                                 |
+| `packages/api/src/services/radio.service.ts`                          | Pure scoring: `scoreSimilarity` (delegates to) `explainSimilarity` (per-axis breakdown), `genreCloseness`, `cosineSim`, `camelotCompatibility`, `rankCandidates`, `MISSING_GENRE_FLOOR`, `RADIO_FORMULA_VERSION`, `parseWeightOverrides`, types                                                                 |
 | `packages/api/src/services/radio.service.test.ts`                     | Unit tests for scoring logic + `explainSimilarity` breakdown/delegation                                                                                                                                                                                        |
+| `packages/api/src/services/radio-poll-eval.ts`                        | Replay agreement (issue #583): `evaluatePollAgreement` re-scores frozen poll scenarios under any weight set (axes recomputed from features, embedding folded in from its frozen value) → within-scenario pairwise AUC vs the human consensus                     |
+| `packages/api/src/scripts/eval-radio-poll.ts`                         | CLI over it — per-poll + pooled AUC grouped by `formula_version`, `--weights` A/B, read-only DB open                                                                                                                                                            |
 | `packages/api/src/services/embedding-store.ts`                        | `loadEmbeddings` / `embeddingModelFor` — pooled read of cached Essentia vectors                                                                                                                                                                                |
 | `packages/api/src/routes/radio.ts`                                    | `/api/radio/next` route (seed **and** filter paths); exports the shared generators `buildSeedRadio` / `buildFilterRadio` / `radioSongs` (pool build + rank, optional `weights` override for the dump), `toOrderable` (via `songFilterWheres` + `seedCentroid`) |
 | `packages/api/src/services/genre-split.ts`                            | `segmentConcatenatedGenre` — splits mashed genre tags feeding the genre axis (see [library-scanner.md](library-scanner.md))                                                                                                                                    |

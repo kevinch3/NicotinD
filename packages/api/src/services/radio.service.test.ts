@@ -517,7 +517,25 @@ describe('explainSimilarity (per-axis breakdown — the diagnostic seam)', () =>
 
     // Documents the bug this weight bump fixes: at the OLD weight, genre
     // correctness alone wasn't enough to beat a near-perfect wrong-genre fit.
-    const oldWeights: ScoringWeights = { ...DEFAULT_WEIGHTS, genre: 10 };
+    // The pre-#187-B3 vector is pinned in full (not derived from
+    // DEFAULT_WEIGHTS) so later recalibrations - formula v2 changed
+    // bpm/duration/embedding (issue #583) - can't silently rewrite history.
+    const oldWeights: ScoringWeights = {
+      genre: 10,
+      origin: 8,
+      bpm: 8,
+      key: 6,
+      year: 2,
+      duration: 1,
+      energy: 5,
+      valence: 4,
+      danceability: 3,
+      instrumental: 3,
+      acousticness: 2,
+      embedding: 4,
+      artistPenalty: 0.15,
+      recentPlayPenalty: 0.2,
+    };
     expect(scoreSimilarity(seed, wrongGenrePerfect, oldWeights)).toBeGreaterThan(
       scoreSimilarity(seed, rightGenreImperfect, oldWeights),
     );
@@ -685,5 +703,34 @@ describe('recently-played demotion in scoring', () => {
     const b = explainSimilarity(seed, { ...cand, recentPlayFactor: 1 });
     expect(b.axes).toEqual(a.axes);
     expect(b.skipped).toEqual(a.skipped);
+  });
+});
+
+describe('genreSetCloseness — junk vocab never matches (issue #583)', () => {
+  it('two junk genres read as absent, not as a perfect match', async () => {
+    const { genreSetCloseness } = await import('./radio.service.js');
+    expect(genreSetCloseness(['Other'], ['Other'])).toBeNull();
+    expect(genreSetCloseness('Unknown', 'unknown')).toBeNull();
+  });
+
+  it('junk is dropped from mixed sets before comparing', async () => {
+    const { genreSetCloseness } = await import('./radio.service.js');
+    expect(genreSetCloseness(['Other', 'Rock'], ['Rock'])).toBe(1.0);
+    expect(genreSetCloseness(['Other', 'Rock'], ['Other'])).toBeNull();
+  });
+
+  it('junk-only candidate floors; junk-only seed skips (no phantom floor)', async () => {
+    const { explainSimilarity, MISSING_GENRE_FLOOR } = await import('./radio.service.js');
+    const seed = { duration: 200, artistId: 'a', genres: ['Rock'] };
+    const junkCand = explainSimilarity(seed, { duration: 200, artistId: 'b', genres: ['Other'] });
+    expect(junkCand.floored).toContain('genre');
+    expect(junkCand.axes.find((x) => x.axis === 'genre')?.value).toBe(MISSING_GENRE_FLOOR);
+
+    const junkSeed = explainSimilarity(
+      { duration: 200, artistId: 'a', genres: ['Other'] },
+      { duration: 200, artistId: 'b' },
+    );
+    expect(junkSeed.skipped).toContain('genre');
+    expect(junkSeed.floored).not.toContain('genre');
   });
 });

@@ -1444,6 +1444,10 @@ export function applySchema(db: Database): void {
       engine_version TEXT
     )
   `);
+  // Which similarity formula generated the poll's scenarios (issue #583) -
+  // votes graded under different formulas must never be silently pooled.
+  // NULL = created before versioning (formula 1).
+  addColumnIfMissing(db, 'radio_polls', 'formula_version', 'TEXT');
   db.run(`
     CREATE TABLE IF NOT EXISTS radio_poll_scenarios (
       id            TEXT PRIMARY KEY,

@@ -499,3 +499,20 @@ describe('appendSongGenres', () => {
     expect(loadGenreSets(db, ['s1']).get('s1')).toEqual(['Jazz']);
   });
 });
+
+describe('isRealGenre / JUNK_GENRES (issue #583)', () => {
+  it('rejects junk vocab case/whitespace-insensitively', async () => {
+    const { isRealGenre } = await import('./genre-split.js');
+    expect(isRealGenre('Other')).toBe(false);
+    expect(isRealGenre('unknown')).toBe(false);
+    expect(isRealGenre('MISC')).toBe(false);
+    expect(isRealGenre(' Other ')).toBe(false);
+  });
+
+  it('accepts real styles (no substring matching)', async () => {
+    const { isRealGenre } = await import('./genre-split.js');
+    for (const g of ['Rock', 'Latin Pop', 'Deep House', 'Otherworld']) {
+      expect(isRealGenre(g)).toBe(true);
+    }
+  });
+});

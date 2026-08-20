@@ -34,6 +34,7 @@ export interface RadioPollRow {
   closed_at: number | null;
   settings_json: string;
   engine_version: string | null;
+  formula_version: string | null;
 }
 
 export interface RadioPollScenarioRow {
@@ -53,6 +54,7 @@ export function createPoll(
     settings: RadioPollSettings;
     scenarios: GeneratedScenario[];
     engineVersion?: string | null;
+    formulaVersion?: string | null;
     expiresAt?: number | null;
     now?: number;
   },
@@ -62,8 +64,8 @@ export function createPoll(
   const now = args.now ?? Date.now();
   const insert = db.transaction(() => {
     db.run(
-      `INSERT INTO radio_polls (id, token, name, created_by, created_at, expires_at, closed_at, settings_json, engine_version)
-       VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
+      `INSERT INTO radio_polls (id, token, name, created_by, created_at, expires_at, closed_at, settings_json, engine_version, formula_version)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
       [
         id,
         token,
@@ -73,6 +75,7 @@ export function createPoll(
         args.expiresAt ?? null,
         JSON.stringify(args.settings),
         args.engineVersion ?? null,
+        args.formulaVersion ?? null,
       ],
     );
     for (const s of args.scenarios) {
@@ -154,6 +157,7 @@ export function listPollSummaries(db: Database): StoredPollSummary[] {
     scenarioCount: r.scenario_count,
     voteCount: r.vote_count,
     raterCount: r.rater_count,
+    formulaVersion: r.formula_version ?? null,
   }));
 }
 
@@ -180,6 +184,7 @@ function summaryFor(db: Database, poll: RadioPollRow): StoredPollSummary {
     scenarioCount: counts?.scenario_count ?? 0,
     voteCount: counts?.vote_count ?? 0,
     raterCount: counts?.rater_count ?? 0,
+    formulaVersion: poll.formula_version ?? null,
   };
 }
 

@@ -19,6 +19,7 @@ function summary(over: Partial<RadioPollSummary> = {}): RadioPollSummary {
     scenarioCount: 3,
     voteCount: 12,
     raterCount: 4,
+    formulaVersion: '2',
     ...over,
   };
 }

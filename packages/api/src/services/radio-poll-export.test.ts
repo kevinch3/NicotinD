@@ -114,3 +114,25 @@ describe('pollExportDataset', () => {
     expect(JSON.parse(JSON.stringify(dataset))).toEqual(dataset);
   });
 });
+
+describe('formulaVersion in the export dataset (issue #583)', () => {
+  it("pre-versioning rows export as '1'; stamped rows keep theirs", () => {
+    db.run("INSERT INTO users (id, username, password_hash) VALUES ('uv','av','x')");
+    const legacy = createPoll(db, {
+      name: 'Legacy',
+      createdBy: 'uv',
+      settings: { scenarioCount: 1, nextUpCount: 2 },
+      scenarios: [scenario()],
+    });
+    expect(pollExportDataset(db, getPollById(db, legacy.id)!).formulaVersion).toBe('1');
+
+    const v2 = createPoll(db, {
+      name: 'V2',
+      createdBy: 'uv',
+      settings: { scenarioCount: 1, nextUpCount: 2 },
+      formulaVersion: '2',
+      scenarios: [{ ...scenario(), id: 'sc-v2' }],
+    });
+    expect(pollExportDataset(db, getPollById(db, v2.id)!).formulaVersion).toBe('2');
+  });
+});

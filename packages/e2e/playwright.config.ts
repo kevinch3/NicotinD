@@ -135,6 +135,9 @@ function makeServer(port: string, dir: string): WebServer {
       // (invisible) behind analysis that never completes. The gate has its own
       // unit/route coverage (library-processing.landing.test.ts, library.test.ts).
       NICOTIND_DISABLE_LANDING_GATE: '1',
+      // The silent-FLAC fixtures are ~30s; without this the radio pool's 60s
+      // minimum-duration floor (issue #583) would empty every e2e radio queue.
+      NICOTIND_RADIO_MIN_DURATION: '0',
     },
   };
 }

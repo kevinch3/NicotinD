@@ -262,3 +262,27 @@ describe('closePoll / deletePoll', () => {
     expect(deletePoll(db, id)).toBe(false);
   });
 });
+
+describe('formula_version (issue #583)', () => {
+  it('stamps the formula version and exposes it on summaries + results', () => {
+    db.run("INSERT INTO users (id, username, password_hash) VALUES ('u9','a9','x')");
+    const { token } = createPoll(db, {
+      name: 'Versioned',
+      createdBy: 'u9',
+      settings: { scenarioCount: 1, nextUpCount: 2 },
+      engineVersion: '0.4.0',
+      formulaVersion: '2',
+      scenarios: [scenario('scv', 0, ['c1', 'c2'])],
+    });
+    const poll = getPollByToken(db, token)!;
+    expect(poll.formula_version).toBe('2');
+    expect(listPollSummaries(db)[0]!.formulaVersion).toBe('2');
+    expect(pollResults(db, poll).poll.formulaVersion).toBe('2');
+  });
+
+  it('a poll created without one reads null (pre-versioning rows)', () => {
+    const { token } = makePoll();
+    expect(getPollByToken(db, token)!.formula_version).toBeNull();
+    expect(listPollSummaries(db)[0]!.formulaVersion).toBeNull();
+  });
+});
