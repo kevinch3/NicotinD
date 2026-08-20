@@ -491,6 +491,24 @@ The pure `formatQuality(bitrateKbps, audioFormat)` helper in `lib/download-statu
 
 ---
 
+## A pasted link must appear in Downloads at once (issue #595)
+
+`TransferService`'s adaptive timer is `hasActive ? 3_000 : 30_000`, and at submit
+nothing is active yet — so the next feed refresh is up to **30 seconds** away.
+`kickPoll()` exists for exactly this ("call after initiating a download") and is
+called by `AutoHuntService`, the album-hunt modal and the eight Downloads-page
+mutations; the **URL/link lane was the one omission**, so a pasted
+Spotify/YouTube/archive link bumped the nav badge — which reads
+`acquire.activeJobs()`, refreshed by the submit itself — while the Downloads
+card stayed up to half a minute stale. `submitLinkIntent()` and `retryLinkJob()`
+now kick the poll too, and only on success: a rejected submit has no job to show.
+
+Separately, a playlist card that walks `0 of 1 → 2 of 14 → 7 of 32` is the
+**addon** half of the same contract, not this one — see "What the addon split
+dropped" below and #590, which made core render `queued` placeholders correctly
+so an addon that knows its track count up front can announce the whole set on
+the first poll.
+
 ## Download list metadata (`AlbumJobMeta`)
 
 `GET /api/downloads` annotates each in-flight folder whose `(username, peer directory)` matches an **active `album_jobs`** row with `albumJob: { artistName, albumTitle, canonicalTrackCount, albumId, jobId }` (`enrichWithAlbumJobs` in `routes/downloads.ts`; type in `@nicotind/core`). This lets the Downloads UI show "Artist — Album · N of M tracks" instead of the noisy peer folder name (e.g. "(1995) Toque"). `albumId` is the deterministic `albumIdFor(artistName, albumTitle)` for the destination library album, so a completed download can **deep-link straight to its album page**. The URL-acquire side mirrors this: `AcquireJob` carries `albumId`/`albumArtist`/`albumTitle` derived from the organized `storage_path`'s last two `<Artist>/<Album>` segments via the pure `deriveAcquireAlbum` (`services/acquire-album.ts`; null for loose singles with no album wrapper) — but only when the job's files landed in exactly one album; a job spanning several albums instead carries the full `destinationAlbums` array and surfaces a "View N albums" menu (see "Multi-album acquire jobs" above).
