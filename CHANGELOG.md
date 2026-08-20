@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.38](https://github.com/kevinch3/NicotinD/compare/v0.3.37...v0.3.38) (2026-08-20)
+
+### Bug Fixes
+
+* **downloads:** reduce an addon's Python traceback to the line that says what broke ([#604](https://github.com/kevinch3/NicotinD/issues/604)) ([7483d1c](https://github.com/kevinch3/NicotinD/commit/7483d1c10f91a58f53917d15997468463533e277)), references [#601](https://github.com/kevinch3/NicotinD/issues/601)
 ## [0.3.37](https://github.com/kevinch3/NicotinD/compare/v0.3.36...v0.3.37) (2026-08-20)
 
 ### Bug Fixes
