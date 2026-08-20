@@ -721,11 +721,29 @@ jobs:
             # origin so a stale local tag can never block a release again.
             git fetch --force --tags origin master &&
             git reset --hard ${{ steps.ref.outputs.ref }} &&
-            # Pull the published images (the docker jobs just moved `release`
-            # to this tag). --build is kept for any host-local override that
-            # still carries a `build:` key (no-op otherwise). Requires the
-            # GHCR packages to be public or a `docker login ghcr.io` on the
-            # host — see docs/deployment.md.
-            docker compose pull nicotind analysis &&
+            # Pull every image WE publish that this host actually runs, derived
+            # from the resolved compose config rather than restated here. The
+            # list used to be hardcoded (`pull nicotind analysis`), so the three
+            # addon images and the pot-provider were never pulled — and since
+            # `up -d` will not recreate a container whose image reference is
+            # unchanged, a rebuilt `:latest` addon kept running the old bytes.
+            # A green deploy shipped a stale addon for 8 h that way (issue #606,
+            # the #457 shape). Deriving it means adding a service to compose
+            # cannot silently miss the deploy.
+            #
+            # Scoped to our own registry on purpose: a bare `docker compose pull`
+            # would also pull linuxserver/lidarr + slskd/slskd, letting an
+            # unrelated third-party registry hiccup abort a release. It also
+            # self-scopes per host — a streaming-only deployment resolves no
+            # addons, so none are pulled.
+            #
+            # A pull failure still aborts (set -e): a missing image must be loud,
+            # never skipped (#457). Requires the GHCR packages to be public or a
+            # `docker login ghcr.io` on the host — see docs/deployment.md.
+            docker compose config --images \
+              | grep "^ghcr\.io/kevinch3/" | sort -u \
+              | xargs -r -n1 docker pull &&
+            # --build is kept for any host-local override that still carries a
+            # `build:` key (no-op otherwise).
             docker compose up --build -d
           '
