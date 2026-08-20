@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.35](https://github.com/kevinch3/NicotinD/compare/v0.3.34...v0.3.35) (2026-08-20)
+
+### Bug Fixes
+
+* **downloads:** an active addon job reads Downloading, and queued placeholders close honestly ([#590](https://github.com/kevinch3/NicotinD/issues/590)) ([09c17a9](https://github.com/kevinch3/NicotinD/commit/09c17a9efcd8f24a43e992b81ef1f9486afe08cb)), references [#585](https://github.com/kevinch3/NicotinD/issues/585)
 ## [0.3.34](https://github.com/kevinch3/NicotinD/compare/v0.3.33...v0.3.34) (2026-08-20)
 
 ### Bug Fixes
