@@ -7,7 +7,7 @@
  * which is the point of having stories in `typecheck`.
  */
 import type { Track } from '../../app/services/player.service';
-import type { ArtistCredit, Song } from '../../app/services/api/api-types';
+import type { ArtistCredit, ProvenanceRecord, Song } from '../../app/services/api/api-types';
 import type { DownloadItem } from '../../app/lib/download-groups';
 import type { GenreSlice } from '../../app/components/genre-radar/genre-radar.component';
 
@@ -113,3 +113,20 @@ export const demoDownloadItem: DownloadItem = {
     status: i < 3 ? 'done' : i === 3 ? 'downloading' : 'pending',
   })),
 };
+
+/**
+ * Processing history for the track-info sheet. Two entries so the timeline
+ * renders as a list rather than a single item, and so the ordering is visible.
+ */
+export const demoProvenance: ProvenanceRecord[] = [
+  {
+    action: 'genre',
+    appliedAt: 1_770_000_000_000,
+    detail: { from: 'Pop', to: 'Dream Pop', reason: 'discogs release match' },
+  },
+  {
+    action: 'bpm',
+    appliedAt: 1_769_000_000_000,
+    detail: { to: '104', reason: 'essentia rhythm' },
+  },
+];

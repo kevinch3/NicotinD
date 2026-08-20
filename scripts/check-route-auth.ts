@@ -34,6 +34,11 @@ export const PUBLIC_ROUTES: Array<{ route: string; reason: string }> = [
     reason: 'authenticates with an agent token, not a JWT (issue #232) — see docs/mcp-agent.md',
   },
   { route: '/api/share', reason: 'public share links; its own short-lived scoped tokens' },
+  {
+    route: '/api/radio-polls',
+    reason:
+      'public radio-evaluation poll links (the poll token is the credential); media served via short-lived read-only share JWTs — see docs/radio-eval-polls.md',
+  },
 ];
 
 export interface AuthAudit {

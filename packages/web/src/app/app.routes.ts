@@ -68,6 +68,14 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./pages/share/share-view.component').then((m) => m.ShareViewComponent),
   },
+  {
+    // Public radio-evaluation poll wizard (docs/radio-eval-polls.md): the poll
+    // token is the credential, so no guards — like /share, an anonymous rater
+    // must never be bounced through /login.
+    path: 'poll/:token',
+    loadComponent: () =>
+      import('./pages/poll/poll-view.component').then((m) => m.PollViewComponent),
+  },
   // The authenticated shell. TV gets its OWN tree (docs/tv-ux.md): a route that
   // does not exist cannot be reached by a stray routerLink and cannot accumulate
   // a focus trap nobody is watching, which is why the TV surface subtracts

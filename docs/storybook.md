@@ -136,6 +136,17 @@ thing worth testing.
 Neither service polls until `startPolling()` is called, so a story that injects them stays
 inert: no timer to stop, no request to intercept.
 
+`artistImageSources` seeds `ArtistImageSourcesService.sources`, which gates "Fetch
+automatically" (issue #422): `null` is the pre-load optimistic state and `[]` means no
+provider can resolve a portrait, so the control is disabled rather than offered and failing.
+
+`reviewQueue` seeds `DownloadReviewService.queue`. The inbox's constructor calls
+`review.start()`, whose refresh 404s against the fixture transport — and *by design*
+"keeps the last-known badge/queue rather than flashing to zero/empty", so the seed survives
+through the component's real lifecycle rather than around it. Note the inbox is
+**self-gating** (`canCurate() && queue().length > 0`), so the empty and listener stories
+render nothing on purpose; that is what lets the Downloads page mount it unconditionally.
+
 `feedbackSheet` seeds `FeedbackSheetService.payload()`. That sheet is a globally-hosted
 overlay opened from a toast action, so it renders **nothing** until a payload is set — a
 story without the seed is a blank canvas that still passes the render smoke, which is why
@@ -163,6 +174,28 @@ That last clause is not theoretical. The first version of the grid story dropped
 requires gridcells inside a row — so the story was both inaccurate and inaccessible, and
 `a11y:storybook:strict` failed it. The gate caught a wrapper drifting from the thing it
 was supposed to document.
+
+**Storying a component can surface real a11y defects in it.** `metadata-fix-modal`'s cover
+picker repeated the option label in both the button's `title` and the `<img alt>`, so a
+screen reader announced it twice — axe's `image-redundant-alt`, 6 nodes, caught the moment
+the component first had stories. The image is decorative (the button carries the name, and
+the current option adds a visible caption), so the fix was `alt=""` plus a real
+`aria-label` on the button. Expect this: the catalog's first a11y pass found 241 contrast
+nodes for the same reason, and the right response is to fix the component rather than
+narrow the gate.
+
+**No time-stepping fixture was needed after all.** #471 lists one as a prerequisite, but
+the components turned out to expose their result as settable state: `folder-browser`'s
+`dirs` is a public signal and `loadBrowse()` early-returns when it is already set, so
+seeding is idempotent and the component never refetches over it. Going through the real
+fetch would have parked every story on the poll's 2500ms first-attempt delay. A genuinely
+*animated* story — one that shows a job moving between stages — would still need the
+stepping fixture; none of the stories written so far do.
+
+The same wrapper pattern covers **component-internal state**: `metadata-fix-modal`'s
+`identifyFailures` is populated by the identify call's response, not by a service, so its
+stories reach the component through a `viewChild` and set it directly — showing the
+*result* without performing the call.
 
 Covered: `TvNavGroupDirective`/`TvNavItemDirective` (grid + vertical axes) and
 `BottomChromeSafeDirective`. The `t` pipe is storied on the Internationalization page,
@@ -427,8 +460,8 @@ Tracked under the `storybook` label.
 | Issue | Work |
 | --- | --- |
 | [#470](https://github.com/kevinch3/NicotinD/issues/470) | Story the player / now-playing / layout shell trio |
-| [#471](https://github.com/kevinch3/NicotinD/issues/471) | Story the acquisition modals (`album-hunt`, `metadata-fix`, `folder-browser`, `artist-image-menu`) |
-| [#472](https://github.com/kevinch3/NicotinD/issues/472) | Story the review surfaces — `bottom-nav` ✅, `feedback-detail-sheet` ✅; `review-inbox`, `track-info-sheet` remain |
+| ~~[#471](https://github.com/kevinch3/NicotinD/issues/471)~~ | ✅ Acquisition modals storied. Its time-stepping-fixture prerequisite proved unnecessary — see above |
+| ~~[#472](https://github.com/kevinch3/NicotinD/issues/472)~~ | ✅ Review surfaces storied. Its identify-failure criterion was misattributed — those chips live in `metadata-fix-modal` (#471), not `review-inbox` |
 | [#473](https://github.com/kevinch3/NicotinD/issues/473) | Visual regression on top of the stories |
 | ~~[#474](https://github.com/kevinch3/NicotinD/issues/474)~~ | ✅ `@storybook/addon-a11y` plus triage — findings became [#481](https://github.com/kevinch3/NicotinD/issues/481) / [#482](https://github.com/kevinch3/NicotinD/issues/482) |
 | ~~[#475](https://github.com/kevinch3/NicotinD/issues/475)~~ | ✅ Interaction tests for `menu-panel` + `seek-bar` (`selection-bar` deliberately excluded — see above) |

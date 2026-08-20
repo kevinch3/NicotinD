@@ -6,7 +6,8 @@ and the interactive `/doc` explorer.
 
 Public routes (no JWT): `/api/setup/*` (locked after first user), `/api/auth/*`,
 `/api/health`, `/api/ws/playback` (token in query), `/share/:token` (link
-preview), `/openapi.json`, `/doc`.
+preview), `/api/radio-polls/public/*` (the poll token is the credential — see
+[radio-eval-polls.md](radio-eval-polls.md)), `/openapi.json`, `/doc`.
 
 All other `/api/*` routes require a `Bearer` JWT (30-day sliding session, silent
 refresh on boot) or a read-only share token. The `check:route-auth` CI gate
@@ -56,6 +57,9 @@ fails when an `/api` route group is mounted with no auth decision — see
 | `DELETE` | `/api/playlists/:id/songs/:songId`       | Remove a song                                               |
 | `GET`    | `/api/share/:token`                      | Read-only share view (album/playlist/artist)                |
 | `POST`   | `/api/share`                             | Mint a share token (short-lived, read-only)                 |
+| `GET`    | `/api/radio-polls/public/:token`         | Public radio-eval poll view (+ short-lived media JWT)       |
+| `POST`   | `/api/radio-polls/public/:token/votes`   | Anonymous poll votes (upsert per rater/candidate)           |
+| `POST`   | `/api/admin/radio-polls`                 | Create a poll — freezes scenarios (admin)                   |
 | `GET`    | `/api/watchlist`                         | Watchlist entries                                           |
 | `POST`   | `/api/watchlist`                         | Toggle watch on a catalog album                             |
 | `GET`    | `/api/plugins`                           | List plugins + capability status                            |

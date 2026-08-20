@@ -1667,6 +1667,19 @@
       <app-feedback-queue #feedbackQueue />
     </app-settings-group>
 
+    <app-settings-group
+      groupId="radio-polls"
+      icon="headphones"
+      [title]="'admin.groupRadioPolls' | t"
+      [description]="'admin.groupRadioPollsDesc' | t"
+      (opened)="radioPolls.load()"
+    >
+      <!-- Radio evaluation polls: freeze radio scenarios behind a public link and
+           collect anonymous 👍/👎 per suggestion (docs/radio-eval-polls.md).
+           Loaded on expand, not on the ServiceReview poll — a dev list, not live status. -->
+      <app-radio-polls-card #radioPolls />
+    </app-settings-group>
+
     <!-- Retry-hunt modal (reuses the album-hunt flow) -->
     @if (retryAlbum(); as album) {
       <app-album-hunt-modal

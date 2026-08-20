@@ -2,6 +2,54 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.31](https://github.com/kevinch3/NicotinD/compare/v0.3.30...v0.3.31) (2026-08-20)
+
+### Features
+
+* **radio:** radio evaluation polls — public anonymous grading of next-track picks ([#581](https://github.com/kevinch3/NicotinD/issues/581)) ([6bf55c2](https://github.com/kevinch3/NicotinD/commit/6bf55c26578cfffbe27930eb0d84a20703bb4b8b)), references [#187](https://github.com/kevinch3/NicotinD/issues/187)
+## [0.3.30](https://github.com/kevinch3/NicotinD/compare/v0.3.29...v0.3.30) (2026-08-19)
+## [0.3.29](https://github.com/kevinch3/NicotinD/compare/v0.3.28...v0.3.29) (2026-08-19)
+
+### Features
+
+* **storybook:** story the album hunt modal ([#580](https://github.com/kevinch3/NicotinD/issues/580)) ([bc70110](https://github.com/kevinch3/NicotinD/commit/bc701102abc8d7ef14f7e1390e27c77e2bf5324c)), references [#471](https://github.com/kevinch3/NicotinD/issues/471)
+* **storybook:** story the peer folder browser ([#579](https://github.com/kevinch3/NicotinD/issues/579)) ([2a015ac](https://github.com/kevinch3/NicotinD/commit/2a015acf745c18a73e84b1ac07674605eefe4262)), references [#471](https://github.com/kevinch3/NicotinD/issues/471) [#471](https://github.com/kevinch3/NicotinD/issues/471)
+## [0.3.28](https://github.com/kevinch3/NicotinD/compare/v0.3.27...v0.3.28) (2026-08-19)
+
+### Features
+
+* **storybook:** story the typed identify failures ([#578](https://github.com/kevinch3/NicotinD/issues/578)) ([ff5a1d8](https://github.com/kevinch3/NicotinD/commit/ff5a1d865b832b6f21d335827ce6eb4fdff92042)), references [#471](https://github.com/kevinch3/NicotinD/issues/471) [#472](https://github.com/kevinch3/NicotinD/issues/472)
+## [0.3.27](https://github.com/kevinch3/NicotinD/compare/v0.3.26...v0.3.27) (2026-08-19)
+
+### Features
+
+* **storybook:** story the artist image menu ([#577](https://github.com/kevinch3/NicotinD/issues/577)) ([af37c77](https://github.com/kevinch3/NicotinD/commit/af37c774ec231a30976471a4c0ea671d898feb46)), references [#422](https://github.com/kevinch3/NicotinD/issues/422) [#471](https://github.com/kevinch3/NicotinD/issues/471)
+## [0.3.26](https://github.com/kevinch3/NicotinD/compare/v0.3.25...v0.3.26) (2026-08-19)
+
+### Features
+
+* **storybook:** story the download-review inbox ([#576](https://github.com/kevinch3/NicotinD/issues/576)) ([b882231](https://github.com/kevinch3/NicotinD/commit/b882231d6804ac203f48978d6b23a0e8b8d2b966)), references [#471](https://github.com/kevinch3/NicotinD/issues/471)
+## [0.3.25](https://github.com/kevinch3/NicotinD/compare/v0.3.24...v0.3.25) (2026-08-19)
+
+### Features
+
+* **storybook:** story the track-info sheet ([#575](https://github.com/kevinch3/NicotinD/issues/575)) ([65141ca](https://github.com/kevinch3/NicotinD/commit/65141cad47f7d8345fb76aef89c8529cc436eb44))
+## [0.3.24](https://github.com/kevinch3/NicotinD/compare/v0.3.23...v0.3.24) (2026-08-19)
+
+### Features
+
+* **storybook:** add an en/es language toolbar global ([#567](https://github.com/kevinch3/NicotinD/issues/567)) ([fe738cc](https://github.com/kevinch3/NicotinD/commit/fe738ccbc8ffc214773de8e89fd6d2c6ae3586a4))
+* **storybook:** catalog the shared directives and the t pipe ([#568](https://github.com/kevinch3/NicotinD/issues/568)) ([2503366](https://github.com/kevinch3/NicotinD/commit/25033661e8a2cc09d89649756e7d06dbd3525ca6))
+* **storybook:** interaction tests for menu-panel and seek-bar ([#572](https://github.com/kevinch3/NicotinD/issues/572)) ([a8d4bf7](https://github.com/kevinch3/NicotinD/commit/a8d4bf7477f54fc64b5b4ab122e5044b474f10b4))
+* **storybook:** story bottom-nav and seed download state ([#573](https://github.com/kevinch3/NicotinD/issues/573)) ([a9076b7](https://github.com/kevinch3/NicotinD/commit/a9076b7e8e4f86b3de04859fdbe65213c2119dce)), references [#472](https://github.com/kevinch3/NicotinD/issues/472)
+* **storybook:** story the hunt-feedback grading sheet ([#574](https://github.com/kevinch3/NicotinD/issues/574)) ([da95d3d](https://github.com/kevinch3/NicotinD/commit/da95d3da515e93483ea3588183cc7c1a69557e03)), references [#472](https://github.com/kevinch3/NicotinD/issues/472)
+
+### Bug Fixes
+
+* **downloads:** only deep-link a job to an album it actually landed in ([#560](https://github.com/kevinch3/NicotinD/issues/560)) ([2350276](https://github.com/kevinch3/NicotinD/commit/23502760d2eb1856b4b202824ade412c98f38be0)), references [#261](https://github.com/kevinch3/NicotinD/issues/261)
+* **mobile:** prove the cover URL reachable before handing it to the media session ([#566](https://github.com/kevinch3/NicotinD/issues/566)) ([7d692e8](https://github.com/kevinch3/NicotinD/commit/7d692e8ad52940b8188674c97c845391af59d14b))
+* **tv:** let a clamped vertical arrow escape a nav group ([#569](https://github.com/kevinch3/NicotinD/issues/569)) ([6a467cd](https://github.com/kevinch3/NicotinD/commit/6a467cd2090bbcf385914500d5240d202ad29dc6)), references [#436](https://github.com/kevinch3/NicotinD/issues/436)
+* **web:** route admin SSE streams through an ngsw-bypass helper ([#558](https://github.com/kevinch3/NicotinD/issues/558)) ([5c1cbf5](https://github.com/kevinch3/NicotinD/commit/5c1cbf5a4e3abf4b663b0437e812c8072a9f54ee))
 ## [0.3.23](https://github.com/kevinch3/NicotinD/compare/v0.3.22...v0.3.23) (2026-08-19)
 
 ### Features

@@ -97,6 +97,13 @@ can spot scorer drift. Indexed on `(resource_type, at DESC)`.
 
 `user_settings.feedback_capture` — the per-user admin dev-mode toggle (default 0).
 
+**Radio grading lives elsewhere**: `resourceType: 'radio'` stays reserved for a
+future single-grader capture through this ledger, but the shipped radio grading
+surface is [radio-eval-polls.md](radio-eval-polls.md) with its **own** tables
+(`radio_polls`/`radio_poll_scenarios`/`radio_poll_votes`) — this table is one
+authenticated admin per row, while a poll is anonymous multi-rater, and forcing
+poll votes in here would have meant a fake user id per anonymous rater.
+
 ## Snapshot shapes
 
 Typed in `@nicotind/core` (`types/generation-feedback.ts`, re-exported to web via

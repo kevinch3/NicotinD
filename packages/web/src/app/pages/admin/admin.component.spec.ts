@@ -25,7 +25,7 @@ import BASE_CATALOG from '../../../../public/i18n/en.json';
  * Task 4 (Admin panel regroup) / Task 1 (settings-cards unification): every
  * panel now lives inside a collapsible `<app-settings-group>` whose body is
  * `@if (open())`-gated, and `open()` reads a `[defaultOpen]` signal `input()`
- * (all 9 groups pass no `[defaultOpen]` at all now — every group is collapsed
+ * (all 10 groups pass no `[defaultOpen]` at all now — every group is collapsed
  * by default). This JIT vitest harness never registers signal inputs on a
  * *nested imported* component (see `src/testing/signal-input.ts`), so every
  * group's `[defaultOpen]`/`[title]`/etc. binding silently fails to land and
@@ -1351,20 +1351,22 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
     return fixture;
   }
 
-  it('renders all 9 groups in the correct order', async () => {
+  it('renders all 10 groups in the correct order', async () => {
     const fixture = await createAndSettle();
     const el: HTMLElement = fixture.nativeElement;
     const headers = Array.from(el.querySelectorAll('app-settings-group-header'));
-    // 9, not 10: the "Import music" group went with the admin import card —
-    // import is internal/API-only now (docs/import.md).
-    expect(headers.length).toBe(9);
+    // 10 from the settings-cards unification, plus the radio evaluation polls
+    // card (docs/radio-eval-polls.md), minus "Import music" — which went with
+    // the admin import card, import being internal/API-only now
+    // (docs/import.md).
+    expect(headers.length).toBe(10);
     // The header text itself is driven by `[title]` — a property binding on a
     // nested `<app-settings-group>` — so it's subject to the same JIT-harness
     // signal-input gap documented above `expandAllGroups`. Order/count is
     // still a real, harness-observable structural assertion: it only depends
     // on how many `<app-settings-group>` elements the template renders and in
     // what sequence, not on any input value landing.
-    expect(headers.length).toBe(9);
+    expect(headers.length).toBe(10);
     fixture.destroy();
   });
 

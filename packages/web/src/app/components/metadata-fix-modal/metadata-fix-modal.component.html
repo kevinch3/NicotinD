@@ -25,10 +25,15 @@
               (click)="selectCover(cv)"
               [disabled]="coverApplying() || cv.source === 'current'"
               [title]="cv.label"
+              [attr.aria-label]="cv.label"
               data-testid="cover-option"
               class="relative w-16 h-16 rounded-lg overflow-hidden border border-theme bg-theme-hover hover:border-theme-accent transition disabled:cursor-default"
             >
-              <img [src]="coverSrc(cv)" [alt]="cv.label" class="w-full h-full object-cover" />
+              <!-- Decorative: the button already carries the name via aria-label,
+                   and the current option adds a visible "Current" caption. An alt
+                   repeating cv.label made a screen reader announce it twice and
+                   tripped axe's image-redundant-alt (surfaced by the stories). -->
+              <img [src]="coverSrc(cv)" alt="" class="w-full h-full object-cover" />
               @if (cv.source === 'current') {
                 <span
                   class="absolute bottom-0 inset-x-0 text-[10px] text-white bg-black/60 text-center leading-tight py-0.5"

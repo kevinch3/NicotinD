@@ -25,6 +25,8 @@ import { AcquireService } from '../../app/services/acquire.service';
 import { DownloadReviewService } from '../../app/services/download-review.service';
 import type { AcquireJob } from '../../app/services/acquire.service';
 import type { AcquisitionJobView } from '../../types/core';
+import type { ReviewQueueAlbum } from '../../app/services/api/api-types';
+import { ArtistImageSourcesService } from '../../app/services/artist-image-sources.service';
 import {
   FeedbackSheetService,
   type FeedbackSheetPayload,
@@ -61,6 +63,21 @@ export interface StoryState {
    * empty canvas rather than the sheet.
    */
   feedbackSheet?: FeedbackSheetPayload;
+  /**
+   * Albums awaiting a curator decision. Seeded directly on the service: the
+   * component's constructor calls `review.start()`, whose refresh 404s against
+   * the fixture transport and — by design — "keeps the last-known queue rather
+   * than flashing to empty". So the seed survives through the component's real
+   * lifecycle rather than around it.
+   */
+  reviewQueue?: ReviewQueueAlbum[];
+  /**
+   * Which providers can resolve an artist portrait (issue #422). `null` is the
+   * pre-load optimistic state, `[]` means no source is configured — which is
+   * what disables "Fetch automatically" rather than offering a control that
+   * cannot do anything.
+   */
+  artistImageSources?: string[] | null;
 }
 
 /**
@@ -151,6 +168,14 @@ export function storyProviders(state: StoryState = {}): Array<Provider | Environ
       }
       if (state.pendingReviews !== undefined) {
         inject(DownloadReviewService).pending.set(state.pendingReviews);
+      }
+      if (state.artistImageSources !== undefined) {
+        inject(ArtistImageSourcesService).sources.set(state.artistImageSources);
+      }
+      if (state.reviewQueue !== undefined) {
+        const review = inject(DownloadReviewService);
+        review.queue.set(state.reviewQueue);
+        review.pending.set(state.reviewQueue.length);
       }
       if (state.feedbackSheet !== undefined) {
         inject(FeedbackSheetService).payload.set(state.feedbackSheet);
