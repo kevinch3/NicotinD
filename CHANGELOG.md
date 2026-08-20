@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.34](https://github.com/kevinch3/NicotinD/compare/v0.3.33...v0.3.34) (2026-08-20)
+
+### Bug Fixes
+
+* **addon-sdk:** count spotDL's mid-run failures live; record the yt-dlp layer-cache root cause ([#588](https://github.com/kevinch3/NicotinD/issues/588)) ([#589](https://github.com/kevinch3/NicotinD/issues/589)) ([68f8dd4](https://github.com/kevinch3/NicotinD/commit/68f8dd49b0d882f3576664274d803e5da091a520)), references [#585](https://github.com/kevinch3/NicotinD/issues/585)
 ## [0.3.33](https://github.com/kevinch3/NicotinD/compare/v0.3.32...v0.3.33) (2026-08-20)
 
 ### Features
