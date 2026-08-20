@@ -22,6 +22,20 @@ describe('playlist titles', () => {
     expect(parseSpotdlPlaylistTitle('Downloaded "Some Song"')).toBeNull();
   });
 
+  // spotDL 4.5.x (verified against the installed source on prod) logs
+  // `Found %s songs in %s (%s)` with the list's class name in parentheses —
+  // there is no `playlist:` form any more. The retired in-process parser only
+  // knew the old shape, so it would never have named a card on a current spotDL.
+  it('reads the spotDL 4.5 "Found N songs in <name> (<Kind>)" form', () => {
+    expect(parseSpotdlPlaylistTitle('Found 16 songs in Summer Mix 2024 (Playlist)')).toBe(
+      'Summer Mix 2024',
+    );
+    expect(parseSpotdlPlaylistTitle('Found 12 songs in Ídolo (Deluxe) (Album)')).toBe(
+      'Ídolo (Deluxe)',
+    );
+    expect(parseSpotdlPlaylistTitle('Found 1 songs in Lonely (Saved)')).toBe('Lonely');
+  });
+
   it('reads a yt-dlp playlist name', () => {
     expect(parseYtdlpPlaylistTitle('[download] Downloading playlist: My Mix')).toBe('My Mix');
     expect(parseYtdlpPlaylistTitle('[download]  45.2% of 3MiB')).toBeNull();
@@ -42,7 +56,15 @@ describe('expected track counts', () => {
     let p = { done: 0, total: 16 };
     p = parseSpotdlProgress('Downloaded "A"', p);
     p = parseSpotdlProgress('Skipping "B"', p);
-    expect(p).toEqual({ done: 2, total: 16 });
+    p = parseSpotdlProgress('Skipping C - D (file already exists) https://x', p);
+    expect(p).toEqual({ done: 3, total: 16 });
+  });
+
+  it('takes the total from the spotDL 4.5 "Found N songs in <name> (<Kind>)" form', () => {
+    expect(parseSpotdlProgress('Found 16 songs in Summer Mix 2024 (Playlist)', zero)).toEqual({
+      done: 0,
+      total: 16,
+    });
   });
 
   it('leaves progress untouched on an unrelated line', () => {
@@ -69,6 +91,46 @@ describe('per-track events', () => {
       status: 'skipped',
     });
     expect(parseSpotdlTrackEvent('unrelated')).toBeNull();
+  });
+
+  // spotDL 4.5.x skip lines carry no quotes: `Skipping <Artist - Title> (file
+  // already exists) <url>` / `(skip file found)`, and `Skipping explicit song:`.
+  it('reads the spotDL 4.5 unquoted skip lines', () => {
+    expect(
+      parseSpotdlTrackEvent(
+        'Skipping Kaleb Di Masi - Techengue (file already exists) https://open.spotify.com/track/1',
+      ),
+    ).toEqual({ title: 'Kaleb Di Masi - Techengue', status: 'skipped' });
+    expect(parseSpotdlTrackEvent('Skipping A - B (skip file found) https://x')).toEqual({
+      title: 'A - B',
+      status: 'skipped',
+    });
+    expect(parseSpotdlTrackEvent('Skipping explicit song: A - B')).toEqual({
+      title: 'A - B',
+      status: 'skipped',
+    });
+    // Matcher-internal chatter must not read as a track.
+    expect(parseSpotdlTrackEvent('Skipping result due to no common words')).toBeNull();
+  });
+
+  // With `--print-errors` spotDL ends with one line per failed song:
+  // `<track url> - <ExceptionName>: <message>`. The LookupError message names
+  // the song; other exceptions only carry the url, which still identifies it.
+  it('reads the spotDL --print-errors failure lines as failed tracks', () => {
+    expect(
+      parseSpotdlTrackEvent(
+        'https://open.spotify.com/track/abc - LookupError: No results found for song: A - B',
+      ),
+    ).toEqual({ title: 'A - B', status: 'failed' });
+    expect(
+      parseSpotdlTrackEvent(
+        'https://open.spotify.com/track/abc - AudioProviderError: YT-DLP download error',
+      ),
+    ).toEqual({
+      title: 'https://open.spotify.com/track/abc',
+      status: 'failed',
+      detail: 'AudioProviderError: YT-DLP download error',
+    });
   });
 
   it('reads yt-dlp markers, keeping the filename after the tab', () => {

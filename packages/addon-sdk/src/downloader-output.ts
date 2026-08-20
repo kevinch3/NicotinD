@@ -30,7 +30,7 @@ export interface AcquireProgress {
 }
 
 /** Per-track download status, as reported by a track-event parser. */
-export type DownloaderTrackStatus = 'downloading' | 'done' | 'skipped';
+export type DownloaderTrackStatus = 'downloading' | 'done' | 'skipped' | 'failed';
 
 /**
  * Named `Downloader…` rather than the obvious `TrackEvent` on purpose: that is
@@ -47,7 +47,20 @@ export interface DownloaderTrackEvent {
    * title alone when it is missing.
    */
   path?: string;
+  /** For `failed`: the downloader's own reason (`LookupError: No results …`). */
+  detail?: string;
 }
+
+/**
+ * spotDL 4.5.x announces a list as `Found %s songs in %s (%s)` — the name, then
+ * the list's class (`Playlist`/`Album`/`Artist`/`Saved`) in parentheses.
+ * Earlier versions wrote `Found N songs in playlist: <name>`. Both shapes are
+ * read; the current one is anchored on the trailing `(Kind)` so a name that
+ * itself ends in parentheses (`Ídolo (Deluxe)`) survives.
+ */
+const SPOTDL_FOUND_CURRENT =
+  /\bFound (\d+) songs? in (.+) \((Playlist|Album|Artist|Saved|Song)\)\s*$/i;
+const SPOTDL_FOUND_LEGACY = /\bFound (\d+) songs? in playlist:\s*(.+)/i;
 
 /** Parse yt-dlp's `--newline` progress output: `[download]  45.2% of ...` */
 export function parseYtdlpProgress(line: string, current: AcquireProgress): AcquireProgress {
@@ -71,27 +84,46 @@ export function parseYtdlpProgress(line: string, current: AcquireProgress): Acqu
  */
 export function parseSpotdlProgress(line: string, current: AcquireProgress): AcquireProgress {
   const totalMatch =
-    /\bFound (\d+) songs?\b/i.exec(line) ?? /\bDownloading (\d+) songs? to\b/i.exec(line);
+    /\bFound (\d+) songs? in\b/i.exec(line) ?? /\bDownloading (\d+) songs? to\b/i.exec(line);
   if (totalMatch) {
     const total = parseInt(totalMatch[1]!, 10);
     if (total > 0) return { done: current.done, total };
   }
-  if (/Downloaded "|Skipping "/i.test(line)) {
+  const event = parseSpotdlTrackEvent(line);
+  if (event && event.status !== 'failed') {
     return { done: current.done + 1, total: current.total };
   }
   return current;
 }
 
 /**
- * Extract a per-track download event from a spotDL output line, if present:
- * `Downloaded "Title"` → done, `Skipping "Title"` → skipped (already present
- * locally). Companion to `parseSpotdlProgress`'s aggregate counting.
+ * Extract a per-track download event from a spotDL output line, if present.
+ *
+ * - `Downloaded "Artist - Title": <url>` → done
+ * - `Skipping Artist - Title (file already exists) <url>` / `(skip file found)`
+ *   / `Skipping explicit song: Artist - Title` / legacy `Skipping "…"` → skipped
+ * - `<track url> - <Exception>: <message>` (the `--print-errors` summary spotDL
+ *   writes at the end of a run) → failed; a `LookupError: No results found for
+ *   song: X` names the song, anything else is identified by its url.
+ *
+ * The matcher's own `Skipping result due to …` chatter is not a track.
  */
 export function parseSpotdlTrackEvent(line: string): DownloaderTrackEvent | null {
   const downloaded = /Downloaded "([^"]+)"/i.exec(line);
   if (downloaded) return { title: downloaded[1]!, status: 'done' };
-  const skipping = /Skipping "([^"]+)"/i.exec(line);
-  if (skipping) return { title: skipping[1]!, status: 'skipped' };
+  const skippingQuoted = /Skipping "([^"]+)"/i.exec(line);
+  if (skippingQuoted) return { title: skippingQuoted[1]!, status: 'skipped' };
+  const skippingFile = /\bSkipping (.+?) \((?:file already exists|skip file found)\)/i.exec(line);
+  if (skippingFile) return { title: skippingFile[1]!.trim(), status: 'skipped' };
+  const skippingExplicit = /\bSkipping explicit song:\s*(.+)$/i.exec(line);
+  if (skippingExplicit) return { title: skippingExplicit[1]!.trim(), status: 'skipped' };
+  const failed = /^(https?:\/\/\S+) - (\w+: .*)$/.exec(line.trim());
+  if (failed) {
+    const detail = failed[2]!;
+    const named = /No results found for song:\s*(.+)$/i.exec(detail);
+    if (named) return { title: named[1]!.trim(), status: 'failed' };
+    return { title: failed[1]!, status: 'failed', detail };
+  }
   return null;
 }
 
@@ -109,8 +141,10 @@ export function parseYtdlpPlaylistTitle(line: string): string | null {
  * `Found N songs in playlist: My Playlist Title`.
  */
 export function parseSpotdlPlaylistTitle(line: string): string | null {
-  const m = /\bFound \d+ songs? in playlist:\s*(.+)/i.exec(line);
-  return m ? m[1]!.trim() : null;
+  const current = SPOTDL_FOUND_CURRENT.exec(line);
+  if (current) return current[2]!.trim();
+  const legacy = SPOTDL_FOUND_LEGACY.exec(line);
+  return legacy ? legacy[2]!.trim() : null;
 }
 
 /**
