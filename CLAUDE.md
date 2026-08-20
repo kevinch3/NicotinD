@@ -619,8 +619,15 @@ Add detail there, not here.
   `502` for a source error vs `null` for a confident miss, so the first click doesn't
   false-negative. **Vocal mute** (`?vocals=off` → server-side ffmpeg center-channel cancellation
   `pan=stereo|c0=c0-c1|c1=c1-c0`) is a mic toggle in the karaoke overlay; it forces the transcode
-  path even when transcoding is off and is cached as a separate `novox` transcode entry. →
-  [docs/design-patterns.md](docs/design-patterns.md)
+  path even when transcoding is off and is cached as a separate `novox` transcode entry. It is a
+  **center**-canceller, not a separator, so it also removes the kick/bass (measured −9.35 dB of
+  sub-bass) and, because `c0`/`c1` are anti-phase by construction, collapses to **digital silence
+  on any mono downmix** (issue #602). Replacing it with real ML separation is spiked, measured and
+  scoped (issue #603): `anvuew/BS-RoFormer` (GPL-3.0 — the "Mini" alternative is CC-BY-NC and
+  unusable), **on demand + opt-in, never precomputed**, GPU-only (P4000: RTF 0.261× / 3.0 GB, ~55 s
+  per song, but progressive separation starts playback in ~6 s; CPU-only is RTF 4.1×). →
+  [docs/design-patterns.md](docs/design-patterns.md),
+  [docs/vocal-isolation-spike.md](docs/vocal-isolation-spike.md)
 - **Unified search**: `GET /api/search?q=` blends local library + parallel slskd network results
   into the one source-agnostic results list. →
   [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md)
