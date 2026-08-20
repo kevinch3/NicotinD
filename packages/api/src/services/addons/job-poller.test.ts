@@ -8,7 +8,8 @@ import { applySchema } from '../../db.js';
 import { PluginRegistry } from '../plugins/registry.js';
 import { AddonRequestError, type AddonClient } from './client.js';
 import { RemoteAddonPlugin } from './remote-addon-plugin.js';
-import { AddonJobPoller, addonTransferKey, parseAddonJobId } from './job-poller.js';
+import { AddonJobPoller, addonTransferKey, mapAddonJob, parseAddonJobId } from './job-poller.js';
+import { createJob } from '../acquisition-job-store.js';
 import type { CompletedDownloadFile } from '../path-inference.js';
 
 const MANIFEST: AddonManifest = {
@@ -387,6 +388,90 @@ describe('AddonJobPoller', () => {
         .query<{ error: string | null }, []>(`SELECT error FROM acquisition_jobs`)
         .get()!;
       expect(row.error).toBeNull();
+    });
+
+    // An addon that reports failures live (spotDL's `LookupError` lines) can
+    // have only `unavailable` items for its first few tracks. `recomputeStage`
+    // reads "nothing in flight, nothing scanned" as failed — so a 100-track
+    // playlist showed "Error · 0 of 3" while spotDL was on track 4 of 100 (prod,
+    // 2026-08-20). The addon's own state is the authority while it is active.
+    it('keeps an active job active while its only items so far are failures', async () => {
+      const job = makeJob({
+        state: 'active',
+        items: [
+          { ...makeJob().items[0]!, itemId: 'a', state: 'unavailable', fileReady: false },
+          { ...makeJob().items[0]!, itemId: 'b', state: 'unavailable', fileReady: false },
+        ],
+      });
+      h = harness(() => [job]);
+      await h.registry.enable('fixture-addon', 'admin');
+      await h.poller.tick();
+      const row = h.db
+        .query<{ state: string; stage: string }, []>(`SELECT state, stage FROM acquisition_jobs`)
+        .get()!;
+      expect(row.state).toBe('active');
+      expect(row.stage).toBe('downloading');
+    });
+
+    it('reads Downloading, not Organizing, while the addon is still active with files landed', async () => {
+      const job = makeJob({
+        state: 'active',
+        items: [
+          { ...makeJob().items[0]!, itemId: 'a', state: 'completed', fileReady: true },
+          { ...makeJob().items[0]!, itemId: 'b', state: 'unavailable', fileReady: false },
+        ],
+      });
+      h = harness(() => [job]);
+      await h.registry.enable('fixture-addon', 'admin');
+      await h.poller.tick();
+      const row = h.db
+        .query<{ state: string; stage: string }, []>(`SELECT state, stage FROM acquisition_jobs`)
+        .get()!;
+      expect(row).toEqual({ state: 'active', stage: 'downloading' });
+    });
+
+    it('leaves an item-less active job at its submit stage (queued)', async () => {
+      const job = urlJob({ state: 'active' });
+      h = harness(() => [job]);
+      await h.registry.enable('fixture-addon', 'admin');
+      // The acquire route pre-maps a `queued` row before the addon has resolved anything.
+      const coreJobId = createJob(h.db, {
+        kind: 'url',
+        method: 'fixture-addon',
+        stage: 'queued',
+        sourceRef: `addon:fixture-addon:${job.id}`,
+        files: [],
+      });
+      mapAddonJob(h.db, 'fixture-addon', job.id, coreJobId);
+      await h.poller.tick();
+      const row = h.db
+        .query<{ state: string; stage: string }, []>(`SELECT state, stage FROM acquisition_jobs`)
+        .get()!;
+      expect(row).toEqual({ state: 'active', stage: 'queued' });
+    });
+
+    // An addon that knows the track count up front (spotDL's `Found 100 songs`)
+    // can send 100 `queued` placeholders on its first poll so the card reads
+    // "0 of 100" from the start; when it closes, whatever is still queued was
+    // never reached and must not linger as in-flight.
+    it('turns queued placeholders unavailable when the addon closes', async () => {
+      const job = makeJob({
+        state: 'partial',
+        error: 'spotDL reached 1 of 2',
+        items: [
+          { ...makeJob().items[0]!, itemId: 'a', state: 'completed', fileReady: true },
+          { ...makeJob().items[0]!, itemId: 'b', state: 'queued', fileReady: false },
+        ],
+      });
+      h = harness(() => [job]);
+      await h.registry.enable('fixture-addon', 'admin');
+      await h.poller.tick();
+      const states = h.db
+        .query<{ state: string }, []>(`SELECT state FROM acquisition_job_items ORDER BY id`)
+        .all()
+        .map((r) => r.state);
+      expect(states).not.toContain('queued');
+      expect(states).toContain('unavailable');
     });
 
     it('closes a terminal job as an honest partial, never stuck downloading', async () => {

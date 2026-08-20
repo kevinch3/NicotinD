@@ -423,6 +423,21 @@ export class AddonJobPoller {
     // an active row so a reason already recorded for a closed job is never
     // reopened.
     if (job.state === 'active') {
+      // While the addon is still working, its word outranks what the items
+      // happen to look like. `recomputeStage` derives the stage from items,
+      // which is right once the addon is done and wrong before: an addon that
+      // reports live can have ONLY `unavailable` items for its first tracks
+      // ("Error · 0 of 3" on track 4 of 100) or a few `completed` ones
+      // ("Organizing 11 of 22" while 78 more were still to come). A job with
+      // items is Downloading until the addon says otherwise; an item-less one
+      // keeps its submit stage (`queued`) so a URL the addon has not even
+      // resolved yet does not claim to be downloading.
+      db.run(
+        `UPDATE acquisition_jobs SET state = 'active', stage = 'downloading', updated_at = ?
+         WHERE id = ? AND state IN ('active', 'failed')
+           AND EXISTS (SELECT 1 FROM acquisition_job_items WHERE job_id = ?)`,
+        [now, coreJobId, coreJobId],
+      );
       db.run(
         `UPDATE acquisition_jobs SET error = ?, updated_at = ? WHERE id = ? AND state = 'active'`,
         [job.error ? clampAddonText(job.error) : null, now, coreJobId],
@@ -437,7 +452,7 @@ export class AddonJobPoller {
     // `maybeReleaseAddonJob` already treats them as pending.
     db.run(
       `UPDATE acquisition_job_items SET state = 'unavailable', updated_at = ?
-       WHERE job_id = ? AND state = 'downloading'`,
+       WHERE job_id = ? AND state IN ('downloading', 'queued')`,
       [now, coreJobId],
     );
     recomputeStage(db, coreJobId);
