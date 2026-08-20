@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.36](https://github.com/kevinch3/NicotinD/compare/v0.3.35...v0.3.36) (2026-08-20)
+
+### Bug Fixes
+
+* **review:** visible Approve on light themes, mobile-safe card, bulk sweep, and no VA single ([#594](https://github.com/kevinch3/NicotinD/issues/594)) ([2ea925c](https://github.com/kevinch3/NicotinD/commit/2ea925c7ac3ca7c9026dfa8dc437917da095e8c2)), closes [#591](https://github.com/kevinch3/NicotinD/issues/591) [#592](https://github.com/kevinch3/NicotinD/issues/592) [#593](https://github.com/kevinch3/NicotinD/issues/593)
 ## [0.3.35](https://github.com/kevinch3/NicotinD/compare/v0.3.34...v0.3.35) (2026-08-20)
 
 ### Bug Fixes
