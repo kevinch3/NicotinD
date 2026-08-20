@@ -110,3 +110,53 @@ function foldTail(rows: { genre: string; count: number }[], trackCount: number):
   }
   return slices;
 }
+
+/** Chunk size for the batched share query — well under SQLite's variable cap
+ *  while keeping a 300-track radio pool to a single round trip in practice. */
+const SHARE_CHUNK = 400;
+
+/**
+ * Batched counterpart of {@link artistGenreDistribution} for **one** genre set:
+ * `artistId → share of that artist's landed tracks carrying any of `genres``.
+ *
+ * Exists because filter radio needs this figure for every candidate in a
+ * 300-track pool, and calling `artistGenreDistribution` per candidate would be
+ * 300 multi-query round trips to compute one number each.
+ *
+ * The match test mirrors `songFilterWheres`' genre clause exactly — primary
+ * column OR the join table — so an artist's share can never disagree with the
+ * membership test that put their track in the pool. Artists with no landed
+ * tracks are simply absent from the map (callers treat that as 0).
+ */
+export function artistGenreShares(
+  db: Database,
+  artistIds: readonly string[],
+  genres: readonly string[],
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const ids = [...new Set(artistIds.filter(Boolean))];
+  if (ids.length === 0 || genres.length === 0) return out;
+
+  const genreMarks = genres.map(() => '?').join(', ');
+  const matched = `(s.genre IN (${genreMarks}) OR EXISTS (
+      SELECT 1 FROM library_song_genres sg WHERE sg.song_id = s.id AND sg.genre IN (${genreMarks})))`;
+
+  for (let i = 0; i < ids.length; i += SHARE_CHUNK) {
+    const chunk = ids.slice(i, i + SHARE_CHUNK);
+    const idMarks = chunk.map(() => '?').join(', ');
+    const rows = db
+      .query<{ artist_id: string; total: number; hits: number }, string[]>(
+        `SELECT s.artist_id AS artist_id,
+                COUNT(*) AS total,
+                SUM(CASE WHEN ${matched} THEN 1 ELSE 0 END) AS hits
+           FROM library_songs s
+          WHERE s.artist_id IN (${idMarks}) AND s.landed_at IS NOT NULL
+          GROUP BY s.artist_id`,
+      )
+      .all(...genres, ...genres, ...chunk);
+    for (const r of rows) {
+      if (r.total > 0) out.set(r.artist_id, r.hits / r.total);
+    }
+  }
+  return out;
+}

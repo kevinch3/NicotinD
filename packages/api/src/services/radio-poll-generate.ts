@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type { Database } from 'bun:sqlite';
 import type {
+  LibraryFilter,
   RadioPollScenarioSnapshot,
   RadioPollSettings,
   RadioPollSnapshotFeatures,
 } from '@nicotind/core';
 import {
   RADIO_SONG_SELECT,
+  buildFilterRadio,
   buildSeedRadio,
   rowToSong,
   toFeatures,
@@ -83,7 +85,34 @@ export function normalizePollSettings(settings: RadioPollSettings): RadioPollSet
       0,
       MAX_SCENARIOS,
     ),
+    filters: (settings.filters ?? [])
+      .filter((f) => f && Object.keys(f).length > 0)
+      .slice(0, MAX_SCENARIOS),
   };
+}
+
+/**
+ * A rater-facing name for a station. Deliberately terse and human ("Electronic",
+ * "happy · 120+ bpm") — the wizard shows it where a seed track's card would be,
+ * and a JSON blob there tells a rater nothing about what they are grading.
+ */
+export function describeFilter(filter: LibraryFilter): string {
+  const parts: string[] = [];
+  if (filter.genres?.length) parts.push(filter.genres.join(' / '));
+  if (filter.moods?.length) parts.push(filter.moods.join(' / '));
+  for (const [axis, buckets] of Object.entries(filter.buckets ?? {})) {
+    if (buckets?.length) parts.push(`${buckets.join('/')} ${axis}`);
+  }
+  if (filter.bpmMin !== undefined && filter.bpmMax !== undefined) {
+    parts.push(`${filter.bpmMin}-${filter.bpmMax} bpm`);
+  } else if (filter.bpmMin !== undefined) parts.push(`${filter.bpmMin}+ bpm`);
+  else if (filter.bpmMax !== undefined) parts.push(`under ${filter.bpmMax} bpm`);
+  if (filter.yearMin !== undefined && filter.yearMax !== undefined) {
+    parts.push(`${filter.yearMin}-${filter.yearMax}`);
+  }
+  if (filter.keys?.length) parts.push(`key ${filter.keys.join('/')}`);
+  if (filter.starred) parts.push('starred');
+  return parts.length ? parts.join(' · ') : 'Everything';
 }
 
 /** dump-radio's auto-seed pick: a random landed, visible song, preferring one
@@ -130,6 +159,53 @@ function seedScenario(
 }
 
 /**
+ * A station scenario: the same freeze as `seedScenario`, but the "seed" a rater
+ * is judging against is a *filter* (a genre/vibe), and the scoring seed is the
+ * pool centroid + station anchor `buildFilterRadio` derives from it.
+ *
+ * Stations were the reserved half of this schema from the start and nothing
+ * ever generated one, so every vote collected to date graded seed radio only —
+ * which is exactly the path that was NOT the reported problem (see docs/radio.md
+ * "Stations").
+ */
+function filterScenario(
+  db: Database,
+  filter: LibraryFilter,
+  position: number,
+  nextUpCount: number,
+  weights: ScoringWeights,
+): GeneratedScenario | null {
+  const result = buildFilterRadio(db, filter, { count: nextUpCount, weights });
+  if (!result.seed || result.ranked.length === 0) return null;
+  const seed = result.seed;
+  const snapshot: RadioPollScenarioSnapshot = {
+    kind: 'filter',
+    seed: null,
+    centroid: stripFeatures(seed),
+    filter,
+    weights: { ...weights },
+    candidates: result.ranked.map((e, i) => ({
+      song: rowToSong(e.song._row),
+      // From the row, like seedScenario — spreading the candidate itself would
+      // carry `_row` (file path included) into the snapshot and every export.
+      // The station grade is computed, not derivable from the row, so it is
+      // re-attached explicitly.
+      features: stripFeatures({
+        ...toFeatures(e.song._row),
+        ...(e.song.stationAffinity !== undefined
+          ? { stationAffinity: e.song.stationAffinity }
+          : {}),
+      }),
+      score: e.score,
+      rank: i + 1,
+      displayOrder: i + 1,
+      explanation: explainSimilarity(seed, e.song, weights),
+    })),
+  };
+  return { id: randomUUID(), position, kind: 'filter', seedSongId: null, snapshot };
+}
+
+/**
  * Freeze a poll's scenarios: pinned seeds first (a missing/hidden pin is a 400
  * — the admin named it, silence would misreport the poll), then random
  * genre-preferring auto seeds for the remaining slots. A scenario whose radio
@@ -156,6 +232,14 @@ export function generatePollScenarios(
     }
     usedSeedIds.add(row.id);
     const scenario = seedScenario(db, row, scenarios.length, settings.nextUpCount, weights);
+    if (scenario) scenarios.push(scenario);
+  }
+
+  // Stations next: an admin who asked for them asked deliberately, so they
+  // outrank the random auto seeds for the remaining slots.
+  for (const filter of settings.filters ?? []) {
+    if (scenarios.length >= settings.scenarioCount) break;
+    const scenario = filterScenario(db, filter, scenarios.length, settings.nextUpCount, weights);
     if (scenario) scenarios.push(scenario);
   }
 

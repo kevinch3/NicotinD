@@ -26,7 +26,7 @@ competes on what it has instead of being punished for missing data.
 
 | Criterion        | Plain meaning                                                                                                             | Weight |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Genre            | Do the two tracks share a style? Any shared genre (even a secondary one) counts fully; no usable genre → a low 0.2 floor. | 18     |
+| Genre            | Do the two tracks share a style? Any shared genre (even a secondary one) counts fully; no usable genre → a low 0.2 floor. On a **station** this weight is spent on graded membership instead (below). | 18     |
 | Sound embedding  | Does it actually *sound* similar — an ML fingerprint of the audio itself.                                                  | 8      |
 | Origin           | Are the artists from musically related countries/scenes?                                                                   | 8      |
 | Key              | Would a DJ call the musical keys compatible (Camelot wheel)?                                                               | 6      |
@@ -43,6 +43,15 @@ competes on what it has instead of being punished for missing data.
 loses 0.15, and a track *you* played in the last 7 days loses up to 0.2 (fading
 with time) — nudges, never exclusions. The top scorers win, capped at 2 tracks
 per artist.
+
+**Stations work differently.** The three steps above describe radio seeded from
+a *song*. When you tap a genre chip or a vibe preset on the landing page there
+is no seed song, and step 1 changes completely: the candidates are simply
+*everything matching the filter*. That makes the genre criterion useless — every
+candidate carries the genre, or it would not be in the pool — so a station
+replaces it with a **membership grade**: how prominently the track itself is
+filed under the genre, and how much of that artist's catalogue actually lives
+there. See "Stations (filter-seeded radio)" below.
 
 **What this affects**: the radio queue (Now Playing radio toggle +
 auto-replenish), filter/"vibe" radio and the landing-page presets, and the
@@ -287,11 +296,98 @@ unauthenticated surface.
 Visible in `scripts/dump-radio.ts` as `[recently played −0.NNN]` on the affected
 rows — an invisible penalty is an unmeasurable one.
 
-## Filter-seeded radio (a "vibe" instead of a seed song)
+## Stations (filter-seeded radio)
 
 The same endpoint also starts radio from a **`LibraryFilter`** — a mood/genre/bpm
 "vibe" (e.g. "happy rock", "120bpm+ danceable") — with **no seed song**. This
 powers the radio/mood landing (see [web-ui.md](web-ui.md) → "Radio landing").
+
+### The problem this path had (formula v3)
+
+Reported from real use: tapping the **Electronic** chip served Calvin Harris
+next to Queen and Madonna. They carry the tag; they are not the genre; they are
+around 128 BPM. Three separate defects, all specific to this path:
+
+1. **The genre axis was a constant.** Membership in a station pool *is* the
+   genre test, so `genreSetCloseness` against the station genre returned 1.0 for
+   every candidate. The heaviest weight in the blend (18 of ~66, ~27%) ordered
+   nothing, leaving bpm/energy/duration closeness to decide the station — hence
+   "128 BPM ≈ electronic".
+2. **The embedding axis never ran at all.** `loadEmbeddings` was called in
+   `buildSeedRadio` and `/songs/:id/similar` but **not** in `buildFilterRadio`,
+   so the one axis that hears the audio — and the strongest discriminator in the
+   #583 poll data (r = +0.32) — was silently skipped for every station. Same
+   shape as the #187 B4 bug: a field never plumbed through.
+3. **The centroid's genre was a statistic, not the request.** `seedCentroid`
+   takes the modal *primary* genre of a random 300-row sample. On an umbrella
+   tag that mostly sits on pop records that comes back as `Pop`, and the axis
+   meant to reward genuinely-electronic tracks scored them **0** while rewarding
+   the pop ones.
+
+And underneath all three, a wrong objective: ranking by closeness to the pool
+**centroid** rewards the most *unremarkable* member of a tag set. The average of
+Queen and Calvin Harris is a point neither is near.
+
+### Graded membership (`services/station-affinity.ts`)
+
+A station now asks "how central is this track to the genre", not "does it carry
+the tag". Two signals from data the library already stores:
+
+| Signal           | Source                                                              | Credit                     |
+| ---------------- | ------------------------------------------------------------------- | -------------------------- |
+| **Tag depth**    | position of the station's genre in the track's own ordered genre set | primary 1.0 / 2nd 0.7 / 3rd+ 0.45 (`DEPTH_CREDIT`) |
+| **Artist share** | fraction of the artist's landed tracks carrying the genre (`artistGenreShares`) | linear to full credit at `SHARE_REFERENCE` (0.5) |
+
+`stationAffinity` blends them evenly (`DEPTH_WEIGHT` 0.5) and the result
+**replaces the genre axis**, reusing its weight — so the axis varies across the
+pool again without rebalancing every other weight. In a breakdown a `station`
+axis means filter radio and a `genre` axis means seed radio; the two never
+co-occur.
+
+The even blend is the point, not a shrug: **either signal alone can carry a
+track**. A Madonna record whose *primary* genre is Electronic really is an
+electronic record and lands mid-table (measured: 0.87 against Calvin Harris's
+0.98), while a Queen track wearing the tag third by a 3%-Electronic artist sinks
+to 0.56. A **demotion, never an exclusion** — same stance as
+`MISSING_GENRE_FLOOR` and `artistPenalty`, and for the same reason: a hard cut
+empties the pool on a niche genre, and a genuine one-off by a foreign artist is
+exactly what a station should be able to surface.
+
+Matching is case/whitespace-insensitive **exact** equality (`genreKey`),
+deliberately the same test the pool SQL used to select the candidate, so grading
+can never disagree with membership. There is **no genre taxonomy**: `House` does
+not partially match `Electronic`. A House-primary track carrying the umbrella
+third scores a low depth but a high artist share, and recovers that way — which
+is the blend doing its job. A real hierarchy is the principled fix and remains
+deliberately unbuilt (it needs a taxonomy this repo does not have).
+
+### The audio anchor
+
+`anchorCentroid` replaces the pool average as the station's embedding target: an
+affinity-weighted, L2-normalised mean over the top `ANCHOR_FRACTION` (0.4) of
+members by affinity, then **re-taken over the half of those closest to that first
+mean**. A broad tag is genuinely bimodal — an ambient record and a festival
+banger both wear "Electronic" — and a single mean of a bimodal set lands in the
+empty space between the modes, which is the same failure the affinity grading
+exists to fix, one level down. The trim pass commits the anchor to the denser
+mode. (`radio.service.ts` scores it through the existing embedding axis;
+`dominantEmbeddingModel` picks the vector space, since a station has no seed song
+whose model to pin.)
+
+### What is NOT graded
+
+A vibe with no genre — `moods`, bpm, perceptual buckets — keeps the plain genre
+axis and the centroid seed, because there is no genre to be central to. A
+junk-only station genre (`Other`) is ignored the same way: grading against a
+tagger's shrug is worse than not grading.
+
+### Measuring a station
+
+`dump-radio.ts --genre <G>` prints a **Station health** block: what the centroid's
+modal genre actually came out as, **what fraction of the pool the plain genre
+axis would have scored 1.00** (the constant-axis proof), the tag-depth and
+artist-share histograms, embedding coverage, and whether an anchor was built.
+That is the measurement to run per landing chip before touching a weight.
 
 When `GET /api/radio/next` is called **without** `seedId` but **with** filter
 query params (the shared `serializeLibraryFilter` grammar — `mood`, `genre`
@@ -305,13 +401,19 @@ query params (the shared `serializeLibraryFilter` grammar — `mood`, `genre`
    builder the library list routes use) spliced into `RADIO_SONG_SELECT`, landed +
    non-hidden, `RANDOM() LIMIT 300`. Unlike seed radio there is **no** cross-genre
    widening: the vibe stays inside the filter.
-3. Seeds the scorer with the pool's **centroid** (`seedCentroid`, reused from
-   `playlist-recipe.ts`) so ranking keeps the set coherent while the per-artist
-   cap diversifies.
-4. Runs the identical `rankCandidates`; returns `Song[]` (`[]` when nothing
+3. Grades every candidate's **station affinity** (above) when the filter names
+   genres — one batched `artistGenreShares` query for the whole pool, never one
+   per candidate.
+4. Seeds the scorer with the pool's **centroid** (`seedCentroid`, reused from
+   `playlist-recipe.ts`) for the scalar axes, **overriding its genre with the
+   requested genres** (the listener asked for them; the modal primary of a
+   random sample is a statistic about the tag), and with the **anchor** vector
+   as its embedding.
+5. Runs the identical `rankCandidates`; returns `Song[]` (`[]` when nothing
    matches — the client surfaces a neutral "no tracks yet" notice, never an error).
 
-**Filter-radio genre-blindness fixed (issue #187 task B4).** `seedCentroid`
+**Filter-radio genre-blindness fixed (issue #187 task B4 — historical; v3
+supersedes the outcome, not the lesson).** `seedCentroid`
 consumes `OrderableRow[]`, but `toOrderable` (`routes/radio.ts`) never copied
 `genre`/`genres` onto the row at all — a straightforward missing-field bug,
 not a fragmentation problem. `seedCentroid`'s `mode()` therefore always saw an
@@ -326,6 +428,14 @@ Latin` filter, every one of the top 12 flipped from `[skipped: genre]` to `✓
 genre match`. `dump-radio.ts`'s own "carries no genre" diagnostic note and its
 seed-features display had the same singular/plural mismatch (checked
 `seed.genres` only) and are fixed to use the same fallback.
+
+B4 made the centroid's modal primary genre *reach* the scorer; v3 found that on
+a genre station that value is the wrong thing to score against twice over — it
+is a constant when it lands on the station genre and an inversion when it does
+not — and replaced it. The lesson B4 actually taught still stands and is worth
+re-reading before touching this path: **a field omitted from `toOrderable` never
+reaches `seedCentroid`, and the axis dies silently for every station.** That is
+also exactly how the embedding axis stayed dark here for as long as it did.
 
 **The `seedCentroid.key` "collapses to C major" investigation — a measured
 null result, not a bug.** The modal key genuinely varies with the filtered
@@ -506,7 +616,9 @@ scoring engine benefits both features.
 | `packages/api/src/services/radio.service.test.ts`                     | Unit tests for scoring logic + `explainSimilarity` breakdown/delegation                                                                                                                                                                                        |
 | `packages/api/src/services/radio-poll-eval.ts`                        | Replay agreement (issue #583): `evaluatePollAgreement` re-scores frozen poll scenarios under any weight set (axes recomputed from features, embedding folded in from its frozen value) → within-scenario pairwise AUC vs the human consensus                     |
 | `packages/api/src/scripts/eval-radio-poll.ts`                         | CLI over it — per-poll + pooled AUC grouped by `formula_version`, `--weights` A/B, read-only DB open                                                                                                                                                            |
-| `packages/api/src/services/embedding-store.ts`                        | `loadEmbeddings` / `embeddingModelFor` — pooled read of cached Essentia vectors                                                                                                                                                                                |
+| `packages/api/src/services/station-affinity.ts`                       | **Stations (v3)**: `genreDepthScore` / `stationAffinity` / `anchorCentroid` — pure graded membership + the audio anchor |
+| `packages/api/src/services/genre-distribution.ts`                     | `artistGenreShares` — batched "how much of this artist is this genre", the artist half of station affinity (shares the radar's definition) |
+| `packages/api/src/services/embedding-store.ts`                        | `loadEmbeddings` / `embeddingModelFor` / `dominantEmbeddingModel` — pooled read of cached Essentia vectors (the last picks a station's vector space, which has no seed song to pin)                                                                                                                                                                                |
 | `packages/api/src/routes/radio.ts`                                    | `/api/radio/next` route (seed **and** filter paths); exports the shared generators `buildSeedRadio` / `buildFilterRadio` / `radioSongs` (pool build + rank, optional `weights` override for the dump), `toOrderable` (via `songFilterWheres` + `seedCentroid`) |
 | `packages/api/src/services/genre-split.ts`                            | `segmentConcatenatedGenre` — splits mashed genre tags feeding the genre axis (see [library-scanner.md](library-scanner.md))                                                                                                                                    |
 | `packages/api/src/scripts/dump-radio.ts`                              | Developer diagnostic dump (read-only) — see "Diagnostic dump" above; `looksConcatenatedGenre` flags un-split genre tags, `parseWeightOverrides` backs `--weights`                                                                                              |

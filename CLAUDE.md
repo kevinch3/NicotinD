@@ -765,12 +765,26 @@ Add detail there, not here.
   (`genreSetCloseness`, max pairwise lexical), year, duration, artist diversity, the perceptual
   axes, and cached-embedding cosine (`embedding-store.ts`); a widened pool (+genre-LIKE,
   +un-analyzed seat) feeds it; `PlayerService.radio` auto-appends when the queue drains.
-  **Filter-seeded radio**: the same route also starts a mood/genre/bpm "vibe" with **no seed song**
-  — a `LibraryFilter` (parsed from the shared serialize grammar) constrains the pool via
+  **Filter-seeded radio / stations**: the same route also starts a mood/genre/bpm "vibe" with **no
+  seed song** — a `LibraryFilter` (parsed from the shared serialize grammar) constrains the pool via
   `songFilterWheres`, seeded by its `seedCentroid`; `PlayerService.radioFilter` keeps auto-replenish
   in-vibe. `toOrderable` used to omit `genre`/`genres` entirely, so every filter-radio vibe scored
   genre-blind (issue #187 task B4, fixed); the centroid's modal key ("collapses to C major") was
-  investigated and is a measured null result, not a bug — see docs/radio.md. This backs the
+  investigated and is a measured null result, not a bug — see docs/radio.md. **A *genre* station is
+  graded, not tag-tested (formula v3)**: membership IS the filter, so the genre axis scored 1.0 for
+  the whole pool and ~27% of the weight mass ordered nothing (an "Electronic" chip served Queen and
+  Madonna beside Calvin Harris on bpm/energy alone); `services/station-affinity.ts`
+  (`genreDepthScore` × `artistGenreShares` → `stationAffinity`) replaces the genre axis and reuses
+  its weight — a demotion never an exclusion, and either signal can carry a track so a real
+  electronic record by a mostly-pop artist still places. `buildFilterRadio` also **never called
+  `loadEmbeddings`** (the #187 B4 shape again — the strongest axis in the v2 poll data was dark on
+  every station), now loaded and scored against an affinity-weighted, trimmed `anchorCentroid`
+  rather than the pool average, with the seed's genres taken from the **request** instead of the
+  pool's modal primary (which inverts on an umbrella tag). Stations are also the first thing the
+  eval polls can measure — `kind:'filter'` was schema-only and `evaluatePollAgreement` skipped it,
+  so all 70 votes to date graded seed radio; `RadioPollSettings.filters` now generates one station
+  scenario each. → [docs/radio.md](docs/radio.md) "Stations",
+  [docs/measurements/radio-stations-2026-08.md](docs/measurements/radio-stations-2026-08.md). This backs the
   **radio/mood landing** (the post-login home route `''`, `pages/radio-landing/`): a last-track
   resume shortcut (disappears on tap) + one-tap vibe presets + top-genre chips; acquisition search
   moved to the `/get` Find tab. Shared scoring with `/songs/:id/similar`. **Recently-played demotion (P3)**: any candidate *this listener* played lately is demoted by

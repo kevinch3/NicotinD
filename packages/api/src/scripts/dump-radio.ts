@@ -34,12 +34,16 @@ import { parseLibraryFilter, type LibraryFilter } from '@nicotind/core';
 import { expandHome } from '@nicotind/core';
 import {
   explainSimilarity,
+  genreSetCloseness,
   MISSING_GENRE_FLOOR,
   parseWeightOverrides,
   type ScoringWeights,
   type SimilarityExplanation,
   type SongFeatures,
 } from '../services/radio.service.js';
+import { isRealGenre } from '../services/genre-split.js';
+import { artistGenreShares } from '../services/genre-distribution.js';
+import { DEPTH_CREDIT, matchedGenrePosition } from '../services/station-affinity.js';
 import {
   RADIO_SONG_SELECT,
   buildSeedRadio,
@@ -135,6 +139,13 @@ function breakdownLine(ex: SimilarityExplanation): string {
 
 /** How the genre axis fared for one candidate — the headline diagnostic. */
 function genreVerdict(ex: SimilarityExplanation): string {
+  // Stations spend the genre weight on graded membership instead (v3).
+  const station = ex.axes.find((a) => a.axis === 'station');
+  if (station) {
+    if (station.value >= 0.75) return '✓ genre native';
+    if (station.value >= 0.4) return `~ station ${station.value.toFixed(2)}`;
+    return `✗ station ${station.value.toFixed(2)} (tagged, not native)`;
+  }
   if (ex.skipped.includes('genre')) return '⚠ genre SKIPPED (seed has none)';
   if (ex.floored.includes('genre')) return '⚠ genre FLOORED (candidate has no data)';
   const g = ex.axes.find((a) => a.axis === 'genre');
@@ -215,6 +226,95 @@ function renderPoolHealth(pool: RadioCandidate[], seedTokens: Set<string>): stri
   ];
 }
 
+/**
+ * Station diagnostics — the measurement behind formula v3 (see docs/radio.md
+ * "Stations"). A genre station's pool is selected BY the tag, so the question
+ * a dump has to answer is not "did genre match" (it always did) but "how many
+ * of these are actually of the genre".
+ *
+ * Prints, over the whole pool: what the plain genre axis WOULD have scored (the
+ * constant-axis proof), the tag-depth histogram, the artist-catalogue-share
+ * histogram, and embedding coverage. Recomputes depth/share rather than reading
+ * them off the candidates because the point is to show the inputs, not the
+ * blended output.
+ */
+function renderStationHealth(
+  db: Database,
+  filter: LibraryFilter,
+  seed: SongFeatures,
+  pool: RadioCandidate[],
+): string[] {
+  const stationGenres = (filter.genres ?? []).filter((g) => g && isRealGenre(g));
+  if (stationGenres.length === 0) return [];
+  const total = pool.length;
+
+  let oldAxisPerfect = 0;
+  const depths = new Map<string, number>([
+    ['primary', 0],
+    ['secondary', 0],
+    ['deeper', 0],
+    ['none', 0],
+  ]);
+  for (const c of pool) {
+    const genres = genresOf(c._row);
+    if ((genreSetCloseness(stationGenres, genres) ?? 0) >= 0.99) oldAxisPerfect++;
+    const pos = matchedGenrePosition(genres, stationGenres);
+    const bucket =
+      pos === null ? 'none' : pos === 0 ? 'primary' : pos === 1 ? 'secondary' : 'deeper';
+    depths.set(bucket, (depths.get(bucket) ?? 0) + 1);
+  }
+
+  const shares = artistGenreShares(
+    db,
+    pool.map((c) => c._row.artist_id),
+    stationGenres,
+  );
+  const shareBuckets = [
+    { label: 'under 10% (tagged, not of the genre)', lo: 0, hi: 0.1, n: 0 },
+    { label: '10–30%', lo: 0.1, hi: 0.3, n: 0 },
+    { label: '30–50%', lo: 0.3, hi: 0.5, n: 0 },
+    { label: '50%+ (genre native)', lo: 0.5, hi: Infinity, n: 0 },
+  ];
+  for (const c of pool) {
+    const share = shares.get(c._row.artist_id) ?? 0;
+    const b = shareBuckets.find((x) => share >= x.lo && share < x.hi) ?? shareBuckets[3]!;
+    b.n++;
+  }
+
+  const affinities = pool
+    .map((c) => c.stationAffinity)
+    .filter((v): v is number => typeof v === 'number')
+    .sort((a, b) => a - b);
+  const withEmbedding = pool.filter((c) => c.embedding).length;
+
+  const lines = [
+    `  station genres               : ${stationGenres.join(', ')}`,
+    `  centroid modal primary genre : ${seed.genre ?? '(none)'}${
+      seed.genre && !stationGenres.some((g) => g.toLowerCase() === seed.genre!.toLowerCase())
+        ? '   ← NOT the requested genre'
+        : ''
+    }`,
+    `  plain genre axis would score 1.00 for: ${oldAxisPerfect}/${total} (${pct(oldAxisPerfect, total)})`,
+    `      ^ the constant-axis problem: that share of the pool is indistinguishable`,
+    `        on the heaviest weight in the blend.`,
+    `  tag depth:`,
+    `    primary tag                : ${depths.get('primary')} (${pct(depths.get('primary')!, total)})  ×${DEPTH_CREDIT[0]}`,
+    `    secondary tag              : ${depths.get('secondary')} (${pct(depths.get('secondary')!, total)})  ×${DEPTH_CREDIT[1]}`,
+    `    third or deeper            : ${depths.get('deeper')} (${pct(depths.get('deeper')!, total)})  ×${DEPTH_CREDIT[2]}`,
+    `    no matching tag            : ${depths.get('none')} (${pct(depths.get('none')!, total)})`,
+    `  artist catalogue share in this genre:`,
+    ...shareBuckets.map((b) => `    ${b.label.padEnd(29)}: ${b.n} (${pct(b.n, total)})`),
+    `  station affinity (min/med/max): ${
+      affinities.length
+        ? `${affinities[0]!.toFixed(2)} / ${affinities[Math.floor(affinities.length / 2)]!.toFixed(2)} / ${affinities.at(-1)!.toFixed(2)}`
+        : '(not graded)'
+    }`,
+    `  embedding coverage           : ${withEmbedding}/${total} (${pct(withEmbedding, total)})`,
+    `  station anchor built         : ${seed.embedding ? 'yes' : 'no'}`,
+  ];
+  return lines;
+}
+
 function renderTrackBlock(
   seed: SongFeatures,
   cand: RadioCandidate,
@@ -264,12 +364,14 @@ function renderDiagnosis(
   const n = out.length;
   let genreSkipped = 0;
   let genreZero = 0;
+  let stationScored = 0;
   let keyZero = 0;
   let keyScored = 0;
   const mashed = new Set<string>();
   const consider = (cand: RadioCandidate): void => {
     const ex = explainSimilarity(seed, cand, weights);
-    if (ex.skipped.includes('genre') || ex.floored.includes('genre')) genreSkipped++;
+    if (ex.axes.some((a) => a.axis === 'station')) stationScored++;
+    else if (ex.skipped.includes('genre') || ex.floored.includes('genre')) genreSkipped++;
     else if (ex.axes.find((a) => a.axis === 'genre')?.value === 0) genreZero++;
     const key = ex.axes.find((a) => a.axis === 'key');
     if (key) {
@@ -299,6 +401,15 @@ function renderDiagnosis(
   lines.push(
     `- **Genre lost on weight:** ${genreZero}/${n} output tracks matched nothing on genre (value 0) but still ranked.`,
   );
+  if (stationScored > 0) {
+    lines.push(
+      `  (Not applicable to this run: ${stationScored}/${n} tracks scored the **station** axis instead —`,
+    );
+    lines.push(
+      `  a genre station spends the genre weight on graded membership, so the two counts above are 0`,
+    );
+    lines.push(`  by construction. Read "Station health" for this run's genre verdict.)`);
+  }
   const total = Object.entries(weights)
     .filter(([axis]) => axis !== 'artistPenalty')
     .reduce((sum, [, w]) => sum + w, 0);
@@ -338,6 +449,7 @@ function renderDiagnosis(
 }
 
 function renderDump(
+  db: Database,
   kind: 'seed' | 'filter',
   seedRow: RadioSongRow | null,
   filter: LibraryFilter | null,
@@ -365,25 +477,53 @@ function renderDump(
     return lines.join('\n');
   }
 
-  const seedTokens = seedRow ? genreTokens(seedRow) : new Set<string>();
+  // Filter radio has no seed ROW, but it does have effective seed genres (the
+  // requested station, or the centroid's modal primary). Reading tokens only
+  // off `seedRow` reported every station candidate as "disjoint" — a pool that
+  // is 100% the requested genre rendered as 100% genre-disjoint.
+  const seedTokens = seedRow
+    ? genreTokens(seedRow)
+    : new Set(
+        (effectiveGenres(seed) ?? []).flatMap((g) =>
+          g
+            .toLowerCase()
+            .split(/[^a-z0-9]+/)
+            .filter(Boolean),
+        ),
+      );
+  const stationLines =
+    kind === 'filter' && filter ? renderStationHealth(db, filter, seed, pool) : [];
+
   lines.push('## Pool health');
   if (kind === 'filter' && !effectiveGenres(seed)) {
     lines.push(
-      '> Note: filter radio seeds on the pool **centroid**, which carries no genre here — so',
+      '> Note: this vibe has no genre — filter radio seeds on the pool **centroid**, so the',
     );
     lines.push(
-      '> the genre axis is skipped for every candidate and genre only constrains the pool via',
+      '> genre axis is skipped for every candidate and genre only constrains the pool via the',
     );
-    lines.push(
-      '> the filter `WHERE`. A bpm-only vibe (or a pool with no dominant genre) therefore has',
-    );
-    lines.push('> no genre cohesion by design.');
+    lines.push('> filter `WHERE`. A bpm-only vibe has no genre cohesion by design.');
     lines.push('');
   }
   lines.push('```');
   lines.push(...renderPoolHealth(pool, seedTokens));
   lines.push('```');
   lines.push('');
+
+  if (stationLines.length) {
+    lines.push('## Station health (graded membership)');
+    lines.push(
+      '> Everything in a genre station\'s pool carries the tag, so "did genre match" is not the',
+    );
+    lines.push(
+      '> question — "how many of these are actually of the genre" is. See docs/radio.md "Stations".',
+    );
+    lines.push('');
+    lines.push('```');
+    lines.push(...stationLines);
+    lines.push('```');
+    lines.push('');
+  }
 
   lines.push(...renderDiagnosis(seed, result, weights));
 
@@ -483,7 +623,7 @@ function main(): void {
       result = buildFilterRadio(db, filter, { count, weights });
     }
 
-    const markdown = renderDump(kind, seedRow, filter, result, weights);
+    const markdown = renderDump(db, kind, seedRow, filter, result, weights);
     const outPath = firstArg(args, 'out') ?? join(dataDir, `radio-dump-${Date.now()}.md`);
     writeFileSync(outPath, markdown + '\n');
     if (args['json'] === true) {

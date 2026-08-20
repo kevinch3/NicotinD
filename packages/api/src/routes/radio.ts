@@ -9,7 +9,13 @@ import {
   type ScoringWeights,
   type SongFeatures,
 } from '../services/radio.service.js';
-import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.js';
+import {
+  dominantEmbeddingModel,
+  embeddingModelFor,
+  loadEmbeddings,
+} from '../services/embedding-store.js';
+import { artistGenreShares } from '../services/genre-distribution.js';
+import { anchorCentroid, genreDepthScore, stationAffinity } from '../services/station-affinity.js';
 import { lastPlayedAtMap } from '../services/play-history.js';
 import { songFilterWheres } from '../services/library-filter-sql.js';
 import { seedCentroid, type OrderableRow } from '../services/playlist-recipe.js';
@@ -401,9 +407,36 @@ export function buildFilterRadio(
     .all(...params);
 
   const poolRows = rows.filter((r) => !excludeIds.has(r.id));
+
+  // The station's genres, junk dropped ("Other" is a tagger's shrug, not a
+  // station). Empty for a pure mood/bpm vibe, which keeps the plain genre axis.
+  const stationGenres = (filter.genres ?? []).filter((g) => g && isRealGenre(g));
+
+  // One batched query for the whole pool's artists — `artistGenreDistribution`
+  // per candidate would be 300 round trips to compute one number each.
+  const shares = stationGenres.length
+    ? artistGenreShares(
+        db,
+        poolRows.map((r) => r.artist_id),
+        stationGenres,
+      )
+    : new Map<string, number>();
+
   const pool: RadioCandidate[] = attachRecency(
     db,
-    poolRows.map((r) => ({ ...toFeatures(r), _row: r })),
+    poolRows.map((r) => {
+      const features = toFeatures(r);
+      if (stationGenres.length) {
+        // Graded membership replaces the (degenerate) genre axis — see
+        // services/station-affinity.ts for why boolean membership left the
+        // heaviest weight in the blend ordering nothing.
+        features.stationAffinity = stationAffinity(
+          genreDepthScore(genresOf(r), stationGenres),
+          shares.get(r.artist_id),
+        );
+      }
+      return { ...features, _row: r };
+    }),
     opts.userId,
     opts.now,
   );
@@ -413,6 +446,38 @@ export function buildFilterRadio(
   // individual repeats.
   const seed = seedCentroid(poolRows.map(toOrderable));
   if (!seed) return { seed: null, pool, ranked: [] };
+
+  // The listener asked for these genres; the modal primary of a random 300-row
+  // sample is a statistic *about* the tag, not the request — and on an umbrella
+  // tag that mostly sits on pop records it comes back as the wrong genre
+  // entirely. Only reachable when `stationAffinity` is absent (no genre
+  // filter), but wrong is wrong, and the centroid is also what the poll
+  // harness freezes.
+  if (stationGenres.length) seed.genres = [...stationGenres];
+
+  // Embeddings were NEVER loaded on this path (they are in buildSeedRadio and
+  // /songs/:id/similar), so the one axis that actually hears the audio — and
+  // the strongest discriminator in the #583 poll data — was silently skipped
+  // for every station. Same bug class as #187 B4.
+  const model = dominantEmbeddingModel(
+    db,
+    poolRows.map((r) => r.id),
+  );
+  if (model) {
+    const embeddings = loadEmbeddings(
+      db,
+      poolRows.map((r) => r.id),
+      model,
+    );
+    for (const c of pool) c.embedding = embeddings.get(c._row.id);
+    // A station's audio target is its *centre of gravity*, not its average: the
+    // mean of everything wearing a broad tag lands between the modes and is
+    // near nothing. See `anchorCentroid`.
+    seed.embedding =
+      anchorCentroid(
+        pool.map((c) => ({ affinity: c.stationAffinity ?? 0.5, embedding: c.embedding })),
+      ) ?? undefined;
+  }
 
   const ranked = rankCandidates(seed, pool, { count, maxPerArtist: 2, weights: opts.weights });
   return { seed, pool, ranked };

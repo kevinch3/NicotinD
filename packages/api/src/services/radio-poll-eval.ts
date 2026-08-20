@@ -86,10 +86,13 @@ export function evaluatePollAgreement(
   const tally: AgreementTally = { wins: 0, ties: 0, pairs: 0 };
   let graded = 0;
   for (const sc of dataset.scenarios) {
-    // Filter (centroid) scenarios carry no seed in the export; skip rather
-    // than guess a seed to score against.
-    if (!sc.seed) continue;
-    const seed = sc.seed.features as SongFeatures;
+    // A station scenario has no seed song — it scores against the pool centroid
+    // + anchor `buildFilterRadio` derived from the filter, which the export now
+    // carries. Until it did, every station scenario was skipped here, so no
+    // amount of station voting could ever move a measurement.
+    const seedFeatures = sc.seed?.features ?? sc.centroid;
+    if (!seedFeatures) continue;
+    const seed = seedFeatures as SongFeatures;
     const scored = sc.candidates.map((c) => ({
       consensus: c.consensus,
       score: rescoreCandidate(seed, c, weights),

@@ -94,6 +94,43 @@ test.describe('radio evaluation polls', () => {
     expect(body.poll.raterCount).toBe(1);
   });
 
+  test('a station scenario names its station and is votable', async ({
+    request,
+    browser,
+    baseURL,
+  }) => {
+    // A station scenario has no seed song, so the wizard's `@if (sc.seed)` card
+    // renders nothing — a rater would be grading an unexplained list of songs.
+    // The fixture library carries no genre tags, so this uses a year station;
+    // the genre grading itself is covered in radio.test.ts / station-affinity.
+    const login = await request.post('/api/auth/login', { data: ADMIN });
+    const adminToken = ((await login.json()) as { token: string }).token;
+    const created = await request.post('/api/admin/radio-polls', {
+      headers: bearer(adminToken),
+      data: {
+        name: 'E2E station poll',
+        scenarioCount: 1,
+        nextUpCount: 2,
+        filters: [{ yearMin: 2000, yearMax: 2030 }],
+      },
+    });
+    expect(created.status(), 'station poll creation should succeed').toBe(201);
+    const { token } = (await created.json()) as { token: string };
+
+    const ctx = await browser.newContext({ baseURL: baseURL ?? undefined });
+    const page = await ctx.newPage();
+    await page.goto(`/poll/${token}`);
+    await page.getByTestId('poll-intro-start').click();
+
+    await expect(page.getByTestId('poll-station-card')).toBeVisible();
+    await expect(page.getByTestId('poll-station-card')).toContainText('2000-2030');
+    await expect(page.getByTestId('poll-seed-card')).toHaveCount(0);
+
+    await rateScenario(page);
+    await expect(page.getByTestId('poll-done')).toBeVisible();
+    await ctx.close();
+  });
+
   test('the admin card lists the poll', async ({ page, request }) => {
     await createPoll(request);
     await page.goto('/admin');

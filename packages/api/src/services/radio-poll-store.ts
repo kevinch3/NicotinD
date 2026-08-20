@@ -12,6 +12,7 @@ import type {
   RadioPollSummary,
 } from '@nicotind/core';
 import type { GeneratedScenario } from './radio-poll-generate.js';
+import { describeFilter } from './radio-poll-generate.js';
 
 /** A vote-request problem the route maps to a 400. */
 export class RadioPollVoteError extends Error {}
@@ -222,6 +223,10 @@ export function publicPollView(
         id: s.id,
         position: s.position,
         seed: s.snapshot.seed ? publicTrack(s.snapshot.seed) : null,
+        // A station has no seed track, so the rater needs to be told what the
+        // station IS — without it the wizard renders an unexplained list of
+        // songs and the votes mean nothing.
+        ...(s.snapshot.filter ? { filterLabel: describeFilter(s.snapshot.filter) } : {}),
         candidates: candidates.map(publicTrack),
       };
     }),
@@ -344,6 +349,8 @@ export function pollResults(
       position: s.position,
       kind: s.kind,
       seed: s.snapshot.seed,
+      centroid: s.snapshot.centroid,
+      filter: s.snapshot.filter,
       weights: s.snapshot.weights,
       candidates: s.snapshot.candidates.map((c) => {
         const entry = tally.get(`${s.id} ${c.song.id}`);

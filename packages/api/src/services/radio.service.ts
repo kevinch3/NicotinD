@@ -37,6 +37,18 @@ export interface SongFeatures {
    * as a penalty, like `artistPenalty`.
    */
   recentPlayFactor?: number;
+  /**
+   * Filter-radio only: how *central* this candidate is to the station's genre
+   * (`services/station-affinity.ts`), 0..1. When present it **replaces** the
+   * genre axis — see `explainSimilarity`.
+   *
+   * Unlike `recentPlayFactor` above, this genuinely is a seed-vs-candidate
+   * comparison and so belongs in the weighted blend: the "seed" of a filter
+   * radio is a *station* (a requested genre set), and this measures the
+   * candidate against it. Boolean membership was already guaranteed by the pool
+   * SQL, which is exactly why the plain genre axis had nothing left to say.
+   */
+  stationAffinity?: number;
 }
 
 export interface ScoringWeights {
@@ -126,8 +138,15 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
  *      (70 votes) graded it at within-scenario pairwise AUC 0.43.
  * v2 - issue #583 calibration: duration 1->3, bpm 8->4, embedding 4->8, junk
  *      genres no longer match, sub-60s tracks excluded from the pool.
+ * v3 - stations (filter radio) stop scoring against the pool average: the genre
+ *      axis is replaced by a graded `stationAffinity` (tag depth x artist
+ *      catalogue share), the embedding axis finally runs on this path at all
+ *      (it was never loaded), and the seed embedding is an affinity-weighted
+ *      anchor rather than a centroid. SEED radio is unchanged by v3 - the
+ *      version still bumps, because pooling station votes with the v2 seed
+ *      votes is exactly what the stamp exists to prevent.
  */
-export const RADIO_FORMULA_VERSION = 2;
+export const RADIO_FORMULA_VERSION = 3;
 
 /**
  * Parse a `--weights axis=n[,axis=n...]` override spec against a base weight
@@ -376,20 +395,31 @@ export function explainSimilarity(
   // see MISSING_GENRE_FLOOR. A seed with no genre still skips (nothing to
   // compare), and no other axis floors: an un-analyzed candidate must not be
   // penalized for un-measured bpm/key/perceptual features.
-  const seedGenre = seed.genres ?? seed.genre;
-  const candGenre = candidate.genres ?? candidate.genre;
-  const genreValue = genreSetCloseness(seedGenre, candGenre);
-  // A junk-only seed genre ("Other") is no genre identity at all: it must
-  // SKIP, not floor - flooring would penalize every genre-less candidate for
-  // a seed axis that does not really exist (issue #583).
-  const seedHasGenre = Array.isArray(seedGenre)
-    ? seedGenre.filter((g) => g && isRealGenre(g)).length > 0
-    : !!seedGenre && isRealGenre(seedGenre);
-  if (genreValue === null && seedHasGenre) {
-    floored.push('genre');
-    add('genre', MISSING_GENRE_FLOOR, weights.genre);
+  //
+  // Filter radio grades membership instead (`stationAffinity`) and spends the
+  // genre weight on THAT, because every candidate in a station pool matched the
+  // station's genre by construction — a plain closeness here returns 1.0 for
+  // the whole pool and the heaviest axis in the blend orders nothing. The two
+  // are mutually exclusive: a `station` axis in a breakdown means filter radio,
+  // a `genre` axis means seed radio.
+  if (candidate.stationAffinity !== undefined) {
+    add('station', clamp01(candidate.stationAffinity), weights.genre);
   } else {
-    add('genre', genreValue, weights.genre);
+    const seedGenre = seed.genres ?? seed.genre;
+    const candGenre = candidate.genres ?? candidate.genre;
+    const genreValue = genreSetCloseness(seedGenre, candGenre);
+    // A junk-only seed genre ("Other") is no genre identity at all: it must
+    // SKIP, not floor - flooring would penalize every genre-less candidate for
+    // a seed axis that does not really exist (issue #583).
+    const seedHasGenre = Array.isArray(seedGenre)
+      ? seedGenre.filter((g) => g && isRealGenre(g)).length > 0
+      : !!seedGenre && isRealGenre(seedGenre);
+    if (genreValue === null && seedHasGenre) {
+      floored.push('genre');
+      add('genre', MISSING_GENRE_FLOOR, weights.genre);
+    } else {
+      add('genre', genreValue, weights.genre);
+    }
   }
 
   // Origin: max pairwise tiered closeness over the credited-artist country
