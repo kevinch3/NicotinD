@@ -546,9 +546,18 @@ Add detail there, not here.
   load failure — so the API's health gate skipped every task and the reloading `/analyze` never came
   (livelock: "configured but unreachable" forever on kpc). `RegistryHolder.can_serve()` now backs
   `/health`: cold-but-reloadable reports `status:"ok", loaded:false`; `"unavailable"` is reserved
-  for the never-loaded-at-boot case. A second, **unverified-on-hardware**
-  lever — `TF_GPU_ALLOCATOR=cuda_malloc_async` — ships as a commented-out `docker-compose.gpu.yml`
-  override, not baked into the image, pending a `kpc` measurement. →
+  for the never-loaded-at-boot case. **The 7.6 GB is now actually fixed (issue #605)**, and the
+  "TF just never releases" framing above was only half the story: measuring VRAM after each
+  individual inference showed EffNet + its 8 heads sit at 2,233 MiB and **one** predictor,
+  `TensorflowPredictMusiCNN`, adds **5.4 GB** to emit a 216×200 array feeding only valence. Bounding
+  it via `musicnn_batch_size()` (`ANALYSIS_MUSICNN_BATCH_SIZE`, default **4** — the memory sweet spot
+  *and* the fastest measured; 0/-1 rejected because they are Essentia's accumulate-every-patch
+  sentinels) takes the idle footprint **7,631 → 2,235 MiB**, freeing ~5.4 GB and making the card
+  genuinely shareable, with bit-identical feature output. EffNet cannot follow: its graph is the
+  published *bs64* variant with 64 baked into a `Reshape`, so 2,233 MiB is the floor. The
+  once-promising `TF_GPU_ALLOCATOR=cuda_malloc_async` lever was measured on `kpc` and **segfaults the
+  sidecar at boot** (`Failed to create session: Internal: No allocator statistics`, exit 139); it
+  stays commented out in `docker-compose.gpu.yml` as a warning, not a suggestion. →
   [docs/audio-ml-enrichment.md](docs/audio-ml-enrichment.md) "Measured GPU behaviour". A `paused` flag (+ `ProcessingPhase 'paused'`) is the temporary
   runtime halt distinct from `enabled: false`: it skips window/background enrichment but **still
   clears quarantine** (a pause must never leave new music invisible) and `runNow()` overrides it.

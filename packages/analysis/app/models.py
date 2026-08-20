@@ -102,6 +102,31 @@ def runtime_device(
 EMBEDDING_MODEL = "discogs-effnet-bs64-1"
 EMBEDDING_DIM = 1280
 
+# MusiCNN is the one predictor whose batch size we get to choose, and left at
+# Essentia's default (64) it allocated 7.4 GB of GPU workspace to produce a
+# 216x200 array — 5.4 GB more than the entire rest of the pipeline. See
+# docs/audio-ml-enrichment.md "Measured GPU behaviour"; 4 is both the memory
+# sweet spot and the fastest setting measured. EffNet gets no say: its graph is
+# the published *bs64* one, with 64 baked into a Reshape.
+MUSICNN_BATCH_SIZE_DEFAULT = 4
+
+
+def musicnn_batch_size(env: dict[str, str] | None = None) -> int:
+    """Patches per MusiCNN TF session run; caps that model's GPU workspace.
+
+    Env-overridable because the right value is a memory/throughput trade the
+    deployment owns, not a constant: a box that does not share its GPU can
+    afford a larger batch. Non-numeric or non-positive values fall back to the
+    default rather than reaching Essentia, where 0/-1 means "accumulate every
+    patch" — the unbounded behaviour this exists to prevent.
+    """
+    e = os.environ if env is None else env
+    try:
+        value = int(e.get("ANALYSIS_MUSICNN_BATCH_SIZE", MUSICNN_BATCH_SIZE_DEFAULT))
+    except ValueError:
+        return MUSICNN_BATCH_SIZE_DEFAULT
+    return value if value > 0 else MUSICNN_BATCH_SIZE_DEFAULT
+
 # Head model files (stems double as version identifiers reported by /health).
 HEAD_FILES: dict[str, str] = {
     "danceability": "danceability-discogs-effnet-1",
@@ -184,7 +209,9 @@ class EssentiaRegistry:
             graphFilename=str(base / f"{EMBEDDING_MODEL}.pb"), output="PartitionedCall:1"
         )
         self._musicnn = TensorflowPredictMusiCNN(
-            graphFilename=str(base / f"{MUSICNN_MODEL}.pb"), output="model/dense/BiasAdd"
+            graphFilename=str(base / f"{MUSICNN_MODEL}.pb"),
+            output="model/dense/BiasAdd",
+            batchSize=musicnn_batch_size(),
         )
         self._heads = {
             head: TensorflowPredict2D(
