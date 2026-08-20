@@ -32,6 +32,7 @@ import {
   importStagingDir,
 } from './library-import.service.js';
 import { createImportJob, getImportJob, updateImportJob } from './import-job-store.js';
+import { deflateRawSync, crc32 } from 'node:zlib';
 
 let db: Database;
 let root: string;
@@ -378,5 +379,222 @@ describe('boot recovery', () => {
     expect(job.error).toContain('Retry');
     expect(readFileSync(join(sourceDir, 'Album/one.mp3'), 'utf8')).toBe('stranded');
     expect(existsSync(importStagingDir(dataDir, 'orphan'))).toBe(false);
+  });
+});
+
+/* ── Archive sources (docs/import.md "Archives as import sources") ──────── */
+
+/** Minimal ZIP writer; the reader's own suite covers the exotic shapes. */
+function zipFixture(entries: { name: string; data: Buffer }[]): Buffer {
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+  for (const e of entries) {
+    const body = deflateRawSync(e.data);
+    const nameBuf = Buffer.from(e.name, 'utf8');
+    const local = Buffer.alloc(30 + nameBuf.length);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(8, 8);
+    local.writeUInt32LE(crc32(e.data), 14);
+    local.writeUInt32LE(body.length, 18);
+    local.writeUInt32LE(e.data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    nameBuf.copy(local, 30);
+    locals.push(local, body);
+    const central = Buffer.alloc(46 + nameBuf.length);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(8, 10);
+    central.writeUInt32LE(crc32(e.data), 16);
+    central.writeUInt32LE(body.length, 20);
+    central.writeUInt32LE(e.data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt32LE((0o100644 << 16) >>> 0, 38);
+    central.writeUInt32LE(offset, 42);
+    nameBuf.copy(central, 46);
+    centrals.push(central);
+    offset += local.length + body.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(cd.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, cd, eocd]);
+}
+
+function seedZip(name = 'Album.zip'): string {
+  const path = join(root, name);
+  writeFileSync(
+    path,
+    zipFixture([
+      { name: 'Album/01 - One.mp3', data: Buffer.from('audio:one') },
+      { name: 'Album/02 - Two.mp3', data: Buffer.from('audio:two') },
+    ]),
+  );
+  return path;
+}
+
+describe('archive import', () => {
+  it('extracts straight into staging and hands the organizer only staged paths', async () => {
+    const fake = fakeOrganize();
+    const { service } = makeService({ organize: fake.organize });
+    const zip = seedZip();
+    const id = service.submit(zip);
+    const job = await waitForTerminal(service, id);
+
+    expect(job.state).toBe('done');
+    expect(job.summary?.imported).toBe(2);
+    const staged = fake.calls.flat().map((f) => f.filename);
+    expect(staged).toHaveLength(2);
+    for (const path of staged) {
+      expect(path.startsWith(importStagingDir(dataDir, id))).toBe(true);
+    }
+    // The extracted bytes are the archive's, not a copy of some other file.
+    expect(readFileSync(join(musicDir, 'Artist/Album/01 - One.mp3'), 'utf8')).toBe('audio:one');
+  });
+
+  it('groups by the directory inside the archive, so albums stay together', async () => {
+    const fake = fakeOrganize();
+    const { service } = makeService({ organize: fake.organize });
+    const id = service.submit(seedZip());
+    await waitForTerminal(service, id);
+    expect(fake.calls[0]!.map((f) => f.directory)).toEqual(['Album', 'Album']);
+  });
+
+  /** The entry has no independent existence on disk, so the ref names both. */
+  it('records provenance as <archive>!<entry>', async () => {
+    const { service } = makeService();
+    const zip = seedZip();
+    const id = service.submit(zip);
+    await waitForTerminal(service, id);
+    const refs = db
+      .query<{ source_ref: string }, []>(`SELECT source_ref FROM acquisitions`)
+      .all()
+      .map((r) => r.source_ref);
+    expect(refs).toContain(`${zip}!Album/01 - One.mp3`);
+  });
+
+  it('names the Downloads card by the archive stem, not "Album.zip"', async () => {
+    const { service } = makeService();
+    const id = service.submit(seedZip('Bootleg Rips 2019.zip'));
+    // Asserted at submit, before the run finishes: a single-album import later
+    // clears the placeholder so the card can upgrade to the real album, and
+    // asserting only "does not contain .zip" at the end would be satisfied by
+    // the null that clearing produces — i.e. it would pass with the whole
+    // display-title derivation deleted.
+    const atSubmit = db
+      .query<{ display_title: string | null }, [string]>(
+        `SELECT display_title FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(id)!;
+    expect(atSubmit.display_title).toBe('Bootleg Rips 2019');
+    await waitForTerminal(service, id);
+  });
+
+  /**
+   * Copy-vs-move has no meaning per file here: extraction always materializes
+   * new bytes, so the full uncompressed size must be free even in move mode.
+   *
+   * The free space is set to the margin plus a little — enough for a same-device
+   * folder move (which reserves only the margin) and NOT enough once the
+   * source's bytes are added. So this fails if, and only if, the
+   * archive-forces-cross-device rule is present; a `bavail: 1` fixture would
+   * have thrown either way and proven nothing.
+   */
+  it('reserves the full uncompressed size even in move mode', () => {
+    const headroom = 500 * 1024 * 1024 + 8; // IMPORT_DISK_MARGIN_BYTES + 8 bytes
+    const statfs = () => ({ bsize: 1, blocks: headroom, bavail: headroom });
+
+    // Control: a same-device folder move under the same free space is allowed,
+    // because it only renames bytes around.
+    seed('Album/01.mp3', 'audio:one');
+    seed('Album/02.mp3', 'audio:two');
+    expect(() =>
+      makeService({ statfs }).service.submit(sourceDir, { removeOriginals: true }),
+    ).not.toThrow();
+
+    // The archive, whose 18 uncompressed bytes exceed the 8 spare, is refused.
+    expect(() =>
+      makeService({ statfs }).service.submit(seedZip(), { removeOriginals: true }),
+    ).toThrow(ImportInsufficientSpaceError);
+  });
+
+  it('deletes the archive itself in move mode, only after everything landed', async () => {
+    const { service } = makeService();
+    const zip = seedZip();
+    const id = service.submit(zip, { removeOriginals: true });
+    const job = await waitForTerminal(service, id);
+    expect(job.state).toBe('done');
+    expect(existsSync(zip)).toBe(false);
+    expect(job.summary?.removedOriginals).toBe(1);
+  });
+
+  it('keeps the archive when anything was left unconsumed', async () => {
+    const { service } = makeService({ organize: fakeOrganize(() => 'fail').organize });
+    const zip = seedZip();
+    const id = service.submit(zip, { removeOriginals: true });
+    await waitForTerminal(service, id);
+    expect(existsSync(zip)).toBe(true);
+  });
+
+  /**
+   * `rollbackStaging` renames staged files to `join(sourceRoot, rel)`; with an
+   * archive that root is a FILE, so an unguarded rollback would write paths
+   * derived from it. It must be inert.
+   */
+  it('never writes next to the archive when a chunk fails in move mode', async () => {
+    const { service } = makeService({
+      organize: async () => {
+        throw new Error('organize blew up');
+      },
+    });
+    const zip = seedZip();
+    const id = service.submit(zip, { removeOriginals: true });
+    await waitForTerminal(service, id);
+    expect(existsSync(`${zip}/Album`)).toBe(false);
+    expect(existsSync(zip)).toBe(true);
+  });
+
+  /**
+   * The guard is at the path-minting site, so a hostile entry cannot even
+   * produce a staging path — never mind be opened.
+   */
+  it('refuses a traversing entry rather than staging it outside the job dir', async () => {
+    const path = join(root, 'evil.zip');
+    writeFileSync(path, zipFixture([{ name: '../../../etc/evil.mp3', data: Buffer.from('pwn') }]));
+    const { service } = makeService();
+    // The scan drops it before it can ever be staged, so the job has nothing
+    // to import at all — which is the correct outcome, not a partial success.
+    expect(() => service.submit(path)).toThrow(ImportEmptySourceError);
+    expect(existsSync(join(root, 'etc', 'evil.mp3'))).toBe(false);
+  });
+
+  it('previews an archive with its uncompressed byte total and archive kind', () => {
+    const { service } = makeService();
+    const preview = service.preview(seedZip());
+    expect(preview.sourceKind).toBe('archive');
+    expect(preview.files).toBe(2);
+    expect(preview.bytes).toBe('audio:one'.length + 'audio:two'.length);
+  });
+
+  it('refuses a file that is not a supported archive', () => {
+    const notAnArchive = join(root, 'notes.txt');
+    writeFileSync(notAnArchive, 'hello');
+    const { service } = makeService();
+    expect(() => service.submit(notAnArchive)).toThrow(ImportSourceInvalidError);
+  });
+
+  it('refuses a .zip that is not really a zip, with a typed code', () => {
+    const fake = join(root, 'broken.zip');
+    writeFileSync(fake, 'definitely not a zip archive');
+    const { service } = makeService();
+    try {
+      service.submit(fake);
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect((err as { code?: string }).code).toBe('ARCHIVE_UNREADABLE');
+    }
   });
 });

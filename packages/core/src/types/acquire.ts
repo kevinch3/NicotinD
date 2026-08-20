@@ -61,6 +61,15 @@ export interface AcquisitionJobView {
   stage: PipelineStage;
   artistName: string | null;
   albumTitle: string | null;
+  /**
+   * The job's own display name — an addon-supplied playlist/video/release
+   * title, or an import's source folder. First rung of `downloadTitleFor`;
+   * null whenever the source never offered one. Deliberately distinct from
+   * `albumTitle`, which is *filing* metadata (it mints an album id).
+   */
+  displayTitle: string | null;
+  /** The link the user pasted, for `kind:'url'` jobs — the title chain's URL rung. */
+  sourceUrl: string | null;
   lidarrAlbumId: number | null;
   sourceRef: string | null;
   error: string | null;
@@ -108,6 +117,11 @@ export interface AcquisitionJobView {
    * splitting into one card per peer folder (issue #261). Empty for URL jobs.
    */
   sources: { username: string; fileCount: number; state: TrackStatus }[];
+  /**
+   * Every library album this job's files landed in. Observed truth once the
+   * scan lands: it names a finished card and backs the "View N albums" menu.
+   */
+  destinationAlbums: AcquireAlbumDestination[];
 }
 
 export interface AcquireJob {

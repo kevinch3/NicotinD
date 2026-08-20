@@ -261,6 +261,13 @@ export function applySchema(db: Database): void {
     `CREATE INDEX IF NOT EXISTS idx_acquisition_jobs_source_url ON acquisition_jobs (source_url)`,
   );
 
+  // What the Downloads card is *called* — a playlist name, a video title, an
+  // import's source folder. Deliberately separate from `album_title`, which is
+  // filing metadata: it mints an album id and steers the organizer, so a
+  // playlist name there would create a phantom album. Never a lookup key, so no
+  // index. See `downloadTitleFor` (@nicotind/core) for the whole title chain.
+  addColumnIfMissing(db, 'acquisition_jobs', 'display_title', 'TEXT');
+
   db.run(`
     CREATE TABLE IF NOT EXISTS completed_downloads (
       transfer_key TEXT PRIMARY KEY,

@@ -4,6 +4,7 @@ import type { Database } from 'bun:sqlite';
 import type { AuthEnv } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/current-user.js';
 import { recordAudit } from '../services/audit-log.js';
+import { ArchiveError } from '../services/import-archive.js';
 import {
   ImportAlreadyRunningError,
   ImportEmptySourceError,
@@ -112,6 +113,15 @@ export function importRoutes(deps: { db: Database; service: LibraryImportService
 /** Map the service's typed errors onto HTTP; unknown errors rethrow to the global handler. */
 function importErrorResponse(c: Context<AuthEnv>, err: unknown) {
   if (err instanceof ImportSourceInvalidError) {
+    return c.json({ error: err.message, code: err.code }, 400);
+  }
+  // An archive is only opened during the scan, so its four typed rejections
+  // (unreadable / encrypted / unsupported / too large) surface as `ArchiveError`
+  // rather than through `validateImportSource` — which is extension-only and
+  // cannot know. Without this arm every one of them fell through as an unknown
+  // error: a 500 "Internal server error" plus a Sentry event, for a password
+  // -protected zip the operator simply needs to be told about.
+  if (err instanceof ArchiveError) {
     return c.json({ error: err.message, code: err.code }, 400);
   }
   if (err instanceof ImportEmptySourceError) {

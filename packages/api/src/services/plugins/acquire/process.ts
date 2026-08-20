@@ -1,7 +1,16 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
 import { join, extname, dirname } from 'node:path';
-import { createLogger } from '@nicotind/core';
+import {
+  createLogger,
+  parseSpotdlPlaylistTitle,
+  parseSpotdlTrackEvent,
+  parseYtdlpPlaylistTitle,
+  parseYtdlpProgress,
+  parseYtdlpTrackEvent,
+  type AcquireProgress,
+  type DownloaderTrackEvent,
+} from '@nicotind/core';
 
 const log = createLogger('acquire-process');
 
@@ -21,24 +30,28 @@ export const AUDIO_EXTENSIONS = new Set([
   '.webm', // yt-dlp with bestaudio produces webm (opus in a WebM container)
 ]);
 
-export interface AcquireProgress {
-  done: number;
-  total: number;
-}
+/**
+ * The downloader-stdout parsers moved to **@nicotind/addon-sdk**
+ * (`downloader-output.ts`): only an addon spawns yt-dlp or spotDL now, so only
+ * an addon can see the stream they parse. Re-exported here so core's existing
+ * callers and tests resolve unchanged — the same one-directional
+ * core → addon-sdk shim the rest of the phase-4 split uses.
+ */
+export type { AcquireProgress, DownloaderTrackEvent, DownloaderTrackStatus } from '@nicotind/core';
+/**
+ * Local alias so this file's own option types keep their historical name
+ * without resolving to the DOM's `TrackEvent` global (see the SDK's note).
+ */
+type TrackEvent = DownloaderTrackEvent;
 
-/** Per-track download status, as reported by a track-event parser. */
-export type TrackEventStatus = 'downloading' | 'done' | 'skipped';
-
-export interface TrackEvent {
-  title: string;
-  status: TrackEventStatus;
-  /**
-   * The file basename the plugin is about to write / just wrote. Optional —
-   * older parsers don't carry it, and the host falls back to a title-only
-   * match within the job's `acquisitions` rows when missing.
-   */
-  path?: string;
-}
+export {
+  parseSpotdlPlaylistTitle,
+  parseSpotdlProgress,
+  parseSpotdlTrackEvent,
+  parseYtdlpPlaylistTitle,
+  parseYtdlpProgress,
+  parseYtdlpTrackEvent,
+} from '@nicotind/core';
 
 /**
  * Environment for probing/spawning the external downloaders. A GUI-launched
@@ -91,98 +104,6 @@ export function invalidateBinaryCache(binaryPath?: string): void {
 /** Reset binary availability cache (tests only). */
 export function _resetBinaryCache(): void {
   binaryCache.clear();
-}
-
-/** Parse yt-dlp's --newline progress output: `[download]  45.2% of ...` */
-export function parseYtdlpProgress(line: string, current: AcquireProgress): AcquireProgress {
-  const match = /\[download\]\s+([\d.]+)%/.exec(line);
-  if (match) {
-    const pct = parseFloat(match[1]!);
-    if (!Number.isNaN(pct)) return { done: Math.round(pct), total: 100 };
-  }
-  // Playlist item counter: `[download] Downloading item 3 of 12`
-  const itemMatch = /Downloading item (\d+) of (\d+)/.exec(line);
-  if (itemMatch) {
-    return { done: parseInt(itemMatch[1]!, 10), total: parseInt(itemMatch[2]!, 10) };
-  }
-  return current;
-}
-
-/**
- * Parse spotdl plain-log output (non-TTY mode) into a song-count progress.
- * spotdl emits "Found N songs in playlist" for the total, then
- * `Downloaded "Title"` / `Skipping "Title"` per song.
- */
-export function parseSpotdlProgress(line: string, current: AcquireProgress): AcquireProgress {
-  const totalMatch =
-    /\bFound (\d+) songs?\b/i.exec(line) ?? /\bDownloading (\d+) songs? to\b/i.exec(line);
-  if (totalMatch) {
-    const total = parseInt(totalMatch[1]!, 10);
-    if (total > 0) return { done: current.done, total };
-  }
-  if (/Downloaded "|Skipping "/i.test(line)) {
-    return { done: current.done + 1, total: current.total };
-  }
-  return current;
-}
-
-/**
- * Extract a per-track download event from a spotdl output line, if present:
- * `Downloaded "Title"` → done, `Skipping "Title"` → skipped (already present
- * locally). Companion to `parseSpotdlProgress`'s aggregate counting.
- */
-export function parseSpotdlTrackEvent(line: string): TrackEvent | null {
-  const downloaded = /Downloaded "([^"]+)"/i.exec(line);
-  if (downloaded) return { title: downloaded[1]!, status: 'done' };
-  const skipping = /Skipping "([^"]+)"/i.exec(line);
-  if (skipping) return { title: skipping[1]!, status: 'skipped' };
-  return null;
-}
-
-/**
- * Extract a playlist title from a yt-dlp output line, if present.
- * yt-dlp emits: `[download] Downloading playlist: My Playlist Title`
- */
-export function parseYtdlpPlaylistTitle(line: string): string | null {
-  const m = /\[download\] Downloading playlist:\s+(.+)/.exec(line);
-  return m ? m[1]!.trim() : null;
-}
-
-/**
- * Extract a playlist title from a spotdl output line, if present:
- * `Found N songs in playlist: My Playlist Title`.
- */
-export function parseSpotdlPlaylistTitle(line: string): string | null {
-  const m = /\bFound \d+ songs? in playlist:\s*(.+)/i.exec(line);
-  return m ? m[1]!.trim() : null;
-}
-
-/**
- * Parse yt-dlp per-track markers emitted by our `--exec`/postprocessor
- * wrapper (Task 5 wires the emitter side): `TRACK_START::<title>` when a
- * track begins downloading, `TRACK_DONE::<title>` when it finishes.
- *
- * Newer markers also carry the destination filename after a tab
- * (`TRACK_START::artist - title\ttrack01.mp3`); the host uses that to
- * resolve the post-scan library_song without title-collision guessing
- * when materializing a native playlist. The delimiter is a tab — not a
- * second `::` — because yt-dlp derives the filename from the title, so a
- * title containing `::` would poison both fields of a `::`-delimited
- * marker. We split at the LAST tab; tab-free lines (older markers) still
- * parse with `path` omitted.
- */
-export function parseYtdlpTrackEvent(line: string): TrackEvent | null {
-  const start = /^TRACK_START::(.+)/.exec(line);
-  if (start) return splitMarkerPayload(start[1]!, 'downloading');
-  const done = /^TRACK_DONE::(.+)/.exec(line);
-  if (done) return splitMarkerPayload(done[1]!, 'done');
-  return null;
-}
-
-function splitMarkerPayload(payload: string, status: TrackEventStatus): TrackEvent {
-  const tab = payload.lastIndexOf('\t');
-  if (tab === -1) return { title: payload.trim(), status };
-  return { title: payload.slice(0, tab).trim(), status, path: payload.slice(tab + 1).trim() };
 }
 
 /** Walk a directory tree and collect absolute paths of audio files. */

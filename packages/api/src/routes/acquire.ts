@@ -20,7 +20,7 @@ import {
   getAddonUrlJob,
   listAddonUrlJobs,
 } from '../services/addon-url-jobs.js';
-import type { AcquireJob } from '@nicotind/core';
+import { resolveAcquireAs, type AcquireJob } from '@nicotind/core';
 
 interface SubmitBody {
   url: string;
@@ -73,9 +73,15 @@ export function acquireRoutes(watcher: AcquireWatcher, registry: PluginRegistry,
     const existing = findInFlightAddonUrlJob(db, url);
     if (existing) return { jobId: existing.id, reused: true };
 
+    // Tell the addon what the link IS. The classifier has always known, but its
+    // verdict was only ever read inside `AcquireWatcher` — the in-process engine
+    // that no longer runs — so since the addon split every Spotify/YouTube
+    // playlist arrived as a bare `as: undefined`, indistinguishable from a
+    // single track. The caller's override still wins where it always did.
+    const resolvedAs = resolveAcquireAs(url, as ?? null);
     let addonJob;
     try {
-      addonJob = await addon.client.createJob({ intent: 'url', url, as }, `url:${url}`);
+      addonJob = await addon.client.createJob({ intent: 'url', url, as: resolvedAs }, `url:${url}`);
     } catch (err) {
       if (err instanceof AddonRequestError && err.status === 409) {
         // The addon is already working on this link. If we know the core row,
@@ -89,6 +95,10 @@ export function acquireRoutes(watcher: AcquireWatcher, registry: PluginRegistry,
     const coreJobId = createJob(db, {
       kind: 'url',
       method: addonId,
+      // Nothing is downloading yet — the addon resolves in the background — and
+      // the column default says otherwise. A link the addon cannot handle would
+      // otherwise render "Downloading 0 of 0" for as long as the row lived.
+      stage: 'queued',
       sourceRef: `addon:${addonId}:${addonJob.id}`,
       sourceUrl: url,
       files: [],

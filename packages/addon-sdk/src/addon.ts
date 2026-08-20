@@ -18,7 +18,7 @@ import {
  */
 
 /** The protocol version this core speaks. Addons within the same major work. */
-export const ADDON_PROTOCOL_VERSION = '1.0.0';
+export const ADDON_PROTOCOL_VERSION = '1.1.0';
 
 /**
  * Protocol majors this core speaks. Additive-only within a major (§2 policy),
@@ -286,6 +286,20 @@ export interface AddonJob {
   intent: AddonJobIntent;
   artist: string | null;
   album: string | null;
+  /**
+   * Human display name for this job — the playlist name, the video title, the
+   * release name. **Display-only, never filing metadata**: `album` flows into
+   * `acquisition_jobs.album_title`, which mints an album id and tells the
+   * organizer where the files go, so putting "Summer Mix 2024" there would
+   * create a phantom album and mis-file every track in it. That is why this is
+   * its own field rather than an overload of `album`.
+   *
+   * Added in protocol **1.1**, additive and optional: a 1.0 addon simply omits
+   * it and the host degrades through its own title chain (destination album →
+   * source folder → the pasted URL → the source label). Same major, so
+   * `addonProtocolSupported` keeps accepting 1.0 addons unchanged.
+   */
+  title?: string | null;
   state: AddonJobState;
   error: string | null;
   items: AddonJobItem[];

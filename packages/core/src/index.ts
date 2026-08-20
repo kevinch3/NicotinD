@@ -2,9 +2,11 @@
 export * from './types/acquire.js';
 export * from './types/import.js';
 export * from './types/addon.js';
+export * from './types/downloader-output.js';
 export * from './title-match.js';
 export * from './types/acquisition-candidate.js';
 export * from './types/classify-acquire-url.js';
+export * from './types/acquire-as.js';
 export * from './types/archive.js';
 export * from './types/config.js';
 export * from './types/spotify.js';
@@ -39,6 +41,7 @@ export * from './utils/logger.js';
 export * from './utils/crypto.js';
 export * from './utils/errors.js';
 export * from './utils/folder-name.js';
+export * from './utils/download-title.js';
 export * from './utils/expand-home.js';
 
 // Version comparison (shared: server update-check + web APK self-update)

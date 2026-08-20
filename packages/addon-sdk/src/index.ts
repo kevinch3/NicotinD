@@ -18,4 +18,5 @@ export * from './addon-capability-risk.js';
 export * from './addon-protocol-schema.js';
 export * from './hunt-queries.js';
 export * from './title-match.js';
+export * from './downloader-output.js';
 export * from './logger.js';

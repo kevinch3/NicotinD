@@ -68,6 +68,27 @@ describe('addon URL job projection', () => {
     expect(listAddonUrlJobs(db)).toHaveLength(0);
   });
 
+  /**
+   * A playlist is named by its playlist title, not by whatever album its tracks
+   * happen to be filed under — so the display title outranks `album_title` on
+   * the Acquire page's link card exactly as it does in the unified feed.
+   */
+  it("labels a job by the addon's display title, above the filing album", () => {
+    const id = addAddonUrlJob('https://www.youtube.com/playlist?list=PL1');
+    db.run(`UPDATE acquisition_jobs SET display_title = ?, album_title = ? WHERE id = ?`, [
+      'Summer Mix 2024',
+      'Some Album',
+      id,
+    ]);
+    expect(listAddonUrlJobs(db)[0]!.label).toBe('Summer Mix 2024');
+  });
+
+  it('falls back to the filing album when no display title was supplied', () => {
+    const id = addAddonUrlJob('https://open.spotify.com/album/y');
+    db.run(`UPDATE acquisition_jobs SET album_title = ? WHERE id = ?`, ['Discovery', id]);
+    expect(listAddonUrlJobs(db)[0]!.label).toBe('Discovery');
+  });
+
   it('projects progress from the mirrored items and reports created_at in seconds', () => {
     const id = addAddonUrlJob('https://open.spotify.com/album/x');
     const now = Date.now();

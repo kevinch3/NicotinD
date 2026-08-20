@@ -1073,18 +1073,6 @@
       </div>
     </app-settings-group>
 
-    <app-settings-group
-      groupId="music-import"
-      icon="download"
-      [title]="'admin.groupMusicImport' | t"
-      [description]="'admin.groupMusicImportDesc' | t"
-      (opened)="importCard.load()"
-    >
-      <!-- Folder import (docs/import.md): same organize → scan → quarantine
-           pipeline as a download; admin-only and independent of the
-           acquisition kill-switch, hence Admin rather than /get. -->
-      <app-import-card #importCard />
-    </app-settings-group>
 
     <app-settings-group
       groupId="streaming-media"

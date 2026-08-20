@@ -11,10 +11,12 @@ import {
 import type { BundledAddon } from '../types.js';
 import {
   resolveArchive,
+  parseArchiveIdentifier,
   ARCHIVE_URL_PATTERN,
   ARCHIVE_DISCLAIMER,
   type ArchiveEngineOpts,
 } from './engine.js';
+import { humanizeSlug } from '@nicotind/core';
 
 const log = createLogger('bundled:archive');
 
@@ -68,6 +70,9 @@ export function makeArchiveBundledAddon(deps: ArchiveBundledDeps): BundledAddon 
       });
       entry.job.artist = resolved.artist;
       entry.job.album = resolved.album;
+      // The real item title, replacing the identifier-derived placeholder set
+      // at createJob so the card is never generic, even mid-resolve.
+      entry.job.title = resolved.album;
       entry.job.items = resolved.files.map((f, i): AddonJobItem => {
         const itemId = `${id}:${i}`;
         entry.paths.set(itemId, f.path);
@@ -105,11 +110,15 @@ export function makeArchiveBundledAddon(deps: ArchiveBundledDeps): BundledAddon 
       const existing = jobs.get(id);
       if (existing) return existing.job;
 
+      const identifier = parseArchiveIdentifier(req.url);
       const job: AddonJob = {
         id,
         intent: 'url',
         artist: null,
         album: null,
+        // Display-only, and available immediately: `runResolve` is async, so
+        // without this the card reads "archive.org download" until it lands.
+        title: identifier ? humanizeSlug(identifier) : null,
         state: 'active',
         error: null,
         items: [],

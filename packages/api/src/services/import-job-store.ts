@@ -6,7 +6,8 @@
  * Mirror writes are best-effort: a feed hiccup must never fail an import.
  */
 import type { Database } from 'bun:sqlite';
-import { createLogger } from '@nicotind/core';
+import { cleanFolderName, createLogger } from '@nicotind/core';
+import { archiveDisplayName, looksLikeArchive } from './import-archive.js';
 import type {
   AcquireAlbumDestination,
   ImportJob,
@@ -71,9 +72,13 @@ export function createImportJob(db: Database, input: CreateImportJobInput): void
       id: input.id,
       kind: 'import',
       method: 'import',
+      // The folder (or archive) the admin pointed at, not its absolute path:
+      // the card used to fall all the way through to `sourceRef` and render
+      // `/mnt/media/incoming/Bootleg Rips 2019` as its title.
+      displayTitle: importDisplayTitle(input.sourcePath),
       sourceRef: input.sourcePath,
+      stage: 'queued',
     });
-    db.run(`UPDATE acquisition_jobs SET stage = 'queued' WHERE id = ?`, [input.id]);
   } catch (err) {
     log.warn({ id: input.id, err }, 'Failed to mirror import job into acquisition_jobs');
   }
@@ -152,8 +157,16 @@ function mirrorImportJob(db: Database, id: string, patch: ImportJobPatch): void 
       args.push(patch.error);
     }
     if (patch.mirrorAlbum !== undefined) {
-      sets.push('artist_name = ?', 'album_title = ?');
-      args.push(patch.mirrorAlbum?.artistName ?? null, patch.mirrorAlbum?.albumTitle ?? null);
+      // Clear the folder-derived display title once the real album is known:
+      // it is rung 1 of the title chain, so leaving it would pin the card to
+      // "Bootleg Rips 2019" forever instead of upgrading to the album it
+      // actually landed as. A source folder is a placeholder, not an answer.
+      sets.push('artist_name = ?', 'album_title = ?', 'display_title = ?');
+      args.push(
+        patch.mirrorAlbum?.artistName ?? null,
+        patch.mirrorAlbum?.albumTitle ?? null,
+        patch.mirrorAlbum?.albumTitle ? null : importDisplayTitle(sourcePathOf(db, id) ?? ''),
+      );
     }
     if (sets.length === 1) return;
     db.run(`UPDATE acquisition_jobs SET ${sets.join(', ')} WHERE id = ?`, [...args, id]);
@@ -322,4 +335,25 @@ function mapRow(row: ImportJobRow): ImportJob {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+/** The folder an import job was started from (for restoring its placeholder title). */
+function sourcePathOf(db: Database, id: string): string | null {
+  try {
+    return (
+      db
+        .query<{ source_path: string }, [string]>(
+          `SELECT source_path FROM import_jobs WHERE id = ?`,
+        )
+        .get(id)?.source_path ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** Card title for an import source: the folder name, or the archive's stem. */
+function importDisplayTitle(sourcePath: string): string | null {
+  const raw = looksLikeArchive(sourcePath) ? archiveDisplayName(sourcePath) : sourcePath;
+  return cleanFolderName(raw) || null;
 }

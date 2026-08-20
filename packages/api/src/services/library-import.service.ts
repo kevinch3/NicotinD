@@ -34,6 +34,7 @@ import type {
   ImportJobSummary,
   ImportPreview,
   ImportSourceErrorCode,
+  ImportSourceKind,
 } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import type { CompletedDownloadFile } from './path-inference.js';
@@ -45,12 +46,15 @@ import { recordReviewDecision, reviewHoldActive } from './download-review-store.
 import {
   IMPORT_MAX_DEPTH,
   IMPORT_MAX_FILES,
+  archiveEntryIndex,
   planImportChunks,
+  scanImportArchive,
   scanImportSource,
   validateImportSource,
   type ImportChunk,
   type ImportScanResult,
 } from './import-scan.js';
+import { ArchiveError, extractZipEntry, safeArchivePath } from './import-archive.js';
 import {
   createImportJob,
   deleteImportJob,
@@ -86,7 +90,7 @@ export class ImportAlreadyRunningError extends Error {
 
 export class ImportEmptySourceError extends Error {
   constructor() {
-    super('The folder contains no audio files.');
+    super('That import source contains no audio files.');
     this.name = 'ImportEmptySourceError';
   }
 }
@@ -94,7 +98,7 @@ export class ImportEmptySourceError extends Error {
 export class ImportTooLargeError extends Error {
   constructor() {
     super(
-      `The folder exceeds the import limits (${IMPORT_MAX_FILES.toLocaleString()} files / depth ${IMPORT_MAX_DEPTH}) — import it in smaller pieces.`,
+      `That import source exceeds the limits (${IMPORT_MAX_FILES.toLocaleString()} files / depth ${IMPORT_MAX_DEPTH}) — import it in smaller pieces.`,
     );
     this.name = 'ImportTooLargeError';
   }
@@ -113,9 +117,17 @@ export class ImportInsufficientSpaceError extends Error {
 function importSourceErrorMessage(code: ImportSourceErrorCode): string {
   switch (code) {
     case 'NOT_FOUND':
-      return 'That folder does not exist on the server.';
+      return 'That path does not exist on the server.';
     case 'NOT_DIR':
-      return 'That path is a file, not a folder.';
+      return 'That path is neither a folder nor a supported archive (.zip).';
+    case 'ARCHIVE_UNREADABLE':
+      return 'That file is not a readable ZIP archive.';
+    case 'ARCHIVE_ENCRYPTED':
+      return 'That archive is password-protected — extract it yourself and import the folder.';
+    case 'ARCHIVE_UNSUPPORTED':
+      return 'That archive uses a feature this importer does not support (ZIP64, or an unusual compression method).';
+    case 'ARCHIVE_TOO_LARGE':
+      return 'That archive expands to far more than this importer will accept.';
     case 'INSIDE_LIBRARY':
       return 'That folder is inside the music library — it is already scanned in place.';
     case 'CONTAINS_LIBRARY':
@@ -149,13 +161,44 @@ export function importStagingDir(dataDir: string, jobId: string): string {
   return join(dataDir, 'staging', 'import', jobId);
 }
 
+/**
+ * How one scanned file gets from the source into staging. A folder source
+ * copies/renames it; an archive source decompresses it. Everything downstream
+ * of staging — chunking, organize, provenance, scan, review pre-approval — is
+ * identical, which is exactly why archive support is a staging-time concern and
+ * not a separate extract-then-import phase (that would double peak disk and
+ * re-walk a tree the central directory already enumerated).
+ */
+interface ImportSource {
+  readonly kind: ImportSourceKind;
+  /** The validated source path — a folder for 'dir', the archive for 'archive'. */
+  readonly root: string;
+  /** The file's absolute origin, or null when it lives inside an archive. */
+  originOf(rel: string): string | null;
+  /** What provenance records for a landed file (`acquisitions.source_ref`). */
+  provenanceRef(rel: string): string;
+  /**
+   * Where this file will be staged. The archive implementation mints it through
+   * the traversal guard: the check that matters is the one made where the path
+   * is *created*, not one bolted on beside the open() call.
+   */
+  destFor(stagingRoot: string, rel: string): string;
+  stage(rel: string, dst: string, removeOriginals: boolean): Promise<StagedFile['mode']>;
+}
+
 interface StagedFile {
-  /** Original absolute path in the user's source folder. */
-  src: string;
+  /**
+   * Original absolute path in the user's source folder — `null` for an archive
+   * source, where there is no per-file original to move, restore or delete.
+   */
+  src: string | null;
   /** Staged absolute path handed to the organizer. */
   dst: string;
-  /** 'renamed' = original already moved into staging (same-device move mode). */
-  mode: 'copied' | 'renamed';
+  /**
+   * 'renamed' = original already moved into staging (same-device move mode);
+   * 'extracted' = decompressed out of an archive, so the source still holds it.
+   */
+  mode: 'copied' | 'renamed' | 'extracted';
 }
 
 export class LibraryImportService {
@@ -186,14 +229,14 @@ export class LibraryImportService {
   preview(rawPath: string): ImportPreview {
     const validated = validateImportSource(rawPath, this.options.musicDir, this.options.dataDir);
     if (!validated.ok) throw new ImportSourceInvalidError(validated.code);
-    const scan = scanImportSource(validated.realPath);
+    const scan = this.scanSource(validated.realPath, validated.kind);
     const freeMusicFs = this.freeBytes(this.options.musicDir);
     const freeStagingFs = this.freeBytes(this.options.dataDir);
     const requiredBytes = scan.bytes + IMPORT_DISK_MARGIN_BYTES;
     const warnings: string[] = [];
     if (scan.truncated) {
       warnings.push(
-        `The folder exceeds the import limits (${IMPORT_MAX_FILES.toLocaleString()} files / depth ${IMPORT_MAX_DEPTH}); the numbers below are a partial count and import will refuse this folder.`,
+        `That source exceeds the import limits (${IMPORT_MAX_FILES.toLocaleString()} files / depth ${IMPORT_MAX_DEPTH}); the numbers below are a partial count and import will refuse it.`,
       );
     }
     if (scan.skippedSymlinks > 0) {
@@ -201,6 +244,7 @@ export class LibraryImportService {
     }
     return {
       sourcePath: validated.realPath,
+      sourceKind: validated.kind,
       albumFolders: scan.dirs.length,
       files: scan.files,
       bytes: scan.bytes,
@@ -233,11 +277,11 @@ export class LibraryImportService {
     if (busy) throw new ImportAlreadyRunningError();
     const validated = validateImportSource(rawPath, this.options.musicDir, this.options.dataDir);
     if (!validated.ok) throw new ImportSourceInvalidError(validated.code);
-    const scan = scanImportSource(validated.realPath);
+    const scan = this.scanSource(validated.realPath, validated.kind);
     if (scan.truncated) throw new ImportTooLargeError();
     if (scan.files === 0) throw new ImportEmptySourceError();
     const removeOriginals = opts.removeOriginals ?? false;
-    this.preflightDisk(scan, validated.realPath, removeOriginals);
+    this.preflightDisk(scan, validated.realPath, validated.kind, removeOriginals);
 
     const id = crypto.randomUUID();
     createImportJob(this.db, {
@@ -253,7 +297,14 @@ export class LibraryImportService {
       id,
       scan.dirs.map((d) => ({ dir: d.dir, fileCount: d.files.length })),
     );
-    void this.run(id, validated.realPath, scan, removeOriginals, opts.startedBy ?? null);
+    void this.run(
+      id,
+      this.sourceFor(validated.realPath, validated.kind),
+      validated.realPath,
+      scan,
+      removeOriginals,
+      opts.startedBy ?? null,
+    );
     return id;
   }
 
@@ -265,11 +316,17 @@ export class LibraryImportService {
   private preflightDisk(
     scan: ImportScanResult,
     sourceRoot: string,
+    sourceKind: ImportSourceKind,
     removeOriginals: boolean,
   ): void {
     const free = this.freeBytes(this.options.musicDir);
     if (free === null) return;
+    // An archive never renames bytes around: every staged file is freshly
+    // decompressed, so the full uncompressed size must be free even in move
+    // mode on one device. `sameDev` would happily answer true for the archive
+    // file and silently reserve only the margin.
     const sameDevice =
+      sourceKind === 'dir' &&
       removeOriginals &&
       this.sameDev(sourceRoot, this.options.musicDir) &&
       this.sameDev(sourceRoot, this.options.dataDir);
@@ -318,7 +375,7 @@ export class LibraryImportService {
       this.options.dataDir,
     );
     if (!validated.ok) throw new ImportSourceInvalidError(validated.code);
-    const scan = scanImportSource(validated.realPath);
+    const scan = this.scanSource(validated.realPath, validated.kind);
     if (scan.truncated) throw new ImportTooLargeError();
     updateImportJob(this.db, jobId, {
       state: 'queued',
@@ -331,7 +388,14 @@ export class LibraryImportService {
       jobId,
       scan.dirs.map((d) => ({ dir: d.dir, fileCount: d.files.length })),
     );
-    void this.run(jobId, validated.realPath, scan, job.removeOriginals, job.startedBy);
+    void this.run(
+      jobId,
+      this.sourceFor(validated.realPath, validated.kind),
+      validated.realPath,
+      scan,
+      job.removeOriginals,
+      job.startedBy,
+    );
     return jobId;
   }
 
@@ -356,6 +420,7 @@ export class LibraryImportService {
 
   private async run(
     id: string,
+    source: ImportSource,
     sourceRoot: string,
     scan: ImportScanResult,
     removeOriginals: boolean,
@@ -394,7 +459,7 @@ export class LibraryImportService {
         }
         chunksRun += 1;
         try {
-          await this.runChunk(id, sourceRoot, stagingRoot, chunk, removeOriginals, startedBy, {
+          await this.runChunk(id, source, stagingRoot, chunk, removeOriginals, startedBy, {
             summary,
             destAlbums,
           });
@@ -404,7 +469,9 @@ export class LibraryImportService {
           // chunk's staged files back (move mode), mark its dirs failed, carry on.
           const msg = err instanceof Error ? err.message : String(err);
           log.error({ id, err: msg, dirs: chunk.dirs.map((d) => d.dir) }, 'Import chunk failed');
-          if (removeOriginals) this.rollbackStaging(stagingRoot, sourceRoot);
+          if (removeOriginals && source.kind === 'dir') {
+            this.rollbackStaging(stagingRoot, sourceRoot);
+          }
           this.cleanupStaging(stagingRoot);
           chunksFailed += 1;
           summary.failed += chunk.files;
@@ -421,7 +488,9 @@ export class LibraryImportService {
       const albums = [...destAlbums.values()];
       const single = albums.length === 1 ? albums[0]! : null;
       if (cancelled) {
-        if (removeOriginals) this.rollbackStaging(stagingRoot, sourceRoot);
+        if (removeOriginals && source.kind === 'dir') {
+          this.rollbackStaging(stagingRoot, sourceRoot);
+        }
         this.cleanupStaging(stagingRoot);
         updateImportJob(this.db, id, {
           state: 'cancelled',
@@ -444,6 +513,25 @@ export class LibraryImportService {
           currentDir: null,
         });
         return;
+      }
+      // Move mode on an ARCHIVE source is all-or-nothing, and can only happen
+      // here: you cannot delete a track out of a zip, so the unit of removal is
+      // the archive itself. The condition is the disk-truth rule aggregated —
+      // a folder original is deleted only once the organizer consumed its
+      // staged copy, so the archive goes only when NOTHING was left unconsumed.
+      if (
+        removeOriginals &&
+        source.kind === 'archive' &&
+        chunksRun > 0 &&
+        chunksFailed === 0 &&
+        summary.failed === 0
+      ) {
+        try {
+          rmSync(sourceRoot, { force: true });
+          summary.removedOriginals += 1;
+        } catch (err) {
+          log.warn({ id, sourceRoot, err }, 'Failed to remove the source archive after import');
+        }
       }
       // Nothing landed → an honest done-with-warning (mirrors acquire's
       // unfiledWarning) instead of a clean green "Done" over an empty result.
@@ -469,7 +557,9 @@ export class LibraryImportService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.error({ id, err: msg }, 'Import failed');
-      if (removeOriginals) this.rollbackStaging(stagingRoot, sourceRoot);
+      if (removeOriginals && source.kind === 'dir') {
+        this.rollbackStaging(stagingRoot, sourceRoot);
+      }
       this.cleanupStaging(stagingRoot);
       updateImportJob(this.db, id, {
         state: 'failed',
@@ -487,7 +577,7 @@ export class LibraryImportService {
   /** Stage → organize → provenance → review pre-approval → scan → move-mode deletion. */
   private async runChunk(
     id: string,
-    sourceRoot: string,
+    source: ImportSource,
     stagingRoot: string,
     chunk: ImportChunk,
     removeOriginals: boolean,
@@ -497,24 +587,28 @@ export class LibraryImportService {
     updateImportJob(this.db, id, { stage: 'organizing', currentDir: chunk.dirs[0]?.dir ?? null });
     const staged: StagedFile[] = [];
     const files: CompletedDownloadFile[] = [];
-    const originals: string[] = [];
+    const origins: string[] = [];
     for (const dir of chunk.dirs) {
       for (const file of dir.files) {
-        const src = join(sourceRoot, ...file.rel.split('/'));
-        const dst = join(stagingRoot, ...file.rel.split('/'));
+        const src = source.originOf(file.rel);
         try {
+          // Inside the try: `destFor` can itself reject (an archive entry whose
+          // name fails the traversal guard), and one bad entry must cost one
+          // file, not the whole chunk — the same contract a vanished source
+          // file already had.
+          const dst = source.destFor(stagingRoot, file.rel);
           mkdirSync(dirname(dst), { recursive: true });
-          const mode = this.stageFile(src, dst, removeOriginals);
+          const mode = await source.stage(file.rel, dst, removeOriginals);
           staged.push({ src, dst, mode });
           files.push({
             username: `import:${id}`,
             directory: dir.dir,
             filename: dst,
           });
-          originals.push(src);
+          origins.push(source.provenanceRef(file.rel));
         } catch (err) {
           // Vanished/unreadable file: count it and keep the chunk going.
-          log.warn({ src, err }, 'Failed to stage file for import');
+          log.warn({ src: src ?? file.rel, err }, 'Failed to stage file for import');
           acc.summary.failed += 1;
         }
       }
@@ -528,11 +622,13 @@ export class LibraryImportService {
       const relPath = files[i]!.relativePath;
       if (!relPath) continue;
       relPaths.push(relPath);
-      // Provenance points at the user's original file, not the staging copy.
+      // Provenance points at where the file came from, not the staging copy:
+      // an absolute source path for a folder import, `<archive>!<entry>` for an
+      // archive one (the entry no longer exists anywhere else on disk).
       recordAcquisition(this.db, {
         relativePath: relPath,
         method: 'import',
-        sourceRef: originals[i]!,
+        sourceRef: origins[i]!,
         stage: 'done',
         startedAt: acquiredAt,
         completedAt: acquiredAt,
@@ -577,9 +673,12 @@ export class LibraryImportService {
     // that replaced it, or the unsorted bucket — so the original is now
     // redundant. A staged copy still present means the organizer failed on it:
     // renamed originals go home, copied ones were never touched.
+    // Archive sources skip this entirely: there is no per-file original to
+    // delete or restore (the archive is removed as a whole in `run`, only once
+    // every chunk succeeded), and `entry.src` is null for them.
     for (const entry of staged) {
+      if (!removeOriginals || entry.src === null) continue;
       const consumed = !existsSync(entry.dst);
-      if (!removeOriginals) continue;
       if (consumed) {
         if (entry.mode === 'copied') {
           try {
@@ -599,11 +698,61 @@ export class LibraryImportService {
         }
       }
     }
-    if (removeOriginals) {
-      const dirs = new Set(staged.map((s) => dirname(s.src)));
-      for (const dir of dirs) this.pruneEmptySourceDirs(dir, sourceRoot);
+    // Same reason: an archive has no source directory tree to tidy up.
+    if (removeOriginals && source.kind === 'dir') {
+      const dirs = new Set(
+        staged
+          .map((f) => f.src)
+          .filter((src): src is string => src !== null)
+          .map(dirname),
+      );
+      for (const dir of dirs) this.pruneEmptySourceDirs(dir, source.root);
     }
     this.cleanupStaging(stagingRoot);
+  }
+
+  /** Walk a folder or enumerate an archive — same result shape either way. */
+  private scanSource(realPath: string, kind: ImportSourceKind): ImportScanResult {
+    return kind === 'archive' ? scanImportArchive(realPath) : scanImportSource(realPath);
+  }
+
+  /** The staging strategy for one validated source. */
+  private sourceFor(root: string, kind: ImportSourceKind): ImportSource {
+    if (kind === 'dir') {
+      const stageFile = this.stageFile.bind(this);
+      return {
+        kind: 'dir',
+        root,
+        originOf: (rel) => join(root, ...rel.split('/')),
+        provenanceRef: (rel) => join(root, ...rel.split('/')),
+        destFor: (stagingRoot, rel) => join(stagingRoot, ...rel.split('/')),
+        stage: async (rel, dst, removeOriginals) =>
+          stageFile(join(root, ...rel.split('/')), dst, removeOriginals),
+      };
+    }
+    // The central directory is read ONCE per run, not per file: re-opening it
+    // for every track would be O(n²) on a 20k-entry archive.
+    const index = archiveEntryIndex(root);
+    return {
+      kind: 'archive',
+      root,
+      originOf: () => null,
+      // `<archive>!<entry>` is the honest answer: the entry has no independent
+      // existence on disk, and the archive alone doesn't say which track.
+      provenanceRef: (rel) => `${root}!${rel}`,
+      destFor: (stagingRoot, rel) => safeArchivePath(stagingRoot, rel),
+      stage: async (rel, dst) => {
+        const entry = index.get(rel);
+        if (!entry) {
+          throw new ArchiveError(
+            'ARCHIVE_UNREADABLE',
+            `The archive no longer contains ${rel} — it may have been replaced mid-import.`,
+          );
+        }
+        await extractZipEntry(root, entry, dst);
+        return 'extracted';
+      },
+    };
   }
 
   /**
@@ -642,6 +791,15 @@ export class LibraryImportService {
    */
   private rollbackStaging(stagingRoot: string, sourceRoot: string): void {
     if (!existsSync(stagingRoot)) return;
+    // Only a real directory can receive files back. An archive source would
+    // otherwise have staged files renamed to paths *derived from a file path*
+    // (`/x/Album.zip/Album/01.flac`), and the boot orphan sweep knows only the
+    // stored `sourcePath` — so the guard lives here rather than at the callers.
+    try {
+      if (!statSync(sourceRoot).isDirectory()) return;
+    } catch {
+      return;
+    }
     const walk = (dir: string): void => {
       let entries;
       try {

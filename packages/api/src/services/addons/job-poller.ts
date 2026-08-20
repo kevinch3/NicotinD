@@ -135,6 +135,11 @@ export class AddonJobPoller {
       this.mirrorItems(addonId, coreJobId, job);
       recomputeStage(db, coreJobId);
       await this.ingestReadyItems(plugin, coreJobId, job);
+      // Ordering is load-bearing: AFTER ingest (so files delivered this tick
+      // organize first and a finished job closes `done`, not a false partial)
+      // and BEFORE the release, which deletes the addon-side job and with it
+      // the only copy of `job.error`.
+      this.applyAddonOutcome(coreJobId, job);
       await this.maybeReleaseAddonJob(plugin, coreJobId, job);
     }
 
@@ -181,8 +186,13 @@ export class AddonJobPoller {
   private failOrphanedJob(coreJobId: string, addonId: string): void {
     const now = Date.now();
     const msg = 'The addon no longer has this job (it likely restarted mid-download).';
+    // COALESCE, not overwrite: when `applyAddonOutcome` already recorded the
+    // addon's own reason ("Unsupported URL: …"), the generic restart guess is
+    // strictly worse — and it is what a released terminal job would otherwise
+    // end up displaying, since releasing it is what makes getJob 404.
     this.deps.db.run(
-      `UPDATE acquisition_jobs SET state = 'failed', stage = 'error', error = ?, updated_at = ?
+      `UPDATE acquisition_jobs SET state = 'failed', stage = 'error',
+              error = COALESCE(error, ?), updated_at = ?
        WHERE id = ? AND state = 'active'`,
       [msg, now, coreJobId],
     );
@@ -203,6 +213,7 @@ export class AddonJobPoller {
       method: addonId,
       artistName: job.artist,
       albumTitle: job.album,
+      displayTitle: job.title == null ? null : clampAddonText(job.title),
       sourceRef: `addon:${addonId}:${job.id}`,
       files: [],
     });
@@ -218,15 +229,35 @@ export class AddonJobPoller {
    * Without this the tagless-source files (archive.org has no ID3) reach the
    * organizer with no album/artist and land in `unsorted` — the "downloaded but
    * vanished" report. `COALESCE` never overwrites a meta the row already carries.
+   *
+   * `title` rides along but stays in its own column: it is the card's *display*
+   * name (a playlist name), and letting it fall back into `album_title` would
+   * mint a phantom album and mis-file every track — which is exactly why the
+   * protocol grew a separate field instead of overloading `album`.
    */
   private updateJobMeta(coreJobId: string, job: AddonJob): void {
-    if (job.artist == null && job.album == null) return;
-    this.deps.db.run(
-      `UPDATE acquisition_jobs
-         SET artist_name = COALESCE(artist_name, ?), album_title = COALESCE(album_title, ?), updated_at = ?
-       WHERE id = ? AND (artist_name IS NULL OR album_title IS NULL)`,
-      [job.artist, job.album, Date.now(), coreJobId],
-    );
+    const now = Date.now();
+    if (job.artist != null || job.album != null) {
+      this.deps.db.run(
+        `UPDATE acquisition_jobs
+           SET artist_name = COALESCE(artist_name, ?), album_title = COALESCE(album_title, ?), updated_at = ?
+         WHERE id = ? AND (artist_name IS NULL OR album_title IS NULL)`,
+        [job.artist, job.album, now, coreJobId],
+      );
+    }
+    // The display title is the one field that must NOT be first-writer-wins.
+    // An addon legitimately refines it: the bundled archive.org addon sets a
+    // placeholder from the URL identifier at `createJob` and replaces it with
+    // the real item title once its background resolve lands. COALESCE would
+    // pin the card to the placeholder forever — the opposite of the upgrade
+    // the whole title chain is ordered around. Overwriting is safe precisely
+    // because it is display-only and the addon owns it.
+    if (job.title != null) {
+      this.deps.db.run(
+        `UPDATE acquisition_jobs SET display_title = ?, updated_at = ? WHERE id = ?`,
+        [clampAddonText(job.title), now, coreJobId],
+      );
+    }
   }
 
   /**
@@ -364,6 +395,77 @@ export class AddonJobPoller {
     recomputeStage(db, coreJobId);
   }
 
+  /**
+   * Mirror the addon's **own verdict** — its `state` and `error` — onto the core
+   * feed row (issue: a beatport link sat at "Downloading 0 of 0" forever).
+   *
+   * The poller used to derive the core row's lifecycle purely from mirrored
+   * *items*, and read nothing off `AddonJob.state`/`.error` except the release
+   * check. That works for a job that produces files and breaks completely for
+   * one that does not: `recomputeStage` deliberately no-ops on an item-less job
+   * (`counts.size === 0`), and `acquisition_jobs.stage` defaults to
+   * `'downloading'` — so a resolve the addon *failed* (yt-dlp has no beatport
+   * extractor, and its manifest is the `^https?://` catch-all, so it is handed
+   * every unmatched link) left an eternally "downloading" card with no items,
+   * no error text and no Remove button. The addon knew; core never asked.
+   *
+   * Runs after `ingestReadyItems` so files delivered on this same tick are
+   * organized/scanned first and a finished job closes as `done`, not a partial.
+   */
+  private applyAddonOutcome(coreJobId: string, job: AddonJob): void {
+    const { db } = this.deps;
+    const now = Date.now();
+
+    // Mirror the addon's CURRENT error verbatim — including clearing it when the
+    // addon does. A one-way write would let a transient note ("retrying: 429")
+    // outlive the condition and then become the job's permanent verdict, since
+    // `failOrphanedJob` deliberately COALESCEs rather than overwrites. Scoped to
+    // an active row so a reason already recorded for a closed job is never
+    // reopened.
+    if (job.state === 'active') {
+      db.run(
+        `UPDATE acquisition_jobs SET error = ?, updated_at = ? WHERE id = ? AND state = 'active'`,
+        [job.error ? clampAddonText(job.error) : null, now, coreJobId],
+      );
+      return;
+    }
+
+    // Terminal addon-side: anything still in flight is never arriving, so it
+    // becomes `unavailable` and the job can close as an honest partial —
+    // the same shape the slskd fallback uses when it exhausts its peers.
+    // `completed` items are left alone: they are mid-ingest, and
+    // `maybeReleaseAddonJob` already treats them as pending.
+    db.run(
+      `UPDATE acquisition_job_items SET state = 'unavailable', updated_at = ?
+       WHERE job_id = ? AND state = 'downloading'`,
+      [now, coreJobId],
+    );
+    recomputeStage(db, coreJobId);
+    // The addon's closing word, for a job that DOES have items — `recomputeStage`
+    // sets state/stage but never touches `error`, so a partial's reason would
+    // otherwise be lost.
+    db.run(`UPDATE acquisition_jobs SET error = ?, updated_at = ? WHERE id = ?`, [
+      job.error ? clampAddonText(job.error) : null,
+      now,
+      coreJobId,
+    ]);
+
+    // An item-less terminal job is the case `recomputeStage` cannot rule on —
+    // there is nothing to derive from. It is never a success: the addon either
+    // failed outright, or finished having found no downloadable audio.
+    const items = db
+      .query<{ n: number }, [string]>(
+        `SELECT COUNT(*) AS n FROM acquisition_job_items WHERE job_id = ?`,
+      )
+      .get(coreJobId);
+    if ((items?.n ?? 0) > 0) return;
+    db.run(
+      `UPDATE acquisition_jobs SET state = 'failed', stage = 'error', error = ?, updated_at = ?
+       WHERE id = ? AND state != 'superseded'`,
+      [job.error ? clampAddonText(job.error) : emptyOutcomeMessage(job.state), now, coreJobId],
+    );
+  }
+
   /** Delete a fully-ingested terminal job addon-side (the 7-day janitor is the backstop). */
   private async maybeReleaseAddonJob(
     plugin: RemoteAddonPlugin,
@@ -476,6 +578,35 @@ export class AddonJobPoller {
        ON CONFLICT(plugin_id, key) DO UPDATE SET value = excluded.value`,
       [`addon-poller:${addonId}`, key, value],
     );
+  }
+}
+
+/**
+ * Addon-supplied prose (an error, a display title) is untrusted third-party
+ * output — a yt-dlp stderr dump runs to kilobytes. The card truncates it
+ * visually; this bounds what we *store*, so one bad job can't bloat the feed
+ * table and every poll that reads it.
+ */
+export const MAX_ADDON_TEXT_CHARS = 500;
+
+function clampAddonText(text: string): string {
+  const trimmed = text.trim();
+  return trimmed.length <= MAX_ADDON_TEXT_CHARS
+    ? trimmed
+    : `${trimmed.slice(0, MAX_ADDON_TEXT_CHARS - 1)}…`;
+}
+
+/** Why an addon job that delivered nothing at all ended, in the user's terms. */
+function emptyOutcomeMessage(state: AddonJob['state']): string {
+  switch (state) {
+    case 'cancelled':
+      return 'The download was cancelled before any file arrived.';
+    case 'failed':
+      return 'The addon could not download this link.';
+    default:
+      // `done`/`partial` with zero items: the source resolved, but held no
+      // audio this addon can fetch (a store/preview page, a deleted upload).
+      return 'No downloadable audio was found at this link.';
   }
 }
 

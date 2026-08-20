@@ -154,4 +154,68 @@ describe('DownloadsComponent — active feed', () => {
       expect.objectContaining({ kind: 'error', message: expect.stringContaining('Job not found') }),
     );
   });
+
+  const networkRow = (over: Record<string, unknown> = {}) =>
+    ({
+      key: 'job:j1',
+      kind: 'network',
+      title: 'X',
+      method: 'ytdlp',
+      stage: 'error',
+      jobId: 'j1',
+      canRetry: true,
+      canCancel: false,
+      canRemove: true,
+      ...over,
+    }) as never;
+
+  /**
+   * An addon-run URL acquire renders in the network lane but retries through
+   * the acquire endpoint. `onItemRetry` used to short-circuit on
+   * `kind !== 'network'`, so the button rendered and did nothing.
+   */
+  it('retries a network-lane URL acquire through the acquire endpoint', async () => {
+    const retryAcquireJob = vi.fn().mockReturnValue(of({ jobId: 'j2' }));
+    const { component, transferService } = setup({ api: { retryAcquireJob } });
+    component.onItemRetry(networkRow());
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+
+    expect(retryAcquireJob).toHaveBeenCalledWith('j1');
+    expect(transferService.kickPoll).toHaveBeenCalled();
+  });
+
+  it('surfaces a failed retry instead of swallowing it', async () => {
+    const { throwError } = await import('rxjs');
+    const { component, toastShow } = setup({
+      api: {
+        retryAcquireJob: () =>
+          throwError(() => ({ status: 503, error: { error: 'No addon can handle this link' } })),
+      },
+    });
+    component.onItemRetry(networkRow());
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'error',
+        message: expect.stringContaining('No addon can handle this link'),
+      }),
+    );
+  });
+
+  /** Swallowing this is how "the X does nothing" shipped (the #533 shape). */
+  it('surfaces a failed cancel instead of swallowing it', async () => {
+    const { throwError } = await import('rxjs');
+    const { component, toastShow } = setup({
+      api: {
+        cancelJob: () => throwError(() => ({ status: 502, error: { error: 'addon is gone' } })),
+      },
+    });
+    component.onItemCancel(networkRow({ stage: 'downloading', canCancel: true }));
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'error', message: expect.stringContaining('addon is gone') }),
+    );
+  });
 });

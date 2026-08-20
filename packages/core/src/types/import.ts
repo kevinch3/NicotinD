@@ -47,6 +47,9 @@ export interface ImportJob {
   updatedAt: number;
 }
 
+/** An import source is either a folder on the server or a supported archive file. */
+export type ImportSourceKind = 'dir' | 'archive';
+
 /** Typed rejection codes for an invalid import source path. */
 export type ImportSourceErrorCode =
   | 'NOT_FOUND'
@@ -54,12 +57,20 @@ export type ImportSourceErrorCode =
   | 'INSIDE_LIBRARY'
   | 'CONTAINS_LIBRARY'
   | 'INSIDE_DATA_DIR'
-  | 'CONTAINS_DATA_DIR';
+  | 'CONTAINS_DATA_DIR'
+  // Archive sources: each says something different about what to do next, so
+  // they are distinct codes rather than one "bad archive".
+  | 'ARCHIVE_UNREADABLE'
+  | 'ARCHIVE_ENCRYPTED'
+  | 'ARCHIVE_UNSUPPORTED'
+  | 'ARCHIVE_TOO_LARGE';
 
 /** Read-only dry-run report for a candidate import source (`POST /preview`). */
 export interface ImportPreview {
-  /** Canonical (realpath'd) source folder the walk ran over. */
+  /** Canonical (realpath'd) source folder or archive file the scan ran over. */
   sourcePath: string;
+  /** Whether the source is a folder tree or a compressed archive. */
+  sourceKind: ImportSourceKind;
   /** Directories containing at least one audio file — the album-folder estimate. */
   albumFolders: number;
   files: number;

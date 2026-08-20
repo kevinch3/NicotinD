@@ -1,8 +1,9 @@
 import type { Database } from 'bun:sqlite';
-import type { TrackStatus } from '@nicotind/core';
+import type { AcquireAlbumDestination, TrackStatus } from '@nicotind/core';
 import { fold } from '@nicotind/core';
 import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { albumIdFor } from './library-scanner.js';
+import { jobDestinationAlbums } from './job-destinations.js';
 
 /**
  * Unified acquisition job store (`acquisition_jobs` + `acquisition_job_items`).
@@ -95,6 +96,12 @@ export interface CreateJobInput {
   method: string;
   artistName?: string | null;
   albumTitle?: string | null;
+  /**
+   * What the Downloads card is *called* — a playlist name, a video title, an
+   * import's source folder. Never filing metadata: `albumTitle` mints an album
+   * id and steers the organizer, so a playlist name belongs here instead.
+   */
+  displayTitle?: string | null;
   lidarrAlbumId?: number | null;
   releaseMbid?: string | null;
   artistMbid?: string | null;
@@ -131,6 +138,15 @@ export interface CreateJobInput {
   }>;
   /** Share an existing id (URL jobs mirror acquire_jobs.id). */
   id?: string;
+  /**
+   * Opening stage. Defaults to the column default `'downloading'`, which is
+   * honest for an enqueue that really has files moving — and a lie for a job
+   * created *before* its source has resolved anything (an addon URL job: the
+   * route mirrors the row at submit so the card appears instantly, but the
+   * addon has not fetched a byte yet). Those pass `'queued'` so a link that
+   * never resolves doesn't read as "Downloading 0 of 0".
+   */
+  stage?: 'queued' | 'downloading';
 }
 
 export interface AcquisitionJobItem {
@@ -199,16 +215,18 @@ export function createJob(db: Database, input: CreateJobInput): string {
   const insert = db.transaction(() => {
     db.run(
       `INSERT INTO acquisition_jobs
-         (id, kind, method, artist_name, album_title, lidarr_album_id, release_mbid, artist_mbid,
-          genres_json, year, canonical_tracks_json, album_job_id, source_ref, source_url,
-          created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, kind, method, stage, artist_name, album_title, display_title, lidarr_album_id,
+          release_mbid, artist_mbid, genres_json, year, canonical_tracks_json, album_job_id,
+          source_ref, source_url, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.kind,
         input.method,
+        input.stage ?? 'downloading',
         input.artistName ?? null,
         input.albumTitle ?? null,
+        input.displayTitle ?? null,
         input.lidarrAlbumId ?? null,
         input.releaseMbid ?? null,
         input.artistMbid ?? null,
@@ -258,6 +276,7 @@ interface JobRow {
   stage: string;
   artist_name: string | null;
   album_title: string | null;
+  display_title: string | null;
   lidarr_album_id: number | null;
   release_mbid: string | null;
   artist_mbid: string | null;
@@ -266,6 +285,7 @@ interface JobRow {
   canonical_tracks_json: string | null;
   album_job_id: number | null;
   source_ref: string | null;
+  source_url: string | null;
   error: string | null;
   created_at: number;
   updated_at: number;
@@ -694,6 +714,34 @@ export function recomputeStage(db: Database, jobId: string): string | null {
 }
 
 /**
+ * Close a job no addon owns, on the user's say-so. Anything still in flight
+ * becomes `unavailable` (the same verdict the poller gives an addon job that
+ * ends with items outstanding), so `recomputeStage` settles the row into a
+ * terminal state the feed can clear. Items already organized/scanned are left
+ * alone — those files landed and are in the library regardless.
+ */
+export function cancelUnownedJob(db: Database, jobId: string): void {
+  const now = Date.now();
+  db.run(
+    `UPDATE acquisition_job_items SET state = 'unavailable', updated_at = ?
+     WHERE job_id = ? AND state IN ('downloading', 'completed')`,
+    [now, jobId],
+  );
+  recomputeStage(db, jobId);
+  db.run(
+    `UPDATE acquisition_jobs SET error = COALESCE(error, 'Cancelled by user'), updated_at = ?
+     WHERE id = ? AND state IN ('active', 'failed')`,
+    [now, jobId],
+  );
+  // An item-less row has nothing for recomputeStage to rule on; close it directly.
+  db.run(
+    `UPDATE acquisition_jobs SET state = 'failed', stage = 'error', updated_at = ?
+     WHERE id = ? AND state = 'active'`,
+    [now, jobId],
+  );
+}
+
+/**
  * Re-derive every active job's stage. Called after landing passes
  * (`graduatePending`) so jobs waiting in `processing` close the moment their
  * songs land. Bounded: active jobs are few.
@@ -740,6 +788,26 @@ export function reconcileOnBoot(db: Database, now = Date.now()): void {
     for (const jobId of staleJobIds) recomputeStage(db, jobId);
   }
 
+  // The valve above is ITEM-driven, so a job that never grew a single item is
+  // structurally invisible to it — and `recomputeStage` refuses to rule on one
+  // (it derives stage FROM items). That is the shape of an addon URL job whose
+  // addon never reported a terminal state: eternally `active`, never pruned
+  // (the prune below only takes terminal rows), an undismissable ghost card.
+  // `AddonJobPoller.applyAddonOutcome` closes the normal case the moment the
+  // addon says so; this is the backstop for an addon that simply never does.
+  // `kind='import'` rows are item-less by design too, but safe here: their run
+  // loop bumps `updated_at` on every chunk and `import_jobs` (authoritative)
+  // drives them to a terminal state, so a stale one is genuinely abandoned.
+  db.run(
+    `UPDATE acquisition_jobs
+        SET state = 'failed', stage = 'error',
+            error = COALESCE(error, 'This download never started and has been given up on.'),
+            updated_at = ?
+      WHERE state = 'active' AND updated_at < ?
+        AND NOT EXISTS (SELECT 1 FROM acquisition_job_items WHERE job_id = acquisition_jobs.id)`,
+    [now, now - ITEM_IDLE_VALVE_MS],
+  );
+
   // Prune keys on updated_at (when the job last moved), not created_at, so a
   // job the valve just closed stays visible for its full TTL. Explicit item
   // delete: FK cascade needs PRAGMA foreign_keys, which we don't rely on.
@@ -768,6 +836,14 @@ export interface AcquisitionJobFeedItem {
   stage: string;
   artistName: string | null;
   albumTitle: string | null;
+  /**
+   * The job's own display name (addon-supplied playlist/video/release title, an
+   * import's source folder). The first rung of `downloadTitleFor`; null on
+   * every job whose source never offered one.
+   */
+  displayTitle: string | null;
+  /** The link the user pasted, for `kind:'url'` jobs — the title chain's URL rung. */
+  sourceUrl: string | null;
   lidarrAlbumId: number | null;
   sourceRef: string | null;
   error: string | null;
@@ -789,7 +865,7 @@ export interface AcquisitionJobFeedItem {
    * frontend can render both uniformly. Mapped from `acquisition_job_items`
    * onto the shared `TrackStatus` union (see `itemStateToTrackStatus`).
    */
-  items: { title: string; status: TrackStatus }[];
+  items: { title: string; status: TrackStatus; username: string | null; filename: string | null }[];
   /**
    * The peers this job pulled from, so one card can show "Sources (5)" instead
    * of the feed splitting into five (issue #261). Grouped from
@@ -797,6 +873,11 @@ export interface AcquisitionJobFeedItem {
    * peer identity.
    */
   sources: { username: string; fileCount: number; state: TrackStatus }[];
+  /**
+   * Every library album the job's files landed in. Observed truth, so it both
+   * names a finished card and drives the "View N albums" menu.
+   */
+  destinationAlbums: AcquireAlbumDestination[];
 }
 
 /**
@@ -1013,6 +1094,8 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
       stage: row.stage,
       artistName: row.artist_name,
       albumTitle: row.album_title,
+      displayTitle: row.display_title,
+      sourceUrl: row.source_url,
       lidarrAlbumId: row.lidarr_album_id,
       sourceRef: row.source_ref,
       error: row.error,
@@ -1026,6 +1109,7 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
       },
       ...(quality ? { bitRate: quality.bitRate, audioFormat: quality.audioFormat } : {}),
       sources,
+      destinationAlbums: jobDestinationAlbums(db, row.id),
       items: itemRows.map((r) => ({
         title: r.track_title ?? '',
         status: itemStateToTrackStatus(r.state),

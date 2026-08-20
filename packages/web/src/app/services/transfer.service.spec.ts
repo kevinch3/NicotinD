@@ -15,6 +15,8 @@ function makeJobView(stage: AcquisitionJobView['stage'], id = 'aj-1'): Acquisiti
     stage,
     artistName: 'Artist',
     albumTitle: 'Album',
+    displayTitle: null,
+    sourceUrl: null,
     lidarrAlbumId: null,
     sourceRef: null,
     error: null,
@@ -31,6 +33,7 @@ function makeJobView(stage: AcquisitionJobView['stage'], id = 'aj-1'): Acquisiti
       },
     ],
     sources: [{ username: 'peer', fileCount: 1, state: 'downloading' }],
+    destinationAlbums: [],
   };
 }
 

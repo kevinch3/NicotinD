@@ -1351,20 +1351,22 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
     return fixture;
   }
 
-  it('renders all 11 groups in the correct order', async () => {
+  it('renders all 10 groups in the correct order', async () => {
     const fixture = await createAndSettle();
     const el: HTMLElement = fixture.nativeElement;
     const headers = Array.from(el.querySelectorAll('app-settings-group-header'));
-    // 10 from the settings-cards unification + the radio evaluation polls card
-    // (docs/radio-eval-polls.md).
-    expect(headers.length).toBe(11);
+    // 10 from the settings-cards unification, plus the radio evaluation polls
+    // card (docs/radio-eval-polls.md), minus "Import music" — which went with
+    // the admin import card, import being internal/API-only now
+    // (docs/import.md).
+    expect(headers.length).toBe(10);
     // The header text itself is driven by `[title]` — a property binding on a
     // nested `<app-settings-group>` — so it's subject to the same JIT-harness
     // signal-input gap documented above `expandAllGroups`. Order/count is
     // still a real, harness-observable structural assertion: it only depends
     // on how many `<app-settings-group>` elements the template renders and in
     // what sequence, not on any input value landing.
-    expect(headers.length).toBe(11);
+    expect(headers.length).toBe(10);
     fixture.destroy();
   });
 

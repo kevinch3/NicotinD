@@ -3,10 +3,16 @@ import type { AuthEnv } from '../middleware/auth.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
-import { createLogger } from '@nicotind/core';
+import { createLogger, type DownloadReceipt } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { requireAcquirer } from '../middleware/current-user.js';
-import { createJob, listJobFeed, resolveJobAlbumId } from '../services/acquisition-job-store.js';
+import {
+  cancelUnownedJob,
+  createJob,
+  listJobFeed,
+  resolveJobAlbumId,
+} from '../services/acquisition-job-store.js';
+import { mapAddonJob } from '../services/addons/job-poller.js';
 
 const log = createLogger('downloads');
 
@@ -110,8 +116,9 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
         return c.json({ error: 'No download provider available' }, 503);
       }
 
+      let receipt: DownloadReceipt | void;
       try {
-        await provider.download(username, files);
+        receipt = await provider.download(username, files);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('request failed')) {
@@ -136,16 +143,24 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
           .split('/')
           .filter(Boolean)
           .slice(0, -1); // drop the file basename
-        createJob(getDatabase(), {
+        const db = getDatabase();
+        // When an addon runs the grab, this row must be THE mirror of its job:
+        // `source_ref` is what `/jobs/:id/cancel` resolves the owning addon
+        // from, and the jobmap is what stops the poller minting a twin row on
+        // its next tick (the twin got the files and the Remove button; this
+        // row sat "Downloading 0 of N" forever — the Kaleo card).
+        const addonJobId = receipt?.addonJobId;
+        const coreJobId = createJob(db, {
           kind: 'direct',
           // The provider's name is the source id (the addon's manifest id).
           method: provider.name,
           artistName: segments.length >= 2 ? segments[segments.length - 2] : null,
           albumTitle: segments.length >= 1 ? segments[segments.length - 1] : null,
-          sourceRef: username,
+          sourceRef: addonJobId ? `addon:${provider.name}:${addonJobId}` : username,
           username,
           files,
         });
+        if (addonJobId) mapAddonJob(db, provider.name, addonJobId, coreJobId);
       } catch (err) {
         log.warn({ username, err }, 'Failed to record acquisition job for direct download');
       }
@@ -160,7 +175,13 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
     const db = getDatabase();
     const jobs = listJobFeed(db).map((job) => ({
       ...job,
-      albumId: resolveJobAlbumId(db, job.id, job.artistName, job.albumTitle),
+      // The feed already knows where a job's files landed; only a job with no
+      // single destination (nothing landed yet, or several albums) needs the
+      // dominant-album resolve and its extra join.
+      albumId:
+        job.destinationAlbums.length === 1
+          ? job.destinationAlbums[0]!.albumId
+          : resolveJobAlbumId(db, job.id, job.artistName, job.albumTitle),
     }));
     return c.json(jobs, 200);
   });
@@ -182,8 +203,13 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
     if (!job) return c.json({ error: 'Job not found' }, 404);
     const ref = parseAddonRef(job.source_ref);
     if (!ref || ref.addonId !== job.method) {
-      log.warn({ jobId: job.id, method: job.method }, 'cancel requested for a non-addon job');
-      return c.json({ error: 'This download has nothing left to cancel' }, 400);
+      // No addon owns this row (a legacy peer-ref grab, or a direct grab made
+      // before the route linked them), so there is nothing to proxy to — but
+      // the row is core's, and refusing here is what left "Cancel all"
+      // powerless against a stuck card. Close it honestly instead.
+      log.info({ jobId: job.id, method: job.method }, 'closing a non-addon job core-side');
+      cancelUnownedJob(db, job.id);
+      return c.json({ ok: true });
     }
     const addon = pluginRegistry?.get(ref.addonId);
     if (!(addon instanceof RemoteAddonPlugin)) {

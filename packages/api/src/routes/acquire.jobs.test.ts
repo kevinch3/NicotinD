@@ -12,11 +12,11 @@ import type { AcquireWatcher } from '../services/acquire-watcher.js';
 import type { AcquireJob, AddonJob } from '@nicotind/core';
 
 interface StubAddon extends BundledAddon {
-  createCalls: Array<{ url: string; idempotencyKey?: string }>;
+  createCalls: Array<{ url: string; idempotencyKey?: string; as?: string }>;
 }
 
 function stubResolveAddon(): StubAddon {
-  const createCalls: Array<{ url: string; idempotencyKey?: string }> = [];
+  const createCalls: Array<{ url: string; idempotencyKey?: string; as?: string }> = [];
   let seq = 0;
   const job = (id: string): AddonJob => ({
     id,
@@ -39,11 +39,11 @@ function stubResolveAddon(): StubAddon {
       protocolVersion: '1.0.0',
       kind: 'acquisition',
       capabilities: ['resolve'],
-      urlPatterns: ['^https?://stub\\.test/'],
+      urlPatterns: ['^https?://stub\\.test/', '^https?://open\\.spotify\\.com/'],
       compliance: { disclaimer: 'test', requiresConsent: false },
     },
     createJob: async (req, idempotencyKey) => {
-      createCalls.push({ url: String(req.url), idempotencyKey });
+      createCalls.push({ url: String(req.url), idempotencyKey, as: req.as });
       return job(`addon-job-${++seq}`);
     },
     getJob: async () => {
@@ -164,6 +164,37 @@ describe('acquire route — addon seam', () => {
       expect(addon.createCalls).toHaveLength(2);
     });
 
+    /**
+     * The classifier has always known a Spotify/YouTube playlist URL is a
+     * playlist, but its verdict was read only inside the in-process engine the
+     * addon split retired — so the addon was handed `as: undefined` and treated
+     * a whole playlist as one track.
+     */
+    it('tells the addon the link is a playlist', async () => {
+      const app = makeApp();
+      await post(app, 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M');
+      expect(addon.createCalls.at(-1)?.as).toBe('playlist');
+    });
+
+    it('tells the addon a bare track is a single, not a playlist', async () => {
+      const app = makeApp();
+      await post(app, 'https://stub.test/track');
+      expect(addon.createCalls.at(-1)?.as).toBeUndefined();
+    });
+
+    it('lets an explicit override downgrade a recognized playlist', async () => {
+      const app = makeApp();
+      await app.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M',
+          as: 'album',
+        }),
+      });
+      expect(addon.createCalls.at(-1)?.as).toBe('album');
+    });
+
     it('dedupes per url — a different link still starts its own job', async () => {
       const app = makeApp();
       await post(app, 'https://stub.test/a');
@@ -184,9 +215,12 @@ describe('acquire route — addon seam', () => {
       // missing here reads as "nothing happened" and invites another click.
       expect(jobs[0]!.url).toBe('https://stub.test/track');
       expect(jobs[0]!.backend).toBe('bundled-stub');
-      // 'running', not 'queued': the mirror row is created at `downloading`
-      // stage, and the card renders "Starting…" until the first item lands.
-      expect(jobs[0]!.state).toBe('running');
+      // 'queued', not 'running': the addon resolves in the background and has
+      // not fetched a byte at submit time. The row used to take the column
+      // default (`downloading`), which rendered "Downloading 0 of 0" — for a
+      // link the addon cannot handle, forever (the beatport report).
+      expect(jobs[0]!.state).toBe('queued');
+      expect(jobs[0]!.stage).toBe('queued');
     });
 
     it('GET /jobs/:id resolves an addon-run url job', async () => {

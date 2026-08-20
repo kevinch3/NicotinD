@@ -5,6 +5,7 @@ import type {
   PipelineStage,
   TrackStatus,
 } from '@nicotind/core';
+import { downloadTitleFor, type DownloadTitle } from '@nicotind/core';
 import { methodBadge } from './acquisition-method';
 
 // ─── Unified download feed ──────────────────────────────────────────────
@@ -89,12 +90,41 @@ export interface DownloadItem {
  *  both the legacy in-process ids (`ytdlp`/`spotdl`/`archive`/`slskd`) and the
  *  addon ids they became (`ytdlp-addon`/`spotdl-addon`/`bundled-archive`/
  *  `slskd-addon`) — otherwise an addon-backed job renders as "Unknown source"
- *  (issues #509, #532). */
+ *  (issues #509, #532). `import` is here for the same reason: the admin
+ *  folder-import flow has always written `method: 'import'`, so its 'Imported'
+ *  badge was unreachable and every import rendered "? Unknown source". */
 export function methodForBackend(backend: string): AcquisitionMethod {
   const base = backend === 'bundled-archive' ? 'archive' : backend.replace(/-addon$/, '');
-  return base === 'ytdlp' || base === 'spotdl' || base === 'archive' || base === 'slskd'
+  return base === 'ytdlp' ||
+    base === 'spotdl' ||
+    base === 'archive' ||
+    base === 'slskd' ||
+    base === 'import'
     ? base
     : 'unknown';
+}
+
+/**
+ * Render the title chain's last rung — the one place the English source copy
+ * lives, so it can be localized later rather than being baked into the
+ * derivation (which is a pure, i18n-free core helper).
+ *
+ * "YouTube video" rather than "YouTube track": a single yt-dlp URL is a video,
+ * and that is what the user pasted.
+ */
+export function renderDownloadTitle(title: DownloadTitle, method: AcquisitionMethod): string {
+  if (title.kind === 'text') return title.text;
+  const label = methodBadge(method).label;
+  switch (title.urlKind) {
+    case 'playlist':
+      return `${label} playlist`;
+    case 'album':
+      return `${label} album`;
+    case 'track':
+      return method === 'ytdlp' ? `${label} video` : `${label} track`;
+    default:
+      return `${label} download`;
+  }
 }
 
 /** Acquire job `state` → stage, preferring the job's own fine-grained `stage`. */
@@ -112,16 +142,22 @@ function acquireStage(job: AcquireJob): PipelineStage {
   }
 }
 
-/** Display label for an acquire job: its label, else a shortened URL. */
+/**
+ * Display label for an in-process acquire job. Runs the same shared chain as
+ * the unified lane so the two can't drift — `job.label` is the display title,
+ * the destination albums are the landed truth, and the pasted URL is the
+ * fallback (a humanized slug where the host offers one, else the source label).
+ */
 export function acquireJobLabel(job: AcquireJob): string {
-  if (job.label) return job.label;
-  try {
-    const u = new URL(job.url);
-    const path = u.pathname.length > 1 ? u.pathname.slice(0, 40) : '';
-    return u.hostname + path;
-  } catch {
-    return job.url.slice(0, 50);
-  }
+  const derived = downloadTitleFor({
+    displayTitle: job.label,
+    albumTitle: job.albumTitle,
+    artistName: job.albumArtist,
+    destinationAlbums: job.destinationAlbums,
+    sourceUrl: job.url,
+  });
+  if (derived.kind === 'text') return derived.text;
+  return renderDownloadTitle(derived, methodForBackend(job.backend));
 }
 
 /** Adapt a URL acquire job into a unified download item. */
@@ -202,34 +238,53 @@ export function mergeAcquisitionJobs(
   for (const job of jobs) {
     if (job.kind === 'url' && acquireKeys.has(job.id)) continue;
     const method = methodForBackend(job.method ?? '');
-    // sourceRef for an addon URL job is the opaque `addon:<id>:<uuid>` key — never
-    // a display title. Until the addon resolves real artist/album metadata, show a
-    // friendly source label ("Spotify download") instead of leaking that key.
-    const rawTitle = job.albumTitle ?? job.artistName ?? job.sourceRef ?? job.id;
-    const title =
-      job.albumTitle || job.artistName
-        ? rawTitle
-        : rawTitle.startsWith('addon:')
-          ? `${methodBadge(method).label} download`
-          : rawTitle;
+    // One shared chain names every card (docs/download-pipeline.md "Card
+    // titles"): the addon's own display title, else the canonical album, else
+    // where the files landed, else the peer/source folder, else the pasted
+    // link, and only then the bare source label. `sourceRef` is never a rung —
+    // it holds the opaque `addon:<id>:<uuid>` key or an absolute import path.
+    const derived = downloadTitleFor(job);
+    const title = renderDownloadTitle(derived, method);
+    // An admin import is a mirror row (docs/import.md): `import_jobs` owns its
+    // lifecycle and its own routes, so the job-scoped controls don't apply.
+    const isImport = job.kind === 'import';
     merged.push({
       key: `job:${job.id}`,
       kind: 'network',
       title,
-      subtitle: job.artistName ?? undefined,
+      // Only when it adds something: the old unconditional artistName repeated
+      // the title verbatim whenever the title had come from artistName.
+      subtitle: derived.kind === 'text' ? derived.subtitle : (job.artistName ?? undefined),
       method,
       stage: job.stage,
-      albumId: job.albumId ?? undefined,
+      // Mirrors the acquire lane's rule: a job whose files landed in several
+      // albums has no single "Open in Library" target, so it offers the
+      // "View N albums" menu instead of both at once.
+      albumId: (job.destinationAlbums?.length ?? 0) > 1 ? undefined : (job.albumId ?? undefined),
       jobId: job.id,
       sources: job.sources,
+      destinationAlbums: job.destinationAlbums?.length ? job.destinationAlbums : undefined,
       startedAt: job.createdAt,
       tracks: job.items,
       progress: { done: job.progress.delivered, total: job.progress.expected },
       unavailable: job.progress.unavailable > 0 ? job.progress.unavailable : undefined,
       error: job.error ?? undefined,
-      canRetry: false,
-      canCancel: job.stage === 'downloading',
-      canRemove: job.stage === 'done' || job.stage === 'error',
+      // A failed URL acquire can be re-submitted — `POST /api/acquire/jobs/:id/
+      // retry` has always supported it; the card simply never offered it.
+      canRetry: job.kind === 'url' && job.stage === 'error',
+      // 'queued' counts: an addon URL job is mirrored at submit, before the
+      // addon has fetched a byte, and a link that never resolves must not be
+      // left with no control at all. An **import** is excluded: its card is a
+      // mirror row with no addon behind it, so the job cancel route it would
+      // call ("this download has nothing left to cancel") always 400s — and
+      // that failure is now toasted rather than swallowed.
+      canCancel: !isImport && (job.stage === 'downloading' || job.stage === 'queued'),
+      // Removal is unconditional core-side (`DELETE /api/downloads/jobs/:id`
+      // always drops the row, best-efforting the addon half), so gating it on a
+      // stage the row can get stuck at is what made a ghost card undismissable.
+      // An import in flight is the exception: `import_jobs` is authoritative
+      // there, and dropping the mirror mid-run would orphan a live job.
+      canRemove: !isImport || job.stage === 'done' || job.stage === 'error',
     });
   }
 
