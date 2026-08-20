@@ -64,3 +64,21 @@ describe('deploy pulls every image we publish (issue #606)', () => {
     }
   });
 });
+
+describe('an empty derived list is a failure, not a no-op (issue #606)', () => {
+  it('refuses to deploy when compose resolves no images of ours', () => {
+    const step = deployStep();
+    // Without this, a broken `docker compose config` flows an empty string into
+    // xargs, which does nothing and exits 0 — reproducing the silent-skip class
+    // the derivation was meant to close.
+    expect(step).toContain('refusing to deploy');
+    expect(step).toMatch(/if \[ -z "\$images" \]/);
+  });
+
+  it('does not rely on `xargs -r` to paper over an empty list', () => {
+    // -r (--no-run-if-empty) is exactly what would make the empty case silent.
+    // Match the command, not the prose — the comment above it names `xargs -r`.
+    expect(deployStep()).toContain('xargs -n1 docker pull');
+    expect(deployStep()).not.toContain('xargs -r -n1 docker pull');
+  });
+});

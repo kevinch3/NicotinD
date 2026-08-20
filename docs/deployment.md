@@ -366,8 +366,16 @@ The `deploy` job derives its pull list from the resolved compose config rather
 than restating it:
 
 ```sh
-docker compose config --images | grep "^ghcr\.io/kevinch3/" | sort -u | xargs -r -n1 docker pull
+images=$(docker compose config --images | grep "^ghcr\.io/kevinch3/" | sort -u)
+[ -n "$images" ] || { echo "no images resolved — refusing to deploy" >&2; exit 1; }
+echo "$images" | xargs -n1 docker pull
 ```
+
+The empty-list check is load-bearing rather than defensive: the step does not set
+`pipefail`, so a pipeline's status is only its last command's. A failing
+`docker compose config` would flow an empty string into `xargs -r`, which does
+nothing and exits 0 — a silent skip that deploys stale images behind a green run,
+which is the same failure this whole section exists to prevent.
 
 It used to pull a hardcoded `nicotind analysis`, which meant the three addon
 images and the pot-provider were **never** pulled. That is worse than it sounds:

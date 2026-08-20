@@ -740,9 +740,17 @@ jobs:
             # A pull failure still aborts (set -e): a missing image must be loud,
             # never skipped (#457). Requires the GHCR packages to be public or a
             # `docker login ghcr.io` on the host — see docs/deployment.md.
-            docker compose config --images \
-              | grep "^ghcr\.io/kevinch3/" | sort -u \
-              | xargs -r -n1 docker pull &&
+            images=$(docker compose config --images | grep "^ghcr\.io/kevinch3/" | sort -u) &&
+            # An empty list means compose failed to resolve, not that there is
+            # nothing to pull: without `pipefail` a broken `config` would flow an
+            # empty string into `xargs -r`, which cheerfully does nothing and
+            # returns 0 — a silent skip that deploys stale images behind a green
+            # run, the very #457 shape this step exists to prevent.
+            if [ -z "$images" ]; then
+              echo "ERROR: no ghcr.io/kevinch3 images resolved from compose — refusing to deploy without pulling" >&2
+              exit 1
+            fi &&
+            echo "$images" | xargs -n1 docker pull &&
             # --build is kept for any host-local override that still carries a
             # `build:` key (no-op otherwise).
             docker compose up --build -d
