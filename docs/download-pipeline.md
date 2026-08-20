@@ -402,6 +402,16 @@ also what clears the pre-fix rows already on prod.
 
 #### Addon job outcomes reach the card
 
+**While the addon is active, its word sets the stage.** `recomputeStage` derives state/stage from
+the mirrored items, which is right once the addon has closed and wrong before it: with failures
+mirrored live (SDK 0.1.2) a 100-track playlist read **"Error · 0 of 3"** on track 4 and
+**"Organizing 11 of 22"** on track 22 (prod, 2026-08-20). `applyAddonOutcome` therefore pins an
+active job with items to `active/downloading` on every poll; an item-less one keeps its submit
+stage (`queued`). When the addon closes, `queued` placeholders join `downloading` items in becoming
+`unavailable` — an addon that knows the track count up front (spotDL's `Found 100 songs`, yt-dlp's
+`Downloading item 1 of 100`) sends the full set as `queued` on its first poll so the card reads
+"0 of 100" from the start instead of growing from "0 of 0".
+
 The poller mirrors the addon's **own verdict** — `AddonJob.state` and `.error` — onto the feed row
 (`applyAddonOutcome`). It used to read neither, deriving the row's lifecycle purely from mirrored
 *items*; that works for a job that produces files and fails completely for one that does not.
