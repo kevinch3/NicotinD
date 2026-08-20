@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.39](https://github.com/kevinch3/NicotinD/compare/v0.3.38...v0.3.39) (2026-08-20)
+
+### Bug Fixes
+
+* **analysis:** bound MusiCNN's batch size so the sidecar stops pinning 93% of the GPU ([#607](https://github.com/kevinch3/NicotinD/issues/607)) ([7446ada](https://github.com/kevinch3/NicotinD/commit/7446ada196da977902b029e031fccd07e573e9ee)), closes [#605](https://github.com/kevinch3/NicotinD/issues/605) [#603](https://github.com/kevinch3/NicotinD/issues/603)
+* **deploy:** pull every image we publish, derived from compose not a hardcoded list ([#609](https://github.com/kevinch3/NicotinD/issues/609)) ([7f93159](https://github.com/kevinch3/NicotinD/commit/7f931590852314cd0d5bdadbea61f032c99eafe3)), closes [#606](https://github.com/kevinch3/NicotinD/issues/606) [#606](https://github.com/kevinch3/NicotinD/issues/606), references [nicotind-spotdl-addon#4](https://github.com/kevinch3/NicotinD/issues/4) [#457](https://github.com/kevinch3/NicotinD/issues/457) [#606](https://github.com/kevinch3/NicotinD/issues/606)
 ## [0.3.38](https://github.com/kevinch3/NicotinD/compare/v0.3.37...v0.3.38) (2026-08-20)
 
 ### Bug Fixes
