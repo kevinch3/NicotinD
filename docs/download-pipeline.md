@@ -205,6 +205,19 @@ downloaders that needed it.
 
 1. **Deno in the image** (Dockerfile): yt-dlp needs a JS runtime to solve YouTube's player signature challenges; without one many downloads fail regardless of bot-flagging. The pip line also `--upgrade`s yt-dlp every image build (YouTube continuously breaks old versions) and installs `bgutil-ytdlp-pot-provider`.
 2. **PO-token provider** (docker-compose `bgutil-provider` service): YouTube demands "proof of origin" tokens from unrecognized clients; the bgutil companion service generates them and the pip-installed yt-dlp plugin fetches them automatically (spotdl included — same python env). The service runs with `network_mode: "service:nicotind"` so the plugin's default base URL `http://127.0.0.1:4416` works with zero per-invocation config (extractor-args can't be threaded through spotdl).
+**A fourth mitigation that was always assumed and never actually in place: running a current
+yt-dlp (issue #588).** Both addon Dockerfiles said "yt-dlp is deliberately unpinned (latest) —
+YouTube breaks older versions continuously", but the `RUN pip3 install … yt-dlp` layer is
+**Docker-layer-cached**: the images were rebuilt on 2026-08-20 and still shipped `2026.07.04`
+while PyPI had `2026.8.19`. Measured on kpc that day (with the transcripts #585 added): metadata
+extraction and PO-token minting succeeded, then **every media fetch returned `HTTP 403`** — for
+the plain `yt-dlp` CLI in both containers, PO token or not — and a 100-track playlist landed 1;
+the same video downloaded at once in a throwaway container after `pip install -U yt-dlp`. The
+addon CI now resolves the current yt-dlp version from PyPI at build time and passes it as
+`--build-arg YTDLP_VERSION=…` → `pip install yt-dlp==…`, so the layer key changes whenever
+the version does and the build log states which yt-dlp shipped. *Lesson:* "latest" in a
+Dockerfile is a statement about build time, and with a cached layer build time can be weeks ago.
+
 3. **Account cookies (`cookiesFile`)** — the only reliable unblock once an IP is *hard*-flagged (verified: valid PO tokens still got `LOGIN_REQUIRED`). Both plugins take a `cookiesFile` config (`acquire.ytdlp.cookiesFile` / `acquire.spotdl.cookiesFile`, also settable per-plugin via `PUT /api/plugins/:id/config`); empty config defaults to the convention path **`<dataDir>/youtube-cookies.txt`** (in Docker: `~/.nicotind/youtube-cookies.txt` on the host). The flag (`--cookies` for yt-dlp, `--cookie-file` for spotdl) is only passed **when the file actually exists**, so a missing/stale path can never break downloads — drop a Netscape-format cookies export there and the next job picks it up. Export from a logged-in browser (e.g. the "Get cookies.txt" extension); note downloads then run under that Google account.
 
 ### Playlists (yt-dlp)
