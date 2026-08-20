@@ -1214,7 +1214,11 @@ Add detail there, not here.
   **projects** addon url jobs into `AcquireJob` for `/api/acquire/jobs` + `/jobs/:id`
   (cancel/delete/retry too) — a read-only projection, so the poller stays the only writer — and
   `mergeAcquisitionJobs` drops the acquire-lane twin of an `addon:`-ref'd url job so the feed still
-  renders one card; web-side, `linkSubmitting` disables **Get** for the request round-trip. A
+  renders one card; web-side, `linkSubmitting` disables **Get** for the request round-trip, and
+  `submitLinkIntent`/`retryLinkJob` **kick an immediate `TransferService.kickPoll()`** (issue #595
+  — the feed's idle timer is 30s, so a pasted link bumped the nav badge, which reads the
+  already-refreshed `acquire.activeJobs()`, while the Downloads card stayed half a minute stale;
+  every other download-initiating site already kicked it). A
   truncated result (fewer files than the source reported) still
   finishes `done` but carries a warning + Retry instead of reading as an unqualified success,
   tagless sources (archive.org streams raw bytes with no ID3) return a `ResolveResult`

@@ -725,6 +725,12 @@ export class SearchComponent implements OnInit, OnDestroy {
       // override branch entirely.
       const as = intent.source === 'archive' && this.treatAsPlaylist() ? 'playlist' : undefined;
       await this.acquire.submit(intent.url, undefined, { as });
+      // The Downloads feed polls on a 30s idle timer, so without this the card
+      // for a link just pasted lagged the nav badge by up to half a minute —
+      // the badge reads `acquire.activeJobs()`, which the submit already
+      // refreshed (issue #595). Every other "start a download" site kicks the
+      // poll; this lane was the omission.
+      void this.transfers.kickPoll();
     } catch (err: unknown) {
       this.linkSubmitError.set(err instanceof Error ? err.message : 'Failed to start download');
     } finally {
@@ -746,6 +752,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     try {
       await firstValueFrom(this.downloadsApi.retryAcquireJob(job.id));
       await this.acquire.refresh();
+      void this.transfers.kickPoll();
     } catch (err: unknown) {
       this.linkSubmitError.set(err instanceof Error ? err.message : 'Retry failed');
     } finally {

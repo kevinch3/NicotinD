@@ -31,6 +31,9 @@ const CATALOG_ALBUM: CatalogAlbum = {
   trackCount: 10,
 };
 
+/** Shared across setup() calls; reset per test below so assertions don't leak. */
+const transferKickPoll = vi.fn(() => Promise.resolve());
+
 function setup(
   apiOverrides: Partial<Record<keyof SearchApiService, unknown>> = {},
   acquireOverrides: { submit?: () => Promise<string> } = {},
@@ -39,6 +42,7 @@ function setup(
   shareParams: { url?: string; text?: string; title?: string } = {},
 ) {
   registeredHandler = null;
+  transferKickPoll.mockClear();
   const acquireSubmit = vi.fn(acquireOverrides.submit ?? (() => Promise.resolve('job1')));
   const acquireCancel = vi.fn(() => Promise.resolve());
   const acquireRefresh = vi.fn(() => Promise.resolve());
@@ -92,7 +96,10 @@ function setup(
         useValue: { enqueueDownload: () => of({ ok: true }), retryAcquireJob },
       },
       { provide: LibraryApiService, useValue: { resolveArtistIdByName: () => of(null) } },
-      { provide: TransferService, useValue: { poll: () => {}, getStatus: () => undefined } },
+      {
+        provide: TransferService,
+        useValue: { poll: () => {}, getStatus: () => undefined, kickPoll: transferKickPoll },
+      },
       {
         provide: AcquireService,
         useValue: {
@@ -423,6 +430,38 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
     expect(component.linkIntent()).toEqual(
       expect.objectContaining({ source: 'youtube', sourceLabel: 'YouTube' }),
     );
+  });
+
+  // Issue #595 — the Downloads feed polls on a 30s idle timer, so without an
+  // explicit kick a pasted link showed a nav badge and no card for up to half a
+  // minute. `kickPoll`'s own contract is "call after initiating a download".
+  it('submitLinkIntent kicks an immediate transfer poll so the card appears at once', async () => {
+    const { component } = setup();
+    component.linkIntent.set({
+      url: 'https://www.youtube.com/playlist?list=PL123',
+      source: 'youtube',
+      sourceLabel: 'YouTube',
+      host: 'www.youtube.com',
+    });
+
+    await component.submitLinkIntent();
+
+    expect(transferKickPoll).toHaveBeenCalled();
+  });
+
+  it('submitLinkIntent does not kick a poll when the submit failed', async () => {
+    const { component, acquireSubmit } = setup();
+    acquireSubmit.mockRejectedValueOnce(new Error('nope'));
+    component.linkIntent.set({
+      url: 'https://youtu.be/dQw4w9WgXcQ',
+      source: 'youtube',
+      sourceLabel: 'YouTube',
+      host: 'youtu.be',
+    });
+
+    await component.submitLinkIntent();
+
+    expect(transferKickPoll).not.toHaveBeenCalled();
   });
 
   it('submitLinkIntent submits the URL through the acquire pipeline', async () => {
