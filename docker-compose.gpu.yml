@@ -40,15 +40,20 @@ services:
               count: 1
               capabilities: [gpu]
     # environment:
-    #   # Issue #224: TF_FORCE_GPU_ALLOW_GROWTH (baked into the image) stops the
-    #   # up-front grab but never releases the allocation afterward — measured
-    #   # on a shared P4000, the sidecar holds 7,631 MiB of 8,192 MiB while
-    #   # completely idle (docs/audio-ml-enrichment.md "Measured GPU behaviour").
-    #   # cuda_malloc_async is TF's stream-ordered allocator, which CAN return
-    #   # pages to the driver — uncomment to A/B it against the idle-release
-    #   # mechanism (ANALYSIS_IDLE_RELEASE_SEC, default 900s) below. Unverified
-    #   # on real hardware from this session; measure before relying on it.
-    #   TF_GPU_ALLOCATOR: cuda_malloc_async
+    #   # DO NOT set TF_GPU_ALLOCATOR: cuda_malloc_async here. It was documented
+    #   # as a promising un-measured lever for the idle 7.6 GB allocation; the
+    #   # measurement has since been made on the P4000 and the sidecar SEGFAULTS
+    #   # at boot ("Failed to create session: Internal: No allocator statistics",
+    #   # exit 139) on this TF 2.5 / CUDA 11 / Pascal combination. The real fix
+    #   # shipped instead: bounding MusiCNN's batch size, which took the idle
+    #   # footprint from 7,631 MiB to 2,235 MiB (issue #605, and
+    #   # docs/audio-ml-enrichment.md "Root cause: one model's batch size").
+    #   #
+    #   # Patches per MusiCNN session run. Default 4 — the measured memory sweet
+    #   # spot AND the fastest setting. Raise it only on a host that does not
+    #   # share its GPU; 16 costs ~2.3 GB more. 0/-1 are rejected in code (they
+    #   # are Essentia's "accumulate every patch" sentinels).
+    #   ANALYSIS_MUSICNN_BATCH_SIZE: "4"
     #   # Seconds of no /analyze calls before the sidecar drops its warm-loaded
     #   # models (reloaded lazily, multi-second cost, on the next call). 0 or
     #   # negative disables release entirely.

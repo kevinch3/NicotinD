@@ -295,7 +295,7 @@ not overlap — so **raising `concurrency` buys nothing, and lowering it to 1 co
 ### Result: memory is flat too — and that's the actual problem
 
 Peak GPU memory during the runs was **7,631 MiB at concurrency 1 and 7,631 MiB at concurrency 8** —
-identical, because it isn't a function of the workload at all. A freshly recreated container reports
+identical, because it is not a function of *concurrency*. A freshly recreated container reports
 **~85 MiB**; after the first inference the sidecar ratchets to 7,631 MiB of the 8,192 MiB card and
 **holds it while idle**, until restarted.
 
@@ -303,8 +303,51 @@ identical, because it isn't a function of the workload at all. A freshly recreat
 TF grabbing everything *up front*. It does not make TF ever **release** grown memory, which is the
 behaviour that matters on a shared card.
 
-So NicotinD occupies **93 % of the shared GPU permanently after one analysis**, whether or not a
-processing window is running. That is the GPU-citizenship problem, not concurrency.
+So NicotinD occupied **93 % of the shared GPU permanently after one analysis**, whether or not a
+processing window was running. That was the GPU-citizenship problem — not concurrency.
+
+### Root cause: one model's batch size (issue #605)
+
+The 7.6 GB was long assumed to be irreducible TF allocator behaviour. It was not — it was **one
+predictor**, found by measuring VRAM after each individual inference call on a 323 s track:
+
+| stage | VRAM |
+| --- | ---: |
+| container idle, models built (construction is lazy) | 165 MiB |
+| after the EffNet call | 2,233 MiB |
+| after all 8 EffNet heads | 2,233 MiB |
+| **after the MusiCNN call** | **7,631 MiB** |
+| after emomusic + genre heads | 7,631 MiB |
+
+`TensorflowPredictMusiCNN` allocated **~5.4 GB** to produce a 216×200 array feeding exactly one
+feature (valence). Essentia's predictors do take a `batchSize` (its docs: `-1`/`0` means "accumulate
+all patches and run a single session") — the knob is one layer above the `ConfigProto` surface
+Essentia doesn't expose. Sweeping it on the same track:
+
+| `batchSize` | VRAM | wall |
+| ---: | ---: | ---: |
+| default (= 64) | 7,629 MiB | 2.7 s |
+| 16 | 3,265 MiB | 2.1 s |
+| **4** | **977 MiB** | **1.5 s** |
+| 2 | 713 MiB | 1.5 s |
+| 1 | 457 MiB | 3.0 s |
+
+4 is both the memory sweet spot and the **fastest** setting — the large default was not buying
+throughput, it was losing it. With `batchSize=4` the full pipeline peaks at **2,235 MiB instead of
+7,631 MiB**, freeing **5.4 GB**, with **bit-identical** feature output (embedding head and every
+derived feature match exactly, so no library re-analysis is needed). Shipped as
+`musicnn_batch_size()` / `ANALYSIS_MUSICNN_BATCH_SIZE`.
+
+Two things did *not* help, recorded so nobody retries them:
+
+- **EffNet cannot be bounded.** Its published graph is the *bs64* variant with 64 baked into a
+  `Reshape`; any other `batchSize` fails with `Input to reshape is a tensor with 10240 values, but
+  the requested shape has 81920`. Its 2,233 MiB is a hard floor. (A `bsdynamic` variant exists
+  upstream — Essentia publishes one for the ONNX build — if pushing below 2 GB ever matters.)
+- **`TF_GPU_ALLOCATOR=cuda_malloc_async` crashes this build** — see below.
+
+At 2.2 GB the sidecar leaves ~6 GB free, enough to co-host the ~3.0 GB BS-RoFormer separator of
+[docs/vocal-isolation-spike.md](vocal-isolation-spike.md).
 
 ### Consequences for the existing controls
 
@@ -374,13 +417,20 @@ reserved for the never-loaded-at-boot case, which genuinely never recovers.
 `test_health_stays_ok_after_idle_release` (`test_api.py`) and
 `test_holder_can_serve_distinguishes_idle_drop_from_boot_failure` (`test_idle_release.py`) pin it.
 
-A second, **unverified-on-hardware** lever also ships as an opt-in: `TF_GPU_ALLOCATOR=cuda_malloc_async`
-(TF's stream-ordered allocator, which — unlike the default BFC allocator under
-`TF_FORCE_GPU_ALLOW_GROWTH`— *can* return pages to the driver) is documented as a commented-out
-override in `docker-compose.gpu.yml`, not baked into the image, because there is no GPU in this
-session to confirm it actually shrinks the 7.6 GB allocation on this TF/CUDA combination. **Needs a
-`kpc` measurement** (repeat the `nvidia-smi` sampling from this section with the allocator flag on)
-before it's trusted as more than a documented experiment.
+`TF_GPU_ALLOCATOR=cuda_malloc_async` — TF's stream-ordered allocator, which unlike the default BFC
+allocator *can* return pages to the driver — shipped as a commented-out override in
+`docker-compose.gpu.yml` pending a hardware measurement. **That measurement has now been made, and it
+does not work: the sidecar segfaults at boot** (exit 139) on this TF 2.5 / CUDA 11 / Pascal
+combination:
+
+```
+I gpu_process_state.cc:210] Using CUDA malloc Async allocator for GPU.
+E session.cc:91] Failed to create session: Internal: No allocator statistics
+```
+
+The symbol is present in the bundled `libtensorflow` (so the flag is *recognised*), it simply cannot
+create a session. The override must stay commented out — uncommenting it takes the sidecar down
+rather than shrinking anything. The batch-size bound above is the fix that actually works.
 
 Cross-tenant awareness (gating a window kick on Immich/Ollama's own GPU usage) remains unbuilt —
 self-throttling via idle-release was judged sufficient for now; revisit if the `kpc` measurement
