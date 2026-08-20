@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.33](https://github.com/kevinch3/NicotinD/compare/v0.3.32...v0.3.33) (2026-08-20)
+
+### Features
+
+* **radio:** formula v2 — poll-calibrated weights, junk-genre fix, 60s pool floor, eval harness ([#584](https://github.com/kevinch3/NicotinD/issues/584)) ([eaf2bdb](https://github.com/kevinch3/NicotinD/commit/eaf2bdba5f766d2e6f02206b80d70b68aeb33822)), references [#1](https://github.com/kevinch3/NicotinD/issues/1) [#2](https://github.com/kevinch3/NicotinD/issues/2) [#187](https://github.com/kevinch3/NicotinD/issues/187)
 ## [0.3.32](https://github.com/kevinch3/NicotinD/compare/v0.3.31...v0.3.32) (2026-08-20)
 
 ### Features
