@@ -65,6 +65,7 @@ export function radioPollAdminRoutes(deps: { version?: string } = {}) {
         scenarioCount: body.scenarioCount ?? 5,
         nextUpCount: body.nextUpCount ?? 5,
         pinnedSeedIds: body.pinnedSeedIds,
+        filters: body.filters,
         weights: body.weights,
       });
       const weights = mergePollWeights(settings.weights);

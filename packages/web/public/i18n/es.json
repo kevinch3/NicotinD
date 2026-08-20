@@ -882,5 +882,10 @@
   "vibe.happy": "Alegre",
   "vibe.party": "Fiesta",
   "vibe.uplifting": "Optimista",
-  "extensions.consentUntrusted": "Vas a añadir un addon de una fuente que NicotinD no controla. Una vez habilitado, podrá:"
+  "extensions.consentUntrusted": "Vas a añadir un addon de una fuente que NicotinD no controla. Una vez habilitado, podrá:",
+  "admin.radioPollsStations": "Escenarios de emisora (opcional)",
+  "admin.radioPollsStationsPlaceholder": "Electronic, Rock, Cumbia",
+  "admin.radioPollsStationsHint": "Géneros separados por comas: cada uno genera un escenario de emisora, evaluado como suenan los chips de género de la portada.",
+  "poll.station": "Emisora",
+  "poll.stationTracks": "Sonando en esta emisora"
 }

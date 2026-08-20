@@ -734,3 +734,81 @@ describe('genreSetCloseness — junk vocab never matches (issue #583)', () => {
     expect(junkSeed.floored).not.toContain('genre');
   });
 });
+
+describe('station affinity axis (filter radio, formula v3)', () => {
+  // The reported failure: an "Electronic" station served Queen and Madonna next
+  // to Calvin Harris. Every candidate in a station pool carries the station's
+  // genre by construction, so the plain genre axis scores 1.0 for all of them
+  // and the heaviest weight in the blend orders nothing — leaving bpm/energy
+  // ("they're 128 BPM") to decide the station.
+  const station: SongFeatures = {
+    genres: ['Electronic'],
+    bpm: 128,
+    key: 'C major',
+    duration: 240,
+    year: 2014,
+    artistId: '',
+    energy: 0.7,
+    valence: 0.6,
+  };
+  // Tagged Electronic third, by a mostly-rock artist, but a dead-on fit on
+  // every measurable axis — the profile that used to win.
+  const marginalPerfectFit: SongFeatures = {
+    genres: ['Rock', 'Pop', 'Electronic'],
+    bpm: 128,
+    key: 'C major',
+    duration: 240,
+    year: 2014,
+    artistId: 'queen',
+    energy: 0.7,
+    valence: 0.6,
+  };
+  // A genre native that is merely decent elsewhere.
+  const nativeLooseFit: SongFeatures = {
+    genres: ['Electronic'],
+    bpm: 138,
+    key: 'F minor',
+    duration: 300,
+    year: 2021,
+    artistId: 'calvin',
+    energy: 0.82,
+    valence: 0.45,
+  };
+
+  it('without affinity, the marginally-tagged perfect fit wins (the bug)', () => {
+    expect(scoreSimilarity(station, marginalPerfectFit)).toBeGreaterThan(
+      scoreSimilarity(station, nativeLooseFit),
+    );
+  });
+
+  it('with affinity, the genre native wins', () => {
+    // Affinities as station-affinity.ts computes them for these two: a
+    // third-position tag by a 3%-Electronic artist vs a primary tag by a
+    // 90%-Electronic one.
+    const marginal = { ...marginalPerfectFit, stationAffinity: 0.26 };
+    const native = { ...nativeLooseFit, stationAffinity: 1 };
+    expect(scoreSimilarity(station, native)).toBeGreaterThan(scoreSimilarity(station, marginal));
+  });
+
+  it('replaces the genre axis rather than adding to the blend', () => {
+    const ex = explainSimilarity(station, { ...nativeLooseFit, stationAffinity: 0.8 });
+    expect(ex.axes.find((a) => a.axis === 'station')?.value).toBe(0.8);
+    expect(ex.axes.find((a) => a.axis === 'station')?.weight).toBe(DEFAULT_WEIGHTS.genre);
+    expect(ex.axes.find((a) => a.axis === 'genre')).toBeUndefined();
+    expect(ex.skipped).not.toContain('genre');
+    expect(ex.floored).not.toContain('genre');
+  });
+
+  it('leaves seed radio on the genre axis untouched', () => {
+    const ex = explainSimilarity(makeSeed(), makeCandidate());
+    expect(ex.axes.find((a) => a.axis === 'genre')).toBeDefined();
+    expect(ex.axes.find((a) => a.axis === 'station')).toBeUndefined();
+  });
+
+  it('clamps a caller-supplied affinity into 0..1', () => {
+    const hi = explainSimilarity(station, { ...nativeLooseFit, stationAffinity: 4 });
+    expect(hi.axes.find((a) => a.axis === 'station')?.value).toBe(1);
+    const lo = explainSimilarity(station, { ...nativeLooseFit, stationAffinity: -2 });
+    expect(lo.axes.find((a) => a.axis === 'station')?.value).toBe(0);
+  });
+});

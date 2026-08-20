@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import type {
   GenerationVerdict,
+  LibraryFilter,
   RadioPollCandidateResult,
   RadioPollSettings,
 } from '@nicotind/core';
@@ -29,6 +30,11 @@ export interface RadioPollExportDataset {
     position: number;
     kind: 'seed' | 'filter';
     seed: { songId: string; title: string; artist: string; features: unknown } | null;
+    /** Station scenarios only: the scoring seed, since there is no seed song.
+     *  Without it the eval harness had nothing to re-score against and skipped
+     *  every filter scenario outright. */
+    centroid?: unknown;
+    filter?: LibraryFilter;
     weights: Record<string, number>;
     candidates: Array<{
       songId: string;
@@ -96,6 +102,8 @@ export function pollExportDataset(db: Database, poll: RadioPollRow): RadioPollEx
             features: s.seed.features,
           }
         : null,
+      centroid: s.centroid,
+      filter: s.filter,
       weights: s.weights,
       candidates: s.candidates.map(exportCandidate),
     })),

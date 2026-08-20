@@ -286,3 +286,49 @@ describe('formula_version (issue #583)', () => {
     expect(listPollSummaries(db)[0]!.formulaVersion).toBeNull();
   });
 });
+
+describe('publicPollView — station scenarios', () => {
+  function stationScenario(): GeneratedScenario {
+    const base = scenario('st1', 0, ['c1', 'c2']);
+    return {
+      ...base,
+      kind: 'filter',
+      seedSongId: null,
+      snapshot: {
+        ...base.snapshot,
+        kind: 'filter',
+        seed: null,
+        centroid: { duration: 200, artistId: '', genres: ['Electronic'] },
+        filter: { genres: ['Electronic'] },
+      },
+    };
+  }
+
+  it('names the station where the seed card would be', () => {
+    const { token } = makePoll([stationScenario()]);
+    const poll = getPollByToken(db, token)!;
+    const view = publicPollView(poll, listScenarios(db, poll.id), { jwt: 'j', expiresAt: 9 });
+    // A seed-less scenario used to render nothing at all above the candidate
+    // list, leaving raters grading an unexplained list of songs.
+    expect(view.scenarios[0]!.seed).toBeNull();
+    expect(view.scenarios[0]!.filterLabel).toBe('Electronic');
+  });
+
+  it('keeps the centroid and filter out of the rater payload', () => {
+    const { token } = makePoll([stationScenario()]);
+    const poll = getPollByToken(db, token)!;
+    const view = publicPollView(poll, listScenarios(db, poll.id), { jwt: 'j', expiresAt: 9 });
+    const sc = view.scenarios[0]! as unknown as Record<string, unknown>;
+    expect(sc['centroid']).toBeUndefined();
+    expect(sc['filter']).toBeUndefined();
+  });
+
+  it('carries the centroid and filter into the admin results (the eval reads them)', () => {
+    const { id, token } = makePoll([stationScenario()]);
+    const poll = getPollByToken(db, token)!;
+    const results = pollResults(db, poll);
+    expect(id).toBeTruthy();
+    expect(results.scenarios[0]!.centroid).toBeDefined();
+    expect(results.scenarios[0]!.filter).toEqual({ genres: ['Electronic'] });
+  });
+});

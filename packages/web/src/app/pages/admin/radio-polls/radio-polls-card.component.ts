@@ -1,5 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import type { LibraryFilter } from '@nicotind/core';
 import type { RadioPollResults, RadioPollSummary } from '../../../../types/core';
 import type { Song } from '../../../services/api/api-types';
 import { RadioPollService } from '../../../services/radio-poll.service';
@@ -39,6 +40,8 @@ export class RadioPollsCardComponent {
   readonly nextUpCount = signal(5);
   readonly expiresInHours = signal<number | null>(null);
   readonly pinnedSeeds = signal<Song[]>([]);
+  /** Comma-separated genres; each becomes one station scenario. */
+  readonly stationGenres = signal('');
   readonly creating = signal(false);
 
   // Per-poll expanded results
@@ -80,6 +83,19 @@ export class RadioPollsCardComponent {
     return this.pinnedSeeds().map((s) => s.id);
   }
 
+  /**
+   * One `LibraryFilter` per named genre — the same shape the landing page's
+   * genre chips start radio with, so a poll grades the station a listener
+   * actually gets rather than an approximation of it.
+   */
+  stationFilters(): LibraryFilter[] {
+    return this.stationGenres()
+      .split(',')
+      .map((g) => g.trim())
+      .filter(Boolean)
+      .map((g) => ({ genres: [g] }));
+  }
+
   create(): void {
     const name = this.name().trim();
     if (!name || this.creating()) return;
@@ -90,6 +106,7 @@ export class RadioPollsCardComponent {
         scenarioCount: this.scenarioCount(),
         nextUpCount: this.nextUpCount(),
         pinnedSeedIds: this.pinnedSeedIds(),
+        filters: this.stationFilters(),
         expiresInHours: this.expiresInHours() ?? undefined,
       })
       .subscribe({
@@ -97,6 +114,7 @@ export class RadioPollsCardComponent {
           this.creating.set(false);
           this.name.set('');
           this.pinnedSeeds.set([]);
+          this.stationGenres.set('');
           this.copyLink(url);
           this.reload();
         },

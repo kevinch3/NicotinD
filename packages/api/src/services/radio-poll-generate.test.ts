@@ -7,6 +7,7 @@ import {
   RadioPollGenerationError,
   generatePollScenarios,
   mergePollWeights,
+  describeFilter,
   normalizePollSettings,
   stripFeatures,
 } from './radio-poll-generate.js';
@@ -205,5 +206,147 @@ describe('stripFeatures', () => {
       recentPlayFactor: 0.5,
     });
     expect(stripped).toEqual({ duration: 200, artistId: 'a', bpm: 120 });
+  });
+});
+
+describe('station (filter) scenarios', () => {
+  function station(): void {
+    for (let i = 1; i <= 6; i++) {
+      seedSong({
+        id: `e${i}`,
+        title: `E${i}`,
+        artist: 'Producer',
+        artistId: 'prod',
+        genre: 'Electronic',
+        bpm: 128,
+      });
+      db.run(
+        `INSERT OR REPLACE INTO library_song_genres (song_id, genre, position) VALUES (?, 'Electronic', 0)`,
+        [`e${i}`],
+      );
+    }
+    for (let i = 1; i <= 6; i++) {
+      seedSong({
+        id: `r${i}`,
+        title: `R${i}`,
+        artist: 'Band',
+        artistId: 'band',
+        genre: 'Rock',
+        bpm: 128,
+      });
+      db.run(
+        `INSERT OR REPLACE INTO library_song_genres (song_id, genre, position) VALUES (?, 'Rock', 0)`,
+        [`r${i}`],
+      );
+      if (i === 1) {
+        db.run(
+          `INSERT OR REPLACE INTO library_song_genres (song_id, genre, position) VALUES (?, 'Electronic', 1)`,
+          [`r${i}`],
+        );
+      }
+    }
+  }
+
+  it('freezes a station scenario with its centroid and filter', () => {
+    station();
+    const scenarios = generatePollScenarios(
+      db,
+      normalizePollSettings({
+        scenarioCount: 1,
+        nextUpCount: 5,
+        filters: [{ genres: ['Electronic'] }],
+      }),
+      DEFAULT_WEIGHTS,
+    );
+    expect(scenarios).toHaveLength(1);
+    const sc = scenarios[0]!;
+    expect(sc.kind).toBe('filter');
+    expect(sc.seedSongId).toBeNull();
+    expect(sc.snapshot.seed).toBeNull();
+    expect(sc.snapshot.filter).toEqual({ genres: ['Electronic'] });
+    // Without a centroid the eval harness has nothing to re-score against and
+    // silently drops the whole scenario.
+    expect(sc.snapshot.centroid).toBeDefined();
+    expect(sc.snapshot.candidates.length).toBeGreaterThan(0);
+  });
+
+  it('never leaks the source row (file paths) into a frozen snapshot', () => {
+    station();
+    const scenarios = generatePollScenarios(
+      db,
+      normalizePollSettings({
+        scenarioCount: 1,
+        nextUpCount: 5,
+        filters: [{ genres: ['Electronic'] }],
+      }),
+      DEFAULT_WEIGHTS,
+    );
+    const json = JSON.stringify(scenarios[0]!.snapshot.candidates.map((c) => c.features));
+    expect(json).not.toContain('/music/');
+    expect(json).not.toContain('_row');
+  });
+
+  it('carries the station grade so a replay reproduces the served ranking', () => {
+    station();
+    const scenarios = generatePollScenarios(
+      db,
+      normalizePollSettings({
+        scenarioCount: 1,
+        nextUpCount: 5,
+        filters: [{ genres: ['Electronic'] }],
+      }),
+      DEFAULT_WEIGHTS,
+    );
+    const features = scenarios[0]!.snapshot.candidates.map((c) => c.features);
+    expect(features.every((f) => typeof f.stationAffinity === 'number')).toBe(true);
+    expect(
+      scenarios[0]!.snapshot.candidates[0]!.explanation.axes.some((a) => a.axis === 'station'),
+    ).toBe(true);
+  });
+
+  it('generates stations after pinned seeds and before random auto seeds', () => {
+    station();
+    const scenarios = generatePollScenarios(
+      db,
+      normalizePollSettings({
+        scenarioCount: 3,
+        nextUpCount: 3,
+        pinnedSeedIds: ['e1'],
+        filters: [{ genres: ['Electronic'] }],
+      }),
+      DEFAULT_WEIGHTS,
+    );
+    expect(scenarios.map((s) => s.kind)).toEqual(['seed', 'filter', 'seed']);
+  });
+
+  it('drops a filter that matches nothing rather than failing the poll', () => {
+    station();
+    const scenarios = generatePollScenarios(
+      db,
+      normalizePollSettings({
+        scenarioCount: 2,
+        nextUpCount: 3,
+        filters: [{ genres: ['Nonexistent'] }, { genres: ['Electronic'] }],
+      }),
+      DEFAULT_WEIGHTS,
+    );
+    expect(scenarios.some((s) => s.kind === 'filter')).toBe(true);
+  });
+});
+
+describe('describeFilter', () => {
+  it('names a genre station', () => {
+    expect(describeFilter({ genres: ['Electronic'] })).toBe('Electronic');
+    expect(describeFilter({ genres: ['House', 'Techno'] })).toBe('House / Techno');
+  });
+
+  it('joins the parts of a compound vibe', () => {
+    expect(describeFilter({ moods: ['happy'], bpmMin: 120 })).toBe('happy · 120+ bpm');
+    expect(describeFilter({ bpmMin: 100, bpmMax: 130 })).toBe('100-130 bpm');
+    expect(describeFilter({ buckets: { energy: ['high'] } })).toBe('high energy');
+  });
+
+  it('never renders an empty label', () => {
+    expect(describeFilter({})).toBe('Everything');
   });
 });

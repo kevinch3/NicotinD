@@ -24,8 +24,15 @@ export interface RadioPollSettings {
   nextUpCount: number;
   /** Seed song ids the admin pinned (consume scenario slots first). */
   pinnedSeedIds?: string[];
-  /** Reserved for vibe/filter scenarios (follow-up; schema supports `kind: 'filter'`). */
-  filter?: LibraryFilter;
+  /**
+   * Station ("vibe") scenarios — each filter becomes one `kind: 'filter'`
+   * scenario, generated after the pinned seeds and before the random auto
+   * seeds. Plural because the question these answer is "are my genre stations
+   * any good", and one station per poll can't tell you that; the landing page
+   * alone offers eight chips. Was a reserved singular `filter` that nothing
+   * ever wrote.
+   */
+  filters?: LibraryFilter[];
   /** Scoring-weight overrides actually used, merged onto the engine defaults. */
   weights?: Record<string, number>;
 }
@@ -68,6 +75,9 @@ export interface RadioPollSnapshotFeatures {
   danceability?: number;
   instrumental?: number;
   acousticness?: number;
+  /** Station scenarios: the graded membership that replaced the genre axis, so
+   *  a replay reproduces the ranking the raters actually saw. */
+  stationAffinity?: number;
 }
 
 /** One frozen next-up suggestion inside a scenario. */
@@ -180,6 +190,11 @@ export interface RadioPollScenarioResult {
   kind: 'seed' | 'filter';
   seed: { song: Song; features: RadioPollSnapshotFeatures } | null;
   filterLabel?: string;
+  /** Station scenarios: the scoring seed (there is no seed song) and the filter
+   *  that defined the station — both needed by the offline eval harness, which
+   *  otherwise has nothing to re-score a station's candidates against. */
+  centroid?: RadioPollSnapshotFeatures;
+  filter?: LibraryFilter;
   /** The full weight set the ranking used (from the frozen snapshot). */
   weights: Record<string, number>;
   candidates: RadioPollCandidateResult[];

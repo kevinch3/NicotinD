@@ -128,12 +128,27 @@ candidates, not pool selection (v2's sub-60 s pool floor is invisible to it).
 The first calibration this loop produced is formula v2 — see docs/radio.md
 "Calibration history".
 
+**Station (vibe/filter) scenarios — shipped with formula v3.** `kind: 'filter'`
+had been in the schema from the start with nothing generating it, and
+`evaluatePollAgreement` skipped any seed-less scenario outright, so **every vote
+collected up to v2 graded seed radio only** — the path that was not the reported
+problem. A station poll now works end to end: `RadioPollSettings.filters` (an
+array — one station per poll cannot answer "are my genre stations any good", and
+the landing page alone offers eight chips) generates one `filterScenario` each
+via `buildFilterRadio`, after the pinned seeds and ahead of the random auto
+seeds; the snapshot freezes the `centroid` and the `filter` beside the
+candidates, because a station has no seed song and without the centroid a replay
+has nothing to score against; the export carries both; and the wizard renders a
+**station card** (`poll-station-card`, `filterLabel` via `describeFilter`) where
+the seed track's card would be — a seed-less scenario used to render nothing at
+all above the candidate list, leaving raters grading an unexplained list of
+songs. Admins name stations as comma-separated genres in the create form.
+
 **Follow-ups deliberately not built yet**: fixture emission + a
 `radio-eval.replay.test.ts` CI ratchet (the offline agreement harness above now
 exists; freezing graded cases as committed fixtures is worth it once the vote
-base is larger than 70), vibe/filter scenarios
-(`kind: 'filter'` is already in the schema), an OG link preview for
-`/poll/:token`, and A/B polls with two weight sets interleaved.
+base is larger than 70), an OG link preview for `/poll/:token`, and A/B polls
+with two weight sets interleaved.
 
 ## Web surfaces
 
@@ -147,7 +162,8 @@ base is larger than 70), vibe/filter scenarios
 - **Admin card** `pages/admin/radio-polls/` — a `SettingsGroupComponent` on
   /admin (lazy `load()` on expand, like the generation-feedback queue): create
   form (name, counts, optional expiry, pinned seed songs via the shared
-  `SongPickerComponent`; remaining slots use random genre-preferring auto
-  seeds), list with copy-link/close/delete, and an expandable results view —
+  `SongPickerComponent`, station genres as a comma-separated list; remaining
+  slots use random genre-preferring auto seeds), list with
+  copy-link/close/delete, and an expandable results view —
   per-candidate 👍/👎 tallies, approval bar, and the per-axis breakdown in the
   same `value×weight` string shape as dump-radio's `breakdownLine`.

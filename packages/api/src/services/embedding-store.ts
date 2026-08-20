@@ -69,3 +69,40 @@ export function loadEmbeddings(
   }
   return out;
 }
+
+/**
+ * The model most of a *pool* was analyzed under — the station counterpart of
+ * {@link embeddingModelFor}, which pins a single seed song's model.
+ *
+ * Filter radio has no seed song to pin, so without this there is no model to
+ * pass to {@link loadEmbeddings} and the whole embedding axis stays dark (which
+ * is exactly what it did before v3). Picking the plurality model keeps the
+ * comparison within one vector space; a library mid-migration between models
+ * simply scores the majority slice and skips the rest, same as a seed whose
+ * model no candidate shares.
+ */
+export function dominantEmbeddingModel(db: Database, ids: readonly string[]): string | null {
+  if (ids.length === 0) return null;
+  const counts = new Map<string, number>();
+  const CHUNK = 500;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    const placeholders = chunk.map(() => '?').join(',');
+    const rows = db
+      .query<{ model: string; n: number }, string[]>(
+        `SELECT model, COUNT(*) AS n FROM library_embeddings
+          WHERE song_id IN (${placeholders}) GROUP BY model`,
+      )
+      .all(...chunk);
+    for (const r of rows) counts.set(r.model, (counts.get(r.model) ?? 0) + r.n);
+  }
+  let best: string | null = null;
+  let bestN = 0;
+  for (const [model, n] of counts) {
+    if (n > bestN) {
+      best = model;
+      bestN = n;
+    }
+  }
+  return best;
+}

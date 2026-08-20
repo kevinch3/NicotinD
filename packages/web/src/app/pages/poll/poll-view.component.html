@@ -80,9 +80,19 @@
                 }
               </button>
             </div>
+          } @else if (sc.filterLabel) {
+            <!-- Station scenario: no seed track, so name the station instead —
+                 an unexplained list of songs is not a gradeable question. -->
+            <div class="rounded-xl bg-theme-surface border border-theme p-4 mb-6 text-center"
+              data-testid="poll-station-card">
+              <p class="text-[11px] uppercase tracking-wide text-theme-muted mb-1">{{ 'poll.station' | t }}</p>
+              <p class="text-base font-semibold text-theme-primary">{{ sc.filterLabel }}</p>
+            </div>
           }
 
-          <p class="text-[11px] uppercase tracking-wide text-theme-muted mb-2">{{ 'poll.nextUp' | t }}</p>
+          <p class="text-[11px] uppercase tracking-wide text-theme-muted mb-2">
+            {{ (sc.seed ? 'poll.nextUp' : 'poll.stationTracks') | t }}
+          </p>
 
           <!-- Candidate rows -->
           <div class="divide-y divide-theme-border rounded-xl border border-theme bg-theme-surface overflow-hidden mb-4">

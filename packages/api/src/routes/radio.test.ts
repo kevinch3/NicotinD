@@ -543,6 +543,143 @@ describe('radio /next', () => {
 });
 
 /**
+ * Stations (filter radio, formula v3). Membership in a genre station is a tag
+ * test, so it is boolean and every candidate passes it — these cover the three
+ * things that made an "Electronic" station serve Queen next to Calvin Harris.
+ */
+describe('radio /next — genre stations', () => {
+  beforeEach(() => {
+    testDb = createTestDb();
+  });
+
+  /** Give a song a full ordered genre set (the join table the filter reads). */
+  function setGenres(db: Database, songId: string, genres: string[]): void {
+    genres.forEach((g, i) =>
+      db.run(
+        `INSERT OR REPLACE INTO library_song_genres (song_id, genre, position) VALUES (?, ?, ?)`,
+        [songId, g, i],
+      ),
+    );
+    db.run(`UPDATE library_songs SET genre = ? WHERE id = ?`, [genres[0] ?? null, songId]);
+  }
+
+  function embed(db: Database, id: string, v: number[]): void {
+    db.run(
+      `INSERT INTO library_embeddings (song_id, model, dim, vec, updated_at) VALUES (?, 'test', ?, ?, 0)`,
+      [id, v.length, Buffer.from(new Float32Array(v).buffer)],
+    );
+  }
+
+  it('grades membership: a genre native outranks an identically-fitting marginal tag', () => {
+    // Calvin: every track Electronic-primary (share 1.0, depth 1.0).
+    for (const i of [1, 2, 3]) {
+      seedSong(testDb, {
+        id: `calvin${i}`,
+        title: `C${i}`,
+        artist: 'Calvin',
+        artistId: 'calvin',
+        albumId: 'calvinAlb',
+        album: 'Calvin Alb',
+        bpm: 128,
+        year: 2014,
+      });
+      setGenres(testDb, `calvin${i}`, ['Electronic']);
+    }
+    // Queen: one track wears Electronic third; the rest are Rock (share 0.1).
+    for (const i of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+      seedSong(testDb, {
+        id: `queen${i}`,
+        title: `Q${i}`,
+        artist: 'Queen',
+        artistId: 'queen',
+        albumId: 'queenAlb',
+        album: 'Queen Alb',
+        bpm: 128,
+        year: 2014,
+      });
+      setGenres(testDb, `queen${i}`, i === 1 ? ['Rock', 'Pop', 'Electronic'] : ['Rock']);
+    }
+
+    const result = buildFilterRadio(testDb, { genres: ['Electronic'] }, { count: 10 });
+    const affinity = new Map(result.pool.map((c) => [c._row.id, c.stationAffinity]));
+    // Both are members — the demotion is never an exclusion.
+    expect(affinity.has('queen1')).toBe(true);
+    expect(affinity.get('calvin1')!).toBeGreaterThan(affinity.get('queen1')!);
+
+    // Every other axis is identical (same bpm/year/duration), so affinity is
+    // the only thing that can order these.
+    const ids = result.ranked.map((e) => e.song._row.id);
+    expect(ids.indexOf('calvin1')).toBeLessThan(ids.indexOf('queen1'));
+  });
+
+  it("seeds the genre axis from the request, not the pool's modal primary", () => {
+    // An umbrella tag that mostly sits on pop records: 4 of 5 members are
+    // Pop-primary, so `seedCentroid`'s mode() returns "Pop" — the centroid
+    // would have scored real Electronic tracks at 0 on the axis meant to
+    // reward them.
+    for (const i of [1, 2, 3, 4]) {
+      seedSong(testDb, {
+        id: `pop${i}`,
+        title: `P${i}`,
+        artist: 'PopStar',
+        artistId: `pop${i}`,
+        albumId: 'popAlb',
+        album: 'Pop Alb',
+      });
+      setGenres(testDb, `pop${i}`, ['Pop', 'Electronic']);
+    }
+    seedSong(testDb, {
+      id: 'real',
+      title: 'Real',
+      artist: 'Producer',
+      artistId: 'producer',
+      albumId: 'prodAlb',
+      album: 'Prod Alb',
+    });
+    setGenres(testDb, 'real', ['Electronic']);
+
+    const result = buildFilterRadio(testDb, { genres: ['Electronic'] }, {});
+    expect(result.seed?.genre).toBe('Pop'); // the raw statistic, unchanged
+    expect(result.seed?.genres).toEqual(['Electronic']); // what actually scores
+  });
+
+  it('loads embeddings for a station pool (they never were before v3)', () => {
+    for (const i of [1, 2, 3]) {
+      seedSong(testDb, {
+        id: `s${i}`,
+        title: `S${i}`,
+        artist: `A${i}`,
+        artistId: `a${i}`,
+        albumId: `alb${i}`,
+        album: `Alb ${i}`,
+      });
+      setGenres(testDb, `s${i}`, ['Electronic']);
+      embed(testDb, `s${i}`, [1, 0, 0]);
+    }
+
+    const result = buildFilterRadio(testDb, { genres: ['Electronic'] }, {});
+    expect(result.pool.every((c) => c.embedding !== undefined)).toBe(true);
+    expect(result.seed?.embedding).toBeDefined();
+    // The anchor is L2-normalised, so an all-aligned pool anchors on that axis.
+    expect(result.seed!.embedding![0]!).toBeCloseTo(1, 5);
+  });
+
+  it('leaves a genre-less vibe on the plain genre axis', () => {
+    seedSong(testDb, { id: 'x', title: 'X', artist: 'A', albumId: 'a1', album: 'A1', bpm: 120 });
+    setGenres(testDb, 'x', ['Rock']);
+    const result = buildFilterRadio(testDb, { bpmMin: 1 }, {});
+    expect(result.pool.every((c) => c.stationAffinity === undefined)).toBe(true);
+  });
+
+  it('ignores a junk station genre rather than grading against a shrug', () => {
+    seedSong(testDb, { id: 'j', title: 'J', artist: 'A', albumId: 'a1', album: 'A1' });
+    setGenres(testDb, 'j', ['Other']);
+    const result = buildFilterRadio(testDb, { genres: ['Other'] }, {});
+    expect(result.pool.every((c) => c.stationAffinity === undefined)).toBe(true);
+  });
+});
+
+/**
  * Recently-played demotion end-to-end (P3). The scorer's arithmetic is unit
  * tested in radio.service.test.ts; what matters here is that the per-user
  * lookup actually reaches ranking, and that an unidentified caller is

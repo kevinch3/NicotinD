@@ -882,5 +882,10 @@
   "vibe.happy": "Happy",
   "vibe.party": "Party",
   "vibe.uplifting": "Uplifting",
-  "extensions.consentUntrusted": "You're adding an addon from a source NicotinD does not control. Once enabled, it can:"
+  "extensions.consentUntrusted": "You're adding an addon from a source NicotinD does not control. Once enabled, it can:",
+  "admin.radioPollsStations": "Station scenarios (optional)",
+  "admin.radioPollsStationsPlaceholder": "Electronic, Rock, Cumbia",
+  "admin.radioPollsStationsHint": "Comma-separated genres — each becomes one station scenario, graded the way the landing-page genre chips play.",
+  "poll.station": "Station",
+  "poll.stationTracks": "Playing on this station"
 }

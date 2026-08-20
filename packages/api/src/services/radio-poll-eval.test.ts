@@ -133,3 +133,62 @@ describe('evaluatePollAgreement (issue #583)', () => {
     expect(agreementAuc(pooled)).toBeCloseTo(4 / 6, 10);
   });
 });
+
+describe('station (filter) scenarios are measured, not skipped', () => {
+  /** A station scenario: no seed song, a centroid, station-graded candidates. */
+  function stationDataset(): RadioPollExportDataset {
+    const cand = (id: string, affinity: number, consensus: Consensus) => ({
+      songId: id,
+      title: id,
+      artist: id,
+      features: { duration: 240, artistId: id, stationAffinity: affinity },
+      score: 0,
+      rank: 1,
+      explanation: { axes: [] },
+      up: consensus === 'good' ? 1 : 0,
+      down: consensus === 'bad' ? 1 : 0,
+      consensus,
+    });
+    return {
+      pollId: 'p1',
+      name: 'Stations',
+      createdAt: 0,
+      engineVersion: null,
+      formulaVersion: '3',
+      settings: { scenarioCount: 1, nextUpCount: 2 },
+      raterCount: 1,
+      voteCount: 2,
+      scenarios: [
+        {
+          id: 'sc1',
+          position: 0,
+          kind: 'filter',
+          seed: null,
+          centroid: { duration: 240, artistId: '', genres: ['Electronic'] },
+          filter: { genres: ['Electronic'] },
+          weights: {},
+          candidates: [cand('native', 1, 'good'), cand('marginal', 0.26, 'bad')],
+        },
+      ],
+    };
+  }
+
+  it('grades a station scenario against its centroid', () => {
+    // Before this, `evaluatePollAgreement` skipped every seed-less scenario, so
+    // a station poll could collect any number of votes and still measure
+    // nothing at all.
+    const result = evaluatePollAgreement(stationDataset(), DEFAULT_WEIGHTS);
+    expect(result.gradedCandidates).toBe(2);
+    expect(result.tally.pairs).toBe(1);
+    // The rater agreed with the engine: the genre native was the good one.
+    expect(result.auc).toBe(1);
+  });
+
+  it('still skips a scenario carrying neither a seed nor a centroid', () => {
+    const ds = stationDataset();
+    delete ds.scenarios[0]!.centroid;
+    const result = evaluatePollAgreement(ds, DEFAULT_WEIGHTS);
+    expect(result.gradedCandidates).toBe(0);
+    expect(result.tally.pairs).toBe(0);
+  });
+});
