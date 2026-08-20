@@ -213,7 +213,7 @@ A `watch?v=…&list=…` or `playlist?list=…` URL downloads the whole playlist
 
 - **Partial failures don't sink the job.** yt-dlp runs with `--ignore-errors`, so unavailable/private/deleted videos are skipped instead of aborting at the first one. Crucially, **success is decided by whether audio files landed, not by the exit code** — yt-dlp exits non-zero whenever *any* item failed, even after downloading every other item, so the runner (`acquire/process.ts`) ignores the exit code when `collectAudioPaths` found files and only rejects on `0 files AND non-zero exit`. `AcquireWatcher.run` then marks the job failed only when the resolve produced zero files. A playlist where 40/41 items succeed ingests those 40. Earlier iterations that trusted `--ignore-errors` to yield a zero exit, or that keyed off the exit code, discarded all 40 — the staged files were cleaned up unused.
 - **A truncated result still gets flagged, not silently absorbed.** The plugin's return value only carries the paths that landed — not the total the source reported (spotdl logs `Found 16 songs`; that's parsed by `parseSpotdlProgress` and persisted live to `acquire_jobs.progress` via `emitProgress`, same column the in-progress bar reads). Once `resolve()` settles, `AcquireWatcher.run` re-reads that last-known `progress.total` and compares it to `paths.length`: if fewer files landed than were expected, the job still finishes `state: 'done'` (the files that did land are real and worth keeping), but its `error` field carries a human-readable warning (`"Downloaded 1 of 16 tracks — the rest failed or were skipped."`) instead of staying `null`. Found in real use 2026-07-10: a 16-track Spotify album where spotdl only matched 1 track on YouTube read as an unqualified "Done" with no indication anything was wrong. The web's `error` display on `DownloadItemComponent` already renders regardless of stage, so no template change was needed there; `acquireJobToDownloadItem` was updated so `canRetry` also covers `state === 'done' && error` (not just `state === 'failed'`), giving the row a **Retry** button instead of forcing the user to re-paste the link.
-- **The job label shows the playlist name.** yt-dlp emits `[download] Downloading playlist: <name>` at the start; `parseYtdlpPlaylistTitle` captures it and the plugin calls `ctx.emitLabel(jobId, name)` → `acquire_jobs.label`, so the Downloads row shows the playlist title instead of the raw URL. `emitLabel` is part of `PluginHostContext`. **This is the in-process lane, which no longer runs** (phase 4 moved yt-dlp/spotdl into external addons): an addon supplies the same thing through the protocol's `AddonJob.title` instead — see "Card titles" below.
+- **The job label shows the playlist name.** yt-dlp emits `[download] Downloading playlist: <name>` at the start; `parseYtdlpPlaylistTitle` captures it and the plugin calls `ctx.emitLabel(jobId, name)` → `acquire_jobs.label`, so the Downloads row shows the playlist title instead of the raw URL. `emitLabel` is part of `PluginHostContext`. **This is the in-process lane, which no longer runs** (phase 4 moved yt-dlp/spotdl into external addons): an addon supplies the same thing through the protocol's `AddonJob.title` instead — see "Card titles" below and "What the addon split dropped" for what is still missing.
 - **Actionable errors.** When a run does fail, the runner stores the captured `ERROR:` lines (the real cause) rather than the last 2 KB of download-progress spam.
 - **Playlist URL submissions auto-generate a per-user native playlist.** When the URL classifier (`classifyAcquireUrl` in `@nicotind/core`) marks the submission as a playlist — Spotify `/playlist/<id>`, YouTube `/playlist`, YouTube `watch?v=…&list=…`, or archive.org with `as=playlist` — the post-ingest step materializes a `kind='user'` playlist owned by the submitter from the landed tracks in download order. The Downloads card then offers an "Open playlist" deep-link to `/library/playlists/<id>`. See [docs/playlist-from-acquisition.md](playlist-from-acquisition.md) for the full flow, the per-source behavior, and the dedupe / retry contract.
 
@@ -300,6 +300,36 @@ would mint a phantom album and mis-file every track in it. Same reason the proto
 is its reference implementation, setting it from the item identifier at `createJob` and upgrading it
 to the real item title once the background resolve lands. Core degrades through the rungs above for
 addons that don't send it.
+
+#### What the addon split dropped (and where it is being put back)
+
+Both external downloader addons spawn their tool with `stdio: 'ignore'` and then
+glob whatever audio files landed, reporting exactly those as a complete job
+(`nicotind-spotdl-addon/src/resolve.ts`, `nicotind-ytdlp-addon/src/resolve.ts`,
+plus each repo's `job-store.ts` run loop). The bundled archive.org addon is the
+exception — it resolves real metadata from an API rather than from stdout.
+
+Discarding that stream costs three things the retired in-process plugins had,
+and **only the source process can supply any of them**:
+
+| Lost | Consequence |
+| --- | --- |
+| The playlist's name | Neither downloader exposes it any other way, so the card can only fall through to the source label ("Spotify download"). |
+| The expected track count | A partial download becomes indistinguishable from a complete one: 1 track of 16 reports a clean `Done 1 of 1`. The old lane compared `progress.total` against what landed and raised "Downloaded 1 of 16 tracks — the rest failed or were skipped." with a Retry; that comparison lives on the `AcquireWatcher` path, which no longer runs. |
+| Per-track events, in order | Files appear on disk in the downloader's output-template order (`{artist}/{album}`), never the playlist's. |
+
+The parsers for all three were written for those plugins and now live in
+**`@nicotind/addon-sdk` `downloader-output.ts`**, so the addons can adopt them
+rather than re-deriving the regexes; core keeps re-export shims at the old
+`plugins/acquire/process.ts` paths. `DownloaderTrackEvent` is deliberately not
+called `TrackEvent`: that is a DOM global, and the bare name silently resolved
+to the browser type in any file that didn't import it into local scope.
+
+Core's own half of the same split: `classifyAcquireUrl` was read **only** inside
+`AcquireWatcher`, so once that engine stopped running every Spotify/YouTube
+playlist reached the addon as a bare `as: undefined`. `resolveAcquireAs`
+(`@nicotind/core`) now owns that precedence for both lanes and the acquire route
+sends the verdict.
 
 #### Addon job outcomes reach the card
 

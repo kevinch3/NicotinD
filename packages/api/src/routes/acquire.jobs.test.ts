@@ -12,11 +12,11 @@ import type { AcquireWatcher } from '../services/acquire-watcher.js';
 import type { AcquireJob, AddonJob } from '@nicotind/core';
 
 interface StubAddon extends BundledAddon {
-  createCalls: Array<{ url: string; idempotencyKey?: string }>;
+  createCalls: Array<{ url: string; idempotencyKey?: string; as?: string }>;
 }
 
 function stubResolveAddon(): StubAddon {
-  const createCalls: Array<{ url: string; idempotencyKey?: string }> = [];
+  const createCalls: Array<{ url: string; idempotencyKey?: string; as?: string }> = [];
   let seq = 0;
   const job = (id: string): AddonJob => ({
     id,
@@ -39,11 +39,11 @@ function stubResolveAddon(): StubAddon {
       protocolVersion: '1.0.0',
       kind: 'acquisition',
       capabilities: ['resolve'],
-      urlPatterns: ['^https?://stub\\.test/'],
+      urlPatterns: ['^https?://stub\\.test/', '^https?://open\\.spotify\\.com/'],
       compliance: { disclaimer: 'test', requiresConsent: false },
     },
     createJob: async (req, idempotencyKey) => {
-      createCalls.push({ url: String(req.url), idempotencyKey });
+      createCalls.push({ url: String(req.url), idempotencyKey, as: req.as });
       return job(`addon-job-${++seq}`);
     },
     getJob: async () => {
@@ -162,6 +162,37 @@ describe('acquire route — addon seam', () => {
       expect(second.status).toBe(201);
       expect(((await second.json()) as { jobId: string }).jobId).not.toBe(jobId);
       expect(addon.createCalls).toHaveLength(2);
+    });
+
+    /**
+     * The classifier has always known a Spotify/YouTube playlist URL is a
+     * playlist, but its verdict was read only inside the in-process engine the
+     * addon split retired — so the addon was handed `as: undefined` and treated
+     * a whole playlist as one track.
+     */
+    it('tells the addon the link is a playlist', async () => {
+      const app = makeApp();
+      await post(app, 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M');
+      expect(addon.createCalls.at(-1)?.as).toBe('playlist');
+    });
+
+    it('tells the addon a bare track is a single, not a playlist', async () => {
+      const app = makeApp();
+      await post(app, 'https://stub.test/track');
+      expect(addon.createCalls.at(-1)?.as).toBeUndefined();
+    });
+
+    it('lets an explicit override downgrade a recognized playlist', async () => {
+      const app = makeApp();
+      await app.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M',
+          as: 'album',
+        }),
+      });
+      expect(addon.createCalls.at(-1)?.as).toBe('album');
     });
 
     it('dedupes per url — a different link still starts its own job', async () => {

@@ -1162,7 +1162,16 @@ Add detail there, not here.
   = `spotify.com` at default priority so it beats the catch-all; both own repos + published images,
   core carries no yt-dlp/spotdl code). Eagerly mirrors a
   `kind:url` `acquisition_jobs` row so the Downloads card shows in-flight at submit (#509 cause 2);
-  no in-process `resolve` plugin remains. The unified feed no longer blanket-skips
+  no in-process `resolve` plugin remains. **What the split dropped**: both downloader
+  addons spawn with `stdio: 'ignore'`, losing the playlist name, the expected track
+  count (so a 1-of-16 download reports a clean `Done 1 of 1` — the truncation check
+  compares against a total only the source knows) and per-track order; the parsers
+  for all three moved to `@nicotind/addon-sdk` `downloader-output.ts` for the addons
+  to adopt (core keeps shims; `DownloaderTrackEvent` avoids the DOM `TrackEvent`
+  global). Core's half: `classifyAcquireUrl` was read only inside the retired
+  `AcquireWatcher`, so every playlist URL reached the addon as `as: undefined` —
+  `resolveAcquireAs` now owns that precedence for both lanes.
+  The unified feed no longer blanket-skips
   `kind:url` (renders an addon url job like a network one, #509 cause 1). Both paths reach the same
   organizer + scan pipeline; entered via a link-intent card in
   the search omnibox (merged with search, no separate URL box); **idempotent submit reuses an

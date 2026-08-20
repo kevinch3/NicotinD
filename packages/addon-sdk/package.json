@@ -21,6 +21,7 @@
     "./addon-protocol-schema": "./src/addon-protocol-schema.ts",
     "./hunt-queries": "./src/hunt-queries.ts",
     "./title-match": "./src/title-match.ts",
+    "./downloader-output": "./src/downloader-output.ts",
     "./logger": "./src/logger.ts"
   },
   "dependencies": {
