@@ -728,6 +728,20 @@ Add detail there, not here.
   merge mode is exposed as an MCP tool (`mergeInto`, an unambiguous single target name an LLM can
   supply) — rename/single/split stay curator-UI-only for now. `mcpRoutes(musicDir, slskdRef, dataDir,
   runSync)` wires both dependency pairs explicitly. → [docs/mcp-agent.md](docs/mcp-agent.md)
+- **WebMCP alignment (proposed — not yet implemented)**: our shipped MCP tool descriptor
+  (name/description/inputSchema/handler → a `content` array) is already the shape Chrome's
+  WebMCP `document.modelContext` registration takes, so `MCP_TOOLS` is a host-agnostic registry
+  that today has one host. Plan: phase 1 extracts the registry contract + promotes
+  `checkToolAccess` into one shared predicate and makes host exposure a **declared** field
+  (default server-only, gated by a test that no destructive tool reaches a browser — the
+  `check:route-auth` shape); phase 2 adds a flagged, feature-detected browser host owning only
+  **session** tools (playback/queue/likes and `startRadioWithFilter` over `LibraryFilter`,
+  the differentiated one) since `/api/mcp` structurally can't reach the running player.
+  Nothing destructive is ever browser-exposed — the refiner cap, the confirm gate and the
+  audit ledger don't exist under a tab's ambient JWT. Chrome DevTools MCP is dev tooling, not
+  a product surface; client-side WebGPU/WebNN stays NO-GO per
+  [docs/client-side-ml-feasibility.md](docs/client-side-ml-feasibility.md). →
+  [docs/webmcp-alignment.md](docs/webmcp-alignment.md)
 - **Presence tracking + last connection (admin-only)**: in-memory `PresenceService` tracks
   `isConnected` / `amountOfDevices` / `amountOfSessions` per user via 60s HTTP heartbeats + stale
   cleanup; merged into `GET /api/admin/users` and ordered by `compareUsersByActivity` in JS, since
