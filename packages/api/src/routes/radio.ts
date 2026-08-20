@@ -13,6 +13,19 @@ import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.j
 import { lastPlayedAtMap } from '../services/play-history.js';
 import { songFilterWheres } from '../services/library-filter-sql.js';
 import { seedCentroid, type OrderableRow } from '../services/playlist-recipe.js';
+import { isRealGenre } from '../services/genre-split.js';
+
+/**
+ * Pool floor: tracks under this length are never radio candidates - intros,
+ * skits, "Commercial Break" teasers and (issue #583) 46 s language lessons
+ * reached real queues, and duration closeness alone can't keep them out.
+ * Env-overridable the same way as the e2e landing-gate bypass, because the
+ * committed silent-FLAC e2e fixtures are ~30 s.
+ */
+export function minCandidateDurationSec(): number {
+  const v = Number(process.env.NICOTIND_RADIO_MIN_DURATION);
+  return Number.isFinite(v) && v >= 0 ? v : 60;
+}
 
 /** Longest alphanumeric token in a genre string, for the LIKE-widened pool.
  *  Returns null for genres whose longest token is too short to be selective. */
@@ -209,6 +222,7 @@ export function buildSeedRadio(
   excludeIds.add(seedRow.id);
 
   const seed = toFeatures(seedRow);
+  const durGate = minCandidateDurationSec();
 
   const candidates: RadioSongRow[] = [];
   const seen = new Set<string>(excludeIds);
@@ -224,7 +238,9 @@ export function buildSeedRadio(
   // Pool 1: shares ANY genre with the seed's full set (up to 150) — the
   // join-table EXISTS means a track whose 3rd genre matches the seed's 2nd
   // is pooled just like a primary-genre match.
-  const seedGenres = seed.genres ?? (seed.genre ? [seed.genre] : []);
+  // Junk genres ("Other", ...) are matching noise, not identity - a junk seed
+  // genre would drag every same-junk row into the pool (issue #583).
+  const seedGenres = (seed.genres ?? (seed.genre ? [seed.genre] : [])).filter(isRealGenre);
   if (seedGenres.length > 0) {
     const marks = seedGenres.map(() => '?').join(', ');
     addRows(
@@ -233,7 +249,7 @@ export function buildSeedRadio(
           `${RADIO_SONG_SELECT}
            WHERE (s.genre IN (${marks}) OR EXISTS (
              SELECT 1 FROM library_song_genres g WHERE g.song_id = s.id AND g.genre IN (${marks})
-           )) AND s.hidden = 0 AND s.landed_at IS NOT NULL ORDER BY RANDOM() LIMIT 150`,
+           )) AND s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate} ORDER BY RANDOM() LIMIT 150`,
         )
         .all(...seedGenres, ...seedGenres),
     );
@@ -242,12 +258,12 @@ export function buildSeedRadio(
   // Pool 1b: genre-variant match via the seed's longest token (e.g. seed
   // "Deep House" also pulls "House"/"Tech House"), so lexical genre closeness
   // has variants to score instead of only exact-string matches.
-  const genreToken = longestGenreToken(seed.genre);
+  const genreToken = seed.genre && isRealGenre(seed.genre) ? longestGenreToken(seed.genre) : null;
   if (genreToken) {
     addRows(
       db
         .query<RadioSongRow, [string]>(
-          `${RADIO_SONG_SELECT} WHERE LOWER(s.genre) LIKE '%' || ? || '%' AND s.hidden = 0 AND s.landed_at IS NOT NULL
+          `${RADIO_SONG_SELECT} WHERE LOWER(s.genre) LIKE '%' || ? || '%' AND s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate}
            ORDER BY RANDOM() LIMIT 100`,
         )
         .all(genreToken),
@@ -261,7 +277,7 @@ export function buildSeedRadio(
     addRows(
       db
         .query<RadioSongRow, [number, number]>(
-          `${RADIO_SONG_SELECT} WHERE s.bpm BETWEEN ? AND ? AND s.hidden = 0 AND s.landed_at IS NOT NULL
+          `${RADIO_SONG_SELECT} WHERE s.bpm BETWEEN ? AND ? AND s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate}
            ORDER BY RANDOM() LIMIT 100`,
         )
         .all(bpmLow, bpmHigh),
@@ -274,7 +290,7 @@ export function buildSeedRadio(
     addRows(
       db
         .query<RadioSongRow, [number, number]>(
-          `${RADIO_SONG_SELECT} WHERE s.energy BETWEEN ? AND ? AND s.hidden = 0 AND s.landed_at IS NOT NULL
+          `${RADIO_SONG_SELECT} WHERE s.energy BETWEEN ? AND ? AND s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate}
            ORDER BY RANDOM() LIMIT 100`,
         )
         .all(Math.max(0, seed.energy - 0.15), Math.min(1, seed.energy + 0.15)),
@@ -287,7 +303,7 @@ export function buildSeedRadio(
   addRows(
     db
       .query<RadioSongRow, []>(
-        `${RADIO_SONG_SELECT} WHERE (s.bpm IS NULL OR s.energy IS NULL) AND s.hidden = 0 AND s.landed_at IS NOT NULL
+        `${RADIO_SONG_SELECT} WHERE (s.bpm IS NULL OR s.energy IS NULL) AND s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate}
          ORDER BY RANDOM() LIMIT 30`,
       )
       .all(),
@@ -298,7 +314,7 @@ export function buildSeedRadio(
     addRows(
       db
         .query<RadioSongRow, []>(
-          `${RADIO_SONG_SELECT} WHERE s.hidden = 0 AND s.landed_at IS NOT NULL ORDER BY RANDOM() LIMIT 100`,
+          `${RADIO_SONG_SELECT} WHERE s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate} ORDER BY RANDOM() LIMIT 100`,
         )
         .all(),
     );
@@ -374,11 +390,12 @@ export function buildFilterRadio(
 ): RadioResult {
   const count = opts.count ?? 10;
   const excludeIds = new Set(opts.excludeIds ?? []);
+  const durGate = minCandidateDurationSec();
   const { wheres, params } = songFilterWheres(filter, 's');
   const filterSql = wheres.length ? `${wheres.join(' AND ')} AND ` : '';
   const rows = db
     .query<RadioSongRow, (string | number)[]>(
-      `${RADIO_SONG_SELECT} WHERE ${filterSql} s.hidden = 0 AND s.landed_at IS NOT NULL
+      `${RADIO_SONG_SELECT} WHERE ${filterSql} s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate}
        ORDER BY RANDOM() LIMIT 300`,
     )
     .all(...params);

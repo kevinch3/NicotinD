@@ -782,12 +782,22 @@ Add detail there, not here.
   section — distinguishes genre-_skipped_ (data gap, missing-genre is wrongly _rewarded_ by
   present-axis normalization) from genre-_scored-0_ (weight loss), flags un-split concatenated genre
   tags (`looksConcatenatedGenre`) + key-detection instability + filter-radio centroid
-  genre-blindness. → [docs/radio.md](docs/radio.md), [docs/web-ui.md](docs/web-ui.md)
+  genre-blindness. **Formula v2 (issue #583, first human calibration)**: the first 70 poll votes
+  showed v1 ordering its own top-5 worse than random (pairwise AUC 0.43) — junk genre tags
+  (`isRealGenre`/`JUNK_GENRES`, e.g. "Other") no longer count as a genre match, the pool excludes
+  sub-60s tracks (`minCandidateDurationSec`, env `NICOTIND_RADIO_MIN_DURATION` — e2e sets 0 for its
+  30s fixtures), weights recalibrated (duration 1→3, bpm 8→4, embedding 4→8), and
+  `RADIO_FORMULA_VERSION` is stamped onto every poll so the replay harness
+  (`radio-poll-eval.ts` `evaluatePollAgreement` + `scripts/eval-radio-poll.ts`) never pools votes
+  across formulas — see docs/radio.md "Calibration history" + the plain-language formula section. →
+  [docs/radio.md](docs/radio.md), [docs/web-ui.md](docs/web-ui.md)
 - **Radio evaluation polls (public, admin-created)**: an admin freezes N radio scenarios
   (seed + next-up snapshots incl. per-axis explanations — mandatory, the pool is
   `ORDER BY RANDOM()`) behind a public `/poll/:token` wizard; anonymous raters thumb each
   suggestion (previews via short-lived read-only share JWTs), `export-radio-poll.ts` distills
-  consensus-graded datasets for weight tuning. → [docs/radio-eval-polls.md](docs/radio-eval-polls.md)
+  consensus-graded datasets for weight tuning, polls are stamped with the generating
+  `RADIO_FORMULA_VERSION` (`formula_version`), and `eval-radio-poll.ts` replays them into
+  per-formula agreement AUC. → [docs/radio-eval-polls.md](docs/radio-eval-polls.md)
 - **Remote playback (cast, Spotify-Connect-style)**: per-user `PlaybackStateManager` broadcasts
   state/commands over `GET /api/ws/playback`; each browser tab is a device. **A pruned device now
   heals (issue #433)**: `heartbeat` returns whether the device was known and `websocket.ts`

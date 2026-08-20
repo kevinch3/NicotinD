@@ -34,8 +34,8 @@ import { parseLibraryFilter, type LibraryFilter } from '@nicotind/core';
 import { expandHome } from '@nicotind/core';
 import {
   explainSimilarity,
-  DEFAULT_WEIGHTS,
   MISSING_GENRE_FLOOR,
+  parseWeightOverrides,
   type ScoringWeights,
   type SimilarityExplanation,
   type SongFeatures,
@@ -234,37 +234,9 @@ function renderTrackBlock(
   ];
 }
 
-/**
- * Parse a `--weights genre=14,embedding=8` override onto the defaults.
- *
- * Weight tuning must be *measured*, not guessed: this lets one command re-rank
- * the same seed under a candidate weight set so a proposed `DEFAULT_WEIGHTS`
- * change can be justified against a control seed before it ships. Unknown axes
- * and non-numeric values throw — a silent no-op would invalidate a measurement.
- */
-export function parseWeightOverrides(
-  spec: string | undefined,
-  base: ScoringWeights = DEFAULT_WEIGHTS,
-): ScoringWeights {
-  const weights: ScoringWeights = { ...base };
-  if (!spec) return weights;
-  for (const part of spec.split(',')) {
-    if (!part.trim()) continue;
-    const [rawKey, rawValue] = part.split('=');
-    const key = rawKey?.trim() ?? '';
-    if (!(key in weights)) {
-      throw new Error(
-        `--weights: unknown axis "${key}" (valid: ${Object.keys(weights).join(', ')})`,
-      );
-    }
-    const value = Number(rawValue?.trim());
-    if (rawValue === undefined || !Number.isFinite(value)) {
-      throw new Error(`--weights: "${key}" needs a numeric value (got "${rawValue ?? ''}")`);
-    }
-    weights[key as keyof ScoringWeights] = value;
-  }
-  return weights;
-}
+// `parseWeightOverrides` moved to radio.service.ts (shared with
+// eval-radio-poll.ts); re-exported so existing callers/tests keep their import.
+export { parseWeightOverrides };
 
 /** A genre string that looks like an un-split concatenation of several genres —
  *  no delimiter but multiple capital "humps" (e.g. "LatinWorld",

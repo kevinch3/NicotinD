@@ -38,7 +38,11 @@ silent data corruption.
 
 Three tables (`packages/api/src/db.ts`): `radio_polls` (token UNIQUE — the
 credential; `created_by` cascades from users and is registered for privacy
-export/erasure), `radio_poll_scenarios` (position-ordered snapshots), and
+export/erasure; `formula_version` stamps which `RADIO_FORMULA_VERSION` of the
+similarity formula generated the scenarios — issue #583: votes graded under
+different formulas must never be silently pooled, and NULL means a
+pre-versioning row, i.e. formula 1), `radio_poll_scenarios` (position-ordered
+snapshots), and
 `radio_poll_votes` with `UNIQUE (scenario_id, rater_key, candidate_song_id)` +
 upsert — a rater changing their mind updates in place, never double-counts.
 
@@ -110,9 +114,24 @@ worse than none). This dataset is the input for offline weight tuning: replay
 `scoreSimilarity` under candidate weight sets (see `dump-radio.ts
 --weights`) and score them by agreement with the human consensus.
 
+**That replay ships as `scripts/eval-radio-poll.ts` (issue #583)** — per-poll +
+pooled within-scenario pairwise AUC of the current `DEFAULT_WEIGHTS` (and a
+`--weights` override side by side), grouped by `formula_version` so
+cross-formula votes are never pooled. The pure half is
+`services/radio-poll-eval.ts` (`evaluatePollAgreement`): axis values are
+recomputed from the frozen features (so a formula change like the junk-genre
+fix is measurable against old votes), except the embedding axis, whose vector
+is stripped from snapshots — its frozen *value* is folded back in under the
+candidate weight set. Off-policy caveat: a poll only graded the top-K its
+generating formula served, so an AUC validates ordering among those
+candidates, not pool selection (v2's sub-60 s pool floor is invisible to it).
+The first calibration this loop produced is formula v2 — see docs/radio.md
+"Calibration history".
+
 **Follow-ups deliberately not built yet**: fixture emission + a
-`radio-eval.replay.test.ts` ratchet (mirroring the hunt-match fixture loop —
-worth committing only once real graded data exists), vibe/filter scenarios
+`radio-eval.replay.test.ts` CI ratchet (the offline agreement harness above now
+exists; freezing graded cases as committed fixtures is worth it once the vote
+base is larger than 70), vibe/filter scenarios
 (`kind: 'filter'` is already in the schema), an OG link preview for
 `/poll/:token`, and A/B polls with two weight sets interleaved.
 

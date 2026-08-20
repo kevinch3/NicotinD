@@ -217,6 +217,7 @@
   "admin.radioPollsClose": "Cerrar encuesta",
   "admin.radioPollsCopyLink": "Copiar enlace",
   "admin.radioPollsCounts": "{scenarios} escenarios · {votes} votos de {raters} evaluadores",
+  "admin.radioPollsFormula": "fórmula v{v}",
   "admin.radioPollsCreate": "Crear encuesta",
   "admin.radioPollsCreateFailed": "No se pudo crear la encuesta",
   "admin.radioPollsCreateTitle": "Crear una encuesta",

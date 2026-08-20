@@ -1,5 +1,6 @@
 import { originSetCloseness } from '@nicotind/core';
 import { keyToCamelot } from './key-detection.js';
+import { isRealGenre } from './genre-split.js';
 
 export interface SongFeatures {
   bpm?: number;
@@ -78,14 +79,20 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   // change on any of the other 9 seeds at any tested value — see docs/radio.md
   // "Genre weight re-measure (task B3)".
   genre: 18,
-  // Origin/nationality axis (docs/artist-origin.md): equal to bpm so it can
-  // break the culture-blind tie when genre is broad/missing, under genre so a
-  // right genre still leads. Starting point pending a dump-radio A/B.
+  // Origin/nationality axis (docs/artist-origin.md): can break the
+  // culture-blind tie when genre is broad/missing, under genre so a right
+  // genre still leads. Starting point pending a dump-radio A/B.
   origin: 8,
-  bpm: 8,
+  // bpm 8 -> 4, duration 1 -> 3 (formula v2, issue #583): in the first human
+  // poll data (70 votes / 3 raters) bpm closeness was consistently *negative*
+  // within the served queue (the pool already pre-filters bpm +/-15%, so extra
+  // closeness buys nothing a listener wants), while duration closeness was a
+  // robust positive - and the loudest available red flag on non-music content
+  // (46 s language lessons, a 4 s clip) that used to sail through at weight 1.
+  bpm: 4,
   key: 6,
   year: 2,
-  duration: 1,
+  duration: 3,
   // Perceptual axes. Energy leads (it defines the "momentum" of a set);
   // valence shapes the mood arc; the rest refine.
   energy: 5,
@@ -94,8 +101,10 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   instrumental: 3,
   acousticness: 2,
   // Cached embedding cosine — overlaps the 5 scalar axes (they are classifier
-  // heads over the same vector) so it's an augment, weighted modestly.
-  embedding: 4,
+  // heads over the same vector). 4 -> 8 (formula v2, issue #583): the strongest
+  // positive discriminator in the poll data (r=+0.32, ahead of every scalar
+  // axis) was carried by the smallest perceptual weight.
+  embedding: 8,
   // Applied post-normalization as a delta on the 0..1 fit score.
   artistPenalty: 0.15,
   // Slightly above artistPenalty: hearing the *same track* again soon is more
@@ -104,6 +113,51 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   // match — a hard exclusion would empty the pool on a small library.
   recentPlayPenalty: 0.2,
 };
+
+/**
+ * Version of the similarity formula, stamped onto every radio evaluation poll
+ * (`radio_polls.formula_version`) so votes graded under different formulas are
+ * never silently pooled by the eval harness (`eval-radio-poll.ts`). BUMP THIS
+ * on any change to DEFAULT_WEIGHTS, an axis formula, a floor/penalty, or a
+ * radio pool rule.
+ *
+ * v1 - the original blend (genre 18 / bpm 8 / duration 1 / embedding 4; junk
+ *      genres matched at 1.0; no pool duration floor). The first three polls
+ *      (70 votes) graded it at within-scenario pairwise AUC 0.43.
+ * v2 - issue #583 calibration: duration 1->3, bpm 8->4, embedding 4->8, junk
+ *      genres no longer match, sub-60s tracks excluded from the pool.
+ */
+export const RADIO_FORMULA_VERSION = 2;
+
+/**
+ * Parse a `--weights axis=n[,axis=n...]` override spec against a base weight
+ * set. Unknown axis or non-numeric value throws - deliberately no silent
+ * no-op, because a silently ignored override would invalidate a measurement.
+ * Shared by `dump-radio.ts` and `eval-radio-poll.ts` (one lever, no drift).
+ */
+export function parseWeightOverrides(
+  spec: string | undefined,
+  base: ScoringWeights = DEFAULT_WEIGHTS,
+): ScoringWeights {
+  const weights: ScoringWeights = { ...base };
+  if (!spec) return weights;
+  for (const part of spec.split(',')) {
+    if (!part.trim()) continue;
+    const [rawKey, rawValue] = part.split('=');
+    const key = rawKey?.trim() ?? '';
+    if (!(key in weights)) {
+      throw new Error(
+        `--weights: unknown axis "${key}" (valid: ${Object.keys(weights).join(', ')})`,
+      );
+    }
+    const value = Number(rawValue?.trim());
+    if (rawValue === undefined || !Number.isFinite(value)) {
+      throw new Error(`--weights: "${key}" needs a numeric value (got "${rawValue ?? ''}")`);
+    }
+    weights[key as keyof ScoringWeights] = value;
+  }
+  return weights;
+}
 
 /** Default window over which a play still counts as "recent" (7 days). */
 export const RECENT_PLAY_WINDOW_MS = 7 * 24 * 3_600_000;
@@ -192,8 +246,13 @@ export function genreSetCloseness(
   a: string | string[] | undefined,
   b: string | string[] | undefined,
 ): number | null {
-  const la = (Array.isArray(a) ? a : a == null ? [] : [a]).filter(Boolean);
-  const lb = (Array.isArray(b) ? b : b == null ? [] : [b]).filter(Boolean);
+  // Junk vocab ("Other", "Unknown", ...) carries no genre identity: two shrugs
+  // must not score 1.0 (issue #583 - language courses ranked #1 and #2 via
+  // "Other"="Other"). Filtering here makes an all-junk side read as *absent*,
+  // so a junk-only candidate falls to the missing-genre floor instead of
+  // matching perfectly.
+  const la = (Array.isArray(a) ? a : a == null ? [] : [a]).filter((g) => g && isRealGenre(g));
+  const lb = (Array.isArray(b) ? b : b == null ? [] : [b]).filter((g) => g && isRealGenre(g));
   if (la.length === 0 || lb.length === 0) return null;
   let best: number | null = null;
   for (const ga of la) {
@@ -320,9 +379,12 @@ export function explainSimilarity(
   const seedGenre = seed.genres ?? seed.genre;
   const candGenre = candidate.genres ?? candidate.genre;
   const genreValue = genreSetCloseness(seedGenre, candGenre);
+  // A junk-only seed genre ("Other") is no genre identity at all: it must
+  // SKIP, not floor - flooring would penalize every genre-less candidate for
+  // a seed axis that does not really exist (issue #583).
   const seedHasGenre = Array.isArray(seedGenre)
-    ? seedGenre.filter(Boolean).length > 0
-    : !!seedGenre;
+    ? seedGenre.filter((g) => g && isRealGenre(g)).length > 0
+    : !!seedGenre && isRealGenre(seedGenre);
   if (genreValue === null && seedHasGenre) {
     floored.push('genre');
     add('genre', MISSING_GENRE_FLOOR, weights.genre);

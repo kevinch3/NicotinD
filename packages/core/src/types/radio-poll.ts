@@ -164,6 +164,9 @@ export interface RadioPollSummary {
   scenarioCount: number;
   voteCount: number;
   raterCount: number;
+  /** Similarity-formula version that generated the scenarios
+   *  (`RADIO_FORMULA_VERSION`); null = created before versioning (formula 1). */
+  formulaVersion: string | null;
 }
 
 export interface RadioPollCandidateResult extends RadioPollCandidateSnapshot {

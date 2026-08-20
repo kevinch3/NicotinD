@@ -217,6 +217,7 @@
   "admin.radioPollsClose": "Close poll",
   "admin.radioPollsCopyLink": "Copy link",
   "admin.radioPollsCounts": "{scenarios} scenarios · {votes} votes from {raters} raters",
+  "admin.radioPollsFormula": "formula v{v}",
   "admin.radioPollsCreate": "Create poll",
   "admin.radioPollsCreateFailed": "Could not create the poll",
   "admin.radioPollsCreateTitle": "Create a poll",

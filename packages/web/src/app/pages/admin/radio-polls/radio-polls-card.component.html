@@ -98,7 +98,8 @@
               </p>
               <p class="text-xs text-theme-muted">
                 {{ formatWhen(row.createdAt) }} ·
-                {{ 'admin.radioPollsCounts' | t: { scenarios: row.scenarioCount, votes: row.voteCount, raters: row.raterCount } }}
+                {{ 'admin.radioPollsCounts' | t: { scenarios: row.scenarioCount, votes: row.voteCount, raters: row.raterCount } }} ·
+                {{ 'admin.radioPollsFormula' | t: { v: row.formulaVersion || '1' } }}
               </p>
             </div>
             <div class="flex items-center gap-2 flex-shrink-0">

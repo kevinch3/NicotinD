@@ -146,18 +146,31 @@ export interface GenreAliasProposal {
   count: number;
 }
 
-// Values that are metadata noise, not genres. Proposed as drops, never applied
-// without human review (reclassify-genres.ts --apply).
-const JUNK_GENRES = new Set([
+/**
+ * Values that are metadata noise, not genres — a tagger's shrug, not a style.
+ * Two consumers: (1) the alias proposer below suggests them as drops (still
+ * human-gated, reclassify-genres.ts --apply); (2) radio matching ignores them
+ * outright via `isRealGenre` (issue #583 — "Other"="Other" scored a perfect
+ * genre match and ranked language courses #1).
+ */
+export const JUNK_GENRES: ReadonlySet<string> = new Set([
   'other',
   'genre',
   'default',
   'unknown',
   'misc',
+  'miscellaneous',
   'none',
+  'no genre',
+  'undefined',
   '<desconocido>',
   'entertainment',
 ]);
+
+/** True when `g` names an actual musical style rather than junk vocab. */
+export function isRealGenre(g: string): boolean {
+  return !JUNK_GENRES.has(genreKey(g));
+}
 
 /** Squash key for punctuation/spacing variants: letters+digits only. */
 const squash = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '');

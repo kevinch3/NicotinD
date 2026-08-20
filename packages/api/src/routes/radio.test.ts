@@ -655,3 +655,62 @@ describe('radio /next — recently-played demotion', () => {
     expect((await res.json()) as unknown[]).toHaveLength(2);
   });
 });
+
+describe('radio pool duration floor (issue #583)', () => {
+  function seedThree(): void {
+    testDb = createTestDb();
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A',
+      albumId: 'alb1',
+      album: 'Alb 1',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'ok',
+      title: 'Ok',
+      artist: 'B',
+      albumId: 'alb2',
+      album: 'Alb 2',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'short',
+      title: 'Short',
+      artist: 'C',
+      albumId: 'alb3',
+      album: 'Alb 3',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    // The helper inserts duration 240; make this one an intro/skit-length row.
+    testDb.run("UPDATE library_songs SET duration = 30 WHERE id = 'short'");
+  }
+
+  it('a sub-60s track is never a candidate', async () => {
+    seedThree();
+    const app = new Hono();
+    app.route('/radio', radioRoutes());
+    const res = await app.request('/radio/next?seedId=seed&count=10');
+    const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+    expect(ids).toContain('ok');
+    expect(ids).not.toContain('short');
+  });
+
+  it('NICOTIND_RADIO_MIN_DURATION=0 re-admits it (the e2e fixture path)', async () => {
+    seedThree();
+    process.env.NICOTIND_RADIO_MIN_DURATION = '0';
+    try {
+      const app = new Hono();
+      app.route('/radio', radioRoutes());
+      const res = await app.request('/radio/next?seedId=seed&count=10');
+      const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+      expect(ids).toContain('short');
+    } finally {
+      delete process.env.NICOTIND_RADIO_MIN_DURATION;
+    }
+  });
+});

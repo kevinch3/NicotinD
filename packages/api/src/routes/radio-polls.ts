@@ -5,6 +5,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/current-user.js';
 import { getDatabase } from '../db.js';
 import { recordAudit } from '../services/audit-log.js';
+import { RADIO_FORMULA_VERSION } from '../services/radio.service.js';
 import {
   RadioPollGenerationError,
   generatePollScenarios,
@@ -79,6 +80,7 @@ export function radioPollAdminRoutes(deps: { version?: string } = {}) {
         settings,
         scenarios,
         engineVersion: deps.version ?? null,
+        formulaVersion: String(RADIO_FORMULA_VERSION),
         expiresAt,
       });
       recordAudit(db, user, 'radio-poll.create', {

@@ -17,6 +17,10 @@ export interface RadioPollExportDataset {
   name: string;
   createdAt: number;
   engineVersion: string | null;
+  /** Similarity-formula version the scenarios were generated under; rows from
+   *  before versioning report '1'. Datasets with different values must not be
+   *  pooled into one agreement measurement. */
+  formulaVersion: string;
   settings: RadioPollSettings;
   raterCount: number;
   voteCount: number;
@@ -76,6 +80,7 @@ export function pollExportDataset(db: Database, poll: RadioPollRow): RadioPollEx
     name: poll.name,
     createdAt: poll.created_at,
     engineVersion: poll.engine_version,
+    formulaVersion: poll.formula_version ?? '1',
     settings: results.settings,
     raterCount: results.poll.raterCount,
     voteCount: results.poll.voteCount,
