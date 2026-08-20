@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.31](https://github.com/kevinch3/NicotinD/compare/v0.3.30...v0.3.31) (2026-08-20)
+
+### Features
+
+* **radio:** radio evaluation polls — public anonymous grading of next-track picks ([#581](https://github.com/kevinch3/NicotinD/issues/581)) ([6bf55c2](https://github.com/kevinch3/NicotinD/commit/6bf55c26578cfffbe27930eb0d84a20703bb4b8b)), references [#187](https://github.com/kevinch3/NicotinD/issues/187)
 ## [0.3.30](https://github.com/kevinch3/NicotinD/compare/v0.3.29...v0.3.30) (2026-08-19)
 ## [0.3.29](https://github.com/kevinch3/NicotinD/compare/v0.3.28...v0.3.29) (2026-08-19)
 
