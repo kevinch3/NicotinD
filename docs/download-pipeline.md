@@ -509,6 +509,31 @@ dropped" below and #590, which made core render `queued` placeholders correctly
 so an addon that knows its track count up front can announce the whole set on
 the first poll.
 
+## An addon's crash is reduced to a readable line (issue #601)
+
+`clampAddonText` only truncates, so whatever an addon puts in `AddonJob.error` is
+what the Downloads card shows. Prod showed a user Rich-formatted Python traceback
+(`│ /usr/lib/python3.13/json/__init__.py:346 in loads │`) when spotdl's YouTube
+Music preflight was rate-limited and died inside `ytmusicapi` — which calls
+`json.loads(response.text)` *before* its `status_code >= 400` check, so a
+throttled non-JSON body raises a bare `JSONDecodeError` rather than a clean HTTP
+error.
+
+`sanitizeAddonError` (pure, exported, unit-tested) strips ANSI escapes and, when
+the text looks like a traceback, reduces it to the trailing exception line —
+`JSONDecodeError: Expecting value: line 1 column 1 (char 0)`. Text that isn't a
+traceback passes through untouched, so the addon's own summaries ("Downloaded 7
+of 32 tracks — the rest failed or were skipped", plus the per-track reasons) keep
+their full detail. It narrows **formatting**, never *which* error is reported, so
+`applyAddonOutcome`'s mirror-the-addon's-current-error rule still holds. Applied
+at the three `job.error` sites only; the `job.title` sites keep plain clamping.
+
+The **cause** of that crash is not core's: the addon runs several `spotdl`
+processes concurrently against one IP, which YouTube rate-limits — measured 9.5 %
+success (134 downloads vs 793 search misses + 485 yt-dlp errors) over 12 h of
+prod logs, with `yt-dlp` current and a direct fetch of a "failed" URL succeeding.
+Tracked in #601 against `nicotind-spotdl-addon`.
+
 ## Download list metadata (`AlbumJobMeta`)
 
 `GET /api/downloads` annotates each in-flight folder whose `(username, peer directory)` matches an **active `album_jobs`** row with `albumJob: { artistName, albumTitle, canonicalTrackCount, albumId, jobId }` (`enrichWithAlbumJobs` in `routes/downloads.ts`; type in `@nicotind/core`). This lets the Downloads UI show "Artist — Album · N of M tracks" instead of the noisy peer folder name (e.g. "(1995) Toque"). `albumId` is the deterministic `albumIdFor(artistName, albumTitle)` for the destination library album, so a completed download can **deep-link straight to its album page**. The URL-acquire side mirrors this: `AcquireJob` carries `albumId`/`albumArtist`/`albumTitle` derived from the organized `storage_path`'s last two `<Artist>/<Album>` segments via the pure `deriveAcquireAlbum` (`services/acquire-album.ts`; null for loose singles with no album wrapper) — but only when the job's files landed in exactly one album; a job spanning several albums instead carries the full `destinationAlbums` array and surfaces a "View N albums" menu (see "Multi-album acquire jobs" above).

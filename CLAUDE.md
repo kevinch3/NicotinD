@@ -1251,8 +1251,12 @@ Add detail there, not here.
   `recomputeStage` deliberately no-ops on an item-less job, so a beatport link handed to yt-dlp's
   `^https?://` catch-all sat at "Downloading 0 of 0" forever with no reason and no Remove; ordering
   is load-bearing — after ingest, before the release that deletes the addon job and its error text —
-  and `failOrphanedJob` now COALESCEs so the generic "restarted mid-download" guess can't clobber the
-  real one), Retry on any truncated acquire
+  and `failOrphanedJob` now COALESCEs so the generic "restarted mid-download" guess can't clobber
+  the real one; `sanitizeAddonError` reduces an addon's Rich Python **traceback** to its trailing
+  exception line before it reaches the card — issue #601, prod showed a user
+  `/usr/lib/python3.13/json/__init__.py:346 in loads` when spotdl's rate-limited YouTube Music
+  preflight died inside `ytmusicapi` — while leaving non-traceback addon summaries untouched, so
+  it narrows formatting, never *which* error is mirrored), Retry on any truncated acquire
   job resumes the same job id/staging dir instead of re-downloading from scratch (spotdl
   additionally passes `--overwrite skip` on top of that generic mechanism), and YouTube's bot-check
   is mitigated by Deno + the bgutil PO-token sidecar + optional `<dataDir>/youtube-cookies.txt`
