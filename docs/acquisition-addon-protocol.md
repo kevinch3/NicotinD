@@ -427,8 +427,16 @@ bundled built-in addon**.
   url-persistence, so a failed URL card offers Retry through
   `POST /api/acquire/jobs/:id/retry` (which re-submits that stored link, idempotently).
 - **Follow-ups**: retiring `acquire_jobs`/`AcquireWatcher` (the last in-process resolve lane is gone,
-  so the URL path can move fully onto the `AddonJobPoller` feed); publishing `@nicotind/addon-sdk@0.1.1`
-  with the `url` intent to drop the cast in all three external addons.
+  so the URL path can move fully onto the `AddonJobPoller` feed); publishing `@nicotind/addon-sdk@0.1.1`.
+  The package version is bumped in-repo and the publish is a manual `npm publish`
+  (there is no CI job for it). **0.1.1 now carries three things the addons need**,
+  not just one: the `url` intent (drops the `as unknown as` cast in all three
+  external addons), protocol 1.1's optional `AddonJob.title`, and the new
+  `downloader-output` module — the yt-dlp/spotDL stdout parsers, moved out of core
+  because only an addon can see that stream. Until it is published, both
+  downloader addons stay on `stdio: 'ignore'` and therefore cannot report a
+  playlist's name or its expected track count; see docs/download-pipeline.md
+  "What the addon split dropped".
 
 ## Out of scope
 
