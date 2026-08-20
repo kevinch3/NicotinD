@@ -360,6 +360,44 @@ docker compose pull
 docker compose up -d
 ```
 
+### What the automated deploy pulls (issue #606)
+
+The `deploy` job derives its pull list from the resolved compose config rather
+than restating it:
+
+```sh
+images=$(docker compose config --images | grep "^ghcr\.io/kevinch3/" | sort -u)
+[ -n "$images" ] || { echo "no images resolved — refusing to deploy" >&2; exit 1; }
+echo "$images" | xargs -n1 docker pull
+```
+
+The empty-list check is load-bearing rather than defensive: the step does not set
+`pipefail`, so a pipeline's status is only its last command's. A failing
+`docker compose config` would flow an empty string into `xargs -r`, which does
+nothing and exits 0 — a silent skip that deploys stale images behind a green run,
+which is the same failure this whole section exists to prevent.
+
+It used to pull a hardcoded `nicotind analysis`, which meant the three addon
+images and the pot-provider were **never** pulled. That is worse than it sounds:
+`docker compose up -d` will not recreate a container whose image reference is
+unchanged, so a rebuilt `:latest` addon keeps running the old bytes indefinitely.
+A green release (v0.3.38) once shipped with `/api/health` reporting the new
+version while the spotdl addon container was still the build from 8 hours
+earlier — the #457 "green deploy, previous version" shape, one layer down.
+Deriving the list means adding a service to compose cannot silently miss the
+deploy; `scripts/check-deploy-images.test.ts` is the drift guard.
+
+Two deliberate constraints:
+
+- **Scoped to our own registry.** A bare `docker compose pull` would also pull
+  `linuxserver/lidarr` and `slskd/slskd`, coupling every release to third-party
+  registries that have nothing to do with it.
+- **A pull failure aborts the deploy** (`set -e`), never skips. A missing image
+  must be loud — that is the whole lesson of #457.
+
+It also self-scopes per host: a streaming-only deployment resolves no addon
+services, so none are pulled.
+
 Schema migrations run automatically on boot. Skim the release notes
 (CHANGELOG.md / the GitHub Release page) before upgrading — anything marked
 `!`/`BREAKING CHANGE` requires attention. Be careful with unattended

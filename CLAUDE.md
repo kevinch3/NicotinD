@@ -1556,7 +1556,12 @@ Add detail there, not here.
   `latest`) published per release tag via native-runner digest builds + one manifest merge; compose
   pulls it (build-from-source is an override), the deploy host pulls too, `/api/health` reports the
   running version, and a ci.yml `docker` job (compose lint + conditional image build) gates
-  releases. The ci.yml `release` job that cuts those tags is **orphan-tag-proof**: atomic
+  releases. The deploy **derives which images to pull from the resolved compose config**
+  (`docker compose config --images`, scoped to our registry) rather than a hardcoded service list —
+  the old list omitted every addon image, and since `up -d` won't recreate a container whose image
+  reference is unchanged, a green release once left a rebuilt addon running 8-hour-old bytes (issue
+  #606, the #457 shape); `scripts/check-deploy-images.test.ts` guards it.
+  The ci.yml `release` job that cuts those tags is **orphan-tag-proof**: atomic
   `--follow-tags` push (a rejected branch update rejects the tag too) + self-healing orphan
   detection (a `vX` tag not reachable from master is deleted + re-cut, never silently skipped) —
   fixes the 2026-07-23 freeze where a non-atomic push orphaned `v0.1.244` and wedged every release
