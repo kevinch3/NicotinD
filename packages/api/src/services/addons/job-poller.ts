@@ -440,7 +440,7 @@ export class AddonJobPoller {
       );
       db.run(
         `UPDATE acquisition_jobs SET error = ?, updated_at = ? WHERE id = ? AND state = 'active'`,
-        [job.error ? clampAddonText(job.error) : null, now, coreJobId],
+        [job.error ? sanitizeAddonError(job.error) : null, now, coreJobId],
       );
       return;
     }
@@ -460,7 +460,7 @@ export class AddonJobPoller {
     // sets state/stage but never touches `error`, so a partial's reason would
     // otherwise be lost.
     db.run(`UPDATE acquisition_jobs SET error = ?, updated_at = ? WHERE id = ?`, [
-      job.error ? clampAddonText(job.error) : null,
+      job.error ? sanitizeAddonError(job.error) : null,
       now,
       coreJobId,
     ]);
@@ -477,7 +477,7 @@ export class AddonJobPoller {
     db.run(
       `UPDATE acquisition_jobs SET state = 'failed', stage = 'error', error = ?, updated_at = ?
        WHERE id = ? AND state != 'superseded'`,
-      [job.error ? clampAddonText(job.error) : emptyOutcomeMessage(job.state), now, coreJobId],
+      [job.error ? sanitizeAddonError(job.error) : emptyOutcomeMessage(job.state), now, coreJobId],
     );
   }
 
@@ -603,6 +603,47 @@ export class AddonJobPoller {
  * table and every poll that reads it.
  */
 export const MAX_ADDON_TEXT_CHARS = 500;
+
+/* eslint-disable no-control-regex */
+const ANSI_RE = /\u001b\[[0-9;]*m/g;
+/** Rich/`traceback` decoration: box-drawing frame + the ❱ current-line marker. */
+const BOX_CHARS_RE = /[\u2500-\u257f\u2571\u2771\u276f\u2771]/g;
+const EXCEPTION_LINE_RE = /^[A-Za-z_][\w.]*(?:Error|Exception|Warning)\b.*/;
+
+/**
+ * What a *person* should read when an addon dies (issue #601).
+ *
+ * `clampAddonText` only truncates, so whatever the addon sends is what the
+ * Downloads card shows — and prod showed a user 500 characters of Rich-formatted
+ * Python traceback (`│ /usr/lib/python3.13/json/__init__.py:346 in loads │`)
+ * when spotdl's YouTube Music preflight was rate-limited. Core owns the
+ * user-facing surface, so it reduces a traceback to the one line that says what
+ * went wrong; the addon's own summaries — which are the genuinely useful ones —
+ * pass through untouched, so this narrows *formatting*, never *which* error is
+ * reported (the mirror-verbatim rule in `applyAddonOutcome` still holds).
+ */
+export function sanitizeAddonError(raw: string): string {
+  const plain = raw.replace(ANSI_RE, '');
+  const looksLikeTraceback =
+    /Traceback \(most recent call last\)/.test(plain) || /[\u2502\u2570\u256d]/.test(plain);
+  if (!looksLikeTraceback) return clampAddonText(plain);
+
+  const lines = plain
+    .split('\n')
+    .map((l) =>
+      l
+        .replace(BOX_CHARS_RE, '')
+        .replace(/[\u2502\u276f\u2771]/g, '')
+        .trim(),
+    )
+    .filter((l) => l.length > 0);
+  // The exception line is last in a Python traceback, so scan from the end.
+  const exception = [...lines].reverse().find((l) => EXCEPTION_LINE_RE.test(l));
+  const fallback = [...lines]
+    .reverse()
+    .find((l) => !/^(Traceback|\/|\d+\s|❱)/.test(l) && !l.includes(' in '));
+  return clampAddonText(exception ?? fallback ?? lines[lines.length - 1] ?? plain);
+}
 
 function clampAddonText(text: string): string {
   const trimmed = text.trim();

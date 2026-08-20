@@ -8,7 +8,13 @@ import { applySchema } from '../../db.js';
 import { PluginRegistry } from '../plugins/registry.js';
 import { AddonRequestError, type AddonClient } from './client.js';
 import { RemoteAddonPlugin } from './remote-addon-plugin.js';
-import { AddonJobPoller, addonTransferKey, mapAddonJob, parseAddonJobId } from './job-poller.js';
+import {
+  AddonJobPoller,
+  addonTransferKey,
+  mapAddonJob,
+  parseAddonJobId,
+  sanitizeAddonError,
+} from './job-poller.js';
 import { createJob } from '../acquisition-job-store.js';
 import type { CompletedDownloadFile } from '../path-inference.js';
 
@@ -523,5 +529,57 @@ describe('AddonJobPoller', () => {
       expect(row.state).toBe('failed');
       expect(row.error).toBe('Unsupported URL: beatport');
     });
+  });
+});
+
+describe('sanitizeAddonError (issue #601)', () => {
+  // The real thing prod put on a Downloads card: spotdl's startup preflight died
+  // inside ytmusicapi and the addon shipped Rich's box-drawn traceback verbatim.
+  const RICH_TRACEBACK = [
+    '\u001b[31m╭─────────────── Traceback (most recent call last) ────────────────╮\u001b[0m',
+    '│ /usr/local/bin/spotdl:8 in <module>                              │',
+    '│ ❱ 8 │   sys.exit(console_entry_point())                          │',
+    '│ /usr/lib/python3.13/json/__init__.py:346 in loads                │',
+    '│ ❱ 346 │   │   return _default_decoder.decode(s)                   │',
+    '╰──────────────────────────────────────────────────────────────────╯',
+    'JSONDecodeError: Expecting value: line 1 column 1 (char 0)',
+  ].join('\n');
+
+  it('reduces a Python traceback to its exception line', () => {
+    expect(sanitizeAddonError(RICH_TRACEBACK)).toBe(
+      'JSONDecodeError: Expecting value: line 1 column 1 (char 0)',
+    );
+  });
+
+  it('strips ANSI escapes', () => {
+    expect(sanitizeAddonError('\u001b[31mboom\u001b[0m')).toBe('boom');
+  });
+
+  // The addon's own summaries are the useful ones — they must survive intact.
+  it('leaves an ordinary multi-line addon message untouched', () => {
+    const msg =
+      'Downloaded 7 of 32 tracks — the rest failed or were skipped.\n' +
+      'https://open.spotify.com/track/abc - LookupError: No results found for song: X';
+    expect(sanitizeAddonError(msg)).toBe(msg);
+  });
+
+  it('falls back to the last meaningful line when a traceback has no exception line', () => {
+    const t = [
+      '╭── Traceback (most recent call last) ──╮',
+      '│ /app/x.py:1 in <module>               │',
+      '╰───────────────────────────────────────╯',
+      'the process exited unexpectedly',
+    ].join('\n');
+    expect(sanitizeAddonError(t)).toBe('the process exited unexpectedly');
+  });
+
+  it('still clamps an over-long message', () => {
+    const out = sanitizeAddonError('x'.repeat(5000));
+    expect(out.length).toBeLessThanOrEqual(500);
+    expect(out.endsWith('…')).toBe(true);
+  });
+
+  it('never returns an empty string for non-empty input', () => {
+    expect(sanitizeAddonError('│ │ │')).not.toBe('');
   });
 });
