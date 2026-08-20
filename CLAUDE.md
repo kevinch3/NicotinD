@@ -783,7 +783,14 @@ Add detail there, not here.
   pool's modal primary (which inverts on an umbrella tag). Stations are also the first thing the
   eval polls can measure — `kind:'filter'` was schema-only and `evaluatePollAgreement` skipped it,
   so all 70 votes to date graded seed radio; `RadioPollSettings.filters` now generates one station
-  scenario each. → [docs/radio.md](docs/radio.md) "Stations",
+  scenario each. **Measured on prod and corrected (v4)**: v3's grading ordered the *pool* (widest-
+  spread axis on 6 of 8 landing chips) but not the *served window* — its `SHARE_REFERENCE` ceiling
+  gave full marks to any artist ≥50% of whose catalogue wears the tag, tying 23–74% of each pool at
+  1.00, so the top 10 scored **sd 0.000** on 5 of 8 chips and was really ordered by key/origin. Raw
+  share fixes it (ties 7–27%, sd non-zero on 8 of 8); the depth curve, `DEPTH_WEIGHT` and
+  `ANCHOR_FRACTION` were measured **unfalsifiable on this library** (0–2 of 10) and deliberately not
+  touched. `dump-radio.ts` now prints the served-window spread, the number that would have caught
+  it. → [docs/radio.md](docs/radio.md) "Stations",
   [docs/measurements/radio-stations-2026-08.md](docs/measurements/radio-stations-2026-08.md). This backs the
   **radio/mood landing** (the post-login home route `''`, `pages/radio-landing/`): a last-track
   resume shortcut (disappears on tap) + one-tap vibe presets + top-genre chips; acquisition search

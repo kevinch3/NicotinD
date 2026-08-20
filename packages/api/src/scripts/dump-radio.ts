@@ -243,6 +243,7 @@ function renderStationHealth(
   filter: LibraryFilter,
   seed: SongFeatures,
   pool: RadioCandidate[],
+  ranked: RadioCandidate[],
 ): string[] {
   const stationGenres = (filter.genres ?? []).filter((g) => g && isRealGenre(g));
   if (stationGenres.length === 0) return [];
@@ -309,10 +310,39 @@ function renderStationHealth(
         ? `${affinities[0]!.toFixed(2)} / ${affinities[Math.floor(affinities.length / 2)]!.toFixed(2)} / ${affinities.at(-1)!.toFixed(2)}`
         : '(not graded)'
     }`,
+    ...servedSpreadLines(ranked),
     `  embedding coverage           : ${withEmbedding}/${total} (${pct(withEmbedding, total)})`,
     `  station anchor built         : ${seed.embedding ? 'yes' : 'no'}`,
   ];
   return lines;
+}
+
+/**
+ * Spread of the station axis across the tracks that were actually SERVED — the
+ * number that separates an axis which orders the station from one that merely
+ * gates it.
+ *
+ * A pool-wide spread can look healthy while every served track sits at the
+ * ceiling, which is exactly what v3 did on prod (sd 0.000 across the top 10 on
+ * five of eight stations). The pool histograms above cannot show that, so this
+ * line exists to make the v4 regression visible if it ever comes back.
+ */
+function servedSpreadLines(ranked: RadioCandidate[]): string[] {
+  const vals = ranked
+    .map((c) => c.stationAffinity)
+    .filter((v): v is number => typeof v === 'number');
+  if (vals.length < 2) return [];
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+  const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
+  const verdict =
+    sd < 0.01
+      ? '   ← GATING, NOT ORDERING: every served track scores the same'
+      : sd < 0.05
+        ? '   ← barely orders the served window'
+        : '';
+  return [
+    `  station affinity across the SERVED ${vals.length}: mean ${mean.toFixed(3)} sd ${sd.toFixed(3)}${verdict}`,
+  ];
 }
 
 function renderTrackBlock(
@@ -492,7 +522,15 @@ function renderDump(
         ),
       );
   const stationLines =
-    kind === 'filter' && filter ? renderStationHealth(db, filter, seed, pool) : [];
+    kind === 'filter' && filter
+      ? renderStationHealth(
+          db,
+          filter,
+          seed,
+          pool,
+          ranked.map((r) => r.song),
+        )
+      : [];
 
   lines.push('## Pool health');
   if (kind === 'filter' && !effectiveGenres(seed)) {

@@ -2,7 +2,6 @@ import { describe, it, expect } from 'bun:test';
 import {
   ANCHOR_MIN_MEMBERS,
   DEPTH_CREDIT,
-  SHARE_REFERENCE,
   anchorCentroid,
   genreDepthScore,
   matchedGenrePosition,
@@ -93,10 +92,26 @@ describe('stationAffinity', () => {
     expect(deepTagNativeArtist).toBeGreaterThan(0.6);
   });
 
-  it('is monotonic in artist share and saturates at the reference', () => {
+  it('is monotonic in artist share all the way to 1, with no ceiling', () => {
+    // The v4 regression (docs/measurements/radio-stations-2026-08.md): v3
+    // clamped share credit at a 0.5 reference, so every artist at or above half
+    // scored identically. On prod that tied 23-74% of each station pool at 1.00
+    // and the served top-10 came entirely out of the tie.
     const depth = genreDepthScore(['Electronic'], ['Electronic']);
     expect(stationAffinity(depth, 0.1)).toBeLessThan(stationAffinity(depth, 0.3));
-    expect(stationAffinity(depth, SHARE_REFERENCE)).toBe(stationAffinity(depth, 1));
+    expect(stationAffinity(depth, 0.5)).toBeLessThan(stationAffinity(depth, 0.75));
+    expect(stationAffinity(depth, 0.75)).toBeLessThan(stationAffinity(depth, 1));
+  });
+
+  it('orders two primary-tagged tracks by how much of the genre their artists are', () => {
+    // The defect this axis exists to avoid, one level in: primary tag alone is
+    // 55-80% of a real station pool, so if the tie-break above it is flat the
+    // axis only decides who is in the pool, never who gets played.
+    const depth = genreDepthScore(['Electronic'], ['Electronic']);
+    const dedicated = stationAffinity(depth, 0.95);
+    const occasional = stationAffinity(depth, 0.55);
+    expect(dedicated).toBeGreaterThan(occasional);
+    expect(dedicated - occasional).toBeGreaterThan(0.15);
   });
 
   it('stays within 0..1 for missing/degenerate inputs', () => {

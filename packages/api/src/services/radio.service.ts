@@ -145,8 +145,16 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
  *      anchor rather than a centroid. SEED radio is unchanged by v3 - the
  *      version still bumps, because pooling station votes with the v2 seed
  *      votes is exactly what the stamp exists to prevent.
+ * v4 - first prod measurement of the station half (8 landing chips, 15,162
+ *      landed songs): the artist-share ceiling (`SHARE_REFERENCE` 0.5) tied
+ *      23-74% of every station pool at 1.00, so the station axis scored sd
+ *      0.000 across the served top-10 on 5 of 8 stations - it gated the pool
+ *      but never ordered it. Share is now used raw. Nothing else moved: the
+ *      depth curve and the anchor fraction were measured unfalsifiable on this
+ *      library and deliberately left alone. See
+ *      docs/measurements/radio-stations-2026-08.md.
  */
-export const RADIO_FORMULA_VERSION = 3;
+export const RADIO_FORMULA_VERSION = 4;
 
 /**
  * Parse a `--weights axis=n[,axis=n...]` override spec against a base weight

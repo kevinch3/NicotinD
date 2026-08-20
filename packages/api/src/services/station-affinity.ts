@@ -44,19 +44,14 @@ import { genreKey } from './genre-split.js';
  * The gaps are deliberately wide: primary-vs-secondary is the distinction that
  * separates "this is a house record" from "this record has some synths on it",
  * and a narrow spread would be swamped by the other axes.
+ *
+ * The tail shape is **deliberately left alone**: on prod, five curves from
+ * `[1,.8,.6,.5]` to `[1,.5,.2,.1]` moved the served top-10 by 0–2 of 10 across
+ * all eight stations, because that window is drawn almost entirely from
+ * primary-tagged tracks. Anything past index 0 only re-orders tracks that are
+ * never served, so tuning it is unfalsifiable here.
  */
 export const DEPTH_CREDIT: readonly number[] = [1, 0.7, 0.45];
-
-/**
- * Artist share at which an artist counts as fully "of" a genre. Below this the
- * credit scales linearly; at or above it, full marks.
- *
- * 0.5 rather than 1.0 because a genuine genre artist is rarely 100%: remixes,
- * collaborations, an acoustic record and a couple of untagged singles all dilute
- * the share without making them any less an electronic act. A documented,
- * tunable constant in the same spirit as `POPULARITY_REFERENCE`.
- */
-export const SHARE_REFERENCE = 0.5;
 
 /**
  * How the two signals split the axis. Even, on purpose: the per-track signal
@@ -114,16 +109,23 @@ export function genreDepthScore(
  * tagged with it.
  *
  * `artistShare` is the fraction of the artist's landed tracks carrying the
- * station genre (`artistGenreShares`); it is softened through `SHARE_REFERENCE`
- * so a 50%-electronic artist is not penalised against a 100% one.
+ * station genre (`artistGenreShares`), used **raw**. v3 softened it through a
+ * `SHARE_REFERENCE` of 0.5 — full marks for any artist at least half of whose
+ * catalogue wears the tag — on the reasoning that a genuine genre artist is
+ * rarely 100%. Measured on the real library that ceiling was the defect: it
+ * tied 23–74% of every station pool at exactly 1.00, and since the served
+ * top-10 is drawn from that tie, the axis scored a **standard deviation of
+ * 0.000 inside the window a listener actually hears** on five of eight
+ * stations. It gated the pool; it never ordered it. Raw share breaks the tie
+ * (7–27% remain tied) at no cost to the design intent — see
+ * docs/measurements/radio-stations-2026-08.md.
  */
 export function stationAffinity(
   depth: number | null,
   artistShare: number | null | undefined,
 ): number {
   const d = depth ?? 0;
-  const shareCredit = clamp01((artistShare ?? 0) / SHARE_REFERENCE);
-  return clamp01(DEPTH_WEIGHT * d + (1 - DEPTH_WEIGHT) * shareCredit);
+  return clamp01(DEPTH_WEIGHT * d + (1 - DEPTH_WEIGHT) * clamp01(artistShare ?? 0));
 }
 
 /** A pool member as the anchor builder needs it: its affinity and its vector. */
@@ -137,6 +139,11 @@ export interface AnchorMember {
  * The anchor is built from the most-central members only — averaging the whole
  * tagged pool is what produced a target that neither Queen nor Calvin Harris
  * was near.
+ *
+ * Measured inert on prod: 0.2 through 1.0 all land within cos 0.987 of each
+ * other and leave the served top-10 unchanged on eight of eight stations. Kept
+ * at 0.4 because the anchor as a whole is not inert (it sits cos 0.93–0.97 from
+ * the plain pool mean), but nobody should tune this number expecting an effect.
  */
 export const ANCHOR_FRACTION = 0.4;
 
@@ -149,7 +156,10 @@ export const ANCHOR_MIN_MEMBERS = 8;
  *
  * Two passes. The first mean is taken over the top `ANCHOR_FRACTION` by
  * affinity; the second **re-takes it over the half of those that actually sit
- * closest to it**. A tag like "Electronic" spans genuinely bimodal audio (an
+ * closest to it**. (On prod the trim moves the anchor by cos 0.97–0.99 and the
+ * served top-10 by 0–1 of 10 — this library has no strongly bimodal chip. It is
+ * kept for the library that does; the number to re-measure is in
+ * docs/measurements/radio-stations-2026-08.md.) A tag like "Electronic" spans genuinely bimodal audio (an
  * ambient record and a festival banger both wear it), and a single mean of a
  * bimodal set lands in the empty space between the two modes — the same
  * "average of everything" failure the affinity grading exists to fix, one level
