@@ -432,6 +432,26 @@ even issues the `GET /api/review/count` request.
   didn't) surfaces via a `review.tracksPartial` message and **keeps the modal
   open** rather than closing on a half-success, so the curator can see and
   retry the failed rows.
+- **Bulk sweep + mobile layout (issue #592).** The section header carries
+  `review-approve-all` / `review-discard-all`. Both are confirmed through
+  `ConfirmService` with the queue count named, because prod reached 34 pending
+  albums with no way to clear the queue but one card at a time. `runBulk` fans
+  out over the *existing* per-album routes rather than a new bulk endpoint:
+  each already writes its own audit row, and per-album audit granularity is
+  worth more for a destructive mass action than the atomicity one route would
+  buy. It runs **sequentially** (34 simultaneous deletes is not a reasonable
+  thing to emit) and **never aborts on a failure** — the point of a bulk action
+  is not having to retry the remainder by hand — so the outcome is reported as
+  `review.bulkDone` or `review.bulkPartial`, and `bulkBusy()` disables both
+  buttons for the duration.
+  The card itself stacks on a phone (`flex-col … sm:flex-row`): the four
+  actions used to sit in a `shrink-0` row whose ~300 px minimum overflowed a
+  360 px viewport and clipped **Discard** off the right edge, unreachable.
+- The Approve button and the `done`/`skipped` step badges use the shipped
+  `.status-done` / `.status-error` **filled pill** classes. They previously used
+  `bg-status-success` + `text-white`, and that background utility did not exist —
+  see [web-ui.md](web-ui.md) "Theme System" (issue #591) — so on every light
+  theme the button was white text on a white card.
 - Admin toggle row: `data-testid="processing-hold-for-review"`.
 - i18n: `review.*` and `admin.holdForReview*` keys, at `en`/`es` parity.
 

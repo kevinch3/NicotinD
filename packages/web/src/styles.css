@@ -331,6 +331,23 @@
   --color-theme-secondary: var(--theme-text-secondary);
   --color-theme-surface: var(--theme-surface);
   --color-theme-muted: var(--theme-text-muted);
+  /* The four status hues get the same `@theme` promotion, for the same reason
+     and after the same failure: `bg-status-success` / `bg-status-error` were
+     referenced by the review inbox, the Admin panel (`bg-status-error/15`) and
+     the desktop window controls (`hover:bg-status-error/10`), but only the
+     static `.text-status-*` classes below were ever declared — so Tailwind
+     emitted *no rule at all* for any `bg-` form, and the review inbox's
+     `bg-status-success … text-white` Approve button rendered white-on-white on
+     every light theme (issue #591). Each token aliases the theme's status
+     *text* color, which is the hue; the paired `.status-*` filled-pill classes
+     below stay the way to get a contrast-checked bg+fg pair. `success` is
+     registered as an alias of `done` because both spellings are in use at call
+     sites. */
+  --color-status-progress: var(--theme-status-progress-text);
+  --color-status-done: var(--theme-status-done-text);
+  --color-status-success: var(--theme-status-done-text);
+  --color-status-warn: var(--theme-status-warn-text);
+  --color-status-error: var(--theme-status-error-text);
 }
 /* `theme-inverse` is a neutral high-contrast fill (primary-text color as the
    background, base bg as the text) that flips per theme: it keeps the dark-theme

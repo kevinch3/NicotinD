@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { vi } from 'vitest';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { ReviewInboxComponent, aggregateAlbumSteps } from './review-inbox.component';
 import type { QuarantineSong } from '../../services/api/api-types';
 import { DownloadReviewService } from '../../services/download-review.service';
@@ -181,6 +181,69 @@ describe('ReviewInboxComponent', () => {
     expect(toastStub.show).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'review.discarded' }),
     );
+  });
+
+  // Issue #592 — prod had 34 pending albums with no way to clear the queue
+  // other than one card at a time.
+  it('approveAll() confirms with the count, approves every queued album, then refreshes once', async () => {
+    const albums = [album({ albumId: 'a1' }), album({ albumId: 'a2' }), album({ albumId: 'a3' })];
+    const { component, apiStub, confirmStub, reviewStub, transfersStub } = setup({
+      queueAlbums: albums,
+    });
+    await component.approveAll();
+    expect(confirmStub.ask).toHaveBeenCalled();
+    expect(String(confirmStub.ask.mock.calls[0][0])).toContain('3');
+    expect(apiStub.approve.mock.calls.map((c: unknown[]) => c[0])).toEqual(['a1', 'a2', 'a3']);
+    expect(reviewStub.refresh).toHaveBeenCalledTimes(1);
+    expect(transfersStub.markLibraryDirty).toHaveBeenCalledTimes(1);
+  });
+
+  it('approveAll() does nothing when the confirm is declined', async () => {
+    const { component, apiStub, reviewStub } = setup({
+      confirmResult: false,
+      queueAlbums: [album({ albumId: 'a1' })],
+    });
+    await component.approveAll();
+    expect(apiStub.approve).not.toHaveBeenCalled();
+    expect(reviewStub.refresh).not.toHaveBeenCalled();
+  });
+
+  it('discardAll() confirms with the count and discards every queued album', async () => {
+    const albums = [album({ albumId: 'a1' }), album({ albumId: 'a2' })];
+    const { component, apiStub, confirmStub } = setup({ queueAlbums: albums });
+    await component.discardAll();
+    expect(String(confirmStub.ask.mock.calls[0][0])).toContain('2');
+    expect(apiStub.discard.mock.calls.map((c: unknown[]) => c[0])).toEqual(['a1', 'a2']);
+  });
+
+  it('discardAll() does nothing when the confirm is declined', async () => {
+    const { component, apiStub } = setup({
+      confirmResult: false,
+      queueAlbums: [album({ albumId: 'a1' })],
+    });
+    await component.discardAll();
+    expect(apiStub.discard).not.toHaveBeenCalled();
+  });
+
+  // One album failing must not abandon the rest of the queue — the whole point
+  // of a bulk action is not having to retry 33 cards by hand.
+  it('approveAll() keeps going past a failing album and reports the partial result', async () => {
+    const albums = [album({ albumId: 'a1' }), album({ albumId: 'a2' }), album({ albumId: 'a3' })];
+    const { component, apiStub, toastStub } = setup({ queueAlbums: albums });
+    apiStub.approve.mockImplementation((id: string) =>
+      id === 'a2' ? throwError(() => new Error('boom')) : of({ ok: true }),
+    );
+    await component.approveAll();
+    expect(apiStub.approve).toHaveBeenCalledTimes(3);
+    const msg = String(toastStub.show.mock.calls.at(-1)?.[0]?.message ?? '');
+    expect(msg).toContain('review.bulkPartial');
+  });
+
+  it('bulkBusy() is false once a bulk run settles', async () => {
+    const { component } = setup({ queueAlbums: [album()] });
+    expect(component.bulkBusy()).toBe(false);
+    await component.approveAll();
+    expect(component.bulkBusy()).toBe(false);
   });
 
   it('listen() fetches the first song by id and plays it', async () => {

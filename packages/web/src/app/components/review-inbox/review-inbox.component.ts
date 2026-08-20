@@ -1,4 +1,4 @@
-import { Component, OnDestroy, computed, inject, output } from '@angular/core';
+import { Component, OnDestroy, computed, inject, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -81,6 +81,9 @@ export class ReviewInboxComponent implements OnDestroy {
   readonly queue = this.review.queue;
   readonly visible = computed(() => this.auth.canCurate() && this.queue().length > 0);
 
+  /** True while a bulk approve/discard sweep is in flight — disables both bulk buttons. */
+  readonly bulkBusy = signal(false);
+
   private stopStart: () => void;
   private stopWatch: () => void;
 
@@ -144,6 +147,61 @@ export class ReviewInboxComponent implements OnDestroy {
       this.toast.show({ message: this.i18n.t('review.discarded'), kind: 'success' });
     } catch {
       // Leave the album in the queue; the curator can retry.
+    }
+  }
+
+  /** Approve every album currently queued (issue #592). */
+  approveAll(): Promise<void> {
+    return this.runBulk('approve');
+  }
+
+  /** Discard every album currently queued — deletes their files (issue #592). */
+  discardAll(): Promise<void> {
+    return this.runBulk('discard');
+  }
+
+  /**
+   * Shared bulk sweep. Deliberately fans out over the *existing* per-album
+   * endpoints rather than adding a bulk route: each one already records its own
+   * audit entry, and per-album granularity is worth more for a destructive mass
+   * action than the atomicity a single route would buy. Runs sequentially (a
+   * queue of 34 shouldn't arrive as 34 simultaneous deletes) and never aborts on
+   * a failure — the point of a bulk action is not having to retry the rest by
+   * hand — so the outcome is reported as a count, partial or complete.
+   */
+  private async runBulk(action: 'approve' | 'discard'): Promise<void> {
+    if (this.bulkBusy()) return;
+    const albums = [...this.queue()];
+    if (albums.length === 0) return;
+    const confirmKey =
+      action === 'approve' ? 'review.confirmApproveAll' : 'review.confirmDiscardAll';
+    const ok = await this.confirm.ask(this.i18n.t(confirmKey, { count: albums.length }));
+    if (!ok) return;
+
+    this.bulkBusy.set(true);
+    let failed = 0;
+    try {
+      for (const album of albums) {
+        try {
+          await firstValueFrom(
+            action === 'approve'
+              ? this.api.approve(album.albumId)
+              : this.api.discard(album.albumId),
+          );
+        } catch {
+          failed++;
+        }
+      }
+      await this.review.refresh();
+      this.transfers.markLibraryDirty();
+      const done = albums.length - failed;
+      this.toast.show(
+        failed > 0
+          ? { message: this.i18n.t('review.bulkPartial', { done, failed }), kind: 'error' }
+          : { message: this.i18n.t('review.bulkDone', { count: done }), kind: 'success' },
+      );
+    } finally {
+      this.bulkBusy.set(false);
     }
   }
 }
