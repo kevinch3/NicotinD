@@ -281,6 +281,44 @@ describe('loose singles (un-bucketing)', () => {
     expect(built.songs[0]!.suffix).toBe('flac'); // lossless wins
   });
 
+  // Issue #593 — measured on prod: 34 of 34 review-queue albums had this exact
+  // shape. spotdl writes ALBUMARTIST="Various Artists" + ALBUM="Unknown" on every
+  // track of a Spotify *playlist* download, so each track collapsed into its own
+  // one-track "Various Artists" release with the real performer stranded in the
+  // track artist. VA is only meaningful for a real multi-track compilation.
+  it('adopts the track artist when a Various Artists track collapses to a single', () => {
+    const built = buildLibrary([
+      track({
+        relPath: 'Various Artists/Unknown/04 - Luces.mp3',
+        artist: 'Paulo Londra',
+        albumArtist: 'Various Artists',
+        album: 'Unknown',
+        title: 'Luces',
+        track: 4,
+      }),
+    ]);
+    expect(built.albums).toHaveLength(1);
+    expect(built.albums[0]!.name).toBe('Luces');
+    expect(built.albums[0]!.artist).toBe('Paulo Londra');
+    expect(built.albums[0]!.id).toBe(albumIdFor('Paulo Londra', 'Luces'));
+    expect(built.artists.map((a) => a.name)).toEqual(['Paulo Londra']);
+  });
+
+  it('leaves a real multi-track Various Artists compilation grouped under VA', () => {
+    const comp = (n: string, artist: string) =>
+      track({
+        relPath: `Various Artists/Verano Hits/0${n} - ${n}.mp3`,
+        artist,
+        albumArtist: 'Various Artists',
+        album: 'Verano Hits',
+        title: n,
+      });
+    const built = buildLibrary([comp('T1', 'Mora'), comp('T2', 'Becky G'), comp('T3', 'Fuego')]);
+    expect(built.albums).toHaveLength(1);
+    expect(built.albums[0]!.name).toBe('Verano Hits');
+    expect(built.albums[0]!.artist).toBe('Various Artists');
+  });
+
   it('keeps a coherent multi-track loose download as one album (not split)', () => {
     const built = buildLibrary([
       track({ relPath: 'A/Some EP/01.mp3', artist: 'A', album: 'Some EP', title: 'T1' }),

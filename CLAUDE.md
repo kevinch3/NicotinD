@@ -190,7 +190,15 @@ Add detail there, not here.
   unchanged files, so an unchanged restart parses ~zero files. DB tuned via
   `applyPerformancePragmas` (synchronous=NORMAL/cache/mmap/busy_timeout) + a composite
   `idx_library_albums_grid`; the download-suppression album scan is memoized per-db
-  (`albumIdsByGroupKey`). → [docs/library-scanner.md](docs/library-scanner.md)
+  (`albumIdsByGroupKey`). A **loose single never keeps a `Various Artists` album artist** (issue
+  #593): when a track with no usable album collapses into its own single release, `resolveTags`
+  adopts the already-resolved track artist — a single has exactly one performer by construction,
+  so VA there means only that the *source* tagged a playlist. Prod had 34 of 34 review-queue
+  albums as one-track VA releases (all one spotdl Spotify-playlist job; the files really do carry
+  `ALBUMARTIST=Various Artists`/`ALBUM=Unknown`, so core was mapping faithfully) with the real
+  performer stranded and unreachable from the Artists grid, which filters VA out. Real multi-track
+  compilations carry an album name and stay under VA. →
+  [docs/library-scanner.md](docs/library-scanner.md)
 - **Music licence / rights per track**: a per-song `licence` code from the closed `LICENCE_VOCAB`
   (`@nicotind/core` `licence.ts`: public-domain/cc0/the six CC licences/all-rights-reserved/unknown;
   `normalizeLicence` maps tag/URL/MB strings → a code, **positive IDs only** — never guesses ARR
@@ -575,7 +583,16 @@ Add detail there, not here.
   error chip instead of one generic toast. **Inert while acquisition is off (issue #416)** — the
   inbox lives on the hidden Downloads page, so the landing gate ANDs in live `acquisitionEnabled`
   and the admin route denies enabling the hold; the same change extracted the path-safety triad into
-  `services/song-path.ts` and Lucene-escaped `searchReleaseGroups`. →
+  `services/song-path.ts` and Lucene-escaped `searchReleaseGroups`. **Bulk sweep + mobile
+  layout (issue #592)**: `review-approve-all`/`review-discard-all` in the section header, both
+  `ConfirmService`-gated with the count named, fanning out over the *existing* per-album routes
+  (each already audited — per-album granularity beats one route's atomicity for a destructive
+  mass action) sequentially, never aborting on a failure; the card stacks `flex-col … sm:flex-row`
+  because the `shrink-0` action row's ~300px minimum overflowed a 360px viewport and clipped
+  Discard out of reach. Its Approve button + done/skipped step badges use the shipped
+  `.status-done`/`.status-error` filled pills — they were `bg-status-success` + `text-white`, a
+  background utility that **never compiled** (issue #591), so on every light theme the primary
+  action was white-on-white. →
   [docs/download-review.md](docs/download-review.md)
 - **Perceptual audio features (no LLM)**: energy/loudness measured bun-side via ffmpeg ebur128;
   danceability/valence/mood/vocals/acousticness + cached embeddings (content-invalidated by

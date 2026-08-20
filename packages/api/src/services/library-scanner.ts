@@ -366,6 +366,14 @@ function resolveTags(
   // title still collapse via the shared normalized-title group key.
   if (isLooseSinglesBucket(dir, album)) {
     album = title;
+    // A loose single has exactly one performer by construction, so a
+    // "Various Artists" album artist is meaningless here — it only means the
+    // source tagged a playlist, not a compilation (issue #593: spotdl writes
+    // ALBUMARTIST=Various Artists + ALBUM=Unknown on every track of a Spotify
+    // playlist). Adopt the performer that trackArtist already resolved, so the
+    // single is owned by whoever actually made it. A genuine compilation keeps
+    // a real album name and never reaches this branch.
+    if (albumArtistIsVA && trackArtist !== albumArtist) albumArtist = trackArtist;
   }
 
   let year = t.year ?? undefined;
