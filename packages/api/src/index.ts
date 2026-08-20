@@ -32,6 +32,7 @@ import { historyRoutes } from './routes/history.js';
 import { privacyRoutes } from './routes/privacy.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
+import { radioPollAdminRoutes, radioPollPublicRoutes } from './routes/radio-polls.js';
 import { devicesRoutes } from './routes/devices.js';
 import { agentTokensRoutes } from './routes/agent-tokens.js';
 import { mcpRoutes } from './routes/mcp.js';
@@ -683,6 +684,11 @@ export function createApp({
   );
   app.route('/api/settings', settingsRoutes(config));
   app.route('/api/share', shareRoutes(config.jwt.secret, auth));
+  // Radio evaluation polls (docs/radio-eval-polls.md): the public half — the
+  // poll token is the credential, media via short-lived read-only share JWTs.
+  // The admin half mounts under /api/admin/* below.
+  app.route('/api/radio-polls', radioPollPublicRoutes(config.jwt.secret));
+  app.route('/api/admin/radio-polls', radioPollAdminRoutes({ version }));
   // Device pairing (QR link): claim is public (the pairing token is the
   // credential), so /api/devices is deliberately NOT in the blanket-auth list —
   // pair/list/revoke apply auth per-route.

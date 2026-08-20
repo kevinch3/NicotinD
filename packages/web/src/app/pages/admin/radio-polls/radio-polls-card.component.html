@@ -1,0 +1,182 @@
+<div data-testid="radio-polls-card">
+  <!-- Create form -->
+  <div class="rounded-lg border border-theme bg-theme-surface p-4 mb-4">
+    <p class="text-sm font-medium text-theme-primary mb-3">{{ 'admin.radioPollsCreateTitle' | t }}</p>
+    <div class="flex flex-wrap items-end gap-3">
+      <label class="text-xs text-theme-muted flex-1 min-w-48">
+        {{ 'admin.radioPollsName' | t }}
+        <input
+          type="text"
+          [ngModel]="name()"
+          (ngModelChange)="name.set($event)"
+          data-testid="radio-polls-name"
+          [placeholder]="'admin.radioPollsNamePlaceholder' | t"
+          class="mt-1 w-full text-sm rounded-lg bg-theme-base border border-theme px-3 py-2 text-theme-primary"
+        />
+      </label>
+      <label class="text-xs text-theme-muted">
+        {{ 'admin.radioPollsScenarios' | t }}
+        <input
+          type="number"
+          min="1"
+          max="20"
+          [ngModel]="scenarioCount()"
+          (ngModelChange)="scenarioCount.set(+$event)"
+          data-testid="radio-polls-scenario-count"
+          class="mt-1 w-20 block text-sm rounded-lg bg-theme-base border border-theme px-2 py-2 text-theme-primary"
+        />
+      </label>
+      <label class="text-xs text-theme-muted">
+        {{ 'admin.radioPollsNextUp' | t }}
+        <input
+          type="number"
+          min="1"
+          max="10"
+          [ngModel]="nextUpCount()"
+          (ngModelChange)="nextUpCount.set(+$event)"
+          data-testid="radio-polls-next-up-count"
+          class="mt-1 w-20 block text-sm rounded-lg bg-theme-base border border-theme px-2 py-2 text-theme-primary"
+        />
+      </label>
+      <label class="text-xs text-theme-muted">
+        {{ 'admin.radioPollsExpiry' | t }}
+        <input
+          type="number"
+          min="1"
+          [ngModel]="expiresInHours()"
+          (ngModelChange)="expiresInHours.set($event ? +$event : null)"
+          [placeholder]="'admin.radioPollsExpiryNever' | t"
+          class="mt-1 w-24 block text-sm rounded-lg bg-theme-base border border-theme px-2 py-2 text-theme-primary"
+        />
+      </label>
+      <button
+        type="button"
+        data-testid="radio-polls-create"
+        (click)="create()"
+        [disabled]="creating() || !name().trim()"
+        class="text-sm rounded-lg bg-theme-accent text-theme-on-accent font-medium px-4 py-2 hover:opacity-90 transition disabled:opacity-40"
+      >
+        {{ creating() ? ('admin.radioPollsCreating' | t) : ('admin.radioPollsCreate' | t) }}
+      </button>
+    </div>
+
+    <!-- Optional pinned seeds -->
+    <div class="mt-3">
+      <p class="text-xs text-theme-muted mb-1">{{ 'admin.radioPollsPinnedSeeds' | t }}</p>
+      @if (pinnedSeeds().length) {
+        <div class="flex flex-wrap gap-1.5 mb-2">
+          @for (s of pinnedSeeds(); track s.id) {
+            <span class="inline-flex items-center gap-1 rounded-full bg-theme-surface-2 px-2.5 py-1 text-xs text-theme-secondary">
+              {{ s.title }} — {{ s.artist }}
+              <button type="button" (click)="removePinnedSeed(s.id)" class="hover:text-red-400 transition" aria-label="Remove">✕</button>
+            </span>
+          }
+        </div>
+      }
+      <app-song-picker [excludeIds]="pinnedSeedIds()" (add)="addPinnedSeed($event)" />
+    </div>
+  </div>
+
+  <!-- Poll list -->
+  @if (loading()) {
+    <p class="text-sm text-theme-muted px-1 py-2">{{ 'admin.radioPollsLoading' | t }}</p>
+  } @else if (rows().length === 0) {
+    <p class="text-sm text-theme-muted px-1 py-2">{{ 'admin.radioPollsEmpty' | t }}</p>
+  } @else {
+    <div class="divide-y divide-theme-border rounded-lg border border-theme bg-theme-surface">
+      @for (row of rows(); track row.id) {
+        <div class="px-4 py-3" data-testid="radio-polls-row">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-theme-primary truncate">
+                {{ row.name }}
+                <span
+                  [class]="'ml-2 inline-block rounded px-2 py-0.5 text-[11px] align-middle ' +
+                    (status(row) === 'open' ? 'bg-emerald-600/20 text-emerald-500' : 'bg-theme-surface-2 text-theme-muted')"
+                  >{{ 'admin.radioPollsStatus_' + status(row) | t }}</span
+                >
+              </p>
+              <p class="text-xs text-theme-muted">
+                {{ formatWhen(row.createdAt) }} ·
+                {{ 'admin.radioPollsCounts' | t: { scenarios: row.scenarioCount, votes: row.voteCount, raters: row.raterCount } }}
+              </p>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <button type="button" data-testid="radio-polls-copy"
+                class="text-xs rounded border border-theme px-2.5 py-1.5 hover:bg-theme-hover transition"
+                (click)="copyLink(row.url)">
+                {{ 'admin.radioPollsCopyLink' | t }}
+              </button>
+              <button type="button" data-testid="radio-polls-results"
+                class="text-xs rounded border border-theme px-2.5 py-1.5 hover:bg-theme-hover transition"
+                (click)="toggleResults(row)">
+                {{ resultsLoadingId() === row.id ? '…' : ('admin.radioPollsResults' | t) }}
+              </button>
+              @if (status(row) === 'open') {
+                <button type="button" data-testid="radio-polls-close"
+                  class="text-xs rounded border border-theme px-2.5 py-1.5 hover:bg-theme-hover transition"
+                  (click)="close(row)">
+                  {{ 'admin.radioPollsClose' | t }}
+                </button>
+              }
+              <button type="button" data-testid="radio-polls-delete"
+                class="text-xs rounded border border-theme px-2.5 py-1.5 text-red-400 hover:bg-theme-hover transition"
+                (click)="remove(row)">
+                {{ 'admin.radioPollsDelete' | t }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Expanded results -->
+          @if (openResults(); as res) {
+            @if (res.poll.id === row.id) {
+              <div class="mt-3 space-y-4" data-testid="radio-polls-results-panel">
+                @for (sc of res.scenarios; track sc.id) {
+                  <div class="rounded-lg bg-theme-base border border-theme p-3">
+                    @if (sc.seed) {
+                      <p class="text-xs text-theme-muted mb-2">
+                        {{ 'poll.nowPlaying' | t }}:
+                        <span class="text-theme-secondary font-medium">{{ sc.seed.song.title }} — {{ sc.seed.song.artist }}</span>
+                      </p>
+                    }
+                    <div class="space-y-2">
+                      @for (c of sc.candidates; track c.song.id) {
+                        <div class="text-xs">
+                          <div class="flex items-center gap-2">
+                            <span class="text-theme-muted w-5 text-right flex-shrink-0">#{{ c.rank }}</span>
+                            <span class="flex-1 min-w-0 truncate text-theme-primary">{{ c.song.title }} — {{ c.song.artist }}</span>
+                            <span class="text-emerald-500 flex-shrink-0">👍 {{ c.up }}</span>
+                            <span class="text-red-400 flex-shrink-0">👎 {{ c.down }}</span>
+                          </div>
+                          @if (approvalShare(c.up, c.down) !== null) {
+                            <div class="ml-7 mt-1 h-1 rounded bg-theme-surface-2 overflow-hidden">
+                              <div class="h-full bg-emerald-500" [style.width.%]="approvalShare(c.up, c.down)! * 100"></div>
+                            </div>
+                          }
+                          <p class="ml-7 mt-0.5 text-[10px] text-theme-muted font-mono truncate" [title]="breakdownLine(c.explanation)">
+                            {{ 'admin.radioPollsScore' | t }} {{ c.score.toFixed(3) }} · {{ breakdownLine(c.explanation) }}
+                          </p>
+                        </div>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <div class="mt-3">
+    <button
+      type="button"
+      data-testid="radio-polls-refresh"
+      class="text-sm rounded border border-theme px-3 py-1.5 hover:bg-theme-hover transition"
+      (click)="reload()"
+    >
+      {{ 'admin.radioPollsRefresh' | t }}
+    </button>
+  </div>
+</div>
