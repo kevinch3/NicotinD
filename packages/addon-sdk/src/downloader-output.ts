@@ -102,9 +102,11 @@ export function parseSpotdlProgress(line: string, current: AcquireProgress): Acq
  * - `Downloaded "Artist - Title": <url>` → done
  * - `Skipping Artist - Title (file already exists) <url>` / `(skip file found)`
  *   / `Skipping explicit song: Artist - Title` / legacy `Skipping "…"` → skipped
- * - `<track url> - <Exception>: <message>` (the `--print-errors` summary spotDL
- *   writes at the end of a run) → failed; a `LookupError: No results found for
- *   song: X` names the song, anything else is identified by its url.
+ * - `LookupError: No results found for song: X` / `AudioProviderError: YT-DLP
+ *   download error - <youtube url>` → failed, as spotDL logs them mid-run; the
+ *   `--print-errors` summary (`<track url> - <Exception>: <message>`) at the end
+ *   repeats each one and parses to the same title, so a consumer keyed on title
+ *   counts it once. Other summary exceptions are identified by the track url.
  *
  * The matcher's own `Skipping result due to …` chatter is not a track.
  */
@@ -117,13 +119,21 @@ export function parseSpotdlTrackEvent(line: string): DownloaderTrackEvent | null
   if (skippingFile) return { title: skippingFile[1]!.trim(), status: 'skipped' };
   const skippingExplicit = /\bSkipping explicit song:\s*(.+)$/i.exec(line);
   if (skippingExplicit) return { title: skippingExplicit[1]!.trim(), status: 'skipped' };
-  const failed = /^(https?:\/\/\S+) - (\w+: .*)$/.exec(line.trim());
-  if (failed) {
-    const detail = failed[2]!;
-    const named = /No results found for song:\s*(.+)$/i.exec(detail);
-    if (named) return { title: named[1]!.trim(), status: 'failed' };
-    return { title: failed[1]!, status: 'failed', detail };
+  // Failures, mid-run or in the `--print-errors` summary: keyed so both forms
+  // of the same failure yield the same title (the song name for a lookup miss,
+  // the YouTube url for a download error).
+  const noResults = /LookupError: No results found for song:\s*(.+?)\s*$/i.exec(line);
+  if (noResults) return { title: noResults[1]!, status: 'failed' };
+  const ytdlp = /AudioProviderError: YT-DLP download error - (https?:\/\/\S+)/i.exec(line);
+  if (ytdlp) {
+    return {
+      title: ytdlp[1]!,
+      status: 'failed',
+      detail: 'AudioProviderError: YT-DLP download error',
+    };
   }
+  const failed = /^(https?:\/\/\S+) - (\w+: .*)$/.exec(line.trim());
+  if (failed) return { title: failed[1]!, status: 'failed', detail: failed[2]! };
   return null;
 }
 

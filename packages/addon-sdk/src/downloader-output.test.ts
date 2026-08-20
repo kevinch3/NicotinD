@@ -116,6 +116,51 @@ describe('per-track events', () => {
   // With `--print-errors` spotDL ends with one line per failed song:
   // `<track url> - <ExceptionName>: <message>`. The LookupError message names
   // the song; other exceptions only carry the url, which still identifies it.
+  // Mid-run, spotDL logs each failure the moment it happens — `LookupError: No
+  // results found for song: X` and `AudioProviderError: YT-DLP download error -
+  // <youtube url>` — with no Spotify url prefix. Reading those is what lets the
+  // card count failures live instead of sitting at "0 of 0" until the
+  // `--print-errors` summary at the end (prod: 6 minutes of "Queued 0 of 0" on
+  // a 100-track playlist where 99 were failing). The summary line for the same
+  // song parses to the SAME title (the song name, or the YouTube url), so a
+  // consumer keyed on title sees one failure, not two.
+  it('reads the mid-run failure lines, to the same title as the end summary', () => {
+    expect(parseSpotdlTrackEvent('LookupError: No results found for song: A - B')).toEqual({
+      title: 'A - B',
+      status: 'failed',
+    });
+    expect(
+      parseSpotdlTrackEvent(
+        'AudioProviderError: YT-DLP download error - https://www.youtube.com/watch?v=5Eed1XaWgDI',
+      ),
+    ).toEqual({
+      title: 'https://www.youtube.com/watch?v=5Eed1XaWgDI',
+      status: 'failed',
+      detail: 'AudioProviderError: YT-DLP download error',
+    });
+    expect(
+      parseSpotdlTrackEvent(
+        'https://open.spotify.com/track/2IzV - AudioProviderError: YT-DLP download error - https://www.youtube.com/watch?v=5Eed1XaWgDI',
+      ),
+    ).toEqual({
+      title: 'https://www.youtube.com/watch?v=5Eed1XaWgDI',
+      status: 'failed',
+      detail: 'AudioProviderError: YT-DLP download error',
+    });
+    // A DEBUG-format prefix must not hide it.
+    expect(
+      parseSpotdlTrackEvent(
+        '[13:40:57] INFO     asyncio_0 - LookupError: No results found for song: A - B',
+      ),
+    ).toEqual({ title: 'A - B', status: 'failed' });
+    // spotDL's "still trying" chatter is not a verdict.
+    expect(
+      parseSpotdlTrackEvent(
+        'YouTube Music returned no usable results for a - b on attempt 1/3, retrying',
+      ),
+    ).toBeNull();
+  });
+
   it('reads the spotDL --print-errors failure lines as failed tracks', () => {
     expect(
       parseSpotdlTrackEvent(
@@ -123,13 +168,11 @@ describe('per-track events', () => {
       ),
     ).toEqual({ title: 'A - B', status: 'failed' });
     expect(
-      parseSpotdlTrackEvent(
-        'https://open.spotify.com/track/abc - AudioProviderError: YT-DLP download error',
-      ),
+      parseSpotdlTrackEvent('https://open.spotify.com/track/abc - SongError: something else'),
     ).toEqual({
       title: 'https://open.spotify.com/track/abc',
       status: 'failed',
-      detail: 'AudioProviderError: YT-DLP download error',
+      detail: 'SongError: something else',
     });
   });
 
