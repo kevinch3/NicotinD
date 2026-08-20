@@ -207,7 +207,17 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
       c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
       return next();
     });
-    app.route('/', downloadRoutes(new ProviderRegistry(), pluginRegistry));
+    // The addon is also the raw-lane network provider: its `download` creates
+    // a browse-grab job addon-side and hands back the id.
+    const providers = new ProviderRegistry();
+    providers.register({
+      name: 'fixture-addon',
+      type: 'network',
+      search: async () => [],
+      download: async () => ({ addonJobId: 'grab-1' }),
+      isAvailable: async () => true,
+    } as unknown as import('@nicotind/core').ISearchProvider);
+    app.route('/', downloadRoutes(providers, pluginRegistry));
 
     const jobId = createJob(testDb, {
       kind: 'album-hunt',
@@ -236,18 +246,79 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
     expect(testDb.query(`SELECT id FROM acquisition_jobs`).all()).toHaveLength(0);
   });
 
-  it('refuses the action for a non-addon job', async () => {
+  // A row no addon owns (a pre-linkage direct grab whose `source_ref` is the
+  // peer name, or any legacy peer-ref row) used to 400 here, so "Cancel all"
+  // could never close it — prod: a 31-track folder grab sat "Downloading 0 of
+  // 31" for hours while its files were long landed (via the poller's twin row).
+  // Core owns the row, so core closes it: in-flight items → unavailable and the
+  // job ends as an honest failure the user can then clear.
+  it('cancel on a non-addon job closes it core-side instead of refusing', async () => {
     const { app } = makeAddonApp();
     const slskdJob = createJob(testDb, {
-      kind: 'album-hunt',
+      kind: 'direct',
       method: 'slskd',
       artistName: 'A',
       albumTitle: 'C',
       sourceRef: 'peer',
-      files: [],
+      username: 'peer',
+      files: [
+        { filename: 'a\\01.flac', size: 1 },
+        { filename: 'a\\02.flac', size: 1 },
+      ],
     });
     const res = await app.request(`/jobs/${slskdJob}/cancel`, { method: 'POST' });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    const job = testDb
+      .query<{ state: string; stage: string; error: string | null }, [string]>(
+        `SELECT state, stage, error FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(slskdJob)!;
+    expect(job.state).toBe('failed');
+    expect(job.stage).toBe('error');
+    expect(job.error).toMatch(/cancel/i);
+    const states = testDb
+      .query<{ state: string }, [string]>(
+        `SELECT DISTINCT state FROM acquisition_job_items WHERE job_id = ?`,
+      )
+      .all(slskdJob)
+      .map((r) => r.state);
+    expect(states).toEqual(['unavailable']);
+  });
+
+  // The raw-lane grab asks the addon to create a browse-grab job, then used to
+  // throw the returned job id away and record the peer name as `source_ref`.
+  // The poller, seeing an addon job it had never mapped, minted its own mirror
+  // row — so one grab rendered as two cards, and the route's twin (the one the
+  // user sees first) was never updated and could never be cancelled.
+  it('POST / links a direct grab to the addon job that runs it', async () => {
+    const { app, calls } = makeAddonApp();
+    const res = await app.request('/', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        username: 'peerX',
+        files: [{ filename: 'Music\\Artist\\Album\\01.flac', size: 1 }],
+      }),
+    });
+    expect(res.status).toBe(201);
+    const job = testDb
+      .query<{ id: string; source_ref: string; method: string }, []>(
+        `SELECT id, source_ref, method FROM acquisition_jobs WHERE kind = 'direct'`,
+      )
+      .get()!;
+    expect(job.method).toBe('fixture-addon');
+    expect(job.source_ref).toBe('addon:fixture-addon:grab-1');
+    // Pre-mapped for the poller, so it mirrors into THIS row instead of a twin.
+    const mapped = testDb
+      .query<{ value: string }, [string, string]>(
+        `SELECT value FROM plugin_kv WHERE plugin_id = ? AND key = ?`,
+      )
+      .get('addon-poller:fixture-addon', 'jobmap:grab-1');
+    expect(mapped?.value).toBe(job.id);
+    // …and Cancel now reaches the addon.
+    const cancel = await app.request(`/jobs/${job.id}/cancel`, { method: 'POST' });
+    expect(cancel.status).toBe(200);
+    expect(calls.cancelled).toEqual(['grab-1']);
   });
 
   // Issue #533: DELETE used to 400 on any row without an `addon:` source_ref —

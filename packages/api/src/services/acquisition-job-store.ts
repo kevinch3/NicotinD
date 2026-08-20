@@ -714,6 +714,34 @@ export function recomputeStage(db: Database, jobId: string): string | null {
 }
 
 /**
+ * Close a job no addon owns, on the user's say-so. Anything still in flight
+ * becomes `unavailable` (the same verdict the poller gives an addon job that
+ * ends with items outstanding), so `recomputeStage` settles the row into a
+ * terminal state the feed can clear. Items already organized/scanned are left
+ * alone — those files landed and are in the library regardless.
+ */
+export function cancelUnownedJob(db: Database, jobId: string): void {
+  const now = Date.now();
+  db.run(
+    `UPDATE acquisition_job_items SET state = 'unavailable', updated_at = ?
+     WHERE job_id = ? AND state IN ('downloading', 'completed')`,
+    [now, jobId],
+  );
+  recomputeStage(db, jobId);
+  db.run(
+    `UPDATE acquisition_jobs SET error = COALESCE(error, 'Cancelled by user'), updated_at = ?
+     WHERE id = ? AND state IN ('active', 'failed')`,
+    [now, jobId],
+  );
+  // An item-less row has nothing for recomputeStage to rule on; close it directly.
+  db.run(
+    `UPDATE acquisition_jobs SET state = 'failed', stage = 'error', updated_at = ?
+     WHERE id = ? AND state = 'active'`,
+    [now, jobId],
+  );
+}
+
+/**
  * Re-derive every active job's stage. Called after landing passes
  * (`graduatePending`) so jobs waiting in `processing` close the moment their
  * songs land. Bounded: active jobs are few.

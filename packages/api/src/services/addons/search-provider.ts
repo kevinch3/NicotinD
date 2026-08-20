@@ -7,7 +7,7 @@ import type {
   NetworkPollResult,
   ProviderType,
 } from '@nicotind/core';
-import { BrowseUnavailableError, createLogger } from '@nicotind/core';
+import { BrowseUnavailableError, createLogger, type DownloadReceipt } from '@nicotind/core';
 import type { AddonTransport } from './transport.js';
 import { inferMetadataFromPath } from '../path-inference.js';
 

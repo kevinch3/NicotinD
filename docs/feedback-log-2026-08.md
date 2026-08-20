@@ -34,6 +34,11 @@
 - **(Medium) "A lot of old downloads that I can't remove but don't fail."** `DELETE /jobs/:id` 400'd on any row without an `addon:` source_ref (all pre-cutover rows + url mirrors), pointing at per-transfer routes deleted in phase 3, and the web swallowed the error — Remove/Clear finished silently no-opped. **✅ Fixed** (issue #533): core row always deletable, addon proxy best-effort, failures toasted. The stranded prod rows need no manual cleanup (removable now; 7-day TTL regardless).
 - **(Medium) 19 warnings "ffmpeg exited with code 183" — the whole album kept as FLAC instead of Opus.** Strict `-err_detect explode` rejected rips with one damaged frame (decode fine leniently — reproduced in the prod container: `invalid sync code`), and `stdio: 'ignore'` threw the reason away. **✅ Fixed** (issue #534): stderr tail in the error + lenient retry gated on the existing duration validation.
 
+### 2026-08-20
+
+- **(High) Spotify playlist → one card "Spotify download · Done 1 of 1", one track of the whole playlist — and this worked before the extension split.** _Measured first (prod `kpc`, read-only):_ the spotdl addon's staging dir for the job held exactly one file; older jobs from two days earlier held 70–80 folders, so the addon lane *can* do whole playlists; the spotdl **pot-provider** sidecar had minted ~30 PO tokens in the window, so spotDL attempted the whole playlist and died partway; the addon's own `docker logs` were **empty**, and its `jobs.db` had 0 rows after "Cancel all". _Root cause:_ both downloader addons spawn with `stdio: 'ignore'` and glob staging — the playlist name, the expected total and the per-track order only exist on that discarded stream, so a partial is reported as a complete job under the source label (yt-dlp identical; bundled archive immune). **Fix in flight** (issue #585, PR #582 + one PR per addon repo): SDK-shared parsers, `AddonJob.title`, per-track items with `unavailable` placeholders up to the announced total, `partial` + real error lines, downloader output logged; core sends the playlist classification (`resolveAcquireAs`). The URL itself was lost with the row, so the *spotDL-side* reason for the failure is still unknown until the next run has a transcript. _Lesson:_ `stdio: 'ignore'` on a long-running external tool is the same "throw the evidence away" shape as the ffmpeg code-183 entry two days earlier — third time this month a silent subprocess hid a 100 %-reproducible failure.
+- **(Medium) "Cancel all" can't remove a stuck "Kaleo · Downloading 0 of 31" Soulseek card (4 h old, files long landed).** _Measured:_ one `kind='direct'` row with `source_ref='mellowwillow'` and 31 items still `downloading`; core logged `cancel requested for a non-addon job` on every click; the poller had separately mirrored the same browse-grab into its own row (`dccf09ac…`), which got the files and was cleared. _Root cause:_ the raw-lane route discarded the addon job id, so one grab = two cards and the visible one was unowned. **✅ Fixed** (issue #586): `DownloadReceipt` links the row + pre-maps the poller; Cancel on an unowned row closes it core-side. The existing prod row clears with one Cancel after deploy.
+
 ---
 
 ## Aggregated themes (window total)
@@ -41,6 +46,7 @@
 | Theme                                     | Count | Severity | Related                        |
 | ----------------------------------------- | ----- | -------- | ------------------------------ |
 | Feature wired on only one of N call paths | 1     | High     | item 1; generation-feedback.md |
+| Silent subprocess (`stdio: 'ignore'`) hides a reproducible failure | 2 | High | ffmpeg 183 (#534); addon stdout (#585) |
 
 ## Next steps / watch-list
 

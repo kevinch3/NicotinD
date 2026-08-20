@@ -1257,8 +1257,14 @@ Add detail there, not here.
   removable: `DELETE /jobs/:id` always drops the core row (addon proxy best-effort), with removal
   failures toasted instead of swallowed (#533) — so `canRemove` is now unconditional rather than
   gated on a stage a stuck card could never reach, `canCancel` accepts `queued`, and a failed URL
-  acquire finally offers the **Retry** the acquire route always supported. The Downloads header also
-  shows a **disk-availability pill** (`used / total`, green→red fill) fed by `GET /api/system/disk`
+  acquire finally offers the **Retry** the acquire route always supported. A raw folder grab is
+  **the addon job's mirror** (#586): `ISearchProvider.download` returns a `DownloadReceipt` the
+  route links via `mapAddonJob` (one grab used to render as two cards, the visible one
+  uncancellable), and Cancel on a row no addon owns closes it core-side (`cancelUnownedJob`).
+  Downloader addons must **report what the source reported** (#585,
+  `docs/download-pipeline.md` "What the addon split dropped"): title + one item per track +
+  `unavailable` placeholders to the announced total, else a partial playlist reads "Done 1 of 1".
+  The Downloads header also shows a **disk-availability pill** (`used / total`, green→red fill) fed by `GET /api/system/disk`
   (statfs of the music dir). **Card titles are one shared pure chain**
   (`downloadTitleFor`, `@nicotind/core`): addon display title → canonical album → landed albums →
   the source/peer folder (`isGenericFolderName`-guarded; a Soulseek uploader's folder describes the

@@ -64,11 +64,25 @@ export interface ISearchProvider {
   /** Delete/cleanup a search */
   deleteSearch?(searchId: string): Promise<void>;
 
-  /** Download files (network providers only) */
-  download?(username: string, files: Array<{ filename: string; size: number }>): Promise<void>;
+  /**
+   * Download files (network providers only). An addon-backed provider returns
+   * the addon-side job it created so the caller can link its feed row to it
+   * (`addon:<id>:<jobId>`) — without that link the poller mints a twin row and
+   * the caller's own row can never be cancelled or updated.
+   */
+  download?(
+    username: string,
+    files: Array<{ filename: string; size: number }>,
+  ): Promise<DownloadReceipt | void>;
 
   /** Health check */
   isAvailable(): Promise<boolean>;
+}
+
+/** What a network provider's `download` hands back when an addon runs the grab. */
+export interface DownloadReceipt {
+  /** The addon's own job id (its `AddonJob.id`), when the provider is an addon. */
+  addonJobId?: string;
 }
 
 export interface BrowseDirectory {

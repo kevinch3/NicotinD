@@ -426,6 +426,13 @@ bundled built-in addon**.
   `acquisition_jobs.source_url` column added for the #509 idempotency guard supplies the missing
   url-persistence, so a failed URL card offers Retry through
   `POST /api/acquire/jobs/:id/retry` (which re-submits that stored link, idempotently).
+- **Downloader stdout (issue #585)**: both external downloader addons spawned with `stdio: 'ignore'`
+  and globbed staging, so a partial playlist reported as a complete "Done 1 of 1" under the source
+  label. The stdout parsers moved into `@nicotind/addon-sdk` (`downloader-output.ts`) and the addons
+  pipe the stream, emit `AddonJob.title` + one item per reported track (+ `unavailable` placeholders
+  up to the announced total) and close `partial`/`failed` with the real error lines — see
+  docs/download-pipeline.md "What the addon split dropped" for the contract. The raw-lane direct grab
+  now links its feed row to the addon job it created (issue #586, `DownloadReceipt`).
 - **Follow-ups**: retiring `acquire_jobs`/`AcquireWatcher` (the last in-process resolve lane is gone,
   so the URL path can move fully onto the `AddonJobPoller` feed); publishing `@nicotind/addon-sdk@0.1.1`.
   The package version is bumped in-repo and the publish is a manual `npm publish`
@@ -433,10 +440,12 @@ bundled built-in addon**.
   not just one: the `url` intent (drops the `as unknown as` cast in all three
   external addons), protocol 1.1's optional `AddonJob.title`, and the new
   `downloader-output` module — the yt-dlp/spotDL stdout parsers, moved out of core
-  because only an addon can see that stream. Until it is published, both
-  downloader addons stay on `stdio: 'ignore'` and therefore cannot report a
-  playlist's name or its expected track count; see docs/download-pipeline.md
-  "What the addon split dropped".
+  because only an addon can see that stream. The two downloader addon PRs
+  (nicotind-spotdl-addon#2, nicotind-ytdlp-addon#2) import them and depend on
+  `^0.1.1`, so the publish gates their CI; until they deploy, both addons stay on
+  `stdio: 'ignore'` and cannot report a playlist's name or its expected track
+  count — see docs/download-pipeline.md "What the addon split dropped". Playlist
+  generation on the addon lane is issue #587.
 
 ## Out of scope
 

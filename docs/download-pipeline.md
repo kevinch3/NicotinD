@@ -331,6 +331,62 @@ playlist reached the addon as a bare `as: undefined`. `resolveAcquireAs`
 (`@nicotind/core`) now owns that precedence for both lanes and the acquire route
 sends the verdict.
 
+**Measured on prod (2026-08-20, issue #585):** a Spotify playlist rendered
+"Spotify download · Done 1 of 1" with one file in staging, while the spotdl
+pot-provider sidecar had minted ~30 PO tokens for the same job — spotDL tried
+the whole playlist and failed partway, and the addon kept **no evidence** (its
+`docker logs` are empty by construction with `stdio: 'ignore'`). That is the
+two bugs stacked: the source failing inside the container, which core cannot
+see, and core losing the ability to say so, which it can.
+
+**The addon-side contract** (what `nicotind-spotdl-addon` / `nicotind-ytdlp-addon`
+emit once they pipe the stream — same protocol 1.1, no new fields):
+
+- `AddonJob.title` ← the playlist/video title the moment the parser sees it
+  (`parseSpotdlPlaylistTitle` / `parseYtdlpPlaylistTitle`); the card renames
+  itself on the next poll through the title chain above.
+- **One `AddonJobItem` per track, in the order the downloader reports them**
+  (`downloading` → `completed` + `fileReady` once the landed file is matched).
+  When the source announced a total (`Found 16 songs`, `Downloading item 3 of
+  16`) and fewer tracks were ever reported, the remainder are emitted as
+  `unavailable` placeholders — that is what makes the card read "1 of 16", since
+  the feed counts items, and what lets `recomputeStage` close the row as a
+  partial rather than a clean `done`.
+- `state: 'partial'` with the captured `ERROR:` lines as `error` when some
+  tracks landed, `failed` with the stderr tail when none did. The poller already
+  turns an addon's terminal state into `unavailable` items + the error on the
+  card (`applyAddonOutcome`), so no core change was needed for the count or the
+  verdict — only for the URL classification above.
+- The downloader's output is also written to the addon's own log, so the next
+  "1 of N" has a transcript in `docker logs <addon>`.
+
+Playlist **generation** for addon-run jobs (the native playlist built from the
+landed tracks) is the one thing still not put back — issue #587 tracks it; it
+depends on the per-track order above, which is why it was not built against
+the glob order.
+
+#### Direct grabs are the addon job's mirror (issue #586)
+
+A raw-lane folder grab (`POST /api/downloads`) asks the slskd addon to create a
+`browse-grab` job and records a feed row for it. Until #586 the route **threw the
+returned job id away** and stored the peer name as `source_ref`; the poller,
+meeting an addon job it had never mapped, minted its own mirror row. One grab
+therefore rendered as **two cards**: the poller's twin got the files, the
+`organized`/`scanned` items and the Remove button, while the route's twin — the
+one the user saw first — was never updated and had no `addon:` ref for
+`/jobs/:id/cancel` to proxy through, so Cancel 400'd ("cancel requested for a
+non-addon job"). Prod: "Kaleo · Downloading 0 of 31" for four hours with all 31
+FLACs long landed.
+
+Now `ISearchProvider.download` returns a `DownloadReceipt { addonJobId }`, the
+route records `addon:<id>:<jobId>` and pre-maps the poller (`mapAddonJob`, the
+same pre-mapping `acquireAlbum` and the URL lane use), so there is exactly one
+row and it is the one the poller updates. And **Cancel on a row no addon owns
+closes it core-side** (`cancelUnownedJob`: in-flight items → `unavailable`, job →
+`failed` "Cancelled by user") instead of refusing — the row is core's, and a
+refusal is what left "Cancel all" powerless against a stuck card; that path is
+also what clears the pre-fix rows already on prod.
+
 #### Addon job outcomes reach the card
 
 The poller mirrors the addon's **own verdict** — `AddonJob.state` and `.error` — onto the feed row
