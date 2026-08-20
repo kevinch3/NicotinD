@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.32](https://github.com/kevinch3/NicotinD/compare/v0.3.31...v0.3.32) (2026-08-20)
+
+### Features
+
+* support ZIP archives as import sources and improve download card titles ([#582](https://github.com/kevinch3/NicotinD/issues/582)) ([a1e87f7](https://github.com/kevinch3/NicotinD/commit/a1e87f77395c282ae91eacf827dd2959fb6ec282)), closes [#586](https://github.com/kevinch3/NicotinD/issues/586), references [#585](https://github.com/kevinch3/NicotinD/issues/585) [#585](https://github.com/kevinch3/NicotinD/issues/585) [#587](https://github.com/kevinch3/NicotinD/issues/587)
 ## [0.3.31](https://github.com/kevinch3/NicotinD/compare/v0.3.30...v0.3.31) (2026-08-20)
 
 ### Features
