@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.37](https://github.com/kevinch3/NicotinD/compare/v0.3.36...v0.3.37) (2026-08-20)
+
+### Bug Fixes
+
+* **acquire:** a pasted link shows its Downloads card at once, not up to 30s later ([#596](https://github.com/kevinch3/NicotinD/issues/596)) ([0a497ef](https://github.com/kevinch3/NicotinD/commit/0a497efa22ddb90958bf5751ee3e0844e329b086)), references [#590](https://github.com/kevinch3/NicotinD/issues/590) [#595](https://github.com/kevinch3/NicotinD/issues/595)
+* **radio:** genre stations — grade membership (v3), then fix what prod said was wrong (v4) ([#599](https://github.com/kevinch3/NicotinD/issues/599)) ([a614843](https://github.com/kevinch3/NicotinD/commit/a61484305da04783a9fac8a4078c228722d30702)), references [#597](https://github.com/kevinch3/NicotinD/issues/597) [#598](https://github.com/kevinch3/NicotinD/issues/598) [#600](https://github.com/kevinch3/NicotinD/issues/600)
 ## [0.3.36](https://github.com/kevinch3/NicotinD/compare/v0.3.35...v0.3.36) (2026-08-20)
 
 ### Bug Fixes
