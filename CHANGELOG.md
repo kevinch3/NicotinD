@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.44](https://github.com/kevinch3/NicotinD/compare/v0.3.43...v0.3.44) (2026-08-21)
+
+### Bug Fixes
+
+* **ci:** check:ci-parity matched by substring and excluded by job ([#617](https://github.com/kevinch3/NicotinD/issues/617)) ([88c6b05](https://github.com/kevinch3/NicotinD/commit/88c6b05240c6a62b9f98cbebacf5850f02e62b16))
 ## [0.3.43](https://github.com/kevinch3/NicotinD/compare/v0.3.42...v0.3.43) (2026-08-21)
 
 ### Bug Fixes
