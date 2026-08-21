@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.42](https://github.com/kevinch3/NicotinD/compare/v0.3.41...v0.3.42) (2026-08-21)
+
+### Bug Fixes
+
+* **ci:** check:claude-md counted prose as proof a symbol exists ([#614](https://github.com/kevinch3/NicotinD/issues/614)) ([5240772](https://github.com/kevinch3/NicotinD/commit/52407729db568ab2af61d322aeae7c80f2290ca1)), references [#612](https://github.com/kevinch3/NicotinD/issues/612)
 ## [0.3.41](https://github.com/kevinch3/NicotinD/compare/v0.3.40...v0.3.41) (2026-08-21)
 
 ### Bug Fixes
