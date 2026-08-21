@@ -41,11 +41,12 @@ import {
 } from '../artist-image-providers.js';
 import { clearCoverNegativeCache } from '../../routes/streaming.js';
 import { normalizeArtistForGrouping, albumGroupKey } from '../album-grouping.js';
+import { pickByDiscographyOverlap } from '../mbid-corroboration.js';
 import { splitOnDelimiters } from '../artist-split.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
 import { ListenBrainzClient, normalizePopularity } from '../listenbrainz-client.js';
-import { getMbid, upsertMbid } from '../mbid-store.js';
+import { getMbid, libraryAlbumTitles, upsertMbid } from '../mbid-store.js';
 import { upsertArtistMeta } from '../artist-meta-store.js';
 import { upsertArtistOrigin } from '../artist-origins.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../musicbrainz-client.js';
@@ -158,6 +159,10 @@ export interface EnrichmentContext {
    * confirmed no usable country (tombstone). Null member when unavailable.
    */
   lookupArtistOrigin: ((mbid: string) => Promise<{ ok: boolean; country: string | null }>) | null;
+  /** MusicBrainz release-group titles for a candidate MBID — the evidence that
+   *  breaks a homonym tie (issue #610). Null disables corroboration, which
+   *  degrades to "leave the ambiguous artist unresolved", never to a guess. */
+  lookupArtistReleaseGroups: ((mbid: string) => Promise<readonly string[]>) | null;
   /** Returns a Spotify portrait url for an artist name, or null. Null when Spotify
    *  isn't configured — the artist-image task then relies on Lidarr alone. */
   lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
@@ -242,6 +247,9 @@ export function isWholeTokenSubsequence(needle: string, haystack: string): boole
 /** How much trust to put into an MBID the helper resolved. */
 export const MBID_CONFIDENCE_EXACT = 0.8;
 export const MBID_CONFIDENCE_SUBSEQ = 0.5;
+/** Ambiguous name, broken by discography corroboration (issue #610): stronger
+ *  evidence than a bare subsequence guess, weaker than an unambiguous name. */
+export const MBID_CONFIDENCE_CORROBORATED = 0.7;
 
 /**
  * Pick the best Lidarr lookup hit for an MBID, or null. Two-stage (issue #211):
@@ -262,15 +270,25 @@ export const MBID_CONFIDENCE_SUBSEQ = 0.5;
  * fallback, never an override, so a tightened library name never downgrades a
  * clean exact match. Pure — exposed for unit testing.
  */
+export function exactMbidHits(hits: readonly LidarrArtist[], name: string): LidarrArtist[] {
+  const want = normalizeArtistForGrouping(name);
+  return hits.filter((a) => a.foreignArtistId && normalizeArtistForGrouping(a.artistName) === want);
+}
+
 export function pickMbidHit(
   hits: readonly LidarrArtist[],
   name: string,
 ): { mbid: string; confidence: number } | null {
-  const want = normalizeArtistForGrouping(name);
-  const exact = hits.find(
-    (a) => a.foreignArtistId && normalizeArtistForGrouping(a.artistName) === want,
-  );
-  if (exact) return { mbid: exact.foreignArtistId, confidence: MBID_CONFIDENCE_EXACT };
+  const exact = exactMbidHits(hits, name);
+  if (exact.length === 1) {
+    return { mbid: exact[0]!.foreignArtistId, confidence: MBID_CONFIDENCE_EXACT };
+  }
+  // Ambiguous (issue #610): several hits carry this exact name, so name
+  // equality has no discriminating power left. Report "I don't know" rather
+  // than the first — `resolveMbidViaLidarr` corroborates against the library's
+  // own discography instead. Falling through to the widened stage would be
+  // wrong too: every one of these hits matches it just as ambiguously.
+  if (exact.length > 1) return null;
   for (const hit of hits) {
     if (!hit.foreignArtistId) continue;
     if ((hit.albumCount ?? 0) <= 0) continue;
@@ -347,9 +365,17 @@ function isCompoundSingle(hits: readonly LidarrArtist[], name: string): boolean 
  * discipline, not a runtime one. Never throws — a lookup blip degrades to
  * null, same as the identity resolver above.
  */
+export interface MbidCorroboration {
+  /** Album titles this artist has in the library — the evidence a name lacks. */
+  libraryAlbums: readonly string[];
+  /** MusicBrainz release-group titles for one candidate MBID. */
+  releaseGroupsFor: (mbid: string) => Promise<readonly string[]>;
+}
+
 export async function resolveMbidViaLidarr(
   lidarr: Lidarr,
   name: string,
+  corroborate?: MbidCorroboration,
 ): Promise<{ mbid: string; confidence: number } | null> {
   let hits: LidarrArtist[];
   try {
@@ -357,7 +383,27 @@ export async function resolveMbidViaLidarr(
   } catch {
     return null;
   }
-  return pickMbidHit(hits, name);
+  const direct = pickMbidHit(hits, name);
+  if (direct) return direct;
+
+  // Stage 3 (issue #610): `pickMbidHit` returned null because several hits
+  // carry this exact name. Break the tie on the library's own discography —
+  // one MB call per homonym, so only ever on the genuinely ambiguous path.
+  const exact = exactMbidHits(hits, name);
+  if (exact.length < 2 || !corroborate) return null;
+  try {
+    const candidates = await Promise.all(
+      exact.map(async (h) => ({
+        mbid: h.foreignArtistId,
+        releaseGroups: await corroborate.releaseGroupsFor(h.foreignArtistId),
+      })),
+    );
+    const picked = pickByDiscographyOverlap(candidates, corroborate.libraryAlbums);
+    return picked ? { mbid: picked, confidence: MBID_CONFIDENCE_CORROBORATED } : null;
+  } catch {
+    // An MB blip must leave the artist re-triable, never write a guess.
+    return null;
+  }
 }
 
 export interface EnrichmentRunResult {
@@ -441,6 +487,7 @@ export function createEnrichmentContext(deps: {
   audioFeaturesClient?: AudioFeaturesClient | null;
   /** MB artist-origin lookup override (tests); defaults to the shared-cache client. */
   lookupArtistOrigin?: ((mbid: string) => Promise<{ ok: boolean; country: string | null }>) | null;
+  lookupArtistReleaseGroups?: ((mbid: string) => Promise<readonly string[]>) | null;
   /** Data dir — locates the ListenBrainz popularity cache (issue #220). */
   dataDir?: string;
 }): EnrichmentContext {
@@ -473,6 +520,8 @@ export function createEnrichmentContext(deps: {
     lookupLicence: makeLicenceLookup(),
     lookupPopularity: makePopularityLookup(deps.dataDir ?? null),
     lookupArtistOrigin: deps.lookupArtistOrigin ?? makeArtistOriginLookup(deps.dataDir ?? null),
+    lookupArtistReleaseGroups:
+      deps.lookupArtistReleaseGroups ?? makeArtistReleaseGroupsLookup(deps.dataDir ?? null),
     fileExists: (abs) => existsSync(abs),
   };
 }
@@ -1058,7 +1107,11 @@ const artistInfoTask: EnrichmentTask = {
       // MusicBrainz-established artist, not a stub the same-name hazard could
       // match). The widened path reports a lower confidence (0.5 vs 0.8).
       if (!mbid && ctx.lidarr) {
-        const resolved = await resolveMbidViaLidarr(ctx.lidarr, artist.name);
+        const resolved = await resolveMbidViaLidarr(
+          ctx.lidarr,
+          artist.name,
+          corroborationFor(db, ctx, artist.id),
+        );
         if (resolved) {
           mbid = resolved.mbid;
           mbidConfidence = resolved.confidence;
@@ -1110,6 +1163,31 @@ export function makeArtistOriginLookup(
   return (mbid) => client.getArtistOrigin(mbid);
 }
 
+/** Build the MB release-group lookup (issue #610) over the shared MB cache. */
+export function makeArtistReleaseGroupsLookup(
+  dataDir: string | null,
+): (mbid: string) => Promise<readonly string[]> {
+  const client = new MusicBrainzClient(
+    dataDir ? join(dataDir, 'musicbrainz-cache.json') : 'musicbrainz-cache.json',
+    MB_USER_AGENT,
+  );
+  return async (mbid) => (await client.getArtistReleaseGroups(mbid)).map((rg) => rg.title);
+}
+
+/**
+ * Corroboration deps for one artist, or undefined when this deployment has no
+ * MB release-group lookup. Only ever consulted on the ambiguous-name path.
+ */
+function corroborationFor(
+  db: Database,
+  ctx: EnrichmentContext,
+  artistId: string,
+): MbidCorroboration | undefined {
+  if (!ctx.lookupArtistReleaseGroups) return undefined;
+  const releaseGroupsFor = ctx.lookupArtistReleaseGroups;
+  return { libraryAlbums: libraryAlbumTitles(db, artistId), releaseGroupsFor };
+}
+
 /** Re-check a no-MBID / no-country origin tombstone at most this often. */
 export const ORIGIN_RECHECK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -1157,7 +1235,11 @@ const artistOriginTask: EnrichmentTask = {
       const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
       let mbid = mbidRow?.mbid ?? null;
       if (!mbid && ctx.lidarr) {
-        const resolved = await resolveMbidViaLidarr(ctx.lidarr, artist.name);
+        const resolved = await resolveMbidViaLidarr(
+          ctx.lidarr,
+          artist.name,
+          corroborationFor(db, ctx, artist.id),
+        );
         if (resolved) {
           mbid = resolved.mbid;
           upsertMbid(db, {

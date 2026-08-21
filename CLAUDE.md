@@ -439,6 +439,19 @@ Add detail there, not here.
   never clobbering the destination's own, and moves the **genre override by normalized name** since
   that table keys on the name, not the id. →
   [docs/library-scanner.md](docs/library-scanner.md)
+- **Artist MBID resolution + homonyms (issue #610)**: every non-tag artist surface (bio, origin,
+  Discogs genres, artist image) resolves by MBID from one `library_mbids` row keyed on the
+  normalized name, so one wrong id makes them all resolve the wrong artist *correctly*.
+  Lidarr's `/artist/lookup` returns every same-named artist (ten exact "Emilia" hits on prod);
+  `pickMbidHit` used to take index 0 and stamp it confidence 0.8 — a coin flip. Now: one exact hit
+  wins as before, **several** return null (ambiguity is "I don't know", never the first), and
+  `pickByDiscographyOverlap` (`services/mbid-corroboration.ts`) breaks the tie on the album titles
+  we actually hold vs the candidate's MB release groups (confidence 0.7, one MB call per homonym,
+  ambiguous path only; any failure degrades to null — no bio beats the wrong bio). Curator repair
+  is `PUT /api/library/artists/:id/mbid`, which finally writes the long-declared-but-never-written
+  `MbidSource` `'user'` tier and evicts only source-derived bio/origin rows so they re-derive.
+  Homonyms still share one artist row (`artistIdFor` is `sha1` of the normalized name) — a separate
+  unsolved question. → [docs/library-scanner.md](docs/library-scanner.md)
 - **Artist bios (auto + override)**: biographies + external links resolved via MBID-first lookup to
   Discogs (plugin-sourced; MBID from file tags or `library_mbids` cache), stored in
   `library_artist_meta` with tombstone rows preventing re-queries of confirmed misses. Auto-filled

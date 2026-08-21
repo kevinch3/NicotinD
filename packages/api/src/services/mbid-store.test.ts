@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
 
 import { applySchema } from '../db.js';
-import { getMbid, upsertMbid } from './mbid-store.js';
+import { getMbid, libraryAlbumTitles, upsertMbid } from './mbid-store.js';
 
 const freshDb = (): Database => {
   const db = new Database(':memory:');
@@ -55,5 +55,34 @@ describe('mbid-store', () => {
 
   it('returns null for an unknown key', () => {
     expect(getMbid(freshDb(), 'album', 'nope')).toBeNull();
+  });
+});
+
+describe('libraryAlbumTitles (issue #610)', () => {
+  it('returns the artist own album titles, for MBID corroboration', () => {
+    const db = freshDb();
+    const artist = (id: string, name: string) =>
+      db.run(`INSERT INTO library_artists (id, name, album_count, synced_at) VALUES (?, ?, 0, 0)`, [
+        id,
+        name,
+      ]);
+    const album = (id: string, name: string, artistId: string) =>
+      db.run(
+        `INSERT INTO library_albums (id, name, artist, artist_id, synced_at)
+         VALUES (?, ?, 'x', ?, 0)`,
+        [id, name, artistId],
+      );
+    artist('a1', 'Emilia');
+    artist('a2', 'Other');
+    album('b1', 'perfectas', 'a1');
+    album('b2', '.mp3', 'a1');
+    album('b3', 'Alla mot alla', 'a2');
+
+    expect(libraryAlbumTitles(db, 'a1').sort()).toEqual(['.mp3', 'perfectas']);
+  });
+
+  it('returns an empty list for an artist with no albums', () => {
+    const db = freshDb();
+    expect(libraryAlbumTitles(db, 'nobody')).toEqual([]);
   });
 });

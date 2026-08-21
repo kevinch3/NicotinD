@@ -64,6 +64,7 @@ function makeService(): LibraryProcessingService {
       lookupLicence: async () => null,
       lookupPopularity: async () => new Map(),
       lookupArtistOrigin: null,
+      lookupArtistReleaseGroups: null,
       fileExists: () => false,
     }),
   });

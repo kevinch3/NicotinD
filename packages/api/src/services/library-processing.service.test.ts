@@ -53,6 +53,7 @@ function fakeCtx(counters: { analyzed: number; genreLookups: number }) {
     lookupLicence: async () => null,
     lookupPopularity: async () => new Map(),
     lookupArtistOrigin: null,
+    lookupArtistReleaseGroups: null,
     fileExists: () => true,
   });
 }

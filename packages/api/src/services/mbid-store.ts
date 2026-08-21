@@ -85,3 +85,20 @@ export function getMbid(db: Database, scope: MbidScope, key: string): MbidRow | 
     checkedAt: r.checked_at,
   };
 }
+
+/**
+ * Album titles the library holds for one artist — the corroboration evidence
+ * for an ambiguous MBID (issue #610). Lives here rather than in the pure
+ * `mbid-corroboration` module so that module stays db-free and replayable.
+ */
+export function libraryAlbumTitles(db: Database, artistId: string): string[] {
+  return db
+    .query<{ name: string }, [string]>(`SELECT name FROM library_albums WHERE artist_id = ?`)
+    .all(artistId)
+    .map((r) => r.name);
+}
+
+/** Drop a cached id, reopening the entity to automatic resolution (issue #610). */
+export function deleteMbid(db: Database, scope: MbidScope, key: string): void {
+  db.run(`DELETE FROM library_mbids WHERE scope = ? AND key = ?`, [scope, key]);
+}
