@@ -1,6 +1,5 @@
 import { join } from 'node:path';
 import type { NicotinDConfig } from '@nicotind/core';
-import type { ProviderRegistry } from '../provider-registry.js';
 import type { PluginRegistry } from './registry.js';
 import { SpotifyPlugin } from './spotify/index.js';
 import { LrclibPlugin } from './lrclib/index.js';
@@ -28,7 +27,6 @@ export interface BuiltinPluginDeps {
   config: NicotinDConfig;
   /** Expanded (no `~`) data dir — the zero-config cookies file lives under it. */
   dataDir: string;
-  providerRegistry: ProviderRegistry;
   /**
    * The legacy AcoustID API key (from `secrets.json`, not `config` — it
    * predates the plugin system and is still `LibraryOrganizer`'s own
@@ -49,13 +47,16 @@ export interface BuiltinPluginDeps {
  * green. Keeping the construction in one small, covered function is the fix
  * that generalizes.
  *
- * Note the two same-named-but-different registries in play: `PluginRegistry`
- * (the plugin kernel) and `ProviderRegistry` (the acquisition provider list
- * slskd registers into). The proximity is what made the original omission easy
- * to miss.
+ * There used to be a second, same-named-but-different registry threaded through
+ * here: `ProviderRegistry` (the acquisition provider list slskd registered into),
+ * passed alongside `PluginRegistry` (the plugin kernel). That proximity is what
+ * made the original omission easy to miss. It became dead weight at the phase-4
+ * cutover — every acquisition source is an addon now, so no builtin registers a
+ * provider — and callers kept passing it (the unit test handed it `{}`) until
+ * `bun run lint` started reaching this file at all.
  */
 export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPluginDeps): void {
-  const { config, dataDir, providerRegistry, acoustidApiKey } = deps;
+  const { config, dataDir, acoustidApiKey } = deps;
 
   // Every URL-resolve source is now an addon, not an in-process plugin: spotdl
   // (spotify.com) is the external nicotind-spotdl-addon, yt-dlp (the catch-all)

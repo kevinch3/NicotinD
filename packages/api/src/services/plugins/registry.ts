@@ -1,4 +1,3 @@
-import type { Database } from 'bun:sqlite';
 import {
   createLogger,
   validatePluginManifest,

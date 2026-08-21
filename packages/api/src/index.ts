@@ -424,7 +424,6 @@ export function createApp({
   registerBuiltinPlugins(plugins, {
     config,
     dataDir: expandedDataDir,
-    providerRegistry: registry,
     acoustidApiKey,
   });
   // Remote addons registered by URL (acquisition addon protocol) — re-register

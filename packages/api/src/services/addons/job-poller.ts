@@ -604,7 +604,6 @@ export class AddonJobPoller {
  */
 export const MAX_ADDON_TEXT_CHARS = 500;
 
-/* eslint-disable no-control-regex */
 const ANSI_RE = /\u001b\[[0-9;]*m/g;
 /** Rich/`traceback` decoration: box-drawing frame + the ❱ current-line marker. */
 const BOX_CHARS_RE = /[\u2500-\u257f\u2571\u2771\u276f\u2771]/g;
