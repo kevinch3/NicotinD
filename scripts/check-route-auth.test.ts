@@ -71,6 +71,62 @@ describe('auditRouteAuth', () => {
   });
 });
 
+/**
+ * The forms a Prettier-wrapped `index.ts` actually contains. The original regex
+ * required the path literal on the same line as `app.route(`, so a line wrap
+ * made a mount invisible: the gate audited 24 of 35 groups and still printed a
+ * confident summary. `/api` itself was invisible too — the pattern demanded a
+ * slash after `/api`.
+ */
+const WRAPPED_SOURCE = `
+  app.use('/api/library/*', auth);
+  app.route(
+    '/api/wrapped',
+    someRoutes(secret, expiresIn, registrationEnabled, acquisitionOn),
+  );
+  app.route(
+    '/api/library',
+    libraryRoutes(musicDir, {
+      curator,
+    }),
+  );
+  app.route('/api', streamingRoutes(musicDir, db, dataDir, null));
+`;
+
+describe('wrapped and bare-/api mounts', () => {
+  it('sees a mount whose path sits on the next line', () => {
+    expect(mountedRoutes(WRAPPED_SOURCE)).toContain('/api/wrapped');
+  });
+
+  it('sees a bare /api mount', () => {
+    expect(mountedRoutes(WRAPPED_SOURCE)).toContain('/api');
+  });
+
+  it('flags a wrapped mount that has no auth decision', () => {
+    // The #461 shape, hidden behind a line wrap instead of a missing line.
+    expect(auditRouteAuth(WRAPPED_SOURCE).unprotected).toContain('/api/wrapped');
+  });
+
+  it('still covers a wrapped mount that does have auth', () => {
+    expect(auditRouteAuth(WRAPPED_SOURCE).unprotected).not.toContain('/api/library');
+  });
+});
+
+describe('denominator', () => {
+  it('accounts for every .route() call in the real index.ts', () => {
+    // The gate must not be able to examine a subset and report success.
+    const source = readFileSync(resolve(ROOT, 'packages/api/src/index.ts'), 'utf8');
+    const audit = auditRouteAuth(source);
+    expect(audit.mountCalls).toBe(audit.routeCallsInSource);
+    expect(audit.unknownReceivers).toEqual([]);
+  });
+
+  it('reports a mount on a receiver it does not audit', () => {
+    const audit = auditRouteAuth("api.route('/api/thing', thingRoutes());");
+    expect(audit.unknownReceivers).toEqual(['api']);
+  });
+});
+
 describe('the real index.ts', () => {
   it('has no /api route group mounted without auth or an explicit exemption', () => {
     const source = readFileSync(resolve(ROOT, 'packages/api/src/index.ts'), 'utf8');
@@ -78,8 +134,11 @@ describe('the real index.ts', () => {
   });
 
   it('actually finds routes — a restructure must not silently pass the gate', () => {
+    // `> 10` used to pass while 11 of 35 mounts were invisible. The gate has to
+    // account for the whole file, not clear a floor.
     const source = readFileSync(resolve(ROOT, 'packages/api/src/index.ts'), 'utf8');
-    expect(auditRouteAuth(source).mounted.length).toBeGreaterThan(10);
+    const audit = auditRouteAuth(source);
+    expect(audit.mounted.length).toBe(audit.routeCallsInSource);
   });
 
   it('protects radio and catalog (issue #461)', () => {

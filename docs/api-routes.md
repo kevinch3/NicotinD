@@ -14,6 +14,48 @@ refresh on boot) or a read-only share token. The `check:route-auth` CI gate
 fails when an `/api` route group is mounted with no auth decision — see
 [roles.md](roles.md) for the role ladder each guard enforces.
 
+### Why that gate parses instead of greps
+
+The first version matched `app.route('(/api/...)'` with a regex, which requires
+the path literal on the **same line** as the call. Prettier wraps long calls, so
+**11 of 35 mounts were invisible** — `/api/auth`, `/api/setup`, `/api/admin`,
+`/api/mcp`, `/api/library`, `/api/review`, `/api/system`, `/api/devices`,
+`/api/admin/review`, `/api/discography` and the bare `/api` — and the gate
+printed `Route auth: 24 /api groups` and exited 0. Whether a route was audited
+depended on how long its arguments happened to be. The routes were in fact
+protected, so nothing broke; the next wrapped mount would simply have gone
+unchecked, silently.
+
+That is the same failure shape as #457 (a `skipped` job read as tolerable),
+#606 (a hardcoded image list) and #273/#376 (a CI-only typecheck surface): a
+check that measures a convenient proxy instead of the invariant, and therefore
+**fails green**. So the script now uses the TypeScript compiler's own parser
+(`ts.createSourceFile` + `ts.forEachChild` over `CallExpression` nodes) and,
+more importantly, **asserts its own denominator**. It fails — rather than
+skipping — when:
+
+- the `app.route(...)` calls it attributed do not add up to the `.route(`
+  occurrences in the file (something is going unaudited);
+- `.route()` is called on a receiver other than `app` (mounts on another router
+  are invisible to the audit);
+- a mount's path is not a plain string literal (a computed path cannot be
+  checked against the auth list).
+
+The rule generalises to every `check:*` script: **a gate must report how much it
+examined, and that number must be independently derived.** A gate that can
+quietly inspect a subset and still print a confident summary is worse than no
+gate, because it is believed.
+
+Four groups the regex had never seen carry `PUBLIC_ROUTES` entries as a result.
+Each was checked against its route file rather than assumed safe: `/api/auth`
+(pre-session), `/api/setup` (self-guards on `COUNT(*) FROM users > 0`),
+`/api/devices` (applies `auth` per-route; the pairing endpoints are token-
+authenticated by design) and the bare `/api` mount for `streamingRoutes`, whose
+`/stream/*` and `/cover/*` paths are each covered by their own `app.use`.
+**That last entry carries residual risk** and says so: a route added at the
+mount root would land on `/api/<name>` and be public. Narrowing the mount is
+follow-up work, not part of the gate fix.
+
 | Method   | Path                                     | Description                                                 |
 | -------- | ---------------------------------------- | ----------------------------------------------------------- |
 | `GET`    | `/api/setup/status`                      | Check if initial setup is needed                            |

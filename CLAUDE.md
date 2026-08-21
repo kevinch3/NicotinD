@@ -78,6 +78,7 @@ bun run lint             # ESLint across all packages
 bun run check:claude-md  # fail on CLAUDE.md symbols that don't exist / broken docs links (CI gate)
 bun run check:ci-parity  # fail when a gate job runs a check `verify` doesn't, or doesn't block release (CI gate)
 bun run check:route-auth # fail when an /api route group is mounted with no auth decision (CI gate)
+                         # AST-parsed + asserts its own denominator (docs/api-routes.md)
 bun run check:shipped-issues # open issues a shipped commit referenced (report, not a gate)
 bun run check:json       # duplicate keys in JSON configs (JSON.parse keeps the last silently)
 bun run check:shared-helpers # a shared helper re-implemented locally instead of imported (CI gate)
@@ -851,7 +852,12 @@ Add detail there, not here.
   rows, catalog's `/discography` provisions a Lidarr artist), which made this inert; both are now
   gated and **`check:route-auth`** (a CI gate + `bun run verify` step) fails when any `/api` group is
   mounted without either `auth` or a reasoned `PUBLIC_ROUTES` entry, since forgetting that line makes
-  a route public and nothing else complains. A **missing candidate genre is floored, not
+  a route public and nothing else complains. That gate **parses instead of grepping, and asserts its
+  own denominator**: its original regex needed the path on the same line as `app.route(`, so Prettier
+  line-wraps hid **11 of 35** mounts while it printed "24 /api groups" and exited 0 — the #457/#606
+  silently-green shape. It now fails when its own count disagrees with the file's, when `.route()` is
+  called on another router, or when a mount path isn't a literal. →
+  [docs/api-routes.md](docs/api-routes.md) "Why that gate parses instead of greps". A **missing candidate genre is floored, not
   skipped** (`MISSING_GENRE_FLOOR` 0.2, reported in `explainSimilarity().floored`) — skipping
   dropped the genre axis out of the denominator and literally _rewarded_ untagged tracks; the genre
   weight itself was re-measured and raised 10→18 (issue #187 task B3) after `dump-radio.ts` found a
