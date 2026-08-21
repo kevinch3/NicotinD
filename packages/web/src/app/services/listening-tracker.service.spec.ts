@@ -1,5 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
+
+vi.mock('../lib/platform', () => ({ isTvBuild: () => mockIsTv }));
+vi.mock('./native/native-capabilities', () => ({ platformId: () => mockPlatform }));
+let mockIsTv = false;
+let mockPlatform: 'electron' | 'ios' | 'android' | 'web' = 'web';
+
 import { ListeningTrackerService, MAX_DELTA_SEC, accumulate } from './listening-tracker.service';
 import { ListeningQueueService, type PlayEventPayload } from './listening-queue.service';
 import type { Track } from './player.service';
@@ -18,6 +24,47 @@ function setup() {
 function queued(enqueue: ReturnType<typeof vi.fn>, nth = 0): PlayEventPayload {
   return enqueue.mock.calls[nth][0] as PlayEventPayload;
 }
+
+/**
+ * `play_events.device` is the only record of WHICH CLIENT a play came from, and
+ * it is written once, at play time — there is no backfill. It was a hardcoded
+ * `isTvBuild() ? 'tv' : 'browser'`, so PWA, Android phone, iOS and Electron all
+ * collapsed into one bucket and questions like "does anyone use the iOS app?"
+ * were unanswerable (see #612).
+ */
+describe('device attribution', () => {
+  // TestBed refuses a second configure on an instantiated module, and each case
+  // here needs a fresh one because the platform mocks change between them.
+  function play(): PlayEventPayload {
+    TestBed.resetTestingModule();
+    const { svc, enqueue } = setup();
+    svc.start(TRACK, null);
+    svc.end('ended');
+    return queued(enqueue);
+  }
+
+  it('records the real platform instead of a blanket "browser"', () => {
+    mockIsTv = false;
+    for (const p of ['web', 'ios', 'android', 'electron'] as const) {
+      mockPlatform = p;
+      expect(play().device).toBe(p);
+    }
+  });
+
+  /**
+   * The one that matters. A TV build IS an Android app, so `platformId()`
+   * returns 'android' there — checking `isTvBuild()` second would fold every TV
+   * play into Android, and nothing would fail. This pins the order.
+   */
+  it('keeps TV distinct from Android, which it also is', () => {
+    mockIsTv = true;
+    mockPlatform = 'android';
+    expect(play().device).toBe('tv');
+
+    mockIsTv = false;
+    expect(play().device).toBe('android');
+  });
+});
 
 describe('accumulate', () => {
   it('adds ordinary forward playback', () => {

@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { ListeningQueueService, type PlayEventPayload } from './listening-queue.service';
 import { isTvBuild } from '../lib/platform';
+import { platformId } from './native/native-capabilities';
 import type { Track } from './player.service';
 
 /**
@@ -105,7 +106,11 @@ export class ListeningTrackerService {
       durationMs: s.track.duration ? Math.round(s.track.duration * 1000) : null,
       reason,
       source: s.source,
-      device: isTvBuild() ? 'tv' : 'browser',
+      // Order is load-bearing: a TV build IS an Android app, so `platformId()`
+      // returns 'android' there. Checking `isTvBuild()` second would silently
+      // fold every TV play into Android and there would be no way to tell after
+      // the fact — the column is written once, at play time.
+      device: isTvBuild() ? 'tv' : platformId(),
       // Snapshotted so history survives the song-id re-mint that any file move
       // or retag causes (see docs/listening-history.md).
       title: s.track.title ?? null,
