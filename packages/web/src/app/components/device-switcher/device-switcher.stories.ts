@@ -10,7 +10,7 @@ const meta: Meta<DeviceSwitcherComponent> = {
     docs: {
       description: {
         component:
-          'Picks which device plays. Every browser tab registers as a device over `GET /api/ws/playback`; hardware targets (Chromecast, DLNA) appear through the server-side `CastController` as proxy devices, so the same control covers both.',
+          'Picks which device plays. Every browser tab registers as a device over `GET /api/ws/playback`. Casting to hardware (Chromecast, DLNA) is designed but not built — see docs/cast-integration.md — so every device listed here is a browser tab.',
       },
     },
   },

@@ -2,7 +2,9 @@ import { describe, it, expect } from 'bun:test';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isCheckableIdentifier, brokenDocLinks } from './check-claude-md.js';
+import { isCheckableIdentifier, brokenDocLinks, EXTERNAL_SYMBOLS } from './check-claude-md.js';
+import { execFileSync } from 'node:child_process';
+import { resolve, dirname } from 'node:path';
 
 /**
  * Issue #255. The gate is a heuristic, and a heuristic that cries wolf gets
@@ -50,11 +52,60 @@ describe('isCheckableIdentifier', () => {
   });
 
   it('rejects allowlisted deliberate non-code mentions', () => {
-    // `oauth` is documented as "proposed — not yet implemented"; castv2/bonjour
-    // are npm packages, not repo symbols.
+    // `oauth` is documented as "proposed — not yet implemented"; `ApiService`
+    // and `SpotdlPlugin` are named precisely because they DON'T exist.
     expect(isCheckableIdentifier('oauth')).toBe(false);
-    expect(isCheckableIdentifier('castv2')).toBe(false);
     expect(isCheckableIdentifier('dataGroups')).toBe(false);
+    expect(isCheckableIdentifier('ApiService')).toBe(false);
+    expect(isCheckableIdentifier('SpotdlPlugin')).toBe(false);
+  });
+
+  it('rejects `castv2` on its own merits, not via the allowlist', () => {
+    // It used to be allowlisted as "npm package (Chromecast protocol)" — but it
+    // is not a dependency of this repo and never was; the cast feature was only
+    // ever a proposal. The strong-claim filter rejects it anyway (no internal
+    // capital), so removing that entry changed nothing here.
+    expect(isCheckableIdentifier('castv2')).toBe(false);
+  });
+});
+
+const REPO_ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..');
+
+/**
+ * The map is checked in BOTH directions on purpose. An allowlist only grows and
+ * eventually mutes the gate it belongs to; this one breaks the build if a
+ * symbol comes home, or if CLAUDE.md stops naming it.
+ */
+describe('EXTERNAL_SYMBOLS', () => {
+  const claudeMd = execFileSync('cat', [resolve(REPO_ROOT, 'CLAUDE.md')], { encoding: 'utf8' });
+
+  it('lists only symbols that genuinely are NOT in this repo', () => {
+    for (const [sym] of EXTERNAL_SYMBOLS) {
+      let found = '';
+      try {
+        found = execFileSync(
+          'git',
+          ['grep', '-l', '-w', '--', sym, ':!*.md', ':!*.lock', ':!scripts/check-claude-md.ts'],
+          { cwd: REPO_ROOT, encoding: 'utf8' },
+        ).trim();
+      } catch {
+        found = ''; // git grep exits 1 on no match
+      }
+      expect(found, `${sym} is in this repo — drop it from EXTERNAL_SYMBOLS`).toBe('');
+    }
+  });
+
+  it('lists only symbols CLAUDE.md still names', () => {
+    for (const [sym] of EXTERNAL_SYMBOLS) {
+      expect(claudeMd.includes(`\`${sym}\``), `CLAUDE.md no longer names ${sym}`).toBe(true);
+    }
+  });
+
+  it('records where each one actually lives', () => {
+    // "it's elsewhere" without an address is the wrong turn it exists to prevent.
+    for (const [sym, where] of EXTERNAL_SYMBOLS) {
+      expect(where, sym).toMatch(/slskd-addon .+\.ts:\d+/);
+    }
   });
 });
 
