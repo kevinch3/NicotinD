@@ -28,18 +28,12 @@ import {
   type OverrideIndex,
 } from '../genre-overrides.js';
 import { planDiscogsAlbumGenres, type DiscogsGenreAlbum } from '../genre-discogs.js';
-import { setArtwork } from '../artwork-store.js';
-import { isPlaceholderArtist } from '../artwork-backfill.js';
 import {
   countArtistsNeedingPortrait,
   fillArtistImages,
   selectArtistsNeedingPortrait,
 } from '../artist-image-fill.js';
-import {
-  buildArtistImageProviders,
-  configuredArtistImageSources,
-} from '../artist-image-providers.js';
-import { clearCoverNegativeCache } from '../../routes/streaming.js';
+import { configuredArtistImageSources } from '../artist-image-providers.js';
 import { normalizeArtistForGrouping, albumGroupKey } from '../album-grouping.js';
 import { pickByDiscographyOverlap } from '../mbid-corroboration.js';
 import { splitOnDelimiters } from '../artist-split.js';
@@ -1001,11 +995,6 @@ const audioFeaturesTask: EnrichmentTask = {
     return { applied, labels, failed: tally.failed, errorSample: tally.sample };
   },
 };
-
-interface ArtistRow {
-  id: string;
-  name: string;
-}
 
 /**
  * Backfill real artist portraits into `library_artwork (kind='artist')` so the

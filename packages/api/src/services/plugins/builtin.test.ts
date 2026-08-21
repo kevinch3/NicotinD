@@ -12,7 +12,6 @@ import {
 } from './builtin.js';
 import { AcoustidPlugin } from './acoustid/index.js';
 import { MusicBrainzClient } from '../musicbrainz-client.js';
-import type { ProviderRegistry } from '../provider-registry.js';
 import type { NicotinDConfig } from '@nicotind/core';
 
 function tmpCacheFile(): string {
@@ -31,7 +30,6 @@ function makeDeps(over: Partial<BuiltinPluginDeps> = {}): BuiltinPluginDeps {
   return {
     config,
     dataDir: '/tmp/nicotind-test',
-    providerRegistry: {} as ProviderRegistry,
     ...over,
   };
 }

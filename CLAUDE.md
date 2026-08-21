@@ -74,7 +74,9 @@ library that the API streams from. URL-based acquisition (yt-dlp / spotdl) feeds
 bun install              # Install all workspace dependencies
 bun run verify           # EVERY gate the CI gate jobs run, in one command — run this before pushing
 bun run typecheck        # TypeScript type checking (tsc --build + Angular templates + e2e + web specs)
-bun run lint             # ESLint across all packages
+bun run lint             # ESLint over packages/*/src + src (586 files; quote the globs — Bun's
+                         # script shell expands ** as ONE level). NOT packages/web —
+                         # 82k LOC still unlinted, tracked in #612 (docs/quality-gates.md)
 bun run check:claude-md  # fail on CLAUDE.md symbols that don't exist / broken docs links (CI gate)
                          # existence is proven by CODE, never prose (docs/quality-gates.md)
 bun run check:ci-parity  # fail when a gate job runs a check `verify` doesn't, or doesn't block release (CI gate)
