@@ -40,6 +40,16 @@ export const ALLOWLIST: Array<{ match: string; reason: string }> = [
     reason:
       'environment setup for the Storybook smoke step, not a check; local runs already have the browser',
   },
+  {
+    match: '--filter @nicotind/desktop prepare-resources',
+    reason:
+      'stages a production `bun install` plus platform binaries into the Electron resource tree; minutes long and only meaningful on a packaging runner. The packaged artifact it produces is what `desktop-smoke` then exercises.',
+  },
+  {
+    match: '--filter @nicotind/e2e test',
+    reason:
+      "CLAUDE.md quality gate 2 keeps `bun run e2e` out of `verify` on purpose — it is its own CI job and takes minutes. Until now this was covered by accident: `isCovered` matched the bare script name `test`, so the ROOT `test` script vouched for a different package's.",
+  },
 ];
 
 /**
@@ -51,11 +61,26 @@ export const ALLOWLIST: Array<{ match: string; reason: string }> = [
  * covered: a gate that quietly leaves this list is exactly the drift this file exists to
  * catch, only with a job boundary hiding it.
  *
- * `e2e`, `desktop-smoke`, `analysis` and `docker` are deliberately absent. `bun run e2e`
- * is not part of `verify` by design (CLAUDE.md quality gate 2), and the other three need
- * a runner (Python, Docker, a packaged Electron app) rather than a local command.
+ * It is now **every job in `release.needs`**, enforced both ways (see
+ * `releaseJobsNotGated` and `gateJobsNotBlockingRelease`). Excluding whole jobs was the
+ * bug: the previous list left out `e2e`, `analysis`, `docker` and `desktop-package`, and
+ * the note explaining that named `desktop-smoke` — a DIFFERENT job, `continue-on-error`,
+ * which gates nothing — while `desktop-package`, which does gate the release, went
+ * unmentioned and ran `prepare-resources` that `verify` never runs.
+ *
+ * Exclusions are now per-COMMAND, in ALLOWLIST with a reason, so the unit of the decision
+ * is the thing that can't run locally rather than the job that happens to contain it.
+ * `analysis` and `docker` add nothing to check either way: neither runs a `bun` command.
  */
-export const GATE_JOBS = ['ci', 'web-test', 'storybook'] as const;
+export const GATE_JOBS = [
+  'ci',
+  'web-test',
+  'storybook',
+  'e2e',
+  'analysis',
+  'docker',
+  'desktop-package',
+] as const;
 
 /**
  * The job that cuts the release tag. Every gate job must block it, or splitting a gate
@@ -108,11 +133,71 @@ export function commandsIn(run: string): string[] {
  * same gate expressed differently, so match on the runner rather than the
  * literal argument list.
  */
-export function isCovered(command: string, chain: string): boolean {
-  const scriptCall = command.match(/bun run (?:--filter \S+ )?([\w:.-]+)/);
-  if (scriptCall) return chain.includes(scriptCall[1] ?? '\0');
-  if (command.startsWith('bun test')) return chain.includes('test');
-  return chain.includes(command);
+/**
+ * Identity of a `bun run` invocation: `<workspace>:<script>`, so the root `test`
+ * script and `--filter @nicotind/e2e test` are different things.
+ *
+ * They were not. The old matcher pulled out the bare script name and asked
+ * `chain.includes(name)`, which is a SUBSTRING test on the whole verify chain —
+ * so the root `test` script vouched for `@nicotind/e2e test`, and any CI command
+ * that happened to be a substring of a verify command passed. The failure is
+ * one-directional and the silent direction is the dangerous one: a CI command
+ * *shorter* than its verify counterpart passes green while the two have drifted.
+ */
+export function invocationKey(command: string): string | null {
+  const m = command.match(/^bun run (?:--filter (\S+) )?([\w:.-]+)/);
+  if (!m) return null;
+  return `${m[1] ?? ''}:${m[2]}`;
+}
+
+/** Every `bun run` invocation `verify` reaches, transitively through scripts. */
+export function verifyInvocations(scripts: Record<string, string>): Set<string> {
+  const keys = new Set<string>();
+  const seen = new Set<string>();
+  // Scan the whole body, not line by line: `verify` is a single `&&`-joined
+  // string, so splitting on newlines yields one "command" and only its first
+  // invocation would be seen.
+  const walk = (body: string): void => {
+    for (const m of body.matchAll(/bun run (?:--filter (\S+) )?([\w:.-]+)/g)) {
+      const filter = m[1] ?? '';
+      const name = m[2] ?? '';
+      const key = `${filter}:${name}`;
+      keys.add(key);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      // Only a root script has a body here; `--filter` runs a workspace script
+      // whose definition lives in that package's own package.json.
+      if (!filter) {
+        const next = scripts[name];
+        if (next) walk(next);
+      }
+    }
+  };
+  const verify = scripts['verify'];
+  if (!verify) throw new Error('package.json has no `verify` script.');
+  walk(verify);
+  return keys;
+}
+
+export function isCovered(command: string, chain: string, invocations?: Set<string>): boolean {
+  const key = invocationKey(command);
+  if (key) {
+    // Exact identity when we have it; fall back to the old loose check only for
+    // callers that predate `invocations` (the unit tests that pass a raw chain).
+    return invocations ? invocations.has(key) : chain.includes(key.split(':').pop() ?? '\0');
+  }
+  // `bun test <paths>` stays deliberately loose: CI enumerates the paths that the
+  // root `test` script covers with a glob, so comparing path sets would fail for
+  // reasons that are not bugs. This is the one place a proxy is the right answer.
+  if (command.startsWith('bun test')) return chain.includes('bun test');
+  // Anything else must match a verify command exactly. Substring matching here is
+  // what would let a CI `bun audit` pass against a verify `bun audit --audit-level=high`.
+  const norm = (c: string) => c.trim().replace(/\s+/g, ' ');
+  return chain
+    .split('\n')
+    .flatMap((l) => l.split('&&'))
+    .map(norm)
+    .includes(norm(command));
 }
 
 /** Every command in `job` that the verify chain fails to reach. */
@@ -122,11 +207,12 @@ export function missingChecks(
   job = 'ci',
 ): MissingCheck[] {
   const chain = verifyChain(scripts);
+  const invocations = verifyInvocations(scripts);
   const missing: MissingCheck[] = [];
   for (const step of jobSteps(workflowYaml, job)) {
     for (const command of commandsIn(step.run ?? '')) {
       if (ALLOWLIST.some((a) => command.includes(a.match))) continue;
-      if (!isCovered(command, chain)) {
+      if (!isCovered(command, chain, invocations)) {
         missing.push({ job, step: step.name ?? '(unnamed step)', command });
       }
     }
@@ -140,6 +226,27 @@ export function missingChecks(
  * Splitting a gate into its own job is only safe if the release waits for it too;
  * forgetting that line makes the new job advisory and nothing else complains.
  */
+/**
+ * The inverse of `gateJobsNotBlockingRelease`: a job that gates the release but
+ * is not a gate job, so nothing checks that its commands are reachable locally.
+ *
+ * `desktop-package` was exactly that — in `release.needs`, running
+ * `prepare-resources`, which `verify` never runs. The docstring justifying the
+ * exclusions reasoned about `desktop-smoke` instead: a DIFFERENT job, marked
+ * `continue-on-error`, which gates nothing. Checking both directions means
+ * neither list can drift from the other.
+ */
+export function releaseJobsNotGated(workflowYaml: string): string[] {
+  const workflow = parse(workflowYaml) as {
+    jobs?: Record<string, { needs?: string[] | string }>;
+  };
+  const release = workflow.jobs?.[RELEASE_JOB];
+  if (!release) throw new Error(`no \`${RELEASE_JOB}\` job in the workflow — has it been renamed?`);
+  const raw = release.needs ?? [];
+  const needs = Array.isArray(raw) ? raw : [raw];
+  return needs.filter((j) => !(GATE_JOBS as readonly string[]).includes(j));
+}
+
 export function gateJobsNotBlockingRelease(workflowYaml: string): string[] {
   const workflow = parse(workflowYaml) as {
     jobs?: Record<string, { needs?: string[] | string }>;
@@ -167,6 +274,17 @@ if (import.meta.main) {
       `\nA check CI runs but no local command does is invisible until push — that is how\n` +
         `the web-spec typecheck drifted (see the header of scripts/check-ci-parity.ts).\n` +
         `Add it to the \`verify\` script in package.json, or to ALLOWLIST with a reason.\n`,
+    );
+    process.exit(1);
+  }
+
+  const ungated = releaseJobsNotGated(workflow);
+  if (ungated.length > 0) {
+    console.error(
+      `\n${ungated.length} job(s) gate \`${RELEASE_JOB}\` but are not gate jobs: ${ungated.join(', ')}\n\n` +
+        `Nothing checks that their commands are reachable from \`bun run verify\`, so a check\n` +
+        `added there is unenforced. Add them to GATE_JOBS (allowlisting any command that\n` +
+        `genuinely cannot run locally), or take them out of \`${RELEASE_JOB}\`'s \`needs\`.\n`,
     );
     process.exit(1);
   }

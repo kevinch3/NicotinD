@@ -20,7 +20,7 @@ reporting a false denominator:
 | `check:route-auth` | "24 /api groups", exit 0 | **24 of 35** mounts — its regex needed `app.route('` on one line, and Prettier wraps 11 of them |
 | `check:claude-md` | "all present", 0 drift | 15 symbols "proven" to exist **by the prose asserting them** |
 | `bun run lint` | lints the repo | **482 of 586** non-web files — unquoted `**`, expanded by Bun's script shell as a single level (fixed; see below) |
-| `check:ci-parity` | verify ⊇ CI | `isCovered` is a *substring* match, so a CI command **shorter** than its `verify` counterpart passes while the two have drifted |
+| `check:ci-parity` | verify ⊇ CI | `isCovered` matched substrings, so the **root** `test` script vouched for `--filter @nicotind/e2e test` — a different command that never ran locally (fixed; see below) |
 
 Same shape as #457 (a `skipped` job read as tolerable), #606 (a hardcoded image
 list), and #273/#376 (a CI-only typecheck surface). Each of those produced a new
@@ -129,6 +129,76 @@ Prettier does still format those files — its ignore list is separate.
 deliberate follow-up, not an oversight: it needs `@angular-eslint`, and a
 `@typescript-eslint/utils` root devDependency because `bunfig.toml` sets
 `peer = false` under an isolated linker. Tracked in #612.
+
+## `check:ci-parity` — matching by substring, excluding by job
+
+Two defects, both of which made the gate report more coverage than it had.
+
+### 1. The root `test` script vouched for another package's
+
+`isCovered` pulled the script name out of a `bun run` command and asked
+`chain.includes(name)` — a substring test over the whole `verify` chain. So
+`bun run --filter @nicotind/e2e test` reduced to `test`, which appears in
+`verify` because the **root** `test` script is there. Two entirely different
+commands, one of which `verify` never runs, reported as covered.
+
+The failure is one-directional, and the silent direction is the dangerous one: a
+CI command that is a **prefix** of its `verify` counterpart passes green while
+the two have drifted. `bun audit` in CI would have been "covered" by
+`bun audit --audit-level=high` locally.
+
+An invocation is now identified exactly, as `<workspace>:<script>` —
+`:test` and `@nicotind/e2e:test` are different things — resolved transitively
+through root scripts (`verify` → `typecheck` → `--filter @nicotind/web
+typecheck:spec`). Anything that isn't a `bun run` call must match a `verify`
+command exactly after whitespace normalisation.
+
+**One proxy is kept on purpose.** `bun test <paths>` still matches loosely,
+because CI enumerates the paths that the root `test` script covers with a glob;
+comparing path sets would fail for reasons that are not bugs. That is a
+deliberate, documented exception rather than an accident.
+
+### 2. Whole jobs were excluded, and the note explained the wrong one
+
+`GATE_JOBS` was `['ci', 'web-test', 'storybook']`, and the docstring said `e2e`,
+`desktop-smoke`, `analysis` and `docker` were "deliberately absent".
+
+`desktop-smoke` is **not in `release.needs`** and is `continue-on-error: true` —
+it gates nothing, so excluding it is meaningless. The job actually missing was
+**`desktop-package`**, which *does* gate the release and runs
+`bun run --filter @nicotind/desktop prepare-resources`, a command `verify` never
+runs. The reasoning named one half of a similarly-named pair and the hole was in
+the other half.
+
+`GATE_JOBS` is now every job in `release.needs`, checked **both ways**:
+
+- `gateJobsNotBlockingRelease` — a gate job that stops blocking the release is
+  advisory (the #457 shape).
+- `releaseJobsNotGated` — a job that gates the release but isn't a gate job has
+  nothing checking its commands.
+
+Neither list can drift from the other. Exclusions moved from whole jobs to
+**named commands** in `ALLOWLIST`, so the unit of the decision is the thing that
+genuinely can't run locally, not the job that happens to contain it. Two entries
+resulted: `prepare-resources` (minutes long, only meaningful on a packaging
+runner) and `--filter @nicotind/e2e test` (quality gate 2 keeps `bun run e2e`
+out of `verify` on purpose — it was previously covered *by accident*).
+
+`analysis` and `docker` add nothing either way: neither runs a `bun` command.
+
+### Three blind spots that remain
+
+The gate reads `run:` steps in `ci.yml`. It cannot see:
+
+- **`uses:` actions** — `gitleaks-action`, `trivy-action` and friends are
+  invisible to it. Usually fine (they aren't `verify`-able locally), but it means
+  the *form* a step is written in decides whether parity applies.
+- **Local composite actions** — `./.github/actions/playwright-deps` runs inside
+  the `storybook` gate job and shells out to a bun script the gate never parses.
+- **Other workflow files** — the path is hardcoded to `ci.yml`, so a new
+  `security.yml` escapes both halves entirely.
+
+Not fixed here; recorded so the next person picks the invocation form knowingly.
 
 ## Hardware cast: the drift this uncovered
 

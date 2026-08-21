@@ -5,10 +5,13 @@ import {
   GATE_JOBS,
   commandsIn,
   gateJobsNotBlockingRelease,
+  invocationKey,
   isCovered,
   jobSteps,
   missingChecks,
+  releaseJobsNotGated,
   verifyChain,
+  verifyInvocations,
 } from './check-ci-parity.js';
 
 const ROOT = resolve(import.meta.dir, '..');
@@ -39,8 +42,20 @@ jobs:
     steps:
       - name: Run e2e
         run: bun run --filter @nicotind/e2e test
+  analysis:
+    steps:
+      - name: Python tests
+        run: pytest -q
+  docker:
+    steps:
+      - name: Build image
+        run: docker build .
+  desktop-package:
+    steps:
+      - name: Stage desktop resources
+        run: bun run --filter @nicotind/desktop prepare-resources
   release:
-    needs: [ci, web-test, storybook, e2e]
+    needs: [ci, web-test, storybook, e2e, analysis, docker, desktop-package]
     steps:
       - name: Release
         run: bun run release
@@ -109,7 +124,43 @@ describe('isCovered', () => {
   });
 
   it('treats CI’s explicit test paths as covered by the glob-based script', () => {
-    expect(isCovered('bun test packages/api/src scripts', 'bun run test')).toBe(true);
+    // Deliberately loose: CI enumerates the paths the root `test` script covers
+    // with a glob, so comparing path sets would fail for reasons that aren't bugs.
+    // The chain is what `verifyChain` builds — verify plus the referenced bodies.
+    expect(isCovered('bun test packages/api/src scripts', verifyChain(SCRIPTS))).toBe(true);
+  });
+});
+
+describe('exact invocation matching', () => {
+  it('distinguishes a workspace script from the root script of the same name', () => {
+    // The bug: `isCovered` pulled out the bare name `test` and asked
+    // `chain.includes('test')`, so the ROOT test script vouched for a different
+    // package's. Two unrelated commands, one of which never ran locally.
+    expect(invocationKey('bun run test')).toBe(':test');
+    expect(invocationKey('bun run --filter @nicotind/e2e test')).toBe('@nicotind/e2e:test');
+    expect(invocationKey('bun run --filter @nicotind/web build')).toBe('@nicotind/web:build');
+  });
+
+  it('follows root scripts transitively but records --filter calls as themselves', () => {
+    const reach = verifyInvocations(SCRIPTS);
+    expect(reach.has(':typecheck')).toBe(true);
+    expect(reach.has('@nicotind/web:typecheck:spec')).toBe(true); // via `typecheck`
+    expect(reach.has('@nicotind/e2e:test')).toBe(false); // verify never reaches it
+  });
+
+  it('no longer lets the root `test` script cover `@nicotind/e2e test`', () => {
+    const reach = verifyInvocations(SCRIPTS);
+    expect(isCovered('bun run --filter @nicotind/e2e test', verifyChain(SCRIPTS), reach)).toBe(
+      false,
+    );
+  });
+
+  it('fails a raw command that is merely a PREFIX of a verify command', () => {
+    // The silent direction: CI shorter than verify used to pass via substring,
+    // so `bun audit` would be "covered" by `bun audit --audit-level=high`.
+    const chain = 'bun audit --audit-level=high';
+    expect(isCovered('bun audit', chain, new Set())).toBe(false);
+    expect(isCovered('bun audit --audit-level=high', chain, new Set())).toBe(true);
   });
 });
 
@@ -155,10 +206,46 @@ describe('missingChecks', () => {
     ]);
   });
 
-  it('leaves `e2e` alone — `bun run e2e` is deliberately not in `verify`', () => {
-    expect(GATE_JOBS).not.toContain('e2e');
+  it('gates `e2e` as a job but allowlists its one command, not the whole job', () => {
+    // `bun run e2e` stays out of `verify` (quality gate 2) — but as a named
+    // command with a reason, so anything ELSE added to that job is enforced.
+    expect(GATE_JOBS).toContain('e2e');
     const missed = GATE_JOBS.flatMap((job) => missingChecks(WORKFLOW, SCRIPTS, job));
     expect(missed.some((m) => m.command.includes('@nicotind/e2e test'))).toBe(false);
+  });
+
+  it('catches a NEW command added to a job that used to be excluded wholesale', () => {
+    // The point of gating the job rather than skipping it: `prepare-resources` is
+    // allowlisted, a second command in the same job is not.
+    const withExtra = WORKFLOW.replace(
+      '        run: bun run --filter @nicotind/desktop prepare-resources',
+      [
+        '        run: bun run --filter @nicotind/desktop prepare-resources',
+        '      - name: Sneaky',
+        '        run: bun run some:new-check',
+      ].join('\n'),
+    );
+    const missed = missingChecks(withExtra, SCRIPTS, 'desktop-package');
+    expect(missed.map((m) => m.command)).toEqual(['bun run some:new-check']);
+  });
+});
+
+describe('releaseJobsNotGated', () => {
+  it('passes when every release-gating job is a gate job', () => {
+    expect(releaseJobsNotGated(WORKFLOW)).toEqual([]);
+  });
+
+  /**
+   * The real defect: `desktop-package` was in `release.needs`, ran a command
+   * `verify` never runs, and was not a gate job — while the note explaining the
+   * exclusions reasoned about `desktop-smoke`, a different, non-gating job.
+   */
+  it('names a job that gates the release but nothing checks', () => {
+    const added = WORKFLOW.replace(
+      'needs: [ci, web-test, storybook, e2e, analysis, docker, desktop-package]',
+      'needs: [ci, web-test, storybook, e2e, analysis, docker, desktop-package, smuggled]',
+    );
+    expect(releaseJobsNotGated(added)).toEqual(['smuggled']);
   });
 });
 
@@ -172,7 +259,10 @@ describe('gateJobsNotBlockingRelease', () => {
    * `needs` line leaves it advisory — it can fail while the release tag is still cut.
    */
   it('names the gate jobs a release would not wait for', () => {
-    const dropped = WORKFLOW.replace('needs: [ci, web-test, storybook, e2e]', 'needs: [ci, e2e]');
+    const dropped = WORKFLOW.replace(
+      'needs: [ci, web-test, storybook, e2e, analysis, docker, desktop-package]',
+      'needs: [ci, e2e, analysis, docker, desktop-package]',
+    );
     expect(gateJobsNotBlockingRelease(dropped)).toEqual(['web-test', 'storybook']);
   });
 
