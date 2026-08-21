@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.45](https://github.com/kevinch3/NicotinD/compare/v0.3.44...v0.3.45) (2026-08-21)
+
+### Features
+
+* **history:** record which client a play came from, not just "browser" ([#618](https://github.com/kevinch3/NicotinD/issues/618)) ([964afad](https://github.com/kevinch3/NicotinD/commit/964afad0787149e04abd36f7aeee5f3cfbd391ec))
 ## [0.3.44](https://github.com/kevinch3/NicotinD/compare/v0.3.43...v0.3.44) (2026-08-21)
 
 ### Bug Fixes
