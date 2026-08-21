@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.43](https://github.com/kevinch3/NicotinD/compare/v0.3.42...v0.3.43) (2026-08-21)
+
+### Bug Fixes
+
+* **ci:** bun's script shell expands ** as one level, so 104 files went unlinted ([#615](https://github.com/kevinch3/NicotinD/issues/615)) ([44d6a1e](https://github.com/kevinch3/NicotinD/commit/44d6a1e0632f09e69bb5b9b71483b29a8cc4f32a)), references [#1](https://github.com/kevinch3/NicotinD/issues/1) [#3](https://github.com/kevinch3/NicotinD/issues/3) [#250](https://github.com/kevinch3/NicotinD/issues/250) [#612](https://github.com/kevinch3/NicotinD/issues/612)
 ## [0.3.42](https://github.com/kevinch3/NicotinD/compare/v0.3.41...v0.3.42) (2026-08-21)
 
 ### Bug Fixes
