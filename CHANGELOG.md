@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.40](https://github.com/kevinch3/NicotinD/compare/v0.3.39...v0.3.40) (2026-08-21)
+
+### Bug Fixes
+
+* **library:** stop artist MBID resolution picking the first of N same-name hits ([#611](https://github.com/kevinch3/NicotinD/issues/611)) ([e9aa00e](https://github.com/kevinch3/NicotinD/commit/e9aa00e906dd515dd0cd9f81c7b34ce0cdc1e0f2)), closes [#610](https://github.com/kevinch3/NicotinD/issues/610), references [#211](https://github.com/kevinch3/NicotinD/issues/211)
 ## [0.3.39](https://github.com/kevinch3/NicotinD/compare/v0.3.38...v0.3.39) (2026-08-20)
 
 ### Bug Fixes
