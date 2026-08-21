@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.41](https://github.com/kevinch3/NicotinD/compare/v0.3.40...v0.3.41) (2026-08-21)
+
+### Bug Fixes
+
+* **ci:** check:route-auth audited 24 of 35 route mounts and exited green ([#613](https://github.com/kevinch3/NicotinD/issues/613)) ([3f05179](https://github.com/kevinch3/NicotinD/commit/3f051790289d544e85d3343e3305c07f0be3d9e4)), references [#461](https://github.com/kevinch3/NicotinD/issues/461) [#457](https://github.com/kevinch3/NicotinD/issues/457) [#606](https://github.com/kevinch3/NicotinD/issues/606) [#461](https://github.com/kevinch3/NicotinD/issues/461)
 ## [0.3.40](https://github.com/kevinch3/NicotinD/compare/v0.3.39...v0.3.40) (2026-08-21)
 
 ### Bug Fixes
