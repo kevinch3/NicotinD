@@ -1,5 +1,31 @@
 [
   {
+    "version": "0.3.43",
+    "date": "2026-08-21",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.42...v0.3.43",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**ci:** bun's script shell expands ** as one level, so 104 files went unlinted ([#615](https://github.com/kevinch3/NicotinD/issues/615)) ([44d6a1e](https://github.com/kevinch3/NicotinD/commit/44d6a1e0632f09e69bb5b9b71483b29a8cc4f32a)), references [#1](https://github.com/kevinch3/NicotinD/issues/1) [#3](https://github.com/kevinch3/NicotinD/issues/3) [#250](https://github.com/kevinch3/NicotinD/issues/250) [#612](https://github.com/kevinch3/NicotinD/issues/612)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.42",
+    "date": "2026-08-21",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.41...v0.3.42",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**ci:** check:claude-md counted prose as proof a symbol exists ([#614](https://github.com/kevinch3/NicotinD/issues/614)) ([5240772](https://github.com/kevinch3/NicotinD/commit/52407729db568ab2af61d322aeae7c80f2290ca1)), references [#612](https://github.com/kevinch3/NicotinD/issues/612)"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.3.41",
     "date": "2026-08-21",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.40...v0.3.41",
@@ -594,41 +620,6 @@
         "title": "Bug Fixes",
         "items": [
           "**web:** remove the broken \"tap to resume\" autoplay banner ([#500](https://github.com/kevinch3/NicotinD/issues/500)) ([d69ad2a](https://github.com/kevinch3/NicotinD/commit/d69ad2acfa7b231399d15f9c11c4c1205b99356a))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.2.1",
-    "date": "2026-08-13",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.2.0...v0.2.1",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**desktop:** unbreak resource staging — strip devDeps + demote api's addon dep ([#499](https://github.com/kevinch3/NicotinD/issues/499)) ([455b002](https://github.com/kevinch3/NicotinD/commit/455b002486b71b5e7f5434ec7767f18f7288d94e))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.2.0",
-    "date": "2026-08-13",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.347...v0.2.0",
-    "sections": [
-      {
-        "title": "⚠ BREAKING CHANGES",
-        "items": [
-          "/api/settings/soulseek*, /api/settings/shares* and the",
-          "the built-in Soulseek (slskd) extension no longer exists;",
-          "the raw per-transfer download endpoints are removed; use",
-          "the SOULSEEK_USERNAME/SOULSEEK_PASSWORD/NICOTIND_SLSKD_URL"
-        ]
-      },
-      {
-        "title": "Features",
-        "items": [
-          "phase 3 — delete slskd from core ([#496](https://github.com/kevinch3/NicotinD/issues/496)) ([58678d0](https://github.com/kevinch3/NicotinD/commit/58678d03c50b65cced953ee791036ce0aa0999d7)), references [#487](https://github.com/kevinch3/NicotinD/issues/487) [#488](https://github.com/kevinch3/NicotinD/issues/488) [#488](https://github.com/kevinch3/NicotinD/issues/488) [#489](https://github.com/kevinch3/NicotinD/issues/489) [#490](https://github.com/kevinch3/NicotinD/issues/490) [#490](https://github.com/kevinch3/NicotinD/issues/490) [#490](https://github.com/kevinch3/NicotinD/issues/490) [#490](https://github.com/kevinch3/NicotinD/issues/490) [#490](https://github.com/kevinch3/NicotinD/issues/490) [#490](https://github.com/kevinch3/NicotinD/issues/490) [#490](https://github.com/kevinch3/NicotinD/issues/490)"
         ]
       }
     ]

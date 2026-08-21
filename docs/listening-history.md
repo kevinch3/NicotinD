@@ -94,6 +94,43 @@ Several things look like a play and aren't; each is handled explicitly in `playe
 
 | Situation | Handling |
 | --- | --- |
+## `device` — which client the play came from
+
+`play_events.device` is written once, at play time, by
+`ListeningTrackerService`. There is no backfill: nothing else in the system knows
+retroactively which client a past play came from.
+
+It used to be `isTvBuild() ? 'tv' : 'browser'`, so Android TV was distinguishable
+and **everything else — PWA, Android phone, iOS, Electron desktop — collapsed
+into one `browser` bucket**. That made a whole class of question unanswerable:
+"has anyone ever played a track from the iOS app?" has no query, and never will
+for any play recorded before this change.
+
+It now records `isTvBuild() ? 'tv' : platformId()`, giving
+`tv | android | ios | electron | web`.
+
+**The branch order is load-bearing.** A TV build *is* an Android app, so
+`platformId()` returns `'android'` there. Checking `isTvBuild()` second would
+fold every TV play into Android silently — no error, no failing test, and no way
+to tell afterwards. `listening-tracker.service.spec.ts` pins the order with a
+case that asserts `'tv'` while `platformId()` is mocked to `'android'`; it fails
+with `expected 'android' to be 'tv'` if the branches are swapped.
+
+The column stays an open `string` on both sides rather than a union: the server
+is a sink for whatever the client reports, and narrowing it would mean a
+migration every time a client surface is added.
+
+Reading it:
+
+```sql
+SELECT device, COUNT(*) AS plays, COUNT(DISTINCT user_id) AS users
+FROM play_events GROUP BY device;
+```
+
+Expect roughly four weeks of listening before the split carries a decision — and
+remember every row written before this shipped reads `browser` or `tv`, so filter
+by `at` when comparing surfaces.
+
 | Controller tab mirroring a remote device | Every call site is gated on `isActiveDevice()` — `setCurrentTrackMetadata` sets `currentTrack` with no audio here |
 | Gapless preload of the next track | Not a session; only Effect 1's track load starts one |
 | Repeat-one | Restarts the element without changing `currentTrack`, so it ends and reopens the session explicitly — otherwise a looped track logs as one enormous play |

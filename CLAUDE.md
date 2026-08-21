@@ -1032,7 +1032,10 @@ Add detail there, not here.
   prose — including which third parties metadata lookups contact — because someone deciding whether
   to opt out shouldn't have to leave the app. **No admin route reads a user's history by design.**
   → [docs/privacy.md](docs/privacy.md)
-- **Listening history (per-user play log)**: an append-only `play_events` row per playback session —
+- **Listening history (per-user play log)**: an append-only `play_events` row per playback session
+  (`device` = `tv | android | ios | electron | web`; the `isTvBuild()` branch **must** stay first —
+  a TV build is an Android app, so swapping them folds TV into Android silently and unrecoverably,
+  since the column is written once at play time with no backfill) —
   the app had **no** play tracking at all before (`albumOrderBy('frequent')` fell back to
   `created DESC`; popularity's local play-count axis had no signal to build on). The client reports
   **raw facts** (`ListeningTrackerService` session lifecycle + pure `accumulate` counting only
