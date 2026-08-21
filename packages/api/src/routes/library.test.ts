@@ -2476,3 +2476,102 @@ describe('artist origin routes', () => {
     expect(body.countries.find((c) => c.country === 'CL')?.artists).toBe(1);
   });
 });
+
+/**
+ * Issue #610 part C. `MbidSource` has always declared a `'user'` tier ranked
+ * above `tag`, but nothing ever wrote it — so a curator could repaint the
+ * symptoms (bio, origin) while the wrong id stayed cached and kept feeding
+ * every other MBID-derived enrichment. This is the repair path.
+ */
+describe('curator artist MBID override (issue #610)', () => {
+  const MERNES = '0d5a1ad3-eaac-4aed-9ca2-96293cf6a2f4';
+  const SWEDISH_MC = '1c4f6d71-ab3f-45ef-841f-d69022f6ef0d';
+
+  const appFor = (role: 'listener' | 'user' | 'refiner' | 'admin') => {
+    const a = new Hono<AuthEnv>();
+    a.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role, iat: 0, exp: 9999999999 });
+      return next();
+    });
+    a.route('/', libraryRoutes('/home/kevinch3/Music'));
+    return a;
+  };
+
+  /** Seeds the exact prod shape: right artist, wrong id, wrong derived rows. */
+  const seedPoisoned = (id: string, name: string): void => {
+    sharedDb.run(`DELETE FROM library_artists WHERE id = ?`, [id]);
+    sharedDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES (?, ?, 3, 1)`,
+      [id, name],
+    );
+    upsertMbid(sharedDb, {
+      scope: 'artist',
+      key: normalizeArtistForGrouping(name),
+      mbid: SWEDISH_MC,
+      source: 'lidarr',
+      confidence: 0.8,
+    });
+    upsertArtistMeta(sharedDb, {
+      artistId: id,
+      bio: 'Swedish singer and songwriter.',
+      urls: [],
+      source: 'discogs',
+    });
+    upsertArtistOrigin(sharedDb, { artistId: id, country: 'SE', source: 'musicbrainz' });
+  };
+
+  const put = (id: string, body: unknown, role: 'user' | 'refiner' = 'refiner') =>
+    appFor(role).request(`/artists/${id}/mbid`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('writes a user-sourced id that outranks the wrong lidarr one', async () => {
+    seedPoisoned('art-mb1', 'Emilia');
+    const res = await put('art-mb1', { mbid: MERNES });
+    expect(res.status).toBe(200);
+    const row = getMbid(sharedDb, 'artist', normalizeArtistForGrouping('Emilia'));
+    expect(row).toMatchObject({ mbid: MERNES, source: 'user' });
+  });
+
+  it('clears the bio and origin the wrong id produced, so they re-derive', async () => {
+    seedPoisoned('art-mb2', 'Emilia Two');
+    await put('art-mb2', { mbid: MERNES });
+    expect(getArtistMeta(sharedDb, 'art-mb2')).toBeNull();
+    expect(getArtistOrigin(sharedDb, 'art-mb2')).toBeNull();
+  });
+
+  it("never discards a curator's own hand-written bio", async () => {
+    seedPoisoned('art-mb3', 'Emilia Three');
+    upsertArtistMeta(sharedDb, {
+      artistId: 'art-mb3',
+      bio: 'Hand-written by a curator.',
+      urls: [],
+      source: 'user',
+      manualOverride: true,
+    });
+    await put('art-mb3', { mbid: MERNES });
+    expect(getArtistMeta(sharedDb, 'art-mb3')?.bio).toBe('Hand-written by a curator.');
+  });
+
+  it('clears the override on null, reopening the artist to resolution', async () => {
+    seedPoisoned('art-mb4', 'Emilia Four');
+    await put('art-mb4', { mbid: MERNES });
+    const res = await put('art-mb4', { mbid: null });
+    expect(res.status).toBe(200);
+    expect(getMbid(sharedDb, 'artist', normalizeArtistForGrouping('Emilia Four'))).toBeNull();
+  });
+
+  it('rejects a malformed id with 400', async () => {
+    seedPoisoned('art-mb5', 'Emilia Five');
+    expect((await put('art-mb5', { mbid: 'not-a-uuid' })).status).toBe(400);
+    expect((await put('art-mb5', {})).status).toBe(400);
+  });
+
+  it('gates on curator and 404s an unknown artist', async () => {
+    seedPoisoned('art-mb6', 'Emilia Six');
+    expect((await put('art-mb6', { mbid: MERNES }, 'user')).status).toBe(403);
+    expect((await put('no-such-artist', { mbid: MERNES })).status).toBe(404);
+  });
+});

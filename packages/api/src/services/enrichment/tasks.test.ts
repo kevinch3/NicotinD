@@ -88,6 +88,7 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     lookupLicence: async () => null,
     lookupPopularity: async () => new Map(),
     lookupArtistOrigin: null,
+    lookupArtistReleaseGroups: null,
     fileExists: () => true,
     ...overrides,
   };
@@ -1823,6 +1824,48 @@ describe('MBID resolution helpers (issue #211)', () => {
       );
       expect(result).toBeNull();
     });
+
+    // Issue #610: Lidarr's /artist/lookup returns *ten* hits all named exactly
+    // "Emilia" (Swedish MC, Emilia Rydberg, a Macross character, …, and at
+    // index 7 the Argentinian Emilia Mernes the library actually holds). The
+    // old `hits.find(exact)` took index 0 and stamped it confidence 0.8 — a
+    // 1-in-10 coin flip reported as the highest non-tag confidence. Exact name
+    // equality is precisely where a homonym collision looks perfect, so an
+    // ambiguous exact match must resolve to "I don't know", not to the first.
+    it('returns null when several hits match the name exactly (issue #610)', () => {
+      const result = pickMbidHit(
+        [
+          hit({ artistName: 'Emilia', foreignArtistId: 'mbid-swedish-mc' }),
+          hit({ artistName: 'Emilia', foreignArtistId: 'mbid-emilia-mernes' }),
+        ],
+        'Emilia',
+      );
+      expect(result).toBeNull();
+    });
+
+    it('still returns the single exact match when only one hit matches', () => {
+      const result = pickMbidHit(
+        [
+          hit({ artistName: 'Emilia', foreignArtistId: 'mbid-only' }),
+          hit({ artistName: 'Emilia Mernes', foreignArtistId: 'mbid-other' }),
+        ],
+        'Emilia',
+      );
+      expect(result).toEqual({ mbid: 'mbid-only', confidence: 0.8 });
+    });
+
+    it('ignores id-less duplicates when counting exact matches', () => {
+      // A hit with no foreignArtistId is unusable, so it cannot make an
+      // otherwise-unambiguous pick ambiguous.
+      const result = pickMbidHit(
+        [
+          hit({ artistName: 'Emilia', foreignArtistId: '' }),
+          hit({ artistName: 'Emilia', foreignArtistId: 'mbid-real' }),
+        ],
+        'Emilia',
+      );
+      expect(result).toEqual({ mbid: 'mbid-real', confidence: 0.8 });
+    });
   });
 
   describe('resolveMbidViaLidarr (integration)', () => {
@@ -1871,6 +1914,86 @@ describe('MBID resolution helpers (issue #211)', () => {
         },
       } as unknown as EnrichmentContext['lidarr'];
       const result = await resolveMbidViaLidarr(lidarr as never, 'Eduardo Miño');
+      expect(result).toBeNull();
+    });
+
+    // Issue #610 — corroboration plumbing. The *verdict* lives in the pure
+    // pickByDiscographyOverlap (mbid-corroboration.ts); these pin the wiring
+    // around it: which candidates get looked up, and what happens with no
+    // corroboration available.
+    function ambiguousLidarr() {
+      const looked: string[] = [];
+      const lidarr = {
+        artist: {
+          list: async () => [],
+          lookup: async () => [
+            hit({ artistName: 'Emilia', foreignArtistId: 'mbid-swedish-mc' }),
+            hit({ artistName: 'Emilia', foreignArtistId: 'mbid-emilia-mernes' }),
+            hit({ artistName: 'Emilia Mernes', foreignArtistId: 'mbid-not-exact' }),
+          ],
+        },
+      } as unknown as Parameters<typeof resolveMbidViaLidarr>[0];
+      return { lidarr, looked };
+    }
+
+    it('looks up release groups for every exact candidate, and only those', async () => {
+      const { lidarr, looked } = ambiguousLidarr();
+      await resolveMbidViaLidarr(lidarr, 'Emilia', {
+        libraryAlbums: ['perfectas'],
+        releaseGroupsFor: async (mbid) => {
+          looked.push(mbid);
+          return [];
+        },
+      });
+      // 'mbid-not-exact' is a different name — the ambiguity is between the
+      // exact homonyms only, and each extra lookup is a rate-limited MB call.
+      expect(looked.sort()).toEqual(['mbid-emilia-mernes', 'mbid-swedish-mc']);
+    });
+
+    it('stays null on an ambiguous name when no corroboration is available', async () => {
+      const { lidarr } = ambiguousLidarr();
+      expect(await resolveMbidViaLidarr(lidarr, 'Emilia')).toBeNull();
+    });
+
+    it('never corroborates an unambiguous exact match', async () => {
+      const looked: string[] = [];
+      const lidarr = {
+        artist: {
+          list: async () => [],
+          lookup: async () => [hit({ artistName: 'Emilia', foreignArtistId: 'mbid-only' })],
+        },
+      } as unknown as Parameters<typeof resolveMbidViaLidarr>[0];
+      const result = await resolveMbidViaLidarr(lidarr, 'Emilia', {
+        libraryAlbums: ['perfectas'],
+        releaseGroupsFor: async (mbid) => {
+          looked.push(mbid);
+          return [];
+        },
+      });
+      expect(result).toEqual({ mbid: 'mbid-only', confidence: 0.8 });
+      expect(looked).toEqual([]);
+    });
+
+    it('returns the corroborated MBID with confidence 0.7', async () => {
+      const { lidarr } = ambiguousLidarr();
+      const result = await resolveMbidViaLidarr(lidarr, 'Emilia', {
+        libraryAlbums: ['perfectas', 'No_se_ve.mp3', 'GTA.mp3'],
+        releaseGroupsFor: async (mbid) =>
+          mbid === 'mbid-emilia-mernes'
+            ? ['perfectas', 'No_se_ve.mp3', 'GTA.mp3', '.mp3']
+            : ['Alla mot alla'],
+      });
+      expect(result).toEqual({ mbid: 'mbid-emilia-mernes', confidence: 0.7 });
+    });
+
+    it('degrades to null when a release-group lookup throws', async () => {
+      const { lidarr } = ambiguousLidarr();
+      const result = await resolveMbidViaLidarr(lidarr, 'Emilia', {
+        libraryAlbums: ['perfectas'],
+        releaseGroupsFor: async () => {
+          throw new Error('MB down');
+        },
+      });
       expect(result).toBeNull();
     });
   });

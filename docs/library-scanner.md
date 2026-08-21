@@ -383,6 +383,84 @@ Artist photos come from two layers, both keyed on `artistIdFor(name)` so they su
 - **Curation follows an identity fix (issue #305)** — artist ids derive from the name, so a rename or merge-variant mints a **new** id, and every artist-scoped side table is keyed on the old one with no FK to notice. The curator's portrait, uploaded file and bio were silently detached by the very action meant to tidy the library. Measured on prod before the fix: **88 of 1011 artist artwork rows dead (8.7 %)** and **2 of 140 uploaded portrait files orphaned** — the uploads being user work, since somebody chose that image. `carryArtistCuration` (`services/artist-curation-carry.ts`) runs at the identity-fix site, which is the only place that knows the old→new mapping (a prune-time guess could not), and **never clobbers**: a merge lands on an artist that may already be curated, and the destination's choice is the more deliberate one. **Artwork and bio move by id; the artist genre override moves by normalized NAME** — `library_genre_overrides (scope='artist')` keys on `normalizeArtistForGrouping(name)`, not the id (prod's single row is `key = "ana tijoux"`), so a rename orphans it on a different key. Same class as the song-id churn handled in `library-transcode.ts` and `playlist-repoint.ts`.
 - **Manual override** — a user (admin) can **upload** a photo or **copy one of the artist's album covers**, stored as _bytes_ in the persistent `<dataDir>/artist-overrides/<artistId>.<ext>` dir (`services/artist-image-override.ts`) — bytes because an upload has no URL and a disk-only album cover has no public one. Routes (`routes/library.ts`): `PUT /api/library/artists/:id/image` (multipart upload, JPEG/PNG/WebP ≤ 8 MB), `POST …/image/from-album` (`{ albumId }` → copies that album's resolved cover bytes), `DELETE …/image` (revert). An override sets `library_artists.manual_override = 1` so the auto task leaves the choice alone, and is served **ahead of** canonical artwork by the cover route. `DELETE` clears the flag → the artist reverts to auto/placeholder. The web edit affordance lives on the artist-detail portrait (`artist-image-*` testids), admin-gated.
 
+## Artist MBID resolution + homonyms (issue #610)
+
+Everything artist-level that isn't read from a file tag — bio (Discogs, reached
+MBID-first through MusicBrainz url-relations), origin country, Discogs genres,
+artist image — resolves *by MBID*, from one cached row in `library_mbids`
+(`scope='artist'`, `key` = the normalized artist name). One wrong id therefore
+makes every one of those surfaces resolve the wrong artist **correctly**, which
+is why the prod symptom read as several unrelated bugs.
+
+### The homonym hazard
+
+`resolveMbidViaLidarr` asks Lidarr's `/artist/lookup`, which returns *every*
+artist carrying the name. For "Emilia" that is ten hits, all named exactly
+"Emilia": a Swedish MC, Emilia Rydberg, a Macross character, a Toronto singer,
+a Polish vocalist, …, and — at index 7 — the Argentinian Emilia Mernes whose
+records the library actually holds. The original `pickMbidHit` took
+`hits.find(exact normalized match)`, i.e. **index 0**, and stamped it
+`MBID_CONFIDENCE_EXACT` (0.8).
+
+Exact name equality is precisely the case where a collision looks perfect, so
+that confidence was asserted on a 1-in-10 coin flip. The #211 corroboration
+(`albumCount > 0`) guards only the *widened* subsequence path — and Lidarr's
+lookup payload ships no `albumCount`/`statistics` at all, re-measured on prod.
+
+### Three stages
+
+1. **Exactly one** exact-name hit → that MBID, confidence 0.8. Unchanged.
+2. **Several** exact-name hits → `pickMbidHit` returns null. Ambiguity is
+   reported as "I don't know", never as the first hit. Falling through to the
+   widened stage would be wrong too: every one of those hits matches it just as
+   ambiguously.
+3. **Corroboration** (`services/mbid-corroboration.ts`): the caller may supply
+   the artist's own album titles (`libraryAlbumTitles`) plus a MusicBrainz
+   release-group lookup. `pickByDiscographyOverlap` breaks the tie on the one
+   signal the name doesn't carry — which releases are on disk. Confidence 0.7:
+   stronger than a bare subsequence guess, weaker than an unambiguous name.
+   One MB call per homonym, only ever on the ambiguous path.
+
+`pickByDiscographyOverlap` commits only on a **strict** winner carrying at
+least `MIN_CORROBORATING_TITLES` (2) shared titles. One shared title is
+deliberately not enough: generic release names (`.mp3`) and covers collide
+across unrelated artists, and the pick is *cached*, then feeds bio, origin,
+genres and artwork. The cost is that a thin library can leave a homonym
+unresolved forever — accepted, because no bio beats another artist's bio. A tie
+returns null for the same reason the ambiguous stage does.
+
+The Emilia case is decisive under this rule: the Swedish MC has a single
+release group ("Alla mot alla") matching nothing, while Emilia Mernes' 52
+overlap the library heavily. Both are captured as replay fixtures in
+`mbid-corroboration.test.ts`.
+
+Corroboration is optional everywhere — an MB blip, a missing lookup or an
+inconclusive comparison all degrade to null, which leaves the artist
+*unresolved* rather than wrong. No bio is a better outcome than another
+artist's bio.
+
+### Curator repair — `PUT /api/library/artists/:id/mbid`
+
+`MbidSource` always declared a `'user'` tier ranked above `tag`, but nothing
+ever wrote it, so a curator could only repaint the symptoms (hand-edit the bio,
+set the origin) while the wrong id stayed cached and kept feeding every other
+MBID-derived enrichment. The curator-gated route writes that tier and evicts
+what the wrong id produced — `library_artist_meta` rows with
+`manual_override = 0` and `library_artist_origins` rows with `source != 'user'`
+— so they re-derive from the corrected id. A curator's own bio/origin survives,
+mirroring the background tasks' own override discipline. `mbid: null` deletes
+the override rather than tombstoning it: an ambiguous name now resolves to null
+instead of a guess, so reopening the artist to automatic resolution is safe.
+Audit-logged as `artist.mbid`.
+
+### Known limitation
+
+`artistIdFor(name) = sha1('artist:' + normalizeArtistForGrouping(name))`, and
+the MBID cache keys on that same normalized name, so two homonyms **merge into
+one artist row and share one cached id** by construction. Correcting the MBID
+does not separate them; if both Emilias were ever imported they would be one
+artist page. Splitting homonyms is a distinct, unsolved design question.
+
 ## Artist bios
 
 Artist biographies and related links come from a `library_artist_meta` side table (like `library_artwork`, keyed on `artistIdFor(name)` so they survive rescans). Two sources populate and override this data:

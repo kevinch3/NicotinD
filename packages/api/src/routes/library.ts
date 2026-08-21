@@ -21,7 +21,7 @@ import type { AudioFeaturesClient } from '../services/audio-features-client.js';
 import { readAudioTags, writeAudioTags, type AudioTags } from '../services/audio-tags.js';
 import { getLyrics, setLyrics, deleteLyrics } from '../services/lyrics-store.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
-import { getMbid, upsertMbid } from '../services/mbid-store.js';
+import { deleteMbid, getMbid, libraryAlbumTitles, upsertMbid } from '../services/mbid-store.js';
 import { fillArtistImages } from '../services/artist-image-fill.js';
 import { resolveMbidViaLidarr } from '../services/enrichment/tasks.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
@@ -103,6 +103,9 @@ const log = createLogger('library');
 
 const VALID_CLASSIFICATIONS = new Set(['album', 'ep', 'single', 'compilation', 'unknown']);
 
+/** Canonical MusicBrainz id shape — a plain UUID (issue #610). */
+const MBID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 // Lazily-built, per-dataDir MusicBrainz client for on-demand licence detection.
 // Reuses the on-disk cache file so repeated lookups don't re-hit MB.
 let mbLicenceClient: { key: string; client: MusicBrainzClient } | null = null;
@@ -129,6 +132,7 @@ async function fetchAndStoreArtistInfo(
   lidarr: Lidarr | null | undefined,
   pluginRegistry: PluginRegistry | undefined,
   artist: { id: string; name: string },
+  dataDir?: string,
 ): Promise<
   { kind: 'ok'; bio: string | null; urls: string[] } | { kind: 'error'; message: string }
 > {
@@ -145,7 +149,21 @@ async function fetchAndStoreArtistInfo(
   // MusicBrainz-established artist, not a stub the same-name hazard could
   // match). The widened path reports a lower confidence (0.5 vs 0.8).
   if (!mbid && lidarr) {
-    const resolved = await resolveMbidViaLidarr(lidarr, artist.name);
+    // A homonym ("Emilia") makes the exact-name match ambiguous; corroborate
+    // against the discography we hold rather than taking Lidarr's first hit
+    // (issue #610).
+    const mb = getMbLicenceClient(dataDir);
+    const resolved = await resolveMbidViaLidarr(
+      lidarr,
+      artist.name,
+      mb
+        ? {
+            libraryAlbums: libraryAlbumTitles(db, artist.id),
+            releaseGroupsFor: async (mbid) =>
+              (await mb.getArtistReleaseGroups(mbid)).map((rg) => rg.title),
+          }
+        : undefined,
+    );
     if (resolved) {
       mbid = resolved.mbid;
       upsertMbid(db, {
@@ -731,6 +749,58 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json({ origin: { country, source: 'user' } });
   });
 
+  /**
+   * Curator MBID correction (issue #610). Lidarr's `/artist/lookup` returns
+   * every artist sharing a name, so a homonym ("Emilia" → ten exact hits) can
+   * cache the wrong id, and everything MBID-first — bio, origin, Discogs
+   * genres, artist image — then resolves the wrong artist *correctly*. Fixing
+   * the derived rows one by one leaves the cause in place, so this writes the
+   * `source='user'` tier (rank 4, above `tag`) that nothing else ever wrote,
+   * and evicts the rows the wrong id produced so they re-derive.
+   *
+   * `mbid: null` deletes the override instead of tombstoning it: an ambiguous
+   * name now resolves to null rather than to a guess, so reopening the artist
+   * to automatic resolution is safe.
+   */
+  app.put('/artists/:id/mbid', async (c) => {
+    requireCurator(c);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const artist = db
+      .query<{ id: string; name: string }, [string]>(
+        `SELECT id, name FROM library_artists WHERE id = ?`,
+      )
+      .get(id);
+    if (!artist) return c.json({ error: 'Artist not found', code: 'NOT_FOUND' }, 404);
+
+    const body = await c.req.json<{ mbid?: string | null }>().catch(() => null);
+    if (!body || !('mbid' in body)) {
+      return c.json({ error: 'mbid required', code: 'VALIDATION_ERROR' }, 400);
+    }
+    const mbid = body.mbid == null ? null : body.mbid.trim().toLowerCase();
+    if (mbid !== null && !MBID_SHAPE.test(mbid)) {
+      return c.json({ error: 'Not a MusicBrainz id', code: 'VALIDATION_ERROR' }, 400);
+    }
+
+    const key = normalizeArtistForGrouping(artist.name);
+    if (mbid === null) {
+      deleteMbid(db, 'artist', key);
+    } else {
+      upsertMbid(db, { scope: 'artist', key, mbid, source: 'user', confidence: 1 });
+      // Evict only what a *source* derived: a curator's own bio/origin is the
+      // more authoritative statement and must survive (same discipline as the
+      // background tasks' manual_override / source='user' guards).
+      db.run(`DELETE FROM library_artist_meta WHERE artist_id = ? AND manual_override = 0`, [id]);
+      db.run(`DELETE FROM library_artist_origins WHERE artist_id = ? AND source != 'user'`, [id]);
+    }
+    recordAudit(db, c.get('user'), 'artist.mbid', {
+      targetKind: 'artist',
+      targetId: id,
+      detail: mbid === null ? `${artist.name} — MBID override cleared` : `${artist.name} → ${mbid}`,
+    });
+    return c.json({ mbid, source: mbid === null ? null : 'user' });
+  });
+
   /** Origin facets: countries present in the library + the unknown count. */
   app.get('/origin-countries', (c) => {
     return c.json(listOriginFacets(getDatabase()));
@@ -760,7 +830,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       );
     }
 
-    const result = await fetchAndStoreArtistInfo(db, lidarr, pluginRegistry, artist);
+    const result = await fetchAndStoreArtistInfo(db, lidarr, pluginRegistry, artist, dataDir);
     if (result.kind === 'error') return c.json({ error: result.message }, 502);
     return c.json({ bio: result.bio, urls: result.urls });
   });
@@ -792,7 +862,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       // current values so the client has something to display.
       return c.json({ bio: existing.bio, urls: existing.urls });
     }
-    const result = await fetchAndStoreArtistInfo(db, lidarr, pluginRegistry, artist);
+    const result = await fetchAndStoreArtistInfo(db, lidarr, pluginRegistry, artist, dataDir);
     if (result.kind === 'error') {
       // Silent degrade — return whatever we already have (likely null/[]), no
       // 5xx surfaced to the client. The auto-trigger must never toa­st on
