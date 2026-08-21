@@ -1,6 +1,19 @@
-# Cast Integration — Chromecast & DLNA/UPnP
+# Cast Integration — Chromecast & DLNA/UPnP  ·  **PROPOSAL, NOT IMPLEMENTED**
 
-NicotinD can direct playback to hardware devices on the local network — Chromecast
+> **Status: designed, never built.** Nothing in this document ships. There is no
+> `CastController`, no `cast_tokens` table, no `/api/cast/*` route, and none of
+> `castv2` / `bonjour` / `node-ssdp` / `upnp-mediarenderer-client` is a dependency
+> of this repo. `CLAUDE.md` described it in the present tense as shipped until
+> 2026-08, which is exactly the drift `check:claude-md` exists to catch — and it
+> passed, because `existsInRepo()` counted this page as evidence for the symbols
+> this page names. Both are fixed; the design below is kept because the
+> alternatives it weighs (server-side controller vs. the Chrome-only Cast Web
+> Sender SDK) are still the right starting point if this is ever picked up.
+>
+> The **shipped** way to control playback on another device is browser-tab remote
+> playback — see [remote-playback.md](remote-playback.md).
+
+NicotinD would direct playback to hardware devices on the local network — Chromecast
 dongles, smart TVs, AV receivers, network speakers — using a **server-side
 controller** architecture. No browser-side Cast SDK, no native mobile plugins, no
 Google CDN dependency. Any browser (Firefox, Safari, Chrome) can control playback

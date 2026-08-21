@@ -76,6 +76,7 @@ bun run verify           # EVERY gate the CI gate jobs run, in one command — r
 bun run typecheck        # TypeScript type checking (tsc --build + Angular templates + e2e + web specs)
 bun run lint             # ESLint across all packages
 bun run check:claude-md  # fail on CLAUDE.md symbols that don't exist / broken docs links (CI gate)
+                         # existence is proven by CODE, never prose (docs/quality-gates.md)
 bun run check:ci-parity  # fail when a gate job runs a check `verify` doesn't, or doesn't block release (CI gate)
 bun run check:route-auth # fail when an /api route group is mounted with no auth decision (CI gate)
                          # AST-parsed + asserts its own denominator (docs/api-routes.md)
@@ -180,6 +181,13 @@ One-line index; **full detail for every entry is in
 [docs/design-patterns.md](docs/design-patterns.md)** (and the per-feature doc linked on each line).
 Add detail there, not here.
 
+- **Quality gates (`check:*`) — every gate asserts its own denominator**: a gate that computes a
+  smaller candidate set than it should still answers truthfully about what it looked at and exits 0.
+  Four were measured doing exactly that (route-auth 24 of 35 mounts; claude-md counting prose as
+  existence; `lint` reaching 480 of 586 files; ci-parity's substring match passing on a *shorter*
+  CI command) — the #457/#606/#273 shape. Gates derive their denominator independently, print what
+  they examined, and fail on what they can't classify; allowlists are checked in both directions so
+  they can't rot into mute buttons. → [docs/quality-gates.md](docs/quality-gates.md)
 - **Source-agnostic acquisition (the north star)**: every acquirable result from any source maps to
   one `AcquisitionCandidate` rendered in one blended, ranked list with a neutral source chip +
   single Get; adding a source = one adapter + a pure mapper, no route/UI change. →
@@ -894,13 +902,12 @@ Add detail there, not here.
   unregisters only if no other connection still holds that device id, since the client reuses one
   stable id across reconnects and a dead socket's late close was evicting the live one. →
   [docs/remote-playback.md](docs/remote-playback.md)
-- **Hardware cast (Chromecast + DLNA, server-side controller)**: a `CastController` runs protocol
-  adapters (`castv2`/`bonjour` for Chromecast, `node-ssdp`/`upnp-mediarenderer-client` for DLNA)
-  server-side; any browser controls hardware via REST `/api/cast/*`; short-lived scoped
-  `cast_tokens` authenticate the hardware's direct `GET /api/stream` fetches; the controller bridges
-  hardware state into the existing WS `PlaybackStateManager` as a proxy device. No browser Cast SDK,
-  no native mobile plugin, opt-in discovery with manual-IP fallback for Docker. →
-  [docs/cast-integration.md](docs/cast-integration.md)
+- **Hardware cast (Chromecast + DLNA) — designed, NOT built**: a server-side controller was
+  specced (protocol adapters, `/api/cast/*`, scoped cast tokens, bridged into `PlaybackStateManager`
+  as a proxy device) and **none of it exists** — no route, no table, no dependency. This entry
+  described it in the present tense for months. Remote playback between browser tabs
+  ([docs/remote-playback.md](docs/remote-playback.md)) is the shipped feature; casting to hardware is
+  not. → [docs/cast-integration.md](docs/cast-integration.md) (a proposal, read it as one)
 - **Service modes**: `embedded` (best-effort download/manage **Lidarr** — slskd left for its addon
   in phase 3/4, so this no longer spawns it) or `external`; the library/streaming stack is
   in-process. → [docs/design-patterns.md](docs/design-patterns.md)
@@ -1097,7 +1104,8 @@ Add detail there, not here.
   "download from folders" CTA; loading the full discography (which auto-adds the artist to Lidarr)
   is **opt-in** via a banner button (`browseFallbackDiscography`), no longer an automatic dump. →
   [docs/album-hunt.md](docs/album-hunt.md)
-- **Album hunt**: `AlbumHunterService` skewed queries + diacritic scoring + two-phase progress;
+- **Album hunt** (**addon-side since phase 4** — `AlbumHunterService` and the scoring below it live
+  in the `kevinch3/nicotind-slskd-addon` repo, not here): skewed queries + diacritic scoring + two-phase progress;
   blended "Other sources" + per-track fallback when 0 folders found. The skew builder
   (`buildSkewedQueries`/`buildTrackQueries`, now in shared **`@nicotind/core` `hunt-queries.ts`** —
   one source for API + web, killing the old two-copy sync risk) emits **faithful literal variants**
@@ -1118,7 +1126,8 @@ Add detail there, not here.
   match. → [docs/album-hunt.md](docs/album-hunt.md)
 - **Generation feedback → TDD fixtures (dev golden-dataset)**: capture whether a
   _generated/inferred_ output was right, from real usage, and replay each graded case as a
-  regression test. v1 targets the **album-hunt recognizer**: `searchAndScore` is split into a pure
+  regression test. v1 targets the **album-hunt recognizer** (addon-side since phase 4):
+  `searchAndScore` is split into a pure
   `scoreFolders(canonicalTracks, rawResponses)` (the replay seam) + `search` (I/O); `huntBase` now
   returns the raw slskd responses. An admin with a dev-mode toggle
   (`user_settings.feedback_capture`, Settings → Developer) gets a throttled 👍/👎 toast after a hunt
@@ -1160,7 +1169,7 @@ Add detail there, not here.
   `recoverable` (`missing` minus everything in flight from any peer), and only ever acts on the
   latter — so a wave can't start while a previous wave is still moving bytes for the same titles,
   and no fallback attempt is burned waiting. Overtaking a peer is gated on **byte progress**
-  (`isStalled`, `stallThresholdMs` default 120 s), not on "the next sweep happened", so a dead peer
+  (the addon's `isStalled`, `stallThresholdMs` default 120 s), not on "the next sweep happened", so a dead peer
   is still abandoned quickly. Clearing a download now actually removes it from slskd
   (`cancel(..., {remove:true})` + the bulk `removeCompleted()`), with `hidden_transfers` demoted to a
   pruned fallback for the removals slskd refuses (issue #265). →
@@ -1349,15 +1358,16 @@ Add detail there, not here.
   `kind='direct'` only) re-points the job to the **canonical** album its file landed in
   (`song_id`→`library_songs.album_id`→`library_albums`), so the feed row + "Open in Library"
   deep-link resolve. → [docs/acquisition-jobs.md](docs/acquisition-jobs.md)
-- **Unified downloads feed — one job = one card (issue #261)**: slskd groups + URL acquire jobs both
+- **Unified downloads feed — one job = one card (issue #261)**: addon jobs + URL acquire jobs both
   adapt into a normalized `DownloadItem` with method/stage badges, a "View N albums" menu for
-  multi-album jobs, and a "Now: / Next:" current-track display. Card identity is the **`jobId` the
-  server recorded at enqueue time** (shipped on `AlbumJobMeta`), not a key re-derived from `albumId`
-  at read time — the re-derivation is why one hunt kept splitting into several cards (prod: one Luis
-  Fonsi job rendering as five). `collapseJobMembers` folds a job's peer folders into one card with a
-  `Sources (N)` disclosure fed by `listJobFeed`'s new `sources[]`; transfers matching no job collapse
-  into a single `collapseUnlinked` "Unlinked transfers" row instead of N loose cards. Two *separate*
-  jobs for the same album now correctly stay two cards. `methodForBackend` maps every addon id
+  multi-album jobs, and a "Now: / Next:" current-track display. Card identity is the **job id the
+  server recorded at enqueue time** (`DownloadItem.key` = the job's own id), not a key re-derived
+  from `albumId` at read time — the re-derivation is why one hunt kept splitting into several cards
+  (prod: one Luis Fonsi job rendering as five). **The collapsing is server-side**: `listJobFeed`
+  emits a job's peer folders as `sources[]` and the card renders them as a `Sources (N)` disclosure.
+  The client-side `collapse*` helpers and the "Unlinked transfers" row both went away with the
+  phase-4 cutover — core carries no in-process slskd transfers that could be unlinked. Two
+  *separate* jobs for the same album correctly stay two cards. `methodForBackend` maps every addon id
   incl. `slskd` (#532 — hunt cards rendered "?Unknown source" post-cutover), and every feed row is
   removable: `DELETE /jobs/:id` always drops the core row (addon proxy best-effort), with removal
   failures toasted instead of swallowed (#533) — so `canRemove` is now unconditional rather than
@@ -1394,10 +1404,11 @@ Add detail there, not here.
   off/needs-config/unavailable/ready, Enable/Disable — always visible; description/capabilities/
   config form behind the card's own toggle), and Connectivity hides itself when empty — the web
   `PluginKind` union mirrors the core one and a kind missing from **either** renders its plugins
-  nowhere. Extensions with bespoke config no longer get a separate route: slskd's settings
-  (`SlskdSettingsComponent`, connection/shares/live status, shows a not-reachable notice when slskd
-  is down) are embedded inline in its own card body once expanded, so its ~3s status poll only runs
-  while that card is open (`/settings/plugins/slskd` now just redirects to `/settings/plugins`). All
+  nowhere. Extensions with bespoke config no longer get a separate route — and since the
+  phase-4 cutover there is no bespoke slskd settings component in core at all: slskd registers as a
+  remote addon, so its connection/shares/status render through the generic `PluginCardComponent` +
+  `AddonStatusPanelComponent` like any other addon, with the poll running only while that card is
+  expanded. All
   first-party plugins are constructed in `registerBuiltinPlugins`
   (`services/plugins/builtin.ts`), not inline in `index.ts`, covered by a test. **Curated addon
   marketplace (issue #517)**: `ADDON_CATALOG` (`packages/core/src/addon-catalog.ts`) is a short,
@@ -1446,9 +1457,10 @@ Add detail there, not here.
   "Quality chip"
 - **Admin/Settings/Extensions decoupling**: core Settings = universal prefs only; server-admin tools
   (streaming, library processing, find-duplicates) live in **Admin**; slskd owns its
-  connection/shares + a Nicotine+-style live status panel (`GET /api/plugins/slskd/status`,
-  `SlskdStatus`), embedded inline in its own collapsible Extensions card rather than a dedicated
-  route. Credential storage unchanged (UI relocation only). →
+  connection/shares + a Nicotine+-style live status panel, which since the phase-4 cutover is served
+  by the **addon itself** over the protocol (core's `GET /api/plugins/slskd/status` went with it) and
+  rendered by the generic `AddonStatusPanelComponent` inside slskd's collapsible Extensions card,
+  rather than a dedicated route. Credential storage unchanged (UI relocation only). →
   [docs/admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
 - **Settings-cards unification (`SettingsGroupComponent`, all five settings-family views)**: one
   bordered, collapsible card (`packages/web/src/app/components/settings-group/`) generalized from
