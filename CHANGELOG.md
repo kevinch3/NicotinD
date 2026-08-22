@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.55](https://github.com/kevinch3/NicotinD/compare/v0.3.54...v0.3.55) (2026-08-22)
+
+### Features
+
+* **db:** snapshot the database before a schema migration ([#629](https://github.com/kevinch3/NicotinD/issues/629)) ([6cab6e0](https://github.com/kevinch3/NicotinD/commit/6cab6e0800f31c4f08cf8365894b743004de0df2)), references [#627](https://github.com/kevinch3/NicotinD/issues/627) [457/#606](https://github.com/kevinch3/NicotinD/issues/606) [#612](https://github.com/kevinch3/NicotinD/issues/612)
 ## [0.3.54](https://github.com/kevinch3/NicotinD/compare/v0.3.53...v0.3.54) (2026-08-22)
 
 ### Features
