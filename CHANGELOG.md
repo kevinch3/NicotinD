@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.57](https://github.com/kevinch3/NicotinD/compare/v0.3.56...v0.3.57) (2026-08-22)
+
+### Features
+
+* **ci:** scan for committed secrets and for base-image CVEs ([#633](https://github.com/kevinch3/NicotinD/issues/633)) ([619d350](https://github.com/kevinch3/NicotinD/commit/619d3507286f0469740544912eaf9ce757b0689f)), references [#630](https://github.com/kevinch3/NicotinD/issues/630) [#457](https://github.com/kevinch3/NicotinD/issues/457) [#632](https://github.com/kevinch3/NicotinD/issues/632) [#612](https://github.com/kevinch3/NicotinD/issues/612)
 ## [0.3.56](https://github.com/kevinch3/NicotinD/compare/v0.3.55...v0.3.56) (2026-08-22)
 
 ### Features
