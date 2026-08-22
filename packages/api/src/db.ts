@@ -60,6 +60,19 @@ export function readSchemaVersion(db: Database): number {
 }
 
 /**
+ * True while a database may still carry a pre-versioning table shape.
+ *
+ * Version 1 is stamped by the first binary that ran every legacy-shape
+ * migration, so at 1 or above they are provably past and must never run again.
+ * Each one decides whether to *destroy data* from a substring match on a schema
+ * string — a heuristic that was armed on every boot, forever. See
+ * docs/design-patterns.md "Schema versioning + atomic migration".
+ */
+export function mayCarryLegacyShape(fromVersion: number): boolean {
+  return fromVersion < 1;
+}
+
+/**
  * Additive column migration, idempotent across boots.
  *
  * `applySchema` runs on every start, so a column that already exists is the
@@ -112,11 +125,11 @@ export function applySchema(db: Database): void {
     // record that newer run-once migrations already ran. PRAGMA takes no bind
     // parameters; both operands are integers this module owns.
     db.run(`PRAGMA user_version = ${Math.max(fromVersion, SCHEMA_VERSION)}`);
-    applySchemaSteps(db);
+    applySchemaSteps(db, fromVersion);
   })();
 }
 
-function applySchemaSteps(db: Database): void {
+function applySchemaSteps(db: Database, fromVersion: number): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -406,7 +419,7 @@ function applySchemaSteps(db: Database): void {
       `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'acquire_jobs'`,
     )
     .get();
-  if (acquireSql?.sql.includes('backend IN')) {
+  if (mayCarryLegacyShape(fromVersion) && acquireSql?.sql.includes('backend IN')) {
     db.run('ALTER TABLE acquire_jobs RENAME TO acquire_jobs_old');
     db.run(`
       CREATE TABLE acquire_jobs (
@@ -602,7 +615,11 @@ function applySchemaSteps(db: Database): void {
       `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'share_tokens'`,
     )
     .get();
-  if (shareTokensSql && !shareTokensSql.sql.includes("'artist'")) {
+  if (
+    mayCarryLegacyShape(fromVersion) &&
+    shareTokensSql &&
+    !shareTokensSql.sql.includes("'artist'")
+  ) {
     db.run('ALTER TABLE share_tokens RENAME TO share_tokens_old');
     db.run(`
       CREATE TABLE share_tokens (
@@ -731,7 +748,7 @@ function applySchemaSteps(db: Database): void {
         `SELECT sql FROM sqlite_master WHERE type='table' AND name='library_albums'`,
       )
       .get()?.sql ?? '';
-  if (albumsSql && !albumsSql.includes("'ep'")) {
+  if (mayCarryLegacyShape(fromVersion) && albumsSql && !albumsSql.includes("'ep'")) {
     db.transaction(() => {
       db.run(`ALTER TABLE library_albums RENAME TO library_albums_old`);
       db.run(`
@@ -1128,7 +1145,11 @@ function applySchemaSteps(db: Database): void {
         `SELECT sql FROM sqlite_master WHERE type='table' AND name='playlists'`,
       )
       .get()?.sql ?? '';
-  if (playlistsOldSql && !playlistsOldSql.includes('description')) {
+  if (
+    mayCarryLegacyShape(fromVersion) &&
+    playlistsOldSql &&
+    !playlistsOldSql.includes('description')
+  ) {
     db.transaction(() => {
       db.run(`DROP TABLE IF EXISTS playlist_songs`);
       db.run(`DROP TABLE IF EXISTS playlists`);
@@ -1170,7 +1191,7 @@ function applySchemaSteps(db: Database): void {
   // delete path stopped writing it long ago and **nothing reads it** — verified
   // by grep across the codebase. Cleaning up the schema debt per §D2. Idempotent:
   // a no-op on fresh installs that never created it.
-  db.run(`DROP TABLE IF EXISTS library_album_tombstones`);
+  if (mayCarryLegacyShape(fromVersion)) db.run(`DROP TABLE IF EXISTS library_album_tombstones`);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS artist_discography_links (
