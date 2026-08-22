@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.49](https://github.com/kevinch3/NicotinD/compare/v0.3.48...v0.3.49) (2026-08-22)
+
+### Bug Fixes
+
+* **lidarr:** bound every Lidarr call, in three tiers ([#623](https://github.com/kevinch3/NicotinD/issues/623)) ([8dc6fe4](https://github.com/kevinch3/NicotinD/commit/8dc6fe439f33c84c9b7aca2bf4c5d5000317467e)), references [#622](https://github.com/kevinch3/NicotinD/issues/622) [#612](https://github.com/kevinch3/NicotinD/issues/612)
 ## [0.3.48](https://github.com/kevinch3/NicotinD/compare/v0.3.47...v0.3.48) (2026-08-22)
 
 ### Bug Fixes
