@@ -1,4 +1,5 @@
 import type { LidarrAlbum } from '../types.js';
+import { TIMEOUT_LOOKUP_MS } from '../client.js';
 import type { LidarrClient } from '../client.js';
 
 export class AlbumApi {
@@ -15,8 +16,11 @@ export class AlbumApi {
   }
 
   async lookup(term: string): Promise<LidarrAlbum[]> {
+    // Metadata-proxy call — see TIMEOUT_LOOKUP_MS.
     return this.client.request<LidarrAlbum[]>(
       `/api/v1/album/lookup?term=${encodeURIComponent(term)}`,
+      {},
+      TIMEOUT_LOOKUP_MS,
     );
   }
 
