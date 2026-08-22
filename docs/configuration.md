@@ -20,12 +20,13 @@ of truth; this page summarizes the ones most installs touch.
 | `NICOTIND_SENTRY_DSN`                  | — (off)                 | Server-side Sentry error reporting                             |
 | `NICOTIND_UPDATE_CHECK`                | `on`                    | Daily GitHub-releases update check (`off` to disable)          |
 | `NICOTIND_BACKUP*`                     | see [backup-restore.md](backup-restore.md) | Daily backup schedule + retention           |
+| `NICOTIND_MIGRATION_BACKUP*`           | see [backup-restore.md](backup-restore.md) | Pre-migration snapshot (own switch + keep)  |
 
 Related pages:
 
 - [deployment.md](deployment.md) — Docker install, image tags, upgrade/rollback,
   the streaming-only profile, GPU passthrough for the analysis sidecar.
-- [backup-restore.md](backup-restore.md) — backup schedule, `NICOTIND_BACKUP*`
+- [backup-restore.md](backup-restore.md) — backup schedule, `NICOTIND_BACKUP*`, `NICOTIND_MIGRATION_BACKUP*`
   envs, manual restore.
 - [config-export.md](config-export.md) — portable JSON export/import of the
   human-decision config tables (host migration).

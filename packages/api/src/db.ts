@@ -3,6 +3,11 @@ import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 import { armReviewHold, reviewHoldArmed } from './services/download-review-store.js';
+import {
+  hasSomethingToLose,
+  migrationBackupEnabled,
+  runMigrationBackup,
+} from './services/migration-backup.js';
 
 const log = createLogger('db');
 
@@ -16,7 +21,7 @@ export function initDatabase(dataDir: string): Database {
   db.run('PRAGMA journal_mode=WAL');
   db.run('PRAGMA foreign_keys=ON');
   applyPerformancePragmas(db);
-  applySchema(db);
+  applySchema(db, { onBeforeMigrate: migrationBackupHook(db, dataDir) });
   return db;
 }
 
@@ -38,6 +43,33 @@ export function applyPerformancePragmas(db: Database): void {
   db.run('PRAGMA cache_size=-64000');
   db.run('PRAGMA mmap_size=268435456');
   db.run('PRAGMA busy_timeout=5000');
+}
+
+/**
+ * The one way to wire a pre-migration snapshot onto `applySchema`.
+ *
+ * A factory rather than a call site so the three paths that migrate a real
+ * on-disk database (`initDatabase` and the two maintenance scripts) cannot
+ * drift apart. Hooking only `initDatabase` would reproduce the #457/#606 shape:
+ * a narrow entry point that silently misses the others.
+ */
+export function migrationBackupHook(
+  db: Database,
+  dataDir: string,
+): (from: number, to: number) => void {
+  return (fromVersion, toVersion) => {
+    // A fresh install is at version 0 too, and an empty database has nothing to
+    // protect — snapshotting it is pure cost on every new deployment.
+    if (!hasSomethingToLose(db)) return;
+    if (!migrationBackupEnabled()) {
+      log.warn(
+        { fromVersion, toVersion },
+        'migrating without a snapshot (NICOTIND_MIGRATION_BACKUP=off)',
+      );
+      return;
+    }
+    runMigrationBackup(db, { dataDir, fromVersion, toVersion });
+  };
 }
 
 /**
@@ -109,7 +141,21 @@ export function addColumnIfMissing(
  * hand-maintained number would add a fresh silent failure. Full rationale for
  * both calls: docs/design-patterns.md "Schema versioning + atomic migration".
  */
-export function applySchema(db: Database): void {
+export interface ApplySchemaOptions {
+  /**
+   * Called once, immediately before a migration that will advance the version.
+   * Not called on an ordinary boot where the version is already current, so the
+   * cost lands only when the schema actually changes.
+   *
+   * Runs OUTSIDE the transaction, and must: SQLite refuses `VACUUM INTO` from
+   * within one, and taking a snapshot is the whole reason this hook exists.
+   * A throw here aborts the migration, which is the point — see
+   * services/migration-backup.ts.
+   */
+  onBeforeMigrate?: (fromVersion: number, toVersion: number) => void;
+}
+
+export function applySchema(db: Database, opts: ApplySchemaOptions = {}): void {
   const fromVersion = readSchemaVersion(db);
   // Warn, never refuse: rolling back to a previous image tag is the documented
   // recovery path, so dying here would turn a working rollback into an outage.
@@ -119,6 +165,8 @@ export function applySchema(db: Database): void {
       'database was written by a newer NicotinD; continuing, but this binary does not know its schema',
     );
   }
+  // Before the transaction, deliberately — see ApplySchemaOptions.onBeforeMigrate.
+  if (fromVersion < SCHEMA_VERSION) opts.onBeforeMigrate?.(fromVersion, SCHEMA_VERSION);
   db.transaction(() => {
     // Stamped first so only the commit can publish it — last would rest on
     // statement order instead. Never lowered, or an older binary erases the

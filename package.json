@@ -1,6 +1,6 @@
 {
   "name": "nicotind",
-  "version": "0.3.54",
+  "version": "0.3.58",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -26,7 +26,8 @@
     "check:ci-parity": "bun run ./scripts/check-ci-parity.ts",
     "check:route-auth": "bun run ./scripts/check-route-auth.ts",
     "check:fetch-timeouts": "bun run ./scripts/check-fetch-timeouts.ts",
-    "verify": "bun run typecheck && bun run lint && bun run format:check && bun run check:claude-md && bun run check:json && bun run check:shared-helpers && bun run check:ci-parity && bun run check:route-auth && bun run check:fetch-timeouts && bun run test && bun test packages/e2e/playground && bun run test:web && bun run --filter @nicotind/web build && bun run build:storybook && bun run gates:storybook",
+    "check:audit": "bun run ./scripts/check-audit.ts",
+    "verify": "bun run typecheck && bun run lint && bun run format:check && bun run check:claude-md && bun run check:json && bun run check:shared-helpers && bun run check:ci-parity && bun run check:route-auth && bun run check:fetch-timeouts && bun run check:audit && bun run test && bun test packages/e2e/playground && bun run test:web && bun run --filter @nicotind/web build && bun run build:storybook && bun run gates:storybook",
     "lint": "eslint --no-warn-ignored 'packages/*/src/**/*.ts' 'src/**/*.ts'",
     "format": "prettier --write 'packages/*/src/**/*.ts' 'src/**/*.ts' 'packages/web/.storybook/*.ts'",
     "format:check": "prettier --check 'packages/*/src/**/*.ts' 'src/**/*.ts' 'packages/web/.storybook/*.ts'",
@@ -79,6 +80,8 @@
     "*.ts": "prettier --write"
   },
   "overrides": {
-    "@types/node": "25.5.0"
+    "@types/node": "25.5.0",
+    "js-yaml": "^4.3.1",
+    "yaml": "^2.9.0"
   }
 }

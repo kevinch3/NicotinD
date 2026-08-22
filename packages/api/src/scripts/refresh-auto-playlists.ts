@@ -17,7 +17,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
-import { applySchema } from '../db.js';
+import { applySchema, migrationBackupHook } from '../db.js';
 import { refreshAutoPlaylists } from '../services/auto-playlists.service.js';
 import { expandHome } from '@nicotind/core';
 
@@ -43,7 +43,7 @@ function main(): void {
     process.exit(2);
   }
   const db = apply ? new Database(dbPath) : new Database(dbPath, { readonly: true });
-  if (apply) applySchema(db);
+  if (apply) applySchema(db, { onBeforeMigrate: migrationBackupHook(db, dataDir) });
 
   console.log(`\nrefresh-auto-playlists ${apply ? '(APPLY)' : '(dry run)'}\n`);
   const results = refreshAutoPlaylists(db, Date.now(), { apply });

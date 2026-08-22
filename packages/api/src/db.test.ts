@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import {
   SCHEMA_VERSION,
   addColumnIfMissing,
@@ -880,5 +883,72 @@ describe('applySchema — migrations under foreign_keys=ON (issue #612)', () => 
     expect(() => applySchema(db)).not.toThrow();
     expect(db.query(`PRAGMA foreign_key_check`).all()).toEqual([]);
     expect(readSchemaVersion(db)).toBe(SCHEMA_VERSION);
+  });
+});
+
+describe('applySchema — onBeforeMigrate (issue #612)', () => {
+  it('fires when the version is about to advance', () => {
+    const db = new Database(':memory:');
+    const seen: Array<[number, number]> = [];
+
+    applySchema(db, { onBeforeMigrate: (f, t) => seen.push([f, t]) });
+
+    expect(seen).toEqual([[0, SCHEMA_VERSION]]);
+  });
+
+  it('does NOT fire on an ordinary boot where the version is current', () => {
+    // The cost of a snapshot lands only when the schema actually changes. On a
+    // stamped host every restart would otherwise copy the whole database — 170
+    // MB on the reference deployment — to protect a migration that will not run.
+    const db = new Database(':memory:');
+    applySchema(db);
+    let calls = 0;
+
+    applySchema(db, { onBeforeMigrate: () => calls++ });
+
+    expect(calls).toBe(0);
+  });
+
+  it('aborts the whole migration when the hook throws', () => {
+    // A snapshot that could not be taken must stop the migration, not be
+    // shrugged off — proceeding is the one outcome the hook exists to prevent.
+    const db = new Database(':memory:');
+
+    expect(() =>
+      applySchema(db, {
+        onBeforeMigrate: () => {
+          throw new Error('disk full');
+        },
+      }),
+    ).toThrow('disk full');
+
+    expect(readSchemaVersion(db)).toBe(0);
+    expect(
+      db.query(`SELECT name FROM sqlite_master WHERE type='table' AND name='users'`).get(),
+    ).toBeNull();
+  });
+
+  it('runs outside the transaction, so VACUUM INTO is legal inside it', () => {
+    // SQLite refuses "VACUUM INTO" from within a transaction, and taking a
+    // snapshot is the entire reason this hook exists — so if it ever moves
+    // inside `db.transaction()`, this fails with exactly that error.
+    const dir = mkdtempSync(join(tmpdir(), 'nicotind-hook-'));
+    try {
+      const db = new Database(join(dir, 'nicotind.db'), { create: true });
+      db.run('PRAGMA journal_mode=WAL');
+      let snapshotted = false;
+
+      applySchema(db, {
+        onBeforeMigrate: () => {
+          db.run('VACUUM INTO ?', [join(dir, 'snap.db')]);
+          snapshotted = true;
+        },
+      });
+
+      expect(snapshotted).toBe(true);
+      expect(existsSync(join(dir, 'snap.db'))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

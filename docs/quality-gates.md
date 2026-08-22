@@ -238,6 +238,29 @@ That last case earns its own branch: without it the loop would spin to timeout
 and report "never became healthy", which is a confusing way to say "there is no
 healthcheck any more".
 
+### Both arches, on master
+
+The job is matrixed over `linux/amd64` and `linux/arm64`, mirroring `deploy.yml`.
+Building amd64 only meant an **arm64-only break surfaced at release time**, after
+the tag was cut — the same gap as above, one level up, and arm64 self-hosters
+(Pi, Apple Silicon, Ampere) are a real audience for a public image.
+
+Two constraints shape it:
+
+- **Native runners, never QEMU.** `deploy.yml` records the reason: Bun's JIT is
+  unreliable under emulation. A QEMU-based check would be flaky, and a flaky gate
+  is worse than no gate.
+- **`load: true` cannot take a multi-platform build** — the docker exporter
+  cannot export a manifest list. So this is a matrix over single-platform builds,
+  not a `platforms:` list on one step. Each leg builds, loads, *and* smokes, so
+  arm64 is started rather than merely compiled.
+
+`fail-fast: false`, so one arch failing does not hide the other's result.
+`release.needs` lists `docker` by **job id** and a matrix requires every leg to
+pass, so the gate stays wired with no `needs` change. The cache scopes
+(`docker-linux-amd64` / `docker-linux-arm64`) are the ones release builds already
+populate, so both legs start warm.
+
 ### The deploy never checked the deploy
 
 `deploy.yml` ended at `docker compose up --build -d`. **That returns when the
@@ -316,6 +339,140 @@ Discogs, 20s for ListenBrainz (one POST batches every pending MBID) and
 archive.org (full-text search is genuinely slow). Lidarr's three tiers and
 MusicBrainz's 15s are documented in
 [design-patterns.md](design-patterns.md).
+
+## `check:audit` — a supply-chain gate that measures what ships
+
+There was no dependency scanning at all. The obvious fix — append
+`bun audit --audit-level=high` to `verify` — was measured before being written, and it is
+wrong. On this repo `bun audit` reports **95 advisories across 27 packages** and exits 1,
+and approximately none of them are actionable. A gate that starts red with 47 findings you
+cannot act on gets muted inside a week; that is this document's rule failing in the other
+direction, loudly-false instead of silently-green.
+
+Two independent reasons the raw number means nothing here.
+
+**It audits the lockfile, not the artifact.** `bun audit` reads all 2,546 entries in
+`bun.lock`. The runtime image installs 166 of them (`bun install --production`, see
+[deployment.md](deployment.md)). Angular, Storybook, Playwright, `electron-builder` and
+`lint-staged` build the app; they never run in it. Filtering to the production closure takes
+27 advisory packages down to **3**.
+
+**It reports per package name, not per resolved instance.** A monorepo lockfile resolves the
+same package many times, and `bun audit` groups by name. `sharp` is here at both `0.32.6`
+(vulnerable, via `@capacitor/assets`, dev-only) and `0.35.3` (safe, what the API ships);
+`yaml` and `builder-util-runtime` are the same story. Without matching the *resolved*
+version, the gate is majority false positives even after the closure filter.
+
+So `check:audit` applies both filters and prints the whole funnel:
+
+```
+Supply chain: 91 advisories across 25 packages -> 3 in the 160-package
+production closure -> 0 version-matched.
+```
+
+### The version filter is not theoretical
+
+Its first run found `yaml@2.8.2` shipping through
+`@nicotind/api > @hono/zod-openapi > openapi3-ts > yaml`. A name-level read says yaml is
+fine, because the root's own direct dependency is a safe `2.9.0` — the vulnerable copy is a
+second resolution three levels down. Nothing but resolved-version matching finds that.
+
+Findings therefore carry their dependency path. "`yaml@2.8.2` is vulnerable" is not
+actionable on its own; you need to know that the thing to bump is `openapi3-ts`.
+
+### Neither filter may drop anything silently
+
+Per the rule at the top of this file: a package inside the closure whose version cannot be
+read **fails** the build instead of being skipped. A filter that quietly narrows its own
+input is the #457/#606/#273 shape, and two of these filters exist precisely to narrow the
+input.
+
+`ACCEPTED` is checked in **both** directions — an entry matching nothing fails too, the
+`EXTERNAL_SYMBOLS` discipline rather than the `ALLOWLIST` one. It ships **empty**: the three
+findings it was written against were fixed by bumping, not excused, so there is no precedent
+in it for excusing one.
+
+Both filters are red-proofed. Disabling the closure filter fails 2 tests; disabling the
+semver match fails 1.
+
+### Unreachable is not vulnerable
+
+`verify` runs offline sometimes. When the advisory registry cannot be reached the gate warns
+and exits 0, saying plainly that nothing was checked. Recording a transient failure as a
+finding is the mistake [#625](https://github.com/kevinch3/NicotinD/issues/625) fixed in the
+MusicBrainz client, pointed the other way.
+
+### Scope
+
+`check:audit` owns npm dependencies. The base image's OS packages are Trivy's job in
+`deploy.yml` — `bun audit` structurally cannot see them, and keeping the two
+non-overlapping means a failure in either is unambiguous about what to fix.
+
+## Secret scanning — history, not the working tree
+
+The `ci` job runs gitleaks over **every commit**, not over the files on disk. A secret
+committed and then deleted inside the same pull request is still published forever, and a
+tree scan cannot see it. This is affordable: **1,968 commits in ~1.3s**, because gitleaks
+walks diffs rather than files. The job's checkout therefore needs `fetch-depth: 0` — a
+shallow clone would silently shrink the scan to one commit, which is this document's rule
+being broken by an unrelated default.
+
+The binary is downloaded pinned rather than run through `gitleaks-action`, matching the
+`actionlint` step directly above it in the same job; it also sidesteps that action's
+licensing terms. Both carry a `check:ci-parity` ALLOWLIST entry, since neither runs locally.
+
+### What the first scan found
+
+Run before any config was written, because a gate you have not measured is a guess:
+
+| Count | What | Verdict |
+|---|---|---|
+| 4 | `const SECRET = 'test-secret-at-least-32-chars-long-xx'` in four route tests | False positive — `generic-api-key` is an entropy heuristic, firing on a constant that says what it is |
+| 4 | `.auth/admin.json` (Playwright `storageState`), committed 2026-07-26 | Already fixed: untracked and gitignored in `6448ea8e`/`3207b67e`. The JWT was an e2e session token signed with the test secret, against a throwaway database |
+
+**No real secret has ever been committed to this repo.** Worth having verified rather than
+assumed — it is public, so a leak would already be exposed.
+
+The other 72 findings a naive `gitleaks dir .` reports are all under `.claude/worktrees/`,
+which is untracked via `.git/info/exclude`. Not repo content, and absent in CI.
+
+### The allowlist is scoped as tightly as the evidence allows
+
+Same failure mode as `check:audit`: those four test-secret hits would make the gate red on
+day one with nothing real in it. The fix is a reasoned allowlist, never a lowered threshold.
+
+`.gitleaks.toml` allowlists the test secret **by its exact string**, not by the four files —
+scoping to the files would also hide a real secret added beside it. The `.auth/` history is
+allowlisted **by its four commit SHAs**, not by path, for the same reason: a path allowlist
+would hide a real secret added there tomorrow, and four SHAs cannot. Verified in both
+directions — planting a GitHub PAT under `.auth/` is still caught.
+
+## Image scanning — the base layer `bun audit` cannot see
+
+Trivy runs in `deploy.yml`'s `docker-merge` job, scoped to **OS packages only**
+(`vuln-type: os`). That scoping is the point: [`check:audit`](#checkaudit--a-supply-chain-gate-that-measures-what-ships)
+owns npm dependencies and structurally cannot see a Debian package in the `oven/bun` layer,
+so keeping the two disjoint means a failure in either is unambiguous about what to fix.
+
+`ignore-unfixed: true`, because an OS CVE with no available patch is not actionable and
+blocking a release on one would only train us to bypass the gate. A finding here therefore
+always means: **a fixed version exists, bump or patch the base image.**
+
+It runs as a step inside `docker-merge` rather than as its own job. The image is already
+pushed by then, so a failure does not un-publish it — it stops `deploy` from putting it on a
+host, through the existing `needs: [docker-merge]`. A separate job would have meant editing
+`deploy`'s `if:` expression, and that expression is precisely the #457 shape.
+
+### What the first scan found
+
+**37 HIGH findings in the published image**, every one with a fix already in the Debian
+archive — 5 distinct CVEs (four in `util-linux`, one in `libcap2`) counted once per affected
+binary package. The image had been shipping whatever `oven/bun:1.3.14` froze.
+
+The fix was one line: `apt-get upgrade -y` in the production stage, verified to land exactly
+the versions Trivy named (`util-linux` `2.41-5` → `2.41.5-0+deb13u1`, `libcap2`
+`1:2.75-10+b8` → `1:2.75-10+deb13u1+b1`). It costs byte-reproducibility of that layer, which
+was never there anyway — none of the packages beside it are version-pinned.
 
 ## Hardware cast: the drift this uncovered
 

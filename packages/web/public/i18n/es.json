@@ -51,6 +51,8 @@
   "admin.backupCreated": "Respaldo {name} creado ({size}).",
   "admin.backupFailed": "Falló el respaldo — mirá los logs del servidor.",
   "admin.backupHint": "Guarda una instantánea de la base de datos + secretos en el directorio de datos (corre todas las noches automáticamente).",
+  "admin.backupLast": "Última copia:",
+  "admin.backupNever": "No se ha completado ninguna copia de seguridad — revisa los registros del servidor.",
   "admin.backupNow": "Respaldar ahora",
   "admin.batch": "Lote",
   "admin.bundleRejected": "Este servidor rechazó el paquete — puede ser de una versión más nueva.",

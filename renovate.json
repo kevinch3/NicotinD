@@ -1,0 +1,77 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard", ":semanticCommitTypeAll(chore)"],
+  "timezone": "America/Argentina/Buenos_Aires",
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "rebaseWhen": "conflicted",
+  "separateMajorMinor": true,
+  "major": { "automerge": false },
+  "automerge": false,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"],
+    "prCreation": "immediate",
+    "labels": ["security"]
+  },
+  "osvVulnerabilityAlerts": true,
+  "lockFileMaintenance": { "enabled": true, "schedule": ["before 6am on the first day of the month"] },
+  "packageRules": [
+    {
+      "description": "Group the big families into one PR each, so a bursty review cadence sees a handful of PRs rather than dozens.",
+      "matchPackageNames": ["@angular/**", "@angular-devkit/**", "angular-eslint"],
+      "groupName": "angular"
+    },
+    { "matchPackageNames": ["@capacitor/**"], "groupName": "capacitor" },
+    { "matchPackageNames": ["@sentry/**"], "groupName": "sentry" },
+    { "matchPackageNames": ["@typescript-eslint/**", "eslint", "prettier"], "groupName": "lint toolchain" },
+    { "matchPackageNames": ["tailwindcss", "@tailwindcss/**"], "groupName": "tailwind" },
+    { "matchPackageNames": ["@storybook/**", "storybook"], "groupName": "storybook" },
+    { "matchPackageNames": ["@commitlint/**", "commit-and-tag-version", "husky", "lint-staged"], "groupName": "release tooling" },
+
+    {
+      "description": "HELD: Angular's compiler-cli peers typescript@6. TS 7 is the Go rewrite and breaks the web build. See docs/dependency-management.md.",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7"
+    },
+    {
+      "description": "HELD: @jofr/capacitor-media-session still peers @capacitor/core@^6, and it is what gives Android lock-screen/background audio. Cap 7/8 is its own migration, not a routine bump.",
+      "matchPackageNames": ["@capacitor/**"],
+      "allowedVersions": "<7"
+    },
+
+    {
+      "description": "Deliberate ABI locks: essentia-tensorflow dlopens the CUDA-11 ABI, so numpy<2 and the nvidia-*-cu11 pins move only together with a tested Essentia/TF upgrade.",
+      "matchManagers": ["pep621", "pip_requirements", "pip_setup"],
+      "matchPackageNames": ["essentia-tensorflow", "numpy", "nvidia-**"],
+      "enabled": false
+    },
+
+    {
+      "description": "Security floors added by check:audit (docs/dependency-management.md). Renovate should keep moving these forward, so they are explicitly not held.",
+      "matchDepTypes": ["overrides"],
+      "matchPackageNames": ["js-yaml", "yaml"],
+      "groupName": "security floors"
+    }
+  ],
+  "customManagers": [
+    {
+      "description": "Pinned CLI binaries downloaded in ci.yml — Dependabot cannot reach these, and a stale linter or secret scanner is a gate quietly running an old ruleset.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/ci\\.yml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+version=(?<currentValue>.*)"
+      ],
+      "extractVersionTemplate": "^v?(?<version>.*)$"
+    },
+    {
+      "description": "The bgutil PO-token provider version, built from pinned upstream source. Issue #551: the addon-side pins are the ones that can actually break a download.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^packages/pot-provider/Dockerfile$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+ARG BGUTIL_VERSION=(?<currentValue>.*)"
+      ]
+    }
+  ]
+}

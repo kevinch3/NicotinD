@@ -11,6 +11,7 @@
 # Source is fetched at the pinned tag rather than vendored: vendoring a whole
 # Node service into this monorepo would put its dependency updates on us, and
 # the pin is already the single source of truth #289 established.
+# renovate: datasource=github-releases depName=Brainicism/bgutil-ytdlp-pot-provider
 ARG BGUTIL_VERSION=1.3.1
 
 FROM node:25-bookworm-slim AS source

@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.58](https://github.com/kevinch3/NicotinD/compare/v0.3.57...v0.3.58) (2026-08-22)
+## [0.3.57](https://github.com/kevinch3/NicotinD/compare/v0.3.56...v0.3.57) (2026-08-22)
+
+### Features
+
+* **ci:** scan for committed secrets and for base-image CVEs ([#633](https://github.com/kevinch3/NicotinD/issues/633)) ([619d350](https://github.com/kevinch3/NicotinD/commit/619d3507286f0469740544912eaf9ce757b0689f)), references [#630](https://github.com/kevinch3/NicotinD/issues/630) [#457](https://github.com/kevinch3/NicotinD/issues/457) [#632](https://github.com/kevinch3/NicotinD/issues/632) [#612](https://github.com/kevinch3/NicotinD/issues/612)
+## [0.3.56](https://github.com/kevinch3/NicotinD/compare/v0.3.55...v0.3.56) (2026-08-22)
+
+### Features
+
+* **ci:** gate the supply chain on what actually ships ([#631](https://github.com/kevinch3/NicotinD/issues/631)) ([d044595](https://github.com/kevinch3/NicotinD/commit/d0445958a5aa54d72a04ff51b44582f2856baedc)), references [#612](https://github.com/kevinch3/NicotinD/issues/612) [#621](https://github.com/kevinch3/NicotinD/issues/621) [#457](https://github.com/kevinch3/NicotinD/issues/457) [#606](https://github.com/kevinch3/NicotinD/issues/606) [#273](https://github.com/kevinch3/NicotinD/issues/273) [#612](https://github.com/kevinch3/NicotinD/issues/612) [#630](https://github.com/kevinch3/NicotinD/issues/630) [#612](https://github.com/kevinch3/NicotinD/issues/612)
+## [0.3.55](https://github.com/kevinch3/NicotinD/compare/v0.3.54...v0.3.55) (2026-08-22)
+
+### Features
+
+* **db:** snapshot the database before a schema migration ([#629](https://github.com/kevinch3/NicotinD/issues/629)) ([6cab6e0](https://github.com/kevinch3/NicotinD/commit/6cab6e0800f31c4f08cf8365894b743004de0df2)), references [#627](https://github.com/kevinch3/NicotinD/issues/627) [457/#606](https://github.com/kevinch3/NicotinD/issues/606) [#612](https://github.com/kevinch3/NicotinD/issues/612)
 ## [0.3.54](https://github.com/kevinch3/NicotinD/compare/v0.3.53...v0.3.54) (2026-08-22)
 
 ### Features
