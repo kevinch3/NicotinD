@@ -173,7 +173,6 @@ NicotinD (Hono API :8484)  — native library scanner + streaming, all in-proces
 | `@nicotind/service-manager` | Strategy pattern for managing sub-service lifecycle (child_process or Docker) — Lidarr only since the slskd split    |
 | `@nicotind/api`             | Hono API server — routes, JWT auth, unified search, download watcher, native library scanner + streaming, SQLite DB |
 | `@nicotind/web`             | Angular v22 web UI (standalone components, signals, Tailwind)                                                       |
-| `@nicotind/cli`             | Commander.js CLI (Phase 3)                                                                                          |
 
 **Entry point**: `src/main.ts` — loads config, starts services, wires clients into the API server.
 
