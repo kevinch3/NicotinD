@@ -2,17 +2,24 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MusicBrainzClient } from './musicbrainz-client.js';
+import { CACHE_TTL_MS, MusicBrainzClient } from './musicbrainz-client.js';
 
 let dir: string;
 let cacheFile: string;
+let networkCalls = 0;
 const realFetch = globalThis.fetch;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'mb-cache-'));
   cacheFile = join(dir, 'mb.json');
   // Any network call in these tests is a bug — the cache must satisfy them.
+  // Counted as well as thrown: `fetch<T>` swallows the throw into a transient
+  // outcome, so a test asserting only the returned value cannot tell a cache hit
+  // from a failed re-query. (It could not: the negative-cache test below passed
+  // while making a real call.)
+  networkCalls = 0;
   globalThis.fetch = (() => {
+    networkCalls += 1;
     throw new Error('unexpected network call');
   }) as unknown as typeof fetch;
 });
@@ -53,11 +60,17 @@ describe('MusicBrainzClient cache', () => {
   it('caches a negative (null) result too — a cached miss does not re-query', async () => {
     writeFileSync(
       cacheFile,
-      JSON.stringify({ 'artist:nobody at all': { type: 'artist', result: null } }),
+      // `at` matters: without it this is a legacy entry, which is deliberately
+      // dropped on load (see the migration test below). This asserts the
+      // behaviour for a miss written by the current code.
+      JSON.stringify({
+        'artist:nobody at all': { type: 'artist', result: null, at: Date.now() },
+      }),
     );
 
     const client = testClient();
     expect(await client.searchArtist('Nobody At All')).toBeNull();
+    expect(networkCalls, 'a cached miss must not re-query').toBe(0);
   });
 
   it('is case-insensitive on the cache key', async () => {
@@ -399,5 +412,102 @@ describe('MusicBrainzClient injected sleep (issue #541)', () => {
 
     expect(calls.length).toBe(2);
     expect(Date.now() - started).toBeLessThan(1000);
+  });
+});
+
+/**
+ * The cache had no expiry and could not tell "MusicBrainz says there is nothing"
+ * from "we could not reach MusicBrainz". One 503 or dropped connection was
+ * therefore recorded as "no such entity" forever.
+ */
+describe('transient failures are never cached', () => {
+  function respond(status: number, body: unknown = {}): void {
+    globalThis.fetch = (async () => {
+      networkCalls += 1;
+      return new Response(JSON.stringify(body), { status });
+    }) as unknown as typeof fetch;
+  }
+
+  it('does not remember a 503 — the next call retries', async () => {
+    respond(503);
+    const client = testClient();
+    expect(await client.searchArtist('Someone')).toBeNull();
+
+    // Second call must go back to the network rather than trust the first.
+    respond(200, { artists: [{ id: 'mbid-9', name: 'Someone', score: 100 }] });
+    expect((await client.searchArtist('Someone'))?.id).toBe('mbid-9');
+  });
+
+  it('does not remember a network error either', async () => {
+    globalThis.fetch = (() => {
+      throw new Error('ECONNRESET');
+    }) as unknown as typeof fetch;
+    const client = testClient();
+    expect(await client.searchArtist('Someone')).toBeNull();
+
+    respond(200, { artists: [{ id: 'mbid-9', name: 'Someone', score: 100 }] });
+    expect((await client.searchArtist('Someone'))?.id).toBe('mbid-9');
+  });
+
+  it('DOES remember a 404 — that is MusicBrainz answering, not failing', async () => {
+    respond(404);
+    const client = testClient();
+    expect(await client.getReleaseGroup('rg-gone')).toBeNull();
+
+    const before = networkCalls;
+    expect(await client.getReleaseGroup('rg-gone')).toBeNull();
+    expect(networkCalls, 'a confirmed miss is cacheable').toBe(before);
+  });
+});
+
+describe('cache TTL', () => {
+  it('expires an entry once it is older than the TTL', async () => {
+    let clock = 1_000_000;
+    writeFileSync(
+      cacheFile,
+      JSON.stringify({
+        'artist:daft punk': {
+          type: 'artist',
+          result: { id: 'mbid-1', name: 'Daft Punk', score: 100 },
+          at: clock,
+        },
+      }),
+    );
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0', {
+      sleep: async () => {},
+      now: () => clock,
+    });
+
+    expect((await client.searchArtist('Daft Punk'))?.id).toBe('mbid-1');
+    expect(networkCalls).toBe(0);
+
+    clock += CACHE_TTL_MS + 1;
+    await client.searchArtist('Daft Punk');
+    expect(networkCalls, 'a stale entry must be re-fetched').toBe(1);
+  });
+});
+
+describe('legacy cache migration', () => {
+  it('drops a legacy MISS — it may be a recorded failure, not a real absence', async () => {
+    // No `at`: written before transient and confirmed were distinguishable.
+    writeFileSync(cacheFile, JSON.stringify({ 'artist:ghost': { type: 'artist', result: null } }));
+    const client = testClient();
+    await client.searchArtist('Ghost');
+    expect(networkCalls, 'a legacy miss must not be trusted').toBe(1);
+  });
+
+  it('keeps a legacy HIT — real data is worth keeping, and re-fetching costs 1 req/sec', async () => {
+    writeFileSync(
+      cacheFile,
+      JSON.stringify({
+        'artist:daft punk': {
+          type: 'artist',
+          result: { id: 'mbid-1', name: 'Daft Punk', score: 100 },
+        },
+      }),
+    );
+    const client = testClient();
+    expect((await client.searchArtist('Daft Punk'))?.id).toBe('mbid-1');
+    expect(networkCalls, 'a legacy hit must still serve from cache').toBe(0);
   });
 });
