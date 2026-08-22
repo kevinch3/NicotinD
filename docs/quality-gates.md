@@ -200,6 +200,67 @@ The gate reads `run:` steps in `ci.yml`. It cannot see:
 
 Not fixed here; recorded so the next person picks the invocation form knowingly.
 
+## Artifact verification — CI now boots what it ships, and the deploy checks it landed
+
+Two gaps, both of the "green means nothing happened" kind.
+
+### CI never started the image
+
+The `e2e` job runs `bun run src/main.ts` from the **working tree**. The `docker`
+job built an image with `push: false` and no `load:`, so the result existed only
+in the build cache and was thrown away. Nothing in CI had ever *started* the
+artifact that ships, so a broken runtime stage — a file missing from the `COPY`
+set, a bad `CMD`, a dependency pruned out of the production install — reached the
+deploy host before anyone found out.
+
+The build is now **unconditional** and `load: true`, and a smoke step runs it.
+
+Unconditional matters: the old `build=true` filter fired only on `Dockerfile`,
+`.dockerignore`, `docker-compose*.yml` and the workflow files — i.e. exactly not
+on the source changes that make up almost every PR. Measured cost with a warm GHA
+cache is ~3 min, against an `e2e` job of ~5 min running in parallel, so the
+workflow's critical path does not move.
+
+The step waits on the image's **own `HEALTHCHECK`** rather than a hand-rolled
+poll, so it exercises the same mechanism compose and the deploy host rely on, and
+then asserts `/api/health` reports `package.json`'s version — health says
+"serving", the version says "serving *this* build".
+
+Verified red against three shapes before shipping:
+
+| Injected | Reported |
+|---|---|
+| image serves an older version | `/api/health reports version '0.3.44', expected '0.3.45'` |
+| container exits immediately | `never became healthy (state=exited health=unhealthy)` |
+| `HEALTHCHECK` removed from the Dockerfile | `the image has no HEALTHCHECK — this smoke test relies on it` |
+
+That last case earns its own branch: without it the loop would spin to timeout
+and report "never became healthy", which is a confusing way to say "there is no
+healthcheck any more".
+
+### The deploy never checked the deploy
+
+`deploy.yml` ended at `docker compose up --build -d`. **That returns when the
+container is created, not when it is serving.** A container that crash-looped, or
+one that came up still running the previous image, was indistinguishable from a
+good deploy.
+
+This is the #457 shape, and #457 actually happened: a failed GHCR push produced a
+green deploy that silently redeployed the previous version. Every other part of
+that step now guards against shipping the wrong bytes — the images are derived
+from `compose config` rather than hardcoded (#606), an empty list aborts rather
+than no-ops. None of it confirmed the right bytes were *running*.
+
+The deploy now polls `/api/health` on the host for up to 5 minutes and requires
+the version to match the tag being deployed, dumping `docker compose logs` on
+failure. On a manual `workflow_dispatch` it asserts health only — the host
+redeploys whatever `release` currently points at, so there is no version to
+expect and inventing one would be a check that cannot fail honestly.
+
+This is also what makes the documented rollback actionable: pinning
+`NICOTIND_VERSION` and redeploying only helps if you know the release is bad, and
+until now the way you found out was a user telling you.
+
 ## Hardware cast: the drift this uncovered
 
 `CLAUDE.md` described Chromecast/DLNA casting in the present tense as shipped —

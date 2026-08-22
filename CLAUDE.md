@@ -183,6 +183,17 @@ One-line index; **full detail for every entry is in
 [docs/design-patterns.md](docs/design-patterns.md)** (and the per-feature doc linked on each line).
 Add detail there, not here.
 
+- **CI boots the shipped artifact; the deploy verifies it landed (issue #612)**: `e2e` runs
+  `src/main.ts` from the working tree and the `docker` job used to build an image and throw it away
+  (`push:false`, no `load:`), so **nothing ever started what ships**. The build is now unconditional
+  (the old filter fired on Dockerfile/compose changes — i.e. not on the source changes that are
+  almost every PR; ~3 min against a parallel ~5 min `e2e`, so the critical path is unchanged) with
+  `load:true`, and a smoke step waits on the image's **own `HEALTHCHECK`** then asserts
+  `/api/health` reports `package.json`'s version. Deploy-side, `docker compose up -d` returns when a
+  container is *created*, not serving — so the release now polls `/api/health` on the host for the
+  expected version (health only on `workflow_dispatch`, where there is no version to expect) and
+  dumps `compose logs` on failure. That is the #457 shape, which actually happened. →
+  [docs/quality-gates.md](docs/quality-gates.md)
 - **Unsafe shipped defaults, announced before removal (issue #612)**: the GHCR image is public, so
   this deployment's defaults are what strangers run — and two are dangerous: a `docker.sock` mount
   (host-root-equivalent, for one admin log viewer; `:ro` does not help, the Docker API is read-write

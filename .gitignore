@@ -47,3 +47,7 @@ packages/desktop/build/icons/
 packages/web/storybook-static
 packages/web/documentation.json
 .angular/
+# The pinned actionlint binary. CI extracts it into the repo root
+# (`tar -xz actionlint`), so anyone running that step locally ends up with a 5 MB
+# executable sitting next to package.json — easy to `git add -A` by accident.
+/actionlint

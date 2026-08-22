@@ -405,7 +405,14 @@ jobs:
 
       # `paths:` filters can't express "job runs always, one step conditionally",
       # so diff explicitly (same approach as deploy.yml's `changes` job).
-      - name: Detect container-input changes
+      #
+      # Only the ANALYSIS image is gated this way now. The main image builds on
+      # every run: the point of the smoke step below is to catch a change that
+      # breaks the artifact we ship, and those are overwhelmingly source changes,
+      # which this filter deliberately ignores. Measured cost with a warm GHA
+      # cache: ~3 min, against an e2e job of ~5 min running in parallel — so the
+      # workflow's critical path does not move.
+      - name: Detect analysis-image changes
         id: f
         run: |
           set -euo pipefail
@@ -414,17 +421,17 @@ jobs:
           else
             base="${{ github.event.before }}"
           fi
-          # Unresolvable base (first push, force-push over history): build (safe default).
+          # Unresolvable base (first push, force-push over history): build.
+          #
+          # This used to set `build=true` and `exit 0` — returning BEFORE
+          # `analysis` was written, so the analysis build silently skipped in the
+          # one case the comment called a safe default. With `build` gone the
+          # early return goes too, and the fallback is now actually safe.
           if ! git cat-file -e "$base" 2>/dev/null; then
-            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "analysis=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           files="$(git diff --name-only "$base"...HEAD)"
-          if echo "$files" | grep -qE '^(Dockerfile|\.dockerignore|docker-compose.*\.yml|\.github/workflows/(ci|deploy)\.yml)$'; then
-            echo "build=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "build=false" >> "$GITHUB_OUTPUT"
-          fi
           if echo "$files" | grep -qE '^(packages/analysis/(Dockerfile|pyproject\.toml)|\.github/workflows/(ci|deploy)\.yml)$'; then
             echo "analysis=true" >> "$GITHUB_OUTPUT"
           else
@@ -432,17 +439,81 @@ jobs:
           fi
 
       - uses: docker/setup-buildx-action@v3
-        if: steps.f.outputs.build == 'true' || steps.f.outputs.analysis == 'true'
 
-      - name: Build image (amd64, no push)
-        if: steps.f.outputs.build == 'true'
+      - name: Build image (amd64)
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
           push: false
+          # `load` puts the result in the local daemon so the smoke step can
+          # actually run it. Without it the image exists only in the build cache
+          # and `docker run` has nothing to start.
+          load: true
+          tags: nicotind:ci
           cache-from: type=gha,scope=docker-linux-amd64
           cache-to: type=gha,mode=max,scope=docker-linux-amd64
+
+      # Nothing in CI had ever STARTED the artifact that ships. The e2e job runs
+      # `bun run src/main.ts` from the working tree, and this job used to build an
+      # image and throw it away — so a broken runtime stage (a missing file in the
+      # COPY set, a bad CMD, a dependency pruned from the production install)
+      # reached the deploy host before anyone found out.
+      #
+      # Waits on the image's OWN HEALTHCHECK rather than a hand-rolled poll, so
+      # this exercises the same mechanism compose and the deploy host rely on.
+      - name: Smoke — boot the built image and verify it serves
+        run: |
+          set -euo pipefail
+          expected="$(jq -r .version package.json)"
+
+          docker run -d --name nicotind-smoke \
+            -e NICOTIND_MODE=external \
+            -e NICOTIND_DATA_DIR=/data/nicotind \
+            -e NICOTIND_MUSIC_DIR=/data/music \
+            -p 8484:8484 \
+            nicotind:ci
+
+          ok=false
+          for _ in $(seq 1 90); do
+            state="$(docker inspect -f '{{.State.Status}}' nicotind-smoke)"
+            # `none` guards the case where the HEALTHCHECK is dropped from the
+            # Dockerfile: without it this loop would spin to timeout and report
+            # "never became healthy", which is a confusing way to say "there is
+            # no healthcheck any more".
+            health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' nicotind-smoke)"
+            if [ "$health" = "none" ]; then
+              echo "::error::the image has no HEALTHCHECK — this smoke test relies on it"
+              exit 1
+            fi
+            [ "$state" != "running" ] && break
+            [ "$health" = "healthy" ] && { ok=true; break; }
+            sleep 2
+          done
+
+          if [ "$ok" != true ]; then
+            echo "::error::built image never became healthy (state=$state health=$health)"
+            docker logs nicotind-smoke 2>&1 | tail -60
+            exit 1
+          fi
+
+          # Health says "serving"; this says "serving the code we just built".
+          # A container that comes up on a stale layer is the #457 shape.
+          got="$(curl -fsS --max-time 10 http://localhost:8484/api/health | jq -r .version)"
+          if [ "$got" != "$expected" ]; then
+            echo "::error::/api/health reports version '$got', expected '$expected'"
+            docker logs nicotind-smoke 2>&1 | tail -60
+            exit 1
+          fi
+          echo "Container smoke: healthy, serving $got"
+
+      - name: Smoke — container logs on failure
+        if: failure()
+        run: docker logs nicotind-smoke 2>&1 | tail -100 || true
+
+      - name: Smoke — clean up
+        if: always()
+        run: docker rm -f nicotind-smoke 2>/dev/null || true
 
       # Same idea for the analysis sidecar image published by deploy.yml's
       # docker-analysis job (its Python deps/tests are covered by the
