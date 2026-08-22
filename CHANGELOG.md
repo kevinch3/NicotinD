@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.54](https://github.com/kevinch3/NicotinD/compare/v0.3.53...v0.3.54) (2026-08-22)
+
+### Features
+
+* **db:** version-gate the five destructive schema migrations ([#628](https://github.com/kevinch3/NicotinD/issues/628)) ([9b715b2](https://github.com/kevinch3/NicotinD/commit/9b715b2fb97412fd7c0bec887338b2d1b0cc738e)), references [#612](https://github.com/kevinch3/NicotinD/issues/612)
 ## [0.3.53](https://github.com/kevinch3/NicotinD/compare/v0.3.52...v0.3.53) (2026-08-22)
 
 ### Features
