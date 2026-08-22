@@ -183,6 +183,16 @@ One-line index; **full detail for every entry is in
 [docs/design-patterns.md](docs/design-patterns.md)** (and the per-feature doc linked on each line).
 Add detail there, not here.
 
+- **The runtime image ships only what it runs (issue #612)**: the production stage copies every
+  workspace's `package.json` (lockfile resolution) and used to `bun install` **all their
+  devDependencies** — `@angular/cli`, Storybook, `electron-builder`, `@capacitor/cli`, Playwright —
+  none reachable from `src/main.ts`. `--production` takes the isolated store (`node_modules/.bun`,
+  **not** the hoisted top level — Bun hoists only direct deps, so `ls node_modules` showed 12 and hid
+  1,691) from **1,703 → 166 packages**, drops `tar`/`picomatch` (the node-tar critical + five
+  path-traversal highs, in a service that extracts user zips), and the image from 1.6 GB → 896 MB.
+  `.dockerignore` excludes tests (258 → 0). `USER bun` matches compose's existing `1000:1000` — but
+  needs `/data` pre-created and chowned first, or a volume-less `docker run` dies on `mkdir /data`.
+  → [docs/deployment.md](docs/deployment.md) "What the image contains"
 - **CI boots the shipped artifact; the deploy verifies it landed (issue #612)**: `e2e` runs
   `src/main.ts` from the working tree and the `docker` job used to build an image and throw it away
   (`push:false`, no `load:`), so **nothing ever started what ships**. The build is now unconditional

@@ -76,17 +76,50 @@ COPY packages/capacitor-tv-channels/package.json packages/capacitor-tv-channels/
 COPY packages/desktop/package.json packages/desktop/
 COPY src/ src/
 
-# --ignore-scripts (matching the web-builder stage): a transitive sharp@0.32.6
-# — pulled in only by @capacitor/assets, a mobile-icon dev tool never run in this
-# server image — has an `install` script that downloads a libvips binary, and that
-# download fails in this stage. The runtime's own image work uses sharp@0.35
-# (native binary ships as the `@img/sharp-linux-*` packages, resolved from the
-# lockfile — no postinstall), so skipping scripts here is safe. Lifecycle scripts
-# (incl. the root `prepare: husky` hook) have no place in a runtime image anyway.
-RUN bun install --frozen-lockfile --ignore-scripts
+# --production: do NOT install devDependencies.
+#
+# Every workspace's package.json is copied above so the lockfile can resolve the
+# workspace graph — and without this flag the install pulled in every one of
+# their devDependencies too. @angular/cli, Storybook and Compodoc (web),
+# electron-builder (desktop), @capacitor/cli (mobile), Playwright (e2e): none of
+# it is reachable from `bun run src/main.ts`, and all of it shipped.
+#
+# `bun audit` scored the resulting image at 95 vulnerabilities (1 critical, 46
+# high) — the node-tar decompression DoS, and five tar hardlink/symlink
+# path-traversal advisories, in a service that extracts user-supplied zip
+# archives. Nearly all of it arrived through build tooling that the runtime never
+# calls. Bun transpiles TypeScript natively, so even `typescript` is not needed
+# here.
+#
+# --ignore-scripts (matching the web-builder stage): lifecycle scripts have no
+# place in a runtime image — the root `prepare: husky` hook least of all. It was
+# also load-bearing for a transitive sharp@0.32.6 whose `install` script
+# downloads a libvips binary that fails in this stage; with --production that
+# copy no longer installs at all, since it came from @capacitor/assets, a
+# mobile-icon dev tool. The runtime's own image work uses sharp@0.35, whose
+# native binary ships as `@img/sharp-linux-*` packages resolved from the
+# lockfile, with no postinstall.
+RUN bun install --frozen-lockfile --ignore-scripts --production
 
 # Copy pre-built web UI
 COPY --from=web-builder /app/packages/web/dist packages/web/dist
+
+# The data root must exist and be writable by the runtime user BEFORE dropping
+# root. Under compose these two paths are volume mounts that Docker pre-creates,
+# so the app never has to — but with no volume mounted (a bare `docker run`, and
+# the CI smoke test) it calls `mkdir /data` at startup, and `/` is root-owned.
+# Creating them here owned by `bun` makes the image runnable standalone, and a
+# fresh named volume inherits this ownership when Docker initialises it.
+RUN mkdir -p /data/nicotind /data/music && chown -R bun:bun /data
+
+# Drop root. `docker-compose.yml` already runs this service as `1000:1000`, and
+# the base image's `bun` user is exactly uid=1000 gid=1000 — so for the
+# documented deployment path this changes nothing, it just stops the image
+# DEFAULTING to root for anyone running it directly.
+#
+# Everything above runs as root on purpose: apt-get, and `bun install` writing
+# node_modules. Only the runtime drops.
+USER bun
 
 EXPOSE 8484
 

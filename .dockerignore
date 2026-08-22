@@ -8,3 +8,11 @@ dist
 .env
 .env.*
 config/default.yml
+
+# Tests never run inside the image, and they are not small: 235 *.test.ts files
+# under packages/api alone were being COPY'd into the runtime stage. Excluding
+# them from the build CONTEXT keeps them out of both stages — the web build does
+# not need specs either (tsconfig.app.json excludes them).
+**/*.test.ts
+**/*.spec.ts
+**/__fixtures__
