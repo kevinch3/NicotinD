@@ -4,7 +4,6 @@ WORKDIR /app
 
 COPY package.json bun.lock bunfig.toml ./
 COPY packages/api/package.json packages/api/
-COPY packages/cli/package.json packages/cli/
 COPY packages/core/package.json packages/core/
 COPY packages/addon-sdk/package.json packages/addon-sdk/
 COPY packages/service-manager/package.json packages/service-manager/
@@ -66,7 +65,6 @@ COPY packages/addon-sdk/ packages/addon-sdk/
 COPY packages/lidarr-client/ packages/lidarr-client/
 COPY packages/service-manager/ packages/service-manager/
 COPY packages/api/ packages/api/
-COPY packages/cli/ packages/cli/
 COPY packages/web/package.json packages/web/
 COPY packages/e2e/package.json packages/e2e/
 COPY packages/mobile/package.json packages/mobile/
