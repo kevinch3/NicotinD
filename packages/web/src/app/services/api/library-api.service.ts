@@ -486,6 +486,14 @@ export class LibraryApiService {
     });
   }
 
+  /** List-seeded radio ("keep the vibe"): one generation scored against the
+   *  centroid of a whole song list — one request, not one radio per seed. */
+  getListRadio(seedIds: string[], count = 10) {
+    return this.http.get<Song[]>('/api/radio/next', {
+      params: { seedIds: seedIds.join(','), count },
+    });
+  }
+
   /** Filter-seeded radio (no seed song): start a "vibe" from a LibraryFilter. */
   getFilterRadio(filter: LibraryFilter, exclude: string[], count = 20) {
     return this.http.get<Song[]>('/api/radio/next', {

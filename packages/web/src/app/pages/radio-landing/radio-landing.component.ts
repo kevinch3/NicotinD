@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, viewChild, OnInit } from '@angular/core';
 import { firstValueFrom, catchError, of } from 'rxjs';
 import type { LibraryFilter } from '@nicotind/core';
 import { PlayerService } from '../../services/player.service';
@@ -6,6 +6,7 @@ import { AuthService } from '../../services/auth.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ToastService } from '../../services/toast.service';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
+import { KeepVibeComponent } from '../../components/keep-vibe/keep-vibe.component';
 import { RecentlyPlayedComponent } from '../../components/recently-played/recently-played.component';
 import { toTrack } from '../../lib/track-utils';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -53,9 +54,12 @@ const VIBE_PRESETS: readonly VibePreset[] = [
 ];
 
 /**
- * The app's landing surface: start listening in one tap. Two blocks:
+ * The app's landing surface: start listening in one tap. Four blocks:
  *  1. Resume — radio seeded from your last-played track (disappears once tapped).
- *  2. New mood — one-tap vibe presets + top-genre chips, each of which starts
+ *  2. Keep the vibe — list-seeded radio recommendations over the
+ *     recently-played rows (KeepVibeComponent, fed the child shelf's data).
+ *  3. Recently played — the listening-history shelf.
+ *  4. New mood — one-tap vibe presets + top-genre chips, each of which starts
  *     filter-seeded radio immediately.
  * Mobile-first (thumb-reachable chips, no manual bottom padding — inherited from
  * <main>). Music acquisition lives on the merged workspace (nav "Get", /get).
@@ -63,7 +67,7 @@ const VIBE_PRESETS: readonly VibePreset[] = [
 @Component({
   selector: 'app-radio-landing',
   standalone: true,
-  imports: [CoverArtComponent, RecentlyPlayedComponent, TranslatePipe],
+  imports: [CoverArtComponent, KeepVibeComponent, RecentlyPlayedComponent, TranslatePipe],
   templateUrl: './radio-landing.component.html',
 })
 export class RadioLandingComponent implements OnInit {
@@ -82,6 +86,11 @@ export class RadioLandingComponent implements OnInit {
 
   // Top genres (by song count) surfaced as one-tap genre chips.
   readonly genres = signal<string[]>([]);
+
+  // The recently-played shelf's rows feed the "Keep the vibe" shelf as radio
+  // seeds — read off the child so the history is fetched exactly once.
+  private recentShelf = viewChild(RecentlyPlayedComponent);
+  readonly recentPlays = computed(() => this.recentShelf()?.plays() ?? []);
 
   // The vibe currently being loaded (preset id / genre key / 'resume'), for spinners.
   readonly starting = signal<string | null>(null);

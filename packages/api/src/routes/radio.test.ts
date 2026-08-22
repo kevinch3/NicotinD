@@ -851,3 +851,87 @@ describe('radio pool duration floor (issue #583)', () => {
     }
   });
 });
+
+describe('radio /next — list-seeded ("keep the vibe", seedIds)', () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    testDb = createTestDb();
+    app = new Hono();
+    app.route('/radio', radioRoutes());
+    seedSong(testDb, {
+      id: 'seed1',
+      title: 'Seed 1',
+      artist: 'A',
+      artistId: 'A',
+      albumId: 'alb1',
+      album: 'Alb 1',
+      genre: 'Rock',
+      bpm: 120,
+      year: 2020,
+    });
+    seedSong(testDb, {
+      id: 'seed2',
+      title: 'Seed 2',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'alb2',
+      album: 'Alb 2',
+      genre: 'Rock',
+      bpm: 124,
+      year: 2019,
+    });
+    seedSong(testDb, {
+      id: 'rockVar',
+      title: 'Rock Variation',
+      artist: 'C',
+      artistId: 'C',
+      albumId: 'alb3',
+      album: 'Alb 3',
+      genre: 'Rock',
+      bpm: 122,
+      year: 2021,
+    });
+    seedSong(testDb, {
+      id: 'farOff',
+      title: 'Far Off',
+      artist: 'D',
+      artistId: 'D',
+      albumId: 'alb4',
+      album: 'Alb 4',
+      genre: 'Classical',
+      bpm: 60,
+      year: 1970,
+    });
+  });
+
+  it('recommends variations of the list — never the seeds themselves', async () => {
+    const res = await app.request('/radio/next?seedIds=seed1,seed2&count=5');
+    expect(res.status).toBe(200);
+    const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids).not.toContain('seed1');
+    expect(ids).not.toContain('seed2');
+    // The centroid (Rock, ~122bpm, ~2020) ranks the in-vibe candidate first.
+    expect(ids[0]).toBe('rockVar');
+  });
+
+  it('skips unknown seed ids but still serves from the resolvable ones', async () => {
+    const res = await app.request('/radio/next?seedIds=deleted-long-ago,seed1&count=5');
+    expect(res.status).toBe(200);
+    const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+    expect(ids).not.toContain('seed1');
+    expect(ids).toContain('rockVar');
+  });
+
+  it('404s only when no seed id resolves at all', async () => {
+    const res = await app.request('/radio/next?seedIds=nope,also-nope');
+    expect(res.status).toBe(404);
+  });
+
+  it('respects the exclude list on top of the seed exclusion', async () => {
+    const res = await app.request('/radio/next?seedIds=seed1,seed2&exclude=rockVar&count=5');
+    const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+    expect(ids).not.toContain('rockVar');
+  });
+});

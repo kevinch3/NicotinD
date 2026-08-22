@@ -205,31 +205,28 @@ export function radioSongs(result: RadioResult): Song[] {
   return result.ranked.map((e) => rowToSong(e.song._row));
 }
 
+/** The seed-derived knobs the candidate pool is built from — a real seed
+ *  song's features (seed radio) or a seed *list*'s centroid (list radio). */
+interface PoolSeed {
+  /** Real (non-junk) genres for the any-genre pool. */
+  genres: string[];
+  /** Longest selective token of the primary genre, for the LIKE-widened pool. */
+  genreToken: string | null;
+  bpm?: number;
+  energy?: number;
+}
+
 /**
- * Seed radio: build the candidate pool (Pools 1–5) around a seed song, attach
- * cached embeddings, and rank. Extracted from the route so the diagnostic dump
- * (`dump-radio.ts`) runs the exact same generation the live `/next` serves —
- * one implementation, no drift.
+ * Candidate pool construction (Pools 1–5), shared by seed radio and
+ * list-seeded radio so the two lanes can't drift. `excludeIds` never enter the
+ * pool; the caller owns putting the seed(s) in there.
  */
-export function buildSeedRadio(
+function collectPoolRows(
   db: ReturnType<typeof getDatabase>,
-  seedRow: RadioSongRow,
-  opts: {
-    count?: number;
-    excludeIds?: Set<string>;
-    weights?: ScoringWeights;
-    /** Whose listening history demotes recently-played candidates. */
-    userId?: string;
-    now?: number;
-  } = {},
-): RadioResult {
-  const count = opts.count ?? 10;
-  const excludeIds = new Set(opts.excludeIds ?? []);
-  excludeIds.add(seedRow.id);
-
-  const seed = toFeatures(seedRow);
+  feat: PoolSeed,
+  excludeIds: ReadonlySet<string>,
+): RadioSongRow[] {
   const durGate = minCandidateDurationSec();
-
   const candidates: RadioSongRow[] = [];
   const seen = new Set<string>(excludeIds);
   const addRows = (rows: RadioSongRow[]): void => {
@@ -246,7 +243,7 @@ export function buildSeedRadio(
   // is pooled just like a primary-genre match.
   // Junk genres ("Other", ...) are matching noise, not identity - a junk seed
   // genre would drag every same-junk row into the pool (issue #583).
-  const seedGenres = (seed.genres ?? (seed.genre ? [seed.genre] : [])).filter(isRealGenre);
+  const seedGenres = feat.genres;
   if (seedGenres.length > 0) {
     const marks = seedGenres.map(() => '?').join(', ');
     addRows(
@@ -264,7 +261,7 @@ export function buildSeedRadio(
   // Pool 1b: genre-variant match via the seed's longest token (e.g. seed
   // "Deep House" also pulls "House"/"Tech House"), so lexical genre closeness
   // has variants to score instead of only exact-string matches.
-  const genreToken = seed.genre && isRealGenre(seed.genre) ? longestGenreToken(seed.genre) : null;
+  const genreToken = feat.genreToken;
   if (genreToken) {
     addRows(
       db
@@ -277,9 +274,9 @@ export function buildSeedRadio(
   }
 
   // Pool 2: similar BPM range across genres (± 15%), up to 100
-  if (seed.bpm) {
-    const bpmLow = Math.round(seed.bpm * 0.85);
-    const bpmHigh = Math.round(seed.bpm * 1.15);
+  if (feat.bpm) {
+    const bpmLow = Math.round(feat.bpm * 0.85);
+    const bpmHigh = Math.round(feat.bpm * 1.15);
     addRows(
       db
         .query<RadioSongRow, [number, number]>(
@@ -292,14 +289,14 @@ export function buildSeedRadio(
 
   // Pool 3: energy-adjacent across genres (±0.15), up to 100 — keeps the
   // set's momentum coherent once the library carries energy values.
-  if (seed.energy !== undefined) {
+  if (feat.energy !== undefined) {
     addRows(
       db
         .query<RadioSongRow, [number, number]>(
           `${RADIO_SONG_SELECT} WHERE s.energy BETWEEN ? AND ? AND s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate}
            ORDER BY RANDOM() LIMIT 100`,
         )
-        .all(Math.max(0, seed.energy - 0.15), Math.min(1, seed.energy + 0.15)),
+        .all(Math.max(0, feat.energy - 0.15), Math.min(1, feat.energy + 0.15)),
     );
   }
 
@@ -326,6 +323,43 @@ export function buildSeedRadio(
     );
   }
 
+  return candidates;
+}
+
+/**
+ * Seed radio: build the candidate pool (Pools 1–5) around a seed song, attach
+ * cached embeddings, and rank. Extracted from the route so the diagnostic dump
+ * (`dump-radio.ts`) runs the exact same generation the live `/next` serves —
+ * one implementation, no drift.
+ */
+export function buildSeedRadio(
+  db: ReturnType<typeof getDatabase>,
+  seedRow: RadioSongRow,
+  opts: {
+    count?: number;
+    excludeIds?: Set<string>;
+    weights?: ScoringWeights;
+    /** Whose listening history demotes recently-played candidates. */
+    userId?: string;
+    now?: number;
+  } = {},
+): RadioResult {
+  const count = opts.count ?? 10;
+  const excludeIds = new Set(opts.excludeIds ?? []);
+  excludeIds.add(seedRow.id);
+
+  const seed = toFeatures(seedRow);
+  const candidates = collectPoolRows(
+    db,
+    {
+      genres: (seed.genres ?? (seed.genre ? [seed.genre] : [])).filter(isRealGenre),
+      genreToken: seed.genre && isRealGenre(seed.genre) ? longestGenreToken(seed.genre) : null,
+      bpm: seed.bpm,
+      energy: seed.energy,
+    },
+    excludeIds,
+  );
+
   // Attach cached embeddings (seed + pool) so the scorer can add the cosine
   // axis. No-op when the seed has no embedding (comparison needs both sides).
   const model = embeddingModelFor(db, seedRow.id);
@@ -333,6 +367,93 @@ export function buildSeedRadio(
     ? loadEmbeddings(db, [seedRow.id, ...candidates.map((r) => r.id)], model)
     : new Map<string, Float32Array>();
   seed.embedding = embeddings.get(seedRow.id);
+
+  const pool: RadioCandidate[] = attachRecency(
+    db,
+    candidates.map((r) => ({
+      ...toFeatures(r),
+      embedding: embeddings.get(r.id),
+      _row: r,
+    })),
+    opts.userId,
+    opts.now,
+  );
+  const ranked = rankCandidates(seed, pool, { count, maxPerArtist: 2, weights: opts.weights });
+  return { seed, pool, ranked };
+}
+
+/**
+ * Plain mean of a seed list's embedding vectors (same-dimension only).
+ * Deliberately NOT `anchorCentroid`: that trims to the highest-affinity
+ * fraction of a *pool*, which is meaningless for an explicit seed list — every
+ * seed was really listened to, so every seed counts equally.
+ */
+function meanEmbedding(vectors: readonly (Float32Array | undefined)[]): Float32Array | null {
+  const withVec = vectors.filter((v): v is Float32Array => !!v?.length);
+  if (withVec.length === 0) return null;
+  const dim = withVec[0]!.length;
+  const sameDim = withVec.filter((v) => v.length === dim);
+  const out = new Float32Array(dim);
+  for (const v of sameDim) for (let i = 0; i < dim; i++) out[i]! += v[i]!;
+  for (let i = 0; i < dim; i++) out[i]! /= sameDim.length;
+  return out;
+}
+
+/**
+ * List-seeded radio ("keep the vibe", backing the landing shelf): ONE
+ * generation seeded by a whole set of songs — scored against their centroid,
+ * the same way filter radio scores against its pool centroid. Deliberately one
+ * pool + one ranking rather than N per-seed radios: the recently-played list
+ * is near-homogeneous in practice, so N× `buildSeedRadio` would run N× the
+ * pool queries for near-identical pools and near-identical picks.
+ *
+ * Every seed is excluded from the results (a "variation of X" must never be X
+ * itself), and the caller's recency demotion applies on top, so the shelf
+ * leans away from everything the listener just heard, not only the seeds.
+ */
+export function buildListRadio(
+  db: ReturnType<typeof getDatabase>,
+  seedRows: RadioSongRow[],
+  opts: {
+    count?: number;
+    excludeIds?: Set<string>;
+    weights?: ScoringWeights;
+    /** Whose listening history demotes recently-played candidates. */
+    userId?: string;
+    now?: number;
+  } = {},
+): RadioResult {
+  const count = opts.count ?? 10;
+  const excludeIds = new Set(opts.excludeIds ?? []);
+  for (const r of seedRows) excludeIds.add(r.id);
+
+  const seed = seedCentroid(seedRows.map(toOrderable));
+  if (!seed) return { seed: null, pool: [], ranked: [] };
+
+  // The list's full real-genre *union* drives both pooling and the genre-set
+  // closeness axis — the centroid's modal primary alone would collapse a
+  // mixed-but-coherent list onto one tag (the umbrella-tag lesson from
+  // filter radio's centroid, docs/radio.md "Stations").
+  const genreUnion = [...new Set(seedRows.flatMap((r) => genresOf(r) ?? []).filter(isRealGenre))];
+  if (genreUnion.length) seed.genres = genreUnion;
+
+  const candidates = collectPoolRows(
+    db,
+    {
+      genres: genreUnion,
+      genreToken: seed.genre && isRealGenre(seed.genre) ? longestGenreToken(seed.genre) : null,
+      bpm: seed.bpm,
+      energy: seed.energy,
+    },
+    excludeIds,
+  );
+
+  // Audio axis: anchor on the seeds' mean vector under the seed set's dominant
+  // model (mixed-model libraries mid-migration pick the majority side).
+  const seedIds = seedRows.map((r) => r.id);
+  const model = dominantEmbeddingModel(db, seedIds);
+  const embeddings = loadEmbeddings(db, [...seedIds, ...candidates.map((r) => r.id)], model);
+  seed.embedding = meanEmbedding(seedIds.map((id) => embeddings.get(id))) ?? undefined;
 
   const pool: RadioCandidate[] = attachRecency(
     db,
@@ -509,6 +630,26 @@ export function radioRoutes() {
     const excludeIds = new Set(excludeRaw.split(',').filter(Boolean));
 
     const db = getDatabase();
+
+    // A seed *list* → list-seeded radio ("keep the vibe"). Takes precedence
+    // over the single-seed and filter lanes. Capped at the recently-played
+    // shelf's size — the pool queries are per-generation, not per-seed, so the
+    // cap only bounds the centroid input.
+    const seedIdsRaw = c.req.query('seedIds');
+    if (seedIdsRaw) {
+      const ids = [...new Set(seedIdsRaw.split(',').filter(Boolean))].slice(0, 20);
+      const seedRows = ids
+        .map((id) =>
+          db.query<RadioSongRow, [string]>(`${RADIO_SONG_SELECT} WHERE s.id = ?`).get(id),
+        )
+        .filter((r): r is RadioSongRow => r != null);
+      // Unknown ids are skipped, not fatal — the shelf's list can outlive a
+      // deleted song. Only an entirely-unresolvable list is an error.
+      if (seedRows.length === 0) return c.json({ error: 'No seed songs found' }, 404);
+      return c.json(
+        radioSongs(buildListRadio(db, seedRows, { count, excludeIds, userId: listenerId(c) })),
+      );
+    }
 
     // No seed song → filter-seeded radio (a mood/genre/bpm vibe). `genre` is a
     // repeated param, so pull the full array before parsing the rest.
