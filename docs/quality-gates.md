@@ -385,6 +385,72 @@ MusicBrainz client, pointed the other way.
 `deploy.yml` — `bun audit` structurally cannot see them, and keeping the two
 non-overlapping means a failure in either is unambiguous about what to fix.
 
+## Secret scanning — history, not the working tree
+
+The `ci` job runs gitleaks over **every commit**, not over the files on disk. A secret
+committed and then deleted inside the same pull request is still published forever, and a
+tree scan cannot see it. This is affordable: **1,968 commits in ~1.3s**, because gitleaks
+walks diffs rather than files. The job's checkout therefore needs `fetch-depth: 0` — a
+shallow clone would silently shrink the scan to one commit, which is this document's rule
+being broken by an unrelated default.
+
+The binary is downloaded pinned rather than run through `gitleaks-action`, matching the
+`actionlint` step directly above it in the same job; it also sidesteps that action's
+licensing terms. Both carry a `check:ci-parity` ALLOWLIST entry, since neither runs locally.
+
+### What the first scan found
+
+Run before any config was written, because a gate you have not measured is a guess:
+
+| Count | What | Verdict |
+|---|---|---|
+| 4 | `const SECRET = 'test-secret-at-least-32-chars-long-xx'` in four route tests | False positive — `generic-api-key` is an entropy heuristic, firing on a constant that says what it is |
+| 4 | `.auth/admin.json` (Playwright `storageState`), committed 2026-07-26 | Already fixed: untracked and gitignored in `6448ea8e`/`3207b67e`. The JWT was an e2e session token signed with the test secret, against a throwaway database |
+
+**No real secret has ever been committed to this repo.** Worth having verified rather than
+assumed — it is public, so a leak would already be exposed.
+
+The other 72 findings a naive `gitleaks dir .` reports are all under `.claude/worktrees/`,
+which is untracked via `.git/info/exclude`. Not repo content, and absent in CI.
+
+### The allowlist is scoped as tightly as the evidence allows
+
+Same failure mode as `check:audit`: those four test-secret hits would make the gate red on
+day one with nothing real in it. The fix is a reasoned allowlist, never a lowered threshold.
+
+`.gitleaks.toml` allowlists the test secret **by its exact string**, not by the four files —
+scoping to the files would also hide a real secret added beside it. The `.auth/` history is
+allowlisted **by its four commit SHAs**, not by path, for the same reason: a path allowlist
+would hide a real secret added there tomorrow, and four SHAs cannot. Verified in both
+directions — planting a GitHub PAT under `.auth/` is still caught.
+
+## Image scanning — the base layer `bun audit` cannot see
+
+Trivy runs in `deploy.yml`'s `docker-merge` job, scoped to **OS packages only**
+(`vuln-type: os`). That scoping is the point: [`check:audit`](#checkaudit--a-supply-chain-gate-that-measures-what-ships)
+owns npm dependencies and structurally cannot see a Debian package in the `oven/bun` layer,
+so keeping the two disjoint means a failure in either is unambiguous about what to fix.
+
+`ignore-unfixed: true`, because an OS CVE with no available patch is not actionable and
+blocking a release on one would only train us to bypass the gate. A finding here therefore
+always means: **a fixed version exists, bump or patch the base image.**
+
+It runs as a step inside `docker-merge` rather than as its own job. The image is already
+pushed by then, so a failure does not un-publish it — it stops `deploy` from putting it on a
+host, through the existing `needs: [docker-merge]`. A separate job would have meant editing
+`deploy`'s `if:` expression, and that expression is precisely the #457 shape.
+
+### What the first scan found
+
+**37 HIGH findings in the published image**, every one with a fix already in the Debian
+archive — 5 distinct CVEs (four in `util-linux`, one in `libcap2`) counted once per affected
+binary package. The image had been shipping whatever `oven/bun:1.3.14` froze.
+
+The fix was one line: `apt-get upgrade -y` in the production stage, verified to land exactly
+the versions Trivy named (`util-linux` `2.41-5` → `2.41.5-0+deb13u1`, `libcap2`
+`1:2.75-10+b8` → `1:2.75-10+deb13u1+b1`). It costs byte-reproducibility of that layer, which
+was never there anyway — none of the packages beside it are version-pinned.
+
 ## Hardware cast: the drift this uncovered
 
 `CLAUDE.md` described Chromecast/DLNA casting in the present tense as shipped —

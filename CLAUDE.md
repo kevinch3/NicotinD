@@ -184,6 +184,22 @@ One-line index; **full detail for every entry is in
 [docs/design-patterns.md](docs/design-patterns.md)** (and the per-feature doc linked on each line).
 Add detail there, not here.
 
+- **Secret + image scanning, each measured before it was wired (issue #612)**: gitleaks runs in
+  `ci` over **every commit** (not the working tree — a secret committed then deleted inside the
+  same PR is still published forever), which needs `fetch-depth: 0` or a shallow clone silently
+  shrinks the scan to one commit; ~1.3s for 1,968 commits. Pinned binary, not
+  `gitleaks-action`, matching the `actionlint` step beside it. The first run proved **no real
+  secret has ever been committed** — 8 history hits were 4× the literal
+  `test-secret-at-least-32-chars-long-xx` and 4× a Playwright `storageState` already untracked
+  in `6448ea8e`. `.gitleaks.toml` allowlists the secret **by exact string** (not by the four
+  files, which would hide a real one added beside it) and the history **by its four commit
+  SHAs** (not by `.auth/` path, which would hide a real one added there tomorrow) — verified
+  both ways. **Trivy** scans the published image in `docker-merge`, scoped `vuln-type: os` +
+  `ignore-unfixed` so it stays disjoint from `check:audit` (npm) and a finding always means "a
+  fix exists"; it runs as a *step*, not a job, so blocking the deploy needs no edit to
+  `deploy`'s `if:` — the #457 shape. Its first run found **37 HIGH, all fixable**, in the
+  shipped image (5 CVEs × affected packages), fixed by `apt-get upgrade -y` in the production
+  stage. → [docs/quality-gates.md](docs/quality-gates.md)
 - **`check:audit` — the supply chain is gated on what *ships* (issue #612)**: there was no
   dependency scanning, and the obvious fix is wrong. `bun audit` reports **95 advisories across
   27 packages** here and exits 1; bolting it onto `verify` starts red with nothing to act on, and

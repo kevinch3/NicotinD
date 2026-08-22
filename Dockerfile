@@ -53,7 +53,19 @@ LABEL org.opencontainers.image.source="https://github.com/kevinch3/NicotinD" \
 # downloader into its own addon image, each of which brings that stack itself.
 # Core spawns none of them — `dockerfile-runtime-binaries.test.ts` re-derives
 # that premise, so restoring an in-process downloader fails there and says so.
+#
+# `apt-get upgrade` picks up Debian security updates published since the base
+# image was built. Without it the image ships whatever oven/bun:1.3.14 froze:
+# measured 2026-08-22, that was 37 HIGH findings — 5 distinct CVEs (4 in
+# util-linux, 1 in libcap2) counted once per affected binary package, all with
+# fixes already in the archive. The Trivy step in deploy.yml is what caught it,
+# and would block the release without this line.
+#
+# The cost is that the layer is not byte-reproducible across rebuilds. It never
+# was — none of the packages below are version-pinned — and shipping known-fixed
+# CVEs to self-hosters is the worse of the two.
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends curl ca-certificates ffmpeg libchromaprint-tools && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=docker:cli /usr/local/bin/docker /usr/local/bin/docker
