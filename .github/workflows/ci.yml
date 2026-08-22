@@ -50,6 +50,7 @@ jobs:
       - name: Lint GitHub Actions workflows
         run: |
           set -euo pipefail
+          # renovate: datasource=github-releases depName=rhysd/actionlint
           version=1.7.12
           curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_amd64.tar.gz" \
             | tar -xz actionlint
@@ -65,6 +66,7 @@ jobs:
       - name: Secret scan
         run: |
           set -euo pipefail
+          # renovate: datasource=github-releases depName=gitleaks/gitleaks
           version=8.30.1
           curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
             | tar -xz gitleaks
