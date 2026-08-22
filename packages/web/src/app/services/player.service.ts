@@ -280,6 +280,20 @@ export class PlayerService {
     this.radio.set(true);
   }
 
+  /** Start radio from a prepared track list (e.g. a tastemaker blend): play the
+   * first, queue the rest, radio on. Clears any filter "vibe" — when the queue
+   * drains, replenish re-seeds from the current track (the seed lane). */
+  startRadioWithTracks(tracks: Track[]): void {
+    if (tracks.length === 0) return;
+    const [first, ...rest] = tracks;
+    this.radioFilter.set(null);
+    this.context.set(null);
+    this.play(first);
+    this.queue.set(rest);
+    // Direct set, not toggleRadio — the queue is already loaded (see above).
+    this.radio.set(true);
+  }
+
   playNext(): void {
     const repeat = this.repeat();
     const currentTrack = this.currentTrack();
