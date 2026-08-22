@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.47](https://github.com/kevinch3/NicotinD/compare/v0.3.46...v0.3.47) (2026-08-22)
+
+### Features
+
+* **ci:** boot the shipped image in CI, and verify the deploy actually landed ([#620](https://github.com/kevinch3/NicotinD/issues/620)) ([85ad675](https://github.com/kevinch3/NicotinD/commit/85ad675e64a0f0bead4fb52b005f4e3f632d0bb5)), references [#457](https://github.com/kevinch3/NicotinD/issues/457) [#457](https://github.com/kevinch3/NicotinD/issues/457) [#606](https://github.com/kevinch3/NicotinD/issues/606) [#612](https://github.com/kevinch3/NicotinD/issues/612)
 ## [0.3.46](https://github.com/kevinch3/NicotinD/compare/v0.3.45...v0.3.46) (2026-08-22)
 
 ### Features
