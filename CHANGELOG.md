@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.46](https://github.com/kevinch3/NicotinD/compare/v0.3.45...v0.3.46) (2026-08-22)
+
+### Features
+
+* **security:** announce the two unsafe shipped defaults before removing them ([#619](https://github.com/kevinch3/NicotinD/issues/619)) ([06d8190](https://github.com/kevinch3/NicotinD/commit/06d8190b3301062d70609eab6eb0f850dbceee8c)), references [#612](https://github.com/kevinch3/NicotinD/issues/612)
 ## [0.3.45](https://github.com/kevinch3/NicotinD/compare/v0.3.44...v0.3.45) (2026-08-21)
 
 ### Features
