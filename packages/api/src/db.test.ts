@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { SCHEMA_VERSION, addColumnIfMissing, applySchema, readSchemaVersion } from './db.js';
+import {
+  SCHEMA_VERSION,
+  addColumnIfMissing,
+  applySchema,
+  mayCarryLegacyShape,
+  readSchemaVersion,
+} from './db.js';
 
 describe('applySchema — classification ep migration', () => {
   it('allows ep on a fresh database', () => {
@@ -657,5 +663,222 @@ describe('applySchema — atomicity (issue #612)', () => {
       .query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name='library_albums'`)
       .get()!.sql;
     expect(sql).not.toContain("'ep'");
+  });
+});
+
+/** The legacy pre-native-playlists shape: no `description` column. */
+function legacyPlaylists(db: Database): void {
+  db.run(`CREATE TABLE playlists (id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
+          name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
+  db.run(`CREATE TABLE playlist_songs (playlist_id TEXT NOT NULL, song_id TEXT NOT NULL,
+          position INTEGER NOT NULL, PRIMARY KEY (playlist_id, song_id))`);
+  db.run(`INSERT INTO playlists VALUES ('p1', 'u1', 'Roadtrip', 1, 1)`);
+  db.run(`INSERT INTO playlist_songs VALUES ('p1', 's1', 0)`);
+}
+
+describe('mayCarryLegacyShape', () => {
+  it('is true only for a database this has never stamped', () => {
+    expect(mayCarryLegacyShape(0)).toBe(true);
+    expect(mayCarryLegacyShape(1)).toBe(false);
+    expect(mayCarryLegacyShape(SCHEMA_VERSION)).toBe(false);
+  });
+});
+
+describe('applySchema — destructive migrations are version-gated (issue #612)', () => {
+  it('still migrates a legacy database that was never stamped', () => {
+    // The gate must not strand a genuinely old database.
+    const db = new Database(':memory:');
+    legacyPlaylists(db);
+    expect(readSchemaVersion(db)).toBe(0);
+
+    applySchema(db);
+
+    // The legacy tables really were dropped and rebuilt in the modern shape.
+    expect(db.query(`SELECT id FROM playlists WHERE id = 'p1'`).get()).toBeNull();
+    const cols = (db.query(`PRAGMA table_info(playlists)`).all() as Array<{ name: string }>).map(
+      (c) => c.name,
+    );
+    expect(cols).toContain('description');
+  });
+
+  it('never drops playlists again once the database is stamped', () => {
+    // THE point of the gate. `DROP TABLE playlists` fires on nothing more than
+    // the word "description" being absent from a schema string, and it was
+    // armed on every boot forever. Prod carries 67 playlists / 2,629
+    // playlist_songs rows behind that check.
+    //
+    // A stamped database cannot legitimately hold a legacy shape (the stamp is
+    // written only after the migration ran), so gating trades "repair an
+    // impossible state" for "never destroy user data on a substring match".
+    const db = new Database(':memory:');
+    legacyPlaylists(db);
+    db.run(`PRAGMA user_version = 1`);
+
+    applySchema(db);
+
+    expect(db.query(`SELECT name FROM playlists WHERE id = 'p1'`).get()).toEqual({
+      name: 'Roadtrip',
+    });
+    expect(db.query(`SELECT song_id FROM playlist_songs WHERE playlist_id = 'p1'`).get()).toEqual({
+      song_id: 's1',
+    });
+  });
+
+  it('never rebuilds library_albums again once the database is stamped', () => {
+    const db = new Database(':memory:');
+    db.run(`
+      CREATE TABLE library_albums (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, artist TEXT NOT NULL,
+        artist_id TEXT NOT NULL, cover_art TEXT, song_count INTEGER NOT NULL DEFAULT 0,
+        duration INTEGER NOT NULL DEFAULT 0, year INTEGER, genre TEXT, created TEXT,
+        starred TEXT,
+        classification TEXT NOT NULL DEFAULT 'unknown'
+            CHECK (classification IN ('album','single','compilation','unknown')),
+        hidden INTEGER NOT NULL DEFAULT 0, manual_override INTEGER NOT NULL DEFAULT 0,
+        synced_at INTEGER NOT NULL
+      )
+    `);
+    db.run(`PRAGMA user_version = 1`);
+
+    applySchema(db);
+
+    // Untouched: the pre-'ep' CHECK is still there, because the rebuild is now
+    // unreachable rather than merely no-op.
+    const sql = db
+      .query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name='library_albums'`)
+      .get()!.sql;
+    expect(sql).not.toContain("'ep'");
+  });
+
+  it('stops re-dropping the dead tombstones table once stamped', () => {
+    // Not heuristic like the other four, but still an unconditional DROP that
+    // ran on every boot forever — so a future table reusing the name would be
+    // silently destroyed. Retired by the same gate.
+    const db = new Database(':memory:');
+    db.run(`CREATE TABLE library_album_tombstones (id TEXT PRIMARY KEY)`);
+    db.run(`PRAGMA user_version = 1`);
+
+    applySchema(db);
+
+    expect(
+      db.query(`SELECT name FROM sqlite_master WHERE name='library_album_tombstones'`).get(),
+    ).toEqual({ name: 'library_album_tombstones' });
+  });
+
+  it('still drops the dead tombstones table on an unstamped database', () => {
+    const db = new Database(':memory:');
+    db.run(`CREATE TABLE library_album_tombstones (id TEXT PRIMARY KEY)`);
+
+    applySchema(db);
+
+    expect(
+      db.query(`SELECT name FROM sqlite_master WHERE name='library_album_tombstones'`).get(),
+    ).toBeNull();
+  });
+});
+
+describe('applySchema — migrations under foreign_keys=ON (issue #612)', () => {
+  /**
+   * `initDatabase` runs `PRAGMA foreign_keys=ON`; a bare `:memory:` database
+   * defaults to OFF. Every migration test above therefore exercised a
+   * configuration production does not run. That matters here specifically:
+   * under FKs ON, `ALTER TABLE x RENAME TO x_old` REPOINTS a child table's
+   * foreign key at `x_old`, so the `DROP TABLE x_old` that follows can cascade
+   * the child's rows away.
+   */
+  const prodConnection = () => {
+    const db = new Database(':memory:');
+    db.run('PRAGMA foreign_keys=ON');
+    return db;
+  };
+
+  it('relaxes the acquire_jobs CHECK without losing rows or orphaning _old', () => {
+    const db = prodConnection();
+    db.run(`CREATE TABLE acquire_jobs (
+      id TEXT PRIMARY KEY, backend TEXT NOT NULL CHECK (backend IN ('ytdlp','spotdl')),
+      url TEXT NOT NULL, label TEXT, state TEXT NOT NULL DEFAULT 'queued',
+      progress TEXT, error TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch()))`);
+    db.run(`INSERT INTO acquire_jobs (id, backend, url) VALUES ('j1','ytdlp','http://x')`);
+
+    applySchema(db);
+
+    expect(db.query(`SELECT backend FROM acquire_jobs WHERE id='j1'`).get()).toEqual({
+      backend: 'ytdlp',
+    });
+    expect(
+      db.query(`SELECT name FROM sqlite_master WHERE name='acquire_jobs_old'`).get(),
+    ).toBeNull();
+    expect(db.query(`PRAGMA foreign_key_check`).all()).toEqual([]);
+  });
+
+  it('leaves no foreign-key violations after the library_albums rebuild', () => {
+    const db = prodConnection();
+    db.run(`
+      CREATE TABLE library_albums (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, artist TEXT NOT NULL,
+        artist_id TEXT NOT NULL, cover_art TEXT, song_count INTEGER NOT NULL DEFAULT 0,
+        duration INTEGER NOT NULL DEFAULT 0, year INTEGER, genre TEXT, created TEXT,
+        starred TEXT,
+        classification TEXT NOT NULL DEFAULT 'unknown'
+            CHECK (classification IN ('album','single','compilation','unknown')),
+        hidden INTEGER NOT NULL DEFAULT 0, manual_override INTEGER NOT NULL DEFAULT 0,
+        synced_at INTEGER NOT NULL
+      )
+    `);
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, classification, synced_at)
+       VALUES ('keep', 'Discovery', 'Daft Punk', 'art', 14, 0, 'album', 1)`,
+    );
+
+    applySchema(db);
+
+    expect(db.query(`SELECT name FROM library_albums WHERE id='keep'`).get()).toEqual({
+      name: 'Discovery',
+    });
+    expect(
+      db.query(`SELECT name FROM sqlite_master WHERE name='library_albums_old'`).get(),
+    ).toBeNull();
+    expect(db.query(`PRAGMA foreign_key_check`).all()).toEqual([]);
+  });
+
+  it('documents why acquire_job_tracks must be created AFTER the rebuild', () => {
+    // A characterization test, not an aspiration. `acquire_job_tracks` holds a
+    // foreign key to `acquire_jobs`, and the rebuild renames the parent away.
+    // Under FKs ON, SQLite repoints the child's key at `acquire_jobs_old`, so
+    // the `DROP TABLE acquire_jobs_old` that follows cascades the child's rows
+    // out of existence — 1 row survives with FKs OFF, 0 with them ON.
+    //
+    // This is unreachable today ONLY because applySchema creates
+    // `acquire_job_tracks` further down the same function, so it cannot exist
+    // when the rebuild runs. That ordering is load-bearing and nothing else
+    // enforces it. If a future change moves the child table's creation above
+    // the rebuild — or adds another child of `acquire_jobs` earlier — this test
+    // is the thing that says what breaks.
+    const db = prodConnection();
+    db.run(`CREATE TABLE acquire_jobs (
+      id TEXT PRIMARY KEY, backend TEXT NOT NULL CHECK (backend IN ('ytdlp','spotdl')),
+      url TEXT NOT NULL, label TEXT, state TEXT NOT NULL DEFAULT 'queued',
+      progress TEXT, error TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch()))`);
+    db.run(`CREATE TABLE acquire_job_tracks (
+      job_id TEXT NOT NULL REFERENCES acquire_jobs(id) ON DELETE CASCADE,
+      position INTEGER NOT NULL, title TEXT NOT NULL, status TEXT NOT NULL,
+      path TEXT NOT NULL, PRIMARY KEY (job_id, position))`);
+    db.run(`INSERT INTO acquire_jobs (id, backend, url) VALUES ('j1','ytdlp','http://x')`);
+    db.run(`INSERT INTO acquire_job_tracks VALUES ('j1', 0, 'Track', 'done', 'a.mp3')`);
+
+    applySchema(db);
+
+    // The parent survives the rebuild; the child does not.
+    expect(db.query(`SELECT id FROM acquire_jobs WHERE id='j1'`).get()).toEqual({ id: 'j1' });
+    expect(db.query<{ c: number }, []>(`SELECT COUNT(*) c FROM acquire_job_tracks`).get()).toEqual({
+      c: 0,
+    });
+  });
+
+  it('applies a whole fresh schema cleanly with foreign keys enforced', () => {
+    const db = prodConnection();
+    expect(() => applySchema(db)).not.toThrow();
+    expect(db.query(`PRAGMA foreign_key_check`).all()).toEqual([]);
+    expect(readSchemaVersion(db)).toBe(SCHEMA_VERSION);
   });
 });

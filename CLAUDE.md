@@ -1712,8 +1712,20 @@ Add detail there, not here.
   and gating it on a hand-maintained number adds a new silent failure (add a column, forget to bump,
   it never reaches an existing DB while fresh-DB tests stay green — the #457/#606 shape). A
   newer-than-binary stamp **warns, never refuses** (tag rollback is the documented recovery path), and
-  the stamp is never lowered. Prod measured `user_version` 0 with none of the four legacy markers
-  present, so all four destructive paths are already past there. →
+  the stamp is never lowered. The version then **retires the destructive steps**
+  (`mayCarryLegacyShape`): the four legacy-shape migrations + the unconditional
+  `DROP TABLE IF EXISTS library_album_tombstones` run only while `user_version < 1`. Four of the five
+  decided whether to **destroy data** from a substring match on a schema string, armed on every boot
+  forever — the sharpest being `playlists`, whose comment reasons the legacy tables "are empty" while
+  prod holds **67 playlists / 2,629 `playlist_songs` rows** behind the word `description` appearing in
+  a schema string. A stamped DB cannot legitimately hold a legacy shape, so the gate trades "repair an
+  impossible state" for "never destroy user data on a substring match". The substring checks are kept
+  (they document the legacy shape and still gate an unstamped DB). Also closed the **test/prod
+  divergence**: migration tests built bare `:memory:` DBs (`foreign_keys` **OFF**) while
+  `initDatabase` sets it **ON** — and under FKs ON a `RENAME TO x_old` repoints a child's FK so the
+  following `DROP` cascades its rows away (1 row survives OFF, **0** ON). Unreachable today only
+  because `acquire_job_tracks` is created later in the same function; that ordering is now pinned by a
+  characterization test. Prod measured `user_version` 0 with none of the four markers present. →
   [docs/design-patterns.md](docs/design-patterns.md)
 - **OSS best-practices roadmap**: prioritized adoption plan of Immich/Home-Assistant practices
   (backup/restore, safe mode, watchdog + health taxonomy, retention, update check, audit log,
