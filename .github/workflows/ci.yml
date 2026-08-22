@@ -113,6 +113,15 @@ jobs:
       - name: Fetch timeout gate
         run: bun run check:fetch-timeouts
 
+      # Fails only on an advisory that is BOTH in the production closure and a
+      # match for the resolved version. Raw `bun audit` reports 95 advisories
+      # here, nearly all against build-toolchain packages that never ship or
+      # against a second, dev-only resolution of a package whose shipping copy
+      # is fine. Written as the script, never raw `bun audit`, so
+      # `check:ci-parity` matches on a name instead of a drifting flag list.
+      - name: Supply-chain gate (what actually ships)
+        run: bun run check:audit
+
       - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
         run: bun test packages/api/src packages/lidarr-client/src packages/core/src packages/addon-sdk/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
 

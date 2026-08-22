@@ -17,6 +17,26 @@ bun outdated --filter '*'   # every workspace, not just the root
 The `Update` column = latest **within** the current range (safe patch/minor). `Latest` =
 absolute latest; when `Latest > Update` it's a major/out-of-range jump that needs review.
 
+## Security floors (`overrides`)
+
+Two entries in the root `overrides` block are **security floors**, not pins — a minimum
+version required by an advisory, left as a caret so Renovate can still move them forward:
+
+| Override | Why | Reached through |
+| --- | --- | --- |
+| `js-yaml` `^4.3.1` | Quadratic CPU in merge-key chains and `!!omap` resolution (2 high). `electron-updater` asks for `^4.1.0`, so it accepts the fix with no parent bump. | `@nicotind/desktop > electron-updater` |
+| `yaml` `^2.9.0` | Stack overflow on deeply nested collections. Bumping `@hono/zod-openapi` was not enough: it asks for `openapi3-ts ^4.5.0` and bun kept the hoisted `4.5.0`, whose yaml range is `^2.8.0`. | `@nicotind/api > @hono/zod-openapi > openapi3-ts` |
+
+(`@types/node` in the same block is an exact pin for a different reason — toolchain
+consistency, not security.)
+
+Both were surfaced by `bun run check:audit`; see
+[quality-gates.md](quality-gates.md) for why that gate exists rather than a plain
+`bun audit`. **Do not reach for `bun update <transitive>`** to fix one of these: for a
+package that is not a direct dependency it *adds* it as one. Doing that for `js-yaml` put it
+in the root's **production** dependencies at `5.3.0`, which would have shipped a package
+nothing imports into the runtime image.
+
 ## Deliberately held majors
 
 These are **not** oversights — each is blocked by a hard constraint. Re-evaluate only when
