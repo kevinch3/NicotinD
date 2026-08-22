@@ -1735,6 +1735,28 @@ Add detail there, not here.
   processing enabled), pruned to newest N (`NICOTIND_BACKUP*` envs); admin list/trigger routes +
   Admin "Back up now" block; restore is a documented manual swap. →
   [docs/backup-restore.md](docs/backup-restore.md)
+- **Pre-migration snapshots (issue #612)**: a schema migration is irreversible (no down-migration
+  machinery by design; restore is a manual file swap). `applySchema` is atomic now, but a transaction
+  cannot help with a migration that **succeeds and is wrong** — a bad `INSERT ... SELECT` column list
+  in a table rebuild commits happily. `services/migration-backup.ts` snapshots the DB
+  (`VACUUM INTO`, never `copyFileSync` — the connection is WAL) **only when `user_version` is about
+  to advance**, so an ordinary restart on a stamped host doesn't copy 170 MB to protect a migration
+  that won't run — and skips a **fresh install** entirely (`hasSomethingToLose`: a new DB sits at
+  version 0 just like a legacy one, so every new deployment and e2e run would otherwise snapshot an
+  empty file). Lands in `<dataDir>/backups/pre-migrate/`, which keeps it out of the daily rotation
+  **for free** (`listBackups` filters on `/^nicotind-\d{8}-\d{6}$/`, so `pruneBackups` can't reach
+  it) — otherwise it would evict a daily *and* rotate out in 7 days, the opposite of what an upgrade
+  net needs. `NICOTIND_BACKUP=off` does **not** suppress it (that flag means "no daily snapshots";
+  this is a different thing, so it gets `NICOTIND_MIGRATION_BACKUP=off`). A failure **aborts the
+  boot** — the alternative is an irreversible migration with no net on someone else's data; a disk
+  preflight makes a full disk read as "need ~N MB free" instead of a mid-`VACUUM` ENOSPC, unknown
+  free space means proceed, and the error names the opt-out. A name collision **suffixes, never
+  deletes** (the daily backup `rmSync`s its target, so two same-second runs destroy each other).
+  `migrationBackupHook` is a shared factory because `initDatabase` is **not** the only caller —
+  `seed-curated-playlists.ts` and `refresh-auto-playlists.ts` also run `applySchema` on the live DB,
+  and hooking only the obvious entry point is the #457/#606 shape; a test asserts every non-test
+  `applySchema(` call site passes it. The hook runs **outside** the transaction, and must: SQLite
+  refuses `VACUUM INTO` from within one. → [docs/backup-restore.md](docs/backup-restore.md)
 - **Config export/import (portable, host migration)**: `GET`/`POST /api/admin/config/{export,import}`
   emit + apply a JSON bundle of the **14 config tables** — a table qualifies iff its rows encode a
   **human decision or a credential** (settings/plugins/users/playlists/watchlist/genre+artist

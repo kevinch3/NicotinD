@@ -1200,6 +1200,17 @@
         @if (backupMsg(); as msg) {
           <p class="text-xs text-theme-secondary" data-testid="backup-msg">{{ msg }}</p>
         }
+        <!-- The one line that makes a silently-stopped backup visible. The API
+             has shipped this summary all along; nothing rendered it. -->
+        @if (backupsSummary()?.newestAt; as newestAt) {
+          <p class="text-xs text-theme-muted" data-testid="backup-last">
+            {{ 'admin.backupLast' | t }} {{ formatBackupDate(newestAt) }}
+          </p>
+        } @else {
+          <p class="text-xs text-status-warn" data-testid="backup-last">
+            {{ 'admin.backupNever' | t }}
+          </p>
+        }
         @if (backups().length > 0) {
           <ul class="text-xs text-theme-muted flex flex-col gap-0.5" data-testid="backups-list">
             @for (b of backups(); track b.name) {

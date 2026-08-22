@@ -20,7 +20,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
-import { applySchema } from '../db.js';
+import { applySchema, migrationBackupHook } from '../db.js';
 import {
   CURATED_PLAYLISTS,
   selectCuratedTracks,
@@ -73,7 +73,7 @@ function main(): void {
   const db = apply ? new Database(dbPath) : new Database(dbPath, { readonly: true });
   // Ensure the cover_art/kind columns exist even if the running server predates
   // the migration (applySchema is idempotent: CREATE IF NOT EXISTS + safe ALTERs).
-  if (apply) applySchema(db);
+  if (apply) applySchema(db, { onBeforeMigrate: migrationBackupHook(db, dataDir) });
 
   const admin = db
     .query<{ id: string }, []>(
