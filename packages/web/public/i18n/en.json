@@ -51,6 +51,8 @@
   "admin.backupCreated": "Backup {name} created ({size}).",
   "admin.backupFailed": "Backup failed — see server logs.",
   "admin.backupHint": "Snapshot the database + secrets into the data dir (runs nightly automatically).",
+  "admin.backupLast": "Last backup:",
+  "admin.backupNever": "No backup has ever completed — check the server logs.",
   "admin.backupNow": "Back up now",
   "admin.batch": "Batch",
   "admin.bundleRejected": "This server rejected the bundle — it may be from a newer version.",
