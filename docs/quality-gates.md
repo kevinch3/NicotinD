@@ -261,6 +261,62 @@ This is also what makes the documented rollback actionable: pinning
 `NICOTIND_VERSION` and redeploying only helps if you know the release is bad, and
 until now the way you found out was a user telling you.
 
+## `check:fetch-timeouts` — an outbound call with no deadline
+
+A `fetch` with no `AbortSignal` hangs for as long as the upstream stays silent,
+and **looks exactly like a working call until then**. `LidarrClient.request` and
+the MusicBrainz client both shipped that way; the MusicBrainz one was worse than
+a hang, because its failures were cached in a cache with no expiry.
+
+### The gate exists because the obvious count was wrong
+
+The architecture review reported "only 4 direct `fetch(` sites exist in the
+backend". The real number is **19** — an almost 5× undercount, because every
+house client calls its **injected** fetch:
+
+| Shape | Example | Caught by `grep fetch(`? |
+|---|---|---|
+| identifier | `fetch(url, init)` | yes |
+| injected member | `this.fetchFn(url, init)` | **no** |
+| bare alias | `fetchFn(url, init)` | **no** |
+| parenthesised | `(this.fetchFn ?? fetch)(url, init)` | **no** |
+
+Of those 19, **seven had no timeout at all**, including a POST to AcoustID and
+both archive.org calls. None was visible to the review's method.
+
+So the check walks the AST and matches on any callee that **tokenises** to
+`fetch` or `fetchFn`. Tokenising matters: `\bfetch\b` does not match `fetchFn`
+— there is no word boundary before `Fn` — and that exact gap hid the AcoustID
+call until this script's own test caught it. Helpers whose names merely start
+with "fetch" (`fetchMetadata`, `fetchAndStoreArtistInfo`) are deliberately not
+matched; they are not outbound calls, and the real call they eventually make is
+checked on its own line.
+
+### What counts as bounded
+
+An explicit `signal` in an **object literal** at the call site. Two things
+deliberately fail:
+
+- `fetch(url, opts)` where `opts` is a variable — its contents cannot be seen
+  here, and that is precisely how a missing timeout hides. `spotify-search`
+  looked like this; it now spreads (`{ ...init, signal }`).
+- a spread-only init (`{ ...init }`) — same reason.
+
+### Where the signal goes
+
+**Inline, and after any rate limiter.** Several of these clients `await
+this.throttle()` or `await this.rateLimit()` immediately before the call, and a
+signal created above that line spends its budget waiting for our own limiter
+rather than for the upstream. `AbortSignal.timeout()` starts counting when it is
+constructed, not when the request begins.
+
+Budgets are per client, each with a stated reason rather than one blanket
+number — 10s for Spotify (token + search, should be quick), 15s for AcoustID and
+Discogs, 20s for ListenBrainz (one POST batches every pending MBID) and
+archive.org (full-text search is genuinely slow). Lidarr's three tiers and
+MusicBrainz's 15s are documented in
+[design-patterns.md](design-patterns.md).
+
 ## Hardware cast: the drift this uncovered
 
 `CLAUDE.md` described Chromecast/DLNA casting in the present tense as shipped —

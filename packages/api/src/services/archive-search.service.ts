@@ -7,6 +7,9 @@ const METADATA_BASE = 'https://archive.org/metadata';
 const DEFAULT_ROWS = 20;
 // archive.org occasionally rate-limits or blips; one immediate retry recovers
 // transient failures so a flaky response doesn't masquerade as "no results".
+/** archive.org full-text search is genuinely slow; bounded, not brisk. */
+const ARCHIVE_TIMEOUT_MS = 20_000;
+
 const MAX_RETRIES = 1;
 
 // archive.org collections that are `mediatype:audio` but **not music** —
@@ -199,7 +202,9 @@ export class ArchiveSearchService {
   /** Audio track count for an item, or null when its metadata is unavailable. */
   private async fetchTrackCount(identifier: string): Promise<number | null> {
     try {
-      const res = await this.fetchFn(`${METADATA_BASE}/${encodeURIComponent(identifier)}`);
+      const res = await this.fetchFn(`${METADATA_BASE}/${encodeURIComponent(identifier)}`, {
+        signal: AbortSignal.timeout(ARCHIVE_TIMEOUT_MS),
+      });
       if (!res.ok) return null;
       const body = (await res.json()) as { files?: MetaFile[] };
       return countArchiveTracks(body.files ?? []);
@@ -218,7 +223,9 @@ export class ArchiveSearchService {
     let lastErr: unknown;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const res = await this.fetchFn(url);
+        const res = await this.fetchFn(url, {
+          signal: AbortSignal.timeout(ARCHIVE_TIMEOUT_MS),
+        });
         if (res.ok) return res;
         lastErr = new Error(`archive.org returned HTTP ${res.status}`);
       } catch (err) {

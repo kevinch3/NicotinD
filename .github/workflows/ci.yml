@@ -106,6 +106,13 @@ jobs:
       - name: Check every /api route group decides about auth
         run: bun run check:route-auth
 
+      # Every outbound fetch must carry an abort signal. Both house clients
+      # shipped without one (#623, #625) and the failure mode is silence: a
+      # missing timeout looks exactly like a working call until an upstream
+      # stops answering.
+      - name: Fetch timeout gate
+        run: bun run check:fetch-timeouts
+
       - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
         run: bun test packages/api/src packages/lidarr-client/src packages/core/src packages/addon-sdk/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
 

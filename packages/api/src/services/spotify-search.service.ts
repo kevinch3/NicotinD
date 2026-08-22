@@ -7,6 +7,9 @@ const API_BASE = 'https://api.spotify.com/v1';
 const DEFAULT_LIMIT = 20;
 // Spotify occasionally 5xxs / rate-limits; one immediate retry recovers a
 // transient blip so it doesn't masquerade as "no results".
+/** Token exchange + search; both should be quick, so fail fast. */
+const SPOTIFY_TIMEOUT_MS = 10_000;
+
 const MAX_RETRIES = 1;
 // Refresh the cached token this many seconds before it actually expires, to
 // avoid a request racing the expiry boundary.
@@ -261,7 +264,12 @@ export class SpotifySearchService {
     let lastErr: unknown;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const res = await this.fetchFn(url, init);
+        // Spread rather than pass `init` through: a caller-supplied RequestInit
+        // is opaque here, so the budget has to be applied at the call itself.
+        const res = await this.fetchFn(url, {
+          ...init,
+          signal: AbortSignal.timeout(SPOTIFY_TIMEOUT_MS),
+        });
         if (res.ok) return res;
         lastErr = new Error(`Spotify returned HTTP ${res.status}`);
         // A 401 likely means a stale cached token — drop it so the retry re-auths.

@@ -1,6 +1,9 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 
+/** One POST batches every pending MBID, so allow more than a point lookup. */
+const LISTENBRAINZ_TIMEOUT_MS = 20_000;
+
 const log = createLogger('listenbrainz-client');
 
 /** ListenBrainz asks for an identifying User-Agent, same as MusicBrainz. */
@@ -106,6 +109,9 @@ export class ListenBrainzClient {
     await this.rateLimit();
     try {
       const res = await this.fetchFn(`${this.base}/1/popularity/recording`, {
+        // Created here, after `await this.rateLimit()` above — hoisting it would
+        // spend the budget waiting for our own limiter.
+        signal: AbortSignal.timeout(LISTENBRAINZ_TIMEOUT_MS),
         method: 'POST',
         headers: {
           'User-Agent': this.userAgent,

@@ -294,7 +294,10 @@ export class DiscogsCoverageProbe {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       await this.throttle();
       this.requests++;
-      const res = await this.fetchFn(url, { headers });
+      const res = await this.fetchFn(url, {
+        headers,
+        signal: AbortSignal.timeout(20_000),
+      });
       const outcome = await this.readOutcome(res);
       if (outcome.remaining != null && outcome.remaining <= 1) await this.sleep(MIN_INTERVAL_MS);
       if (outcome.status === 404) return null;

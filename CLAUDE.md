@@ -182,6 +182,16 @@ One-line index; **full detail for every entry is in
 [docs/design-patterns.md](docs/design-patterns.md)** (and the per-feature doc linked on each line).
 Add detail there, not here.
 
+- **`check:fetch-timeouts` — every outbound call is bounded (issue #612)**: a `fetch` with no
+  `AbortSignal` hangs as long as the upstream stays silent and looks like a working call until then.
+  The review counted **4** direct `fetch(` sites; there are **19**, because every house client calls
+  its *injected* fetch (`this.fetchFn(...)`, `(this.fetchFn ?? fetch)(...)`) — and **7 of them had no
+  timeout**, including a POST to AcoustID and both archive.org calls. The gate walks the AST and
+  matches any callee that **tokenises** to `fetch`/`fetchFn`: `\bfetch\b` does *not* match
+  `fetchFn`, and that gap hid the AcoustID call until the script's own test caught it. An init
+  behind a variable counts as unguarded — that is how a missing timeout hides. Signals go **inline,
+  after any `throttle()`/`rateLimit()`**, since `AbortSignal.timeout()` starts counting when
+  constructed. → [docs/quality-gates.md](docs/quality-gates.md)
 - **MusicBrainz failures stop being cached as absences (issue #612)**: `fetch<T>()` collapsed "MB
   says nothing exists", "MB is down" and "the request never completed" into one `null`, which seven
   methods cached — in a cache with **no expiry**. One 503 permanently recorded "no such entity", and
