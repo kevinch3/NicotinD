@@ -55,10 +55,15 @@ there is nothing to "bump". The `essentia-tensorflow`, `numpy<2`, and `nvidia-*-
 pins are **deliberate ABI locks** (the CUDA-11 ABI TensorFlow 2.5 dlopens) — do not bump
 them casually; they move only together with a tested Essentia/TF upgrade.
 
-## Automating updates — feasibility
+## Automating updates — configured
 
-**Verdict: feasible and recommended. Renovate is the right tool for this repo; no
-automation is configured today.**
+**Renovate is configured** in [`renovate.json`](../renovate.json), following the plan below.
+It is at **step 2**: grouping, major-isolation, weekly schedule, **automerge off**. Steps 3–4
+(build trust in the cadence, then enable automerge for patch/minor devDeps) are deliberate
+follow-ups, not oversights.
+
+Enabling it in the repo settings (the Renovate GitHub App, or a self-hosted workflow) is the
+remaining manual step — the config is inert until then.
 
 ### Why Renovate over Dependabot
 - First-class **Bun lockfile** support (Dependabot's Bun support lags).
@@ -93,8 +98,27 @@ finds no version-bumping commit, no-ops).
    (mirrors the existing `RELEASE_TOKEN` secret pattern).
 
 ### Steps forward (ordered)
-1. Land a green manual baseline (this sweep).
-2. Add `renovate.json` (grouping + major-isolation + weekly schedule, **automerge off**).
-3. Let it run 1–2 weeks to build trust in the PR cadence.
-4. Enable automerge for patch/minor devDeps once the cadence looks safe.
-5. Revisit the held majors when their upstream blockers clear (table above).
+1. ~~Land a green manual baseline (this sweep).~~ Done.
+2. ~~Add `renovate.json` (grouping + major-isolation + weekly schedule, **automerge off**).~~
+   Done — plus `customManagers` for the three non-npm pins, and a `vulnerabilityAlerts` block
+   that is deliberately **unscheduled**: an advisory against something that ships now fails
+   `bun run check:audit`, so waiting for Monday would block `verify` in the meantime.
+3. Install the Renovate GitHub App (or a self-hosted workflow) — the config does nothing
+   until something runs it.
+4. Let it run 1–2 weeks to build trust in the PR cadence.
+5. Enable automerge for patch/minor devDeps once the cadence looks safe.
+6. Revisit the held majors when their upstream blockers clear (table above).
+
+### What the custom managers cover
+
+Three version pins live outside any package manifest, so nothing else would ever bump them.
+Each is annotated with a `# renovate:` comment next to the pin:
+
+| Pin | File | Why it matters |
+| --- | --- | --- |
+| `actionlint` | `.github/workflows/ci.yml` | A stale workflow linter is a gate quietly running an old ruleset |
+| `gitleaks` | `.github/workflows/ci.yml` | Same, for the secret scanner — an old ruleset misses newer credential formats |
+| `BGUTIL_VERSION` | `packages/pot-provider/Dockerfile` | Issue #551: the PO-token provider pin is the one that can actually break a download |
+
+The Docker base images (`oven/bun`, `imbios/bun-node`, `python:3.11-slim`, `node:25-bookworm-slim`)
+are covered by Renovate's native `dockerfile` manager, no annotation needed.

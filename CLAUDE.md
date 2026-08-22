@@ -1819,10 +1819,13 @@ Add detail there, not here.
   manual bumps; CI (typecheck/lint/test/e2e/web-build/docker/desktop-smoke) is the gate. Two majors
   are **deliberately held** by peer constraints — `typescript` 6→7 (Angular `compiler-cli` peers
   TS 6) and `@capacitor/*` 6→8 (`@jofr/capacitor-media-session` still peers `@capacitor/core@^6`);
-  the Python sidecar's `nvidia-cu11==`/`numpy<2`/essentia pins are deliberate ABI locks. Update
-  automation is un-configured but feasible — Renovate recommended (Bun-lockfile + monorepo
-  grouping + custom managers for the actionlint pin / pyproject / Dockerfiles), `chore(deps)`
-  commits don't trip the release job. →
+  the Python sidecar's `nvidia-cu11==`/`numpy<2`/essentia pins are deliberate ABI locks. **Renovate is
+  configured** (`renovate.json`, at the doc's step 2: grouped, majors isolated, weekly,
+  **automerge off**; inert until the GitHub App is installed) with `customManagers` for the
+  three pins no manifest covers — `actionlint` + `gitleaks` in `ci.yml` and `BGUTIL_VERSION`
+  in the pot-provider Dockerfile — and an **unscheduled** `vulnerabilityAlerts` block, because
+  an advisory against something that ships now fails `check:audit` and would block `verify`
+  until Monday. `chore(deps)` commits don't trip the release job. →
   [docs/dependency-management.md](docs/dependency-management.md)
 
 ## Web UI
