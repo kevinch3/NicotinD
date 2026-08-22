@@ -51,6 +51,49 @@ services:
       - /path/to/your/music:/data/music
 ```
 
+## What the image contains (and what it deliberately doesn't)
+
+The runtime install is `bun install --frozen-lockfile --ignore-scripts
+**--production**`, and the runtime drops to `USER bun`.
+
+Both are recent. Every workspace's `package.json` is copied into the production
+stage so the lockfile can resolve the workspace graph — and without
+`--production` the install pulled in all of their **devDependencies** too:
+`@angular/cli`, Storybook and Compodoc from web, `electron-builder` from
+desktop, `@capacitor/cli` from mobile, Playwright from e2e. None of it is
+reachable from `bun run src/main.ts`; all of it shipped. Bun transpiles
+TypeScript natively, so even `typescript` was dead weight.
+
+Measured against the previously published image:
+
+| | published (1.6 GB) | now |
+|---|---|---|
+| packages in the isolated store (`node_modules/.bun`) | 1,703 | **166** |
+| `tar` | `7.5.13`, `6.2.1` | **absent** |
+| `picomatch` | `2.3.2`, `4.0.3`, `4.0.4` | **absent** |
+| `*.test.ts` / `*.spec.ts` files | 258 | **0** |
+| runs as | `root` (uid 0) | `bun` (uid 1000) |
+| image size | 1.6 GB | **896 MB** |
+
+`tar` and `picomatch` are the carriers for the node-tar decompression-DoS
+critical and five hardlink/symlink path-traversal highs — in a service that
+extracts user-supplied zip archives. They arrived purely through build tooling.
+
+> Count packages under `node_modules/.bun`, not the top level. Bun's isolated
+> linker hoists only *direct* dependencies, so `ls node_modules` shows 12 in the
+> old image and hides the other 1,691.
+
+`USER bun` changes nothing for the documented deployment: `docker-compose.yml`
+already sets `user: "1000:1000"`, and the base image's `bun` user is exactly
+uid=1000 gid=1000. It stops the image *defaulting* to root for anyone running it
+directly. The Dockerfile now creates `/data/nicotind` and `/data/music` owned by
+`bun` before dropping — without that, a bare `docker run` with no volumes fails
+at startup on `mkdir /data`, because `/` is root-owned. (The CI smoke test from
+#620 caught exactly that, on its first real use.)
+
+Tests are excluded via `.dockerignore` rather than a narrower `COPY`, so they
+stay out of **both** stages.
+
 ## The published image
 
 `ghcr.io/kevinch3/nicotind`, multi-arch (`linux/amd64` + `linux/arm64`), built
