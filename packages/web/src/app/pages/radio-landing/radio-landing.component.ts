@@ -8,6 +8,7 @@ import { ToastService } from '../../services/toast.service';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { KeepVibeComponent } from '../../components/keep-vibe/keep-vibe.component';
 import { RecentlyPlayedComponent } from '../../components/recently-played/recently-played.component';
+import { TastemakersComponent } from '../../components/tastemakers/tastemakers.component';
 import { toTrack } from '../../lib/track-utils';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
@@ -54,12 +55,13 @@ const VIBE_PRESETS: readonly VibePreset[] = [
 ];
 
 /**
- * The app's landing surface: start listening in one tap. Four blocks:
+ * The app's landing surface: start listening in one tap. Five blocks:
  *  1. Resume — radio seeded from your last-played track (disappears once tapped).
  *  2. Keep the vibe — list-seeded radio recommendations over the
  *     recently-played rows (KeepVibeComponent, fed the child shelf's data).
  *  3. Recently played — the listening-history shelf.
- *  4. New mood — one-tap vibe presets + top-genre chips, each of which starts
+ *  4. Tastemakers — curated-playlist blend radios (TastemakersComponent).
+ *  5. New mood — one-tap vibe presets + top-genre chips, each of which starts
  *     filter-seeded radio immediately.
  * Mobile-first (thumb-reachable chips, no manual bottom padding — inherited from
  * <main>). Music acquisition lives on the merged workspace (nav "Get", /get).
@@ -67,7 +69,13 @@ const VIBE_PRESETS: readonly VibePreset[] = [
 @Component({
   selector: 'app-radio-landing',
   standalone: true,
-  imports: [CoverArtComponent, KeepVibeComponent, RecentlyPlayedComponent, TranslatePipe],
+  imports: [
+    CoverArtComponent,
+    KeepVibeComponent,
+    RecentlyPlayedComponent,
+    TastemakersComponent,
+    TranslatePipe,
+  ],
   templateUrl: './radio-landing.component.html',
 })
 export class RadioLandingComponent implements OnInit {

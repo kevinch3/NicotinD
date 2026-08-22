@@ -509,6 +509,40 @@ recently-played shelf would (no history, endpoint down, empty generation).
 Tapping a tile calls `startRadio(track)` on the recommendation, so the vibe
 continues past the tapped track.
 
+## Tastemakers (curated blend radio)
+
+The landing page's "Tastemakers" shelf surfaces the **curated playlists** (the
+static shelves + auto recipes, both `kind='curated'` — indistinguishable via
+the API by design) as one-tap radios, capped at 10 tiles, hide-when-empty like
+its sibling shelves (a fresh install has none until the auto-refresh cadence
+runs — which is also why the shelf deliberately has **no loading skeleton**:
+it would flash-then-vanish, the exact failure `shouldShowRecentSkeleton`
+exists to prevent, and there is no persisted "curated exists" proxy).
+
+Tapping a tile starts a **blend**, composed client-side in
+`TastemakersComponent` (no new server surface):
+
+1. a shuffled handful (3) of the shelf's **actual tracks** lead the queue;
+2. one list-seeded generation (`getListRadio` over the playlist's first
+   20 song ids — the `seedIds` lane caps seeds at 20) fills in **variations**
+   behind them. Because of that cap the engine cannot know a >20-song shelf's
+   tail songs are members, so the component re-filters the variations against
+   the _whole_ playlist id set — "never replay the list" is enforced
+   client-side, not by the seed exclusion alone;
+3. the result is handed to `PlayerService.startRadioWithTracks(tracks)` — the
+   prepared-list sibling of `startRadioWithFilter` (play first, queue rest,
+   radio on, filter and context cleared). When the blend drains, the layout
+   `RadioProvider`'s **seed lane** continues from the current track; there is
+   deliberately no persisted "list vibe" replenish lane in this iteration.
+
+Failure modes degrade rather than dead-end: an empty shelf (a recipe that
+matched nothing) toasts instead of silently no-opping, and a radio-engine
+failure still plays the picks alone (the seed lane takes over from there).
+Curated covers are the designed gradient SVGs bundled with the SPA
+(`/playlist-covers/<slug>.svg`) rendered via a plain `<img>` — deliberately
+not `<app-cover-art>`, which rewrites `src` through the API base URL (see
+docs/curated-playlists.md "Covers").
+
 ## API
 
 | Method | Path              | Params                                                                                                                                                                                                                                                                                                                       | Returns                                     |

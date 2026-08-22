@@ -41,7 +41,11 @@
   <!-- Block 3 — Recently played (hides itself when there's no history yet) -->
   <app-recently-played />
 
-  <!-- Block 4 — Start a new mood -->
+  <!-- Block 4 — Tastemakers: curated-playlist blend radios (hides itself when
+       no curated playlists exist yet) -->
+  <app-tastemakers />
+
+  <!-- Block 5 — Start a new mood -->
   <section data-testid="radio-new-mood">
     <h2 class="text-lg font-bold text-theme-primary mb-1">{{ 'home.start' | t }}</h2>
     <p class="text-sm text-theme-muted mb-4">Pick a vibe — it starts playing straight away.</p>

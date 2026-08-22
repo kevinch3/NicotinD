@@ -1068,7 +1068,11 @@ runSync)` wires both dependency pairs explicitly. → [docs/mcp-agent.md](docs/m
   `SongPickerComponent` (debounced autocomplete) + a token-overlap "suggested for this playlist"
   proposals list, both refreshed after every membership mutation. → [docs/web-ui.md](docs/web-ui.md)
 - **Curated playlists (system, global)**: gradient-covered Spotify-style shelves shown to all users;
-  read-only by `kind` (not ownership). → [docs/curated-playlists.md](docs/curated-playlists.md)
+  read-only by `kind` (not ownership). The landing **"Tastemakers" shelf** (`TastemakersComponent`)
+  surfaces them as one-tap **blend radios** — a few actual tracks then list-seeded variations, via
+  `startRadioWithTracks` (the prepared-list sibling of `startRadioWithFilter`). →
+  [docs/curated-playlists.md](docs/curated-playlists.md),
+  [docs/radio.md](docs/radio.md) "Tastemakers"
 - **Automated playlists (recipe → refreshed curated shelves)**: code-defined `RECIPES`
   (bpm/key/year/genre `where` + sort) materialized into `kind='curated'` playlists by
   `refreshAutoPlaylists`; reuses `selectCuratedTracks` + the shared `upsertCuratedPlaylist`.

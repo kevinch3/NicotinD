@@ -73,4 +73,36 @@ test.describe('radio landing', () => {
       expect(recs.map((r) => r.id)).not.toContain(seedId);
     }
   });
+
+  test('tastemakers shelf appears after curated shelves exist and a tap starts playback', async ({
+    page,
+    request,
+  }) => {
+    // Materialize the auto-recipe shelves (admin "Generate now") — a fresh e2e
+    // server has zero curated playlists, so the shelf is hidden until this
+    // runs. Safe mid-suite: workers=1, and no spec asserts playlist counts.
+    await page.goto('/');
+    const token = await page.evaluate(() => localStorage.getItem('nicotind_token'));
+    expect(token).toBeTruthy();
+    const auth = { Authorization: `Bearer ${token}` };
+
+    const refresh = await request.post('/api/admin/playlists/auto/refresh', { headers: auth });
+    expect(refresh.ok()).toBeTruthy();
+    const shelves = ((await refresh.json()) as { shelves: Array<{ slug: string; count: number }> })
+      .shelves;
+    // "Fresh this week" is `where: '1=1'`, so the fixture library always fills it.
+    const fresh = shelves.find((s) => s.slug === 'fresh-this-week');
+    expect(fresh?.count ?? 0).toBeGreaterThan(0);
+
+    await page.goto('/');
+    const shelf = page.getByTestId('tastemakers');
+    await expect(shelf).toBeVisible({ timeout: 10_000 });
+    expect(await shelf.getByTestId('tastemaker-item').count()).toBeGreaterThan(0);
+
+    // On the 10-song fixture library every playlist member is also a seed, so
+    // the list-radio variations come back empty and the tap exercises the
+    // picks-only degradation path — assert playback starts, not queue length.
+    await shelf.getByTestId('tastemaker-item').first().click();
+    await expect(page.getByTestId('player-title')).not.toHaveText('', { timeout: 15_000 });
+  });
 });
