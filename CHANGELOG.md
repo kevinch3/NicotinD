@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.52](https://github.com/kevinch3/NicotinD/compare/v0.3.51...v0.3.52) (2026-08-22)
+
+### Features
+
+* **ci:** gate every outbound fetch on having a timeout, and fix the 7 that did not ([#626](https://github.com/kevinch3/NicotinD/issues/626)) ([94dd480](https://github.com/kevinch3/NicotinD/commit/94dd480ecbfee09d52297027aef10a7986926a55)), references [#623](https://github.com/kevinch3/NicotinD/issues/623) [#625](https://github.com/kevinch3/NicotinD/issues/625) [#612](https://github.com/kevinch3/NicotinD/issues/612)
 ## [0.3.51](https://github.com/kevinch3/NicotinD/compare/v0.3.50...v0.3.51) (2026-08-22)
 
 ### Bug Fixes
