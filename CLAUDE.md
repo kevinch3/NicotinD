@@ -1697,6 +1697,24 @@ Add detail there, not here.
   one-time backfills stay gated on the add rather than re-scanning the table every boot. Additive
   columns only — the 3 table-`RENAME` rebuilds are deliberately untouched, and there is no
   down-migration path by design. → [docs/design-patterns.md](docs/design-patterns.md)
+- **Schema versioning + atomic migration (`SCHEMA_VERSION`, issue #612)**: `applySchema` re-runs ~1,500
+  lines over 60 tables every boot with **no version marker and no transaction**. Two of the four
+  destructive rebuilds ran outside one: a crash between `ALTER TABLE x RENAME TO x_old` and
+  `CREATE TABLE x` stranded every row in `x_old`, and the *next* boot recreated an empty `x` then
+  **skipped the migration**, because a fresh table no longer carries the marker the migration sniffs
+  for — silent and unrecoverable. The body now runs in one `db.transaction()` (SQLite DDL is
+  transactional; the four inner transactions become savepoints; ~1 ms on a normal boot). Version
+  lives in SQLite's own `PRAGMA user_version` — transactional, no table of its own, can't itself need
+  a migration. Stamped **first** inside the transaction so its truthfulness rests on the commit and
+  not on statement order (stamped last, the "a failed migration leaves no stamp" test passed with the
+  transaction removed — it could not fail). `applySchema` is **deliberately not skipped** when the
+  version is current: the `IF NOT EXISTS`/`addColumnIfMissing` body *is* the self-healing mechanism,
+  and gating it on a hand-maintained number adds a new silent failure (add a column, forget to bump,
+  it never reaches an existing DB while fresh-DB tests stay green — the #457/#606 shape). A
+  newer-than-binary stamp **warns, never refuses** (tag rollback is the documented recovery path), and
+  the stamp is never lowered. Prod measured `user_version` 0 with none of the four legacy markers
+  present, so all four destructive paths are already past there. →
+  [docs/design-patterns.md](docs/design-patterns.md)
 - **OSS best-practices roadmap**: prioritized adoption plan of Immich/Home-Assistant practices
   (backup/restore, safe mode, watchdog + health taxonomy, retention, update check, audit log,
   community files). → [docs/oss-best-practices.md](docs/oss-best-practices.md)
