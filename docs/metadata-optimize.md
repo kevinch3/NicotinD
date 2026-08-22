@@ -17,15 +17,15 @@ This is deliberately distinct from `backfill-artwork.ts`, which only fills artwo
 
 Returns `{ matched, coverUpdated, yearUpdated, releaseTypeUpdated }`. `apply: false` reports without writing.
 
-`optimizeAllAlbums(db, lidarr, { apply, coverCacheDir, onlyMissingOrPoor })` iterates albums (one `album.lookup` each) and aggregates the per-album results. `onlyMissingOrPoor` (default **true**) restricts to albums with no canonical artwork or no year — the ones most likely wrong/empty — so a routine run stays cheap; pass `false`/`--all` to re-verify everything.
+`optimizeAllAlbums(db, lidarr, opts)` iterates albums (one `album.lookup` each) and aggregates the per-album results. `onlyMissingOrPoor` (default **true**) restricts to albums with no canonical artwork or no year — the ones most likely wrong/empty — so a routine run stays cheap; pass `false`/`--all` to re-verify everything. `limit`/`afterId` bound and resume the walk, `shouldStop()` cancels between albums, and `onProgress` reports cumulatively — see "Running it in the background" below.
 
 Album-keyed stores (`library_artwork`, `library_release_meta`) are keyed on the tag-derived `albumId`, so these writes survive full rescans.
 
 ## Surfaces
 
 - **Per-album (admin)** — `POST /api/library/albums/:id/optimize-metadata` (`routes/library.ts`, gated on `lidarr`; `503` unconfigured, `404` on no confident match). The web album-detail page shows an **Optimize metadata** button (admin only) that calls it, re-fetches the album for an updated year, and bumps a `coverBust` signal appended to the cover URL (`&v=N`) so the `<app-cover-art>` re-requests the new image past the browser cache.
-- **Bulk (admin)** — `POST /api/admin/metadata-optimize` (`routes/admin.ts`; `?all=1` re-verifies every album, `?dryRun=1` reports only). The web admin **System** section has an **Optimize metadata** button.
-- **CLI** — `bun run packages/api/src/scripts/optimize-metadata.ts` (dry-run default; `--apply`, `--all`). Resolves Lidarr URL/key like `backfill-artwork.ts` (env → config → `secrets.json`).
+- **Bulk (admin)** — `POST /api/admin/metadata-optimize` (`routes/admin.ts`; `?all=1` re-verifies every album, `?dryRun=1` reports only). Returns **202 immediately** and runs in the background; `POST /api/admin/maintenance/cancel` stops it and `GET /api/admin/maintenance/status` (or the `maintenance` slice of `GET /api/admin/review`) reports progress. The web admin **Library Maintenance** section has **Optimize metadata** + **Stop** with a live progress bar.
+- **CLI** — `bun run packages/api/src/scripts/optimize-metadata.ts`. Resolves Lidarr URL/key like `backfill-artwork.ts` (env → config → `secrets.json`); this is the bounded *synchronous* path — see [CLI](#cli) below for its flags.
 
 Everything degrades gracefully when Lidarr is unconfigured (`503` / `null`).
 
@@ -80,3 +80,105 @@ The candidate "Apply" above always set artist+album+year+cover **together**, and
 ### Web
 
 `MetadataFixModalComponent`'s cover grid (`data-testid="cover-option"`) + a custom-URL input (`data-testid="cover-url-input"`/`-apply`) + an **upload button** (`data-testid="cover-upload-button"`/`-file`, hidden `<input type=file>`). The picker seeds a **synthetic "Current"** option in `ngOnInit` so it renders instantly and never blocks on a slow Lidarr lookup; pure mapping lives in `lib/cover-candidates.ts` (`flattenCoverCandidates`/`coverThumbUrl`/`coverCandidateToRequest`/`customCoverToRequest`). All three apply paths (candidate pick, custom URL, file upload) share one private `runCoverApply` that owns the busy-state/error/refresh scaffolding. Applying a cover emits **`coverChanged`** (distinct from `applied`) so album-detail refetches + cache-busts the hero cover **without closing** the modal.
+
+## Running it in the background (issue #622)
+
+`POST /api/admin/metadata-optimize` used to `await optimizeAllAlbums` inside the request handler.
+The loop is serial and one `album.lookup` carries `TIMEOUT_LOOKUP_MS` (20s), so the handler's
+runtime was `albums × 20s` with **no bound** — minutes to hours in a single HTTP request, with no
+progress, no cancel and no partial result. Three slow albums already exceeded `Bun.serve`'s 60s
+`idleTimeout`, so the client saw a dead socket while the server kept working.
+
+It is now a job on the shared `MaintenanceService` (`services/maintenance/`), together with the
+other two passes of the same shape (`transcode-library`, `library-sync`).
+
+### Why not an `ENRICHMENT_TASK`
+
+The issue suggested "the existing processing scheduler". It doesn't fit, for four reasons:
+
+1. `LibraryProcessingService.runNow()` drains **every** runnable task — there is no per-task
+   trigger, so an admin pressing "Optimize metadata" would also kick BPM/key/energy.
+2. Registry membership means running unattended in the nightly window. This pass **overwrites**
+   covers, years and release types library-wide; it is an operator action, not background hygiene.
+3. `EnrichmentTask` is a **per-song** contract — `countPending(db)` and `satisfiedColumnSql` are
+   both phrased against `library_songs`. This is per-album.
+4. With `onlyMissingOrPoor: false` the candidate set never shrinks, so `countPending` would report a
+   permanently non-zero backlog and `runNow()` would spin forever (`batch.applied === 0` is its only
+   escape).
+
+The maintenance registry instead **mirrors** `EnrichmentTask`'s vocabulary (`id` / `label` /
+`available()` / `run()`) so the operator-triggered registry reads like the unattended one. Each task
+owns its own typed params through `parseParams`, so the runner never learns their shape.
+
+### Status is in-memory, on purpose
+
+`LibraryProcessingService` persists its status because its runs are unattended and recurring;
+`LibraryImportService` persists because an import is genuinely resumable. Neither applies here:
+someone is watching, and every album is an independent idempotent write, so "resume" is "press the
+button again" for the price of one indexed SELECT. Persisting would introduce a real failure mode —
+a `phase:'running'` row surviving a crash with no process behind it, i.e. a permanently-running UI
+and a busy guard that never releases. The tell that this is real: `LibraryProcessingService.snapshot()`
+deliberately *overrides* its own persisted phase from `this.busy`, because even the service that
+persists doesn't trust it across a restart. Durability lives in the audit row instead.
+
+**Restart contract:** status resets to `idle`, counters are lost, nothing resumes, and no partial
+state is corrupt.
+
+### Why the loop stays serial
+
+`album.lookup` is the one Lidarr call that proxies to Lidarr's shared **upstream** metadata server —
+that is why it sits in the 20s tier rather than the 10s local one. Fanning out N concurrent proxied
+lookups is how you get rate-limited, which is why the two network-facing enrichment tasks cap their
+pool at 2. `mapPool` would also be the wrong tool: it is eager and uncancellable, so Stop would still
+wait for the whole pool. And the defect was "hours inside one request", not "slow" — 4× faster and
+still unbounded would not have fixed it.
+
+### Bounding, isolation and honest counters
+
+- **`limit` goes into the SQL**, with `ORDER BY id` (index-backed — `id` is `TEXT PRIMARY KEY`) and an
+  `afterId` cursor. The order is load-bearing: without it two bounded passes re-walk an arbitrary
+  head forever. The cursor ships *with* `limit` because under `all=1` the candidate set is not
+  self-narrowing, so a bare `limit` gives a scripted caller a bound that lies.
+- **Per-album isolation.** The loop body is wrapped; a throwing album increments `failed`, records
+  the first message as `errorSample`, and the pass continues. Previously a throw from
+  `setArtwork`/`db.run`/`setReleaseType` rejected the whole pass and **discarded every accumulated
+  counter**. The `try` deliberately lives in the bulk loop, **not** in `optimizeAlbum` — the
+  per-album admin route should keep surfacing a write failure as a 500.
+- **The counter no longer lies.** `result.albums` counted rows *selected*, but `optimizeAlbum` skips
+  missing rows, `looksLikeNonAlbum` groupings and placeholder artists before any Lidarr call — so the
+  number shown to the admin overstated work done. It is replaced by `candidates` (selected),
+  `visited` (reached) and `lookedUp` (actually queried). `lookedUp` is set on the lookup's
+  `.catch(() => [])` degrade path too: a timed-out lookup still burned the full 20s budget.
+
+### Cancel latency
+
+`shouldStop()` is checked *between* albums, so a Stop pressed during a lookup takes effect within
+one album — up to 20s. That is why the phase union has a third member, `cancelling`: without it the
+button looks dead and the admin mashes it. Making Stop instant needs an `AbortSignal` threaded into
+`lidarr.album.lookup`, which has no signal parameter today — a follow-up.
+
+### Dry run
+
+`apply: false` still performs every lookup, so a dry run costs exactly as much as a real one and
+uses the same background job — it can never be a "fast synchronous" mode. It still writes an audit
+row (`detail: 'dry-run'`), and the status carries `dryRun` so the UI says "would update" rather than
+"updated".
+
+### Migrating a scripted caller
+
+The route answered 200 with the finished counters; it now answers **202** with
+`{ ok, started, status }`. 202 is 2xx, so `res.ok` / `raise_for_status()` callers are unaffected —
+only an exact `=== 200` check breaks. Poll `GET /api/admin/maintenance/status` until
+`phase === 'idle'` and read the same counters from `detail`.
+
+There is deliberately **no HTTP `?wait=1` mode**: with `idleTimeout` at 60s and a 20s lookup budget,
+the largest bound that provably fits is *two albums*. That is not a feature, and the next person to
+widen it would not know why the cap existed. The bounded synchronous mode lives at the **function**
+layer, where the CLI uses it.
+
+## CLI
+
+`bun run packages/api/src/scripts/optimize-metadata.ts` (dry-run default; `--apply`, `--all`) now also
+takes `--limit N` and `--after <id>`, and handles `SIGINT` by finishing the current album and printing
+the partial summary rather than discarding every counter. It prints `candidates` / `checked` /
+`lookedUp` / `failed`, and the cursor to resume from when it stopped early.

@@ -247,7 +247,9 @@ Add detail there, not here.
   re-thrown as "timed out", since for swallowing callers the log line is the only place "never
   answered" stays distinct from "said no". `fetchFn` is injectable — resolved per call, not captured
   at construction, or it defeats the existing `globalThis.fetch` stubbing. **`idleTimeout` stays at
-  60s** until #622 (metadata-optimize's unbounded serial loop in a request handler) is fixed. →
+  60s** — #622 predicted its own fix would free the revert to 10s and that was wrong: the binding
+  constraint is `artist.add`'s own `TIMEOUT_PROVISION_MS` 60s inside `GET /api/discography/artists/:id`,
+  not the (now backgrounded) optimize loop. →
   [docs/design-patterns.md](docs/design-patterns.md)
 - **The runtime image ships only what it runs (issue #612)**: the production stage copies every
   workspace's `package.json` (lockfile resolution) and used to `bun install` **all their
@@ -613,8 +615,10 @@ Add detail there, not here.
   paths, so it had **never** run in Docker; helper now shared + tested in `scripts/lib/expand-home.ts`). →
   [docs/library-scanner.md](docs/library-scanner.md) "Search matching" + "Fragmentation diagnostic"
 - **Metadata optimization**: conservative, all-or-nothing bulk Lidarr re-fetch of
-  cover/year/release-type (`optimizeAllAlbums`); skips placeholder-artist albums. →
-  [docs/metadata-optimize.md](docs/metadata-optimize.md)
+  cover/year/release-type (`optimizeAllAlbums`); skips placeholder-artist albums. Runs as a
+  cancellable background job on the shared `MaintenanceService` (issue #622), not inside the request
+  handler; bounded by `limit`+cursor, isolates a throwing album, and counts lookups rather than rows
+  selected. → [docs/metadata-optimize.md](docs/metadata-optimize.md)
 - **User-driven metadata fix**: interactive Lidarr candidate search + free-text + multi-source cover
   picker (Lidarr/URL/track-embedded/**upload**), persisted in `library_metadata_overrides` with
   immediate canonical re-point. → [docs/metadata-optimize.md](docs/metadata-optimize.md)

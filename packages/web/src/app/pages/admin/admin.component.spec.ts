@@ -75,6 +75,7 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     backups: [],
     backupsSummary: { total: 0, totalBytes: 0, newestAt: null, lastBackupName: null },
     processing: null,
+    maintenance: null,
     incompleteJobsCount: 0,
     untrackedCount: 0,
     orphanRows: [],
@@ -102,6 +103,7 @@ function makeSvc(over: Partial<ServiceReview> = {}) {
     services: (() => r.services) as ServiceReviewService['services'],
     analysis: (() => r.services.analysis) as ServiceReviewService['analysis'],
     libraryState: (() => r.library) as ServiceReviewService['libraryState'],
+    maintenance: (() => r.maintenance) as ServiceReviewService['maintenance'],
     updateCheck: (() => r.updateCheck) as ServiceReviewService['updateCheck'],
     backups: (() => r.backups) as ServiceReviewService['backups'],
     backupsSummary: (() => r.backupsSummary) as ServiceReviewService['backupsSummary'],
@@ -1606,5 +1608,125 @@ describe('AdminComponent (actionable fragments, #314)', () => {
     await fixture.whenStable();
     expect(api.missplitMerge).toHaveBeenCalledWith(['g1', 'g2'], 'Various Artists');
     fixture.destroy();
+  });
+});
+
+describe('AdminComponent — maintenance passes (issue #622)', () => {
+  const start = vi.fn();
+  const cancel = vi.fn();
+
+  async function setup(review: Partial<ServiceReview> = {}, startImpl?: () => unknown) {
+    start.mockReset();
+    cancel.mockReset();
+    start.mockImplementation(startImpl ?? (() => of({ ok: true, started: true, status: null })));
+    cancel.mockImplementation(() => of({ ok: true }));
+    const mocks = makeAdminMocks(review);
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [AdminComponent],
+      providers: [
+        {
+          provide: DownloadsApiService,
+          useValue: {
+            listAlbumJobs: vi.fn(() => of({ jobs: [] })),
+            getUntrackedDownloads: vi.fn(() => of({ total: 0, rows: [] })),
+          },
+        },
+        {
+          provide: SystemApiService,
+          useValue: {
+            getUsers: mocks.getUsers,
+            getStreamingSettings: mocks.getStreaming,
+            saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getProcessing: mocks.getProcessing,
+            getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
+            setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
+            saveProcessing: vi.fn((p: unknown) => of(p as object)),
+          },
+        },
+        {
+          provide: LibraryApiService,
+          useValue: {
+            resyncLibrary: mocks.resyncLibrary,
+            getFragments: mocks.getFragments,
+            startMaintenance: start,
+            cancelMaintenance: cancel,
+          },
+        },
+        { provide: ServiceReviewService, useValue: mocks.reviewService },
+        { provide: AuthService, useValue: { token: () => null } },
+      ],
+    }).compileComponents();
+    return TestBed.createComponent(AdminComponent).componentInstance;
+  }
+
+  /** A review snapshot with one pass in flight. */
+  function running(taskId: string): Partial<ServiceReview> {
+    return {
+      maintenance: {
+        phase: 'running',
+        taskId,
+        label: 'Optimize metadata',
+        total: 10,
+        visited: 4,
+        lastItems: ['Artist — Album'],
+        detail: {},
+        dryRun: false,
+        params: 'apply',
+        startedAt: null,
+        finishedAt: null,
+        lastOutcome: null,
+        lastError: null,
+        startedBy: null,
+      },
+    } as unknown as Partial<ServiceReview>;
+  }
+
+  it('starts the pass and reports it as backgrounded', async () => {
+    const c = await setup();
+    await c.optimizeAllMetadata();
+    expect(start).toHaveBeenCalledWith('metadata-optimize');
+    expect(c.optimizeMetadataMsg()).toBe('admin.maintenanceStarted');
+    expect(BASE_CATALOG).toHaveProperty(['admin.maintenanceStarted']);
+  });
+
+  it('disables the button while any pass runs, not just its own', async () => {
+    const c = await setup(running('library-sync'));
+    expect(c.optimizeMetadataDisabled()).toBe(true);
+    // …but only its own pass shows the "Optimizing…" label.
+    expect(c.optimizeRunning()).toBe(false);
+  });
+
+  it('enables Stop only while something is running', async () => {
+    expect((await setup()).cancelMaintenanceDisabled()).toBe(true);
+    expect((await setup(running('metadata-optimize'))).cancelMaintenanceDisabled()).toBe(false);
+  });
+
+  it('reports progress off the shared review slice', async () => {
+    const c = await setup(running('metadata-optimize'));
+    expect(c.optimizeRunning()).toBe(true);
+    expect(c.maintenanceProgressPercent()).toBe(40);
+  });
+
+  it('blames Lidarr only on a 503, never on a busy pass', async () => {
+    const busy = await setup({}, () => throwError(() => ({ status: 409 })));
+    await busy.optimizeAllMetadata();
+    expect(busy.optimizeMetadataMsg()).toBe('admin.maintenanceBusy');
+    expect(BASE_CATALOG).toHaveProperty(['admin.maintenanceBusy']);
+
+    const noLidarr = await setup({}, () => throwError(() => ({ status: 503 })));
+    await noLidarr.optimizeAllMetadata();
+    expect(noLidarr.optimizeMetadataMsg()).toBe('admin.metadataOptimizeUnavailable');
+    expect(BASE_CATALOG).toHaveProperty(['admin.metadataOptimizeUnavailable']);
+
+    const other = await setup({}, () => throwError(() => ({ status: 500 })));
+    await other.optimizeAllMetadata();
+    expect(other.optimizeMetadataMsg()).toBe('admin.metadataOptimizeFailed');
+  });
+
+  it('cancels the running pass', async () => {
+    const c = await setup(running('metadata-optimize'));
+    await c.cancelMaintenance();
+    expect(cancel).toHaveBeenCalled();
   });
 });

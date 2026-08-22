@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { hashPassword, ROLES } from '@nicotind/core';
 import type { ProcessingSettings, ProcessingStatus, Role } from '@nicotind/core';
-import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { listAudit, recordAudit } from '../services/audit-log.js';
@@ -33,24 +33,22 @@ import {
   getStoredUpdateCheck,
   listVersionHistory,
 } from '../services/update-check.js';
-import { transcodeLibraryToOpus } from '../services/library-transcode.js';
-import { optimizeAllAlbums } from '../services/metadata-optimize.js';
 import { setProcessingSettings } from '../services/processing-settings.js';
 import { parseHhMm } from '../services/processing-window.js';
 import { loadQuarantineQueue } from '../services/song-steps.js';
 import { presenceService } from '../services/presence.js';
 import type { LibraryProcessingService } from '../services/library-processing.service.js';
+import type { MaintenanceService } from '../services/maintenance/maintenance.service.js';
+import type { MaintenanceTaskId } from '../services/maintenance/tasks.js';
 
 export interface AdminRoutesDeps {
   musicDir: string;
   /** Expanded data dir (backups live under `<dataDir>/backups`); backup routes 503 without it. */
   dataDir?: string;
-  /** Cover-cache dir for metadata-optimize (purged when a canonical URL changes). */
-  coverCacheDir?: string;
-  /** Lidarr client; null when unconfigured (metadata-optimize then 503s). */
-  lidarr?: Lidarr | null;
   /** Windowed library-processing scheduler; null when not wired (503s). */
   processing?: LibraryProcessingService | null;
+  /** Operator-triggered whole-library passes (issue #622); null → those routes 503. */
+  maintenance?: MaintenanceService | null;
   /** Running server version (package.json), for the update-check route. */
   version?: string;
   /** Runtime acquisition kill-switch (issue #235); absent → the routes 503. */
@@ -277,32 +275,15 @@ export function adminRoutes(deps: AdminRoutesDeps) {
   });
 
   // Standardize the existing library's lossless files on Opus (storage + uniform
-  // codec). Long-running; runs to completion and returns the summary. `?dryRun=1`
-  // reports candidates without writing.
-  app.post('/transcode-library', async (c) => {
-    const dryRun = c.req.query('dryRun') === '1' || c.req.query('dryRun') === 'true';
-    try {
-      const result = await transcodeLibraryToOpus(getDatabase(), deps.musicDir, { apply: !dryRun });
-      return c.json({ ok: true, dryRun, ...result });
-    } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : 'Transcode failed' }, 503);
-    }
-  });
+  // codec). A background pass since issue #622 — 202 here, progress on
+  // /api/admin/review. `?dryRun=1` reports candidates without writing.
+  app.post('/transcode-library', (c) => startMaintenance(c, 'transcode-library'));
 
   // Library-wide metadata optimization: re-fetch better cover/year/release-type
   // from Lidarr. `?all=1` re-verifies every album; default targets albums with
-  // missing artwork or year. `?dryRun=1` reports without writing.
-  app.post('/metadata-optimize', async (c) => {
-    if (!deps.lidarr) return c.json({ error: 'Lidarr not configured' }, 503);
-    const dryRun = c.req.query('dryRun') === '1' || c.req.query('dryRun') === 'true';
-    const onlyMissingOrPoor = !(c.req.query('all') === '1' || c.req.query('all') === 'true');
-    const result = await optimizeAllAlbums(getDatabase(), deps.lidarr, {
-      apply: !dryRun,
-      coverCacheDir: deps.coverCacheDir,
-      onlyMissingOrPoor,
-    });
-    return c.json({ ok: true, dryRun, ...result });
-  });
+  // missing artwork or year. `?dryRun=1` reports without writing. Backgrounded
+  // (issue #622): this was albums x a 20s lookup, awaited inside the handler.
+  app.post('/metadata-optimize', (c) => startMaintenance(c, 'metadata-optimize'));
 
   // --- Audit log (services/audit-log.ts) ------------------------------------
 
@@ -600,6 +581,64 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (!svc) return c.json({ error: 'Library processing not available' }, 503);
     return c.json({ albums: loadQuarantineQueue(getDatabase()) });
   });
+
+  // --- Maintenance passes (issue #622) --------------------------------------
+  // Whole-library operator actions used to run to completion inside the request
+  // handler; metadata-optimize was albums x 20s of Lidarr lookups, unbounded.
+  // They are background jobs now: 202 here, progress on GET /api/admin/review.
+  function startMaintenance(c: Context<AuthEnv>, task: MaintenanceTaskId) {
+    const svc = deps.maintenance;
+    if (!svc) return c.json({ error: 'Maintenance is not available' }, 503);
+    const q = new URL(c.req.url).searchParams;
+    const outcome = svc.start(task, q, c.get('user').username);
+    if (outcome === 'unknown-task') return c.json({ error: `Unknown task ${task}` }, 404);
+    if (outcome === 'unavailable') {
+      const why = svc.availability()[task];
+      return c.json({ error: typeof why === 'string' ? why : 'Task unavailable' }, 503);
+    }
+    if (outcome === 'busy') {
+      return c.json(
+        { error: 'A maintenance pass is already running', code: 'MAINTENANCE_RUNNING' },
+        409,
+      );
+    }
+    const status = svc.getStatus();
+    // One row per pass, never per item: audit-log.ts rules out blanket
+    // per-mutation logging, and a 20k-album pass would drown the ledger.
+    recordAudit(getDatabase(), c.get('user'), 'maintenance.start', {
+      targetKind: 'library',
+      targetId: task,
+      detail: status.params ?? undefined,
+    });
+    return c.json({ ok: true, started: true, status }, 202);
+  }
+
+  app.post('/maintenance/cancel', (c) => {
+    const svc = deps.maintenance;
+    if (!svc) return c.json({ error: 'Maintenance is not available' }, 503);
+    const ok = svc.cancel();
+    // Audit only a cancel that actually stopped something.
+    if (ok) {
+      recordAudit(getDatabase(), c.get('user'), 'maintenance.cancel', {
+        targetKind: 'library',
+        targetId: svc.getStatus().taskId ?? undefined,
+      });
+    }
+    return c.json({ ok });
+  });
+
+  // A cheap dedicated poll target, unlike the many-sub-fetch /admin/review.
+  app.get('/maintenance/status', (c) => {
+    const svc = deps.maintenance;
+    if (!svc) return c.json({ error: 'Maintenance is not available' }, 503);
+    return c.json(svc.getStatus());
+  });
+
+  // Registered last on purpose: `:task` is a wildcard, so it would otherwise
+  // shadow /maintenance/cancel and /maintenance/status above it.
+  app.post('/maintenance/:task', (c) =>
+    startMaintenance(c, c.req.param('task') as MaintenanceTaskId),
+  );
 
   // Drain pending work now, ignoring the time window (fire-and-forget).
   app.post('/processing/run', (c) => {

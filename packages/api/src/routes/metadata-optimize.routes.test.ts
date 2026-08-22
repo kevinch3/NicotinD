@@ -11,6 +11,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { applySchema } from '../db.js';
 import { libraryRoutes } from './library.js';
 import { adminRoutes } from './admin.js';
+import type { StartResult } from '../services/maintenance/maintenance.service.js';
 
 let testDb: Database = (() => {
   const d = new Database(':memory:');
@@ -110,24 +111,107 @@ describe('POST /admin/metadata-optimize', () => {
     seedAlbum('alb-1', 'Drukqs', 'Aphex Twin'); // no artwork → a candidate
   });
 
-  it('503 when Lidarr is unconfigured', async () => {
-    const app = authed(
-      new Hono<AuthEnv>().route('/', adminRoutes({ musicDir: '/music', lidarr: null })),
+  /** A maintenance runner double recording what the route asked it to do. */
+  function fakeMaintenance(outcome: StartResult = 'started') {
+    const calls: Array<{ task: string; params: Record<string, string> }> = [];
+    return {
+      calls,
+      start(task: string, q: URLSearchParams) {
+        calls.push({ task, params: Object.fromEntries(q) });
+        return outcome;
+      },
+      cancel: () => outcome === 'started',
+      availability: () => ({ 'metadata-optimize': 'Lidarr is not configured' }) as never,
+      getStatus: () => ({ phase: 'running', taskId: 'metadata-optimize', params: 'apply' }),
+    };
+  }
+
+  const appWith = (m: unknown) =>
+    authed(
+      new Hono<AuthEnv>().route('/', adminRoutes({ musicDir: '/music', maintenance: m as never })),
       'admin',
     );
-    const res = await app.request('/metadata-optimize', { method: 'POST' });
+
+  it('503 when no maintenance runner is wired', async () => {
+    const res = await appWith(null).request('/metadata-optimize', { method: 'POST' });
     expect(res.status).toBe(503);
   });
 
-  it('runs the batch for an admin', async () => {
+  it("503 with the task's own reason when it is unavailable (no Lidarr)", async () => {
+    const res = await appWith(fakeMaintenance('unavailable')).request('/metadata-optimize', {
+      method: 'POST',
+    });
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { error: string }).error).toBe('Lidarr is not configured');
+  });
+
+  it('202s immediately instead of awaiting the pass', async () => {
+    const m = fakeMaintenance();
+    const res = await appWith(m).request('/metadata-optimize', { method: 'POST' });
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { ok: boolean; started: boolean };
+    expect(body.ok).toBe(true);
+    expect(body.started).toBe(true);
+    expect(m.calls).toEqual([{ task: 'metadata-optimize', params: {} }]);
+  });
+
+  it('passes dryRun/all through to the task', async () => {
+    const m = fakeMaintenance();
+    await appWith(m).request('/metadata-optimize?all=1&dryRun=1', { method: 'POST' });
+    expect(m.calls[0]!.params).toEqual({ all: '1', dryRun: '1' });
+  });
+
+  it('409s when a pass is already running', async () => {
+    const res = await appWith(fakeMaintenance('busy')).request('/metadata-optimize', {
+      method: 'POST',
+    });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code: string }).code).toBe('MAINTENANCE_RUNNING');
+  });
+
+  it('records one audit row per pass', async () => {
+    await appWith(fakeMaintenance()).request('/metadata-optimize', { method: 'POST' });
+    const rows = testDb
+      .query<{ action: string; target_id: string }, []>('SELECT action, target_id FROM audit_log')
+      .all();
+    expect(rows).toEqual([{ action: 'maintenance.start', target_id: 'metadata-optimize' }]);
+  });
+
+  it('403 for a non-admin', async () => {
     const app = authed(
-      new Hono<AuthEnv>().route('/', adminRoutes({ musicDir: '/music', lidarr })),
-      'admin',
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', maintenance: fakeMaintenance() as never }),
+      ),
+      'user',
     );
     const res = await app.request('/metadata-optimize', { method: 'POST' });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean; coversUpdated: number };
-    expect(body.ok).toBe(true);
-    expect(body.coversUpdated).toBe(1);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('maintenance cancel + status', () => {
+  beforeEach(() => {
+    testDb = new Database(':memory:');
+    applySchema(testDb);
+  });
+
+  it('cancel audits only when it actually stopped something', async () => {
+    const idle = {
+      start: () => 'started' as StartResult,
+      cancel: () => false,
+      availability: () => ({}) as never,
+      getStatus: () => ({ phase: 'idle', taskId: null }),
+    };
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', maintenance: idle as never }),
+      ),
+      'admin',
+    );
+    const res = await app.request('/maintenance/cancel', { method: 'POST' });
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(false);
+    expect(testDb.query('SELECT 1 FROM audit_log').all()).toHaveLength(0);
   });
 });

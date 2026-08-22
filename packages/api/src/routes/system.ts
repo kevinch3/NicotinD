@@ -5,6 +5,7 @@ import { existsSync, statfsSync } from 'node:fs';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { ServiceManager } from '@nicotind/service-manager';
 import type { AuthEnv } from '../middleware/auth.js';
+import type { MaintenanceService } from '../services/maintenance/maintenance.service.js';
 
 const startTime = Date.now();
 
@@ -25,10 +26,17 @@ export function systemRoutes(
     musicDir?: string;
     /** Injected for tests; defaults to node:fs statfsSync. */
     statfs?: StatfsFn;
+    /** Shared maintenance runner (issue #622); absent → the local flag is used. */
+    maintenance?: MaintenanceService | null;
   } = {},
 ) {
   const app = new Hono<AuthEnv>();
+  // Kept only for the runner-less path (tests, embedded callers). When the
+  // maintenance runner is wired it owns the truth, so /library/sync and this
+  // route stop disagreeing about whether a scan blocks (issue #622).
   let scanning = false;
+  const scanRunning = () =>
+    opts.maintenance ? opts.maintenance.getStatus().taskId === 'library-sync' : scanning;
   const statfs = opts.statfs ?? (statfsSync as unknown as StatfsFn);
   const diskPath = opts.musicDir ?? config.musicDir;
 
@@ -43,6 +51,14 @@ export function systemRoutes(
 
   app.post('/scan', async (c) => {
     if (!opts.triggerScan) return c.json({ error: 'Scanner not available' }, 503);
+    if (opts.maintenance) {
+      const outcome = opts.maintenance.start('library-sync', new URLSearchParams());
+      if (outcome === 'busy') {
+        return c.json({ ok: true, message: 'Library scan already running' });
+      }
+      if (outcome !== 'started') return c.json({ error: 'Scanner not available' }, 503);
+      return c.json({ ok: true, message: 'Library scan started' });
+    }
     if (scanning) return c.json({ ok: true, message: 'Library scan already running' });
     scanning = true;
     // Fire-and-forget: the native scan walks the music dir and reconciles the
@@ -56,7 +72,7 @@ export function systemRoutes(
   });
 
   app.get('/scan/status', (c) => {
-    return c.json({ scanning, count: 0 });
+    return c.json({ scanning: scanRunning(), count: 0 });
   });
 
   // GET /api/system/disk — free/used/total bytes of the filesystem holding the

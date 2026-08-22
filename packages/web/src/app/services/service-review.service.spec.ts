@@ -38,6 +38,7 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     backups: [],
     backupsSummary: { total: 0, totalBytes: 0, newestAt: null, lastBackupName: null },
     processing: null,
+    maintenance: null,
     incompleteJobsCount: 0,
     untrackedCount: 0,
     orphanRows: [],
