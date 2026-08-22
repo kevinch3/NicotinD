@@ -755,3 +755,51 @@ jobs:
             # `build:` key (no-op otherwise).
             docker compose up --build -d
           '
+
+      # On a tag push we know exactly which version must appear. On a manual
+      # dispatch we do not (the host redeploys whatever `release` currently
+      # points at), so there we assert health only rather than inventing an
+      # expectation we cannot check.
+      - name: Expected version
+        id: ver
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "expected=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "expected=" >> "$GITHUB_OUTPUT"
+          fi
+
+      # `docker compose up -d` returns when the container is CREATED, not when it
+      # is serving. The workflow used to end there, so a container that
+      # crash-looped, or one that came up still running the previous image, was
+      # indistinguishable from a good deploy — the run went green either way.
+      #
+      # That is the #457 shape, and #457 actually happened: a failed GHCR push
+      # produced a green deploy that silently redeployed the previous version.
+      # Everything upstream of here guards against shipping the wrong bytes; this
+      # is the only step that confirms the right ones are RUNNING.
+      #
+      # It is also what makes the documented rollback (pin NICOTIND_VERSION and
+      # redeploy) actionable: it turns a bad release from something a user
+      # reports into something the release run tells you.
+      - name: Verify the deploy is serving the version we shipped
+        run: |
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} '
+            expected="${{ steps.ver.outputs.expected }}"
+            got=""
+            for _ in $(seq 1 60); do
+              body="$(curl -fsS --max-time 5 http://localhost:8484/api/health 2>/dev/null || true)"
+              if [ -n "$body" ]; then
+                got="$(printf "%s" "$body" | tr "," "\n" | sed -n "s/.*\"version\":\"\([^\"]*\)\".*/\1/p")"
+                if [ -z "$expected" ] || [ "$got" = "$expected" ]; then
+                  echo "Deploy verified: /api/health reports ${got:-ok}"
+                  exit 0
+                fi
+              fi
+              sleep 5
+            done
+            echo "ERROR: after 5 min /api/health reports \"${got:-unreachable}\", expected \"$expected\"" >&2
+            echo "Containers were recreated but are not serving this release. Recent logs:" >&2
+            cd ~/Documents/nicotind && docker compose logs --tail=60 nicotind >&2 || true
+            exit 1
+          '
