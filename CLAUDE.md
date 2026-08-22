@@ -183,6 +183,16 @@ One-line index; **full detail for every entry is in
 [docs/design-patterns.md](docs/design-patterns.md)** (and the per-feature doc linked on each line).
 Add detail there, not here.
 
+- **Unsafe shipped defaults, announced before removal (issue #612)**: the GHCR image is public, so
+  this deployment's defaults are what strangers run — and two are dangerous: a `docker.sock` mount
+  (host-root-equivalent, for one admin log viewer; `:ro` does not help, the Docker API is read-write
+  regardless) and addon tokens defaulting to `change-me`. Both are **warn-only now, removed in
+  0.4.0**. `findInsecureDefaults` (`services/insecure-defaults.ts`) runs at boot *after* the ready
+  handshake and is never fatal — an advisory that stops a boot is a worse bug than the thing it
+  warns about. It checks `addon_registrations.token`, **not env vars**: core never sees
+  `SLSKD_ADDON_TOKEN`, which belongs to the addon containers in their own repos, and a registered
+  placeholder is a live credential where an unused one in compose harms nobody. →
+  [SECURITY.md](SECURITY.md), [docs/deployment.md](docs/deployment.md)
 - **Quality gates (`check:*`) — every gate asserts its own denominator**: a gate that computes a
   smaller candidate set than it should still answers truthfully about what it looked at and exits 0.
   Four were measured doing exactly that (route-auth 24 of 35 mounts; claude-md counting prose as

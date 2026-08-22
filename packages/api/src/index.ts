@@ -887,6 +887,7 @@ export function createApp({
 export { AutoAcquireService } from './services/auto-acquire.service.js';
 export { initDatabase, getDatabase } from './db.js';
 export { maybeCheckForUpdate } from './services/update-check.js';
+export { findInsecureDefaults, REMOVAL_RELEASE } from './services/insecure-defaults.js';
 // initServerSentry is intentionally NOT re-exported from the barrel: it must be
 // imported via the isolated `@nicotind/api/instrument` subpath so Sentry inits
 // before Hono/http modules load. See src/instrument.ts.
