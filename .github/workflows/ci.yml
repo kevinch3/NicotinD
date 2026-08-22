@@ -425,14 +425,47 @@ jobs:
   # for Dockerfile edits, so deploy.yml's tag-time GHCR publish isn't the first
   # time a broken image build is discovered. The amd64 GHA cache scope matches
   # deploy.yml's, so a master-push build here warms the release build's cache.
+  #
+  # Matrixed over both published arches, mirroring deploy.yml. Building amd64
+  # only meant an arm64-only break surfaced at RELEASE time, after the tag was
+  # cut — the same class of gap #620 closed for "CI never boots what ships", and
+  # arm64 self-hosters (Pi, Apple Silicon, Ampere) are a real audience for a
+  # public image.
+  #
+  # Native runners, never QEMU: deploy.yml records the reason — Bun's JIT is
+  # unreliable under emulation, so a QEMU-based check would be flaky, and a
+  # flaky gate is worse than none. `load: true` cannot take a multi-platform
+  # build (the docker exporter cannot export a manifest list), which is why this
+  # is a matrix rather than a `platforms:` list on one step.
+  #
+  # `release.needs` lists `docker` by job id, and a matrix requires every leg to
+  # pass, so the gate stays wired without touching `needs`.
   docker:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      # Both arches should report; one failing must not hide the other's result.
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # full history so the diff base below always resolves
 
+      # linux/amd64 -> linux-amd64, for the cache scope. Same slug deploy.yml uses.
+      - name: Prepare platform slug
+        run: |
+          platform="${{ matrix.platform }}"
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+
+      # Arch-independent, so one leg is enough — running it twice would just
+      # double the noise on a failure.
       - name: Validate compose files
+        if: matrix.platform == 'linux/amd64'
         run: |
           set -euo pipefail
           docker compose -f docker-compose.yml config -q
@@ -477,19 +510,19 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Build image (amd64)
+      - name: Build image (${{ matrix.platform }})
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           push: false
           # `load` puts the result in the local daemon so the smoke step can
           # actually run it. Without it the image exists only in the build cache
           # and `docker run` has nothing to start.
           load: true
           tags: nicotind:ci
-          cache-from: type=gha,scope=docker-linux-amd64
-          cache-to: type=gha,mode=max,scope=docker-linux-amd64
+          cache-from: type=gha,scope=docker-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=docker-${{ env.PLATFORM_PAIR }}
 
       # Nothing in CI had ever STARTED the artifact that ships. The e2e job runs
       # `bun run src/main.ts` from the working tree, and this job used to build an
@@ -555,8 +588,10 @@ jobs:
       # Same idea for the analysis sidecar image published by deploy.yml's
       # docker-analysis job (its Python deps/tests are covered by the
       # `analysis` job above — this checks the image still builds).
+      # amd64 only, and not because of this matrix: essentia-tensorflow ships
+      # x86_64-only wheels, so an arm64 analysis build has never been possible.
       - name: Build analysis image (amd64, no push)
-        if: steps.f.outputs.analysis == 'true'
+        if: matrix.platform == 'linux/amd64' && steps.f.outputs.analysis == 'true'
         uses: docker/build-push-action@v6
         with:
           context: packages/analysis

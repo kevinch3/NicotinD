@@ -238,6 +238,29 @@ That last case earns its own branch: without it the loop would spin to timeout
 and report "never became healthy", which is a confusing way to say "there is no
 healthcheck any more".
 
+### Both arches, on master
+
+The job is matrixed over `linux/amd64` and `linux/arm64`, mirroring `deploy.yml`.
+Building amd64 only meant an **arm64-only break surfaced at release time**, after
+the tag was cut — the same gap as above, one level up, and arm64 self-hosters
+(Pi, Apple Silicon, Ampere) are a real audience for a public image.
+
+Two constraints shape it:
+
+- **Native runners, never QEMU.** `deploy.yml` records the reason: Bun's JIT is
+  unreliable under emulation. A QEMU-based check would be flaky, and a flaky gate
+  is worse than no gate.
+- **`load: true` cannot take a multi-platform build** — the docker exporter
+  cannot export a manifest list. So this is a matrix over single-platform builds,
+  not a `platforms:` list on one step. Each leg builds, loads, *and* smokes, so
+  arm64 is started rather than merely compiled.
+
+`fail-fast: false`, so one arch failing does not hide the other's result.
+`release.needs` lists `docker` by **job id** and a matrix requires every leg to
+pass, so the gate stays wired with no `needs` change. The cache scopes
+(`docker-linux-amd64` / `docker-linux-arm64`) are the ones release builds already
+populate, so both legs start warm.
+
 ### The deploy never checked the deploy
 
 `deploy.yml` ended at `docker compose up --build -d`. **That returns when the

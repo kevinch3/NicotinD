@@ -265,7 +265,11 @@ Add detail there, not here.
   (the old filter fired on Dockerfile/compose changes — i.e. not on the source changes that are
   almost every PR; ~3 min against a parallel ~5 min `e2e`, so the critical path is unchanged) with
   `load:true`, and a smoke step waits on the image's **own `HEALTHCHECK`** then asserts
-  `/api/health` reports `package.json`'s version. Deploy-side, `docker compose up -d` returns when a
+  `/api/health` reports `package.json`'s version. It is now **matrixed over both published
+  arches** on native runners (`ubuntu-24.04-arm`, never QEMU — Bun's JIT is unreliable under
+  emulation, and a flaky gate is worse than none), because amd64-only meant an arm64 break
+  surfaced *after* the tag was cut; `load:true` can't take a multi-platform build, so it is a
+  matrix rather than a `platforms:` list, and each leg smokes as well as builds. Deploy-side, `docker compose up -d` returns when a
   container is *created*, not serving — so the release now polls `/api/health` on the host for the
   expected version (health only on `workflow_dispatch`, where there is no version to expect) and
   dumps `compose logs` on failure. That is the #457 shape, which actually happened. →
