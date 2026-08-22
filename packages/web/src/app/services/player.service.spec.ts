@@ -713,6 +713,28 @@ describe('PlayerService', () => {
       expect(service.radioFilter()).toBeNull();
     });
 
+    it('startRadioWithTracks plays first, queues rest, radio on, with no filter or context', () => {
+      service.startRadioWithTracks([track1, track2, track3]);
+      expect(service.currentTrack()).toEqual(track1);
+      expect(service.queue()).toEqual([track2, track3]);
+      expect(service.radio()).toBe(true);
+      expect(service.radioFilter()).toBeNull();
+      expect(service.context()).toBeNull();
+    });
+
+    it('startRadioWithTracks is a no-op for an empty track list', () => {
+      service.startRadioWithTracks([]);
+      expect(service.currentTrack()).toBeNull();
+      expect(service.radio()).toBe(false);
+    });
+
+    it('startRadioWithTracks clears any active filter vibe', () => {
+      service.startRadioWithFilter([track1], { moods: ['happy'] });
+      expect(service.radioFilter()).toEqual({ moods: ['happy'] });
+      service.startRadioWithTracks([track2, track3]);
+      expect(service.radioFilter()).toBeNull();
+    });
+
     it('persists radioFilter and restoreState() restores it', () => {
       service.startRadioWithFilter([track1], { bpmMin: 120 });
       TestBed.flushEffects();

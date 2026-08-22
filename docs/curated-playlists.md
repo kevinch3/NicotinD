@@ -11,16 +11,17 @@ cover**.
 The `playlists` table gains two nullable/defaulted columns (migrated via
 `try/catch ALTER` in `db.ts`, so existing rows are untouched):
 
-| Column      | Meaning                                                                 |
-| ----------- | ----------------------------------------------------------------------- |
-| `kind`      | `'user'` (default) or `'curated'`. The **explicit origin marker**.       |
-| `cover_art` | Designed gradient cover URL, e.g. `/playlist-covers/latin-beats.svg`.     |
+| Column      | Meaning                                                               |
+| ----------- | --------------------------------------------------------------------- |
+| `kind`      | `'user'` (default) or `'curated'`. The **explicit origin marker**.    |
+| `cover_art` | Designed gradient cover URL, e.g. `/playlist-covers/latin-beats.svg`. |
 
 Visibility and mutability are driven by `kind`, **not** ownership:
 
 - **`list()`** returns `WHERE user_id = ? OR kind = 'curated'` — a user sees their
-  own playlists plus every curated one. Curated sort first (the "Made for you"
-  shelf leads).
+  own playlists plus every curated one. Curated sort first (they lead the
+  merged playlists list, and the landing Tastemakers shelf reads the head of
+  this same ordering).
 - **`get()`** allows `user_id = ? OR kind = 'curated'`.
 - **`update()` / `remove()` / `owns()`** all require `kind = 'user'`, so a curated
   playlist is read-only through the per-user API **even to the admin who seeded
@@ -85,16 +86,19 @@ slug-derived seed, so its shuffle is stable across runs but differs per playlist
 
 ## Web
 
-The library **Playlists** tab renders two sections (`library.component`):
+The library **Playlists** tab renders **one merged list** (`library.component`,
+`data-testid="playlists-list"` with `playlist-row` rows), sorted curated-first
+server-side, with an inline **"Curated"** badge (`curated-badge-inline`) as the
+origin marker and Rename/Delete restricted to `kind='user'` rows. (An earlier
+revision of this doc described a separate "Made for you" tile grid — that split
+was superseded by the merged list; see the playlists-page entry in CLAUDE.md.)
 
-- **"Made for you"** (`data-testid="curated-playlists"`) — a grid of cover tiles
-  (`curated-playlist-tile`), each with the gradient cover, name, song count, and a
-  **"Curated"** badge overlay (the explicit origin marker).
-- **"Your playlists"** (`data-testid="user-playlists"`) — the create form + the
-  user's own playlists, unchanged.
-
-Both are split client-side off the single `list` call via `kind`
-(`curatedPlaylists()` / `userPlaylists()` computeds).
+The landing page's **"Tastemakers" shelf** (`TastemakersComponent`,
+`data-testid="tastemakers"`) is the cover-tile surface for curated playlists:
+one tile per curated shelf (cap 10, hide-when-empty, plain-`<img>` gradient
+covers per the Covers section above), and tapping a tile starts a **blend
+radio** — a few of the shelf's actual tracks, then list-seeded variations —
+see docs/radio.md "Tastemakers (curated blend radio)".
 
 The **playlist-detail** page shows the cover (`data-testid="playlist-cover"`), the
 description, and — for curated — a `Curated playlist` label

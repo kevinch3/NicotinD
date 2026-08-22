@@ -34,4 +34,75 @@ test.describe('radio landing', () => {
     await page.getByTestId('radio-resume-play').click();
     await expect(resume).toHaveCount(0);
   });
+
+  // The "Keep the vibe" shelf is asserted at the API lane, not in the DOM: the
+  // shelf seeds itself from the shared user's recently-played list, which every
+  // spec's playback grows — a visibility assertion would silently depend on
+  // suite ordering (the recently-played empty-state note has the same
+  // reasoning). Rendering is pinned in keep-vibe.component.spec.ts.
+  test('keep the vibe: list-seeded radio recommends variations, never the seeds', async ({
+    page,
+    request,
+  }) => {
+    // Grab this session's token — the Playwright `request` fixture is
+    // unauthenticated, and /api/radio is behind the JWT middleware.
+    await page.goto('/');
+    const token = await page.evaluate(() => localStorage.getItem('nicotind_token'));
+    expect(token).toBeTruthy();
+    const auth = { Authorization: `Bearer ${token}` };
+
+    // Two known library songs stand in for the recently-played seed list.
+    const search = await request.get('/api/search?q=' + encodeURIComponent(FIXTURE.album.title), {
+      headers: auth,
+    });
+    expect(search.ok()).toBeTruthy();
+    const songs = ((await search.json()) as { local: { songs: Array<{ id: string }> } }).local
+      .songs;
+    expect(songs.length).toBeGreaterThanOrEqual(2);
+    const seedIds = [songs[0].id, songs[1].id];
+
+    const res = await request.get(`/api/radio/next?seedIds=${seedIds.join(',')}&count=5`, {
+      headers: auth,
+    });
+    expect(res.ok()).toBeTruthy();
+    const recs = (await res.json()) as Array<{ id: string }>;
+    // The fixture library holds 10 songs, so excluding the 2 seeds still
+    // leaves candidates — a variation must exist and must not be a seed.
+    expect(recs.length).toBeGreaterThan(0);
+    for (const seedId of seedIds) {
+      expect(recs.map((r) => r.id)).not.toContain(seedId);
+    }
+  });
+
+  test('tastemakers shelf appears after curated shelves exist and a tap starts playback', async ({
+    page,
+    request,
+  }) => {
+    // Materialize the auto-recipe shelves (admin "Generate now") — a fresh e2e
+    // server has zero curated playlists, so the shelf is hidden until this
+    // runs. Safe mid-suite: workers=1, and no spec asserts playlist counts.
+    await page.goto('/');
+    const token = await page.evaluate(() => localStorage.getItem('nicotind_token'));
+    expect(token).toBeTruthy();
+    const auth = { Authorization: `Bearer ${token}` };
+
+    const refresh = await request.post('/api/admin/playlists/auto/refresh', { headers: auth });
+    expect(refresh.ok()).toBeTruthy();
+    const shelves = ((await refresh.json()) as { shelves: Array<{ slug: string; count: number }> })
+      .shelves;
+    // "Fresh this week" is `where: '1=1'`, so the fixture library always fills it.
+    const fresh = shelves.find((s) => s.slug === 'fresh-this-week');
+    expect(fresh?.count ?? 0).toBeGreaterThan(0);
+
+    await page.goto('/');
+    const shelf = page.getByTestId('tastemakers');
+    await expect(shelf).toBeVisible({ timeout: 10_000 });
+    expect(await shelf.getByTestId('tastemaker-item').count()).toBeGreaterThan(0);
+
+    // On the 10-song fixture library every playlist member is also a seed, so
+    // the list-radio variations come back empty and the tap exercises the
+    // picks-only degradation path — assert playback starts, not queue length.
+    await shelf.getByTestId('tastemaker-item').first().click();
+    await expect(page.getByTestId('player-title')).not.toHaveText('', { timeout: 15_000 });
+  });
 });

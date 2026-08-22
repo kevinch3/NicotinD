@@ -948,8 +948,12 @@ Add detail there, not here.
   it. → [docs/radio.md](docs/radio.md) "Stations",
   [docs/measurements/radio-stations-2026-08.md](docs/measurements/radio-stations-2026-08.md). This backs the
   **radio/mood landing** (the post-login home route `''`, `pages/radio-landing/`): a last-track
-  resume shortcut (disappears on tap) + one-tap vibe presets + top-genre chips; acquisition search
-  moved to the `/get` Find tab. Shared scoring with `/songs/:id/similar`. **Recently-played demotion (P3)**: any candidate *this listener* played lately is demoted by
+  resume shortcut (disappears on tap) + one-tap vibe presets + top-genre chips + a **"Keep the
+  vibe" shelf** (`KeepVibeComponent` above the recently-played shelf, reusing its already-loaded
+  rows as seeds): `buildListRadio`, the `seedIds` lane on `/api/radio/next` — ONE generation
+  scored against the seed list's centroid, deliberately never N per-seed radios; acquisition
+  search moved to the `/get` Find tab. Shared scoring with `/songs/:id/similar` →
+  [docs/radio.md](docs/radio.md) "Keep the vibe". **Recently-played demotion (P3)**: any candidate *this listener* played lately is demoted by
   `recentPlayPenalty` (0.2) × `recentPlayFactor` (linear decay, 1 = just played → 0 at
   `RECENT_PLAY_WINDOW_MS` 7d), applied **post-normalization beside `artistPenalty`, never as an
   `add()` axis** — every other feature is compared seed-vs-candidate, but play recency is a property
@@ -1103,7 +1107,11 @@ Add detail there, not here.
   `SongPickerComponent` (debounced autocomplete) + a token-overlap "suggested for this playlist"
   proposals list, both refreshed after every membership mutation. → [docs/web-ui.md](docs/web-ui.md)
 - **Curated playlists (system, global)**: gradient-covered Spotify-style shelves shown to all users;
-  read-only by `kind` (not ownership). → [docs/curated-playlists.md](docs/curated-playlists.md)
+  read-only by `kind` (not ownership). The landing **"Tastemakers" shelf** (`TastemakersComponent`)
+  surfaces them as one-tap **blend radios** — a few actual tracks then list-seeded variations, via
+  `startRadioWithTracks` (the prepared-list sibling of `startRadioWithFilter`). →
+  [docs/curated-playlists.md](docs/curated-playlists.md),
+  [docs/radio.md](docs/radio.md) "Tastemakers"
 - **Automated playlists (recipe → refreshed curated shelves)**: code-defined `RECIPES`
   (bpm/key/year/genre `where` + sort) materialized into `kind='curated'` playlists by
   `refreshAutoPlaylists`; reuses `selectCuratedTracks` + the shared `upsertCuratedPlaylist`.
