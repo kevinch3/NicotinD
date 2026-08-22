@@ -183,6 +183,19 @@ One-line index; **full detail for every entry is in
 [docs/design-patterns.md](docs/design-patterns.md)** (and the per-feature doc linked on each line).
 Add detail there, not here.
 
+- **Lidarr calls are bounded, in three tiers (issue #612)**: `LidarrClient.request` had **no
+  timeout** — one path behind 13 methods and 43 non-test call sites, so a hung Lidarr held every one
+  open forever, pollers included. The mitigation had been applied at the wrong layer (`Bun.serve`
+  `idleTimeout` 10s→60s, which turns a hang into a slower hang). A single flat budget is wrong
+  because **21 of those 43 sites already swallow failures into `[]`/`null`**, so too tight degrades
+  *silently*: hence `TIMEOUT_LOCAL_MS` 10s (Lidarr's own SQLite), `TIMEOUT_LOOKUP_MS` 20s (the two
+  `lookup`s proxy upstream; capped below the web interceptor's own 30s abort or it could never fire)
+  and `TIMEOUT_PROVISION_MS` 60s (`artist.add` synchronously imports a discography). A timeout is
+  re-thrown as "timed out", since for swallowing callers the log line is the only place "never
+  answered" stays distinct from "said no". `fetchFn` is injectable — resolved per call, not captured
+  at construction, or it defeats the existing `globalThis.fetch` stubbing. **`idleTimeout` stays at
+  60s** until #622 (metadata-optimize's unbounded serial loop in a request handler) is fixed. →
+  [docs/design-patterns.md](docs/design-patterns.md)
 - **The runtime image ships only what it runs (issue #612)**: the production stage copies every
   workspace's `package.json` (lockfile resolution) and used to `bun install` **all their
   devDependencies** — `@angular/cli`, Storybook, `electron-builder`, `@capacitor/cli`, Playwright —

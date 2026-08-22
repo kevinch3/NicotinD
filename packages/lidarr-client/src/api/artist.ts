@@ -5,13 +5,17 @@ import type {
   LidarrRootFolder,
 } from '../types.js';
 import type { LidarrClient } from '../client.js';
+import { TIMEOUT_LOOKUP_MS, TIMEOUT_PROVISION_MS } from '../client.js';
 
 export class ArtistApi {
   constructor(private client: LidarrClient) {}
 
   async lookup(term: string): Promise<LidarrArtist[]> {
+    // Metadata-proxy call — see TIMEOUT_LOOKUP_MS.
     return this.client.request<LidarrArtist[]>(
       `/api/v1/artist/lookup?term=${encodeURIComponent(term)}`,
+      {},
+      TIMEOUT_LOOKUP_MS,
     );
   }
 
@@ -35,17 +39,21 @@ export class ArtistApi {
     rootFolderPath: string,
     metadataProfileId: number,
   ): Promise<LidarrArtist> {
-    return this.client.request<LidarrArtist>('/api/v1/artist', {
-      method: 'POST',
-      body: JSON.stringify({
-        ...artist,
-        qualityProfileId,
-        metadataProfileId,
-        rootFolderPath,
-        monitored: true,
-        addOptions: { monitor: 'all', searchForMissingAlbums: false },
-      }),
-    });
+    return this.client.request<LidarrArtist>(
+      '/api/v1/artist',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          ...artist,
+          qualityProfileId,
+          metadataProfileId,
+          rootFolderPath,
+          monitored: true,
+          addOptions: { monitor: 'all', searchForMissingAlbums: false },
+        }),
+      },
+      TIMEOUT_PROVISION_MS,
+    );
   }
 
   async getQualityProfiles(): Promise<LidarrQualityProfile[]> {
