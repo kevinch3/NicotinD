@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.56](https://github.com/kevinch3/NicotinD/compare/v0.3.55...v0.3.56) (2026-08-22)
+
+### Features
+
+* **ci:** gate the supply chain on what actually ships ([#631](https://github.com/kevinch3/NicotinD/issues/631)) ([d044595](https://github.com/kevinch3/NicotinD/commit/d0445958a5aa54d72a04ff51b44582f2856baedc)), references [#612](https://github.com/kevinch3/NicotinD/issues/612) [#621](https://github.com/kevinch3/NicotinD/issues/621) [#457](https://github.com/kevinch3/NicotinD/issues/457) [#606](https://github.com/kevinch3/NicotinD/issues/606) [#273](https://github.com/kevinch3/NicotinD/issues/273) [#612](https://github.com/kevinch3/NicotinD/issues/612) [#630](https://github.com/kevinch3/NicotinD/issues/630) [#612](https://github.com/kevinch3/NicotinD/issues/612)
 ## [0.3.55](https://github.com/kevinch3/NicotinD/compare/v0.3.54...v0.3.55) (2026-08-22)
 
 ### Features
