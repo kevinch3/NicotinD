@@ -182,6 +182,16 @@ One-line index; **full detail for every entry is in
 [docs/design-patterns.md](docs/design-patterns.md)** (and the per-feature doc linked on each line).
 Add detail there, not here.
 
+- **MusicBrainz failures stop being cached as absences (issue #612)**: `fetch<T>()` collapsed "MB
+  says nothing exists", "MB is down" and "the request never completed" into one `null`, which seven
+  methods cached — in a cache with **no expiry**. One 503 permanently recorded "no such entity", and
+  every non-tag artist surface (bio, origin, genres, image) resolves through this client. Now a
+  discriminated `FetchOutcome`: a **404** is a confirmed miss (cacheable), 503/5xx/network/timeout
+  never are. `CACHE_TTL_MS` (30d, injectable clock) replaces "never"; legacy entries are migrated
+  **surgically** — a cached miss is dropped (it may be a recorded failure), a cached hit is kept.
+  `AbortSignal.timeout(15s)` goes **inline after `rateLimit()`**, never hoisted above it, or the
+  clock runs during the ~1s rate-limit wait. The timeout had to ship *after* the cache fix, not with
+  it. → [docs/design-patterns.md](docs/design-patterns.md)
 - **Lidarr calls are bounded, in three tiers (issue #612)**: `LidarrClient.request` had **no
   timeout** — one path behind 13 methods and 43 non-test call sites, so a hung Lidarr held every one
   open forever, pollers included. The mitigation had been applied at the wrong layer (`Bun.serve`

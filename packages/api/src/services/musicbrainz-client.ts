@@ -55,7 +55,15 @@ export interface MBCanonicalTrack {
   durationSec?: number;
 }
 
-type CacheEntry =
+/**
+ * `at` is the write time. It is optional because entries written before this
+ * field existed have none — and those are treated as EXPIRED rather than
+ * eternal, on purpose: they are exactly the era in which a single 503 or dropped
+ * connection could be recorded as "no such entity" forever. Dropping them clears
+ * any such poisoning. It does not cause a re-fetch storm, because an expired
+ * entry is only re-fetched when that specific entity is next looked up.
+ */
+type CacheEntry = { at?: number } & (
   | { type: 'artist'; result: MBArtist | null }
   | { type: 'tracklist'; result: MBCanonicalTrack[] }
   | { type: 'recording'; result: MBRecording | null }
@@ -63,21 +71,58 @@ type CacheEntry =
   | { type: 'release-group-search'; result: MBReleaseGroupHit[] }
   | { type: 'licence'; result: string | null }
   | { type: 'discogs-url'; result: string | null }
-  | { type: 'origin'; result: string | null };
+  | { type: 'origin'; result: string | null }
+);
+
+/** A cached "there is nothing here" — null, or an empty list. */
+function isCachedMiss(entry: CacheEntry): boolean {
+  const r = entry.result as unknown;
+  return r === null || (Array.isArray(r) && r.length === 0);
+}
 
 const MB_BASE = 'https://musicbrainz.org/ws/2';
 const MIN_INTERVAL_MS = 1050; // MusicBrainz allows 1 req/sec; add 50ms buffer
+
+/**
+ * How long a cached answer is trusted. There was no expiry at all: the cache was
+ * written once and read forever, so every mistake in it was permanent — and
+ * MusicBrainz is a wiki, so even correct answers drift.
+ *
+ * 30 days is chosen to be much longer than any enrichment pass (so a run never
+ * re-fetches what it just fetched) and much shorter than "never".
+ */
+export const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Outcome of one MusicBrainz request.
+ *
+ * `confirmed` is the load-bearing bit: it separates "MB says this does not
+ * exist" (worth caching) from "we could not find out" (never cache — the cache
+ * has no expiry, so a transient failure would become permanent).
+ */
+type FetchOutcome<T> = { ok: true; data: T } | { ok: false; confirmed: boolean };
+
+/**
+ * Per-request budget. There was none: a hung MusicBrainz held the call — and,
+ * through the shared rate limiter, every queued call behind it — open forever.
+ * 15s rather than 10 because `getArtistReleaseGroups` (limit=100 + inc=genres)
+ * and the `inc=url-rels` expansions are genuinely multi-second.
+ */
+export const FETCH_TIMEOUT_MS = 15_000;
 
 /** Injected so tests need no real delays — mirrors DiscogsClient's deps style. */
 export interface MusicBrainzClientDeps {
   /** Replaces the real timer behind both the rate limit and the 503 backoff. */
   sleep?: (ms: number) => Promise<void>;
+  /** Injected so TTL expiry is testable without waiting 30 days. */
+  now?: () => number;
 }
 
 export class MusicBrainzClient {
   private cache = new Map<string, CacheEntry>();
   private lastCallAt = 0;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly now: () => number;
 
   constructor(
     private cacheFile: string,
@@ -85,11 +130,28 @@ export class MusicBrainzClient {
     deps: MusicBrainzClientDeps = {},
   ) {
     this.sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    this.now = deps.now ?? (() => Date.now());
     if (existsSync(cacheFile)) {
       try {
         const raw = JSON.parse(readFileSync(cacheFile, 'utf-8')) as Record<string, CacheEntry>;
-        for (const [k, v] of Object.entries(raw)) this.cache.set(k, v);
-        log.debug({ entries: this.cache.size }, 'MB cache loaded');
+        let droppedMisses = 0;
+        for (const [k, v] of Object.entries(raw)) {
+          if (v.at !== undefined) {
+            this.cache.set(k, v);
+            continue;
+          }
+          // A legacy entry, written before a transient failure could be told
+          // apart from a real absence. A cached MISS from that era may be a
+          // recorded 503 or dropped connection rather than "MusicBrainz has
+          // nothing" — and with no expiry it would stay wrong forever, so drop
+          // it. A cached HIT is real data: keep it, and start its clock now.
+          if (isCachedMiss(v)) {
+            droppedMisses += 1;
+            continue;
+          }
+          this.cache.set(k, { ...v, at: this.now() });
+        }
+        log.debug({ entries: this.cache.size, droppedMisses }, 'MB cache loaded');
       } catch {
         log.warn({ cacheFile }, 'Failed to parse MB cache; starting fresh');
       }
@@ -99,13 +161,17 @@ export class MusicBrainzClient {
   /** Search for an artist by name; returns the top MB match or null. */
   async searchArtist(name: string): Promise<MBArtist | null> {
     const key = `artist:${name.toLowerCase()}`;
-    const cached = this.cache.get(key);
+    const cached = this.getCached(key);
     if (cached?.type === 'artist') return cached.result;
 
     const url = `${MB_BASE}/artist?query=artist:${encodeURIComponent(name)}&fmt=json&limit=1`;
-    const data = await this.fetch<{
-      artists?: Array<{ id: string; name: string; score?: number }>;
-    }>(url);
+    const data = this.unwrap(
+      await this.fetch<{
+        artists?: Array<{ id: string; name: string; score?: number }>;
+      }>(url),
+    );
+    // Transient: do not cache, so the next call retries.
+    if (data === undefined) return null;
     const first = data?.artists?.[0];
     const result: MBArtist | null = first
       ? { id: first.id, name: first.name, score: first.score ?? 0 }
@@ -120,25 +186,29 @@ export class MusicBrainzClient {
    */
   async searchRecording(artist: string, title: string): Promise<MBRecording | null> {
     const key = `recording:${artist.toLowerCase()}|${title.toLowerCase()}`;
-    const cached = this.cache.get(key);
+    const cached = this.getCached(key);
     if (cached?.type === 'recording') return cached.result;
 
     const q = `recording:${encodeURIComponent(title)} AND artist:${encodeURIComponent(artist)}`;
     const url = `${MB_BASE}/recording?query=${q}&fmt=json&limit=10&inc=releases`;
-    const data = await this.fetch<{
-      recordings?: Array<{
-        id: string;
-        title: string;
-        score?: number;
-        releases?: Array<{
+    const data = this.unwrap(
+      await this.fetch<{
+        recordings?: Array<{
           id: string;
           title: string;
-          status?: string;
-          date?: string;
-          'release-group'?: { 'primary-type'?: string };
+          score?: number;
+          releases?: Array<{
+            id: string;
+            title: string;
+            status?: string;
+            date?: string;
+            'release-group'?: { 'primary-type'?: string };
+          }>;
         }>;
-      }>;
-    }>(url);
+      }>(url),
+    );
+    // Transient: do not cache, so the next call retries.
+    if (data === undefined) return null;
 
     const recordings = data?.recordings ?? [];
     let best: MBRecording | null = null;
@@ -181,16 +251,20 @@ export class MusicBrainzClient {
   /** Fetch release-group metadata (for canonical album title/type). */
   async getReleaseGroup(id: string): Promise<MBReleaseGroup | null> {
     const key = `rg:${id}`;
-    const cached = this.cache.get(key);
+    const cached = this.getCached(key);
     if (cached?.type === 'release-group') return cached.result;
 
     const url = `${MB_BASE}/release-group/${encodeURIComponent(id)}?fmt=json`;
-    const data = await this.fetch<{
-      id?: string;
-      title?: string;
-      'primary-type'?: string;
-      'first-release-date'?: string;
-    }>(url);
+    const data = this.unwrap(
+      await this.fetch<{
+        id?: string;
+        title?: string;
+        'primary-type'?: string;
+        'first-release-date'?: string;
+      }>(url),
+    );
+    // Transient: do not cache, so the next call retries.
+    if (data === undefined) return null;
 
     const result: MBReleaseGroup | null = data?.title
       ? {
@@ -216,7 +290,7 @@ export class MusicBrainzClient {
     limit = 5,
   ): Promise<MBReleaseGroupHit[]> {
     const key = `rgsearch:${artist.toLowerCase()}|${album.toLowerCase()}`;
-    const cached = this.cache.get(key);
+    const cached = this.getCached(key);
     if (cached?.type === 'release-group-search') return cached.result;
 
     // Lucene phrase-escape (issue #416): a `"` or `\` inside a title would
@@ -227,16 +301,20 @@ export class MusicBrainzClient {
       ? `releasegroup:${phrase(album)} AND artist:${phrase(artist)}`
       : `releasegroup:${phrase(album)}`;
     const url = `${MB_BASE}/release-group?query=${encodeURIComponent(query)}&limit=${limit}&fmt=json`;
-    const data = await this.fetch<{
-      'release-groups'?: Array<{
-        id: string;
-        title: string;
-        score?: number;
-        'primary-type'?: string;
-        'first-release-date'?: string;
-        'artist-credit'?: Array<{ name?: string }>;
-      }>;
-    }>(url);
+    const data = this.unwrap(
+      await this.fetch<{
+        'release-groups'?: Array<{
+          id: string;
+          title: string;
+          score?: number;
+          'primary-type'?: string;
+          'first-release-date'?: string;
+          'artist-credit'?: Array<{ name?: string }>;
+        }>;
+      }>(url),
+    );
+    // Transient: do not cache, so the next call retries.
+    if (data === undefined) return [];
 
     const hits: MBReleaseGroupHit[] = (data?.['release-groups'] ?? []).map((rg) => ({
       id: rg.id,
@@ -269,19 +347,23 @@ export class MusicBrainzClient {
    */
   async getCanonicalTracklist(releaseGroupId: string): Promise<MBCanonicalTrack[]> {
     const key = `tracklist:${releaseGroupId}`;
-    const cached = this.cache.get(key);
+    const cached = this.getCached(key);
     if (cached?.type === 'tracklist') return cached.result;
 
     const listUrl =
       `${MB_BASE}/release?release-group=${encodeURIComponent(releaseGroupId)}` +
       `&inc=media&limit=25&fmt=json`;
-    const listing = await this.fetch<{
-      releases?: Array<{
-        id: string;
-        status?: string;
-        media?: Array<{ 'track-count'?: number }>;
-      }>;
-    }>(listUrl);
+    const listing = this.unwrap(
+      await this.fetch<{
+        releases?: Array<{
+          id: string;
+          status?: string;
+          media?: Array<{ 'track-count'?: number }>;
+        }>;
+      }>(listUrl),
+    );
+    // Transient: do not cache, so the next call retries.
+    if (listing === undefined) return [];
 
     const releases = listing?.releases ?? [];
     if (releases.length === 0) {
@@ -295,11 +377,15 @@ export class MusicBrainzClient {
     const pool = official.length > 0 ? official : releases;
     const best = pool.reduce((a, b) => (trackCount(b) > trackCount(a) ? b : a));
 
-    const detail = await this.fetch<{
-      media?: Array<{
-        tracks?: Array<{ position?: number; number?: string; title?: string; length?: number }>;
-      }>;
-    }>(`${MB_BASE}/release/${encodeURIComponent(best.id)}?inc=recordings&fmt=json`);
+    const detail = this.unwrap(
+      await this.fetch<{
+        media?: Array<{
+          tracks?: Array<{ position?: number; number?: string; title?: string; length?: number }>;
+        }>;
+      }>(`${MB_BASE}/release/${encodeURIComponent(best.id)}?inc=recordings&fmt=json`),
+    );
+    // Transient: do not cache, so the next call retries.
+    if (detail === undefined) return [];
 
     const tracks: MBCanonicalTrack[] = (detail?.media?.[0]?.tracks ?? [])
       .filter((t) => Boolean(t.title))
@@ -325,9 +411,13 @@ export class MusicBrainzClient {
    * error, and fall back to release-group genres which cover ~6x more.
    */
   async getArtistGenres(mbid: string): Promise<MbGenre[]> {
-    const data = await this.fetch<{ genres?: MbGenre[] }>(
-      `${MB_BASE}/artist/${encodeURIComponent(mbid)}?inc=genres&fmt=json`,
+    const data = this.unwrap(
+      await this.fetch<{ genres?: MbGenre[] }>(
+        `${MB_BASE}/artist/${encodeURIComponent(mbid)}?inc=genres&fmt=json`,
+      ),
     );
+    // Transient: do not cache, so the next call retries.
+    if (data === undefined) return [];
     return data?.genres ?? [];
   }
 
@@ -344,9 +434,15 @@ export class MusicBrainzClient {
   async getArtistReleaseGroups(
     mbid: string,
   ): Promise<Array<{ id: string; title: string; genres: MbGenre[] }>> {
-    const data = await this.fetch<{
-      'release-groups'?: Array<{ id: string; title: string; genres?: MbGenre[] }>;
-    }>(`${MB_BASE}/release-group?artist=${encodeURIComponent(mbid)}&inc=genres&fmt=json&limit=100`);
+    const data = this.unwrap(
+      await this.fetch<{
+        'release-groups'?: Array<{ id: string; title: string; genres?: MbGenre[] }>;
+      }>(
+        `${MB_BASE}/release-group?artist=${encodeURIComponent(mbid)}&inc=genres&fmt=json&limit=100`,
+      ),
+    );
+    // Transient: do not cache, so the next call retries.
+    if (data === undefined) return [];
     return (data?.['release-groups'] ?? []).map((rg) => ({
       id: rg.id,
       title: rg.title,
@@ -374,7 +470,7 @@ export class MusicBrainzClient {
     if (!recordingId && !q.mbReleaseId) return null;
 
     const key = `licence:${recordingId ?? ''}|${q.mbReleaseId ?? ''}`;
-    const cached = this.cache.get(key);
+    const cached = this.getCached(key);
     if (cached?.type === 'licence') return cached.result;
 
     let code: string | null = null;
@@ -389,9 +485,13 @@ export class MusicBrainzClient {
     id: string,
   ): Promise<string | null> {
     const url = `${MB_BASE}/${kind}/${encodeURIComponent(id)}?fmt=json&inc=url-rels`;
-    const data = await this.fetch<{
-      relations?: Array<{ type?: string; url?: { resource?: string } }>;
-    }>(url);
+    const data = this.unwrap(
+      await this.fetch<{
+        relations?: Array<{ type?: string; url?: { resource?: string } }>;
+      }>(url),
+    );
+    // Transient: do not cache, so the next call retries.
+    if (data === undefined) return null;
     for (const rel of data?.relations ?? []) {
       if (rel.type === 'license') {
         const code = normalizeLicence(rel.url?.resource);
@@ -408,13 +508,17 @@ export class MusicBrainzClient {
    */
   async getArtistDiscogsUrl(mbid: string): Promise<string | null> {
     const key = `discogs-url:${mbid}`;
-    const cached = this.cache.get(key);
+    const cached = this.getCached(key);
     if (cached?.type === 'discogs-url') return cached.result;
 
     const url = `${MB_BASE}/artist/${encodeURIComponent(mbid)}?fmt=json&inc=url-rels`;
-    const data = await this.fetch<{
-      relations?: Array<{ type?: string; url?: { resource?: string } }>;
-    }>(url);
+    const data = this.unwrap(
+      await this.fetch<{
+        relations?: Array<{ type?: string; url?: { resource?: string } }>;
+      }>(url),
+    );
+    // Transient: do not cache, so the next call retries.
+    if (data === undefined) return null;
     let discogsUrl: string | null = null;
     for (const rel of data?.relations ?? []) {
       if (rel.type === 'discogs' && rel.url?.resource) {
@@ -434,24 +538,40 @@ export class MusicBrainzClient {
    */
   async getArtistOrigin(mbid: string): Promise<{ ok: boolean; country: string | null }> {
     const key = `origin:${mbid}`;
-    const cached = this.cache.get(key);
+    const cached = this.getCached(key);
     if (cached?.type === 'origin') return { ok: true, country: cached.result };
 
-    const data = await this.fetch<{
-      country?: string;
-      area?: { type?: string; 'iso-3166-1-codes'?: string[] };
-    }>(`${MB_BASE}/artist/${encodeURIComponent(mbid)}?fmt=json`);
-    if (data === null) return { ok: false, country: null };
+    const data = this.unwrap(
+      await this.fetch<{
+        country?: string;
+        area?: { type?: string; 'iso-3166-1-codes'?: string[] };
+      }>(`${MB_BASE}/artist/${encodeURIComponent(mbid)}?fmt=json`),
+    );
+    // Transient: do not cache, so the next call retries.
+    if (data === undefined) return { ok: false, country: null };
 
+    // `data === null` is now reachable and meaningful: MB answered 404, so the
+    // absence is real and worth remembering. Previously this method could not
+    // tell that from a network failure and refused to cache either.
     const raw =
-      data.country ??
-      (data.area?.type === 'Country' ? data.area?.['iso-3166-1-codes']?.[0] : undefined);
+      data?.country ??
+      (data?.area?.type === 'Country' ? data?.area?.['iso-3166-1-codes']?.[0] : undefined);
     const country = normalizeMbCountry(raw);
     this.setCached(key, { type: 'origin', result: country });
     return { ok: true, country };
   }
 
-  private async fetch<T>(url: string): Promise<T | null> {
+  /**
+   * Every caller used to receive a bare `null` for all three of "MusicBrainz
+   * answered, there is nothing", "MusicBrainz is down" and "the request never
+   * completed" — and then cached it. Since the cache had no expiry, one 503 or
+   * one dropped connection permanently recorded "no such entity" for that
+   * artist or release group.
+   *
+   * `getArtistOrigin` already avoided this by returning before caching; this
+   * generalises that distinction so the other nine methods can too.
+   */
+  private async fetch<T>(url: string): Promise<FetchOutcome<T>> {
     await this.rateLimit();
     try {
       const res = await fetch(url, {
@@ -459,20 +579,33 @@ export class MusicBrainzClient {
           'User-Agent': this.userAgent,
           Accept: 'application/json',
         },
+        // Inline, and AFTER rateLimit(): hoisting it above the await would start
+        // the clock during the ~1s rate-limit wait and abort healthy requests.
+        // 15s rather than 10 because `getArtistReleaseGroups` (limit=100 +
+        // inc=genres) and the `inc=url-rels` expansions are genuinely
+        // multi-second.
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (res.status === 503) {
         log.warn({ url }, 'MusicBrainz 503 — backing off 5s');
         await this.sleep(5000);
-        return null;
+        return { ok: false, confirmed: false };
+      }
+      // 404 is MusicBrainz answering authoritatively: this MBID does not exist.
+      // Worth remembering. Anything else in the error range is theirs, not ours.
+      if (res.status === 404) {
+        log.debug({ url }, 'MusicBrainz 404 — confirmed miss');
+        return { ok: false, confirmed: true };
       }
       if (!res.ok) {
         log.debug({ url, status: res.status }, 'MusicBrainz error');
-        return null;
+        return { ok: false, confirmed: false };
       }
-      return (await res.json()) as T;
+      return { ok: true, data: (await res.json()) as T };
     } catch (err) {
-      log.warn({ url, err }, 'MusicBrainz fetch failed');
-      return null;
+      const timedOut = err instanceof Error && err.name === 'TimeoutError';
+      log.warn({ url, err, timedOut }, 'MusicBrainz fetch failed');
+      return { ok: false, confirmed: false };
     }
   }
 
@@ -483,8 +616,38 @@ export class MusicBrainzClient {
     this.lastCallAt = Date.now();
   }
 
+  /**
+   * Collapse an outcome for callers that cache their result.
+   *
+   *   T          - MusicBrainz answered
+   *   null       - it answered that there is nothing (a confirmed miss; cacheable)
+   *   undefined  - we could not find out (transient; the caller must NOT cache,
+   *                and returns its empty value so the next call retries)
+   *
+   * The three used to be one bare `null`, which is how a single 503 could
+   * permanently record "no such entity" in a cache that has no expiry.
+   */
+  /**
+   * A cache read that respects the TTL. Returns undefined for "nothing usable",
+   * which every caller already treats as "go and ask MusicBrainz".
+   */
+  private getCached(key: string): CacheEntry | undefined {
+    const entry = this.cache.get(key);
+    if (!entry) return undefined;
+    if (entry.at === undefined || this.now() - entry.at > CACHE_TTL_MS) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    return entry;
+  }
+
+  private unwrap<T>(out: FetchOutcome<T>): T | null | undefined {
+    if (out.ok) return out.data;
+    return out.confirmed ? null : undefined;
+  }
+
   private setCached(key: string, entry: CacheEntry): void {
-    this.cache.set(key, entry);
+    this.cache.set(key, { ...entry, at: this.now() });
     this.flushCache();
   }
 
