@@ -4,6 +4,9 @@ import type { DiscogsSearchHit, DiscogsGenreEntity } from './matching.js';
 
 const log = createLogger('discogs-client');
 
+/** Backs interactive artist info/genres, so it must fail rather than hang. */
+const DISCOGS_TIMEOUT_MS = 15_000;
+
 const DISCOGS_API = 'https://api.discogs.com';
 
 /**
@@ -145,7 +148,12 @@ export class DiscogsClient {
     let lastStatus = 0;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       await this.throttle(priority);
-      const res = await this.fetchFn(`${DISCOGS_API}${path}`, { headers: this.headers() });
+      const res = await this.fetchFn(`${DISCOGS_API}${path}`, {
+        headers: this.headers(),
+        // After `await this.throttle(priority)` above, so the budget covers the
+        // request rather than our own rate limiter.
+        signal: AbortSignal.timeout(DISCOGS_TIMEOUT_MS),
+      });
       this.honorRateLimitHeader(res);
       lastStatus = res.status;
 

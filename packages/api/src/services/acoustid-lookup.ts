@@ -4,6 +4,9 @@ import { createLogger } from '@nicotind/core';
 
 const log = createLogger('acoustid');
 
+/** Fingerprint lookup against an external service; generous but bounded. */
+const ACOUSTID_TIMEOUT_MS = 15_000;
+
 const ACOUSTID_URL = 'https://api.acoustid.org/v2/lookup';
 const MIN_INTERVAL_MS = 334; // ~3 req/s, AcoustID's free limit
 
@@ -216,7 +219,11 @@ export class AcoustIdLookup {
 
     let raw: AcoustIdRaw;
     try {
-      const res = await this.fetchFn(ACOUSTID_URL, { method: 'POST', body: params });
+      const res = await this.fetchFn(ACOUSTID_URL, {
+        method: 'POST',
+        body: params,
+        signal: AbortSignal.timeout(ACOUSTID_TIMEOUT_MS),
+      });
       if (!res.ok) {
         log.debug({ status: res.status, filepath }, 'AcoustID HTTP error');
         // Transient by nature (5xx, rate limit) — a retry may well succeed, so
