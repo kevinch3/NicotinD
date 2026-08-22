@@ -82,6 +82,8 @@ bun run check:claude-md  # fail on CLAUDE.md symbols that don't exist / broken d
 bun run check:ci-parity  # fail when a gate job runs a check `verify` doesn't, or doesn't block release (CI gate)
 bun run check:route-auth # fail when an /api route group is mounted with no auth decision (CI gate)
                          # AST-parsed + asserts its own denominator (docs/api-routes.md)
+bun run check:audit      # fail on an advisory that BOTH ships and matches the resolved
+                         # version — not the 2,546-entry lockfile (CI gate, docs/quality-gates.md)
 bun run check:shipped-issues # open issues a shipped commit referenced (report, not a gate)
 bun run check:json       # duplicate keys in JSON configs (JSON.parse keeps the last silently)
 bun run check:shared-helpers # a shared helper re-implemented locally instead of imported (CI gate)
@@ -182,6 +184,22 @@ One-line index; **full detail for every entry is in
 [docs/design-patterns.md](docs/design-patterns.md)** (and the per-feature doc linked on each line).
 Add detail there, not here.
 
+- **`check:audit` — the supply chain is gated on what *ships* (issue #612)**: there was no
+  dependency scanning, and the obvious fix is wrong. `bun audit` reports **95 advisories across
+  27 packages** here and exits 1; bolting it onto `verify` starts red with nothing to act on, and
+  a gate that cries wolf gets muted — this file's own rule failing loudly-false rather than
+  silently-green. Two filters fix it: the **production closure** (walk `bun.lock` from every
+  workspace's `dependencies`, never `devDependencies` — 2,546 entries down to the ~160 that
+  `bun install --production` actually installs) and the **resolved version** (`bun audit` groups
+  by package *name*, but `sharp` resolves here at both a vulnerable dev-only `0.32.6` and the
+  safe `0.35.3` the API ships). 27 packages → 3 → 0. Not theoretical: it found `yaml@2.8.2`
+  shipping via `@nicotind/api > @hono/zod-openapi > openapi3-ts`, invisible to a name-level read
+  because the root's own `yaml` is a safe 2.9.0 — so findings carry their **dependency path**,
+  since knowing to bump `openapi3-ts` is the actionable half. Neither filter may drop anything
+  silently: an unresolvable version **fails**, and `ACCEPTED` is checked both ways and ships
+  empty. An unreachable registry **warns and passes** — unreachable ≠ vulnerable, the #625
+  distinction pointed the other way. →
+  [docs/quality-gates.md](docs/quality-gates.md)
 - **`check:fetch-timeouts` — every outbound call is bounded (issue #612)**: a `fetch` with no
   `AbortSignal` hangs as long as the upstream stays silent and looks like a working call until then.
   The review counted **4** direct `fetch(` sites; there are **19**, because every house client calls

@@ -317,6 +317,74 @@ archive.org (full-text search is genuinely slow). Lidarr's three tiers and
 MusicBrainz's 15s are documented in
 [design-patterns.md](design-patterns.md).
 
+## `check:audit` — a supply-chain gate that measures what ships
+
+There was no dependency scanning at all. The obvious fix — append
+`bun audit --audit-level=high` to `verify` — was measured before being written, and it is
+wrong. On this repo `bun audit` reports **95 advisories across 27 packages** and exits 1,
+and approximately none of them are actionable. A gate that starts red with 47 findings you
+cannot act on gets muted inside a week; that is this document's rule failing in the other
+direction, loudly-false instead of silently-green.
+
+Two independent reasons the raw number means nothing here.
+
+**It audits the lockfile, not the artifact.** `bun audit` reads all 2,546 entries in
+`bun.lock`. The runtime image installs 166 of them (`bun install --production`, see
+[deployment.md](deployment.md)). Angular, Storybook, Playwright, `electron-builder` and
+`lint-staged` build the app; they never run in it. Filtering to the production closure takes
+27 advisory packages down to **3**.
+
+**It reports per package name, not per resolved instance.** A monorepo lockfile resolves the
+same package many times, and `bun audit` groups by name. `sharp` is here at both `0.32.6`
+(vulnerable, via `@capacitor/assets`, dev-only) and `0.35.3` (safe, what the API ships);
+`yaml` and `builder-util-runtime` are the same story. Without matching the *resolved*
+version, the gate is majority false positives even after the closure filter.
+
+So `check:audit` applies both filters and prints the whole funnel:
+
+```
+Supply chain: 91 advisories across 25 packages -> 3 in the 160-package
+production closure -> 0 version-matched.
+```
+
+### The version filter is not theoretical
+
+Its first run found `yaml@2.8.2` shipping through
+`@nicotind/api > @hono/zod-openapi > openapi3-ts > yaml`. A name-level read says yaml is
+fine, because the root's own direct dependency is a safe `2.9.0` — the vulnerable copy is a
+second resolution three levels down. Nothing but resolved-version matching finds that.
+
+Findings therefore carry their dependency path. "`yaml@2.8.2` is vulnerable" is not
+actionable on its own; you need to know that the thing to bump is `openapi3-ts`.
+
+### Neither filter may drop anything silently
+
+Per the rule at the top of this file: a package inside the closure whose version cannot be
+read **fails** the build instead of being skipped. A filter that quietly narrows its own
+input is the #457/#606/#273 shape, and two of these filters exist precisely to narrow the
+input.
+
+`ACCEPTED` is checked in **both** directions — an entry matching nothing fails too, the
+`EXTERNAL_SYMBOLS` discipline rather than the `ALLOWLIST` one. It ships **empty**: the three
+findings it was written against were fixed by bumping, not excused, so there is no precedent
+in it for excusing one.
+
+Both filters are red-proofed. Disabling the closure filter fails 2 tests; disabling the
+semver match fails 1.
+
+### Unreachable is not vulnerable
+
+`verify` runs offline sometimes. When the advisory registry cannot be reached the gate warns
+and exits 0, saying plainly that nothing was checked. Recording a transient failure as a
+finding is the mistake [#625](https://github.com/kevinch3/NicotinD/issues/625) fixed in the
+MusicBrainz client, pointed the other way.
+
+### Scope
+
+`check:audit` owns npm dependencies. The base image's OS packages are Trivy's job in
+`deploy.yml` — `bun audit` structurally cannot see them, and keeping the two
+non-overlapping means a failure in either is unambiguous about what to fix.
+
 ## Hardware cast: the drift this uncovered
 
 `CLAUDE.md` described Chromecast/DLNA casting in the present tense as shipped —
