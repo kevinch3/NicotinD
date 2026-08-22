@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.51](https://github.com/kevinch3/NicotinD/compare/v0.3.50...v0.3.51) (2026-08-22)
+
+### Bug Fixes
+
+* **musicbrainz:** stop remembering a failure as an absence ([#625](https://github.com/kevinch3/NicotinD/issues/625)) ([08ea100](https://github.com/kevinch3/NicotinD/commit/08ea1006153ca674c7f72e73b6370199febf87bc)), references [#612](https://github.com/kevinch3/NicotinD/issues/612)
 ## [0.3.50](https://github.com/kevinch3/NicotinD/compare/v0.3.49...v0.3.50) (2026-08-22)
 ## [0.3.49](https://github.com/kevinch3/NicotinD/compare/v0.3.48...v0.3.49) (2026-08-22)
 
