@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.53](https://github.com/kevinch3/NicotinD/compare/v0.3.52...v0.3.53) (2026-08-22)
+
+### Features
+
+* **db:** make schema migration atomic and stamp a version ([#627](https://github.com/kevinch3/NicotinD/issues/627)) ([cb79fea](https://github.com/kevinch3/NicotinD/commit/cb79fea6e41f2ae844f97c160dcb82fdef775a25)), references [457/#606](https://github.com/kevinch3/NicotinD/issues/606) [#612](https://github.com/kevinch3/NicotinD/issues/612)
 ## [0.3.52](https://github.com/kevinch3/NicotinD/compare/v0.3.51...v0.3.52) (2026-08-22)
 
 ### Features
