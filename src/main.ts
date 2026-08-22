@@ -7,7 +7,7 @@ import pkg from '../package.json';
 import { NicotinDConfigSchema, createLogger, generateSecret, resolvePort } from '@nicotind/core';
 import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
 import { Lidarr } from '@nicotind/lidarr-client';
-import { createApp, getDatabase, maybeCheckForUpdate } from '@nicotind/api';
+import { createApp, findInsecureDefaults, getDatabase, maybeCheckForUpdate } from '@nicotind/api';
 
 const log = createLogger('nicotind');
 
@@ -139,6 +139,20 @@ async function main() {
   // Machine-readable handshake for the desktop supervisor. Keep the exact prefix.
   log.info({ port: server.port }, 'NicotinD is ready');
   console.log(`NICOTIND_LISTENING ${server.port}`);
+
+  // Shipped defaults that are unsafe and are being removed (#612). Warn-only on
+  // purpose: this image is public, so these defaults are what strangers run, and
+  // one of them is load-bearing for someone's install. Announce, then enforce.
+  // Logged after `ready` so a noisy warning can never be mistaken for a boot
+  // failure, and never fatal — an advisory that stops a boot is a worse bug than
+  // the thing it warns about.
+  try {
+    for (const d of findInsecureDefaults(getDatabase())) {
+      log.warn({ deprecation: d.code }, d.message);
+    }
+  } catch (err) {
+    log.debug({ err }, 'insecure-defaults check skipped');
+  }
 
   // Remote access (Tailscale Funnel): the funnel target port is only known now,
   // so arm here — non-fatal on failure, state surfaced via the admin route.

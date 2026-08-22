@@ -353,6 +353,58 @@ NICOTIND_VERSION=v0.1.230
 
 Unset (default) = track `release`.
 
+## Unsafe defaults being removed in 0.4.0
+
+Two defaults that ship today are dangerous, and both leave in **0.4.0**. They are
+announced first — a running instance logs a warning at boot naming each one — so
+an operator gets a release in which the thing still works and the message says
+what to do. See [SECURITY.md](../SECURITY.md) and issue #612.
+
+### `/var/run/docker.sock` is bind-mounted by default
+
+`docker-compose.yml` mounts the Docker socket into the `nicotind` container to
+support the admin log viewer (`packages/api/src/routes/system.ts`). **This is
+host-root-equivalent privilege.** The `:ro` flag does not mitigate it — the
+Docker API is read-write over that socket regardless of how the file is mounted.
+So any RCE or SSRF anywhere in the API escalates directly to root on the host,
+in a service that fetches remote cover art, parses untrusted audio tags, shells
+out to `ffmpeg`/`fpcalc` and extracts user-supplied zip archives.
+
+**In 0.4.0 it is removed from `docker-compose.yml`.** If you want the log viewer,
+copy `docker-compose.override.example.yml` to `docker-compose.override.yml` and
+uncomment the mount. Without it the feature degrades cleanly: the route returns
+`503 Docker socket not available` rather than failing obscurely.
+
+> Compose **merges** an override into the base file, but a *list* in the override
+> **replaces** the base list instead of appending. If you declare `volumes:` in
+> your override you must re-list the music and data mounts too, or they vanish.
+> The example file says this at the top for the same reason.
+
+### Addon tokens default to `change-me`
+
+`SLSKD_ADDON_TOKEN`, `YTDLP_ADDON_TOKEN` and `SPOTDL_ADDON_TOKEN` all default to
+the literal `change-me` (`docker-compose.yml`), and nothing currently fails if an
+operator never overrides them. Anything that can reach an addon on the Docker
+network can then drive it.
+
+**In 0.4.0 the addons refuse to start without a real token** (`${VAR:?}` in
+compose gives this for free). Set them in your `.env` now:
+
+```bash
+SLSKD_ADDON_TOKEN=$(openssl rand -hex 32)
+YTDLP_ADDON_TOKEN=$(openssl rand -hex 32)
+SPOTDL_ADDON_TOKEN=$(openssl rand -hex 32)
+```
+
+then re-register the addons under Extensions so core stores the new token.
+
+**The boot warning checks what is registered, not what is configured.** Core
+never sees those env vars — they belong to the addon containers, which live in
+their own repos. What it can see is `addon_registrations.token`, which is the
+credential an admin actually registered. That is also the signal that matters: a
+placeholder sitting unused in a compose file harms nobody; a registered one is
+live.
+
 ## Upgrade
 
 ```bash

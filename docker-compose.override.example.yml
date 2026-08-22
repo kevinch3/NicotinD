@@ -8,6 +8,8 @@
 #   1. Bind-mount your existing music library instead of the named volume
 #   2. Bind-mount the NicotinD data dir (secrets, DB) for persistence
 #   3. Build the server image from source instead of pulling from GHCR
+#   4. Re-enable the admin log viewer's Docker socket mount (removed from the
+#      default compose file in 0.4.0 — see the warning at the bottom)
 #
 # GPU passthrough for the analysis sidecar is deliberately NOT here — it lives in
 # its own opt-in overlay, docker-compose.gpu.yml, so a host GPU / nvidia-
@@ -23,9 +25,30 @@ services:
     # `build:` set, `docker compose up --build` builds and tags the result
     # under the image name.
     build: .
+    # NOTE: compose MERGES this file into docker-compose.yml, but a LIST here
+    # REPLACES the base list rather than appending to it. That is why both mounts
+    # are spelled out below even though the base file already has them — and it
+    # is why the base file's Docker-socket mount does not survive this block.
     volumes:
       - ~/.nicotind:/data/nicotind
       - /path/to/your/music:/data/music
+      # SECURITY — the admin log viewer, opt-in from 0.4.0.
+      #
+      # Bind-mounting /var/run/docker.sock grants this container full Docker API
+      # access = host-root-equivalent privilege. The `:ro` flag does NOT help:
+      # the Docker API is read-write over the socket regardless of how the file
+      # itself is mounted. An RCE or SSRF anywhere in the API therefore
+      # escalates straight to root on the host — in a service that fetches
+      # remote cover art, parses untrusted audio tags, shells out to
+      # ffmpeg/fpcalc and extracts user-supplied zip archives.
+      #
+      # This was in docker-compose.yml by default until 0.4.0. It moved here
+      # because the published image is public, so the default configuration is
+      # what strangers run. Without it the log viewer degrades cleanly:
+      # GET /api/system/logs returns 503 "Docker socket not available".
+      #
+      # Uncomment only if you want the admin log viewer and accept that trade.
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
 
   analysis:
     # Just a bind mount here — the published analysis image runs on CPU. For GPU
