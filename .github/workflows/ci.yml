@@ -33,7 +33,11 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
+      # Full history: the secret scan below walks every commit, and a shallow
+      # clone would silently shrink what it examines to one.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Statically validate the workflow files themselves. A malformed `${{ }}`
       # expression (e.g. a double-quoted string literal) makes a workflow invalid and
@@ -50,6 +54,21 @@ jobs:
           curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_amd64.tar.gz" \
             | tar -xz actionlint
           ./actionlint -color
+
+      # Scans the FULL history, not the working tree: a secret committed and then
+      # deleted inside the same PR is still published forever, and a tree scan
+      # cannot see it. ~1.3s for 1,968 commits, because it walks diffs.
+      #
+      # Pinned binary rather than gitleaks-action, matching the actionlint step
+      # above — it also sidesteps that action's licensing terms entirely.
+      # Allowlists (with reasons) live in .gitleaks.toml.
+      - name: Secret scan
+        run: |
+          set -euo pipefail
+          version=8.30.1
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          ./gitleaks git . --redact --no-banner --config .gitleaks.toml
 
       - uses: oven-sh/setup-bun@v2
         with:

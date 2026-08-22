@@ -541,6 +541,31 @@ jobs:
             echo "::endgroup::"
           done
 
+      # Scans the BASE IMAGE's OS packages. Deliberately non-overlapping with
+      # `check:audit`, which owns npm dependencies and structurally cannot see
+      # a Debian package in the oven/bun layer. Keeping them disjoint means a
+      # failure in either is unambiguous about what to go and fix.
+      #
+      # `ignore-unfixed` because an OS CVE with no available patch is not
+      # actionable — blocking a release on one would train us to bypass this.
+      # A finding here therefore always means: a fixed version exists, bump the
+      # base image in the Dockerfile.
+      #
+      # This runs inside docker-merge on purpose. The image is already pushed by
+      # now, so a failure does not un-publish it — it stops `deploy`, through the
+      # existing `needs: [docker-merge]`, from putting it on the host. Doing it
+      # as its own job would mean editing deploy's `if:` expression, and that
+      # expression is exactly the #457 shape.
+      - name: Scan the published image for OS vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.ref_name }}
+          vuln-type: os
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          format: table
+
   # Publish the analysis sidecar image (amd64 only: essentia-tensorflow ships
   # x86_64-only wheels, so an arm64 build has never been possible). Single-arch
   # → no digest/merge dance, tags pushed directly. Same tag semantics as the

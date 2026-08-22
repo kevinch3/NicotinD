@@ -1,0 +1,43 @@
+# Secret scanning config. See docs/quality-gates.md "check:secrets".
+#
+# The gate scans the FULL git history, not the working tree: a secret committed
+# and then deleted inside the same pull request is still published forever, and
+# a tree scan cannot see it. History scanning is affordable here — 1,968 commits
+# in ~1.3s, because it walks diffs rather than files.
+#
+# Every allowlist block carries a reason, the same discipline as PUBLIC_ROUTES in
+# check-route-auth.ts and ACCEPTED in check-audit.ts. An allowlist nobody can
+# audit is just a mute button.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+The JWT signing secret used by the route tests. It is a literal that says what it
+is, it signs tokens against an in-memory database, and it has never been a
+credential for anything. gitleaks' generic-api-key rule is an entropy heuristic
+and cannot tell that from a real key.
+
+Scoped to the exact string rather than to the four test files, which would also
+hide a real secret added beside it.
+"""
+regexes = ['test-secret-at-least-32-chars-long-xx']
+
+[[allowlists]]
+description = """
+Playwright's storageState artifact (.auth/admin.json), committed 2026-07-26 and
+untracked again in 6448ea8e / 3207b67e. The JWT inside is an e2e session token
+signed with the test secret above, against a throwaway database that no longer
+exists. History is immutable, and rewriting it to remove a dead test token would
+be worse than carrying this note.
+
+Scoped to these four commits, NOT to the .auth/ path. A path allowlist would also
+hide a real secret added there tomorrow; four SHAs cannot.
+"""
+commits = [
+  "90e9c1d02c7d4f216257185c76957e7a87cdd96c",
+  "74fc3e6c6fe799c94af581a41a1931662aa2cf43",
+  "eeff5f7854bb02b0a88544d488480f007492117a",
+  "37ab44c64be801f78feadfcdc77716bcc376c4b1",
+]
