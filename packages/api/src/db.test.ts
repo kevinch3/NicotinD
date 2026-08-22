@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { addColumnIfMissing, applySchema } from './db.js';
+import { SCHEMA_VERSION, addColumnIfMissing, applySchema, readSchemaVersion } from './db.js';
 
 describe('applySchema — classification ep migration', () => {
   it('allows ep on a fresh database', () => {
@@ -529,5 +529,133 @@ describe('applySchema — idempotency (the whole contract)', () => {
     for (const t of ['library_songs', 'library_albums', 'user_settings']) {
       expect(cols(twice, t)).toEqual(cols(once, t));
     }
+  });
+});
+
+describe('applySchema — schema version (issue #612)', () => {
+  it('stamps the current version on a fresh database', () => {
+    const db = new Database(':memory:');
+    expect(readSchemaVersion(db)).toBe(0);
+    applySchema(db);
+    expect(readSchemaVersion(db)).toBe(SCHEMA_VERSION);
+  });
+
+  it('stamps a populated database that predates versioning', () => {
+    // Every database in the field today is at 0 — the marker did not exist.
+    const db = new Database(':memory:');
+    db.run(`CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+    db.run(`INSERT INTO users (id, username, password_hash) VALUES ('u', 'kev', 'h')`);
+
+    applySchema(db);
+
+    expect(readSchemaVersion(db)).toBe(SCHEMA_VERSION);
+    expect(db.query(`SELECT username FROM users WHERE id = 'u'`).get()).toEqual({
+      username: 'kev',
+    });
+  });
+
+  it('holds the version steady across repeated boots', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    applySchema(db);
+    applySchema(db);
+    expect(readSchemaVersion(db)).toBe(SCHEMA_VERSION);
+  });
+
+  it('never lowers a stamp written by a newer binary', () => {
+    // Rolling back to a previous image tag is the documented recovery path, so
+    // an older binary WILL meet a newer database. It still applies its own
+    // schema, but writing its lower number back would erase the record that the
+    // newer run-once migrations already ran — and re-upgrading would replay
+    // exactly the steps the version exists to guard.
+    const db = new Database(':memory:');
+    db.run(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
+
+    expect(() => applySchema(db)).not.toThrow();
+
+    expect(readSchemaVersion(db)).toBe(SCHEMA_VERSION + 1);
+    // ...and it still did its job: the schema is present.
+    expect(
+      db.query(`SELECT name FROM sqlite_master WHERE type='table' AND name='users'`).get(),
+    ).toEqual({ name: 'users' });
+  });
+});
+
+describe('applySchema — atomicity (issue #612)', () => {
+  /**
+   * A view standing where a table belongs makes `CREATE TABLE IF NOT EXISTS`
+   * no-op and the index that follows it fail — a genuine mid-body error, ~1,400
+   * lines after the first statement. Any surviving object proves the migration
+   * is not atomic.
+   */
+  const injectFailure = (db: Database) => db.run(`CREATE VIEW play_events AS SELECT 1 AS x`);
+
+  it('rolls back every earlier statement when a later one fails', () => {
+    const db = new Database(':memory:');
+    injectFailure(db);
+
+    expect(() => applySchema(db)).toThrow();
+
+    // `users` is the FIRST table the schema creates. Without a transaction it
+    // survives a failure 1,400 lines later, and the database is left in a state
+    // no version marker describes.
+    expect(
+      db.query(`SELECT name FROM sqlite_master WHERE type='table' AND name='users'`).get(),
+    ).toBeNull();
+  });
+
+  it('does not stamp a version for a migration that failed', () => {
+    // The stamp must not be able to claim a migration that did not land — it is
+    // written inside the same transaction precisely so it cannot.
+    const db = new Database(':memory:');
+    injectFailure(db);
+
+    expect(() => applySchema(db)).toThrow();
+
+    expect(readSchemaVersion(db)).toBe(0);
+  });
+
+  it('rolls back a destructive table rebuild that was already half-done', () => {
+    // The migration this most has to protect: the pre-'ep' library_albums
+    // rebuild is RENAME -> CREATE -> copy -> DROP. Un-transactioned, a failure
+    // anywhere after it strands the rows in library_albums_old, and the NEXT
+    // boot recreates an empty library_albums and skips the migration, because a
+    // fresh table no longer carries the legacy marker it looks for.
+    const db = new Database(':memory:');
+    db.run(`
+      CREATE TABLE library_albums (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, artist TEXT NOT NULL,
+        artist_id TEXT NOT NULL, cover_art TEXT, song_count INTEGER NOT NULL DEFAULT 0,
+        duration INTEGER NOT NULL DEFAULT 0, year INTEGER, genre TEXT, created TEXT,
+        starred TEXT,
+        classification TEXT NOT NULL DEFAULT 'unknown'
+            CHECK (classification IN ('album','single','compilation','unknown')),
+        hidden INTEGER NOT NULL DEFAULT 0, manual_override INTEGER NOT NULL DEFAULT 0,
+        synced_at INTEGER NOT NULL
+      )
+    `);
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, classification, synced_at)
+       VALUES ('keep', 'Discovery', 'Daft Punk', 'art', 14, 0, 'album', 1)`,
+    );
+    injectFailure(db);
+
+    expect(() => applySchema(db)).toThrow();
+
+    // The rebuild is fully undone: no orphaned _old table, the row is still
+    // reachable under its real name, and the legacy CHECK is back in place —
+    // so the next boot still recognises this database as needing the migration.
+    expect(
+      db.query(`SELECT name FROM sqlite_master WHERE name='library_albums_old'`).get(),
+    ).toBeNull();
+    expect(db.query(`SELECT name FROM library_albums WHERE id='keep'`).get()).toEqual({
+      name: 'Discovery',
+    });
+    const sql = db
+      .query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name='library_albums'`)
+      .get()!.sql;
+    expect(sql).not.toContain("'ep'");
   });
 });

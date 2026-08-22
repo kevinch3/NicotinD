@@ -1,7 +1,10 @@
 import { Database } from 'bun:sqlite';
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
+import { createLogger } from '@nicotind/core';
 import { armReviewHold, reviewHoldArmed } from './services/download-review-store.js';
+
+const log = createLogger('db');
 
 let db: Database;
 
@@ -38,9 +41,24 @@ export function applyPerformancePragmas(db: Database): void {
 }
 
 /**
- * Applies the canonical schema to a database. Extracted so tests can build
- * in-memory databases without the disk-side `initDatabase` setup.
+ * The schema revision this binary writes, kept in SQLite's own
+ * `PRAGMA user_version`.
+ *
+ * Version 0 means "never stamped" — a fresh database, or one last touched by a
+ * binary from before this existed. Both are treated identically: the whole
+ * schema is applied and the database comes out stamped at the current version.
+ *
+ * Bump this ONLY when adding a step that must not run twice. Ordinary additive
+ * work (`CREATE ... IF NOT EXISTS`, `addColumnIfMissing`) is idempotent by
+ * construction and deliberately re-runs every boot — see `applySchema`.
  */
+export const SCHEMA_VERSION = 1;
+
+/** SQLite's built-in schema marker; 0 on a database this has never stamped. */
+export function readSchemaVersion(db: Database): number {
+  return db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version ?? 0;
+}
+
 /**
  * Additive column migration, idempotent across boots.
  *
@@ -69,7 +87,36 @@ export function addColumnIfMissing(
   return true;
 }
 
+/**
+ * Applies the canonical schema to a database. Extracted so tests can build
+ * in-memory databases without the disk-side `initDatabase` setup.
+ *
+ * Atomic, and deliberately NOT skipped when `user_version` is already current —
+ * the idempotent body is the self-healing mechanism, and gating it on a
+ * hand-maintained number would add a fresh silent failure. Full rationale for
+ * both calls: docs/design-patterns.md "Schema versioning + atomic migration".
+ */
 export function applySchema(db: Database): void {
+  const fromVersion = readSchemaVersion(db);
+  // Warn, never refuse: rolling back to a previous image tag is the documented
+  // recovery path, so dying here would turn a working rollback into an outage.
+  if (fromVersion > SCHEMA_VERSION) {
+    log.warn(
+      { dbVersion: fromVersion, binaryVersion: SCHEMA_VERSION },
+      'database was written by a newer NicotinD; continuing, but this binary does not know its schema',
+    );
+  }
+  db.transaction(() => {
+    // Stamped first so only the commit can publish it — last would rest on
+    // statement order instead. Never lowered, or an older binary erases the
+    // record that newer run-once migrations already ran. PRAGMA takes no bind
+    // parameters; both operands are integers this module owns.
+    db.run(`PRAGMA user_version = ${Math.max(fromVersion, SCHEMA_VERSION)}`);
+    applySchemaSteps(db);
+  })();
+}
+
+function applySchemaSteps(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
