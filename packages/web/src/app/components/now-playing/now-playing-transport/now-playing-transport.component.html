@@ -1,4 +1,12 @@
 <div class="px-4 mb-4 md:px-8">
+  @if (!isTv) {
+    <app-now-playing-waveform
+      [waveform]="waveform()"
+      [progress]="progress()"
+      [duration]="duration()"
+      (seek)="seek.emit($event)"
+    />
+  }
   <app-seek-bar [position]="progress()" [duration]="duration()" [buffered]="buffered()" (seek)="seek.emit($event)" />
   <div class="flex justify-between mt-1.5">
     <span class="text-xs text-theme-muted">{{ formatTime(progress()) }}</span>

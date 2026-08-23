@@ -18,6 +18,7 @@ export * from './types/artist-info.js';
 export * from './types/processing.js';
 export * from './types/metadata-fix.js';
 export * from './types/lyrics.js';
+export * from './types/waveform.js';
 export * from './types/library-filter.js';
 export * from './types/licence.js';
 export * from './types/origin.js';

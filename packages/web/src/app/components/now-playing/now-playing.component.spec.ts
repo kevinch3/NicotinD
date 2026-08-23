@@ -3,7 +3,7 @@ import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { vi } from 'vitest';
 import { of, throwError, Subject } from 'rxjs';
 import type { Observable } from 'rxjs';
-import type { LyricsDto } from '@nicotind/core';
+import type { LyricsDto, WaveformData } from '@nicotind/core';
 import { provideRouter } from '@angular/router';
 import { NowPlayingComponent } from './now-playing.component';
 import { PlayerService } from '../../services/player.service';
@@ -62,6 +62,11 @@ function makeLibraryStub() {
     getLyrics: vi.fn<(id: string) => Observable<LyricsDto | null>>(() => of(null)),
     fetchLyrics: vi.fn<(id: string, force?: boolean) => Observable<LyricsDto | null>>(() =>
       of(null),
+    ),
+    // 404 by default: "no waveform" is the common state and must leave the
+    // sheet rendering exactly as before (#643).
+    getPeaks: vi.fn<(id: string) => Observable<WaveformData>>(() =>
+      throwError(() => ({ status: 404 })),
     ),
   };
 }

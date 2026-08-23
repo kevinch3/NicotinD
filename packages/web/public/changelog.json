@@ -1,5 +1,231 @@
 [
   {
+    "version": "0.3.62",
+    "date": "2026-08-23",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.61...v0.3.62",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**analysis:** run descriptor extraction in a worker process so /health stays responsive ([#647](https://github.com/kevinch3/NicotinD/issues/647)) ([e76cc76](https://github.com/kevinch3/NicotinD/commit/e76cc760c6efe9dec95a8817879ce7088917727a)), references [#640](https://github.com/kevinch3/NicotinD/issues/640)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.61",
+    "date": "2026-08-23",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.60...v0.3.61",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**analysis:** per-track audio descriptors (timbre/groove/bands) + descriptor store ([#646](https://github.com/kevinch3/NicotinD/issues/646)) ([3635644](https://github.com/kevinch3/NicotinD/commit/363564404a1c65c797b6fa3f1ddc2165f891363e)), references [#640](https://github.com/kevinch3/NicotinD/issues/640) [#641](https://github.com/kevinch3/NicotinD/issues/641)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.60",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.59...v0.3.60",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "list-seeded radio (\"keep the vibe\") + tastemakers shelf ([#634](https://github.com/kevinch3/NicotinD/issues/634)) ([8c44f5a](https://github.com/kevinch3/NicotinD/commit/8c44f5a50de98d4069c549bcc3e1ea990ee988bc))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.59",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.58...v0.3.59",
+    "sections": []
+  },
+  {
+    "version": "0.3.58",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.57...v0.3.58",
+    "sections": []
+  },
+  {
+    "version": "0.3.57",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.56...v0.3.57",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**ci:** scan for committed secrets and for base-image CVEs ([#633](https://github.com/kevinch3/NicotinD/issues/633)) ([619d350](https://github.com/kevinch3/NicotinD/commit/619d3507286f0469740544912eaf9ce757b0689f)), references [#630](https://github.com/kevinch3/NicotinD/issues/630) [#457](https://github.com/kevinch3/NicotinD/issues/457) [#632](https://github.com/kevinch3/NicotinD/issues/632) [#612](https://github.com/kevinch3/NicotinD/issues/612)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.56",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.55...v0.3.56",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**ci:** gate the supply chain on what actually ships ([#631](https://github.com/kevinch3/NicotinD/issues/631)) ([d044595](https://github.com/kevinch3/NicotinD/commit/d0445958a5aa54d72a04ff51b44582f2856baedc)), references [#612](https://github.com/kevinch3/NicotinD/issues/612) [#621](https://github.com/kevinch3/NicotinD/issues/621) [#457](https://github.com/kevinch3/NicotinD/issues/457) [#606](https://github.com/kevinch3/NicotinD/issues/606) [#273](https://github.com/kevinch3/NicotinD/issues/273) [#612](https://github.com/kevinch3/NicotinD/issues/612) [#630](https://github.com/kevinch3/NicotinD/issues/630) [#612](https://github.com/kevinch3/NicotinD/issues/612)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.55",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.54...v0.3.55",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**db:** snapshot the database before a schema migration ([#629](https://github.com/kevinch3/NicotinD/issues/629)) ([6cab6e0](https://github.com/kevinch3/NicotinD/commit/6cab6e0800f31c4f08cf8365894b743004de0df2)), references [#627](https://github.com/kevinch3/NicotinD/issues/627) [457/#606](https://github.com/kevinch3/NicotinD/issues/606) [#612](https://github.com/kevinch3/NicotinD/issues/612)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.54",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.53...v0.3.54",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**db:** version-gate the five destructive schema migrations ([#628](https://github.com/kevinch3/NicotinD/issues/628)) ([9b715b2](https://github.com/kevinch3/NicotinD/commit/9b715b2fb97412fd7c0bec887338b2d1b0cc738e)), references [#612](https://github.com/kevinch3/NicotinD/issues/612)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.53",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.52...v0.3.53",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**db:** make schema migration atomic and stamp a version ([#627](https://github.com/kevinch3/NicotinD/issues/627)) ([cb79fea](https://github.com/kevinch3/NicotinD/commit/cb79fea6e41f2ae844f97c160dcb82fdef775a25)), references [457/#606](https://github.com/kevinch3/NicotinD/issues/606) [#612](https://github.com/kevinch3/NicotinD/issues/612)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.52",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.51...v0.3.52",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**ci:** gate every outbound fetch on having a timeout, and fix the 7 that did not ([#626](https://github.com/kevinch3/NicotinD/issues/626)) ([94dd480](https://github.com/kevinch3/NicotinD/commit/94dd480ecbfee09d52297027aef10a7986926a55)), references [#623](https://github.com/kevinch3/NicotinD/issues/623) [#625](https://github.com/kevinch3/NicotinD/issues/625) [#612](https://github.com/kevinch3/NicotinD/issues/612)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.51",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.50...v0.3.51",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**musicbrainz:** stop remembering a failure as an absence ([#625](https://github.com/kevinch3/NicotinD/issues/625)) ([08ea100](https://github.com/kevinch3/NicotinD/commit/08ea1006153ca674c7f72e73b6370199febf87bc)), references [#612](https://github.com/kevinch3/NicotinD/issues/612)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.50",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.49...v0.3.50",
+    "sections": []
+  },
+  {
+    "version": "0.3.49",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.48...v0.3.49",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**lidarr:** bound every Lidarr call, in three tiers ([#623](https://github.com/kevinch3/NicotinD/issues/623)) ([8dc6fe4](https://github.com/kevinch3/NicotinD/commit/8dc6fe439f33c84c9b7aca2bf4c5d5000317467e)), references [#622](https://github.com/kevinch3/NicotinD/issues/622) [#612](https://github.com/kevinch3/NicotinD/issues/612)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.48",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.47...v0.3.48",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**docker:** stop shipping every workspace's devDependencies in the runtime image ([#621](https://github.com/kevinch3/NicotinD/issues/621)) ([136e6c2](https://github.com/kevinch3/NicotinD/commit/136e6c23fbc3c4208ba61426532f2f7aa5ef9aed)), references [#612](https://github.com/kevinch3/NicotinD/issues/612)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.47",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.46...v0.3.47",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**ci:** boot the shipped image in CI, and verify the deploy actually landed ([#620](https://github.com/kevinch3/NicotinD/issues/620)) ([85ad675](https://github.com/kevinch3/NicotinD/commit/85ad675e64a0f0bead4fb52b005f4e3f632d0bb5)), references [#457](https://github.com/kevinch3/NicotinD/issues/457) [#457](https://github.com/kevinch3/NicotinD/issues/457) [#606](https://github.com/kevinch3/NicotinD/issues/606) [#612](https://github.com/kevinch3/NicotinD/issues/612)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.46",
+    "date": "2026-08-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.45...v0.3.46",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**security:** announce the two unsafe shipped defaults before removing them ([#619](https://github.com/kevinch3/NicotinD/issues/619)) ([06d8190](https://github.com/kevinch3/NicotinD/commit/06d8190b3301062d70609eab6eb0f850dbceee8c)), references [#612](https://github.com/kevinch3/NicotinD/issues/612)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.45",
+    "date": "2026-08-21",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.44...v0.3.45",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**history:** record which client a play came from, not just \"browser\" ([#618](https://github.com/kevinch3/NicotinD/issues/618)) ([964afad](https://github.com/kevinch3/NicotinD/commit/964afad0787149e04abd36f7aeee5f3cfbd391ec))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.3.44",
+    "date": "2026-08-21",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.43...v0.3.44",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**ci:** check:ci-parity matched by substring and excluded by job ([#617](https://github.com/kevinch3/NicotinD/issues/617)) ([88c6b05](https://github.com/kevinch3/NicotinD/commit/88c6b05240c6a62b9f98cbebacf5850f02e62b16))"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.3.43",
     "date": "2026-08-21",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.42...v0.3.43",
@@ -404,224 +630,5 @@
     "date": "2026-08-17",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.12...v0.3.13",
     "sections": []
-  },
-  {
-    "version": "0.3.12",
-    "date": "2026-08-17",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.11...v0.3.12",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**hunt:** surface slskd rate-limiting as \"keep trying\" vs a genuine miss ([#526](https://github.com/kevinch3/NicotinD/issues/526)) ([eb834ac](https://github.com/kevinch3/NicotinD/commit/eb834aca0cc90120112162ea7ed68426accf859c)), references [#hunt-429](https://github.com/kevinch3/NicotinD/issues/hunt-429)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.11",
-    "date": "2026-08-17",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.10...v0.3.11",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**library:** import music from a server folder through the download pipeline ([#512](https://github.com/kevinch3/NicotinD/issues/512)) ([8abea4d](https://github.com/kevinch3/NicotinD/commit/8abea4d19c61058396e21b8141ccd8390a698681))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.10",
-    "date": "2026-08-16",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.9...v0.3.10",
-    "sections": []
-  },
-  {
-    "version": "0.3.9",
-    "date": "2026-08-15",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.8...v0.3.9",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**addons:** slskd catalog id is the manifest id (slskd), not the service name ([#524](https://github.com/kevinch3/NicotinD/issues/524)) ([9104eb9](https://github.com/kevinch3/NicotinD/commit/9104eb90d2d5942c2940c5f22e08318d50ecea89)), references [#517](https://github.com/kevinch3/NicotinD/issues/517) [#517](https://github.com/kevinch3/NicotinD/issues/517)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.8",
-    "date": "2026-08-15",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.7...v0.3.8",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**addons:** addon manifest preview + shareable install link/QR ([#523](https://github.com/kevinch3/NicotinD/issues/523)) ([f99f7b2](https://github.com/kevinch3/NicotinD/commit/f99f7b224005f550b17fcab76d3de30176438493)), closes [#522](https://github.com/kevinch3/NicotinD/issues/522), references [#517](https://github.com/kevinch3/NicotinD/issues/517) [#517](https://github.com/kevinch3/NicotinD/issues/517)",
-          "**addons:** one-click addon install — token mint + pending registration + auto-detect ([#521](https://github.com/kevinch3/NicotinD/issues/521)) ([de421db](https://github.com/kevinch3/NicotinD/commit/de421dba706b504e576717716f30eb2bd08ca8b5)), closes [#520](https://github.com/kevinch3/NicotinD/issues/520), references [#517](https://github.com/kevinch3/NicotinD/issues/517) [#517](https://github.com/kevinch3/NicotinD/issues/517)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.7",
-    "date": "2026-08-15",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.6...v0.3.7",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**addons:** curated addon marketplace — read-only \"Available add-ons\" section ([#519](https://github.com/kevinch3/NicotinD/issues/519)) ([4264987](https://github.com/kevinch3/NicotinD/commit/4264987691791da9f4ddf9aec75e29558e0962c3)), closes [#518](https://github.com/kevinch3/NicotinD/issues/518), references [#517](https://github.com/kevinch3/NicotinD/issues/517) [#517](https://github.com/kevinch3/NicotinD/issues/517)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.6",
-    "date": "2026-08-15",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.5...v0.3.6",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**addons:** reconcile orphaned addon jobs + fix URL-job feed rendering ([#516](https://github.com/kevinch3/NicotinD/issues/516)) ([2d32694](https://github.com/kevinch3/NicotinD/commit/2d3269473dc7f228aecd46b975c29a225cf09098))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.5",
-    "date": "2026-08-15",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.4...v0.3.5",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**addons:** remove the in-process spotdl plugin (external addon cutover) ([#514](https://github.com/kevinch3/NicotinD/issues/514)) ([0e1b328](https://github.com/kevinch3/NicotinD/commit/0e1b32884ed4c6e26395b3579e720c8e8fbb3945))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.4",
-    "date": "2026-08-15",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.3...v0.3.4",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**addons:** yt-dlp becomes an external addon (core cutover) ([#513](https://github.com/kevinch3/NicotinD/issues/513)) ([1131a3d](https://github.com/kevinch3/NicotinD/commit/1131a3d43fafe788a069f193026aff0e3c9bee7c)), references [#486](https://github.com/kevinch3/NicotinD/issues/486)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.3",
-    "date": "2026-08-14",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.2...v0.3.3",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "resolve-addons url seam + archive as a bundled built-in addon ([#511](https://github.com/kevinch3/NicotinD/issues/511)) ([3b52ab3](https://github.com/kevinch3/NicotinD/commit/3b52ab3930186ece100ea76306c323f2960ca7f2)), closes [#509](https://github.com/kevinch3/NicotinD/issues/509), references [#486](https://github.com/kevinch3/NicotinD/issues/486) [#509](https://github.com/kevinch3/NicotinD/issues/509) [#509](https://github.com/kevinch3/NicotinD/issues/509)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.2",
-    "date": "2026-08-14",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.1...v0.3.2",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** add a Like heart to the player for quick interaction ([#510](https://github.com/kevinch3/NicotinD/issues/510)) ([c1d4f87](https://github.com/kevinch3/NicotinD/commit/c1d4f8765f57c980afa5669d58247d8363da3723))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.1",
-    "date": "2026-08-14",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.0...v0.3.1",
-    "sections": []
-  },
-  {
-    "version": "0.3.0",
-    "date": "2026-08-14",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.2.7...v0.3.0",
-    "sections": [
-      {
-        "title": "⚠ BREAKING CHANGES",
-        "items": [
-          "an acquisition (slskd) deployment must run the external"
-        ]
-      },
-      {
-        "title": "Features",
-        "items": [
-          "phase 4 cutover — delete slskd packages, point compose at the published image ([#507](https://github.com/kevinch3/NicotinD/issues/507)) ([bb42316](https://github.com/kevinch3/NicotinD/commit/bb4231679fea1dc442819818375d13d88eb0e8aa)), references [#491](https://github.com/kevinch3/NicotinD/issues/491) [#486](https://github.com/kevinch3/NicotinD/issues/486)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.2.7",
-    "date": "2026-08-14",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.2.6...v0.2.7",
-    "sections": []
-  },
-  {
-    "version": "0.2.6",
-    "date": "2026-08-13",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.2.5...v0.2.6",
-    "sections": []
-  },
-  {
-    "version": "0.2.5",
-    "date": "2026-08-13",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.2.4...v0.2.5",
-    "sections": []
-  },
-  {
-    "version": "0.2.4",
-    "date": "2026-08-13",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.2.3...v0.2.4",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**streaming:** serve suffix ranges correctly and keep Content-Length on transcoded streams ([#502](https://github.com/kevinch3/NicotinD/issues/502)) ([6171da7](https://github.com/kevinch3/NicotinD/commit/6171da75a495947446cfb7855a1b447c375bb4c8))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.2.3",
-    "date": "2026-08-13",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.2.2...v0.2.3",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**addon-security:** protocol security & contract foundation ([#501](https://github.com/kevinch3/NicotinD/issues/501)) ([9b13c79](https://github.com/kevinch3/NicotinD/commit/9b13c79eb9a1edf31315b525e6893642396ef614))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.2.2",
-    "date": "2026-08-13",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.2.1...v0.2.2",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** remove the broken \"tap to resume\" autoplay banner ([#500](https://github.com/kevinch3/NicotinD/issues/500)) ([d69ad2a](https://github.com/kevinch3/NicotinD/commit/d69ad2acfa7b231399d15f9c11c4c1205b99356a))"
-        ]
-      }
-    ]
   }
 ]

@@ -298,6 +298,14 @@ jobs:
       - name: Build (web)
         run: bun run --filter @nicotind/web build
 
+      # ffmpeg: the waveform artifact (`GET /api/peaks/:id`, issue #643) decodes
+      # the fixture on demand and its e2e asserts the real strip — skipping that
+      # test where ffmpeg is absent would leave the feature a permanently silent
+      # gate (the #457 shape). The transcode / vocal-mute branches become real
+      # here as a by-product; they were written to pass either way.
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
       - name: Run e2e
         run: bun run --filter @nicotind/e2e test
         env:

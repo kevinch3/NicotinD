@@ -678,6 +678,53 @@ Three rules, all documented on the helper itself:
 This exercises the real production template/CSS — it only swaps out *how* the
 input value gets in.
 
+## Now Playing waveform + karaoke VFX (issue #643)
+
+Two visual surfaces fed by one precomputed artifact, `GET /api/peaks/:id` → `WaveformData`
+(`@nicotind/core` `types/waveform.ts`): a ≤600-pair min/max envelope and a 4 fps six-band energy
+timeline (sub-bass … high, 0..1 relative to the track's loudest frame-band).
+
+**Why precomputed, and not a live analyser.** `player.component.ts` documents the prohibition:
+routing the `<audio>` element through `MediaElementAudioSourceNode` silenced playback on Android.
+There are also *two* `<audio>` elements that swap for gapless playback, so a one-time
+`createMediaElementSource` would stop feeding data after the first swap. A fetched artifact is
+deterministic (every device draws the same frame for the same moment), works offline and under the
+transcode path, and exists before playback starts.
+
+**Why sidecar-free.** The artifact needs no Essentia: one streaming ffmpeg decode (`streamPcm`, the
+spawn path `decodePcm` now shares — a 60-minute mix is 635 MB as Float32, so the reducer is fed in
+chunks and never holds the track) through the pure `services/waveform-reduce.ts` (sample-by-sample,
+so the result is identical however the chunks are sliced; a ~40-line radix-2 FFT at 4096 points
+gives the 20–60 Hz band real bins). It therefore ships on streaming-only installs and does not
+depend on the descriptors store (docs/audio-descriptors.md). Generated **on demand** in the route
+handler — the `getTranscodedFile` precedent — and cached content-addressed on disk
+(`services/waveform-store.ts`; see cache-invalidation.md for the key and the negative cache).
+
+**The strip** (`NowPlayingWaveformComponent`, pure `lib/waveform-geometry.ts`): a static SVG above
+the seek bar in the sheet's transport. No per-frame work — progress is a CSS `clip-path` on the
+played overlay, so playback costs nothing. It is **decorative and tap-to-seek only**: `aria-hidden`,
+never a focus stop (a focusable strip would be one more thing eating arrow keys on TV, #438), and
+`@if`-gated so the layout reserves no space until the artifact has loaded (404 = no waveform; the
+native `<input type="range">` stays the accessible, keyboard and D-pad control — the decision
+recorded in `seek-bar.component.ts` is untouched). Now Playing only, by decision: the mini-player
+strip is ~4 px tall and track rows would need a batch fetch. Not rendered on the TV build
+(`isTv`), whose player has no seek bar at all.
+
+**The VFX** (`NowPlayingVfxComponent`, pure `lib/vfx-scene.ts`): a `<canvas>` behind the karaoke
+fullscreen's content, six glowing orbs laid out by musical role (bass low, central and large; highs
+small near the top), radius and alpha driven by the band levels under the playhead
+(`bandLevelsAt`, linear between frames), drifting on slow sines of `t` so a sustained level still
+breathes. One `requestAnimationFrame` loop per play session inside an `effect` with
+`cancelAnimationFrame` on cleanup (the remote-position interpolation's lifecycle); while paused a
+single frame is painted. The playhead between `timeupdate`s is extrapolated on the wall clock and
+re-anchored on every update. A null 2D context (jsdom, headless) is a no-op frame, never a throw.
+`lib/vfx-scene.ts` is the one place to change the look — the component only paints shapes.
+
+**Fetch lifecycle.** The shell (`now-playing.component.ts`) fetches `getPeaks` lazily, like lyrics:
+only while the sheet is open and the track changed, with a late-response guard so a slow decode for
+a track you've already skipped past can't paint over the current one. Plain `HttpClient` JSON —
+`ngsw-bypass` is only for media Range requests.
+
 ## List loading skeletons
 
 Every list view that fetches data renders a **shape-matched skeleton** while it

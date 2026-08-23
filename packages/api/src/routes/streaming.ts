@@ -18,8 +18,22 @@ import { bucketCoverSize, resizeCover } from '../services/cover-thumbnail.js';
 import { readArtistImageOverride } from '../services/artist-image-override.js';
 import { remoteCoverCacheKey, resolveRemoteCoverUrl } from '../services/remote-cover.js';
 import { isKnownUntranscodable, rememberTranscodeFailure } from '../services/transcode-failures.js';
+import { getWaveform, type PcmDecoder } from '../services/waveform-store.js';
 
 const log = createLogger('streaming');
+
+// Song id → expiry for waveform decodes that failed (corrupt file). Without it
+// a doomed full-file ffmpeg pass would re-run on every Now Playing open — the
+// #317 shape. Content-addressed enough: a repaired re-download changes the id's
+// size/mtime and the TTL is short, so no explicit eviction is wired.
+const noWaveformCache = new Map<string, number>();
+const NO_WAVEFORM_TTL_MS = 10 * 60 * 1_000;
+const WAVEFORM_CACHE_CONTROL = 'public, max-age=86400';
+
+/** Test-only: forget remembered waveform decode failures. */
+export function _resetWaveformNegativeCacheForTests(): void {
+  noWaveformCache.clear();
+}
 
 const COVER_FILE_NAMES = ['cover', 'folder', 'front', 'album', 'albumart'];
 const COVER_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
@@ -53,11 +67,14 @@ export function streamingRoutes(
   dataDir: string,
   /** Base URL of the configured Lidarr, so relative `/MediaCover/…` covers resolve. */
   lidarrBaseUrl?: string | null,
+  /** Test seam: replaces the ffmpeg PCM decoder behind `/peaks/:id`. */
+  opts: { waveformDecoder?: PcmDecoder } = {},
 ) {
   const app = new Hono<AuthEnv>();
   const musicRoot = resolve(musicDir);
   const coverCacheDir = join(dataDir, 'cover-cache');
   const transcodeCacheDir = join(dataDir, 'transcode-cache');
+  const waveformCacheDir = join(dataDir, 'waveform-cache');
 
   /** Resolve a library id (song id, or album id) to an absolute, in-root path. */
   function resolvePath(id: string): string | null {
@@ -322,6 +339,39 @@ export function streamingRoutes(
       log.debug({ err, id }, 'cover cache write failed'),
     );
     return respondCover(id, art, size);
+  });
+
+  /**
+   * Waveform artifact for the Now Playing strip + karaoke VFX (issue #643):
+   * min/max peaks + a six-band energy timeline, generated on demand from one
+   * ffmpeg decode (the transcode-in-handler precedent) and cached on disk,
+   * content-addressed. Songs only — an album id has no single waveform. A
+   * 404 means "no waveform" and the UI keeps the plain seek bar; a decode
+   * failure is remembered for NO_WAVEFORM_TTL_MS so it isn't retried per open.
+   */
+  app.get('/peaks/:id', async (c) => {
+    const id = c.req.param('id');
+    const expiry = noWaveformCache.get(id);
+    if (expiry !== undefined) {
+      if (expiry > Date.now()) return c.body(null, 404);
+      noWaveformCache.delete(id);
+    }
+    const row = db
+      .query<{ path: string }, [string]>('SELECT path FROM library_songs WHERE id = ?')
+      .get(id);
+    if (!row) return c.body(null, 404);
+    const abs = resolve(join(musicRoot, row.path));
+    if ((abs !== musicRoot && !abs.startsWith(musicRoot + sep)) || !existsSync(abs)) {
+      return c.body(null, 404);
+    }
+    try {
+      const data = await getWaveform(waveformCacheDir, abs, { decoder: opts.waveformDecoder });
+      return c.json(data, 200, { 'cache-control': WAVEFORM_CACHE_CONTROL });
+    } catch (err) {
+      log.warn({ err, abs }, 'waveform decode failed');
+      noWaveformCache.set(id, Date.now() + NO_WAVEFORM_TTL_MS);
+      return c.body(null, 404);
+    }
   });
 
   return app;

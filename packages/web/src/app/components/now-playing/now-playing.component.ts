@@ -17,7 +17,7 @@ import { TrackInfoService } from '../../services/track-info.service';
 import { resolveArtistTarget } from '../../lib/route-utils';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { parseLrc, findActiveLine } from '../../lib/lrc-parser';
-import type { LyricsDto } from '@nicotind/core';
+import type { LyricsDto, WaveformData } from '@nicotind/core';
 import { firstValueFrom } from 'rxjs';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { ScrollLockService } from '../../services/scroll-lock.service';
@@ -97,6 +97,10 @@ export class NowPlayingComponent {
   // `activePanel` must already be assigned before `lyricsOpen`'s initializer
   // runs.
   readonly lyrics = signal<LyricsDto | null>(null);
+  /** Precomputed waveform artifact for the current track (issue #643); null
+   *  until fetched or when the server has none (404 → plain seek bar). */
+  readonly waveform = signal<WaveformData | null>(null);
+  private readonly waveformLoadedForId = signal<string | null>(null);
   readonly lyricsLoading = signal(false);
   /** True after a source *failed* (vs a confident no-match) — offer a retry. */
   readonly lyricsError = signal(false);
@@ -394,6 +398,15 @@ export class NowPlayingComponent {
       }
     });
 
+    // Fetch the waveform artifact whenever the sheet is open and the track
+    // changes — lazily, like lyrics: a closed sheet never costs a decode.
+    effect(() => {
+      if (!this.player.nowPlayingOpen()) return;
+      const id = this.player.currentTrack()?.id ?? null;
+      if (!id || id === this.waveformLoadedForId()) return;
+      this.loadWaveform(id);
+    });
+
     // Lazily (re)load lyrics whenever the panel is open and the track changes.
     effect(() => {
       if (!this.lyricsOpen()) return;
@@ -492,6 +505,19 @@ export class NowPlayingComponent {
       this.coverColors.set(DEFAULT_PALETTE);
     };
     img.src = src;
+  }
+
+  private loadWaveform(id: string): void {
+    this.waveform.set(null);
+    this.waveformLoadedForId.set(id);
+    this.api.getPeaks(id).subscribe({
+      // Guard against a late response for a track we've already moved past.
+      next: (w) => {
+        if (this.player.currentTrack()?.id === id) this.waveform.set(w);
+      },
+      // 404 (no waveform) or any failure: the seek bar alone is the fallback.
+      error: () => undefined,
+    });
   }
 
   private loadLyrics(id: string): void {

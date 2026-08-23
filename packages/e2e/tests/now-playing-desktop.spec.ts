@@ -57,4 +57,31 @@ test.describe('Now Playing desktop layout', () => {
     expect(Math.abs(lyricsBox.x - queueBox.x), 'same column x').toBeLessThan(24);
     await expect(page.getByTestId('now-playing-queue')).toHaveCount(0);
   });
+
+  /**
+   * Waveform strip (issue #643): the server decodes the fixture on demand into
+   * peaks, the sheet draws them as two envelope paths (base + played overlay
+   * clipped to progress), and a tap on the strip seeks. The fixtures are
+   * silent, so the envelope is a hairline — the assertion is on the contract,
+   * not the shape.
+   */
+  test('the waveform strip renders above the seek bar and a tap seeks', async ({ page }) => {
+    await openNowPlaying(page);
+    const strip = page.getByTestId('now-playing-waveform');
+    await expect(strip).toBeVisible();
+    await expect(strip.locator('path')).toHaveCount(2);
+
+    // locator.click() waits for the strip to stop moving (the sheet slides up
+    // on open); a raw page.mouse.click at a pre-animation boundingBox lands on
+    // whatever was under that point at the time.
+    const box = (await strip.boundingBox())!;
+    await strip.click({ position: { x: box.width * 0.5, y: box.height / 2 } });
+    // The played overlay is clipped to (100 − percent)% from the right; after a
+    // seek to the middle that lands near 50% and drifts as playback continues.
+    // Chrome normalises the declared `inset(0 N% 0 0)` to `inset(0px N% 0px 0px)`.
+    await expect(strip.locator('path').nth(1)).toHaveAttribute(
+      'style',
+      /inset\(0(px)? (3\d|4\d|5\d)(\.\d+)?% 0(px)? 0(px)?\)/,
+    );
+  });
 });

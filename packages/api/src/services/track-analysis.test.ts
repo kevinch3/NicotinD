@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, afterEach } from 'bun:test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { Lidarr } from '@nicotind/lidarr-client';
@@ -15,6 +15,7 @@ import {
   verifyGenre,
   summarizeFfmpegStderr,
   NoConfidentResultError,
+  streamPcm,
 } from './track-analysis.js';
 import { ffmpegAvailable } from './transcode.js';
 
@@ -190,6 +191,87 @@ describe('analyzeBpm', () => {
       expect(key).toBeNull();
       expect(keyErrors).toHaveLength(1);
       expect(keyErrors[0]).toBeInstanceOf(NoConfidentResultError);
+    },
+  );
+});
+
+describe('streamPcm', () => {
+  let dir: string;
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it.skipIf(!ffmpegAvailable())(
+    'delivers every sample of the whole file in order, across chunk boundaries',
+    async () => {
+      dir = mkdtempSync(join(tmpdir(), 'nd-stream-'));
+      const wav = join(dir, 'tone.wav');
+      // 2 s of a 1 kHz tone at 8 kHz — small, and a known sample count (16000).
+      execFileSync(
+        'ffmpeg',
+        [
+          '-y',
+          '-f',
+          'lavfi',
+          '-i',
+          'sine=frequency=1000:duration=2',
+          '-ar',
+          '8000',
+          '-ac',
+          '1',
+          wav,
+        ],
+        { stdio: 'ignore' },
+      );
+      const chunks: Float32Array[] = [];
+      await streamPcm(wav, { sampleRate: 8000, onChunk: (c) => chunks.push(c) });
+      const total = chunks.reduce((n, c) => n + c.length, 0);
+      expect(total).toBe(16_000);
+      // Reassembled, the signal is a sine (ffmpeg's `sine` source is not
+      // full-scale, so only the shape is asserted): clearly non-silent,
+      // symmetric around zero.
+      const all = new Float32Array(total);
+      let at = 0;
+      for (const c of chunks) {
+        all.set(c, at);
+        at += c.length;
+      }
+      let max = -Infinity;
+      let min = Infinity;
+      let sum = 0;
+      for (const v of all) {
+        if (v > max) max = v;
+        if (v < min) min = v;
+        sum += v;
+      }
+      expect(max).toBeGreaterThan(0.1);
+      expect(min).toBeLessThan(-0.1);
+      expect(Math.abs(sum / total)).toBeLessThan(0.01);
+    },
+  );
+
+  it.skipIf(!ffmpegAvailable())('bounds the decode to `seconds` when asked', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'nd-stream-'));
+    const wav = join(dir, 'tone.wav');
+    execFileSync(
+      'ffmpeg',
+      ['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3', '-ar', '8000', '-ac', '1', wav],
+      { stdio: 'ignore' },
+    );
+    let total = 0;
+    await streamPcm(wav, { sampleRate: 8000, seconds: 1, onChunk: (c) => (total += c.length) });
+    expect(total).toBe(8_000);
+  });
+
+  it.skipIf(!ffmpegAvailable())(
+    'rejects with ffmpeg’s reason for an undecodable file',
+    async () => {
+      dir = mkdtempSync(join(tmpdir(), 'nd-stream-'));
+      const bad = join(dir, 'bad.mp3');
+      writeFileSync(bad, new Uint8Array([1, 2, 3, 4, 5]));
+      await expect(streamPcm(bad, { sampleRate: 8000, onChunk: () => {} })).rejects.toThrow(
+        /exited with code/,
+      );
     },
   );
 });
