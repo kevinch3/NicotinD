@@ -9,7 +9,6 @@ import type { DiscographyAlbum, FolderCandidate } from '../../services/api/api-t
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
-import { FeedbackService } from '../../services/feedback.service';
 import { ToastService } from '../../services/toast.service';
 import { baseQueries, skewedQueries } from '../../lib/hunt-queries';
 import { mergeCandidates } from '../../lib/merge-candidates';
@@ -64,7 +63,6 @@ export class AlbumHuntModalComponent implements OnInit {
   private transfer = inject(TransferService);
   private acquire = inject(AcquireService);
   private plugins = inject(PluginService);
-  private feedback = inject(FeedbackService);
   private toast = inject(ToastService);
 
   readonly album = input.required<DiscographyAlbum>();
@@ -306,19 +304,6 @@ export class AlbumHuntModalComponent implements OnInit {
       }
 
       this.state.set('results');
-      // Admin dev-mode grading prompt — the same one the auto-hunt path uses.
-      // See docs/generation-feedback.md.
-      this.feedback.promptForHunt({
-        feedbackId: baseResult.feedbackId,
-        artistName: artist,
-        albumTitle: album,
-        candidates: this.candidates().map((c) => ({
-          username: c.username,
-          directory: c.directory,
-          matchPct: c.matchPct,
-          format: c.format,
-        })),
-      });
     } catch (err) {
       this.errorMsg.set(err instanceof Error ? err.message : 'Hunt failed');
       this.state.set('error');

@@ -9,7 +9,6 @@ import type { ArchiveCandidate } from '../../../types/core';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
-import { FeedbackService } from '../../services/feedback.service';
 import { ToastService } from '../../services/toast.service';
 
 const ALBUM: DiscographyAlbum = {
@@ -46,7 +45,6 @@ describe('AlbumHuntModalComponent', () => {
   const huntDownload = vi.fn(() => of({}));
   const archiveSearchAlbum = vi.fn(() => of({ candidates: [] as ArchiveCandidate[] }));
   const acquireSubmit = vi.fn(() => Promise.resolve('job1'));
-  const promptForHunt = vi.fn();
   const toastShow = vi.fn();
   let archiveEnabled = false;
 
@@ -61,7 +59,6 @@ describe('AlbumHuntModalComponent', () => {
     archiveSearchAlbum.mockClear();
     archiveSearchAlbum.mockReturnValue(of({ candidates: [] }));
     acquireSubmit.mockClear();
-    promptForHunt.mockClear();
     archiveEnabled = false;
 
     await TestBed.configureTestingModule({
@@ -78,7 +75,6 @@ describe('AlbumHuntModalComponent', () => {
           provide: PluginService,
           useValue: { hasArchive: () => archiveEnabled, hasSpotify: () => false },
         },
-        { provide: FeedbackService, useValue: { promptForHunt } },
         { provide: ToastService, useValue: { show: toastShow } },
       ],
     }).compileComponents();
@@ -369,33 +365,5 @@ describe('AlbumHuntModalComponent', () => {
 
     expect(c.rateLimited()).toBe(false);
     expect(toastShow).not.toHaveBeenCalled();
-  });
-
-  // Issue #451: this path did prompt, but nothing asserted it — which is how the
-  // sibling auto-hunt path shipped with no prompt at all.
-  it('offers the generation-feedback grading prompt after a hunt', async () => {
-    huntAlbumBase.mockReturnValue(
-      of({
-        candidates: [candidate({ username: 'peer1' })],
-        totalTracks: 10,
-        skewNeeded: false,
-        feedbackId: 21,
-      }),
-    );
-
-    const c = create();
-    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
-    (c as unknown as { artistName: () => string }).artistName = () => 'Test Artist';
-
-    await c.startHunt();
-
-    expect(promptForHunt).toHaveBeenCalledWith(
-      expect.objectContaining({
-        feedbackId: 21,
-        artistName: 'Test Artist',
-        albumTitle: 'Test Album',
-        candidates: [expect.objectContaining({ username: 'peer1' })],
-      }),
-    );
   });
 });

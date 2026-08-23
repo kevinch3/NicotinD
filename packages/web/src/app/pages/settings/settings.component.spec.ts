@@ -119,8 +119,6 @@ function makeProviders(role: 'admin' | 'user', updateOverrides: UpdateOverrides 
           isAdmin: () => role === 'admin',
           canCurate: () => role === 'admin',
           welcomeDismissed: signal(false),
-          feedbackCapture: signal(false),
-          setFeedbackCapture: vi.fn(),
           logout: vi.fn(),
         },
       },
@@ -330,7 +328,11 @@ describe('SettingsComponent (universal prefs only)', () => {
     fixture.destroy();
   });
 
-  it('renders the Advanced card with the Developer section for admins', async () => {
+  // The Advanced card's only admin-only content was the Developer section
+  // holding the generation-feedback capture toggle. That feature was removed, so
+  // the section is gone for every role — asserting its absence keeps a revert
+  // from resurrecting a control with no backend behind it.
+  it('renders no Developer section, even for admins', async () => {
     const { list } = makeProviders('admin');
     await TestBed.configureTestingModule({
       imports: [SettingsComponent],
@@ -339,7 +341,10 @@ describe('SettingsComponent (universal prefs only)', () => {
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     expandAllGroups(fixture);
-    expect(fixture.nativeElement.querySelector('[data-testid="developer-section"]')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('[data-testid="developer-section"]')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="feedback-capture-toggle"]'),
+    ).toBeNull();
     fixture.destroy();
   });
 

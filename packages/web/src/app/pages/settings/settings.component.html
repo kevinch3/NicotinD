@@ -289,30 +289,11 @@
           [title]="'settings.groupAdvancedTitle' | t"
           [description]="'settings.groupAdvancedDesc' | t"
         >
-          <!-- Developer (admin-only): feedback capture -->
-          @if (auth.isAdmin()) {
-            <div data-testid="developer-section">
-              <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.developer' | t }}</h3>
-              <div class="flex items-start gap-3">
-                <button role="switch" [attr.aria-checked]="auth.feedbackCapture()"
-                  (click)="toggleFeedbackCapture()"
-                  data-testid="feedback-capture-toggle"
-                  [class]="'relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ' + (auth.feedbackCapture() ? 'bg-emerald-600' : 'bg-theme-hover')">
-                  <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (auth.feedbackCapture() ? 'translate-x-4' : 'translate-x-0')"></span>
-                </button>
-                <div>
-                  <p class="text-sm text-theme-primary">{{ 'settings.generationFeedback' | t }}</p>
-                  <p class="text-xs text-theme-muted mt-1">
-                    {{ 'settings.generationFeedbackHint' | t }}
-                  </p>
-                </div>
-              </div>
-            </div>
-          }
-
-          <!-- Server (native mobile app only) -->
+          <!-- Server (native mobile app only). First section in this group now
+               that the admin-only Developer block (generation-feedback capture)
+               is gone, so it never needs a leading divider. -->
           @if (isNativeApp) {
-            <div [class]="auth.isAdmin() ? 'mt-6 pt-6 border-t border-theme' : ''" data-testid="settings-server-section">
+            <div data-testid="settings-server-section">
               <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.server' | t }}</h3>
               <p class="text-sm text-theme-muted mb-4">
                 {{ 'settings.connectedTo' | t }}

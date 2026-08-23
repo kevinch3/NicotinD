@@ -273,18 +273,17 @@ streaming/library install with URL-resolver acquisition only.
   one file, same semantics. `docker-compose.streaming-only.yml` keeps only the
   Lidarr/bgutil half of its job.
 - The slskd wire types left `@nicotind/core` for `@nicotind/slskd-client` (their
-  natural home; the client + addon are the only consumers). Core's
-  generation-feedback snapshot types now use a structural `CapturedSearchResponse`
-  instead of the slskd wire type. Web's raw-transfer feed machinery
+  natural home; the client + addon are the only consumers). Web's raw-transfer feed machinery
   (`groupByAlbum`, the collapse helpers, the `DownloadKind` `'slskd'` value — now
   `'network'`) is deleted; `mergeAcquisitionJobs` renders job rows only.
 - Acceptance: `grep -ri slskd` over core packages returns docs/history, test
   doubles, and data values (the addon's manifest id used as method/provenance)
   only.
 
-**Accepted (documented) losses**: hunt feedback capture is dormant until the protocol
-grows a `feedback` capability; addon-mode revived jobs lose the live on-disk wanted
-filter (see the phase-1 limitation above).
+**Accepted (documented) losses**: hunt feedback capture went dormant here — the raw
+responses live addon-side — and was later removed outright, never having captured a
+row after this migration; addon-mode revived jobs lose the live on-disk wanted filter
+(see the phase-1 limitation above).
 
 ### Phase 4 — Repo split (published SDK + own image)
 

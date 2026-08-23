@@ -5,7 +5,6 @@ import { AutoHuntService } from './auto-hunt.service';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { TransferService } from './transfer.service';
 import { ToastService } from './toast.service';
-import { FeedbackService } from './feedback.service';
 import type { DiscographyAlbum, FolderCandidate } from './api/api-types';
 
 const ALBUM: DiscographyAlbum = {
@@ -40,11 +39,9 @@ describe('AutoHuntService', () => {
   const kickPoll = vi.fn();
   const show = vi.fn<ToastService['show']>();
   const dismiss = vi.fn();
-  const promptForHunt = vi.fn();
 
   beforeEach(() => {
     vi.useFakeTimers();
-    promptForHunt.mockReset();
     huntAlbumBase.mockReset();
     huntAlbumSkew.mockReset();
     huntDownload.mockReset();
@@ -59,7 +56,6 @@ describe('AutoHuntService', () => {
         { provide: DownloadsApiService, useValue: { huntAlbumBase, huntAlbumSkew, huntDownload } },
         { provide: TransferService, useValue: { kickPoll } },
         { provide: ToastService, useValue: { show, dismiss } },
-        { provide: FeedbackService, useValue: { promptForHunt } },
       ],
     });
   });
@@ -401,64 +397,4 @@ describe('AutoHuntService', () => {
 
   // Issue #451: this path creates the generation_feedback row server-side but
   // never offered a grading prompt, so ~39 prod captures were never graded.
-  describe('generation-feedback capture prompt', () => {
-    it('prompts on a confident match, carrying the merged candidates', async () => {
-      huntAlbumBase.mockReturnValue(
-        of({ candidates: [candidate(85)], totalTracks: 10, skewNeeded: false, feedbackId: 12 }),
-      );
-      huntDownload.mockReturnValue(of({ queued: 1 }));
-
-      svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
-      await Promise.resolve();
-
-      expect(promptForHunt).toHaveBeenCalledWith(
-        expect.objectContaining({
-          feedbackId: 12,
-          artistName: 'Pink Floyd',
-          albumTitle: 'Wish You Were Here',
-          candidates: [expect.objectContaining({ username: 'peer1', matchPct: 85 })],
-        }),
-      );
-    });
-
-    it('prompts when no confident match was found — the most valuable sample', async () => {
-      huntAlbumBase.mockReturnValue(
-        of({ candidates: [], totalTracks: 10, skewNeeded: false, feedbackId: 13 }),
-      );
-
-      svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
-      await Promise.resolve();
-
-      expect(promptForHunt).toHaveBeenCalledWith(
-        expect.objectContaining({ feedbackId: 13, candidates: [] }),
-      );
-    });
-
-    it('carries the skew-merged candidates, not just the base ones', async () => {
-      huntAlbumBase.mockReturnValue(
-        of({ candidates: [], totalTracks: 10, skewNeeded: true, feedbackId: 14 }),
-      );
-      huntAlbumSkew.mockReturnValue(of({ candidates: [candidate(75, 'peer2')] }));
-      huntDownload.mockReturnValue(of({ queued: 1 }));
-
-      svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
-      await Promise.resolve();
-
-      expect(promptForHunt).toHaveBeenCalledWith(
-        expect.objectContaining({
-          feedbackId: 14,
-          candidates: [expect.objectContaining({ username: 'peer2' })],
-        }),
-      );
-    });
-
-    it('does not prompt when the hunt request itself failed', async () => {
-      huntAlbumBase.mockReturnValue(throwError(() => new Error('boom')));
-
-      svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
-      await Promise.resolve();
-
-      expect(promptForHunt).not.toHaveBeenCalled();
-    });
-  });
 });

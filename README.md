@@ -205,7 +205,6 @@ tables below group every document by what you're trying to do.
 | [e2e.md](docs/e2e.md) | Playwright suite, fixtures, screenshot flows, what the env does NOT give you |
 | [e2e-tv-emulator.md](docs/e2e-tv-emulator.md) | Android TV emulator lane (real APK on an AVD) |
 | [testing-routines.md](docs/testing-routines.md) | Flow catalogue + recurring test routines |
-| [generation-feedback.md](docs/generation-feedback.md) | 👍/👎 capture → replayable TDD fixtures for the hunt recognizer |
 
 <details>
 <summary><strong>Research notes & field logs</strong> (dated, exploratory — kept for the record)</summary>

@@ -192,9 +192,6 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Album deletion**: folder-first `rmSync` + synchronous canonical-row delete + orphan-aggregate
   prune; every delete route debounce-schedules a `ShareRescanScheduler` pass.
   → [download-pipeline.md](docs/download-pipeline.md)
-- **Generation feedback → TDD fixtures**: capture whether a generated output was right from real
-  usage and replay each graded case as a test. `captureHuntMatchFeedback`, `resolveFeedback`,
-  `huntFixtureFromRecord`, `FeedbackService`. → [generation-feedback.md](docs/generation-feedback.md)
 - **Download inbox triage (hold-for-review)**: opt-in `holdForReview` holds quarantined downloads for
   curator approval; `download_reviews` decisions, multi-source candidates, AcoustID identify with
   typed failures. → [download-review.md](docs/download-review.md)

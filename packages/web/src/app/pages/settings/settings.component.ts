@@ -297,10 +297,6 @@ export class SettingsComponent {
     this.remote.setRemoteEnabled(enabled);
   }
 
-  toggleFeedbackCapture(): void {
-    this.auth.setFeedbackCapture(!this.auth.feedbackCapture());
-  }
-
   saveDeviceName(): void {
     if (!this.deviceName().trim()) return;
     this.ws.setDeviceName(this.deviceName().trim());

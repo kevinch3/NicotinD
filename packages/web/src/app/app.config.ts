@@ -49,7 +49,6 @@ export function refreshSession(api: AuthApiService, auth: AuthService): void {
         // an admin made takes effect on this load, not only on re-login.
         auth.setRole(profile.role);
         auth.welcomeDismissed.set(profile.welcomeDismissed);
-        auth.feedbackCapture.set(profile.feedbackCapture);
         // Deployment-wide acquisition kill-switch (#235): default to enabled
         // when an older server omits the field.
         auth.serverAcquisitionEnabled.set(profile.acquisitionEnabled ?? true);

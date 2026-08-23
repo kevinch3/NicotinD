@@ -8,7 +8,6 @@ export interface UserProfile {
   role: string;
   welcomeDismissed: boolean;
   /** Admin dev-mode: capture generated results as gradeable feedback. */
-  feedbackCapture: boolean;
   /**
    * Deployment-wide acquisition kill-switch (#235). false = the whole
    * acquisition module is off for this install; the web hides every acquisition
@@ -42,10 +41,6 @@ export class AuthApiService {
 
   dismissWelcome() {
     return this.http.post<void>('/api/auth/dismiss-welcome', {});
-  }
-
-  setFeedbackCapture(enabled: boolean) {
-    return this.http.post<{ ok: boolean }>('/api/auth/feedback-capture', { enabled });
   }
 
   getMe() {

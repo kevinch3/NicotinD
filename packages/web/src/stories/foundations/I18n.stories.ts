@@ -17,7 +17,7 @@ const LONGEST = [
   'extensions.acquisitionOffAfter',
   'admin.gatedStepsHint',
   'agentTokens.subtitle',
-  'settings.generationFeedbackHint',
+  'devices.scanInstructionsOther',
   'admin.holdForReviewHint',
   'settings.autoPreserveExplainOff',
   'admin.backupHint',

@@ -32,7 +32,7 @@ type Story = StoryObj<ToastOutletComponent>;
 /**
  * The outlet is mounted once in the app shell; everything else calls `ToastService`.
  * Toasts are a lossy surface by design — anything that must survive being missed needs a
- * durable home too (the generation-feedback review queue is the worked example).
+ * durable home too (the Downloads review inbox is the worked example).
  */
 export const Empty: Story = {};
 

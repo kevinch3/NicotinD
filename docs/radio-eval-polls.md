@@ -49,10 +49,11 @@ upsert — a rater changing their mind updates in place, never double-counts.
 **Anonymity**: `rater_key` is a random per-device UUID the browser keeps in
 localStorage (`nicotind.pollRaterKey`). It is deliberately NOT a users FK and
 ties to nothing; it exists only so a returning visitor updates their own votes.
-Polls got their **own tables** rather than `generation_feedback` rows because
-that ledger is one-authenticated-admin-per-row while a poll is anonymous
-multi-rater ([generation-feedback.md](generation-feedback.md) stays the home of
-the single-grader loop; `resourceType: 'radio'` remains reserved for it).
+Polls got their **own tables** rather than sharing the old `generation_feedback`
+ledger, because that ledger was one-authenticated-admin-per-row while a poll is
+anonymous and multi-rater. That independence is why polls survived unaffected when
+the generation-feedback feature was removed; only its `'good' | 'bad'` consensus type
+moved here, as `PollConsensusVerdict` in `@nicotind/core` `types/radio-poll.ts`.
 
 ## Route split + auth posture
 
@@ -160,7 +161,7 @@ with two weight sets interleaved.
   and the upsert makes back-navigation safe. Pure step/vote logic lives in
   `poll-view.lib.ts`.
 - **Admin card** `pages/admin/radio-polls/` — a `SettingsGroupComponent` on
-  /admin (lazy `load()` on expand, like the generation-feedback queue): create
+  /admin (lazy `load()` on expand): create
   form (name, counts, optional expiry, pinned seed songs via the shared
   `SongPickerComponent`, station genres as a comma-separated list; remaining
   slots use random genre-preferring auto seeds), list with

@@ -57,7 +57,6 @@ import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { SettingsGroupComponent } from '../../components/settings-group/settings-group.component';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
-import { FeedbackQueueComponent } from './feedback-queue/feedback-queue.component';
 import { RadioPollsCardComponent } from './radio-polls/radio-polls-card.component';
 
 /** A copy in a duplicate group — shape returned by the maintenance duplicates API. */
@@ -85,7 +84,6 @@ type DuplicateSong = {
     TvNavItemDirective,
     SettingsGroupComponent,
     BottomChromeSafeDirective,
-    FeedbackQueueComponent,
     RadioPollsCardComponent,
     MenuPanelComponent,
   ],

@@ -1625,18 +1625,6 @@
     </app-settings-group>
 
     <app-settings-group
-      groupId="feedback-queue"
-      icon="sliders"
-      [title]="'admin.groupFeedbackQueue' | t"
-      [description]="'admin.groupFeedbackQueueDesc' | t"
-      (opened)="feedbackQueue.load()"
-    >
-      <!-- Generation feedback: grade captured hunt matches (docs/generation-feedback.md).
-           Loaded on expand, not on the ServiceReview poll — a dev list, not live status. -->
-      <app-feedback-queue #feedbackQueue />
-    </app-settings-group>
-
-    <app-settings-group
       groupId="radio-polls"
       icon="headphones"
       [title]="'admin.groupRadioPolls' | t"

@@ -37,7 +37,7 @@ were the slowest half of it — see [deployment.md](deployment.md) "CI coverage"
   `track-row`, `tv-shell`, `update-banner`, `welcome-banner`.
 
 **Not in it (11):** `album-hunt-modal`, `artist-image-menu`, `bottom-nav`,
-`feedback-detail-sheet`, `folder-browser`, `layout`, `metadata-fix-modal`, `now-playing`,
+`folder-browser`, `layout`, `metadata-fix-modal`, `now-playing`,
 `player`, `review-inbox`, `track-info-sheet`. These inject 5–14 services (`layout` injects
 14). They are compositions of the app, not shared primitives, and storying them means
 reconstructing most of the service graph. See the deferred-work issues below.
@@ -147,11 +147,11 @@ through the component's real lifecycle rather than around it. Note the inbox is
 **self-gating** (`canCurate() && queue().length > 0`), so the empty and listener stories
 render nothing on purpose; that is what lets the Downloads page mount it unconditionally.
 
-`feedbackSheet` seeds `FeedbackSheetService.payload()`. That sheet is a globally-hosted
-overlay opened from a toast action, so it renders **nothing** until a payload is set — a
-story without the seed is a blank canvas that still passes the render smoke, which is why
-the stories were verified by reading their rendered text (3 / 2 / 1 candidates) rather than
-by the gate alone.
+(A `feedbackSheet` seed used to live on `StoryState` for the generation-feedback detail
+sheet. Both are gone with that feature. The lesson it recorded is worth keeping: a
+globally-hosted overlay renders **nothing** until its payload is set, so a story without
+the seed is a blank canvas that still passes the render smoke — verify such stories by
+reading their rendered text, not by the gate alone.)
 
 The fixtures are **fully typed** (`downloadingJob`, `runningAcquireJob`) rather than a
 `Partial<...> as X` cast. That is not ceremony — the first draft used a cast and the type

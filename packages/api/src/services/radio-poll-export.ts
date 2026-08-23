@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import type {
-  GenerationVerdict,
+  PollConsensusVerdict,
   LibraryFilter,
   RadioPollCandidateResult,
   RadioPollSettings,
@@ -46,7 +46,7 @@ export interface RadioPollExportDataset {
       explanation: unknown;
       up: number;
       down: number;
-      consensus: GenerationVerdict | null;
+      consensus: PollConsensusVerdict | null;
     }>;
   }>;
 }
@@ -56,7 +56,7 @@ export interface RadioPollExportDataset {
  * good, majority down = bad, tie or zero votes = ungraded (excluded from any
  * fixture/ratchet downstream — an ambiguous grade is worse than none).
  */
-export function consensusVerdict(up: number, down: number): GenerationVerdict | null {
+export function consensusVerdict(up: number, down: number): PollConsensusVerdict | null {
   if (up > down) return 'good';
   if (down > up) return 'bad';
   return null;

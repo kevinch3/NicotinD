@@ -1351,22 +1351,25 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
     return fixture;
   }
 
-  it('renders all 10 groups in the correct order', async () => {
+  it('renders every group', async () => {
     const fixture = await createAndSettle();
     const el: HTMLElement = fixture.nativeElement;
     const headers = Array.from(el.querySelectorAll('app-settings-group-header'));
-    // 10 from the settings-cards unification, plus the radio evaluation polls
+    // 9: the settings-cards unification's set, plus the radio evaluation polls
     // card (docs/radio-eval-polls.md), minus "Import music" — which went with
     // the admin import card, import being internal/API-only now
-    // (docs/import.md).
-    expect(headers.length).toBe(10);
-    // The header text itself is driven by `[title]` — a property binding on a
-    // nested `<app-settings-group>` — so it's subject to the same JIT-harness
-    // signal-input gap documented above `expandAllGroups`. Order/count is
-    // still a real, harness-observable structural assertion: it only depends
-    // on how many `<app-settings-group>` elements the template renders and in
-    // what sequence, not on any input value landing.
-    expect(headers.length).toBe(10);
+    // (docs/import.md) — and minus the generation-feedback queue, removed with
+    // that feature.
+    //
+    // This asserts COUNT ONLY, despite what its name used to claim: it was
+    // titled "renders all 10 groups in the correct order" while asserting
+    // `headers.length` twice and order never. Header text comes from `[title]`,
+    // a property binding on a nested `<app-settings-group>`, which the JIT
+    // harness never lands (see the note above `expandAllGroups`) — so there is
+    // nothing here to tell one group from another. A real ordering assertion
+    // arrives with the per-panel extraction, where each group is a distinct
+    // element tag and sequence becomes observable.
+    expect(headers.length).toBe(9);
     fixture.destroy();
   });
 

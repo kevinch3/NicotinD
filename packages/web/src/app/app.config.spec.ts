@@ -15,7 +15,6 @@ function makeMocks(profile: Record<string, unknown>) {
     setToken: vi.fn(),
     setRole: vi.fn(),
     welcomeDismissed: signal(false),
-    feedbackCapture: signal(false),
     serverAcquisitionEnabled: signal(false),
   };
   return { api, auth };
@@ -24,7 +23,6 @@ function makeMocks(profile: Record<string, unknown>) {
 const profile = {
   role: 'admin',
   welcomeDismissed: true,
-  feedbackCapture: true,
   acquisitionEnabled: false,
 };
 
@@ -37,7 +35,6 @@ describe('refreshSession', () => {
     expect(auth.setToken).toHaveBeenCalledWith('new-token');
     expect(auth.setRole).toHaveBeenCalledWith('admin');
     expect(auth.welcomeDismissed()).toBe(true);
-    expect(auth.feedbackCapture()).toBe(true);
     expect(auth.serverAcquisitionEnabled()).toBe(false);
   });
 
