@@ -1,5 +1,11 @@
 [
   {
+    "version": "0.3.66",
+    "date": "2026-08-23",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.65...v0.3.66",
+    "sections": []
+  },
+  {
     "version": "0.3.65",
     "date": "2026-08-23",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.64...v0.3.65",
@@ -621,19 +627,6 @@
         "title": "Features",
         "items": [
           "artist origin (nationality) metadata - radio axis, filter, recipes, artist page ([#536](https://github.com/kevinch3/NicotinD/issues/536)) ([888b77c](https://github.com/kevinch3/NicotinD/commit/888b77c593d46c1386241af0a04ebeca96e0399d)), references [#538](https://github.com/kevinch3/NicotinD/issues/538)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.16",
-    "date": "2026-08-18",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.15...v0.3.16",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** render the artist photo edit control ([#535](https://github.com/kevinch3/NicotinD/issues/535)) ([9cd77e2](https://github.com/kevinch3/NicotinD/commit/9cd77e257da2a82a78a29e133bd328de99958d7e))"
         ]
       }
     ]
