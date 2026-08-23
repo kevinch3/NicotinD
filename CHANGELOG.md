@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.62](https://github.com/kevinch3/NicotinD/compare/v0.3.61...v0.3.62) (2026-08-23)
+
+### Bug Fixes
+
+* **analysis:** run descriptor extraction in a worker process so /health stays responsive ([#647](https://github.com/kevinch3/NicotinD/issues/647)) ([e76cc76](https://github.com/kevinch3/NicotinD/commit/e76cc760c6efe9dec95a8817879ce7088917727a)), references [#640](https://github.com/kevinch3/NicotinD/issues/640)
 ## [0.3.61](https://github.com/kevinch3/NicotinD/compare/v0.3.60...v0.3.61) (2026-08-23)
 
 ### Features
