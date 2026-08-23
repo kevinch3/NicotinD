@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.63](https://github.com/kevinch3/NicotinD/compare/v0.3.62...v0.3.63) (2026-08-23)
+
+### Bug Fixes
+
+* **admin:** run whole-library passes as background jobs, not in the handler ([#645](https://github.com/kevinch3/NicotinD/issues/645)) ([566c6a1](https://github.com/kevinch3/NicotinD/commit/566c6a1752a9f475de9d1a4b7173f7163daa3c83)), references [#622](https://github.com/kevinch3/NicotinD/issues/622)
 ## [0.3.62](https://github.com/kevinch3/NicotinD/compare/v0.3.61...v0.3.62) (2026-08-23)
 
 ### Bug Fixes
