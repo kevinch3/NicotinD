@@ -76,6 +76,15 @@ describe('createWaveformReducer', () => {
     expect(Math.max(...mins)).toBeLessThanOrEqual(0);
   });
 
+  it('clamps over-full-scale samples so peaks honour the -1..1 contract', () => {
+    // A hot master decodes above ±1.0 in float (prod: a 227 s track peaked at
+    // 1.51). The envelope must stay inside the box the contract promises.
+    const { peaks } = reduce(sine(440, 3, 1.6));
+    expect(Math.max(...peaks)).toBeLessThanOrEqual(1);
+    expect(Math.min(...peaks)).toBeGreaterThanOrEqual(-1);
+    expect(Math.max(...peaks)).toBeCloseTo(1, 2);
+  });
+
   it('caps the emitted peaks at PEAKS_BUCKETS for a long track', () => {
     const { peaks } = reduce(sine(440, 60));
     expect(peaks.length).toBe(PEAKS_BUCKETS * 2);

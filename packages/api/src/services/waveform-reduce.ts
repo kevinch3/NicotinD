@@ -160,8 +160,12 @@ export function createWaveformReducer(sampleRate: number): WaveformReducer {
     push(samples) {
       for (let i = 0; i < samples.length; i++) {
         const s = samples[i]!;
-        if (s < blockMin) blockMin = s;
-        if (s > blockMax) blockMax = s;
+        // Peaks honour the -1..1 contract: a hot master decodes above full
+        // scale in float (prod: 1.51). The FFT below still sees the raw
+        // sample, so band energies stay faithful to the signal.
+        const p = s > 1 ? 1 : s < -1 ? -1 : s;
+        if (p < blockMin) blockMin = p;
+        if (p > blockMax) blockMax = p;
         if (++blockCount === peakBlock) flushPeakBlock();
         ring[ringPos] = s;
         ringPos = (ringPos + 1) % FFT_SIZE;
