@@ -132,6 +132,16 @@ Launch tasks:
   un-ledgered (environmental — see the exclusion section below). Bulk script:
   `scripts/analyze-audio-features.ts`. See
   [audio-ml-enrichment.md](audio-ml-enrichment.md).
+- **descriptors** (issue #641) — songs with no usable current-version row in
+  `library_song_descriptors` (`descriptorsPendingClause`: no row, an older
+  `DESCRIPTOR_VERSION`, or a stale `file_size`), gated on the sidecar's
+  **`/health.descriptors` flag** rather than its model status — `POST
+  /descriptors` needs no model files, so a models-less build still serves it.
+  Stores the 41 raw timbre/groove/band values as one JSON row; not
+  tag-mirrored, **never a landing gate** (~5 s CPU per track), concurrency
+  capped at 2, same 422-ledgered / 404-503-pending contract as audio-features.
+  Bulk script: `scripts/backfill-descriptors.ts` (runs the same task body). See
+  [audio-descriptors.md](audio-descriptors.md).
 - **genre-audio** (issue #187 task A2, an audio-inferred genre fallback) —
   `WHERE (genre IS NULL OR genre = '') AND EXISTS (... task = 'genre')`, gated
   on the analysis sidecar like `audio-features` (and reuses its

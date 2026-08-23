@@ -2,13 +2,18 @@
 
 Contract (consumed by @nicotind/api's AudioFeaturesClient):
 
-  GET  /health            -> { status, device, modelVersions, rhythm }
+  GET  /health            -> { status, device, modelVersions, rhythm, descriptors }
   POST /analyze {relPath} -> { embedding: {model, dim, values},
                                features: {danceability, valence, acousticness,
                                           instrumental, mood},
                                genre: {genre, style, confidence} | null,
                                modelVersions }
   POST /rhythm  {relPath} -> { bpm, confidence, method }
+  POST /descriptors {relPath} -> { version, features: {<DESCRIPTOR_NAMES>: float|null} }
+
+`/rhythm` and `/descriptors` need no model files and are independent of the TF
+registry — a models-less build still serves both (status "unavailable" refers
+to /analyze only; read the per-endpoint booleans).
 
 `genre` is a sibling of `features` (issue #187 task A2, an audio-inferred
 genre fallback) — null only for a sidecar build older than the genre head;
@@ -33,6 +38,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from .descriptors import DescriptorAnalyzer
 from .idle_release import IdleReleaseGuard, RegistryHolder
 from .models import ModelRegistry
 from .rhythm import RhythmAnalyzer
@@ -71,6 +77,16 @@ def _load_real_rhythm() -> RhythmAnalyzer | None:
         return None
 
 
+def _load_real_descriptors() -> DescriptorAnalyzer | None:
+    try:
+        from .descriptors import EssentiaDescriptorAnalyzer
+
+        return EssentiaDescriptorAnalyzer()
+    except Exception:
+        log.exception("essentia unavailable — /descriptors will 503")
+        return None
+
+
 async def _idle_watch_loop(holder: RegistryHolder[ModelRegistry]) -> None:
     """Background task (issue #224): periodically release the registry once
     idle. Cancelled at shutdown by the lifespan context manager."""
@@ -84,6 +100,7 @@ def create_app(
     registry: ModelRegistry | None = None,
     music_dir: str | None = None,
     rhythm: RhythmAnalyzer | None = None,
+    descriptors: DescriptorAnalyzer | None = None,
     registry_factory: Callable[[], ModelRegistry | None] | None = None,
     idle_release_sec: float | None = None,
     now: Callable[[], float] = time.monotonic,
@@ -102,8 +119,19 @@ def create_app(
     tests pass a fake to drive the idle window without real sleeps.
     """
     rhythm_state: dict[str, RhythmAnalyzer | None] = {"analyzer": rhythm}
+    descriptors_state: dict[str, DescriptorAnalyzer | None] = {"analyzer": descriptors}
     resolved_music_dir = Path(music_dir or os.environ.get("MUSIC_DIR", "/data/music")).resolve()
-    injected = registry is not None or rhythm is not None
+    injected = registry is not None or rhythm is not None or descriptors is not None
+
+    def resolve_track(rel_path: str) -> Path:
+        """Resolve a request's relPath inside MUSIC_DIR, or raise the 400/404
+        every analysis endpoint shares."""
+        candidate = (resolved_music_dir / rel_path).resolve()
+        if not candidate.is_relative_to(resolved_music_dir):
+            raise HTTPException(status_code=400, detail="path escapes music dir")
+        if not candidate.is_file():
+            raise HTTPException(status_code=404, detail="file not found")
+        return candidate
 
     resolved_idle_release_sec = (
         idle_release_sec
@@ -121,6 +149,7 @@ def create_app(
         if not injected:  # pragma: no cover - real models load in the container only
             holder.set(_load_real_registry())
             rhythm_state["analyzer"] = _load_real_rhythm()
+            descriptors_state["analyzer"] = _load_real_descriptors()
         watcher = asyncio.create_task(_idle_watch_loop(holder))
         try:
             yield
@@ -135,6 +164,7 @@ def create_app(
     @app.get("/health")
     def health() -> dict[str, object]:
         rhythm_ok = rhythm_state["analyzer"] is not None
+        descriptors_ok = descriptors_state["analyzer"] is not None
         # can_serve(), not is_loaded(): an idle-released registry reloads on
         # the next /analyze, so it must report "ok" (cold, loaded=false) —
         # "unavailable" is reserved for a boot-time load failure, which never
@@ -147,6 +177,7 @@ def create_app(
                 "device": None,
                 "modelVersions": {},
                 "rhythm": rhythm_ok,
+                "descriptors": descriptors_ok,
                 "loaded": False,
             }
         # peek(), not get(): a health check must not count as activity, or the
@@ -160,6 +191,7 @@ def create_app(
                 "device": None,
                 "modelVersions": {},
                 "rhythm": rhythm_ok,
+                "descriptors": descriptors_ok,
                 "loaded": False,
             }
         return {
@@ -167,6 +199,7 @@ def create_app(
             "device": reg.device(),
             "modelVersions": reg.versions(),
             "rhythm": rhythm_ok,
+            "descriptors": descriptors_ok,
             "loaded": True,
         }
 
@@ -176,12 +209,7 @@ def create_app(
         if reg is None:
             raise HTTPException(status_code=503, detail="models not loaded")
 
-        candidate = (resolved_music_dir / body.relPath).resolve()
-        if not candidate.is_relative_to(resolved_music_dir):
-            raise HTTPException(status_code=400, detail="path escapes music dir")
-        if not candidate.is_file():
-            raise HTTPException(status_code=404, detail="file not found")
-
+        candidate = resolve_track(body.relPath)
         try:
             result = reg.analyze(str(candidate))
         except Exception as err:  # decode/inference failure on one file
@@ -205,12 +233,7 @@ def create_app(
         if analyzer is None:
             raise HTTPException(status_code=503, detail="rhythm analysis unavailable")
 
-        candidate = (resolved_music_dir / body.relPath).resolve()
-        if not candidate.is_relative_to(resolved_music_dir):
-            raise HTTPException(status_code=400, detail="path escapes music dir")
-        if not candidate.is_file():
-            raise HTTPException(status_code=404, detail="file not found")
-
+        candidate = resolve_track(body.relPath)
         try:
             result = analyzer.analyze(str(candidate))
         except Exception as err:  # decode failure on one file
@@ -218,6 +241,21 @@ def create_app(
             raise HTTPException(status_code=422, detail="rhythm analysis failed") from err
 
         return {"bpm": result.bpm, "confidence": result.confidence, "method": result.method}
+
+    @app.post("/descriptors")
+    def descriptors_endpoint(body: AnalyzeRequest) -> dict[str, object]:
+        analyzer = descriptors_state["analyzer"]
+        if analyzer is None:
+            raise HTTPException(status_code=503, detail="descriptor analysis unavailable")
+
+        candidate = resolve_track(body.relPath)
+        try:
+            result = analyzer.analyze(str(candidate))
+        except Exception as err:  # decode/extraction failure on one file
+            log.warning("descriptor analysis failed for %s: %s", body.relPath, err)
+            raise HTTPException(status_code=422, detail="descriptor analysis failed") from err
+
+        return {"version": result.version, "features": result.features}
 
     return app
 

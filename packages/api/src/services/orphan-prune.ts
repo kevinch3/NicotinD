@@ -67,6 +67,9 @@ export const ORPHAN_TABLES: OrphanTable[] = [
   // ~46% of the whole prod database is embedding blobs; this is the one that
   // carries real bytes, and the sidecar can recompute it for free.
   { table: 'library_embeddings', songIdColumn: 'song_id' },
+  // Timbre/groove/band descriptors from the same sidecar — ~2 KB of JSON per
+  // song, recomputed in ~5 s. Regenerable, so it belongs with the embeddings.
+  { table: 'library_song_descriptors', songIdColumn: 'song_id' },
   // A pure ledger of analysis attempts — meaningless without its song.
   { table: 'library_song_analysis_failures', songIdColumn: 'song_id' },
   // Raw tag JSON keyed on path+size+mtime, purely to skip re-parsing an

@@ -79,6 +79,11 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
       genre: null,
     }),
     audioFeaturesAvailable: () => true,
+    analyzeDescriptors: async () => ({
+      version: 1,
+      features: { mfcc_0: -665.7, spectral_centroid: 1138.7, swing_ratio: null, bpm: 150 },
+    }),
+    descriptorsAvailable: () => true,
     lookupGenre: async () => 'Rock',
     lookupArtistImageSpotify: async () => null,
     lookupArtistImageDiscogs: null,
@@ -2059,6 +2064,83 @@ describe('MBID resolution helpers (issue #211)', () => {
   });
 });
 
+describe('descriptors task', () => {
+  const descriptors = getTask('descriptors')!;
+
+  function storedRow(id: string): { version: number; file_size: number | null } | null {
+    return db
+      .query<{ version: number; file_size: number | null }, [string]>(
+        'SELECT version, file_size FROM library_song_descriptors WHERE song_id = ?',
+      )
+      .get(id);
+  }
+
+  it('is never a landing gate', () => {
+    // A 5 s/track CPU pass must not strand a fresh download (docs/audio-descriptors.md).
+    expect(descriptors.satisfiedColumnSql).toBeUndefined();
+  });
+
+  it('reports why it is unavailable', () => {
+    expect(descriptors.available(ctx({ analyzeDescriptors: null }))).toBe(
+      'analysis sidecar not configured',
+    );
+    // Gated on the endpoint's own health flag, not `healthy()`: a models-less
+    // sidecar reports status "unavailable" and still serves /descriptors.
+    expect(descriptors.available(ctx({ descriptorsAvailable: () => false }))).toBe(
+      'analysis sidecar has no descriptor endpoint',
+    );
+    expect(descriptors.available(ctx())).toBe(true);
+  });
+
+  it('stores the raw feature map keyed by version + file size, then stops counting it', async () => {
+    seedSong('a');
+    expect(descriptors.countPending(db)).toBe(1);
+    const res = await descriptors.run(db, ctx(), 25);
+    expect(res.applied).toBe(1);
+    expect(storedRow('a')).toEqual({ version: 1, file_size: 10 });
+    expect(descriptors.countPending(db)).toBe(0);
+  });
+
+  it('ledgers a 422 (undecodable file) so it eventually drops out of the pending set', async () => {
+    seedSong('a');
+    const c = ctx({
+      analyzeDescriptors: async () => {
+        throw new AudioFileRejectedError('decoded audio too short', 422);
+      },
+    });
+    const res = await descriptors.run(db, c, 25);
+    expect(res.applied).toBe(0);
+    expect(res.failed).toBe(1);
+    const ledger = db
+      .query<{ fail_count: number }, [string]>(
+        `SELECT fail_count FROM library_song_analysis_failures WHERE song_id = ? AND task = 'descriptors'`,
+      )
+      .get('a');
+    expect(ledger?.fail_count).toBe(1);
+    expect(storedRow('a')).toBeNull();
+  });
+
+  it('leaves a song pending, un-ledgered, when the sidecar returns nothing', async () => {
+    seedSong('a');
+    const res = await descriptors.run(db, ctx({ analyzeDescriptors: async () => null }), 25);
+    expect(res.applied).toBe(0);
+    expect(res.failed).toBe(0);
+    expect(descriptors.countPending(db)).toBe(1);
+    expect(db.query('SELECT COUNT(*) AS c FROM library_song_analysis_failures').get()).toEqual({
+      c: 0,
+    });
+  });
+
+  it('re-analyses a song whose file changed size since its descriptor was stored', async () => {
+    seedSong('a');
+    await descriptors.run(db, ctx(), 25);
+    db.run(`UPDATE library_songs SET size = 999 WHERE id = 'a'`);
+    expect(descriptors.countPending(db)).toBe(1);
+    await descriptors.run(db, ctx(), 25);
+    expect(storedRow('a')).toEqual({ version: 1, file_size: 999 });
+  });
+});
+
 describe('registry', () => {
   it('exposes every enrichment task id', () => {
     expect(ENRICHMENT_TASKS.map((t) => t.id).sort()).toEqual([
@@ -2068,6 +2150,7 @@ describe('registry', () => {
       'artist-origin',
       'audio-features',
       'bpm',
+      'descriptors',
       'energy',
       'genre',
       'genre-audio',

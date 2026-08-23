@@ -296,6 +296,7 @@
   "admin.syncLibraryHint": "Reescanea el directorio de música y reconstruye el índice de la biblioteca desde el disco.",
   "admin.system": "Estado del sistema",
   "admin.taskAudioFeatures": "Características de audio (ánimo, valencia, bailabilidad)",
+  "admin.taskDescriptors": "Descriptores de audio (timbre, groove, balance de frecuencias)",
   "admin.taskBpm": "Análisis de BPM",
   "admin.taskEnergy": "Energía y sonoridad",
   "admin.taskGenre": "Género",

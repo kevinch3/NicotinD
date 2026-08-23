@@ -1004,6 +1004,24 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // bounds the growth without giving up that design. See `orphan-prune.ts`.
   addColumnIfMissing(db, 'library_embeddings', 'orphaned_at', 'INTEGER');
 
+  // Per-song audio descriptors (timbre / groove / spectral balance) from the
+  // sidecar's /descriptors — the RAW named values as one JSON column, so the
+  // scoring normalisation can be re-derived without re-analysing 15k files
+  // (services/descriptor-store.ts, docs/audio-descriptors.md). `version`
+  // mirrors the sidecar's DESCRIPTOR_VERSION: a definition change re-analyses
+  // rather than mixing definitions in one axis. `file_size` is the #258
+  // content check and `orphaned_at` the #259 prune marker, same as embeddings.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_song_descriptors (
+      song_id     TEXT PRIMARY KEY,
+      version     INTEGER NOT NULL,
+      features    TEXT NOT NULL,
+      file_size   INTEGER,
+      orphaned_at INTEGER,
+      updated_at  INTEGER NOT NULL
+    )
+  `);
+
   // Per-(song, task) analysis failure ledger. A file that hard-fails a decode/
   // sidecar analysis (e.g. a corrupt "Invalid data" mp3) is recorded here; once
   // fail_count reaches the task's attempt cap the windowed processor excludes it
