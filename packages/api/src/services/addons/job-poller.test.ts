@@ -505,6 +505,33 @@ describe('AddonJobPoller', () => {
     });
 
     /**
+     * Prod showed two `Error · 0 of 12` cards stating a failure and declining
+     * to say why: every item failed, and the addon closed reporting no error,
+     * so the row's `error` was written as NULL.
+     */
+    it('gives a reason when every item failed and the addon reported none', async () => {
+      const job = makeJob({
+        state: 'partial',
+        error: null,
+        items: [
+          { ...makeJob().items[0]!, itemId: 'a', state: 'failed', fileReady: false },
+          { ...makeJob().items[0]!, itemId: 'b', state: 'unavailable', fileReady: false },
+        ],
+      });
+      h = harness(() => [job]);
+      await h.registry.enable('fixture-addon', 'admin');
+      await h.poller.tick();
+
+      const row = h.db
+        .query<{ stage: string; error: string | null }, []>(
+          `SELECT stage, error FROM acquisition_jobs`,
+        )
+        .get()!;
+      expect(row.stage).toBe('error');
+      expect(row.error).toBeTruthy();
+    });
+
+    /**
      * Releasing a terminal job addon-side is what makes the later `getJob`
      * 404 — so without COALESCE the orphan reconcile would overwrite the real
      * reason with a generic "it likely restarted mid-download" guess.

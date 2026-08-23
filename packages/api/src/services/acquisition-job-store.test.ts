@@ -699,6 +699,51 @@ describe('recomputeStage', () => {
     expect(getJob(db, id)?.state).toBe('done');
   });
 
+  /**
+   * `failOrphanedJob` records a reason, then a later scan promotes the row back
+   * to done — leaving a success card carrying "the addon no longer has this
+   * job". A job that delivered every item has nothing left to report.
+   */
+  it('clears a stale failure reason once every item delivered', () => {
+    const id = seedJob();
+    for (const [file, path, song] of [
+      ['a\\01 Sunday.flac', 'p/01.opus', 's1'],
+      ['a\\02 Slip Away.flac', 'p/02.opus', 's2'],
+    ] as const) {
+      markItemCompleted(db, transferKeyFor('peer1', file));
+      markItemOrganized(db, transferKeyFor('peer1', file), path);
+      seedSong(song, path, true);
+    }
+    markItemsScanned(
+      db,
+      new Map([
+        ['p/01.opus', 's1'],
+        ['p/02.opus', 's2'],
+      ]),
+    );
+    db.run(`UPDATE acquisition_jobs SET error = 'The addon no longer has this job.' WHERE id = ?`, [
+      id,
+    ]);
+
+    expect(recomputeStage(db, id)).toBe('done');
+    expect(getJob(db, id)?.error ?? null).toBeNull();
+  });
+
+  it('keeps the reason on a partial — it explains the missing track', () => {
+    const id = seedJob();
+    markItemCompleted(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'));
+    markItemOrganized(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'), 'p/01.opus');
+    seedSong('s1', 'p/01.opus', true);
+    markItemsScanned(db, new Map([['p/01.opus', 's1']]));
+    markMissingItemsUnavailable(db, id);
+    db.run(`UPDATE acquisition_jobs SET error = 'The addon no longer has this job.' WHERE id = ?`, [
+      id,
+    ]);
+
+    expect(recomputeStage(db, id)).toBe('done');
+    expect(getJob(db, id)?.error).toBeTruthy();
+  });
+
   it('closes a job as partial done when remaining items are unavailable — never waits 13 of 13', () => {
     const id = seedJob();
     markItemCompleted(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'));

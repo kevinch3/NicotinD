@@ -455,12 +455,18 @@ export class AddonJobPoller {
        WHERE job_id = ? AND state IN ('downloading', 'queued')`,
       [now, coreJobId],
     );
-    recomputeStage(db, coreJobId);
+    const stage = recomputeStage(db, coreJobId);
     // The addon's closing word, for a job that DOES have items — `recomputeStage`
     // sets state/stage but never touches `error`, so a partial's reason would
-    // otherwise be lost.
+    // otherwise be lost. When it landed nothing at all, the card states a reason
+    // either way: an "Error" row that declines to say why is the worst of both.
+    const closingError = job.error
+      ? sanitizeAddonError(job.error)
+      : stage === 'error'
+        ? allItemsFailedMessage(job.state)
+        : null;
     db.run(`UPDATE acquisition_jobs SET error = ?, updated_at = ? WHERE id = ?`, [
-      job.error ? sanitizeAddonError(job.error) : null,
+      closingError,
       now,
       coreJobId,
     ]);
@@ -663,6 +669,13 @@ function emptyOutcomeMessage(state: AddonJob['state']): string {
       // audio this addon can fetch (a store/preview page, a deleted upload).
       return 'No downloadable audio was found at this link.';
   }
+}
+
+/** Why a job whose items all failed ended, when the addon closed without a word. */
+function allItemsFailedMessage(state: AddonJob['state']): string {
+  return state === 'cancelled'
+    ? 'The download was cancelled before any file arrived.'
+    : 'No file from this source could be downloaded.';
 }
 
 function mapItemState(item: AddonJobItem): string {

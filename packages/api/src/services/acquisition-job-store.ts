@@ -704,12 +704,18 @@ export function recomputeStage(db: Database, jobId: string): string | null {
       state = 'done';
     }
   }
-  db.run(`UPDATE acquisition_jobs SET state = ?, stage = ?, updated_at = ? WHERE id = ?`, [
-    state,
-    stage,
-    Date.now(),
-    jobId,
-  ]);
+  // A job that delivered every item has nothing left to report: a reason
+  // recorded while it looked doomed (the orphan guess, an addon's last word)
+  // would otherwise ride a success card forever. A partial keeps its reason —
+  // there, it is what explains the missing tracks.
+  const fullyDelivered =
+    state === 'done' && (counts.get('failed') ?? 0) === 0 && (counts.get('unavailable') ?? 0) === 0;
+  db.run(
+    fullyDelivered
+      ? `UPDATE acquisition_jobs SET state = ?, stage = ?, updated_at = ?, error = NULL WHERE id = ?`
+      : `UPDATE acquisition_jobs SET state = ?, stage = ?, updated_at = ? WHERE id = ?`,
+    [state, stage, Date.now(), jobId],
+  );
   return stage;
 }
 

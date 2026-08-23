@@ -116,6 +116,7 @@ export * from '../../../core/src/version';
 // shared derivation so the API read model and the web adapter can never
 // disagree about what a download is called. See docs/download-pipeline.md.
 export * from '../../../core/src/utils/download-title';
+export * from '../../../core/src/utils/download-failure';
 export * from '../../../core/src/utils/folder-name';
 export * from '../../../core/src/types/classify-acquire-url';
 
