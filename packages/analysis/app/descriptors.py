@@ -13,6 +13,15 @@ extractor reads that path, and the same file is re-read for the onset and
 band passes — one decode per track. Measured on the published image:
 ~5 s/track for a 180 s window on a real Opus/MP3 (docs/audio-descriptors.md).
 
+Why a worker PROCESS, not the request threadpool: Essentia's bindings hold
+the GIL for the whole MusicExtractor call (~5 s), so while a track was being
+analysed the sidecar's own /health took 5–7 s (measured on prod, v0.3.61) —
+past the API client's 5 s probe and Docker's healthcheck — and the task's
+availability gate flapped for the entire backfill. TensorFlow releases the
+GIL, which is why /analyze never showed this. A spawned child has its own
+GIL; the parent stays free to answer. `spawn`, not `fork`: the parent may
+hold a CUDA context, which does not survive a fork.
+
 `derive_descriptors` is pure (a dict stands in for the Pool in tests);
 `EssentiaDescriptorAnalyzer` is the real implementation, importing essentia
 and numpy lazily like models.py. Independent of the TF registry: no model
@@ -21,14 +30,17 @@ files are needed, so /descriptors keeps working on a models-less build.
 
 from __future__ import annotations
 
+import multiprocessing
 import os
 import subprocess
 import tempfile
 import threading
 import wave
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from .bands import BAND_EDGES_HZ, BAND_NAMES, band_shares
 from .beat_stats import groove_regularity, swing_ratio, syncopation, tempo_stability
@@ -128,6 +140,52 @@ class DescriptorAnalyzer(Protocol):
     def analyze(self, path: str) -> DescriptorResult: ...
 
 
+class DescriptorUnavailableError(RuntimeError):
+    """The extraction worker process died or could not be spawned — an
+    environmental fault (→ 503, the song stays pending), never a verdict on
+    the file (→ 422, which would ledger it)."""
+
+
+class ProcessRunner:
+    """Run picklable callables in one long-lived spawned worker process.
+
+    Calls are serialized (one worker, one lock) — the sidecar serialized
+    extraction before too; what changes is that the wait happens in
+    `Future.result()`, which releases the GIL, so /health answers in
+    milliseconds instead of queueing behind the extraction. A worker that
+    dies mid-call (OOM, segfault) surfaces as DescriptorUnavailableError and
+    the pool is rebuilt on the next call, so one crash never poisons the
+    endpoint. Exceptions raised *inside* the worker propagate unchanged.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._pool: ProcessPoolExecutor | None = None
+
+    def _ensure_pool(self) -> ProcessPoolExecutor:
+        if self._pool is None:
+            self._pool = ProcessPoolExecutor(
+                max_workers=1, mp_context=multiprocessing.get_context("spawn")
+            )
+        return self._pool
+
+    def run(self, fn: Callable[..., Any], *args: Any) -> Any:
+        with self._lock:
+            pool = self._ensure_pool()
+            try:
+                return pool.submit(fn, *args).result()
+            except BrokenProcessPool as err:
+                self._pool = None
+                pool.shutdown(wait=False)
+                raise DescriptorUnavailableError(f"descriptor worker died: {err}") from err
+
+    def shutdown(self) -> None:
+        with self._lock:
+            if self._pool is not None:
+                self._pool.shutdown(wait=False)
+                self._pool = None
+
+
 def _scalar(pool: Mapping[str, object], key: str) -> float | None:
     value = pool.get(key)
     if value is None or isinstance(value, (list, tuple)):
@@ -225,57 +283,64 @@ def _to_python(value: object) -> object:
     return tolist() if callable(tolist) else value
 
 
-class EssentiaDescriptorAnalyzer:
-    """MusicExtractor + OnsetRate + FrequencyBands over one decoded window.
+def extract_raw(path: str, window_seconds: float) -> dict[str, float | None]:
+    """The whole extraction for one track — runs INSIDE the worker process.
 
-    Calls are serialized with a lock — Essentia standard-mode algorithms are
-    not thread-safe and FastAPI runs sync endpoints in a threadpool.
+    Module-level and returning plain Python (no Pool, no numpy) so it pickles
+    across the process boundary. Imports essentia/numpy lazily: the worker is
+    spawned, so this is where they are first loaded in that process.
     """
+    import essentia.standard as es  # type: ignore[import-not-found]
+    import numpy as np  # type: ignore[import-not-found]
 
-    def __init__(self, window_seconds: float | None = None) -> None:
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        wav_path = tmp.name
+    try:
+        decode_window_to_wav(path, wav_path, window_seconds)
+        with wave.open(wav_path) as w:
+            frames = w.readframes(w.getnframes())
+        audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+        if audio.size < SAMPLE_RATE * MIN_AUDIO_SECONDS:
+            raise RuntimeError("decoded audio too short")
+
+        pool, _frames = es.MusicExtractor(rhythmMethod="multifeature")(wav_path)
+        names = set(pool.descriptorNames())
+        values = {k: _to_python(pool[k]) for k in POOL_KEYS if k in names}
+        beats = (
+            [float(b) for b in pool["rhythm.beats_position"]]
+            if "rhythm.beats_position" in names
+            else []
+        )
+        onsets_arr, _rate = es.OnsetRate()(audio)
+        onsets = [float(t) for t in onsets_arr]
+        energies = _band_energies(es, audio)
+    finally:
+        try:
+            os.unlink(wav_path)
+        except OSError:
+            pass
+    return derive_descriptors(values, beats, onsets, energies)
+
+
+class EssentiaDescriptorAnalyzer:
+    """MusicExtractor + OnsetRate + FrequencyBands over one decoded window,
+    executed in a spawned worker process (see the module docstring for why)."""
+
+    def __init__(
+        self,
+        window_seconds: float | None = None,
+        runner: ProcessRunner | None = None,
+    ) -> None:
         # Fail fast at construction when essentia is missing so the app wires
         # a None analyzer and /descriptors 503s instead of 500ing per request.
         import essentia.standard  # type: ignore[import-not-found]  # noqa: F401
 
-        self._lock = threading.Lock()
+        self._runner = runner or ProcessRunner()
         self._window = window_seconds if window_seconds is not None else descriptor_window_seconds()
 
     def analyze(self, path: str) -> DescriptorResult:
-        import essentia.standard as es  # type: ignore[import-not-found]
-        import numpy as np  # type: ignore[import-not-found]
-
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            wav_path = tmp.name
-        try:
-            decode_window_to_wav(path, wav_path, self._window)
-            with wave.open(wav_path) as w:
-                frames = w.readframes(w.getnframes())
-            audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-            if audio.size < SAMPLE_RATE * MIN_AUDIO_SECONDS:
-                raise RuntimeError("decoded audio too short")
-
-            with self._lock:
-                pool, _frames = es.MusicExtractor(rhythmMethod="multifeature")(wav_path)
-                names = set(pool.descriptorNames())
-                values = {k: _to_python(pool[k]) for k in POOL_KEYS if k in names}
-                beats = (
-                    [float(b) for b in pool["rhythm.beats_position"]]
-                    if "rhythm.beats_position" in names
-                    else []
-                )
-                onsets_arr, _rate = es.OnsetRate()(audio)
-                onsets = [float(t) for t in onsets_arr]
-                energies = _band_energies(es, audio)
-        finally:
-            try:
-                os.unlink(wav_path)
-            except OSError:
-                pass
-
-        return DescriptorResult(
-            version=DESCRIPTOR_VERSION,
-            features=derive_descriptors(values, beats, onsets, energies),
-        )
+        features = self._runner.run(extract_raw, path, self._window)
+        return DescriptorResult(version=DESCRIPTOR_VERSION, features=features)
 
 
 def _band_energies(es: object, audio: object) -> list[float]:

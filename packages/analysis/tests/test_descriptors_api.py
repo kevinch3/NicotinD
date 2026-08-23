@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.descriptors import DescriptorResult
+from app.descriptors import DescriptorResult, DescriptorUnavailableError
 from app.main import create_app
 
 FEATURES = {"mfcc_0": -700.0, "spectral_centroid": 1138.3, "swing_ratio": None, "bpm": 150.0}
@@ -64,6 +64,19 @@ def test_descriptors_422_when_analysis_fails(tmp_path: Path) -> None:
 
     client = make_client(tmp_path, ExplodingAnalyzer())
     assert client.post("/descriptors", json={"relPath": "song.opus"}).status_code == 422
+
+
+def test_descriptors_503_when_the_worker_is_unavailable(tmp_path: Path) -> None:
+    # A dead/unspawnable worker process is environmental: 503 (the API leaves
+    # the song pending), never 422 (which would ledger a good file).
+    (tmp_path / "song.opus").write_bytes(b"fake-audio")
+
+    class DeadWorkerAnalyzer(FakeDescriptorAnalyzer):
+        def analyze(self, path: str) -> DescriptorResult:
+            raise DescriptorUnavailableError("worker died")
+
+    client = make_client(tmp_path, DeadWorkerAnalyzer())
+    assert client.post("/descriptors", json={"relPath": "song.opus"}).status_code == 503
 
 
 def test_health_reports_descriptors_availability(tmp_path: Path) -> None:

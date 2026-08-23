@@ -1882,7 +1882,7 @@ const popularityTask: EnrichmentTask = {
  * whose file changed or whose stored definition is stale.
  *
  * Never a landing gate (no `satisfiedColumnSql`): ~5 s of CPU per track must
- * not strand a fresh download. Not tag-mirrored either — 41 floats belong in
+ * not strand a fresh download. Not tag-mirrored either — 40 floats belong in
  * the store, not the file, and they are regenerable.
  */
 const descriptorsTask: EnrichmentTask = {
