@@ -1,8 +1,11 @@
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import type { DebugElement } from '@angular/core';
 import { expandAllGroups } from '../../../testing/expand-groups';
 import { vi, beforeEach, describe, it, expect } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { AdminComponent } from './admin.component';
+import { LibraryMaintenancePanelComponent } from './library-maintenance/library-maintenance-panel.component';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -35,6 +38,14 @@ import BASE_CATALOG from '../../../../public/i18n/en.json';
  * themselves by clicking each group's toggle button, exactly like a real user
  * would.
  */
+/** The extracted maintenance panel's instance, reached through the page fixture:
+ *  these assertions seed a signal the panel owns, then assert on what the page
+ *  renders, so both halves have to come from the same component instance. */
+function maintenancePanel(fixture: { debugElement: DebugElement }) {
+  return fixture.debugElement.query(By.directive(LibraryMaintenancePanelComponent))
+    .componentInstance as LibraryMaintenancePanelComponent;
+}
+
 function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
   return {
     collectedAt: 1_700_000_000_000,
@@ -740,7 +751,7 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
   });
 
   it('retryHunt builds a DiscographyAlbum from the incomplete-job and sets the artist', () => {
-    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
     const job: IncompleteAlbumJob = {
       id: 1,
       lidarrAlbumId: 10,
@@ -759,7 +770,7 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
   });
 
   it('retryHunt is a no-op when the job has no Lidarr album id', () => {
-    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
     c.retryHunt({
       id: 1,
       lidarrAlbumId: null,
@@ -775,13 +786,13 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
   });
 
   it('jobStateClass maps states to colors', () => {
-    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
     expect(c.jobStateClass('exhausted')).toContain('status-error');
     expect(c.jobStateClass('active')).toContain('status-warn');
   });
 
   it('syncLibrary calls resyncLibrary and reports success', async () => {
-    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
     await c.syncLibrary();
     // Raw i18n key in this harness (no real catalog loaded) — same convention
     // as settings.component.spec.ts / setup.component.spec.ts.
@@ -828,7 +839,7 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
         { provide: AuthService, useValue: { token: () => null } },
       ],
     }).compileComponents();
-    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
     await c.syncLibrary();
     expect(c.syncMsg()).toBe('boom');
   });
@@ -975,7 +986,7 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     const { fixture } = setup();
     fixture.detectChanges();
     await fixture.whenStable();
-    fixture.componentInstance.duplicates.set([
+    maintenancePanel(fixture).duplicates.set([
       [
         { id: 's1', title: 'A', artist: 'X', album: 'Al', suffix: 'flac', duration: 60 },
         { id: 's2', title: 'A', artist: 'X', album: 'Al', suffix: 'mp3', duration: 60 },
@@ -1062,26 +1073,42 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
     // the admin import card, import being internal/API-only now
     // (docs/import.md) — and minus the generation-feedback queue, removed with
     // that feature.
-    //
-    // This asserts COUNT ONLY, despite what its name used to claim: it was
-    // titled "renders all 10 groups in the correct order" while asserting
-    // `headers.length` twice and order never. Header text comes from `[title]`,
-    // a property binding on a nested `<app-settings-group>`, which the JIT
-    // harness never lands (see the note above `expandAllGroups`) — so there is
-    // nothing here to tell one group from another. A real ordering assertion
-    // arrives with the per-panel extraction, where each group is a distinct
-    // element tag and sequence becomes observable.
     expect(headers.length).toBe(9);
     fixture.destroy();
   });
 
-  // Task 1 (settings-cards unification) removed the `[defaultOpen]="true"`
-  // bindings from System Health / Library Processing — every one of the 8
-  // groups is now collapsed by default, in the real app as well as here. So
-  // unlike the old Task 4 comment this used to carry (which had to explain
-  // away a JIT-harness signal-input gap masking a *real* 2-open default),
-  // this assertion is now honest in both the harness and production: every
-  // group starts collapsed.
+  /**
+   * The real ordering guard. Its predecessor was titled "renders all 10 groups
+   * in the correct order" and asserted `headers.length` twice, order never —
+   * there was nothing to assert on, because every group was an identical
+   * `<app-settings-group>` whose distinguishing `[title]`/`groupId` inputs the
+   * JIT harness does not land (see the note above `expandAllGroups`).
+   *
+   * Now each section is its own element, so sequence is observable from the DOM
+   * without any input binding having to work. That is exactly the property that
+   * makes "reordering is a one-line move" safe to rely on: change the order in
+   * the template and this test tells you.
+   */
+  it('renders the panels in the intended order', async () => {
+    const fixture = await createAndSettle();
+    const shell = (fixture.nativeElement as HTMLElement).querySelector('.page-shell')!;
+    const order = Array.from(shell.children)
+      .map((e) => e.tagName.toLowerCase())
+      .filter((t) => t.startsWith('app-'));
+    expect(order).toEqual([
+      'app-user-management-panel',
+      'app-library-processing-panel',
+      'app-system-health-panel',
+      'app-library-maintenance-panel',
+      'app-streaming-media-panel',
+      'app-backups-data-panel',
+      'app-acquisition-automation-panel',
+      'app-audit-log-panel',
+      'app-settings-group', // radio polls — the last section still inline
+    ]);
+    fixture.destroy();
+  });
+
   it('renders every group collapsed on a fresh render (all groups default-collapsed)', async () => {
     localStorage.clear();
     const fixture = await createAndSettle();
@@ -1235,7 +1262,7 @@ describe('AdminComponent (actionable fragments, #314)', () => {
       ],
     }).compileComponents();
     const fixture = TestBed.createComponent(AdminComponent);
-    fixture.componentInstance.fragments.set(report);
+    maintenancePanel(fixture).fragments.set(report);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
@@ -1325,25 +1352,13 @@ describe('AdminComponent — maintenance passes (issue #622)', () => {
     const mocks = makeAdminMocks(review);
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
-      imports: [AdminComponent],
+      imports: [LibraryMaintenancePanelComponent],
       providers: [
-        {
-          provide: DownloadsApiService,
-          useValue: {
-            listAlbumJobs: vi.fn(() => of({ jobs: [] })),
-            getUntrackedDownloads: vi.fn(() => of({ total: 0, rows: [] })),
-          },
-        },
         {
           provide: SystemApiService,
           useValue: {
             getUsers: mocks.getUsers,
-            getStreamingSettings: mocks.getStreaming,
-            saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
             getProcessing: mocks.getProcessing,
-            getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
-            setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
-            saveProcessing: vi.fn((p: unknown) => of(p as object)),
           },
         },
         {
@@ -1359,7 +1374,9 @@ describe('AdminComponent — maintenance passes (issue #622)', () => {
         { provide: AuthService, useValue: { token: () => null } },
       ],
     }).compileComponents();
-    return TestBed.createComponent(AdminComponent).componentInstance;
+    // The maintenance passes moved to their own panel; mount that directly
+    // rather than the whole page it renders inside.
+    return TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
   }
 
   /** A review snapshot with one pass in flight. */

@@ -464,6 +464,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   tools live in Admin, and each addon renders through the generic `PluginCardComponent` +
   `AddonStatusPanelComponent`. → [admin-settings-decoupling.md](docs/admin-settings-decoupling.md),
   [plugins.md](docs/plugins.md)
+- **Admin is one panel component per section**: `admin.component.html` is an ordered list of tags,
+  so reordering is a one-line move; each panel owns its own `<app-settings-group>` (the `groupId`
+  is a localStorage key *and* an e2e selector) and injects `ServiceReviewService` rather than
+  taking inputs. `AcquisitionSettingsService` carries the one cross-section signal.
+  → [admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
 - **ServiceReview (one resource, one polling lifecycle)**: `GET /api/admin/review` replaces the Admin
   page's N loaders; `ServiceReviewService` owns one visibility-paused interval and every sub-section
   is a `computed()` slice. Slices are gathered by name via `allNamed()`, never positionally.
