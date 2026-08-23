@@ -38,7 +38,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from .descriptors import DescriptorAnalyzer
+from .descriptors import DescriptorAnalyzer, DescriptorUnavailableError
 from .idle_release import IdleReleaseGuard, RegistryHolder
 from .models import ModelRegistry
 from .rhythm import RhythmAnalyzer
@@ -251,6 +251,11 @@ def create_app(
         candidate = resolve_track(body.relPath)
         try:
             result = analyzer.analyze(str(candidate))
+        except DescriptorUnavailableError as err:
+            # The worker process died/could not spawn: environmental, so 503
+            # (song stays pending) — a 422 here would ledger a good file.
+            log.error("descriptor worker unavailable: %s", err)
+            raise HTTPException(status_code=503, detail="descriptor worker unavailable") from err
         except Exception as err:  # decode/extraction failure on one file
             log.warning("descriptor analysis failed for %s: %s", body.relPath, err)
             raise HTTPException(status_code=422, detail="descriptor analysis failed") from err

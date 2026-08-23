@@ -137,7 +137,7 @@ Launch tasks:
   `DESCRIPTOR_VERSION`, or a stale `file_size`), gated on the sidecar's
   **`/health.descriptors` flag** rather than its model status — `POST
   /descriptors` needs no model files, so a models-less build still serves it.
-  Stores the 41 raw timbre/groove/band values as one JSON row; not
+  Stores the 40 raw timbre/groove/band values as one JSON row; not
   tag-mirrored, **never a landing gate** (~5 s CPU per track), concurrency
   capped at 2, same 422-ledgered / 404-503-pending contract as audio-features.
   Bulk script: `scripts/backfill-descriptors.ts` (runs the same task body). See

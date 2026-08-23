@@ -37,6 +37,18 @@ are stored but never scored — not a bug this change fixes, but worth knowing.
   `AudioLoader`, which has no Opus support (the library's standard codec, as `rhythm.py` already
   documents). ffmpeg decodes the window to a 16-bit WAV, the extractor reads that path, and the
   same file is re-read with `wave` + NumPy for the onset and band passes. One decode per track.
+- **Extraction runs in a spawned worker process, not the request threadpool.** Found on prod
+  the hour v0.3.61 deployed: while a track was being analysed, the sidecar's own `/health` took
+  **5–7 s** (12 of 12 samples from the app container), past the API client's 5 s probe timeout and
+  Docker's `--timeout=5s` healthcheck — so the `descriptors` task's availability gate flapped for
+  the whole backfill and the dry-run script reported the endpoint missing. Essentia's bindings
+  hold the GIL for the entire `MusicExtractor` call; TensorFlow releases it, which is why
+  `/analyze` never showed this. `ProcessRunner` (`app/descriptors.py`) runs `extract_raw` in one
+  long-lived `spawn`ed child — its own GIL, so the parent answers health in milliseconds; `spawn`
+  not `fork` because the parent may hold a CUDA context. A worker that dies surfaces as
+  `DescriptorUnavailableError` → **503** (environmental, the song stays pending) and the pool is
+  rebuilt on the next call; an exception raised *inside* the worker still propagates as itself →
+  422. Cost: one extra Python process importing essentia (first call pays the spawn + import).
 - **The "free wins" live here, not in a phase of their own.** Beat statistics and loudness range
   cost nothing *because* this pass runs the algorithms that produce them; standalone they would
   have had no store. `MusicExtractor` emits `loudness_range` itself, so the bun-side `ebur128`
@@ -49,7 +61,7 @@ are stored but never scored — not a bug this change fixes, but worth knowing.
   the z-score constants phase 2 needs can be re-derived from the store without re-analysing 15k
   files.
 - **Never a landing gate, never tag-mirrored.** ~5 s of CPU per track must not strand a fresh
-  download, and 41 regenerable floats belong in the store, not the file.
+  download, and 40 regenerable floats belong in the store, not the file.
 - **Pure Python for the statistics.** CI installs only the `[dev]` extra; numpy is behind
   `[models]`. `beat_stats.py` and `bands.py` are stdlib-only so they import (and test) everywhere;
   the real analyzer imports numpy lazily like `models.py`.
@@ -134,8 +146,8 @@ is of the same order, so without it a quantised track already reads ≈0.09. The
 - `services/audio-features-client.ts` — `descriptors(relPath)` + `descriptorsSnapshot()`; the
   health probe now records `/health.descriptors` beside `status`.
 - `services/enrichment/tasks.ts` `descriptorsTask` — `id: 'descriptors'`, default-on, no
-  `satisfiedColumnSql`, concurrency ≤ 2 (the sidecar serialises extraction under a lock), stops the
-  batch when health confirms an outage, ledgers only `AudioFileRejectedError`.
+  `satisfiedColumnSql`, concurrency ≤ 2 (the sidecar serialises extraction through its single
+  worker), stops the batch when health confirms an outage, ledgers only `AudioFileRejectedError`.
 - `scripts/backfill-descriptors.ts` — the bulk tool; runs the same task body so the pending
   predicate and ledger can't drift from the scheduler's.
 - `services/orphan-prune.ts` — registered with the embeddings (regenerable, ~2 KB/song).

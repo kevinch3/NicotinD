@@ -733,7 +733,10 @@ Add detail there, not here.
   a hard-electronic one at the same BPM tie on `bpm`). The sidecar's `POST /descriptors`
   (`app/descriptors.py`: `MusicExtractor` over a temp 44.1 kHz WAV — it takes a *filename* and
   Essentia's loader can't read Opus; `OnsetRate` is 44.1 kHz-only, so `/analyze`'s 16 kHz path
-  can't host it; **no model files**, so `/health` carries its own `descriptors` flag) returns 41
+  can't host it; **no model files**, so `/health` carries its own `descriptors` flag; extraction
+  runs in a **spawned worker process** (`ProcessRunner`) because Essentia holds the GIL for the
+  whole ~5 s call and prod's `/health` took 5–7 s during it — a dead worker is a **503**, never a
+  422) returns 40
   raw named values — 13 MFCCs + spectral stats, pure-Python `beat_stats.py` (tempo stability vs
   groove regularity split slow drift from fast jitter; `syncopation` is graded with a dead zone,
   our own definition), six `bands.py` shares. Stored raw in one JSON row per song
