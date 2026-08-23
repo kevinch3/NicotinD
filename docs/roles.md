@@ -126,6 +126,8 @@ With refiners, destructive actions are multi-user — the `audit_log` table give
 "who did what, when" record instead of grepping server logs (`services/audit-log.ts`).
 `recordAudit` is called **explicitly at the mutation sites** with meaningful action names — not a
 blanket mutation middleware, which would drown the log in per-listener noise (stars, lyric edits).
+Each entry carries `targetKind`/`targetId` plus a free-form `detail`, so a row identifies *what* was
+acted on and not just which action ran.
 Instrumented today: `song.delete`, `album.delete`, `songs.bulk-delete`, `artist.identity`
 (rename/merge/split detail), `artist.genre` (the issue #187 curator genre override — detail is the
 applied `;`-joined list, or `reset`), and the admin user-management routes

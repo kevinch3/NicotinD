@@ -84,6 +84,110 @@ export const EXTERNAL_SYMBOLS = new Map<string, string>([
   ['TransferPoller', 'slskd-addon src/services/transfer-poller.ts:41'],
 ]);
 
+/**
+ * SIZE BUDGET.
+ *
+ * WHY: this file's own header calls it "an index, kept deliberately small
+ * because it loads into every request" — and nothing measured that, so it grew
+ * to 186 KB / 2,038 lines, with a median index entry of ~1,340 characters and
+ * the largest at 7,287. The symbol check above proved every *name* in it was
+ * real while the file quietly became the detail store `docs/` already was: an
+ * audit found 1,316 of its 1,350 backticked facts duplicated in docs/, and only
+ * three rationale phrases that lived nowhere else.
+ *
+ * That is this repo's recurring shape — a gate that answers truthfully about
+ * the thing it happens to measure, and is silent about the thing that actually
+ * broke (see docs/quality-gates.md, "every gate asserts its own denominator").
+ * A prose rule cannot hold here: the cheapest place to record a hard-won
+ * rationale is always the file that is guaranteed to be read, so the pressure
+ * to inline "just one more paragraph" is constant and one-directional.
+ *
+ * The caps are set from the measured post-restructure file (139 entries, median
+ * prose 234, max 371, 50 KB) with headroom, so they bind on *narrative regrowth*
+ * rather than on ordinary editing: ~35 more entries fit under the byte budget,
+ * and 440 characters of prose is comfortable for "what it is + the symbols you
+ * would grep for" while no narrative fits in it. Deliberately NOT set just above
+ * the current value — a gate that fires on the next honest addition gets raised
+ * reflexively, and a threshold nobody believes is a threshold nobody enforces.
+ * Neither cap is a law of nature: raising one is fine, but it should be a commit
+ * that says why, which is exactly what an un-measured prose rule never forced.
+ */
+export const MAX_ENTRY_CHARS = 440;
+export const MAX_FILE_BYTES = 60_000;
+
+/**
+ * The gate's denominator. If entry parsing silently found nothing — a heading
+ * convention changed, the bullets became a table — every size check below would
+ * pass vacuously. Fewer entries than this means "I could not read this file",
+ * not "this file is fine", so main() fails on it.
+ */
+export const MIN_PLAUSIBLE_ENTRIES = 60;
+
+export interface IndexEntry {
+  name: string;
+  chars: number;
+  line: number;
+}
+
+/**
+ * Strip the trailing `→ [doc.md](docs/doc.md)` handoffs before measuring.
+ *
+ * WHY: a link costs ~55 characters, so charging them to the entry budget taxes
+ * an entry for citing its sources — and an entry that legitimately spans two
+ * docs gets ~110 characters less room to say anything than one that spans one.
+ * That is backwards. The links are the entire point of the index; the prose is
+ * what regrows. Measured the other way while writing this gate, the binding
+ * pressure on the one over-cap entry was to **drop a correct second link**,
+ * which is the opposite of what the budget exists to encourage.
+ */
+export function entryProse(text: string): string {
+  return text
+    .replace(/\[[^\]]*\]\(docs\/[^)]*\)/g, '')
+    .replace(/→\s*[,\s]*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Every top-level `- ` bullet plus its indented continuation lines.
+ *
+ * Length is the entry's *prose* (see entryProse) with whitespace collapsed, so
+ * neither re-wrapping a line nor adding a doc link can change the verdict — the
+ * budget is about how much a reader must take in, not where the newlines fall.
+ */
+export function indexEntries(md: string): IndexEntry[] {
+  const lines = md.split('\n');
+  const entries: IndexEntry[] = [];
+  let buf: string | null = null;
+  let start = 0;
+
+  const flush = () => {
+    if (buf === null) return;
+    const text = buf.replace(/\s+/g, ' ').trim();
+    entries.push({
+      name: text.match(/\*\*(.+?)\*\*/)?.[1] ?? text.slice(2, 60),
+      chars: entryProse(text).length,
+      line: start,
+    });
+    buf = null;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (l.startsWith('- ')) {
+      flush();
+      buf = l;
+      start = i + 1;
+    } else if (buf !== null && /^ {2}\S/.test(l)) {
+      buf += ' ' + l.trim();
+    } else {
+      flush();
+    }
+  }
+  flush();
+  return entries;
+}
+
 /** Extract every backticked span from the doc. */
 function backtickedSpans(md: string): string[] {
   return [...md.matchAll(/`([^`\n]+)`/g)].map((m) => m[1].trim());
@@ -164,19 +268,46 @@ function main(): void {
   const unusedExternal = [...external].filter((i) => !idents.includes(i));
   const brokenLinks = brokenDocLinks(md);
 
+  const entries = indexEntries(md);
+  const bytes = Buffer.byteLength(md, 'utf8');
+  const oversized = entries.filter((e) => e.chars > MAX_ENTRY_CHARS);
+  const unreadable = entries.length < MIN_PLAUSIBLE_ENTRIES;
+  const overBudget = bytes > MAX_FILE_BYTES;
+
   if (process.argv.includes('--list')) {
     console.log(`Checked ${idents.length} identifiers:`);
     for (const i of idents.sort()) console.log(`  ${existsInRepo(i) ? '✓' : '✗'} ${i}`);
     console.log('');
   }
 
-  if (!missing.length && !brokenLinks.length && !reHomed.length && !unusedExternal.length) {
+  // Always report the size denominator, pass or fail: a budget nobody sees is a
+  // budget nobody notices approaching.
+  const median = entries.length
+    ? [...entries].sort((a, b) => a.chars - b.chars)[Math.floor(entries.length / 2)].chars
+    : 0;
+  const sizeLine =
+    `CLAUDE.md size: ${bytes.toLocaleString()} / ${MAX_FILE_BYTES.toLocaleString()} bytes ` +
+    `(${Math.round((bytes / MAX_FILE_BYTES) * 100)}% of budget), ` +
+    `${entries.length} index entries, median ${median} chars, ` +
+    `max ${entries.reduce((m, e) => Math.max(m, e.chars), 0)}/${MAX_ENTRY_CHARS}.`;
+
+  if (
+    !missing.length &&
+    !brokenLinks.length &&
+    !reHomed.length &&
+    !unusedExternal.length &&
+    !oversized.length &&
+    !unreadable &&
+    !overBudget
+  ) {
     console.log(
       `CLAUDE.md: ${idents.length} identifiers checked, all present ` +
         `(${external.size} owned by the addon repo). No broken doc links.`,
     );
+    console.log(sizeLine);
     return;
   }
+  console.error(`\n${sizeLine}`);
 
   if (missing.length) {
     console.error(
@@ -210,6 +341,31 @@ function main(): void {
   if (brokenLinks.length) {
     console.error(`\nCLAUDE.md links to ${brokenLinks.length} missing doc(s):\n`);
     for (const l of brokenLinks) console.error(`  ✗ ${l}`);
+  }
+  if (unreadable) {
+    console.error(
+      `\nOnly ${entries.length} index entries parsed (expected at least ${MIN_PLAUSIBLE_ENTRIES}).\n\n` +
+        'This is the gate failing to READ the file, not the file being small. The entry\n' +
+        'format changed out from under indexEntries(), so every size check below it just\n' +
+        'passed on nothing. Fix the parser (or the format), never the threshold.',
+    );
+  }
+  if (oversized.length) {
+    console.error(`\n${oversized.length} index entr(y/ies) over ${MAX_ENTRY_CHARS} characters:\n`);
+    for (const e of oversized) console.error(`  ✗ ${e.chars}  L${e.line}  ${e.name}`);
+    console.error(
+      '\nAn entry says WHAT a thing is, names the symbols you would grep for, and links\n' +
+        'the doc. Rationale, incident history and measurements belong in that doc — this\n' +
+        'file is paid for on every request, and the doc is only read when relevant.',
+    );
+  }
+  if (overBudget) {
+    console.error(
+      `\nCLAUDE.md is ${bytes.toLocaleString()} bytes, over the ${MAX_FILE_BYTES.toLocaleString()}-byte budget.\n\n` +
+        'Usually this is detail that has drifted back in from docs/. Move it out. If the\n' +
+        'index genuinely covers more ground now, raise MAX_FILE_BYTES in a commit that\n' +
+        'says why — the point of the budget is that growth is a decision, not a drift.',
+    );
   }
   process.exit(1);
 }

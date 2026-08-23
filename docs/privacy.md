@@ -48,8 +48,8 @@ to keep.
 
 ## Access (Art. 15)
 
-`GET /api/privacy/export` returns everything tied to the caller as JSON, `Content-Disposition:
-attachment` so a browser saves it.
+`GET /api/privacy/export` (`exportUserData` in `services/privacy.ts`) returns everything tied to the
+caller as JSON, `Content-Disposition: attachment` so a browser saves it.
 
 Columns are read from `PRAGMA table_info` at runtime rather than hardcoded — the same technique as
 the admin config export. A schema change must not silently start omitting a column from someone's
@@ -74,7 +74,9 @@ starting to leak.
 
 ## Erasure (Art. 17)
 
-`DELETE /api/privacy/history` wipes the caller's `play_events` and returns the count.
+`DELETE /api/privacy/history` (`deleteUserHistory`) wipes the caller's `play_events` and returns the
+count. It deliberately does **not** flip the consent flag — "forget what I listened to" is not the
+same ask as "stop recording".
 
 **Scoped to the listening log, deliberately.** It does not touch the account, playlists or likes:
 "stop remembering what I listened to" is the realistic ask, `play_events` is regenerable by

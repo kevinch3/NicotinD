@@ -19,6 +19,7 @@ reporting a false denominator:
 |---|---|---|
 | `check:route-auth` | "24 /api groups", exit 0 | **24 of 35** mounts — its regex needed `app.route('` on one line, and Prettier wraps 11 of them |
 | `check:claude-md` | "all present", 0 drift | 15 symbols "proven" to exist **by the prose asserting them** |
+| `check:claude-md` (again) | every *name* is real | said nothing about *size* — the file it calls "deliberately small" reached **186 KB / 2,038 lines** |
 | `bun run lint` | lints the repo | **482 of 586** non-web files — unquoted `**`, expanded by Bun's script shell as a single level (fixed; see below) |
 | `check:ci-parity` | verify ⊇ CI | `isCovered` matched substrings, so the **root** `test` script vouched for `--filter @nicotind/e2e test` — a different command that never ran locally (fixed; see below) |
 
@@ -80,6 +81,62 @@ existing locally fails, and so does one CLAUDE.md no longer names.
 - **A symbol surviving only in a test or a Storybook string still counts as
   present.** `compareCandidates` exists only in `album-hunt-modal.stories.ts`,
   and `CastController` passed for months on one Storybook `description:` string.
+
+## `check:claude-md` — the size budget
+
+The symbol check above proved every *name* in CLAUDE.md was real while the file
+quietly became the detail store `docs/` already was. Its own header called it
+"an index, kept deliberately small because it loads into every request", and
+nothing measured that clause — so it grew to **186 KB / 2,038 lines**, with a
+median index entry of ~1,340 characters and the largest at 7,287.
+
+That is this page's own rule turned on the file that states it: the gate
+answered truthfully about the set it happened to measure (names) and was silent
+about the one that actually broke (bytes).
+
+### What the audit found before the restructure
+
+Deletion was safe, and measurably so. Of the **1,350** backticked facts in the
+index, **1,316 already appeared in `docs/`**; of 66 distinctive rationale
+phrases sampled from the largest entries, **63** were in the doc that entry
+already linked. Only three lived nowhere else, and they were moved before the
+prose around them was cut. The index was not carrying knowledge — it was
+carrying a second copy.
+
+### The caps
+
+| Cap | Value | Set from |
+|---|---|---|
+| `MAX_ENTRY_CHARS` | 440 | measured max **prose** 371 after the restructure |
+| `MAX_FILE_BYTES` | 60,000 | measured 50 KB, leaving room for ~35 more entries |
+| `MIN_PLAUSIBLE_ENTRIES` | 60 | the gate's own denominator (139 parse today) |
+
+Entry length is measured with **whitespace collapsed**, so re-wrapping a line
+can never change the verdict — the budget is about how much a reader takes in,
+not where the newlines fall.
+
+It also **excludes the trailing `→ [doc](docs/doc.md)` handoffs** (`entryProse`).
+A link costs ~55 characters, so charging them to the budget taxes an entry for
+citing its sources, and one that legitimately spans two docs gets ~110 fewer
+characters to say anything than one that spans one. This was not theoretical:
+measured the other way, the single over-cap entry's binding pressure was to
+**drop a correct second link** — the exact opposite of what the index is for.
+
+Neither cap sits flush against the current file, and a test asserts that
+(`> 5,000` bytes and `> 20` chars of headroom). A gate that fires on the next
+honest addition gets raised reflexively, and a threshold nobody believes is a
+threshold nobody enforces. Raising one is fine — it should just be a commit that
+says why, which is exactly what the un-measured prose rule never forced.
+
+### The denominator, again
+
+`MIN_PLAUSIBLE_ENTRIES` is the part that matters most. If the entry format
+changes and `indexEntries()` silently parses nothing, every size check passes
+vacuously and the gate reports green — the exact shape this page exists to
+document. So the gate fails when it parses fewer entries than a real index could
+have, and its message says to fix the parser, never the threshold. Verified red
+against all three failure modes (an over-long entry, an over-budget file, and a
+format change that blinds the parser), not just green on the current file.
 
 ## `bun run lint` — the shell was doing the globbing
 
