@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.61](https://github.com/kevinch3/NicotinD/compare/v0.3.60...v0.3.61) (2026-08-23)
+
+### Features
+
+* **analysis:** per-track audio descriptors (timbre/groove/bands) + descriptor store ([#646](https://github.com/kevinch3/NicotinD/issues/646)) ([3635644](https://github.com/kevinch3/NicotinD/commit/363564404a1c65c797b6fa3f1ddc2165f891363e)), references [#640](https://github.com/kevinch3/NicotinD/issues/640) [#641](https://github.com/kevinch3/NicotinD/issues/641)
 ## [0.3.60](https://github.com/kevinch3/NicotinD/compare/v0.3.59...v0.3.60) (2026-08-22)
 
 ### Features
