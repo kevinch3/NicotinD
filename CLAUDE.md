@@ -322,7 +322,7 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `FALSE_ENDED_ABSOLUTE_FLOOR_SEC` when the known duration is missing. → [web-ui.md](docs/web-ui.md)
 - **Playback loading feedback (HDD-aware)**: one `buffering` signal (delayed `bufferingVisible`)
   drives spinners, row indicators and the buffered band; every stream URL goes through `streamUrl()`,
-  which appends `ngsw-bypass`. Restore-on-load is paused unless `maybeResumeAutoplay` allows it.
+  which appends `ngsw-bypass`. Restore-on-load never autoplays — `wasPlaying` is written, not read.
   → [web-ui.md](docs/web-ui.md)
 - **Queue management**: `PlayerService` exposes `queueNext`, `addToQueue`, `clearQueue`,
   `removeFromQueue`, `moveInQueue`, `toggleShuffle`, `jumpToQueueIndex`; the Now Playing queue adds a

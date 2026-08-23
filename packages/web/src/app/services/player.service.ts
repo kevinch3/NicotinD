@@ -100,9 +100,6 @@ export class PlayerService {
 
   // Set by restoreState(); consumed by PlayerComponent.onDuration after audio is ready.
   restoredTime: number | null = null;
-  // Captured during restoreState(); consumed (once) by maybeResumeAutoplay
-  // after /me resolves so the per-user autoplay_on_load setting can gate it.
-  private wasPlayingRestored = false;
 
   constructor() {
     effect(() => {
@@ -181,10 +178,10 @@ export class PlayerService {
       if (!raw) return;
       const state = JSON.parse(raw) as Record<string, unknown>;
       if (isTrack(state['currentTrack'])) this.currentTrack.set(state['currentTrack']);
-      // The autoplay decision is deferred until /me lands — only then do we know
-      // the per-user autoplay_on_load preference. Capture here; maybeResumeAutoplay
-      // runs the boolean through that pref to decide whether to resume.
-      if (state['wasPlaying']) this.wasPlayingRestored = true;
+      // `wasPlaying` is deliberately ignored: restore never resumes playback.
+      // Everything else below is restored, so you come back to your queue and
+      // seek position — just paused. Browsers block gesture-less playback anyway,
+      // and a page load that starts making noise is a bad surprise.
       if (Array.isArray(state['queue'])) this.queue.set(state['queue'] as Track[]);
       if (Array.isArray(state['history'])) this.history.set(state['history'] as Track[]);
       if (state['shuffle'] != null) this.shuffle.set(Boolean(state['shuffle']));
@@ -198,20 +195,6 @@ export class PlayerService {
       }
     } catch {
       localStorage.removeItem(PlayerService.STORAGE_KEY);
-    }
-  }
-
-  /**
-   * Called by app.config.ts after GET /api/auth/me resolves. Resumes a previously
-   * playing session only when the per-user `autoplay_on_load` setting is enabled.
-   * One-shot: a second call (e.g. after the user pauses) must not start playback
-   * — the capture is cleared either way so it can't replay later.
-   */
-  maybeResumeAutoplay(enabled: boolean): void {
-    const captured = this.wasPlayingRestored;
-    this.wasPlayingRestored = false;
-    if (enabled && captured && !this.isPlaying()) {
-      this.isPlaying.set(true);
     }
   }
 

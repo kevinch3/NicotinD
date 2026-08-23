@@ -119,9 +119,7 @@ function makeProviders(role: 'admin' | 'user', updateOverrides: UpdateOverrides 
           isAdmin: () => role === 'admin',
           canCurate: () => role === 'admin',
           welcomeDismissed: signal(false),
-          autoplayOnLoad: signal(false),
           feedbackCapture: signal(false),
-          setAutoplayOnLoad: vi.fn(),
           setFeedbackCapture: vi.fn(),
           logout: vi.fn(),
         },
@@ -277,12 +275,10 @@ describe('SettingsComponent (universal prefs only)', () => {
     // binding is real at compile time and runtime outside this harness.
     expect(text).toContain('settings.offlineStorage');
     expect(text).toContain('settings.remotePlayback');
-    expect(text).toContain('settings.resumePlayback');
     for (const key of [
       'settings.appearance',
       'settings.offlineStorage',
       'settings.remotePlayback',
-      'settings.resumePlayback',
     ]) {
       expect(BASE_CATALOG, `missing catalog key: ${key}`).toHaveProperty([key]);
     }
@@ -316,7 +312,10 @@ describe('SettingsComponent (universal prefs only)', () => {
     fixture.destroy();
   });
 
-  it('autoplay toggle routes through AuthService.setAutoplayOnLoad', async () => {
+  // The opt-in autoplay-on-load toggle was removed; restore is unconditionally
+  // paused. Asserting its absence keeps a revert from silently reinstating a
+  // control that can make the app start playing audio on load.
+  it('renders no autoplay-on-load toggle', async () => {
     const { list } = makeProviders('user');
     await TestBed.configureTestingModule({
       imports: [SettingsComponent],
@@ -325,15 +324,9 @@ describe('SettingsComponent (universal prefs only)', () => {
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     expandAllGroups(fixture);
-    const toggle = fixture.nativeElement.querySelector(
-      '[data-testid="autoplay-on-load-toggle"]',
-    ) as HTMLButtonElement;
-    expect(toggle).toBeTruthy();
-    toggle.click();
-    const auth = TestBed.inject(AuthService) as unknown as {
-      setAutoplayOnLoad: ReturnType<typeof vi.fn>;
-    };
-    expect(auth.setAutoplayOnLoad).toHaveBeenCalledWith(true);
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="autoplay-on-load-toggle"]'),
+    ).toBeNull();
     fixture.destroy();
   });
 

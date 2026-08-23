@@ -192,8 +192,8 @@ The fix has four parts:
     launch keeps the stored JWT so the on-device library stays usable, instead of burning doomed
     auth requests (part of the old offline boot flurry). When the app later returns online, a
     one-shot self-destroying `effect` runs the deferred refresh so roles/flags re-sync without a
-    reload — **without** the autoplay resume (`withAutoplay: false`): music suddenly starting
-    minutes after launch because connectivity returned would be a surprise, not a restore.
+    reload. It cannot start playback: restore never autoplays at all now, so the `withAutoplay`
+    parameter this path once passed `false` no longer exists.
 - **Native Sentry is trimmed** (`observability/sentry.ts` `nativeShell` arg on `loadSentry`, passed
   from `main.ts`, whose call site is try/catch-wrapped): Session Replay (rrweb DOM recording) +
   browser tracing (wrapping every fetch/XHR) run on the WebView main thread and churned on the

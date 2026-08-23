@@ -92,23 +92,8 @@
         [title]="'settings.groupPlaybackTitle' | t"
         [description]="'settings.groupPlaybackDesc' | t"
       >
-        <!-- Autoplay -->
-        <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.playback' | t }}</h3>
-        <div class="flex items-start gap-3">
-          <button role="switch" [attr.aria-checked]="auth.autoplayOnLoad()"
-            (click)="toggleAutoplayOnLoad()"
-            data-testid="autoplay-on-load-toggle"
-            [class]="'relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ' + (auth.autoplayOnLoad() ? 'bg-emerald-600' : 'bg-theme-hover')">
-            <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (auth.autoplayOnLoad() ? 'translate-x-4' : 'translate-x-0')"></span>
-          </button>
-          <div>
-            <p class="text-sm text-theme-primary">{{ 'settings.resumePlayback' | t }}</p>
-            {{ 'settings.resumePlaybackHint' | t }}
-          </div>
-        </div>
-
-        <!-- Remote cast -->
-        <div class="mt-6 pt-6 border-t border-theme">
+        <!-- Remote cast (first section in this group: no leading divider) -->
+        <div>
           <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.remotePlayback' | t }}</h3>
 
           <div class="space-y-5">

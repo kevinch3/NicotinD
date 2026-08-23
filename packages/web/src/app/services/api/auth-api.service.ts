@@ -7,7 +7,6 @@ export interface UserProfile {
   username: string;
   role: string;
   welcomeDismissed: boolean;
-  autoplayOnLoad: boolean;
   /** Admin dev-mode: capture generated results as gradeable feedback. */
   feedbackCapture: boolean;
   /**
@@ -43,10 +42,6 @@ export class AuthApiService {
 
   dismissWelcome() {
     return this.http.post<void>('/api/auth/dismiss-welcome', {});
-  }
-
-  setAutoplayOnLoad(enabled: boolean) {
-    return this.http.post<{ ok: boolean }>('/api/auth/autoplay', { enabled });
   }
 
   setFeedbackCapture(enabled: boolean) {

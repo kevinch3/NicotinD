@@ -338,43 +338,6 @@ export function authRoutes(
     },
   );
 
-  app.use('/autoplay', authMiddleware(jwtSecret));
-  app.openapi(
-    createRoute({
-      method: 'post',
-      path: '/autoplay',
-      request: {
-        body: {
-          content: {
-            'application/json': {
-              schema: z.object({ enabled: z.boolean() }),
-            },
-          },
-        },
-      },
-      responses: {
-        200: {
-          content: { 'application/json': { schema: z.object({ ok: z.boolean() }) } },
-          description: 'Autoplay-on-load preference updated',
-        },
-        401: {
-          content: { 'application/json': { schema: ErrorSchema } },
-          description: 'Unauthorized',
-        },
-      },
-    }),
-    async (c) => {
-      const user = c.get('user');
-      const body = c.req.valid('json') as { enabled: boolean };
-      const db = getDatabase();
-      db.query('UPDATE user_settings SET autoplay_on_load = ? WHERE user_id = ?').run(
-        body.enabled ? 1 : 0,
-        user.sub,
-      );
-      return c.json({ ok: true }, 200);
-    },
-  );
-
   // Admin dev-mode: capture generated results as gradeable feedback (toast).
   // Per-user flag; only meaningful for admins (the capture toast is admin-gated),
   // but stored uniformly. See docs/generation-feedback.md.
@@ -429,7 +392,6 @@ export function authRoutes(
             'application/json': {
               schema: UserResponseSchema.extend({
                 welcomeDismissed: z.boolean(),
-                autoplayOnLoad: z.boolean(),
                 feedbackCapture: z.boolean(),
                 acquisitionEnabled: z.boolean(),
               }).openapi('UserProfile'),
@@ -447,11 +409,8 @@ export function authRoutes(
       const user = c.get('user');
       const db = getDatabase();
       const settings = db
-        .query<
-          { welcome_dismissed: number; autoplay_on_load: number; feedback_capture: number },
-          [string]
-        >(
-          'SELECT COALESCE(welcome_dismissed, 0) as welcome_dismissed, COALESCE(autoplay_on_load, 0) as autoplay_on_load, COALESCE(feedback_capture, 0) as feedback_capture FROM user_settings WHERE user_id = ?',
+        .query<{ welcome_dismissed: number; feedback_capture: number }, [string]>(
+          'SELECT COALESCE(welcome_dismissed, 0) as welcome_dismissed, COALESCE(feedback_capture, 0) as feedback_capture FROM user_settings WHERE user_id = ?',
         )
         .get(user.sub);
       return c.json(
@@ -460,7 +419,6 @@ export function authRoutes(
           username: user.username ?? '',
           role: user.role ?? 'user',
           welcomeDismissed: (settings?.welcome_dismissed ?? 0) === 1,
-          autoplayOnLoad: (settings?.autoplay_on_load ?? 0) === 1,
           feedbackCapture: (settings?.feedback_capture ?? 0) === 1,
           acquisitionEnabled: acquisitionOn(),
         } as {
@@ -468,7 +426,6 @@ export function authRoutes(
           username: string;
           role: string;
           welcomeDismissed: boolean;
-          autoplayOnLoad: boolean;
           feedbackCapture: boolean;
           acquisitionEnabled: boolean;
         },

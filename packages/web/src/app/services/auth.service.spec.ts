@@ -29,7 +29,7 @@ describe('AuthService', () => {
   let toasts: { reset: ReturnType<typeof vi.fn> };
   let listControls: { reset: ReturnType<typeof vi.fn> };
   let libraryApi: { invalidateLibraryReads: ReturnType<typeof vi.fn> };
-  let authApi: { setAutoplayOnLoad: ReturnType<typeof vi.fn> };
+  let authApi: { setFeedbackCapture: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     localStorage.clear();
@@ -45,7 +45,7 @@ describe('AuthService', () => {
     toasts = { reset: vi.fn() };
     listControls = { reset: vi.fn() };
     libraryApi = { invalidateLibraryReads: vi.fn() };
-    authApi = { setAutoplayOnLoad: vi.fn().mockReturnValue({ subscribe: () => ({}) }) };
+    authApi = { setFeedbackCapture: vi.fn().mockReturnValue({ subscribe: () => ({}) }) };
 
     TestBed.configureTestingModule({
       providers: [
