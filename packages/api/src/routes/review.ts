@@ -22,6 +22,7 @@ import {
   type OsShim,
 } from '../services/system-metrics.js';
 import { getDatabase } from '../db.js';
+import type { MaintenanceStatus } from '../services/maintenance/maintenance.service.js';
 import { listAudit } from '../services/audit-log.js';
 import { listBackups, type BackupInfo } from '../services/backup.js';
 import {
@@ -122,6 +123,8 @@ export interface ServiceReview {
   /** Compact summary for the header chip when the panel is collapsed. */
   backupsSummary: BackupsSummary;
   processing: ProcessingSummary | null;
+  /** Operator-triggered whole-library pass in flight, if any (issue #622). */
+  maintenance: MaintenanceStatus | null;
   incompleteJobsCount: number;
   untrackedCount: number;
   /**
@@ -161,6 +164,7 @@ export interface ReviewSubFns {
   updateCheck: () => Promise<UpdateCheckSnapshot | null>;
   backupsList: () => BackupInfo[] | Promise<BackupInfo[]>;
   processingSummary: () => ProcessingSummary | null;
+  maintenance: () => MaintenanceStatus | null;
   incompleteJobCount: () => number;
   untrackedCount: () => number;
   orphanRows: () => OrphanCount[];
@@ -185,6 +189,8 @@ export interface ReviewRoutesDeps {
    *  default `processingSummary` to return a non-null value; ignored entirely
    *  when `subFns.processingSummary` is supplied. */
   processing?: { getState: () => { status: ProcessingStatus } } | null;
+  /** Maintenance runner (issue #622); absent → the slice is null. */
+  maintenance?: { getStatus: () => MaintenanceStatus } | null;
   /** Essentia sidecar client; null/absent when NICOTIND_ANALYSIS_URL is unset. */
   analysisClient?: { healthy: () => Promise<boolean> } | null;
   /** Collects the metrics slice. Default = `collectMetrics()`. */
@@ -233,18 +239,26 @@ async function safe<T>(
 
 // ─── default implementations of every sub-fetch ───────────────────────────────
 
-function defaultScanStatus(): { scanning: boolean; count: number } {
+/**
+ * `scanning` used to read a `library_sync_state` key that **no code ever wrote**,
+ * so this indicator was permanently false. The maintenance runner is the first
+ * real writer of that state (issue #622); the row count still comes from SQLite.
+ */
+function defaultScanStatus(
+  maintenance: { getStatus: () => MaintenanceStatus } | null | undefined,
+): { scanning: boolean; count: number } {
+  let scanning = false;
+  try {
+    scanning = maintenance ? maintenance.getStatus().taskId === 'library-sync' : false;
+  } catch {
+    scanning = false;
+  }
   try {
     const db = getDatabase();
-    const row = db
-      .query<{ scanning: number | null; value: string | null; cnt: number }, []>(
-        `SELECT (SELECT 1 FROM library_sync_state WHERE key = 'scanning' AND value = '1') AS scanning,
-                (SELECT COUNT(*) FROM library_songs) AS cnt`,
-      )
-      .get();
-    return { scanning: row?.scanning === 1, count: row?.cnt ?? 0 };
+    const row = db.query<{ cnt: number }, []>('SELECT COUNT(*) AS cnt FROM library_songs').get();
+    return { scanning, count: row?.cnt ?? 0 };
   } catch {
-    return { scanning: false, count: 0 };
+    return { scanning, count: 0 };
   }
 }
 
@@ -312,6 +326,16 @@ function summarizeBackups(list: BackupInfo[]): BackupsSummary {
     newestAt: list[0]?.createdAt ?? null,
     lastBackupName: list[0]?.name ?? null,
   };
+}
+
+function defaultMaintenance(
+  svc: { getStatus: () => MaintenanceStatus } | null | undefined,
+): MaintenanceStatus | null {
+  try {
+    return svc ? svc.getStatus() : null;
+  } catch {
+    return null;
+  }
 }
 
 function defaultProcessing(
@@ -475,6 +499,7 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       updateCheck,
       backups,
       processing,
+      maintenance,
       incompleteCount,
       untracked,
       orphanRows,
@@ -494,7 +519,7 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       scan: safe(
         errors,
         'scanStatus',
-        () => sub.scanStatus?.() ?? Promise.resolve(defaultScanStatus()),
+        () => sub.scanStatus?.() ?? Promise.resolve(defaultScanStatus(deps.maintenance)),
         { scanning: false, count: 0 },
       ),
       analysis: safe(
@@ -514,6 +539,12 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
         'backups',
         () => sub.backupsList?.() ?? Promise.resolve(defaultBackups(deps.dataDir)),
         [] as BackupInfo[],
+      ),
+      maintenance: safe(
+        errors,
+        'maintenance',
+        () => sub.maintenance?.() ?? defaultMaintenance(deps.maintenance),
+        null as MaintenanceStatus | null,
       ),
       processing: safe(
         errors,
@@ -601,6 +632,7 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       backups,
       backupsSummary: summarizeBackups(backups),
       processing,
+      maintenance,
       incompleteJobsCount: incompleteCount,
       untrackedCount: untracked,
       orphanRows,

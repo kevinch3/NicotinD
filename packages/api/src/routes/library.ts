@@ -10,6 +10,7 @@ import { jobAlbumPairs } from '../services/acquisition-job-store.js';
 import { errorHandler } from '../middleware/error-handler.js';
 import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
+import type { MaintenanceService } from '../services/maintenance/maintenance.service.js';
 import type { LibraryCurator } from '../services/library-curator.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from '../services/album-grouping.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
@@ -353,6 +354,8 @@ function isAlbumQuarantined(db: Database, albumId: string): boolean {
 export interface LibraryRoutesOptions {
   curator?: LibraryCurator;
   runSync?: () => Promise<void>;
+  /** Shared maintenance runner (issue #622); absent → /sync runs inline. */
+  maintenance?: MaintenanceService | null;
   /** Lidarr client for genre verification + metadata optimization; null when unconfigured. */
   lidarr?: Lidarr | null;
   /** Cover-cache dir, purged when an optimized album's canonical URL changes. */
@@ -589,6 +592,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   const {
     curator,
     runSync,
+    maintenance,
     lidarr,
     coverCacheDir,
     dataDir,
@@ -1771,11 +1775,30 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json({ ok: true, removed });
   });
 
+  // A full rescan used to be awaited here, holding a request open for the whole
+  // walk. It runs on the shared maintenance runner now (issue #622) — 202, with
+  // progress on GET /api/admin/review. Falls back to the direct call only when
+  // no runner is wired (tests, embedded callers).
   app.post('/sync', async (c) => {
     requireAdmin(c);
     if (!runSync) return c.json({ error: 'Sync not available' }, 503);
-    await runSync();
-    return c.json({ ok: true });
+    if (!maintenance) {
+      await runSync();
+      return c.json({ ok: true });
+    }
+    const outcome = maintenance.start(
+      'library-sync',
+      new URLSearchParams(),
+      c.get('user').username,
+    );
+    if (outcome === 'busy') {
+      return c.json(
+        { error: 'A maintenance pass is already running', code: 'MAINTENANCE_RUNNING' },
+        409,
+      );
+    }
+    if (outcome !== 'started') return c.json({ error: 'Sync not available' }, 503);
+    return c.json({ ok: true, started: true }, 202);
   });
 
   // Library fragmentation diagnostic. The detector runs over `library_albums`

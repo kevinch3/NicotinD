@@ -736,6 +736,30 @@ export interface UntrackedDownload {
   completedAt: number;
 }
 
+/**
+ * Mirror of the API's `MaintenanceStatus` (issue #622). Hand-mirrored rather
+ * than shared through @nicotind/core, matching `AutoPlaylistStatus`: it's a
+ * route-response shape with no reuse, so core would mean a rebuild + a
+ * `types/core.ts` re-export for nothing.
+ */
+export interface MaintenanceStatus {
+  phase: 'idle' | 'running' | 'cancelling';
+  taskId: 'metadata-optimize' | 'transcode-library' | 'library-sync' | null;
+  label: string | null;
+  /** Denominator; 0 = the pass can't count ahead (a full rescan). */
+  total: number;
+  visited: number;
+  lastItems: string[];
+  detail: Record<string, number>;
+  dryRun: boolean;
+  params: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  lastOutcome: 'completed' | 'cancelled' | 'failed' | null;
+  lastError: string | null;
+  startedBy: string | null;
+}
+
 export interface ServiceReview {
   collectedAt: number;
   version: string;
@@ -765,6 +789,7 @@ export interface ServiceReview {
   /** Compact summary for the collapsed header chip. */
   backupsSummary: BackupsSummary;
   processing: ProcessingSummary | null;
+  maintenance: MaintenanceStatus | null;
   incompleteJobsCount: number;
   untrackedCount: number;
   /**

@@ -20,6 +20,7 @@ import { serializeLibraryFilter, isEmptyLibraryFilter } from '@nicotind/core';
 import type { Album, AlbumDetail, Song, ProvenanceRecord, ArtistIdentityResult } from './api-types';
 import type { LibraryFragmentReport, MissplitPreview } from './api-types';
 import type { IdentifyApplyFields, IdentifySuggestion } from './api-types';
+import type { MaintenanceStatus } from './api-types';
 
 type QueryParams = Record<string, string | number | boolean | string[]>;
 
@@ -173,16 +174,28 @@ export class LibraryApiService {
   resetArtistImage(id: string) {
     return this.http.delete<{ ok: boolean }>(`/api/library/artists/${id}/image`);
   }
-  /** Library-wide metadata optimization (admin). `all` re-verifies every album. */
-  optimizeAllMetadata(all = false) {
-    return this.http.post<{
-      ok: boolean;
-      albums: number;
-      matched: number;
-      coversUpdated: number;
-      yearsUpdated: number;
-      releaseTypesUpdated: number;
-    }>(`/api/admin/metadata-optimize${all ? '?all=1' : ''}`, {});
+  /**
+   * Start a library-wide maintenance pass (admin). Returns 202 immediately —
+   * the pass runs in the background and reports through GET /api/admin/review
+   * (issue #622). `all` re-verifies every album; `dryRun` reports without writing.
+   */
+  startMaintenance(
+    task: MaintenanceStatus['taskId'],
+    opts: { all?: boolean; dryRun?: boolean } = {},
+  ) {
+    const q = new URLSearchParams();
+    if (opts.all) q.set('all', '1');
+    if (opts.dryRun) q.set('dryRun', '1');
+    const qs = q.toString();
+    return this.http.post<{ ok: boolean; started: boolean; status: MaintenanceStatus }>(
+      `/api/admin/maintenance/${task}${qs ? `?${qs}` : ''}`,
+      {},
+    );
+  }
+
+  /** Abort the running maintenance pass. `ok:false` when nothing was running. */
+  cancelMaintenance() {
+    return this.http.post<{ ok: boolean }>(`/api/admin/maintenance/cancel`, {});
   }
   resyncLibrary() {
     return this.http.post<{ ok: boolean }>(`/api/library/sync`, {}).pipe(

@@ -41,6 +41,13 @@ import {
   runOutcomeToast,
   clampInt,
 } from '../../lib/processing-progress';
+import {
+  detailPairs,
+  isMaintenanceRunning,
+  isTaskRunning,
+  maintenanceOutcome,
+  maintenanceProgressPercent,
+} from '../../lib/maintenance-progress';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { MetricPillComponent } from '../../components/metric-pill/metric-pill.component';
@@ -116,7 +123,9 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly creating = signal(false);
 
   // Library-wide metadata optimization (cover/year/release-type from Lidarr).
-  readonly optimizingMetadata = signal(false);
+  // Running truth lives in the ServiceReview `maintenance` slice (issue #622);
+  // this only covers the request round-trip before the first poll lands.
+  readonly optimizeStarting = signal(false);
   readonly optimizeMetadataMsg = signal<string | null>(null);
 
   // Action-only loaders (snapshot equivalents drain from ServiceReviewService).
@@ -916,23 +925,74 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Live maintenance pass, from the shared 5s ServiceReview poll. */
+  readonly maintenance = this.reviewSvc.maintenance;
+
+  maintenanceRunning(): boolean {
+    return isMaintenanceRunning(this.maintenance());
+  }
+
+  optimizeRunning(): boolean {
+    return isTaskRunning(this.maintenance(), 'metadata-optimize');
+  }
+
+  /** Any pass blocks the others — they contend for the same DB and disk. */
+  optimizeMetadataDisabled(): boolean {
+    return this.optimizeStarting() || this.maintenanceRunning();
+  }
+
+  cancelMaintenanceDisabled(): boolean {
+    return !this.maintenanceRunning();
+  }
+
+  maintenanceProgressPercent(): number {
+    const m = this.maintenance();
+    return m ? maintenanceProgressPercent(m) : 0;
+  }
+
+  maintenanceDetail(): Array<[string, number]> {
+    return detailPairs(this.maintenance());
+  }
+
+  /** How the last pass ended, already translated; null while running. */
+  maintenanceOutcomeMsg(): string | null {
+    const o = maintenanceOutcome(this.maintenance());
+    return o ? this.i18n.t(o.key, o.params) : null;
+  }
+
   async optimizeAllMetadata(): Promise<void> {
-    if (this.optimizingMetadata()) return;
-    this.optimizingMetadata.set(true);
+    if (this.optimizeMetadataDisabled()) return;
+    this.optimizeStarting.set(true);
     this.optimizeMetadataMsg.set(null);
     try {
-      const r = await firstValueFrom(this.libraryApi.optimizeAllMetadata());
+      await firstValueFrom(this.libraryApi.startMaintenance('metadata-optimize'));
+      this.optimizeMetadataMsg.set(this.i18n.t('admin.maintenanceStarted'));
+      // Don't wait up to 5s for the next poll to show the pass as running.
+      void this.reviewSvc.refresh();
+    } catch (err) {
+      // The old copy blamed Lidarr for every failure, including a plain 409.
+      const status = (err as { status?: number }).status;
       this.optimizeMetadataMsg.set(
-        this.i18n.t('admin.metadataOptimizeResult', {
-          albums: r.albums,
-          covers: r.coversUpdated,
-          years: r.yearsUpdated,
-        }),
+        this.i18n.t(
+          status === 409
+            ? 'admin.maintenanceBusy'
+            : status === 503
+              ? 'admin.metadataOptimizeUnavailable'
+              : 'admin.metadataOptimizeFailed',
+        ),
       );
-    } catch {
-      this.optimizeMetadataMsg.set(this.i18n.t('admin.metadataOptimizeFailed'));
     } finally {
-      this.optimizingMetadata.set(false);
+      this.optimizeStarting.set(false);
+    }
+  }
+
+  async cancelMaintenance(): Promise<void> {
+    if (this.cancelMaintenanceDisabled()) return;
+    try {
+      await firstValueFrom(this.libraryApi.cancelMaintenance());
+      void this.reviewSvc.refresh();
+    } catch {
+      this.optimizeMetadataMsg.set(this.i18n.t('admin.maintenanceCancelFailed'));
     }
   }
 

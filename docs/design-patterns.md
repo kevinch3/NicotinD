@@ -96,10 +96,27 @@ These are documented in full elsewhere; `CLAUDE.md` links straight to them.
 
   An explicit caller `signal` still wins: the budget is a default, not a ceiling.
 
-  **`idleTimeout` deliberately stays at 60s** for now. `POST /api/admin/metadata-optimize` awaits an
-  unbounded serial loop over every candidate album inside the request handler (issue #622), so it
-  cannot fit in any sane idle budget until it becomes a background job. Reverting the raise before
-  then would break that route rather than fix anything.
+  **`idleTimeout` deliberately stays at 60s**, and issue #622's prediction that fixing the bulk
+  metadata-optimize loop would let it revert to 10s was wrong. That loop is a background job now,
+  but two bounded handlers still exceed 10s by design: a single `album.lookup` is `TIMEOUT_LOOKUP_MS`
+  (20s), and `GET /api/discography/artists/:id` resolves through `resolveOrAddArtist` →
+  `lidarr.artist.add`, which carries `TIMEOUT_PROVISION_MS` (60s) because Lidarr synchronously
+  imports the whole discography before answering. The binding constraint is therefore that
+  provisioning call, not metadata-optimize; 60s cannot come down until it moves off the request path.
+- **Long admin passes are background jobs, not request handlers (issue #622)**: three
+  operator-triggered whole-library passes each awaited a serial loop inside its handler —
+  `metadata-optimize` (albums × a 20s Lidarr lookup, *unbounded*), `transcode-library` (ffmpeg per
+  lossless file, its own comment admitting "runs to completion") and `library/sync` (a full rescan,
+  awaited, while `POST /api/system/scan` ran the *same function* fire-and-forget). They now share one
+  `MaintenanceService` (`services/maintenance/`): a `MaintenanceTask` registry deliberately mirroring
+  `EnrichmentTask`'s `id`/`label`/`available()`/`run()` vocabulary, one global busy guard (all three
+  contend for the same DB and disk), a cancellation token checked between items, and one progress
+  slice on `GET /api/admin/review`. Routes answer **202** (409 `MAINTENANCE_RUNNING` when one is
+  already in flight) and are audit-logged once per pass, never per item. These must **not** join
+  `ENRICHMENT_TASKS` — that registry drains *every* runnable task on `runNow()` and runs unattended
+  in the nightly window, and these are destructive library-wide overwrites. Status is deliberately
+  in-memory: nothing here is resumable, and a persisted `running` row surviving a crash is a guard
+  that never releases. → [docs/metadata-optimize.md](metadata-optimize.md)
 - **Guided acquire UX (raw network demoted)**: the catalog cards (album/EP/single, all routing to the same `huntCatalogAlbum` → `AlbumHuntModalComponent`) are the primary path; the raw network lane — peer bitrate/speed/queue stats, the Songs↔Folders toggle, and the full folder-tree `FolderBrowserComponent` — lives **only inside a collapsed "Advanced: browse Soulseek peers & folders" disclosure** (`data-testid="advanced-toggle"`), auto-opened only when there's no catalog hit so it stays the escape hatch, never the default (the acquirable hits surface in the blended Results list above it — see source-agnostic-acquisition.md). The album-hunt modal **leads with only the auto-selected best match** (`data-testid="hunt-best-match"`: "✓ Best match ready" + format/size/match%) and one Download action; the **full ranked peer list is opt-in** behind a collapsed **"Choose a different source (N found)"** disclosure (`data-testid="hunt-sources"`, holding the `hunt-candidate` rows + selection) so the common "just get it" case is a single tap, and its filters (FLAC/live/skew/min-match) are tucked behind a separate **"Explore more options"** `<details>` (`data-testid="hunt-options"`). A pasted/shared link is recognized in the same search omnibox as one more acquisition candidate — a **link-intent card** (chip auto-labelled YouTube/SoundCloud/Bandcamp/Spotify/Internet Archive/Link by `lib/link-intent.ts`, dispatched through `AcquireService.submit` — no backend choice exposed, no separate URL box or job list). → [docs/source-agnostic-acquisition.md](source-agnostic-acquisition.md)
 - **Inline download lifecycle**: Search result cards show idle → blue progress wash + % → green "▶ Open in Library". Driven by `TransferService`; a `libraryDirty` signal tracks completed downloads (cleared on library page load, ignoring initial boot completions to prevent double-loading and disruptive auto-refreshes of active views). `TransferService` uses adaptive polling: 3 s when any transfer or acquire job is active, 30 s when idle. `kickPoll()` resets to fast mode immediately when a download is initiated. `AcquireService` mirrors the same first-poll guard via `hasRefreshed`: the initial `refresh()` (called by `LayoutComponent.ngOnInit`) silently baselines all existing terminal jobs without toasting; only subsequent running→done/failed transitions fire a toast — preventing the stale-replay flood of "added to library" messages on every app open.
 - **Multi-user**: Shared music library (all users see all downloads). Per-user settings in bun:sqlite (`packages/api/src/db.ts`). First registered user becomes admin.

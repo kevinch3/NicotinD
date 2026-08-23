@@ -134,7 +134,9 @@ Two paths, depending on whether a live metadata service is available:
   ```
 - **Online** — the existing **metadata-optimize** pass (`scripts/optimize-metadata.ts` / admin
   `POST /api/admin/metadata-optimize`) re-fetches year/cover/type from a live Lidarr — the highest
-  accuracy, when Lidarr is configured. See [metadata-optimize.md](metadata-optimize.md).
+  accuracy, when Lidarr is configured. The admin route is **asynchronous** since issue #622: it
+  answers 202 and reports progress through `GET /api/admin/review`; the script stays synchronous.
+  See [metadata-optimize.md](metadata-optimize.md).
 
 ## Prevention (so new patterns can't recur)
 - `sanitizeArtistTag` / `sanitizeAlbumTag` (`library-organizer.ts`) now reject

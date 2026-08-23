@@ -246,6 +246,16 @@ All IO-heavy primitives come from the injected `EnrichmentContext`
 (`ffmpegAvailable`, `readTags`, `writeTags`, `analyzeBpm`, `lookupGenre`,
 `fileExists`), so tasks are unit-tested with fakes — no real ffmpeg/Lidarr.
 
+### Not for operator-triggered whole-library passes
+
+`ENRICHMENT_TASKS` is for *unattended, per-song* enrichment. Destructive library-wide passes an
+admin starts and watches — metadata-optimize, the Opus standardization, a full rescan — live on the
+separate `MaintenanceService` registry (`services/maintenance/`, issue #622), which mirrors this
+one's vocabulary deliberately. `runNow()` here drains **every** runnable task and this scheduler
+runs in the nightly window, so putting them here would both over-trigger and auto-run them; see
+[metadata-optimize.md](metadata-optimize.md) "Running it in the background" for the full four-reason
+rationale.
+
 ### Adding a future task (e.g. mood)
 
 1. Add the storage column + scan-time read (mirror `bpm`).

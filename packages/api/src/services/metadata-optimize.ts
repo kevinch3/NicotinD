@@ -18,14 +18,58 @@ export interface OptimizeAlbumResult {
   coverUpdated: boolean;
   yearUpdated: boolean;
   releaseTypeUpdated: boolean;
+  /**
+   * False when the album was skipped before any Lidarr call (row missing, junk
+   * grouping, placeholder artist). Lets the bulk pass report work actually done
+   * rather than rows selected — a timed-out lookup still counts, it burned the
+   * full `TIMEOUT_LOOKUP_MS` budget.
+   */
+  lookedUp: boolean;
 }
 
 export interface OptimizeAllResult {
-  albums: number;
+  /** Rows the scope query selected — the denominator for this pass. */
+  candidates: number;
+  /** Albums the loop actually visited (< candidates when cancelled). */
+  visited: number;
+  /** Of those, the ones that reached a Lidarr lookup. This is "work done". */
+  lookedUp: number;
   matched: number;
   coversUpdated: number;
   yearsUpdated: number;
   releaseTypesUpdated: number;
+  /** Albums whose write step threw; the pass carried on past them. */
+  failed: number;
+  /** First failure message, for surfacing without a log dive. */
+  errorSample: string | null;
+  /** True when work may remain — cancelled, or the limit filled a full page. */
+  stopped: boolean;
+  /** Last visited id; feed back as `afterId` to continue. */
+  cursor: string | null;
+}
+
+/** Cumulative progress, emitted after each album. */
+export interface OptimizeProgress {
+  total: number;
+  visited: number;
+  /** "<artist> — <name>" of the album just visited. */
+  label: string;
+  result: OptimizeAllResult;
+}
+
+export interface OptimizeAllOptions {
+  apply: boolean;
+  coverCacheDir?: string;
+  onlyMissingOrPoor?: boolean;
+  /** Max albums to visit. Omitted/<=0 → unbounded. */
+  limit?: number;
+  /** Resume cursor: only consider ids strictly greater than this. */
+  afterId?: string | null;
+  /** Checked before each album; true → stop and return the partial counters. */
+  shouldStop?: () => boolean;
+  onProgress?: (p: OptimizeProgress) => void;
+  /** Test seam — defaults to the real `optimizeAlbum`. */
+  optimizeOne?: (albumId: string) => Promise<OptimizeAlbumResult>;
 }
 
 interface AlbumRow {
@@ -57,6 +101,10 @@ function parseReleaseYear(releaseDate: string | undefined): number | null {
  * Matches the global `album.lookup("<artist> <title>")` by normalized title +
  * artist (same approach as the backfill's targeted pass). `apply: false` reports
  * what would change without writing.
+ *
+ * Deliberately has no try/catch around its writes: the per-album admin route
+ * must keep surfacing a write failure as a 500. Isolation is a property of the
+ * *bulk* caller — see `optimizeAllAlbums`.
  */
 export async function optimizeAlbum(
   db: Database,
@@ -69,6 +117,7 @@ export async function optimizeAlbum(
     coverUpdated: false,
     yearUpdated: false,
     releaseTypeUpdated: false,
+    lookedUp: false,
   };
   const album = db
     .query<AlbumRow, [string]>('SELECT id, name, artist, year FROM library_albums WHERE id = ?')
@@ -84,6 +133,8 @@ export async function optimizeAlbum(
     log.warn({ err, album: album.name }, 'Lidarr album lookup failed');
     return [];
   });
+  // Set on the degrade path too: a timeout consumed the whole lookup budget.
+  out.lookedUp = true;
   const wantTitle = normalizeForGrouping(album.name);
   const wantArtist = normalizeName(album.artist);
   const match = hits.find(
@@ -126,42 +177,90 @@ export async function optimizeAlbum(
  * most likely wrong/empty — so a routine run stays cheap; pass `false` to
  * re-verify every album. One `album.lookup` per candidate, junk groupings
  * skipped by `optimizeAlbum`.
+ *
+ * Deliberately serial (issue #622): `album.lookup` proxies to Lidarr's shared
+ * upstream metadata server, so fanning out invites rate-limiting — the same
+ * reason the two network-facing enrichment tasks cap their pool at 2. The fix
+ * for "this takes hours" is that the caller runs it as a background job, not
+ * that it runs four at a time and is still unbounded.
  */
 export async function optimizeAllAlbums(
   db: Database,
   lidarr: OptimizeLidarr,
-  opts: { apply: boolean; coverCacheDir?: string; onlyMissingOrPoor?: boolean },
+  opts: OptimizeAllOptions,
 ): Promise<OptimizeAllResult> {
   const onlyMissingOrPoor = opts.onlyMissingOrPoor ?? true;
-  const rows = onlyMissingOrPoor
-    ? db
-        .query<{ id: string }, []>(
-          `SELECT id FROM library_albums
-           WHERE year IS NULL
-              OR NOT EXISTS (
-                SELECT 1 FROM library_artwork w WHERE w.id = library_albums.id AND w.kind = 'album'
-              )`,
-        )
-        .all()
-    : db.query<{ id: string }, []>('SELECT id FROM library_albums').all();
+  const limit = opts.limit != null && opts.limit > 0 ? opts.limit : -1; // SQLite: negative = no limit
+  const afterId = opts.afterId ?? null;
+  // `ORDER BY id` is index-backed (id is TEXT PRIMARY KEY) and load-bearing: without
+  // a stable order a bounded pass re-walks an arbitrary head on every call.
+  const scope = onlyMissingOrPoor
+    ? `(year IS NULL
+         OR NOT EXISTS (
+           SELECT 1 FROM library_artwork w WHERE w.id = library_albums.id AND w.kind = 'album'
+         ))`
+    : '1 = 1';
+  const rows = db
+    .query<Pick<AlbumRow, 'id' | 'name' | 'artist'>, [string | null, string | null, number]>(
+      `SELECT id, name, artist FROM library_albums
+        WHERE ${scope}
+          AND (? IS NULL OR id > ?)
+        ORDER BY id
+        LIMIT ?`,
+    )
+    .all(afterId, afterId, limit);
 
   const result: OptimizeAllResult = {
-    albums: rows.length,
+    candidates: rows.length,
+    visited: 0,
+    lookedUp: 0,
     matched: 0,
     coversUpdated: 0,
     yearsUpdated: 0,
     releaseTypesUpdated: 0,
+    failed: 0,
+    errorSample: null,
+    stopped: false,
+    cursor: null,
   };
-  for (const { id } of rows) {
-    const r = await optimizeAlbum(db, lidarr, id, {
-      apply: opts.apply,
-      coverCacheDir: opts.coverCacheDir,
+  const optimizeOne =
+    opts.optimizeOne ??
+    ((albumId: string) =>
+      optimizeAlbum(db, lidarr, albumId, {
+        apply: opts.apply,
+        coverCacheDir: opts.coverCacheDir,
+      }));
+
+  for (const row of rows) {
+    if (opts.shouldStop?.()) {
+      result.stopped = true;
+      break;
+    }
+    result.visited += 1;
+    try {
+      const r = await optimizeOne(row.id);
+      if (r.lookedUp) result.lookedUp += 1;
+      if (r.matched) result.matched += 1;
+      if (r.coverUpdated) result.coversUpdated += 1;
+      if (r.yearUpdated) result.yearsUpdated += 1;
+      if (r.releaseTypeUpdated) result.releaseTypesUpdated += 1;
+    } catch (err) {
+      // One album's write failure must not discard every counter accumulated so
+      // far — before #622 it rejected the whole pass.
+      result.failed += 1;
+      result.errorSample ??= err instanceof Error ? err.message : String(err);
+      log.warn({ err, albumId: row.id }, 'album optimize failed; continuing');
+    }
+    result.cursor = row.id;
+    opts.onProgress?.({
+      total: rows.length,
+      visited: result.visited,
+      label: `${row.artist} — ${row.name}`,
+      result,
     });
-    if (r.matched) result.matched += 1;
-    if (r.coverUpdated) result.coversUpdated += 1;
-    if (r.yearUpdated) result.yearsUpdated += 1;
-    if (r.releaseTypeUpdated) result.releaseTypesUpdated += 1;
   }
+  // A full page means there may be more behind it; `cursor` continues the walk.
+  if (limit > 0 && rows.length === limit) result.stopped = true;
   log.info({ ...result, apply: opts.apply }, 'metadata optimize pass complete');
   return result;
 }

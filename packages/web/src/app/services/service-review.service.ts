@@ -68,6 +68,8 @@ export class ServiceReviewService {
 
   // Processing (summary only; the SSE stream is on its own endpoint)
   readonly processingState = computed(() => this.review()?.processing);
+  /** Operator-triggered whole-library pass in flight, if any (issue #622). */
+  readonly maintenance = computed(() => this.review()?.maintenance ?? null);
 
   // Counts that used to live on their own endpoints
   readonly incompleteJobsCount = computed(() => this.review()?.incompleteJobsCount ?? 0);

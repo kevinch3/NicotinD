@@ -56,6 +56,47 @@ const emptyMetrics: MetricsSnapshot = {
 };
 
 describe('GET /api/admin/review', () => {
+  it('carries the maintenance slice from the runner (issue #622)', async () => {
+    const status = { phase: 'running', taskId: 'metadata-optimize', visited: 3, total: 10 };
+    const app = makeApp(undefined, {
+      maintenance: { getStatus: () => status as never },
+    });
+    const res = await app.request('/', { headers: { 'x-role': 'admin' } });
+    const body = (await res.json()) as {
+      maintenance: typeof status;
+      library: { scanning: boolean };
+    };
+    expect(body.maintenance).toMatchObject({ taskId: 'metadata-optimize', visited: 3 });
+    // A metadata pass is not a scan, so the library indicator stays false.
+    expect(body.library.scanning).toBe(false);
+  });
+
+  it('reports library.scanning from the runner — the old key had no writer', async () => {
+    const app = makeApp(undefined, {
+      maintenance: { getStatus: () => ({ taskId: 'library-sync' }) as never },
+    });
+    const res = await app.request('/', { headers: { 'x-role': 'admin' } });
+    expect(((await res.json()) as { library: { scanning: boolean } }).library.scanning).toBe(true);
+  });
+
+  it('degrades the maintenance slice to null when the runner throws', async () => {
+    const app = makeApp(undefined, {
+      maintenance: {
+        getStatus: () => {
+          throw new Error('boom');
+        },
+      },
+    });
+    const res = await app.request('/', { headers: { 'x-role': 'admin' } });
+    const body = (await res.json()) as { maintenance: unknown };
+    expect(body.maintenance).toBeNull();
+  });
+
+  it('reports a null maintenance slice when no runner is wired', async () => {
+    const res = await makeApp().request('/', { headers: { 'x-role': 'admin' } });
+    expect(((await res.json()) as { maintenance: unknown }).maintenance).toBeNull();
+  });
+
   it('rejects a non-admin caller with 403', async () => {
     const app = makeApp({}, undefined, 'user');
     const res = await app.request('/');

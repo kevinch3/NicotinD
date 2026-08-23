@@ -483,19 +483,70 @@
       [title]="'admin.libraryMaintenance' | t"
       [description]="'admin.groupLibraryMaintenanceDesc' | t"
     >
-      <!-- Maintenance: library-wide metadata optimization -->
+      <!-- Maintenance: library-wide metadata optimization (issue #622) -->
       <div class="flex flex-col gap-2 mb-8">
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 flex-wrap">
           <button
             (click)="optimizeAllMetadata()"
-            [disabled]="optimizingMetadata()"
+            [disabled]="optimizeMetadataDisabled()"
             data-testid="optimize-all-metadata"
             class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
           >
-            {{ (optimizingMetadata() ? 'admin.optimizing' : 'admin.optimizeMetadata') | t }}
+            {{ (optimizeRunning() ? 'admin.optimizing' : 'admin.optimizeMetadata') | t }}
+          </button>
+          <button
+            (click)="cancelMaintenance()"
+            [disabled]="cancelMaintenanceDisabled()"
+            data-testid="maintenance-cancel"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+          >
+            {{ 'admin.stop' | t }}
           </button>
           <span class="text-xs text-theme-muted">{{ 'admin.optimizeMetadataHint' | t }}</span>
         </div>
+
+        @if (maintenance(); as mo) {
+          @if (maintenanceRunning()) {
+            <div class="flex flex-col gap-1" data-testid="maintenance-progress">
+              <div class="flex items-center gap-2 text-xs text-theme-secondary">
+                <span>{{ mo.label }}</span>
+                @if (mo.total > 0) {
+                  <span>{{
+                    'admin.maintenanceProgress' | t: { visited: mo.visited, total: mo.total }
+                  }}</span>
+                } @else {
+                  <span>{{ 'admin.maintenanceWorking' | t }}</span>
+                }
+                @if (mo.phase === 'cancelling') {
+                  <span class="text-theme-muted">{{ 'admin.maintenanceStopping' | t }}</span>
+                }
+              </div>
+              @if (mo.total > 0) {
+                <div class="h-1.5 rounded-full bg-theme-surface-2 overflow-hidden">
+                  <div
+                    class="h-full bg-status-progress transition-all"
+                    [style.width.%]="maintenanceProgressPercent()"
+                  ></div>
+                </div>
+              }
+              @if (mo.lastItems.length) {
+                <p class="text-[11px] text-theme-muted truncate">{{ mo.lastItems.at(-1) }}</p>
+              }
+            </div>
+          } @else if (maintenanceOutcomeMsg(); as outcome) {
+            <p class="text-xs text-theme-secondary" data-testid="maintenance-outcome">
+              {{ outcome }}
+            </p>
+            @if (maintenanceDetail().length) {
+              <p class="text-[11px] text-theme-muted">
+                @for (pair of maintenanceDetail(); track pair[0]) {
+                  <span class="mr-3">{{ pair[0] }}: {{ pair[1] }}</span>
+                }
+              </p>
+            }
+          }
+        }
+
         @if (optimizeMetadataMsg(); as msg) {
           <p class="text-xs text-theme-secondary" data-testid="optimize-all-msg">{{ msg }}</p>
         }

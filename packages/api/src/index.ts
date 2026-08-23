@@ -90,6 +90,7 @@ import { SingleEnrichmentService } from './services/single-enrichment.service.js
 import { WatchlistService } from './services/watchlist.service.js';
 import { AutoAcquireService } from './services/auto-acquire.service.js';
 import { reconcileOnBoot as reconcileAcquisitionJobs } from './services/acquisition-job-store.js';
+import { MaintenanceService } from './services/maintenance/maintenance.service.js';
 import { LibraryProcessingService } from './services/library-processing.service.js';
 import { AudioFeaturesClient } from './services/audio-features-client.js';
 import { ProviderRegistry } from './services/provider-registry.js';
@@ -610,6 +611,16 @@ export function createApp({
   const historyEnabled = () => config.historyEnabled;
 
   app.route('/api/search', searchRoutes(registry, acquisitionOn));
+  // Operator-triggered whole-library passes (issue #622). One runner, one busy
+  // guard: metadata-optimize, the Opus standardization and the full rescan all
+  // contend for the same DB and disk, so they must not overlap.
+  const maintenance = new MaintenanceService({
+    db,
+    lidarr,
+    musicDir: expandedMusicDir,
+    coverCacheDir: `${expandedDataDir}/cover-cache`,
+    runSync: runSyncAndCurate,
+  });
   app.route(
     '/api/admin',
     adminRoutes({
@@ -617,9 +628,8 @@ export function createApp({
       historyEnabled,
       musicDir: expandedMusicDir,
       dataDir: expandedDataDir,
-      lidarr,
-      coverCacheDir: `${expandedDataDir}/cover-cache`,
       processing: processingRef.current,
+      maintenance,
       version,
     }),
   );
@@ -642,6 +652,7 @@ export function createApp({
       lidarr,
       coverCacheDir: `${expandedDataDir}/cover-cache`,
       dataDir: expandedDataDir,
+      maintenance,
       pluginRegistry: plugins,
       notifyLibraryChanged: notifyAddonLibraryChanged,
       audioFeaturesClient,
@@ -677,6 +688,7 @@ export function createApp({
     '/api/system',
     systemRoutes(serviceManager, config, {
       triggerScan: runSyncAndCurate,
+      maintenance,
       version,
       musicDir: expandedMusicDir,
     }),
@@ -712,6 +724,7 @@ export function createApp({
       version,
       dataDir: expandedDataDir,
       processing: processingRef.current,
+      maintenance,
       analysisClient: audioFeaturesClient,
     }),
   );
@@ -881,7 +894,7 @@ export function createApp({
     });
   }
 
-  return { app, processingRef, websocket, remoteAccess };
+  return { app, processingRef, maintenance, websocket, remoteAccess };
 }
 
 export { AutoAcquireService } from './services/auto-acquire.service.js';

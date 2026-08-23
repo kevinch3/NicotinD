@@ -99,7 +99,7 @@ async function main() {
   const webDistPath =
     process.env.NICOTIND_WEB_DIST ?? resolve(import.meta.dir, '../packages/web/dist');
 
-  const { app, processingRef, websocket, remoteAccess } = createApp({
+  const { app, processingRef, maintenance, websocket, remoteAccess } = createApp({
     config,
     lidarr,
     serviceManager,
@@ -130,8 +130,17 @@ async function main() {
     hostname: process.env.NICOTIND_BIND_HOST || undefined,
     // Bun's default is 10s, which is too tight for interactive routes that make a
     // synchronous Lidarr + rate-limited Discogs round-trip (artist-info refresh,
-    // metadata optimize, discography lookups) — those were being aborted mid-flight
-    // ("request timed out after 10 seconds"), so an artist bio never came back.
+    // discography lookups) — those were being aborted mid-flight ("request timed
+    // out after 10 seconds"), so an artist bio never came back.
+    //
+    // The binding constraint is `GET /api/discography/artists/:id`: it resolves
+    // through `resolveOrAddArtist`, and `lidarr.artist.add` carries
+    // TIMEOUT_PROVISION_MS (60s) because Lidarr synchronously imports the whole
+    // discography before answering. That is by design, so 60s cannot come down
+    // until that provisioning moves off the request path. (Issue #622's bulk
+    // metadata-optimize loop was the *other* reason and is a background job now,
+    // but fixing it alone was never enough — a single bounded album.lookup is
+    // already 20s.)
     idleTimeout: 60,
     fetch: app.fetch,
     websocket,
@@ -170,6 +179,7 @@ async function main() {
   const shutdown = async () => {
     log.info('Shutting down...');
     if (processingRef.current) processingRef.current.stop();
+    maintenance.stop();
     await serviceManager.stopAll();
     process.exit(0);
   };

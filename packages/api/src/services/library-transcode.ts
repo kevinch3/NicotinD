@@ -15,6 +15,29 @@ export interface LibraryTranscodeResult {
   skipped: number;
   failed: number;
   bytesReclaimed: number;
+  /** First failure message, for surfacing without a log dive. */
+  errorSample: string | null;
+  /** True when work may remain — cancelled, or the limit filled a full page. */
+  stopped: boolean;
+}
+
+/** Cumulative progress, emitted after each file. */
+export interface TranscodeProgress {
+  total: number;
+  visited: number;
+  /** Relative path of the file just visited. */
+  label: string;
+  result: LibraryTranscodeResult;
+}
+
+export interface TranscodeAllOptions {
+  apply: boolean;
+  bitRate?: number;
+  /** Max files to visit. Omitted/<=0 → unbounded. */
+  limit?: number;
+  /** Checked before each file; true → stop and return the partial counters. */
+  shouldStop?: () => boolean;
+  onProgress?: (p: TranscodeProgress) => void;
 }
 
 interface SongRow {
@@ -43,7 +66,7 @@ interface SongRow {
 export async function transcodeLibraryToOpus(
   db: Database,
   musicDir: string,
-  opts: { apply: boolean; bitRate?: number },
+  opts: TranscodeAllOptions,
 ): Promise<LibraryTranscodeResult> {
   const result: LibraryTranscodeResult = {
     candidates: 0,
@@ -51,6 +74,8 @@ export async function transcodeLibraryToOpus(
     skipped: 0,
     failed: 0,
     bytesReclaimed: 0,
+    errorSample: null,
+    stopped: false,
   };
   if (opts.apply && !ffmpegAvailable()) {
     throw new Error('ffmpeg is required to transcode the library but was not found on PATH');
@@ -59,8 +84,10 @@ export async function transcodeLibraryToOpus(
   const allRows = db
     .query<SongRow, []>(`SELECT id, path, suffix, size, starred, hidden FROM library_songs`)
     .all();
+  const limit = opts.limit != null && opts.limit > 0 ? opts.limit : -1;
   const rows: SongRow[] = [];
   for (const r of allRows) {
+    if (limit > 0 && rows.length >= limit) break;
     if (isLossless(r.suffix) || isLossless(r.path.split('.').pop() ?? '')) {
       rows.push(r);
       continue;
@@ -78,16 +105,25 @@ export async function transcodeLibraryToOpus(
   const scanner = new LibraryScanner(musicDir, db);
   const bitRate = opts.bitRate ?? 128;
 
+  let visited = 0;
   for (const row of rows) {
+    if (opts.shouldStop?.()) {
+      result.stopped = true;
+      break;
+    }
+    visited += 1;
     const abs = join(musicDir, row.path);
+    const emit = () => opts.onProgress?.({ total: rows.length, visited, label: row.path, result });
     if (!existsSync(abs)) {
       log.warn({ path: row.path }, 'lossless row points at a missing file — skipping');
       result.skipped += 1;
+      emit();
       continue;
     }
     if (!opts.apply) {
       result.converted += 1; // dry-run: report what would be converted
       result.bytesReclaimed += row.size ?? 0;
+      emit();
       continue;
     }
 
@@ -99,51 +135,66 @@ export async function transcodeLibraryToOpus(
     } catch (err) {
       log.warn({ err, path: row.path }, 'library transcode failed — original kept');
       result.failed += 1;
+      result.errorSample ??= err instanceof Error ? err.message : String(err);
+      emit();
       continue;
     }
 
-    const newRel = newAbs
-      .slice(musicDir.length)
-      .replace(/^[/\\]+/, '')
-      .replace(/\\/g, '/');
-    const newId = songId(newRel);
-    const newSize = existsSync(newAbs) ? statSync(newAbs).size : 0;
+    try {
+      const newRel = newAbs
+        .slice(musicDir.length)
+        .replace(/^[/\\]+/, '')
+        .replace(/\\/g, '/');
+      const newId = songId(newRel);
+      const newSize = existsSync(newAbs) ? statSync(newAbs).size : 0;
 
-    // Drop the stale lossless row first so scanPaths recomputes the album
-    // aggregate counting only the new opus row.
-    db.run('DELETE FROM library_songs WHERE id = ?', [row.id]);
-    await scanner.scanPaths([newRel]);
+      // Drop the stale lossless row first so scanPaths recomputes the album
+      // aggregate counting only the new opus row.
+      db.run('DELETE FROM library_songs WHERE id = ?', [row.id]);
+      await scanner.scanPaths([newRel]);
 
-    db.transaction(() => {
-      // Carry curation forward onto the new song id.
-      db.run('UPDATE library_songs SET starred = ?, hidden = ? WHERE id = ?', [
-        row.starred,
-        row.hidden,
-        newId,
-      ]);
-      // Re-point playlist + acquisition references (no FK on song_id).
-      db.run('UPDATE OR IGNORE playlist_songs SET song_id = ? WHERE song_id = ?', [newId, row.id]);
-      // The lossless file may have a pre-existing opus duplicate whose provenance
-      // row already sits at `newRel` (the relative_path PK). A plain UPDATE would
-      // collide (SQLITE_CONSTRAINT_PRIMARYKEY) and abort the whole migration, so
-      // keep the existing target row and drop the now-stale lossless one; only
-      // re-point when the opus path has no row yet.
-      const targetExists = db
-        .query('SELECT 1 FROM acquisitions WHERE relative_path = ?')
-        .get(newRel);
-      if (targetExists) {
-        db.run('DELETE FROM acquisitions WHERE relative_path = ?', [row.path]);
-      } else {
-        db.run('UPDATE acquisitions SET relative_path = ? WHERE relative_path = ?', [
-          newRel,
-          row.path,
+      db.transaction(() => {
+        // Carry curation forward onto the new song id.
+        db.run('UPDATE library_songs SET starred = ?, hidden = ? WHERE id = ?', [
+          row.starred,
+          row.hidden,
+          newId,
         ]);
-      }
-    })();
+        // Re-point playlist + acquisition references (no FK on song_id).
+        db.run('UPDATE OR IGNORE playlist_songs SET song_id = ? WHERE song_id = ?', [
+          newId,
+          row.id,
+        ]);
+        // The lossless file may have a pre-existing opus duplicate whose provenance
+        // row already sits at `newRel` (the relative_path PK). A plain UPDATE would
+        // collide (SQLITE_CONSTRAINT_PRIMARYKEY) and abort the whole migration, so
+        // keep the existing target row and drop the now-stale lossless one; only
+        // re-point when the opus path has no row yet.
+        const targetExists = db
+          .query('SELECT 1 FROM acquisitions WHERE relative_path = ?')
+          .get(newRel);
+        if (targetExists) {
+          db.run('DELETE FROM acquisitions WHERE relative_path = ?', [row.path]);
+        } else {
+          db.run('UPDATE acquisitions SET relative_path = ? WHERE relative_path = ?', [
+            newRel,
+            row.path,
+          ]);
+        }
+      })();
 
-    result.converted += 1;
-    result.bytesReclaimed += Math.max(0, oldSize - newSize);
+      result.converted += 1;
+      result.bytesReclaimed += Math.max(0, oldSize - newSize);
+    } catch (err) {
+      // The re-encode succeeded but the identity migration threw. Count it and
+      // carry on: before #622 this rejected the pass and lost every counter.
+      log.warn({ err, path: row.path }, 'library transcode migration failed; continuing');
+      result.failed += 1;
+      result.errorSample ??= err instanceof Error ? err.message : String(err);
+    }
+    emit();
   }
+  if (limit > 0 && rows.length === limit) result.stopped = true;
 
   log.info({ ...result, apply: opts.apply }, 'library transcode pass complete');
   return result;
