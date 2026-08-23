@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.65](https://github.com/kevinch3/NicotinD/compare/v0.3.64...v0.3.65) (2026-08-23)
+
+### Bug Fixes
+
+* **api:** clamp waveform peaks to the -1..1 contract for over-full-scale masters ([#649](https://github.com/kevinch3/NicotinD/issues/649)) ([52a834b](https://github.com/kevinch3/NicotinD/commit/52a834b652a14994d608cc82bb1792660329e0c4)), references [#643](https://github.com/kevinch3/NicotinD/issues/643)
 ## [0.3.64](https://github.com/kevinch3/NicotinD/compare/v0.3.63...v0.3.64) (2026-08-23)
 
 ### Features
