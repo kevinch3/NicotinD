@@ -54,6 +54,9 @@ design, and the restore path is a manual file swap. `applySchema` is now atomic
 that *succeeds and is wrong* — a bad `INSERT ... SELECT` column list in a table
 rebuild commits happily. That residual risk is what this snapshot covers.
 
+It lives in `packages/api/src/services/migration-backup.ts`; `migrationBackupHook` is a shared
+factory because `initDatabase` is not the only caller of `applySchema`.
+
 It is a different thing from the daily backup, and differs on every axis:
 
 | | Daily backup | Pre-migration snapshot |

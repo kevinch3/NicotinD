@@ -432,7 +432,11 @@ uncomment the mount. Without it the feature degrades cleanly: the route returns
 
 `SLSKD_ADDON_TOKEN`, `YTDLP_ADDON_TOKEN` and `SPOTDL_ADDON_TOKEN` all default to
 the literal `change-me` (`docker-compose.yml`), and nothing currently fails if an
-operator never overrides them. Anything that can reach an addon on the Docker
+operator never overrides them. `findInsecureDefaults`
+(`packages/api/src/services/insecure-defaults.ts`) warns about this at boot, after the
+ready handshake, and is never fatal — it reads `addon_registrations.token`, not env
+vars, because a registered placeholder is a live credential where an unused one in
+compose harms nobody. Anything that can reach an addon on the Docker
 network can then drive it.
 
 **In 0.4.0 the addons refuse to start without a real token** (`${VAR:?}` in

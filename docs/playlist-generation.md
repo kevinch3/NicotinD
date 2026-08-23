@@ -1,5 +1,9 @@
 # Metadata-driven playlist generation (weekly, with or without an LLM)
 
+Storage for every lane below is the same pair of tables: `playlists` (one row per playlist, with
+the `kind` discriminator — `user` / `curated` / `liked`) and `playlist_songs` (membership, ordered
+by `position`). There is no separate table per kind.
+
 **Status: the deterministic core is shipped** (see
 [automated-playlists.md](automated-playlists.md) for the code map). One lane is
 live today, reusing the Radio scorer + curated selection engines:

@@ -1,5 +1,13 @@
 # Album Hunt, Catalog Search & Deduplication
 
+> **The hunt engine is not in this repo.** Phase 4 of the addon split moved it wholesale to
+> [`kevinch3/nicotind-slskd-addon`](https://github.com/kevinch3/nicotind-slskd-addon). If you are
+> looking for `AlbumHunterService`, `huntBase`, `searchAndScore`, `isBloatedFolder`, `FallbackHost`,
+> `isStalled`, `stallThresholdMs` or `TransferPoller`, grep that repo, not this one — they are real,
+> just re-homed, and `EXTERNAL_SYMBOLS` in `scripts/check-claude-md.ts` fails the build if any of them
+> comes back here without the map being updated. Core keeps the shared query builders
+> (`buildSkewedQueries`/`buildTrackQueries` in `@nicotind/core`) and everything below.
+
 ## Catalog (metadata-driven) search
 
 `CatalogService` (`packages/api/src/services/catalog-search.service.ts`, routes at `/api/catalog`) looks the query up against Lidarr/MusicBrainz (`artist.lookup`/`album.lookup`) and returns structured artist/album cards. Selecting an album calls `POST /api/catalog/resolve`, which **adds the artist to Lidarr on demand** (via the shared `addArtistFromLookup` helper in `lidarr-provision.ts`, also used by discography) to obtain the canonical tracklist, then reuses the existing album-hunt flow (`/api/discography/albums/:id/hunt`) unchanged.

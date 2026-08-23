@@ -1,8 +1,16 @@
 import { describe, it, expect } from 'bun:test';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isCheckableIdentifier, brokenDocLinks, EXTERNAL_SYMBOLS } from './check-claude-md.js';
+import {
+  isCheckableIdentifier,
+  brokenDocLinks,
+  EXTERNAL_SYMBOLS,
+  indexEntries,
+  MAX_ENTRY_CHARS,
+  MAX_FILE_BYTES,
+  MIN_PLAUSIBLE_ENTRIES,
+} from './check-claude-md.js';
 import { execFileSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 
@@ -127,5 +135,74 @@ describe('brokenDocLinks', () => {
     writeFileSync(join(root, 'docs', 'a.md'), '# a');
     expect(brokenDocLinks('[x](docs/a.md)', root)).toEqual([]);
     rmSync(root, { recursive: true, force: true });
+  });
+});
+
+/**
+ * The size budget (this file's own header calls it "an index, kept deliberately
+ * small"; nothing measured that, and it reached 186 KB). These tests pin the
+ * parser, because every size check is only as honest as its denominator — a
+ * parser that quietly finds nothing makes the whole budget pass vacuously.
+ */
+describe('indexEntries', () => {
+  it('joins a bullet with its indented continuation lines', () => {
+    const md = ['- **A**: one', '  two three', '- **B**: four', ''].join('\n');
+    const entries = indexEntries(md);
+    expect(entries.map((e) => e.name)).toEqual(['A', 'B']);
+    expect(entries[0].chars).toBe('- **A**: one two three'.length);
+  });
+
+  it('does not charge doc links to the budget — an entry must never be taxed for citing sources', () => {
+    // Measured the other way, the pressure on an over-cap entry was to drop a
+    // correct second link. The links are the point of the index; prose is what
+    // regrows, so only prose is capped.
+    const one = '- **A**: body text here. → [x.md](docs/x.md)';
+    const two = '- **A**: body text here. → [x.md](docs/x.md), [y.md](docs/y.md)';
+    expect(indexEntries(one)[0].chars).toBe(indexEntries(two)[0].chars);
+    expect(indexEntries(two)[0].chars).toBe('- **A**: body text here.'.length);
+  });
+
+  it('measures with whitespace collapsed, so re-wrapping cannot flip the verdict', () => {
+    const wide = '- **A**: one two three four';
+    const narrow = ['- **A**: one two', '  three four'].join('\n');
+    expect(indexEntries(wide)[0].chars).toBe(indexEntries(narrow)[0].chars);
+  });
+
+  it('ends an entry at a blank line or an unindented line', () => {
+    const md = ['- **A**: one', '', 'Prose that is not part of the entry.', '- **B**: two'].join(
+      '\n',
+    );
+    expect(indexEntries(md).map((e) => e.name)).toEqual(['A', 'B']);
+  });
+
+  it('reports the line each entry starts on, so a failure is navigable', () => {
+    const md = ['# Title', '', '- **A**: one', '- **B**: two'].join('\n');
+    expect(indexEntries(md).map((e) => e.line)).toEqual([3, 4]);
+  });
+
+  it('does not swallow a nested sub-bullet into its parent', () => {
+    // Four-space indentation is a nested list item, not a continuation.
+    const md = ['- **A**: one', '  wrapped', '- **B**: two'].join('\n');
+    expect(indexEntries(md)).toHaveLength(2);
+  });
+});
+
+describe('the size budget', () => {
+  const claudeMd = readFileSync(resolve(REPO_ROOT, 'CLAUDE.md'), 'utf8');
+
+  it('holds on the real CLAUDE.md, with headroom', () => {
+    const entries = indexEntries(claudeMd);
+    expect(entries.length).toBeGreaterThanOrEqual(MIN_PLAUSIBLE_ENTRIES);
+    for (const e of entries) {
+      expect(e.chars, `L${e.line} ${e.name}`).toBeLessThanOrEqual(MAX_ENTRY_CHARS);
+    }
+    expect(Buffer.byteLength(claudeMd, 'utf8')).toBeLessThanOrEqual(MAX_FILE_BYTES);
+  });
+
+  it('is not set flush against the current file — a cap that fires on the next honest addition gets raised reflexively', () => {
+    const bytes = Buffer.byteLength(claudeMd, 'utf8');
+    expect(MAX_FILE_BYTES - bytes).toBeGreaterThan(5_000);
+    const max = Math.max(...indexEntries(claudeMd).map((e) => e.chars));
+    expect(MAX_ENTRY_CHARS - max).toBeGreaterThan(20);
   });
 });

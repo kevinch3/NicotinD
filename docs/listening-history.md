@@ -172,8 +172,8 @@ an `<img src>` is exactly the bug that left the home tiles on their letter place
 
 ## Stats (phase 2)
 
-`GET /api/history/stats?period=30d|year|all` → the Library **Stats** tab. Headline totals, top
-songs/artists/albums/genres, and a listening clock.
+`GET /api/history/stats?period=30d|year|all` (`listeningStats`) → the Library **Stats** tab, rendered
+by `LibraryStatsComponent`. Headline totals, top songs/artists/albums/genres, and a listening clock.
 
 Everything is **derived at read time** — no rollup table. That is deliberate while the log is young:
 a rollup would need invalidating by the same retention and erasure work that is still open (#454),

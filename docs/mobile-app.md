@@ -165,8 +165,12 @@ The fix has four parts:
     never reported.
   - **Leave**: while flagged unreachable, `SERVER_RECOVERY_POLL_MS` (20 s) re-probes — the only state
     in which the app generates background probe traffic — and a **reconnect fast path** (an `effect`
-    on the offline→online transition of the network signal) probes _immediately_, so leaving airplane
-    mode / regaining Wi-Fi restores online mode in one round-trip instead of a poll-interval wait.
+    on `NetworkStatusService`'s monotonic `reconnects` counter) probes _immediately_, so leaving
+    airplane mode / regaining Wi-Fi restores online mode in one round-trip instead of a
+    poll-interval wait. **It must watch the counter, not a diff of `online`**: signals coalesce, so a
+    quick false→true pair (exactly what an airplane-mode toggle produces) flushes the effect once
+    with only the final `true` and the edge is invisible — the app then sat offline for the full
+    recovery-poll interval despite a live network.
     The reconnect probe also fires when `status` is still `null` — i.e. an offline **launch** skipped
     the boot probe entirely, so the app has never learned the server's setup state and must catch up
     now. A healthy already-probed session reconnecting after a tunnel/elevator blip adds **no**
