@@ -1,0 +1,70 @@
+<app-settings-group
+  groupId="acquisition-automation"
+  icon="download"
+  [title]="'admin.groupAcquisitionAutomationTitle' | t"
+  [description]="'admin.groupAcquisitionAutomationDesc' | t"
+>
+  <!-- Deployment-wide acquisition kill-switch (issue #235). Hidden
+           entirely when the server doesn't expose the toggle. -->
+  @if (acqSvc.state(); as acq) {
+    <div class="flex flex-col gap-2 mb-8" data-testid="acquisition-panel">
+      <label class="flex items-center justify-between gap-4">
+        <span class="text-sm text-theme-primary"
+          >{{ 'admin.acquisition' | t }}
+          @if (!acq.configurable) {
+            <span class="block text-xs text-status-warn" data-testid="acquisition-env-locked">
+              {{ 'admin.acquisitionEnvLocked' | t }}
+            </span>
+          } @else {
+            <span class="block text-xs text-theme-muted">
+              {{ 'admin.acquisitionHint' | t }}
+            </span>
+          }
+        </span>
+        <input
+          type="checkbox"
+          [checked]="acq.enabled"
+          data-testid="acquisition-toggle"
+          [disabled]="acqSvc.saving() || !acq.configurable"
+          (change)="acqSvc.set($any($event.target).checked)"
+          class="w-4 h-4 rounded accent-emerald-500"
+        />
+      </label>
+    </div>
+  }
+
+  <!-- Automated playlists: cadence + manual generate (issue #228). -->
+  @if (autoPlaylists(); as ap) {
+    <div class="flex flex-col gap-2 mb-8" data-testid="auto-playlists-panel">
+      <div class="flex items-center gap-3 flex-wrap">
+        <button
+          (click)="refreshAutoPlaylists()"
+          [disabled]="autoPlaylistsBusy()"
+          data-testid="auto-playlists-generate"
+          class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+        >
+          {{ (autoPlaylistsBusy() ? 'admin.generating' : 'admin.generateNow') | t }}
+        </button>
+        <label class="text-xs text-theme-muted flex items-center gap-2">
+          {{ 'admin.refresh' | t }}
+          <select
+            data-testid="auto-playlists-cadence"
+            [value]="ap.cadence"
+            (change)="setAutoPlaylistCadence($any($event.target).value)"
+            class="px-2 py-1 rounded-lg bg-theme-surface-2 text-theme-secondary text-xs"
+          >
+            <option value="off">{{ 'admin.off' | t }}</option>
+            <option value="daily">{{ 'admin.daily' | t }}</option>
+            <option value="weekly">{{ 'admin.weekly' | t }}</option>
+          </select>
+        </label>
+        <span class="text-xs text-theme-muted" data-testid="auto-playlists-refreshed">
+          {{ 'admin.lastRefreshed' | t: { date: formatRefreshedAt(ap.lastRefreshedAt) } }}
+        </span>
+      </div>
+      @if (autoPlaylistsMsg(); as msg) {
+        <p class="text-xs text-theme-secondary" data-testid="auto-playlists-msg">{{ msg }}</p>
+      }
+    </div>
+  }
+</app-settings-group>

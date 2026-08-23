@@ -8,6 +8,7 @@ import { chunk } from '../../lib/tv-nav-grid';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ServiceReviewService } from '../../services/service-review.service';
+import { AcquisitionSettingsService } from '../../services/acquisition-settings.service';
 import type {
   AdminUser,
   BackupInfo,
@@ -58,6 +59,9 @@ import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { SettingsGroupComponent } from '../../components/settings-group/settings-group.component';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 import { RadioPollsCardComponent } from './radio-polls/radio-polls-card.component';
+import { StreamingMediaPanelComponent } from './streaming-media/streaming-media-panel.component';
+import { AcquisitionAutomationPanelComponent } from './acquisition-automation/acquisition-automation-panel.component';
+import { AuditLogPanelComponent } from './audit-log/audit-log-panel.component';
 
 /** A copy in a duplicate group — shape returned by the maintenance duplicates API. */
 type DuplicateSong = {
@@ -85,6 +89,9 @@ type DuplicateSong = {
     SettingsGroupComponent,
     BottomChromeSafeDirective,
     RadioPollsCardComponent,
+    StreamingMediaPanelComponent,
+    AcquisitionAutomationPanelComponent,
+    AuditLogPanelComponent,
     MenuPanelComponent,
   ],
   templateUrl: './admin.component.html',
@@ -105,6 +112,7 @@ export class AdminComponent implements OnInit, OnDestroy {
    *  Write actions (settings forms, restart, run-now, etc.) keep their own
    *  PATCH-shape endpoints; this service is the snapshot companion. */
   protected readonly reviewSvc = inject(ServiceReviewService);
+  protected readonly acqSvc = inject(AcquisitionSettingsService);
 
   readonly users = signal<AdminUser[]>([]);
   readonly loading = signal(true);
@@ -135,9 +143,6 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly backupMsg = signal<string | null>(null);
 
   // Automated playlists (issue #228): cadence control + manual "generate now".
-  readonly autoPlaylists = signal<AutoPlaylistStatus | null>(null);
-  readonly autoPlaylistsBusy = signal(false);
-  readonly autoPlaylistsMsg = signal<string | null>(null);
 
   readonly loadingFragments = signal(false);
   readonly fragments = signal<LibraryFragmentReport | null>(null);
@@ -145,14 +150,6 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   // Acquisition kill-switch (issue #235). `configurable` false = the env
   // disabled it, a floor an admin cannot lift, so the control goes read-only.
-  readonly acquisition = signal<{ enabled: boolean; configurable: boolean } | null>(null);
-  /** Hold-for-review needs a reachable inbox — hidden when acquisition is off (issue #416). */
-  readonly acquisitionOff = computed(() => this.acquisition()?.enabled === false);
-  readonly acquisitionSaving = signal(false);
-
-  readonly streaming = signal<StreamingSettings | null>(null);
-  readonly streamingSaving = signal(false);
-  readonly streamingMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Windowed processing — settings form (PATCHed separately), live progress SSE.
   readonly processing = signal<ProcessingSettings | null>(null);
@@ -193,7 +190,6 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly updateCheck = this.reviewSvc.updateCheck;
   readonly backups = this.reviewSvc.backups;
   readonly backupsSummary = this.reviewSvc.backupsSummary;
-  readonly auditTail = this.reviewSvc.auditTail;
   readonly incompleteJobs = this.reviewSvc.incompleteJobs;
   readonly untracked = this.reviewSvc.untracked;
   readonly incompleteJobsCount = this.reviewSvc.incompleteJobsCount;
@@ -242,105 +238,12 @@ export class AdminComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.loadUsers();
     this.loadIncompleteJobs();
-    this.loadStreaming();
     this.loadProcessing();
     void this.loadQuarantineQueue();
     this.connectProcessingStream();
-    void this.loadAutoPlaylists();
-    this.loadAcquisition();
-  }
-
-  // --- Automated playlists (issue #228) ---
-  private async loadAutoPlaylists(): Promise<void> {
-    try {
-      this.autoPlaylists.set(await firstValueFrom(this.api.getAutoPlaylists()));
-    } catch {
-      // Non-fatal — the control just won't render until a reload succeeds.
-    }
-  }
-
-  async setAutoPlaylistCadence(cadence: AutoPlaylistCadence): Promise<void> {
-    this.autoPlaylistsMsg.set(null);
-    try {
-      this.autoPlaylists.set(await firstValueFrom(this.api.setAutoPlaylistCadence(cadence)));
-    } catch {
-      this.autoPlaylistsMsg.set(this.i18n.t('admin.cadenceSaveFailed'));
-    }
-  }
-
-  async refreshAutoPlaylists(): Promise<void> {
-    if (this.autoPlaylistsBusy()) return;
-    this.autoPlaylistsBusy.set(true);
-    this.autoPlaylistsMsg.set(null);
-    try {
-      const res = await firstValueFrom(this.api.refreshAutoPlaylists());
-      const made = res.shelves.filter((s) => s.count > 0).length;
-      this.autoPlaylists.set({ cadence: res.cadence, lastRefreshedAt: res.lastRefreshedAt });
-      this.autoPlaylistsMsg.set(
-        this.i18n.t(
-          made === 1 ? 'admin.regeneratedShelfSingular' : 'admin.regeneratedShelfPlural',
-          {
-            count: made,
-          },
-        ),
-      );
-    } catch {
-      this.autoPlaylistsMsg.set(this.i18n.t('admin.refreshFailed'));
-    } finally {
-      this.autoPlaylistsBusy.set(false);
-    }
-  }
-
-  formatRefreshedAt(ms: number | null): string {
-    return ms ? new Date(ms).toLocaleString() : this.i18n.t('admin.never');
   }
 
   // --- Streaming ---
-  private loadAcquisition(): void {
-    this.api.getAcquisition().subscribe({
-      next: (a) => this.acquisition.set(a),
-      // 503 = toggle not wired (an older server); hide the control rather than
-      // rendering one that can't work.
-      error: () => this.acquisition.set(null),
-    });
-  }
-
-  setAcquisition(enabled: boolean): void {
-    if (this.acquisitionSaving()) return;
-    // Don't call the API when the environment forbids acquisition. `disabled` on
-    // the input only stops *user* interaction; the server would refuse anyway,
-    // but there is no reason to ask it a question we already know the answer to.
-    if (!this.acquisition()?.configurable) return;
-    this.acquisitionSaving.set(true);
-    this.api.setAcquisition(enabled).subscribe({
-      next: (a) => {
-        this.acquisition.set(a);
-        this.acquisitionSaving.set(false);
-      },
-      error: () => this.acquisitionSaving.set(false),
-    });
-  }
-
-  private async loadStreaming(): Promise<void> {
-    try {
-      this.streaming.set(await firstValueFrom(this.api.getStreamingSettings()));
-    } catch {
-      /* ignore */
-    }
-  }
-
-  async saveStreaming(patch: Partial<StreamingSettings>): Promise<void> {
-    this.streamingSaving.set(true);
-    this.streamingMessage.set(null);
-    try {
-      this.streaming.set(await firstValueFrom(this.api.saveStreamingSettings(patch)));
-      this.streamingMessage.set({ type: 'success', text: this.i18n.t('admin.streamingSaved') });
-    } catch {
-      this.streamingMessage.set({ type: 'error', text: this.i18n.t('admin.streamingSaveFailed') });
-    } finally {
-      this.streamingSaving.set(false);
-    }
-  }
 
   // --- Windowed library processing ---
   processingPercent(): number {
@@ -1016,10 +919,6 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   formatDate(dateStr: string): string {
     return new Date(dateStr + 'Z').toLocaleDateString();
-  }
-
-  formatAuditTime(ms: number): string {
-    return new Date(ms).toLocaleString();
   }
 
   readonly roles = ROLES;
