@@ -343,7 +343,7 @@ describe('GET /me', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns user profile with welcomeDismissed false and autoplayOnLoad false for a new user', async () => {
+  it('returns user profile with welcomeDismissed false for a new user', async () => {
     const token = await signJwt(
       { sub: 'user-123', username: 'testuser', role: 'user' },
       SECRET,
@@ -361,13 +361,11 @@ describe('GET /me', () => {
       username: string;
       role: string;
       welcomeDismissed: boolean;
-      autoplayOnLoad: boolean;
     };
     expect(body.id).toBe('user-123');
     expect(body.username).toBe('testuser');
     expect(body.role).toBe('user');
     expect(body.welcomeDismissed).toBe(false);
-    expect(body.autoplayOnLoad).toBe(false);
   });
 
   it('surfaces the deployment acquisition kill-switch (#235): defaults enabled, false when off', async () => {
@@ -408,126 +406,5 @@ describe('GET /me', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { welcomeDismissed: boolean };
     expect(body.welcomeDismissed).toBe(true);
-  });
-
-  it('returns autoplayOnLoad true after POST /autoplay is called with enabled=true', async () => {
-    const token = await signJwt(
-      { sub: 'user-123', username: 'testuser', role: 'user' },
-      SECRET,
-      '1h',
-    );
-
-    const updateRes = await app.request('/autoplay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ enabled: true }),
-    });
-    expect(updateRes.status).toBe(200);
-
-    // Persisted to the DB scoped to this user.
-    const row = testDb
-      .query<{ autoplay_on_load: number }, [string]>(
-        'SELECT autoplay_on_load FROM user_settings WHERE user_id = ?',
-      )
-      .get('user-123');
-    expect(row?.autoplay_on_load).toBe(1);
-
-    const res = await app.request('/me', {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { autoplayOnLoad: boolean };
-    expect(body.autoplayOnLoad).toBe(true);
-  });
-
-  it('POST /autoplay with enabled=false clears the flag', async () => {
-    const token = await signJwt(
-      { sub: 'user-123', username: 'testuser', role: 'user' },
-      SECRET,
-      '1h',
-    );
-
-    await app.request('/autoplay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ enabled: true }),
-    });
-    await app.request('/autoplay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ enabled: false }),
-    });
-
-    const res = await app.request('/me', {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const body = (await res.json()) as { autoplayOnLoad: boolean };
-    expect(body.autoplayOnLoad).toBe(false);
-  });
-
-  it('POST /autoplay returns 401 when no token is provided', async () => {
-    const res = await app.request('/autoplay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: true }),
-    });
-    expect(res.status).toBe(401);
-  });
-});
-
-describe('POST /feedback-capture', () => {
-  let app: Awaited<ReturnType<typeof makeApp>>;
-
-  async function makeApp() {
-    const { authRoutes } = await import('./auth.js');
-    return authRoutes(SECRET, '30d', true);
-  }
-
-  beforeAll(async () => {
-    app = await makeApp();
-  });
-
-  const token = () =>
-    signJwt({ sub: 'no-settings-user', username: 'ghost', role: 'admin' }, SECRET, '1h');
-
-  // Issue #451: the write was a bare UPDATE, so a user without a user_settings
-  // row got {ok:true} while nothing persisted — the client showed the toggle on
-  // and the next /me silently flipped it back off.
-  it('creates the settings row when one does not exist yet', async () => {
-    testDb.run(
-      "INSERT INTO users (id, username, password_hash, role) VALUES ('no-settings-user', 'ghost', 'hash', 'admin')",
-    );
-
-    const res = await app.request('/feedback-capture', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ enabled: true }),
-    });
-    expect(res.status).toBe(200);
-
-    const me = await app.request('/me', {
-      headers: { Authorization: `Bearer ${await token()}` },
-    });
-    expect(((await me.json()) as { feedbackCapture: boolean }).feedbackCapture).toBe(true);
-  });
-
-  it('turns the flag back off without duplicating the row', async () => {
-    await app.request('/feedback-capture', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ enabled: false }),
-    });
-
-    const rows = testDb
-      .query<{ n: number }, [string]>('SELECT COUNT(*) AS n FROM user_settings WHERE user_id = ?')
-      .get('no-settings-user');
-    expect(rows?.n).toBe(1);
-
-    const me = await app.request('/me', {
-      headers: { Authorization: `Bearer ${await token()}` },
-    });
-    expect(((await me.json()) as { feedbackCapture: boolean }).feedbackCapture).toBe(false);
   });
 });

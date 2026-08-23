@@ -194,10 +194,9 @@ describe('landing gate', () => {
   it('kickEager lands a fresh download outside the processing window', async () => {
     seedSong('s1');
     setProcessingSettings(db, {
-      window: { start: '05:00', end: '08:00' },
       gates: { bpm: true, key: true, energy: true, genre: true },
     });
-    // Noon — outside the window — kickEager still runs the gate steps + lands.
+    // kickEager runs the gate steps + lands regardless of the periodic tick.
     await service(new Date(2024, 0, 1, 12, 0)).kickEager();
 
     expect(isLanded('s1')).toBe(true);

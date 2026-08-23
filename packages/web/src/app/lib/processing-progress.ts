@@ -17,8 +17,6 @@ export function phaseLabel(phase: ProcessingPhase): string {
   switch (phase) {
     case 'running':
       return 'Processing…';
-    case 'outside-window':
-      return 'Waiting for window';
     case 'disabled':
       return 'Disabled';
     case 'paused':
@@ -68,19 +66,4 @@ export function runOutcomeToast(
     return { kind: 'success', message: `Processing complete — ${status.processed} enriched` };
   }
   return null;
-}
-
-/**
- * Coerce a number-input value into an integer inside [min, max], falling back
- * when it isn't a number at all. A blanked or non-numeric input reads as NaN,
- * and the server rejects a non-positive integer with a 400 — so clamping at the
- * edge keeps a stray keystroke from surfacing as a failed save (issue #224).
- */
-export function clampInt(raw: string, min: number, max: number, fallback: number): number {
-  // `Number('')` is 0, not NaN — without the blank check a cleared field would
-  // silently clamp to `min` instead of leaving the current value alone.
-  if (raw.trim() === '') return fallback;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.min(max, Math.max(min, Math.round(n)));
 }

@@ -64,10 +64,6 @@ export class AuthService {
   /** Can curate the library (edit/merge/delete albums, metadata, identity). */
   readonly canCurate = computed(() => canCurateRole(asRole(this.role())));
   readonly welcomeDismissed = signal<boolean>(false);
-  readonly autoplayOnLoad = signal<boolean>(false);
-  /** Admin dev-mode: when on (and the user is admin), generated results surface a
-   * capture toast to grade them into the feedback golden-dataset. */
-  readonly feedbackCapture = signal<boolean>(false);
 
   login(token: string, username: string, role: string): void {
     localStorage.setItem('nicotind_token', token);
@@ -95,28 +91,6 @@ export class AuthService {
   setRole(role: string): void {
     localStorage.setItem('nicotind_role', role);
     this.role.set(role);
-  }
-
-  /**
-   * Persist the per-user "autoplay on page load" preference server-side and
-   * mirror it in the local signal. Optimistic: the toggle reflects instantly
-   * while the request is in flight; errors roll it back to the previous value.
-   */
-  setAutoplayOnLoad(enabled: boolean): void {
-    const prev = this.autoplayOnLoad();
-    this.autoplayOnLoad.set(enabled);
-    this.authApi.setAutoplayOnLoad(enabled).subscribe({
-      error: () => this.autoplayOnLoad.set(prev),
-    });
-  }
-
-  /** Persist the admin dev-mode feedback-capture toggle. Optimistic like above. */
-  setFeedbackCapture(enabled: boolean): void {
-    const prev = this.feedbackCapture();
-    this.feedbackCapture.set(enabled);
-    this.authApi.setFeedbackCapture(enabled).subscribe({
-      error: () => this.feedbackCapture.set(prev),
-    });
   }
 
   /** Explicit sign-out: also forgets the per-server stashed session for the
@@ -165,7 +139,5 @@ export class AuthService {
     this.username.set(null);
     this.role.set(null);
     this.welcomeDismissed.set(false);
-    this.autoplayOnLoad.set(false);
-    this.feedbackCapture.set(false);
   }
 }

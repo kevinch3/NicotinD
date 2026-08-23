@@ -15,8 +15,7 @@ import { approvalShare, breakdownLine } from './radio-polls-card.lib';
  * Admin card for radio evaluation polls (docs/radio-eval-polls.md): create a
  * poll (freezing its scenarios), copy the public link, watch tallies come in,
  * and close/delete. Loads on demand from the settings-group's `opened` output
- * (a dev/curation list, never the ServiceReview poll — same stance as the
- * generation-feedback queue).
+ * (a dev/curation list, never the ServiceReview poll).
  */
 @Component({
   selector: 'app-radio-polls-card',

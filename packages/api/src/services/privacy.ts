@@ -174,7 +174,6 @@ const USER_TABLES: Array<{ table: string; column: string; redact?: string[] }> =
   // Poll scenarios/votes have no user column by design (anonymous rater_key,
   // not an identity) and cascade off the poll row.
   { table: 'radio_polls', column: 'created_by' },
-  { table: 'generation_feedback', column: 'user_id' },
   { table: 'audit_log', column: 'user_id' },
 ];
 

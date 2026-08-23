@@ -1,0 +1,101 @@
+<app-settings-group
+  groupId="streaming-media"
+  icon="headphones"
+  [title]="'admin.groupStreamingMediaTitle' | t"
+  [description]="'admin.groupStreamingMediaDesc' | t"
+>
+  <!-- Streaming / transcoding -->
+  <section
+    class="mb-8"
+    data-testid="streaming-panel"
+  >
+    <h3 class="section-title">
+      {{ 'admin.streaming' | t }}
+    </h3>
+    @if (streaming(); as s) {
+      <div class="space-y-4">
+        <label class="flex items-center justify-between gap-4" appTvNavGroup axis="horizontal">
+          <span class="text-sm text-theme-primary"
+            >{{ 'admin.transcodeOnTheFly' | t }}
+            @if (s.ffmpegAvailable === false) {
+              <span class="block text-xs text-status-warn">{{
+                'admin.ffmpegNotFound' | t
+              }}</span>
+            } @else {
+              <span class="block text-xs text-theme-muted">{{
+                'admin.transcodeHint' | t
+              }}</span>
+            }
+          </span>
+          <input
+            type="checkbox"
+            appTvNavItem
+            [checked]="s.transcodeEnabled"
+            [disabled]="streamingSaving() || s.ffmpegAvailable === false"
+            (change)="saveStreaming({ transcodeEnabled: $any($event.target).checked })"
+            class="w-4 h-4 rounded accent-emerald-500"
+          />
+        </label>
+
+        @if (s.transcodeEnabled) {
+          <label class="flex items-center justify-between gap-4">
+            <span class="text-sm text-theme-primary">{{ 'admin.format' | t }}</span>
+            <select
+              [value]="s.format"
+              [disabled]="streamingSaving()"
+              (change)="saveStreaming({ format: $any($event.target).value })"
+              class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary"
+            >
+              <option value="mp3">MP3</option>
+              <option value="opus">Opus</option>
+              <option value="aac">AAC</option>
+            </select>
+          </label>
+
+          <label class="flex items-center justify-between gap-4">
+            <span class="text-sm text-theme-primary">{{ 'admin.maxBitrate' | t }}</span>
+            <select
+              [value]="s.maxBitRate"
+              [disabled]="streamingSaving()"
+              (change)="saveStreaming({ maxBitRate: +$any($event.target).value })"
+              class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary"
+            >
+              <option [value]="96">96</option>
+              <option [value]="128">128</option>
+              <option [value]="192">192</option>
+              <option [value]="256">256</option>
+              <option [value]="320">320</option>
+            </select>
+          </label>
+
+          <label class="flex items-center justify-between gap-4" appTvNavGroup axis="horizontal">
+            <span class="text-sm text-theme-primary"
+              >{{ 'admin.alwaysTranscode' | t }}
+              <span class="block text-xs text-theme-muted">{{
+                'admin.alwaysTranscodeHint' | t
+              }}</span>
+            </span>
+            <input
+              type="checkbox"
+              appTvNavItem
+              [checked]="s.forceTranscode"
+              [disabled]="streamingSaving()"
+              (change)="saveStreaming({ forceTranscode: $any($event.target).checked })"
+              class="w-4 h-4 rounded accent-emerald-500"
+            />
+          </label>
+        }
+
+        @if (streamingMessage(); as m) {
+          <p
+            class="text-xs"
+            [class.text-status-done]="m.type === 'success'"
+            [class.text-status-error]="m.type === 'error'"
+          >
+            {{ m.text }}
+          </p>
+        }
+      </div>
+    }
+  </section>
+</app-settings-group>

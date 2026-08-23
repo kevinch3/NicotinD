@@ -358,7 +358,7 @@ describe('PlayerService', () => {
     });
   });
 
-  describe('maybeResumeAutoplay()', () => {
+  describe('restore never resumes playback', () => {
     const STORAGE_KEY = 'nicotind_player_state';
 
     function restoreWith(snapshot: Record<string, unknown>): void {
@@ -366,33 +366,24 @@ describe('PlayerService', () => {
       service.restoreState();
     }
 
-    it('resumes when enabled=true and wasPlaying was captured', () => {
+    // The opt-in `autoplay_on_load` preference was removed: the app must never
+    // start making noise on load. `wasPlaying` is still written to the snapshot
+    // (harmless, and compatible both ways with an older bundle) but is ignored.
+    it('leaves the player paused even when the snapshot says it was playing', () => {
       restoreWith({ currentTrack: track1, wasPlaying: true });
-      expect(service.isPlaying()).toBe(false);
-      service.maybeResumeAutoplay(true);
-      expect(service.isPlaying()).toBe(true);
-    });
-
-    it('does not resume when enabled=false even if wasPlaying was captured', () => {
-      restoreWith({ currentTrack: track1, wasPlaying: true });
-      service.maybeResumeAutoplay(false);
       expect(service.isPlaying()).toBe(false);
     });
 
-    it('does nothing when wasPlaying was not captured (e.g. user paused before reload)', () => {
-      restoreWith({ currentTrack: track1, wasPlaying: false });
-      service.maybeResumeAutoplay(true);
-      expect(service.isPlaying()).toBe(false);
-    });
-
-    it('is one-shot: a second call after the user paused must not replay', () => {
-      restoreWith({ currentTrack: track1, wasPlaying: true });
-      service.maybeResumeAutoplay(true); // resumes
-      expect(service.isPlaying()).toBe(true);
-      service.pause();
-      // Subsequent calls (e.g. another /me) cannot resurrect playback — the
-      // captured flag is cleared on first read.
-      service.maybeResumeAutoplay(true);
+    it('still restores the track, queue and seek position', () => {
+      restoreWith({
+        currentTrack: track1,
+        wasPlaying: true,
+        queue: [track1, track2],
+        currentTime: 42,
+      });
+      expect(service.currentTrack()?.id).toBe(track1.id);
+      expect(service.queue().length).toBe(2);
+      expect(service.restoredTime).toBe(42);
       expect(service.isPlaying()).toBe(false);
     });
   });

@@ -387,9 +387,6 @@ export interface HuntResult {
   /** The source throttled the search burst (slskd 429) so the hunt may be
    *  incomplete — the modal keeps trying rather than reporting no results. */
   rateLimited?: boolean;
-  /** Present only for an admin with feedback-capture on: the pending
-   * generation_feedback row id to grade via the capture toast. */
-  feedbackId?: number;
 }
 
 export interface CatalogArtist {
@@ -700,7 +697,7 @@ export interface BackupsSummary {
 
 /** Same shape the SSE stream publishes; reduced to a static snapshot here. */
 export interface ProcessingSummary {
-  phase: 'idle' | 'running' | 'outside-window' | 'disabled';
+  phase: 'idle' | 'running' | 'disabled' | 'paused';
   currentTask: string | null;
   processed: number;
   failed: number;

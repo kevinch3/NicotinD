@@ -192,9 +192,6 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Album deletion**: folder-first `rmSync` + synchronous canonical-row delete + orphan-aggregate
   prune; every delete route debounce-schedules a `ShareRescanScheduler` pass.
   → [download-pipeline.md](docs/download-pipeline.md)
-- **Generation feedback → TDD fixtures**: capture whether a generated output was right from real
-  usage and replay each graded case as a test. `captureHuntMatchFeedback`, `resolveFeedback`,
-  `huntFixtureFromRecord`, `FeedbackService`. → [generation-feedback.md](docs/generation-feedback.md)
 - **Download inbox triage (hold-for-review)**: opt-in `holdForReview` holds quarantined downloads for
   curator approval; `download_reviews` decisions, multi-source candidates, AcoustID identify with
   typed failures. → [download-review.md](docs/download-review.md)
@@ -280,13 +277,13 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 
 ### Audio analysis & enrichment
 
-- **Windowed library processing**: resumable background enrichment via an extensible task registry,
-  run inside a daily window; failures are diagnosed and tallied into `ProcessingStatus`, and broken or
-  undetectable files are excluded via a `library_song_analysis_failures` ledger.
+- **Library processing**: resumable background enrichment via an extensible task registry, run
+  continuously while enabled; failures are diagnosed and tallied into `ProcessingStatus`, and broken
+  or undetectable files are excluded via a `library_song_analysis_failures` ledger.
   `NoConfidentResultError`, `AudioFileRejectedError`. → [library-processing.md](docs/library-processing.md)
-- **Processing pause + GPU yield**: a `paused` flag is the runtime halt distinct from
-  `enabled: false` (still clears quarantine); `gpuBusyPercent` yields the pass automatically while
-  another tenant uses the card, and unknown utilisation never yields.
+- **Processing pause**: a `paused` flag is the runtime halt distinct from `enabled: false` (still
+  clears quarantine), and the manual way to stand down for another GPU tenant. The failure tally's
+  session boundary is one continuous drain (`drained`), not a time window.
   → [library-processing.md](docs/library-processing.md)
 - **Analysis sidecar GPU behaviour**: `RegistryHolder` + `IdleReleaseGuard` drop the warm registry
   after an idle timeout and reload lazily; `peek()` reads without touching the guard and `can_serve()`
@@ -322,7 +319,7 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `FALSE_ENDED_ABSOLUTE_FLOOR_SEC` when the known duration is missing. → [web-ui.md](docs/web-ui.md)
 - **Playback loading feedback (HDD-aware)**: one `buffering` signal (delayed `bufferingVisible`)
   drives spinners, row indicators and the buffered band; every stream URL goes through `streamUrl()`,
-  which appends `ngsw-bypass`. Restore-on-load is paused unless `maybeResumeAutoplay` allows it.
+  which appends `ngsw-bypass`. Restore-on-load never autoplays — `wasPlaying` is written, not read.
   → [web-ui.md](docs/web-ui.md)
 - **Queue management**: `PlayerService` exposes `queueNext`, `addToQueue`, `clearQueue`,
   `removeFromQueue`, `moveInQueue`, `toggleShuffle`, `jumpToQueueIndex`; the Now Playing queue adds a
@@ -467,6 +464,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   tools live in Admin, and each addon renders through the generic `PluginCardComponent` +
   `AddonStatusPanelComponent`. → [admin-settings-decoupling.md](docs/admin-settings-decoupling.md),
   [plugins.md](docs/plugins.md)
+- **Admin is one panel component per section**: `admin.component.html` is an ordered list of tags,
+  so reordering is a one-line move; each panel owns its own `<app-settings-group>` (the `groupId`
+  is a localStorage key *and* an e2e selector) and injects `ServiceReviewService` rather than
+  taking inputs. `AcquisitionSettingsService` carries the one cross-section signal.
+  → [admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
 - **ServiceReview (one resource, one polling lifecycle)**: `GET /api/admin/review` replaces the Admin
   page's N loaders; `ServiceReviewService` owns one visibility-paused interval and every sub-section
   is a `computed()` slice. Slices are gathered by name via `allNamed()`, never positionally.

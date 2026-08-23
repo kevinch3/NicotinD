@@ -1,8 +1,11 @@
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import type { DebugElement } from '@angular/core';
 import { expandAllGroups } from '../../../testing/expand-groups';
 import { vi, beforeEach, describe, it, expect } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { AdminComponent } from './admin.component';
+import { LibraryMaintenancePanelComponent } from './library-maintenance/library-maintenance-panel.component';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -35,6 +38,14 @@ import BASE_CATALOG from '../../../../public/i18n/en.json';
  * themselves by clicking each group's toggle button, exactly like a real user
  * would.
  */
+/** The extracted maintenance panel's instance, reached through the page fixture:
+ *  these assertions seed a signal the panel owns, then assert on what the page
+ *  renders, so both halves have to come from the same component instance. */
+function maintenancePanel(fixture: { debugElement: DebugElement }) {
+  return fixture.debugElement.query(By.directive(LibraryMaintenancePanelComponent))
+    .componentInstance as LibraryMaintenancePanelComponent;
+}
+
 function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
   return {
     collectedAt: 1_700_000_000_000,
@@ -207,12 +218,8 @@ function makeAdminMocks(review: Partial<ServiceReview> = {}) {
         enabled: true,
         paused: false,
         holdForReview: false,
-        window: { start: '02:00', end: '06:00' },
         tasks: { bpm: true, genre: true, key: false, energy: false, 'audio-features': false },
         gates: {},
-        concurrency: 4,
-        batchSize: 100,
-        gpuBusyPercent: 0,
       } as ProcessingSettings,
       status: procStatus,
     }),
@@ -269,7 +276,6 @@ describe('AdminComponent (snapshot-driven via ServiceReview)', () => {
 
   it('renders the metrics-pills row + every moved admin panel', async () => {
     const f = TestBed.createComponent(AdminComponent);
-    f.componentInstance.loading.set(false);
     f.detectChanges();
     await f.whenStable();
     f.detectChanges();
@@ -335,7 +341,6 @@ describe('AdminComponent (orphan side-table rows, #259)', () => {
     }).compileComponents();
 
     const f = TestBed.createComponent(AdminComponent);
-    f.componentInstance.loading.set(false);
     f.detectChanges();
     await f.whenStable();
     f.detectChanges();
@@ -404,7 +409,6 @@ describe('AdminComponent (artist portrait coverage, #250)', () => {
       ],
     }).compileComponents();
     const f = TestBed.createComponent(AdminComponent);
-    f.componentInstance.loading.set(false);
     f.detectChanges();
     await f.whenStable();
     f.detectChanges();
@@ -506,7 +510,6 @@ describe('AdminComponent (acquisition kill-switch, #235)', () => {
       ],
     }).compileComponents();
     const f = TestBed.createComponent(AdminComponent);
-    f.componentInstance.loading.set(false);
     f.detectChanges();
     await f.whenStable();
     f.detectChanges();
@@ -605,7 +608,6 @@ describe('AdminComponent (hold-for-review toggle, #411)', () => {
 
   it('renders the holdForReview toggle and verifies i18n keys', async () => {
     const f = TestBed.createComponent(AdminComponent);
-    f.componentInstance.loading.set(false);
     f.detectChanges();
     await f.whenStable();
     f.detectChanges();
@@ -624,7 +626,6 @@ describe('AdminComponent (hold-for-review toggle, #411)', () => {
 
   it('calls saveProcessing when holdForReview checkbox is toggled', async () => {
     const f = TestBed.createComponent(AdminComponent);
-    f.componentInstance.loading.set(false);
     f.detectChanges();
     await f.whenStable();
     f.detectChanges();
@@ -690,7 +691,6 @@ describe('AdminComponent (download-review admin warning, #417)', () => {
     }).compileComponents();
 
     const f = TestBed.createComponent(AdminComponent);
-    f.componentInstance.loading.set(false);
     f.detectChanges();
     await f.whenStable();
     f.detectChanges();
@@ -751,7 +751,7 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
   });
 
   it('retryHunt builds a DiscographyAlbum from the incomplete-job and sets the artist', () => {
-    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
     const job: IncompleteAlbumJob = {
       id: 1,
       lidarrAlbumId: 10,
@@ -770,7 +770,7 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
   });
 
   it('retryHunt is a no-op when the job has no Lidarr album id', () => {
-    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
     c.retryHunt({
       id: 1,
       lidarrAlbumId: null,
@@ -786,13 +786,13 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
   });
 
   it('jobStateClass maps states to colors', () => {
-    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
     expect(c.jobStateClass('exhausted')).toContain('status-error');
     expect(c.jobStateClass('active')).toContain('status-warn');
   });
 
   it('syncLibrary calls resyncLibrary and reports success', async () => {
-    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
     await c.syncLibrary();
     // Raw i18n key in this harness (no real catalog loaded) — same convention
     // as settings.component.spec.ts / setup.component.spec.ts.
@@ -839,7 +839,7 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
         { provide: AuthService, useValue: { token: () => null } },
       ],
     }).compileComponents();
-    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
     await c.syncLibrary();
     expect(c.syncMsg()).toBe('boom');
   });
@@ -890,7 +890,6 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
 
   function setup() {
     const fixture = TestBed.createComponent(AdminComponent);
-    fixture.componentInstance.loading.set(false);
     return { fixture };
   }
 
@@ -983,268 +982,11 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     fixture.destroy();
   });
 
-  describe('user management table', () => {
-    const testUser: AdminUser = {
-      id: 'u1',
-      username: 'alice',
-      role: 'user',
-      status: 'active',
-      created_at: '2024-01-02 03:04:05',
-      last_seen_at: null,
-      isConnected: false,
-      amountOfDevices: 0,
-      amountOfSessions: 0,
-    };
-
-    async function mountWithUsers(
-      users: AdminUser[] = [testUser],
-      over: {
-        token?: string | null;
-        confirm?: boolean;
-        updateUserRole?: unknown;
-        deleteUser?: unknown;
-      } = {},
-    ) {
-      TestBed.resetTestingModule();
-      const mocks = makeAdminMocks();
-      const updateUserRole = over.updateUserRole ?? vi.fn(() => of({ ok: true }));
-      const deleteUser = over.deleteUser ?? vi.fn(() => of({ ok: true }));
-      const ask = vi.fn(async () => over.confirm ?? true);
-      await TestBed.configureTestingModule({
-        imports: [AdminComponent],
-        providers: [
-          { provide: DownloadsApiService, useValue: {} },
-          {
-            provide: SystemApiService,
-            useValue: {
-              getUsers: vi.fn(() => of(users)),
-              updateUserRole,
-              deleteUser,
-              updateUserStatus: vi.fn(() => of({ ok: true })),
-              getStreamingSettings: mocks.getStreaming,
-              saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
-              getProcessing: mocks.getProcessing,
-              getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
-              setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
-              saveProcessing: vi.fn((p: unknown) => of(p as object)),
-            },
-          },
-          {
-            provide: LibraryApiService,
-            useValue: {
-              resyncLibrary: vi.fn(() => of({ ok: true })),
-              getFragments: vi.fn(() =>
-                of({
-                  duplicateAlbums: [],
-                  hiddenByClassification: [],
-                  misSplitAlbums: [],
-                  totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 },
-                  ok: true,
-                } as LibraryFragmentReport),
-              ),
-            },
-          },
-          { provide: ServiceReviewService, useValue: mocks.reviewService },
-          { provide: AuthService, useValue: { token: () => over.token ?? null } },
-          { provide: ConfirmService, useValue: { ask } },
-        ],
-      }).compileComponents();
-
-      const fixture = TestBed.createComponent(AdminComponent);
-      fixture.componentInstance.loading.set(false);
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
-      expandAllGroups(fixture);
-      return { fixture, el: fixture.nativeElement as HTMLElement, updateUserRole, deleteUser, ask };
-    }
-
-    /** A JWT whose only job is to carry `sub` — the component base64-decodes it.
-     *  Supplying one also switches on the processing SSE stream, which jsdom has
-     *  no EventSource for, so stub it alongside. */
-    function tokenFor(sub: string): string {
-      (globalThis as { EventSource?: unknown }).EventSource = class {
-        close() {}
-        addEventListener() {}
-      };
-      return `h.${btoa(JSON.stringify({ sub }))}.s`;
-    }
-
-    it('is five columns with nothing hidden on narrow viewports', async () => {
-      const { fixture, el } = await mountWithUsers();
-      const table = el.querySelector('[data-testid="users-table"]')!;
-
-      expect(table.querySelectorAll('thead th')).toHaveLength(5);
-      // The four `hidden sm:table-cell` columns are gone, not merely restyled:
-      // Online/Devices/Sessions folded into Activity, Joined under the username.
-      expect(table.querySelectorAll('.hidden')).toHaveLength(0);
-      // The old duplicate role control is gone with them.
-      expect(el.querySelector('[data-testid="user-role-select"]')).toBeNull();
-      fixture.destroy();
-    });
-
-    it('puts the role control in the Role column and the rest behind one menu', async () => {
-      const { fixture, el } = await mountWithUsers();
-      const cells = Array.from(
-        el.querySelectorAll('[data-testid="users-table"] tbody tr:first-child td'),
-      );
-
-      // Role was rendered twice before: a badge here and a <select> in Actions.
-      expect(el.querySelector('[data-testid="user-role-trigger"]')!.closest('td')).toBe(cells[1]);
-      expect(el.querySelector('[data-testid="user-actions-toggle"]')!.closest('td')).toBe(
-        cells.at(-1),
-      );
-      fixture.destroy();
-    });
-
-    it('offers every role in the picker and persists the pick', async () => {
-      const { fixture, el, updateUserRole } = await mountWithUsers();
-
-      (el.querySelector('[data-testid="user-role-trigger"]') as HTMLElement).click();
-      fixture.detectChanges();
-
-      expect(el.querySelectorAll('[data-testid^="user-role-option-"]')).toHaveLength(ROLES.length);
-      (el.querySelector('[data-testid="user-role-option-listener"]') as HTMLElement).click();
-      fixture.detectChanges();
-
-      expect(updateUserRole).toHaveBeenCalledWith('u1', 'listener');
-      fixture.destroy();
-    });
-
-    it('holds status / reset / delete in the ⋯ menu', async () => {
-      const { fixture, el } = await mountWithUsers();
-
-      (el.querySelector('[data-testid="user-actions-toggle"]') as HTMLElement).click();
-      fixture.detectChanges();
-
-      expect(el.querySelector('[data-testid="user-action-status"]')).not.toBeNull();
-      expect(el.querySelector('[data-testid="user-action-reset-pw"]')).not.toBeNull();
-      expect(el.querySelector('[data-testid="user-action-delete"]')).not.toBeNull();
-      fixture.destroy();
-    });
-
-    it('renders your own row as a plain badge you cannot act on', async () => {
-      const { fixture, el } = await mountWithUsers([testUser], { token: tokenFor('u1') });
-
-      // No control at all, rather than a disabled one you can still tab into.
-      expect(el.querySelector('[data-testid="user-role-static"]')).not.toBeNull();
-      expect(el.querySelector('[data-testid="user-role-trigger"]')).toBeNull();
-
-      (el.querySelector('[data-testid="user-actions-toggle"]') as HTMLElement).click();
-      fixture.detectChanges();
-      expect(
-        (el.querySelector('[data-testid="user-action-status"]') as HTMLButtonElement).disabled,
-      ).toBe(true);
-      expect(
-        (el.querySelector('[data-testid="user-action-delete"]') as HTMLButtonElement).disabled,
-      ).toBe(true);
-      fixture.destroy();
-    });
-
-    it('deletes through the global confirm host, and not at all when declined', async () => {
-      for (const confirmed of [true, false]) {
-        const { fixture, el, deleteUser, ask } = await mountWithUsers([testUser], {
-          confirm: confirmed,
-        });
-        (el.querySelector('[data-testid="user-actions-toggle"]') as HTMLElement).click();
-        fixture.detectChanges();
-        (el.querySelector('[data-testid="user-action-delete"]') as HTMLElement).click();
-        await fixture.whenStable();
-
-        expect(ask).toHaveBeenCalled();
-        if (confirmed) {
-          expect(deleteUser).toHaveBeenCalledWith('u1');
-          expect(fixture.componentInstance.users()).toHaveLength(0);
-        } else {
-          expect(deleteUser).not.toHaveBeenCalled();
-        }
-        fixture.destroy();
-      }
-    });
-
-    it('shows a relative last-connection, or Never, instead of three presence columns', async () => {
-      const { fixture, el } = await mountWithUsers([
-        { ...testUser, last_seen_at: null },
-        {
-          ...testUser,
-          id: 'u2',
-          username: 'bob',
-          isConnected: true,
-          amountOfDevices: 2,
-          amountOfSessions: 3,
-        },
-      ]);
-      const rows = Array.from(el.querySelectorAll('[data-testid="users-table"] tbody tr'));
-      const activityOf = (i: number) =>
-        rows[i]!.querySelector('[data-testid="user-activity"]')!.textContent!.trim();
-
-      // The harness ships no catalog, so TranslateService echoes the key —
-      // assert the key, which is the precise thing anyway.
-      expect(activityOf(0)).toContain('admin.neverConnected');
-      // Devices/sessions survived the column removal as the muted second line.
-      expect(activityOf(1)).toContain('admin.online');
-      expect(activityOf(1)).toContain('admin.activityDetail');
-      fixture.destroy();
-    });
-
-    it('is one vertical D-pad group, off the table element itself', async () => {
-      const { fixture, el } = await mountWithUsers([
-        testUser,
-        { ...testUser, id: 'u2', username: 'bob' },
-      ]);
-      const group = el.querySelector('[data-testid="users-table"]')!;
-
-      // TvNavGroupDirective force-sets role="toolbar", which would clobber the
-      // table's implicit ARIA roles — hence a wrapper div, not the <table>.
-      expect(group.tagName).toBe('DIV');
-      const triggers: HTMLElement[] = Array.from(
-        group.querySelectorAll(
-          '[data-testid="user-role-trigger"], [data-testid="user-actions-toggle"]',
-        ),
-      );
-      expect(triggers.length).toBeGreaterThan(1);
-      expect(triggers[0]!.closest('[appTvNavGroup]')).toBe(group);
-
-      triggers[0]!.focus();
-      triggers[0]!.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
-      );
-      expect(document.activeElement).toBe(triggers[1]);
-      fixture.destroy();
-    });
-
-    it('ships every new i18n key it renders', async () => {
-      for (const key of [
-        'admin.colActivity',
-        'admin.joinedOn',
-        'admin.neverConnected',
-        'admin.activityDetail',
-        'admin.userActions',
-        'admin.deleteUserConfirm',
-        'admin.role.listener',
-        'admin.status.active',
-        'time.justNow',
-        'time.daysAgo',
-      ]) {
-        expect(BASE_CATALOG).toHaveProperty([key]);
-      }
-      // The columns they replaced are retired, not left to rot.
-      for (const key of [
-        'admin.colOnline',
-        'admin.colDevices',
-        'admin.colSessions',
-        'admin.colJoined',
-      ]) {
-        expect(BASE_CATALOG).not.toHaveProperty([key]);
-      }
-    });
-  });
-
   it('duplicates rows are label nav items in one vertical group (issue #396)', async () => {
     const { fixture } = setup();
     fixture.detectChanges();
     await fixture.whenStable();
-    fixture.componentInstance.duplicates.set([
+    maintenancePanel(fixture).duplicates.set([
       [
         { id: 's1', title: 'A', artist: 'X', album: 'Al', suffix: 'flac', duration: 60 },
         { id: 's2', title: 'A', artist: 'X', album: 'Al', suffix: 'mp3', duration: 60 },
@@ -1264,38 +1006,6 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     const rows = Array.from(panel.querySelectorAll('label'));
     expect(rows.length).toBe(2);
     for (const row of rows) expect(row.hasAttribute('appTvNavItem')).toBe(true);
-    fixture.destroy();
-  });
-
-  it('streaming checkboxes get per-row groups; the selects stay outside every group (issue #396)', async () => {
-    const { fixture } = setup();
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.componentInstance.streaming.set({
-      transcodeEnabled: true,
-      format: 'opus',
-      maxBitRate: 192,
-      forceTranscode: false,
-      ffmpegAvailable: true,
-    } as never);
-    fixture.detectChanges();
-    expandAllGroups(fixture);
-    const el: HTMLElement = fixture.nativeElement;
-    const panel = el.querySelector('[data-testid="streaming-panel"]')!;
-    const checkboxes = Array.from(panel.querySelectorAll('input[type="checkbox"]'));
-    expect(checkboxes.length).toBe(2);
-    for (const checkbox of checkboxes) {
-      expect(checkbox.hasAttribute('appTvNavItem')).toBe(true);
-      expect(checkbox.closest('[appTvNavGroup]')).not.toBeNull();
-    }
-    // The structural invariant from the user-row test above: a <select> is
-    // never inside a nav group's subtree, so its own option cycling is never
-    // intercepted (per-row exclusion, not attribute absence).
-    const selects = Array.from(panel.querySelectorAll('select'));
-    expect(selects.length).toBe(2);
-    for (const select of selects) {
-      expect(select.closest('[appTvNavGroup]')).toBeNull();
-    }
     fixture.destroy();
   });
 });
@@ -1348,39 +1058,57 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
     }).compileComponents();
 
     const fixture = TestBed.createComponent(AdminComponent);
-    fixture.componentInstance.loading.set(false);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
     return fixture;
   }
 
-  it('renders all 10 groups in the correct order', async () => {
+  it('renders every group', async () => {
     const fixture = await createAndSettle();
     const el: HTMLElement = fixture.nativeElement;
     const headers = Array.from(el.querySelectorAll('app-settings-group-header'));
-    // 10 from the settings-cards unification, plus the radio evaluation polls
+    // 9: the settings-cards unification's set, plus the radio evaluation polls
     // card (docs/radio-eval-polls.md), minus "Import music" — which went with
     // the admin import card, import being internal/API-only now
-    // (docs/import.md).
-    expect(headers.length).toBe(10);
-    // The header text itself is driven by `[title]` — a property binding on a
-    // nested `<app-settings-group>` — so it's subject to the same JIT-harness
-    // signal-input gap documented above `expandAllGroups`. Order/count is
-    // still a real, harness-observable structural assertion: it only depends
-    // on how many `<app-settings-group>` elements the template renders and in
-    // what sequence, not on any input value landing.
-    expect(headers.length).toBe(10);
+    // (docs/import.md) — and minus the generation-feedback queue, removed with
+    // that feature.
+    expect(headers.length).toBe(9);
     fixture.destroy();
   });
 
-  // Task 1 (settings-cards unification) removed the `[defaultOpen]="true"`
-  // bindings from System Health / Library Processing — every one of the 8
-  // groups is now collapsed by default, in the real app as well as here. So
-  // unlike the old Task 4 comment this used to carry (which had to explain
-  // away a JIT-harness signal-input gap masking a *real* 2-open default),
-  // this assertion is now honest in both the harness and production: every
-  // group starts collapsed.
+  /**
+   * The real ordering guard. Its predecessor was titled "renders all 10 groups
+   * in the correct order" and asserted `headers.length` twice, order never —
+   * there was nothing to assert on, because every group was an identical
+   * `<app-settings-group>` whose distinguishing `[title]`/`groupId` inputs the
+   * JIT harness does not land (see the note above `expandAllGroups`).
+   *
+   * Now each section is its own element, so sequence is observable from the DOM
+   * without any input binding having to work. That is exactly the property that
+   * makes "reordering is a one-line move" safe to rely on: change the order in
+   * the template and this test tells you.
+   */
+  it('renders the panels in the intended order', async () => {
+    const fixture = await createAndSettle();
+    const shell = (fixture.nativeElement as HTMLElement).querySelector('.page-shell')!;
+    const order = Array.from(shell.children)
+      .map((e) => e.tagName.toLowerCase())
+      .filter((t) => t.startsWith('app-'));
+    expect(order).toEqual([
+      'app-user-management-panel',
+      'app-library-processing-panel',
+      'app-system-health-panel',
+      'app-library-maintenance-panel',
+      'app-streaming-media-panel',
+      'app-backups-data-panel',
+      'app-acquisition-automation-panel',
+      'app-audit-log-panel',
+      'app-settings-group', // radio polls — the last section still inline
+    ]);
+    fixture.destroy();
+  });
+
   it('renders every group collapsed on a fresh render (all groups default-collapsed)', async () => {
     localStorage.clear();
     const fixture = await createAndSettle();
@@ -1534,8 +1262,7 @@ describe('AdminComponent (actionable fragments, #314)', () => {
       ],
     }).compileComponents();
     const fixture = TestBed.createComponent(AdminComponent);
-    fixture.componentInstance.loading.set(false);
-    fixture.componentInstance.fragments.set(report);
+    maintenancePanel(fixture).fragments.set(report);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
@@ -1625,25 +1352,13 @@ describe('AdminComponent — maintenance passes (issue #622)', () => {
     const mocks = makeAdminMocks(review);
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
-      imports: [AdminComponent],
+      imports: [LibraryMaintenancePanelComponent],
       providers: [
-        {
-          provide: DownloadsApiService,
-          useValue: {
-            listAlbumJobs: vi.fn(() => of({ jobs: [] })),
-            getUntrackedDownloads: vi.fn(() => of({ total: 0, rows: [] })),
-          },
-        },
         {
           provide: SystemApiService,
           useValue: {
             getUsers: mocks.getUsers,
-            getStreamingSettings: mocks.getStreaming,
-            saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
             getProcessing: mocks.getProcessing,
-            getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
-            setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
-            saveProcessing: vi.fn((p: unknown) => of(p as object)),
           },
         },
         {
@@ -1659,7 +1374,9 @@ describe('AdminComponent — maintenance passes (issue #622)', () => {
         { provide: AuthService, useValue: { token: () => null } },
       ],
     }).compileComponents();
-    return TestBed.createComponent(AdminComponent).componentInstance;
+    // The maintenance passes moved to their own panel; mount that directly
+    // rather than the whole page it renders inside.
+    return TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
   }
 
   /** A review snapshot with one pass in flight. */

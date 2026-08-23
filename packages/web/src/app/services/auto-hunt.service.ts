@@ -1,9 +1,8 @@
-import { Injectable, Injector, inject, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom, of, switchMap, map } from 'rxjs';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { TransferService } from './transfer.service';
 import { ToastService } from './toast.service';
-import { FeedbackService } from './feedback.service';
 import type { DiscographyAlbum, FolderCandidate } from './api/api-types';
 import { mergeCandidates } from '../lib/merge-candidates';
 import {
@@ -24,11 +23,6 @@ export class AutoHuntService {
   private api = inject(DownloadsApiService);
   private transfer = inject(TransferService);
   private toasts = inject(ToastService);
-  // Lazy resolve to break a circular dependency: FeedbackService injects
-  // AuthService, which injects this service. Same idiom as AuthService's own
-  // RemotePlaybackService resolve.
-  private injector = inject(Injector);
-
   readonly huntingAlbumIds = signal<Set<number>>(new Set());
 
   isHunting(lidarrId: number): boolean {
@@ -51,37 +45,12 @@ export class AutoHuntService {
     });
   }
 
-  /**
-   * Offer the admin dev-mode grading toast for this hunt. The server already
-   * snapshotted the recognition pair; without this call the row is captured and
-   * never graded, which is exactly what issue #451 was.
-   */
-  private _promptFeedback(
-    feedbackId: number | undefined,
-    album: DiscographyAlbum,
-    artistName: string,
-    candidates: FolderCandidate[],
-  ): void {
-    this.injector.get(FeedbackService).promptForHunt({
-      feedbackId,
-      artistName,
-      albumTitle: album.title,
-      candidates: candidates.map((c) => ({
-        username: c.username,
-        directory: c.directory,
-        matchPct: c.matchPct,
-        format: c.format,
-      })),
-    });
-  }
-
   private async _run(
     album: DiscographyAlbum,
     artistName: string,
     openManual: () => void,
   ): Promise<void> {
     let candidates: FolderCandidate[] = [];
-    let feedbackId: number | undefined;
 
     try {
       // Chain base + optional skew into one observable so both phases resolve
@@ -102,16 +71,14 @@ export class AutoHuntService {
                   .pipe(
                     map((skewResult) => ({
                       candidates: mergeCandidates(baseResult.candidates, skewResult.candidates),
-                      feedbackId: baseResult.feedbackId,
                     })),
                   );
               }
-              return of({ candidates: baseResult.candidates, feedbackId: baseResult.feedbackId });
+              return of({ candidates: baseResult.candidates });
             }),
           ),
       );
       candidates = hunt.candidates;
-      feedbackId = hunt.feedbackId;
     } catch {
       let searchErrId!: string;
       searchErrId = this.toasts.show({
@@ -158,12 +125,8 @@ export class AutoHuntService {
           },
         ],
       });
-      // A hunt that found nothing is the most valuable grading sample there is.
-      this._promptFeedback(feedbackId, album, artistName, candidates);
       return;
     }
-
-    this._promptFeedback(feedbackId, album, artistName, candidates);
 
     let toastId!: string;
     toastId = this.toasts.show({

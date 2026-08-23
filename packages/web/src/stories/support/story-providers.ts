@@ -27,10 +27,6 @@ import type { AcquireJob } from '../../app/services/acquire.service';
 import type { AcquisitionJobView } from '../../types/core';
 import type { ReviewQueueAlbum } from '../../app/services/api/api-types';
 import { ArtistImageSourcesService } from '../../app/services/artist-image-sources.service';
-import {
-  FeedbackSheetService,
-  type FeedbackSheetPayload,
-} from '../../app/services/feedback-sheet.service';
 import { getStoryLang } from './story-lang';
 import { PlayerService } from '../../app/services/player.service';
 import type { Track } from '../../app/services/player.service';
@@ -56,13 +52,6 @@ export interface StoryState {
   downloadingTransfers?: number;
   activeAcquireJobs?: number;
   pendingReviews?: number;
-  /**
-   * Opens the hunt-feedback detail sheet. The sheet renders nothing until
-   * `FeedbackSheetService.payload()` is non-null — it is a globally-hosted
-   * overlay opened from a toast action — so a story without this seeds an
-   * empty canvas rather than the sheet.
-   */
-  feedbackSheet?: FeedbackSheetPayload;
   /**
    * Albums awaiting a curator decision. Seeded directly on the service: the
    * component's constructor calls `review.start()`, whose refresh 404s against
@@ -177,10 +166,6 @@ export function storyProviders(state: StoryState = {}): Array<Provider | Environ
         review.queue.set(state.reviewQueue);
         review.pending.set(state.reviewQueue.length);
       }
-      if (state.feedbackSheet !== undefined) {
-        inject(FeedbackSheetService).payload.set(state.feedbackSheet);
-      }
-
       // Load the REAL catalogs, not a stub: Storybook serves `public/` via
       // `staticDirs`, so `/i18n/en.json` and `/i18n/es.json` are the same files
       // the app ships. A stub with invented strings would stop the story

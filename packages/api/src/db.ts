@@ -1533,42 +1533,20 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_audit_log_at ON audit_log (at DESC)`);
 
-  // Generation-feedback: a dev golden-dataset. Every "generated"/inferred output
-  // (v1: album-hunt recognition) captured as an (input, output, verdict) snapshot
-  // that scripts/feedback-to-fixtures.ts exports into replayable TDD fixtures.
-  // verdict NULL = pending (captured at hunt time, not yet graded). input_json /
-  // output_json hold the full snapshot so a fixture replays the pure recognizer
-  // offline. Written by services/generation-feedback.ts. See docs/generation-feedback.md.
-  db.run(`
-    CREATE TABLE IF NOT EXISTS generation_feedback (
-      id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      at              INTEGER NOT NULL,
-      user_id         TEXT NOT NULL,
-      username        TEXT,
-      resource_type   TEXT NOT NULL,
-      resource_ref    TEXT,
-      verdict         TEXT,
-      note            TEXT,
-      input_json      TEXT NOT NULL,
-      output_json     TEXT NOT NULL,
-      item_flags_json TEXT,
-      engine_version  TEXT
-    )
-  `);
-  db.run(
-    `CREATE INDEX IF NOT EXISTS idx_generation_feedback_type_at
-       ON generation_feedback (resource_type, at DESC)`,
-  );
-
-  // Admin dev-mode toggle: when on, generated results surface a capture toast so
-  // the admin can grade them (see generation_feedback above). Per-user, default
-  // off — invisible to non-admins.
-  addColumnIfMissing(db, 'user_settings', 'feedback_capture', 'INTEGER NOT NULL DEFAULT 0');
+  // Generation feedback (removed). It captured album-hunt recognitions as
+  // (input, output, verdict) snapshots to distil into replay fixtures, but the
+  // acquisition-addon migration severed the capture seam and nothing has written
+  // a row since; no fixture was ever produced. Dropped rather than orphaned
+  // because output_json holds a full per-hunt snapshot, so the dead rows would
+  // sit in every daily VACUUM INTO backup forever with nothing left to prune
+  // them. The user_settings.feedback_capture column that gated capture is left
+  // in place — nothing in this schema drops a column.
+  db.run(`DROP INDEX IF EXISTS idx_generation_feedback_type_at`);
+  db.run(`DROP TABLE IF EXISTS generation_feedback`);
 
   // Radio evaluation polls (docs/radio-eval-polls.md): an admin freezes N radio
   // scenarios behind a public token URL and anonymous raters grade each next-up
-  // suggestion. Own tables (not generation_feedback rows) because feedback rows
-  // are one authenticated admin per row, while a poll is anonymous multi-rater.
+  // suggestion. Own tables because a poll is anonymous and multi-rater.
   // snapshot_json is mandatory: the radio pool is ORDER BY RANDOM(), so votes
   // are only comparable against a frozen queue. Written by
   // services/radio-poll-store.ts.

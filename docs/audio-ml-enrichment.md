@@ -354,11 +354,13 @@ At 2.2 GB the sidecar leaves ~6 GB free, enough to co-host the ~3.0 GB BS-RoForm
 
 ### Consequences for the existing controls
 
-- The `concurrency` Admin knob (#224's shipped half) is a **CPU/queueing** control, not a GPU one.
-  The panel copy should not imply otherwise.
-- `gpuBusyPercent` gates a window on *utilisation*, so it protects other tenants from our compute —
+- The `concurrency` value (#224's shipped half) is a **CPU/queueing** control, not a GPU one. It is
+  now the `PROCESSING_CONCURRENCY` constant rather than an Admin knob, precisely because it was
+  presented as a GPU regulator and is not one.
+- `gpuBusyPercent` gated a pass on *utilisation*, so it protected other tenants from our compute —
   but not from our **allocation**, which is what would make an Immich ML or Ollama model load fail.
-  A co-tenant can be starved while `nvidia-smi` reports 0 % utilisation.
+  A co-tenant can be starved while `nvidia-smi` reports 0 % utilisation. That yield has since been
+  removed for exactly this reason; `paused` is the manual stand-down.
 
 ### Making the allocation visible (shipped)
 

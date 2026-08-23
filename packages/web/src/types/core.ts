@@ -42,7 +42,6 @@ export type { ArtistInfoResponse } from '../../../core/src/types/artist-info';
 
 export type {
   ProcessingTaskId,
-  ProcessingWindow,
   ProcessingSettings,
   ProcessingPhase,
   ProcessingStatus,
@@ -61,21 +60,6 @@ export type {
 
 export type { LyricsDto } from '../../../core/src/types/lyrics';
 export type { WaveformData } from '../../../core/src/types/waveform';
-
-export type {
-  GenerationFeedbackResourceType,
-  GenerationVerdict,
-  FolderRef,
-  HuntMatchItemFlags,
-  HuntMatchInput,
-  SnapshotFolderCandidate,
-  HuntMatchOutput,
-  HuntMatchSnapshot,
-  GenerationFeedbackRecord,
-  GenerationFeedbackSummary,
-  ResolveFeedbackBody,
-  HuntMatchFixture,
-} from '../../../core/src/types/generation-feedback';
 
 export type {
   RadioPollVerdict,

@@ -1,8 +1,8 @@
 /**
- * Windowed library-processing (enrichment) contracts. The background processor
- * runs enabled enrichment *tasks* (BPM, genre today; mood/etc. later) over songs
- * that still need them, only inside a user-configured time window. Settings and
- * status are surfaced in the admin Settings panel.
+ * Library-processing (enrichment) contracts. The background processor runs
+ * enabled enrichment *tasks* (BPM, genre today; mood/etc. later) over songs that
+ * still need them, continuously while enabled. Settings and status are surfaced
+ * in the admin Settings panel.
  */
 
 /** Identifier of an enrichment task. Open union — new tasks append here. */
@@ -22,20 +22,10 @@ export type ProcessingTaskId =
   | 'popularity'
   | 'artist-origin';
 
-/** Daily time window during which background enrichment may run (server-local). */
-export interface ProcessingWindow {
-  /** Inclusive start, `HH:MM` 24h. */
-  start: string;
-  /** Exclusive end, `HH:MM` 24h. May be ≤ start to express a window crossing midnight. */
-  end: string;
-}
-
 /** Persisted, admin-editable processing configuration. */
 export interface ProcessingSettings {
   /** Master switch — when off the processor never runs. */
   enabled: boolean;
-  /** Window during which the processor may work. */
-  window: ProcessingWindow;
   /** Per-task enable flags. A task only runs when enabled here AND available. */
   tasks: Record<ProcessingTaskId, boolean>;
   /**
@@ -49,30 +39,13 @@ export interface ProcessingSettings {
    * in the background without it blocking landing, and vice-versa.
    */
   gates: Partial<Record<ProcessingTaskId, boolean>>;
-  /** How many songs a single task processes per batch/tick. */
-  batchSize: number;
-  /** Worker-pool size for parallelisable tasks (e.g. BPM ffmpeg decodes). */
-  concurrency: number;
   /**
-   * Yield the window when the GPU is already this busy, in percent utilisation
-   * (issue #224). `0` disables the check.
-   *
-   * why: the analysis sidecar is typically not the only tenant on the card —
-   * the reference deployment shares one P4000 with Immich ML and Ollama — and
-   * enrichment is the tenant that can always wait. Unlike `paused` (a manual
-   * halt) this yields automatically and re-tries on the next tick, so a busy
-   * neighbour delays enrichment instead of contending with it.
-   *
-   * Quarantine still clears while yielding: a fresh download must never stay
-   * invisible because some other application is using the GPU.
-   */
-  gpuBusyPercent: number;
-  /**
-   * Temporary halt of automatic/window background enrichment (issue #224 —
-   * "pause processing now"). Unlike `enabled: false` (a persistent off switch),
-   * `paused` is a runtime throttle: fresh downloads still clear their landing
-   * gate (so nothing is stranded in quarantine), but no window/background
-   * enrichment runs. An explicit admin "Run now" still overrides it.
+   * Temporary halt of automatic background enrichment. Unlike `enabled: false`
+   * (a persistent off switch), `paused` is a runtime throttle: fresh downloads
+   * still clear their landing gate (so nothing is stranded in quarantine), but
+   * no background enrichment runs. An explicit admin "Run now" still overrides
+   * it. It is also the manual way to stand down while another tenant needs the
+   * GPU, since the automatic courtesy yield was removed.
    */
   paused: boolean;
   /**
@@ -84,14 +57,7 @@ export interface ProcessingSettings {
 }
 
 /** Coarse phase of the processor at a point in time. */
-export type ProcessingPhase =
-  | 'idle'
-  | 'running'
-  | 'outside-window'
-  | 'disabled'
-  | 'paused'
-  /** Inside the window, but the shared GPU is busy — see `gpuBusyPercent`. */
-  | 'gpu-busy';
+export type ProcessingPhase = 'idle' | 'running' | 'disabled' | 'paused';
 
 /** Live status snapshot for the progress UI (persisted so a restart resumes display). */
 export interface ProcessingStatus {

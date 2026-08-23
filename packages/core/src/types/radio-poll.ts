@@ -10,11 +10,19 @@ import type { Song } from './navidrome.js';
  *
  * Types are structural copies of the API's radio shapes (`SongFeatures`,
  * `SimilarityExplanation`) rather than imports so `@nicotind/core` stays a leaf
- * package; the API's types are assignable to these (same trick as
- * `SnapshotFolderCandidate` in generation-feedback.ts).
+ * package; the API's types are assignable to these.
  */
 
+/** One rater's thumb on one suggestion. */
 export type RadioPollVerdict = 'up' | 'down';
+
+/**
+ * The distilled human consensus for a candidate across all of its votes — a
+ * different thing from a single rater's `RadioPollVerdict`. Formerly
+ * `GenerationVerdict`, shared with the generation-feedback queue; that feature
+ * was removed and poll export is the only remaining user, so it lives here now.
+ */
+export type PollConsensusVerdict = 'good' | 'bad';
 
 /** The creation request, recorded verbatim in `radio_polls.settings_json`. */
 export interface RadioPollSettings {

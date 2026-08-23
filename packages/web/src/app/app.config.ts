@@ -32,16 +32,9 @@ export const APP_VERSION = new InjectionToken<string>('APP_VERSION');
 /**
  * Refresh the stored session and sync the per-user profile flags. Runs after the
  * boot connectivity check (online boot), or on the first return to online after
- * an offline launch (see the initializer below). `withAutoplay` is true only on
- * the boot-time path: resuming playback is a *restore* right after launch, but a
- * surprise if it fires minutes later when connectivity happens to return.
+ * an offline launch (see the initializer below).
  */
-export function refreshSession(
-  api: AuthApiService,
-  auth: AuthService,
-  player: PlayerService,
-  withAutoplay: boolean,
-): void {
+export function refreshSession(api: AuthApiService, auth: AuthService): void {
   api
     .refreshToken()
     .pipe(
@@ -56,14 +49,9 @@ export function refreshSession(
         // an admin made takes effect on this load, not only on re-login.
         auth.setRole(profile.role);
         auth.welcomeDismissed.set(profile.welcomeDismissed);
-        auth.autoplayOnLoad.set(profile.autoplayOnLoad);
-        auth.feedbackCapture.set(profile.feedbackCapture);
         // Deployment-wide acquisition kill-switch (#235): default to enabled
         // when an older server omits the field.
         auth.serverAcquisitionEnabled.set(profile.acquisitionEnabled ?? true);
-        // Resume a previously playing session if the user opted in to
-        // autoplay-on-load. See PlayerService.maybeResumeAutoplay.
-        if (withAutoplay) player.maybeResumeAutoplay(profile.autoplayOnLoad);
       },
       error: () => {},
     });
@@ -116,7 +104,7 @@ export const appConfig: ApplicationConfig = {
       return setup.check().then(() => {
         if (!auth.isAuthenticated()) return;
         if (!setup.isOffline()) {
-          refreshSession(api, auth, player, true);
+          refreshSession(api, auth);
           return;
         }
         // Offline launch with a stored session: refresh it automatically the
@@ -126,7 +114,7 @@ export const appConfig: ApplicationConfig = {
           () => {
             if (setup.isOffline()) return;
             ref.destroy();
-            if (auth.isAuthenticated()) refreshSession(api, auth, player, false);
+            if (auth.isAuthenticated()) refreshSession(api, auth);
           },
           { injector },
         );

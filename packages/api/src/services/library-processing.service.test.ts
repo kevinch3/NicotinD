@@ -63,6 +63,7 @@ function fakeCtx(counters: { analyzed: number; genreLookups: number }) {
 function service(opts: {
   now: Date;
   counters: { analyzed: number; genreLookups: number };
+  batchSize?: number;
 }): LibraryProcessingService {
   return new LibraryProcessingService({
     db,
@@ -70,6 +71,7 @@ function service(opts: {
     musicDir: '/music',
     dataDir,
     now: () => opts.now,
+    batchSize: opts.batchSize,
     contextFactory: fakeCtx(opts.counters),
   });
 }
@@ -91,12 +93,11 @@ afterEach(() => {
 });
 
 describe('LibraryProcessingService', () => {
-  it('runNow drains all pending work, ignoring the window', async () => {
+  it('runNow drains all pending work in one call', async () => {
     for (let i = 0; i < 5; i++) seedSong(`s${i}`);
-    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, batchSize: 2 });
+    setProcessingSettings(db, {});
     const counters = { analyzed: 0, genreLookups: 0 };
-    // Noon — well outside the 05:00–08:00 window.
-    const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
+    const svc = service({ batchSize: 2, now: new Date(2024, 0, 1, 12, 0), counters });
 
     await svc.runNow();
 
@@ -108,9 +109,9 @@ describe('LibraryProcessingService', () => {
 
   it('resumes without reprocessing already-enriched rows', async () => {
     for (let i = 0; i < 4; i++) seedSong(`s${i}`);
-    setProcessingSettings(db, { batchSize: 2, tasks: { bpm: true, genre: false, key: false } });
+    setProcessingSettings(db, { tasks: { bpm: true, genre: false, key: false } });
     const counters = { analyzed: 0, genreLookups: 0 };
-    const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
+    const svc = service({ batchSize: 2, now: new Date(2024, 0, 1, 12, 0), counters });
 
     await svc.runNow();
     expect(counters.analyzed).toBe(4);
@@ -121,28 +122,28 @@ describe('LibraryProcessingService', () => {
     expect(pendingBpm()).toBe(0);
   });
 
-  it('tick does nothing outside the window', async () => {
+  // The processing window was removed: enrichment now runs at any hour, so the
+  // time of day must not gate a tick. Noon used to sit outside the default
+  // 05:00-08:00 window and do nothing.
+  it('tick processes work regardless of the time of day', async () => {
     for (let i = 0; i < 3; i++) seedSong(`s${i}`);
-    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' } });
+    setProcessingSettings(db, { tasks: { bpm: true, genre: false, key: false } });
     const counters = { analyzed: 0, genreLookups: 0 };
     const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
 
     await svc.tick();
 
-    expect(counters.analyzed).toBe(0);
-    expect(pendingBpm()).toBe(3);
-    expect(svc.getState().status.phase).toBe('outside-window');
+    expect(counters.analyzed).toBe(3);
+    expect(pendingBpm()).toBe(0);
   });
 
-  it('tick processes exactly one batch inside the window', async () => {
+  it('tick processes exactly one batch', async () => {
     for (let i = 0; i < 5; i++) seedSong(`s${i}`);
     setProcessingSettings(db, {
-      window: { start: '05:00', end: '08:00' },
-      batchSize: 2,
       tasks: { bpm: true, genre: false, key: false },
     });
     const counters = { analyzed: 0, genreLookups: 0 };
-    const svc = service({ now: new Date(2024, 0, 1, 6, 30), counters });
+    const svc = service({ batchSize: 2, now: new Date(2024, 0, 1, 6, 30), counters });
 
     await svc.tick();
 
@@ -162,11 +163,11 @@ describe('LibraryProcessingService', () => {
     expect(svc.getState().status.phase).toBe('disabled');
   });
 
-  it('tick skips background enrichment when paused, inside the window', async () => {
+  it('tick skips background enrichment when paused', async () => {
     for (let i = 0; i < 3; i++) seedSong(`s${i}`);
-    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, paused: true });
+    setProcessingSettings(db, { paused: true });
     const counters = { analyzed: 0, genreLookups: 0 };
-    const svc = service({ now: new Date(2024, 0, 1, 6, 30), counters });
+    const svc = service({ batchSize: 2, now: new Date(2024, 0, 1, 6, 30), counters });
 
     await svc.tick();
 
@@ -177,7 +178,7 @@ describe('LibraryProcessingService', () => {
 
   it('runNow overrides pause — pause throttles the tick, not the admin override', async () => {
     for (let i = 0; i < 3; i++) seedSong(`s${i}`);
-    setProcessingSettings(db, { paused: true, batchSize: 2 });
+    setProcessingSettings(db, { paused: true });
     const counters = { analyzed: 0, genreLookups: 0 };
     const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
 
@@ -200,9 +201,9 @@ describe('LibraryProcessingService', () => {
 
   it('guards against overlapping runs', async () => {
     for (let i = 0; i < 4; i++) seedSong(`s${i}`);
-    setProcessingSettings(db, { batchSize: 10, tasks: { bpm: true, genre: false, key: false } });
+    setProcessingSettings(db, { tasks: { bpm: true, genre: false, key: false } });
     const counters = { analyzed: 0, genreLookups: 0 };
-    const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
+    const svc = service({ batchSize: 10, now: new Date(2024, 0, 1, 12, 0), counters });
 
     // Fire two concurrently; the second must see `busy` and return immediately,
     // so the 4 songs are analyzed exactly once.
@@ -215,11 +216,10 @@ describe('LibraryProcessingService', () => {
   it('appends a log line per enriched item', async () => {
     for (let i = 0; i < 3; i++) seedSong(`s${i}`);
     setProcessingSettings(db, {
-      batchSize: 10,
       tasks: { bpm: true, genre: true, key: false, energy: false },
     });
     const counters = { analyzed: 0, genreLookups: 0 };
-    const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
+    const svc = service({ batchSize: 10, now: new Date(2024, 0, 1, 12, 0), counters });
 
     await svc.runNow();
 
@@ -234,7 +234,6 @@ describe('LibraryProcessingService', () => {
   it('tallies failures and reports one aggregated event per failing task', async () => {
     for (let i = 0; i < 3; i++) seedSong(`s${i}`);
     setProcessingSettings(db, {
-      batchSize: 10, // one batch attempts all three; runNow then stops (no progress)
       tasks: { bpm: true, genre: false, key: false, energy: false },
     });
     const reports: { task: string | null; failed: number; sample: string | null }[] = [];
@@ -271,7 +270,6 @@ describe('LibraryProcessingService', () => {
   it('excludes a permanently-failing file after repeated runs and reports it skipped', async () => {
     seedSong('s0');
     setProcessingSettings(db, {
-      batchSize: 10,
       tasks: { bpm: true, genre: false, key: false, energy: false },
     });
     const failingCtx = (): EnrichmentContext => ({
@@ -300,13 +298,26 @@ describe('LibraryProcessingService', () => {
     expect(svc.getState().status.skipped).toBe(1);
   });
 
-  it('accumulates the failure tally across ticks within one window session', async () => {
+  it('accumulates the failure tally across ticks within one drain', async () => {
     seedSong('s0');
     seedSong('s1');
     setProcessingSettings(db, {
-      window: { start: '05:00', end: '08:00' },
-      batchSize: 1, // one failing song per tick
-      tasks: { bpm: true, genre: false, key: false, energy: false },
+      tasks: {
+        bpm: true,
+        genre: false,
+        key: false,
+        'artist-image': false,
+        'artist-info': false,
+        energy: false,
+        'audio-features': false,
+        descriptors: false,
+        'artist-identity': false,
+        licence: false,
+        'genre-audio': false,
+        'genre-discogs': false,
+        popularity: false,
+        'artist-origin': false,
+      },
     });
     const failingCtx = (): EnrichmentContext => ({
       ...fakeCtx({ analyzed: 0, genreLookups: 0 })(),
@@ -321,25 +332,45 @@ describe('LibraryProcessingService', () => {
       musicDir: '/music',
       dataDir,
       now: () => new Date(2024, 0, 1, 6, 0),
+      batchSize: 1, // one failing song per tick, so the tally is observable
       contextFactory: failingCtx,
       reportFailure: () => {},
     });
 
     await svc.tick();
     expect(svc.getState().status.failed).toBe(1);
-    // Second in-window tick continues the same session's tally.
+    // A second tick with work still pending continues the same run's tally.
     await svc.tick();
     expect(svc.getState().status.failed).toBe(2);
   });
 
-  it('resets the stale failure tally when a new window session starts', async () => {
+  // The window used to mark the session boundary for the failure tally; with it
+  // gone, a "run" spans one continuous drain instead. Draining the queue and
+  // then giving the processor new work must clear a resolved failure, or a
+  // long-fixed "1 failed — ffmpeg…" would sit on the panel until a restart.
+  it('resets the stale failure tally once the queue drains and new work arrives', async () => {
     seedSong('s0');
+    // Every other task must be off: the drain boundary is "nothing pending
+    // across the runnable tasks", so one still-enabled task would keep the
+    // queue permanently non-empty and the boundary would never fire.
     setProcessingSettings(db, {
-      window: { start: '05:00', end: '08:00' },
-      batchSize: 10,
-      tasks: { bpm: true, genre: false, key: false, energy: false },
+      tasks: {
+        bpm: true,
+        genre: false,
+        key: false,
+        'artist-image': false,
+        'artist-info': false,
+        energy: false,
+        'audio-features': false,
+        descriptors: false,
+        'artist-identity': false,
+        licence: false,
+        'genre-audio': false,
+        'genre-discogs': false,
+        popularity: false,
+        'artist-origin': false,
+      },
     });
-    let clock = new Date(2024, 0, 1, 6, 0);
     let failDecode = true;
     const ctxFactory = (): EnrichmentContext => ({
       ...fakeCtx({ analyzed: 0, genreLookups: 0 })(),
@@ -356,24 +387,26 @@ describe('LibraryProcessingService', () => {
       lidarr: {} as never,
       musicDir: '/music',
       dataDir,
-      now: () => clock,
+      now: () => new Date(2024, 0, 1, 6, 0),
       contextFactory: ctxFactory,
       reportFailure: () => {},
     });
 
-    // Night 1: the file fails; the tally shows it.
+    // The file fails; the tally shows it.
     await svc.tick();
     expect(svc.getState().status.failed).toBe(1);
     expect(svc.getState().status.lastError).toContain('code 183');
 
-    // Daytime: outside the window (marks the session boundary).
-    clock = new Date(2024, 0, 1, 12, 0);
-    await svc.tick();
-    expect(svc.getState().status.phase).toBe('outside-window');
-
-    // Night 2: the file now succeeds — the old failure banner must be gone.
+    // It then succeeds, and a further tick finds nothing pending — the drain is
+    // over. The tally is deliberately still on display at this point: a batch
+    // that finds no work must not wipe the "complete" summary.
     failDecode = false;
-    clock = new Date(2024, 0, 2, 6, 0);
+    await svc.tick();
+    await svc.tick();
+    expect(svc.getState().status.failed).toBe(1);
+
+    // New work arrives: that opens a new run, and the stale banner must be gone.
+    seedSong('s1');
     await svc.tick();
     const { status } = svc.getState();
     expect(status.failed).toBe(0);
@@ -384,8 +417,6 @@ describe('LibraryProcessingService', () => {
   it('resets a restored stale failure tally on the first batch after a restart', async () => {
     seedSong('s0');
     setProcessingSettings(db, {
-      window: { start: '05:00', end: '08:00' },
-      batchSize: 10,
       tasks: { bpm: true, genre: false, key: false, energy: false },
     });
     // A previous process died mid-window having tallied failures (e.g. the
@@ -407,7 +438,7 @@ describe('LibraryProcessingService', () => {
       ],
     );
     const counters = { analyzed: 0, genreLookups: 0 };
-    const svc = service({ now: new Date(2024, 0, 1, 6, 0), counters });
+    const svc = service({ batchSize: 10, now: new Date(2024, 0, 1, 6, 0), counters });
     // The restored tally is visible until the process actually runs something…
     expect(svc.getState().status.failed).toBe(2300);
 
@@ -422,123 +453,14 @@ describe('LibraryProcessingService', () => {
   it('persists status across a restart', async () => {
     for (let i = 0; i < 2; i++) seedSong(`s${i}`);
     setProcessingSettings(db, {
-      batchSize: 10,
       tasks: { bpm: true, genre: false, key: false, energy: false },
     });
     const counters = { analyzed: 0, genreLookups: 0 };
-    const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
+    const svc = service({ batchSize: 10, now: new Date(2024, 0, 1, 12, 0), counters });
     await svc.runNow();
 
     // A new service instance (same db) reads back the persisted run progress.
     const svc2 = service({ now: new Date(2024, 0, 1, 12, 0), counters });
     expect(svc2.getState().status.processed).toBe(2);
-  });
-});
-
-/**
- * Issue #224. The analysis sidecar is usually not the only tenant on the GPU —
- * the reference deployment shares one P4000 with Immich ML and Ollama — and
- * enrichment is the tenant that can always wait. `gpuBusyPercent` yields the
- * window automatically (unlike `paused`, which is a manual halt) and re-tries
- * on the next tick.
- */
-describe('shared-GPU courtesy yield (#224)', () => {
-  const IN_WINDOW = new Date('2026-07-27T06:00:00');
-
-  function gpuService(
-    gpu: () => Promise<number | null>,
-    counters = { analyzed: 0, genreLookups: 0 },
-  ) {
-    return {
-      counters,
-      svc: new LibraryProcessingService({
-        db,
-        lidarr: {} as never,
-        musicDir: '/music',
-        dataDir,
-        now: () => IN_WINDOW,
-        contextFactory: fakeCtx(counters),
-        readGpuPercent: gpu,
-      }),
-    };
-  }
-
-  it('yields the window when the GPU is at or above the threshold', async () => {
-    seedSong('s1');
-    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, gpuBusyPercent: 70 });
-
-    const { svc, counters } = gpuService(async () => 85);
-    await svc.tick();
-
-    expect(counters.analyzed).toBe(0);
-    expect(svc.getState().status.phase).toBe('gpu-busy');
-  });
-
-  it('runs normally when the GPU is below the threshold', async () => {
-    seedSong('s1');
-    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, gpuBusyPercent: 70 });
-
-    const { svc, counters } = gpuService(async () => 12);
-    await svc.tick();
-
-    expect(counters.analyzed).toBeGreaterThan(0);
-    expect(svc.getState().status.phase).not.toBe('gpu-busy');
-  });
-
-  it('never probes at all when the threshold is 0 (the default = off)', async () => {
-    seedSong('s1');
-    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, gpuBusyPercent: 0 });
-
-    let probes = 0;
-    const { svc, counters } = gpuService(async () => {
-      probes += 1;
-      return 99;
-    });
-    await svc.tick();
-
-    expect(probes).toBe(0);
-    expect(counters.analyzed).toBeGreaterThan(0);
-  });
-
-  /**
-   * A box with no vendor tool reads null. Yielding on that would stop
-   * enrichment entirely the moment an operator set a threshold — the opposite
-   * of the intent.
-   */
-  it('does NOT yield when utilisation is unknown', async () => {
-    seedSong('s1');
-    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, gpuBusyPercent: 50 });
-
-    const { svc, counters } = gpuService(async () => null);
-    await svc.tick();
-
-    expect(counters.analyzed).toBeGreaterThan(0);
-  });
-
-  it('does NOT yield when the probe throws', async () => {
-    seedSong('s1');
-    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, gpuBusyPercent: 50 });
-
-    const { svc, counters } = gpuService(async () => {
-      throw new Error('nvidia-smi exploded');
-    });
-    await svc.tick();
-
-    expect(counters.analyzed).toBeGreaterThan(0);
-  });
-
-  it('re-runs on a later tick once the GPU frees up', async () => {
-    seedSong('s1');
-    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, gpuBusyPercent: 70 });
-
-    let load = 90;
-    const { svc, counters } = gpuService(async () => load);
-
-    await svc.tick();
-    expect(counters.analyzed).toBe(0);
-
-    load = 10; // the neighbour finished
-    await svc.tick();
-    expect(counters.analyzed).toBeGreaterThan(0);
   });
 });

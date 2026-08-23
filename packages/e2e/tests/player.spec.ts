@@ -157,12 +157,14 @@ test.describe('player controls', () => {
     await expect(shuffle).toHaveAttribute('data-active', 'false');
   });
 
-  test('reload leaves the player paused by default', async ({ page }) => {
-    // The default `autoplay_on_load` user preference is false, so reloading the
-    // page must restore the last track to the mini-player WITHOUT attempting to
-    // play it. The browser would otherwise block the gesture-less play and
-    // surface a "Tap to resume" banner over the mini-player (or, worse, autoplay
-    // unexpectedly if Chrome had granted the Media Engagement exception).
+  test('reload leaves the player paused', async ({ page }) => {
+    // Restore never autoplays — the opt-in `autoplay_on_load` preference that
+    // could turn this off was removed, so this is now the only behaviour.
+    // Reloading must restore the last track to the mini-player WITHOUT
+    // attempting to play it. The browser would otherwise block the gesture-less
+    // play and surface a "Tap to resume" banner over the mini-player (or,
+    // worse, autoplay unexpectedly if Chrome had granted the Media Engagement
+    // exception).
     await startAlbum(page);
     // Sanity: audio is currently playing.
     await expect.poll(() => anyAudioPaused(page)).toBe(false);

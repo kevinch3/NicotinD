@@ -22,10 +22,9 @@ describe('processing-settings', () => {
   it('persists and reads back a full settings round-trip', () => {
     const next = setProcessingSettings(db, {
       enabled: false,
-      window: { start: '01:00', end: '03:00' },
       tasks: { bpm: false, genre: true },
-      batchSize: 50,
-      concurrency: 2,
+      paused: true,
+      holdForReview: true,
     });
     expect(next.enabled).toBe(false);
     expect(getProcessingSettings(db)).toEqual(next);
@@ -47,12 +46,12 @@ describe('processing-settings', () => {
   });
 
   it('deep-merges a partial patch over current values', () => {
-    setProcessingSettings(db, { window: { start: '02:00', end: '04:00' } });
+    setProcessingSettings(db, { gates: { bpm: false } });
     // Patch only one task flag — the other must survive.
     const merged = setProcessingSettings(db, { tasks: { genre: false } as never });
     expect(merged.tasks.bpm).toBe(true); // untouched default
     expect(merged.tasks.genre).toBe(false);
-    expect(merged.window).toEqual({ start: '02:00', end: '04:00' }); // earlier patch survives
+    expect(merged.gates.bpm).toBe(false); // earlier patch survives
   });
 
   it('falls back to defaults on a corrupt stored blob', () => {
@@ -62,13 +61,47 @@ describe('processing-settings', () => {
 
   it('back-fills missing nested fields from an older partial blob', () => {
     db.run(`INSERT INTO app_settings (key, value) VALUES ('processing', ?)`, [
-      JSON.stringify({ enabled: true, window: { start: '06:00' } }),
+      JSON.stringify({ enabled: true, tasks: { bpm: false } }),
     ]);
     const s = getProcessingSettings(db);
-    expect(s.window.start).toBe('06:00');
-    expect(s.window.end).toBe(DEFAULT_PROCESSING_SETTINGS.window.end);
-    expect(s.tasks).toEqual(DEFAULT_PROCESSING_SETTINGS.tasks);
-    expect(s.batchSize).toBe(DEFAULT_PROCESSING_SETTINGS.batchSize);
+    expect(s.tasks.bpm).toBe(false); // the stored value wins
+    expect(s.tasks.genre).toBe(DEFAULT_PROCESSING_SETTINGS.tasks.genre); // the rest back-fill
+    expect(s.gates).toEqual(DEFAULT_PROCESSING_SETTINGS.gates);
+    expect(s.paused).toBe(DEFAULT_PROCESSING_SETTINGS.paused);
+  });
+
+  // The processing window and the compute regulator were removed. Their keys
+  // are still sitting in every deployed instance's stored blob, and a `...parsed`
+  // spread would copy them onto the result — invisible to TS as excess
+  // properties — and re-persist them on the next write, so `GET
+  // /api/admin/processing` would keep emitting retired fields forever.
+  it('drops retired keys carried by a blob written before they were removed', () => {
+    db.run(`INSERT INTO app_settings (key, value) VALUES ('processing', ?)`, [
+      JSON.stringify({
+        enabled: true,
+        window: { start: '05:00', end: '08:00' },
+        batchSize: 25,
+        concurrency: 3,
+        gpuBusyPercent: 50,
+      }),
+    ]);
+    const s = getProcessingSettings(db) as unknown as Record<string, unknown>;
+    expect(s['window']).toBeUndefined();
+    expect(s['batchSize']).toBeUndefined();
+    expect(s['concurrency']).toBeUndefined();
+    expect(s['gpuBusyPercent']).toBeUndefined();
+    expect(s['enabled']).toBe(true);
+
+    // And a subsequent write must not resurrect them.
+    const next = setProcessingSettings(db, { paused: true }) as unknown as Record<string, unknown>;
+    expect(next['gpuBusyPercent']).toBeUndefined();
+    expect(
+      JSON.parse(
+        db
+          .query<{ value: string }, []>("SELECT value FROM app_settings WHERE key = 'processing'")
+          .get()!.value,
+      ),
+    ).not.toHaveProperty('window');
   });
 
   it('back-fills the gates map from a legacy blob that predates it', () => {

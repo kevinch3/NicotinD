@@ -1,0 +1,52 @@
+<app-settings-group
+  groupId="audit-log"
+  icon="queue"
+  [title]="'admin.auditLog' | t"
+  [description]="'admin.groupAuditLogDesc' | t"
+>
+  <!-- Audit log: recent destructive/curation actions. -->
+  @if (auditTail().length > 0) {
+    <div data-testid="audit-log">
+      <section class="section-flush">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-theme">
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+              >
+                {{ 'admin.colWhen' | t }}
+              </th>
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+              >
+                {{ 'admin.colUser' | t }}
+              </th>
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+              >
+                {{ 'admin.colAction' | t }}
+              </th>
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+              >
+                {{ 'admin.colTarget' | t }}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (e of auditTail(); track e.id) {
+              <tr class="border-b border-theme last:border-0">
+                <td class="px-4 py-2.5 text-theme-muted whitespace-nowrap">
+                  {{ formatAuditTime(e.at) }}
+                </td>
+                <td class="px-4 py-2.5 text-theme-secondary">{{ e.username ?? e.userId }}</td>
+                <td class="px-4 py-2.5 text-theme-secondary">{{ e.action }}</td>
+                <td class="px-4 py-2.5 text-theme-muted">{{ e.detail ?? e.targetId ?? '—' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </section>
+    </div>
+  }
+</app-settings-group>

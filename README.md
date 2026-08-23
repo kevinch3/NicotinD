@@ -79,7 +79,7 @@ docker compose up                    docker compose --profile slskd-addon up
 
 **NicotinD** (the only exposed service) is a Hono API + Angular web UI with the
 native `LibraryScanner`, range-served audio streaming with an on-the-fly
-transcode cache, cover art resolution, remote-playback WebSocket, and windowed
+transcode cache, cover art resolution, remote-playback WebSocket, and background
 background enrichment. Soulseek acquisition is an **external, Torrentio-style
 addon** — a separately-hosted service ([its own repo](https://github.com/kevinch3/nicotind-slskd-addon))
 that speaks the acquisition addon protocol; core has no slskd code and talks to
@@ -162,7 +162,7 @@ tables below group every document by what you're trying to do.
 | Doc | What it covers |
 | --- | --- |
 | [library-scanner.md](docs/library-scanner.md) | Scanning, tag resolution, IDs, artist identity, search matching, streaming + cover art |
-| [library-processing.md](docs/library-processing.md) | Windowed enrichment task registry, quarantine gate, failure ledger, GPU throttle |
+| [library-processing.md](docs/library-processing.md) | Background enrichment task registry, quarantine gate, failure ledger |
 | [audio-ml-enrichment.md](docs/audio-ml-enrichment.md) | Essentia sidecar, perceptual features, embeddings, measured GPU behaviour |
 | [library-filters.md](docs/library-filters.md) | The shared `LibraryFilter` grammar across all tabs |
 | [library-audit.md](docs/library-audit.md) | Quality auditor: audit / clean / prevent for DJ-pool pollution |
@@ -205,7 +205,6 @@ tables below group every document by what you're trying to do.
 | [e2e.md](docs/e2e.md) | Playwright suite, fixtures, screenshot flows, what the env does NOT give you |
 | [e2e-tv-emulator.md](docs/e2e-tv-emulator.md) | Android TV emulator lane (real APK on an AVD) |
 | [testing-routines.md](docs/testing-routines.md) | Flow catalogue + recurring test routines |
-| [generation-feedback.md](docs/generation-feedback.md) | 👍/👎 capture → replayable TDD fixtures for the hunt recognizer |
 
 <details>
 <summary><strong>Research notes & field logs</strong> (dated, exploratory — kept for the record)</summary>

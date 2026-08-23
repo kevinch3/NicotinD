@@ -105,7 +105,28 @@ Small, independent improvements this refactor sets up — none required for it t
    [docs/design-patterns.md](design-patterns.md) "SettingsGroupComponent") composes
    `SettingsGroupHeaderComponent`'s icon+title+description header with a collapsible body,
    persisted per-device to `localStorage` (key `nicotind-group-<groupId>`, cleared on signout).
-   Every group is collapsed by default. "Library
+   Every group is collapsed by default.
+
+   **Each group is now its own panel component** under `pages/admin/<groupId>/`, so
+   `admin.component.html` is an ordered list of tags and reordering a section is a one-line move
+   (guarded by "renders the panels in the intended order" in `admin.component.spec.ts` — the
+   previous count-only assertion could not see order at all). The `<app-settings-group>` wrapper
+   lives *inside* each panel, which keeps the `groupId` literal beside the markup it labels: that
+   string is both the `localStorage` key above and the e2e selector (`helpers.ts` resolves
+   `[data-group-id]`), so a mismatch would silently reset everyone's collapse state and break the
+   e2e lane. `host: { class: 'contents' }` keeps the panel's host box out of the layout.
+
+   Panels inject `ServiceReviewService` directly rather than receiving inputs — it is root-provided
+   with a refcounted `start()`/`stop()` and a coalescing `refresh()`, so N panels still share one
+   5 s poll and one request, and a signal `input()` on a nested imported component never lands in
+   this repo's JIT vitest harness (`testing/signal-input.ts`). `AdminComponent` keeps exactly one
+   job: owning that poll's lifecycle. The one piece of state two sections share — the acquisition
+   kill-switch, written by Acquisition & Automation and read by Library Processing for the
+   hold-for-review warning (#416) — moved to a root `AcquisitionSettingsService` for the same
+   reason.
+
+   The default order is **User Management first, then Library Processing**, ahead of System Health.
+   "Library
    Maintenance" now holds: orphan rows, the fragmentation diagnostic, sync/rescan library,
    optimize-metadata, artist-image coverage, find-duplicates, incomplete albums, and untracked
    downloads — folding library-audit-adjacent tooling into one maintenance home, as this idea

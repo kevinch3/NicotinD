@@ -55,7 +55,7 @@ surfaces** and inert when unconfigured.
   branches, so routine "bad request" / "slskd offline" outcomes never become Sentry
   noise.
 - `captureProcessingFailure(report)` is a second, non-HTTP capture path used by the
-  windowed library processor (`library-processing.service.ts`) to report enrichment
+  library processor (`library-processing.service.ts`) to report enrichment
   failures (ffmpeg decode / analysis-sidecar errors) as **one aggregated event per
   failing task per run**. It tags `scope: 'library-processing'` + `processing_task`,
   and sets a `['library-processing', task, sample]` fingerprint so a broken decoder
