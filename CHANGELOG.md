@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.64](https://github.com/kevinch3/NicotinD/compare/v0.3.63...v0.3.64) (2026-08-23)
+
+### Features
+
+* **player:** waveform strip + karaoke VFX from a precomputed peaks artifact ([#648](https://github.com/kevinch3/NicotinD/issues/648)) ([085a23b](https://github.com/kevinch3/NicotinD/commit/085a23b0450aba79211fdd2acc9537b53747ddc6)), references [#640](https://github.com/kevinch3/NicotinD/issues/640) [#643](https://github.com/kevinch3/NicotinD/issues/643) [#438](https://github.com/kevinch3/NicotinD/issues/438) [#643](https://github.com/kevinch3/NicotinD/issues/643) [#457](https://github.com/kevinch3/NicotinD/issues/457)
 ## [0.3.63](https://github.com/kevinch3/NicotinD/compare/v0.3.62...v0.3.63) (2026-08-23)
 
 ### Bug Fixes
