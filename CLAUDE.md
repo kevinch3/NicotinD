@@ -750,6 +750,20 @@ Add detail there, not here.
   published image. Composite axes (3 weights, not 40 — 70 votes can't calibrate 40) land in phase
   2 (#642); the waveform artifact (#643) is sidecar-free. →
   [docs/audio-descriptors.md](docs/audio-descriptors.md)
+- **Now Playing waveform + karaoke VFX from a precomputed artifact (issue #643)**: a scrubbable
+  min/max envelope above the seek bar and six glowing orbs behind the karaoke overlay, both fed by
+  `GET /api/peaks/:id` — generated **on demand** from one streaming ffmpeg decode (`streamPcm`,
+  now the single spawn path `decodePcm` also uses) through a pure reducer + ~40-line radix-2 FFT
+  (`waveform-reduce.ts`: ≤600 peak pairs + a 4 fps six-band timeline), cached content-addressed
+  on disk (`waveform-store.ts`, the transcode-cache recipe) with a 10-min negative cache so a
+  corrupt file isn't re-decoded per open. **No Web Audio** — `MediaElementAudioSourceNode`
+  silenced Android and the A/B gapless pair would starve an analyser; precomputed means every
+  device draws the same frame and it works offline. Sidecar-free, so it ships on streaming-only
+  installs. The SVG strip (`NowPlayingWaveformComponent`, pure `lib/waveform-geometry.ts`) is
+  `aria-hidden` and never a focus stop — the native range stays the control (#438), and it is
+  Now Playing only; the VFX canvas (`NowPlayingVfxComponent`, pure `lib/vfx-scene.ts`) runs one
+  rAF loop per play session, wall-clock-extrapolated between `timeupdate`s. →
+  [docs/web-ui.md](docs/web-ui.md) "Now Playing waveform + karaoke VFX"
 - **Perceptual audio features (no LLM)**: energy/loudness measured bun-side via ffmpeg ebur128;
   danceability/valence/mood/vocals/acousticness + cached embeddings (content-invalidated by
   `library_embeddings.file_size` since issue #258 — a file replaced in place keeps its path-derived

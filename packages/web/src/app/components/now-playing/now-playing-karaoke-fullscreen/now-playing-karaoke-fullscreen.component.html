@@ -9,6 +9,15 @@
   (keydown.arrowdown)="interaction.emit()"
   (keydown.arrowup)="interaction.emit()"
 >
+  <!-- Reactive VFX backdrop: the precomputed band timeline at the playhead (issue #643). -->
+  @if (waveform()) {
+    <app-now-playing-vfx
+      [waveform]="waveform()"
+      [currentTime]="progress()"
+      [playing]="playing()"
+      [colors]="colors()"
+    />
+  }
   <!-- Animated background glow orbs -->
   <div class="absolute inset-0 overflow-hidden pointer-events-none">
     <div

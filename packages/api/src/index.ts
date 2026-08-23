@@ -553,6 +553,9 @@ export function createApp({
   app.use('/api/review/*', auth);
   app.use('/api/stream/*', auth);
   app.use('/api/cover/*', auth);
+  // Waveform artifact (issue #643) — mounted by streamingRoutes at the bare
+  // /api prefix like stream/cover, so it needs its own decision line here.
+  app.use('/api/peaks/*', auth);
   app.use('/api/system/*', auth);
   app.use('/api/settings/*', auth);
   app.use('/api/admin/*', auth);

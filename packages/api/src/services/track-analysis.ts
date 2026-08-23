@@ -59,39 +59,56 @@ export function summarizeFfmpegStderr(stderr: string, maxLen = 400): string {
   return tail.length > maxLen ? `…${tail.slice(-maxLen)}` : tail;
 }
 
-/** Decode the head of a file to mono 32-bit-float PCM samples via ffmpeg. */
-function decodePcm(absPath: string): Promise<Float32Array> {
-  const args = [
-    '-hide_banner',
-    '-loglevel',
-    'error',
-    '-t',
-    String(ANALYZE_SECONDS),
+/**
+ * Stream a file's audio as mono 32-bit-float PCM via ffmpeg, delivering
+ * samples to `onChunk` as they arrive so the caller never has to hold the
+ * whole track (the waveform artifact reduces a full-length decode this way —
+ * a 60-minute mix is 635 MB as Float32). `seconds` bounds the decode to the
+ * head (the bpm/key analyzers); omit it for the whole file. Bytes that
+ * straddle a chunk boundary are carried to the next chunk, so every
+ * delivered sample is complete.
+ */
+export function streamPcm(
+  absPath: string,
+  opts: { sampleRate: number; seconds?: number; onChunk: (samples: Float32Array) => void },
+): Promise<void> {
+  const args = ['-hide_banner', '-loglevel', 'error'];
+  if (opts.seconds !== undefined) args.push('-t', String(opts.seconds));
+  args.push(
     '-i',
     absPath,
     '-vn',
     '-ac',
     '1',
     '-ar',
-    String(ANALYZE_SAMPLE_RATE),
+    String(opts.sampleRate),
     '-f',
     'f32le',
     'pipe:1',
-  ];
-  return new Promise<Float32Array>((resolve, reject) => {
+  );
+  return new Promise<void>((resolve, reject) => {
     const proc = spawn(ffmpegBinary(), args);
-    const chunks: Buffer[] = [];
     // Capture stderr so a non-zero exit reports *why* ffmpeg failed instead of a
     // bare exit code — the difference between "codec not found" (build problem)
     // and "Invalid data" (corrupt file). why: bug where every decode failed with
     // an opaque "exited with code 183" and the real reason was thrown away.
     const errChunks: Buffer[] = [];
+    let carry: Buffer = Buffer.alloc(0);
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
       proc.kill('SIGKILL');
     }, DECODE_TIMEOUT_MS);
-    proc.stdout.on('data', (d: Buffer) => chunks.push(d));
+    proc.stdout.on('data', (d: Buffer) => {
+      const buf = carry.length ? Buffer.concat([carry, d]) : d;
+      const whole = buf.length - (buf.length % 4);
+      carry = buf.subarray(whole);
+      if (whole === 0) return;
+      // Copy into a clean, aligned Float32Array (the Buffer may not be 4-aligned).
+      const floats = new Float32Array(whole / 4);
+      for (let i = 0; i < floats.length; i++) floats[i] = buf.readFloatLE(i * 4);
+      opts.onChunk(floats);
+    });
     proc.stderr.on('data', (d: Buffer) => errChunks.push(d));
     proc.on('error', (err) => {
       clearTimeout(timer);
@@ -110,13 +127,30 @@ function decodePcm(absPath: string): Promise<Float32Array> {
         );
         return;
       }
-      const buf = Buffer.concat(chunks);
-      // Wrap the raw bytes as f32; copy into a clean aligned Float32Array.
-      const floats = new Float32Array(buf.length / 4);
-      for (let i = 0; i < floats.length; i++) floats[i] = buf.readFloatLE(i * 4);
-      resolve(floats);
+      resolve();
     });
   });
+}
+
+/** Decode the head of a file to mono 32-bit-float PCM samples via ffmpeg. */
+async function decodePcm(absPath: string): Promise<Float32Array> {
+  const chunks: Float32Array[] = [];
+  let total = 0;
+  await streamPcm(absPath, {
+    sampleRate: ANALYZE_SAMPLE_RATE,
+    seconds: ANALYZE_SECONDS,
+    onChunk: (c) => {
+      chunks.push(c);
+      total += c.length;
+    },
+  });
+  const out = new Float32Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
 }
 
 /**

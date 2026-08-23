@@ -51,7 +51,7 @@ Each was checked against its route file rather than assumed safe: `/api/auth`
 (pre-session), `/api/setup` (self-guards on `COUNT(*) FROM users > 0`),
 `/api/devices` (applies `auth` per-route; the pairing endpoints are token-
 authenticated by design) and the bare `/api` mount for `streamingRoutes`, whose
-`/stream/*` and `/cover/*` paths are each covered by their own `app.use`.
+`/stream/*`, `/cover/*` and `/peaks/*` paths are each covered by their own `app.use`.
 **That last entry carries residual risk** and says so: a route added at the
 mount root would land on `/api/<name>` and be public. Narrowing the mount is
 follow-up work, not part of the gate fix.
@@ -89,6 +89,7 @@ follow-up work, not part of the gate fix.
 | `GET`    | `/api/library/untracked`                 | Downloads with `relative_path IS NULL` (admin)              |
 | `GET`    | `/api/stream/:id`                        | Stream audio (Range/206 + seekable transcode cache)         |
 | `GET`    | `/api/cover/:id`                         | Album/artist cover art (override → canonical → folder → embedded) |
+| `GET`    | `/api/peaks/:id`                         | Waveform artifact (peaks + band timeline) for Now Playing, on-demand + cached (#643) |
 | `GET`    | `/api/radio/next`                        | Smart radio — next track by metadata similarity             |
 | `GET`    | `/api/history/stats`                     | Listening stats (top songs/artists/albums/genres)           |
 | `POST`   | `/api/history/plays`                     | Idempotent batch play-event ingest                          |

@@ -60,6 +60,7 @@ export type {
 } from '../../../core/src/types/metadata-fix';
 
 export type { LyricsDto } from '../../../core/src/types/lyrics';
+export type { WaveformData } from '../../../core/src/types/waveform';
 
 export type {
   GenerationFeedbackResourceType,

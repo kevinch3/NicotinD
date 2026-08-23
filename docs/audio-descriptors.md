@@ -167,8 +167,10 @@ is of the same order, so without it a quantised track already reads ≈0.09. The
   `number[]` blocks (a `Float32Array` there would be corrupted by `JSON.stringify` — the reason
   `stripFeatures` deletes the embedding), and a fresh poll: the existing 70 votes predate the
   blocks and cannot grade v5.
-- **Phase 3 (#643)** — the waveform/VFX artifact. Sidecar-free (one ffmpeg decode + a small FFT in
-  TS, on demand, content-addressed on disk), so it does not depend on this store at all.
+- **Phase 3 (#643) — shipped**: the waveform/VFX artifact. Sidecar-free (one streaming ffmpeg
+  decode + a small radix-2 FFT in TS, on demand, content-addressed on disk), so it does not depend
+  on this store at all. Detail in [web-ui.md](web-ui.md) "Now Playing waveform + karaoke VFX" and
+  [cache-invalidation.md](cache-invalidation.md) (`waveform-cache`).
 
 ## Deferred
 

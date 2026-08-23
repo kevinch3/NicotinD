@@ -1,13 +1,21 @@
 import { Component, ElementRef, input, output, viewChild } from '@angular/core';
 import { SeekBarComponent } from '../../seek-bar/seek-bar.component';
+import { NowPlayingVfxComponent } from '../now-playing-vfx/now-playing-vfx.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { DEFAULT_PALETTE, type CoverPalette } from '../../../lib/cover-colors';
+import type { WaveformData } from '../../../../types/core';
 
 @Component({
   selector: 'app-now-playing-karaoke-fullscreen',
-  imports: [SeekBarComponent, TranslatePipe, TvNavGroupDirective, TvNavItemDirective],
+  imports: [
+    SeekBarComponent,
+    NowPlayingVfxComponent,
+    TranslatePipe,
+    TvNavGroupDirective,
+    TvNavItemDirective,
+  ],
   templateUrl: './now-playing-karaoke-fullscreen.component.html',
 })
 export class NowPlayingKaraokeFullscreenComponent {
@@ -30,6 +38,8 @@ export class NowPlayingKaraokeFullscreenComponent {
   readonly buffered = input<{ start: number; end: number }[]>([]);
   readonly playing = input(false);
   readonly buffering = input(false);
+  /** Precomputed band timeline driving the VFX backdrop (issue #643). */
+  readonly waveform = input<WaveformData | null>(null);
 
   readonly exit = output<void>();
   readonly browseToggle = output<void>();

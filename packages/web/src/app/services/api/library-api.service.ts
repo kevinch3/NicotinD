@@ -21,6 +21,7 @@ import type { Album, AlbumDetail, Song, ProvenanceRecord, ArtistIdentityResult }
 import type { LibraryFragmentReport, MissplitPreview } from './api-types';
 import type { IdentifyApplyFields, IdentifySuggestion } from './api-types';
 import type { MaintenanceStatus } from './api-types';
+import type { WaveformData } from '../../../types/core';
 
 type QueryParams = Record<string, string | number | boolean | string[]>;
 
@@ -609,6 +610,15 @@ export class LibraryApiService {
   /** Stored lyrics for a song; null when none have been fetched yet. */
   getLyrics(id: string) {
     return this.http.get<LyricsDto | null>(`/api/library/songs/${id}/lyrics`);
+  }
+
+  /**
+   * Waveform artifact (peaks + band timeline, issue #643). 404 = no waveform
+   * (not analysable / album id) — callers fall back to the plain seek bar.
+   * Plain JSON over HttpClient: `ngsw-bypass` is only for media Range requests.
+   */
+  getPeaks(id: string) {
+    return this.http.get<WaveformData>(`/api/peaks/${id}`);
   }
 
   /** Fetch lyrics on demand from an enabled source; null when none found. */

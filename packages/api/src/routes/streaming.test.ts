@@ -12,6 +12,8 @@ import {
   _resetTranscodeCacheForTests,
 } from '../services/transcode-cache.js';
 import { _resetFfmpegProbe } from '../services/transcode.js';
+import { _resetWaveformCacheForTests, type PcmDecoder } from '../services/waveform-store.js';
+import { _resetWaveformNegativeCacheForTests } from './streaming.js';
 
 let musicDir: string;
 let dataDir: string;
@@ -486,5 +488,59 @@ describe('streaming routes — canonical artwork', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/jpeg');
     db.run(`DELETE FROM library_artwork WHERE id = 'alb'`);
+  });
+});
+
+describe('GET /peaks/:id (waveform artifact, #643)', () => {
+  function sineDecoder(): PcmDecoder & { calls: number } {
+    const fn = (async (_abs: string, onChunk: (s: Float32Array) => void) => {
+      fn.calls++;
+      const out = new Float32Array(44_100);
+      for (let i = 0; i < out.length; i++)
+        out[i] = 0.5 * Math.sin((2 * Math.PI * 440 * i) / 44_100);
+      onChunk(out);
+    }) as PcmDecoder & { calls: number };
+    fn.calls = 0;
+    return fn;
+  }
+
+  function peaksApp(decoder: PcmDecoder): Hono {
+    _resetWaveformCacheForTests();
+    _resetWaveformNegativeCacheForTests();
+    const a = new Hono();
+    a.route('/', streamingRoutes(musicDir, db, dataDir, null, { waveformDecoder: decoder }));
+    return a;
+  }
+
+  it('serves the artifact as cacheable JSON', async () => {
+    const decoder = sineDecoder();
+    const res = await peaksApp(decoder).request('/peaks/song-1');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('application/json');
+    expect(res.headers.get('cache-control')).toBe('public, max-age=86400');
+    const body = (await res.json()) as { version: number; peaks: number[]; bands: number[][] };
+    expect(body.version).toBe(1);
+    expect(body.peaks.length).toBeGreaterThan(0);
+    expect(body.bands.length).toBeGreaterThan(0);
+    expect(decoder.calls).toBe(1);
+  });
+
+  it('404s for an unknown id and for an album id (songs only)', async () => {
+    const a = peaksApp(sineDecoder());
+    expect((await a.request('/peaks/missing')).status).toBe(404);
+    expect((await a.request('/peaks/alb')).status).toBe(404);
+  });
+
+  it('404s on a decode failure and does not re-run the decoder on the next open', async () => {
+    let calls = 0;
+    const failing: PcmDecoder = async () => {
+      calls++;
+      throw new Error('Invalid data found when processing input');
+    };
+    const a = peaksApp(failing);
+    expect((await a.request('/peaks/song-2')).status).toBe(404);
+    expect((await a.request('/peaks/song-2')).status).toBe(404);
+    // The #317 shape: a doomed ffmpeg pass must not run on every sheet open.
+    expect(calls).toBe(1);
   });
 });
