@@ -41,6 +41,8 @@ function fakeCtx(counters: { analyzed: number; genreLookups: number }) {
     analyzeLoudness: async () => ({ loudness: -9.5, energy: 0.7 }),
     analyzeAudioFeatures: null,
     audioFeaturesAvailable: () => false,
+    analyzeDescriptors: null,
+    descriptorsAvailable: () => false,
     lookupGenre: async () => {
       counters.genreLookups += 1;
       return 'Rock';

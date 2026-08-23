@@ -261,6 +261,11 @@ behaviour":
   calls before the sidecar drops its warm-loaded models, reloading lazily
   (multi-second cost) on the next call. `0` or negative disables release. Set
   it on the `analysis` service's `environment:` in your override file.
+- **`ANALYSIS_DESCRIPTOR_SECONDS`** (default `180`) — not GPU memory but CPU
+  budget: the length of the track head the model-free `/descriptors` pass
+  analyses (issue #641, ~5 s/track at 180, ~3 s at 90). Non-numeric or
+  non-positive values fall back to the default rather than disabling the
+  pass. See [audio-descriptors.md](audio-descriptors.md).
 - **`TF_GPU_ALLOCATOR`** (unset by default) — set to `cuda_malloc_async` to try
   TF's stream-ordered allocator, which unlike the default (under
   `TF_FORCE_GPU_ALLOW_GROWTH=true`, already baked into the image) can return

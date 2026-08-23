@@ -39,7 +39,7 @@ the design and the class comes back.
   Cross-layer "server wrote, SW replayed the old body" staleness is structurally impossible.
   (Audio is separately protected: every stream URL carries `ngsw-bypass`.)
 - **Per-song side tables deliberately have no FK to `library_songs`.** `library_embeddings`,
-  `library_song_genres`, `library_song_artists`, `library_lyrics`,
+  `library_song_descriptors`, `library_song_genres`, `library_song_artists`, `library_lyrics`,
   `library_song_analysis_failures`, `library_genre_overrides` — none cascade, because the scanner
   rebuilds `library_songs` wholesale on every rescan and a cascade would delete curator data each
   time. The delete paths therefore leave orphan rows on purpose; since song ids are deterministic,
@@ -63,7 +63,10 @@ the design and the class comes back.
   to protect — genres, artists, overrides — carry *zero* orphans, because the scanner rebuilds them
   rather than accumulating. The tables that actually grow are the regenerable ones. So `ORPHAN_TABLES`
   covers exactly `library_embeddings` (46% of the whole prod DB is embedding blobs; the sidecar can
-  recompute them) and `library_song_analysis_failures` (a ledger, meaningless without its song).
+  recompute them), `library_song_descriptors` (issue #641 — ~2 KB of JSON per song from the same
+  sidecar, recomputed in ~5 s; it joined the list at creation rather than after a measurement,
+  because it is the embeddings' shape exactly) and `library_song_analysis_failures` (a ledger,
+  meaningless without its song).
   `library_lyrics` is **deliberately excluded** despite having orphans: a lyrics document is
   network-sourced and user-editable — precisely the curator data the design protects — and 35 rows
   don't justify trading that away.

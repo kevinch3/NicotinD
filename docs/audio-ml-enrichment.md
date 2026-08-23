@@ -64,8 +64,11 @@ The shipped pipeline:
   similarity (playlist-generation.md §2b).
 - **Sidecar contract**: `POST /analyze {relPath}` resolved against the sidecar's
   own `MUSIC_DIR` (no shared absolute paths); `GET /health` reports
-  `modelVersions` (the drift anchor) plus `rhythm` (tempo availability). Models
-  pinned by URL + sha256 in the Dockerfile (~27 MB total).
+  `modelVersions` (the drift anchor) plus `rhythm` (tempo availability) and
+  `descriptors` (the model-free `POST /descriptors` — timbre/groove/band
+  descriptors over a 44.1 kHz window, issue #641; see
+  [audio-descriptors.md](audio-descriptors.md)). Models pinned by URL + sha256
+  in the Dockerfile (~27 MB total).
 - **D6 — `genre_discogs400` head (issue #187 task A2, an audio-inferred genre
   fallback)**: the classifier head this section's own "recommended stack"
   table always listed but that was never wired up, closing the gap. It's a

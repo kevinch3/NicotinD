@@ -728,6 +728,21 @@ Add detail there, not here.
   background utility that **never compiled** (issue #591), so on every light theme the primary
   action was white-on-white. →
   [docs/download-review.md](docs/download-review.md)
+- **Audio descriptors — timbre / groove / spectral balance (issue #640, phase 1 #641)**: the radio
+  blend has no axis for what the drums do or where the spectral energy sits (a cuarteto record and
+  a hard-electronic one at the same BPM tie on `bpm`). The sidecar's `POST /descriptors`
+  (`app/descriptors.py`: `MusicExtractor` over a temp 44.1 kHz WAV — it takes a *filename* and
+  Essentia's loader can't read Opus; `OnsetRate` is 44.1 kHz-only, so `/analyze`'s 16 kHz path
+  can't host it; **no model files**, so `/health` carries its own `descriptors` flag) returns 41
+  raw named values — 13 MFCCs + spectral stats, pure-Python `beat_stats.py` (tempo stability vs
+  groove regularity split slow drift from fast jitter; `syncopation` is graded with a dead zone,
+  our own definition), six `bands.py` shares. Stored raw in one JSON row per song
+  (`library_song_descriptors`, `descriptor-store.ts`: `DESCRIPTOR_VERSION` + `file_size` + orphan
+  prune, modelled on embeddings) rather than 40 columns, filled by `descriptorsTask` (default-on,
+  **never a gate**, ≤2 in flight) + `backfill-descriptors.ts`. Measured **~6 s/track** on the
+  published image. Composite axes (3 weights, not 40 — 70 votes can't calibrate 40) land in phase
+  2 (#642); the waveform artifact (#643) is sidecar-free. →
+  [docs/audio-descriptors.md](docs/audio-descriptors.md)
 - **Perceptual audio features (no LLM)**: energy/loudness measured bun-side via ffmpeg ebur128;
   danceability/valence/mood/vocals/acousticness + cached embeddings (content-invalidated by
   `library_embeddings.file_size` since issue #258 — a file replaced in place keeps its path-derived

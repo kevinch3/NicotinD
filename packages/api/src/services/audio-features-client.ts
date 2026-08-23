@@ -58,6 +58,18 @@ export interface RhythmResult {
   confidence: number;
 }
 
+/**
+ * Raw per-track descriptors from `POST /descriptors` (timbre / groove /
+ * spectral balance — see packages/analysis/app/descriptors.py for the names).
+ * Values are passed through un-normalised; `null` = the sidecar could not
+ * define that one (e.g. no off-beat onsets → no swing). `version` mirrors the
+ * sidecar's DESCRIPTOR_VERSION and is stored beside the row.
+ */
+export interface DescriptorsResult {
+  version: number;
+  features: Record<string, number | null>;
+}
+
 const HEALTH_TTL_MS = 30_000;
 const HEALTH_TIMEOUT_MS = 5_000;
 // Analysis is ~seconds per track on CPU; leave generous headroom for cold caches.
@@ -75,6 +87,10 @@ export class AudioFeaturesClient {
   private readonly healthTtlMs: number;
   private lastHealthAt = 0;
   private lastHealthy = false;
+  // /descriptors needs no model files, so its availability is a separate flag
+  // on /health: a models-less sidecar reports status "unavailable" and still
+  // serves it. Read via descriptorsSnapshot(), never inferred from healthy().
+  private lastDescriptors = false;
   private healthProbe: Promise<boolean> | null = null;
 
   constructor(opts: { baseUrl: string; fetchFn?: typeof fetch; healthTtlMs?: number }) {
@@ -94,6 +110,12 @@ export class AudioFeaturesClient {
     return this.lastHealthy;
   }
 
+  /** Last-known `/health.descriptors` flag (sync, same refresh rule as above). */
+  descriptorsSnapshot(): boolean {
+    if (Date.now() - this.lastHealthAt >= this.healthTtlMs) void this.healthy();
+    return this.lastDescriptors;
+  }
+
   /** Cached health probe: true when the sidecar reports `status: 'ok'` —
    *  which since #539 includes the idle-released (cold, lazily-reloading)
    *  state, so this gate never blocks the /analyze that would rewarm it.
@@ -109,18 +131,21 @@ export class AudioFeaturesClient {
 
   private async probeHealth(): Promise<boolean> {
     let healthy = false;
+    let descriptors = false;
     try {
       const res = await this.fetchFn(`${this.baseUrl}/health`, {
         signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
       });
       if (res.ok) {
-        const body = (await res.json()) as { status?: string };
+        const body = (await res.json()) as { status?: string; descriptors?: unknown };
         healthy = body.status === 'ok';
+        descriptors = body.descriptors === true;
       }
     } catch {
       healthy = false;
     }
     this.lastHealthy = healthy;
+    this.lastDescriptors = descriptors;
     this.lastHealthAt = Date.now();
     return healthy;
   }
@@ -227,6 +252,74 @@ export class AudioFeaturesClient {
     const confidence =
       typeof b.confidence === 'number' && Number.isFinite(b.confidence) ? b.confidence : 0;
     return { bpm, confidence };
+  }
+
+  /**
+   * Per-track descriptors (`POST /descriptors`). Same failure contract as
+   * rhythm(): 422 throws {@link AudioFileRejectedError} (per-file, ledgerable),
+   * 404/503/transport return null (environmental, never ledgered).
+   */
+  async descriptors(relPath: string): Promise<DescriptorsResult | null> {
+    let res: Response;
+    try {
+      res = await this.fetchFn(`${this.baseUrl}/descriptors`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ relPath }),
+        signal: AbortSignal.timeout(ANALYZE_TIMEOUT_MS),
+      });
+    } catch (err) {
+      log.warn({ err, relPath }, 'descriptors request failed');
+      return null;
+    }
+    if (!res.ok) {
+      if (res.status === 422) {
+        let detail = 'analysis sidecar rejected file';
+        try {
+          const body = (await res.json()) as { detail?: string };
+          if (body.detail) detail = body.detail;
+        } catch {
+          /* keep the generic message */
+        }
+        throw new AudioFileRejectedError(detail, 422);
+      }
+      log.warn({ relPath, status: res.status }, 'descriptors returned non-OK');
+      return null;
+    }
+    let body: unknown;
+    try {
+      body = await res.json();
+    } catch {
+      return null;
+    }
+    const b = body as { version?: unknown; features?: unknown };
+    const f = b?.features;
+    if (
+      typeof b?.version !== 'number' ||
+      !Number.isInteger(b.version) ||
+      !f ||
+      typeof f !== 'object' ||
+      Array.isArray(f)
+    ) {
+      log.warn({ relPath }, 'descriptors payload failed validation');
+      return null;
+    }
+    const features: Record<string, number | null> = {};
+    for (const [name, value] of Object.entries(f as Record<string, unknown>)) {
+      if (value === null) {
+        features[name] = null;
+      } else if (typeof value === 'number' && Number.isFinite(value)) {
+        features[name] = value;
+      } else {
+        log.warn({ relPath, name }, 'descriptors payload failed validation');
+        return null;
+      }
+    }
+    if (Object.keys(features).length === 0) {
+      log.warn({ relPath }, 'descriptors payload is empty');
+      return null;
+    }
+    return { version: b.version, features };
   }
 
   /** Genre is a bonus field (see AudioFeaturesResult.genre) — anything

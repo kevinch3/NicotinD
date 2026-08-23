@@ -84,6 +84,10 @@ RUN set -eux; \
 #   ANALYSIS_IDLE_RELEASE_SEC (default 900, read by app/idle_release.py) —
 #     drops the warm-loaded registry after N idle seconds regardless of the
 #     allocator, reloaded lazily on the next /analyze call.
+#   ANALYSIS_DESCRIPTOR_SECONDS (default 180, read by app/descriptors.py) —
+#     the track head the model-free /descriptors pass analyses (CPU, ~5 s at
+#     180). Not GPU-related; listed here because it is the sidecar's third
+#     runtime knob.
 ENV ANALYSIS_MODELS_DIR=/models \
     MUSIC_DIR=/data/music \
     ANALYSIS_GPU_BUILD=$GPU \

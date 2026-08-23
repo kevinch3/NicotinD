@@ -15,9 +15,11 @@ import type { LoudnessResult } from '../loudness-analysis.js';
 import type {
   AudioFeaturesClient,
   AudioFeaturesResult,
+  DescriptorsResult,
   RhythmResult,
 } from '../audio-features-client.js';
 import { AudioFileRejectedError } from '../audio-features-client.js';
+import { descriptorsPendingClause, upsertDescriptors } from '../descriptor-store.js';
 import { ffmpegAvailable as realFfmpegAvailable } from '../transcode.js';
 import { resolveSongAbsPath, planGenreBackfill } from '../track-backfill.js';
 import { appendSongGenres, setSongGenres } from '../genre-split.js';
@@ -126,6 +128,12 @@ export interface EnrichmentContext {
   analyzeAudioFeatures: ((relPath: string) => Promise<AudioFeaturesResult | null>) | null;
   /** Last-known sidecar health (sync — the availability hook can't await). */
   audioFeaturesAvailable: () => boolean;
+  /** Sidecar timbre/groove/band descriptors (`POST /descriptors`), or null when
+   *  no sidecar is configured (docs/audio-descriptors.md). */
+  analyzeDescriptors: ((relPath: string) => Promise<DescriptorsResult | null>) | null;
+  /** Last-known `/health.descriptors` flag — distinct from audioFeaturesAvailable
+   *  because a models-less sidecar serves /descriptors while /analyze 503s. */
+  descriptorsAvailable: () => boolean;
   /** Returns the suggested genre for an artist, or null when unavailable. */
   lookupGenre: (artist: string) => Promise<string | null>;
   /**
@@ -500,6 +508,8 @@ export function createEnrichmentContext(deps: {
     analyzeLoudness: (abs, onError) => realAnalyzeLoudness(abs, onError),
     analyzeAudioFeatures: featuresClient ? (relPath) => featuresClient.analyze(relPath) : null,
     audioFeaturesAvailable: () => featuresClient?.healthySnapshot() ?? false,
+    analyzeDescriptors: featuresClient ? (relPath) => featuresClient.descriptors(relPath) : null,
+    descriptorsAvailable: () => featuresClient?.descriptorsSnapshot() ?? false,
     lookupGenre: async (artist) => {
       const r = await realVerifyGenre(deps.lidarr, { artist, currentGenre: null });
       // Full Lidarr genre list (best-first, ';'-joined) so the fill populates
@@ -1864,6 +1874,90 @@ const popularityTask: EnrichmentTask = {
   },
 };
 
+/**
+ * Fill `library_song_descriptors` from the sidecar's `POST /descriptors`
+ * (timbre / groove / spectral balance — docs/audio-descriptors.md). The raw
+ * named values are stored as one JSON row keyed by the sidecar's descriptor
+ * version and the file size (#258), so the pending predicate re-selects a song
+ * whose file changed or whose stored definition is stale.
+ *
+ * Never a landing gate (no `satisfiedColumnSql`): ~5 s of CPU per track must
+ * not strand a fresh download. Not tag-mirrored either — 41 floats belong in
+ * the store, not the file, and they are regenerable.
+ */
+const descriptorsTask: EnrichmentTask = {
+  id: 'descriptors',
+  label: 'Audio descriptors (timbre/groove/bands)',
+  available: (ctx) => {
+    if (!ctx.analyzeDescriptors) return 'analysis sidecar not configured';
+    return ctx.descriptorsAvailable() ? true : 'analysis sidecar has no descriptor endpoint';
+  },
+  countPending: (db) =>
+    Number(
+      (
+        db
+          .query<{ n: number }, []>(
+            `SELECT COUNT(*) AS n FROM library_songs s WHERE ${descriptorsPendingClause('s')}${notPermanentlyFailedClause(
+              'descriptors',
+              's',
+            )}`,
+          )
+          .get() ?? { n: 0 }
+      ).n,
+    ),
+  run: async (db, ctx, limit) => {
+    const rows = db
+      .query<SongRow, [number]>(
+        `SELECT s.id, s.path, s.artist, s.title, s.size FROM library_songs s WHERE ${descriptorsPendingClause(
+          's',
+        )}${notPermanentlyFailedClause('descriptors', 's')} ORDER BY s.created DESC LIMIT ?`,
+      )
+      .all(limit);
+
+    const labels: string[] = [];
+    const tally: FailureTally = { failed: 0, sample: null };
+    let applied = 0;
+    let cursor = 0;
+    // The sidecar serializes extraction under a lock, so more than 2 in flight
+    // only queues — same cap as audio-features.
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const idx = cursor++;
+        if (idx >= rows.length) return;
+        const song = rows[idx]!;
+        const abs = resolveSongAbsPath(ctx.musicDir, song.path);
+        if (!ctx.fileExists(abs)) continue;
+        let result: DescriptorsResult | null = null;
+        try {
+          result = await ctx.analyzeDescriptors!(song.path);
+        } catch (err) {
+          noteItemFailure(db, tally, song, 'descriptors', err);
+          continue;
+        }
+        if (!result) {
+          // Environmental (sidecar down / mount mismatch): leave the song
+          // pending, and stop the batch once health confirms the outage.
+          if (!ctx.descriptorsAvailable()) cursor = rows.length;
+          continue;
+        }
+        upsertDescriptors(db, {
+          songId: song.id,
+          version: result.version,
+          features: result.features,
+          fileSize: song.size ?? null,
+        });
+        clearAnalysisFailure(db, song.id, 'descriptors');
+        applied++;
+        labels.push(`${song.artist} — ${song.title} → descriptors v${result.version}`);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.max(1, Math.min(ctx.concurrency, 2)) }, () => worker()),
+    );
+    return { applied, labels, failed: tally.failed, errorSample: tally.sample };
+  },
+};
+
 /** All registered enrichment tasks, in run order. */
 export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   bpmTask,
@@ -1871,6 +1965,7 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   keyTask,
   energyTask,
   audioFeaturesTask,
+  descriptorsTask,
   artistImageTask,
   artistInfoTask,
   artistOriginTask,

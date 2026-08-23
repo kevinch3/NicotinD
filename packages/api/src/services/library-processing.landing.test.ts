@@ -57,6 +57,8 @@ function fakeCtx(opts: { bpmResult?: number | null; sidecar?: boolean } = {}) {
     analyzeLoudness: async () => ({ loudness: -9.5, energy: 0.7 }),
     analyzeAudioFeatures: opts.sidecar ? async () => null : null,
     audioFeaturesAvailable: () => opts.sidecar ?? false,
+    analyzeDescriptors: opts.sidecar ? async () => null : null,
+    descriptorsAvailable: () => opts.sidecar ?? false,
     lookupGenre: async () => 'Rock',
     lookupArtistImageSpotify: async () => null,
     lookupArtistImageDiscogs: null,

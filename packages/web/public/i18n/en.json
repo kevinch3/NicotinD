@@ -296,6 +296,7 @@
   "admin.syncLibraryHint": "Re-scan the music dir and rebuild the library index from disk.",
   "admin.system": "System Health",
   "admin.taskAudioFeatures": "Audio features (mood, valence, danceability)",
+  "admin.taskDescriptors": "Audio descriptors (timbre, groove, frequency balance)",
   "admin.taskBpm": "BPM analysis",
   "admin.taskEnergy": "Energy & loudness",
   "admin.taskGenre": "Genre",

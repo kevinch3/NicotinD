@@ -30,6 +30,10 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
     'artist-info': true,
     energy: true,
     'audio-features': true,
+    // Timbre/groove/band descriptors from the sidecar's /descriptors
+    // (docs/audio-descriptors.md) — ~5 s CPU per track, stored raw for the
+    // composite radio axes. Default-on, never a gate.
+    descriptors: true,
     // Resolves compound artist strings (bands/duos vs collabs) via Lidarr/MB so the
     // scanner can split them; auto-skips when Lidarr is absent. Per-artist, never a gate.
     'artist-identity': true,
