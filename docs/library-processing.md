@@ -1,9 +1,17 @@
-# Windowed library processing (background enrichment)
+# Library processing (background enrichment)
 
 A single, extensible background processor that fills derived per-track metadata
 (BPM, genre — and whatever comes next) for songs that are missing it. It runs
-**only inside a configurable daily time window** so the heavy work never competes
-with active listening/downloading, and it is **resumable** and **logged**.
+continuously while enabled, and it is **resumable** and **logged**.
+
+> **Removed:** this used to run only inside a configurable daily window, and to
+> expose a "compute regulator" (concurrency, batch size, and a yield-above-N%-GPU
+> threshold). Both are gone. The window was a no-op in practice — the reference
+> deployment ran a 23 h 45 m window — and issue #224's own measurement found the
+> GPU yield changed neither throughput nor GPU memory. `concurrency` and
+> `batchSize` are now the constants `PROCESSING_CONCURRENCY` /
+> `PROCESSING_BATCH_SIZE` in `library-processing.service.ts`. Standing down for
+> another tenant on the card is `paused`'s job.
 
 ## Why
 
@@ -12,7 +20,7 @@ derives them. The manual scripts (`scripts/analyze-bpm.ts`,
 `scripts/backfill-genre.ts`) can fill the gap but are one-off, never scheduled, and
 new downloads regress (they land un-enriched). This subsystem makes enrichment a
 continuous, hands-off background process while keeping the download pipeline fast
-(transcode + tag + scan stay inline; everything slow is deferred to the window).
+(transcode + tag + scan stay inline; everything slow is deferred to the background).
 
 ## Pieces
 
@@ -20,7 +28,6 @@ continuous, hands-off background process while keeping the download pipeline fas
 | --- | --- |
 | Shared types | `@nicotind/core` `types/processing.ts` (`ProcessingSettings`, `ProcessingStatus`, `ProcessingTaskId`) |
 | Settings store | `services/processing-settings.ts` (`app_settings` key `processing`) |
-| Pure window math | `services/processing-window.ts` (`isWithinWindow`, midnight-crossing) |
 | Task registry | `services/enrichment/tasks.ts` (`ENRICHMENT_TASKS`) |
 | Scheduler + landing gate | `services/library-processing.service.ts` (`LibraryProcessingService`) |
 | Per-track step state | `services/song-steps.ts` (`loadQuarantineQueue`, `computeSongSteps`) |
@@ -239,7 +246,7 @@ perceptual columns (`energy`, `loudness`, `danceability`, `valence`,
 `COALESCE(excluded.col, library_songs.col)` in `library-scanner.ts`: a file tag that
 *carries* the value still overrides, but a tag-less rescan keeps the enrichment.
 This is why a backfill that writes only the DB (e.g. a script killed mid-run before
-its tag writes) reverts, while the windowed task — which completes tag+DB per song —
+its tag writes) reverts, while the background task — which completes tag+DB per song —
 sticks.
 
 All IO-heavy primitives come from the injected `EnrichmentContext`
@@ -252,7 +259,7 @@ All IO-heavy primitives come from the injected `EnrichmentContext`
 admin starts and watches — metadata-optimize, the Opus standardization, a full rescan — live on the
 separate `MaintenanceService` registry (`services/maintenance/`, issue #622), which mirrors this
 one's vocabulary deliberately. `runNow()` here drains **every** runnable task and this scheduler
-runs in the nightly window, so putting them here would both over-trigger and auto-run them; see
+runs in the background, so putting them here would both over-trigger and auto-run them; see
 [metadata-optimize.md](metadata-optimize.md) "Running it in the background" for the full four-reason
 rationale.
 
@@ -271,19 +278,16 @@ checkbox renders from `settings.tasks`/`status.availability`).
 
 Modeled on `WatchlistService` (interval + a `busy` guard so runs never overlap):
 
-- **`tick()`** (periodic, default 60 s): no-op when disabled (`phase: disabled`),
-  paused (`phase: paused`, see below) or
-  outside the window (`phase: outside-window`); otherwise runs **one bounded batch
-  per runnable task**. The short interval + guard make in-window work effectively
-  continuous and re-evaluate the window at each batch boundary, so processing stops
-  promptly when the window closes.
-- **`runNow()`** (admin "Run now"): drains batches in a loop **ignoring** the
-  window, until nothing is pending or a batch makes no progress.
+- **`tick()`** (periodic, default 60 s): no-op when disabled (`phase: disabled`) or
+  paused (`phase: paused`, see below); otherwise runs **one bounded batch per
+  runnable task**. The short interval + guard make the work effectively continuous.
+- **`runNow()`** (admin "Run now"): drains batches in a loop, overriding `paused`,
+  until nothing is pending or a batch makes no progress.
 - **`cancelRun()`** (admin "Stop"): aborts the current run between tasks/batches
   **without** disabling the scheduler. The cancellation token is reset at the start
   of every run.
 - **`stop()`**: full shutdown (clears the interval + aborts). Wired into SIGTERM/SIGINT.
-- **`kickEager()`** (eager, out-of-window): drains **only the required gate tasks**
+- **`kickEager()`** (eager, out-of-band): drains **only the required gate tasks**
   for quarantined songs then graduates — see the landing gate below.
 
 ## Landing gate (process-before-landing)
@@ -325,17 +329,17 @@ instantly, un-enriched.
   hold a download invisible forever.
 - **Eager processing**: `scanIncremental` (`index.ts`) fires a fire-and-forget
   `processingRef.current?.kickEager()` after every organize+scan, so a new download's
-  gate steps run **immediately, ignoring the window**, and it lands as soon as it's
-  ready. `tick()` also runs a gate-only pass out-of-window whenever a quarantined
+  gate steps run **immediately**, and it lands as soon as it's
+  ready. `tick()` also runs a gate-only pass whenever a quarantined
   song exists, backstopping a missed kick (crash between scan and kick, restart
-  mid-quarantine). The window still governs full/background enrichment of the
+  mid-quarantine). This is separate from full/background enrichment of the
   existing library.
 - **`ProcessingStatus.quarantined`** counts songs awaiting their gate steps;
   `GET /api/admin/processing/queue` (`song-steps.ts` `loadQuarantineQueue`) returns
   them grouped by album with per-step badges (`done`/`pending`/`skipped`).
 - **Boot backlog**: `runSyncAndCurate` fires `kickEager()` after the initial
   `scanFull`, and `tick()` runs a gate-only pass whenever a quarantined song exists,
-  so a restart processes any quarantined backlog without waiting for the window.
+  so a restart processes any quarantined backlog immediately.
 - **A deep link into quarantine says so** (issue #466): the quarantine hold is
   invisible to every listing, but `GET /api/library/albums/:id` is reachable by
   *link* — and the Downloads card offers "Open in Library" the moment the
@@ -374,16 +378,25 @@ unconfigured and uses a task+sample `fingerprint` so a broken decoder collapses 
 single Sentry issue rather than one event per file. `runNow` reports once for the whole
 drain; `tick` once per batch.
 
-A "run" for the tally spans one **window session**: tick batches inside the same window
-continue accumulating `processed`/`failed`/`lastError`; the first batch after the phase
-was `outside-window`/`disabled` (or an explicit `runNow`, or a **process restart**)
-resets them. why: the tally is persisted + reloaded across restarts, so without a
-session boundary a long-resolved failure banner ("38 failed — ffmpeg …") stayed on the
-panel forever, even after the offending files were excluded by the ledger below. The
-restart boundary exists because a restored tally belongs to the *previous* process — a
-mid-window deploy once carried 2,300 pre-fix sidecar failures into a perfectly healthy
-run's display. The restored counts remain visible until the new process's first batch
-(so the panel still shows last-known state after a reboot), then reset.
+A "run" for the tally spans one **continuous drain**: consecutive batches that still
+find work continue accumulating `processed`/`failed`/`lastError`; the first batch that
+finds work *after the queue ran dry* — or an explicit `runNow`, a `disabled` phase, or a
+**process restart** — resets them. why: the tally is persisted + reloaded across
+restarts, so without a session boundary a long-resolved failure banner ("38 failed —
+ffmpeg …") stayed on the panel forever, even after the offending files were excluded by
+the ledger below.
+
+The drain boundary (`drained` in `LibraryProcessingService`) replaced a **window
+session** when the processing window was removed. `phase === 'idle'` cannot stand in
+for it: `finishRun()` sets `idle` after *every* batch. And a batch that finds nothing
+must **not** reset, or the "Processing complete — N enriched" summary would be wiped by
+the very next tick, 60 s after finishing — so the boundary fires on work *re-appearing*
+(`wasDrained && total > 0`), not on the queue emptying.
+
+The restart boundary exists because a restored tally belongs to the *previous* process —
+a deploy once carried 2,300 pre-fix sidecar failures into a perfectly healthy run's
+display. The restored counts remain visible until the new process's first batch (so the
+panel still shows last-known state after a reboot), then reset.
 
 `processOneBatch` leaves the phase `running` between batches; a run's terminal `idle` is
 set exactly once by `finishRun`, so an SSE client sees a single `running → idle`
@@ -468,8 +481,8 @@ service's `'status'` EventEmitter (the SSE source).
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/admin/processing` | `{ settings, status }` (status has per-task pending counts + availability reasons) |
-| PUT | `/api/admin/processing` | Update settings (validates `HH:MM` window + positive `batchSize`/`concurrency`) |
-| POST | `/api/admin/processing/run` | `runNow()` (ignore window) |
+| PUT | `/api/admin/processing` | Update settings (enable, pause, per-task flags, landing gates, hold-for-review) |
+| POST | `/api/admin/processing/run` | `runNow()` (overrides `paused`) |
 | POST | `/api/admin/processing/stop` | `cancelRun()` |
 | GET | `/api/admin/processing/stream` | SSE status snapshots (progress bar + snippets) |
 
@@ -478,7 +491,7 @@ All admin-only; `503` when the service isn't wired.
 ## Web
 
 Admin-only **Library processing** panel in Settings (`data-testid="processing-panel"`):
-enable toggle, window `<input type="time">`s, per-task checkboxes (greyed with the
+enable toggle, per-task checkboxes (greyed with the
 availability reason when ffmpeg/Lidarr is missing), a progress bar + live snippet
 list driven by an `EventSource` on the stream endpoint, and Run now / Stop. Percent
 and phase-label math is the DI-free, unit-tested `lib/processing-progress.ts`.
@@ -488,29 +501,26 @@ and phase-label math is the DI-free, unit-tested `lib/processing-progress.ts`.
 active. A failure count + reason renders in the progress area (`data-testid="processing-failed"`).
 When a *user-initiated* run settles, the panel toasts the outcome via `ToastService`
 (error with the reason if any item failed, success otherwise) — gated on having seen a
-`running` frame so background/window runs and the priming frame stay silent. The pure
+`running` frame so background runs and the priming frame stay silent. The pure
 `runOutcomeToast` / `isRunning` helpers in `lib/processing-progress.ts` carry that logic
 and are unit-tested.
 
-## Compute throttle + sidecar status (issue #224)
+## Runtime load controls + sidecar status
 
 Prod host `kpc` shares one **P4000 8 GB** across NicotinD analysis, Immich ML and Ollama, so
 processing load is a shared-resource concern, not just a throughput knob.
 
-`concurrency` and `batchSize` were already persisted in the settings blob and already validated
-by `PUT /api/admin/processing` (positive integers) — but the **Admin panel never exposed them**, so
-the only way to throttle a run that was starving another tenant was to edit the persisted JSON or
-the compose file and restart. That's the gap this closes; the backend needed no change.
+There used to be a "compute throttle" panel here exposing `concurrency`, `batchSize` and a
+`gpuBusyPercent` courtesy yield (issue #224). **All three were removed.** Issue #224's own
+follow-up measured the yield and found it changed neither throughput nor GPU memory — it was
+never a GPU regulator, only a scheduler skip — and the other two are implementation details no
+operator was ever asked to reason about. They are now the constants `PROCESSING_CONCURRENCY`
+(3, into `createEnrichmentContext({ concurrency })`) and `PROCESSING_BATCH_SIZE` (25, tracks
+claimed per pass) in `library-processing.service.ts`. `LibraryProcessingDeps.batchSize` exists
+only as a **test seam** — no route, config file or UI writes it.
 
-- **Concurrency is the sidecar throttle.** It flows into `createEnrichmentContext({ concurrency })`,
-  which bounds the task pool that issues sidecar inference calls — so lowering it directly lowers
-  GPU pressure. `1` is the gentlest setting.
-- **`batchSize`** is how many tracks a task claims per pass — it governs run length, not
-  parallelism.
-- Both inputs go through the pure, unit-tested `clampInt` (`lib/processing-progress.ts`) rather
-  than posting raw field values. `Number('')` is `0`, not `NaN`, so a *cleared* field would
-  otherwise clamp to the minimum instead of leaving the current value alone — and a non-positive
-  integer is a `400` from the route.
+`paused` below is the surviving lever, and is now also the way to stand down while another
+tenant needs the card.
 
 ### `paused` — a runtime throttle, not an off switch
 
@@ -523,7 +533,7 @@ deliberately weaker than `enabled` in three ways:
 
 - **It never strands a download.** The paused branch in `tick()` sits *after* the `enabled` gate and
   still runs `kickEagerInner()` whenever `hasQuarantined()` — a freshly-downloaded song clears its
-  landing gate and becomes visible even while paused. Only window/background enrichment is skipped.
+  landing gate and becomes visible even while paused. Only background enrichment is skipped.
   Pausing would otherwise leave new music invisible in quarantine with no indication why.
 - **`runNow()` overrides it.** The admin override reads no pause flag, so "Run now" still drains.
   Pause throttles the *automatic* loop, not the human pressing the button.
@@ -535,63 +545,10 @@ Persisted settings written before this field existed have no `paused` key;
 `undefined`. `PUT /api/admin/processing` rejects a non-boolean with a `400`, and the Admin panel
 exposes it as `data-testid="processing-paused"`.
 
-### `gpuBusyPercent` — yield to a busy neighbour, don't contend with it
-
-`paused` is a *manual* halt; the shared-GPU problem needs an *automatic* one. The reference
-deployment runs the analysis sidecar on one P4000 alongside **Immich ML and Ollama**, and of those
-tenants enrichment is the one that can always wait — it is background backfill with no user
-waiting on it.
-
-`ProcessingSettings.gpuBusyPercent` (0-100, **0 = off**) makes `tick()` read current GPU
-utilisation and skip the pass when the card is at or above the threshold, reporting the new
-`ProcessingPhase` value `gpu-busy`. It re-tries on the next tick, so a busy neighbour *delays*
-enrichment rather than competing with it.
-
-Four decisions worth keeping:
-
-- **The probe is the existing one.** `readGpu` from `services/system-metrics.ts` — already written
-  for the Admin metric pills, and already cached (5 s), so a 60 s tick can never hammer
-  `nvidia-smi`. It is injected (`deps.readGpuPercent`) so the yield logic is testable on a box with
-  no GPU tooling.
-- **Unknown utilisation does NOT yield.** A host with no vendor tool reads `null`, as does a
-  throwing probe. Yielding on either would stop enrichment outright the moment an operator set a
-  threshold — the exact opposite of the intent. Both cases have a test.
-- **It never strands a download**, for the same reason `paused` doesn't: the branch clears
-  quarantine via `kickEagerInner()` before returning, so a fresh download lands even while the GPU
-  is busy with someone else's work.
-- **The phase has to be remembered.** `snapshot()` recomputes the phase from settings, but
-  `gpu-busy` isn't derivable from settings — it depends on a live probe — so the service holds a
-  `gpuBusy` flag. Without it the panel reported `idle` while nothing was running; that was caught
-  by a test, not by review.
-
-Placed *after* the window check, so it only ever costs a probe inside the window. `PUT
-/api/admin/processing` rejects a non-integer or out-of-range value with a `400`; the Admin panel
-exposes it beside the concurrency/batch inputs as `data-testid="processing-gpu-busy"`.
-
-Note the deliberate boundary from the issue: **CPU-vs-GPU selection stays build-time** (the `GPU=1`
-build arg), so the UI governs runtime *load* only.
-
-**Analysis-sidecar status** (`data-testid="processing-sidecar-status"`) renders from the
-`services.analysis: { configured, healthy }` slice added to `GET /api/admin/review` — fed by
-`AudioFeaturesClient.healthy()` (30 s cached probe), so it costs the snapshot nothing extra.
-An *unconfigured* sidecar is the default deployment, not a fault: it reports
-`configured: false` and must never land in the snapshot's `errors[]`. A probe that throws degrades
-to unhealthy with an `analysisStatus` error tag rather than dropping the whole review.
-
-**What deliberately stays out of the UI:** CPU-vs-GPU selection is the `GPU=1` **build arg** on the
-sidecar image, so it cannot be flipped at runtime — the panel copy says so explicitly to stop the
-control reading as a GPU switch. The panel governs runtime load only: concurrency, batch, window,
-per-task on/off, and Stop.
-
-**Still open on #224** — the *reduction* half. Whether a concurrency cap of 1 is enough on a shared
-8 GB card, and whether we need cross-tenant awareness (gating a window on `nvidia-smi` utilization
-from Immich/Ollama) are empirical questions that need measurement on `kpc` during a real window.
-The controls above are what makes that measurement cheap to run.
-
 ## One-time prod backfill
 
 For an existing library, run the manual scripts inside the container once to fill
-the backlog quickly (the window then keeps up with new downloads):
+the backlog quickly (the processor then keeps up with new downloads):
 
 ```bash
 docker exec <container> bun run packages/api/src/scripts/backfill-genre.ts --apply       # fast, needs Lidarr
@@ -603,7 +560,7 @@ docker exec -d <container> bun run packages/api/src/scripts/analyze-audio-featur
 
 All are dry-run without `--apply` and resume on re-run. **Run them sequentially**, not
 concurrently — multiple writer processes plus the app fight over the SQLite write
-lock. Prefer the in-process windowed processor (or admin **Run now**) over scripts:
+lock. Prefer the in-process processor (or admin **Run now**) over scripts:
 it shares the app's connection (no lock contention) and completes tag+DB per song so
 nothing reverts on the next full scan.
 

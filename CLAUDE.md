@@ -280,13 +280,13 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 
 ### Audio analysis & enrichment
 
-- **Windowed library processing**: resumable background enrichment via an extensible task registry,
-  run inside a daily window; failures are diagnosed and tallied into `ProcessingStatus`, and broken or
-  undetectable files are excluded via a `library_song_analysis_failures` ledger.
+- **Library processing**: resumable background enrichment via an extensible task registry, run
+  continuously while enabled; failures are diagnosed and tallied into `ProcessingStatus`, and broken
+  or undetectable files are excluded via a `library_song_analysis_failures` ledger.
   `NoConfidentResultError`, `AudioFileRejectedError`. → [library-processing.md](docs/library-processing.md)
-- **Processing pause + GPU yield**: a `paused` flag is the runtime halt distinct from
-  `enabled: false` (still clears quarantine); `gpuBusyPercent` yields the pass automatically while
-  another tenant uses the card, and unknown utilisation never yields.
+- **Processing pause**: a `paused` flag is the runtime halt distinct from `enabled: false` (still
+  clears quarantine), and the manual way to stand down for another GPU tenant. The failure tally's
+  session boundary is one continuous drain (`drained`), not a time window.
   → [library-processing.md](docs/library-processing.md)
 - **Analysis sidecar GPU behaviour**: `RegistryHolder` + `IdleReleaseGuard` drop the warm registry
   after an idle timeout and reload lazily; `peek()` reads without touching the guard and `can_serve()`

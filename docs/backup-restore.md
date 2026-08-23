@@ -22,9 +22,9 @@ extension).
 
 ## Scheduling & retention
 
-- The daily guard `maybeRunDailyBackup` is driven from the windowed
+- The daily guard `maybeRunDailyBackup` is driven from the
   processor's tick (same pattern as the weekly auto-playlists refresh),
-  **before** the enabled/window checks — so backups never depend on library
+  **before** the enabled/paused checks — so backups never depend on library
   enrichment being turned on.
 - At most one backup per calendar day, taken at the first tick at/after
   **04:00 local** (a server booted later in the day backs up right away). The

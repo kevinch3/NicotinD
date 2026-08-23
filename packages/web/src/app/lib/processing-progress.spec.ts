@@ -6,7 +6,6 @@ import {
   isComplete,
   isRunning,
   runOutcomeToast,
-  clampInt,
 } from './processing-progress';
 import type { ProcessingTaskId } from '../../types/core';
 
@@ -59,7 +58,6 @@ describe('progressPercent', () => {
 describe('phaseLabel', () => {
   it('maps phases to labels', () => {
     expect(phaseLabel('running')).toBe('Processing…');
-    expect(phaseLabel('outside-window')).toBe('Waiting for window');
     expect(phaseLabel('disabled')).toBe('Disabled');
     expect(phaseLabel('paused')).toBe('Paused');
     expect(phaseLabel('idle')).toBe('Idle');
@@ -82,7 +80,7 @@ describe('isRunning', () => {
     expect(isRunning({ phase: 'running' })).toBe(true);
     expect(isRunning({ phase: 'idle' })).toBe(false);
     expect(isRunning({ phase: 'disabled' })).toBe(false);
-    expect(isRunning({ phase: 'outside-window' })).toBe(false);
+    expect(isRunning({ phase: 'paused' })).toBe(false);
   });
 });
 
@@ -107,26 +105,5 @@ describe('runOutcomeToast', () => {
 
   it('is null when nothing was processed and nothing failed', () => {
     expect(runOutcomeToast({ processed: 0, failed: 0, lastError: null })).toBeNull();
-  });
-});
-
-describe('clampInt (compute-throttle inputs, issue #224)', () => {
-  it('keeps an in-range integer', () => {
-    expect(clampInt('4', 1, 16, 3)).toBe(4);
-  });
-
-  it('clamps to the bounds rather than rejecting', () => {
-    expect(clampInt('0', 1, 16, 3)).toBe(1);
-    expect(clampInt('999', 1, 16, 3)).toBe(16);
-  });
-
-  it('falls back when the input is blank or not a number', () => {
-    // A cleared number input reads as '' → NaN; the server would 400 on it.
-    expect(clampInt('', 1, 16, 3)).toBe(3);
-    expect(clampInt('abc', 1, 16, 3)).toBe(3);
-  });
-
-  it('rounds a fractional entry to an integer', () => {
-    expect(clampInt('2.6', 1, 16, 3)).toBe(3);
   });
 });

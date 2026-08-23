@@ -14,8 +14,6 @@ import type {
 } from '@nicotind/core';
 import { maybeRunDailyHistoryRetention } from './privacy.js';
 import { getProcessingSettings } from './processing-settings.js';
-import { isWithinWindow } from './processing-window.js';
-import { readGpu } from './system-metrics.js';
 import { maybeRefreshAutoPlaylists } from './auto-playlists.service.js';
 import { maybeRunDailyBackup } from './backup.js';
 import { maybeRunDailyOrphanPrune } from './orphan-prune.js';
@@ -31,6 +29,17 @@ import { countSkippedFiles, permanentlyFailedClause } from './enrichment/analysi
 import { recomputeActiveJobStages } from './acquisition-job-store.js';
 import { maybeRunDailyCoverCachePrune } from './cover-cache-prune.js';
 import { maybeArmReviewHold, reviewHoldActive } from './download-review-store.js';
+
+/**
+ * How many songs one task claims per batch, and the worker-pool size for the
+ * parallelisable tasks (BPM ffmpeg decodes and friends). Constants rather than
+ * admin settings: they were exposed as a "compute regulator" alongside a
+ * shared-GPU yield, and measurement (issue #224) found the trio moved neither
+ * throughput nor GPU memory, so the panel bought complexity and nothing else.
+ * Standing down for another tenant on the card is the `paused` flag's job now.
+ */
+const PROCESSING_BATCH_SIZE = 25;
+const PROCESSING_CONCURRENCY = 3;
 
 const log = createLogger('library-processing');
 
@@ -101,15 +110,16 @@ export interface LibraryProcessingDeps {
   acquisitionEnabled?: () => boolean;
   /** Poll interval. Defaults to 60s. */
   intervalMs?: number;
-  /** Injectable clock for window tests. */
+  /** Injectable clock (daily-backup, orphan-prune and history guards). */
   now?: () => Date;
   /**
-   * Current GPU utilisation (0-100), or null when no vendor tool exposes it.
-   * Defaults to the shared cached `readGpu` probe, so a 60 s tick never shells
-   * out more than its 5 s cache allows. Injectable so the yield logic is
-   * testable without `nvidia-smi` on the box.
+   * Songs one task claims per batch. A test seam, not a setting: it defaults to
+   * PROCESSING_BATCH_SIZE and is exposed on no route, config file or UI. Tests
+   * that assert "exactly one batch ran" need a batch smaller than the fixture,
+   * and seeding 26 songs to observe a boundary would test the fixture, not the
+   * batching.
    */
-  readGpuPercent?: () => Promise<number | null>;
+  batchSize?: number;
   /** Injectable context factory for unit tests (fakes ffmpeg/Lidarr primitives). */
   contextFactory?: (settings: ProcessingSettings) => EnrichmentContext;
   /** Disable file logging (tests). Default true. */
@@ -120,16 +130,15 @@ export interface LibraryProcessingDeps {
 }
 
 /**
- * Windowed library-processing scheduler. Runs enabled enrichment tasks
- * (ENRICHMENT_TASKS) over songs that still need them, only inside the configured
- * daily window. Resume is inherent: each task selects by its NULL predicate and
- * writes incrementally, so a restart mid-window continues exactly where it
- * stopped. Modeled on WatchlistService (start/stop interval + a busy guard).
+ * Library-processing scheduler. Runs enabled enrichment tasks (ENRICHMENT_TASKS)
+ * over songs that still need them, continuously while enabled. Resume is
+ * inherent: each task selects by its NULL predicate and writes incrementally, so
+ * a restart continues exactly where it stopped. Modeled on WatchlistService
+ * (start/stop interval + a busy guard).
  *
- * - `tick()` (periodic): one bounded batch per task when enabled AND in-window.
- *   The 60s interval + busy guard make in-window work effectively continuous and
- *   re-evaluate the window at each batch boundary.
- * - `runNow()` (admin override): drains batches ignoring the time window.
+ * - `tick()` (periodic): one bounded batch per task when enabled and not paused.
+ *   The 60s interval + busy guard make the work effectively continuous.
+ * - `runNow()` (admin override): drains batches, overriding `paused`.
  * - `stop()`: halts the interval and any in-progress drain between tasks.
  */
 export class LibraryProcessingService extends EventEmitter {
@@ -148,15 +157,7 @@ export class LibraryProcessingService extends EventEmitter {
   private readonly logPath: string;
   private readonly intervalMs: number;
   private readonly now: () => Date;
-  /** Current GPU utilisation 0-100, or null when unknown. See gpuBusyPercent. */
-  private readonly readGpuPercent: () => Promise<number | null>;
-  /**
-   * Whether the last in-window tick yielded to a busy GPU. `snapshot()`
-   * recomputes the phase from settings, but this one isn't derivable from
-   * settings — it depends on a live probe — so it has to be remembered or the
-   * panel would report "idle" while nothing is running.
-   */
-  private gpuBusy = false;
+  private readonly batchSize: number;
   private readonly contextFactory: (settings: ProcessingSettings) => EnrichmentContext;
   private readonly logToFile: boolean;
   private readonly reportFailure: (report: ProcessingFailureReport) => void;
@@ -169,6 +170,17 @@ export class LibraryProcessingService extends EventEmitter {
    *  boundary. why: the restored tally belongs to the *previous* process (a
    *  deploy once carried 2300 pre-fix failures into a healthy run's display). */
   private freshProcess = true;
+  /**
+   * True while the work queue is known-empty, i.e. the last batch found nothing
+   * pending. It is the session boundary for the failure tally: a "run" spans one
+   * continuous drain, so the next batch that finds work again starts a fresh
+   * tally. why: the tally is persisted and reloaded, so it needs *some* boundary
+   * or a long-resolved failure ("38 failed — ffmpeg…") sticks on the panel
+   * forever. This replaces the old window-session boundary, which disappeared
+   * with the processing window; `phase === 'idle'` cannot stand in for it,
+   * because finishRun() sets idle after *every* batch.
+   */
+  private drained = true;
 
   constructor(deps: LibraryProcessingDeps) {
     super();
@@ -185,16 +197,15 @@ export class LibraryProcessingService extends EventEmitter {
     this.logPath = join(deps.dataDir, 'library-processing.log');
     this.intervalMs = deps.intervalMs ?? 60_000;
     this.now = deps.now ?? (() => new Date());
-    this.readGpuPercent =
-      deps.readGpuPercent ?? (async () => (await readGpu(Date.now()))?.percent ?? null);
+    this.batchSize = deps.batchSize ?? PROCESSING_BATCH_SIZE;
     this.contextFactory =
       deps.contextFactory ??
-      ((settings) =>
+      (() =>
         createEnrichmentContext({
           musicDir: this.musicDir,
           coverCacheDir: join(this.dataDir, 'cover-cache'),
           lidarr: this.lidarr,
-          concurrency: settings.concurrency,
+          concurrency: PROCESSING_CONCURRENCY,
           lookupArtistImageSpotify: this.lookupArtistImageSpotify,
           lookupArtistImageDiscogs: this.lookupArtistImageDiscogs,
           lookupArtistInfo: this.lookupArtistInfo,
@@ -274,47 +285,9 @@ export class LibraryProcessingService extends EventEmitter {
       this.publish(settings, 'paused');
       return;
     }
-    if (!isWithinWindow(this.now(), settings.window)) {
-      // Outside the window we still clear quarantine: a fresh download must not
-      // stay invisible until 05:00 just because the eager kick was missed (a crash
-      // between scan and kick, or a restart mid-quarantine). Run gate tasks only —
-      // full/background enrichment stays window-gated — then publish outside-window.
-      if (this.hasQuarantined()) {
-        await this.guarded(async () => {
-          await this.kickEagerInner();
-        });
-      }
-      this.publish(settings, 'outside-window');
-      return;
-    }
-    // Shared-GPU courtesy yield (issue #224). The sidecar is usually not the
-    // only tenant on the card — the reference deployment shares one P4000 with
-    // Immich ML and Ollama — and enrichment is the tenant that can always wait.
-    // Placed AFTER the window check so it only ever costs a probe inside the
-    // window, and it clears quarantine first for the same reason `paused` does:
-    // a fresh download must never stay invisible because another application is
-    // busy. Unlike `paused` this is automatic and re-tries on the next tick.
-    if (settings.gpuBusyPercent <= 0) this.gpuBusy = false;
-    if (settings.gpuBusyPercent > 0) {
-      // A probe failure (no vendor tool, nvidia-smi missing) reads as null and
-      // must NOT yield — otherwise a box with no GPU tooling would stop
-      // enriching entirely the moment an operator set a threshold.
-      const gpu = await this.readGpuPercent().catch(() => null);
-      this.gpuBusy = gpu !== null && gpu >= settings.gpuBusyPercent;
-      if (this.gpuBusy) {
-        if (this.hasQuarantined()) {
-          await this.guarded(async () => {
-            await this.kickEagerInner();
-          });
-        }
-        this.publish(settings, 'gpu-busy');
-        return;
-      }
-    }
-
     await this.guarded(async () => {
-      // Once per ISO week, inside the maintenance window, refresh the automated
-      // recipe-driven shelves (idempotent; guarded by a library_sync_state marker).
+      // Once per ISO week, refresh the automated recipe-driven shelves
+      // (idempotent; guarded by a library_sync_state marker).
       maybeRefreshAutoPlaylists(this.db, this.now().getTime());
       const batch = await this.processOneBatch(settings);
       this.flushFailures(batch.byTask);
@@ -523,16 +496,18 @@ export class LibraryProcessingService extends EventEmitter {
     const tasks = tasksOverride ?? this.runnableTasks(settings);
     const total = tasks.reduce((sum, t) => sum + t.countPending(this.db), 0);
 
-    // A "run" spans one window session: tick batches inside the same window
-    // continue the tally; the first batch after re-entering the window (or
+    // A "run" spans one continuous drain: consecutive batches with work pending
+    // continue the tally; the first batch after the queue ran dry (or after
     // re-enabling, a restart, or an explicit runNow) starts a fresh one. why:
     // the tally is persisted + reloaded, so without a session boundary a
     // long-resolved failure ("38 failed — ffmpeg…") stayed on the panel forever.
+    // Only work *re-appearing* opens a new run. A batch that finds nothing must
+    // NOT reset, or the "Processing complete — N enriched" summary would be
+    // wiped by the very next tick, 60 s after finishing.
+    const wasDrained = this.drained;
+    this.drained = total === 0;
     const newRun =
-      fresh ||
-      this.freshProcess ||
-      this.status.phase === 'outside-window' ||
-      this.status.phase === 'disabled';
+      fresh || this.freshProcess || (wasDrained && total > 0) || this.status.phase === 'disabled';
     this.freshProcess = false;
     this.status = {
       ...this.status,
@@ -551,7 +526,7 @@ export class LibraryProcessingService extends EventEmitter {
     for (const task of tasks) {
       if (this.stopRequested) break;
       this.status = { ...this.status, currentTask: task.id };
-      const result = await task.run(this.db, ctx, settings.batchSize);
+      const result = await task.run(this.db, ctx, this.batchSize);
       appliedTotal += result.applied;
       if (result.failed > 0) {
         mergeFailures(
@@ -613,8 +588,6 @@ export class LibraryProcessingService extends EventEmitter {
     if (!this.busy) {
       if (!settings.enabled) phase = 'disabled';
       else if (settings.paused) phase = 'paused';
-      else if (!isWithinWindow(this.now(), settings.window)) phase = 'outside-window';
-      else if (this.gpuBusy) phase = 'gpu-busy';
       else phase = 'idle';
     }
     return {
@@ -635,7 +608,7 @@ export class LibraryProcessingService extends EventEmitter {
     this.emit('status', this.snapshot(settings));
   }
 
-  /** Idle/disabled/outside-window publish without a batch. */
+  /** Idle/disabled/paused publish without a batch. */
   private publish(settings: ProcessingSettings, phase: ProcessingStatus['phase']): void {
     this.status = { ...this.status, phase, currentTask: null };
     this.emitStatus(settings);

@@ -700,7 +700,7 @@ export interface BackupsSummary {
 
 /** Same shape the SSE stream publishes; reduced to a static snapshot here. */
 export interface ProcessingSummary {
-  phase: 'idle' | 'running' | 'outside-window' | 'disabled';
+  phase: 'idle' | 'running' | 'disabled' | 'paused';
   currentTask: string | null;
   processed: number;
   failed: number;

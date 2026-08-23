@@ -13,7 +13,7 @@ import { storyProviders } from '../support/story-providers';
  * overflow a container that was only ever laid out against English.
  */
 const LONGEST = [
-  'admin.computeThrottleHint',
+  'admin.holdForReviewNeedsAcquisition',
   'extensions.acquisitionOffAfter',
   'admin.gatedStepsHint',
   'agentTokens.subtitle',

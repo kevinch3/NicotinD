@@ -1,25 +1,21 @@
 import type { Database } from 'bun:sqlite';
-import type { ProcessingSettings, ProcessingTaskId, ProcessingWindow } from '@nicotind/core';
+import type { ProcessingSettings, ProcessingTaskId } from '@nicotind/core';
 
-/** Patch shape: top-level optional, with partial nested tasks/gates/window (deep-merged). */
-export type ProcessingSettingsPatch = Partial<
-  Omit<ProcessingSettings, 'tasks' | 'gates' | 'window'>
-> & {
+/** Patch shape: top-level optional, with partial nested tasks/gates (deep-merged). */
+export type ProcessingSettingsPatch = Partial<Omit<ProcessingSettings, 'tasks' | 'gates'>> & {
   tasks?: Partial<Record<ProcessingTaskId, boolean>>;
   gates?: Partial<Record<ProcessingTaskId, boolean>>;
-  window?: Partial<ProcessingWindow>;
 };
 
 /**
- * Persistence for the windowed library-processing config. Same `app_settings`
- * key/value JSON pattern as streaming-settings.ts — not user-scoped.
+ * Persistence for the library-processing config. Same `app_settings` key/value
+ * JSON pattern as streaming-settings.ts — not user-scoped.
  */
 
 const KEY = 'processing';
 
 export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
   enabled: true,
-  window: { start: '05:00', end: '08:00' },
   tasks: {
     bpm: true,
     genre: true,
@@ -69,14 +65,8 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
     energy: true,
     genre: true,
   },
-  batchSize: 25,
-  concurrency: 3,
   // Not paused by default; the admin "Pause now" toggle flips this at runtime.
   paused: false,
-  // Off by default (issue #224): most deployments have no GPU, or don't share
-  // one, and a default threshold would silently delay enrichment for them. The
-  // shared-card operator opts in.
-  gpuBusyPercent: 0,
   // Hold quarantined downloads until explicitly reviewed (issue #411).
   holdForReview: false,
 };
@@ -88,11 +78,16 @@ export function getProcessingSettings(db: Database): ProcessingSettings {
   if (!row) return clone(DEFAULT_PROCESSING_SETTINGS);
   try {
     const parsed = JSON.parse(row.value) as Partial<ProcessingSettings>;
+    // Field-by-field, never `...parsed`: a stored blob predating the removal of
+    // the processing window and the compute regulator still carries `window`/
+    // `batchSize`/`concurrency`/`gpuBusyPercent`, and a bare spread would copy
+    // them onto the result (invisible to TS as excess properties) and re-persist
+    // them on the next write, so the API would keep emitting retired fields.
     return {
-      ...DEFAULT_PROCESSING_SETTINGS,
-      ...parsed,
+      enabled: parsed.enabled ?? DEFAULT_PROCESSING_SETTINGS.enabled,
+      paused: parsed.paused ?? DEFAULT_PROCESSING_SETTINGS.paused,
+      holdForReview: parsed.holdForReview ?? DEFAULT_PROCESSING_SETTINGS.holdForReview,
       // Nested objects must deep-merge so an older/partial blob can't drop a field.
-      window: { ...DEFAULT_PROCESSING_SETTINGS.window, ...parsed.window },
       tasks: { ...DEFAULT_PROCESSING_SETTINGS.tasks, ...parsed.tasks },
       gates: { ...DEFAULT_PROCESSING_SETTINGS.gates, ...parsed.gates },
     };
@@ -109,7 +104,6 @@ export function setProcessingSettings(
   const next: ProcessingSettings = {
     ...current,
     ...patch,
-    window: { ...current.window, ...patch.window },
     tasks: { ...current.tasks, ...patch.tasks },
     gates: { ...current.gates, ...patch.gates },
   };
@@ -124,7 +118,6 @@ export function setProcessingSettings(
 function clone(s: ProcessingSettings): ProcessingSettings {
   return {
     ...s,
-    window: { ...s.window },
     tasks: { ...s.tasks },
     gates: { ...s.gates },
   };

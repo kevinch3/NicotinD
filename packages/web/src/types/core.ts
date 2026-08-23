@@ -42,7 +42,6 @@ export type { ArtistInfoResponse } from '../../../core/src/types/artist-info';
 
 export type {
   ProcessingTaskId,
-  ProcessingWindow,
   ProcessingSettings,
   ProcessingPhase,
   ProcessingStatus,

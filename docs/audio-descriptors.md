@@ -80,8 +80,8 @@ On the published `nicotind-analysis:release` image, i7 desktop CPU, 180 s window
 The first spike ran `RhythmExtractor2013` separately (1.5–1.6 s); `MusicExtractor` already emits
 `rhythm.beats_position`, so the shipped analyzer reads the grid from the pool instead. Real
 end-to-end via `EssentiaDescriptorAnalyzer`: **6.15 s** (La Konga) and **5.85 s** (Baby Konyawa).
-CPU-bound — no P4000 contention — but `gpuBusyPercent` still yields the whole tick. At 15k tracks
-and concurrency 2 that is roughly a day of accumulated window time.
+CPU-bound — no P4000 contention. At 15k tracks and the processor's concurrency of 3 that is
+roughly a day of accumulated processing time.
 
 ### What the two records look like
 

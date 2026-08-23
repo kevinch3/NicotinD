@@ -226,8 +226,9 @@ Consequences that follow from this shape and need designing:
   pattern the analysis sidecar already uses on `GET /api/admin/review`, not preference
   alone.
 - **It is a foreground request against a contended GPU.** Unlike enrichment it cannot
-  wait, which is the opposite of the `gpuBusyPercent` yield rule, and it interacts
-  directly with #605 (the sidecar pinning 7.6 GB while idle).
+  wait, and it interacts directly with #605 (the sidecar pinning 7.6 GB while idle).
+  (Enrichment's automatic `gpuBusyPercent` yield has since been removed — it measured as
+  a no-op — leaving `paused` as the manual stand-down.)
 
 Model-code sourcing is a real maintenance note: the anvuew checkpoint is trained against
 **ZFTurbo's fork** of `bs_roformer`, not upstream — its config carries fork-only keys

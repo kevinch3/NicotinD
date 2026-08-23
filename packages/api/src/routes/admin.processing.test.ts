@@ -1,5 +1,5 @@
 /**
- * Route tests for the windowed library-processing admin endpoints: admin gate,
+ * Route tests for the library-processing admin endpoints: admin gate,
  * 503 when the service isn't wired, settings GET/PUT (validation), and run/stop.
  */
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
@@ -45,7 +45,6 @@ function makeService(): LibraryProcessingService {
       musicDir: '/music',
       coverCacheDir: '/tmp/cover-cache',
       lidarr: null,
-      concurrency: 1,
       ffmpegAvailable: () => false,
       readTags: async () => ({}),
       writeTags: async () => true,
@@ -67,6 +66,7 @@ function makeService(): LibraryProcessingService {
       lookupPopularity: async () => new Map(),
       lookupArtistOrigin: null,
       lookupArtistReleaseGroups: null,
+      concurrency: 1,
       fileExists: () => false,
     }),
   });
@@ -128,83 +128,12 @@ describe('admin /processing', () => {
     const res = await app.request('/processing', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ enabled: false, window: { start: '01:00', end: '04:00' } }),
+      body: JSON.stringify({ enabled: false, paused: true }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      settings: { enabled: boolean; window: { start: string } };
-    };
+    const body = (await res.json()) as { settings: { enabled: boolean; paused: boolean } };
     expect(body.settings.enabled).toBe(false);
-    expect(body.settings.window.start).toBe('01:00');
-  });
-
-  it('rejects a malformed window', async () => {
-    const app = authed(
-      new Hono<AuthEnv>().route(
-        '/',
-        adminRoutes({ musicDir: '/music', processing: makeService() }),
-      ),
-      'admin',
-    );
-    const res = await app.request('/processing', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ window: { start: '25:00', end: '04:00' } }),
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it('rejects a non-positive batchSize', async () => {
-    const app = authed(
-      new Hono<AuthEnv>().route(
-        '/',
-        adminRoutes({ musicDir: '/music', processing: makeService() }),
-      ),
-      'admin',
-    );
-    const res = await app.request('/processing', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ batchSize: 0 }),
-    });
-    expect(res.status).toBe(400);
-  });
-
-  // Issue #224: the shared-GPU yield threshold. 0 disables it; >100 could never
-  // fire, which would read as "enabled" while doing nothing.
-  it.each([[-1], [101], [50.5]])('rejects an out-of-range gpuBusyPercent (%p)', async (value) => {
-    const app = authed(
-      new Hono<AuthEnv>().route(
-        '/',
-        adminRoutes({ musicDir: '/music', processing: makeService() }),
-      ),
-      'admin',
-    );
-    const res = await app.request('/processing', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ gpuBusyPercent: value }),
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it('accepts a valid gpuBusyPercent, including 0 (off)', async () => {
-    const app = authed(
-      new Hono<AuthEnv>().route(
-        '/',
-        adminRoutes({ musicDir: '/music', processing: makeService() }),
-      ),
-      'admin',
-    );
-    for (const value of [0, 70, 100]) {
-      const res = await app.request('/processing', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ gpuBusyPercent: value }),
-      });
-      expect(res.status, `gpuBusyPercent=${value}`).toBe(200);
-      expect((await res.json()).settings.gpuBusyPercent).toBe(value);
-    }
+    expect(body.settings.paused).toBe(true);
   });
 
   it('accepts run and stop', async () => {

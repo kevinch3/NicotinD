@@ -34,7 +34,6 @@ import {
   listVersionHistory,
 } from '../services/update-check.js';
 import { setProcessingSettings } from '../services/processing-settings.js';
-import { parseHhMm } from '../services/processing-window.js';
 import { loadQuarantineQueue } from '../services/song-steps.js';
 import { presenceService } from '../services/presence.js';
 import type { LibraryProcessingService } from '../services/library-processing.service.js';
@@ -505,29 +504,11 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     return c.json(svc.getState());
   });
 
-  // Update settings (window, enable, per-task flags, batch/concurrency).
+  // Update settings (enable, pause, per-task flags, landing gates, hold-for-review).
   app.put('/processing', async (c) => {
     const svc = requireProcessing();
     if (!svc) return c.json({ error: 'Library processing not available' }, 503);
     const body = await c.req.json<Partial<ProcessingSettings>>();
-    if (body.window) {
-      const { start, end } = body.window;
-      if (
-        (start !== undefined && parseHhMm(start) === null) ||
-        (end !== undefined && parseHhMm(end) === null)
-      ) {
-        return c.json({ error: 'window.start/end must be HH:MM' }, 400);
-      }
-    }
-    if (body.batchSize !== undefined && (!Number.isInteger(body.batchSize) || body.batchSize < 1)) {
-      return c.json({ error: 'batchSize must be a positive integer' }, 400);
-    }
-    if (
-      body.concurrency !== undefined &&
-      (!Number.isInteger(body.concurrency) || body.concurrency < 1)
-    ) {
-      return c.json({ error: 'concurrency must be a positive integer' }, 400);
-    }
     if (body.paused !== undefined && typeof body.paused !== 'boolean') {
       return c.json({ error: 'paused must be a boolean' }, 400);
     }
@@ -548,16 +529,6 @@ export function adminRoutes(deps: AdminRoutesDeps) {
         },
         400,
       );
-    }
-    // 0 disables the shared-GPU yield; above 100 could never trigger, which
-    // would read as "enabled" while doing nothing (issue #224).
-    if (
-      body.gpuBusyPercent !== undefined &&
-      (!Number.isInteger(body.gpuBusyPercent) ||
-        body.gpuBusyPercent < 0 ||
-        body.gpuBusyPercent > 100)
-    ) {
-      return c.json({ error: 'gpuBusyPercent must be an integer 0-100' }, 400);
     }
     // gates is a sparse per-task boolean map ("require before landing"); reject a
     // malformed value so a bad client can't poison the persisted JSON blob.

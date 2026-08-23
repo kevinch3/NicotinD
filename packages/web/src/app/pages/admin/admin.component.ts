@@ -39,7 +39,6 @@ import {
   totalPending,
   isRunning,
   runOutcomeToast,
-  clampInt,
 } from '../../lib/processing-progress';
 import {
   detailPairs,
@@ -436,27 +435,6 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly processingSaving = signal(false);
 
   /** Toggle a per-task flag and persist immediately. */
-  /**
-   * Compute-throttle writes (issue #224). The server rejects a non-positive
-   * integer with a 400, so clamp here rather than round-tripping a value the
-   * user can trivially type — a blanked number input reads as NaN.
-   */
-  saveConcurrency(raw: string): void {
-    const n = clampInt(raw, 1, 16, this.processing()?.concurrency ?? 3);
-    if (n !== this.processing()?.concurrency) void this.saveProcessing({ concurrency: n });
-  }
-
-  /** 0 disables the yield; >100 could never fire, which would read as "on". */
-  saveGpuBusyPercent(raw: string): void {
-    const n = clampInt(raw, 0, 100, this.processing()?.gpuBusyPercent ?? 0);
-    if (n !== this.processing()?.gpuBusyPercent) void this.saveProcessing({ gpuBusyPercent: n });
-  }
-
-  saveBatchSize(raw: string): void {
-    const n = clampInt(raw, 1, 500, this.processing()?.batchSize ?? 25);
-    if (n !== this.processing()?.batchSize) void this.saveProcessing({ batchSize: n });
-  }
-
   toggleProcessingTask(task: ProcessingTaskId): void {
     const current = this.processing();
     if (!current) return;
