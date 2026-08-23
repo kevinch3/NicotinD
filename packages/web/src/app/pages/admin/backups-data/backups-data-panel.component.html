@@ -1,0 +1,131 @@
+<app-settings-group
+  groupId="backups-data"
+  icon="database"
+  [title]="'admin.groupBackupsDataTitle' | t"
+  [description]="'admin.groupBackupsDataDesc' | t"
+>
+  <!-- Maintenance: backups. -->
+  <div class="flex flex-col gap-2 mb-8" data-testid="backups-panel">
+    <div class="flex items-center gap-3">
+      <button
+        (click)="runBackup()"
+        [disabled]="backingUp()"
+        data-testid="backup-now"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+      >
+        {{ (backingUp() ? 'admin.backingUp' : 'admin.backupNow') | t }}
+      </button>
+      <span class="text-xs text-theme-muted">
+        {{ 'admin.backupHint' | t }}
+      </span>
+    </div>
+    @if (backupMsg(); as msg) {
+      <p class="text-xs text-theme-secondary" data-testid="backup-msg">{{ msg }}</p>
+    }
+    <!-- The one line that makes a silently-stopped backup visible. The API
+         has shipped this summary all along; nothing rendered it. -->
+    @if (backupsSummary()?.newestAt; as newestAt) {
+      <p class="text-xs text-theme-muted" data-testid="backup-last">
+        {{ 'admin.backupLast' | t }} {{ formatBackupDate(newestAt) }}
+      </p>
+    } @else {
+      <p class="text-xs text-status-warn" data-testid="backup-last">
+        {{ 'admin.backupNever' | t }}
+      </p>
+    }
+    @if (backups().length > 0) {
+      <ul class="text-xs text-theme-muted flex flex-col gap-0.5" data-testid="backups-list">
+        @for (b of backups(); track b.name) {
+          <li>
+            <span class="text-theme-secondary">{{ b.name }}</span>
+            — {{ formatBackupSize(b.sizeBytes) }}, {{ formatBackupDate(b.createdAt) }}
+          </li>
+        }
+      </ul>
+    }
+  </div>
+
+  <!-- Maintenance: portable config export/import (issue #221). -->
+  <div class="flex flex-col gap-2 mb-8" data-testid="config-panel">
+    <div class="flex items-center gap-3 flex-wrap">
+      <button
+        (click)="exportConfig()"
+        [disabled]="configBusy()"
+        data-testid="config-export"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+      >
+        {{ 'admin.exportConfiguration' | t }}
+      </button>
+      <label class="text-xs text-theme-muted flex items-center gap-1.5">
+        <input
+          type="checkbox"
+          data-testid="config-export-secrets"
+          [checked]="configWithSecrets()"
+          (change)="configWithSecrets.set($any($event.target).checked)"
+        />
+        {{ 'admin.includeCredentials' | t }}
+      </label>
+      <label
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition cursor-pointer"
+      >
+        {{ 'admin.importConfiguration' | t }}
+        <input
+          type="file"
+          accept="application/json,.json"
+          class="hidden"
+          data-testid="config-import-file"
+          (change)="previewImport($event)"
+        />
+      </label>
+    </div>
+    <span class="text-xs text-theme-muted">
+      {{ 'admin.configHint' | t }}
+    </span>
+    @if (configMsg(); as msg) {
+      <p class="text-xs text-theme-secondary" data-testid="config-msg">{{ msg }}</p>
+    }
+
+    <!-- Dry-run preview: nothing is written until this is confirmed. -->
+    @if (importPlan(); as plan) {
+      <div
+        class="rounded-lg bg-theme-surface-2 p-3 flex flex-col gap-2"
+        data-testid="config-import-preview"
+      >
+        <p class="text-xs text-theme-secondary">
+          {{ 'admin.bundleWouldChange' | t }}
+        </p>
+        <ul class="text-xs text-theme-muted flex flex-col gap-0.5">
+          @for (s of plan.sections; track s.section) {
+            <li>
+              <span class="text-theme-secondary">{{ s.section }}</span>
+              — {{ 'admin.importPlanCounts' | t: { create: s.create, update: s.update } }}
+              @if (s.skip) {
+                {{ 'admin.importPlanSkippedSuffix' | t: { skip: s.skip } }}
+              }
+            </li>
+          }
+        </ul>
+        @for (w of plan.warnings; track w) {
+          <p class="text-xs text-theme-muted">⚠ {{ w }}</p>
+        }
+        <div class="flex items-center gap-2">
+          <button
+            (click)="applyImport()"
+            [disabled]="configBusy()"
+            data-testid="config-import-apply"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-accent text-theme-on-accent hover:opacity-90 transition disabled:opacity-50"
+          >
+            {{ 'admin.applyImport' | t }}
+          </button>
+          <button
+            (click)="cancelImport()"
+            data-testid="config-import-cancel"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface text-theme-secondary hover:bg-theme-hover transition"
+          >
+            {{ 'admin.cancel' | t }}
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+</app-settings-group>

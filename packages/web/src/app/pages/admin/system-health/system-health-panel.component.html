@@ -1,0 +1,113 @@
+<app-settings-group
+  groupId="system-health"
+  icon="activity"
+  [title]="'admin.system' | t"
+  [description]="'admin.groupSystemHealthDesc' | t"
+>
+  <!-- Live metric pills: CPU, RAM, GPU. Drained from ServiceReviewService
+           (single polled snapshot — no per-pill fetcher). GPU hides itself when
+           no vendor CLI returns a utilisation. -->
+  <div class="mb-6 flex flex-wrap gap-2" data-testid="metrics-pills">
+    <app-metric-pill [cpu]="cpu() ?? null" [memory]="memory() ?? null" [gpu]="gpu() ?? null">
+    </app-metric-pill>
+  </div>
+
+
+  <!-- Server version + update check (cached daily GitHub poll, drained
+           from ServiceReview; "Check now" forces a fresh poll). -->
+  @if (updateCheck(); as uc) {
+    <div class="flex items-center gap-3 mb-8 text-sm flex-wrap" data-testid="update-check">
+      <span class="text-theme-muted">{{ 'admin.server' | t }}</span>
+      <span class="text-theme-secondary">v{{ uc.currentVersion }}</span>
+      @if (uc.updateAvailable) {
+        <a
+          [href]="uc.releaseUrl"
+          target="_blank"
+          rel="noopener"
+          class="text-status-progress underline"
+          data-testid="update-available"
+        >
+          {{ 'admin.updateAvailable' | t: { version: uc.latestVersion ?? '' } }}
+        </a>
+      } @else if (uc.checkedAt) {
+        <span class="text-theme-muted">{{ 'admin.upToDate' | t }}</span>
+      }
+      <button
+        (click)="loadUpdateCheck(true)"
+        [disabled]="checkingUpdate()"
+        data-testid="update-check-now"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+      >
+        {{ (checkingUpdate() ? 'admin.checking' : 'admin.checkNow') | t }}
+      </button>
+    </div>
+  }
+
+  @if (libraryState(); as lib) {
+    <div class="flex items-center gap-3 mb-8 text-sm">
+      <span class="text-theme-muted">{{ 'admin.libraryScan' | t }}</span>
+      @if (lib.scanning) {
+        <span class="flex items-center gap-2 text-status-progress">
+          <span
+            class="inline-block w-3 h-3 border-2 border-theme border-t-transparent rounded-full animate-spin"
+          ></span>
+          {{ 'admin.scanningSongs' | t: { count: lib.indexedSongCount.toLocaleString() } }}
+        </span>
+      } @else {
+        <span class="text-theme-secondary">{{
+          'admin.idleSongs' | t: { count: lib.indexedSongCount.toLocaleString() }
+        }}</span>
+      }
+    </div>
+  }
+
+  <!-- Log viewer -->
+  <div>
+    <span class="text-xs font-semibold uppercase tracking-wider text-theme-muted">{{
+      'admin.logs' | t
+    }}</span>
+
+    <div class="flex gap-2 mb-3 flex-wrap mt-3" appTvNavGroup axis="horizontal">
+      @for (svc of logServiceOptions; track svc) {
+        <button
+          appTvNavItem
+          (click)="selectLogService(svc)"
+          [class]="
+            selectedService() === svc
+              ? 'px-3 py-1 rounded text-sm font-medium bg-theme-accent text-theme-on-accent'
+              : 'px-3 py-1 rounded text-sm font-medium bg-theme-surface text-theme-muted hover:text-theme-primary'
+          "
+        >
+          {{ svc }}
+        </button>
+      }
+    </div>
+
+    <div class="text-xs mb-2">
+      @if (logStreamStatus() === 'connecting') {
+        <span class="text-status-warn">{{ 'admin.reconnecting' | t }}</span>
+      } @else if (logStreamStatus() === 'connected') {
+        <span class="text-status-done">{{ 'admin.live' | t }}</span>
+      } @else if (logStreamStatus() === 'disconnected') {
+        <span class="text-status-error"
+          >{{ 'admin.disconnected' | t }}
+          <button class="underline" (click)="connectLogStream()">
+            {{ 'admin.reconnect' | t }}
+          </button></span
+        >
+      }
+    </div>
+
+    <div
+      class="log-scroll-container bg-theme-surface rounded p-3 h-80 overflow-y-auto font-mono text-xs text-theme-muted"
+    >
+      @if (logLines().length === 0) {
+        <div class="text-theme-muted/50">{{ 'admin.waitingForLogs' | t }}</div>
+      } @else {
+        @for (line of logLines(); track $index) {
+          <div class="whitespace-pre-wrap break-all leading-relaxed">{{ line }}</div>
+        }
+      }
+    </div>
+  </div>
+</app-settings-group>

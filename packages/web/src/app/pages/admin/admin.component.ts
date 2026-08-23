@@ -59,6 +59,9 @@ import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { SettingsGroupComponent } from '../../components/settings-group/settings-group.component';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 import { RadioPollsCardComponent } from './radio-polls/radio-polls-card.component';
+import { UserManagementPanelComponent } from './user-management/user-management-panel.component';
+import { SystemHealthPanelComponent } from './system-health/system-health-panel.component';
+import { BackupsDataPanelComponent } from './backups-data/backups-data-panel.component';
 import { StreamingMediaPanelComponent } from './streaming-media/streaming-media-panel.component';
 import { AcquisitionAutomationPanelComponent } from './acquisition-automation/acquisition-automation-panel.component';
 import { AuditLogPanelComponent } from './audit-log/audit-log-panel.component';
@@ -89,6 +92,9 @@ type DuplicateSong = {
     SettingsGroupComponent,
     BottomChromeSafeDirective,
     RadioPollsCardComponent,
+    UserManagementPanelComponent,
+    SystemHealthPanelComponent,
+    BackupsDataPanelComponent,
     StreamingMediaPanelComponent,
     AcquisitionAutomationPanelComponent,
     AuditLogPanelComponent,
@@ -114,19 +120,6 @@ export class AdminComponent implements OnInit, OnDestroy {
   protected readonly reviewSvc = inject(ServiceReviewService);
   protected readonly acqSvc = inject(AcquisitionSettingsService);
 
-  readonly users = signal<AdminUser[]>([]);
-  readonly loading = signal(true);
-  readonly error = signal<string | null>(null);
-
-  readonly resetTarget = signal<AdminUser | null>(null);
-  readonly newPassword = signal('');
-  readonly resetting = signal(false);
-
-  readonly showCreateUser = signal(false);
-  readonly newUsername = signal('');
-  readonly newUserPassword = signal('');
-  readonly creating = signal(false);
-
   // Library-wide metadata optimization (cover/year/release-type from Lidarr).
   // Running truth lives in the ServiceReview `maintenance` slice (issue #622);
   // this only covers the request round-trip before the first poll lands.
@@ -136,11 +129,6 @@ export class AdminComponent implements OnInit, OnDestroy {
   // Action-only loaders (snapshot equivalents drain from ServiceReviewService).
   readonly syncing = signal(false);
   readonly syncMsg = signal<string | null>(null);
-
-  readonly checkingUpdate = signal(false);
-
-  readonly backingUp = signal(false);
-  readonly backupMsg = signal<string | null>(null);
 
   // Automated playlists (issue #228): cadence control + manual "generate now".
 
@@ -177,19 +165,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly retryAlbum = signal<DiscographyAlbum | null>(null);
   readonly retryArtist = signal('');
 
-  readonly selectedService = signal<'nicotind'>('nicotind');
-  readonly logLines = signal<string[]>([]);
-  readonly logStreamStatus = signal<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle');
-
   // ServiceReview slices — exposed for the template.
-  readonly cpu = this.reviewSvc.cpu;
-  readonly memory = this.reviewSvc.memory;
-  readonly gpu = this.reviewSvc.gpu;
-  readonly servicesState = this.reviewSvc.services;
-  readonly libraryState = this.reviewSvc.libraryState;
-  readonly updateCheck = this.reviewSvc.updateCheck;
-  readonly backups = this.reviewSvc.backups;
-  readonly backupsSummary = this.reviewSvc.backupsSummary;
   readonly incompleteJobs = this.reviewSvc.incompleteJobs;
   readonly untracked = this.reviewSvc.untracked;
   readonly incompleteJobsCount = this.reviewSvc.incompleteJobsCount;
@@ -203,40 +179,15 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly reviewHeldCount = this.reviewSvc.reviewHeldCount;
   readonly reviewHeldOldestDays = this.reviewSvc.reviewHeldOldestDays;
 
-  private logEventSource: EventSource | null = null;
-  private logReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly reviewDispose?: () => void;
   private processingStatus = signal<ProcessingStatus | null>(null);
   readonly processingStatusReadonly = this.processingStatus.asReadonly();
-  private readonly serviceSelectEffect = effect(() => {
-    this.selectedService();
-    this.connectLogStream();
-  });
-
   constructor() {
     const dispose = this.reviewSvc.start();
     this.reviewDispose = dispose;
   }
 
-  /**
-   * A `computed`, not a method: every users-table row calls it three times (the
-   * "(you)" marker, the role cell, and two disabled bindings), and as a method
-   * that meant base64-decoding + JSON.parsing the JWT on every one of those on
-   * every change-detection pass. Still read as `currentUserId()` in the template.
-   */
-  readonly currentUserId = computed<string | null>(() => {
-    const token = this.auth.token();
-    if (!token) return null;
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload.sub as string;
-    } catch {
-      return null;
-    }
-  });
-
   ngOnInit(): void {
-    this.loadUsers();
     this.loadIncompleteJobs();
     this.loadProcessing();
     void this.loadQuarantineQueue();
@@ -521,137 +472,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Manual "Check now" — forces a fresh GitHub poll (the data is then
-   *  re-picked up by ServiceReview on the next 5s tick; we also refresh
-   *  inline so the user sees the result without waiting). */
-  async checkUpdateNow(): Promise<void> {
-    if (this.checkingUpdate()) return;
-    this.checkingUpdate.set(true);
-    try {
-      await firstValueFrom(this.api.getUpdateCheck(true));
-      await this.reviewSvc.refresh();
-    } catch {
-      /* non-fatal */
-    } finally {
-      this.checkingUpdate.set(false);
-    }
-  }
-  /** Local setter alias so the template's button click stays terse. */
-  loadUpdateCheck(refresh = false): Promise<void> {
-    return this.checkUpdateNow().then(() => undefined);
-  }
-
-  async runBackup(): Promise<void> {
-    if (this.backingUp()) return;
-    this.backingUp.set(true);
-    this.backupMsg.set(null);
-    try {
-      const info = await firstValueFrom(this.api.runBackup());
-      this.backupMsg.set(
-        this.i18n.t('admin.backupCreated', {
-          name: info.name,
-          size: this.formatBackupSize(info.sizeBytes),
-        }),
-      );
-      await this.reviewSvc.refresh();
-    } catch {
-      this.backupMsg.set(this.i18n.t('admin.backupFailed'));
-    } finally {
-      this.backingUp.set(false);
-    }
-  }
-
   // ── Configuration export / import (issue #221) ──────────────────────────
-  readonly configBusy = signal(false);
-  readonly configMsg = signal<string | null>(null);
-  readonly configWithSecrets = signal(false);
-  readonly importPlan = signal<ImportPlan | null>(null);
-  /** Held between the dry-run preview and the user confirming the apply. */
-  private pendingBundle: ConfigBundle | null = null;
-
-  async exportConfig(): Promise<void> {
-    if (this.configBusy()) return;
-    this.configBusy.set(true);
-    this.configMsg.set(null);
-    try {
-      const bundle = await firstValueFrom(this.api.exportConfig(this.configWithSecrets()));
-      const url = URL.createObjectURL(
-        new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }),
-      );
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `nicotind-config-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      this.configMsg.set(
-        this.i18n.t(
-          this.configWithSecrets() ? 'admin.exportedWithCredentials' : 'admin.exportedRedacted',
-        ),
-      );
-    } catch {
-      this.configMsg.set(this.i18n.t('admin.exportFailed'));
-    } finally {
-      this.configBusy.set(false);
-    }
-  }
-
-  /** Read the picked file and dry-run it; the apply waits for confirmation. */
-  async previewImport(event: Event): Promise<void> {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file || this.configBusy()) return;
-
-    this.configBusy.set(true);
-    this.configMsg.set(null);
-    this.importPlan.set(null);
-    this.pendingBundle = null;
-    try {
-      const bundle = JSON.parse(await file.text()) as ConfigBundle;
-      const res = await firstValueFrom(this.api.importConfig(bundle, true));
-      this.importPlan.set(res.plan);
-      this.pendingBundle = bundle;
-    } catch (err) {
-      this.configMsg.set(
-        this.i18n.t(err instanceof SyntaxError ? 'admin.invalidJsonFile' : 'admin.bundleRejected'),
-      );
-    } finally {
-      this.configBusy.set(false);
-    }
-  }
-
-  async applyImport(): Promise<void> {
-    const bundle = this.pendingBundle;
-    if (!bundle || this.configBusy()) return;
-    this.configBusy.set(true);
-    try {
-      const res = await firstValueFrom(this.api.importConfig(bundle, false));
-      const rows = res.plan.sections.reduce((n, s) => n + s.create + s.update, 0);
-      this.configMsg.set(this.i18n.t('admin.importedRows', { count: rows }));
-      this.importPlan.set(null);
-      this.pendingBundle = null;
-      await this.reviewSvc.refresh();
-    } catch {
-      this.configMsg.set(this.i18n.t('admin.importFailed'));
-    } finally {
-      this.configBusy.set(false);
-    }
-  }
-
-  cancelImport(): void {
-    this.importPlan.set(null);
-    this.pendingBundle = null;
-  }
-
-  formatBackupSize(bytes: number): string {
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  }
-
-  formatBackupDate(ms: number): string {
-    return new Date(ms).toLocaleString();
-  }
 
   /** Issue #314 — in-app remediation for the fragments report. One busy flag
    *  serializes the actions; every action refreshes the report afterwards so
@@ -912,195 +733,8 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     if (this.reviewDispose) this.reviewDispose();
-    this.disconnectLogStream();
     this.processingStream?.close();
     this.processingStream = null;
-  }
-
-  formatDate(dateStr: string): string {
-    return new Date(dateStr + 'Z').toLocaleDateString();
-  }
-
-  readonly roles = ROLES;
-
-  /** Bound once so the pure activity helpers get a stable translator reference. */
-  private readonly translate: Translator = (key, params) => this.i18n.t(key, params);
-
-  /**
-   * Shared by the static self badge and the role-picker trigger, so the two
-   * cannot drift — they are the same badge, one of which happens to be clickable.
-   */
-  roleBadgeClass(role: string): string {
-    return (
-      'inline-block px-2 py-0.5 rounded text-xs font-medium border border-theme ' +
-      (role === 'admin' ? 'status-warn' : 'bg-theme-surface-2 text-theme-secondary')
-    );
-  }
-
-  /** "Online" / "3d ago" / "Never" — see lib/user-activity.ts. */
-  activityLabel(user: AdminUser): string {
-    return userActivityLabel(user, this.translate);
-  }
-
-  /** "2 devices · 3 sessions" while connected, else '' (the row renders nothing). */
-  activityDetail(user: AdminUser): string {
-    return userActivityDetail(user, this.translate);
-  }
-
-  /** Absolute last-connection time for the Activity cell's tooltip. */
-  lastSeenExact(user: AdminUser): string {
-    return user.last_seen_at === null ? '' : new Date(user.last_seen_at).toLocaleString();
-  }
-
-  async setRole(user: AdminUser, newRole: Role): Promise<void> {
-    if (newRole === user.role) return;
-    const prevRole = user.role;
-    this.users.update((prev) => prev.map((u) => (u.id === user.id ? { ...u, role: newRole } : u)));
-    try {
-      await firstValueFrom(this.api.updateUserRole(user.id, newRole));
-    } catch (err) {
-      this.users.update((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, role: prevRole } : u)),
-      );
-      this.error.set(err instanceof Error ? err.message : this.i18n.t('admin.updateRoleFailed'));
-    }
-  }
-
-  async toggleStatus(user: AdminUser): Promise<void> {
-    const newStatus = user.status === 'active' ? 'disabled' : 'active';
-    try {
-      await firstValueFrom(this.api.updateUserStatus(user.id, newStatus as 'active' | 'disabled'));
-      this.users.update((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, status: newStatus } : u)),
-      );
-    } catch (err) {
-      this.error.set(err instanceof Error ? err.message : this.i18n.t('admin.updateStatusFailed'));
-    }
-  }
-
-  async handleResetPassword(): Promise<void> {
-    const target = this.resetTarget();
-    if (!target || !this.newPassword().trim()) return;
-    this.resetting.set(true);
-    try {
-      await firstValueFrom(this.api.resetUserPassword(target.id, this.newPassword().trim()));
-      this.resetTarget.set(null);
-      this.newPassword.set('');
-    } catch (err) {
-      this.error.set(err instanceof Error ? err.message : this.i18n.t('admin.resetPasswordFailed'));
-    } finally {
-      this.resetting.set(false);
-    }
-  }
-
-  async handleCreateUser(): Promise<void> {
-    const username = this.newUsername().trim();
-    const password = this.newUserPassword().trim();
-    if (!username || !password) return;
-    this.creating.set(true);
-    try {
-      await firstValueFrom(this.api.createUser(username, password));
-      // Reload rather than appending: the list is ordered by activity
-      // server-side, and a never-connected new user does not simply belong last.
-      await this.loadUsers();
-      this.showCreateUser.set(false);
-      this.newUsername.set('');
-      this.newUserPassword.set('');
-    } catch (err: any) {
-      this.error.set(err.error?.error ?? err.message ?? this.i18n.t('admin.createUserFailed'));
-    } finally {
-      this.creating.set(false);
-    }
-  }
-
-  /**
-   * Deleting a user routes through the app-wide confirm host rather than a
-   * modal this page hand-rolls — same shape as every other destructive action
-   * (`ConfirmService`, mounted once in the layout).
-   */
-  async confirmDeleteUser(user: AdminUser): Promise<void> {
-    const ok = await this.confirm.ask(
-      this.i18n.t('admin.deleteUserConfirm', { username: user.username }),
-    );
-    if (!ok) return;
-    try {
-      await firstValueFrom(this.api.deleteUser(user.id));
-      this.users.update((prev) => prev.filter((u) => u.id !== user.id));
-    } catch (err) {
-      this.error.set(err instanceof Error ? err.message : this.i18n.t('admin.deleteUserFailed'));
-    }
-  }
-
-  readonly logServiceOptions: 'nicotind'[] = ['nicotind'];
-
-  selectLogService(svc: 'nicotind'): void {
-    this.selectedService.set(svc);
-    this.logLines.set([]);
-  }
-
-  public connectLogStream(): void {
-    const token = this.auth.token();
-    if (!token) return;
-    this.disconnectLogStream();
-    const service = this.selectedService();
-    const src = new EventSource(this.server.sseUrl(`/api/system/logs/${service}/stream`, token));
-    this.logEventSource = src;
-    this.logStreamStatus.set('connecting');
-
-    let everConnected = false;
-
-    src.onopen = () => {
-      everConnected = true;
-      this.logStreamStatus.set('connected');
-    };
-
-    src.onmessage = (e) => {
-      this.logLines.update((lines) => {
-        const next = [...lines, e.data];
-        return next.length > 500 ? next.slice(next.length - 500) : next;
-      });
-      this.scrollLogsToBottom();
-    };
-
-    src.onerror = () => {
-      src.close();
-      this.logEventSource = null;
-      if (everConnected) {
-        this.logStreamStatus.set('connecting');
-        this.logReconnectTimer = setTimeout(() => this.connectLogStream(), 5000);
-      } else {
-        this.logStreamStatus.set('disconnected');
-      }
-    };
-  }
-
-  private disconnectLogStream(): void {
-    if (this.logReconnectTimer !== null) {
-      clearTimeout(this.logReconnectTimer);
-      this.logReconnectTimer = null;
-    }
-    this.logEventSource?.close();
-    this.logEventSource = null;
-  }
-
-  private scrollLogsToBottom(): void {
-    setTimeout(() => {
-      const el = document.querySelector('.log-scroll-container');
-      if (el) (el as HTMLElement).scrollTop = (el as HTMLElement).scrollHeight;
-    }, 0);
-  }
-
-  private async loadUsers(): Promise<void> {
-    this.loading.set(true);
-    this.error.set(null);
-    try {
-      const data = await firstValueFrom(this.api.getUsers());
-      this.users.set(data);
-    } catch (err) {
-      this.error.set(err instanceof Error ? err.message : this.i18n.t('admin.loadUsersFailed'));
-    } finally {
-      this.loading.set(false);
-    }
   }
 
   /** Template helper for backups row template — kept as a no-op alias so
