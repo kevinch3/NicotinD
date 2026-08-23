@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.0](https://github.com/kevinch3/NicotinD/compare/v0.3.66...v0.4.0) (2026-08-23)
+
+### Removed
+
+* **Processing window** — background enrichment no longer runs only inside a daily time window; it runs continuously while enabled. Pausing is now the way to stand down.
+* **Compute regulator** — the concurrency, batch-size and "yield above N % GPU" controls are gone. Measurement (issue [#224](https://github.com/kevinch3/NicotinD/issues/224)) found the GPU yield changed neither throughput nor GPU memory. Use **Pause** when another application needs the card.
+* **Resume playback on app open** — the app never auto-plays on load. Your queue, track and position are still restored exactly as before; only the automatic play is gone.
+* **Generation feedback** — the 👍/👎 hunt-match capture and its admin queue. It had stopped recording anything when acquisition moved to addons. Radio evaluation polls are unaffected.
+
+### Changed
+
+* **Admin page reorganised** — User management is now first, followed by Library processing. Each section is its own component, so the order can be changed cheaply from here on.
+* Admin no longer blanks the whole page while the user list loads; only that card waits.
+
 ## [0.3.66](https://github.com/kevinch3/NicotinD/compare/v0.3.65...v0.3.66) (2026-08-23)
 ## [0.3.65](https://github.com/kevinch3/NicotinD/compare/v0.3.64...v0.3.65) (2026-08-23)
 
