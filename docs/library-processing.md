@@ -322,6 +322,16 @@ instantly, un-enriched.
 - **`satisfiedColumnSql`** (per `EnrichmentTask`): the inverse of its `countPending`
   NULL predicate (`bpm IS NOT NULL`, `danceability IS NOT NULL`, …). `artist-image`
   has none → never a landing gate.
+- **One definition of "owned"** (issue #692). Quarantine hides a song from listings,
+  so nothing may report it as owned either. `DiscographyService.fetchLocalSongs`
+  counts only landed songs and `fetchLocalAlbums` only albums with at least one
+  landed song — otherwise the two halves of the artist page contradicted each other:
+  "0 albums" in the header beside "10/10 tracks · 1 complete" in the discography
+  strip, for an album every album surface was deliberately hiding (#687). A partly
+  landed album now reads *partial*, which is the honest answer — those are the
+  tracks that exist for the user right now. Whole-library maintenance readers
+  (`library-audit`, `artwork-backfill`, `library-retag`) deliberately still see
+  quarantined rows: they operate on what is on disk, not on what the user owns.
 - **`graduatePending(settings)`** runs at the end of every batch (`processOneBatch`)
   and inside `kickEager`. It lands songs where every required step is `satisfied OR
   permanentlyFailed` (the ledger complement `permanentlyFailedClause`, so a corrupt

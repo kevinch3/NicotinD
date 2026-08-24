@@ -196,21 +196,38 @@ export class DiscographyService {
     return result;
   }
 
+  /**
+   * Albums with at least one *landed* song — i.e. something the user can actually
+   * see and play. A quarantined song is hidden from every album surface
+   * (`quarantineExclusion`), so counting it as owned here made the two halves of
+   * the artist page contradict each other: "0 albums" in the header beside
+   * "10/10 tracks · 1 complete" in the discography strip (issue #692 / #687).
+   * Presence is graded by landed songs rather than the album row alone, so the
+   * album-name fallback below can't report a wholly-quarantined album as present.
+   */
   private fetchLocalAlbums(artistId: string): Array<{ id: string; name: string }> {
     return this.db
       .query<{ id: string; name: string }, [string]>(
-        'SELECT id, name FROM library_albums WHERE artist_id = ? AND hidden = 0',
+        `SELECT id, name FROM library_albums
+          WHERE artist_id = ? AND hidden = 0
+            AND EXISTS (
+              SELECT 1 FROM library_songs s
+               WHERE s.album_id = library_albums.id AND s.landed_at IS NOT NULL
+            )`,
       )
       .all(artistId);
   }
 
+  /** Only landed songs count as owned — see {@link fetchLocalAlbums}. A partly
+   *  landed album therefore reads as *partial*, which is the honest answer: those
+   *  are the tracks that exist for the user right now. */
   private fetchLocalSongs(artistId: string): Array<{ album_id: string; title: string }> {
     return this.db
       .query<{ album_id: string; title: string }, [string]>(
         `SELECT s.album_id, s.title
          FROM library_songs s
          JOIN library_albums a ON a.id = s.album_id
-         WHERE a.artist_id = ? AND s.hidden = 0`,
+         WHERE a.artist_id = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL`,
       )
       .all(artistId);
   }

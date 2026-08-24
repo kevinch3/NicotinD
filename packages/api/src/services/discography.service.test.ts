@@ -21,18 +21,28 @@ function insertAlbum(db: Database, id: string, name: string, artistId: string): 
   );
 }
 
+/** Landed by default — `quarantined: true` seeds a song still behind the landing gate. */
 function insertSong(
   db: Database,
   id: string,
   albumId: string,
   title: string,
   artistId: string,
+  opts: { quarantined?: boolean } = {},
 ): void {
   db.run(
     `INSERT INTO library_songs
-       (id, album_id, title, artist, artist_id, path, hidden, synced_at)
-     VALUES (?, ?, ?, 'A', ?, ?, 0, ?)`,
-    [id, albumId, title, artistId, `/music/${id}.mp3`, Date.now()],
+       (id, album_id, title, artist, artist_id, path, hidden, landed_at, synced_at)
+     VALUES (?, ?, ?, 'A', ?, ?, 0, ?, ?)`,
+    [
+      id,
+      albumId,
+      title,
+      artistId,
+      `/music/${id}.mp3`,
+      opts.quarantined ? null : Date.now(),
+      Date.now(),
+    ],
   );
 }
 
@@ -147,6 +157,66 @@ describe('DiscographyService', () => {
     expect(byTitle['Santo Pecado'].status).toBe('partial');
     expect(byTitle['Santo Pecado'].localTrackCount).toBe(1);
     expect(byTitle['Adentro'].status).toBe('missing');
+  });
+
+  it('counts only landed songs as owned (issue #692)', async () => {
+    insertArtist(db, 'ar1', 'Arjona');
+    insertAlbum(db, 'al1', 'Santo Pecado', 'ar1');
+    insertSong(db, 's1', 'al1', 'El Problema', 'ar1');
+    // Still behind the landing gate: hidden from every album surface, so it must
+    // not be reported as owned here either.
+    insertSong(db, 's2', 'al1', 'Minutos', 'ar1', { quarantined: true });
+
+    const { lidarr } = makeLidarrStub({
+      albums: [
+        makeLidarrAlbum({
+          id: 2,
+          title: 'Santo Pecado',
+          statistics: { trackCount: 2, totalTrackCount: 2, sizeOnDisk: 0, percentOfTracks: 100 },
+        }),
+      ],
+      tracksByAlbum: { 2: [makeTrack(21, 2, 'El Problema'), makeTrack(22, 2, 'Minutos')] },
+      monitoredArtist: {
+        id: 99,
+        foreignArtistId: 'mbid-arjona',
+        artistName: 'Arjona',
+        sortName: 'Arjona',
+        status: 'continuing',
+        images: [],
+        monitored: true,
+      },
+    });
+
+    const result = await new DiscographyService(lidarr, db).getArtistDiscography('ar1');
+    const album = result.albums.find((a) => a.title === 'Santo Pecado')!;
+
+    expect(album.localTrackCount).toBe(1);
+    expect(album.status).toBe('partial');
+  });
+
+  it('does not report an album present by name when nothing of it has landed (issue #692)', async () => {
+    insertArtist(db, 'ar1', 'Arjona');
+    insertAlbum(db, 'al1', 'Adentro', 'ar1');
+    insertSong(db, 's1', 'al1', 'Pingüinos en la Cama', 'ar1', { quarantined: true });
+
+    // Empty track fetch → the album-name presence fallback decides.
+    const { lidarr } = makeLidarrStub({
+      albums: [makeLidarrAlbum({ id: 3, title: 'Adentro' })],
+      tracksByAlbum: { 3: [] },
+      monitoredArtist: {
+        id: 99,
+        foreignArtistId: 'mbid-arjona',
+        artistName: 'Arjona',
+        sortName: 'Arjona',
+        status: 'continuing',
+        images: [],
+        monitored: true,
+      },
+    });
+
+    const result = await new DiscographyService(lidarr, db).getArtistDiscography('ar1');
+
+    expect(result.albums.find((a) => a.title === 'Adentro')!.status).toBe('missing');
   });
 
   it('normalizes track-number prefixes and remaster suffixes when matching', async () => {
