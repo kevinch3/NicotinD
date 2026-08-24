@@ -382,6 +382,38 @@ Deliberately out of scope: **playlists** (the local lane returns `{artists, albu
 
 Offline the bar is hidden (`findAvailable()`), since the local lane is unreachable and the page falls back to on-device preserved tracks.
 
+## Genre chips are the editor (issue #684)
+
+The track-info sheet has always *rendered* a song's full genre set as chips, primary
+first — but for a curator they were read-only. The only write was "Check genre" →
+Apply, and it had a display bug that made the feature read backwards: the route
+**appends**, while the component set `genreOverride` to just the applied genre, so the
+sheet redrew as if the whole set had been wiped. Every write now adopts the server's
+returned `genres` array instead of guessing, which is also why `applyGenre` returns it.
+
+The chips now carry the three missing gestures, curator-gated (`canCurate()`):
+
+- **Add** — a `+ Add` chip opens an inline input (Enter commits, Escape cancels) and
+  sends `mode: 'append'`, the route's own default. A simple add creates no override.
+- **Remove** — an `×` on each chip sends the *remaining* set as `mode: 'replace'`.
+- **Reorder** — native HTML5 drag between chips (the `now-playing-queue-panel` pattern,
+  no CDK/Sortable dependency), sending the reordered set as `mode: 'replace'`. Position
+  0 is the primary genre, so dragging a chip to the front *is* "make this the primary".
+
+**Why removal and reorder are `replace` and adding is not**: append can only add, so
+"exactly this set, in this order" is unexpressible through it. `replace` writes a
+song-scoped `library_genre_overrides` row, which is also what makes a deliberate
+curator ordering survive the next rescan — the right durability for an explicit edit,
+and the wrong one to impose on a one-genre add.
+
+The last remaining chip has no `×`: the route requires at least one genre and there is
+no clear-genre endpoint for songs (unlike `DELETE /artists/:id/genre`). Drag is also
+suppressed at one chip, where it means nothing.
+
+The reorder splice moved into the shared pure `lib/move-in-list.ts`, now used by both
+this and `PlayerService.moveInQueue` — a second drag-reorder surface is the point where
+two identical splice pairs start drifting.
+
 ## Queue semantics — what a click replaces (issue #233)
 
 A track click used to call the bare `PlayerService.play(track)`, which sets `currentTrack` + `isPlaying` and **never touches `queue`**. So clicking one track left whatever was queued before in place, and `playNext()` pulled that unrelated queue as soon as the deliberately-clicked track ended. The fix is not "always clear the queue" — that would wipe the queue on every album-track click too. It's making the *gesture* decide, via three explicit entry points:

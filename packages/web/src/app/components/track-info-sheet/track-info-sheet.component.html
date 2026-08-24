@@ -160,27 +160,84 @@
           </button>
         </div>
 
-        <!-- Genre: full set as chips, primary first/highlighted -->
-        <div class="flex gap-2 items-center">
-          <span class="text-theme-muted w-16 flex-shrink-0">Genre</span>
+        <!-- Genre: full set as chips, primary first/highlighted. For a curator
+             the chips are also the editor (issue #684): X removes, drag
+             reorders (position 0 is the primary), and "+ Add" appends. -->
+        <div class="flex gap-2 items-start">
+          <span class="text-theme-muted w-16 flex-shrink-0 pt-0.5">Genre</span>
           <span class="flex flex-wrap gap-1 items-center" data-testid="genre-value">
-            @for (g of genreList(); track g; let first = $first) {
+            @for (g of genreList(); track g; let i = $index; let first = $first) {
               <span
-                class="rounded-full px-2 py-0.5 text-xs"
+                class="rounded-full pl-2 pr-1 py-0.5 text-xs inline-flex items-center gap-1"
                 [class]="
-                  first
-                    ? 'bg-theme-accent/15 text-theme-accent-text font-medium'
-                    : 'bg-theme-surface-2 text-theme-secondary'
+                  (
+                    first
+                      ? 'bg-theme-accent/15 text-theme-accent-text font-medium'
+                      : 'bg-theme-surface-2 text-theme-secondary'
+                  ) +
+                  (canCurate() ? ' cursor-grab' : '') +
+                  (genreDropIndex() === i ? ' ring-1 ring-theme-accent' : '') +
+                  (genreDragIndex() === i ? ' opacity-50' : '')
                 "
+                [attr.draggable]="canCurate() && genreList().length > 1 ? true : null"
+                [attr.aria-grabbed]="genreDragIndex() === i ? true : null"
+                (dragstart)="onGenreDragStart($event, i)"
+                (dragover)="onGenreDragOver($event, i)"
+                (drop)="onGenreDrop($event, i)"
+                (dragend)="onGenreDragEnd()"
                 data-testid="genre-chip"
-                >{{ g }}</span
-              >
+                >{{ g }}
+                @if (canCurate() && genreList().length > 1) {
+                  <button
+                    type="button"
+                    class="rounded-full w-4 h-4 leading-none flex items-center justify-center hover:bg-theme-hover disabled:opacity-50"
+                    [disabled]="applyingGenre()"
+                    [attr.aria-label]="'Remove genre ' + g"
+                    (click)="removeGenre(i)"
+                    data-testid="remove-genre-button"
+                  >
+                    ×
+                  </button>
+                }
+              </span>
             } @empty {
               <span class="text-theme-muted">Unknown</span>
             }
+            @if (canCurate()) {
+              @if (addingGenre()) {
+                <input
+                  class="rounded-full bg-theme-surface-2 px-2 py-0.5 text-xs w-32 outline-none focus:ring-1 focus:ring-theme-accent"
+                  placeholder="Add genre"
+                  [value]="newGenre()"
+                  [disabled]="applyingGenre()"
+                  (input)="newGenre.set($any($event.target).value)"
+                  (keydown.enter)="addGenre()"
+                  (keydown.escape)="addingGenre.set(false)"
+                  data-testid="new-genre-input"
+                />
+                <button
+                  type="button"
+                  class="rounded-full px-2 py-0.5 text-xs bg-theme-accent text-theme-on-accent hover:opacity-90 disabled:opacity-50"
+                  [disabled]="applyingGenre() || !newGenre().trim()"
+                  (click)="addGenre()"
+                  data-testid="add-genre-confirm"
+                >
+                  {{ applyingGenre() ? 'Adding...' : 'Add' }}
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  class="rounded-full px-2 py-0.5 text-xs bg-theme-surface-2 text-theme-muted hover:bg-theme-hover"
+                  (click)="addingGenre.set(true)"
+                  data-testid="add-genre-button"
+                >
+                  + Add
+                </button>
+              }
+            }
           </span>
           <button
-            class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs disabled:opacity-50"
+            class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs disabled:opacity-50 flex-shrink-0"
             [disabled]="verifyingGenre()"
             (click)="verifyGenreNow()"
             data-testid="verify-genre-button"

@@ -75,6 +75,10 @@ export const SHARED_HELPERS: SharedHelper[] = [
   // already re-invented locally, so it is registered on arrival rather than
   // after a third copy appears (issue #660).
   { name: 'recordingKey', canonical: 'packages/api/src/services/recording-identity.ts' },
+  // The drag-reorder splice, extracted from PlayerService.moveInQueue when the
+  // track-info sheet's genre chips became the second reorderable list (#684) —
+  // registered at extraction, before a third surface copies it again.
+  { name: 'moveInList', canonical: 'packages/web/src/app/lib/move-in-list.ts' },
 ];
 
 export interface HelperViolation {

@@ -553,12 +553,18 @@ export class LibraryApiService {
     return this.http.get<GenreSuggestion>(`/api/library/songs/${id}/genre-suggestion`);
   }
 
-  /** Apply a genre to a song (admin); writes the tag + updates the library. */
-  applyGenre(id: string, genre: string) {
+  /**
+   * Apply a genre to a song (curator); writes the tag + updates the library.
+   * `mode` defaults to the server's 'append'. 'replace' sends the full desired
+   * set — the only way to express a removal or a reorder (issue #684) — and
+   * writes a durable song-scoped override so that set survives a rescan.
+   */
+  applyGenre(id: string, genre: string, mode?: 'append' | 'replace') {
     return this.http
-      .post<{ ok: boolean; genre: string }>(`/api/library/songs/${id}/genre`, {
-        genre,
-      })
+      .post<{ ok: boolean; genre: string; genres: string[] }>(
+        `/api/library/songs/${id}/genre`,
+        mode ? { genre, mode } : { genre },
+      )
       .pipe(
         // The server refreshes library_genres counts synchronously
         // (setSongGenres/appendSongGenres), so the cached Genres tab is stale
