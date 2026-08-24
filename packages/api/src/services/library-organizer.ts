@@ -38,7 +38,12 @@ import { reconcileAlbumFolder } from './album-reconcile.js';
 import { albumGroupKey } from './album-grouping.js';
 import { isLosslessFile, transcodeToOpus } from './post-download-transcode.js';
 import { ffmpegAvailable } from './transcode.js';
-import { looksLikeSourceWatermark } from './library-quality.js';
+import {
+  djSetArtistName,
+  looksLikeDjSetTag,
+  looksLikeSourceWatermark,
+  looksLikeVenueCredit,
+} from './library-quality.js';
 
 const log = createLogger('library-organizer');
 
@@ -872,6 +877,14 @@ function sanitizeArtistTag(raw: string | undefined): string | undefined {
   v = stripArtistLeadJunk(v);
   v = stripFeaturingSuffix(v);
   if (!v || isTrackNumberFragment(v) || looksLikeSourceWatermark(v)) return undefined;
+  // A whole DJ-set / release-listing line in the artist tag (issue #679).
+  // Recover the leading credit when it is unambiguous — dropping instead would
+  // strand the track in Unsorted and throw away the real artist the string
+  // carried. An ambiguous credit (a `b2b` set names two acts) recovers nothing
+  // and is dropped rather than guessed at.
+  const recovered = djSetArtistName(v);
+  if (recovered) return recovered;
+  if (looksLikeDjSetTag(v) || looksLikeVenueCredit(v)) return undefined;
   return v;
 }
 
@@ -888,5 +901,9 @@ function sanitizeAlbumTag(raw: string | undefined): string | undefined {
   // Source watermark in the album field ("MUSICAUNO.COM", "ftpdjemilio.com"):
   // drop so the track buckets by its real album/single instead of a junk one.
   if (looksLikeSourceWatermark(raw)) return undefined;
+  // A DJ-set tracklist line or a release-listing row is not a release title
+  // (issue #679). `looksLikeVenueCredit` is deliberately NOT applied here:
+  // "Live @ Wembley" is a real album title.
+  if (looksLikeDjSetTag(raw)) return undefined;
   return raw;
 }

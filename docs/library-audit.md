@@ -20,8 +20,9 @@ The auditor turns "is the library clean?" into a yes/no with a non-zero exit cod
 | **Re-tag** | `services/library-retag.ts` + `scripts/retag-pollution.ts` | Recovers mis-tagged **real** music (the cleanup keeps) into correct artist/album. **Dry-run unless `--apply`**, reversible. |
 | **Prevent** | `services/library-quality.ts` predicates wired into `library-organizer.ts` + `library-curator.ts` | Reject/auto-hide pollution at ingest so new patterns can't re-mint. |
 
-The shared predicates (`looksLikeSourceWatermark`, `isNumericLikeName` in
-`library-quality.ts`) are the **single source of truth** reused by both detection
+The shared predicates (`looksLikeSourceWatermark`, `isNumericLikeName`,
+`looksLikeDjSetTag`, `looksLikeVenueCredit` in `library-quality.ts`) are the
+**single source of truth** reused by both detection
 and prevention, alongside the existing `isUnknownLike` (audio-tags) /
 `isPlaceholderArtist` (artwork-backfill) / `normalizeForGrouping` (album-grouping).
 
@@ -42,6 +43,13 @@ and a message. The CLI groups by rule (worst first); `--rule=<id>` lists one.
 - `numeric_artist` — artist name is a bare/disc-track number (`101`–`208`): a mis-parsed tag.
 - `watermark_album` — album title is a source watermark (a **real** artist with the
   source in the album field, e.g. UMEK / `MUSICAUNO.COM`).
+- `djset_artist` (medium) — the artist name is a whole **DJ-set / release-listing
+  line**, not a name (issue #679): `Enrico Sangiuliano @ Awakenings`,
+  `Adam Beyer plays … "Biomorph"`, `Artist - Title - Label - CatNum [Vol`,
+  `Secret Cinema B2B Egbert`. **Never deletable** — unlike a watermark the music is
+  real and the artist is usually recoverable, so the finding carries its own
+  remediation (`merge into "…"` from `djSetArtistName`), or says a human must
+  decide when the credit is ambiguous.
 - `numeric_single` — a one-track album titled a bare number (`07`).
 - `placeholder_single` (medium) — a single whose identity is unknown/placeholder.
 - `missplit_album` — ≥3 one-track singles share an edition-stripped title: a real
@@ -141,6 +149,22 @@ Two paths, depending on whether a live metadata service is available:
 ## Prevention (so new patterns can't recur)
 - `sanitizeArtistTag` / `sanitizeAlbumTag` (`library-organizer.ts`) now reject
   `looksLikeSourceWatermark` values at ingest, so a watermark never mints an artist/album.
+- **Structural corruption (issue #679)** is caught by the same seam but handled
+  differently, because it is not a keyword the source stamped on — it is a whole
+  line of text that landed in the tag. `sanitizeArtistTag` first tries
+  `djSetArtistName` to **recover** the leading credit (`Enrico Sangiuliano @
+  Awakenings` → `Enrico Sangiuliano`); dropping instead would strand the track in
+  Unsorted and throw away the one fact the string carried. Only when nothing is
+  recoverable — an ambiguous `b2b` credit names two acts — is the tag dropped
+  rather than guessed at. `sanitizeAlbumTag` applies `looksLikeDjSetTag` alone and
+  **not** `looksLikeVenueCredit`: "Live @ Wembley" is a real album title, so the
+  venue rule is artist-only by construction.
+
+  Two markers are deliberately absent. A **single** ` - ` is not a marker —
+  "Artist - Title" in an artist tag is indistinguishable from a hyphenated real
+  name without already knowing the artist. A bare `@` without surrounding spaces is
+  not one either. Both were left out because the false-positive cost (eating a real
+  artist) is worse than the miss.
 - `LibraryCurator.classify` auto-hides watermark artists/albums and bare-number artists
   on every scan, so pollution that predates the ingest guard disappears from the UI
   without deleting files (the cleanup pass still finds and removes it from disk/DB).

@@ -274,7 +274,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   artist Songs tab server-side, with song properties matching via any-track `EXISTS` and state in URL
   query params. → [library-filters.md](docs/library-filters.md)
 - **Library quality auditor**: assert (audit) + clean (repair/retag) + prevent (ingest sanitize) for
-  DJ-pool/VA-source pollution across DB and disk. → [library-audit.md](docs/library-audit.md)
+  DJ-pool/VA-source pollution across DB and disk; structural DJ-set tags recover their real
+  artist via `djSetArtistName`. → [library-audit.md](docs/library-audit.md)
 - **Discogs metadata plugin**: default-off consent-gated `metadata` plugin resolving release
   genres/styles, MBID-first via `parseDiscogsRef` then corroborated `selectBestRelease`; the
   album-scoped `genre-discogs` task writes gated `library_genre_overrides`.

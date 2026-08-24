@@ -2,7 +2,13 @@ import type { Database } from 'bun:sqlite';
 import { isUnknownLike } from './audio-tags.js';
 import { isPlaceholderArtist } from './artwork-backfill.js';
 import { normalizeForGrouping } from './album-grouping.js';
-import { looksLikeSourceWatermark, isNumericLikeName } from './library-quality.js';
+import {
+  looksLikeSourceWatermark,
+  isNumericLikeName,
+  looksLikeDjSetTag,
+  looksLikeVenueCredit,
+  djSetArtistName,
+} from './library-quality.js';
 
 /**
  * Library quality auditor — asserts that the canonical `library_*` tables (and,
@@ -171,6 +177,19 @@ export function checkPollutedArtists(db: Database): AuditFinding[] {
         severity: 'high',
         subject: a.id,
         message: `Artist "${a.name}" is a bare/disc-track number (mis-parsed tag)`,
+      });
+    } else if (looksLikeDjSetTag(a.name) || looksLikeVenueCredit(a.name)) {
+      // Issue #679. Deliberately NOT a `DeletableRule`: unlike a watermark, the
+      // real artist is usually recoverable from the string, so the remediation
+      // is a merge (see `djSetArtistName`) and never deleting the music.
+      const suggestion = djSetArtistName(a.name);
+      out.push({
+        rule: 'djset_artist',
+        severity: 'medium',
+        subject: a.id,
+        message:
+          `Artist "${a.name}" is a DJ-set / release-listing line, not an artist` +
+          (suggestion ? ` — merge into "${suggestion}"` : ' — needs a human decision'),
       });
     }
   }
