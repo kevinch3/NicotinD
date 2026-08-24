@@ -370,6 +370,26 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(acquireSubmit).toHaveBeenCalledWith('https://archive.org/details/a1');
     expect(component.blendedState(candidate)).toBe('done');
   });
+
+  // The unified feed carries no per-file percent (#663), so completion must key
+  // off the transfer state — the old `percent === 100` check could never fire.
+  it('blendedState reaches done for an enqueue candidate when its transfer completes', () => {
+    const { component } = setup();
+    const transfers = TestBed.inject(TransferService) as { getStatus: unknown };
+    transfers.getStatus = () => ({ state: 'Completed, Succeeded' });
+
+    const candidate = {
+      id: 'soulseek:u:f.flac',
+      source: 'soulseek' as const,
+      sourceLabel: 'Soulseek',
+      title: 'Song',
+      subtitle: 'peer',
+      score: 80,
+      acquire: { via: 'enqueue' as const, username: 'u', file: { filename: 'f.flac', size: 1 } },
+    };
+
+    expect(component.blendedState(candidate)).toBe('done');
+  });
 });
 
 describe('SearchComponent — link-intent card (merged URL acquisition)', () => {

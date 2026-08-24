@@ -224,6 +224,60 @@ describe('TransferService adaptive polling', () => {
   });
 });
 
+describe('TransferService item status → transfer state mapping', () => {
+  let service: TransferService;
+  let getDownloadsMock: any;
+
+  type ItemStatus = AcquisitionJobView['items'][number]['status'];
+
+  function jobWithItemStatus(status: ItemStatus): AcquisitionJobView {
+    const job = makeJobView('downloading');
+    return { ...job, items: [{ title: 'Song', status, username: 'peer', filename: 'file0' }] };
+  }
+
+  beforeEach(() => {
+    getDownloadsMock = vi.fn().mockReturnValue(of([]));
+    const api = makeApiMock({
+      getAcquisitionJobs: getDownloadsMock,
+      getAcquireJobs: () => of([]),
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        TransferService,
+        { provide: DownloadsApiService, useValue: api },
+        { provide: SystemApiService, useValue: systemApiMock },
+      ],
+    });
+    service = TestBed.inject(TransferService);
+  });
+
+  async function stateFor(status: ItemStatus): Promise<string | undefined> {
+    getDownloadsMock.mockReturnValue(of([jobWithItemStatus(status)]));
+    await service.poll();
+    return service.getStatus('peer', 'file0')?.state;
+  }
+
+  it('maps pending to a queued state, not fake progress (#663)', async () => {
+    expect(await stateFor('pending')).toBe('Queued, Remotely');
+  });
+
+  it('maps downloading to InProgress', async () => {
+    expect(await stateFor('downloading')).toBe('InProgress');
+  });
+
+  it('maps skipped to a terminal errored state (the track will never land)', async () => {
+    expect(await stateFor('skipped')).toBe('Completed, Errored');
+  });
+
+  it('maps failed to Completed, Errored', async () => {
+    expect(await stateFor('failed')).toBe('Completed, Errored');
+  });
+
+  it('maps done to Completed, Succeeded', async () => {
+    expect(await stateFor('done')).toBe('Completed, Succeeded');
+  });
+});
+
 describe('TransferService libraryDirty flagging', () => {
   let service: TransferService;
   let getDownloadsMock: any;

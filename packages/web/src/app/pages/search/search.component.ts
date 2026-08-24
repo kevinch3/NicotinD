@@ -55,6 +55,8 @@ import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { TranslateService } from '../../services/translate.service';
+import type { Translator } from '../../lib/relative-time';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import {
@@ -228,6 +230,8 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly auth = inject(AuthService);
   private autoHunt = inject(AutoHuntService);
   private p2r = inject(PullToRefreshService);
+  readonly i18n = inject(TranslateService);
+  private readonly translate: Translator = (key, params) => this.i18n.t(key, params);
 
   constructor() {
     this.p2r.register(async () => {
@@ -831,7 +835,8 @@ export class SearchComponent implements OnInit, OnDestroy {
     if (c.acquire.via === 'enqueue') {
       const key = `${c.acquire.username}:${c.acquire.file.filename}`;
       const status = this.transfers.getStatus(c.acquire.username, c.acquire.file.filename);
-      if (status?.percent === 100) return 'done';
+      // The unified feed carries no per-file percent (#663) — completion is a state.
+      if (status?.state === 'Completed, Succeeded') return 'done';
       if (this.search.downloading().has(key) || status) return 'working';
       return 'idle';
     }
@@ -870,8 +875,11 @@ export class SearchComponent implements OnInit, OnDestroy {
       group.directory,
       this.search.downloadedFolders(),
     );
-    return getFolderDownloadLabel(folderFiles, isFolderQueued, (u, f) =>
-      this.transfers.getStatus(u, f),
+    return getFolderDownloadLabel(
+      folderFiles,
+      isFolderQueued,
+      (u, f) => this.transfers.getStatus(u, f),
+      this.translate,
     );
   }
 
@@ -895,6 +903,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       file.filename,
       this.search.downloading().has(key),
       (u, f) => this.transfers.getStatus(u, f),
+      this.translate,
     );
   }
 
@@ -940,6 +949,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       song.best.filename,
       this.search.downloading().has(key),
       (u, f) => this.transfers.getStatus(u, f),
+      this.translate,
     );
   }
 

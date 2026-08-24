@@ -15,8 +15,9 @@ import {
   getFolderDownloadLabel,
   isPathEffectivelyQueued,
   BUTTON_CLASSES,
-  DEFAULT_FOLDER_LABEL,
 } from '../../lib/download-status';
+import { TranslateService } from '../../services/translate.service';
+import type { Translator } from '../../lib/relative-time';
 import { FolderTreeNodeComponent } from './folder-tree-node.component';
 import { createPointerDrag } from '../../lib/pointer-drag';
 
@@ -52,6 +53,8 @@ export class FolderBrowserComponent {
   private api = inject(DownloadsApiService);
   private search = inject(SearchService);
   private transfers = inject(TransferService);
+  private i18n = inject(TranslateService);
+  private readonly translate: Translator = (key, params) => this.i18n.t(key, params);
 
   readonly username = input.required<string>();
   readonly matchedPath = input.required<string>();
@@ -100,15 +103,18 @@ export class FolderBrowserComponent {
       this.selected(),
       this.search.downloadedFolders(),
     );
-    return getFolderDownloadLabel(folderFiles, isFolderQueued, (u, f) =>
-      this.transfers.getStatus(u, f),
+    return getFolderDownloadLabel(
+      folderFiles,
+      isFolderQueued,
+      (u, f) => this.transfers.getStatus(u, f),
+      this.translate,
     );
   });
 
   readonly folderBtnDisplayLabel = computed(() => {
     const btn = this.folderBtnState();
-    return btn.label === DEFAULT_FOLDER_LABEL
-      ? `Download all (${this.validDirectFiles().length})`
+    return btn.variant === 'default'
+      ? this.i18n.t('acquire.downloadAllCount', { count: this.validDirectFiles().length })
       : btn.label;
   });
 
@@ -123,6 +129,7 @@ export class FolderBrowserComponent {
       file.filename,
       this.search.downloading().has(key),
       (u, f) => this.transfers.getStatus(u, f),
+      this.translate,
     );
   }
 
