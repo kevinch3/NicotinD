@@ -69,12 +69,27 @@ applies it, then runs the handler; every write is audit-logged.
 | tool | access | fronts |
 | --- | --- | --- |
 | `search_library` | read | library artists/albums/songs by name |
+| `list_recent_songs` | read | recently-landed songs, newest first, paged, optional missing-genre filter |
 | `get_artist` | read | one artist + their albums |
 | `get_album_tracks` | read | an album's songs (genre, licence) |
 | `set_song_licence` | curate | the same UPDATE + `song.licence` audit as the route |
 | `delete_song` | curate, **destructive** | `services/library-deletion.ts` `deleteOne` + `song.delete` audit |
 | `delete_album` | curate, **destructive** | `services/library-deletion.ts` `deleteAlbum` + `album.delete` audit |
 | `merge_artist` | curate, **destructive** | `services/artist-identity-mutate.ts` `mutateArtistIdentity` (merge mode) + `artist.identity` audit |
+
+### `list_recent_songs` (issues #676, #678)
+
+`search_library`'s missing "browse" counterpart to its "search" — a curator (or an
+agent asked to "curate the most recent downloads") had no way to list songs by
+recency at all, and no way to filter for songs missing a genre without guessing
+substring queries. Sorts by `landed_at` (indexed, "when curation actually
+finished") rather than `created` (file mtime, unindexed on songs), reusing the
+same `landed_at IS NOT NULL` quarantine-safety filter `search_library` already
+applies. `missingGenre` reuses the `WHERE (genre IS NULL OR genre = '')` idiom
+already used by the background genre-enrichment task. Real `limit`/`offset`
+pagination — a page shorter than `limit` means no more results, so no separate
+`COUNT(*)` call. Read-only, so (like the other 3 read tools) it does not call
+`recordAudit`.
 
 ### Destructive writes: the extraction that unblocked each one
 
@@ -140,10 +155,12 @@ server's `requireCurator` gate on the same routes.
 `services`/`routes`: `routes/agent-tokens.test.ts` (mint/verify/list/revoke,
 hash-only storage, expiry, revocation scoping, curator-gating, mint-once) and
 `routes/mcp.test.ts` (401 without a token, initialize/tools-list/tools-call, a
-read tool, the audited curate write, read-only-token refusal,
-`delete_song`/`delete_album` against a real temp-dir music folder — confirm
-gate, scope gate, and the audited happy path — unknown-method JSON-RPC error,
-and `checkToolAccess` covering the scope + confirm gates with synthetic tools).
+read tool, `list_recent_songs`'s recency ordering + quarantine exclusion +
+`missingGenre` filter + `limit`/`offset` paging, the audited curate write,
+read-only-token refusal, `delete_song`/`delete_album` against a real temp-dir
+music folder — confirm gate, scope gate, and the audited happy path —
+unknown-method JSON-RPC error, and `checkToolAccess` covering the scope +
+confirm gates with synthetic tools).
 `services/library-deletion.test.ts` covers `deleteOne`/`deleteAlbum` directly
 (not just through the HTTP route), the test surface the MCP tools needed.
 `AgentTokensComponent`'s spec covers mint/list/revoke and their error paths.

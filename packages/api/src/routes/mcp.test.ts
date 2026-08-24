@@ -18,11 +18,19 @@ mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
 
 const { mcpRoutes } = await import('./mcp.js');
 
-function seedSong(id: string, title: string, path = `p/${id}.opus`, albumId = 'al') {
+function seedSong(
+  id: string,
+  title: string,
+  path = `p/${id}.opus`,
+  albumId = 'al',
+  opts?: { landedAt?: number | null; genre?: string | null },
+) {
+  const landedAt = opts?.landedAt === undefined ? 1 : opts.landedAt;
+  const genre = opts?.genre ?? null;
   testDb.run(
-    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, synced_at, landed_at)
-     VALUES (?, ?, ?, 'Artist', 'art', 0, ?, 1, '2024', 1, 1)`,
-    [id, albumId, title, path],
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, synced_at, landed_at, genre)
+     VALUES (?, ?, ?, 'Artist', 'art', 0, ?, 1, '2024', 1, ?, ?)`,
+    [id, albumId, title, path, landedAt, genre],
   );
 }
 
@@ -83,6 +91,78 @@ describe('MCP endpoint (issue #232)', () => {
       await rpc(token, 'tools/call', { name: 'search_library', arguments: { query: 'Hello' } })
     ).json()) as { result: { content: Array<{ text: string }> } };
     expect(body.result.content[0]!.text).toContain('s1');
+  });
+
+  it('tools/list includes list_recent_songs', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+    const body = (await (await rpc(token, 'tools/list')).json()) as {
+      result: { tools: Array<{ name: string }> };
+    };
+    expect(body.result.tools.map((t) => t.name)).toContain('list_recent_songs');
+  });
+
+  it('list_recent_songs orders newest-first by landed_at', async () => {
+    seedSong('old', 'Old Song', undefined, undefined, { landedAt: 100 });
+    seedSong('new', 'New Song', undefined, undefined, { landedAt: 200 });
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+    const body = (await (
+      await rpc(token, 'tools/call', { name: 'list_recent_songs', arguments: {} })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    const parsed = JSON.parse(body.result.content[0]!.text) as { songs: Array<{ id: string }> };
+    expect(parsed.songs.map((s) => s.id)).toEqual(['new', 'old']);
+  });
+
+  it('list_recent_songs excludes quarantined (landed_at IS NULL) songs', async () => {
+    seedSong('landed', 'Landed', undefined, undefined, { landedAt: 100 });
+    seedSong('quarantined', 'Quarantined', undefined, undefined, { landedAt: null });
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+    const body = (await (
+      await rpc(token, 'tools/call', { name: 'list_recent_songs', arguments: {} })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    const parsed = JSON.parse(body.result.content[0]!.text) as { songs: Array<{ id: string }> };
+    expect(parsed.songs.map((s) => s.id)).toEqual(['landed']);
+  });
+
+  it('list_recent_songs missingGenre filters to genre-less songs only', async () => {
+    seedSong('has-genre', 'Has Genre', undefined, undefined, { landedAt: 100, genre: 'Techno' });
+    seedSong('no-genre', 'No Genre', undefined, undefined, { landedAt: 200, genre: null });
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'list_recent_songs',
+        arguments: { missingGenre: true },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    const parsed = JSON.parse(body.result.content[0]!.text) as { songs: Array<{ id: string }> };
+    expect(parsed.songs.map((s) => s.id)).toEqual(['no-genre']);
+  });
+
+  it('list_recent_songs pages with limit + offset, no overlap or gap', async () => {
+    seedSong('s1', 'S1', undefined, undefined, { landedAt: 400 });
+    seedSong('s2', 'S2', undefined, undefined, { landedAt: 300 });
+    seedSong('s3', 'S3', undefined, undefined, { landedAt: 200 });
+    seedSong('s4', 'S4', undefined, undefined, { landedAt: 100 });
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+    const page1 = (await (
+      await rpc(token, 'tools/call', {
+        name: 'list_recent_songs',
+        arguments: { limit: 2, offset: 0 },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    const page2 = (await (
+      await rpc(token, 'tools/call', {
+        name: 'list_recent_songs',
+        arguments: { limit: 2, offset: 2 },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    const ids1 = (
+      JSON.parse(page1.result.content[0]!.text) as { songs: Array<{ id: string }> }
+    ).songs.map((s) => s.id);
+    const ids2 = (
+      JSON.parse(page2.result.content[0]!.text) as { songs: Array<{ id: string }> }
+    ).songs.map((s) => s.id);
+    expect(ids1).toEqual(['s1', 's2']);
+    expect(ids2).toEqual(['s3', 's4']);
   });
 
   it('a curate tool sets the licence and audit-logs it', async () => {

@@ -102,6 +102,49 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: 'list_recent_songs',
+    description:
+      'List recently-landed songs, newest first. Optionally filter to only songs missing a genre.',
+    access: 'read',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max results (1–100, default 25).' },
+        offset: { type: 'number', description: 'Rows to skip, for paging (default 0).' },
+        missingGenre: { type: 'boolean', description: 'Only songs with no genre set.' },
+      },
+    },
+    handler: ({ db }, args) => {
+      const limit = clampLimit(args.limit, 25, 100);
+      const offset = Math.max(0, Math.floor(typeof args.offset === 'number' ? args.offset : 0));
+      const missingGenre = args.missingGenre === true;
+      const where = missingGenre
+        ? "s.landed_at IS NOT NULL AND (s.genre IS NULL OR s.genre = '')"
+        : 's.landed_at IS NOT NULL';
+      const songs = db
+        .query<
+          {
+            id: string;
+            title: string;
+            artist: string;
+            albumId: string;
+            album: string | null;
+            genre: string | null;
+            landedAt: number | null;
+          },
+          [number, number]
+        >(
+          `SELECT s.id, s.title, s.artist, s.album_id AS albumId, a.name AS album,
+                  s.genre, s.landed_at AS landedAt
+           FROM library_songs s LEFT JOIN library_albums a ON a.id = s.album_id
+           WHERE ${where}
+           ORDER BY s.landed_at DESC, s.id LIMIT ? OFFSET ?`,
+        )
+        .all(limit, offset);
+      return JSON.stringify({ songs, limit, offset }, null, 2);
+    },
+  },
+  {
     name: 'get_artist',
     description: "Get one artist and their albums by the artist's id.",
     access: 'read',
