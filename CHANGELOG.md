@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.9](https://github.com/kevinch3/NicotinD/compare/v0.4.8...v0.4.9) (2026-08-24)
+
+### Bug Fixes
+
+* **downloads:** return the raw-lane grab's addon job receipt so one click is one card ([#675](https://github.com/kevinch3/NicotinD/issues/675)) ([f837b52](https://github.com/kevinch3/NicotinD/commit/f837b528553837643022e6cabb1f71c402ee2266)), references [#586](https://github.com/kevinch3/NicotinD/issues/586) [#586](https://github.com/kevinch3/NicotinD/issues/586) [#615](https://github.com/kevinch3/NicotinD/issues/615) [#673](https://github.com/kevinch3/NicotinD/issues/673) [#674](https://github.com/kevinch3/NicotinD/issues/674)
 ## [0.4.8](https://github.com/kevinch3/NicotinD/compare/v0.4.7...v0.4.8) (2026-08-24)
 
 ### Bug Fixes
