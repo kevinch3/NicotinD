@@ -347,8 +347,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a
   weight-normalized blend of BPM, Camelot key, genre-set closeness, year, duration, artist diversity,
   the perceptual axes and embedding cosine. `buildSeedRadio`, `scoreSimilarity`, `explainSimilarity`,
-  `genreSetCloseness`, `MISSING_GENRE_FLOOR`, `recentPlayPenalty`, `lastPlayedAtMap`.
+  `genreSetCloseness`, `MISSING_GENRE_FLOOR`, `recentPlayPenalty`, `lastPlayedByRecording`.
   → [radio.md](docs/radio.md)
+- **One recording is one thing**: two files of one track (album + compilation) are two
+  `library_songs` rows, so radio served it twice as often; `recordingKey` collapses them in the
+  served window, the pool exclusion and the recency demotion. → [radio.md](docs/radio.md)
 - **Filter-seeded radio / stations**: the same route starts a vibe with no seed song from a
   `LibraryFilter` via `buildFilterRadio` + `songFilterWheres` + `seedCentroid`; a genre station is
   graded not tag-tested by `stationAffinity` (`genreDepthScore` × `artistGenreShares`), a demotion

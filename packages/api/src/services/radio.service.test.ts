@@ -269,6 +269,61 @@ describe('rankCandidates', () => {
   });
 });
 
+// One recording that exists as two files is two library_songs rows (ids are
+// sha1(path)), and they score near-identically. See issue #660.
+describe('rankCandidates — one recording, one slot (issue #660)', () => {
+  it('serves a recording once even when the library holds two copies', () => {
+    const seed = makeSeed();
+    const copies = [
+      makeCandidate({ artistId: 'a1', recordingKey: 'a1|song|230' }),
+      makeCandidate({ artistId: 'a1', recordingKey: 'a1|song|230' }),
+    ];
+    expect(rankCandidates(seed, copies, { count: 10 })).toHaveLength(1);
+  });
+
+  it('keeps the higher-scoring copy, not whichever the pool emitted first', () => {
+    // The compilation copy often carries a worse genre/year than the album
+    // copy, so scoring first is what picks the better-tagged row.
+    const seed = makeSeed({ genre: 'Rock' });
+    const worse = makeCandidate({ artistId: 'a1', genre: 'Jazz', recordingKey: 'k' });
+    const better = makeCandidate({ artistId: 'a1', genre: 'Rock', recordingKey: 'k' });
+    const result = rankCandidates(seed, [worse, better], { count: 10 });
+    expect(result).toHaveLength(1);
+    expect(result[0]!.song).toBe(better);
+  });
+
+  it('never serves a copy of the seed itself', () => {
+    const seed = makeSeed({ recordingKey: 'seed-key' });
+    const clone = makeCandidate({ artistId: 'artist-seed', recordingKey: 'seed-key' });
+    const other = makeCandidate({ artistId: 'a2', recordingKey: 'other-key' });
+    const result = rankCandidates(seed, [clone, other], { count: 10 });
+    expect(result.map((e) => e.song)).toEqual([other]);
+  });
+
+  it('does not collapse candidates that carry no key', () => {
+    // The key is optional and only the route layer fills it. Rows without one
+    // are unidentifiable, and unidentifiable never means "the same".
+    const seed = makeSeed();
+    const candidates = Array.from({ length: 5 }, () => makeCandidate({ artistId: 'a-same' }));
+    expect(rankCandidates(seed, candidates, { count: 10, maxPerArtist: 5 })).toHaveLength(5);
+  });
+
+  it('does not let a collapsed copy consume an artist slot', () => {
+    // Two of these three rows are the same recording. With maxPerArtist 2 the
+    // window must still carry two DISTINCT recordings, not one plus a dropped
+    // duplicate that ate the second slot.
+    const seed = makeSeed();
+    const candidates = [
+      makeCandidate({ artistId: 'a1', recordingKey: 'a1|one|230' }),
+      makeCandidate({ artistId: 'a1', recordingKey: 'a1|one|230' }),
+      makeCandidate({ artistId: 'a1', recordingKey: 'a1|two|230' }),
+    ];
+    const result = rankCandidates(seed, candidates, { count: 10, maxPerArtist: 2 });
+    expect(result).toHaveLength(2);
+    expect(new Set(result.map((e) => e.song.recordingKey)).size).toBe(2);
+  });
+});
+
 describe('scoreSimilarity — normalization & perceptual axes', () => {
   it('does not penalize an un-analyzed candidate against an analyzed one at equal classic features', () => {
     // The core mid-backfill fix: the analyzed candidate must not automatically

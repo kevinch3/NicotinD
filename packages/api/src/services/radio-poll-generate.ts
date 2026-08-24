@@ -59,13 +59,19 @@ export function mergePollWeights(overrides: Record<string, number> | undefined):
 
 /**
  * `SongFeatures` → the JSON-safe snapshot shape. `embedding` is a Float32Array
- * (JSON.stringify would persist it as an index-keyed blob) and
- * `recentPlayFactor` is listener-relative; polls generate without a listener.
+ * (JSON.stringify would persist it as an index-keyed blob), `recentPlayFactor`
+ * is listener-relative (polls generate without a listener), and `recordingKey`
+ * is derived from fields the snapshot already carries.
+ *
+ * This is a delete-list over a spread, so a new `SongFeatures` field lands in
+ * every persisted snapshot unless it is dropped here. Its test asserts the
+ * exact output shape — keep it that way.
  */
 export function stripFeatures(features: SongFeatures): RadioPollSnapshotFeatures {
   const rest: Partial<SongFeatures> = { ...features };
   delete rest.embedding;
   delete rest.recentPlayFactor;
+  delete rest.recordingKey;
   return rest as RadioPollSnapshotFeatures;
 }
 

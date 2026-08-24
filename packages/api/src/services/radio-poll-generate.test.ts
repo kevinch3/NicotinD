@@ -197,13 +197,14 @@ describe('generatePollScenarios', () => {
 });
 
 describe('stripFeatures', () => {
-  it('drops embedding and recentPlayFactor, keeps the rest', () => {
+  it('drops embedding, recentPlayFactor and recordingKey, keeps the rest', () => {
     const stripped = stripFeatures({
       duration: 200,
       artistId: 'a',
       bpm: 120,
       embedding: new Float32Array([1, 2]),
       recentPlayFactor: 0.5,
+      recordingKey: 'a|song|200',
     });
     expect(stripped).toEqual({ duration: 200, artistId: 'a', bpm: 120 });
   });

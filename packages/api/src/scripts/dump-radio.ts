@@ -574,15 +574,25 @@ function renderDump(
   // Rejected near-misses: the highest-scoring pool tracks that did NOT make the
   // cut (score whole pool, drop the selected ids). Reveals whether real genre
   // neighbors were out-scored (weight problem) or simply weren't pooled.
+  //
+  // Duplicate copies are dropped rather than listed. A second file of a track
+  // already served scores within noise of it, so it would head this list and
+  // read exactly like the failure the section exists to detect — a real
+  // neighbour beaten on weight — when it is the dedup working (issue #660).
   const chosen = new Set(ranked.map((e) => e.song._row.id));
+  const chosenRecordings = new Set(
+    ranked.map((e) => e.song.recordingKey).filter((k): k is string => !!k),
+  );
   const nearMisses = pool
     .filter((c) => !chosen.has(c._row.id))
+    .filter((c) => !(c.recordingKey && chosenRecordings.has(c.recordingKey)))
     .map((c) => ({ c, score: explainSimilarity(seed, c, weights).score }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 10);
   if (nearMisses.length > 0) {
     lines.push('## Rejected near-misses (next 10 by score, not selected)');
     lines.push('```');
+    lines.push('(duplicate copies of a served recording are omitted)');
     nearMisses.forEach((m) => lines.push(...renderTrackBlock(seed, m.c, m.score, null, weights)));
     lines.push('```');
   }

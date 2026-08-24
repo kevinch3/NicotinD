@@ -1,4 +1,5 @@
 import type { Database } from 'bun:sqlite';
+import { recordingKey } from './recording-identity.js';
 
 /**
  * Listening history — the write + read side of the `play_events` log.
@@ -155,9 +156,11 @@ export function recordPlayEvents(
 
 /**
  * The caller's recently listened tracks, most recent first, collapsed to one
- * row per track. Only counted plays — a track you skipped after four seconds is
- * not something you listened to, and surfacing it would make the shelf useless
- * on a night of heavy skipping.
+ * row per *recording* — a track owned on its album and on a compilation is two
+ * rows, and it used to take two tiles here and count twice in keep-vibe's
+ * `seedCentroid` (issue #660). Only counted plays — a track you skipped after
+ * four seconds is not something you listened to, and surfacing it would make
+ * the shelf useless on a night of heavy skipping.
  *
  * Joined to `library_songs` and restricted to songs that are still live,
  * landed and unhidden: this feeds a shelf whose whole purpose is to be tapped,
@@ -172,12 +175,16 @@ export function recordPlayEvents(
  */
 export function recentPlays(db: Database, userId: string, limit: number): RecentPlay[] {
   const size = Math.min(Math.max(Math.trunc(limit) || 0, 1), 100);
+  // Over-fetch, then collapse: two rows of one recording must not take two
+  // tiles, and collapsing *after* a LIMIT would silently return a short shelf.
+  const seen = new Set<string>();
   return db
     .query<
       {
         song_id: string;
         title: string | null;
         artist: string | null;
+        artist_id: string;
         album: string | null;
         duration: number | null;
         cover_art: string | null;
@@ -188,6 +195,7 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
       `SELECT p.song_id                          AS song_id,
               COALESCE(s.title, p.title)         AS title,
               COALESCE(s.artist, p.artist)       AS artist,
+              s.artist_id                        AS artist_id,
               COALESCE(al.name, p.album)         AS album,
               s.duration                         AS duration,
               s.cover_art                        AS cover_art,
@@ -204,7 +212,15 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
         ORDER BY played_at DESC
         LIMIT ?`,
     )
-    .all(userId, size)
+    .all(userId, Math.min(size * 2, 100))
+    .filter((r) => {
+      const key = recordingKey(r.artist_id, r.title ?? '', r.duration ?? 0);
+      if (!key) return true; // unidentifiable never groups — not even with another
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, size)
     .map((r) => ({
       songId: r.song_id,
       title: r.title,
@@ -227,8 +243,23 @@ export function playEventCount(db: Database): number {
 }
 
 /**
- * When this listener last played each of `songIds`, epoch ms. Songs never
- * played are simply absent from the map.
+ * When this listener last played each *recording* in the window, epoch ms.
+ * Recordings never played are simply absent from the map.
+ *
+ * Keyed on the recording rather than the song id because one recording can be
+ * two rows — the album copy and the compilation copy. Under the old id-keyed
+ * map, hearing one left the other at zero demotion, so a duplicated track kept
+ * coming straight back; on prod it was served 1.99x as often as a single-file
+ * one (issue #660).
+ *
+ * Queried from the *play* side rather than the pool side. That is both simpler
+ * and cheaper than passing several hundred candidate ids back in: the window
+ * predicate is served by `idx_play_events_user_at`, the row count is "distinct
+ * songs this listener played in the window" rather than the pool size, and
+ * anything older already decays to zero in `recentPlayFactor` so it never
+ * needed reading. It also joins `library_songs`, which the id-keyed version did
+ * not: a play whose row has since been pruned drops out, which is right here
+ * (there is no candidate to demote) but is a real behaviour change.
  *
  * Per-user by construction: `library_songs` is global but listening is not, so
  * a global play count would blend everyone on a shared server — wrong for a
@@ -239,28 +270,32 @@ export function playEventCount(db: Database): number {
  * the opposite of what the stats aggregates want, which is why this doesn't
  * reuse their filter.
  */
-export function lastPlayedAtMap(
+export function lastPlayedByRecording(
   db: Database,
   userId: string,
-  songIds: string[],
+  now: number,
+  windowMs: number,
 ): Map<string, number> {
   const out = new Map<string, number>();
-  if (songIds.length === 0) return out;
+  const rows = db
+    .query<
+      { title: string; artist_id: string; duration: number; last_at: number },
+      [string, number]
+    >(
+      `SELECT s.title AS title, s.artist_id AS artist_id, s.duration AS duration,
+              MAX(p.at) AS last_at
+         FROM play_events p
+         JOIN library_songs s ON s.id = p.song_id
+        WHERE p.user_id = ? AND p.at >= ?
+        GROUP BY p.song_id`,
+    )
+    .all(userId, now - windowMs);
 
-  // Chunked: SQLite's default SQLITE_MAX_VARIABLE_NUMBER is 999, and a widened
-  // radio pool can exceed that.
-  const CHUNK = 400;
-  for (let i = 0; i < songIds.length; i += CHUNK) {
-    const chunk = songIds.slice(i, i + CHUNK);
-    const rows = db
-      .query<{ song_id: string; last_at: number }, string[]>(
-        `SELECT song_id, MAX(at) AS last_at
-           FROM play_events
-          WHERE user_id = ? AND song_id IN (${chunk.map(() => '?').join(',')})
-          GROUP BY song_id`,
-      )
-      .all(userId, ...chunk);
-    for (const r of rows) out.set(r.song_id, r.last_at);
+  for (const r of rows) {
+    const key = recordingKey(r.artist_id, r.title, r.duration);
+    if (!key) continue;
+    const prev = out.get(key);
+    if (prev === undefined || r.last_at > prev) out.set(key, r.last_at);
   }
   return out;
 }

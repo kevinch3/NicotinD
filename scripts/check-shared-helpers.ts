@@ -70,6 +70,11 @@ export const SHARED_HELPERS: SharedHelper[] = [
   // adapter so the two can never disagree about what a download is called.
   { name: 'downloadTitleFor', canonical: 'packages/core/src/utils/download-title.ts' },
   { name: 'isGenericFolderName', canonical: 'packages/core/src/utils/folder-name.ts' },
+  // "Is this the same recording?" — the radio path needed the tuple that
+  // `repointPlaylistsBeforePrune` and the admin /duplicates route had each
+  // already re-invented locally, so it is registered on arrival rather than
+  // after a third copy appears (issue #660).
+  { name: 'recordingKey', canonical: 'packages/api/src/services/recording-identity.ts' },
 ];
 
 export interface HelperViolation {

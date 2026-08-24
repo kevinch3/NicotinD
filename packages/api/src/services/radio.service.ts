@@ -49,6 +49,19 @@ export interface SongFeatures {
    * SQL, which is exactly why the plain genre axis had nothing left to say.
    */
   stationAffinity?: number;
+  /**
+   * Which *recording* this row is (`services/recording-identity.ts`), so two
+   * files of one track cannot both be served. Filled by the route layer from
+   * the row's title/artist/duration, like `embedding` and `recentPlayFactor`;
+   * absent means "unidentifiable", which never groups with anything — not even
+   * another absent one.
+   *
+   * Not an axis and not a penalty: it is a hard de-duplication in
+   * `rankCandidates`, the sibling of `maxPerArtist`. Scoring cannot express
+   * this — two copies of one recording are a *perfect* match for each other on
+   * every axis, which is precisely the problem (issue #660).
+   */
+  recordingKey?: string;
 }
 
 export interface ScoringWeights {
@@ -153,8 +166,20 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
  *      depth curve and the anchor fraction were measured unfalsifiable on this
  *      library and deliberately left alone. See
  *      docs/measurements/radio-stations-2026-08.md.
+ * v6 - issue #660: one recording is one thing. A track owned on its album and
+ *      on a compilation was two rows with two ids, so it got two draws in the
+ *      pool sampler and was served 1.99x as often as a single-file recording
+ *      (measured on prod: 363 such groups, 4.8% of the eligible pool).
+ *      `rankCandidates` now serves at most one row per `recordingKey` and never
+ *      a copy of the seed. Only that collapse justifies the bump - the sibling
+ *      exclusion and recency changes are listener/queue-scoped, and polls
+ *      generate with no listener and no excludeIds - but it matters here
+ *      because a poll could previously present the seed's own clone as a
+ *      candidate to grade, which a rater marks good because it IS the seed.
+ *      (5 is reserved for the descriptor axes of #642, already documented as
+ *      v5; the numbers are grouping labels, so a gap costs nothing.)
  */
-export const RADIO_FORMULA_VERSION = 4;
+export const RADIO_FORMULA_VERSION = 6;
 
 /**
  * Parse a `--weights axis=n[,axis=n...]` override spec against a base weight
@@ -550,12 +575,18 @@ export function rankCandidates<T extends SongFeatures>(
 
   const result: ScoredSong<T>[] = [];
   const artistCounts = new Map<string, number>();
+  const takenRecordings = new Set<string>();
 
   for (const entry of scored) {
     if (result.length >= count) break;
+    // One recording, one slot. Checked BEFORE the artist counter so a dropped
+    // copy doesn't consume a slot its own twin already holds (issue #660).
+    const rec = entry.song.recordingKey;
+    if (rec && (rec === seed.recordingKey || takenRecordings.has(rec))) continue;
     const aid = entry.song.artistId;
     const cur = artistCounts.get(aid) ?? 0;
     if (cur >= maxPerArtist) continue;
+    if (rec) takenRecordings.add(rec);
     artistCounts.set(aid, cur + 1);
     result.push(entry);
   }

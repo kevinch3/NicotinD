@@ -237,7 +237,67 @@ Cached embeddings for the seed + whole pool are then loaded in one query
 (`loadEmbeddings`, keyed on the seed's model) and attached before ranking; a
 seed with no embedding skips the axis entirely. The `rankCandidates` function
 scores all candidates, sorts by score, and applies a per-artist cap (default 2)
-to prevent any single artist from dominating the radio queue.
+to prevent any single artist from dominating the radio queue, plus a
+one-row-per-recording collapse (below).
+
+## Same recording, multiple files
+
+A track you own on its album **and** on a compilation is two `library_songs`
+rows. Ids are `sha1("song:" + relPath)`, so nothing downstream could tell they
+were one thing — and radio has four places that assumed a row *is* a track: the
+pool sampler dedups on the row id, `exclude` is a set of row ids, the per-artist
+cap counts rows, and the recency demotion was keyed on `play_events.song_id`.
+
+Measured on prod (issue #660): **363 such groups covering 732 rows — 4.8% of the
+15,253 rows radio can serve**, 361 of them spanning more than one album, and
+**zero** spanning more than one `artist_id`. The effect is exactly what two rows
+in one random draw predicts: a duplicated recording was served **1.99×** as
+often as a single-file one (0.187 vs 0.094 plays per recording across 1,473
+radio plays, ≈5.8σ). Because the demotion never transferred between copies, one
+recording came back four times in four and a half minutes, alternating files.
+
+`recordingKey(artistId, title, duration)`
+(`services/recording-identity.ts`) is the fix — a pure key, no stored column,
+computed from fields every caller already holds:
+
+- **`artist_id`, not the artist string.** It is already
+  `sha1("artist:" + normalizeArtistForGrouping(name))`, so it *is* the
+  normalized artist, and it carries the alias collapse a fresh normalization
+  would miss. Zero of the 363 measured groups spanned two artist ids.
+- **`normalizeTitle`** (from `@nicotind/core`), which folds diacritics before
+  stripping punctuation.
+- **Exact duration.** The admin `/duplicates` report can afford a ±2 s
+  tolerance because it greedily clusters the whole library in one pass; every
+  consumer here is a *lookup*, and a tolerance is not an equivalence relation,
+  so it cannot be a Map key. Widening is a change to make against a
+  measurement — the 4.8% above is what exact equality already catches.
+- **`null` never groups with anything, including another `null`.** The
+  discipline `repointPlaylistsBeforePrune` states in prose, as a return type.
+  Both guards fire on real data: `duration` is `NOT NULL DEFAULT 0` and
+  `/songs/:id/similar` has no duration gate, so un-scanned rows reach that pool;
+  and `normalizeTitle` strips everything outside ASCII `\w\s`, so a CJK-only
+  title reduces to `""`.
+
+It is applied in three places. **`rankCandidates`** serves at most one row per
+recording and never a copy of the seed — checked *before* the artist counter, so
+a dropped copy cannot eat the slot its own twin holds; the highest **score**
+wins the tie, not the highest `formatQuality`, because the two rows are not
+interchangeable (the compilation copy often carries a worse `year`/`genre`, and
+an untagged clone loses on `MISSING_GENRE_FLOOR` at weight 18). **The pool
+layer** takes an `excludeKeys` set beside `excludeIds` — needed separately
+because `rankCandidates` knows one seed while list radio has up to 20 — free for
+the seeds, one chunked primary-key lookup for the client-sent ids, skipped when
+that set is empty. **The recency demotion** is keyed on the recording (above).
+
+`/songs/:id/similar` gets the collapse for free, and it had the worst version of
+this bug: its pool is the artist's entire catalogue, its seed exclusion is a
+single row id, and it scores with `artistPenalty: -0.1` — a *boost*. "Similar to
+X" returned X itself, from the other album, as result #1.
+
+Deliberately **not** in scope: deleting duplicates from the library (that is the
+admin `/duplicates` report) and SQL-level pool dedup. Radio has to stay correct
+on a library that legitimately holds a track on both its album and a
+compilation.
 
 ## Recently-played demotion (listening history, P3)
 
@@ -273,8 +333,8 @@ artist. It is a **demotion, not an exclusion** — a hard filter would empty the
 pool on a small library, and a genuinely great match should still be able to
 win.
 
-**Per-user by construction.** `lastPlayedAtMap(db, userId, songIds)` reads
-`play_events`, which is private per user (see
+**Per-user by construction.** `lastPlayedByRecording(db, userId, now, windowMs)`
+reads `play_events`, which is private per user (see
 [listening-history.md](listening-history.md)). A denormalized
 `library_songs.local_play_count` was rejected for exactly this reason:
 `library_songs` is global, so it would blend every user's listening on a shared
@@ -285,13 +345,34 @@ It counts **every** play event, not just `counted = 1`: for "don't replay this
 so soon", starting a track and bailing still means you just heard it — the
 opposite of what the stats aggregates want.
 
+**Keyed on the recording, not the row (issue #660).** The map used to be
+`MAX(at) GROUP BY song_id`, so playing the album copy of a track left its
+compilation copy at `recentPlayFactor = 0` and the demotion — the largest
+post-hoc penalty there is — did nothing. It is now keyed on `recordingKey`, and
+queried from the *play* side rather than the pool side:
+
+```sql
+SELECT p.song_id, s.title, s.artist_id, s.duration, MAX(p.at) AS last_at
+  FROM play_events p JOIN library_songs s ON s.id = p.song_id
+ WHERE p.user_id = ? AND p.at >= ?          -- now − RECENT_PLAY_WINDOW_MS
+ GROUP BY p.song_id
+```
+
+That is one statement served by `idx_play_events_user_at` instead of the old
+chunked 400-id `IN` loop, and its row count is "distinct songs this listener
+played in the window" (tens) rather than the pool size — a saving, not a cost.
+Anything older than the window already decayed to 0, so it never needed reading.
+Two consequences worth knowing: the map partially survives id churn (a re-minted
+row is recovered through its surviving sibling), and it now joins
+`library_songs`, so a play whose row has since been pruned drops out.
+
 **No identified listener → no demotion.** The route reads the user defensively
 (`c.get('user')?.sub`), so a caller without one gets the pre-existing behaviour
 rather than a 500. `/api/radio` was not behind the JWT middleware when this
 shipped — which made the demotion inert — and is now gated (issue #461, along
-with `/api/catalog`, found in the same audit). The defensive read stays: it
-costs nothing and keeps the scorer honest if the route is ever exposed to an
-unauthenticated surface.
+with `/api/catalog`, found in the same audit), so in production there is always
+a listener. The defensive read stays: it costs nothing and keeps the scorer
+honest if the route is ever exposed to an unauthenticated surface.
 
 Visible in `scripts/dump-radio.ts` as `[recently played −0.NNN]` on the affected
 rows — an invisible penalty is an unmeasurable one.
@@ -758,7 +839,8 @@ The `/songs/:id/similar` endpoint reuses the same `rankCandidates` and
 `scoreSimilarity` functions with different weights (same-artist is boosted
 `−0.1` in normalized space rather than penalized, and the per-artist cap is
 higher) and loads embeddings the same way. This means any improvement to the
-scoring engine benefits both features.
+scoring engine benefits both features — including the one-row-per-recording
+collapse, which it needed most (see "Same recording, multiple files").
 
 ## Code map
 
@@ -768,6 +850,7 @@ scoring engine benefits both features.
 | `packages/api/src/services/radio.service.test.ts`                     | Unit tests for scoring logic + `explainSimilarity` breakdown/delegation                                                                                                                                                                                        |
 | `packages/api/src/services/radio-poll-eval.ts`                        | Replay agreement (issue #583): `evaluatePollAgreement` re-scores frozen poll scenarios under any weight set (axes recomputed from features, embedding folded in from its frozen value) → within-scenario pairwise AUC vs the human consensus                   |
 | `packages/api/src/scripts/eval-radio-poll.ts`                         | CLI over it — per-poll + pooled AUC grouped by `formula_version`, `--weights` A/B, read-only DB open                                                                                                                                                           |
+| `packages/api/src/services/recording-identity.ts`                      | `recordingKey` — pure "is this the same recording?" grouping key (artist id + normalized title + exact duration, or `null`), so two files of one track can't both be served (issue #660)                                                        |
 | `packages/api/src/services/station-affinity.ts`                       | **Stations (v3)**: `genreDepthScore` / `stationAffinity` / `anchorCentroid` — pure graded membership + the audio anchor                                                                                                                                        |
 | `packages/api/src/services/genre-distribution.ts`                     | `artistGenreShares` — batched "how much of this artist is this genre", the artist half of station affinity (shares the radar's definition)                                                                                                                     |
 | `packages/api/src/services/embedding-store.ts`                        | `loadEmbeddings` / `embeddingModelFor` / `dominantEmbeddingModel` — pooled read of cached Essentia vectors (the last picks a station's vector space, which has no seed song to pin)                                                                            |

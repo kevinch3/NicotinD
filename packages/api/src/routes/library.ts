@@ -16,6 +16,7 @@ import { normalizeArtistForGrouping, normalizeForGrouping } from '../services/al
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import { deleteAlbum, deleteOne } from '../services/library-deletion.js';
 import { getAcquisitionByPath } from '../services/acquisition-store.js';
+import { recordingKey } from '../services/recording-identity.js';
 import { PlaylistService } from '../services/playlist.service.js';
 import { analyzeBpm, verifyGenre } from '../services/track-analysis.js';
 import type { AudioFeaturesClient } from '../services/audio-features-client.js';
@@ -543,6 +544,7 @@ function songRowFeatures(r: SongRow): SongFeatures {
     duration: r.duration,
     year: r.year ?? undefined,
     artistId: r.artist_id,
+    recordingKey: recordingKey(r.artist_id, r.title, r.duration) ?? undefined,
     energy: r.energy ?? undefined,
     valence: r.valence ?? undefined,
     danceability: r.danceability ?? undefined,
