@@ -12,8 +12,11 @@ import { ADMIN, bearer, expandGroup } from '../helpers';
  * playlist) can't run in CI — spotdl needs a YouTube egress + Spotify creds,
  * neither of which the e2e server has. So these tests cover the surface the
  * user actually interacts with (the toggle + the route plumbing), not the
- * post-ingest materialization step (covered by `acquire-watcher.test.ts` +
- * `acquire-playlist.test.ts` at the unit level).
+ * post-ingest materialization step — covered at the unit level by
+ * `addon-playlist.test.ts` for the live addon-native path these archive.org
+ * submits actually take (`docs/playlist-from-acquisition.md`), and by
+ * `acquire-watcher.test.ts` + `acquire-playlist.test.ts` for the legacy
+ * in-process engine, which now only runs for a URL no addon claims.
  *
  * Two environment facts these tests must respect (see docs/e2e.md "What the
  * e2e environment does NOT give you"):

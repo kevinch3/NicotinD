@@ -143,8 +143,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `/api/acquire`; the external spotdl addon resolves the download.
   → [spotify-fallback.md](docs/spotify-fallback.md)
 - **Playlist-from-acquisition**: a URL job classified as a playlist auto-generates a native playlist
-  from landed tracks in download order. `classifyAcquireUrl`, `recordAcquireJobTrack`.
-  → [playlist-from-acquisition.md](docs/playlist-from-acquisition.md)
+  from landed tracks in download order — addon-native (the live path, issue #587):
+  `materializeAddonPlaylist`; legacy in-process fallback: `classifyAcquireUrl`,
+  `recordAcquireJobTrack`. → [playlist-from-acquisition.md](docs/playlist-from-acquisition.md)
 - **Guided acquire UX**: catalog cards are the primary path, the raw peer lane sits behind Advanced;
   `pickNetworkView` defaults to Folders for album intent, `AutoHuntService` self-heals one-click Get.
   → [album-hunt.md](docs/album-hunt.md)

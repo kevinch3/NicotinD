@@ -557,6 +557,88 @@ describe('AddonJobPoller', () => {
       expect(row.error).toBe('Unsupported URL: beatport');
     });
   });
+
+  describe('playlist-from-acquisition on the addon lane (issue #587)', () => {
+    it('generates a native playlist once a playlist job lands its tracks', async () => {
+      let localJobs: AddonJob[] = [];
+      h = harness(() => localJobs);
+      await h.registry.enable('fixture-addon', 'admin');
+      h.db.run(`INSERT INTO users (id, username, password_hash) VALUES ('user-1', 'a', 'x')`);
+      // The exact relative path the harness's organizeBatch stub derives for
+      // makeJob()'s default item — seeded up front so the pipeline's own
+      // library_songs lookup (markItemsScanned) finds a real song to link.
+      h.db.run(
+        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, synced_at)
+         VALUES ('song-1', 'alb', 'Song One', 'Artist', 'art', 60, 'Artist/Album/01 Song One.mp3', 1)`,
+      );
+      // The eager mirror row a real `startAddonUrlJob` submit would have
+      // created — mapped ahead of the tick, exactly like the real submit path.
+      const coreJobId = createJob(h.db, {
+        kind: 'url',
+        method: 'fixture-addon',
+        sourceUrl: 'https://open.spotify.com/playlist/abc',
+        userId: 'user-1',
+        isPlaylist: true,
+        stage: 'queued',
+      });
+      mapAddonJob(h.db, 'fixture-addon', 'aj-1', coreJobId);
+
+      localJobs = [
+        makeJob({
+          intent: 'url',
+          state: 'done',
+          title: 'My Playlist',
+          items: [{ ...makeJob().items[0]!, state: 'completed', fileReady: true }],
+        }),
+      ];
+      await h.poller.tick();
+
+      const row = h.db
+        .query<{ playlist_id: string | null }, [string]>(
+          `SELECT playlist_id FROM acquisition_jobs WHERE id = ?`,
+        )
+        .get(coreJobId)!;
+      expect(row.playlist_id).toBeTruthy();
+      const songs = h.db
+        .query<{ song_id: string }, [string]>(
+          `SELECT song_id FROM playlist_songs WHERE playlist_id = ?`,
+        )
+        .all(row.playlist_id!);
+      expect(songs.map((s) => s.song_id)).toEqual(['song-1']);
+    });
+
+    it('never generates a playlist for a job the addon did not classify as one', async () => {
+      let localJobs: AddonJob[] = [];
+      h = harness(() => localJobs);
+      await h.registry.enable('fixture-addon', 'admin');
+      h.db.run(`INSERT INTO users (id, username, password_hash) VALUES ('user-1', 'a', 'x')`);
+      const coreJobId = createJob(h.db, {
+        kind: 'url',
+        method: 'fixture-addon',
+        sourceUrl: 'https://open.spotify.com/watch?v=abc',
+        userId: 'user-1',
+        isPlaylist: false,
+        stage: 'queued',
+      });
+      mapAddonJob(h.db, 'fixture-addon', 'aj-1', coreJobId);
+      localJobs = [
+        makeJob({
+          intent: 'url',
+          state: 'done',
+          items: [{ ...makeJob().items[0]!, state: 'completed', fileReady: true }],
+        }),
+      ];
+
+      await h.poller.tick();
+
+      const row = h.db
+        .query<{ playlist_id: string | null }, [string]>(
+          `SELECT playlist_id FROM acquisition_jobs WHERE id = ?`,
+        )
+        .get(coreJobId)!;
+      expect(row.playlist_id).toBeNull();
+    });
+  });
 });
 
 describe('sanitizeAddonError (issue #601)', () => {

@@ -547,6 +547,21 @@ describe('listJobFeed', () => {
     expect(items.find((i) => i.title === 'Unavailable Track')?.status).toBe('skipped');
   });
 
+  it('surfaces playlist_id on the feed row once a playlist has been generated', () => {
+    const id = createJob(db, {
+      kind: 'url',
+      method: 'spotdl-addon',
+      sourceUrl: 'https://open.spotify.com/playlist/abc',
+      userId: 'user-1',
+      isPlaylist: true,
+      stage: 'queued',
+    });
+    expect(listJobFeed(db).find((j) => j.id === id)?.playlistId).toBeNull();
+
+    db.run(`UPDATE acquisition_jobs SET playlist_id = ? WHERE id = ?`, ['pl-1', id]);
+    expect(listJobFeed(db).find((j) => j.id === id)?.playlistId).toBe('pl-1');
+  });
+
   it('falls back to pending for an unrecognized/legacy state value', () => {
     const id = createJob(db, {
       kind: 'direct',
@@ -777,6 +792,42 @@ describe('recomputeStage', () => {
     const id = createJob(db, { kind: 'url', method: 'ytdlp-addon', stage: 'queued', files: [] });
     expect(recomputeStage(db, id)).toBe('queued');
     expect(getJob(db, id)?.state).toBe('active');
+  });
+});
+
+describe('createJob — playlist provenance (issue #587)', () => {
+  it('persists the submitting user and the playlist flag for a url job', () => {
+    const id = createJob(db, {
+      kind: 'url',
+      method: 'spotdl-addon',
+      sourceUrl: 'https://open.spotify.com/playlist/abc',
+      userId: 'user-1',
+      isPlaylist: true,
+      stage: 'queued',
+    });
+    const row = db
+      .query<{ user_id: string | null; is_playlist: number }, [string]>(
+        `SELECT user_id, is_playlist FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(id)!;
+    expect(row.user_id).toBe('user-1');
+    expect(row.is_playlist).toBe(1);
+  });
+
+  it('defaults to no user and not-a-playlist for every other job kind', () => {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'peer1',
+      files: [{ filename: 'x\\Album\\01 Song.flac' }],
+    });
+    const row = db
+      .query<{ user_id: string | null; is_playlist: number }, [string]>(
+        `SELECT user_id, is_playlist FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(id)!;
+    expect(row.user_id).toBeNull();
+    expect(row.is_playlist).toBe(0);
   });
 });
 

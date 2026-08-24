@@ -68,6 +68,7 @@ export function acquireRoutes(watcher: AcquireWatcher, registry: PluginRegistry,
     addon: RemoteAddonPlugin,
     url: string,
     as: SubmitBody['as'],
+    userId: string,
   ): Promise<{ jobId: string; reused: boolean }> {
     const addonId = addon.addonManifest.id;
     const existing = findInFlightAddonUrlJob(db, url);
@@ -101,6 +102,12 @@ export function acquireRoutes(watcher: AcquireWatcher, registry: PluginRegistry,
       stage: 'queued',
       sourceRef: `addon:${addonId}:${addonJob.id}`,
       sourceUrl: url,
+      // Playlist-from-acquisition on the addon lane (issue #587): the row
+      // needs its own copy of who submitted it and whether the link is a
+      // playlist, since AddonJobPoller's materialize step has no plugin-side
+      // emitTrack callback to learn either from (unlike the legacy engine).
+      userId,
+      isPlaylist: resolvedAs === 'playlist',
       files: [],
     });
     mapAddonJob(db, addonId, addonJob.id, coreJobId);
@@ -133,7 +140,7 @@ export function acquireRoutes(watcher: AcquireWatcher, registry: PluginRegistry,
     const addon = resolveAddonForUrl(registry, url.href);
     if (addon) {
       try {
-        const { jobId, reused } = await startAddonUrlJob(addon, url.href, body.as);
+        const { jobId, reused } = await startAddonUrlJob(addon, url.href, body.as, c.var.user.sub);
         // 200 + `reused` says "this link is already downloading" without
         // pretending a second job was created.
         return c.json({ jobId, reused }, reused ? 200 : 201);
@@ -212,7 +219,7 @@ export function acquireRoutes(watcher: AcquireWatcher, registry: PluginRegistry,
         return c.json({ error: 'No addon can handle this link any more' }, 503);
       }
       try {
-        const { jobId, reused } = await startAddonUrlJob(addon, url, undefined);
+        const { jobId, reused } = await startAddonUrlJob(addon, url, undefined, c.var.user.sub);
         return c.json({ jobId, reused }, reused ? 200 : 201);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Retry failed';

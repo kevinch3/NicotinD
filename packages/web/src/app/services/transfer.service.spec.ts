@@ -17,6 +17,7 @@ function makeJobView(stage: AcquisitionJobView['stage'], id = 'aj-1'): Acquisiti
     albumTitle: 'Album',
     displayTitle: null,
     sourceUrl: null,
+    playlistId: null,
     lidarrAlbumId: null,
     sourceRef: null,
     error: null,

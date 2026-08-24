@@ -143,4 +143,18 @@ describe('addon URL job projection', () => {
     expect(addonUrlJobUrl(db, older)).toBe('https://youtu.be/old');
     expect(addonUrlJobUrl(db, 'nope')).toBeNull();
   });
+
+  // Regression guard for issue #587: this projection's isPlaylist/playlistId
+  // used to be hardcoded false/null with a comment saying playlist generation
+  // was in-process-engine-only. It reads real values now — this row is only
+  // ever the deduped-away twin of the AcquisitionJobView the card actually
+  // renders (mergeAcquisitionJobs drops it), but a stale hardcode here would
+  // still mislead the next reader.
+  it('reads the real playlist classification and generated id, not a hardcoded default', () => {
+    const id = addAddonUrlJob('https://open.spotify.com/playlist/abc');
+    db.run(`UPDATE acquisition_jobs SET is_playlist = 1, playlist_id = 'pl-1' WHERE id = ?`, [id]);
+    const job = listAddonUrlJobs(db)[0]!;
+    expect(job.isPlaylist).toBe(true);
+    expect(job.playlistId).toBe('pl-1');
+  });
 });

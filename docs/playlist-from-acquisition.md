@@ -17,7 +17,153 @@ Auto-generating a playlist on completion means the user keeps the
 playlist concept intact: a single named list with the same tracks in
 the same order, owned by them, editable like any other user playlist.
 
-## Pieces
+## Which path actually runs (read this first)
+
+This feature was built twice, on two different engines, because the engine
+underneath URL acquisition changed out from under it.
+
+The original design (everything below "The legacy in-process engine")
+ran entirely inside **`AcquireWatcher`**, the in-process URL engine, fed by
+an in-process `resolve`-capable plugin. Since the acquisition-addon split
+(phases 0–4, `docs/acquisition-addon-protocol.md`), `registerBuiltinPlugins`
+registers **no** resolve-capable in-process plugin at all — yt-dlp, spotdl
+and archive.org are all external/bundled **addons** instead, reached through
+`resolveAddonForUrl`. Every Spotify/YouTube/archive.org URL a real deployment
+sees today routes through the addon path; `AcquireWatcher` only ever runs for
+a URL no registered addon claims, which in a normal deployment is never. Its
+whole playlist pipeline — `acquire_job_tracks`, `recordAcquireJobTrack`,
+`resolveAcquireJobTracks`, `materializePlaylist` — is therefore fully coded,
+unit-tested, and **dead in production** (issue #587). Retiring
+`acquire_jobs`/`AcquireWatcher` outright is a tracked follow-up
+(`docs/acquisition-addon-protocol.md`).
+
+Issue #587 built the addon-native equivalent — see "Addon-native playlist
+generation" below, which is the path that actually runs.
+
+## Addon-native playlist generation (issue #587, the live path)
+
+`addon-url-jobs.ts` used to hardcode `isPlaylist: false, playlistId: null`
+for every addon-run URL job, with a comment saying playlist generation was
+an in-process-engine feature. It wasn't reachable any other way: a Spotify
+playlist submitted through the addon path landed as N loose albums with no
+"Open playlist" anywhere, which is what a user saw as "Retro Running · View 9
+albums" instead of a deep-link.
+
+**It is simpler than the legacy path by construction.** The legacy engine
+matched a stdout-parsed track title back to a scanned song by path-stem or a
+`"Artist - "`-stripped title, because `acquire_job_tracks` rows had no direct
+link to the library. The addon lane doesn't have that problem:
+`acquisition_job_items.song_id` is already populated directly by
+`markItemsScanned` once a file lands and scans. Generating the playlist is
+just reading the ordered, landed song ids — no title/path matching needed.
+
+### Pieces
+
+| Concern                                          | Where                                                                          |
+| ------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Schema: `user_id` / `is_playlist` / `playlist_id` on `acquisition_jobs` | `packages/api/src/db.ts`                          |
+| Provenance persisted at submit + retry             | `packages/api/src/routes/acquire.ts` `startAddonUrlJob`                        |
+| Playlist materialization (create/refresh)          | `packages/api/src/services/addon-playlist.ts` `materializeAddonPlaylist`       |
+| Poller hook (fires once the addon closes the job)  | `packages/api/src/services/addons/job-poller.ts` (`pollAddon`, after `applyAddonOutcome`) |
+| `AcquisitionJobView.playlistId` on the feed row    | `packages/core/src/types/acquire.ts`, `listJobFeed`                            |
+| Web mapping onto the card                          | `packages/web/src/app/lib/download-groups.ts` `mergeAcquisitionJobs`           |
+| Downloads card "Open playlist" deep-link (unchanged — already generic) | `packages/web/src/app/components/download-item/download-item.component.{ts,html}` |
+
+### Provenance persisted at submit
+
+`startAddonUrlJob` already computes `resolveAcquireAs(url, as)` to tell the
+addon whether the link is a playlist (issue #585). This just persists that
+same verdict onto the eagerly-mirrored `acquisition_jobs` row, alongside the
+authenticated submitter (`c.var.user.sub`, already read a few lines below for
+the watcher fallback) — both call sites, the initial `POST /` and
+`POST /jobs/:id/retry`, since retry runs the exact same create path as a
+fresh submit.
+
+### Ordering
+
+`acquisition_job_items` carries no explicit position column. `mirrorItems`
+preserves order by construction: a new item is `INSERT`ed (autoincrement
+`id`), an already-seen one only `UPDATE`d in place — so `ORDER BY id` is the
+item-order convention this codebase already relies on elsewhere
+(`acquisition-job-store.ts`'s own reads, `addon-url-jobs.ts`'s `tracks`
+projection). The protocol guarantees a new item enters `job.items` the first
+time it's reported, in the order the downloader reports it: **exact** for
+yt-dlp (`Downloading item N of M`, strictly sequential — no
+`--concurrent`/threads flag), **completion order** for spotdl (its default
+`--threads 2` means two tracks can finish out of submission order). That's a
+documented, accepted imprecision, not a correctness bug — the playlist still
+contains every landed track, in an order that can differ from the source by
+at most a couple of adjacent positions. spotdl's own stdout never announces a
+strict position (only a title on completion), so closing this gap fully
+would need a source-side metadata prefetch the spotdl addon doesn't do today;
+out of scope for this change.
+
+### Retry continuity — resolved by `(source_url, user_id)`, not by job id
+
+The legacy engine could look up "my own prior `playlist_id`" on retry because
+retry resumed the _same_ `acquire_jobs` row. An addon-run URL job has no such
+continuity: `POST /jobs/:id/retry` calls `startAddonUrlJob` again — the exact
+same create path as a fresh submit — so retry always mints a **new**
+`acquisition_jobs` row with a new id.
+
+`materializeAddonPlaylist` resolves the target playlist in two steps:
+
+1. **This row's own prior write** (`acquisition_jobs.playlist_id` already
+   set) wins first — no lookup needed, and it's always safe to trust since it
+   can only be a playlist this same function created. This is what makes the
+   hook idempotent across repeated ticks: `applyAddonOutcome` can observe a
+   closed job more than once before `maybeReleaseAddonJob` finally deletes
+   the addon-side job, and each re-fire just refreshes the same playlist.
+2. Otherwise, the **most recent other row** for the same `(source_url,
+   user_id)` that already generated one — a same-user retry finds it and
+   refreshes in place; a different user submitting the identical link gets
+   their own copy (matches the existing private-playlists model); a deleted
+   prior playlist (the ownership check — `kind='user' AND user_id=?`,
+   deliberately **not** `PlaylistService.get()`'s own visibility rule, which
+   additionally admits `kind='curated'` rows and would let a curated
+   playlist's songs be wiped before discovering the write is refused) falls
+   through to a fresh one rather than throwing.
+
+A refresh is a full replace, not a merge (`DELETE FROM playlist_songs`, then
+`PlaylistService.update(..., { add: orderedSongIds })`) — `reorder` only
+repositions rows already present, so a full replace is the only way to make
+a retry with more (or fewer, or reordered) landed tracks reflect the new set.
+
+An empty landed set (every track failed/unavailable) never creates a
+playlist — an empty playlist is worse than none, and the card already
+reports the failure on its own.
+
+### Tests
+
+- Unit: `packages/api/src/services/addon-playlist.test.ts` — create, exclude
+  unlanded tracks, no-op for a non-playlist job, no-op for zero landed
+  tracks, same-row re-fire idempotence, same-user retry continuity,
+  different-user isolation, deleted-prior-playlist fallback.
+- Unit: `packages/api/src/services/addons/job-poller.test.ts` (describe
+  `playlist-from-acquisition on the addon lane`) — the hook fires through a
+  real `tick()` once a playlist job's tracks land, and never fires for a
+  non-playlist job.
+- Unit: `packages/api/src/routes/acquire.jobs.test.ts` (describe `playlist
+  provenance persisted at submit`) — `user_id`/`is_playlist` land on the row
+  from a real authenticated submit and from retry.
+- Unit: `packages/api/src/services/addon-url-jobs.test.ts` — the `AcquireJob`
+  projection reads real `isPlaylist`/`playlistId` values rather than the old
+  hardcoded defaults (regression guard; this row's `AcquireJob` twin is
+  deduped away by `mergeAcquisitionJobs` whenever the unified lane also
+  carries the job, which an addon-ref'd job always does — but a stale
+  hardcode here would still mislead the next reader).
+- Unit (web): `packages/web/src/app/lib/download-groups.spec.ts` —
+  `mergeAcquisitionJobs` maps `AcquisitionJobView.playlistId` onto
+  `DownloadItem.playlistId`; the card's own render logic
+  (`canOpenPlaylist`/`playlistRoute`) needed no change — it was already
+  generic over which lane supplied the id.
+
+## The legacy in-process engine (`AcquireWatcher` / `acquire_jobs`)
+
+Kept for the one case that still reaches it: a URL no registered addon
+claims. Everything below describes that fallback as originally designed.
+
+### Pieces
 
 | Concern                                                                                | Where                                                                                                                                                    |
 | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -32,7 +178,7 @@ the same order, owned by them, editable like any other user playlist.
 | Link-intent toggle (archive-only "Treat as playlist")                                  | `packages/web/src/app/pages/search/search.component.{ts,html}`                                                                                           |
 | Downloads card "Open playlist" deep-link                                               | `packages/web/src/app/components/download-item/download-item.component.{ts,html}` + `lib/route-utils.ts` `resolvePlaylistRoute`                          |
 
-## URL classifier
+### URL classifier
 
 A pure function in `@nicotind/core`:
 
@@ -56,7 +202,7 @@ Reused by `AcquireWatcher.submit()` (sets `acquire_jobs.is_playlist` at submit
 time) and the web's link-intent card (decides whether to render the
 "Treat as playlist" toggle).
 
-## Post-ingest step
+### Post-ingest step
 
 `AcquireWatcher.ingest()` runs the organize → scan pipeline as before, then
 if the job's `is_playlist=1`:
@@ -94,7 +240,7 @@ The step is best-effort: a failure (empty resolve, playlist-service
 throw) is logged at `warn` and never breaks the job — the files are
 already in the library, and the user can still build a playlist manually.
 
-## Per-source behavior
+### Per-source behavior
 
 | Source                    | URL pattern identifies playlist?                                | Per-track `path` written?                                                                                                                                                                                                                   | Auto-generates playlist?                                                         |
 | ------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
@@ -120,7 +266,7 @@ can't include it. The generated playlist mirrors _what this job landed_, not
 the source playlist's full tracklist. Revisit if users read this as "missing
 songs".
 
-## Retry / dedupe contract
+### Retry / dedupe contract
 
 - **Idempotent submit** (existing dedupe guard in `submit()`): if the
   URL already has a `queued`/`running` job, the second submit returns
@@ -140,7 +286,7 @@ songs".
   never get a playlist, even after a re-submit (the dedupe guard
   short-circuits to the existing job).
 
-## Privacy / multi-user
+### Privacy / multi-user
 
 Each user gets their own copy of the generated playlist (matches the
 existing private-playlists model). The `playlists.user_id` FK scopes
@@ -149,9 +295,9 @@ generated on their behalf. Acquiring users get a `kind='user'` playlist
 under their account; the schema already supports per-user playlist
 visibility.
 
-## Web UX
+### Web UX
 
-### Link-intent card (search omnibox)
+#### Link-intent card (search omnibox)
 
 - Spotify playlist URL → chip + Get button (no toggle — auto-detected).
 - archive.org URL → chip + "Treat as playlist" checkbox (only when the
@@ -163,7 +309,7 @@ Toggling the checkbox flips a client-side signal that the submit
 handler sends to the server as `as: 'playlist'`. The default is
 `'album'` (the safer legacy behavior). A fresh URL resets the toggle.
 
-### Downloads card
+#### Downloads card
 
 For a playlist-classified job that completed, the row offers:
 
@@ -177,12 +323,12 @@ is a more useful destination than any single album.
 For jobs without a `playlistId`, behavior is unchanged (legacy
 pre-feature rows, non-playlist acquires, in-flight jobs).
 
-### Library tab
+#### Library tab
 
 The new `kind='user'` playlist appears alongside the user's existing
 playlists — same visibility / sharing UX as any user playlist.
 
-## Tests
+### Tests (legacy engine)
 
 - Unit: `packages/core/src/types/classify-acquire-url.test.ts` —
   classifier returns the right kind for every supported URL pattern.

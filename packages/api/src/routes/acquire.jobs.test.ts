@@ -203,6 +203,49 @@ describe('acquire route — addon seam', () => {
     });
   });
 
+  // Issue #587: an addon-run playlist job needs its own copy of who submitted
+  // it and whether the addon classified the link as a playlist — the row's
+  // playlist step reads these directly, and (unlike the legacy AcquireWatcher
+  // engine) has no plugin-side emitTrack callback to learn them from.
+  describe('playlist provenance persisted at submit (issue #587)', () => {
+    async function rowFor(app: Hono<AuthEnv>, url: string) {
+      const { jobId } = (await (await post(app, url)).json()) as { jobId: string };
+      return db
+        .query<{ user_id: string | null; is_playlist: number }, [string]>(
+          `SELECT user_id, is_playlist FROM acquisition_jobs WHERE id = ?`,
+        )
+        .get(jobId)!;
+    }
+
+    it('persists the authenticated submitter and the playlist classification', async () => {
+      const row = await rowFor(makeApp(), 'https://open.spotify.com/playlist/abc');
+      expect(row.user_id).toBe('u');
+      expect(row.is_playlist).toBe(1);
+    });
+
+    it('is not a playlist for a non-playlist url', async () => {
+      const row = await rowFor(makeApp(), 'https://stub.test/track');
+      expect(row.is_playlist).toBe(0);
+    });
+
+    it('persists provenance on retry too — the addon side mints a new job row', async () => {
+      const app = makeApp();
+      const { jobId } = (await (
+        await post(app, 'https://open.spotify.com/playlist/abc')
+      ).json()) as { jobId: string };
+      db.run(`UPDATE acquisition_jobs SET state = 'failed', stage = 'error' WHERE id = ?`, [jobId]);
+      const res = await app.request(`/jobs/${jobId}/retry`, { method: 'POST' });
+      const { jobId: retryJobId } = (await res.json()) as { jobId: string };
+      const row = db
+        .query<{ user_id: string | null; is_playlist: number }, [string]>(
+          `SELECT user_id, is_playlist FROM acquisition_jobs WHERE id = ?`,
+        )
+        .get(retryJobId)!;
+      expect(row.user_id).toBe('u');
+      expect(row.is_playlist).toBe(1);
+    });
+  });
+
   describe('GET /jobs', () => {
     it('lists addon-run url jobs alongside the in-process ones, keyed on the pasted url', async () => {
       const app = makeApp();

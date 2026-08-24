@@ -374,9 +374,11 @@ emit once they pipe the stream — same protocol 1.1, no new fields):
   "1 of N" has a transcript in `docker logs <addon>`.
 
 Playlist **generation** for addon-run jobs (the native playlist built from the
-landed tracks) is the one thing still not put back — issue #587 tracks it; it
-depends on the per-track order above, which is why it was not built against
-the glob order.
+landed tracks) is shipped (issue #587) — `materializeAddonPlaylist`, hooked into
+the poller right after `applyAddonOutcome` closes a playlist-classified job. It
+was built once the per-track order above was in place; see
+[playlist-from-acquisition.md](playlist-from-acquisition.md) for the full design,
+including the retry-continuity and ordering-precision caveats.
 
 #### Direct grabs are the addon job's mirror (issue #586)
 
