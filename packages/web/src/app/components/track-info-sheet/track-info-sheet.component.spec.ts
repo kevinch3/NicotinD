@@ -117,11 +117,16 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     expect(c.genreSuggestion()?.suggested).toBe('Electronic');
   });
 
-  it('applySuggestedGenre() overrides the current genre on success', () => {
+  it('applySuggestedGenre() appends, and adopts the server-returned set', () => {
+    // Issue #684: the server appends, but the sheet used to overwrite its whole
+    // chip list with just the applied genre — so an append rendered as a wipe.
+    applyGenre.mockReturnValueOnce(
+      of({ ok: true, genre: 'Latin', genres: ['Latin', 'Electronic'] }) as never,
+    );
     const c = create();
     c.applySuggestedGenre('Electronic');
-    expect(applyGenre).toHaveBeenCalledWith('song-1', 'Electronic');
-    expect(c.currentGenre()).toBe('Electronic');
+    expect(applyGenre).toHaveBeenCalledWith('song-1', 'Electronic', 'append');
+    expect(c.genreList()).toEqual(['Latin', 'Electronic']);
   });
 
   it('detectLicenceNow() loads the licence suggestion', () => {
@@ -366,5 +371,113 @@ describe('TrackInfoSheetComponent (multi-genre chips)', () => {
     c.ngOnInit();
     c.genreOverride.set('Latin Rock; Latin Music');
     expect(c.genreList()).toEqual(['Latin Rock', 'Latin Music']);
+  });
+});
+
+// Issue #684: the chips were read-only — a curator could add a genre (and even
+// that rendered as a replace) but never remove or reorder one.
+describe('TrackInfoSheetComponent (genre chip editor, issue #684)', () => {
+  const role = signal<string | null>('admin');
+  const applyGenre = vi.fn();
+  const getSong = vi.fn(() =>
+    of({ id: 'song-1', genres: ['House', 'Techno', 'Minimal'] } as never),
+  );
+
+  beforeEach(async () => {
+    applyGenre.mockReset();
+    applyGenre.mockReturnValue(of({ ok: true, genre: 'House', genres: ['House'] }));
+    role.set('admin');
+    await TestBed.configureTestingModule({
+      imports: [TrackInfoSheetComponent],
+      providers: [
+        {
+          provide: LibraryApiService,
+          useValue: {
+            analyzeSong: vi.fn(() => of({ bpm: 120, source: 'analyzed' as const })),
+            getGenreSuggestion: vi.fn(() => of(null)),
+            applyGenre,
+            getSong,
+            getSongProvenance: vi.fn(() => of([])),
+            getSongAcquisition: vi.fn(() => of(null)),
+            getLyrics: vi.fn(() => of(null)),
+            getIdentifyAvailable: vi.fn(() => of({ available: false })),
+            identifyLibrarySong: vi.fn(() => of({ result: null, outcome: { kind: 'no-match' } })),
+            applyIdentify: vi.fn(() => of({ ok: true, rescanned: true })),
+          },
+        },
+        { provide: TranslateService, useValue: { t: (k: string) => k } },
+        {
+          provide: AuthService,
+          useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) },
+        },
+        { provide: LikeService, useValue: { isLiked: () => false, toggle: vi.fn() } },
+      ],
+    }).compileComponents();
+  });
+
+  function create() {
+    const c = TestBed.createComponent(TrackInfoSheetComponent).componentInstance;
+    (c as unknown as { songId: () => string }).songId = () => 'song-1';
+    c.ngOnInit();
+    return c;
+  }
+
+  it('addGenre() appends the typed genre and clears the input', () => {
+    applyGenre.mockReturnValue(
+      of({ ok: true, genre: 'House', genres: ['House', 'Techno', 'Minimal', 'Deep House'] }),
+    );
+    const c = create();
+    c.newGenre.set('  Deep House  ');
+    c.addGenre();
+    expect(applyGenre).toHaveBeenCalledWith('song-1', 'Deep House', 'append');
+    expect(c.genreList()).toEqual(['House', 'Techno', 'Minimal', 'Deep House']);
+    expect(c.newGenre()).toBe('');
+    expect(c.addingGenre()).toBe(false);
+  });
+
+  it('addGenre() ignores an empty input', () => {
+    const c = create();
+    c.newGenre.set('   ');
+    c.addGenre();
+    expect(applyGenre).not.toHaveBeenCalled();
+  });
+
+  it('removeGenre() sends the remaining set as a replace', () => {
+    const c = create();
+    c.removeGenre(1);
+    expect(applyGenre).toHaveBeenCalledWith('song-1', 'House;Minimal', 'replace');
+  });
+
+  it('removeGenre() refuses to remove the last remaining genre', () => {
+    getSong.mockReturnValueOnce(of({ id: 'song-1', genres: ['House'] } as never));
+    const c = create();
+    c.removeGenre(0);
+    expect(applyGenre).not.toHaveBeenCalled();
+  });
+
+  it('dropping a chip reorders the set and sends it as a replace', () => {
+    const c = create();
+    const evt = { preventDefault: () => {}, dataTransfer: null } as unknown as DragEvent;
+    c.onGenreDragStart({ dataTransfer: null } as unknown as DragEvent, 2);
+    c.onGenreDrop(evt, 0);
+    // 'Minimal' becomes the primary; the drag state is cleared either way.
+    expect(applyGenre).toHaveBeenCalledWith('song-1', 'Minimal;House;Techno', 'replace');
+    expect(c.genreDragIndex()).toBeNull();
+    expect(c.genreDropIndex()).toBeNull();
+  });
+
+  it('dropping a chip on itself writes nothing', () => {
+    const c = create();
+    c.onGenreDragStart({ dataTransfer: null } as unknown as DragEvent, 1);
+    c.onGenreDrop({ preventDefault: () => {} } as unknown as DragEvent, 1);
+    expect(applyGenre).not.toHaveBeenCalled();
+  });
+
+  it('a failed write leaves the chips untouched and clears the spinner', () => {
+    applyGenre.mockReturnValueOnce(throwError(() => new Error('boom')));
+    const c = create();
+    c.removeGenre(1);
+    expect(c.applyingGenre()).toBe(false);
+    expect(c.genreList()).toEqual(['House', 'Techno', 'Minimal']);
   });
 });

@@ -104,6 +104,9 @@ Launch tasks:
   optional `--limit`; runs over the **whole** library, not just empty-genre songs, and
   is idempotent via the dedup) all add rather than replace. Distinct from
   `backfill-genre.ts`, which only *fills* empty-genre songs and *replaces* their set.
+  A curator **removing or reordering** a chip in that sheet is the one path from the UI
+  that sends `mode: 'replace'` — "exactly this set, in this order" is only expressible
+  as a song-scoped override (issue #684, see [web-ui.md](web-ui.md)).
 - **key** — `WHERE key IS NULL OR key = ''`, ffmpeg-gated, **offline**. Reads a tag
   key if present, else `analyzeKey()` → the pure Krumhansl–Schmuckler estimator in
   `services/key-detection.ts` (chromagram via per-semitone Goertzel filters → KS

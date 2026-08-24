@@ -1,6 +1,7 @@
 import { Injectable, signal, computed, effect, untracked } from '@angular/core';
 import type { LibraryFilter } from '@nicotind/core';
 import type { BufferedRange } from '../lib/buffered-ranges';
+import { moveInList } from '../lib/move-in-list';
 
 export interface Track {
   id: string;
@@ -472,13 +473,7 @@ export class PlayerService {
 
   moveInQueue(fromIndex: number, toIndex: number): void {
     if (fromIndex === toIndex) return;
-    this.queue.update((q) => {
-      if (fromIndex < 0 || fromIndex >= q.length || toIndex < 0 || toIndex >= q.length) return q;
-      const next = [...q];
-      const [moved] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, moved);
-      return next;
-    });
+    this.queue.update((q) => moveInList(q, fromIndex, toIndex));
   }
 
   setNowPlayingOpen(open: boolean): void {

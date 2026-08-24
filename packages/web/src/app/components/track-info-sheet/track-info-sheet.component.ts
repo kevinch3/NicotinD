@@ -24,6 +24,7 @@ import { LikeService } from '../../services/like.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { methodBadge } from '../../lib/acquisition-method';
 import { parseLrc } from '../../lib/lrc-parser';
+import { moveInList } from '../../lib/move-in-list';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { TrackStatsBarsComponent } from '../track-stats-bars/track-stats-bars.component';
 import { ArtistIdentityModalComponent } from '../artist-identity-modal/artist-identity-modal.component';
@@ -89,6 +90,11 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly genreSuggestion = signal<GenreSuggestion | null>(null);
   readonly verifyingGenre = signal(false);
   readonly applyingGenre = signal(false);
+  // Genre chip editor (issue #684) — add / remove / drag-reorder.
+  readonly addingGenre = signal(false);
+  readonly newGenre = signal('');
+  readonly genreDragIndex = signal<number | null>(null);
+  readonly genreDropIndex = signal<number | null>(null);
 
   // Licence / rights state
   readonly licenceOptions = LICENCE_VOCAB;
@@ -315,15 +321,71 @@ export class TrackInfoSheetComponent implements OnInit {
   }
 
   applySuggestedGenre(genre: string): void {
+    this.writeGenres(genre, 'append');
+  }
+
+  // ── Genre chip editor (issue #684) ────────────────────────────────────────
+  // Adding uses the route's default 'append', so a new genre never clobbers a
+  // set a human curated. Removing and reordering send the full desired list as
+  // 'replace', because "exactly this set, in this order" is only expressible as
+  // a song-scoped override — which is also what makes the edit survive a rescan.
+
+  /** Commit a genre write and adopt the server's resulting set as the truth. */
+  private writeGenres(genre: string, mode: 'append' | 'replace'): void {
     if (this.applyingGenre()) return;
     this.applyingGenre.set(true);
-    this.api.applyGenre(this.songId(), genre).subscribe({
-      next: () => {
-        this.genreOverride.set(genre);
+    this.api.applyGenre(this.songId(), genre, mode).subscribe({
+      next: (res) => {
+        // The server owns the merge (append order, override precedence), so
+        // echo its answer instead of guessing — guessing is what made an
+        // "append" render as if it had replaced the whole set.
+        this.genreOverride.set((res.genres ?? [genre]).join(';'));
         this.applyingGenre.set(false);
+        this.newGenre.set('');
+        this.addingGenre.set(false);
       },
       error: () => this.applyingGenre.set(false),
     });
+  }
+
+  addGenre(): void {
+    const raw = this.newGenre().trim();
+    if (!raw || this.applyingGenre()) return;
+    this.writeGenres(raw, 'append');
+  }
+
+  removeGenre(index: number): void {
+    const next = this.genreList().filter((_, i) => i !== index);
+    // The route requires at least one genre and there is no clear-genre
+    // endpoint, so the last chip is not removable (the X is hidden for it).
+    if (next.length === 0) return;
+    this.writeGenres(next.join(';'), 'replace');
+  }
+
+  onGenreDragStart(event: DragEvent, index: number): void {
+    this.genreDragIndex.set(index);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(index));
+    }
+  }
+
+  onGenreDragOver(event: DragEvent, index: number): void {
+    event.preventDefault();
+    if (this.genreDragIndex() !== null) this.genreDropIndex.set(index);
+  }
+
+  onGenreDrop(event: DragEvent, index: number): void {
+    event.preventDefault();
+    const from = this.genreDragIndex();
+    this.onGenreDragEnd();
+    if (from === null || from === index) return;
+    this.writeGenres(moveInList(this.genreList(), from, index).join(';'), 'replace');
+  }
+
+  onGenreDragEnd(): void {
+    this.genreDragIndex.set(null);
+    this.genreDropIndex.set(null);
   }
 
   labelForLicence(code: string): string {
