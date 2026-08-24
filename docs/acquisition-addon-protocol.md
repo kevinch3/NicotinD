@@ -221,6 +221,16 @@ phase 3).
   search/browse/download capability accessors and (de)registers the provider in
   `ProviderRegistry` on init/dispose — blended search, the raw network lane, browse and
   the enqueue route light up with **zero route changes** (the SlskdPlugin contract).
+- **Browse follows the declared capability, not method presence (#666).** One adapter class
+  serves every addon, so `'browseUser' in provider` was true even for addons that never
+  declared `browse` — the UI offered "Load full tree" and every failure (undeclared
+  capability, unreachable addon, 60s timeout, bundled `local:` transport) flattened into
+  one opaque "Browse provider not available". `AddonSearchProvider` now carries
+  `supportsBrowse` from the manifest, `ProviderRegistry.getBrowseProvider()` skips a
+  provider that declares `false` (a provider that says nothing is assumed capable), the
+  network poll's `canBrowse` reads that same resolution so the toggle is hidden rather
+  than dead, and `BrowseUnavailableError` carries the addon's own reason so a real failure
+  says what happened.
 - `AddonJobPoller` (services/addons/job-poller.ts): mirrors addon jobs/items into
   `acquisition_jobs`/`acquisition_job_items` keyed `addon:<id>:<itemId>` (a fallback
   repoint is an in-place upsert), fetches fileReady completions into

@@ -44,9 +44,13 @@ export function usersRoutes(registry: ProviderRegistry) {
       .browseUser(username)
       .then((dirs) => browseJobs.set(jobId, { state: 'complete', dirs, startedAt }))
       .catch((err) => {
+        // A BrowseUnavailableError now carries the addon's own reason when it
+        // has one; only a reasonless failure falls back to the generic line (#666).
         const error =
           err instanceof BrowseUnavailableError
-            ? 'Browse provider not available'
+            ? err.message === 'browse provider not available'
+              ? 'Browse provider not available'
+              : `Browse failed: ${err.message}`
             : err instanceof Error
               ? err.message
               : String(err);

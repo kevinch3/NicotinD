@@ -97,8 +97,10 @@ export interface IBrowseProvider {
 }
 
 export class BrowseUnavailableError extends Error {
-  constructor() {
-    super('browse provider not available');
+  /** @param reason why browse failed, when known — a flattened "not available"
+   *  is a dead end for the user and for whoever debugs it (#666). */
+  constructor(reason?: string) {
+    super(reason ?? 'browse provider not available');
     this.name = 'BrowseUnavailableError';
   }
 }

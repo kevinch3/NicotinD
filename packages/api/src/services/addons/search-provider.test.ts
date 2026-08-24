@@ -85,6 +85,30 @@ describe('AddonSearchProvider', () => {
     expect((await provider.pollResults(searchId!)).state).toBe('complete');
   });
 
+  // Browse used to be resolved by duck-typing `'browseUser' in provider`, which
+  // is true for EVERY search-capable addon — so the UI offered "Load full tree"
+  // for addons that never declared browse, and the failure flattened into one
+  // opaque string (#666). Resolution now follows the declared capability.
+  it('reports the declared browse capability so the registry can gate on it', () => {
+    const declared = new AddonSearchProvider('fixture-addon', stubClient(), { canBrowse: true });
+    const undeclared = new AddonSearchProvider('search-only', stubClient(), { canBrowse: false });
+    expect(declared.supportsBrowse).toBe(true);
+    expect(undeclared.supportsBrowse).toBe(false);
+  });
+
+  it('carries the underlying reason when the addon browse call fails', async () => {
+    const provider = new AddonSearchProvider(
+      'fixture-addon',
+      stubClient({
+        browse: async () => {
+          throw new Error('addon returned 501');
+        },
+      } as Partial<AddonClient>),
+      { canBrowse: true },
+    );
+    await expect(provider.browseUser('peer')).rejects.toThrow(/addon returned 501/);
+  });
+
   it('download() creates a browse-grab job on the addon', async () => {
     const jobs: unknown[] = [];
     const provider = new AddonSearchProvider(
@@ -123,6 +147,43 @@ describe('RemoteAddonPlugin capabilities', () => {
 
     await plugin.dispose();
     expect(providers.getByName('fixture-addon')).toBeUndefined();
+  });
+
+  it('does not expose a browse provider when the manifest declares only search (#666)', async () => {
+    const providers = new ProviderRegistry();
+    const plugin = new RemoteAddonPlugin(
+      { ...MANIFEST, capabilities: ['search'] },
+      stubClient(),
+      providers,
+    );
+    await plugin.init({
+      logger: console as never,
+      config: {},
+      allocStagingDir: () => '/tmp',
+      emitProgress() {},
+      emitLabel() {},
+      emitTrack() {},
+      storage: { get: () => null, set() {}, delete() {} },
+    });
+
+    expect(providers.getByType('network')).toHaveLength(1); // search still works
+    expect(providers.getBrowseProvider()).toBeNull(); // but browse is not offered
+  });
+
+  it('exposes the browse provider when the manifest declares browse', async () => {
+    const providers = new ProviderRegistry();
+    const plugin = new RemoteAddonPlugin(MANIFEST, stubClient(), providers);
+    await plugin.init({
+      logger: console as never,
+      config: {},
+      allocStagingDir: () => '/tmp',
+      emitProgress() {},
+      emitLabel() {},
+      emitTrack() {},
+      storage: { get: () => null, set() {}, delete() {} },
+    });
+
+    expect(providers.getBrowseProvider()?.name).toBe('fixture-addon');
   });
 
   it('declares no capabilities when the manifest has none', () => {
