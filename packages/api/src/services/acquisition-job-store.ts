@@ -118,6 +118,15 @@ export interface CreateJobInput {
    * download of the same thing.
    */
   sourceUrl?: string | null;
+  /**
+   * The submitter, for `kind:'url'` jobs the addon classified as a playlist
+   * (issue #587) — needed to own the generated native playlist and to find a
+   * prior one to refresh on retry, since retry mints a new job row rather than
+   * reusing this one.
+   */
+  userId?: string | null;
+  /** Whether the addon-resolved link is a playlist (`resolveAcquireAs` said so at submit). */
+  isPlaylist?: boolean;
   /** Peer the items were enqueued from (slskd). Per-file username overrides this. */
   username?: string | null;
   files?: Array<{
@@ -217,8 +226,8 @@ export function createJob(db: Database, input: CreateJobInput): string {
       `INSERT INTO acquisition_jobs
          (id, kind, method, stage, artist_name, album_title, display_title, lidarr_album_id,
           release_mbid, artist_mbid, genres_json, year, canonical_tracks_json, album_job_id,
-          source_ref, source_url, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          source_ref, source_url, user_id, is_playlist, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.kind,
@@ -236,6 +245,8 @@ export function createJob(db: Database, input: CreateJobInput): string {
         input.albumJobId ?? null,
         input.sourceRef ?? null,
         input.sourceUrl ?? null,
+        input.userId ?? null,
+        input.isPlaylist ? 1 : 0,
         now,
         now,
       ],
@@ -286,6 +297,7 @@ interface JobRow {
   album_job_id: number | null;
   source_ref: string | null;
   source_url: string | null;
+  playlist_id: string | null;
   error: string | null;
   created_at: number;
   updated_at: number;
@@ -850,6 +862,13 @@ export interface AcquisitionJobFeedItem {
   displayTitle: string | null;
   /** The link the user pasted, for `kind:'url'` jobs — the title chain's URL rung. */
   sourceUrl: string | null;
+  /**
+   * Native playlist generated from this job's landed tracks, once the addon
+   * classified the link as a playlist and the job closed (issue #587). Null
+   * until then, and for every non-playlist job. Drives the Downloads card's
+   * "Open playlist" deep-link.
+   */
+  playlistId: string | null;
   lidarrAlbumId: number | null;
   sourceRef: string | null;
   error: string | null;
@@ -1102,6 +1121,7 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
       albumTitle: row.album_title,
       displayTitle: row.display_title,
       sourceUrl: row.source_url,
+      playlistId: row.playlist_id,
       lidarrAlbumId: row.lidarr_album_id,
       sourceRef: row.source_ref,
       error: row.error,

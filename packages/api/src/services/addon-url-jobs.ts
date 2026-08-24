@@ -59,9 +59,12 @@ interface UrlJobRow {
   display_title: string | null;
   error: string | null;
   created_at: number;
+  is_playlist: number;
+  playlist_id: string | null;
 }
 
-const SELECT_URL_JOBS = `SELECT id, method, state, stage, source_url, album_title, display_title, error, created_at
+const SELECT_URL_JOBS = `SELECT id, method, state, stage, source_url, album_title, display_title,
+     error, created_at, is_playlist, playlist_id
    FROM acquisition_jobs
    WHERE kind = 'url' AND source_url IS NOT NULL
      AND source_ref LIKE 'addon:%'`;
@@ -152,11 +155,12 @@ function project(db: Database, row: UrlJobRow): AcquireJob {
     destinationAlbums,
     progress: total > 0 ? { done, total } : null,
     tracks,
-    // Playlist generation is an in-process-engine feature; an addon URL job
-    // carries no playlist of its own yet, so these stay honest defaults rather
-    // than pretending one is coming.
-    isPlaylist: false,
-    playlistId: null,
+    // Real values since issue #587 — kept in sync with AcquisitionJobView's
+    // own playlistId even though `mergeAcquisitionJobs` drops this row's
+    // twin whenever the unified lane also carries it (an addon-ref'd job
+    // always does), so it's this file's honesty, not the card's, at stake.
+    isPlaylist: Boolean(row.is_playlist),
+    playlistId: row.playlist_id,
     error: row.error,
     // `AcquireJob.created_at` is unix **seconds** (`acquire_jobs` defaults to
     // `unixepoch()`); `acquisition_jobs.created_at` is `Date.now()` millis.

@@ -284,6 +284,10 @@ export function mergeAcquisitionJobs(
       // albums has no single "Open in Library" target, so it offers the
       // "View N albums" menu instead of both at once.
       albumId: (job.destinationAlbums?.length ?? 0) > 1 ? undefined : (job.albumId ?? undefined),
+      // Set once an addon-run playlist job closes and the server generates the
+      // native playlist (issue #587) — `canOpenPlaylist`/`playlistRoute` were
+      // already built for the acquire lane and just needed this field.
+      playlistId: job.playlistId ?? undefined,
       jobId: job.id,
       sources: job.sources,
       destinationAlbums: job.destinationAlbums?.length ? job.destinationAlbums : undefined,

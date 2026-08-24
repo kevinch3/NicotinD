@@ -70,6 +70,13 @@ export interface AcquisitionJobView {
   displayTitle: string | null;
   /** The link the user pasted, for `kind:'url'` jobs — the title chain's URL rung. */
   sourceUrl: string | null;
+  /**
+   * Native playlist generated from this job's landed tracks, once the addon
+   * classified the link as a playlist and the job closed (issue #587). Null
+   * until then, and for every non-playlist job. Drives the "Open playlist"
+   * deep-link on the Downloads card.
+   */
+  playlistId: string | null;
   lidarrAlbumId: number | null;
   sourceRef: string | null;
   error: string | null;

@@ -89,6 +89,7 @@ function downloadingJob(id: string): AcquisitionJobView {
     albumTitle: 'Bola de Nieve',
     displayTitle: null,
     sourceUrl: null,
+    playlistId: null,
     lidarrAlbumId: null,
     sourceRef: null,
     error: null,

@@ -376,6 +376,20 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // index. See `downloadTitleFor` (@nicotind/core) for the whole title chain.
   addColumnIfMissing(db, 'acquisition_jobs', 'display_title', 'TEXT');
 
+  // Playlist-from-acquisition on the addon lane (issue #587). The original
+  // design (docs/playlist-from-acquisition.md) ran entirely inside
+  // `AcquireWatcher`/`acquire_jobs`, the in-process URL engine — which no
+  // in-process resolve plugin has fed since the addon split, so that whole
+  // path is dead code today. An addon-run `kind:'url'` job never gets an
+  // `acquire_jobs` row, so it needs its own copy of the three facts a
+  // playlist step requires: who submitted it (a retry mints a *new* job row,
+  // so continuity across retries is resolved by `(source_url, user_id)`, not
+  // by carrying an id forward), whether the addon classified the link as a
+  // playlist, and — once generated — which playlist to keep in sync.
+  addColumnIfMissing(db, 'acquisition_jobs', 'user_id', 'TEXT');
+  addColumnIfMissing(db, 'acquisition_jobs', 'is_playlist', 'INTEGER NOT NULL DEFAULT 0');
+  addColumnIfMissing(db, 'acquisition_jobs', 'playlist_id', 'TEXT');
+
   db.run(`
     CREATE TABLE IF NOT EXISTS completed_downloads (
       transfer_key TEXT PRIMARY KEY,

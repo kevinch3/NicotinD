@@ -181,6 +181,7 @@ function acqJob(over: Partial<AcquisitionJobView> = {}): AcquisitionJobView {
     albumTitle: 'Album',
     displayTitle: null,
     sourceUrl: null,
+    playlistId: null,
     lidarrAlbumId: null,
     sourceRef: 'peer',
     error: null,
@@ -208,6 +209,14 @@ describe('mergeAcquisitionJobs', () => {
     expect(card.albumId).toBe('album-id-1');
     expect(card.progress).toEqual({ done: 1, total: 2 });
     expect(card.canCancel).toBe(true);
+  });
+
+  // Issue #587: an addon-run playlist job generates a native playlist server-
+  // side and reports it on the feed row — the card's "Open playlist" opener
+  // (already built, gated on DownloadItem.playlistId) just needs it mapped.
+  it('carries playlistId through so a generated playlist can deep-link', () => {
+    expect(mergeAcquisitionJobs([], [acqJob({ playlistId: 'pl-1' })])[0]!.playlistId).toBe('pl-1');
+    expect(mergeAcquisitionJobs([], [acqJob()])[0]!.playlistId).toBeUndefined();
   });
 
   // Regression: an in-flight addon URL job (no resolved metadata yet) rendered

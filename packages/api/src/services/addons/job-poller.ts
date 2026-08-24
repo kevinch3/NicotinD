@@ -17,6 +17,8 @@ import {
   type AcquisitionJobKind,
   type TransferJobMeta,
 } from '../acquisition-job-store.js';
+import { materializeAddonPlaylist } from '../addon-playlist.js';
+import { PlaylistService } from '../playlist.service.js';
 
 const log = createLogger('addon-job-poller');
 
@@ -88,8 +90,14 @@ const KIND_BY_INTENT: Record<string, AcquisitionJobKind> = {
 export class AddonJobPoller {
   private timer: ReturnType<typeof setInterval> | null = null;
   private ticking = false;
+  // Trivial to construct (wraps deps.db) — built here rather than threaded
+  // through AddonJobPollerDeps so every existing/future construction site
+  // doesn't need a new required dependency for the one lane that uses it.
+  private readonly playlists: PlaylistService;
 
-  constructor(private deps: AddonJobPollerDeps) {}
+  constructor(private deps: AddonJobPollerDeps) {
+    this.playlists = new PlaylistService(deps.db);
+  }
 
   start(): void {
     if (this.timer) return;
@@ -140,6 +148,13 @@ export class AddonJobPoller {
       // and BEFORE the release, which deletes the addon-side job and with it
       // the only copy of `job.error`.
       this.applyAddonOutcome(coreJobId, job);
+      // Playlist-from-acquisition on the addon lane (issue #587): once the
+      // addon says the job is closed, any track that landed this tick or a
+      // prior one already carries a song_id (ingestReadyItems ran above), so
+      // there is nothing left to wait for. Safe to call every tick the job
+      // stays closed-but-unreleased — it refreshes the same playlist in place
+      // rather than duplicating (see addon-playlist.ts).
+      if (job.state !== 'active') materializeAddonPlaylist(db, this.playlists, coreJobId);
       await this.maybeReleaseAddonJob(plugin, coreJobId, job);
     }
 
