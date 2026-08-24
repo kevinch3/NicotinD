@@ -1,6 +1,34 @@
 import type { TransferEntry } from './transfer-types';
+import type { Translator } from './relative-time';
 
 export type ButtonVariant = 'default' | 'queued' | 'progress' | 'done' | 'error';
+
+type LabelKind = 'download' | 'queued' | 'downloading' | 'done' | 'error' | 'downloadFolder';
+
+/** i18n key per label. Exported so specs assert the key, not the English. */
+export const DOWNLOAD_STATUS_KEYS: Record<LabelKind, string> = {
+  download: 'acquire.download',
+  queued: 'acquire.queued',
+  downloading: 'acquire.downloading',
+  done: 'acquire.done',
+  error: 'acquire.errorShort',
+  downloadFolder: 'acquire.downloadFolder',
+};
+
+/** English fallback, byte-identical to the pre-i18n wording (see relative-time.ts
+ *  for the translator-as-param pattern this module follows). */
+const ENGLISH_LABELS: Record<LabelKind, string> = {
+  download: 'Download',
+  queued: 'Queued',
+  downloading: 'Downloading…',
+  done: '✓ Done',
+  error: '✗ Error',
+  downloadFolder: 'Download folder',
+};
+
+function labelFor(kind: LabelKind, t?: Translator): string {
+  return t ? t(DOWNLOAD_STATUS_KEYS[kind]) : ENGLISH_LABELS[kind];
+}
 
 export interface ButtonState {
   label: string;
@@ -21,45 +49,58 @@ export function getSingleDownloadLabel(
   filename: string,
   isQueued: boolean,
   getStatus: (username: string, filename: string) => TransferEntry | undefined,
+  t?: Translator,
 ): ButtonState {
   const e = getStatus(username, filename);
 
   if (!e) {
-    if (isQueued) return { label: 'Queued', variant: 'queued', disabled: true };
-    return { label: 'Download', variant: 'default', disabled: false };
+    if (isQueued) return { label: labelFor('queued', t), variant: 'queued', disabled: true };
+    return { label: labelFor('download', t), variant: 'default', disabled: false };
   }
 
   const { state, percent } = e;
 
-  if (state === 'InProgress' || state === 'Initializing')
-    return { label: `↓ ${percent}%`, variant: 'progress', disabled: true };
+  if (state === 'InProgress' || state === 'Initializing') {
+    // The unified feed carries no per-file percent (#663); "↓ N%" renders only
+    // when one exists. Symbol + number is language-neutral, so it stays untranslated.
+    if (typeof percent === 'number')
+      return { label: `↓ ${percent}%`, variant: 'progress', disabled: true };
+    return { label: labelFor('downloading', t), variant: 'progress', disabled: true };
+  }
 
   if (state === 'Queued, Locally' || state === 'Queued, Remotely' || state === 'Requested')
-    return { label: 'Queued', variant: 'queued', disabled: true };
+    return { label: labelFor('queued', t), variant: 'queued', disabled: true };
 
-  if (state === 'Completed, Succeeded') return { label: '✓ Done', variant: 'done', disabled: true };
+  if (state === 'Completed, Succeeded')
+    return { label: labelFor('done', t), variant: 'done', disabled: true };
 
-  return { label: '✗ Error', variant: 'error', disabled: true };
+  return { label: labelFor('error', t), variant: 'error', disabled: true };
 }
 
-export const DEFAULT_FOLDER_LABEL = 'Download folder';
+export const DEFAULT_FOLDER_LABEL = ENGLISH_LABELS.downloadFolder;
 
 export function getFolderDownloadLabel(
   files: Array<{ username: string; filename: string }>,
   isQueued: boolean,
   getStatus: (username: string, filename: string) => TransferEntry | undefined,
+  t?: Translator,
 ): ButtonState {
   const entries = files
     .map((f) => getStatus(f.username, f.filename))
     .filter((e): e is TransferEntry => e !== undefined);
 
   if (entries.some((e) => e.state.startsWith('Completed,') && e.state !== 'Completed, Succeeded'))
-    return { label: '✗ Error', variant: 'error', disabled: true };
+    return { label: labelFor('error', t), variant: 'error', disabled: true };
 
   const inProgress = entries.filter((e) => e.state === 'InProgress' || e.state === 'Initializing');
   if (inProgress.length > 0) {
+    // Average only over files that actually carry a percent — the unified feed
+    // carries none (#663), and counting them as 0 skews the number.
+    const withPercent = inProgress.filter((e) => typeof e.percent === 'number');
+    if (withPercent.length === 0)
+      return { label: labelFor('downloading', t), variant: 'progress', disabled: true };
     const avg = Math.round(
-      inProgress.reduce((s, e) => s + (e.percent ?? 0), 0) / inProgress.length,
+      withPercent.reduce((s, e) => s + (e.percent ?? 0), 0) / withPercent.length,
     );
     return { label: `↓ ${avg}%`, variant: 'progress', disabled: true };
   }
@@ -69,12 +110,12 @@ export function getFolderDownloadLabel(
     entries.length === files.length &&
     entries.every((e) => e.state === 'Completed, Succeeded')
   )
-    return { label: '✓ Done', variant: 'done', disabled: true };
+    return { label: labelFor('done', t), variant: 'done', disabled: true };
 
   if (isQueued || entries.some((e) => e.state.includes('Queued') || e.state === 'Requested'))
-    return { label: 'Queued', variant: 'queued', disabled: true };
+    return { label: labelFor('queued', t), variant: 'queued', disabled: true };
 
-  return { label: DEFAULT_FOLDER_LABEL, variant: 'default', disabled: false };
+  return { label: labelFor('downloadFolder', t), variant: 'default', disabled: false };
 }
 
 export function isPathEffectivelyQueued(

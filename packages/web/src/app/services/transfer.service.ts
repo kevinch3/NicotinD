@@ -17,7 +17,12 @@ function itemStatusToTransferState(status: string): string {
       return 'Completed, Succeeded';
     case 'failed':
     case 'unavailable':
+    // 'skipped' is terminal too (DB 'unavailable': fallback exhausted / cancelled
+    // — the track will never land), so it must not read as in-flight.
+    case 'skipped':
       return 'Completed, Errored';
+    case 'pending':
+      return 'Queued, Remotely';
     default:
       return 'InProgress';
   }

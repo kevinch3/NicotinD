@@ -1,4 +1,10 @@
-import { getSingleDownloadLabel, getFolderDownloadLabel, BUTTON_CLASSES } from './download-status';
+import { vi } from 'vitest';
+import {
+  getSingleDownloadLabel,
+  getFolderDownloadLabel,
+  BUTTON_CLASSES,
+  DOWNLOAD_STATUS_KEYS,
+} from './download-status';
 import { formatQuality } from './download-status';
 import type { TransferEntry } from './transfer-types';
 
@@ -31,6 +37,18 @@ describe('getSingleDownloadLabel', () => {
   it('shows progress for Initializing', () => {
     const r = getSingleDownloadLabel('u', 'f', false, () => entry('Initializing', 0));
     expect(r.variant).toBe('progress');
+  });
+
+  it('shows Downloading… when InProgress carries no percent (addon feed has none — #663)', () => {
+    const r = getSingleDownloadLabel('u', 'f', false, () => ({ state: 'InProgress' }));
+    expect(r.label).toBe('Downloading…');
+    expect(r.variant).toBe('progress');
+    expect(r.disabled).toBe(true);
+  });
+
+  it('shows Downloading… when Initializing carries no percent', () => {
+    const r = getSingleDownloadLabel('u', 'f', false, () => ({ state: 'Initializing' }));
+    expect(r.label).toBe('Downloading…');
   });
 
   it('shows Queued for Queued, Locally', () => {
@@ -108,6 +126,34 @@ describe('getFolderDownloadLabel', () => {
     expect(r.disabled).toBe(true);
   });
 
+  it('shows Downloading… when no in-progress file carries a percent (#663)', () => {
+    const files = [
+      { username: 'u', filename: 'a.mp3' },
+      { username: 'u', filename: 'b.mp3' },
+    ];
+    const statuses: Record<string, TransferEntry> = {
+      'u:a.mp3': { state: 'InProgress' },
+      'u:b.mp3': { state: 'InProgress' },
+    };
+    const r = getFolderDownloadLabel(files, false, (u, f) => statuses[`${u}:${f}`]);
+    expect(r.label).toBe('Downloading…');
+    expect(r.variant).toBe('progress');
+    expect(r.disabled).toBe(true);
+  });
+
+  it('averages only the in-progress files that carry a percent', () => {
+    const files = [
+      { username: 'u', filename: 'a.mp3' },
+      { username: 'u', filename: 'b.mp3' },
+    ];
+    const statuses: Record<string, TransferEntry> = {
+      'u:a.mp3': entry('InProgress', 50),
+      'u:b.mp3': { state: 'InProgress' },
+    };
+    const r = getFolderDownloadLabel(files, false, (u, f) => statuses[`${u}:${f}`]);
+    expect(r.label).toBe('↓ 50%');
+  });
+
   it('error state wins over all others', () => {
     const files = [
       { username: 'u', filename: 'a.mp3' },
@@ -153,6 +199,54 @@ describe('getFolderDownloadLabel', () => {
     const r = getFolderDownloadLabel([], false, () => undefined);
     expect(r.variant).toBe('default');
     expect(r.disabled).toBe(false);
+  });
+});
+
+describe('download status labels with a translator', () => {
+  const t = vi.fn((key: string) => `[${key}]`);
+  const noStatus = (): TransferEntry | undefined => undefined;
+
+  beforeEach(() => t.mockClear());
+
+  it('routes the idle label through acquire.download', () => {
+    const r = getSingleDownloadLabel('u', 'f', false, noStatus, t);
+    expect(r.label).toBe('[acquire.download]');
+    expect(t).toHaveBeenCalledWith(DOWNLOAD_STATUS_KEYS.download);
+  });
+
+  it('routes the queued label through acquire.queued', () => {
+    const r = getSingleDownloadLabel('u', 'f', true, noStatus, t);
+    expect(r.label).toBe('[acquire.queued]');
+    expect(t).toHaveBeenCalledWith(DOWNLOAD_STATUS_KEYS.queued);
+  });
+
+  it('routes the percent-less progress label through acquire.downloading', () => {
+    const r = getSingleDownloadLabel('u', 'f', false, () => ({ state: 'InProgress' }), t);
+    expect(r.label).toBe('[acquire.downloading]');
+    expect(t).toHaveBeenCalledWith(DOWNLOAD_STATUS_KEYS.downloading);
+  });
+
+  it('routes done and error labels through their keys', () => {
+    const done = getSingleDownloadLabel('u', 'f', false, () => entry('Completed, Succeeded'), t);
+    expect(done.label).toBe('[acquire.done]');
+    const err = getSingleDownloadLabel('u', 'f', false, () => entry('Completed, Errored'), t);
+    expect(err.label).toBe('[acquire.errorShort]');
+  });
+
+  it('keeps a numeric percent label untranslated (language-neutral)', () => {
+    const r = getSingleDownloadLabel('u', 'f', false, () => entry('InProgress', 42), t);
+    expect(r.label).toBe('↓ 42%');
+  });
+
+  it('routes the folder idle label through acquire.downloadFolder', () => {
+    const r = getFolderDownloadLabel(
+      [{ username: 'u', filename: 'a.mp3' }],
+      false,
+      () => undefined,
+      t,
+    );
+    expect(r.label).toBe('[acquire.downloadFolder]');
+    expect(t).toHaveBeenCalledWith(DOWNLOAD_STATUS_KEYS.downloadFolder);
   });
 });
 
