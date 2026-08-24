@@ -37,9 +37,17 @@ function seedSong(
     bpm?: number;
     key?: string;
     year?: number;
+    /** Defaults to 240. Two rows of one recording must share it (issue #660). */
+    duration?: number;
+    /** Defaults to a per-id path. Song ids are sha1(path) in production, so
+     *  copies of one recording differ here and nowhere else that matters. */
+    path?: string;
+    suffix?: string;
+    bitRate?: number;
   },
 ): void {
   const artistId = s.artistId ?? s.artist;
+  const suffix = s.suffix ?? 'mp3';
   db.run(
     `INSERT OR IGNORE INTO library_albums (id, name, artist, artist_id, song_count, duration, year, genre, created, synced_at)
      VALUES (?, ?, ?, ?, 1, 0, ?, ?, '2024-01-01', 0)`,
@@ -47,13 +55,18 @@ function seedSong(
   );
   db.run(
     `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, genre, bpm, key, year, landed_at, synced_at)
-     VALUES (?, ?, ?, ?, ?, 240, '/music/test.mp3', 0, 320, 'mp3', 'audio/mpeg', '2024-01-01', ?, ?, ?, ?, 1, 0)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, '2024-01-01', ?, ?, ?, ?, 1, 0)`,
     [
       s.id,
       s.albumId,
       s.title,
       s.artist,
       artistId,
+      s.duration ?? 240,
+      s.path ?? `/music/${s.id}.${suffix}`,
+      s.bitRate ?? 320,
+      suffix,
+      suffix === 'flac' ? 'audio/flac' : 'audio/mpeg',
       s.genre ?? null,
       s.bpm ?? null,
       s.key ?? null,
@@ -783,9 +796,43 @@ describe('radio /next — recently-played demotion', () => {
     expect(songs).toHaveLength(2);
   });
 
+  it('demotes the other copy of a track you just played (issue #660)', async () => {
+    // The reported bug, end to end: playing the album copy left the
+    // compilation copy at zero demotion, so radio served it straight back.
+    // The two rows are ranked against a seed they both match equally.
+    seedSong(testDb, {
+      id: 'twin-a',
+      title: 'Twinned',
+      artist: 'A3',
+      artistId: 'A3',
+      album: 'Studio',
+      albumId: 'al-studio',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'twin-b',
+      title: 'Twinned',
+      artist: 'A3',
+      artistId: 'A3',
+      album: 'Hits',
+      albumId: 'al-hits',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    playedNow('twin-a');
+
+    const res = await app.request('/radio/next?seedId=seed&count=3');
+    const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+    // Only one copy can be served at all, and the recording is demoted below
+    // the two untouched candidates rather than leading them.
+    expect(ids.filter((id) => id === 'twin-a' || id === 'twin-b')).toHaveLength(1);
+    expect(ids.slice(0, 2).sort()).toEqual(['fresh', 'recent']);
+  });
+
   it('serves an unidentified caller without erroring', async () => {
-    // /api/radio is not behind the JWT middleware today, so this is the
-    // production path — it must degrade to "no demotion", not a 500.
+    // /api/radio/* is authenticated in production, so this is the defensive
+    // path — it must degrade to "no demotion", not a 500.
     playedNow('recent');
     const res = await appAs(null).request('/radio/next?seedId=seed&count=2');
     expect(res.status).toBe(200);
@@ -933,5 +980,130 @@ describe('radio /next — list-seeded ("keep the vibe", seedIds)', () => {
     const res = await app.request('/radio/next?seedIds=seed1,seed2&exclude=rockVar&count=5');
     const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
     expect(ids).not.toContain('rockVar');
+  });
+});
+
+// Issue #660. A track owned on its album AND on a compilation is two
+// library_songs rows (ids are sha1(path)) that score near-identically, so it
+// got two draws in every pool and could fill two slots of one window.
+describe('radio /next — one recording, one slot (issue #660)', () => {
+  let app: Hono;
+
+  /** The same recording, twice: same artist, title and duration; two files. */
+  function seedRecordingTwice(
+    ids: [string, string],
+    over: { title: string; artist: string },
+  ): void {
+    ids.forEach((id, i) => {
+      seedSong(testDb, {
+        id,
+        title: over.title,
+        artist: over.artist,
+        artistId: over.artist,
+        album: i === 0 ? 'Studio Album' : 'Greatest Hits',
+        albumId: i === 0 ? 'alb-studio' : 'alb-comp',
+        genre: 'Rock',
+        bpm: 120,
+        key: 'C major',
+        year: 2020,
+        duration: 161,
+        suffix: i === 0 ? 'flac' : 'mp3',
+      });
+    });
+  }
+
+  beforeEach(() => {
+    testDb = createTestDb();
+    app = new Hono();
+    app.route('/radio', radioRoutes());
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed Song',
+      artist: 'Seed Artist',
+      artistId: 'Seed Artist',
+      album: 'Seed Album',
+      albumId: 'alb-seed',
+      genre: 'Rock',
+      bpm: 120,
+      key: 'C major',
+      year: 2020,
+    });
+  });
+
+  it('serves a duplicated recording at most once', async () => {
+    seedRecordingTwice(['dup-a', 'dup-b'], { title: 'Doubled', artist: 'Other Artist' });
+    const res = await app.request('/radio/next?seedId=seed&count=20');
+    const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+    expect(ids.filter((id) => id === 'dup-a' || id === 'dup-b')).toHaveLength(1);
+  });
+
+  it('never serves another copy of the seed', async () => {
+    // The seed's clone is the highest-scoring row the pool can hold: every
+    // axis is a perfect match against itself.
+    seedRecordingTwice(['seed-studio', 'seed-comp'], {
+      title: 'Twinned Seed',
+      artist: 'Twin Artist',
+    });
+    const res = await app.request('/radio/next?seedId=seed-studio&count=20');
+    const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+    expect(ids).not.toContain('seed-comp');
+  });
+
+  it('excluding one copy excludes the other', async () => {
+    // The client sends its queue as row ids; a queued track's twin must not
+    // come back as "something new".
+    seedRecordingTwice(['dup-a', 'dup-b'], { title: 'Doubled', artist: 'Other Artist' });
+    const res = await app.request('/radio/next?seedId=seed&exclude=dup-a&count=20');
+    const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+    expect(ids).not.toContain('dup-b');
+  });
+
+  it('excluding one copy excludes the other on a station too', async () => {
+    seedRecordingTwice(['dup-a', 'dup-b'], { title: 'Doubled', artist: 'Other Artist' });
+    const res = await app.request('/radio/next?genre=Rock&exclude=dup-a&count=20');
+    const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+    expect(ids).not.toContain('dup-b');
+  });
+
+  it('excludes every seed’s recording on the list lane', async () => {
+    seedRecordingTwice(['seed-studio', 'seed-comp'], {
+      title: 'Twinned Seed',
+      artist: 'Twin Artist',
+    });
+    const res = await app.request('/radio/next?seedIds=seed,seed-studio&count=20');
+    const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+    expect(ids).not.toContain('seed-comp');
+  });
+
+  it('still serves two different songs by one artist', async () => {
+    // The collapse must not degrade into a stricter artist cap.
+    seedSong(testDb, {
+      id: 'x1',
+      title: 'First',
+      artist: 'Same Artist',
+      artistId: 'Same Artist',
+      album: 'Alb',
+      albumId: 'alb-x',
+      genre: 'Rock',
+      bpm: 120,
+      key: 'C major',
+      year: 2020,
+    });
+    seedSong(testDb, {
+      id: 'x2',
+      title: 'Second',
+      artist: 'Same Artist',
+      artistId: 'Same Artist',
+      album: 'Alb',
+      albumId: 'alb-x',
+      genre: 'Rock',
+      bpm: 121,
+      key: 'C major',
+      year: 2020,
+    });
+    const res = await app.request('/radio/next?seedId=seed&count=20');
+    const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+    expect(ids).toContain('x1');
+    expect(ids).toContain('x2');
   });
 });

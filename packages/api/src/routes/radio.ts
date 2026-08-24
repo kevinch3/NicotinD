@@ -5,6 +5,7 @@ import { getDatabase } from '../db.js';
 import {
   rankCandidates,
   recentPlayFactor,
+  RECENT_PLAY_WINDOW_MS,
   type ScoredSong,
   type ScoringWeights,
   type SongFeatures,
@@ -16,7 +17,8 @@ import {
 } from '../services/embedding-store.js';
 import { artistGenreShares } from '../services/genre-distribution.js';
 import { anchorCentroid, genreDepthScore, stationAffinity } from '../services/station-affinity.js';
-import { lastPlayedAtMap } from '../services/play-history.js';
+import { lastPlayedByRecording } from '../services/play-history.js';
+import { recordingKey } from '../services/recording-identity.js';
 import { songFilterWheres } from '../services/library-filter-sql.js';
 import { seedCentroid, type OrderableRow } from '../services/playlist-recipe.js';
 import { isRealGenre } from '../services/genre-split.js';
@@ -150,6 +152,7 @@ export function toFeatures(r: RadioSongRow): SongFeatures {
     duration: r.duration,
     year: r.year ?? undefined,
     artistId: r.artist_id,
+    recordingKey: recordingKey(r.artist_id, r.title, r.duration) ?? undefined,
     energy: r.energy ?? undefined,
     valence: r.valence ?? undefined,
     danceability: r.danceability ?? undefined,
@@ -216,25 +219,79 @@ interface PoolSeed {
   energy?: number;
 }
 
+/** Upper bound on the client-sent `exclude` list — see the route's parse. */
+const MAX_EXCLUDE_IDS = 200;
+
+/** The recording keys of rows already in hand (the seed, or the seed list). */
+function keysOfRows(rows: readonly RadioSongRow[]): Set<string> {
+  const out = new Set<string>();
+  for (const r of rows) {
+    const k = recordingKey(r.artist_id, r.title, r.duration);
+    if (k) out.add(k);
+  }
+  return out;
+}
+
+/**
+ * Recording keys for ids the *caller* excluded (the client sends its current
+ * track, queue and recent history). Those rows are not otherwise loaded, so
+ * this is the one extra read the recording-scoped exclusion costs — a
+ * primary-key lookup, chunked under SQLite's variable limit, and skipped
+ * entirely when there is nothing to exclude.
+ */
+function keysOfIds(db: ReturnType<typeof getDatabase>, ids: ReadonlySet<string>): Set<string> {
+  const out = new Set<string>();
+  const all = [...ids];
+  if (all.length === 0) return out;
+  const CHUNK = 400;
+  for (let i = 0; i < all.length; i += CHUNK) {
+    const chunk = all.slice(i, i + CHUNK);
+    const rows = db
+      .query<{ artist_id: string; title: string; duration: number }, string[]>(
+        `SELECT artist_id, title, duration FROM library_songs
+          WHERE id IN (${chunk.map(() => '?').join(',')})`,
+      )
+      .all(...chunk);
+    for (const r of rows) {
+      const k = recordingKey(r.artist_id, r.title, r.duration);
+      if (k) out.add(k);
+    }
+  }
+  return out;
+}
+
+/** Whether a candidate row is another copy of an already-excluded recording. */
+function isExcludedRecording(r: RadioSongRow, keys: ReadonlySet<string>): boolean {
+  const k = recordingKey(r.artist_id, r.title, r.duration);
+  return k !== null && keys.has(k);
+}
+
 /**
  * Candidate pool construction (Pools 1–5), shared by seed radio and
  * list-seeded radio so the two lanes can't drift. `excludeIds` never enter the
  * pool; the caller owns putting the seed(s) in there.
+ *
+ * `excludeKeys` is the same exclusion one level up: a *recording* rather than a
+ * row, so the compilation copy of an excluded track is excluded too. It cannot
+ * ride along in `seen` (that is a set of ids), so it is a second check — and it
+ * has to live here rather than in `rankCandidates`, which only knows one seed
+ * while list radio has up to 20. See issue #660.
  */
 function collectPoolRows(
   db: ReturnType<typeof getDatabase>,
   feat: PoolSeed,
   excludeIds: ReadonlySet<string>,
+  excludeKeys: ReadonlySet<string> = new Set(),
 ): RadioSongRow[] {
   const durGate = minCandidateDurationSec();
   const candidates: RadioSongRow[] = [];
   const seen = new Set<string>(excludeIds);
   const addRows = (rows: RadioSongRow[]): void => {
     for (const r of rows) {
-      if (!seen.has(r.id)) {
-        seen.add(r.id);
-        candidates.push(r);
-      }
+      if (seen.has(r.id)) continue;
+      if (excludeKeys.size > 0 && isExcludedRecording(r, excludeKeys)) continue;
+      seen.add(r.id);
+      candidates.push(r);
     }
   };
 
@@ -347,6 +404,10 @@ export function buildSeedRadio(
   const count = opts.count ?? 10;
   const excludeIds = new Set(opts.excludeIds ?? []);
   excludeIds.add(seedRow.id);
+  // The seed's own key is free (the row is in hand); the caller's ids cost one
+  // lookup. Both keep a *copy* of an excluded track out of the pool (#660).
+  const excludeKeys = keysOfIds(db, opts.excludeIds ?? new Set());
+  for (const k of keysOfRows([seedRow])) excludeKeys.add(k);
 
   const seed = toFeatures(seedRow);
   const candidates = collectPoolRows(
@@ -358,6 +419,7 @@ export function buildSeedRadio(
       energy: seed.energy,
     },
     excludeIds,
+    excludeKeys,
   );
 
   // Attach cached embeddings (seed + pool) so the scorer can add the cosine
@@ -426,6 +488,10 @@ export function buildListRadio(
   const count = opts.count ?? 10;
   const excludeIds = new Set(opts.excludeIds ?? []);
   for (const r of seedRows) excludeIds.add(r.id);
+  // Every seed's recording, not just its row — a "variation of X" must never be
+  // X, and X might be in the library twice (#660).
+  const excludeKeys = keysOfIds(db, opts.excludeIds ?? new Set());
+  for (const k of keysOfRows(seedRows)) excludeKeys.add(k);
 
   const seed = seedCentroid(seedRows.map(toOrderable));
   if (!seed) return { seed: null, pool: [], ranked: [] };
@@ -446,6 +512,7 @@ export function buildListRadio(
       energy: seed.energy,
     },
     excludeIds,
+    excludeKeys,
   );
 
   // Audio axis: anchor on the seeds' mean vector under the seed set's dominant
@@ -485,13 +552,12 @@ function attachRecency<T extends SongFeatures & { _row: RadioSongRow }>(
   now: number = Date.now(),
 ): T[] {
   if (!userId || pool.length === 0) return pool;
-  const lastPlayed = lastPlayedAtMap(
-    db,
-    userId,
-    pool.map((p) => p._row.id),
-  );
+  // Keyed on the recording, not the row: hearing one copy of a track has to
+  // demote its other copy too (issue #660).
+  const lastPlayed = lastPlayedByRecording(db, userId, now, RECENT_PLAY_WINDOW_MS);
   for (const p of pool) {
-    p.recentPlayFactor = recentPlayFactor(lastPlayed.get(p._row.id), now);
+    const key = p.recordingKey;
+    p.recentPlayFactor = recentPlayFactor(key ? lastPlayed.get(key) : undefined, now);
   }
   return pool;
 }
@@ -527,7 +593,12 @@ export function buildFilterRadio(
     )
     .all(...params);
 
-  const poolRows = rows.filter((r) => !excludeIds.has(r.id));
+  // Stations have no seed song, so the only recordings to keep out are the
+  // caller's — its current track, queue and recent history (#660).
+  const excludeKeys = keysOfIds(db, excludeIds);
+  const poolRows = rows.filter(
+    (r) => !excludeIds.has(r.id) && !isExcludedRecording(r, excludeKeys),
+  );
 
   // The station's genres, junk dropped ("Other" is a tagger's shrug, not a
   // station). Empty for a pure mood/bpm vibe, which keeps the plain genre axis.
@@ -608,11 +679,10 @@ export function buildFilterRadio(
  * Whose history should demote repeats, or `undefined` when there is no
  * identified listener.
  *
- * `/api/radio` is **not** behind the JWT middleware (see index.ts — every other
- * library route is, which looks like an oversight but is out of scope to change
- * here), so `c.get('user')` is genuinely absent in production. Reading it
- * defensively means an unidentified caller simply gets no recency demotion
- * rather than a 500 — and it stays correct if the route is authenticated later.
+ * `/api/radio/*` **is** behind the JWT middleware (`index.ts`), so in production
+ * there is always a listener and the demotion runs. This stays a defensive read
+ * anyway: it costs nothing, it keeps the route honest on any surface that
+ * mounts it without auth, and the unit tests exercise exactly that path.
  */
 function listenerId(c: {
   get: (k: 'user') => AuthEnv['Variables']['user'] | undefined;
@@ -627,7 +697,10 @@ export function radioRoutes() {
     const seedId = c.req.query('seedId');
     const count = Math.min(Math.max(Number(c.req.query('count') ?? 10), 1), 50);
     const excludeRaw = c.req.query('exclude') ?? '';
-    const excludeIds = new Set(excludeRaw.split(',').filter(Boolean));
+    // Bounded: the list used to cost only a Set, but each id now also becomes a
+    // recording-key lookup. The client sends current + queue + last 20 history,
+    // so 200 is far above any real caller.
+    const excludeIds = new Set(excludeRaw.split(',').filter(Boolean).slice(0, MAX_EXCLUDE_IDS));
 
     const db = getDatabase();
 

@@ -174,4 +174,37 @@ describe('GET /songs/:id/similar', () => {
     const body = (await res.json()) as SimilarSong[];
     expect(body.length).toBeLessThanOrEqual(2);
   });
+
+  // Issue #660. The pool is the artist's whole catalogue and the seed
+  // exclusion is a single row id, so the compilation copy of the seed used to
+  // arrive scoring ~1.0 *plus* the 0.1 same-artist boost — result #1 was the
+  // song you were already looking at.
+  describe('same recording on two albums', () => {
+    beforeEach(() => {
+      seedSong(testDb, {
+        id: 'song-src-compilation',
+        title: 'Source',
+        artist: 'Artist A',
+        artistId: 'artist-1',
+        albumId: 'album-2',
+        genre: 'Jazz',
+        year: 2010,
+        path: '/music/Jazz/Artist A/Album Y/source.mp3',
+      });
+    });
+
+    it('never returns another copy of the source song', async () => {
+      const res = await app.request('/songs/song-src/similar?size=20');
+      const body = (await res.json()) as SimilarSong[];
+      expect(body.find((s) => s.id === 'song-src-compilation')).toBeUndefined();
+    });
+
+    it('still returns the artist’s other songs', async () => {
+      // The collapse must not degrade into an artist filter.
+      const res = await app.request('/songs/song-src/similar?size=20');
+      const body = (await res.json()) as SimilarSong[];
+      expect(body.find((s) => s.id === 'song-a2')).toBeDefined();
+      expect(body.find((s) => s.id === 'song-b1')).toBeDefined();
+    });
+  });
 });

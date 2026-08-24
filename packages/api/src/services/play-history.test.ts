@@ -5,12 +5,13 @@ import {
   MAX_EVENTS_PER_BATCH,
   MIN_TRACK_MS,
   countsAsPlay,
-  lastPlayedAtMap,
+  lastPlayedByRecording,
   playEventCount,
   recentPlays,
   recordPlayEvents,
   type PlayEventInput,
 } from './play-history.js';
+import { recordingKey } from './recording-identity.js';
 
 let db: Database;
 
@@ -158,6 +159,41 @@ describe('recordPlayEvents', () => {
   });
 });
 
+describe('recentPlays — one recording, one row (issue #660)', () => {
+  it('collapses two copies of one recording into the newest play', () => {
+    // The shelf is also keep-vibe's seed list, where two rows of one track
+    // double-weight it in the centroid.
+    seedSong('album-copy', { title: 'Twinned' });
+    seedSong('comp-copy', { title: 'Twinned' });
+    recordPlayEvents(db, 'u1', [
+      event({ songId: 'album-copy', startedAt: 1_000 }),
+      event({ songId: 'comp-copy', startedAt: 5_000 }),
+    ]);
+    const rows = recentPlays(db, 'u1', 20);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.playedAt).toBe(5_000);
+  });
+
+  it('still fills up to the limit when copies collapse', () => {
+    // Collapsing after LIMIT would silently return a short shelf.
+    seedSong('dup-a', { title: 'Twinned' });
+    seedSong('dup-b', { title: 'Twinned' });
+    seedSong('x', { title: 'Other One' });
+    seedSong('y', { title: 'Other Two' });
+    recordPlayEvents(db, 'u1', [
+      event({ songId: 'dup-a', startedAt: 4_000 }),
+      event({ songId: 'dup-b', startedAt: 3_000 }),
+      event({ songId: 'x', startedAt: 2_000 }),
+      event({ songId: 'y', startedAt: 1_000 }),
+    ]);
+    expect(recentPlays(db, 'u1', 3).map((r) => r.title)).toEqual([
+      'Twinned',
+      'Other One',
+      'Other Two',
+    ]);
+  });
+});
+
 describe('recentPlays', () => {
   it('returns the caller’s counted plays, newest first, one row per track', () => {
     seedSong('a', { title: 'A' });
@@ -223,40 +259,65 @@ describe('recentPlays', () => {
   });
 });
 
-describe('lastPlayedAtMap', () => {
-  it('returns the most recent play per song, for this user only', () => {
+describe('lastPlayedByRecording', () => {
+  const WINDOW = 7 * 24 * 3_600_000;
+  const NOW = 1_000_000_000;
+
+  it('returns the most recent play per recording, for this user only', () => {
+    seedSong('a', { title: 'Alpha' });
+    seedSong('b', { title: 'Beta' });
     recordPlayEvents(db, 'u1', [
-      event({ songId: 'a', startedAt: 1_000 }),
-      event({ songId: 'a', startedAt: 5_000 }),
-      event({ songId: 'b', startedAt: 2_000 }),
+      event({ songId: 'a', startedAt: NOW - 9_000 }),
+      event({ songId: 'a', startedAt: NOW - 5_000 }),
+      event({ songId: 'b', startedAt: NOW - 2_000 }),
     ]);
-    recordPlayEvents(db, 'u2', [event({ songId: 'a', startedAt: 9_999 })]);
+    recordPlayEvents(db, 'u2', [event({ songId: 'a', startedAt: NOW - 1 })]);
 
-    const map = lastPlayedAtMap(db, 'u1', ['a', 'b']);
-    expect(map.get('a')).toBe(5_000);
-    expect(map.get('b')).toBe(2_000);
+    const map = lastPlayedByRecording(db, 'u1', NOW, WINDOW);
+    expect(map.get(recordingKey('art', 'Alpha', 180)!)).toBe(NOW - 5_000);
+    expect(map.get(recordingKey('art', 'Beta', 180)!)).toBe(NOW - 2_000);
   });
 
-  it('omits songs this user never played', () => {
-    recordPlayEvents(db, 'u1', [event({ songId: 'a' })]);
-    expect(lastPlayedAtMap(db, 'u1', ['a', 'never']).has('never')).toBe(false);
+  it('carries a play across to the other copy of the same recording', () => {
+    // The whole point of issue #660: hearing the album copy must demote the
+    // compilation copy, which is a different row with a different id.
+    seedSong('album-copy', { title: 'Twinned' });
+    seedSong('comp-copy', { title: 'Twinned' });
+    recordPlayEvents(db, 'u1', [event({ songId: 'album-copy', startedAt: NOW - 1_000 })]);
+
+    const map = lastPlayedByRecording(db, 'u1', NOW, WINDOW);
+    expect(map.get(recordingKey('art', 'Twinned', 180)!)).toBe(NOW - 1_000);
   });
 
-  it('counts a skip too — starting a track still means you just heard it', () => {
+  it('omits recordings this user never played', () => {
+    seedSong('a', { title: 'Alpha' });
+    seedSong('never', { title: 'Never' });
+    recordPlayEvents(db, 'u1', [event({ songId: 'a', startedAt: NOW - 1_000 })]);
+    expect(
+      lastPlayedByRecording(db, 'u1', NOW, WINDOW).has(recordingKey('art', 'Never', 180)!),
+    ).toBe(false);
+  });
+
+  it('drops plays older than the window', () => {
+    seedSong('a', { title: 'Alpha' });
+    recordPlayEvents(db, 'u1', [event({ songId: 'a', startedAt: NOW - WINDOW - 1 })]);
+    expect(lastPlayedByRecording(db, 'u1', NOW, WINDOW).size).toBe(0);
+  });
+
+  it('counts a skip too \u2014 starting a track still means you just heard it', () => {
+    seedSong('a', { title: 'Alpha' });
     recordPlayEvents(db, 'u1', [
-      event({ songId: 'a', startedAt: 3_000, msPlayed: 2_000, reason: 'skipped' }),
+      event({ songId: 'a', startedAt: NOW - 3_000, msPlayed: 2_000, reason: 'skipped' }),
     ]);
-    expect(lastPlayedAtMap(db, 'u1', ['a']).get('a')).toBe(3_000);
+    expect(
+      lastPlayedByRecording(db, 'u1', NOW, WINDOW).get(recordingKey('art', 'Alpha', 180)!),
+    ).toBe(NOW - 3_000);
   });
 
-  it('handles an empty id list without querying', () => {
-    expect(lastPlayedAtMap(db, 'u1', []).size).toBe(0);
-  });
-
-  it('chunks past SQLite’s variable limit', () => {
-    const ids = Array.from({ length: 1200 }, (_, i) => `s${i}`);
-    recordPlayEvents(db, 'u1', [event({ songId: 's1199', startedAt: 7_000 })]);
-    const map = lastPlayedAtMap(db, 'u1', ids);
-    expect(map.get('s1199')).toBe(7_000);
+  it('drops a play whose song row is gone \u2014 it joins the live library', () => {
+    seedSong('a', { title: 'Alpha' });
+    recordPlayEvents(db, 'u1', [event({ songId: 'a', startedAt: NOW - 1_000 })]);
+    db.run(`DELETE FROM library_songs WHERE id = 'a'`);
+    expect(lastPlayedByRecording(db, 'u1', NOW, WINDOW).size).toBe(0);
   });
 });
