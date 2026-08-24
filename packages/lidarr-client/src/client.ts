@@ -27,6 +27,10 @@ export interface LidarrClientOptions {
  * rather than erroring. Hence three tiers, each justified by the endpoint.
  */
 
+/** A request that hit its time budget — callers that retry must not retry these
+ *  (the budget is already burned once) while a fast failure is worth one more try. */
+export class LidarrTimeoutError extends Error {}
+
 /** Lidarr answers these from its own SQLite, over the Docker-internal network. */
 export const TIMEOUT_LOCAL_MS = 10_000;
 
@@ -91,7 +95,7 @@ export class LidarrClient {
       // survives.
       if (err instanceof Error && err.name === 'TimeoutError') {
         this.log.warn({ url, timeoutMs }, 'Lidarr request timed out');
-        throw new Error(`Lidarr request timed out after ${timeoutMs}ms: ${path}`);
+        throw new LidarrTimeoutError(`Lidarr request timed out after ${timeoutMs}ms: ${path}`);
       }
       throw err;
     }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   LidarrClient,
+  LidarrTimeoutError,
   TIMEOUT_LOCAL_MS,
   TIMEOUT_LOOKUP_MS,
   TIMEOUT_PROVISION_MS,
@@ -70,6 +71,19 @@ describe('timeout budgets', () => {
     });
     await expect(client.request('/api/v1/artist', {}, 10)).rejects.toThrow(
       /timed out after 10ms: \/api\/v1\/artist/,
+    );
+  });
+
+  it('throws the typed LidarrTimeoutError so callers can branch on timeout-vs-fast-failure', async () => {
+    // CatalogService must not retry a timeout (the first attempt already burned
+    // 20s of the web's 30s GET budget) but should retry a fast failure once.
+    const client = new LidarrClient({
+      baseUrl: 'http://lidarr:8686',
+      apiKey: 'k',
+      fetchFn: hangingFetch,
+    });
+    await expect(client.request('/api/v1/artist', {}, 10)).rejects.toBeInstanceOf(
+      LidarrTimeoutError,
     );
   });
 });

@@ -416,6 +416,10 @@ export interface CatalogSearchResult {
   /** Artist matched but the catalog had none of their albums — fall back to the
    *  network lane. See docs/e2e-playground-findings-2026-06.md §A6. */
   discographyUnavailable?: boolean;
+  /** `album.lookup` failed (after one bounded retry) — an empty grid means
+   *  *unknown*, not *absent*; the UI offers Retry instead of the misleading
+   *  "no albums" fallback. Issue #665. */
+  albumLookupFailed?: boolean;
 }
 
 export interface CatalogResolveResult {

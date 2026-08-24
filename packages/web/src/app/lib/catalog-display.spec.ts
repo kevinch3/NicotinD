@@ -62,14 +62,31 @@ describe('shouldOpenDirectSearch', () => {
 });
 
 describe('discographyFallbackNote', () => {
-  it('explains the network fallback when an artist matched with no albums', () => {
+  it('returns a no-albums note when an artist matched with no albums', () => {
     expect(
       discographyFallbackNote(
         result({ scopedArtist: 'Zara Larsson', discographyUnavailable: true }),
       ),
-    ).toBe(
-      "We couldn't load Zara Larsson's albums from the catalog — showing network results below.",
-    );
+    ).toEqual({ kind: 'no-albums', artist: 'Zara Larsson' });
+  });
+
+  it('returns a lookup-failed note when album.lookup failed (#665) — it wins over no-albums', () => {
+    expect(
+      discographyFallbackNote(
+        result({
+          scopedArtist: 'One Direction',
+          discographyUnavailable: true,
+          albumLookupFailed: true,
+        }),
+      ),
+    ).toEqual({ kind: 'lookup-failed', artist: 'One Direction' });
+  });
+
+  it('returns lookup-failed even without a scoped artist (title-search outage)', () => {
+    expect(discographyFallbackNote(result({ albumLookupFailed: true }))).toEqual({
+      kind: 'lookup-failed',
+      artist: null,
+    });
   });
 
   it('is null when albums are present or no artist was scoped', () => {
@@ -107,5 +124,15 @@ describe('applyDiscography', () => {
     expect(after.albums.map((a) => a.title)).toEqual(['Poster Girl']);
     expect(after.discographyUnavailable).toBe(false);
     expect(after.artists).toEqual(before.artists); // pills preserved
+  });
+
+  it('clears albumLookupFailed — a successful load supersedes the failure', () => {
+    const before = result({
+      scopedArtist: 'One Direction',
+      discographyUnavailable: true,
+      albumLookupFailed: true,
+    });
+    const after = applyDiscography(before, result({ albums: [album('Take Me Home')] }));
+    expect(after.albumLookupFailed).toBe(false);
   });
 });

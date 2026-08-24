@@ -22,7 +22,7 @@ export class Lidarr {
   }
 }
 
-export { LidarrClient } from './client.js';
+export { LidarrClient, LidarrTimeoutError } from './client.js';
 export type { LidarrClientOptions } from './client.js';
 export type {
   LidarrArtist,

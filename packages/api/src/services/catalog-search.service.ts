@@ -1,3 +1,4 @@
+import { LidarrTimeoutError } from '@nicotind/lidarr-client';
 import type { Lidarr, LidarrAlbum, LidarrArtist } from '@nicotind/lidarr-client';
 import { createLogger, NicotinDError } from '@nicotind/core';
 import { addArtistFromLookup } from './lidarr-provision.js';
@@ -38,6 +39,12 @@ export interface CatalogSearchResult {
    * UI should fall back to the network lane. See §A6.
    */
   discographyUnavailable?: boolean;
+  /**
+   * `album.lookup` failed (after one bounded retry) while this result was
+   * assembled — an empty grid means *unknown*, not *absent*. The UI should
+   * offer a retry instead of the misleading "no albums" fallback. Issue #665.
+   */
+  albumLookupFailed?: boolean;
 }
 
 export interface ResolveAlbumInput {
@@ -70,16 +77,15 @@ export class CatalogService {
   ) {}
 
   async search(query: string): Promise<CatalogSearchResult> {
-    const [artistHits, albumHits] = await Promise.all([
+    const [artistHits, albumLookup] = await Promise.all([
       this.lidarr.artist.lookup(query).catch((err) => {
         log.warn({ err }, 'Artist lookup failed');
         return [] as LidarrArtist[];
       }),
-      this.lidarr.album.lookup(query).catch((err) => {
-        log.warn({ err }, 'Album lookup failed');
-        return [] as LidarrAlbum[];
-      }),
+      this.albumLookupWithRetry(query),
     ]);
+    const albumHits = albumLookup.hits;
+    const failed = albumLookup.failed ? { albumLookupFailed: true as const } : {};
 
     // Dedupe artist pills by normalized name: a query like "Zara" returns the
     // same display name many times (distinct MBIDs, different casing — "Zara",
@@ -111,7 +117,7 @@ export class CatalogService {
 
     if (ownAlbums.length > 0) {
       // Real discography found — show it (junk already filtered out).
-      return { artists, albums: ownAlbums, scopedArtist: matchedArtist?.name };
+      return { artists, albums: ownAlbums, scopedArtist: matchedArtist?.name, ...failed };
     }
     if (matchedArtist) {
       // Artist named, but the lookup surfaced none of their albums (e.g. Zara
@@ -122,6 +128,7 @@ export class CatalogService {
         albums: [],
         scopedArtist: matchedArtist.name,
         discographyUnavailable: true,
+        ...failed,
       };
     }
     // No artist named (pure album-title search). Lidarr's free-text `album.lookup`
@@ -131,7 +138,26 @@ export class CatalogService {
     // "stripped". Keep only albums that actually contain every query token
     // (accent-insensitive, over title + artist) so the grid is relevant instead of
     // first-token noise; the network/folder lane still carries anything we drop.
-    return { artists, albums: filterAlbumsByRelevance(allAlbums, query) };
+    return { artists, albums: filterAlbumsByRelevance(allAlbums, query), ...failed };
+  }
+
+  /**
+   * `album.lookup` with one bounded retry — but only on a *fast* failure
+   * (5xx / connection refused). A `LidarrTimeoutError` already burned the 20s
+   * lookup budget out of the web's 30s GET abort window (auth.interceptor.ts),
+   * so retrying it could never complete. Issue #665.
+   */
+  private async albumLookupWithRetry(
+    query: string,
+  ): Promise<{ hits: LidarrAlbum[]; failed: boolean }> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return { hits: await this.lidarr.album.lookup(query), failed: false };
+      } catch (err) {
+        log.warn({ err, attempt }, 'Album lookup failed');
+        if (err instanceof LidarrTimeoutError || attempt >= 1) return { hits: [], failed: true };
+      }
+    }
   }
 
   /**

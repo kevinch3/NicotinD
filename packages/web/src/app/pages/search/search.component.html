@@ -514,7 +514,23 @@
        the network fallback and offer to load their real discography on demand. -->
   @if (!loading() && discographyNote(); as note) {
     <div class="mt-2 px-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-      <p class="text-xs text-zinc-500" data-testid="discography-note">{{ note }}</p>
+      <p class="text-xs text-zinc-500" data-testid="discography-note">
+        {{
+          note.kind === 'no-albums'
+            ? ('acquire.discographyUnavailable' | t: { artist: note.artist })
+            : ('acquire.catalogLookupFailed' | t)
+        }}
+      </p>
+      @if (note.kind === 'lookup-failed') {
+        <button
+          (click)="retryCatalog()"
+          [disabled]="retryingCatalog()"
+          data-testid="retry-catalog"
+          class="text-xs font-medium text-[var(--theme-accent)] hover:underline disabled:opacity-50 disabled:no-underline"
+        >
+          {{ (retryingCatalog() ? 'acquire.catalogRetrying' : 'acquire.catalogRetry') | t }}
+        </button>
+      }
       @if (canLoadDiscography()) {
         <button
           (click)="loadDiscography()"

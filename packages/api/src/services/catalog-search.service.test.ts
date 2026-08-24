@@ -1,5 +1,6 @@
 import { describe, it, expect, mock } from 'bun:test';
 import { NicotinDError } from '@nicotind/core';
+import { LidarrTimeoutError } from '@nicotind/lidarr-client';
 import type { Lidarr, LidarrAlbum, LidarrArtist } from '@nicotind/lidarr-client';
 import {
   CatalogService,
@@ -200,6 +201,65 @@ describe('CatalogService.search', () => {
     expect(result.discographyUnavailable).toBe(true);
     expect(result.scopedArtist).toBe('Zara Larsson');
     expect(result.artists.map((a) => a.name)).toContain('Zara Larsson');
+    expect(result.albumLookupFailed).toBeFalsy(); // the lookup answered — genuinely no own albums
+  });
+
+  // A swallowed album.lookup failure used to be indistinguishable from "artist
+  // has no albums" — both rendered the same banner (issue #665, the One
+  // Direction prod dead-end). The flag lets the web say "catalog didn't answer".
+  it('flags albumLookupFailed on a timeout, without retrying (the 20s budget is burned)', async () => {
+    const albumLookup = mock(async (): Promise<LidarrAlbum[]> => {
+      throw new LidarrTimeoutError('Lidarr request timed out after 20000ms: /api/v1/album/lookup');
+    });
+    const lidarr = {
+      artist: { lookup: mock(async () => [makeArtist({ id: 1, artistName: 'One Direction' })]) },
+      album: { lookup: albumLookup },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).search('One Direction');
+    expect(result.albumLookupFailed).toBe(true);
+    expect(result.discographyUnavailable).toBe(true);
+    expect(result.artists.map((a) => a.name)).toContain('One Direction');
+    expect(albumLookup).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a fast album.lookup failure once and clears the flag on success', async () => {
+    let calls = 0;
+    const albumLookup = mock(async (): Promise<LidarrAlbum[]> => {
+      calls++;
+      if (calls === 1) throw new Error('Lidarr request failed: 503 /api/v1/album/lookup');
+      return [
+        makeAlbum({
+          id: 10,
+          title: 'Take Me Home',
+          artist: makeArtist({ id: 1, artistName: 'One Direction' }),
+        }),
+      ];
+    });
+    const lidarr = {
+      artist: { lookup: mock(async () => [makeArtist({ id: 1, artistName: 'One Direction' })]) },
+      album: { lookup: albumLookup },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).search('One Direction');
+    expect(result.albumLookupFailed).toBeFalsy();
+    expect(result.albums.map((a) => a.title)).toContain('Take Me Home');
+    expect(albumLookup).toHaveBeenCalledTimes(2);
+  });
+
+  it('flags albumLookupFailed when the fast-failure retry also fails', async () => {
+    const albumLookup = mock(async (): Promise<LidarrAlbum[]> => {
+      throw new Error('Lidarr request failed: 503 /api/v1/album/lookup');
+    });
+    const lidarr = {
+      artist: { lookup: mock(async () => [makeArtist({ id: 1, artistName: 'One Direction' })]) },
+      album: { lookup: albumLookup },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).search('One Direction');
+    expect(result.albumLookupFailed).toBe(true);
+    expect(result.discographyUnavailable).toBe(true);
+    expect(albumLookup).toHaveBeenCalledTimes(2);
   });
 
   it('ranks own albums by type (Album > EP > Single) then newest first', async () => {
