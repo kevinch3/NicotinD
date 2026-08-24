@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.11](https://github.com/kevinch3/NicotinD/compare/v0.4.10...v0.4.11) (2026-08-24)
+
+### Features
+
+* **mcp-agent:** write genre, batch merges, and audit the song-genre route ([#686](https://github.com/kevinch3/NicotinD/issues/686)) ([f946bce](https://github.com/kevinch3/NicotinD/commit/f946bce8f0c8882e0f9bb76d275719834d6649d2)), closes [#677](https://github.com/kevinch3/NicotinD/issues/677) [#680](https://github.com/kevinch3/NicotinD/issues/680) [#681](https://github.com/kevinch3/NicotinD/issues/681), references [#677](https://github.com/kevinch3/NicotinD/issues/677) [#232](https://github.com/kevinch3/NicotinD/issues/232) [#339](https://github.com/kevinch3/NicotinD/issues/339) [#680](https://github.com/kevinch3/NicotinD/issues/680) [#681](https://github.com/kevinch3/NicotinD/issues/681)
 ## [0.4.10](https://github.com/kevinch3/NicotinD/compare/v0.4.9...v0.4.10) (2026-08-24)
 
 ### Features
