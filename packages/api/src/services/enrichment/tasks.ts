@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Lidarr, LidarrArtist } from '@nicotind/lidarr-client';
 import type { ProcessingTaskId } from '@nicotind/core';
@@ -50,6 +50,7 @@ import type { ArtistInfoResult, GenreQuery, GenreResult } from '@nicotind/core';
 import {
   recordAnalysisFailure,
   clearAnalysisFailure,
+  rebaseAnalysisFileSize,
   notPermanentlyFailedClause,
 } from './analysis-failures.js';
 
@@ -99,6 +100,10 @@ export interface EnrichmentContext {
     abs: string,
     tags: { bpm?: number; genre?: string; key?: string } & FeatureTags,
   ) => Promise<boolean>;
+  /** Size of `abs` on disk right now, or null when it can't be read. Used to
+   *  re-anchor the failure ledger after a tag write moves the file (issue #690);
+   *  optional so a caller that never writes tags needn't provide it. */
+  fileSize?: (abs: string) => number | null;
   analyzeBpm: (abs: string, onError?: (err: unknown) => void) => Promise<number | null>;
   /** Sidecar tempo detection (library-relative path) — preferred over the local
    *  music-tempo analyzer, which makes frequent octave (half/double) errors.
@@ -424,8 +429,35 @@ function noteItemFailure(
   task: ProcessingTaskId,
   err: unknown,
 ): void {
-  if (!(err instanceof NoConfidentResultError)) recordFailure(tally, err);
-  recordAnalysisFailure(db, song.id, task, err, song.size);
+  const confidentNegative = err instanceof NoConfidentResultError;
+  if (!confidentNegative) recordFailure(tally, err);
+  // A confident negative is a final answer, not a strike: ledger it as terminal so
+  // it settles the task (and any landing gate on it) at once (issue #689).
+  recordAnalysisFailure(db, song.id, task, err, song.size, confidentNegative);
+}
+
+/**
+ * Write a task's result into the file **and** re-anchor the song's file-size
+ * bookkeeping. Every tag write moves the file by a few hundred bytes, which the
+ * failure ledger would otherwise read as a replacement and use to reset another
+ * task's attempt counter — the livelock behind issue #690. Always prefer this
+ * over a bare `ctx.writeTags` from inside a task.
+ *
+ * Best-effort like the bare write it replaces: a failed write is swallowed and
+ * leaves the ledger untouched.
+ */
+async function writeTagsRebased(
+  db: Database,
+  ctx: EnrichmentContext,
+  songId: string,
+  abs: string,
+  tags: Parameters<EnrichmentContext['writeTags']>[1],
+): Promise<boolean> {
+  const ok = await ctx.writeTags(abs, tags).catch(() => false);
+  if (!ok) return false;
+  const size = ctx.fileSize?.(abs) ?? null;
+  if (size != null) rebaseAnalysisFileSize(db, songId, size);
+  return true;
 }
 
 export interface EnrichmentTask {
@@ -479,6 +511,13 @@ export function createEnrichmentContext(deps: {
     ffmpegAvailable: realFfmpegAvailable,
     readTags: (abs) => readAudioTags(abs),
     writeTags: (abs, tags) => writeAudioTags(abs, tags),
+    fileSize: (abs) => {
+      try {
+        return statSync(abs).size;
+      } catch {
+        return null;
+      }
+    },
     analyzeBpm: (abs, onError) => realAnalyzeBpm(abs, onError),
     analyzeRhythm: featuresClient ? (relPath) => featuresClient.rhythm(relPath) : null,
     analyzeKey: (abs, onError) => realAnalyzeKey(abs, onError),
@@ -590,7 +629,7 @@ const bpmTask: EnrichmentTask = {
         }
         if (!bpm) continue;
         db.run('UPDATE library_songs SET bpm = ? WHERE id = ?', [bpm, song.id]);
-        if (!fromTag) await ctx.writeTags(abs, { bpm }).catch(() => false);
+        if (!fromTag) await writeTagsRebased(db, ctx, song.id, abs, { bpm });
         clearAnalysisFailure(db, song.id, 'bpm');
         applied++;
         labels.push(`${song.artist} — ${song.title} → ${bpm} BPM`);
@@ -658,7 +697,7 @@ const genreTask: EnrichmentTask = {
       const merged = appendSongGenres(db, a.song.id, genres);
       const abs = resolveSongAbsPath(ctx.musicDir, a.song.path);
       if (ctx.fileExists(abs))
-        await ctx.writeTags(abs, { genre: merged.join('; ') }).catch(() => false);
+        await writeTagsRebased(db, ctx, a.song.id, abs, { genre: merged.join('; ') });
       applied++;
       labels.push(`${a.song.artist} — ${a.song.title} → ${merged.join('; ')}`);
     }
@@ -715,7 +754,7 @@ const keyTask: EnrichmentTask = {
         }
         if (!key) continue;
         db.run('UPDATE library_songs SET key = ? WHERE id = ?', [key, song.id]);
-        if (!fromTag) await ctx.writeTags(abs, { key }).catch(() => false);
+        if (!fromTag) await writeTagsRebased(db, ctx, song.id, abs, { key });
         clearAnalysisFailure(db, song.id, 'key');
         applied++;
         labels.push(`${song.artist} — ${song.title} → ${key}`);
@@ -790,9 +829,10 @@ const energyTask: EnrichmentTask = {
           song.id,
         ]);
         if (!fromTag) {
-          await ctx
-            .writeTags(abs, { energy: result.energy, loudness: loudness ?? undefined })
-            .catch(() => false);
+          await writeTagsRebased(db, ctx, song.id, abs, {
+            energy: result.energy,
+            loudness: loudness ?? undefined,
+          });
         }
         clearAnalysisFailure(db, song.id, 'energy');
         applied++;
@@ -940,15 +980,13 @@ const audioFeaturesTask: EnrichmentTask = {
           );
         });
         tx();
-        await ctx
-          .writeTags(abs, {
-            danceability: f.danceability,
-            valence: f.valence,
-            acousticness: f.acousticness,
-            instrumental: f.instrumental,
-            mood: f.mood,
-          })
-          .catch(() => false);
+        await writeTagsRebased(db, ctx, song.id, abs, {
+          danceability: f.danceability,
+          valence: f.valence,
+          acousticness: f.acousticness,
+          instrumental: f.instrumental,
+          mood: f.mood,
+        });
         clearAnalysisFailure(db, song.id, 'audio-features');
         applied++;
         labels.push(`${song.artist} — ${song.title} → ${f.mood}`);
@@ -1415,7 +1453,7 @@ const genreDiscogsTask: EnrichmentTask = {
         setSongGenres(db, s.id, merged);
         const abs = resolveSongAbsPath(ctx.musicDir, s.path);
         if (ctx.fileExists(abs))
-          await ctx.writeTags(abs, { genre: merged.join('; ') }).catch(() => false);
+          await writeTagsRebased(db, ctx, s.id, abs, { genre: merged.join('; ') });
         clearAnalysisFailure(db, s.id, 'genre-discogs');
       }
     };
@@ -1622,7 +1660,7 @@ const genreAudioTask: EnrichmentTask = {
           existingGenres,
         );
         setSongGenres(db, song.id, merged);
-        await ctx.writeTags(abs, { genre: merged.join('; ') }).catch(() => false);
+        await writeTagsRebased(db, ctx, song.id, abs, { genre: merged.join('; ') });
         clearAnalysisFailure(db, song.id, 'genre-audio');
         applied++;
         labels.push(`${song.artist} — ${song.title} → ${result.genre.label} (audio)`);

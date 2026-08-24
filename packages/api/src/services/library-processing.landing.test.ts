@@ -144,6 +144,19 @@ describe('landing gate', () => {
     expect(isLanded('s1')).toBe(true);
   });
 
+  it('lands a song whose gate step reports a confident negative on the first attempt (#689)', async () => {
+    seedSong('s1');
+    // `licence` gates landing and the lookup confidently reports "no such data"
+    // (NoConfidentResultError) — a final answer, not a failed attempt. It must
+    // not have to be re-asked MAX_ANALYSIS_ATTEMPTS times before the song lands.
+    setProcessingSettings(db, {
+      gates: { bpm: false, key: false, energy: false, genre: false, licence: true },
+    });
+    await service(new Date(2024, 0, 1, 12, 0)).runNow();
+
+    expect(isLanded('s1')).toBe(true);
+  });
+
   it('lands a song whose gate step is permanently failed (ledger at cap)', async () => {
     seedSong('s1');
     // BPM will never resolve (null, un-ledgered by the run itself)…

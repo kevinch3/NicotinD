@@ -2085,3 +2085,23 @@ describe('registry', () => {
     ]);
   });
 });
+
+describe('a task writing tags keeps another task’s ledger anchored (issue #690)', () => {
+  it('does not re-open a capped ledger row when our own write grows the file', async () => {
+    seedSong('s1'); // size 10
+    // `licence` already gave up on this exact file, so it is out of its pending set.
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
+      recordAnalysisFailure(db, 's1', 'licence', new Error('no licence found'), 10);
+    }
+    expect(getTask('licence')!.countPending(db)).toBe(0);
+
+    // BPM resolves and writes its tag back into the same file, growing it.
+    const GROWN = 179;
+    await getTask('bpm')!.run(db, ctx({ analyzeBpm: async () => 128, fileSize: () => GROWN }), 10);
+    // The scanner later re-reads the file and corrects the row's size — this is
+    // what made the ledger stale on prod.
+    db.run('UPDATE library_songs SET size = ? WHERE id = ?', [GROWN, 's1']);
+
+    expect(getTask('licence')!.countPending(db)).toBe(0);
+  });
+});
