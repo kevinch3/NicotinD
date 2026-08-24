@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.10](https://github.com/kevinch3/NicotinD/compare/v0.4.9...v0.4.10) (2026-08-24)
+
+### Features
+
+* **mcp-agent:** list recent songs with pagination + missing-genre filter ([#685](https://github.com/kevinch3/NicotinD/issues/685)) ([318a846](https://github.com/kevinch3/NicotinD/commit/318a846c310e980d267c11709a467aa562b8c725)), closes [#676](https://github.com/kevinch3/NicotinD/issues/676) [#678](https://github.com/kevinch3/NicotinD/issues/678)
 ## [0.4.9](https://github.com/kevinch3/NicotinD/compare/v0.4.8...v0.4.9) (2026-08-24)
 
 ### Bug Fixes
