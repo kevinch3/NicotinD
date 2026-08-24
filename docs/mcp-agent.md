@@ -72,10 +72,11 @@ applies it, then runs the handler; every write is audit-logged.
 | `list_recent_songs` | read | recently-landed songs, newest first, paged, optional missing-genre filter |
 | `get_artist` | read | one artist + their albums |
 | `get_album_tracks` | read | an album's songs (genre, licence) |
+| `set_song_genre` | curate | `services/song-genre-mutate.ts` `mutateSongGenre` + `song.genre` audit |
 | `set_song_licence` | curate | the same UPDATE + `song.licence` audit as the route |
 | `delete_song` | curate, **destructive** | `services/library-deletion.ts` `deleteOne` + `song.delete` audit |
 | `delete_album` | curate, **destructive** | `services/library-deletion.ts` `deleteAlbum` + `album.delete` audit |
-| `merge_artist` | curate, **destructive** | `services/artist-identity-mutate.ts` `mutateArtistIdentity` (merge mode) + `artist.identity` audit |
+| `merge_artist` | curate, **destructive** | `services/artist-identity-mutate.ts` `mutateArtistIdentity` (merge mode, one or many raw names) + `artist.identity` audit |
 
 ### `list_recent_songs` (issues #676, #678)
 
@@ -90,6 +91,39 @@ already used by the background genre-enrichment task. Real `limit`/`offset`
 pagination — a page shorter than `limit` means no more results, so no separate
 `COUNT(*)` call. Read-only, so (like the other 3 read tools) it does not call
 `recordAudit`.
+
+### `set_song_genre` (issue #677) — and the audit gap it exposed (#681)
+
+Genre is the property a curating agent most often needs to *write*, and until
+now the tool surface could only read it. Wiring it took the same extraction the
+delete and merge tools took: the write is now
+`services/song-genre-mutate.ts` `mutateSongGenre(db, { musicDir }, songId, body)`
+— genre-list parsing, the song-scoped `library_genre_overrides` row for
+`mode: 'replace'`, the `library_song_genres` rewrite, and the file-tag mirror —
+called by both `POST /api/library/songs/:id/genre` and the MCP tool. `runSync`
+and `recordAudit` stay caller-side, matching `deleteOne` / `mutateArtistIdentity`.
+
+`mode` defaults to **append**, so an agent that resolves one missing genre never
+clobbers a set a human curated; `replace` writes the durable song-scoped
+override.
+
+Extracting it surfaced **issue #681**: the artist-scoped genre route has always
+called `recordAudit(…, 'artist.genre', …)` and the song-scoped one called nothing
+at all, so every per-song genre edit a curator made through the web UI was
+invisible in the audit log. Both callers now write `song.genre`, the MCP one with
+the usual `(via MCP agent)` suffix.
+
+### Batch merges (issue #680)
+
+One root cause routinely produces several corrupted spellings of the same artist
+— a single DJ-set-tag cluster needed **7** sequential `merge_artist` calls. The
+tool now also takes `rawNames: string[]` (≤50, deduped) sharing one `mergeInto`,
+one `confirm`, and **one** resync at the end instead of one rescan per name.
+Failures are per-name (`failed[]`) rather than aborting the batch, and each
+successful merge still writes its own `artist.identity` audit row keyed on that
+raw name, so the log stays greppable per artist. `kind` and `artistId` remain
+top-level — every name in a batch lands on the same target — so the one-name
+call's response shape is unchanged.
 
 ### Destructive writes: the extraction that unblocked each one
 
@@ -156,7 +190,9 @@ server's `requireCurator` gate on the same routes.
 hash-only storage, expiry, revocation scoping, curator-gating, mint-once) and
 `routes/mcp.test.ts` (401 without a token, initialize/tools-list/tools-call, a
 read tool, `list_recent_songs`'s recency ordering + quarantine exclusion +
-`missingGenre` filter + `limit`/`offset` paging, the audited curate write,
+`missingGenre` filter + `limit`/`offset` paging, `set_song_genre`'s append /
+`replace`-override / unknown-song / read-only-token paths, `merge_artist`'s
+batch `rawNames` form including a partial failure, the audited curate write,
 read-only-token refusal, `delete_song`/`delete_album` against a real temp-dir
 music folder — confirm gate, scope gate, and the audited happy path —
 unknown-method JSON-RPC error, and `checkToolAccess` covering the scope +

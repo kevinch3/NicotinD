@@ -43,6 +43,8 @@ beforeEach(() => {
   testDb.run('DELETE FROM library_albums');
   testDb.run('DELETE FROM audit_log');
   testDb.run('DELETE FROM library_artist_aliases');
+  testDb.run('DELETE FROM library_song_genres');
+  testDb.run('DELETE FROM library_genre_overrides');
 });
 
 async function rpc(token: string | null, method: string, params?: unknown) {
@@ -184,6 +186,92 @@ describe('MCP endpoint (issue #232)', () => {
     expect(audit.map((a) => a.action)).toContain('song.licence');
   });
 
+  it('tools/list includes set_song_genre', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+    const body = (await (await rpc(token, 'tools/list')).json()) as {
+      result: { tools: Array<{ name: string }> };
+    };
+    expect(body.result.tools.map((t) => t.name)).toContain('set_song_genre');
+  });
+
+  it('set_song_genre appends by default and audit-logs it (issue #677)', async () => {
+    seedSong('s1', 'Song', undefined, undefined, { genre: 'Techno' });
+    // `library_songs.genre` is only the primary mirror — the set itself lives in
+    // library_song_genres, which is what append reads and rewrites.
+    testDb.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES ('s1', 'Techno', 0)`,
+    );
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'set_song_genre',
+        arguments: { songId: 's1', genre: 'Minimal Techno' },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    const parsed = JSON.parse(body.result.content[0]!.text) as { ok: boolean; genres: string[] };
+    expect(parsed.ok).toBe(true);
+    // Append keeps the existing genre first — it adds, it does not clobber.
+    expect(parsed.genres).toEqual(['Techno', 'Minimal Techno']);
+
+    const stored = testDb
+      .query<{ genre: string }, [string]>(
+        'SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position',
+      )
+      .all('s1');
+    expect(stored.map((g) => g.genre)).toEqual(['Techno', 'Minimal Techno']);
+    const audit = testDb.query('SELECT action, detail FROM audit_log').all() as Array<{
+      action: string;
+      detail: string;
+    }>;
+    const entry = audit.find((a) => a.action === 'song.genre');
+    expect(entry?.detail).toContain('via MCP agent');
+  });
+
+  it("set_song_genre mode 'replace' writes a song-scoped override", async () => {
+    seedSong('s1', 'Song', undefined, undefined, { genre: 'Techno' });
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    await rpc(token, 'tools/call', {
+      name: 'set_song_genre',
+      arguments: { songId: 's1', genre: 'Ambient;Drone', mode: 'replace' },
+    });
+    const override = testDb
+      .query<{ genres: string }, [string]>(
+        `SELECT genres FROM library_genre_overrides WHERE scope = 'song' AND key = ?`,
+      )
+      .get('s1');
+    expect(override?.genres).toContain('Ambient');
+    const primary = testDb
+      .query<{ genre: string | null }, [string]>('SELECT genre FROM library_songs WHERE id = ?')
+      .get('s1');
+    expect(primary?.genre).toBe('Ambient');
+  });
+
+  it('set_song_genre reports an unknown song instead of writing', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'set_song_genre',
+        arguments: { songId: 'nope', genre: 'Techno' },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    expect(body.result.content[0]!.text).toContain('not found');
+    expect(testDb.query('SELECT action FROM audit_log').all()).toHaveLength(0);
+  });
+
+  it('refuses set_song_genre for a read-only token', async () => {
+    seedSong('s1', 'Song');
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:read' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'set_song_genre',
+        arguments: { songId: 's1', genre: 'Techno' },
+      })
+    ).json()) as { result: { isError: boolean; content: Array<{ text: string }> } };
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0]!.text).toContain('read-only');
+    expect(testDb.query('SELECT song_id FROM library_song_genres').all()).toHaveLength(0);
+  });
+
   it('refuses a curate tool for a read-only token', async () => {
     seedSong('s1', 'Song');
     const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:read' });
@@ -292,7 +380,9 @@ describe('MCP endpoint (issue #232)', () => {
       })
     ).json()) as { result: { content: Array<{ text: string }> } };
 
-    expect(body.result.content[0]!.text).toContain('"kind":"merged"');
+    const parsed = JSON.parse(body.result.content[0]!.text) as { kind: string; artistId: string };
+    expect(parsed.kind).toBe('merged');
+    expect(parsed.artistId).toBeTruthy();
     const alias = testDb
       .query<{ canonical_name: string }, []>(`SELECT canonical_name FROM library_artist_aliases`)
       .get();
@@ -303,6 +393,81 @@ describe('MCP endpoint (issue #232)', () => {
     }>;
     const entry = audit.find((a) => a.action === 'artist.identity');
     expect(entry?.detail).toContain('merge → Ke Personaje');
+  });
+
+  it('merge_artist merges a batch of rawNames into one target (issue #680)', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'merge_artist',
+        arguments: {
+          rawNames: ['Enrico Sangiuliano - Biomorph', 'Enrico Sangiuliano @ Awakenings'],
+          mergeInto: 'Enrico Sangiuliano',
+          confirm: true,
+        },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    const parsed = JSON.parse(body.result.content[0]!.text) as {
+      ok: boolean;
+      merged: Array<{ rawName: string }>;
+      failed: unknown[];
+    };
+    expect(parsed.ok).toBe(true);
+    expect(parsed.merged).toHaveLength(2);
+    expect(parsed.failed).toHaveLength(0);
+
+    const aliases = testDb
+      .query<{ canonical_name: string }, []>(`SELECT canonical_name FROM library_artist_aliases`)
+      .all();
+    expect(aliases).toHaveLength(2);
+    expect(aliases.every((a) => a.canonical_name === 'Enrico Sangiuliano')).toBe(true);
+    // One audit row per merge, so the log stays greppable per artist.
+    const audit = testDb
+      .query<{ target_id: string }, []>(
+        `SELECT target_id FROM audit_log WHERE action = 'artist.identity'`,
+      )
+      .all();
+    expect(audit.map((a) => a.target_id).sort()).toEqual([
+      'Enrico Sangiuliano - Biomorph',
+      'Enrico Sangiuliano @ Awakenings',
+    ]);
+  });
+
+  it('merge_artist reports per-name failures without aborting the batch', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'merge_artist',
+        // The second name normalizes to the target itself — a no-op merge the
+        // service rejects; the first must still land.
+        arguments: {
+          rawNames: ['Bad Spelling', 'Good Artist'],
+          mergeInto: 'Good Artist',
+          confirm: true,
+        },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    const parsed = JSON.parse(body.result.content[0]!.text) as {
+      ok: boolean;
+      merged: Array<{ rawName: string }>;
+      failed: Array<{ rawName: string }>;
+    };
+    expect(parsed.ok).toBe(false);
+    expect(parsed.merged.map((m) => m.rawName)).toEqual(['Bad Spelling']);
+    expect(parsed.failed.map((f) => f.rawName)).toEqual(['Good Artist']);
+    expect(testDb.query('SELECT alias_norm FROM library_artist_aliases').all()).toHaveLength(1);
+  });
+
+  it('merge_artist without rawName or rawNames is refused', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'merge_artist',
+        arguments: { mergeInto: 'B', confirm: true },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    expect(body.result.content[0]!.text).toContain('required');
+    expect(testDb.query('SELECT alias_norm FROM library_artist_aliases').get()).toBeNull();
   });
 
   it('refuses merge_artist without confirm:true, even with a curate token', async () => {
@@ -346,6 +511,7 @@ describe('dispatchTool guards', () => {
     identity: { tokenId: 't', userId: 'u1', scope },
     deletion: { musicDir, shareRescan: new ShareRescanScheduler(async () => {}) },
     artistIdentity: { dataDir: undefined, runSync: undefined },
+    songGenre: { musicDir },
   });
 
   it('an unknown tool returns an error result, not a throw', async () => {
