@@ -1,17 +1,37 @@
-@if (path()) {
-  <svg
-    data-testid="now-playing-waveform"
-    class="block w-full h-10 cursor-pointer select-none touch-none"
-    [attr.viewBox]="'0 0 ' + viewWidth + ' ' + viewHeight"
-    preserveAspectRatio="none"
-    aria-hidden="true"
-    (pointerdown)="onPointerDown($event)"
-  >
-    <path [attr.d]="path()" class="fill-current text-theme-muted opacity-35" />
-    <path
-      [attr.d]="path()"
-      class="fill-current text-theme-accent"
-      [style.clip-path]="'inset(0 ' + (100 - percent()) + '% 0 0)'"
+<svg
+  data-testid="now-playing-waveform"
+  class="waveform-strip block w-full h-10 cursor-pointer select-none touch-none"
+  [attr.viewBox]="'0 0 ' + viewWidth + ' ' + viewHeight"
+  preserveAspectRatio="none"
+  aria-hidden="true"
+  [attr.data-state]="hasEnvelope() ? 'envelope' : 'baseline'"
+  (pointerdown)="onPointerDown($event)"
+>
+  <g class="waveform-layer waveform-layer-baseline">
+    <rect
+      x="0"
+      [attr.y]="baselineY"
+      [attr.width]="viewWidth"
+      [attr.height]="baselineHeight"
+      rx="1"
+      class="fill-current text-theme-muted opacity-35"
     />
-  </svg>
-}
+    <rect
+      x="0"
+      [attr.y]="baselineY"
+      [attr.width]="viewWidth"
+      [attr.height]="baselineHeight"
+      rx="1"
+      class="fill-current text-theme-accent"
+      [style.clip-path]="clip()"
+    />
+  </g>
+  <g class="waveform-layer waveform-layer-envelope">
+    <path [attr.d]="path() || null" class="fill-current text-theme-muted opacity-35" />
+    <path
+      [attr.d]="path() || null"
+      class="fill-current text-theme-accent"
+      [style.clip-path]="clip()"
+    />
+  </g>
+</svg>

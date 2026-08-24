@@ -704,11 +704,36 @@ handler — the `getTranscodedFile` precedent — and cached content-addressed o
 the seek bar in the sheet's transport. No per-frame work — progress is a CSS `clip-path` on the
 played overlay, so playback costs nothing. It is **decorative and tap-to-seek only**: `aria-hidden`,
 never a focus stop (a focusable strip would be one more thing eating arrow keys on TV, #438), and
-`@if`-gated so the layout reserves no space until the artifact has loaded (404 = no waveform; the
-native `<input type="range">` stays the accessible, keyboard and D-pad control — the decision
-recorded in `seek-bar.component.ts` is untouched). Now Playing only, by decision: the mini-player
+the native `<input type="range">` stays the accessible, keyboard and D-pad control — the decision
+recorded in `seek-bar.component.ts` is untouched. Now Playing only, by decision: the mini-player
 strip is ~4 px tall and track rows would need a batch fetch. Not rendered on the TV build
 (`isTv`), whose player has no seek bar at all.
+
+**The box is reserved from the first paint (issue #657).** The artifact is decoded on demand, so a
+track's first play waits 1–3 s. The strip originally rendered nothing until the response landed —
+deliberately, so no space was held for a waveform the server might never provide — but the cost was
+a 40 px growth that pushed the seek bar, the time labels, the transport buttons and the
+Queue/Lyrics panel down, on every cold track *and* on every skip (`loadWaveform` clears the signal
+before each fetch). The strip's height never depended on the data: it is a fixed `h-10` box over a
+`0 0 600 48` viewBox stretched with `preserveAspectRatio="none"`.
+
+So both states now occupy that same box and `data-state` on the root `<svg>` cross-fades between
+them (rules in `styles.css`, next to the skeleton ones): a **flat baseline bar** at rest, the
+**envelope** once it lands, the envelope growing out of the line over 180 ms rather than replacing
+it. Consequences worth knowing:
+
+- **A missing waveform is a permanent flat strip, not a collapse** — the chosen trade-off. A 404
+  (no ffmpeg, unreadable file, decode failure) leaves a dim hairline where the envelope would be,
+  which is why the baseline carries the played-progress overlay too: the resting state stays
+  informative rather than reading as a broken element.
+- **Both layers stay mounted.** A layer inserted by an `@if` arrives already in its final state,
+  with no previous computed value to transition from, so it would snap rather than fade. The
+  envelope's `d` is absent (not empty) while there is no data — `path[d]` is the selector that
+  distinguishes the states in a test.
+- **The whole strip is tappable in both states**, because the handler sits on the always-rendered
+  `<svg>`. Tap-to-seek no longer depends on whether the decode has returned.
+- Motion is dropped under `prefers-reduced-motion` and on the eink theme, by the same test the
+  skeleton rules pass: the strip is legible in both states with the transition frozen.
 
 **The VFX** (`NowPlayingVfxComponent`, pure `lib/vfx-scene.ts`): a `<canvas>` behind the karaoke
 fullscreen's content, six glowing orbs laid out by musical role (bass low, central and large; highs

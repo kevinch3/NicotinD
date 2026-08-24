@@ -69,7 +69,11 @@ test.describe('Now Playing desktop layout', () => {
     await openNowPlaying(page);
     const strip = page.getByTestId('now-playing-waveform');
     await expect(strip).toBeVisible();
-    await expect(strip.locator('path')).toHaveCount(2);
+    // The box is reserved before the decode returns (#657), so both envelope
+    // paths are in the DOM from the first paint and counting them proves
+    // nothing on its own — wait for the state flip that means data landed.
+    await expect(strip).toHaveAttribute('data-state', 'envelope');
+    await expect(strip.locator('path[d]')).toHaveCount(2);
 
     // locator.click() waits for the strip to stop moving (the sheet slides up
     // on open); a raw page.mouse.click at a pre-animation boundingBox lands on
