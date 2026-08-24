@@ -1192,6 +1192,31 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
 
+  // Curation review queue (#682): a durable "this needs a human decision" note a
+  // curator or an MCP agent can leave on a library row it deliberately did NOT
+  // act on. Distinct from download_reviews, which gates a download BEFORE it
+  // lands and whose pending set is derived; this is post-landing, about identity
+  // and metadata ambiguity, and these rows are the record itself.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS curation_flags (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      target_kind TEXT NOT NULL CHECK (target_kind IN ('artist','album','song')),
+      target_id   TEXT NOT NULL,
+      reason      TEXT NOT NULL,
+      created_by  TEXT NOT NULL,
+      created_at  INTEGER NOT NULL,
+      resolved_at INTEGER,
+      resolved_by TEXT
+    )
+  `);
+  // One OPEN flag per target: an agent re-running its sweep must not pile up a
+  // new row for the same unresolved ambiguity on every pass. Resolved rows are
+  // excluded from the constraint, so the same target can be flagged again later.
+  db.run(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_curation_flags_open
+       ON curation_flags(target_kind, target_id) WHERE resolved_at IS NULL`,
+  );
+
   // On-demand lyrics, keyed on the scanner's path-derived songId. Lyrics are
   // fetched from a lyrics-capable plugin (LRCLIB, …), persisted here, and may be
   // edited by the user (customized=1 protects them from being overwritten by a

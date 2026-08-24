@@ -73,6 +73,8 @@ applies it, then runs the handler; every write is audit-logged.
 | `get_artist` | read | one artist + their albums |
 | `get_album_tracks` | read | an album's songs, with their genre |
 | `set_song_genre` | curate | `services/song-genre-mutate.ts` `mutateSongGenre` + `song.genre` audit |
+| `flag_for_review` | curate | `services/curation-flags.ts` `createCurationFlag` + `curation.flag` audit |
+| `list_review_flags` | read | the open human-review queue, oldest first |
 | `delete_song` | curate, **destructive** | `services/library-deletion.ts` `deleteOne` + `song.delete` audit |
 | `delete_album` | curate, **destructive** | `services/library-deletion.ts` `deleteAlbum` + `album.delete` audit |
 | `merge_artist` | curate, **destructive** | `services/artist-identity-mutate.ts` `mutateArtistIdentity` (merge mode, one or many raw names) + `artist.identity` audit |
@@ -123,6 +125,33 @@ successful merge still writes its own `artist.identity` audit row keyed on that
 raw name, so the log stays greppable per artist. `kind` and `artistId` remain
 top-level — every name in a batch lands on the same target — so the one-name
 call's response shape is unchanged.
+
+### The third option: `flag_for_review` (issue #682)
+
+A curating agent regularly meets a case it can *see* but must not resolve alone —
+a `b2b` credit naming two acts, an identity with no confident target. Before this
+there were only two moves: **act** (guess) or **say nothing durable** (mention it
+in a chat transcript nobody re-reads). A flag is the third, and it is deliberately
+**inert**: it writes to `curation_flags` and changes no library data, it only
+records that a decision is owed.
+
+Why its own table rather than widening `download_reviews`: that one gates a
+download *before* it lands and its pending set is **derived** from scanner state
+(so it can never drift); this is post-landing, about identity and metadata
+ambiguity, and these rows *are* the record. A partial unique index keeps **one
+open flag per target**, so an agent re-running its sweep updates the reason
+instead of minting a row per pass — the failure mode that would otherwise turn a
+queue into a feed.
+
+Listing rides the shared `ServiceReview` snapshot (`reviewFlags`) rather than
+adding a poller, per the one-resource rule, and surfaces as the Admin
+**Needs review** card with a Resolve button. Curators can also raise and clear
+flags over `POST /api/library/review-flags` and
+`POST /api/library/review-flags/:id/resolve`.
+
+This pairs with #679's `djSetArtistName`, which returns null precisely on the
+ambiguous `b2b` case — the sanitizer declines to guess, and this is where that
+case now goes instead of being lost.
 
 ### Destructive writes: the extraction that unblocked each one
 
@@ -192,7 +221,8 @@ read tool, `list_recent_songs`'s recency ordering + quarantine exclusion +
 `missingGenre` filter + `limit`/`offset` paging, `set_song_genre`'s append /
 `replace`-override / unknown-song / read-only-token paths, `merge_artist`'s
 batch `rawNames` form including a partial failure, the audited curate write,
-read-only-token refusal, `delete_song`/`delete_album` against a real temp-dir
+read-only-token refusal, `flag_for_review`'s record/inertness/bad-kind/scope
+cases and `list_review_flags`' ordering, `delete_song`/`delete_album` against a real temp-dir
 music folder — confirm gate, scope gate, and the audited happy path —
 unknown-method JSON-RPC error, and `checkToolAccess` covering the scope +
 confirm gates with synthetic tools).

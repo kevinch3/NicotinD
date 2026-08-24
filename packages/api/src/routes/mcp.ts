@@ -10,6 +10,11 @@ import { recordAudit } from '../services/audit-log.js';
 import { deleteAlbum, deleteOne } from '../services/library-deletion.js';
 import { mutateArtistIdentity } from '../services/artist-identity-mutate.js';
 import { mutateSongGenre } from '../services/song-genre-mutate.js';
+import {
+  createCurationFlag,
+  isFlagTargetKind,
+  listOpenCurationFlags,
+} from '../services/curation-flags.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 
 /**
@@ -247,6 +252,69 @@ export const MCP_TOOLS: McpTool[] = [
       );
       return JSON.stringify({ ok: true, genres: result.genres });
     },
+  },
+  {
+    name: 'flag_for_review',
+    description:
+      'Flag one artist, album, or song as needing a human decision, with a reason. Use this instead of guessing when a fix has no unambiguous answer — a b2b DJ credit naming two acts, an identity you cannot resolve confidently. Changes no library data. Re-flagging the same target updates the open flag rather than adding another.',
+    access: 'curate',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetKind: { type: 'string', enum: ['artist', 'album', 'song'] },
+        targetId: {
+          type: 'string',
+          description: 'The artist/album/song id, or the raw name for an unresolvable artist.',
+        },
+        reason: {
+          type: 'string',
+          description: 'What the ambiguity is and what a human needs to decide.',
+        },
+      },
+      required: ['targetKind', 'targetId', 'reason'],
+    },
+    handler: ({ db, identity }, args) => {
+      const targetKind = str(args.targetKind);
+      if (!isFlagTargetKind(targetKind)) {
+        return JSON.stringify({ error: 'targetKind must be artist, album, or song' });
+      }
+      const targetId = str(args.targetId).trim();
+      const reason = str(args.reason).trim();
+      if (!targetId || !reason)
+        return JSON.stringify({ error: 'targetId and reason are required' });
+
+      const actor = `agent:${identity.tokenId}`;
+      const { flag, created } = createCurationFlag(db, {
+        targetKind,
+        targetId,
+        reason,
+        createdBy: actor,
+      });
+      // Audited like the other writes: a flag is inert for the library, but it
+      // does put a task on a person, which is worth a trace.
+      recordAudit(db, { sub: identity.userId, username: actor }, 'curation.flag', {
+        targetKind,
+        targetId,
+        detail: `${created ? 'flagged' : 'updated'}: ${reason} (via MCP agent)`,
+      });
+      return JSON.stringify({ ok: true, id: flag.id, created });
+    },
+  },
+  {
+    name: 'list_review_flags',
+    description:
+      'List the open human-review flags, oldest first — what a previous pass could not decide alone.',
+    access: 'read',
+    inputSchema: {
+      type: 'object',
+      properties: { limit: { type: 'number', description: 'Max results (1–100, default 25).' } },
+    },
+    handler: ({ db }, args) =>
+      JSON.stringify(
+        { flags: listOpenCurationFlags(db, clampLimit(args.limit, 25, 100)) },
+        null,
+        2,
+      ),
   },
   {
     name: 'delete_song',

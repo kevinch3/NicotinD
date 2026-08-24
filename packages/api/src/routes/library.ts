@@ -48,6 +48,11 @@ import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './strea
 import { albumGenreDistribution, artistGenreDistribution } from '../services/genre-distribution.js';
 import { mutateArtistIdentity } from '../services/artist-identity-mutate.js';
 import { mutateSongGenre } from '../services/song-genre-mutate.js';
+import {
+  createCurationFlag,
+  isFlagTargetKind,
+  resolveCurationFlag,
+} from '../services/curation-flags.js';
 import { recordAudit } from '../services/audit-log.js';
 import { loadGenreSets, setSongGenres } from '../services/genre-split.js';
 import {
@@ -1107,6 +1112,55 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       failedCount: result.failedCount,
       failed: result.failed,
     });
+  });
+
+  // Curation review queue (issue #682). Listing rides the shared ServiceReview
+  // snapshot rather than adding a poller here; these two are the write half —
+  // a curator raising a flag from the UI, and clearing one they have handled.
+  app.post('/review-flags', async (c) => {
+    requireCurator(c);
+    type Body = { targetKind?: string; targetId?: string; reason?: string };
+    const body = await c.req.json<Body>().catch(() => ({}) as Body);
+    if (!isFlagTargetKind(body.targetKind)) {
+      return c.json({ error: 'targetKind must be artist, album, or song' }, 400);
+    }
+    const targetId = (body.targetId ?? '').trim();
+    const reason = (body.reason ?? '').trim();
+    if (!targetId || !reason) return c.json({ error: 'targetId and reason are required' }, 400);
+
+    const db = getDatabase();
+    const user = c.get('user');
+    const { flag, created } = createCurationFlag(db, {
+      targetKind: body.targetKind,
+      targetId,
+      reason,
+      createdBy: user?.username ?? user?.sub ?? 'unknown',
+    });
+    recordAudit(db, user, 'curation.flag', {
+      targetKind: body.targetKind,
+      targetId,
+      detail: `${created ? 'flagged' : 'updated'}: ${reason}`,
+    });
+    return c.json({ ok: true, id: flag.id, created });
+  });
+
+  app.post('/review-flags/:id/resolve', (c) => {
+    requireCurator(c);
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id)) return c.json({ error: 'invalid flag id' }, 400);
+    const db = getDatabase();
+    const user = c.get('user');
+    // Already-resolved and unknown are the same answer to the caller: there is
+    // nothing left open under that id.
+    if (!resolveCurationFlag(db, id, user?.username ?? user?.sub ?? 'unknown')) {
+      return c.json({ error: 'Flag not found or already resolved' }, 404);
+    }
+    recordAudit(db, user, 'curation.flag', {
+      targetKind: 'flag',
+      targetId: String(id),
+      detail: 'resolved',
+    });
+    return c.json({ ok: true });
   });
 
   // GET /api/library/untracked  (admin)

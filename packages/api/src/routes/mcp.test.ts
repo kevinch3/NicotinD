@@ -45,6 +45,7 @@ beforeEach(() => {
   testDb.run('DELETE FROM library_artist_aliases');
   testDb.run('DELETE FROM library_song_genres');
   testDb.run('DELETE FROM library_genre_overrides');
+  testDb.run('DELETE FROM curation_flags');
 });
 
 async function rpc(token: string | null, method: string, params?: unknown) {
@@ -456,6 +457,92 @@ describe('MCP endpoint (issue #232)', () => {
     expect(body.result.isError).toBe(true);
     expect(body.result.content[0]!.text).toContain('read-only');
     expect(testDb.query('SELECT alias_norm FROM library_artist_aliases').get()).toBeNull();
+  });
+
+  it('flag_for_review records a flag and audit-logs it (issue #682)', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'flag_for_review',
+        arguments: {
+          targetKind: 'artist',
+          targetId: 'Secret Cinema B2B Egbert',
+          reason: 'b2b set — two acts, no single merge target',
+        },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    const parsed = JSON.parse(body.result.content[0]!.text) as { ok: boolean; created: boolean };
+    expect(parsed.ok).toBe(true);
+    expect(parsed.created).toBe(true);
+
+    const row = testDb
+      .query<{ target_id: string; reason: string; created_by: string }, []>(
+        'SELECT target_id, reason, created_by FROM curation_flags WHERE resolved_at IS NULL',
+      )
+      .get();
+    expect(row?.target_id).toBe('Secret Cinema B2B Egbert');
+    expect(row?.created_by).toStartWith('agent:');
+    const audit = testDb.query('SELECT action FROM audit_log').all() as Array<{ action: string }>;
+    expect(audit.map((a) => a.action)).toContain('curation.flag');
+  });
+
+  it('flag_for_review is not destructive — it needs no confirm, and writes no library data', async () => {
+    seedSong('s1', 'Song');
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    await rpc(token, 'tools/call', {
+      name: 'flag_for_review',
+      arguments: { targetKind: 'song', targetId: 's1', reason: 'wrong artist?' },
+    });
+    // Flagging is inert: the song row is untouched.
+    const song = testDb
+      .query<{ artist: string }, [string]>('SELECT artist FROM library_songs WHERE id = ?')
+      .get('s1');
+    expect(song?.artist).toBe('Artist');
+  });
+
+  it('flag_for_review rejects an unknown target kind', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'flag_for_review',
+        arguments: { targetKind: 'playlist', targetId: 'p1', reason: 'x' },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    expect(body.result.content[0]!.text).toContain('targetKind');
+    expect(testDb.query('SELECT id FROM curation_flags').all()).toHaveLength(0);
+  });
+
+  it('refuses flag_for_review for a read-only token', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:read' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'flag_for_review',
+        arguments: { targetKind: 'artist', targetId: 'A', reason: 'x' },
+      })
+    ).json()) as { result: { isError: boolean; content: Array<{ text: string }> } };
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0]!.text).toContain('read-only');
+    expect(testDb.query('SELECT id FROM curation_flags').all()).toHaveLength(0);
+  });
+
+  it('list_review_flags returns the open queue oldest-first, for a read-only token', async () => {
+    const curate = mintAgentToken(testDb, { userId: 'u1', name: 'c', scope: 'refiner:curate' });
+    await rpc(curate.token, 'tools/call', {
+      name: 'flag_for_review',
+      arguments: { targetKind: 'artist', targetId: 'A', reason: 'first' },
+    });
+    await rpc(curate.token, 'tools/call', {
+      name: 'flag_for_review',
+      arguments: { targetKind: 'artist', targetId: 'B', reason: 'second' },
+    });
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'r', scope: 'refiner:read' });
+    const body = (await (
+      await rpc(token, 'tools/call', { name: 'list_review_flags', arguments: {} })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    const parsed = JSON.parse(body.result.content[0]!.text) as {
+      flags: Array<{ targetId: string }>;
+    };
+    expect(parsed.flags.map((f) => f.targetId)).toEqual(['A', 'B']);
   });
 
   it('unknown method → JSON-RPC -32601', async () => {

@@ -197,3 +197,72 @@ describe('POST /songs/:id/genre', () => {
     expect(testDb.query('SELECT action FROM audit_log').all()).toHaveLength(0);
   });
 });
+
+// Issue #682: the write half of the curation review queue. Listing rides the
+// shared ServiceReview snapshot, so there is no GET route to cover here.
+describe('curation review flags', () => {
+  beforeEach(() => {
+    testDb = new Database(':memory:');
+    applySchema(testDb);
+  });
+  afterEach(() => testDb.close());
+
+  const raise = (role: 'admin' | 'user', body: unknown) =>
+    makeApp(role).request('/review-flags', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('raises a flag for a curator and audit-logs it', async () => {
+    const res = await raise('admin', {
+      targetKind: 'artist',
+      targetId: 'Secret Cinema B2B Egbert',
+      reason: 'two acts',
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { created: boolean }).toMatchObject({ ok: true, created: true });
+    const audit = testDb
+      .query<{ action: string }, []>('SELECT action FROM audit_log')
+      .all()
+      .map((a) => a.action);
+    expect(audit).toContain('curation.flag');
+  });
+
+  it('rejects a bad target kind and a missing reason with 400', async () => {
+    expect(
+      (await raise('admin', { targetKind: 'playlist', targetId: 'p', reason: 'x' })).status,
+    ).toBe(400);
+    expect(
+      (await raise('admin', { targetKind: 'artist', targetId: 'A', reason: '  ' })).status,
+    ).toBe(400);
+    expect(testDb.query('SELECT id FROM curation_flags').all()).toHaveLength(0);
+  });
+
+  it('rejects a non-curator', async () => {
+    expect((await raise('user', { targetKind: 'artist', targetId: 'A', reason: 'x' })).status).toBe(
+      403,
+    );
+  });
+
+  it('resolves a flag once, then 404s (already handled reads the same as unknown)', async () => {
+    await raise('admin', { targetKind: 'artist', targetId: 'A', reason: 'x' });
+    const id = testDb.query<{ id: number }, []>('SELECT id FROM curation_flags').get()!.id;
+
+    const first = await makeApp('admin').request(`/review-flags/${id}/resolve`, { method: 'POST' });
+    expect(first.status).toBe(200);
+    const second = await makeApp('admin').request(`/review-flags/${id}/resolve`, {
+      method: 'POST',
+    });
+    expect(second.status).toBe(404);
+    const unknown = await makeApp('admin').request('/review-flags/9999/resolve', {
+      method: 'POST',
+    });
+    expect(unknown.status).toBe(404);
+  });
+
+  it('rejects a non-numeric flag id with 400', async () => {
+    const res = await makeApp('admin').request('/review-flags/abc/resolve', { method: 'POST' });
+    expect(res.status).toBe(400);
+  });
+});
