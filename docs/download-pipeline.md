@@ -560,7 +560,11 @@ The unified lane now matches: `kind === 'url' && (stage === 'error' || (stage ==
 
 ### Failure breakdown (`download-failure.ts`)
 
-`@nicotind/core`'s `download-failure.ts` is the pure chain: `parseJobFailureSummary` pulls
+`@nicotind/addon-sdk`'s `download-failure.ts` is the pure chain (moved from core in issue
+#651 item B, re-exported from `@nicotind/core` unchanged — see the compatibility-shim
+pattern `title-match.ts`/`hunt-queries.ts` already use — because a spotdl-addon retry
+controller needs the identical verdict the Downloads card uses, and a second copy would
+drift): `parseJobFailureSummary` pulls
 the `<url> - <Error>: <detail>` lines out of the addon's closing summary (anchored on a real
 URL, so the header sentence and any free prose can never parse as a track; `[]` for a
 whole-job crash, which keeps the card on its single-line rendering), `classifyTrackFailure`

@@ -7,6 +7,8 @@
 //   - capability risk copy for consent surfaces (addon-capability-risk.ts)
 //   - published JSON-Schema builder for the protocol (addon-protocol-schema.ts)
 //   - hunt query builders + title matching an acquisition addon reuses
+//   - per-track failure parsing/classification, shared by an addon's own
+//     retry controller and the Downloads card (download-failure.ts)
 //   - a leaf logger (own copy, so the SDK never depends back into core)
 //
 // @nicotind/core re-exports every symbol here, so in-monorepo import sites that
@@ -19,4 +21,5 @@ export * from './addon-protocol-schema.js';
 export * from './hunt-queries.js';
 export * from './title-match.js';
 export * from './downloader-output.js';
+export * from './download-failure.js';
 export * from './logger.js';

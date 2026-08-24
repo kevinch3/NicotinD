@@ -1,6 +1,6 @@
 {
   "name": "@nicotind/addon-sdk",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "main": "src/index.ts",
   "description": "Acquisition addon protocol SDK for NicotinD — protocol v1 DTOs/schemas, capability risk copy, hunt-query helpers, and a logger for building third-party addons.",
@@ -22,6 +22,7 @@
     "./hunt-queries": "./src/hunt-queries.ts",
     "./title-match": "./src/title-match.ts",
     "./downloader-output": "./src/downloader-output.ts",
+    "./download-failure": "./src/download-failure.ts",
     "./logger": "./src/logger.ts"
   },
   "dependencies": {
