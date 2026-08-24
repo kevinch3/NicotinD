@@ -167,6 +167,35 @@ describe('POST /songs/:id/genre', () => {
     });
     expect(res.status).toBe(403);
   });
+
+  // Issue #681: the artist-scoped sibling has always audited; this one silently
+  // did not, so a curator's per-song genre edits left no trace at all.
+  it('audit-logs the write, like its artist-scoped sibling', async () => {
+    seedSong(testDb, { id: 'song-1', genre: 'IDM' });
+    await makeApp('admin').request('/songs/song-1/genre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ genre: 'Electronic' }),
+    });
+    const audit = testDb
+      .query<{ action: string; target_id: string; detail: string }, []>(
+        'SELECT action, target_id, detail FROM audit_log',
+      )
+      .all();
+    const entry = audit.find((a) => a.action === 'song.genre');
+    expect(entry?.target_id).toBe('song-1');
+    expect(entry?.detail).toContain('Electronic');
+  });
+
+  it('404s for an unknown song instead of writing', async () => {
+    const res = await makeApp('admin').request('/songs/nope/genre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ genre: 'Electronic' }),
+    });
+    expect(res.status).toBe(404);
+    expect(testDb.query('SELECT action FROM audit_log').all()).toHaveLength(0);
+  });
 });
 
 describe('POST /songs/:id/licence', () => {

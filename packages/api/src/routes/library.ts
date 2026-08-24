@@ -47,12 +47,11 @@ import {
 import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './streaming.js';
 import { albumGenreDistribution, artistGenreDistribution } from '../services/genre-distribution.js';
 import { mutateArtistIdentity } from '../services/artist-identity-mutate.js';
+import { mutateSongGenre } from '../services/song-genre-mutate.js';
 import { recordAudit } from '../services/audit-log.js';
-import { appendSongGenres, loadGenreSets, setSongGenres } from '../services/genre-split.js';
+import { loadGenreSets, setSongGenres } from '../services/genre-split.js';
 import {
-  applyGenreOverride,
   backfillGenreOverrides,
-  buildOverrideIndex,
   deleteGenreOverride,
   getGenreOverride,
   splitStored,
@@ -2027,72 +2026,19 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const body = await c.req
       .json<{ genre?: string; mode?: 'append' | 'replace' }>()
       .catch(() => ({}) as { genre?: string; mode?: 'append' | 'replace' });
-    const genres = (body.genre ?? '')
-      .split(/[;,|]/)
-      .map((g) => g.trim().replace(/\s+/g, ' '))
-      .filter(Boolean);
-    if (genres.length === 0) return c.json({ error: 'genre is required' }, 400);
 
     const db = getDatabase();
-    const song = db
-      .query<{ path: string; genre: string | null }, [string]>(
-        `SELECT path, genre FROM library_songs WHERE id = ?`,
-      )
-      .get(id);
-    if (!song) return c.json({ error: 'Song not found' }, 404);
-
-    // Default 'append': a detected genre adds to, never clobbers, the song's
-    // other genres — existing callers and behaviour are unchanged. 'replace'
-    // (issue #187 A3) writes a song-scoped user override so the set's PRIMARY
-    // becomes these genres and stays that way across rescans; the tag mirror
-    // below is then a convenience for external players, not the durability
-    // mechanism.
-    if (body.mode === 'replace') {
-      upsertGenreOverride(db, {
-        scope: 'song',
-        key: id,
-        genres,
-        source: 'user',
-        mbid: null,
-        confidence: null,
-        status: 'applied',
-        note: null,
-        mode: 'replace',
-      });
-    }
-    let merged: string[];
-    if (body.mode === 'replace') {
-      // Mirror what buildLibrary will compute on the next scan (override first,
-      // then the tag genres it doesn't already carry) so the UI and the eventual
-      // scan agree instead of briefly disagreeing.
-      const existing = loadGenreSets(db, [id]).get(id) ?? [];
-      merged = applyGenreOverride(
-        buildOverrideIndex([
-          {
-            scope: 'song',
-            key: id,
-            genres,
-            source: 'user',
-            mbid: null,
-            confidence: null,
-            status: 'applied',
-            note: null,
-          },
-        ]),
-        { songId: id, albumKey: '', artistKey: '' },
-        existing,
-      );
-      setSongGenres(db, id, merged);
-    } else {
-      merged = appendSongGenres(db, id, genres);
-    }
-    if (musicDir) {
-      const abs = resolveSongPath(expandDir(musicDir), song.path);
-      if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
-        await writeAudioTags(abs, { genre: merged.join('; ') }).catch(() => false);
-      }
-    }
-    return c.json({ ok: true, genre: merged[0], genres: merged });
+    const result = await mutateSongGenre(db, { musicDir }, id, body);
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    // Issue #681: the artist-scoped sibling has always audited this; the
+    // song-scoped one silently did not, so a curator's per-song genre edits
+    // left no trace at all.
+    recordAudit(db, c.get('user'), 'song.genre', {
+      targetKind: 'song',
+      targetId: id,
+      detail: `${body.mode === 'replace' ? 'replace' : 'append'}: ${result.genres.join(';')}`,
+    });
+    return c.json({ ok: true, genre: result.genres[0], genres: result.genres });
   });
 
   // Detect a licence for a song (read-only). The file's own LICENSE/COPYRIGHT tag

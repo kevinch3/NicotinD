@@ -417,7 +417,7 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **MCP agent access**: an external agent curates via `/api/mcp`, authorized by a scoped revocable
   `agent_tokens` bearer capped at refiner (`AGENT_EFFECTIVE_ROLE`), only the hash stored.
   `checkToolAccess` gates curate scope and destructive confirm; `dispatchTool` audits every write.
-  `library-deletion.ts` and `artist-identity-mutate.ts` back both HTTP and MCP.
+  `library-deletion.ts`, `artist-identity-mutate.ts` and `song-genre-mutate.ts` back HTTP and MCP.
   → [mcp-agent.md](docs/mcp-agent.md)
 - **WebMCP alignment (proposed — not yet implemented)**: `MCP_TOOLS` is already the shape Chrome's
   WebMCP registration takes; the plan promotes host exposure to a declared field and adds a flagged
