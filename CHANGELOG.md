@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.2](https://github.com/kevinch3/NicotinD/compare/v0.4.1...v0.4.2) (2026-08-24)
+
+### Bug Fixes
+
+* **downloads:** a partial download says why it failed, and can be retried ([#653](https://github.com/kevinch3/NicotinD/issues/653)) ([675acf7](https://github.com/kevinch3/NicotinD/commit/675acf7fb144d50e2678bda1289ec507b91c2727)), closes [#652](https://github.com/kevinch3/NicotinD/issues/652), references [#585](https://github.com/kevinch3/NicotinD/issues/585) [#601](https://github.com/kevinch3/NicotinD/issues/601) [#651](https://github.com/kevinch3/NicotinD/issues/651)
 ## [0.4.1](https://github.com/kevinch3/NicotinD/compare/v0.4.0...v0.4.1) (2026-08-23)
 ## [0.4.0](https://github.com/kevinch3/NicotinD/compare/v0.3.66...v0.4.0) (2026-08-23)
 
