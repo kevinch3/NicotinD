@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.12](https://github.com/kevinch3/NicotinD/compare/v0.4.11...v0.4.12) (2026-08-24)
+
+### Features
+
+* **library:** catch structural DJ-set corruption at ingest ([#695](https://github.com/kevinch3/NicotinD/issues/695)) ([b45d37a](https://github.com/kevinch3/NicotinD/commit/b45d37ab53bcc7e6850ca4a68dbd2c4eed078668)), closes [#679](https://github.com/kevinch3/NicotinD/issues/679)
+* **web:** make the track-info genre chips an editor ([#688](https://github.com/kevinch3/NicotinD/issues/688)) ([4d1a77c](https://github.com/kevinch3/NicotinD/commit/4d1a77cbaa42bc6134f4933bc6c6b2e3e5abb7e6)), closes [#684](https://github.com/kevinch3/NicotinD/issues/684)
 ## [0.4.11](https://github.com/kevinch3/NicotinD/compare/v0.4.10...v0.4.11) (2026-08-24)
 
 ### Features
