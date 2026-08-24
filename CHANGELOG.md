@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.1](https://github.com/kevinch3/NicotinD/compare/v0.5.0...v0.5.1) (2026-08-24)
+
+### Features
+
+* **curation:** a durable "needs a human decision" flag ([#699](https://github.com/kevinch3/NicotinD/issues/699)) ([7371c8c](https://github.com/kevinch3/NicotinD/commit/7371c8c3d49b460fd95c4ac0774dccce890cb241)), closes [#682](https://github.com/kevinch3/NicotinD/issues/682)
 ## [0.5.0](https://github.com/kevinch3/NicotinD/compare/v0.4.12...v0.5.0) (2026-08-24)
 
 ### ⚠ BREAKING CHANGES
