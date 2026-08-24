@@ -6,6 +6,7 @@ import {
   summarize,
   checkMisSplitAlbums,
   selectPollutionTargets,
+  DELETABLE_RULES,
 } from './library-audit.js';
 
 function addArtist(db: Database, id: string, name: string, albumCount = 0): void {
@@ -98,6 +99,36 @@ describe('auditLibrary', () => {
     const rules = auditLibrary(db).findings.map((f) => f.rule);
     expect(rules).toContain('watermark_artist');
     expect(auditLibrary(db).ok).toBe(false);
+  });
+
+  it('flags a DJ-set artist line and names the merge target (issue #679)', () => {
+    addArtist(db, 'ard', 'Enrico Sangiuliano @ Awakenings', 1);
+    addAlbum(db, {
+      id: 'ald',
+      name: 'Biomorph',
+      artist: 'Enrico Sangiuliano @ Awakenings',
+      artistId: 'ard',
+    });
+    addSong(db, 'sd', 'ald', 'ard');
+    const finding = auditLibrary(db).findings.find((f) => f.rule === 'djset_artist');
+    expect(finding?.subject).toBe('ard');
+    expect(finding?.message).toContain('merge into "Enrico Sangiuliano"');
+  });
+
+  it('never routes a DJ-set artist to deletion — the music itself is real', () => {
+    addArtist(db, 'ard2', 'Secret Cinema B2B Egbert', 1);
+    addAlbum(db, {
+      id: 'ald2',
+      name: 'Some Set',
+      artist: 'Secret Cinema B2B Egbert',
+      artistId: 'ard2',
+    });
+    addSong(db, 'sd2', 'ald2', 'ard2');
+    const finding = auditLibrary(db).findings.find((f) => f.rule === 'djset_artist');
+    // Ambiguous (two acts), so no merge target is suggested…
+    expect(finding?.message).toContain('needs a human decision');
+    // …and the rule is absent from the deletable set entirely.
+    expect(DELETABLE_RULES as string[]).not.toContain('djset_artist');
   });
 
   it('flags a numeric artist (101) without flagging the real album title', () => {

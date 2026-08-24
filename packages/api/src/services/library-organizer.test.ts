@@ -135,6 +135,43 @@ describe('LibraryOrganizer (real fs)', () => {
     expect(existsSync(join(root, 'Daft Punk feat. Pharrell'))).toBe(false);
   });
 
+  // Issue #679: a DJ-set line in the artist tag used to mint a junk artist row
+  // that a curator then had to merge away by hand.
+  it('recovers the real artist from a DJ-set line in the artist tag', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    seed(staging, 'set rip/01 - Biomorph.mp3', {
+      artist: 'Enrico Sangiuliano @ Awakenings',
+      album: 'Biomorph',
+      title: 'Biomorph',
+      trackNumber: 1,
+    });
+    const org = makeOrg(root, staging);
+    const result = await org.organizeBatch([
+      { username: 'u', directory: 'set rip', filename: '01 - Biomorph.mp3', directoryFileCount: 1 },
+    ]);
+    expect(result.moved).toBe(1);
+    expect(existsSync(join(root, 'Enrico Sangiuliano'))).toBe(true);
+    expect(existsSync(join(root, 'Enrico Sangiuliano @ Awakenings'))).toBe(false);
+  });
+
+  it('does not mint an artist folder from an ambiguous b2b credit', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    seed(staging, 'b2b rip/01 - Untitled.mp3', {
+      artist: 'Secret Cinema B2B Egbert',
+      album: 'Some Set',
+      title: 'Untitled',
+      trackNumber: 1,
+    });
+    const org = makeOrg(root, staging);
+    await org.organizeBatch([
+      { username: 'u', directory: 'b2b rip', filename: '01 - Untitled.mp3', directoryFileCount: 1 },
+    ]);
+    // Two acts, no basis for picking one — the tag is dropped rather than guessed.
+    expect(existsSync(join(root, 'Secret Cinema B2B Egbert'))).toBe(false);
+  });
+
   it('names a hunted album folder after the job canonical title, not the peer edition tag', async () => {
     const root = tmpRoot();
     const staging = join(root, '_staging');
