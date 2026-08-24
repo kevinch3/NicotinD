@@ -1,0 +1,71 @@
+<app-settings-group
+  groupId="review-flags"
+  icon="queue"
+  [title]="'admin.reviewFlags' | t"
+  [description]="'admin.groupReviewFlagsDesc' | t"
+>
+  <!-- Curation review queue: cases a curator or agent deliberately did not decide. -->
+  @if (openFlags().length > 0) {
+    <div data-testid="review-flags">
+      <section class="section-flush">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-theme">
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+              >
+                {{ 'admin.colWhen' | t }}
+              </th>
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+              >
+                {{ 'admin.colTarget' | t }}
+              </th>
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+              >
+                {{ 'admin.colReason' | t }}
+              </th>
+              <th
+                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+              >
+                {{ 'admin.colUser' | t }}
+              </th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (f of openFlags(); track f.id) {
+              <tr class="border-b border-theme last:border-0" data-testid="review-flag-row">
+                <td class="px-4 py-2.5 text-theme-muted whitespace-nowrap">
+                  {{ formatFlagTime(f.createdAt) }}
+                </td>
+                <td class="px-4 py-2.5 text-theme-secondary">
+                  <span class="text-theme-muted text-xs">{{ f.targetKind }}</span>
+                  {{ f.targetId }}
+                </td>
+                <td class="px-4 py-2.5 text-theme-secondary">{{ f.reason }}</td>
+                <td class="px-4 py-2.5 text-theme-muted">{{ f.createdBy }}</td>
+                <td class="px-4 py-2.5 text-right">
+                  <button
+                    type="button"
+                    class="px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs disabled:opacity-50"
+                    [disabled]="resolving() !== null"
+                    (click)="resolve(f.id)"
+                    data-testid="resolve-review-flag"
+                  >
+                    {{ 'admin.reviewFlagResolve' | t }}
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </section>
+    </div>
+  } @else {
+    <p class="text-sm text-theme-muted px-4 py-3" data-testid="review-flags-empty">
+      {{ 'admin.reviewFlagsEmpty' | t }}
+    </p>
+  }
+</app-settings-group>

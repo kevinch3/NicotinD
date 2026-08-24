@@ -426,6 +426,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   heartbeats merged into `GET /api/admin/users` and ordered by `compareUsersByActivity`; the derived
   `last_seen_at` is persisted by `touchLastSeen` because an in-memory map reports "never" after every
   deploy. → [presence-tracking.md](docs/presence-tracking.md)
+- **Curation review queue**: a durable "needs a human decision" flag a curator or MCP agent raises
+  instead of guessing; `curation_flags`, `createCurationFlag`, `flag_for_review`, one open flag per
+  target. → [mcp-agent.md](docs/mcp-agent.md)
 - **Admin audit log**: `audit_log` + `recordAudit` called explicitly at destructive mutation sites,
   never as blanket middleware; entries carry `targetKind`/`targetId`/`detail`, and ledger failures
   never break the audited action. → [roles.md](docs/roles.md)

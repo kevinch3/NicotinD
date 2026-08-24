@@ -35,6 +35,7 @@ import { countOrphanRows, type OrphanCount } from '../services/orphan-prune.js';
 import { playEventCount } from '../services/play-history.js';
 import { getProcessingSettings } from '../services/processing-settings.js';
 import { pendingReviewStats, type PendingReviewStats } from '../services/download-review-store.js';
+import { listOpenCurationFlags, type CurationFlag } from '../services/curation-flags.js';
 
 export type UpdateCheckSnapshot = {
   currentVersion: string;
@@ -148,6 +149,8 @@ export interface ServiceReview {
    */
   downloadReviews: PendingReviewStats;
   auditTail: AuditEntry[];
+  /** Open human-review flags (issue #682), oldest first — the curation queue. */
+  reviewFlags: CurationFlag[];
   /** Snapshot of incomplete album hunts (active + exhausted) for the Admin panel. */
   incompleteJobs: IncompleteAlbumJob[];
   /** Snapshot of completed downloads with no recorded library path. */
@@ -172,6 +175,7 @@ export interface ReviewSubFns {
   artistImages: () => ArtistImageCoverage;
   downloadReviews: () => PendingReviewStats;
   auditTail: (limit: number) => AuditEntry[];
+  reviewFlags: () => CurationFlag[];
   incompleteJobs: () => IncompleteAlbumJob[];
   untracked: () => UntrackedDownload[];
 }
@@ -216,6 +220,9 @@ async function defaultAnalysisStatus(
 }
 
 const DEFAULT_AUDIT_TAIL_LIMIT = 20;
+// The Admin card is a to-do list, not an archive: a queue this long already
+// means the curator is behind, and the MCP `list_review_flags` tool pages deeper.
+const REVIEW_FLAG_LIMIT = 25;
 const startTime = Date.now();
 
 /**
@@ -507,6 +514,7 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       artistImages,
       downloadReviews,
       audit,
+      flags,
       incompleteList,
       untrackedList,
     } = await allNamed({
@@ -597,6 +605,12 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
           sub.auditTail?.(DEFAULT_AUDIT_TAIL_LIMIT) ?? defaultAuditTail(DEFAULT_AUDIT_TAIL_LIMIT),
         [] as AuditEntry[],
       ),
+      flags: safe(
+        errors,
+        'reviewFlags',
+        () => sub.reviewFlags?.() ?? listOpenCurationFlags(getDatabase(), REVIEW_FLAG_LIMIT),
+        [] as CurationFlag[],
+      ),
       incompleteList: safe(
         errors,
         'incompleteJobsList',
@@ -640,6 +654,7 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       artistImages,
       downloadReviews,
       auditTail: audit,
+      reviewFlags: flags,
       incompleteJobs: incompleteList,
       untracked: untrackedList,
       errors,

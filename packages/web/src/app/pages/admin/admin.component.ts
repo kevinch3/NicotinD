@@ -11,6 +11,7 @@ import { StreamingMediaPanelComponent } from './streaming-media/streaming-media-
 import { BackupsDataPanelComponent } from './backups-data/backups-data-panel.component';
 import { AcquisitionAutomationPanelComponent } from './acquisition-automation/acquisition-automation-panel.component';
 import { AuditLogPanelComponent } from './audit-log/audit-log-panel.component';
+import { ReviewFlagsPanelComponent } from './review-flags/review-flags-panel.component';
 
 /**
  * The Admin page shell. Each section is its own panel component, so this
@@ -37,6 +38,7 @@ import { AuditLogPanelComponent } from './audit-log/audit-log-panel.component';
     StreamingMediaPanelComponent,
     BackupsDataPanelComponent,
     AcquisitionAutomationPanelComponent,
+    ReviewFlagsPanelComponent,
     AuditLogPanelComponent,
   ],
   templateUrl: './admin.component.html',

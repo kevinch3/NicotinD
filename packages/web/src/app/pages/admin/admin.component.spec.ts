@@ -94,6 +94,7 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     artistImages: { visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 },
     downloadReviews: { pending: 0, oldestCreated: null },
     auditTail: [],
+    reviewFlags: [],
     incompleteJobs: [],
     untracked: [],
     errors: [],
@@ -119,6 +120,7 @@ function makeSvc(over: Partial<ServiceReview> = {}) {
     backups: (() => r.backups) as ServiceReviewService['backups'],
     backupsSummary: (() => r.backupsSummary) as ServiceReviewService['backupsSummary'],
     auditTail: (() => r.auditTail) as ServiceReviewService['auditTail'],
+    reviewFlags: (() => r.reviewFlags) as ServiceReviewService['reviewFlags'],
     incompleteJobsCount: (() =>
       r.incompleteJobsCount) as ServiceReviewService['incompleteJobsCount'],
     untrackedCount: (() => r.untrackedCount) as ServiceReviewService['untrackedCount'],
@@ -1066,12 +1068,12 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
     const fixture = await createAndSettle();
     const el: HTMLElement = fixture.nativeElement;
     const headers = Array.from(el.querySelectorAll('app-settings-group-header'));
-    // 9: the settings-cards unification's set, plus the radio evaluation polls
-    // card (docs/radio-eval-polls.md), minus "Import music" — which went with
-    // the admin import card, import being internal/API-only now
-    // (docs/import.md) — and minus the generation-feedback queue, removed with
-    // that feature.
-    expect(headers.length).toBe(9);
+    // 10: the settings-cards unification's set, plus the radio evaluation polls
+    // card (docs/radio-eval-polls.md) and the curation review queue (#682),
+    // minus "Import music" — which went with the admin import card, import
+    // being internal/API-only now (docs/import.md) — and minus the
+    // generation-feedback queue, removed with that feature.
+    expect(headers.length).toBe(10);
     fixture.destroy();
   });
 
@@ -1101,6 +1103,7 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
       'app-streaming-media-panel',
       'app-backups-data-panel',
       'app-acquisition-automation-panel',
+      'app-review-flags-panel',
       'app-audit-log-panel',
       'app-settings-group', // radio polls — the last section still inline
     ]);

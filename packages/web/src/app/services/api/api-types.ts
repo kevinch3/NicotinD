@@ -802,10 +802,26 @@ export interface ServiceReview {
    */
   downloadReviews: PendingReviewStats;
   auditTail: AuditEntry[];
+  /** Open human-review flags (issue #682), oldest first — the curation queue. */
+  reviewFlags: CurationFlag[];
   incompleteJobs: IncompleteAlbumJob[];
   untracked: UntrackedDownload[];
   /** Human-readable sub-fetch errors the snapshot degraded around. */
   errors: string[];
+}
+
+/**
+ * One open "this needs a human decision" flag (issue #682) — raised by a curator
+ * or an MCP agent that deliberately did not guess. Inert: it changes no library
+ * data, it only records that a decision is owed.
+ */
+export interface CurationFlag {
+  id: number;
+  targetKind: 'artist' | 'album' | 'song';
+  targetId: string;
+  reason: string;
+  createdBy: string;
+  createdAt: number;
 }
 
 /**

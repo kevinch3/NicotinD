@@ -108,6 +108,9 @@ export class ServiceReviewService {
     return Math.max(0, Math.floor(ms / 86_400_000));
   });
   readonly auditTail = computed(() => this.review()?.auditTail ?? []);
+  /** Open human-review flags (issue #682) — a slice of the shared snapshot, so
+   *  the Admin card costs no poll of its own. */
+  readonly reviewFlags = computed(() => this.review()?.reviewFlags ?? []);
   /** Snapshots of the Admin tables — drained from ServiceReview instead of polled per-table. */
   readonly incompleteJobs = computed(() => this.review()?.incompleteJobs ?? []);
   readonly untracked = computed(() => this.review()?.untracked ?? []);

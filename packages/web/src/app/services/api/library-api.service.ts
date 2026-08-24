@@ -572,6 +572,22 @@ export class LibraryApiService {
       );
   }
 
+  /**
+   * Clear one curation review flag (issue #682). Listing rides the shared
+   * ServiceReview snapshot, so there is deliberately no getter here.
+   */
+  resolveReviewFlag(id: number) {
+    return this.http.post<{ ok: boolean }>(`/api/library/review-flags/${id}/resolve`, {});
+  }
+
+  /** Raise a "needs a human decision" flag on a library row (curator). */
+  flagForReview(targetKind: 'artist' | 'album' | 'song', targetId: string, reason: string) {
+    return this.http.post<{ ok: boolean; id: number; created: boolean }>(
+      `/api/library/review-flags`,
+      { targetKind, targetId, reason },
+    );
+  }
+
   /** Whether an identify (AcoustID) source is enabled + configured. */
   getIdentifyAvailable() {
     return this.http.get<{ available: boolean }>(`/api/library/identify/available`);
