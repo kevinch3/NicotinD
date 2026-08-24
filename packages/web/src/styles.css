@@ -595,6 +595,49 @@
   animation: none;
 }
 
+/* ─── Now Playing waveform strip ─────────────────────────────────────────
+   The strip reserves its box from the first paint (issue #657) and cross-fades
+   a flat resting bar into the envelope when the artifact lands. Both layers are
+   always mounted: a layer inserted by an `@if` arrives already in its final
+   state, with no previous computed value to transition from, so it would snap.
+
+   `transform-box: fill-box` makes `center` the group's own bounding box —
+   without it an SVG transform-origin resolves against the viewBox origin and
+   the envelope would unfold from the top edge instead of out of the line. */
+.waveform-strip .waveform-layer {
+  transition:
+    opacity 180ms ease-out,
+    transform 180ms ease-out;
+}
+
+.waveform-strip .waveform-layer-envelope {
+  opacity: 0;
+  transform: scaleY(0.25);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.waveform-strip[data-state='envelope'] .waveform-layer-envelope {
+  opacity: 1;
+  transform: none;
+}
+
+.waveform-strip[data-state='envelope'] .waveform-layer-baseline {
+  opacity: 0;
+}
+
+/* Decorative, by the same test the skeleton rules above pass: the strip is
+   legible in both states with the motion frozen. */
+@media (prefers-reduced-motion: reduce) {
+  .waveform-strip .waveform-layer {
+    transition: none;
+  }
+}
+
+[data-theme='eink'] .waveform-strip .waveform-layer {
+  transition: none;
+}
+
 /* ─── Karaoke mode ───────────────────────────────────────────────────── */
 .karaoke-scroll {
   scrollbar-width: none; /* Firefox */
