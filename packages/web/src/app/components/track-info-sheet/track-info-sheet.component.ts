@@ -4,12 +4,9 @@ import { Router } from '@angular/router';
 import type {
   AcquisitionMethod,
   GenreSuggestion,
-  LicenceSuggestion,
-  LicenceCode,
   LyricsDto,
   SongAcquisition,
 } from '@nicotind/core';
-import { LICENCE_VOCAB, LICENCE_LABELS } from '@nicotind/core';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import type {
   ProvenanceRecord,
@@ -96,19 +93,6 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly genreDragIndex = signal<number | null>(null);
   readonly genreDropIndex = signal<number | null>(null);
 
-  // Licence / rights state
-  readonly licenceOptions = LICENCE_VOCAB;
-  readonly licenceOverride = signal<string | null>(null);
-  readonly licenceSuggestion = signal<LicenceSuggestion | null>(null);
-  readonly detectingLicence = signal(false);
-  readonly applyingLicence = signal(false);
-  /** Current licence code — an applied override wins over the song's stored value. */
-  readonly currentLicence = computed(
-    () => this.licenceOverride() ?? this.effectiveSong()?.licence ?? 'unknown',
-  );
-  readonly currentLicenceLabel = computed(
-    () => LICENCE_LABELS[this.currentLicence() as LicenceCode] ?? 'Unknown',
-  );
   // AcoustID fingerprint identify (curator) — see routes/library.ts identify.
   readonly identifyAvailable = signal(false);
   readonly identifying = signal(false);
@@ -386,41 +370,6 @@ export class TrackInfoSheetComponent implements OnInit {
   onGenreDragEnd(): void {
     this.genreDragIndex.set(null);
     this.genreDropIndex.set(null);
-  }
-
-  labelForLicence(code: string): string {
-    return LICENCE_LABELS[code as LicenceCode] ?? code;
-  }
-
-  /** Detect a licence from the file tag / MusicBrainz (read-only). */
-  detectLicenceNow(): void {
-    if (this.detectingLicence()) return;
-    this.detectingLicence.set(true);
-    this.api.getLicenceSuggestion(this.songId()).subscribe({
-      next: (s) => {
-        this.licenceSuggestion.set(s);
-        this.detectingLicence.set(false);
-      },
-      error: () => this.detectingLicence.set(false),
-    });
-  }
-
-  /** Set the licence (curator). Reflects the stored value immediately. */
-  applyLicence(code: string): void {
-    if (this.applyingLicence()) return;
-    this.applyingLicence.set(true);
-    this.api.setLicence(this.songId(), code).subscribe({
-      next: (r) => {
-        this.licenceOverride.set(r.licence ?? 'unknown');
-        this.licenceSuggestion.set(null);
-        this.applyingLicence.set(false);
-      },
-      error: () => this.applyingLicence.set(false),
-    });
-  }
-
-  onLicenceSelect(event: Event): void {
-    this.applyLicence((event.target as HTMLSelectElement).value);
   }
 
   /** Fingerprint the file via AcoustID and hold the match for review (curator). */

@@ -180,7 +180,7 @@ export function joinStored(genres: readonly string[]): string {
 /**
  * Write one override. A `source='user'` row is permanent: no automated source
  * may overwrite it (same contract as `library_artist_identity` and
- * `licence_source='user'`). Returns whether the row was written.
+ * an explicit user source). Returns whether the row was written.
  */
 export function upsertGenreOverride(db: Database, row: GenreOverrideRow): boolean {
   const existing = db

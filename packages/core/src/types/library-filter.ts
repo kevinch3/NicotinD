@@ -10,7 +10,6 @@
  * gracefully.
  */
 
-import { LICENCE_VOCAB } from './licence.js';
 import { isCountryCode } from './origin.js';
 
 /** Perceptual 0–1 axes filterable via three fixed buckets. */
@@ -46,8 +45,6 @@ export interface LibraryFilter {
   genres?: string[];
   /** Opt-in (issue #222): match only a track's primary genre, not its extras. */
   primaryGenreOnly?: boolean;
-  /** Licence codes from LICENCE_VOCAB; 'unknown' matches SQL-NULL (un-licenced) rows. */
-  licences?: string[];
   /** ISO country codes of credited artists; 'unknown' matches artists with no known origin. */
   countries?: string[];
   /** Entity-level starred (album/artist/song starred, not any-track). */
@@ -143,7 +140,6 @@ export function serializeLibraryFilter(f: LibraryFilter): Record<string, string 
     q['genre'] = [...f.genres];
     if (f.primaryGenreOnly) q['primaryOnly'] = 'true';
   }
-  if (f.licences?.length) q['licence'] = f.licences.join(',');
   if (f.countries?.length) q['country'] = f.countries.join(',');
   if (f.starred) q['starred'] = 'true';
   if (f.durationMin !== undefined) q['durMin'] = String(f.durationMin);
@@ -215,11 +211,6 @@ export function parseLibraryFilter(
     if (first(query['primaryOnly']) === 'true') f.primaryGenreOnly = true;
   }
 
-  const licences = list(query['licence'])
-    .map((l) => l.toLowerCase())
-    .filter((l) => (LICENCE_VOCAB as readonly string[]).includes(l));
-  if (licences.length) f.licences = [...new Set(licences)];
-
   const countries = list(query['country'])
     .map((c) => (c.toLowerCase() === 'unknown' ? 'unknown' : c.toUpperCase()))
     .filter((c) => c === 'unknown' || isCountryCode(c));
@@ -248,6 +239,9 @@ export const LIBRARY_FILTER_PARAM_KEYS: readonly string[] = [
   'yearMax',
   'genre',
   'primaryOnly',
+  // Tombstone (issue #683): the licence filter is gone, but this list is what
+  // clears filter params from the URL — keeping the key lets a bookmarked
+  // `?licence=…` still be cleared instead of sticking forever.
   'licence',
   'country',
   'starred',
@@ -266,7 +260,6 @@ export function activeLibraryFilterCount(f: LibraryFilter): number {
   for (const axis of PERCEPTUAL_AXES) if (f.buckets?.[axis]?.length) n++;
   if (f.yearMin !== undefined || f.yearMax !== undefined) n++;
   if (f.genres?.length) n++;
-  if (f.licences?.length) n++;
   if (f.countries?.length) n++;
   if (f.starred) n++;
   if (f.durationMin !== undefined || f.durationMax !== undefined) n++;

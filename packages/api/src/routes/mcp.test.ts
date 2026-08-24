@@ -80,7 +80,6 @@ describe('MCP endpoint (issue #232)', () => {
     };
     const names = body.result.tools.map((t) => t.name);
     expect(names).toContain('search_library');
-    expect(names).toContain('set_song_licence');
     expect(names).toContain('delete_song');
     expect(names).toContain('delete_album');
     expect(body.result.tools[0]!.inputSchema).toBeDefined();
@@ -167,25 +166,6 @@ describe('MCP endpoint (issue #232)', () => {
     expect(ids2).toEqual(['s3', 's4']);
   });
 
-  it('a curate tool sets the licence and audit-logs it', async () => {
-    seedSong('s1', 'Song');
-    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
-    const body = (await (
-      await rpc(token, 'tools/call', {
-        name: 'set_song_licence',
-        arguments: { songId: 's1', licence: 'cc-by' },
-      })
-    ).json()) as { result: { content: Array<{ text: string }> } };
-    expect(body.result.content[0]!.text).toContain('cc-by');
-
-    const row = testDb
-      .query<{ licence: string | null }, [string]>('SELECT licence FROM library_songs WHERE id = ?')
-      .get('s1');
-    expect(row?.licence).toBe('cc-by');
-    const audit = testDb.query('SELECT action FROM audit_log').all() as Array<{ action: string }>;
-    expect(audit.map((a) => a.action)).toContain('song.licence');
-  });
-
   it('tools/list includes set_song_genre', async () => {
     const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
     const body = (await (await rpc(token, 'tools/list')).json()) as {
@@ -270,24 +250,6 @@ describe('MCP endpoint (issue #232)', () => {
     expect(body.result.isError).toBe(true);
     expect(body.result.content[0]!.text).toContain('read-only');
     expect(testDb.query('SELECT song_id FROM library_song_genres').all()).toHaveLength(0);
-  });
-
-  it('refuses a curate tool for a read-only token', async () => {
-    seedSong('s1', 'Song');
-    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:read' });
-    const body = (await (
-      await rpc(token, 'tools/call', {
-        name: 'set_song_licence',
-        arguments: { songId: 's1', licence: 'cc-by' },
-      })
-    ).json()) as { result: { isError: boolean; content: Array<{ text: string }> } };
-    expect(body.result.isError).toBe(true);
-    expect(body.result.content[0]!.text).toContain('read-only');
-    // …and nothing was written.
-    const row = testDb
-      .query<{ licence: string | null }, [string]>('SELECT licence FROM library_songs WHERE id = ?')
-      .get('s1');
-    expect(row?.licence).toBeNull();
   });
 
   it('deletes a song file + row when confirmed with a curate token, and audit-logs it', async () => {

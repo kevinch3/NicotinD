@@ -293,7 +293,7 @@ with a reason.
 Two smaller ones:
 
 - `webpackFinal` maps `.js` specifiers onto `.ts` (`resolve.extensionAlias`). `@nicotind/core`
-  is TypeScript source using ESM-style `./licence.js` imports; esbuild resolves those
+  is TypeScript source using ESM-style `./origin.js` imports; esbuild resolves those
   natively, webpack does not.
 - `ajv@^8` is a root devDependency. `ajv-keywords@5` peers `ajv@^8` and bun does not scope
   it, so it resolved to the hoisted root `ajv`, which was eslint's v6. Packages with a

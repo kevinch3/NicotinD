@@ -4,7 +4,6 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import type { AlbumDetail } from '../../services/api/api-types';
-import { LICENCE_LABELS, type LicenceCode } from '@nicotind/core';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
@@ -74,11 +73,6 @@ export class AlbumDetailComponent implements OnInit {
       const id = this.route.snapshot.paramMap.get('id');
       return id ? this.loadAlbum(id) : undefined;
     });
-  }
-
-  /** Human label for a licence code (badge on the album header). */
-  licenceLabel(code: string): string {
-    return LICENCE_LABELS[code as LicenceCode] ?? code;
   }
 
   // Return to the previous in-app view (e.g. the artist page we came from),

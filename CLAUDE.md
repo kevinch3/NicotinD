@@ -245,9 +245,6 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   read-only `GenreDistributionStripComponent`; pure `radar-geometry.ts` + `genre-projection.ts`;
   album aggregate is `mostCommonGenre`. Weights deliberately do not sum to 1.
   → [genre-radar.md](docs/genre-radar.md)
-- **Music licence / rights per track**: a per-song `licence` code from the closed `LICENCE_VOCAB`,
-  retrieved tags-first (`licenceFromTags`) then MusicBrainz then a curator set. `normalizeLicence`,
-  `unanimousLicence`, `library_songs.licence`. → [music-licence.md](docs/music-licence.md)
 - **Artist origin / nationality**: `library_artist_origins` (MB-first, TTL tombstones, permanent user
   rows); core `origin.ts` vocab + `originCloseness`; a radio axis, a filter, and an artist-page flag
   line with curator edit. → [artist-origin.md](docs/artist-origin.md)

@@ -6,7 +6,6 @@ import {
   ENRICHMENT_TASKS,
   getTask,
   isWholeTokenSubsequence,
-  makeLicenceLookup,
   makeLidarrArtistIdentityResolver,
   pickMbidHit,
   resolveMbidViaLidarr,
@@ -90,7 +89,6 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     lookupArtistInfo: null,
     lookupGenreForRelease: null,
     resolveArtistIdentity: null,
-    lookupLicence: async () => null,
     lookupPopularity: async () => new Map(),
     lookupArtistOrigin: null,
     lookupArtistReleaseGroups: null,
@@ -1528,79 +1526,6 @@ describe('artist-identity task', () => {
   });
 });
 
-describe('licence task', () => {
-  const licence = getTask('licence')!;
-
-  it('is always available (tag reads need nothing)', () => {
-    expect(licence.available(ctx())).toBe(true);
-  });
-
-  it('counts only songs with a NULL licence', () => {
-    seedSong('a');
-    seedSong('b');
-    db.run("UPDATE library_songs SET licence = 'cc-by' WHERE id = 'b'");
-    expect(licence.countPending(db)).toBe(1);
-  });
-
-  it('fills licence + source from the lookup and mirrors it to the file tag', async () => {
-    seedSong('a', { artist: 'Kevin MacLeod', title: 'Cipher' });
-    const written: Array<{ licence?: string }> = [];
-    const c = ctx({
-      fileExists: () => true,
-      lookupLicence: async () => ({ code: 'cc-by', source: 'musicbrainz' }),
-      writeTags: async (_abs: string, tags: { licence?: string }) => {
-        written.push(tags);
-        return true;
-      },
-    });
-    const res = await licence.run(db, c, 25);
-    expect(res.applied).toBe(1);
-    const row = db
-      .query<{ licence: string | null; licence_source: string | null }, [string]>(
-        'SELECT licence, licence_source FROM library_songs WHERE id = ?',
-      )
-      .get('a');
-    expect(row?.licence).toBe('cc-by');
-    expect(row?.licence_source).toBe('musicbrainz');
-    expect(written).toEqual([{ licence: 'cc-by' }]);
-    expect(licence.countPending(db)).toBe(0);
-  });
-
-  it('ledgers a "no licence found" miss without tallying it, dropping it from pending', async () => {
-    seedSong('a');
-    const c = ctx({ fileExists: () => true, lookupLicence: async () => null });
-    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
-      const res = await licence.run(db, c, 25);
-      expect(res.applied).toBe(0);
-      // A confident "no data" is NOT a run failure — nothing is broken.
-      expect(res.failed).toBe(0);
-    }
-    // After the attempt cap it drops out of the pending set (no eternal re-query).
-    expect(licence.countPending(db)).toBe(0);
-    const row = db
-      .query<{ licence: string | null }, [string]>('SELECT licence FROM library_songs WHERE id = ?')
-      .get('a');
-    expect(row?.licence).toBeNull();
-  });
-});
-
-describe('makeLicenceLookup (issue #329 — tag-only, no MusicBrainz)', () => {
-  it('takes no dependencies and cannot reach the network', () => {
-    // The resolver used to accept a dataDir to build a MusicBrainzClient. #329
-    // removed the MB step (0 hits across 14.5k prod songs), so it now takes zero
-    // args — there is no code path left that could construct a network client.
-    expect(makeLicenceLookup).toHaveLength(0);
-  });
-
-  it('returns null for a file with no licence tag instead of falling back to the network', async () => {
-    const lookup = makeLicenceLookup();
-    // An unreadable/absent path makes readAudioTags reject; pre-#329 this would
-    // have degraded to the MB artist+title search. It must now simply be null.
-    const res = await lookup({ abs: '/does/not/exist/never-a-real-file.opus' });
-    expect(res).toBeNull();
-  });
-});
-
 describe('popularity task (issue #220)', () => {
   const pop = getTask('popularity')!;
 
@@ -2156,7 +2081,6 @@ describe('registry', () => {
       'genre-audio',
       'genre-discogs',
       'key',
-      'licence',
       'popularity',
     ]);
   });

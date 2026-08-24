@@ -60,7 +60,7 @@ Modeled on `library_artist_meta`:
 - **Survives identity fixes**: `carryArtistCuration` moves the row on a
   rename/merge (artist ids re-mint from the name), never clobbering the
   destination's own — the #305 orphaned-portrait bug class.
-- **No file-tag write-back** (unlike licence/bpm/genre): origin is
+- **No file-tag write-back** (unlike bpm/genre): origin is
   artist-level and extrinsic to any one file; denormalizing into song tags
   would need reconciliation on every conflict. Follows the popularity
   precedent — extrinsic data stays DB-only, and the scanner never touches it.

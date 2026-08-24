@@ -1,7 +1,7 @@
 # Popularity / hotness signal (issue #220)
 
 Every other per-song signal in the library is **intrinsic** — BPM, key, energy,
-genre, licence all come from the audio or its tags. Popularity is the first
+genre all come from the audio or its tags. Popularity is the first
 **extrinsic** one: how widely listened a recording is, so the library can answer
 "which of this artist's tracks are the hits?" for radio seeding, "Popular"
 curated shelves, and acquisition prioritization.
@@ -37,13 +37,13 @@ out of v1 to stay consistent with the codebase's no-fuzzy-lookup rule.
 
 ## Storage
 
-Additive columns on `library_songs` (`db.ts`), same contract as `licence`:
+Additive columns on `library_songs` (`db.ts`), the same additive-column contract:
 
 - `popularity REAL` — a **normalized 0–1 scalar** (see below). NULL = unknown, so
   the enrichment task (`WHERE popularity IS NULL`) keeps trying.
 - `popularity_source TEXT` — provenance, `'listenbrainz'` today.
 
-Unlike genre/bpm/licence, popularity is **not mirrored to a file tag**: it is
+Unlike genre/bpm, popularity is **not mirrored to a file tag**: it is
 extrinsic and drifts over time, so it lives only in the DB column. That also
 means the scanner never writes it — the column is simply absent from the
 scanner's upsert, so it survives a rescan untouched (no COALESCE needed).
@@ -63,7 +63,7 @@ high or low, it is the one knob to turn.
 ## The `popularity` enrichment task
 
 `packages/api/src/services/enrichment/tasks.ts` — one `EnrichmentTask`, mirroring
-`licenceTask`:
+the other optional fills:
 
 - **Default-on** in `DEFAULT_PROCESSING_SETTINGS.tasks`, **never a gate**: an
   extrinsic network signal must never hold a fresh download in quarantine.
@@ -90,7 +90,7 @@ Admin panel: a "Popularity (ListenBrainz)" task toggle in Library processing.
 
 `packages/api/src/scripts/backfill-popularity.ts` — dry-run by default, `--apply`
 writes the DB (no file-tag write, since popularity isn't tagged). Same shape as
-`backfill-licence.ts`; resolves MBIDs from tags, batches the ListenBrainz lookup,
+the other backfill scripts; resolves MBIDs from tags, batches the ListenBrainz lookup,
 reports scored / no-data / no-MBID-tag counts.
 
 ## Deliberately left as follow-ups
@@ -101,7 +101,7 @@ product-decision consumers for later, each behind its own choice:
 - **Radio scoring** — whether popularity becomes a weighted axis in
   `scoreSimilarity` / `toOrderable`, or is used only in curated-playlist recipe
   `where`/`sort`.
-- **Album/artist aggregate** — max-track vs. mean (mirror `unanimousLicence`, or a
+- **Album/artist aggregate** — max-track vs. mean (a unanimity rule, or a
   numeric aggregate).
 - **A local play-count axis** — an internal, no-network complementary signal, and
   whether it feeds the same column or a separate `internal_popularity`.

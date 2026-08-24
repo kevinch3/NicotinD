@@ -71,9 +71,8 @@ applies it, then runs the handler; every write is audit-logged.
 | `search_library` | read | library artists/albums/songs by name |
 | `list_recent_songs` | read | recently-landed songs, newest first, paged, optional missing-genre filter |
 | `get_artist` | read | one artist + their albums |
-| `get_album_tracks` | read | an album's songs (genre, licence) |
+| `get_album_tracks` | read | an album's songs, with their genre |
 | `set_song_genre` | curate | `services/song-genre-mutate.ts` `mutateSongGenre` + `song.genre` audit |
-| `set_song_licence` | curate | the same UPDATE + `song.licence` audit as the route |
 | `delete_song` | curate, **destructive** | `services/library-deletion.ts` `deleteOne` + `song.delete` audit |
 | `delete_album` | curate, **destructive** | `services/library-deletion.ts` `deleteAlbum` + `album.delete` audit |
 | `merge_artist` | curate, **destructive** | `services/artist-identity-mutate.ts` `mutateArtistIdentity` (merge mode, one or many raw names) + `artist.identity` audit |

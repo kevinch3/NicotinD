@@ -46,7 +46,7 @@ naming that fact in the type system, not porting anything.
 
 `/api/mcp` is server-side and therefore *structurally cannot* reach the thing users most want
 an agent to drive: the running player. Its tools are all library-state
-(`search_library` / `get_artist` / `get_album_tracks` / `set_song_licence` /
+(`search_library` / `get_artist` / `get_album_tracks` / `set_song_genre` /
 `delete_song` / `delete_album` / `merge_artist`). Everything in `PlayerService`
 (`playSingle`, `queueNext`, `startRadioWithFilter`, `jumpToQueueIndex`, `toggleVocalMute`),
 `LikeService`, the Library find bar and the `/get` omnibox lives only in the tab. There is no

@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import type { Database } from 'bun:sqlite';
-import { isLicenceCode } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import {
   verifyAgentToken,
@@ -181,7 +180,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: 'get_album_tracks',
-    description: 'List the songs on one album by album id, with genre and licence.',
+    description: 'List the songs on one album by album id, with their genre.',
     access: 'read',
     inputSchema: {
       type: 'object',
@@ -196,11 +195,10 @@ export const MCP_TOOLS: McpTool[] = [
             title: string;
             artist: string;
             genre: string | null;
-            licence: string | null;
           },
           [string]
         >(
-          'SELECT id, title, artist, genre, licence FROM library_songs WHERE album_id = ? ORDER BY disc, track',
+          'SELECT id, title, artist, genre FROM library_songs WHERE album_id = ? ORDER BY disc, track',
         )
         .all(str(args.id));
       return JSON.stringify({ songs }, null, 2);
@@ -248,51 +246,6 @@ export const MCP_TOOLS: McpTool[] = [
         },
       );
       return JSON.stringify({ ok: true, genres: result.genres });
-    },
-  },
-  {
-    name: 'set_song_licence',
-    description:
-      "Set or clear a song's rights/licence code (safe curation). Pass an empty string or 'unknown' to clear. Audit-logged.",
-    access: 'curate',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        songId: { type: 'string' },
-        licence: {
-          type: 'string',
-          description:
-            "A LICENCE_VOCAB code (e.g. 'cc-by', 'public-domain', 'all-rights-reserved'), or '' / 'unknown' to clear.",
-        },
-      },
-      required: ['songId', 'licence'],
-    },
-    handler: ({ db, identity }, args) => {
-      const songId = str(args.songId);
-      const raw = str(args.licence).trim().toLowerCase();
-      const clear = raw === '' || raw === 'unknown';
-      if (!clear && !isLicenceCode(raw)) return JSON.stringify({ error: 'invalid licence code' });
-      const song = db
-        .query<{ id: string }, [string]>('SELECT id FROM library_songs WHERE id = ?')
-        .get(songId);
-      if (!song) return JSON.stringify({ error: 'song not found' });
-      const value = clear ? null : raw;
-      db.run('UPDATE library_songs SET licence = ?, licence_source = ? WHERE id = ?', [
-        value,
-        value ? 'user' : null,
-        songId,
-      ]);
-      recordAudit(
-        db,
-        { sub: identity.userId, username: `agent:${identity.tokenId}` },
-        'song.licence',
-        {
-          targetKind: 'song',
-          targetId: songId,
-          detail: `${value ?? 'cleared'} (via MCP agent)`,
-        },
-      );
-      return JSON.stringify({ ok: true, licence: value });
     },
   },
   {

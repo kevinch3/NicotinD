@@ -16,7 +16,6 @@ export type ProcessingTaskId =
   | 'audio-features'
   | 'descriptors'
   | 'artist-identity'
-  | 'licence'
   | 'genre-audio'
   | 'genre-discogs'
   | 'popularity'
