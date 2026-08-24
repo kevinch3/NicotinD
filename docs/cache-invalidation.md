@@ -26,7 +26,7 @@ invalidation rule is narrow and checkable:
 | `resyncLibrary`                                | ✅           | full rescan rebuilds both tables            |
 | `hideAlbum` / `unhideAlbum`                    | ❌ correct   | `/artists` filters `library_artists.hidden`, not album hidden; the albums list is uncached |
 | `reclassifyAlbum` / `clearAlbumOverride`       | ❌ correct   | moves an album between tabs; the albums list is uncached |
-| artist-image / album-cover / lyrics / licence  | ❌ correct   | `coverArt` is id-stable; no list membership change |
+| artist-image / album-cover / lyrics            | ❌ correct   | `coverArt` is id-stable; no list membership change |
 | `optimizeAlbumMetadata`, `analyze*`, reclassify-genres | ❌ correct | per-id writes, no list impact          |
 
 ## Structural findings — classes that cannot occur here

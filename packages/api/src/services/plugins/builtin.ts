@@ -84,7 +84,7 @@ export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPlu
   // shell is registered so it's manageable in Extensions; no enrichment task
   // consumes its `genre` capability yet (that lands gated by the #191 spike).
   // `artist-info` (issue #195) is wired: MBID-first resolution via a real
-  // MusicBrainzClient (same on-disk cache convention as makeLicenceLookup in
+  // MusicBrainzClient (same on-disk cache convention as the other MB lookups in
   // enrichment/tasks.ts) composed through makeDiscogsArtistResolver above.
   const mbClientForDiscogs = new MusicBrainzClient(
     join(dataDir, 'musicbrainz-cache.json'),

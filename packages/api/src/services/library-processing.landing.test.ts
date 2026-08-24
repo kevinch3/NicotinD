@@ -65,7 +65,6 @@ function fakeCtx(opts: { bpmResult?: number | null; sidecar?: boolean } = {}) {
     lookupArtistInfo: null,
     lookupGenreForRelease: null,
     resolveArtistIdentity: null,
-    lookupLicence: async () => null,
     lookupPopularity: async () => new Map(),
     lookupArtistOrigin: null,
     lookupArtistReleaseGroups: null,

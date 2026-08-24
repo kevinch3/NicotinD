@@ -1,193 +1,62 @@
-# Music licence / rights per track
+# Music licence / rights per track — ROLLED BACK (issue #683, 2026-08-24)
 
-A track can carry a **rights/licence** value (Public Domain, a Creative Commons
-flavour, All Rights Reserved, …) so users can tell what they're allowed to do
-with it, filter by it, and — as a follow-up — find whole albums/compilations
-that are Public Domain. Before this feature there was **no** notion of
-licence/copyright anywhere in the metadata path.
+**This feature no longer exists.** A track's rights/licence code used to be
+displayed, curator-editable, filterable, tag-mirrored and background-filled; all of
+that is removed. This page is kept as the record of what was built and why it was
+undone, because the reasoning generalises to the next optional-metadata idea.
 
-The design deliberately mirrors the **genre** property end-to-end (a per-song
-scalar that is displayed, curator-editable, filterable, tag-mirrored, and
-COALESCE-preserved across rescans), because that path is already proven.
+## Why it was removed
 
-## Vocabulary (the one closed set)
+It failed on its own stated goal — *"efficiently retrieve, reasonable accuracy"* —
+in two measured steps, not one:
 
-`packages/core/src/types/licence.ts` — a browser-safe, pure module shared by the
-API (scanner, tag seam, filter SQL, enrichment) and the web UI:
+1. **Issue #329** already cut the MusicBrainz `license` url-relation lookup after a
+   read-only prod sweep found it had succeeded **0 times across 14.5k songs** while
+   spending the shared 1-req/sec MusicBrainz budget on three attempts per new
+   download. The tag-only step was left in place because it was believed to be
+   "producing all the data".
+2. **This issue.** A hand-reviewed curation sample of ~46 recently-landed tracks
+   found the tag-only remainder is *also* essentially not yielding: every sampled
+   track still read `licence: null`. With both automatic paths at ~zero, what was
+   left was a UI row, a filter, an enrichment task and a scanner column that a
+   human would have had to populate entirely by hand.
 
-- `LICENCE_VOCAB` — the canonical codes: `public-domain`, `cc0`, `cc-by`,
-  `cc-by-sa`, `cc-by-nc`, `cc-by-nd`, `cc-by-nc-sa`, `cc-by-nc-nd`,
-  `all-rights-reserved`, `unknown`.
-- `LICENCE_LABELS` / `LICENCE_BADGES` — human label + compact chip ("PD", "CC BY").
-- `isLicenceCode` / `isFreeLicence` — guards.
-- `normalizeLicence(raw)` — maps a free-text / URL rights string (a file tag's
-  `LICENSE`/`COPYRIGHT`/`WCOP` frame, or a MusicBrainz `license` url-relation) to
-  a canonical code. **Positive identifications only:** it returns `null` for
-  unrecognised input *and* never guesses `all-rights-reserved` from a bare
-  copyright notice ("© 2020 Artist" → `null`, not ARR). Only literal
-  "all rights reserved" maps to ARR.
+The lesson worth keeping: **#329 deescalated the half that was measurably dead and
+kept the half that was assumed alive.** The assumption was never measured. When an
+optional-source feature underdelivers, measure *every* path before deciding which
+one to keep.
 
-### `unknown` is a UI/filter bucket, never a stored value
+## What was removed
 
-A track with no known licence is stored as SQL **NULL**, not the string
-`"unknown"`. That keeps the background enrichment task (which fills
-`WHERE licence IS NULL`) trying to resolve it, and lets the filter's `unknown`
-bucket mean "un-licenced" (`licence IS NULL`). Setting a track's licence to
-`unknown` from the UI clears it (stores NULL).
+- The `licence` enrichment task, its `lookupLicence` context primitive, and
+  `scripts/backfill-licence.ts`.
+- `GET /api/library/songs/:id/licence-suggestion` and
+  `POST /api/library/songs/:id/licence`, plus the `set_song_licence` MCP tool and
+  `licence` in `get_album_tracks`'s response.
+- `@nicotind/core` `types/licence.ts` in full — the vocabulary, labels, badges,
+  guards and `normalizeLicence` — and the `LicenceSuggestion` DTO.
+- Scanner threading: `licenceFromTags`, the `ScannedTrack → SongRow → persist`
+  column, and the `unanimousLicence` album aggregate. The scanner no longer reads
+  or writes `LICENSE`/`WCOP`/`TCOP` frames.
+- `MusicBrainzClient.getLicence`.
+- `LibraryFilter.licences`, `licenceWheres`, and their use in the song / album /
+  artist filter SQL.
+- Web: the track-info sheet's Licence row (value, Detect, curator `<select>`), the
+  filter panel's Licence chip group, the album-header Public-Domain badge, and the
+  Admin → Library processing task toggle.
 
-## Storage & the rescan-durability contract
+## What was deliberately kept
 
-`library_songs` gains two additive columns (`db.ts`, same idempotent
-`ALTER TABLE … ADD COLUMN` pattern as `bpm`/`energy`):
+- **The DB columns.** `library_songs.licence`, `library_songs.licence_source` and
+  `library_albums.licence` are still there and still hold whatever was written
+  before. CLAUDE.md's schema rule is additive-only with no down-migration path, so
+  they are orphaned rather than dropped — and any value a curator did set is
+  preserved, should the feature ever be revived.
+- **`'licence'` in `LIBRARY_FILTER_PARAM_KEYS`.** That list is what *clears* filter
+  params from the URL, so keeping the key lets a bookmarked `?licence=…` still be
+  cleared instead of sticking forever. `parseLibraryFilter` ignores the value.
 
-- `licence TEXT` — the canonical code.
-- `licence_source TEXT` ∈ `{tag, musicbrainz, user}` — provenance.
+## Related
 
-The scanner (`library-scanner.ts`) threads `licence` through
-`ScannedTrack → SongRow → persist`, with
-`licence = COALESCE(excluded.licence, library_songs.licence)` in the upsert —
-identical durability to `bpm`/`genre`: a rescan that reads a `LICENSE` tag
-refreshes it; a tag-less rescan keeps a value the task or a curator wrote. The
-scanner **never writes `licence_source`**, so a manual `user` source survives
-rescans (mirrors how `landed_at` is left untouched).
-
-## Where it comes from ("efficiently retrieve, reasonable accuracy")
-
-Licence metadata is genuinely sparse, so retrieval is layered, most-reliable
-first, and honest about misses:
-
-1. **File tags (zero network, high precision).** `audio-tags.ts`
-   `licenceFromTags(native, copyright)` reads `LICENSE` → `WCOP` → `TCOP` →
-   `COPYRIGHT` (and the music-metadata `common.copyright` fold), normalised via
-   `normalizeLicence`. The scanner applies this on the first scan, so archive.org
-   / Creative-Commons downloads are licence-tagged with no network calls. Writes
-   go to a `LICENSE` frame **only** (never the native copyright frame, so an
-   existing "©" notice is preserved).
-2. **MusicBrainz `license` url-relations — on-demand paths only (see #329).**
-   `musicbrainz-client.ts` `getLicence({ mbRecordingId?, mbReleaseId?, artist?,
-   title? })` fetches with `inc=url-rels` (recording first, then release) and maps
-   a `license` relation's URL through `normalizeLicence`. Reuses the existing
-   base-url / 1-req-sec / file-cache plumbing — no new HTTP client. Coverage is
-   sparse (mostly CC releases); a miss returns `null`, never a false positive.
-   **This step now runs only for the user-initiated paths** — the track-info
-   **Detect** button (`/licence-suggestion`) and the `backfill-licence.ts`
-   operator script. The **background enrichment task no longer calls MB**: a
-   read-only prod sweep found it had succeeded 0 times across 14.5k songs while
-   spending the shared 1-req/sec MB budget on every new download's 3 attempts, so
-   #329 dropped the automatic MB pass (the tag step below produced all the data).
-3. **Manual set.** A curator picks a value in the track-info sheet.
-
-## The `licence` enrichment task (background fill)
-
-`packages/api/src/services/enrichment/tasks.ts` — one `EnrichmentTask` appended
-to `ENRICHMENT_TASKS`, mirroring `genreTask`:
-
-- `countPending` / `run` select `WHERE licence IS NULL` (excluding ledgered
-  files via `notPermanentlyFailedClause`).
-- Resolves via the injected `ctx.lookupLicence` primitive — **tag-only as of
-  #329** (`makeLicenceLookup()` reads the file's `LICENSE`/`COPYRIGHT` frame and
-  returns `null` otherwise; the MB fallback was removed, so the resolver takes no
-  `dataDir` and cannot reach the network). The on-demand Detect route and
-  `backfill-licence.ts` keep their MB step.
-- On a hit: `UPDATE … SET licence, licence_source` + mirror to the file's
-  `LICENSE` tag + `clearAnalysisFailure`.
-- On a confident miss: ledgered via `NoConfidentResultError` — it drops out of
-  the pending set (no eternal re-query) but is **not** tallied as a run failure
-  (nothing is broken; the file simply carries no licence tag), like unresolvable
-  genre.
-
-### Not a landing gate
-
-`licence` is in `DEFAULT_PROCESSING_SETTINGS.tasks` (default on) but **not** in
-`.gates`. An optional, uncertain, network-dependent source must never hold a
-fresh download in quarantine, so a licence is filled in the background and a
-download lands without waiting on it.
-
-### Bulk backfill
-
-`packages/api/src/scripts/backfill-licence.ts` — dry-run by default, `--apply`
-writes DB + tag, `--no-mb` for a fast tags-only pass. Same shape as
-`backfill-genre.ts`.
-
-## Filtering
-
-`LibraryFilter` gains `licences?: string[]` (`library-filter.ts`, with
-serialize/parse/param-keys/count). The shared `licenceWheres(codes, col)`
-(`library-filter-sql.ts`) emits `col IN (…)` for positive codes and
-`col IS NULL` for the `unknown` bucket (ORed together), used two ways:
-
-- **Songs** (`songFilterWheres`, `s.licence`): filter tracks by their own licence.
-- **Albums / Compilations** (`albumFilterWheres`): filter the **stored album
-  aggregate** `library_albums.licence` directly — "the album is *entirely* this
-  licence" — so the `unknown` bucket = a mixed/un-licenced album. Licence is
-  removed from the any-track EXISTS here so it isn't double-applied.
-- **Artists** (`artistFilterWheres`): no album-style aggregate exists, so licence
-  stays an any-track match ("artist has a track with this licence").
-
-## Web UI
-
-- **Track-info sheet** (`track-info-sheet.component`): a Licence row showing the
-  current value as a chip, a **Detect** button (calls the read-only suggestion
-  route), and — for curators — a vocabulary `<select>` to set it + an Apply
-  button when a detected value differs. Modeled on the genre chips + apply flow.
-- **Filter panel** (`library-filter-panel.component`): a Licence chip group
-  (`toggleLicence`), mirroring the mood chips.
-- **Admin → Library processing**: a "Licence / rights (tags → MusicBrainz)"
-  task toggle.
-
-## API
-
-- `GET  /api/library/songs/:id/licence-suggestion` — read-only detect (tag → MB);
-  `{ current, suggested, source }`.
-- `POST /api/library/songs/:id/licence` — set/clear (curator-gated, audit-logged);
-  `{ ok, licence }`. `''`/`unknown` clears (NULL); a valid code is stored with
-  `licence_source='user'` and mirrored to the file tag.
-
-Both live in `routes/library.ts` next to the genre routes.
-
-## Why not …
-
-- **Default unknowns to All Rights Reserved?** No — that asserts a legal status
-  we can't verify. Unknown stays unknown (NULL).
-- **A side table instead of a column?** The column + tag-mirror + COALESCE +
-  `licence_source` guard already makes user values survive rescans (the task only
-  touches `licence IS NULL` rows, and the scanner never overwrites the `user`
-  source), so no side table is needed — same as `genre`/`bpm`.
-- **A gate?** No — see "Not a landing gate".
-
-## Tests
-
-- `licence.test.ts` — the `normalizeLicence` mapping table (URLs, CC clause text,
-  PD/CC0, never-guess-ARR, round-trip of canonical codes).
-- `library-filter.test.ts` — `licences` serialize/parse round-trip + lenient drop.
-- `library-filter-sql.test.ts` — the `IN` / `IS NULL` (unknown) branches.
-- `musicbrainz-client.test.ts` — `getLicence` url-rels parsing + caching.
-- `enrichment/tasks.test.ts` — the `licence` task (fill + ledgered miss).
-- `audio-tags.test.ts` — ID3 `LICENSE` round-trip + read-side URL normalization +
-  `licenceFromTags` priority.
-- `library.analyze.test.ts` — the set/clear/validation/role-gating + suggestion
-  routes.
-
-## Album / compilation "Public Domain" (the aggregate)
-
-`library_albums.licence` (ALTER-only column, indexed) holds the **unanimous**
-licence code across an album's tracks — `unanimousLicence(codes)` in
-`library-scanner.ts`: the single code every track shares, else `null`. A single
-un-licenced track makes the album non-unanimous, so an album reads as "Public
-Domain" only when **every** track is PD — exactly the semantics the PD-albums
-filter needs.
-
-- **Aggregation** happens in the `buildLibrary` reduce from the tracks' scanned
-  (tag-state) licences — like the album genre/year — so an enrichment fill is
-  reflected on the **next full rescan**. Persisted with `licence = excluded.licence`
-  (overwrite, since it's a full recompute each scan).
-- **Surfaced** through `ALBUM_SELECT` → `rowToAlbum` → the `Album` / `AlbumDetail`
-  DTOs (absent when `null`).
-- **Filtered** on the album row directly (see Filtering above), so the Albums and
-  Compilations tabs can show "Public Domain only".
-- **Badged** on the album page header (`album-detail` `licenceLabel` + a chip),
-  `data-testid="album-licence-badge"`.
-
-Because it's tag-state-derived at scan time, an album's aggregate can lag behind
-per-track enrichment until the next full rescan — an accepted trade-off matching
-the album genre's behaviour.
+- Issue #329 — the earlier partial deescalation this extends.
+- Issue #683 — the rollback decision (curator review, 2026-08-24).

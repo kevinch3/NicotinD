@@ -104,48 +104,6 @@ function mockFetch(body: unknown): string[] {
   return calls;
 }
 
-describe('MusicBrainzClient getLicence', () => {
-  it('parses a license url-relation on a recording into a canonical code', async () => {
-    const calls = mockFetch({
-      relations: [
-        { type: 'producer', url: { resource: 'https://example.com/x' } },
-        { type: 'license', url: { resource: 'https://creativecommons.org/licenses/by-sa/4.0/' } },
-      ],
-    });
-    const client = testClient();
-    expect(await client.getLicence({ mbRecordingId: 'rec-1' })).toBe('cc-by-sa');
-    expect(calls[0]).toContain('/recording/rec-1');
-    expect(calls[0]).toContain('inc=url-rels');
-  });
-
-  it('returns null when there is no license relation', async () => {
-    mockFetch({ relations: [{ type: 'stream', url: { resource: 'https://x' } }] });
-    const client = testClient();
-    expect(await client.getLicence({ mbRecordingId: 'rec-2' })).toBeNull();
-  });
-
-  it('returns null (no network) when neither id nor artist+title is given', async () => {
-    // fetch stays the throwing default from beforeEach — it must not be called.
-    const client = testClient();
-    expect(await client.getLicence({})).toBeNull();
-  });
-
-  it('caches the result so a repeat lookup does not re-query', async () => {
-    const calls = mockFetch({
-      relations: [
-        {
-          type: 'license',
-          url: { resource: 'https://creativecommons.org/publicdomain/zero/1.0/' },
-        },
-      ],
-    });
-    const client = testClient();
-    expect(await client.getLicence({ mbReleaseId: 'rel-9' })).toBe('cc0');
-    expect(await client.getLicence({ mbReleaseId: 'rel-9' })).toBe('cc0');
-    expect(calls).toHaveLength(1);
-  });
-});
-
 function mockFetchFail(): string[] {
   const calls: string[] = [];
   globalThis.fetch = (async (url: string) => {

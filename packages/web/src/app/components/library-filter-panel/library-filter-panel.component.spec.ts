@@ -90,18 +90,8 @@ describe('LibraryFilterPanelComponent', () => {
     expect(emitted()).toEqual({});
   });
 
-  it('toggles licences immutably from the input, dropping the key when it empties', () => {
-    const fixture = setup({ licences: ['public-domain'] });
-    const emitted = lastEmitted(fixture);
-    fixture.componentInstance.toggleLicence('cc-by');
-    expect(emitted()?.licences).toEqual(['public-domain', 'cc-by']);
-    // Same input each time (the host owns it): toggling the existing code removes it.
-    fixture.componentInstance.toggleLicence('public-domain');
-    expect(emitted()).toEqual({});
-  });
-
-  it('counts an active licence group in the badge', () => {
-    const fixture = setup({ licences: ['public-domain'] });
+  it('counts an active filter group in the badge', () => {
+    const fixture = setup({ genres: ['Techno'] });
     const badge = fixture.debugElement.query(By.css('[data-testid="library-filter-count"]'));
     expect(badge.nativeElement.textContent.trim()).toBe('1');
   });
@@ -183,7 +173,7 @@ describe('LibraryFilterPanelComponent', () => {
       expect(cls(trigger)).toContain('bg-theme-surface-2');
     });
 
-    it('a Camelot cell matches the mood/licence chip shape (rounded-full, px-2)', () => {
+    it('a Camelot cell matches the mood chip shape (rounded-full, px-2)', () => {
       const fixture = setup();
       openPanel(fixture);
       const keyBtn = fixture.debugElement.query(By.css('[data-testid="library-filter-key-8A"]'));

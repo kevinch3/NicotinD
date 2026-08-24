@@ -53,16 +53,6 @@ import {
   notPermanentlyFailedClause,
 } from './analysis-failures.js';
 
-/** A licence resolved for one song, with its provenance.
- *
- * `'musicbrainz'` is retained in the union for backward compatibility — it was a
- * historical `licence_source` value before the MB lookup was removed (issue
- * #329) — but the resolver no longer produces it; only `'tag'` is minted here. */
-export interface LicenceLookupResult {
-  code: string;
-  source: 'tag' | 'musicbrainz';
-}
-
 /**
  * Enrichment task registry — the single extension point for the windowed library
  * processor. To add a future task (e.g. mood analysis) append one `EnrichmentTask`
@@ -102,13 +92,12 @@ export interface EnrichmentContext {
       bpm?: number;
       genre?: string;
       key?: string;
-      licence?: string;
       mbRecordingId?: string;
     } & FeatureTags
   >;
   writeTags: (
     abs: string,
-    tags: { bpm?: number; genre?: string; key?: string; licence?: string } & FeatureTags,
+    tags: { bpm?: number; genre?: string; key?: string } & FeatureTags,
   ) => Promise<boolean>;
   analyzeBpm: (abs: string, onError?: (err: unknown) => void) => Promise<number | null>;
   /** Sidecar tempo detection (library-relative path) — preferred over the local
@@ -136,18 +125,6 @@ export interface EnrichmentContext {
   descriptorsAvailable: () => boolean;
   /** Returns the suggested genre for an artist, or null when unavailable. */
   lookupGenre: (artist: string) => Promise<string | null>;
-  /**
-   * Resolve a rights/licence code for one song from the file's own
-   * LICENSE/COPYRIGHT tag (zero network). Returns null when the file carries no
-   * licence tag (the common case). Never throws — a read blip degrades to null.
-   *
-   * The MusicBrainz `license` url-relation lookup that used to follow the tag
-   * read was removed in issue #329: a read-only prod sweep found it had
-   * succeeded 0 times across 14.5k songs while spending the shared 1-req/sec MB
-   * budget on every new download's 3 attempts. Every real licence value comes
-   * from tags or the manual curator set.
-   */
-  lookupLicence: (song: { abs: string }) => Promise<LicenceLookupResult | null>;
   /**
    * Batched ListenBrainz listen-count lookup for the popularity signal (issue
    * #220). Keyed by recording MBID; a `null` value means ListenBrainz confirmed
@@ -521,33 +498,11 @@ export function createEnrichmentContext(deps: {
     lookupArtistInfo: deps.lookupArtistInfo ?? null,
     lookupGenreForRelease: deps.lookupGenreForRelease ?? null,
     resolveArtistIdentity: deps.lidarr ? makeLidarrArtistIdentityResolver(deps.lidarr) : null,
-    lookupLicence: makeLicenceLookup(),
     lookupPopularity: makePopularityLookup(deps.dataDir ?? null),
     lookupArtistOrigin: deps.lookupArtistOrigin ?? makeArtistOriginLookup(deps.dataDir ?? null),
     lookupArtistReleaseGroups:
       deps.lookupArtistReleaseGroups ?? makeArtistReleaseGroupsLookup(deps.dataDir ?? null),
     fileExists: (abs) => existsSync(abs),
-  };
-}
-
-/**
- * Build a licence resolver: the file's own LICENSE/COPYRIGHT tag (zero network).
- *
- * The MusicBrainz `license` url-relation lookup that used to follow the tag read
- * was removed in issue #329 — a read-only prod sweep found it had succeeded 0
- * times across 14.5k songs (every real value came from tags applied at scan
- * time or the manual curator set) while spending the shared 1-req/sec MB budget
- * on up to 3 attempts per new download. Dropping it keeps the tag path (which
- * produced the data) and reclaims that budget for the lookups that do work
- * (`library_mbids` resolution, artist-info).
- */
-export function makeLicenceLookup(): (song: {
-  abs: string;
-}) => Promise<LicenceLookupResult | null> {
-  return async (song) => {
-    const tags = await readAudioTags(song.abs).catch(() => null);
-    if (tags?.licence) return { code: tags.licence, source: 'tag' };
-    return null;
   };
 }
 
@@ -1354,77 +1309,6 @@ const artistIdentityTask: EnrichmentTask = {
 };
 
 /**
- * Rights/licence fill: the file's own LICENSE/COPYRIGHT tag first (zero network),
- * then a MusicBrainz `license` url-relation. Always available (tag reads need
- * nothing; MB is a bonus). Never a landing gate — an optional/uncertain source
- * must not strand a fresh download. A confident "no licence found" is ledgered
- * via NoConfidentResultError (drops out of the queue, NOT tallied as a failure —
- * nothing is broken, MB simply has no data), exactly like unresolvable genre.
- */
-const licenceTask: EnrichmentTask = {
-  id: 'licence',
-  label: 'Licence / rights',
-  satisfiedColumnSql: 'licence IS NOT NULL',
-  available: () => true,
-  countPending: (db) =>
-    Number(
-      (
-        db
-          .query<{ n: number }, []>(
-            `SELECT COUNT(*) AS n FROM library_songs WHERE licence IS NULL${notPermanentlyFailedClause(
-              'licence',
-            )}`,
-          )
-          .get() ?? { n: 0 }
-      ).n,
-    ),
-  run: async (db, ctx, limit) => {
-    const rows = db
-      .query<SongRow, [number]>(
-        `SELECT id, path, artist, title, size FROM library_songs WHERE licence IS NULL${notPermanentlyFailedClause(
-          'licence',
-        )} ORDER BY created DESC LIMIT ?`,
-      )
-      .all(limit);
-
-    const labels: string[] = [];
-    const tally: FailureTally = { failed: 0, sample: null };
-    let applied = 0;
-    for (const song of rows) {
-      const abs = resolveSongAbsPath(ctx.musicDir, song.path);
-      if (!ctx.fileExists(abs)) continue;
-      try {
-        const res = await ctx.lookupLicence({ abs });
-        if (!res) {
-          noteItemFailure(
-            db,
-            tally,
-            song,
-            'licence',
-            new NoConfidentResultError('no licence found'),
-          );
-          continue;
-        }
-        db.run('UPDATE library_songs SET licence = ?, licence_source = ? WHERE id = ?', [
-          res.code,
-          res.source,
-          song.id,
-        ]);
-        // Mirror to the file tag so a rescan reads it back. A 'tag' source already
-        // carries it, but the write is idempotent (and future non-tag sources need it).
-        await ctx.writeTags(abs, { licence: res.code }).catch(() => false);
-        clearAnalysisFailure(db, song.id, 'licence');
-        applied++;
-        labels.push(`${song.artist} — ${song.title} → ${res.code}`);
-      } catch (err) {
-        noteItemFailure(db, tally, song, 'licence', err);
-      }
-    }
-    return { applied, labels, failed: tally.failed, errorSample: tally.sample };
-  },
-};
-
-/**
  * Top-1 softmax probability below which a genre_discogs400 inference is
  * ledgered-not-written (issue #187 task A2). Operator-tunable via env var
  * (like other sidecar knobs, e.g. NICOTIND_ANALYSIS_URL) rather than a
@@ -1759,7 +1643,7 @@ const genreAudioTask: EnrichmentTask = {
  * need an MBID→spotify-id hop and the spotify plugin's creds). The number is a
  * global listen count mapped to a 0–1 scalar by `normalizePopularity`.
  *
- * Discipline mirrors `licenceTask`: default-on, `WHERE popularity IS NULL`,
+ * Discipline mirrors the other optional fills: default-on, `WHERE popularity IS NULL`,
  * ledgered-not-tallied on a confident miss, never a landing gate. The recording
  * MBID comes from the file's own tag (`mbRecordingId`) — the same tags-first
  * rule the rest of the scanner follows, and the reason a song with no MBID tag
@@ -1768,7 +1652,7 @@ const genreAudioTask: EnrichmentTask = {
  * `getListenCounts` call, so a large backlog costs a handful of requests, not one
  * per song.
  *
- * **Not mirrored to a file tag** (unlike genre/bpm/licence): popularity is
+ * **Not mirrored to a file tag** (unlike genre/bpm): popularity is
  * extrinsic and drifts over time, so it lives only in the DB column and is
  * preserved across rescans by being absent from the scanner's upsert. Radio
  * scoring / curated-recipe / album-aggregate consumers are deliberately left as
@@ -1846,7 +1730,7 @@ const popularityTask: EnrichmentTask = {
           }
           if (count === null) {
             // ListenBrainz confirmed it has no data for this recording — a
-            // confident miss, ledgered-not-tallied like a licence miss.
+            // confident miss, ledgered-not-tallied like an unresolvable genre.
             noteItemFailure(
               db,
               tally,
@@ -1970,7 +1854,6 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   artistInfoTask,
   artistOriginTask,
   artistIdentityTask,
-  licenceTask,
   genreDiscogsTask,
   genreAudioTask,
   popularityTask,

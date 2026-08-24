@@ -24,7 +24,6 @@ function pending(counts: Partial<Record<ProcessingTaskId, number>>): {
     'energy',
     'audio-features',
     'artist-identity',
-    'licence',
     'genre-audio',
     'genre-discogs',
     'popularity',

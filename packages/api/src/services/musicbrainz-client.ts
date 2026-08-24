@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { createLogger, normalizeLicence, normalizeMbCountry } from '@nicotind/core';
+import { createLogger, normalizeMbCountry } from '@nicotind/core';
 import type { MbGenre } from './genre-resolve.js';
 
 const log = createLogger('musicbrainz-client');
@@ -69,7 +69,6 @@ type CacheEntry = { at?: number } & (
   | { type: 'recording'; result: MBRecording | null }
   | { type: 'release-group'; result: MBReleaseGroup | null }
   | { type: 'release-group-search'; result: MBReleaseGroupHit[] }
-  | { type: 'licence'; result: string | null }
   | { type: 'discogs-url'; result: string | null }
   | { type: 'origin'; result: string | null }
 );
@@ -451,59 +450,8 @@ export class MusicBrainzClient {
   }
 
   /**
-   * Resolve a Creative-Commons / public-domain licence via MusicBrainz `license`
-   * url-relations, most-specific first (recording → release). Returns a canonical
-   * LICENCE_VOCAB code, or null when MB has no license relationship (the common
-   * case — coverage is sparse, mostly CC-flavoured releases). When only
-   * artist+title are known, a recording is resolved via searchRecording first.
-   */
-  async getLicence(q: {
-    mbRecordingId?: string;
-    mbReleaseId?: string;
-    artist?: string;
-    title?: string;
-  }): Promise<string | null> {
-    let recordingId = q.mbRecordingId;
-    if (!recordingId && q.artist && q.title) {
-      recordingId = (await this.searchRecording(q.artist, q.title))?.id;
-    }
-    if (!recordingId && !q.mbReleaseId) return null;
-
-    const key = `licence:${recordingId ?? ''}|${q.mbReleaseId ?? ''}`;
-    const cached = this.getCached(key);
-    if (cached?.type === 'licence') return cached.result;
-
-    let code: string | null = null;
-    if (recordingId) code = await this.licenceFromEntity('recording', recordingId);
-    if (!code && q.mbReleaseId) code = await this.licenceFromEntity('release', q.mbReleaseId);
-    this.setCached(key, { type: 'licence', result: code });
-    return code;
-  }
-
-  private async licenceFromEntity(
-    kind: 'recording' | 'release',
-    id: string,
-  ): Promise<string | null> {
-    const url = `${MB_BASE}/${kind}/${encodeURIComponent(id)}?fmt=json&inc=url-rels`;
-    const data = this.unwrap(
-      await this.fetch<{
-        relations?: Array<{ type?: string; url?: { resource?: string } }>;
-      }>(url),
-    );
-    // Transient: do not cache, so the next call retries.
-    if (data === undefined) return null;
-    for (const rel of data?.relations ?? []) {
-      if (rel.type === 'license') {
-        const code = normalizeLicence(rel.url?.resource);
-        if (code) return code;
-      }
-    }
-    return null;
-  }
-
-  /**
    * Resolve an artist's Discogs artist-page URL via MusicBrainz's own `discogs`
-   * url-relation (issue #195) — the same MBID-first pattern as {@link getLicence}.
+   * url-relation (issue #195) — the same MBID-first cache pattern as the rest.
    * Returns null when MB has no such relation (the common case).
    */
   async getArtistDiscogsUrl(mbid: string): Promise<string | null> {

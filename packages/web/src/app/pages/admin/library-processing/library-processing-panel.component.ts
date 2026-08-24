@@ -84,7 +84,6 @@ export class LibraryProcessingPanelComponent implements OnInit, OnDestroy {
     { id: 'energy', labelKey: 'admin.taskEnergy' },
     { id: 'audio-features', labelKey: 'admin.taskAudioFeatures' },
     { id: 'descriptors', labelKey: 'admin.taskDescriptors' },
-    { id: 'licence', labelKey: 'admin.taskLicence' },
     { id: 'genre-discogs', labelKey: 'admin.taskGenreDiscogs' },
     { id: 'genre-audio', labelKey: 'admin.taskGenreAudio' },
     { id: 'popularity', labelKey: 'admin.taskPopularity' },

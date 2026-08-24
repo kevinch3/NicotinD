@@ -10,7 +10,7 @@ import { jobCanonicalTracklists } from './acquisition-job-store.js';
 import { isVariousArtists } from './compilation-tagger.js';
 import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-inference.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
-import { featureTagsFromNative, licenceFromTags } from './audio-tags.js';
+import { featureTagsFromNative } from './audio-tags.js';
 import { selectAlbumTracks } from './library-track-select.js';
 import { loadOverrides, type MetadataOverrideValue } from './metadata-override-store.js';
 import { splitArtists, isAtomicArtist, type ArtistCredit } from './artist-split.js';
@@ -130,8 +130,6 @@ export interface ScannedTrack {
   acousticness?: number;
   instrumental?: number;
   mood?: string;
-  /** Canonical licence code read from the file's LICENSE/COPYRIGHT/WCOP frames. */
-  licence?: string;
 }
 
 export interface SongRow {
@@ -156,7 +154,6 @@ export interface SongRow {
   acousticness: number | null;
   instrumental: number | null;
   mood: string | null;
-  licence: string | null;
   coverArt: string;
   path: string;
   size: number;
@@ -179,8 +176,6 @@ export interface AlbumRow {
   duration: number;
   year: number | null;
   genre: string | null;
-  /** Unanimous licence code across all tracks (else null = mixed/unknown). */
-  licence: string | null;
   created: string;
 }
 
@@ -224,20 +219,6 @@ export interface BuiltLibrary {
 
 const UNKNOWN_ARTIST = 'Unknown Artist';
 const UNKNOWN_ALBUM = 'Unknown Album';
-
-/**
- * The album-level licence: the single code every track shares, else null. A null
- * (un-licenced) track makes the album non-unanimous, so an album only reads as
- * "Public Domain" when *every* track is PD — the semantics the PD-albums filter
- * needs. Recomputed from tag state each scan (like the album genre), so an
- * enrichment fill is reflected on the next full rescan.
- */
-export function unanimousLicence(licences: (string | null)[]): string | null {
-  if (licences.length === 0) return null;
-  const first = licences[0];
-  if (first == null) return null;
-  return licences.every((l) => l === first) ? first : null;
-}
 
 /**
  * The album-level genre: the most frequent *primary* (position-0) genre across
@@ -505,8 +486,6 @@ export function buildLibrary(
       /** Each track's *primary* genre (position 0), reduced to the album's
        *  most-common one — a stable label, unlike first-seen (issue #222). */
       primaryGenres: (string | null)[];
-      /** Per-track licence codes (null for un-licenced) — reduced to a unanimous album code. */
-      licences: (string | null)[];
       createdMs: number;
       coverArt: string;
       splitCredits: ArtistCredit[];
@@ -566,7 +545,6 @@ export function buildLibrary(
       acousticness: t.acousticness ?? null,
       instrumental: t.instrumental ?? null,
       mood: t.mood ?? null,
-      licence: t.licence ?? null,
       coverArt: id,
       path: t.relPath,
       size: t.size,
@@ -597,7 +575,6 @@ export function buildLibrary(
       if (year != null) acc.years.push(year);
       acc.genres.push(...genres);
       acc.primaryGenres.push(genres[0] ?? null);
-      acc.licences.push(t.licence ?? null);
       if (t.mtimeMs > acc.createdMs) acc.createdMs = t.mtimeMs;
     } else {
       albumAcc.set(albId, {
@@ -610,7 +587,6 @@ export function buildLibrary(
         years: year != null ? [year] : [],
         genres: [...genres],
         primaryGenres: [genres[0] ?? null],
-        licences: [t.licence ?? null],
         createdMs: t.mtimeMs,
         coverArt: albId,
         splitCredits: splitCredits(albumArtist),
@@ -653,7 +629,6 @@ export function buildLibrary(
       // stable label, unlike the previous `genres[0]` which was whichever genre
       // the first-processed track happened to carry first.
       genre: mostCommonGenre(a.primaryGenres),
-      licence: unanimousLicence(a.licences),
       created: new Date(a.createdMs).toISOString(),
     });
 
@@ -904,10 +879,6 @@ export class LibraryScanner {
       // Perceptual features live in custom Vorbis/TXXX frames — parse them from
       // the native tag map so pre-tagged files are dense from the first scan.
       ...featureTagsFromNative(meta?.native, common?.mood),
-      // Rights/licence from LICENSE/COPYRIGHT/WCOP frames (+ the copyright fold),
-      // normalised to a canonical code so PD/CC downloads are licence-tagged on
-      // the first scan with zero network calls.
-      licence: licenceFromTags(meta?.native, common?.copyright),
     };
   }
 
@@ -920,8 +891,8 @@ export class LibraryScanner {
     const albumStmt = this.db.prepare(`
       INSERT INTO library_albums (
         id, name, artist, artist_id, cover_art, song_count, duration,
-        year, genre, licence, created, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        year, genre, created, synced_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         artist = excluded.artist,
@@ -931,9 +902,6 @@ export class LibraryScanner {
         duration = excluded.duration,
         year = excluded.year,
         genre = excluded.genre,
-        -- Recomputed from all tracks each scan (a full aggregate), so overwrite
-        -- rather than COALESCE — matches how the album genre/year are handled.
-        licence = excluded.licence,
         created = excluded.created,
         synced_at = excluded.synced_at
     `);
@@ -943,10 +911,9 @@ export class LibraryScanner {
         track, disc, duration,
         year, genre, bpm, key,
         energy, loudness, danceability, valence, acousticness, instrumental, mood,
-        licence,
         cover_art, path, size, bit_rate, sample_rate, bit_depth, channels, suffix, content_type,
         created, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         album_id = excluded.album_id,
         title = excluded.title,
@@ -978,11 +945,6 @@ export class LibraryScanner {
         acousticness = COALESCE(excluded.acousticness, library_songs.acousticness),
         instrumental = COALESCE(excluded.instrumental, library_songs.instrumental),
         mood = COALESCE(excluded.mood, library_songs.mood),
-        -- Licence: same durability contract. A rescan that reads a LICENSE tag
-        -- refreshes it; a tag-less rescan keeps a licence the enrichment task or a
-        -- curator wrote. licence_source is deliberately NOT written here (it stays
-        -- NULL for scan/tag provenance) so a manual 'user' source survives rescans.
-        licence = COALESCE(excluded.licence, library_songs.licence),
         cover_art = excluded.cover_art,
         path = excluded.path,
         size = excluded.size,
@@ -1054,7 +1016,6 @@ export class LibraryScanner {
           a.duration,
           a.year,
           a.genre,
-          a.licence,
           a.created,
           syncedAt,
         );
@@ -1082,7 +1043,6 @@ export class LibraryScanner {
           s.acousticness,
           s.instrumental,
           s.mood,
-          s.licence,
           s.coverArt,
           s.path,
           s.size,

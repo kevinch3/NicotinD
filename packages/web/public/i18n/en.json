@@ -310,7 +310,6 @@
   "admin.taskGenreAudio": "Genre (audio fallback)",
   "admin.taskGenreDiscogs": "Genre (Discogs)",
   "admin.taskKey": "Musical key",
-  "admin.taskLicence": "Licence / rights (from file tags)",
   "admin.taskPopularity": "Popularity (ListenBrainz)",
   "admin.title": "Admin",
   "admin.totalCount": "{count} total",

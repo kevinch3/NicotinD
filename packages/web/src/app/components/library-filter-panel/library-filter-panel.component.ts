@@ -3,13 +3,10 @@ import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 import {
   CAMELOT_WHEEL,
   MOOD_VOCAB,
-  LICENCE_VOCAB,
-  LICENCE_LABELS,
   countryFlagEmoji,
   PERCEPTUAL_AXES,
   activeLibraryFilterCount,
   type LibraryFilter,
-  type LicenceCode,
   type MoodLabel,
   type PerceptualAxis,
   type PerceptualBucket,
@@ -51,7 +48,6 @@ export class LibraryFilterPanelComponent {
   // Template vocab
   readonly camelotWheel = CAMELOT_WHEEL;
   readonly moodOptions = MOOD_VOCAB;
-  readonly licenceOptions = LICENCE_VOCAB;
   readonly bucketOptions: readonly PerceptualBucket[] = ['low', 'mid', 'high'];
   readonly axisOptions: ReadonlyArray<{ axis: PerceptualAxis; label: string }> = [
     { axis: 'energy', label: 'Energy' },
@@ -125,10 +121,6 @@ export class LibraryFilterPanelComponent {
     return this.filter().primaryGenreOnly ?? false;
   }
 
-  licenceLabel(code: string): string {
-    return LICENCE_LABELS[code as LicenceCode] ?? code;
-  }
-
   // Localized country names come free from the platform; core ships codes only.
   private readonly regionNames = new Intl.DisplayNames([navigator.language || 'en'], {
     type: 'region',
@@ -147,17 +139,6 @@ export class LibraryFilterPanelComponent {
 
   isCountryActive(code: string): boolean {
     return this.filter().countries?.includes(code) ?? false;
-  }
-
-  toggleLicence(code: string): void {
-    const f = this.filter();
-    const current = f.licences ?? [];
-    const next = current.includes(code) ? current.filter((l) => l !== code) : [...current, code];
-    this.emitFilter(next.length ? { ...f, licences: next } : this.without(f, 'licences'));
-  }
-
-  isLicenceActive(code: string): boolean {
-    return this.filter().licences?.includes(code) ?? false;
   }
 
   toggleBucket(axis: PerceptualAxis, bucket: PerceptualBucket): void {

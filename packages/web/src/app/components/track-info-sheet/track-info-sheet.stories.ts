@@ -29,7 +29,7 @@ const withState = (state: StoryState) => ({
   ],
 });
 
-/** Every enrichment task has run: perceptual axes, licence, the lot. */
+/** Every enrichment task has run: perceptual axes, the lot. */
 const ANALYSED: Song = {
   ...demoSong,
   energy: 0.72,
@@ -39,7 +39,6 @@ const ANALYSED: Song = {
   acousticness: 0.18,
   instrumental: 0.04,
   mood: 'dreamy',
-  licence: 'cc-by-sa',
 };
 
 /**
@@ -53,7 +52,6 @@ const PARTIAL: Song = {
   danceability: undefined,
   acousticness: undefined,
   mood: undefined,
-  licence: undefined,
 };
 
 const args = (song: Song) => ({

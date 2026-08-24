@@ -310,7 +310,6 @@
   "admin.taskGenreAudio": "Género (respaldo por audio)",
   "admin.taskGenreDiscogs": "Género (Discogs)",
   "admin.taskKey": "Tonalidad musical",
-  "admin.taskLicence": "Licencia / derechos (desde etiquetas del archivo)",
   "admin.taskPopularity": "Popularidad (ListenBrainz)",
   "admin.title": "Administración",
   "admin.totalCount": "{count} en total",

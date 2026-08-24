@@ -53,7 +53,6 @@ so hand-edited URLs degrade gracefully).
 | Perceptual axes | axis name = comma list of buckets | `energy=low,high&valence=mid` |
 | Year range | `yearMin`, `yearMax` | `yearMin=1990&yearMax=1999` |
 | Genre | `genre` (repeated param — free text may contain commas). Matches the **full multi-genre set**: the predicate is `(s.genre IN (…) OR EXISTS(… library_song_genres …))`, so a track filed under "Electronic; House" matches a House filter; the primary-column IN keeps pre-first-rescan rows filterable. | `genre=Rock&genre=Hip-Hop` |
-| Licence | `licence` (comma list from `LICENCE_VOCAB`). Positive codes → `IN (…)`; the `unknown` bucket → `IS NULL`. **Songs** match `s.licence`; **Albums/Compilations** match the stored aggregate `library_albums.licence` ("the album is *entirely* this licence"); **Artists** match any-track. See [music-licence.md](music-licence.md). | `licence=public-domain,cc-by` |
 | Starred | `starred=true` | entity-level, see below |
 | Duration range (s) | `durMin`, `durMax` | `durMin=120&durMax=360` |
 
@@ -119,5 +118,5 @@ focus:ring-[var(--theme-accent)]`. The previous `app-list-toolbar` component (a 
 bar with internal layout) was retired because it sat at a different height than the
 inline controls, breaking the unified toolbar row. Inside the popover the same idiom is
 applied uniformly — number inputs, the min-tracks select, all checkboxes
-(`accent-theme rounded`), and the chip rows (mood / licence / perceptual axes / Camelot
+(`accent-theme rounded`), and the chip rows (mood / perceptual axes / Camelot
 key) share one shape (`px-2 py-0.5 text-xs rounded-full`).

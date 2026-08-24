@@ -6,7 +6,6 @@ import type {
   SongAcquisition,
   BpmAnalysisResult,
   GenreSuggestion,
-  LicenceSuggestion,
   LyricsDto,
   MetadataCandidate,
   ApplyMetadataRequest,
@@ -571,19 +570,6 @@ export class LibraryApiService {
         // otherwise — the exact #210 shape for a per-song genre write (issue #237).
         tap(() => this.invalidateLibraryReads()),
       );
-  }
-
-  /** Detect a licence (read-only): file tag first, then MusicBrainz. */
-  getLicenceSuggestion(id: string) {
-    return this.http.get<LicenceSuggestion>(`/api/library/songs/${id}/licence-suggestion`);
-  }
-
-  /** Set (or clear, via '' / 'unknown') a song's licence (curator). */
-  setLicence(id: string, licence: string) {
-    return this.http.post<{ ok: boolean; licence: string | null }>(
-      `/api/library/songs/${id}/licence`,
-      { licence },
-    );
   }
 
   /** Whether an identify (AcoustID) source is enabled + configured. */

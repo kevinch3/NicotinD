@@ -95,7 +95,7 @@ Apply/Cancel.
   Moving to a zip would fix this and is the natural v2 (the issue lists it as an open question).
 - **`secrets.json`** (the JWT signing key) is not included, by deliberate omission: importing it
   would make sessions from the old host valid on the new one. Users log in again after a migration.
-- **Per-track curation stored as columns on library tables** (`library_songs.starred`, `licence`,
+- **Per-track curation stored as columns on library tables** (`library_songs.starred`,
   `bpm`, lyrics) rides on rows a rescan rebuilds, so it isn't in the config bundle. Those are
   COALESCE-preserved and re-derivable by enrichment; a full DB backup is the tool if you need them
   moved verbatim.
