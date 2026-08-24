@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.6](https://github.com/kevinch3/NicotinD/compare/v0.4.5...v0.4.6) (2026-08-24)
+
+### Bug Fixes
+
+* **radio:** treat one recording as one thing, not one row per file ([#661](https://github.com/kevinch3/NicotinD/issues/661)) ([a5f1a23](https://github.com/kevinch3/NicotinD/commit/a5f1a2353ef83ef311f18e55269494f29ae4644c)), references [#1](https://github.com/kevinch3/NicotinD/issues/1) [#642](https://github.com/kevinch3/NicotinD/issues/642) [#660](https://github.com/kevinch3/NicotinD/issues/660)
 ## [0.4.5](https://github.com/kevinch3/NicotinD/compare/v0.4.4...v0.4.5) (2026-08-24)
 
 ### Bug Fixes
