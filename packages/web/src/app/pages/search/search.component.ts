@@ -303,10 +303,16 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly discographyNote = computed(() => discographyFallbackNote(this.catalog()));
   // The §A6 deep fix: offer to load the matched artist's real discography on
   // demand (adds them to Lidarr) when the catalog couldn't surface their albums.
+  // Hidden during a lookup outage (#665): Retry is the right action there, not
+  // a Lidarr mutation based on an answer we never got.
   readonly canLoadDiscography = computed(
-    () => !!this.catalog()?.discographyUnavailable && scopedArtistMbid(this.catalog()) !== null,
+    () =>
+      !!this.catalog()?.discographyUnavailable &&
+      !this.catalog()?.albumLookupFailed &&
+      scopedArtistMbid(this.catalog()) !== null,
   );
   readonly loadingDiscography = signal(false);
+  readonly retryingCatalog = signal(false);
 
   readonly flatNetwork = computed(() => flattenAndFilter(this.search.network()));
   readonly hasNetwork = computed(() => this.flatNetwork().length > 0);
@@ -603,6 +609,24 @@ export class SearchComponent implements OnInit, OnDestroy {
     const mbid = scopedArtistMbid(cat);
     if (!cat?.scopedArtist || mbid === null) return;
     await this.doLoadDiscography(mbid, cat.scopedArtist);
+  }
+
+  /** Re-run only the catalog lookup after an `albumLookupFailed` outage (#665)
+   *  — the slskd/archive/spotify lanes keep whatever they already returned. */
+  async retryCatalog(): Promise<void> {
+    const query = this.search.query().trim();
+    if (!query || this.retryingCatalog()) return;
+    this.retryingCatalog.set(true);
+    try {
+      const res = await firstValueFrom(this.api.catalogSearch(query));
+      this.catalog.set(res);
+      this.catalogUnavailable.set(false);
+      this.directSearchOpen.set(shouldOpenDirectSearch(this.catalog()));
+    } catch {
+      this.catalogUnavailable.set(true);
+    } finally {
+      this.retryingCatalog.set(false);
+    }
   }
 
   private async doLoadDiscography(mbid: string, artistName: string): Promise<void> {

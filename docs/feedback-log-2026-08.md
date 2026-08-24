@@ -17,6 +17,7 @@
 | 4   | ✅     | Medium   | Downloads feed      | Old download cards can't be removed (silent no-op)         |
 | 5   | ✅     | Medium   | Ingest transcode    | Glitchy FLACs rejected with opaque "code 183", kept as FLAC |
 | 6   | ✅     | High     | Acquire lane        | Every per-file download button reads "↓ undefined%"        |
+| 7   | ✅     | High     | Catalog search      | A Lidarr lookup blip reads as "artist has no albums"       |
 
 ---
 
@@ -44,6 +45,8 @@
 ### 2026-08-24
 
 - **(High) Every per-file download button in the acquire lane reads "↓ undefined%"; the folder aggregate reads "↓ 0%" while 130 items sit queued behind 0 slots.** _Use:_ QA session downloading One Direction folders on prod; screenshots traced in the Acquire Flow Atlas. _Root cause:_ per-file percent ceased to exist at the addon cutover (#496) — `TransferService` hardcodes `percent: undefined` from the unified feed and `download-status.ts` interpolated it raw; worse, `itemStatusToTransferState` mapped every non-terminal item status (including `pending`) to `InProgress`, so queued files wore a fake progress label. Nothing caught it: the spec's `entry()` helper defaulted percent to 0, so `percent: undefined` was never exercised. **✅ Fixed** (issue #663): in-flight buttons show state words ("Downloading…"/"En cola"), `↓ N%` renders only when a numeric percent exists, folder averages skip percent-less entries instead of counting them as 0, `pending`→Queued / `skipped`→terminal in the mapping, and the labels went through the translator-as-param i18n pattern while being rewritten. Follow-up filed: the poller flattens addon `queued` → DB `downloading`, so a truly queued file still reads "Downloading…" until the DB vocabulary gains a queued state. _Lesson:_ a test helper that defaults an optional field hides every bug that lives in the field's absence.
+
+- **(High) Searching "One direction" — a world-famous act — showed artist chips but "We couldn't load One Direction's albums from the catalog", dumping the user into 751 raw Soulseek rows.** _Use:_ same QA session. _Root cause:_ `CatalogService.search` swallowed every `album.lookup` failure to `[]` (`.catch` → `log.warn` only), so a Lidarr metadata-proxy timeout was indistinguishable from "artist genuinely has no albums" — both fired the §A6 `discographyUnavailable` banner, whose only CTA is the Lidarr-mutating discography load. No retry, no counter, no operator surface; 21+ call sites swallow the same way. **✅ Fixed** (issue #665): `albumLookupFailed` flag + one bounded retry on fast failures (never on `LidarrTimeoutError` — the 20s budget is burned), and the web renders "the catalog didn't answer" with a Retry button while hiding the discography CTA during the outage. Follow-ups filed: artist-chip exact-match ranking, and a Lidarr/MB provider-health slice in ServiceReview so a metadata outage stops being invisible to operators. _Lesson:_ `.catch(() => [])` makes "provider down" and "empty result" the same value — the `FetchOutcome` discrimination MusicBrainz already uses existed in-repo and the catalog lane just never adopted it.
 
 ---
 

@@ -371,6 +371,52 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(component.blendedState(candidate)).toBe('done');
   });
 
+  // A failed album.lookup surfaces as a retryable outage note, never as the
+  // misleading "no albums" + Lidarr-mutating discography CTA (#665).
+  it('retryCatalog re-runs only the catalog lookup and replaces the failed result', async () => {
+    let calls = 0;
+    const failed = {
+      artists: [{ mbid: 'od', name: 'One Direction' }],
+      albums: [],
+      scopedArtist: 'One Direction',
+      discographyUnavailable: true,
+      albumLookupFailed: true,
+    };
+    const { component, search } = setup({
+      catalogSearch: () => {
+        calls++;
+        return calls === 1
+          ? of(failed)
+          : of({ artists: [{ mbid: 'od', name: 'One Direction' }], albums: [CATALOG_ALBUM] });
+      },
+    });
+    search.setQuery('One Direction');
+    component.handleSearch(new Event('submit'));
+    await flush();
+
+    expect(component.discographyNote()?.kind).toBe('lookup-failed');
+    expect(component.canLoadDiscography()).toBe(false); // outage hides the mutating CTA
+    expect(component.directSearchOpen()).toBe(true);
+
+    await component.retryCatalog();
+    expect(calls).toBe(2);
+    expect(component.catalog()?.albums.length).toBe(1);
+    expect(component.discographyNote()).toBeNull();
+    expect(component.directSearchOpen()).toBe(false);
+  });
+
+  it('a failing retryCatalog flips catalogUnavailable instead of throwing', async () => {
+    const catalogSearch = vi.fn(() => of({ artists: [], albums: [], albumLookupFailed: true }));
+    const { component, search } = setup({ catalogSearch });
+    search.setQuery('One Direction');
+    component.handleSearch(new Event('submit'));
+    await flush();
+
+    catalogSearch.mockReturnValue(throwError(() => new Error('catalog down')));
+    await component.retryCatalog();
+    expect(component.catalogUnavailable()).toBe(true);
+  });
+
   // The unified feed carries no per-file percent (#663), so completion must key
   // off the transfer state — the old `percent === 100` check could never fire.
   it('blendedState reaches done for an enqueue candidate when its transfer completes', () => {

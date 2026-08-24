@@ -11,13 +11,27 @@ export function shouldOpenDirectSearch(catalog: CatalogSearchResult | null): boo
 }
 
 /**
- * A short explanation shown when we confidently matched an artist but the
- * catalog carried none of their albums, so the UI dropped to the network lane.
- * Returns null when there's nothing to explain.
+ * The reason the guided path fell back — structured so the template picks the
+ * wording (and its i18n key) per kind, following the relative-time bucket/keys
+ * split. `lookup-failed` wins: an outage must not read as "artist has no
+ * albums" and push the user toward the Lidarr-mutating discography load (#665).
  */
-export function discographyFallbackNote(catalog: CatalogSearchResult | null): string | null {
+export type DiscographyNote =
+  { kind: 'no-albums'; artist: string } | { kind: 'lookup-failed'; artist: string | null };
+
+export const DISCOGRAPHY_NOTE_KEYS: Record<DiscographyNote['kind'], string> = {
+  'no-albums': 'acquire.discographyUnavailable',
+  'lookup-failed': 'acquire.catalogLookupFailed',
+};
+
+export function discographyFallbackNote(
+  catalog: CatalogSearchResult | null,
+): DiscographyNote | null {
+  if (catalog?.albumLookupFailed) {
+    return { kind: 'lookup-failed', artist: catalog.scopedArtist ?? null };
+  }
   if (catalog?.discographyUnavailable && catalog.scopedArtist) {
-    return `We couldn't load ${catalog.scopedArtist}'s albums from the catalog — showing network results below.`;
+    return { kind: 'no-albums', artist: catalog.scopedArtist };
   }
   return null;
 }
@@ -34,7 +48,8 @@ export function scopedArtistMbid(catalog: CatalogSearchResult | null): string | 
 }
 
 /** Merge a loaded discography into the catalog: real album cards replace the
- *  empty list and the "unavailable" flag clears. */
+ *  empty list and both fallback flags clear (a successful load supersedes an
+ *  earlier lookup failure). */
 export function applyDiscography(
   catalog: CatalogSearchResult,
   loaded: CatalogSearchResult,
@@ -43,6 +58,7 @@ export function applyDiscography(
     ...catalog,
     albums: loaded.albums,
     discographyUnavailable: false,
+    albumLookupFailed: false,
     scopedArtist: loaded.scopedArtist ?? catalog.scopedArtist,
   };
 }
