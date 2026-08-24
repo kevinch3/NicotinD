@@ -146,7 +146,19 @@
         </details>
       }
     }
-    @if (item().error) {
+    @if (item().failures; as failures) {
+      <!-- One reason for N tracks tells nobody whether to retry; a count per
+           class does. The verbatim reasons stay on the hover title. -->
+      <p
+        class="text-xs text-status-error mt-1 truncate"
+        [title]="item().error"
+        data-testid="download-failure-breakdown"
+      >
+        @for (group of failures; track group.class) {
+          <span>{{ $first ? '' : ' · ' }}{{ group.count }} {{ failureLabel(group.class) }}</span>
+        }
+      </p>
+    } @else if (item().error) {
       <p class="text-xs text-status-error mt-1 truncate" [title]="item().error">
         {{ item().error }}
       </p>

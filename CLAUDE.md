@@ -163,6 +163,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   card identity is the job id recorded at enqueue. `listJobFeed`, `mergeAcquisitionJobs`,
   `mapAddonJob`, `cancelUnownedJob`, `methodForBackend`, `downloadTitleFor`.
   → [download-pipeline.md](docs/download-pipeline.md)
+- **A partial download says why, and can be retried**: per-track failures grouped by class on the
+  card; Retry reaches partial addon URL jobs, not just failed ones. `parseJobFailureSummary`,
+  `classifyTrackFailure`, `summarizeFailures`, `failureClassLabel`, `allItemsFailedMessage`.
+  → [download-pipeline.md](docs/download-pipeline.md)
 - **Inline download lifecycle**: result cards go idle → progress % → "Open in Library", driven by
   `TransferService` + a `libraryDirty` signal. → [design-patterns.md](docs/design-patterns.md),
   [download-pipeline.md](docs/download-pipeline.md)

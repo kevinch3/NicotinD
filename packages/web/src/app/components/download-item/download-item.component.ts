@@ -1,6 +1,7 @@
 import { Component, input, output, signal, computed } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { DownloadItem } from '../../lib/download-groups';
+import type { FailureClass } from '@nicotind/core';
 import { methodBadge } from '../../lib/acquisition-method';
 import { resolveAlbumRoute, resolvePlaylistRoute } from '../../lib/route-utils';
 import { currentAndNextTracks } from '../../lib/track-status';
@@ -90,6 +91,16 @@ export function canShowNowNext(item: DownloadItem): boolean {
  * to the destination album, and retry / cancel / remove controls that emit to
  * the parent, which dispatches by `item.kind`.
  */
+/**
+ * How a failure class reads on a card. `unknown` says "unclear" rather than
+ * naming a cause: under throttling the source's "no results" answer is
+ * indistinguishable from the track genuinely being absent, so claiming either
+ * would be a guess dressed as a fact.
+ */
+export function failureClassLabel(klass: FailureClass): string {
+  return klass === 'transient' ? 'may work on retry' : 'reason unclear';
+}
+
 @Component({
   selector: 'app-download-item',
   standalone: true,
@@ -109,6 +120,9 @@ export class DownloadItemComponent {
   readonly remove = output<void>();
 
   readonly showPath = signal(false);
+
+  /** Template access to the pure label helper. */
+  readonly failureLabel = failureClassLabel;
 
   readonly badge = computed(() => methodBadge(this.item().method));
   /** Compact "· FLAC · 1411 kbps" / "· 320 kbps" chip text, '' when unknown. */

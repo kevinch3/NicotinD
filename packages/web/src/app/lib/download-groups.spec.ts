@@ -426,6 +426,77 @@ describe('mergeAcquisitionJobs', () => {
       expect(merged[0]!.jobId).toBe('aj1');
     });
 
+    /**
+     * A spotDL playlist that landed 5 of 89 closes `done` carrying the addon's
+     * partial warning, so gating Retry on `stage === 'error'` hid it on the one
+     * card where retry actually resumes (spotDL is spawned `--overwrite skip`).
+     */
+    it('offers Retry on a partial URL acquire that closed done with a warning', () => {
+      const merged = mergeAcquisitionJobs(
+        [],
+        [
+          acqJob({
+            kind: 'url',
+            stage: 'done',
+            error: 'Downloaded 5 of 89 tracks — the rest failed or were skipped.',
+            progress: { expected: 89, delivered: 5, unavailable: 84, failed: 0 },
+          }),
+        ],
+      );
+      expect(merged[0]!.canRetry).toBe(true);
+    });
+
+    /**
+     * The addon error mirror is two-way: an active job carries the addon's
+     * *current* error (a transient "retrying: 429"), which is not a terminal
+     * outcome — offering Retry there would restart a download still running.
+     */
+    it('never offers Retry on an active URL job carrying a transient error', () => {
+      const merged = mergeAcquisitionJobs(
+        [],
+        [acqJob({ kind: 'url', stage: 'downloading', error: 'retrying: HTTP 429' })],
+      );
+      expect(merged[0]!.canRetry).toBe(false);
+    });
+
+    it('never offers Retry on a clean done URL acquire', () => {
+      const merged = mergeAcquisitionJobs([], [acqJob({ kind: 'url', stage: 'done' })]);
+      expect(merged[0]!.canRetry).toBe(false);
+    });
+
+    it('breaks a partial job down by failure class for the card', () => {
+      const merged = mergeAcquisitionJobs(
+        [],
+        [
+          acqJob({
+            kind: 'url',
+            stage: 'done',
+            error: [
+              'Downloaded 1 of 3 tracks — the rest failed or were skipped.',
+              'https://open.spotify.com/track/a - JSONDecodeError: Expecting value: line 1 column 1 (char 0)',
+              'https://open.spotify.com/track/b - LookupError: No results found for song: X',
+            ].join('\n'),
+          }),
+        ],
+      );
+      expect(merged[0]!.failures).toEqual([
+        {
+          class: 'transient',
+          count: 1,
+          example: 'JSONDecodeError: Expecting value: line 1 column 1 (char 0)',
+        },
+        { class: 'unknown', count: 1, example: 'LookupError: No results found for song: X' },
+      ]);
+    });
+
+    it('leaves the breakdown off a hard error carrying no per-track detail', () => {
+      const merged = mergeAcquisitionJobs(
+        [],
+        [acqJob({ kind: 'url', stage: 'error', error: 'JSONDecodeError: Expecting value' })],
+      );
+      expect(merged[0]!.failures).toBeUndefined();
+    });
+
     it('never offers Retry on a network hunt, which has no re-submit endpoint', () => {
       const merged = mergeAcquisitionJobs([], [acqJob({ kind: 'album-hunt', stage: 'error' })]);
       expect(merged[0]!.canRetry).toBe(false);

@@ -534,6 +534,79 @@ success (134 downloads vs 793 search misses + 485 yt-dlp errors) over 12 h of
 prod logs, with `yt-dlp` current and a direct fetch of a "failed" URL succeeding.
 Tracked in #601 against `nicotind-spotdl-addon`.
 
+## A partial download says why, and can be retried
+
+The reporting fixes above made a partial playlist *honest* (`5 of 89 · 84 unavailable`)
+without making it *actionable*. Prod on 2026-08-23 showed the gap: the card stated 84
+failures, offered no Retry, and rendered one arbitrary truncated reason standing in for all
+of them.
+
+### Retry reaches the jobs that actually partial
+
+`canRetry` is derived twice — once per lane. The acquire lane
+(`acquireJobToDownloadItem`) had the right rule, `state === 'failed' || (state === 'done' &&
+!!error)`, with a comment describing the partial-playlist case exactly. But an addon-run URL
+job renders through `mergeAcquisitionJobs`, whose rule was `stage === 'error'` — so the rule
+written for partials never reached the jobs that partial. Retry is worth offering there
+because the downloader addons resume rather than restart (spotDL is spawned
+`--overwrite skip`).
+
+The unified lane now matches: `kind === 'url' && (stage === 'error' || (stage === 'done' &&
+!!error))`. The `stage === 'done'` half is load-bearing — the addon error mirror is
+**two-way**, so an *active* job carries the addon's current error (a transient
+"retrying: 429"). Gating on `!!error` alone would offer Retry mid-download.
+
+### Failure breakdown (`download-failure.ts`)
+
+`@nicotind/core`'s `download-failure.ts` is the pure chain: `parseJobFailureSummary` pulls
+the `<url> - <Error>: <detail>` lines out of the addon's closing summary (anchored on a real
+URL, so the header sentence and any free prose can never parse as a track; `[]` for a
+whole-job crash, which keeps the card on its single-line rendering), `classifyTrackFailure`
+buckets each reason, and `summarizeFailures` groups them commonest-first with a
+representative example. The web derives this from the `error` string it already receives —
+no API or DTO change — and renders `61 may work on retry · 23 reason unclear`, keeping the
+verbatim reasons on the hover title.
+
+**There is deliberately no `permanent` class.** Only two reasons measured on prod are
+recognized as `transient`: `JSONDecodeError` (ytmusicapi parses the body before checking
+the status, so a throttle surfaces as a decode error) and `AudioProviderError` (yt-dlp's
+media fetch refused). Everything else is `unknown` — including the largest bucket, `no
+results`, which is ambiguous *by construction*: under throttling YouTube Music search
+returns nothing, so the line a genuinely-absent track produces is the line a rate-limited
+one produces, and #601 confirmed tracks failing that way (Katy Perry, Lizzo) do exist there.
+A `permanent` tier nothing could return would be a declared-but-never-written value, the
+defect shape `MbidSource`'s `'user'` tier already cost us once. Widen the union when a
+reason is *measured* that warrants it.
+
+This also constrains #651: because the classifier declines to disambiguate the biggest
+bucket, it can never be the adaptive rate-limiter's feedback signal — that controller has to
+read the overall success rate, or it would be tuning against a signal the throttling itself
+distorts.
+
+> **Adding a core export the web uses**: `packages/web` aliases `@nicotind/core` to the
+> curated `src/types/core.ts` shim (both `vitest.config.ts` and `tsconfig.json`), because the
+> real barrel exports Bun-specific utils Angular cannot compile. A new core module is
+> invisible to web until it is re-exported there, and the failure signature is a runtime
+> `TypeError: X is not a function` across every test that renders the component, not a type
+> error.
+
+### An "Error" card always states a reason
+
+`recomputeStage` derives `error`/`failed` when no item scanned, but never writes text, and
+`applyAddonOutcome` wrote `null` when the addon reported no error — so prod showed two
+`Error · 0 of 12` cards that declined to say why. The terminal-with-items branch now falls
+back to `allItemsFailedMessage` (mirroring `emptyOutcomeMessage`'s voice for the item-less
+case) whenever the recomputed stage is `error` and the addon gave no reason.
+
+### A promoted job drops a stale reason
+
+`failOrphanedJob` writes `failed/error` plus "the addon no longer has this job", then a later
+scan promotes the row back to `done` — leaving a success card carrying a failure message.
+`recomputeStage` now clears `error` when a job closes `done` with **no** failed or
+unavailable items. The rule is stated as "fully delivered", not "is the orphan message", so
+it needs no knowledge of addon copy; a partial keeps its reason, because there it is what
+explains the missing tracks.
+
 ## Download list metadata (`AlbumJobMeta`)
 
 `GET /api/downloads` annotates each in-flight folder whose `(username, peer directory)` matches an **active `album_jobs`** row with `albumJob: { artistName, albumTitle, canonicalTrackCount, albumId, jobId }` (`enrichWithAlbumJobs` in `routes/downloads.ts`; type in `@nicotind/core`). This lets the Downloads UI show "Artist — Album · N of M tracks" instead of the noisy peer folder name (e.g. "(1995) Toque"). `albumId` is the deterministic `albumIdFor(artistName, albumTitle)` for the destination library album, so a completed download can **deep-link straight to its album page**. The URL-acquire side mirrors this: `AcquireJob` carries `albumId`/`albumArtist`/`albumTitle` derived from the organized `storage_path`'s last two `<Artist>/<Album>` segments via the pure `deriveAcquireAlbum` (`services/acquire-album.ts`; null for loose singles with no album wrapper) — but only when the job's files landed in exactly one album; a job spanning several albums instead carries the full `destinationAlbums` array and surfaces a "View N albums" menu (see "Multi-album acquire jobs" above).

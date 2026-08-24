@@ -5,7 +5,13 @@ import type {
   PipelineStage,
   TrackStatus,
 } from '@nicotind/core';
-import { downloadTitleFor, type DownloadTitle } from '@nicotind/core';
+import {
+  downloadTitleFor,
+  parseJobFailureSummary,
+  summarizeFailures,
+  type DownloadTitle,
+  type FailureGroup,
+} from '@nicotind/core';
 import { methodBadge } from './acquisition-method';
 
 // ─── Unified download feed ──────────────────────────────────────────────
@@ -70,6 +76,12 @@ export interface DownloadItem {
   /** 0–100 progress for the in-flight bar, when a percentage is meaningful. */
   percent?: number;
   error?: string;
+  /**
+   * The job's per-track failures grouped by class, when the addon reported them
+   * (docs/download-pipeline.md "Failure breakdown"). Absent for a whole-job
+   * crash, which has one reason and needs no breakdown.
+   */
+  failures?: FailureGroup[];
   /** Tracks the fallback gave up on — renders "· K unavailable" (honest partial). */
   unavailable?: number;
   /**
@@ -127,6 +139,16 @@ export function renderDownloadTitle(title: DownloadTitle, method: AcquisitionMet
   }
 }
 
+/**
+ * Group a job's per-track failures for the card, or `undefined` when the error
+ * carries none — a single-reason failure reads better as the plain line it
+ * already is than as a breakdown of one.
+ */
+function failureGroupsFor(error: string | null | undefined): FailureGroup[] | undefined {
+  const groups = summarizeFailures(parseJobFailureSummary(error));
+  return groups.length > 0 ? groups : undefined;
+}
+
 /** Acquire job `state` → stage, preferring the job's own fine-grained `stage`. */
 function acquireStage(job: AcquireJob): PipelineStage {
   if (job.stage) return job.stage;
@@ -182,6 +204,7 @@ export function acquireJobToDownloadItem(job: AcquireJob): DownloadItem {
         ? Math.round((progress.done / progress.total) * 100)
         : undefined,
     error: job.error ?? undefined,
+    failures: failureGroupsFor(job.error),
     bitrateKbps: job.bitRate ?? undefined,
     audioFormat: job.audioFormat ?? undefined,
     // A 'done' job can still carry an error: a partial-download warning (e.g.
@@ -269,9 +292,13 @@ export function mergeAcquisitionJobs(
       progress: { done: job.progress.delivered, total: job.progress.expected },
       unavailable: job.progress.unavailable > 0 ? job.progress.unavailable : undefined,
       error: job.error ?? undefined,
+      failures: failureGroupsFor(job.error),
       // A failed URL acquire can be re-submitted — `POST /api/acquire/jobs/:id/
-      // retry` has always supported it; the card simply never offered it.
-      canRetry: job.kind === 'url' && job.stage === 'error',
+      // retry` has always supported it; the card simply never offered it. A
+      // *partial* one closes 'done' carrying the addon's warning, and is the
+      // case retry helps most: the addons resume rather than restart.
+      canRetry:
+        job.kind === 'url' && (job.stage === 'error' || (job.stage === 'done' && !!job.error)),
       // 'queued' counts: an addon URL job is mirrored at submit, before the
       // addon has fetched a byte, and a link that never resolves must not be
       // left with no control at all. An **import** is excluded: its card is a

@@ -364,3 +364,50 @@ describe('download-item "Now: / Next:" — rendered', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="download-next"]')).toBeNull();
   });
 });
+
+// One arbitrary truncated reason used to stand in for every failed track, so a
+// "5 of 89 · 84 unavailable" card could not say whether retrying would help.
+describe('download-item failure breakdown', () => {
+  function setup(one: DownloadItem) {
+    TestBed.configureTestingModule({
+      imports: [DownloadItemComponent],
+      providers: [provideRouter([])],
+    });
+    TestBed.overrideComponent(DownloadItemComponent, {
+      set: { imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent] },
+    });
+    const fixture = TestBed.createComponent(DownloadItemComponent);
+    setInputValue(fixture.componentInstance.item, one);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('groups failures by class instead of showing one arbitrary reason', () => {
+    const fixture = setup(
+      item({
+        stage: 'done',
+        progress: { done: 5, total: 89 },
+        unavailable: 84,
+        error: 'Downloaded 5 of 89 tracks — the rest failed or were skipped.',
+        failures: [
+          { class: 'transient', count: 61, example: 'JSONDecodeError: Expecting value' },
+          { class: 'unknown', count: 23, example: 'LookupError: No results found for song: X' },
+        ],
+      }),
+    );
+
+    const el = fixture.nativeElement.querySelector(
+      '[data-testid="download-failure-breakdown"]',
+    ) as HTMLElement;
+    expect(el.textContent).toContain('61 may work on retry');
+    expect(el.textContent).toContain('23 reason unclear');
+  });
+
+  it('keeps the plain error line for a whole-job failure with no breakdown', () => {
+    const fixture = setup(item({ stage: 'error', error: 'JSONDecodeError: Expecting value' }));
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="download-failure-breakdown"]'),
+    ).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('JSONDecodeError');
+  });
+});
