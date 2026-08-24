@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.3](https://github.com/kevinch3/NicotinD/compare/v0.4.2...v0.4.3) (2026-08-24)
+
+### Bug Fixes
+
+* **acquisition:** generate a native playlist for addon-run playlist jobs ([#656](https://github.com/kevinch3/NicotinD/issues/656)) ([b41252d](https://github.com/kevinch3/NicotinD/commit/b41252d6301a5982d775aaaf0ecbfa9dfd4d4b22)), references [#590](https://github.com/kevinch3/NicotinD/issues/590)
 ## [0.4.2](https://github.com/kevinch3/NicotinD/compare/v0.4.1...v0.4.2) (2026-08-24)
 
 ### Bug Fixes
