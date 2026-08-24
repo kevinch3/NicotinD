@@ -184,9 +184,10 @@ export function searchRoutes(
 
       for (const provider of registry.getByType('network')) {
         if (provider.pollResults) {
-          const canBrowse =
-            'browseUser' in provider &&
-            typeof (provider as { browseUser: unknown }).browseUser === 'function';
+          // One source of truth with the browse route — the declared capability,
+          // not method presence (#666), so the UI never offers a tree the addon
+          // cannot serve.
+          const canBrowse = registry.getBrowseProvider() !== null;
           try {
             const result = await provider.pollResults(searchId);
             return c.json({ ...result, canBrowse });

@@ -48,9 +48,10 @@ export class RemoteAddonPlugin implements Plugin {
     // provider adapter — same shape as SlskdPlugin, so the search/browse/
     // enqueue routes light up for a remote addon with zero route changes.
     if (this.manifest.capabilities.includes('search')) {
-      this.provider = new AddonSearchProvider(this.manifest.id, client);
+      const canBrowse = this.manifest.capabilities.includes('browse');
+      this.provider = new AddonSearchProvider(this.manifest.id, client, { canBrowse });
       this.search = this.provider;
-      if (this.manifest.capabilities.includes('browse')) this.browse = this.provider;
+      if (canBrowse) this.browse = this.provider;
       if (this.manifest.capabilities.includes('download')) {
         this.download = {
           enqueue: (sourceRef, files) => this.provider!.download(sourceRef, files),

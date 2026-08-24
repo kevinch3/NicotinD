@@ -27,11 +27,20 @@ export class AddonSearchProvider implements ISearchProvider, IBrowseProvider {
 
   private settled = new Map<string, AddonSearchResponse | null>();
 
+  /**
+   * `supportsBrowse` mirrors the *declared* manifest capability. Every instance
+   * implements `browseUser`, so method presence can't gate browse — the registry
+   * reads this flag instead (#666).
+   */
+  readonly supportsBrowse: boolean;
+
   constructor(
     addonId: string,
     private client: AddonTransport,
+    opts: { canBrowse?: boolean } = {},
   ) {
     this.name = addonId;
+    this.supportsBrowse = opts.canBrowse ?? true;
   }
 
   async search(query: string): Promise<{ results: null; searchId?: string }> {
@@ -111,7 +120,7 @@ export class AddonSearchProvider implements ISearchProvider, IBrowseProvider {
       return directories as BrowseDirectory[];
     } catch (err) {
       log.warn({ addon: this.name, err }, 'addon browse failed');
-      throw new BrowseUnavailableError();
+      throw new BrowseUnavailableError(err instanceof Error ? err.message : String(err));
     }
   }
 }
