@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.5](https://github.com/kevinch3/NicotinD/compare/v0.4.4...v0.4.5) (2026-08-24)
+
+### Bug Fixes
+
+* **web:** reserve the waveform strip's box so its arrival never shifts the transport ([#659](https://github.com/kevinch3/NicotinD/issues/659)) ([8d13d0d](https://github.com/kevinch3/NicotinD/commit/8d13d0da5a76dd2aae87703d822f4f81d2368bd6)), closes [#657](https://github.com/kevinch3/NicotinD/issues/657)
 ## [0.4.4](https://github.com/kevinch3/NicotinD/compare/v0.4.3...v0.4.4) (2026-08-24)
 ## [0.4.3](https://github.com/kevinch3/NicotinD/compare/v0.4.2...v0.4.3) (2026-08-24)
 
