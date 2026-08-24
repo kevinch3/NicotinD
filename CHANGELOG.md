@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.7](https://github.com/kevinch3/NicotinD/compare/v0.4.6...v0.4.7) (2026-08-24)
+
+### Bug Fixes
+
+* **acquire:** show honest state words instead of "↓ undefined%" on per-file download buttons ([#668](https://github.com/kevinch3/NicotinD/issues/668)) ([83d513e](https://github.com/kevinch3/NicotinD/commit/83d513e3163bec284f472541acb44c52cd481b79)), references [#496](https://github.com/kevinch3/NicotinD/issues/496) [#667](https://github.com/kevinch3/NicotinD/issues/667)
+* **catalog:** distinguish a failed album.lookup from an empty discography, with bounded retry ([#671](https://github.com/kevinch3/NicotinD/issues/671)) ([275c4a6](https://github.com/kevinch3/NicotinD/commit/275c4a62cba7a6c359d1d8d9b4afd96efeaa6ec8)), references [#669](https://github.com/kevinch3/NicotinD/issues/669) [#670](https://github.com/kevinch3/NicotinD/issues/670)
 ## [0.4.6](https://github.com/kevinch3/NicotinD/compare/v0.4.5...v0.4.6) (2026-08-24)
 
 ### Bug Fixes
