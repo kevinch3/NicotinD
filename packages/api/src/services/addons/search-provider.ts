@@ -4,6 +4,7 @@ import type {
   BrowseDirectory,
   ISearchProvider,
   IBrowseProvider,
+  DownloadReceipt,
   NetworkPollResult,
   ProviderType,
 } from '@nicotind/core';
@@ -97,12 +98,18 @@ export class AddonSearchProvider implements ISearchProvider, IBrowseProvider {
     this.settled.delete(searchId);
   }
 
-  /** The raw-lane enqueue: a browse-grab job on the addon. */
+  /**
+   * The raw-lane enqueue: a browse-grab job on the addon. The receipt is
+   * load-bearing (#673): the route pre-maps the addon job from it, and
+   * without the mapping the poller mints a twin feed row on its next tick.
+   * Declared non-void so the compiler refuses a bare create-and-forget.
+   */
   async download(
     username: string,
     files: Array<{ filename: string; size: number }>,
-  ): Promise<void> {
-    await this.client.createJob({ intent: 'browse-grab', username, files });
+  ): Promise<DownloadReceipt> {
+    const job = await this.client.createJob({ intent: 'browse-grab', username, files });
+    return { addonJobId: job.id };
   }
 
   async isAvailable(): Promise<boolean> {

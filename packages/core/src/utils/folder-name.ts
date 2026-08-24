@@ -58,6 +58,9 @@ const GENERIC_FOLDER_NAMES = new Set([
   'tmp',
   'data',
   'unsorted',
+  // slskd's own transfer dirs — peers routinely share straight out of them (#674)
+  'complete',
+  'incomplete',
 ]);
 
 export function isGenericFolderName(folderName: string): boolean {

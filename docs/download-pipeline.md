@@ -396,7 +396,27 @@ FLACs long landed.
 Now `ISearchProvider.download` returns a `DownloadReceipt { addonJobId }`, the
 route records `addon:<id>:<jobId>` and pre-maps the poller (`mapAddonJob`, the
 same pre-mapping `acquireAlbum` and the URL lane use), so there is exactly one
-row and it is the one the poller updates. And **Cancel on a row no addon owns
+row and it is the one the poller updates.
+
+**The #586 fix shipped without its provider half (issue #673).** Both the fix
+commit and the squashed PR changed the interface, the route and these docs — but
+in `AddonSearchProvider.download` only the type import landed; the body kept
+discarding `client.createJob`'s result, so `receipt` was always `undefined` and
+the twin came back (prod v0.4.8: one click on a folder → "BODAS 2024" twice).
+Three nets missed it: `Promise<void>` satisfies the interface's
+`Promise<DownloadReceipt | void>`; eslint flagged the then-unused import but the
+#615 lint sweep deleted the import instead of the bug; and the route test stubs
+a provider that returns a receipt the real one didn't. The provider now declares
+`Promise<DownloadReceipt>` — non-void, so the compiler refuses a bare
+create-and-forget — and `search-provider.test.ts` asserts the receipt itself.
+
+**A junk path hint is worse than no hint (issue #674).** The route parses
+best-effort artist/album display hints from the peer's folder segments; a peer
+sharing straight out of their slskd transfer dir put "complete" in the artist
+slot, and because `updateJobMeta` deliberately COALESCEs, a non-NULL junk hint
+blocked the addon's real metadata forever. Generic segments
+(`isGenericFolderName`, which now also knows slskd's `complete`/`incomplete`)
+store NULL instead — NULL self-heals on the poller's next metadata backfill. And **Cancel on a row no addon owns
 closes it core-side** (`cancelUnownedJob`: in-flight items → `unavailable`, job →
 `failed` "Cancelled by user") instead of refusing — the row is core's, and a
 refusal is what left "Cancel all" powerless against a stuck card; that path is

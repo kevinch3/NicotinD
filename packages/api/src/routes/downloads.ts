@@ -3,7 +3,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
-import { createLogger, type DownloadReceipt } from '@nicotind/core';
+import { createLogger, isGenericFolderName, type DownloadReceipt } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { requireAcquirer } from '../middleware/current-user.js';
 import {
@@ -143,6 +143,11 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
           .split('/')
           .filter(Boolean)
           .slice(0, -1); // drop the file basename
+        // A generic segment ("complete", "FLAC") stores NULL, not the junk:
+        // NULL self-heals via the poller's COALESCE backfill from the addon's
+        // metadata; a junk hint blocks that backfill forever (#674).
+        const hintFor = (segment: string | undefined): string | null =>
+          segment && !isGenericFolderName(segment) ? segment : null;
         const db = getDatabase();
         // When an addon runs the grab, this row must be THE mirror of its job:
         // `source_ref` is what `/jobs/:id/cancel` resolves the owning addon
@@ -154,8 +159,8 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
           kind: 'direct',
           // The provider's name is the source id (the addon's manifest id).
           method: provider.name,
-          artistName: segments.length >= 2 ? segments[segments.length - 2] : null,
-          albumTitle: segments.length >= 1 ? segments[segments.length - 1] : null,
+          artistName: hintFor(segments.length >= 2 ? segments[segments.length - 2] : undefined),
+          albumTitle: hintFor(segments[segments.length - 1]),
           sourceRef: addonJobId ? `addon:${provider.name}:${addonJobId}` : username,
           username,
           files,

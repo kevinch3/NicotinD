@@ -105,6 +105,48 @@ describe('downloads routes', () => {
     expect(item.transfer_key).toBe('peerX::@@x\\Music\\Some Artist\\Some Album\\01 Track.flac');
   });
 
+  // #674: a peer sharing out of their own slskd downloads dir exposes junk
+  // segments ("complete") that used to land verbatim as the artist hint — and
+  // a non-NULL junk hint blocks the poller's COALESCE backfill of the addon's
+  // real metadata forever. Generic segments must store NULL, which self-heals.
+  it('POST / stores no artist/album hint for generic path segments', async () => {
+    testDb.run('DELETE FROM acquisition_jobs');
+    testDb.run('DELETE FROM acquisition_job_items');
+    const res = await app.request('/', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        username: 'DjSan',
+        files: [{ filename: '@@x\\complete\\BODAS 2024 (DJ ROBERT)\\Pedro.mp3', size: 1 }],
+      }),
+    });
+    expect(res.status).toBe(201);
+    const job = testDb.query(`SELECT artist_name, album_title FROM acquisition_jobs`).get() as {
+      artist_name: string | null;
+      album_title: string | null;
+    };
+    expect(job.artist_name).toBeNull();
+    expect(job.album_title).toBe('BODAS 2024 (DJ ROBERT)');
+
+    testDb.run('DELETE FROM acquisition_jobs');
+    testDb.run('DELETE FROM acquisition_job_items');
+    const res2 = await app.request('/', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        username: 'DjSan',
+        files: [{ filename: 'Some Artist\\FLAC\\01 Track.flac', size: 1 }],
+      }),
+    });
+    expect(res2.status).toBe(201);
+    const job2 = testDb.query(`SELECT artist_name, album_title FROM acquisition_jobs`).get() as {
+      artist_name: string | null;
+      album_title: string | null;
+    };
+    expect(job2.artist_name).toBe('Some Artist');
+    expect(job2.album_title).toBeNull();
+  });
+
   it('GET /jobs returns the unified job feed with per-state progress', async () => {
     const id = createJob(testDb, {
       kind: 'album-hunt',
