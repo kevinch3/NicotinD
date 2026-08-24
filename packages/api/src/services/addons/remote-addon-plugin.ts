@@ -54,7 +54,12 @@ export class RemoteAddonPlugin implements Plugin {
       if (canBrowse) this.browse = this.provider;
       if (this.manifest.capabilities.includes('download')) {
         this.download = {
-          enqueue: (sourceRef, files) => this.provider!.download(sourceRef, files),
+          // The capability is fire-and-forget (Promise<void>); the receipt the
+          // provider returns is for the enqueue ROUTE, which pre-maps the
+          // poller from it (#673) — discard it here explicitly.
+          enqueue: async (sourceRef, files) => {
+            await this.provider!.download(sourceRef, files);
+          },
         };
       }
     }

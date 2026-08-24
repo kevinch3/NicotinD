@@ -123,6 +123,20 @@ describe('AddonSearchProvider', () => {
     await provider.download('peer', [{ filename: 'a.mp3', size: 1 }]);
     expect(jobs[0]).toMatchObject({ intent: 'browse-grab', username: 'peer' });
   });
+
+  // #673 regression: the receipt is what lets the route pre-map the addon job
+  // (mapAddonJob) — without it the poller mints a twin feed row on its next
+  // tick and one click renders as two cards.
+  it('download() returns the created addon job id as the receipt', async () => {
+    const provider = new AddonSearchProvider(
+      'fixture-addon',
+      stubClient({
+        createJob: (async () => ({ id: 'j1' })) as unknown as AddonClient['createJob'],
+      }),
+    );
+    const receipt = await provider.download('peer', [{ filename: 'a.mp3', size: 1 }]);
+    expect(receipt).toEqual({ addonJobId: 'j1' });
+  });
 });
 
 describe('RemoteAddonPlugin capabilities', () => {
