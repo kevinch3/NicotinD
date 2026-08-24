@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.8](https://github.com/kevinch3/NicotinD/compare/v0.4.7...v0.4.8) (2026-08-24)
+
+### Bug Fixes
+
+* **addons:** browse follows the declared capability, not method presence ([#672](https://github.com/kevinch3/NicotinD/issues/672)) ([b217813](https://github.com/kevinch3/NicotinD/commit/b217813a18a083bc76d319a1476f0b0dda0aa00e))
 ## [0.4.7](https://github.com/kevinch3/NicotinD/compare/v0.4.6...v0.4.7) (2026-08-24)
 
 ### Bug Fixes
