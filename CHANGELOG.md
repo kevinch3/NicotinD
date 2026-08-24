@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.0](https://github.com/kevinch3/NicotinD/compare/v0.4.12...v0.5.0) (2026-08-24)
+
+### ⚠ BREAKING CHANGES
+
+* GET /api/library/songs/:id/licence-suggestion and POST
+  /api/library/songs/:id/licence are removed, the set_song_licence MCP tool is
+  gone, `licence` no longer appears on the Album or Song DTOs, and the
+  ?licence= library filter is ignored.
+
+### Features
+
+* roll back the licence feature ([#697](https://github.com/kevinch3/NicotinD/issues/697)) ([262b8d9](https://github.com/kevinch3/NicotinD/commit/262b8d9b49a4de9e744f0c2ff4aa1611fd277f67)), closes [#683](https://github.com/kevinch3/NicotinD/issues/683), references [#683](https://github.com/kevinch3/NicotinD/issues/683) [#329](https://github.com/kevinch3/NicotinD/issues/329) [#329](https://github.com/kevinch3/NicotinD/issues/329)
 ## [0.4.12](https://github.com/kevinch3/NicotinD/compare/v0.4.11...v0.4.12) (2026-08-24)
 
 ### Features
