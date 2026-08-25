@@ -94,6 +94,30 @@ irreversible — every deletion is appended to `<dataDir>/repair-pollution.log`.
 - **Deletable rules** (`DELETABLE_RULES`): `watermark_artist`, `watermark_album`,
   `numeric_single`, `placeholder_single`. Default (no `--rules`) is
   `watermark_artist` only — the safest, highest-volume junk.
+- **The governing rule: junk metadata is not junk audio** (issue #705). Every rule above
+  judges a *name*; what `--apply` destroys is *files*. So an album is protected whenever
+  **any of its tracks carries a real title** — one that is non-empty and not itself a
+  watermark or a bare number (`albumHasRealTrackTitles`). A genuine dumping ground names
+  its files after the watermark, so it has no real titles and stays deletable. Reported
+  as `protectedRealAudio` in the dry run.
+
+  This was measured, not assumed: on the prod library (2,885 artists / 4,924 albums) the
+  audit flagged 6 pollution targets and **all 6 held real music** — including
+  `Coolio.com`, Coolio's genuine 14-track 2001 album, one `--apply` from deletion because
+  the title ends in `.com`. `You Love Dance.TV` is a real DJ-pool watermark *as an
+  artist* — and held a real 4 Strings track, "Acid Phase". The remediation for all of
+  them is a retag, never a delete.
+
+- **Per-rule corroboration.** A name-shaped rule may not authorise a delete on its own:
+  - `numeric_single` additionally requires the **artist** to be junk (`artistLooksJunk`).
+    A one-track album with a numeric title is exactly what a real numeric-titled single
+    looks like — `777` (Latto), `2000` (Manuel Turizo), `666`, `222`, `7171` were all
+    real. The single-track guard cannot discriminate; the artist can.
+  - `placeholder_single` uses `isPlaceholderArtistStrict`, not `isPlaceholderArtist`.
+    The latter answers *"is this usable as a Lidarr query key?"*, under which the real
+    band `!!!` (chk chk chk) normalizes to `""` and reads as a placeholder. That is the
+    wrong question to authorise destruction.
+
 - **Always protected**: `numeric_artist` and **real-named** `missplit_album` clusters
   (the Piazzolla opera, real VA comps). A mis-split whose shared title is *itself* a
   watermark (`MUSICAUNO.COM`) is **not** protected — it's pure pollution and stays

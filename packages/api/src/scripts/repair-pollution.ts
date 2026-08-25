@@ -114,7 +114,7 @@ function main(): void {
   console.log(`\nrepair-pollution ${apply ? '(APPLY)' : '(dry run)'} — rules: ${rules.join(', ')}`);
   console.log(`  db=${dbPath}\n  music=${musicDir}\n`);
 
-  const { targets, protectedMisSplit } = selectPollutionTargets(db, rules);
+  const { targets, protectedMisSplit, protectedRealAudio } = selectPollutionTargets(db, rules);
 
   // Resolve each target's files + size up the deletion.
   let totalFiles = 0;
@@ -157,6 +157,12 @@ function main(): void {
       `\n  🛡️  ${protectedMisSplit} album(s) protected as mis-split real releases (NOT deleted).`,
     );
     console.log('     Re-merge those with normalize-library / repair-album-folders.');
+  }
+  if (protectedRealAudio > 0) {
+    console.log(
+      `\n  🛡️  ${protectedRealAudio} album(s) protected because their tracks carry real titles (NOT deleted).`,
+    );
+    console.log('     Junk metadata is not junk audio — retag these rather than deleting them.');
   }
 
   // Show a sample so the dry run is reviewable.

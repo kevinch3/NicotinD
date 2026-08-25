@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import { isUnknownLike } from './audio-tags.js';
-import { isPlaceholderArtist } from './artwork-backfill.js';
+import { isPlaceholderArtistStrict } from './artwork-backfill.js';
 import { normalizeForGrouping } from './album-grouping.js';
 import {
   looksLikeSourceWatermark,
@@ -157,6 +157,21 @@ export function checkAlbumIntegrity(db: Database): AuditFinding[] {
 // Pollution rules
 // ---------------------------------------------------------------------------
 
+/**
+ * True when the *artist* identity is itself junk — a source watermark, a bare
+ * disc/track number, or a genuine placeholder. Used to corroborate album-level
+ * rules: junk album metadata next to a REAL artist is usually a real release
+ * with a bad tag, not pollution.
+ */
+function artistLooksJunk(artist: string | undefined | null): boolean {
+  if (!artist) return true;
+  return (
+    looksLikeSourceWatermark(artist) ||
+    isNumericLikeName(artist) ||
+    isPlaceholderArtistStrict(artist)
+  );
+}
+
 /** Artists whose name is a DJ-pool/VA-source watermark or a bare number. */
 export function checkPollutedArtists(db: Database): AuditFinding[] {
   const out: AuditFinding[] = [];
@@ -217,7 +232,13 @@ export function checkPollutedAlbums(db: Database): AuditFinding[] {
       });
       continue;
     }
-    if (al.song_count <= 1 && isNumericLikeName(al.name)) {
+    // A one-track album with a numeric title is EXACTLY what a real numeric-titled
+    // single looks like ("777" by Latto, "2000" by Manuel Turizo, "666", "222").
+    // The track-count guard the predicate's docblock recommends cannot separate the
+    // two, so require the *artist* to be junk as well: a mis-parsed disc/track
+    // number lands next to a mis-parsed artist, whereas a real single has a real
+    // one. (Issue #705 — all five numeric singles flagged on prod were real.)
+    if (al.song_count <= 1 && isNumericLikeName(al.name) && artistLooksJunk(al.artist)) {
       out.push({
         rule: 'numeric_single',
         severity: 'high',
@@ -226,9 +247,13 @@ export function checkPollutedAlbums(db: Database): AuditFinding[] {
       });
       continue;
     }
+    // `isPlaceholderArtistStrict`, not `isPlaceholderArtist`: the latter answers
+    // "is this usable as a Lidarr query key?", under which the real band `!!!`
+    // (and, before the normalizeName fix, every non-Latin-script artist) reads as
+    // a placeholder. Deleting on that answer destroyed real music (issue #705).
     if (
       al.classification === 'single' &&
-      (isPlaceholderArtist(al.artist) || isUnknownLike(al.name))
+      (isPlaceholderArtistStrict(al.artist) || isUnknownLike(al.name))
     ) {
       out.push({
         rule: 'placeholder_single',
@@ -373,6 +398,22 @@ export const DELETABLE_RULES: DeletableRule[] = [
   'placeholder_single',
 ];
 
+/**
+ * True when at least one of the album's tracks carries a real title — meaning
+ * there is music here worth keeping regardless of how junk the album or artist
+ * name is. A genuine dumping ground names its files after the watermark or a
+ * bare number, so it has no real titles and stays deletable.
+ */
+function albumHasRealTrackTitles(db: Database, albumId: string): boolean {
+  const rows = db
+    .query<{ title: string | null }, [string]>('SELECT title FROM library_songs WHERE album_id = ?')
+    .all(albumId);
+  return rows.some(({ title }) => {
+    if (!title || !title.trim()) return false;
+    return !looksLikeSourceWatermark(title) && !isNumericLikeName(title);
+  });
+}
+
 export interface PollutionTarget {
   albumId: string;
   artistId: string;
@@ -391,7 +432,7 @@ export interface PollutionTarget {
 export function selectPollutionTargets(
   db: Database,
   rules: DeletableRule[],
-): { targets: PollutionTarget[]; protectedMisSplit: number } {
+): { targets: PollutionTarget[]; protectedMisSplit: number; protectedRealAudio: number } {
   const report = auditLibrary(db);
   const albums = loadAlbums(db);
   const byId = new Map(albums.map((a) => [a.id, a]));
@@ -415,11 +456,23 @@ export function selectPollutionTargets(
   // Collect (albumId → matched rules), protecting mis-split members.
   const matched = new Map<string, Set<string>>();
   let protectedMisSplit = 0;
+  let protectedRealAudio = 0;
   const add = (albumId: string, rule: string): void => {
     const al = byId.get(albumId);
     if (!al) return;
     if (protectedKeys.has(normalizeForGrouping(al.name))) {
       protectedMisSplit++;
+      return;
+    }
+    // Junk METADATA is not junk AUDIO. Every rule here judges an album or artist
+    // *name*, but the thing `--apply` destroys is the files. `You Love Dance.TV`
+    // is a genuine DJ-pool watermark — and it held a real 4 Strings track, so the
+    // right remediation was a retag, not a delete. Anything whose own tracks carry
+    // real titles is protected and left for manual re-tagging. (Issue #705: on the
+    // prod library this protected 100% of the flagged targets, which is the honest
+    // answer — these rules cannot by themselves identify deletable audio.)
+    if (albumHasRealTrackTitles(db, albumId)) {
+      protectedRealAudio++;
       return;
     }
     const set = matched.get(albumId) ?? new Set<string>();
@@ -441,7 +494,7 @@ export function selectPollutionTargets(
     const al = byId.get(albumId)!;
     return { albumId, artistId: al.artist_id, name: al.name, artist: al.artist, rules: [...rs] };
   });
-  return { targets, protectedMisSplit };
+  return { targets, protectedMisSplit, protectedRealAudio };
 }
 
 /** Run every DB rule (plus any caller-supplied disk findings) into one report. */

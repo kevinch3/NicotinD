@@ -49,11 +49,11 @@ function addAlbum(
   );
 }
 
-function addSong(db: Database, id: string, albumId: string, artistId: string): void {
+function addSong(db: Database, id: string, albumId: string, artistId: string, title = 't'): void {
   db.run(
     `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
-     VALUES (?, ?, 't', 'a', ?, ?, 1)`,
-    [id, albumId, artistId, `/m/${id}.opus`],
+     VALUES (?, ?, ?, 'a', ?, ?, 1)`,
+    [id, albumId, title, artistId, `/m/${id}.opus`],
   );
 }
 
@@ -148,11 +148,23 @@ describe('auditLibrary', () => {
     expect(rules).not.toContain('numeric_single');
   });
 
-  it('flags a track-number-titled one-track single', () => {
-    addArtist(db, 'ar1', 'Real Band', 1);
-    addAlbum(db, { id: 'aln', name: '07', artist: 'Real Band', artistId: 'ar1', songCount: 1 });
-    addSong(db, 's1', 'aln', 'ar1');
+  it('flags a track-number-titled one-track single only when the ARTIST is junk too', () => {
+    // A mis-parsed disc/track number lands next to a mis-parsed artist.
+    addArtist(db, 'arj', 'musicauno.com', 1);
+    addAlbum(db, { id: 'alj', name: '07', artist: 'musicauno.com', artistId: 'arj', songCount: 1 });
+    addSong(db, 'sj', 'alj', 'arj');
     expect(auditLibrary(db).findings.map((f) => f.rule)).toContain('numeric_single');
+  });
+
+  // Issue #705: every numeric single flagged on the prod library was a REAL release
+  // — "777" (Latto), "2000" (Manuel Turizo), "666", "222", "7171". A one-track album
+  // with a numeric title is exactly what a real numeric-titled single looks like, so
+  // the single-track guard the predicate recommends cannot discriminate at all.
+  it('does not flag a real numeric-titled single by a real artist', () => {
+    addArtist(db, 'ar1', 'Latto', 1);
+    addAlbum(db, { id: 'aln', name: '777', artist: 'Latto', artistId: 'ar1', songCount: 1 });
+    addSong(db, 's1', 'aln', 'ar1', 'Big Energy');
+    expect(auditLibrary(db).findings.map((f) => f.rule)).not.toContain('numeric_single');
   });
 
   it('detects a mis-split album (>=3 singles sharing a title)', () => {
@@ -217,10 +229,58 @@ describe('auditLibrary', () => {
     addArtist(db, 'arw', 'ftpdjemilio.com', 2);
     addAlbum(db, { id: 'w1', name: 'Track A', artist: 'ftpdjemilio.com', artistId: 'arw' });
     addAlbum(db, { id: 'w2', name: 'Track B', artist: 'ftpdjemilio.com', artistId: 'arw' });
-    addSong(db, 's1', 'w1', 'arw');
-    addSong(db, 's2', 'w2', 'arw');
+    // Files named after the watermark: nothing real to lose, so both are deletable.
+    addSong(db, 's1', 'w1', 'arw', 'ftpdjemilio.com');
+    addSong(db, 's2', 'w2', 'arw', 'ftpdjemilio.com');
     const { targets } = selectPollutionTargets(db, ['watermark_artist']);
     expect(targets.map((t) => t.albumId).sort()).toEqual(['w1', 'w2']);
+  });
+
+  // Issue #705, the case that motivated the whole guard. `You Love Dance.TV` is a
+  // genuine DJ-pool watermark as an ARTIST — and on prod it held a real 4 Strings
+  // track, "Acid Phase". Expanding a watermark artist to "delete all its albums"
+  // therefore destroyed real music. The remediation is a retag, never a delete.
+  it('protects a watermark artist whose tracks carry real titles', () => {
+    addArtist(db, 'arw', 'You Love Dance.TV', 1);
+    addAlbum(db, { id: 'w1', name: 'Vol 3', artist: 'You Love Dance.TV', artistId: 'arw' });
+    addSong(db, 's1', 'w1', 'arw', 'Acid Phase');
+    const res = selectPollutionTargets(db, ['watermark_artist']);
+    expect(res.targets).toEqual([]);
+    expect(res.protectedRealAudio).toBe(1);
+  });
+
+  // Issue #705: `Coolio.com` is Coolio's genuine 2001 album — 14 real tracks, one
+  // `--apply` away from deletion because the title ends in ".com".
+  it('protects a real album whose title merely looks like a domain', () => {
+    addArtist(db, 'arc', 'Coolio', 1);
+    addAlbum(db, {
+      id: 'alc',
+      name: 'Coolio.com',
+      artist: 'Coolio',
+      artistId: 'arc',
+      songCount: 14,
+    });
+    addSong(db, 'sc', 'alc', 'arc', 'Ghetto Square Dance');
+    const res = selectPollutionTargets(db, DELETABLE_RULES);
+    expect(res.targets).toEqual([]);
+    expect(res.protectedRealAudio).toBeGreaterThan(0);
+  });
+
+  // Issue #705: `!!!` (chk chk chk) is a real band. `isPlaceholderArtist` answers
+  // "usable as a Lidarr query key?", under which `!!!` normalizes to "" and reads
+  // as a placeholder — the wrong question to authorise a delete.
+  it('does not treat a punctuation-only real band as a placeholder', () => {
+    addArtist(db, 'arb', '!!!', 1);
+    addAlbum(db, {
+      id: 'alb',
+      name: 'Myth Takes',
+      artist: '!!!',
+      artistId: 'arb',
+      songCount: 1,
+      classification: 'single',
+    });
+    addSong(db, 'sb', 'alb', 'arb', 'Must Be the Moon');
+    expect(auditLibrary(db).findings.map((f) => f.rule)).not.toContain('placeholder_single');
   });
 
   it('PROTECTS a real-named mis-split from deletion even when members trip a delete rule', () => {
@@ -255,6 +315,18 @@ describe('auditLibrary', () => {
         classification: 'single',
       });
       addSong(db, `ws${i}`, `wm${i}`, `w${i}`);
+    }
+    // Songs carry a real title ('t'), so the real-audio guard protects them: junk
+    // metadata is not junk audio (issue #705). They are still *reported*, just not
+    // deletable — the remediation is a retag.
+    const kept = selectPollutionTargets(db, ['watermark_album']);
+    expect(kept.targets).toEqual([]);
+    expect(kept.protectedRealAudio).toBe(3);
+
+    // Retitle the files after the watermark itself — now there is no real music to
+    // lose and the album is a genuine dumping ground, so it becomes deletable.
+    for (let i = 0; i < 3; i++) {
+      db.run(`UPDATE library_songs SET title = 'musicauno.com' WHERE id = ?`, [`ws${i}`]);
     }
     const { targets } = selectPollutionTargets(db, ['watermark_album']);
     expect(targets.map((t) => t.albumId).sort()).toEqual(['wm0', 'wm1', 'wm2']);

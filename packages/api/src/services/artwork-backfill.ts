@@ -72,18 +72,36 @@ export type BackfillLidarr = Pick<Lidarr, 'artist' | 'album'>;
  * alone when this is true. Punctuation is stripped first (via `normalizeName`),
  * so bracketed variants like "<Desconocido>" / "[Unknown]" collapse to the word.
  */
+const PLACEHOLDER_WORDS = new Set([
+  'desconocido',
+  'artista desconocido',
+  'unknown',
+  'unknown artist',
+  'various artists',
+  'various',
+  'va',
+]);
+
 export function isPlaceholderArtist(artist: string): boolean {
   const a = normalizeName(artist);
-  return (
-    a === '' ||
-    a === 'desconocido' ||
-    a === 'artista desconocido' ||
-    a === 'unknown' ||
-    a === 'unknown artist' ||
-    a === 'various artists' ||
-    a === 'various' ||
-    a === 'va'
-  );
+  return a === '' || PLACEHOLDER_WORDS.has(a);
+}
+
+/**
+ * Like {@link isPlaceholderArtist}, but a name that merely *normalizes* to empty
+ * is NOT a placeholder — only a genuinely blank one is.
+ *
+ * The distinction exists because the two callers ask different questions.
+ * "Is this name usable as a Lidarr query key?" and "is this artist junk?" have
+ * opposite answers for a punctuation-only real band: `!!!` (chk chk chk) is
+ * useless as a search term but is very much a real artist, and `library-audit`
+ * was using the query-shaped predicate to decide what to **delete** (issue #705).
+ * Use this one wherever the answer authorises destruction.
+ */
+export function isPlaceholderArtistStrict(artist: string): boolean {
+  if (artist.trim() === '') return true;
+  const a = normalizeName(artist);
+  return a !== '' && PLACEHOLDER_WORDS.has(a);
 }
 
 /**
