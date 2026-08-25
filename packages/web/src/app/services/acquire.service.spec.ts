@@ -19,20 +19,31 @@ function job(over: Partial<AcquireJob> = {}): AcquireJob {
   };
 }
 
+/** Drive jsdom's `document.hidden`, which is a getter with no setter. */
+function setHidden(hidden: boolean): void {
+  Object.defineProperty(document, 'hidden', {
+    configurable: true,
+    get: () => hidden,
+  });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
 describe('AcquireService', () => {
   const get = vi.fn();
+  const post = vi.fn();
   const show = vi.fn();
   let svc: AcquireService;
 
   beforeEach(() => {
     get.mockReset();
+    post.mockReset();
     show.mockReset();
     get.mockReturnValue(of([]));
 
     TestBed.configureTestingModule({
       providers: [
         AcquireService,
-        { provide: HttpClient, useValue: { get, post: vi.fn(), delete: vi.fn() } },
+        { provide: HttpClient, useValue: { get, post, delete: vi.fn() } },
         { provide: ToastService, useValue: { show, reset: vi.fn() } },
       ],
     });
@@ -155,6 +166,57 @@ describe('AcquireService', () => {
       get.mockReturnValue(of([doneJob]));
       await svc.refresh();
       expect(show).not.toHaveBeenCalled();
+    });
+  });
+
+  // Issue #717: this poller ran at 2 s from a hidden tab for the whole life of
+  // a download. It cannot pause outright the way TransferService does — this is
+  // where the "added to the library" toast fires — so it drops to a heartbeat.
+  describe('polling cadence while hidden', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      setHidden(false);
+    });
+
+    afterEach(() => {
+      svc.reset();
+      vi.useRealTimers();
+    });
+
+    async function submitWithJobRunning(): Promise<void> {
+      get.mockReturnValue(of([job({ state: 'running' })]));
+      post.mockReturnValue(of({ jobId: 'j1' }));
+      await svc.submit('http://example.com/track');
+      await vi.advanceTimersByTimeAsync(0);
+    }
+
+    it('polls every 2 s while visible', async () => {
+      await submitWithJobRunning();
+      const before = get.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(get.mock.calls.length).toBe(before + 1);
+    });
+
+    it('drops to a 60 s heartbeat while hidden instead of polling every 2 s', async () => {
+      await submitWithJobRunning();
+      setHidden(true);
+      const before = get.mock.calls.length;
+
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(get.mock.calls.length).toBe(before);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(get.mock.calls.length).toBe(before + 1);
+    });
+
+    it('still toasts a job that completes while the tab is hidden', async () => {
+      await submitWithJobRunning();
+      setHidden(true);
+      show.mockReset();
+
+      get.mockReturnValue(of([job({ state: 'done' })]));
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(show).toHaveBeenCalledWith(expect.objectContaining({ kind: 'success' }));
     });
   });
 });

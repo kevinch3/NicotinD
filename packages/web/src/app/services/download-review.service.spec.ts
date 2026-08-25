@@ -6,6 +6,15 @@ import { ReviewApiService } from './api/review-api.service';
 import { AuthService } from './auth.service';
 import type { ReviewQueueAlbum } from './api/api-types';
 
+/** Drive jsdom's `document.hidden`, which is a getter with no setter. */
+function setHidden(hidden: boolean): void {
+  Object.defineProperty(document, 'hidden', {
+    configurable: true,
+    get: () => hidden,
+  });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
 function setup(opts: { canCurate?: boolean; pending?: number; queue?: ReviewQueueAlbum[] } = {}) {
   const getCount = vi.fn().mockReturnValue(of({ pending: opts.pending ?? 3 }));
   const getQueue = vi.fn().mockReturnValue(of({ albums: opts.queue ?? [] }));
@@ -89,5 +98,27 @@ describe('DownloadReviewService', () => {
     dispose2();
     await vi.advanceTimersByTimeAsync(DownloadReviewService.POLL_MS * 2);
     expect(getCount).not.toHaveBeenCalled();
+  });
+
+  // Characterization of the visibility pause that predates #717 — kept green
+  // across the move to the shared createVisibilityPoller helper.
+  describe('visibility pause', () => {
+    it('stops fetching while the page is hidden, and catches up on return', async () => {
+      vi.useFakeTimers();
+      setHidden(false);
+      const { service, getCount } = setup();
+      const dispose = service.start();
+      await vi.advanceTimersByTimeAsync(0);
+      const before = getCount.mock.calls.length;
+
+      setHidden(true);
+      await vi.advanceTimersByTimeAsync(DownloadReviewService.POLL_MS * 10);
+      expect(getCount.mock.calls.length).toBe(before);
+
+      setHidden(false);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(getCount.mock.calls.length).toBe(before + 1);
+      dispose();
+    });
   });
 });

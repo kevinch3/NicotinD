@@ -3,6 +3,7 @@ import { firstValueFrom } from 'rxjs';
 import { ReviewApiService } from './api/review-api.service';
 import { AuthService } from './auth.service';
 import type { ReviewQueueAlbum } from './api/api-types';
+import { createVisibilityPoller, type VisibilityPoller } from '../lib/visibility-poller';
 
 /**
  * Download inbox triage (issue #411): the ref-counted pending-count poller
@@ -34,9 +35,11 @@ export class DownloadReviewService {
 
   private ownerCount = 0;
   private queueWatchers = 0;
-  private intervalId: ReturnType<typeof setInterval> | null = null;
   private inflight: Promise<void> | null = null;
-  private visibilityListener?: () => void;
+  private poller: VisibilityPoller = createVisibilityPoller({
+    poll: () => this.refresh(),
+    delayMs: () => DownloadReviewService.POLL_MS,
+  });
 
   /**
    * Begin polling. Re-entrant — call once per owning component; the timer
@@ -47,9 +50,9 @@ export class DownloadReviewService {
   start(): () => void {
     if (!this.auth.canCurate()) return () => {};
     this.ownerCount += 1;
-    this.ensureTimerRunning();
-    this.attachVisibilityIfNeeded();
+    this.poller.start();
     // Kick an immediate fetch so a fresh mount never shows a stale badge.
+    // Coalesced with the poller's own first poll by the `inflight` guard.
     void this.refresh();
     return () => this.stop();
   }
@@ -59,11 +62,7 @@ export class DownloadReviewService {
     if (this.ownerCount <= 0) return;
     this.ownerCount -= 1;
     if (this.ownerCount === 0) {
-      this.detachVisibility();
-      if (this.intervalId !== null) {
-        clearInterval(this.intervalId);
-        this.intervalId = null;
-      }
+      this.poller.stop();
     }
   }
 
@@ -107,41 +106,5 @@ export class DownloadReviewService {
       }
     })();
     return this.inflight;
-  }
-
-  // --- internal: timer + visibility ──────────────────────────────────────────
-
-  private ensureTimerRunning(): void {
-    if (this.intervalId !== null) return;
-    this.intervalId = setInterval(() => {
-      if (this.isPageVisible()) void this.refresh();
-    }, DownloadReviewService.POLL_MS);
-  }
-
-  private isPageVisible(): boolean {
-    if (typeof document === 'undefined') return true;
-    return !document.hidden;
-  }
-
-  private attachVisibilityIfNeeded(): void {
-    if (this.visibilityListener) return;
-    if (typeof document === 'undefined') return;
-    this.visibilityListener = () => {
-      if (this.isPageVisible()) {
-        this.ensureTimerRunning();
-        void this.refresh();
-      } else if (this.intervalId !== null) {
-        clearInterval(this.intervalId);
-        this.intervalId = null;
-      }
-    };
-    document.addEventListener('visibilitychange', this.visibilityListener);
-  }
-
-  private detachVisibility(): void {
-    if (this.visibilityListener && typeof document !== 'undefined') {
-      document.removeEventListener('visibilitychange', this.visibilityListener);
-    }
-    this.visibilityListener = undefined;
   }
 }

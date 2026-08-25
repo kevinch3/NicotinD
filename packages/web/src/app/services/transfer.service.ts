@@ -6,6 +6,7 @@ import { LibraryApiService } from './api/library-api.service';
 import type { AcquireJob, AcquisitionJobView } from '@nicotind/core';
 import type { TransferEntry } from '../lib/transfer-types';
 import { detectNewCompletion } from '../lib/transfer-utils';
+import { createVisibilityPoller, type VisibilityPoller } from '../lib/visibility-poller';
 
 export type { TransferEntry } from '../lib/transfer-types';
 
@@ -53,8 +54,13 @@ export class TransferService {
       this.acquisitionJobs().filter((j) => j.kind !== 'url' && j.stage === 'downloading').length,
   );
 
-  private timerId: ReturnType<typeof setTimeout> | null = null;
-  private running = false;
+  // Paused while the tab is hidden (#717) — this poller feeds only derived
+  // state (header badge, nav count, the libraryDirty flag), all of which the
+  // catch-up poll on resume recomputes.
+  private poller: VisibilityPoller = createVisibilityPoller({
+    poll: () => this.poll(),
+    delayMs: () => (this.hasActive ? 3_000 : 30_000),
+  });
   private scanPollTimer: ReturnType<typeof setTimeout> | null = null;
   private prevAcquireStates = new Map<string, AcquireJob['state']>();
   private hasPolled = false;
@@ -174,28 +180,12 @@ export class TransferService {
     return this.acquireJobs().some((j) => j.state === 'queued' || j.state === 'running');
   }
 
-  private scheduleNext(): void {
-    this.timerId = setTimeout(() => this.tick(), this.hasActive ? 3_000 : 30_000);
-  }
-
-  private async tick(): Promise<void> {
-    this.timerId = null;
-    await this.poll();
-    if (this.running) this.scheduleNext();
-  }
-
   startPolling(): void {
-    if (this.running) return;
-    this.running = true;
-    void this.tick();
+    this.poller.start();
   }
 
   stopPolling(): void {
-    this.running = false;
-    if (this.timerId) {
-      clearTimeout(this.timerId);
-      this.timerId = null;
-    }
+    this.poller.stop();
   }
 
   reset(): void {
@@ -217,11 +207,7 @@ export class TransferService {
    *  initiating a download; resolves when the poll round-trip completes
    *  (pull-to-refresh awaits it so the spinner reflects real work). */
   kickPoll(): Promise<void> {
-    if (this.timerId) {
-      clearTimeout(this.timerId);
-      this.timerId = null;
-    }
-    return this.tick();
+    return this.poller.kick();
   }
 
   getStatus(username: string, filename: string): TransferEntry | undefined {

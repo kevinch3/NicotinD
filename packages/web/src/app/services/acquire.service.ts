@@ -2,6 +2,7 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { ToastService } from './toast.service';
+import { createVisibilityPoller, type VisibilityPoller } from '../lib/visibility-poller';
 
 export type AcquireBackend = 'ytdlp' | 'spotdl';
 
@@ -43,7 +44,14 @@ export class AcquireService {
   );
   readonly hasActive = computed(() => this.activeJobs().length > 0);
 
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  // Slows to a heartbeat rather than pausing while hidden (#717): this is where
+  // the "added to the library" toast fires, so a download finishing in a
+  // background tab still has to reach the user.
+  private poller: VisibilityPoller = createVisibilityPoller({
+    poll: () => this.refresh(),
+    delayMs: () => 2_000,
+    hiddenDelayMs: () => 60_000,
+  });
   private completedJobIds = new Set<string>();
   // Guard so the first refresh baselines all existing terminal jobs silently
   // (no toast). Matches TransferService.hasPolled.
@@ -57,8 +65,10 @@ export class AcquireService {
     const res = await firstValueFrom(
       this.http.post<{ jobId: string }>('/api/acquire', { url, backend, as: opts.as }),
     );
-    void this.refresh();
-    this.ensurePolling();
+    // start() polls immediately when idle; kick() covers the already-running
+    // case so a second submit still refreshes at once.
+    if (this.poller.isRunning()) void this.poller.kick();
+    else this.poller.start();
     return res.jobId;
   }
 
@@ -101,16 +111,8 @@ export class AcquireService {
     this.hasRefreshed = true;
   }
 
-  private ensurePolling(): void {
-    if (this.pollTimer) return;
-    this.pollTimer = setInterval(() => void this.refresh(), 2_000);
-  }
-
   private stopPolling(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
+    this.poller.stop();
   }
 
   reset(): void {

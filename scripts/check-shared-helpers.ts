@@ -79,6 +79,12 @@ export const SHARED_HELPERS: SharedHelper[] = [
   // track-info sheet's genre chips became the second reorderable list (#684) —
   // registered at extraction, before a third surface copies it again.
   { name: 'moveInList', canonical: 'packages/web/src/app/lib/move-in-list.ts' },
+  // The "pause polling while the tab is hidden" loop. ServiceReview and
+  // DownloadReview each carried a byte-identical copy of it; TransferService
+  // had none, which is how a backgrounded tab came to be ~75% of all traffic
+  // reaching the public edge (#717). Registered at extraction, with four
+  // callers already on it.
+  { name: 'createVisibilityPoller', canonical: 'packages/web/src/app/lib/visibility-poller.ts' },
 ];
 
 export interface HelperViolation {
