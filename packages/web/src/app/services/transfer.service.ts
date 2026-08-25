@@ -40,6 +40,11 @@ export class TransferService {
   readonly acquisitionJobs = signal<AcquisitionJobView[]>([]);
   readonly libraryDirty = signal(false);
   readonly deletedSongIds = signal<ReadonlySet<string>>(new Set());
+  /** Albums a curator just approved AND confirmed landed (issue #708) — narrower
+   *  than `libraryDirty` on purpose: it only ever holds ids a caller can point
+   *  to, so a listener can react without guessing what changed or resetting
+   *  state for events unrelated to what the viewer is looking at. */
+  readonly newlyLandedAlbumIds = signal<ReadonlySet<string>>(new Set());
 
   // Count of in-flight network jobs (unified feed). Shared by the header
   // indicator and the mobile bottom-nav badge so they never drift.
@@ -79,6 +84,19 @@ export class TransferService {
 
   clearDeletedIds(): void {
     this.deletedSongIds.set(new Set());
+  }
+
+  /** Record album ids a curator just approved AND confirmed landed. Call only
+   *  with confirmed `landed: true` responses — never speculatively. */
+  noteAlbumsLanded(ids: string[]): void {
+    if (ids.length === 0) return;
+    this.newlyLandedAlbumIds.update((s) => new Set([...s, ...ids]));
+  }
+
+  /** Consumed by the Library page once the viewer acts on the "new album
+   *  added" banner (an explicit click, never an automatic reaction). */
+  clearNewlyLandedAlbumIds(): void {
+    this.newlyLandedAlbumIds.set(new Set());
   }
 
   private startScanPoll(): void {

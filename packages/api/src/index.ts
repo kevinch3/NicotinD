@@ -676,6 +676,9 @@ export function createApp({
       musicDir: config.musicDir,
       shareRescan: reviewShareRescan,
       kickEager: () => processingRef.current?.kickEager() ?? Promise.resolve(),
+      landAlbumNow: (albumId) =>
+        processingRef.current?.landAlbumNow(albumId) ??
+        Promise.resolve({ landed: false, timedOut: false, pendingSongCount: 0, pendingTasks: [] }),
       plugins,
       scanIncremental,
     }),

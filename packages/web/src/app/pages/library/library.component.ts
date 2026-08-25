@@ -150,6 +150,25 @@ export class LibraryComponent implements OnInit, OnDestroy {
 
   constructor() {
     this.p2r.register(() => this.refreshActiveTab());
+    // Non-destructive on purpose (issue #708): the removed `dirtyEffect` this
+    // replaces used to call resetAndLoad() directly here, wiping scroll
+    // position/pagination for events unrelated to what the viewer was looking
+    // at (commit 2493a714). This only flips a flag; only `applyNewAlbums()`,
+    // triggered by an explicit click, ever reloads the grid.
+    effect(() => {
+      if (this.transferService.newlyLandedAlbumIds().size > 0) this.newAlbumsAvailable.set(true);
+    });
+  }
+
+  /** Set once a curator-approved album is confirmed landed while this page is
+   *  already open — drives the "New album added" banner. */
+  readonly newAlbumsAvailable = signal(false);
+
+  /** The viewer's own explicit action — the only path that may reload the grid. */
+  async applyNewAlbums(): Promise<void> {
+    this.newAlbumsAvailable.set(false);
+    this.transferService.clearNewlyLandedAlbumIds();
+    await this.resetAndLoad();
   }
 
   // ─── Mode ─────────────────────────────────────────────────────────

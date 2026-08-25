@@ -467,8 +467,16 @@ export interface EnrichmentTask {
   available(ctx: EnrichmentContext): true | string;
   /** Count of songs still needing this task — the resumable predicate. */
   countPending(db: Database): number;
-  /** Process up to `limit` pending songs; persist DB + file tag. */
-  run(db: Database, ctx: EnrichmentContext, limit: number): Promise<EnrichmentRunResult>;
+  /** Process up to `limit` pending songs; persist DB + file tag. When `albumId`
+   *  is given, scope the pending set to that album only (landAlbumNow) — tasks
+   *  without `satisfiedColumnSql` never receive it, since only gate-capable
+   *  tasks are ever called album-scoped. */
+  run(
+    db: Database,
+    ctx: EnrichmentContext,
+    limit: number,
+    albumId?: string,
+  ): Promise<EnrichmentRunResult>;
   /**
    * SQL predicate (against a bare `library_songs` row) that is true once this task
    * has produced its value for a song — the inverse of `countPending`'s NULL test.
@@ -593,12 +601,13 @@ const bpmTask: EnrichmentTask = {
           .get() ?? { n: 0 }
       ).n,
     ),
-  run: async (db, ctx, limit) => {
+  run: async (db, ctx, limit, albumId) => {
+    const params: (string | number)[] = albumId ? [albumId, limit] : [limit];
     const rows = db
-      .query<SongRow, [number]>(
-        `SELECT id, path, artist, title, size FROM library_songs WHERE bpm IS NULL${notPermanentlyFailedClause('bpm')} ORDER BY created DESC LIMIT ?`,
+      .query<SongRow, (string | number)[]>(
+        `SELECT id, path, artist, title, size FROM library_songs WHERE bpm IS NULL${notPermanentlyFailedClause('bpm')}${albumId ? ' AND album_id = ?' : ''} ORDER BY created DESC LIMIT ?`,
       )
-      .all(limit);
+      .all(...params);
 
     const labels: string[] = [];
     const tally: FailureTally = { failed: 0, sample: null };
@@ -675,14 +684,15 @@ const genreTask: EnrichmentTask = {
           .get() ?? { n: 0 }
       ).n,
     ),
-  run: async (db, ctx, limit) => {
+  run: async (db, ctx, limit, albumId) => {
+    const params: (string | number)[] = albumId ? [albumId, limit] : [limit];
     const rows = db
-      .query<SongRow, [number]>(
+      .query<SongRow, (string | number)[]>(
         `SELECT id, path, artist, title, size FROM library_songs WHERE ${unresolvedGenreSql()}${notPermanentlyFailedClause(
           'genre',
-        )} ORDER BY created DESC LIMIT ?`,
+        )}${albumId ? ' AND album_id = ?' : ''} ORDER BY created DESC LIMIT ?`,
       )
-      .all(limit);
+      .all(...params);
 
     // One Lidarr lookup per artist, fanned out to that artist's pending songs.
     const { assignments } = await planGenreBackfill(rows, ctx.lookupGenre);
@@ -739,12 +749,13 @@ const keyTask: EnrichmentTask = {
           .get() ?? { n: 0 }
       ).n,
     ),
-  run: async (db, ctx, limit) => {
+  run: async (db, ctx, limit, albumId) => {
+    const params: (string | number)[] = albumId ? [albumId, limit] : [limit];
     const rows = db
-      .query<SongRow, [number]>(
-        `SELECT id, path, artist, title, size FROM library_songs WHERE (key IS NULL OR key = '')${notPermanentlyFailedClause('key')} ORDER BY created DESC LIMIT ?`,
+      .query<SongRow, (string | number)[]>(
+        `SELECT id, path, artist, title, size FROM library_songs WHERE (key IS NULL OR key = '')${notPermanentlyFailedClause('key')}${albumId ? ' AND album_id = ?' : ''} ORDER BY created DESC LIMIT ?`,
       )
-      .all(limit);
+      .all(...params);
 
     const labels: string[] = [];
     const tally: FailureTally = { failed: 0, sample: null };
@@ -806,12 +817,13 @@ const energyTask: EnrichmentTask = {
           .get() ?? { n: 0 }
       ).n,
     ),
-  run: async (db, ctx, limit) => {
+  run: async (db, ctx, limit, albumId) => {
+    const params: (string | number)[] = albumId ? [albumId, limit] : [limit];
     const rows = db
-      .query<SongRow, [number]>(
-        `SELECT id, path, artist, title, size FROM library_songs WHERE energy IS NULL${notPermanentlyFailedClause('energy')} ORDER BY created DESC LIMIT ?`,
+      .query<SongRow, (string | number)[]>(
+        `SELECT id, path, artist, title, size FROM library_songs WHERE energy IS NULL${notPermanentlyFailedClause('energy')}${albumId ? ' AND album_id = ?' : ''} ORDER BY created DESC LIMIT ?`,
       )
-      .all(limit);
+      .all(...params);
 
     const labels: string[] = [];
     const tally: FailureTally = { failed: 0, sample: null };
@@ -894,14 +906,15 @@ const audioFeaturesTask: EnrichmentTask = {
           .get() ?? { n: 0 }
       ).n,
     ),
-  run: async (db, ctx, limit) => {
+  run: async (db, ctx, limit, albumId) => {
+    const params: (string | number)[] = albumId ? [albumId, limit] : [limit];
     const rows = db
-      .query<SongRow, [number]>(
+      .query<SongRow, (string | number)[]>(
         `SELECT id, path, artist, title, size FROM library_songs WHERE danceability IS NULL${notPermanentlyFailedClause(
           'audio-features',
-        )} ORDER BY created DESC LIMIT ?`,
+        )}${albumId ? ' AND album_id = ?' : ''} ORDER BY created DESC LIMIT ?`,
       )
-      .all(limit);
+      .all(...params);
 
     const labels: string[] = [];
     const tally: FailureTally = { failed: 0, sample: null };
@@ -1740,14 +1753,15 @@ const popularityTask: EnrichmentTask = {
           .get() ?? { n: 0 }
       ).n,
     ),
-  run: async (db, ctx, limit) => {
+  run: async (db, ctx, limit, albumId) => {
+    const params: (string | number)[] = albumId ? [albumId, limit] : [limit];
     const rows = db
-      .query<SongRow, [number]>(
+      .query<SongRow, (string | number)[]>(
         `SELECT id, path, artist, title, size FROM library_songs WHERE popularity IS NULL${notPermanentlyFailedClause(
           'popularity',
-        )} ORDER BY created DESC LIMIT ?`,
+        )}${albumId ? ' AND album_id = ?' : ''} ORDER BY created DESC LIMIT ?`,
       )
-      .all(limit);
+      .all(...params);
 
     const labels: string[] = [];
     const tally: FailureTally = { failed: 0, sample: null };

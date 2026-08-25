@@ -37,6 +37,28 @@
     </div>
   }
 
+  <!-- A curator's approve on the Downloads/Review Inbox route landed while
+       this page stayed mounted (issue #708). Deliberately inert until
+       clicked: it never reloads the grid itself — see the constructor's
+       `effect` for why (a removed auto-refresh used to reset scroll/
+       pagination on any unrelated completion). -->
+  @if (newAlbumsAvailable()) {
+    <div
+      class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-theme bg-theme-surface/30 px-4 py-2.5"
+      data-testid="library-new-albums-banner"
+    >
+      <span class="text-sm text-theme-secondary">{{ 'library.newAlbums.available' | t }}</span>
+      <button
+        type="button"
+        (click)="applyNewAlbums()"
+        class="status-done shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition hover:opacity-90"
+        data-testid="library-new-albums-refresh"
+      >
+        {{ 'library.newAlbums.refresh' | t }}
+      </button>
+    </div>
+  }
+
   @if (find()) {
     <app-library-find [query]="find()" />
   }
