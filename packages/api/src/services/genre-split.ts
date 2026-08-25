@@ -148,10 +148,15 @@ export interface GenreAliasProposal {
 
 /**
  * Values that are metadata noise, not genres — a tagger's shrug, not a style.
- * Two consumers: (1) the alias proposer below suggests them as drops (still
+ * Consumers: (1) the alias proposer below suggests them as drops (still
  * human-gated, reclassify-genres.ts --apply); (2) radio matching ignores them
  * outright via `isRealGenre` (issue #583 — "Other"="Other" scored a perfect
- * genre match and ranked language courses #1).
+ * genre match and ranked language courses #1); (3) the enrichment pending
+ * predicates, via {@link unresolvedGenreSql}.
+ *
+ * `music` and `entertainment` are YouTube's *category* names, which yt-dlp writes
+ * into the genre tag. They are the reason 485 prod songs looked genre-resolved
+ * and were invisible to both genre tasks forever (#694).
  */
 export const JUNK_GENRES: ReadonlySet<string> = new Set([
   'other',
@@ -165,11 +170,31 @@ export const JUNK_GENRES: ReadonlySet<string> = new Set([
   'undefined',
   '<desconocido>',
   'entertainment',
+  'music',
 ]);
 
 /** True when `g` names an actual musical style rather than junk vocab. */
 export function isRealGenre(g: string): boolean {
   return !JUNK_GENRES.has(genreKey(g));
+}
+
+/**
+ * SQL predicate for "this song still needs a genre": NULL, empty, **or** junk
+ * vocab. Derived from {@link JUNK_GENRES} so the SQL and the TS predicate cannot
+ * drift — the two definitions disagreeing is exactly how `genre='Music'` stayed
+ * invisible to `countPending` while radio was already ignoring it (#694).
+ *
+ * Approximates {@link genreKey} with `LOWER(TRIM(...))`: SQLite has no cheap way
+ * to collapse *internal* runs of whitespace, so a pathological `"no  genre"`
+ * (double space) slips through. Every real-world value in the set is a single
+ * token or a single-spaced pair, so this is not worth a custom SQL function.
+ *
+ * Returns a bare fragment with no bind params — the vocabulary is an internal
+ * constant — so it drops into an existing `WHERE ... LIMIT ?` untouched.
+ */
+export function unresolvedGenreSql(col = 'genre'): string {
+  const list = [...JUNK_GENRES].map((g) => `'${g.replace(/'/g, "''")}'`).join(', ');
+  return `(${col} IS NULL OR TRIM(${col}) = '' OR LOWER(TRIM(${col})) IN (${list}))`;
 }
 
 /** Squash key for punctuation/spacing variants: letters+digits only. */
@@ -386,16 +411,24 @@ export function loadGenreSets(db: Database, songIds: string[]): Map<string, stri
  */
 export function appendSongGenres(db: Database, songId: string, newGenres: string[]): string[] {
   const existing = loadGenreSets(db, [songId]).get(songId) ?? [];
-  const seen = new Set(existing.map((g) => g.toLowerCase()));
-  const merged = [...existing];
-  for (const g of newGenres) {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  const push = (g: string): void => {
     const trimmed = g.trim().replace(/\s+/g, ' ');
-    if (!trimmed) continue;
+    if (!trimmed) return;
     const key = trimmed.toLowerCase();
-    if (seen.has(key)) continue;
+    if (seen.has(key)) return;
     seen.add(key);
     merged.push(trimmed);
-  }
+  };
+  // Junk is dropped from *both* sides rather than preserved in front (#694).
+  // Appending onto a placeholder would leave "Music" — YouTube's category, not a
+  // style — as position 0, i.e. still the primary genre, which would make the
+  // whole re-queue pointless: the song would be "enriched" and still read Music.
+  existing.filter(isRealGenre).forEach(push);
+  newGenres.filter(isRealGenre).forEach(push);
+  // Nothing real on either side: keep what was there rather than blanking the song.
+  if (merged.length === 0) existing.forEach(push);
   setSongGenres(db, songId, merged);
   return merged;
 }

@@ -485,6 +485,29 @@ describe('appendSongGenres', () => {
     ).toBe('House');
   });
 
+  it('drops a junk placeholder instead of leaving it as the primary (issue #694)', async () => {
+    const { db, appendSongGenres, setSongGenres, loadGenreSets } = await seed();
+    setSongGenres(db, 's1', ['Music']); // YouTube's category, written at scan time
+    const merged = appendSongGenres(db, 's1', ['Progressive Rock']);
+
+    // Appending in front of "Music" would leave it at position 0 — still the
+    // primary — making the whole re-queue pointless.
+    expect(merged).toEqual(['Progressive Rock']);
+    expect(loadGenreSets(db, ['s1']).get('s1')).toEqual(['Progressive Rock']);
+    expect(
+      db
+        .query<{ genre: string | null }, [string]>(`SELECT genre FROM library_songs WHERE id = ?`)
+        .get('s1')?.genre,
+    ).toBe('Progressive Rock');
+  });
+
+  it('keeps a junk placeholder when nothing real replaces it', async () => {
+    const { db, appendSongGenres, setSongGenres } = await seed();
+    setSongGenres(db, 's1', ['Music']);
+    // A blank result is worse than a placeholder — never blank the song.
+    expect(appendSongGenres(db, 's1', ['Other'])).toEqual(['Music']);
+  });
+
   it('dedups case-insensitively and never clobbers existing genres', async () => {
     const { db, appendSongGenres } = await seed();
     appendSongGenres(db, 's1', ['House']);

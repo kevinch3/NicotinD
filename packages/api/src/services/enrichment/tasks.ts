@@ -22,7 +22,7 @@ import { AudioFileRejectedError } from '../audio-features-client.js';
 import { descriptorsPendingClause, upsertDescriptors } from '../descriptor-store.js';
 import { ffmpegAvailable as realFfmpegAvailable } from '../transcode.js';
 import { resolveSongAbsPath, planGenreBackfill } from '../track-backfill.js';
-import { appendSongGenres, setSongGenres } from '../genre-split.js';
+import { appendSongGenres, setSongGenres, unresolvedGenreSql } from '../genre-split.js';
 import {
   applyGenreOverride,
   getGenreOverride,
@@ -668,7 +668,7 @@ const genreTask: EnrichmentTask = {
       (
         db
           .query<{ n: number }, []>(
-            `SELECT COUNT(*) AS n FROM library_songs WHERE (genre IS NULL OR genre = '')${notPermanentlyFailedClause(
+            `SELECT COUNT(*) AS n FROM library_songs WHERE ${unresolvedGenreSql()}${notPermanentlyFailedClause(
               'genre',
             )}`,
           )
@@ -678,7 +678,7 @@ const genreTask: EnrichmentTask = {
   run: async (db, ctx, limit) => {
     const rows = db
       .query<SongRow, [number]>(
-        `SELECT id, path, artist, title, size FROM library_songs WHERE (genre IS NULL OR genre = '')${notPermanentlyFailedClause(
+        `SELECT id, path, artist, title, size FROM library_songs WHERE ${unresolvedGenreSql()}${notPermanentlyFailedClause(
           'genre',
         )} ORDER BY created DESC LIMIT ?`,
       )
@@ -1429,7 +1429,7 @@ const genreDiscogsTask: EnrichmentTask = {
       (
         db
           .query<{ n: number }, []>(
-            `SELECT COUNT(*) AS n FROM library_songs WHERE (genre IS NULL OR genre = '')${GENRE_AUDIO_LEDGER_CLAUSE}${notPermanentlyFailedClause(
+            `SELECT COUNT(*) AS n FROM library_songs WHERE ${unresolvedGenreSql()}${GENRE_AUDIO_LEDGER_CLAUSE}${notPermanentlyFailedClause(
               'genre-discogs',
             )}`,
           )
@@ -1578,7 +1578,7 @@ const genreAudioTask: EnrichmentTask = {
       (
         db
           .query<{ n: number }, []>(
-            `SELECT COUNT(*) AS n FROM library_songs WHERE (genre IS NULL OR genre = '')${GENRE_AUDIO_LEDGER_CLAUSE}${notPermanentlyFailedClause(
+            `SELECT COUNT(*) AS n FROM library_songs WHERE ${unresolvedGenreSql()}${GENRE_AUDIO_LEDGER_CLAUSE}${notPermanentlyFailedClause(
               'genre-audio',
             )}`,
           )
@@ -1588,7 +1588,7 @@ const genreAudioTask: EnrichmentTask = {
   run: async (db, ctx, limit) => {
     const rows = db
       .query<SongRow, [number]>(
-        `SELECT id, path, artist, title, size FROM library_songs WHERE (genre IS NULL OR genre = '')${GENRE_AUDIO_LEDGER_CLAUSE}${notPermanentlyFailedClause(
+        `SELECT id, path, artist, title, size FROM library_songs WHERE ${unresolvedGenreSql()}${GENRE_AUDIO_LEDGER_CLAUSE}${notPermanentlyFailedClause(
           'genre-audio',
         )} ORDER BY created DESC LIMIT ?`,
       )

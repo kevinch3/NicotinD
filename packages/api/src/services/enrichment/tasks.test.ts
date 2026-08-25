@@ -2106,3 +2106,31 @@ describe('a task writing tags keeps another task’s ledger anchored (issue #690
     expect(getTask('key')!.countPending(db)).toBe(0);
   });
 });
+
+describe('a junk genre is not a resolved genre (issue #694)', () => {
+  it('re-queues a song whose only genre is YouTube’s "Music" placeholder', () => {
+    seedSong('s1', { genre: 'Music' });
+    expect(getTask('genre')!.countPending(db)).toBe(1);
+  });
+
+  it('re-queues the other junk vocab the tagger emits', () => {
+    seedSong('s1', { genre: 'Other' });
+    seedSong('s2', { genre: 'Unknown' });
+    seedSong('s3', { genre: '  MUSIC  ' }); // case + padding must not hide it
+    expect(getTask('genre')!.countPending(db)).toBe(3);
+  });
+
+  it('leaves a real genre resolved', () => {
+    seedSong('s1', { genre: 'Shoegaze' });
+    expect(getTask('genre')!.countPending(db)).toBe(0);
+  });
+
+  it('applies to the audio fallback too, once Lidarr has given up', () => {
+    seedSong('s1', { genre: 'Music' });
+    // genre-audio is fallback-only: it fires solely for songs the Lidarr genre
+    // task already tried and ledgered (GENRE_AUDIO_LEDGER_CLAUSE), so seed that.
+    recordAnalysisFailure(db, 's1', 'genre', new Error('Lidarr has no genre'), 10);
+
+    expect(getTask('genre-audio')!.countPending(db)).toBe(1);
+  });
+});
