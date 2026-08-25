@@ -67,15 +67,19 @@ export class LibrarySearchProvider implements ISearchProvider {
         },
         []
       >(
-        // Every visible, non-quarantined album — including the EPs/singles/
+        // Every visible album with something to play — including the EPs/singles/
         // compilations the default Albums grid omits (the search page has its
         // own section rendering, so classification != 'album' is fine).
-        // Quarantined albums (any un-landed track) are excluded — not "in your
-        // library" yet. Token matching runs over "name + artist" in JS below.
+        // Only an album with *nothing* landed is excluded; a partly-landed one is
+        // searchable, matching the listings after #693. Token matching runs over
+        // "name + artist" in JS below.
         `SELECT id, name, artist, year, cover_art, song_count, classification
          FROM library_albums
          WHERE hidden = 0
-           AND id NOT IN (SELECT DISTINCT album_id FROM library_songs WHERE landed_at IS NULL)`,
+           AND id NOT IN (
+             SELECT album_id FROM library_songs
+              GROUP BY album_id HAVING SUM(landed_at IS NOT NULL) = 0
+           )`,
       )
       .all()
       .filter((r) => matchesAllTokens(`${r.name} ${r.artist}`, tokens))

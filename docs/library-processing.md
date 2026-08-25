@@ -315,6 +315,20 @@ coverage). It **graduates** (a `landed_at` timestamp is set) only once its requi
 processing steps are done. This inverts the old flow where a download appeared
 instantly, un-enriched.
 
+**A partly-landed album is shown and marked, not hidden** (issue #693). Suppression
+used to drop an album from every album surface as soon as *any* one of its songs was
+un-landed. That produced the opposite of its "never show an incomplete album" intent:
+the landed siblings still appeared in the artist Songs tab, so a freshly-downloaded
+album rendered as a pile of orphan singles under a header reading "0 albums" — the
+report that opened #687. Now only an album with **nothing** landed is excluded (there
+is genuinely nothing to display, and the detail route still answers
+`ALBUM_PROCESSING`); anything with at least one landed track is listed, carrying
+`processingTracks` so the album page can say "N tracks still processing". An album row
+with no songs at all is a different condition and is untouched by either rule. The
+count is attached per page (`attachProcessingCounts`), not as a correlated subquery in
+`ALBUM_SELECT`, so a large grid doesn't pay for a number it will not show — and the
+memoized `anyQuarantined` fast path skips the query entirely when nothing is held.
+
 - **`landed_at`** (`library_songs`, `db.ts`): NULL = quarantined, timestamp = landed.
   The scanner deliberately never writes it (omitted from `persist()`'s INSERT and
   UPDATE), so a fresh scan mints NULL and a rescan preserves the value. The

@@ -41,6 +41,12 @@ export interface Album {
   genre?: string;
   created: string;
   starred?: string;
+  /**
+   * Tracks of this album still behind the landing gate. Absent/0 = fully landed.
+   * The album is shown and marked rather than hidden while this is non-zero
+   * (issue #693); only an album with *nothing* landed stays out of listings.
+   */
+  processingTracks?: number;
 }
 
 export interface Song {

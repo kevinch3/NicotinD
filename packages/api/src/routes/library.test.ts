@@ -1623,27 +1623,71 @@ describe('library metadata filters', () => {
       );
     }
 
-    it('hides an album from /albums until all its songs land', async () => {
+    // Issue #693: a partly-landed album used to vanish entirely while its landed
+    // tracks still showed in the artist Songs tab — so a downloaded album read as
+    // a pile of orphan singles, which is the report that opened #687. It is now
+    // shown and *marked* instead; only an album with nothing landed stays hidden,
+    // because there is genuinely nothing to display.
+    it('shows a partly-landed album, marked as processing', async () => {
       seedAlbum('a-live');
-      seedAlbum('a-quar');
+      seedAlbum('a-part');
       seedSong('landed', { albumId: 'a-live' });
-      seedSong('landed2', { albumId: 'a-quar' }); // one landed…
-      seedQuarantined('pending', 'a-quar'); // …but one still processing
+      seedSong('landed2', { albumId: 'a-part' }); // one landed…
+      seedQuarantined('pending', 'a-part'); // …one still processing
+      __resetDownloadSuppressionCache();
 
-      // a-quar has an un-landed track → whole album hidden.
-      expect(await ids('/albums')).toEqual(['a-live']);
+      expect((await ids('/albums')).sort()).toEqual(['a-live', 'a-part']);
+
+      const body = (await (await makeApp().request('/albums')).json()) as Array<{
+        id: string;
+        processingTracks?: number;
+      }>;
+      const byId = Object.fromEntries(body.map((a) => [a.id, a]));
+      expect(byId['a-part'].processingTracks).toBe(1);
+      expect(byId['a-live'].processingTracks ?? 0).toBe(0);
     });
 
-    it('reveals the album once its last song lands', async () => {
+    it('still hides an album with nothing landed at all', async () => {
+      seedAlbum('a-none');
+      seedQuarantined('p1', 'a-none');
+      seedQuarantined('p2', 'a-none');
+      __resetDownloadSuppressionCache();
+
+      expect(await ids('/albums')).toEqual([]);
+    });
+
+    it('drops the processing mark once the last song lands', async () => {
       seedAlbum('a1');
       seedSong('s-done', { albumId: 'a1' });
       seedQuarantined('s-pending', 'a1');
-      expect(await ids('/albums')).toEqual([]);
+      __resetDownloadSuppressionCache();
+      expect(await ids('/albums')).toEqual(['a1']);
 
       // Graduate the pending track.
       testDb.run(`UPDATE library_songs SET landed_at = 1 WHERE id = 's-pending'`);
       __resetDownloadSuppressionCache();
-      expect(await ids('/albums')).toEqual(['a1']);
+
+      const body = (await (await makeApp().request('/albums')).json()) as Array<{
+        id: string;
+        processingTracks?: number;
+      }>;
+      expect(body[0].processingTracks ?? 0).toBe(0);
+    });
+
+    it('serves a partly-landed album on direct fetch, with its landed songs', async () => {
+      seedAlbum('a1');
+      seedSong('s-done', { albumId: 'a1' });
+      seedQuarantined('s-pending', 'a1');
+      __resetDownloadSuppressionCache();
+
+      const res = await makeApp().request('/albums/a1');
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        processingTracks?: number;
+        song: Array<{ id: string }>;
+      };
+      expect(body.processingTracks).toBe(1);
+      expect(body.song.map((s) => s.id)).toEqual(['s-done']);
     });
 
     it('hides a quarantined-only album from /singles and /compilations', async () => {
