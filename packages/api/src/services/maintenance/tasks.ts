@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { optimizeAllAlbums, type OptimizeLidarr } from '../metadata-optimize.js';
 import { transcodeLibraryToOpus } from '../library-transcode.js';
+import { backfillArtwork, type BackfillLidarr } from '../artwork-backfill.js';
 
 /**
  * Operator-triggered, whole-library maintenance passes.
@@ -11,10 +12,12 @@ import { transcodeLibraryToOpus } from '../library-transcode.js';
  * library-wide passes an admin starts and watches, so they must never join
  * `ENRICHMENT_TASKS` — see docs/metadata-optimize.md for the four reasons.
  */
-export type MaintenanceTaskId = 'metadata-optimize' | 'transcode-library' | 'library-sync';
+export type MaintenanceTaskId =
+  'metadata-optimize' | 'artwork-backfill' | 'transcode-library' | 'library-sync';
 
 export const MAINTENANCE_TASK_IDS: readonly MaintenanceTaskId[] = [
   'metadata-optimize',
+  'artwork-backfill',
   'transcode-library',
   'library-sync',
 ];
@@ -83,7 +86,7 @@ function positiveInt(q: URLSearchParams, name: string): number | undefined {
 
 export interface MaintenanceDeps {
   db: Database;
-  lidarr: OptimizeLidarr | null;
+  lidarr: (OptimizeLidarr & BackfillLidarr) | null;
   musicDir: string;
   coverCacheDir?: string;
   /** Full library scan + curation pass, or null when unavailable. */
@@ -136,6 +139,49 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
             tracksNumbered: r.tracksNumbered,
             releaseTypesUpdated: r.releaseTypesUpdated,
             failed: r.failed,
+          },
+        };
+      },
+    }),
+
+    // Album/artist artwork was reachable only through scripts/backfill-artwork.ts,
+    // so on a real library 2,561 of 4,923 albums sat with no canonical cover and
+    // no in-app way to fix it (issue #694). Same trigger shape as the optimizer:
+    // operator-started, watchable, cancellable — never an ENRICHMENT_TASK, for the
+    // reasons in docs/metadata-optimize.md.
+    defineTask<{ apply: boolean; lookupMissing: boolean; albumLookupMinTracks?: number }>({
+      id: 'artwork-backfill',
+      label: 'Backfill album & artist artwork',
+      available: () => (deps.lidarr ? true : 'Lidarr is not configured'),
+      parseParams: (q) => ({
+        apply: !flag(q, 'dryRun'),
+        lookupMissing: flag(q, 'lookupMissing'),
+        albumLookupMinTracks: positiveInt(q, 'albumLookupMinTracks'),
+      }),
+      describe: (p) => ({
+        summary: `${p.apply ? 'apply' : 'dry-run'}${p.lookupMissing ? ' +lookup-missing' : ''}`,
+        dryRun: !p.apply,
+      }),
+      run: async (ctx, p) => {
+        if (!deps.lidarr) throw new Error('Lidarr is not configured');
+        const r = await backfillArtwork(deps.db, deps.lidarr, {
+          apply: p.apply,
+          coverCacheDir: deps.coverCacheDir,
+          lookupMissing: p.lookupMissing,
+          albumLookupMinTracks: p.albumLookupMinTracks,
+          shouldStop: ctx.shouldStop,
+          onProgress: (x) => ctx.onProgress(x),
+        });
+        return {
+          stopped: r.stopped,
+          errorSample: null,
+          detail: {
+            artistsMatched: r.artistsMatched,
+            artistsUnresolved: r.artistsUnresolved,
+            albumsMatched: r.albumsMatched,
+            albumsUnresolved: r.albumsUnresolved,
+            albumsLookedUp: r.albumsLookedUp,
+            albumLookupMatched: r.albumLookupMatched,
           },
         };
       },

@@ -87,11 +87,11 @@ function fakeCtx(
 function service(
   now: Date,
   ctxOpts?: { bpmResult?: number | null; sidecar?: boolean; bpmConfidentNegative?: boolean },
-  opts?: { acquisitionEnabled?: () => boolean },
+  opts?: { acquisitionEnabled?: () => boolean; lidarr?: unknown },
 ) {
   return new LibraryProcessingService({
     db,
-    lidarr: {} as never,
+    lidarr: (opts?.lidarr ?? {}) as never,
     musicDir: '/music',
     dataDir,
     now: () => now,
@@ -393,5 +393,74 @@ describe('landing gate', () => {
     await svc2.runNow();
     expect(isLanded('stuck')).toBe(true);
     expect(reviewHoldArmed(db)).toBe(true);
+  });
+});
+
+describe('a freshly-landed album gets its cover automatically (issue #694)', () => {
+  function seedAlbumRow(id: string, name: string, artist: string): void {
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES (?, ?, ?, 'art', 1, 0, 0)`,
+      [id, name, artist],
+    );
+  }
+
+  const artworkOf = (id: string): string | null =>
+    db
+      .query<{ cover_url: string }, [string]>(
+        `SELECT cover_url FROM library_artwork WHERE id = ? AND kind = 'album'`,
+      )
+      .get(id)?.cover_url ?? null;
+
+  /** Lidarr that matches the album and carries a cover. */
+  const lidarrWithCover = () => ({
+    album: {
+      lookup: async () => [
+        {
+          id: 1,
+          title: 'Album',
+          artist: { artistName: 'Artist' },
+          images: [{ coverType: 'cover', remoteUrl: 'https://img/cover.jpg', url: 'x' }],
+        },
+      ],
+    },
+    track: { listByAlbum: async () => [] },
+  });
+
+  it('fetches the cover for an album that just landed', async () => {
+    seedAlbumRow('alb', 'Album', 'Artist');
+    seedSong('s1');
+    setProcessingSettings(db, { gates: { bpm: false, key: false, energy: false, genre: false } });
+
+    await service(new Date(2024, 0, 1, 12, 0), undefined, {
+      lidarr: lidarrWithCover(),
+    }).kickEager();
+
+    expect(isLanded('s1')).toBe(true);
+    expect(artworkOf('alb')).toBe('https://img/cover.jpg');
+  });
+
+  it('does not re-attempt an album it has already tried', async () => {
+    seedAlbumRow('alb', 'Album', 'Artist');
+    seedSong('s1');
+    setProcessingSettings(db, { gates: { bpm: false, key: false, energy: false, genre: false } });
+
+    let lookups = 0;
+    const counting = {
+      album: {
+        lookup: async () => {
+          lookups += 1;
+          return []; // no match — the album stays coverless
+        },
+      },
+      track: { listByAlbum: async () => [] },
+    };
+
+    await service(new Date(2024, 0, 1, 12, 0), undefined, { lidarr: counting }).kickEager();
+    await service(new Date(2024, 0, 1, 12, 1), undefined, { lidarr: counting }).kickEager();
+
+    // The watermark moved past it: a miss must not become a per-tick Lidarr call
+    // forever. The Admin artwork backfill is the retry path.
+    expect(lookups).toBe(1);
   });
 });
