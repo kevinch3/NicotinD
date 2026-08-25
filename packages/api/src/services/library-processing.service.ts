@@ -389,11 +389,18 @@ export class LibraryProcessingService extends EventEmitter {
 
   /**
    * Tasks that must complete before a quarantined song may be added to the
-   * library: gated in settings AND enabled AND available right now AND able to
-   * express a per-song "done" predicate. The availability intersection is the
-   * fresh-install / sidecar-off guarantee — a gated-but-unavailable task (sidecar
-   * down, ffmpeg missing, no Lidarr) is silently excluded so it can never strand a
-   * download. An empty result means nothing gates landing (today's behaviour).
+   * library: **declared `gateable`** AND gated in settings AND enabled AND
+   * available right now AND able to express a per-song "done" predicate. The
+   * availability intersection is the fresh-install / sidecar-off guarantee — a
+   * gated-but-unavailable task (sidecar down, ffmpeg missing, no Lidarr) is
+   * silently excluded so it can never strand a download. An empty result means
+   * nothing gates landing (today's behaviour).
+   *
+   * `gateable` is checked first and is the load-bearing one (#691): eligibility
+   * used to be implied by owning a `satisfiedColumnSql`, which enrolled tasks that
+   * only needed that predicate for filtering. A stored `gates` blob from before
+   * this change can still name such a task; it is now inert rather than able to
+   * hold a download hostage, so no migration is needed.
    */
   private requiredGateTasks(settings: ProcessingSettings): EnrichmentTask[] {
     // Ops/test escape hatch: with the landing gate disabled, nothing is required,
@@ -404,6 +411,7 @@ export class LibraryProcessingService extends EventEmitter {
     const ctx = this.contextFactory(settings);
     return ENRICHMENT_TASKS.filter(
       (t) =>
+        t.gateable === true &&
         settings.gates[t.id] &&
         settings.tasks[t.id] &&
         t.available(ctx) === true &&
@@ -595,6 +603,7 @@ export class LibraryProcessingService extends EventEmitter {
       phase,
       taskPending,
       availability,
+      gateable: ENRICHMENT_TASKS.filter((t) => t.gateable === true).map((t) => t.id),
       skipped: countSkippedFiles(this.db),
       quarantined: this.countQuarantined(),
       updatedAt: this.status.updatedAt,

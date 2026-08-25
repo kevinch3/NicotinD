@@ -159,16 +159,20 @@
                   [title]="i18n.t('admin.runTaskTooltip')"
                   class="w-4 h-4 mx-3 rounded accent-emerald-500"
                 />
-                <input
-                  type="checkbox"
-                  appTvNavItem
-                  [checked]="taskGated(t.id)"
-                  [disabled]="processingSaving() || !!taskUnavailable(t.id) || !p.tasks[t.id]"
-                  [attr.data-testid]="'processing-gate-' + t.id"
-                  (change)="toggleProcessingGate(t.id)"
-                  [title]="i18n.t('admin.gateTaskTooltip')"
-                  class="w-4 h-4 mx-3 rounded accent-amber-500"
-                />
+                @if (taskGateable(t.id)) {
+                  <input
+                    type="checkbox"
+                    appTvNavItem
+                    [checked]="taskGated(t.id)"
+                    [disabled]="processingSaving() || !!taskUnavailable(t.id) || !p.tasks[t.id]"
+                    [attr.data-testid]="'processing-gate-' + t.id"
+                    (change)="toggleProcessingGate(t.id)"
+                    [title]="i18n.t('admin.gateTaskTooltip')"
+                    class="w-4 h-4 mx-3 rounded accent-amber-500"
+                  />
+                } @else {
+                  <span class="w-4 h-4 mx-3" aria-hidden="true"></span>
+                }
               </div>
             </div>
           }

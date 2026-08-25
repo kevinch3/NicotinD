@@ -209,6 +209,18 @@ export class LibraryProcessingPanelComponent implements OnInit, OnDestroy {
     return this.processing()?.gates?.[task] ?? false;
   }
 
+  /**
+   * Whether this task may be required before landing at all. The server declares
+   * it (`ProcessingStatus.gateable`); a task that can confidently have no answer
+   * for a good file must never be offered as a gate, because switching one on
+   * stranded 261 songs on prod (#691 / #687). An older server omits the field —
+   * fall back to showing the control rather than silently hiding every one.
+   */
+  taskGateable(task: ProcessingTaskId): boolean {
+    const declared = this.processingStatus()?.gateable;
+    return declared ? declared.includes(task) : true;
+  }
+
   /** Toggle a per-task "require before adding to library" gate and persist. */
   toggleProcessingGate(task: ProcessingTaskId): void {
     const current = this.processing();

@@ -82,6 +82,14 @@ export interface ProcessingStatus {
   taskPending: Record<ProcessingTaskId, number>;
   /** Per-task availability: `true` if runnable, else a human reason it can't run. */
   availability: Record<ProcessingTaskId, true | string>;
+  /**
+   * Ids an admin may require before a download lands. Declared by the task
+   * itself (`EnrichmentTask.gateable`), not inferred — so the panel can hide a
+   * control it would otherwise offer inertly, or worse, offer for a task that
+   * must never hold a download hostage (#691). Absent on a status blob written
+   * before this field existed; treat that as "no information", not "none".
+   */
+  gateable?: ProcessingTaskId[];
   /** Distinct files excluded from processing after repeated hard decode failures
    *  (corrupt/unreadable); auto-cleared when the file is repaired (size change). */
   skipped: number;

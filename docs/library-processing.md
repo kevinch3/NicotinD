@@ -305,15 +305,28 @@ instantly, un-enriched.
   from `tasks` (background enable). Defaults: `bpm`/`key`/`energy`/`genre` gated;
   `audio-features` (sidecar, off on fresh installs) and per-artist `artist-image`
   are **not** gates. Admin toggles both flags per task (Admin → Library processing).
-- **`requiredGateTasks(settings)`** = tasks that are `gates[id]` **AND** `tasks[id]`
-  **AND** `available(ctx)===true` **AND** have a `satisfiedColumnSql`. The
-  availability intersection is the **fresh-install / sidecar-off guarantee**: an
-  off/unavailable gated task is silently dropped from the required set, so a missing
-  tool, absent Lidarr, or a dark sidecar can never strand a download. An empty
-  required set means nothing gates landing (the pre-feature behaviour).
+- **`requiredGateTasks(settings)`** = tasks that are **`gateable`** **AND** `gates[id]`
+  **AND** `tasks[id]` **AND** `available(ctx)===true` **AND** have a
+  `satisfiedColumnSql`. The availability intersection is the **fresh-install /
+  sidecar-off guarantee**: an off/unavailable gated task is silently dropped from the
+  required set, so a missing tool, absent Lidarr, or a dark sidecar can never strand a
+  download. An empty required set means nothing gates landing (the pre-feature
+  behaviour).
+- **`gateable`** (per `EnrichmentTask`, issue #691): explicit opt-in to being a landing
+  gate. Eligibility used to be *implied* by owning a `satisfiedColumnSql`, which
+  silently enrolled tasks that only needed that predicate for filtering — the licence
+  task documented "never a landing gate" in its own docstring and was gateable anyway.
+  Switching it on stranded 261 songs across 220 albums on prod (#687). The rule: a task
+  is gateable only when its answer comes from the file itself and a missing answer means
+  the file isn't ready. `bpm`/`key`/`energy`/`genre`/`audio-features` are gateable;
+  `popularity` is not, because ListenBrainz can confidently have no listen data for a
+  perfectly good recording. A stored `gates` blob naming a non-gateable task is inert,
+  so no migration is needed. `ProcessingStatus.gateable` publishes the list so the Admin
+  panel hides the control instead of offering an inert — or harmful — one.
 - **`satisfiedColumnSql`** (per `EnrichmentTask`): the inverse of its `countPending`
   NULL predicate (`bpm IS NOT NULL`, `danceability IS NOT NULL`, …). `artist-image`
-  has none → never a landing gate.
+  has none → no per-song "done" answer at all. Having one is necessary but **not
+  sufficient** to gate landing; see `gateable` above.
 - **One definition of "owned"** (issue #692). Quarantine hides a song from listings,
   so nothing may report it as owned either. `DiscographyService.fetchLocalSongs`
   counts only landed songs and `fetchLocalAlbums` only albums with at least one

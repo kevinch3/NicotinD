@@ -156,6 +156,20 @@ describe('landing gate', () => {
     expect(isLanded('s1')).toBe(true);
   });
 
+  it('a task that is not gate-eligible cannot gate landing (#691)', async () => {
+    seedSong('s1');
+    // `popularity` reads an external source that can confidently have no data for
+    // a recording — the same shape as the licence task that stranded 261 songs in
+    // #687. It is not `gateable`, so switching this flag on must be inert rather
+    // than able to hold a download hostage.
+    setProcessingSettings(db, {
+      gates: { bpm: false, key: false, energy: false, genre: false, popularity: true },
+    });
+    await service(new Date(2024, 0, 1, 12, 0)).runNow();
+
+    expect(isLanded('s1')).toBe(true);
+  });
+
   it('lands a song whose gate step reports a confident negative on the first attempt (#689)', async () => {
     seedSong('s1');
     // BPM gates landing and the analyzer confidently reports "there is no tempo
