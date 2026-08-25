@@ -76,7 +76,7 @@ Launch tasks:
   error falls back. Runs a bounded worker pool (`settings.concurrency`).
   Writes `library_songs.bpm` and the file tag (analyzed values only). Repairing
   historical octave errors: `scripts/analyze-bpm.ts --recheck` (below).
-- **genre** — `WHERE genre IS NULL OR genre = ''`, available only with Lidarr. Uses
+- **genre** — `WHERE unresolvedGenreSql()`, available only with Lidarr. Uses
   `planGenreBackfill` so an artist is looked up **once** and fanned out to all their
   pending songs. Writes the **full Lidarr genre list** (best-first) by **appending**,
   not replacing: `appendSongGenres` unions Lidarr's set into whatever the song already
@@ -89,6 +89,27 @@ Launch tasks:
   `recordAnalysisFailure`d (not tallied — see the exclusion section below) so they drop
   out of the pending set after the attempt cap instead of being re-queried every batch
   forever.
+
+  **A junk genre is not a resolved genre** (issue #694). The pending predicate is
+  `unresolvedGenreSql()` (`genre-split.ts`), derived from `JUNK_GENRES` so the SQL and
+  `isRealGenre` cannot drift, and it also `TRIM`s (a whitespace-only genre used to count
+  as resolved). Before this, "has any genre at all" meant done, so yt-dlp writing
+  YouTube's *category* — `Music`, `Entertainment` — into the genre tag made a song
+  permanently invisible to **both** genre tasks: it satisfied `countPending`, satisfied
+  the landing gate, and no amount of waiting would improve it. Measured on prod: **803
+  songs across 440 albums** (of 15,939) were stuck this way — 485 `Music`, 261 `Other`,
+  the rest `Genre`/`<Desconocido>`/`Entertainment`/`default`/whitespace. `Other` was
+  already in `JUNK_GENRES` and ignored by radio, but the pending predicate had never
+  consulted that vocabulary.
+
+  `appendSongGenres` drops junk from **both** sides rather than preserving it in front,
+  because appending onto `Music` would leave it at position 0 — still the primary — and
+  the re-queue would achieve nothing. It falls back to keeping the placeholder when
+  nothing real is found, since blanking the song is worse.
+
+  The landing **gate** deliberately does *not* adopt this stricter predicate: a junk
+  genre is good enough to let a download be seen, just not good enough to stop looking
+  for a better one. Tightening the gate here would risk re-creating #687.
 
   Genre detection **always appends** (`appendSongGenres`), never overrides: the
   track-info sheet's "detect genre" apply (`POST /api/library/songs/:id/genre`), this
