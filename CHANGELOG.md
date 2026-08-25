@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.10](https://github.com/kevinch3/NicotinD/compare/v0.5.9...v0.5.10) (2026-08-25)
+
+### Bug Fixes
+
+* **review:** approving a held download lands the album now, not next tick ([#708](https://github.com/kevinch3/NicotinD/issues/708)) ([#709](https://github.com/kevinch3/NicotinD/issues/709)) ([2bfb4c8](https://github.com/kevinch3/NicotinD/commit/2bfb4c8c77f4b5f381b63e958473e88839e58509))
 ## [0.5.9](https://github.com/kevinch3/NicotinD/compare/v0.5.8...v0.5.9) (2026-08-25)
 
 ### Bug Fixes
