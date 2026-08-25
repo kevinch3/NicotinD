@@ -3,6 +3,7 @@ import { Subject } from 'rxjs';
 import { firstValueFrom } from 'rxjs';
 import { SystemApiService } from './api/system-api.service';
 import type { BackupInfo, PendingReviewStats, ServiceReview } from './api/api-types';
+import { createVisibilityPoller, type VisibilityPoller } from '../lib/visibility-poller';
 
 /**
  * ServiceReview — singleton owner of the Admin page's one read-only snapshot.
@@ -128,9 +129,11 @@ export class ServiceReviewService {
   // --- Lifecycle: ref-counted timer + Page Visibility pause ───────────────────
 
   private ownerCount = 0;
-  private intervalId: ReturnType<typeof setInterval> | null = null;
   private inflight: Promise<void> | null = null;
-  private visibilityListener?: () => void;
+  private poller: VisibilityPoller = createVisibilityPoller({
+    poll: () => this.refresh(),
+    delayMs: () => ServiceReviewService.POLL_MS,
+  });
   private readonly refreshSubject = new Subject<void>();
   /** Emits one tick per refresh attempt (success or swallow). */
   readonly refresh$ = this.refreshSubject.asObservable();
@@ -143,9 +146,9 @@ export class ServiceReviewService {
   start(): () => void {
     this.ownerCount += 1;
     this.active.set(true);
-    this.ensureTimerRunning();
-    this.attachVisibilityIfNeeded();
+    this.poller.start();
     // Kick an immediate fetch so the page never renders an empty Admin panel.
+    // Coalesced with the poller's own first poll by the `inflight` guard.
     void this.refresh();
     return () => this.stop();
   }
@@ -156,11 +159,7 @@ export class ServiceReviewService {
     this.ownerCount -= 1;
     if (this.ownerCount === 0) {
       this.active.set(false);
-      this.detachVisibility();
-      if (this.intervalId !== null) {
-        clearInterval(this.intervalId);
-        this.intervalId = null;
-      }
+      this.poller.stop();
     }
   }
 
@@ -189,45 +188,5 @@ export class ServiceReviewService {
       }
     })();
     return this.inflight;
-  }
-
-  // --- internal: timer + visibility ──────────────────────────────────────────
-
-  private ensureTimerRunning(): void {
-    if (this.intervalId !== null) return;
-    this.intervalId = setInterval(() => {
-      // Tab may have flipped hidden between ticks; skip a wasted fetch.
-      if (this.isPageVisible()) void this.refresh();
-    }, ServiceReviewService.POLL_MS);
-  }
-
-  private isPageVisible(): boolean {
-    if (typeof document === 'undefined') return true;
-    return !document.hidden;
-  }
-
-  private attachVisibilityIfNeeded(): void {
-    if (this.visibilityListener) return;
-    if (typeof document === 'undefined') return;
-    this.visibilityListener = () => {
-      if (this.isPageVisible()) {
-        // Resume — re-arm the timer + fire one immediate catch-up.
-        this.ensureTimerRunning();
-        void this.refresh();
-      } else if (this.intervalId !== null) {
-        // Pause — clear the interval but keep the last snapshot for when
-        // the user returns. `start()` will re-arm.
-        clearInterval(this.intervalId);
-        this.intervalId = null;
-      }
-    };
-    document.addEventListener('visibilitychange', this.visibilityListener);
-  }
-
-  private detachVisibility(): void {
-    if (this.visibilityListener && typeof document !== 'undefined') {
-      document.removeEventListener('visibilitychange', this.visibilityListener);
-    }
-    this.visibilityListener = undefined;
   }
 }

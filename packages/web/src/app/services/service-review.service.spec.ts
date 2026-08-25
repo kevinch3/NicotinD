@@ -5,6 +5,15 @@ import { ServiceReviewService } from './service-review.service';
 import { SystemApiService } from './api/system-api.service';
 import type { ServiceReview } from './api/api-types';
 
+/** Drive jsdom's `document.hidden`, which is a getter with no setter. */
+function setHidden(hidden: boolean): void {
+  Object.defineProperty(document, 'hidden', {
+    configurable: true,
+    get: () => hidden,
+  });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
 function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
   return {
     collectedAt: 1_700_000_000_000,
@@ -172,5 +181,43 @@ describe('ServiceReviewService', () => {
     await Promise.all([p1, p2, p3]);
     expect(getServiceReview).toHaveBeenCalledTimes(1);
     s.stop();
+  });
+
+  // Characterization of the visibility pause that predates #717 — kept green
+  // across the move to the shared createVisibilityPoller helper.
+  describe('visibility pause', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      setHidden(false);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('stops fetching while the page is hidden', async () => {
+      service.start();
+      await vi.advanceTimersByTimeAsync(0);
+      const before = getServiceReview.mock.calls.length;
+
+      setHidden(true);
+      await vi.advanceTimersByTimeAsync(ServiceReviewService.POLL_MS * 10);
+      expect(getServiceReview.mock.calls.length).toBe(before);
+    });
+
+    it('fetches once immediately when the page becomes visible again', async () => {
+      service.start();
+      await vi.advanceTimersByTimeAsync(0);
+      setHidden(true);
+      await vi.advanceTimersByTimeAsync(ServiceReviewService.POLL_MS * 10);
+      const before = getServiceReview.mock.calls.length;
+
+      setHidden(false);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(getServiceReview.mock.calls.length).toBe(before + 1);
+
+      await vi.advanceTimersByTimeAsync(ServiceReviewService.POLL_MS);
+      expect(getServiceReview.mock.calls.length).toBe(before + 2);
+    });
   });
 });

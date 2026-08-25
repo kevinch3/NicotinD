@@ -6,6 +6,15 @@ import { DownloadsApiService } from './api/downloads-api.service';
 import { SystemApiService } from './api/system-api.service';
 import type { AcquireJob, AcquisitionJobView } from '@nicotind/core';
 
+/** Drive jsdom's `document.hidden`, which is a getter with no setter. */
+function setHidden(hidden: boolean): void {
+  Object.defineProperty(document, 'hidden', {
+    configurable: true,
+    get: () => hidden,
+  });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
 function makeJobView(stage: AcquisitionJobView['stage'], id = 'aj-1'): AcquisitionJobView {
   return {
     id,
@@ -123,6 +132,7 @@ describe('TransferService adaptive polling', () => {
   function setup(apiOverrides: Partial<DownloadsApiService> = {}): void {
     vi.useFakeTimers();
     pollCount = 0;
+    setHidden(false);
     const api = makeApiMock({
       getAcquisitionJobs: () => {
         pollCount++;
@@ -221,6 +231,38 @@ describe('TransferService adaptive polling', () => {
     const before = pollCount;
     await service.kickPoll();
     expect(pollCount).toBe(before + 1);
+  });
+
+  // Issue #717: this poller had no visibility gate, so every backgrounded tab,
+  // sleeping phone and idle TV kept hitting the job feed at the idle cadence
+  // forever — measured at ~75% of all traffic reaching the public edge, with a
+  // flat overnight floor of ~873 req/h that nobody was awake to look at.
+  it('stops polling entirely while the page is hidden', async () => {
+    setup();
+    service.startPolling();
+    await vi.advanceTimersByTimeAsync(0);
+    const before = pollCount;
+
+    setHidden(true);
+    await vi.advanceTimersByTimeAsync(10 * 30_000);
+    expect(pollCount).toBe(before);
+  });
+
+  it('fires one catch-up poll when the page becomes visible again', async () => {
+    setup();
+    service.startPolling();
+    await vi.advanceTimersByTimeAsync(0);
+    setHidden(true);
+    await vi.advanceTimersByTimeAsync(10 * 30_000);
+    const before = pollCount;
+
+    setHidden(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pollCount).toBe(before + 1);
+
+    // ...and the normal idle cadence resumes from there.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(pollCount).toBe(before + 2);
   });
 });
 

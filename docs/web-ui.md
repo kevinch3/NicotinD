@@ -345,6 +345,26 @@ The `@if` must never become `[hidden]`. `PullToRefreshService` is a **stack spli
 
 Downloads polling is unaffected by any of this: `TransferService.startPolling()/stopPolling()` are owned by `LayoutComponent`, app-shell-wide, not by the page.
 
+## Polling stands down when nobody is looking
+
+Every recurring client poll goes through one helper, `createVisibilityPoller` (`lib/visibility-poller.ts`). It owns its timer, consults `document.hidden`, and takes `delayMs()` as a *function* so one loop can serve a cadence that changes at runtime.
+
+| service | visible | hidden |
+| --- | --- | --- |
+| `TransferService` | 3 s while a job is active, 30 s idle | **paused** |
+| `AcquireService` | 2 s (and it self-stops when no job is active) | **60 s** |
+| `ServiceReviewService` | 5 s | paused |
+| `DownloadReviewService` | 30 s | paused |
+
+**Pause is the default; a slow cadence is the exception you justify.** A poller feeding only derived state — a badge, a count, the `libraryDirty` flag — can pause outright, because the catch-up poll on resume recomputes all of it. `AcquireService` is the one that cannot: it is where the "added to the library" toast fires, and a toast that waits for you to look at the tab is not a notification. So it drops to a heartbeat instead of stopping.
+
+Two properties are load-bearing and easy to lose in a rewrite:
+
+- **The delay is measured from completion, not dispatch.** A `setInterval` fires regardless of whether the previous round-trip finished, which stacks requests on a slow connection. The helper awaits `poll()` and *then* schedules, so a slow poll can never queue a second one behind it.
+- **A visibility flip re-arms immediately** rather than waiting out the timer armed under the old state. Going hidden 1 ms into a 3 s cycle must not still fire at the fast rate.
+
+Why the helper exists at all: `TransferService` had no gate. Started app-wide by `LayoutComponent` and stopped only on destroy, it polled two endpoints every 30 s from every backgrounded tab, sleeping phone and idle TV, forever. Measured on the public edge, `/api/downloads/jobs` and `/api/acquire/jobs` were **~75% of all traffic reaching nginx**, with a flat overnight floor of ~873 req/h — roughly 7 idle clients polling through the night with nobody awake to read the result. `ServiceReviewService` and `DownloadReviewService` had each grown their own byte-identical copy of the gate; the fix (#717) extracted the one copy and put all four on it. It is registered in `SHARED_HELPERS`, so copy #5 fails CI.
+
 ### Tab state is in the URL, unlike Library's
 
 Library keeps its tab in `localStorage`; `/get` keeps its tab in the URL. The difference is intentional — "show me my downloads" has to be linkable, and `/downloads` redirects onto it. `?tab=` is user-editable, so `parseGetTab` treats anything unrecognized (including `'DOWNLOADS'`) as the `find` default rather than rendering a blank pane.
