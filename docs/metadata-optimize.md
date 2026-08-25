@@ -34,6 +34,17 @@ Title matching reuses `normalizeForGrouping` — the same diacritic-folding norm
 
 Album-keyed stores (`library_artwork`, `library_release_meta`) are keyed on the tag-derived `albumId`, so these writes survive full rescans.
 
+### Album artwork: how it actually gets filled (issue #694)
+
+Album covers had **no automatic path at all**. `library_artwork(kind='album')` was written only by the admin optimizer, the user-driven metadata fixer, or `scripts/backfill-artwork.ts` — a CLI script with no in-app trigger. So a fresh YT download, which carries no embedded art (`nb_streams=1`), showed a gradient placeholder indefinitely. Measured on prod: **2,561 of 4,923 albums** had no artwork row.
+
+Two paths now, deliberately split by cost:
+
+- **A freshly-landed album** gets its cover automatically. `LibraryProcessingService.fillNewAlbumMetadata` runs one `optimizeAlbum` per newly-landed album at the tail of the eager landing pass — so the same match also fills any missing track numbers. Bounded three ways because it sits on the download path: at most `NEW_ALBUM_METADATA_PER_RUN` (3) albums per run, only albums with no artwork row, and only those landed *after* a stored watermark (`album_metadata_watermark_v1`) which advances past each album as it is attempted. Every album is therefore tried **once**: a miss never becomes a per-tick Lidarr call forever.
+- **The backlog** is the Admin → Maintenance **"Backfill album & artist artwork"** pass (`artwork-backfill` maintenance task), now cancellable and progress-reporting like its siblings. It is also the deliberate retry path for albums the automatic attempt missed, or that landed while Lidarr was down.
+
+It is **not** an `ENRICHMENT_TASK`, for the four reasons below — a whole-library Lidarr walk is exactly the shape that section rules out. The per-album hook is the bounded exception: one album, one lookup, once.
+
 ## Surfaces
 
 - **Per-album (admin)** — `POST /api/library/albums/:id/optimize-metadata` (`routes/library.ts`, gated on `lidarr`; `503` unconfigured, `404` on no confident match). The web album-detail page shows an **Optimize metadata** button (admin only) that calls it, re-fetches the album for an updated year, and bumps a `coverBust` signal appended to the cover URL (`&v=N`) so the `<app-cover-art>` re-requests the new image past the browser cache.

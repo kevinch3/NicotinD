@@ -29,6 +29,7 @@ import { countSkippedFiles, permanentlyFailedClause } from './enrichment/analysi
 import { recomputeActiveJobStages } from './acquisition-job-store.js';
 import { maybeRunDailyCoverCachePrune } from './cover-cache-prune.js';
 import { maybeArmReviewHold, reviewHoldActive } from './download-review-store.js';
+import { optimizeAlbum } from './metadata-optimize.js';
 
 /**
  * How many songs one task claims per batch, and the worker-pool size for the
@@ -291,6 +292,7 @@ export class LibraryProcessingService extends EventEmitter {
       maybeRefreshAutoPlaylists(this.db, this.now().getTime());
       const batch = await this.processOneBatch(settings);
       this.flushFailures(batch.byTask);
+      await this.fillNewAlbumMetadata(settings);
       this.finishRun(settings);
     });
   }
@@ -361,6 +363,9 @@ export class LibraryProcessingService extends EventEmitter {
       }
     }
     this.flushFailures(runFailures);
+    // The eager path is the one a fresh download actually takes, so this is where
+    // a just-landed album picks up its cover (issue #694).
+    await this.fillNewAlbumMetadata(getProcessingSettings(this.db));
     this.finishRun(getProcessingSettings(this.db));
   }
 
@@ -417,6 +422,76 @@ export class LibraryProcessingService extends EventEmitter {
         t.available(ctx) === true &&
         t.satisfiedColumnSql,
     );
+  }
+
+  /**
+   * Albums given a canonical cover per run. Deliberately tiny: this is one
+   * `album.lookup` each against Lidarr's shared upstream metadata proxy, on the
+   * download path — the same rate-limit reasoning that keeps `optimizeAllAlbums`
+   * serial (#622).
+   */
+  private static readonly NEW_ALBUM_METADATA_PER_RUN = 3;
+
+  private static readonly ALBUM_METADATA_WATERMARK = 'album_metadata_watermark_v1';
+
+  /**
+   * Give a freshly-landed album its cover art (and, via the same match, any
+   * missing track numbers) without waiting for an operator (issue #694).
+   *
+   * Album artwork had no automatic path at all: `library_artwork(kind='album')`
+   * was written only by the admin-triggered optimizer or the metadata fixer, so a
+   * fresh YT download — which carries no embedded art — showed a placeholder
+   * indefinitely. On prod that was 2,561 of 4,923 albums.
+   *
+   * Bounded three ways, because this runs on the download path: at most
+   * {@link NEW_ALBUM_METADATA_PER_RUN} albums per run, only albums with no
+   * artwork row, and only those landed *after* the stored watermark — which
+   * advances past each album as it is attempted. So every album is tried **once**
+   * and a miss never becomes a per-tick Lidarr call forever. The Admin "Backfill
+   * album & artist artwork" pass is the deliberate retry path for misses and for
+   * anything that landed while Lidarr was down.
+   *
+   * Best-effort throughout: a Lidarr failure must never disturb landing.
+   */
+  private async fillNewAlbumMetadata(settings: ProcessingSettings): Promise<void> {
+    if (!this.lidarr) return;
+    const key = LibraryProcessingService.ALBUM_METADATA_WATERMARK;
+    const since = Number(
+      this.db
+        .query<{ value: string }, [string]>('SELECT value FROM library_sync_state WHERE key = ?')
+        .get(key)?.value ?? 0,
+    );
+    const rows = this.db
+      .query<{ id: string; landed: number }, [number, number]>(
+        `SELECT a.id AS id, MAX(s.landed_at) AS landed
+           FROM library_albums a
+           JOIN library_songs s ON s.album_id = a.id
+          WHERE s.landed_at IS NOT NULL AND s.landed_at > ?
+            AND NOT EXISTS (
+              SELECT 1 FROM library_artwork w WHERE w.id = a.id AND w.kind = 'album'
+            )
+          GROUP BY a.id
+          ORDER BY landed ASC
+          LIMIT ?`,
+      )
+      .all(since, LibraryProcessingService.NEW_ALBUM_METADATA_PER_RUN);
+    if (rows.length === 0) return;
+
+    const coverCacheDir = this.contextFactory(settings).coverCacheDir;
+    for (const row of rows) {
+      try {
+        await optimizeAlbum(this.db, this.lidarr, row.id, { apply: true, coverCacheDir });
+      } catch (err) {
+        log.warn({ err, albumId: row.id }, 'new-album metadata fill failed');
+      }
+      // Advance per album, not once at the end: a crash mid-loop must not replay
+      // the whole batch, and a miss must not be retried.
+      this.db.run(
+        `INSERT INTO library_sync_state (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+        [key, String(row.landed), this.now().getTime()],
+      );
+    }
   }
 
   /** Count of songs currently quarantined (scanned but not yet landed). */

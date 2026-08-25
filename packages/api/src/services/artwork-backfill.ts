@@ -21,6 +21,8 @@ export interface BackfillArtworkResult {
   albumsLookedUp: number;
   /** Of those, how many got a cover (and possibly an artist poster). */
   albumLookupMatched: number;
+  /** True when the pass was cancelled mid-walk, so work may remain. */
+  stopped: boolean;
 }
 
 /**
@@ -112,6 +114,10 @@ export async function backfillArtwork(
     coverCacheDir?: string;
     lookupMissing?: boolean;
     albumLookupMinTracks?: number;
+    /** Checked between artists/albums; true → stop and return partial counters. */
+    shouldStop?: () => boolean;
+    /** Cumulative progress, so an admin-triggered run is watchable (issue #694). */
+    onProgress?: (p: { total: number; visited: number; label: string }) => void;
   },
 ): Promise<BackfillArtworkResult> {
   const result: BackfillArtworkResult = {
@@ -121,6 +127,7 @@ export async function backfillArtwork(
     albumsUnresolved: 0,
     albumsLookedUp: 0,
     albumLookupMatched: 0,
+    stopped: false,
   };
 
   const artists = db.query<ArtistRow, []>('SELECT id, name FROM library_artists').all();
@@ -138,7 +145,18 @@ export async function backfillArtwork(
   });
   const index = indexLidarrArtists(monitored);
 
+  // Denominator is fixed up front: the artist walk plus the targeted album pass
+  // below, so a watching admin sees an honest total rather than one that grows.
+  let visited = 0;
+  const total = artists.length;
+
   for (const artist of artists) {
+    if (opts.shouldStop?.()) {
+      result.stopped = true;
+      return result;
+    }
+    visited += 1;
+    opts.onProgress?.({ total, visited, label: artist.name });
     // Resolve the Lidarr artist: discography link → monitored by name → lookup.
     const lidarrArtist = await findLidarrArtist(db, lidarr, index, artist, {
       lookupMissing: opts.lookupMissing,
@@ -192,7 +210,12 @@ export async function backfillArtwork(
       .all(opts.albumLookupMinTracks);
 
     for (const album of candidates) {
+      if (opts.shouldStop?.()) {
+        result.stopped = true;
+        return result;
+      }
       if (looksLikeNonAlbum(album.name, album.artist)) continue;
+      opts.onProgress?.({ total, visited, label: `${album.artist} — ${album.name}` });
       result.albumsLookedUp += 1;
 
       const hits = await lidarr.album.lookup(`${album.artist} ${album.name}`).catch(() => []);
