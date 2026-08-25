@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.7](https://github.com/kevinch3/NicotinD/compare/v0.5.6...v0.5.7) (2026-08-25)
+
+### Bug Fixes
+
+* **library:** show a partly-landed album, marked, instead of hiding it ([#693](https://github.com/kevinch3/NicotinD/issues/693)) ([#704](https://github.com/kevinch3/NicotinD/issues/704)) ([b85b394](https://github.com/kevinch3/NicotinD/commit/b85b3949e12b4c475f367e549fc056cb5541072e)), references [#687](https://github.com/kevinch3/NicotinD/issues/687) [#687](https://github.com/kevinch3/NicotinD/issues/687)
 ## [0.5.6](https://github.com/kevinch3/NicotinD/compare/v0.5.5...v0.5.6) (2026-08-25)
 
 ### Bug Fixes
