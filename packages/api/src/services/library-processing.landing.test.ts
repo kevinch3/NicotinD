@@ -22,10 +22,17 @@ const SIZE = 10;
 
 /** Insert a quarantined (landed_at NULL) song. `created` controls the TTL valve. */
 function seedSong(id: string, created = '2024-01-01'): void {
+  seedSongInAlbum(id, ALBUM_ID_OF_S1, created);
+}
+
+/** Same as `seedSong`, but under an explicit album id — for landAlbumNow's
+ *  album-scoping tests, which need a second, unrelated album to prove the
+ *  drain never touches it. */
+function seedSongInAlbum(id: string, albumId: string, created = '2024-01-01'): void {
   db.run(
     `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
-     VALUES (?, 'alb', ?, 'Artist', 'art', 0, ?, ?, 320, 'opus', 'audio/opus', ?, 1)`,
-    [id, `T-${id}`, `Artist/Album/${id}.opus`, SIZE, created],
+     VALUES (?, ?, ?, 'Artist', 'art', 0, ?, ?, 320, 'opus', 'audio/opus', ?, 1)`,
+    [id, albumId, `T-${id}`, `Artist/Album/${id}.opus`, SIZE, created],
   );
 }
 
@@ -41,9 +48,16 @@ const isLanded = (id: string): boolean => landedAt(id) !== null;
 /**
  * Fake context. `bpmResult` lets a test force BPM to never resolve (null, and
  * NOT ledgered) so the TTL valve / ledger paths can be exercised in isolation.
+ * `onAnalyzeBpm` is a landAlbumNow test hook — a call-counting or clock-advancing
+ * side effect, so a test can observe/steer exactly which songs got processed.
  */
 function fakeCtx(
-  opts: { bpmResult?: number | null; sidecar?: boolean; bpmConfidentNegative?: boolean } = {},
+  opts: {
+    bpmResult?: number | null;
+    sidecar?: boolean;
+    bpmConfidentNegative?: boolean;
+    onAnalyzeBpm?: () => void;
+  } = {},
 ) {
   const bpm = opts.bpmResult === undefined ? 120 : opts.bpmResult;
   // A *confident* negative: the analyzer ran and there is no tempo to find (too
@@ -63,7 +77,10 @@ function fakeCtx(
     ffmpegAvailable: () => true,
     readTags: async () => ({}),
     writeTags: async () => true,
-    analyzeBpm,
+    analyzeBpm: async (abs, onError) => {
+      opts.onAnalyzeBpm?.();
+      return analyzeBpm(abs, onError);
+    },
     analyzeRhythm: null,
     analyzeKey: async () => 'C major',
     analyzeLoudness: async () => ({ loudness: -9.5, energy: 0.7 }),
@@ -85,18 +102,32 @@ function fakeCtx(
 }
 
 function service(
-  now: Date,
-  ctxOpts?: { bpmResult?: number | null; sidecar?: boolean; bpmConfidentNegative?: boolean },
-  opts?: { acquisitionEnabled?: () => boolean; lidarr?: unknown },
+  now: Date | (() => Date),
+  ctxOpts?: {
+    bpmResult?: number | null;
+    sidecar?: boolean;
+    bpmConfidentNegative?: boolean;
+    onAnalyzeBpm?: () => void;
+  },
+  opts?: {
+    acquisitionEnabled?: () => boolean;
+    lidarr?: unknown;
+    batchSize?: number;
+    landAlbumTimeoutMs?: number;
+    landAlbumPollMs?: number;
+  },
 ) {
   return new LibraryProcessingService({
     db,
     lidarr: (opts?.lidarr ?? {}) as never,
     musicDir: '/music',
     dataDir,
-    now: () => now,
+    now: typeof now === 'function' ? now : () => now,
     contextFactory: fakeCtx(ctxOpts),
     acquisitionEnabled: opts?.acquisitionEnabled,
+    batchSize: opts?.batchSize,
+    landAlbumTimeoutMs: opts?.landAlbumTimeoutMs,
+    landAlbumPollMs: opts?.landAlbumPollMs,
   });
 }
 
@@ -462,5 +493,86 @@ describe('a freshly-landed album gets its cover automatically (issue #694)', () 
     // The watermark moved past it: a miss must not become a per-tick Lidarr call
     // forever. The Admin artwork backfill is the retry path.
     expect(lookups).toBe(1);
+  });
+});
+
+describe('landAlbumNow (curator-approve instant landing, issue #708)', () => {
+  it("lands fast when this album's gate tasks are already satisfied", async () => {
+    seedSong('s1');
+    // Simulate background enrichment having already finished by review time —
+    // the common case, since gate tasks run unconditionally in the background
+    // regardless of review state.
+    db.run(
+      `UPDATE library_songs SET bpm = 120, key = 'C major', energy = 0.5, genre = 'Rock' WHERE id = 's1'`,
+    );
+    setProcessingSettings(db, { gates: { bpm: true, key: true, energy: true, genre: true } });
+    const svc = service(new Date(2024, 0, 1, 12, 0));
+
+    const result = await svc.landAlbumNow(ALBUM_ID_OF_S1);
+
+    expect(result).toEqual({
+      landed: true,
+      timedOut: false,
+      pendingSongCount: 0,
+      pendingTasks: [],
+    });
+    expect(isLanded('s1')).toBe(true);
+  });
+
+  it("never touches a different, unrelated album's pending rows", async () => {
+    seedSong('s1'); // target album (ALBUM_ID_OF_S1 = 'alb')
+    seedSongInAlbum('other', 'other-alb');
+    let bpmCalls = 0;
+    setProcessingSettings(db, { gates: { bpm: true, key: false, energy: false, genre: false } });
+    const svc = service(new Date(2024, 0, 1, 12, 0), { onAnalyzeBpm: () => bpmCalls++ });
+
+    const result = await svc.landAlbumNow(ALBUM_ID_OF_S1);
+
+    expect(result.landed).toBe(true);
+    expect(isLanded('s1')).toBe(true);
+    expect(isLanded('other')).toBe(false); // untouched — a different album's backlog
+    expect(bpmCalls).toBe(1); // only s1 was ever analyzed, not the other album's song
+  });
+
+  it('waits for an in-flight run to release the shared lock, then lands (never no-ops like kickEager)', async () => {
+    seedSong('s1');
+    setProcessingSettings(db, { gates: { bpm: true, key: false, energy: false, genre: false } });
+    const svc = service(new Date(2024, 0, 1, 12, 0), undefined, { landAlbumPollMs: 5 });
+    // Simulate a concurrent tick/runNow already holding the lock.
+    (svc as unknown as { busy: boolean }).busy = true;
+
+    const resultPromise = svc.landAlbumNow(ALBUM_ID_OF_S1);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(isLanded('s1')).toBe(false); // still polling — busy hasn't released yet
+
+    (svc as unknown as { busy: boolean }).busy = false;
+    const result = await resultPromise;
+
+    expect(result.landed).toBe(true);
+    expect(isLanded('s1')).toBe(true);
+  });
+
+  it('returns timedOut: true, landed: false when the deadline elapses mid-drain', async () => {
+    seedSong('s1');
+    seedSong('s2');
+    seedSong('s3');
+    setProcessingSettings(db, { gates: { bpm: true, key: false, energy: false, genre: false } });
+
+    // A clock that jumps 20s every time a song is analyzed — with batchSize 1
+    // (one song per processOneBatch) and an 10s timeout, the loop lands
+    // exactly one song before the next deadline check trips.
+    let clock = new Date(2024, 0, 1, 12, 0).getTime();
+    const svc = service(
+      () => new Date(clock),
+      { onAnalyzeBpm: () => (clock += 20_000) },
+      { batchSize: 1, landAlbumTimeoutMs: 10_000 },
+    );
+
+    const result = await svc.landAlbumNow(ALBUM_ID_OF_S1);
+
+    expect(result.landed).toBe(false);
+    expect(result.timedOut).toBe(true);
+    expect(result.pendingSongCount).toBe(2);
+    expect(result.pendingTasks).toEqual(['bpm']);
   });
 });

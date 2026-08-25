@@ -523,6 +523,8 @@
   "library.find.placeholder": "Buscar en tu biblioteca",
   "library.find.playlists": "Listas",
   "library.find.songs": "Canciones",
+  "library.newAlbums.available": "Nuevo álbum añadido",
+  "library.newAlbums.refresh": "Mostrar",
   "library.sort.alphabetical": "A–Z",
   "library.sort.frequent": "Más escuchadas",
   "library.sort.newest": "Más recientes",

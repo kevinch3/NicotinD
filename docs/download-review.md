@@ -189,13 +189,39 @@ case it).
 | --- | --- |
 | `GET /queue` | Pending albums (quarantine metadata + `year`). Returns `{ albums: [] }` when `holdForReview` is off, and stays empty until the library has first-established landed content (same `reviewHoldActive` helper as the landing gate — see "Bootstrap exemption" above) — with the toggle off, or before the bootstrap marker arms, ordinary enrichment quarantine must never surface as an inbox (zero-behavior-change guarantee). |
 | `GET /count` | `{ pending: number }` — backs the nav badge + inbox poller. Returns `{ pending: 0 }` when `holdForReview` is off or the bootstrap marker hasn't armed yet (same gating as `/queue`). |
-| `POST /albums/:id/approve` | Records an `approved` decision, audits `download_review.approve`, nudges `kickEager()` so landing isn't waiting on the next window tick. Idempotent (upsert on `album_id`). |
+| `POST /albums/:id/approve` | Records an `approved` decision, audits `download_review.approve`, then **awaits `landAlbumNow`** (issue #708) so the album shows up in the library essentially immediately instead of waiting on the next window tick. Idempotent (upsert on `album_id`). Response is `{ ok: true, landed: true }` (200) once landed, or `{ ok: true, landed: false, timedOut, pendingTasks, pendingSongCount }` (202) if it's still processing — the approve decision itself always succeeds either way; `landed` only reports visibility. |
 | `POST /albums/:id/discard` | Runs the **shared** `deleteAlbum` (same function library delete + the MCP delete tool use — `services/library-deletion.ts`), then records a `discarded` decision, audits `download_review.discard`. |
 | `POST /songs/:id/identify` | Fingerprint one track via the enabled `identify` plugin (AcoustID). 503 if no plugin/music dir configured. |
 | `POST /albums/:id/identify` | Fingerprints up to 5 quarantined tracks for the album sequentially (rate-limit-friendly), returns each track's result plus a majority-vote album guess (`voteAlbumIdentity`: needs ≥2 votes **and** more than half of successful results to agree — a lone match or a tie suggests nothing). |
 | `POST /albums/:id/tracks` | Per-track retag (title/artist), writes tags to the file, then an incremental rescan. A track with no fields to update fails with `'No fields to update'`; other tracks in the same request still get written (partial success surfaces per-track). Audits `download_review.retag`. |
 
 All routes require `requireCurator` — role gating detail below.
+
+## Instant landing on approve (`landAlbumNow`, issue #708)
+
+Before #708, `approve` fired `void deps.kickEager?.()` — un-awaited, so the
+route returned before landing even started. Worse, `kickEager()` itself
+silently no-ops (`if (this.busy) return`) whenever a periodic `tick()` or
+admin `runNow()` is already mid-flight, and its drain loop, when it does run,
+processes the *library-wide* pending-gate-task queue (oldest-first,
+unscoped), not just the approved album — so a bare `await kickEager()` would
+have blocked the request on unrelated backlog, or worse, resolved instantly
+having landed nothing at all. See
+[library-processing.md](library-processing.md#landalbumnow-instant-landing-on-approve)
+for the fix: `landAlbumNow(albumId)` waits (bounded) for the shared lock
+instead of no-op'ing, drains only *this* album's pending gate-task rows, and
+returns a typed `{ landed, timedOut, pendingSongCount, pendingTasks }` instead
+of `void`. `approve` awaits it and reflects the result in its response (200
+`landed:true` vs 202 `landed:false`) — the `download_reviews` decision itself
+is always recorded regardless of how landing goes.
+
+On the web side, `TransferService.noteAlbumsLanded`/`newlyLandedAlbumIds` is a
+narrow signal — set only from a confirmed `landed:true` response, never
+speculatively — that `LibraryComponent` uses to show a "New album added"
+banner. It deliberately does not auto-reload the grid: an earlier `libraryDirty`
+effect that did so (auto-`resetAndLoad()` on any unrelated transfer
+completion) was removed for exactly that reason (commit `2493a714`), so the
+banner only reloads on the viewer's own click.
 
 `GET /api/admin/review`'s `downloadReviews` slice (`pendingReviewStats`) feeds
 a hidden-at-zero Admin panel row (`data-testid="review-held-panel"`, "N

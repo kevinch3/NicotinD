@@ -21,11 +21,17 @@ export class ReviewApiService {
     return this.http.get<{ pending: number }>('/api/review/count');
   }
 
+  /** `landed`/`timedOut`/`pendingTasks`/`pendingSongCount` reflect whether the
+   *  approved album's songs are already visible in the library (issue #708) —
+   *  the approve decision itself always succeeds regardless. */
   approve(albumId: string) {
-    return this.http.post<{ ok: boolean }>(
-      `/api/review/albums/${encodeURIComponent(albumId)}/approve`,
-      {},
-    );
+    return this.http.post<{
+      ok: boolean;
+      landed?: boolean;
+      timedOut?: boolean;
+      pendingTasks?: string[];
+      pendingSongCount?: number;
+    }>(`/api/review/albums/${encodeURIComponent(albumId)}/approve`, {});
   }
 
   discard(albumId: string) {

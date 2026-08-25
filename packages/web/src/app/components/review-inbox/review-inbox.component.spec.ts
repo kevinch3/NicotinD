@@ -84,6 +84,7 @@ function setup(
   };
   const transfersStub = {
     markLibraryDirty: vi.fn(),
+    noteAlbumsLanded: vi.fn(),
   };
   const libraryStub = {
     getSong: vi.fn().mockReturnValue(
@@ -154,6 +155,20 @@ describe('ReviewInboxComponent', () => {
     );
   });
 
+  it('approve() notes the album landed only when the server confirms landed: true (issue #708)', async () => {
+    const { component, apiStub, transfersStub } = setup();
+    apiStub.approve.mockReturnValue(of({ ok: true, landed: true }));
+    await component.approve(album());
+    expect(transfersStub.noteAlbumsLanded).toHaveBeenCalledWith(['a1']);
+  });
+
+  it('approve() does not note landing while it is still processing (landed: false)', async () => {
+    const { component, apiStub, transfersStub } = setup();
+    apiStub.approve.mockReturnValue(of({ ok: true, landed: false, timedOut: true }));
+    await component.approve(album());
+    expect(transfersStub.noteAlbumsLanded).not.toHaveBeenCalled();
+  });
+
   it('discard() asks ConfirmService with a message naming the album', async () => {
     const { component, confirmStub } = setup();
     const a = album({ albumTitle: 'My Great Album' });
@@ -196,6 +211,16 @@ describe('ReviewInboxComponent', () => {
     expect(apiStub.approve.mock.calls.map((c: unknown[]) => c[0])).toEqual(['a1', 'a2', 'a3']);
     expect(reviewStub.refresh).toHaveBeenCalledTimes(1);
     expect(transfersStub.markLibraryDirty).toHaveBeenCalledTimes(1);
+  });
+
+  it('approveAll() notes only the albums the server actually confirmed landed (issue #708)', async () => {
+    const albums = [album({ albumId: 'a1' }), album({ albumId: 'a2' }), album({ albumId: 'a3' })];
+    const { component, apiStub, transfersStub } = setup({ queueAlbums: albums });
+    apiStub.approve.mockImplementation(
+      (id: string) => of({ ok: true, landed: id !== 'a2' }), // a2 is still processing
+    );
+    await component.approveAll();
+    expect(transfersStub.noteAlbumsLanded).toHaveBeenCalledWith(['a1', 'a3']);
   });
 
   it('approveAll() does nothing when the confirm is declined', async () => {

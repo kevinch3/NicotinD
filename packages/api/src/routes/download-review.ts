@@ -22,6 +22,7 @@ import type { PluginRegistry } from '../services/plugins/registry.js';
 import { normalizeTagValue, writeAudioTags, type AudioTags } from '../services/audio-tags.js';
 import { fold } from '../services/search-tokens.js';
 import { getProcessingSettings } from '../services/processing-settings.js';
+import type { LandAlbumResult } from '../services/library-processing.service.js';
 import {
   loadReviewQueue,
   pendingReviewStats,
@@ -35,8 +36,14 @@ export interface DownloadReviewDeps {
   musicDir?: string;
   shareRescan: ShareRescanScheduler;
   /** Late-bound processing nudge — landing a hold decision shouldn't wait for
-   *  the next window tick. */
+   *  the next window tick. Fallback for callers/tests that don't wire
+   *  `landAlbumNow`; approve prefers `landAlbumNow` when present. */
   kickEager?: () => Promise<void>;
+  /** Bounded, album-scoped eager landing (issue #708) — approve awaits this so
+   *  the approved album shows up in the library essentially immediately,
+   *  instead of firing kickEager and hoping. See library-processing.service.ts
+   *  for why this can't just be a bare `await kickEager()`. */
+  landAlbumNow?: (albumId: string) => Promise<LandAlbumResult>;
   /** Plugin registry, consulted for an enabled `identify` capability. */
   plugins?: PluginRegistry | null;
   /** Incremental rescan hook, run after a retag lands new tags on disk. */
@@ -107,12 +114,32 @@ export function downloadReviewRoutes(deps: DownloadReviewDeps): Hono<AuthEnv> {
     return c.json({ pending });
   });
 
-  app.post('/albums/:id/approve', (c) => {
+  app.post('/albums/:id/approve', async (c) => {
     const user = requireCurator(c);
     const db = getDatabase();
     const id = c.req.param('id');
     recordReviewDecision(db, id, 'approved', user.sub);
     recordAudit(db, user, 'download_review.approve', { targetKind: 'album', targetId: id });
+    if (deps.landAlbumNow) {
+      const result = await deps.landAlbumNow(id);
+      if (!result.landed) {
+        // Still real work in flight (or ledgered/valve-only) — the decision is
+        // durably recorded either way; the background tick/kickEager finishes
+        // landing it. 202 signals "accepted, not yet visible" honestly rather
+        // than a 200 that the frontend would wrongly read as "go look now".
+        return c.json(
+          {
+            ok: true,
+            landed: false,
+            timedOut: result.timedOut,
+            pendingTasks: result.pendingTasks,
+            pendingSongCount: result.pendingSongCount,
+          },
+          202,
+        );
+      }
+      return c.json({ ok: true, landed: true });
+    }
     void deps.kickEager?.();
     return c.json({ ok: true });
   });

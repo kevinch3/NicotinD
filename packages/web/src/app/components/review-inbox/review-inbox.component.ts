@@ -126,9 +126,13 @@ export class ReviewInboxComponent implements OnDestroy {
 
   async approve(album: ReviewQueueAlbum): Promise<void> {
     try {
-      await firstValueFrom(this.api.approve(album.albumId));
+      const res = await firstValueFrom(this.api.approve(album.albumId));
       await this.review.refresh();
       this.transfers.markLibraryDirty();
+      // Only ever claim landed visibility the server actually confirmed
+      // (issue #708) — a timed-out/still-processing approve still succeeds
+      // as a decision, it just doesn't light up the Library banner yet.
+      if (res.landed) this.transfers.noteAlbumsLanded([album.albumId]);
       this.toast.show({ message: this.i18n.t('review.approved'), kind: 'success' });
     } catch {
       // Leave the album in the queue; the curator can retry.
@@ -180,20 +184,23 @@ export class ReviewInboxComponent implements OnDestroy {
 
     this.bulkBusy.set(true);
     let failed = 0;
+    const landedAlbumIds: string[] = [];
     try {
       for (const album of albums) {
         try {
-          await firstValueFrom(
-            action === 'approve'
-              ? this.api.approve(album.albumId)
-              : this.api.discard(album.albumId),
-          );
+          if (action === 'approve') {
+            const res = await firstValueFrom(this.api.approve(album.albumId));
+            if (res.landed) landedAlbumIds.push(album.albumId);
+          } else {
+            await firstValueFrom(this.api.discard(album.albumId));
+          }
         } catch {
           failed++;
         }
       }
       await this.review.refresh();
       this.transfers.markLibraryDirty();
+      this.transfers.noteAlbumsLanded(landedAlbumIds);
       const done = albums.length - failed;
       this.toast.show(
         failed > 0

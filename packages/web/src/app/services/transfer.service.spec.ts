@@ -315,3 +315,44 @@ describe('TransferService libraryDirty flagging', () => {
     expect(service.libraryDirty()).toBe(true);
   });
 });
+
+// noteAlbumsLanded/newlyLandedAlbumIds (issue #708): deliberately narrower
+// than libraryDirty — it only ever holds ids a caller can point to, so a
+// listener can react without a blanket "something changed, reload
+// everything" reset. See ReviewInboxComponent, which is the only caller.
+describe('TransferService.noteAlbumsLanded', () => {
+  let service: TransferService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        TransferService,
+        { provide: DownloadsApiService, useValue: makeApiMock() },
+        { provide: SystemApiService, useValue: systemApiMock },
+      ],
+    });
+    service = TestBed.inject(TransferService);
+  });
+
+  it('starts empty', () => {
+    expect(service.newlyLandedAlbumIds().size).toBe(0);
+  });
+
+  it('accumulates album ids across calls', () => {
+    service.noteAlbumsLanded(['al1']);
+    service.noteAlbumsLanded(['al2', 'al3']);
+    expect([...service.newlyLandedAlbumIds()]).toEqual(['al1', 'al2', 'al3']);
+  });
+
+  it('an empty list is a no-op', () => {
+    service.noteAlbumsLanded(['al1']);
+    service.noteAlbumsLanded([]);
+    expect([...service.newlyLandedAlbumIds()]).toEqual(['al1']);
+  });
+
+  it('clearNewlyLandedAlbumIds empties the set', () => {
+    service.noteAlbumsLanded(['al1']);
+    service.clearNewlyLandedAlbumIds();
+    expect(service.newlyLandedAlbumIds().size).toBe(0);
+  });
+});

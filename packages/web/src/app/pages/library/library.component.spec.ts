@@ -46,6 +46,8 @@ function setup(
   const playlistCreate = vi.fn().mockResolvedValue({ id: 'new-pl' } as PlaylistSummary);
   const confirmAsk = vi.fn().mockResolvedValue(opts.confirmResult ?? true);
   const playlistRefresh = vi.fn().mockResolvedValue(undefined);
+  const newlyLandedAlbumIds = signal(new Set<string>());
+  const clearNewlyLandedAlbumIds = vi.fn(() => newlyLandedAlbumIds.set(new Set()));
   let registeredHandler: (() => Promise<void> | void) | null = null;
   const p2rStub = {
     register: (h: () => Promise<void> | void) => {
@@ -92,7 +94,14 @@ function setup(
       },
       { provide: PullToRefreshService, useValue: p2rStub },
       { provide: ConfirmService, useValue: { ask: confirmAsk } },
-      { provide: TransferService, useValue: { clearLibraryDirty: () => {} } },
+      {
+        provide: TransferService,
+        useValue: {
+          clearLibraryDirty: () => {},
+          newlyLandedAlbumIds,
+          clearNewlyLandedAlbumIds,
+        },
+      },
       {
         provide: ListControlsService,
         useValue: {
@@ -138,6 +147,8 @@ function setup(
     api,
     playlistService: { refresh: playlistRefresh },
     getRegisteredHandler: () => registeredHandler,
+    newlyLandedAlbumIds,
+    clearNewlyLandedAlbumIds,
   };
 }
 
@@ -606,5 +617,36 @@ describe('LibraryComponent — cross-type find bar', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// issue #708: a curator's approve landed an album while this page stayed
+// mounted. This must never auto-reload the grid (that was the exact bug
+// commit 2493a714 fixed) — only the viewer's own click on the banner may.
+describe('LibraryComponent — new-album banner', () => {
+  it('flags the banner without reloading, and only reloads on an explicit click', async () => {
+    const { component, fixture, albumCalls, newlyLandedAlbumIds, clearNewlyLandedAlbumIds } =
+      setup();
+    // A real detectChanges() (not a second manual ngOnInit() call, which
+    // would double-fire it — Angular's own lifecycle runs ngOnInit on the
+    // first detectChanges() regardless), then awaited to settle so the
+    // initial load fully finishes before the banner interaction below — a
+    // still-pending first load would otherwise race the second
+    // resetAndLoad() against its own `loadingMore` flag.
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const callsAfterInit = albumCalls.length;
+    expect(component.newAlbumsAvailable()).toBe(false);
+
+    newlyLandedAlbumIds.set(new Set(['al1']));
+    fixture.detectChanges(); // flush the constructor's effect
+    expect(component.newAlbumsAvailable()).toBe(true);
+    // The signal firing must not, by itself, touch the grid.
+    expect(albumCalls.length).toBe(callsAfterInit);
+
+    await component.applyNewAlbums();
+    expect(component.newAlbumsAvailable()).toBe(false);
+    expect(clearNewlyLandedAlbumIds).toHaveBeenCalled();
+    expect(albumCalls.length).toBeGreaterThan(callsAfterInit);
   });
 });

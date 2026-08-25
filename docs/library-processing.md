@@ -305,6 +305,8 @@ Modeled on `WatchlistService` (interval + a `busy` guard so runs never overlap):
 - **`stop()`**: full shutdown (clears the interval + aborts). Wired into SIGTERM/SIGINT.
 - **`kickEager()`** (eager, out-of-band): drains **only the required gate tasks**
   for quarantined songs then graduates — see the landing gate below.
+- **`landAlbumNow(albumId)`** (curator-approve, issue #708): like `kickEager()`
+  but bounded and album-scoped — see below.
 
 ## Landing gate (process-before-landing)
 
@@ -414,6 +416,52 @@ memoized `anyQuarantined` fast path skips the query entirely when nothing is hel
   (`requiredGateTasks` returns `[]` → everything lands immediately). The e2e harness
   sets it because its silent-FLAC fixtures can't yield a confident BPM/key and would
   otherwise stay quarantined behind analysis that never completes.
+
+### `landAlbumNow` (instant landing on approve)
+
+`POST /api/review/albums/:id/approve` ([download-review.md](download-review.md))
+needs a curator's approve to make the album visible essentially immediately,
+not just "eventually via the next tick." `kickEager()` can't do this safely: it
+silently no-ops if `busy` is already held (`if (this.busy) return`), and when it
+does run, its drain loop processes the **library-wide** pending-gate-task queue
+(oldest-first), not just the album that was just approved — so approving one
+small album could block on an unrelated, much larger backlog.
+
+`landAlbumNow(albumId)` reuses the *same* `busy` mutex (no second lock — the
+class carries significant unscoped instance state, e.g. `status`/`drained`/
+`freshProcess`, that a second concurrent drain would corrupt even over a
+disjoint row set) but changes two things:
+
+- **Waits instead of no-op'ing.** A bounded poll loop (`landAlbumPollMs`,
+  default 100ms) waits for `busy` to release, up to `landAlbumTimeoutMs`
+  (default 8s), before proceeding — closing the "resolved instantly, landed
+  nothing" failure mode `kickEager` has.
+- **Scoped to one album.** `processOneBatch` takes an optional `albumId`; when
+  present, each gate task's `run()` (and the 7 tasks with `satisfiedColumnSql`
+  all accept it — any of them can be an admin-configured gate) filters its
+  query to `AND album_id = ?` instead of the library-wide queue.
+
+The drain loop stops on whichever comes first: this album's gate tasks are all
+satisfied, a batch makes no progress (nothing left resolvable), or the
+deadline elapses — that last case is tracked separately (`hitDeadline`, inside
+`landAlbumInner`) from "stopped for a good reason," so `timedOut` in the
+result only reports a genuine timeout, not a normal empty-queue exit.
+`graduatePending()` — unchanged, still the sole writer of `landed_at`, still
+enforcing every step/valve/review condition — runs regardless of which way the
+loop stopped, so whatever *can* land, does.
+
+Returns a typed `LandAlbumResult` instead of `kickEager`'s `void`:
+`{ landed, timedOut, pendingSongCount, pendingTasks }`. `pendingTasks` empty
+while `pendingSongCount > 0` means gate tasks aren't the blocker — most likely
+`graduatePending`'s `reviewCond` (`reviewed_at >= created`) excluding a newer
+download wave that raced the approval, a legitimate "not landed" that isn't a
+timeout at all.
+
+In the common case this is genuinely fast: gate tasks run unconditionally in
+the background regardless of review-hold state, so by the time a curator
+opens the inbox and clicks Approve, they've usually already finished — the
+drain loop's first check finds nothing pending and calls `graduatePending`
+immediately (a single `UPDATE`).
 
 ### Failure diagnosis, feedback & Sentry
 

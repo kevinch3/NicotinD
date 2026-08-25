@@ -17,6 +17,7 @@ import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { setProcessingSettings } from '../services/processing-settings.js';
 import { armReviewHold } from '../services/download-review-store.js';
+import type { LandAlbumResult } from '../services/library-processing.service.js';
 
 function noopScheduler(): ShareRescanScheduler {
   return new ShareRescanScheduler(async () => {});
@@ -132,6 +133,58 @@ describe('download-review routes', () => {
       .query('SELECT COUNT(*) as c FROM download_reviews WHERE album_id = ?')
       .get('al1') as { c: number };
     expect(rows.c).toBe(1);
+  });
+
+  it('approve awaits landAlbumNow and reports landed: true (issue #708)', async () => {
+    seedAlbum('al1', 's1');
+    const landAlbumNow = mock(() =>
+      Promise.resolve({ landed: true, timedOut: false, pendingSongCount: 0, pendingTasks: [] }),
+    );
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        downloadReviewRoutes({ shareRescan: noopScheduler(), landAlbumNow }),
+      ),
+    );
+
+    const res = await app.request('/albums/al1/approve', { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, landed: true });
+    expect(landAlbumNow).toHaveBeenCalledWith('al1');
+  });
+
+  it('approve reports landed: false with a 202 when landing is still in flight', async () => {
+    seedAlbum('al1', 's1');
+    const landAlbumNow = mock((): Promise<LandAlbumResult> =>
+      Promise.resolve({
+        landed: false,
+        timedOut: true,
+        pendingSongCount: 3,
+        pendingTasks: ['bpm'],
+      }),
+    );
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        downloadReviewRoutes({ shareRescan: noopScheduler(), landAlbumNow }),
+      ),
+    );
+
+    const res = await app.request('/albums/al1/approve', { method: 'POST' });
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({
+      ok: true,
+      landed: false,
+      timedOut: true,
+      pendingTasks: ['bpm'],
+      pendingSongCount: 3,
+    });
+
+    // The decision is still durably recorded even though landing hasn't caught up.
+    const row = testDb
+      .query('SELECT state FROM download_reviews WHERE album_id = ?')
+      .get('al1') as { state: string } | null;
+    expect(row?.state).toBe('approved');
   });
 
   it('discard deletes the album and records the decision', async () => {

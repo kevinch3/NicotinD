@@ -76,6 +76,26 @@ interface BatchOutcome {
   byTask: RunFailures;
 }
 
+/** Result of {@link LibraryProcessingService.landAlbumNow}. */
+export interface LandAlbumResult {
+  /** True iff every song in this album now has `landed_at` set. */
+  landed: boolean;
+  /** True iff `landed` is false because the deadline elapsed, not because
+   *  nothing was left to do (e.g. a new download wave raced the approval —
+   *  see `pendingTasks` to tell these apart). */
+  timedOut: boolean;
+  /** Songs of this album still not landed. */
+  pendingSongCount: number;
+  /** Gate tasks with outstanding work for this album, when `landed` is false.
+   *  Empty while `pendingSongCount > 0` means gate tasks aren't the blocker
+   *  (most likely the review-approval AND-condition in `graduatePending`). */
+  pendingTasks: ProcessingTaskId[];
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /** Fold `src` into `dst`, summing counts and keeping the first sample per task. */
 function mergeFailures(dst: RunFailures, src: RunFailures): void {
   for (const [task, agg] of src) {
@@ -128,6 +148,13 @@ export interface LibraryProcessingDeps {
   /** Failure sink for a run's aggregated errors. Defaults to the Sentry reporter
    *  (a no-op when Sentry is unconfigured); injectable so tests can assert on it. */
   reportFailure?: (report: ProcessingFailureReport) => void;
+  /** Deadline for `landAlbumNow` (curator-approve instant landing). Defaults to
+   *  8s — a test seam, not a setting: long enough that the common case (gate
+   *  tasks already finished in the background by review time) always fits,
+   *  short enough to keep the approve request bounded. */
+  landAlbumTimeoutMs?: number;
+  /** Poll interval while `landAlbumNow` waits for the shared `busy` lock. */
+  landAlbumPollMs?: number;
 }
 
 /**
@@ -162,6 +189,8 @@ export class LibraryProcessingService extends EventEmitter {
   private readonly contextFactory: (settings: ProcessingSettings) => EnrichmentContext;
   private readonly logToFile: boolean;
   private readonly reportFailure: (report: ProcessingFailureReport) => void;
+  private readonly landAlbumTimeoutMs: number;
+  private readonly landAlbumPollMs: number;
 
   private timer: ReturnType<typeof setInterval> | null = null;
   private busy = false;
@@ -216,6 +245,8 @@ export class LibraryProcessingService extends EventEmitter {
         }));
     this.logToFile = deps.logToFile ?? true;
     this.reportFailure = deps.reportFailure ?? captureProcessingFailure;
+    this.landAlbumTimeoutMs = deps.landAlbumTimeoutMs ?? 8_000;
+    this.landAlbumPollMs = deps.landAlbumPollMs ?? 100;
     this.status = this.loadStatus();
   }
 
@@ -367,6 +398,95 @@ export class LibraryProcessingService extends EventEmitter {
     // a just-landed album picks up its cover (issue #694).
     await this.fillNewAlbumMetadata(getProcessingSettings(this.db));
     this.finishRun(getProcessingSettings(this.db));
+  }
+
+  /**
+   * Curator-triggered eager landing for one just-approved album (issue #708).
+   * Unlike `kickEager`, never silently no-ops on a busy lock: it waits
+   * (bounded) for any in-flight tick/runNow/kickEager to finish, then drains
+   * ONLY this album's pending gate-task rows — not the library-wide queue —
+   * before calling the unchanged `graduatePending()`. Bounded by
+   * `landAlbumTimeoutMs`; on timeout returns an honest `landed: false`
+   * instead of hanging or claiming success the DB doesn't back yet. The
+   * background tick/kickEager still owns landing it eventually if this call
+   * times out.
+   */
+  async landAlbumNow(albumId: string): Promise<LandAlbumResult> {
+    const deadline = this.now().getTime() + this.landAlbumTimeoutMs;
+    // Single-threaded JS: no `await` between this check and guarded()'s own
+    // check-then-set, so there is no race to close with a second lock.
+    while (this.busy) {
+      if (this.now().getTime() >= deadline) return this.landAlbumSnapshot(albumId, true);
+      await sleep(this.landAlbumPollMs);
+    }
+    let hitDeadline = false;
+    await this.guarded(async () => {
+      hitDeadline = await this.landAlbumInner(albumId, deadline);
+    });
+    return this.landAlbumSnapshot(albumId, hitDeadline);
+  }
+
+  /** Returns true iff the drain stopped because `deadline` was reached with
+   *  possibly-unfinished work — as opposed to fully draining or making no
+   *  progress, which end the loop too but aren't a timeout. */
+  private async landAlbumInner(albumId: string, deadline: number): Promise<boolean> {
+    const runFailures: RunFailures = new Map();
+    let first = true;
+    let settings = getProcessingSettings(this.db);
+    let hitDeadline = false;
+    for (;;) {
+      if (this.stopRequested) break;
+      if (this.now().getTime() >= deadline) {
+        hitDeadline = true;
+        break;
+      }
+      settings = getProcessingSettings(this.db);
+      const gateTasks = this.requiredGateTasks(settings);
+      if (this.albumPendingGateTasks(albumId, gateTasks).length === 0) break;
+      const batch = await this.processOneBatch(settings, first, gateTasks, albumId);
+      mergeFailures(runFailures, batch.byTask);
+      first = false;
+      if (batch.applied === 0) break; // no progress — stop rather than spin
+    }
+    this.graduatePending(settings);
+    this.flushFailures(runFailures);
+    this.finishRun(getProcessingSettings(this.db));
+    return hitDeadline;
+  }
+
+  /** Gate-task ids with at least one still-quarantined song in `albumId` that
+   *  hasn't satisfied its `satisfiedColumnSql` and isn't permanently-failed. */
+  private albumPendingGateTasks(albumId: string, gateTasks: EnrichmentTask[]): ProcessingTaskId[] {
+    return gateTasks
+      .filter((t) => t.satisfiedColumnSql)
+      .filter((t) => this.countPendingForAlbum(t, albumId) > 0)
+      .map((t) => t.id);
+  }
+
+  private countPendingForAlbum(t: EnrichmentTask, albumId: string): number {
+    if (!t.satisfiedColumnSql) return t.countPending(this.db);
+    const row = this.db
+      .query<{ n: number }, [string]>(
+        `SELECT COUNT(*) AS n FROM library_songs
+           WHERE album_id = ? AND landed_at IS NULL AND NOT (${t.satisfiedColumnSql})
+             AND NOT (${permanentlyFailedClause(t.id)})`,
+      )
+      .get(albumId);
+    return row?.n ?? 0;
+  }
+
+  private landAlbumSnapshot(albumId: string, timedOut: boolean): LandAlbumResult {
+    const row = this.db
+      .query<{ n: number }, [string]>(
+        `SELECT COUNT(*) AS n FROM library_songs WHERE album_id = ? AND landed_at IS NULL`,
+      )
+      .get(albumId);
+    const pendingSongCount = row?.n ?? 0;
+    const landed = pendingSongCount === 0;
+    const pendingTasks = landed
+      ? []
+      : this.albumPendingGateTasks(albumId, this.requiredGateTasks(getProcessingSettings(this.db)));
+    return { landed, timedOut: timedOut && !landed, pendingSongCount, pendingTasks };
   }
 
   // --- internals -----------------------------------------------------------
@@ -569,15 +689,20 @@ export class LibraryProcessingService extends EventEmitter {
     maybeArmReviewHold(this.db);
   }
 
-  /** One bounded batch across each runnable task (or the given subset). */
+  /** One bounded batch across each runnable task (or the given subset). When
+   *  `albumId` is given (landAlbumNow), each task's pending set — and its
+   *  `run()` call — is scoped to that album alone, not the library-wide queue. */
   private async processOneBatch(
     settings: ProcessingSettings,
     fresh = false,
     tasksOverride?: EnrichmentTask[],
+    albumId?: string,
   ): Promise<BatchOutcome> {
     const ctx = this.contextFactory(settings);
     const tasks = tasksOverride ?? this.runnableTasks(settings);
-    const total = tasks.reduce((sum, t) => sum + t.countPending(this.db), 0);
+    const total = albumId
+      ? tasks.reduce((sum, t) => sum + this.countPendingForAlbum(t, albumId), 0)
+      : tasks.reduce((sum, t) => sum + t.countPending(this.db), 0);
 
     // A "run" spans one continuous drain: consecutive batches with work pending
     // continue the tally; the first batch after the queue ran dry (or after
@@ -609,7 +734,7 @@ export class LibraryProcessingService extends EventEmitter {
     for (const task of tasks) {
       if (this.stopRequested) break;
       this.status = { ...this.status, currentTask: task.id };
-      const result = await task.run(this.db, ctx, this.batchSize);
+      const result = await task.run(this.db, ctx, this.batchSize, albumId);
       appliedTotal += result.applied;
       if (result.failed > 0) {
         mergeFailures(
