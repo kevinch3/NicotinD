@@ -1,6 +1,6 @@
 import { test as setup, expect } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { ADMIN, bearer, waitForLibrary } from '../helpers';
+import { ADMIN, bearer, scanAndWait, waitForLibrary } from '../helpers';
 
 /**
  * Auth setup for the gated `playground` project. Works in two modes:
@@ -29,7 +29,7 @@ setup('playground auth', async ({ page, request }) => {
     expect(res.status(), 'setup/complete should create the first admin').toBe(201);
     token = ((await res.json()) as { token: string }).token;
     // Managed server: scan the fixture library so flows have something to render.
-    await request.post('/api/system/scan', { headers: bearer(token) });
+    await scanAndWait(request, token);
     await waitForLibrary(request, token);
   } else {
     const res = await request.post('/api/auth/login', { data: { username, password } });

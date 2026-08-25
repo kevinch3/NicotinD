@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { cpSync, existsSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ADMIN, bearer, FIXTURE } from '../helpers';
+import { ADMIN, bearer, FIXTURE, scanAndWait } from '../helpers';
 
 const MUSIC = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'music');
 // Copy the loose single, not an FIXTURE.album track: the copy quarantines
@@ -38,7 +38,7 @@ test.describe('download review inbox', () => {
       headers: bearer(token),
       data: { holdForReview: false },
     });
-    await request.post('/api/system/scan', { headers: bearer(token) }); // prune the copied song
+    await scanAndWait(request, token); // prune the copied song
   });
 
   test('held download appears in inbox, approve lands it', async ({ page, request }) => {
@@ -52,7 +52,7 @@ test.describe('download review inbox', () => {
     cpSync(SRC, join(REVIEW_DIR, 'review-track.flac')); // NOTE: file carries the fixture single's tags —
     // it quarantines under the EXISTING fixture single's albumId, hiding it
     // from the library while pending.
-    await request.post('/api/system/scan', { headers: bearer(token) });
+    await scanAndWait(request, token);
 
     // pending: count > 0
     await expect
@@ -94,7 +94,7 @@ test.describe('download review inbox', () => {
 
     cpSync(SINGLE_DIR, BACKUP_DIR, { recursive: true });
     cpSync(SRC, join(REVIEW_DIR, 'review-track.flac'));
-    await request.post('/api/system/scan', { headers: bearer(token) });
+    await scanAndWait(request, token);
 
     await expect
       .poll(

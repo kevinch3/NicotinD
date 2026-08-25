@@ -36,6 +36,45 @@ describe('system routes', () => {
     expect('slskd' in data).toBe(false);
   });
 
+  // Regression: `scanRunning` used to test only `taskId === 'library-sync'`, but
+  // MaintenanceService deliberately RETAINS taskId after a pass so the admin UI can
+  // show "last run". So once any scan had run, /scan/status answered `scanning:true`
+  // forever — a predicate answering "was the last task a scan?" instead of "is one
+  // running?". The e2e suite was the first consumer to actually poll it.
+  it('GET /scan/status reports scanning:false once the maintenance pass goes idle', async () => {
+    let status = { phase: 'running' as string, taskId: 'library-sync' as string | null };
+    const withMaintenance = () => {
+      const a = new Hono();
+      a.route(
+        '/',
+        systemRoutes(
+          serviceManagerMock as unknown as Parameters<typeof systemRoutes>[0],
+          configMock as unknown as Parameters<typeof systemRoutes>[1],
+          {
+            maintenance: {
+              getStatus: () => status,
+              start: () => 'started',
+            } as unknown as NonNullable<Parameters<typeof systemRoutes>[2]>['maintenance'],
+          } as Parameters<typeof systemRoutes>[2],
+        ),
+      );
+      return a;
+    };
+
+    const running = await (await withMaintenance().request('/scan/status')).json();
+    expect((running as { scanning: boolean }).scanning).toBe(true);
+
+    // The pass finishes: phase goes idle, taskId is intentionally left behind.
+    status = { phase: 'idle', taskId: 'library-sync' };
+    const idle = await (await withMaintenance().request('/scan/status')).json();
+    expect((idle as { scanning: boolean }).scanning).toBe(false);
+
+    // A different task running is not a library scan either.
+    status = { phase: 'running', taskId: 'metadata-optimize' };
+    const other = await (await withMaintenance().request('/scan/status')).json();
+    expect((other as { scanning: boolean }).scanning).toBe(false);
+  });
+
   it('GET /disk reports total/free/used bytes for the music dir', async () => {
     app = new Hono();
     app.route(

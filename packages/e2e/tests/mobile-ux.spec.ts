@@ -194,9 +194,16 @@ test.describe('mobile UX', () => {
   // Downloads rows must stay inside the viewport — overflowing content (long
   // titles / storage paths) used to widen the page and force the WebView to zoom
   // out. Guard that no element pushes a horizontal scroll at phone width.
+  //
+  // Readiness is the page heading, NOT an empty feed (issue #616). Asserting
+  // "No active downloads." made this spec depend on every *other* spec having
+  // cleaned up its jobs — and worse, it meant the test only ever ran against a
+  // feed with no rows in it, which is precisely the case that cannot overflow.
+  // Measuring whatever the feed actually holds is both order-independent and a
+  // stricter test of the thing the comment above describes.
   test('downloads page does not overflow horizontally', async ({ page }) => {
     await page.goto('/downloads');
-    await expect(page.getByText('No active downloads.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Downloads' })).toBeVisible();
     const overflow = await page.evaluate(() => {
       const el = document.scrollingElement ?? document.documentElement;
       return el.scrollWidth - el.clientWidth;

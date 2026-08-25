@@ -33,7 +33,7 @@ gradient fallback and needs a subject that genuinely has no cover.
 
 | Spec                           | Asserts                                                                                                                                                                                                                                       |
 | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/auth.setup.ts`          | (setup project) seeds the admin via `/api/setup/complete`, kicks `/api/system/scan`, waits for the fixture album, saves an authenticated `storageState` reused by every other spec                                                            |
+| `tests/auth.setup.ts`          | (setup project) seeds the admin via `/api/setup/complete`, kicks a scan via `scanAndWait` (never a bare post — see the constraints list), waits for the fixture album, saves an authenticated `storageState` reused by every other spec                                                            |
 | `tests/auth.spec.ts`           | login (valid) lands in the app + logout; invalid creds bounce back to `/login` (the 401 interceptor) and stay unauthenticated                                                                                                                 |
 | `tests/library.spec.ts`        | the 7-track fixture album shows in the Albums grid and its tracklist renders; the loose single is **not** in the grid                                                                                                                         |
 | `tests/playback.spec.ts`       | Play Album fires a `206`/`200` on `/api/stream/...` and an `<audio>` element advances                                                                                                                                                         |
@@ -83,6 +83,30 @@ gradient fallback and needs a subject that genuinely has no cover.
 Recurring wrong assumptions that have shipped red CI. Check every new spec
 against these before pushing; if you discover a new one, add it here in the
 same PR that hit it.
+
+- **`POST /api/system/scan` returns before the scan finishes, and the suite shares
+  one server.** The route is deliberately fire-and-forget (`routes/system.ts`:
+  *"the client can poll /scan/status"*), so a bare `request.post('/api/system/scan')`
+  resolves while the scanner is still reconciling `library_songs` / `library_albums`.
+  With `workers: 1` and one shared server, that reconcile continues **underneath
+  whichever spec runs next**, and any assertion sampling mid-reconcile sees a
+  missing or half-written album. This was issue #655 — "a full run fails one test,
+  a different one each time, and every one passes in isolation": the victim is
+  simply whoever was running when the scan landed, which is why the failures
+  clustered in specs sorting after `download-review.spec.ts` (the spec that fired
+  three unawaited scans). **Use `scanAndWait(request, token)` from `helpers.ts`,
+  never a bare post.** Leaving a scan in flight is the e2e equivalent of a dangling
+  promise. `waitForLibrary` is not a substitute — it only proves *an* album exists,
+  not that the scanner has stopped writing.
+
+- **A spec must not assert on state it does not own.** One server and one DB mean
+  every spec sees every other spec's leftovers. `mobile-ux.spec.ts` asserted the
+  Downloads feed was empty (`No active downloads.`) purely as a readiness check,
+  which made it depend on every other spec's cleanup (issue #616) *and* meant it
+  only ever measured a feed with no rows — the one case that cannot overflow.
+  Anchor readiness on something structural (a heading, the page shell) and scope
+  content assertions to fixtures the spec created or the shared `FIXTURE`
+  constants.
 
 - **`page.route` does not intercept service-worker-initiated requests, so an
   abort silently stops working once the SW takes control.** The app registers

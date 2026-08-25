@@ -1,6 +1,6 @@
 import { test as setup, expect } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { ADMIN, AUTH_FILE, FIXTURE, bearer, waitForLibrary } from '../helpers';
+import { ADMIN, AUTH_FILE, FIXTURE, bearer, scanAndWait, waitForLibrary } from '../helpers';
 
 /**
  * Setup project (runs before every other project). Seeds the admin user, kicks a
@@ -28,8 +28,11 @@ setup('seed admin + library', async ({ page, request }) => {
     token = ((await res.json()) as { token: string }).token;
   }
 
-  // Kick a scan of the fixture music dir and wait for it to land.
-  await request.post('/api/system/scan', { headers: bearer(token) });
+  // Kick a scan of the fixture music dir and wait for it to land. `scanAndWait`
+  // is what makes "land" true: `waitForLibrary` alone only proves *an* album
+  // exists, so setup could return while the scanner was still writing and the
+  // first spec would race a half-scanned library (issue #655).
+  await scanAndWait(request, token);
   await waitForLibrary(request, token);
 
   // Seed lyrics on the first fixture track so the karaoke overlay can render
