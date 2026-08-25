@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.11](https://github.com/kevinch3/NicotinD/compare/v0.5.10...v0.5.11) (2026-08-25)
+
+### Bug Fixes
+
+* **web:** pause job polling while the tab is hidden ([#718](https://github.com/kevinch3/NicotinD/issues/718)) ([af98bbc](https://github.com/kevinch3/NicotinD/commit/af98bbc0e3722c5de00a195ad2c67ba0905b22f3)), references [#5](https://github.com/kevinch3/NicotinD/issues/5)
 ## [0.5.10](https://github.com/kevinch3/NicotinD/compare/v0.5.9...v0.5.10) (2026-08-25)
 
 ### Bug Fixes
