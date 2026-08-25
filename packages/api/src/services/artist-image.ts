@@ -15,11 +15,19 @@ import type { Lidarr, LidarrArtist } from '@nicotind/lidarr-client';
 
 /** Loose name match (lowercase, strip punctuation) for artist resolution. */
 export function normalizeName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^\w\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return (
+    name
+      .toLowerCase()
+      // Unicode-aware: `\w` is ASCII-only, so the old `[^\w\s]` strip deleted every
+      // CJK / Cyrillic / Arabic / Hangul character and collapsed those names to "".
+      // That made `isPlaceholderArtist` call every non-Latin artist a placeholder
+      // (issue #715) and, worse, made `indexLidarrArtists` key them ALL to "" so
+      // they overwrote each other in `byName`. `_` stays stripped-or-kept as before
+      // (it is `\w`), so ASCII names normalize exactly as they used to.
+      .replace(/[^\p{L}\p{N}_\s]/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
 }
 
 /** Lidarr surface needed to resolve an artist photo — narrowed so tests inject a mock. */

@@ -2,8 +2,47 @@ import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import type { LidarrAlbum, LidarrArtist } from '@nicotind/lidarr-client';
 import { applySchema } from '../db.js';
-import { backfillArtwork, isPlaceholderArtist, type BackfillLidarr } from './artwork-backfill.js';
+import {
+  backfillArtwork,
+  isPlaceholderArtist,
+  isPlaceholderArtistStrict,
+  type BackfillLidarr,
+} from './artwork-backfill.js';
 import { resolveArtwork } from './artwork-store.js';
+import { normalizeName } from './artist-image.js';
+
+describe('non-Latin artist names are not placeholders (issue #705/#715)', () => {
+  // `normalizeName` stripped with an ASCII-only `[^\w\s]`, so every CJK / Cyrillic /
+  // Arabic / Hangul name collapsed to '' and read as a placeholder. Two consequences:
+  // `placeholder_single` made any such single deletable, and `indexLidarrArtists`
+  // keyed them ALL to '' so they overwrote each other in `byName` — a non-Latin
+  // artist lookup returned whichever happened to be indexed last.
+  it('keeps non-Latin scripts, so they are neither placeholders nor colliding keys', () => {
+    const names = ['公衆道徳', 'Кино', '방탄소년단', 'أم كلثوم', '東京事変', 'Мумий Тролль'];
+    for (const n of names) {
+      expect(isPlaceholderArtist(n)).toBe(false);
+      expect(isPlaceholderArtistStrict(n)).toBe(false);
+    }
+    // Distinct names must produce distinct normalized keys.
+    const keys = new Set(names.map((n) => normalizeName(n)));
+    expect(keys.size).toBe(names.length);
+  });
+
+  it('still treats genuine placeholders and blanks as placeholders', () => {
+    for (const n of ['', '   ', 'Unknown Artist', '<Desconocido>', 'Various Artists']) {
+      expect(isPlaceholderArtist(n)).toBe(true);
+      expect(isPlaceholderArtistStrict(n)).toBe(true);
+    }
+  });
+
+  // `!!!` (chk chk chk) is a real band: useless as a Lidarr query key, but never junk.
+  it('separates "unusable as a query key" from "junk artist" for punctuation-only names', () => {
+    for (const n of ['!!!', '+/-']) {
+      expect(isPlaceholderArtist(n)).toBe(true); // still not a usable query key
+      expect(isPlaceholderArtistStrict(n)).toBe(false); // but never deletable
+    }
+  });
+});
 
 describe('isPlaceholderArtist', () => {
   it('matches bracketed / unknown placeholders (diacritic & punctuation tolerant)', () => {
