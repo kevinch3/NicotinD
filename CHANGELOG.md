@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.2](https://github.com/kevinch3/NicotinD/compare/v0.5.1...v0.5.2) (2026-08-25)
+
+### Bug Fixes
+
+* **discography:** count only landed songs as owned ([#692](https://github.com/kevinch3/NicotinD/issues/692)) ([#698](https://github.com/kevinch3/NicotinD/issues/698)) ([85e504f](https://github.com/kevinch3/NicotinD/commit/85e504fd74a2ae94154ce13ff1b1383b9c745099)), references [#687](https://github.com/kevinch3/NicotinD/issues/687) [#687](https://github.com/kevinch3/NicotinD/issues/687)
 ## [0.5.1](https://github.com/kevinch3/NicotinD/compare/v0.5.0...v0.5.1) (2026-08-24)
 
 ### Features
