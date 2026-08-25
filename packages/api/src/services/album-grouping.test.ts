@@ -109,3 +109,33 @@ describe('pickCanonicalId', () => {
     ).toBe('aaa');
   });
 });
+
+describe('normalizeForGrouping — non-Latin scripts', () => {
+  it('keeps non-Latin titles distinct instead of collapsing them to ""', () => {
+    // `[^a-z0-9]` is ASCII-only, so every Cyrillic/CJK/Hangul/Arabic title
+    // normalized to the empty string — and the key is sha1'd into the album id,
+    // so two records by one artist collapsed into a single row.
+    const titles = ['Группа крови', 'Ночь', '東京事変', '教育', '방탄소년단', 'أم كلثوم'];
+    const keys = titles.map(normalizeForGrouping);
+    expect(keys).not.toContain('');
+    expect(new Set(keys).size).toBe(titles.length);
+  });
+
+  it('gives one artist two distinct album ids for two non-Latin releases', () => {
+    expect(albumGroupKey('Кино', 'Ночь')).not.toBe(albumGroupKey('Кино', 'Группа крови'));
+  });
+
+  it('keeps a base letter that carries no combining mark (Turkish dotless ı)', () => {
+    // "Şımarık": Ş decomposes to S + cedilla, but ı (U+0131) is its own base
+    // letter — the ASCII strip deleted it outright, yielding "s mar k".
+    expect(normalizeForGrouping('Şımarık')).toBe('sımarık');
+  });
+
+  it('still folds diacritics and strips editions for Latin titles', () => {
+    // Guard: the Unicode-aware strip must not regress the existing contract.
+    expect(normalizeForGrouping('Canción Animal (Remastered)')).toBe('cancion animal');
+    expect(normalizeForGrouping('¡Bang! ¡Bang!... Estás liquidado')).toBe(
+      'bang bang estas liquidado',
+    );
+  });
+});

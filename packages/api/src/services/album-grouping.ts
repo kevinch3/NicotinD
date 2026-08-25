@@ -70,7 +70,12 @@ export function normalizeForGrouping(s: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '') // strip combining marks (diacritics)
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ') // punctuation/symbols → space ("¡bang!..." === "¡bang! …")
+    // Punctuation/symbols → space ("¡bang!..." === "¡bang! …"). Unicode-aware:
+    // an `[^a-z0-9]` class is ASCII-only, so it deleted every Cyrillic/CJK/
+    // Hangul/Arabic character and collapsed those titles to "" — and this key is
+    // sha1'd into the album id, so two records by one artist merged into one row
+    // (issue #715's defect class, in the album-identity path).
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()
     .replace(/\s+/g, ' ');
 

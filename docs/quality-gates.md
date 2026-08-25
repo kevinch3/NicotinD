@@ -397,6 +397,47 @@ archive.org (full-text search is genuinely slow). Lidarr's three tiers and
 MusicBrainz's 15s are documented in
 [design-patterns.md](design-patterns.md).
 
+## `check:search-matching` — asserting the invariant, not the symbol
+
+`check:shared-helpers` exists to stop a shared helper being **re-declared**
+locally. It cannot see a call site that **bypasses** one, and that is how the
+same bug shipped three more times.
+
+The MCP agent surface matched artists with `name LIKE ? COLLATE NOCASE`
+(#706). There was no local copy of `matchesAllTokens` to find, so the gate
+printed *"12 shared helpers checked, no local re-implementations found"* and
+exited 0 — truthfully, about a set that never contained the defect. The Library
+Songs tab did the same thing (#719), in the same file as a find bar that had
+been folding correctly for months. The real invariant — *every search surface
+matches the same way* — was unmeasured by any gate.
+
+So this gate asserts the invariant. A `LIKE` against a library **name** column
+(`name`, `title`, `artist`, `album_name`, `artist_name`) must live in
+`services/search-tokens.ts` or carry a reasoned `ALLOWED` entry.
+
+The separating signal is deliberately **not** the column, because the legitimate
+uses share it: `enrichment/tasks.ts` matches `name LIKE '% & %'` to detect
+compound artists. It is what the `LIKE` is compared against — a **bound
+parameter** carries text a user typed and must be folded; a **quoted literal**
+is a pattern the author already knows the exact contents of and has nothing to
+fold. `isNameSearch` is exported and unit-tested against the verbatim strings
+from both shipped bugs, so the gate is proven to catch what it exists for.
+
+Applying the rules above:
+
+- **Denominator printed:** *"25 SQL fragments containing LIKE examined"*, not
+  "no problems found".
+- **Fails on what it cannot classify** (rule 3). An interpolated
+  `` `${col} LIKE ${bind}` `` hides its column from a text scan, so it is
+  flagged rather than skipped.
+- **Reads the whole operand**, not its first token. `LIKE '%' || ? || '%'` puts
+  a literal directly after `LIKE` with the user's text behind it; stopping at
+  the literal would have waved through exactly this bug. That hole was found by
+  a test, not by review.
+- **Known limit:** it is a pattern over source text, not a parser (rule 4). SQL
+  assembled across lines is only caught by the unclassified branch. A real
+  parser is the upgrade if this ever cries wolf.
+
 ## `check:audit` — a supply-chain gate that measures what ships
 
 There was no dependency scanning at all. The obvious fix — append

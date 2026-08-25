@@ -16,6 +16,7 @@ import {
   listOpenCurationFlags,
 } from '../services/curation-flags.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
+import { tokenize, matchesAllTokens, rankBy } from '../services/search-tokens.js';
 
 /**
  * MCP server for external LLM/agents (issue #232), served **inside the Hono app**
@@ -84,7 +85,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'search_library',
     description:
-      'Search the local library for artists, albums, and songs by name (substring, case-insensitive).',
+      'Search the local library for artists, albums, and songs by name. Matching is accent- and case-insensitive and ANDs every word of the query, so "Americo" finds "Américo" and "heroes silencio" finds "Héroes del Silencio".',
     access: 'read',
     inputSchema: {
       type: 'object',
@@ -95,23 +96,42 @@ export const MCP_TOOLS: McpTool[] = [
       required: ['query'],
     },
     handler: ({ db }, args) => {
-      const q = `%${str(args.query).trim()}%`;
+      // issue #706: this used a raw `LIKE ? COLLATE NOCASE`, and SQLite's NOCASE
+      // collation is ASCII-only — it folds neither diacritics nor a non-ASCII
+      // upper case, so "Americo" (and even "AMÉRICO") missed "Américo" entirely.
+      // An agent reading that as "the artist does not exist" mints a duplicate
+      // instead of merging into it. Route through the same tokenize/fold matcher
+      // every other search surface uses, so the agent and the UI find the same
+      // things: SQL does the cheap row gating, JS does the folded token match.
       const limit = clampLimit(args.limit, 20, 50);
+      const tokens = tokenize(str(args.query));
+      if (tokens.length === 0) {
+        return JSON.stringify({ artists: [], albums: [], songs: [] }, null, 2);
+      }
       const artists = db
-        .query<{ id: string; name: string }, [string, number]>(
-          'SELECT id, name FROM library_artists WHERE name LIKE ? COLLATE NOCASE ORDER BY album_count DESC LIMIT ?',
+        .query<{ id: string; name: string }, []>(
+          'SELECT id, name FROM library_artists ORDER BY album_count DESC',
         )
-        .all(q, limit);
+        .all()
+        .filter((r) => matchesAllTokens(r.name, tokens))
+        .slice(0, limit);
       const albums = db
-        .query<{ id: string; name: string; artist: string }, [string, number]>(
-          'SELECT id, name, artist FROM library_albums WHERE name LIKE ? COLLATE NOCASE LIMIT ?',
+        .query<{ id: string; name: string; artist: string }, []>(
+          'SELECT id, name, artist FROM library_albums',
         )
-        .all(q, limit);
+        .all()
+        // Match over "name + artist" so "soda cancion" resolves, same as the UI.
+        .filter((r) => matchesAllTokens(`${r.name} ${r.artist}`, tokens))
+        .sort(rankBy(tokens, (r) => r.name))
+        .slice(0, limit);
       const songs = db
-        .query<{ id: string; title: string; artist: string }, [string, number]>(
-          'SELECT id, title, artist FROM library_songs WHERE title LIKE ? COLLATE NOCASE AND landed_at IS NOT NULL LIMIT ?',
+        .query<{ id: string; title: string; artist: string }, []>(
+          'SELECT id, title, artist FROM library_songs WHERE landed_at IS NOT NULL',
         )
-        .all(q, limit);
+        .all()
+        .filter((r) => matchesAllTokens(`${r.title} ${r.artist}`, tokens))
+        .sort(rankBy(tokens, (r) => r.title))
+        .slice(0, limit);
       return JSON.stringify({ artists, albums, songs }, null, 2);
     },
   },
@@ -381,7 +401,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'merge_artist',
     description:
-      'Merge one or more artists (by their current display names) into another, canonical artist name (destructive — re-buckets all their songs under the target name on the next library scan). Pass rawName for one, or rawNames for a batch sharing one target. Requires confirm: true.',
+      'Merge one or more artists (by their current display names) into another, canonical artist name (destructive — re-buckets all their songs under the target name on the next library scan). Also fixes a case/accent duplicate ("Héroes Del Silencio" → "Héroes del Silencio", "Los Rodriguez" → "Los Rodríguez"): that is one artist stored under two spellings, and it is reported back as kind "renamed". Pass rawName for one, or rawNames for a batch sharing one target. Requires confirm: true.',
     access: 'curate',
     destructive: true,
     inputSchema: {
@@ -412,7 +432,9 @@ export const MCP_TOOLS: McpTool[] = [
         return JSON.stringify({ error: `at most ${MAX_MERGE_BATCH} names per call` });
       }
       const mergeInto = str(args.mergeInto);
-      const merged: Array<{ rawName: string }> = [];
+      // A case/accent duplicate routes to the rename path (issue #707), so one
+      // batch can hold both kinds — each name carries the kind it actually got.
+      const merged: Array<{ rawName: string; kind: string }> = [];
       const failed: Array<{ rawName: string; error: string }> = [];
       // Every name in a batch lands on the same target, so `artistId` stays a
       // single top-level value — the shape the one-name form already returned.
@@ -424,9 +446,12 @@ export const MCP_TOOLS: McpTool[] = [
           continue;
         }
         artistId = result.artistId;
-        merged.push({ rawName });
+        merged.push({ rawName, kind: result.kind });
         // One audit row per merge, not one per call: `targetId` stays the raw
-        // name, so the log is still greppable per artist after a batch.
+        // name, so the log is still greppable per artist after a batch. The verb
+        // is the kind that actually happened, so a curator reading the ledger can
+        // tell a respelling from a genuine two-artist merge.
+        const verb = result.kind === 'renamed' ? 'rename' : 'merge';
         recordAudit(
           db,
           { sub: identity.userId, username: `agent:${identity.tokenId}` },
@@ -434,14 +459,23 @@ export const MCP_TOOLS: McpTool[] = [
           {
             targetKind: 'artist',
             targetId: rawName,
-            detail: `merge → ${mergeInto} (via MCP agent)`,
+            detail: `${verb} → ${mergeInto} (via MCP agent)`,
           },
         );
       }
       // A rescan is minutes of work; run it once, and only if something changed.
       if (merged.length > 0 && artistIdentity.runSync) await artistIdentity.runSync();
+      const kinds = new Set(merged.map((m) => m.kind));
       return JSON.stringify(
-        { ok: failed.length === 0, kind: 'merged', artistId, merged, failed },
+        {
+          ok: failed.length === 0,
+          // 'mixed' when a batch did both, rather than picking one label and
+          // mislabelling the rest. Per-name kinds are always in `merged`.
+          kind: kinds.size === 1 ? [...kinds][0] : 'mixed',
+          artistId,
+          merged,
+          failed,
+        },
         null,
         2,
       );

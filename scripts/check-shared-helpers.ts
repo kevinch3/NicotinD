@@ -85,6 +85,16 @@ export const SHARED_HELPERS: SharedHelper[] = [
   // reaching the public edge (#717). Registered at extraction, with four
   // callers already on it.
   { name: 'createVisibilityPoller', canonical: 'packages/web/src/app/lib/visibility-poller.ts' },
+  // The normalizer family. Three separate ASCII-only strips standing in for
+  // Unicode folding shipped as three separate bugs (#662 discography's local
+  // `normalizeTitle`, #706 the MCP surface, #715 `normalizeName`), each deleting
+  // characters it was supposed to fold. Registered so a fourth copy cannot
+  // appear — though note this gate only catches a *re-declaration*: bypassing
+  // the helper with inline SQL is what `check:search-matching` covers.
+  { name: 'normalizeTitle', canonical: 'packages/addon-sdk/src/title-match.ts' },
+  { name: 'fold', canonical: 'packages/addon-sdk/src/hunt-queries.ts' },
+  { name: 'tokenize', canonical: 'packages/api/src/services/search-tokens.ts' },
+  { name: 'matchesAllTokens', canonical: 'packages/api/src/services/search-tokens.ts' },
 ];
 
 export interface HelperViolation {

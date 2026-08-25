@@ -332,9 +332,21 @@ describe('library routes', () => {
     expect((await post({})).status).toBe(400); // no rawName
     expect((await post({ rawName: 'X' })).status).toBe(400); // no decision/mergeInto
     expect((await post({ rawName: 'A & B', decision: 'split', members: ['A'] })).status).toBe(400); // <2 members
-    expect((await post({ rawName: 'Same', mergeInto: 'same' })).status).toBe(400); // self-merge
+    expect((await post({ rawName: 'Same', mergeInto: 'Same' })).status).toBe(400); // self-merge
     expect((await post({ rawName: 'X', rename: '' })).status).toBe(400); // empty rename
     expect((await post({ rawName: 'X', rename: 'X' })).status).toBe(400); // no-op rename
+  });
+
+  it('POST /artists/identity accepts a case/accent duplicate as a rename (#707)', async () => {
+    // "Same" → "same" is one artist under two spellings, not two artists. It
+    // used to be refused as a self-merge; it now routes to the rename path.
+    const res = await app.request('/artists/identity', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rawName: 'Héroes Del Silencio', mergeInto: 'Héroes del Silencio' }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ kind: 'renamed' });
   });
 
   it('POST /artists/identity is admin-only', async () => {

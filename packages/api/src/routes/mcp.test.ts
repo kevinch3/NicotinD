@@ -41,6 +41,7 @@ beforeEach(() => {
   testDb.run('DELETE FROM agent_tokens');
   testDb.run('DELETE FROM library_songs');
   testDb.run('DELETE FROM library_albums');
+  testDb.run('DELETE FROM library_artists');
   testDb.run('DELETE FROM audit_log');
   testDb.run('DELETE FROM library_artist_aliases');
   testDb.run('DELETE FROM library_song_genres');
@@ -93,6 +94,66 @@ describe('MCP endpoint (issue #232)', () => {
       await rpc(token, 'tools/call', { name: 'search_library', arguments: { query: 'Hello' } })
     ).json()) as { result: { content: Array<{ text: string }> } };
     expect(body.result.content[0]!.text).toContain('s1');
+  });
+
+  // issue #706 — `search_library` is the only discovery tool on the agent
+  // surface, so accent-blind matching made an agent conclude a canonical artist
+  // did not exist and mint a duplicate instead of merging into it.
+  describe('search_library matches accent-insensitively', () => {
+    const seedArtist = (id: string, name: string) =>
+      testDb.run(
+        `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES (?, ?, 1, 1)`,
+        [id, name],
+      );
+    const searchArtists = async (query: string): Promise<string[]> => {
+      const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+      const body = (await (
+        await rpc(token, 'tools/call', { name: 'search_library', arguments: { query } })
+      ).json()) as { result: { content: Array<{ text: string }> } };
+      const parsed = JSON.parse(body.result.content[0]!.text) as {
+        artists: Array<{ name: string }>;
+      };
+      return parsed.artists.map((a) => a.name);
+    };
+
+    it('finds an accented artist from an unaccented query', async () => {
+      seedArtist('a1', 'Américo');
+      expect(await searchArtists('Americo')).toEqual(['Américo']);
+    });
+
+    it('finds an accented artist typed in upper case', async () => {
+      // `COLLATE NOCASE` case-folds ASCII only, so "É" never equalled "é" —
+      // even the correctly-spelled query missed.
+      seedArtist('a1', 'Américo');
+      expect(await searchArtists('AMÉRICO')).toEqual(['Américo']);
+    });
+
+    it('finds "Niño Bravo" from "Nino"', async () => {
+      seedArtist('a1', 'Niño Bravo');
+      expect(await searchArtists('Nino')).toEqual(['Niño Bravo']);
+    });
+
+    it('ANDs every token, so a multi-word query is not dropped to its first', async () => {
+      seedArtist('a1', 'Héroes del Silencio');
+      seedArtist('a2', 'Héroes de la Cumbia');
+      expect(await searchArtists('heroes silencio')).toEqual(['Héroes del Silencio']);
+    });
+
+    it('matches songs and albums on the same folded rules', async () => {
+      testDb.run(
+        `INSERT INTO library_albums (id, name, artist, artist_id, song_count, synced_at)
+         VALUES ('al1', 'Canción Animal', 'Soda Stereo', 'art', 1, 1)`,
+      );
+      seedSong('s1', 'Corazón Delator', 'p/s1.opus', 'al1');
+      const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+      const body = (await (
+        await rpc(token, 'tools/call', { name: 'search_library', arguments: { query: 'cancion' } })
+      ).json()) as { result: { content: Array<{ text: string }> } };
+      const parsed = JSON.parse(body.result.content[0]!.text) as {
+        albums: Array<{ name: string }>;
+      };
+      expect(parsed.albums.map((a) => a.name)).toEqual(['Canción Animal']);
+    });
   });
 
   it('tools/list includes list_recent_songs', async () => {
@@ -419,6 +480,51 @@ describe('MCP endpoint (issue #232)', () => {
     expect(parsed.merged.map((m) => m.rawName)).toEqual(['Bad Spelling']);
     expect(parsed.failed.map((f) => f.rawName)).toEqual(['Good Artist']);
     expect(testDb.query('SELECT alias_norm FROM library_artist_aliases').all()).toHaveLength(1);
+  });
+
+  // issue #707 — a case/accent duplicate is the common real duplication, and it
+  // routes to the rename path. A batch can therefore hold both kinds at once.
+  it('merge_artist reports a case/accent duplicate as a rename, per name', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'merge_artist',
+        arguments: {
+          rawNames: ['Héroes Del Silencio', 'Heroes del Silencio (Rock)'],
+          mergeInto: 'Héroes del Silencio',
+          confirm: true,
+        },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    const parsed = JSON.parse(body.result.content[0]!.text) as {
+      ok: boolean;
+      kind: string;
+      merged: Array<{ rawName: string; kind: string }>;
+      failed: unknown[];
+    };
+    expect(parsed.ok).toBe(true);
+    expect(parsed.failed).toHaveLength(0);
+    expect(parsed.merged).toEqual([
+      { rawName: 'Héroes Del Silencio', kind: 'renamed' },
+      { rawName: 'Heroes del Silencio (Rock)', kind: 'merged' },
+    ]);
+    // The batch is not one kind any more, so the top-level field says so
+    // rather than picking one and mislabelling the other.
+    expect(parsed.kind).toBe('mixed');
+  });
+
+  it('merge_artist audit-logs a respelling as a rename, not a merge', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    await rpc(token, 'tools/call', {
+      name: 'merge_artist',
+      arguments: { rawName: 'BANDANA', mergeInto: 'Bandana', confirm: true },
+    });
+    const entry = testDb
+      .query<{ detail: string }, []>(
+        `SELECT detail FROM audit_log WHERE action = 'artist.identity'`,
+      )
+      .get();
+    expect(entry?.detail).toContain('rename → Bandana');
   });
 
   it('merge_artist without rawName or rawNames is refused', async () => {

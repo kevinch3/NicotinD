@@ -65,16 +65,63 @@ describe('mutateArtistIdentity — merge', () => {
     });
   });
 
-  it('rejects a same-normalized mergeInto target (that is a rename, not a merge)', () => {
-    const result = mutateArtistIdentity(
-      db,
-      {},
-      { rawName: 'The Beatles', mergeInto: 'the beatles' },
-    );
-    expect(result).toEqual({
+  it('rejects an empty or byte-identical mergeInto target', () => {
+    expect(mutateArtistIdentity(db, {}, { rawName: 'Artist', mergeInto: '' })).toEqual({
       ok: false,
       error: 'mergeInto must be a different artist name',
       status: 400,
+    });
+    expect(mutateArtistIdentity(db, {}, { rawName: 'Artist', mergeInto: 'Artist' })).toEqual({
+      ok: false,
+      error: 'mergeInto must be a different artist name',
+      status: 400,
+    });
+  });
+
+  // issue #707 — a same-normalized target used to be refused outright, which
+  // blocked the only artist duplication that actually occurs here: measured
+  // over the 2,000 most recent prod tracks, 12 of 13 real duplicate identities
+  // were case/accent pairs. The write is the same alias row either way, so
+  // route it to the rename path instead of refusing.
+  describe('same-normalized target (case/accent duplicate)', () => {
+    it('accepts a case-only duplicate and reports it as a rename', () => {
+      const result = mutateArtistIdentity(
+        db,
+        {},
+        { rawName: 'Héroes Del Silencio', mergeInto: 'Héroes del Silencio' },
+      );
+      expect(result).toEqual({
+        ok: true,
+        kind: 'renamed',
+        artistId: artistIdFor('Héroes del Silencio'),
+      });
+    });
+
+    it('accepts an accent-only duplicate', () => {
+      const result = mutateArtistIdentity(
+        db,
+        {},
+        { rawName: 'Los Rodriguez', mergeInto: 'Los Rodríguez' },
+      );
+      expect(result.ok).toBe(true);
+      expect(result).toMatchObject({ kind: 'renamed' });
+    });
+
+    it('writes the canonical spelling as the alias target', () => {
+      mutateArtistIdentity(db, {}, { rawName: 'BANDANA', mergeInto: 'Bandana' });
+      const row = db
+        .query<{ canonical_name: string }, []>('SELECT canonical_name FROM library_artist_aliases')
+        .get();
+      expect(row?.canonical_name).toBe('Bandana');
+    });
+
+    it('still reports a genuinely different target as a merge', () => {
+      const result = mutateArtistIdentity(
+        db,
+        {},
+        { rawName: 'Ke Personajes', mergeInto: 'Ke Personaje' },
+      );
+      expect(result).toMatchObject({ kind: 'merged' });
     });
   });
 });

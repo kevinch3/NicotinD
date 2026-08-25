@@ -247,10 +247,15 @@ describe('library /songs free-text `q` parameter', () => {
   it('matches album name (partial, case-insensitive)', async () => {
     const res = await app.request('/songs?q=bravo%20two');
     const data = (await res.json()) as Array<{ id: string }>;
-    expect(data.map((s) => s.id)).toEqual(['song-3']);
+    // Every token must appear somewhere in "title + artist + album", so this
+    // matches song-3 by its album ("Bravo Two") AND song-2, whose artist
+    // carries "Bravo" and whose album is "Two". A substring `LIKE '%bravo
+    // two%'` found only the first; per-token AND is the shared matcher's
+    // documented semantics and what the find bar has always done.
+    expect(data.map((s) => s.id).sort()).toEqual(['song-2', 'song-3']);
   });
 
-  it('escapes LIKE wildcards in the query so % / _ are literal', async () => {
+  it('a wildcard-only query matches nothing, never everything', async () => {
     seedSong(testDb, {
       id: 'song-with-percent',
       title: '100%Pure',
@@ -269,12 +274,23 @@ describe('library /songs free-text `q` parameter', () => {
       path: 'Artist R/Regulars/01.mp3',
       created: '2026-03-20T07:30:00.000Z',
     });
-    // A bare `%` query, un-escaped, would build `LIKE '%%%'` and match every
-    // song; with the escape, `LIKE '%\%%'` only matches titles that literally
-    // contain a `%` character.
+    // A bare `%` used to reach SQL, where un-escaped it would have built
+    // `LIKE '%%%'` and matched every song. Tokenizing splits on every
+    // non-alphanumeric, so `%` yields no tokens at all and there is nothing to
+    // match — the same protection, now structural rather than an escape.
+    // Searching for a literal `%` is no longer possible; "100" or "pure" finds
+    // the same song, and no other search surface supports it either.
     const res = await app.request('/songs?q=%25');
     const data = (await res.json()) as Array<{ id: string }>;
-    expect(data.map((s) => s.id)).toEqual(['song-with-percent']);
+    expect(data.map((s) => s.id)).toEqual([]);
+  });
+
+  it('a punctuation-only query matches nothing', async () => {
+    expect(
+      ((await (await app.request('/songs?q=...')).json()) as Array<{ id: string }>).map(
+        (s) => s.id,
+      ),
+    ).toEqual([]);
   });
 
   it('combines with LibraryFilter (bpm range) and sort', async () => {
@@ -310,5 +326,65 @@ describe('library /songs free-text `q` parameter', () => {
     const res = await app.request('/songs?q=zzznotreal');
     const data = (await res.json()) as Array<{ id: string }>;
     expect(data).toEqual([]);
+  });
+
+  // issue #719 — this box matched with `LIKE ? COLLATE NOCASE`, which is
+  // ASCII-only, while the cross-type find bar in the same file already folded.
+  describe('accent-insensitive matching', () => {
+    const ids = async (url: string): Promise<string[]> => {
+      const data = (await (await app.request(url)).json()) as Array<{ id: string }>;
+      return data.map((s) => s.id);
+    };
+
+    beforeEach(() => {
+      seedSong(testDb, {
+        id: 'song-accent',
+        title: 'Corazón Delator',
+        artist: 'Soda Stereo',
+        album: 'Canción Animal',
+        albumId: 'album-accent',
+        path: 'Soda Stereo/Cancion Animal/01.mp3',
+        created: '2026-03-20T12:00:00.000Z',
+      });
+    });
+
+    it('finds an accented title from an unaccented query', async () => {
+      expect(await ids('/songs?q=corazon')).toEqual(['song-accent']);
+    });
+
+    it('finds an accented album name from an unaccented query', async () => {
+      expect(await ids('/songs?q=cancion')).toEqual(['song-accent']);
+    });
+
+    it('finds an accented title typed in upper case', async () => {
+      // NOCASE case-folds ASCII only, so "Ó" never equalled "ó" — even the
+      // correctly-spelled query missed.
+      expect(await ids('/songs?q=CORAZÓN')).toEqual(['song-accent']);
+    });
+
+    it('still matches when the query carries the accent', async () => {
+      expect(await ids('/songs?q=corazón')).toEqual(['song-accent']);
+    });
+
+    it('pages a filtered result set correctly, in sort order', async () => {
+      // Matching moved into JS, so `offset`/`size` had to move with it — the
+      // SQL no longer carries LIMIT/OFFSET on this path. A slice applied to the
+      // wrong side of the filter silently returns the wrong page.
+      for (const n of [1, 2, 3, 4]) {
+        seedSong(testDb, {
+          id: `page-${n}`,
+          title: `Página ${n}`,
+          artist: 'Pager',
+          album: 'Pages',
+          albumId: 'album-pages',
+          path: `Pager/Pages/0${n}.mp3`,
+          created: `2026-03-2${n}T00:00:00.000Z`,
+        });
+      }
+      // Unaccented query, sorted by title so the order is deterministic.
+      expect(await ids('/songs?q=pagina&sort=title&size=2&offset=0')).toEqual(['page-1', 'page-2']);
+      expect(await ids('/songs?q=pagina&sort=title&size=2&offset=2')).toEqual(['page-3', 'page-4']);
+      expect(await ids('/songs?q=pagina&sort=title&size=2&offset=4')).toEqual([]);
+    });
   });
 });

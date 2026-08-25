@@ -12,10 +12,11 @@
  * *additional* DJ-pool watermark + bare-number classes those miss.
  */
 
-/** Fold accents + lowercase for keyword matching (keeps a normalized word form). */
-function fold(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-}
+// Accent-folding for keyword matching. This used to be a local copy that had
+// already drifted (it also trimmed) — harmless here, since the only use is a
+// substring test, but it is the third copy of one primitive and exactly the
+// drift `check:shared-helpers` exists to stop.
+import { fold } from '@nicotind/core';
 
 /**
  * Watermark keywords seen tagged as the "artist" by DJ-pool / batea / remix-pack

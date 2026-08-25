@@ -2503,27 +2503,42 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       '(a.hidden IS NULL OR a.hidden = 0)',
     ];
     const params: Array<string | number> = [];
-    if (q) {
-      // Free-text search across song title, song artist, and album name. LIKE
-      // special characters are escaped so a query like "50%" is a literal
-      // search, not a wildcard — the matching `%` we wrap with for partial
-      // matching is unrelated.
-      const escaped = q.replace(/[\\%_]/g, (m) => '\\' + m);
-      const like = `%${escaped}%`;
-      wheres.push(
-        `(s.title LIKE ? ESCAPE '\\' OR s.artist LIKE ? ESCAPE '\\' OR a.name LIKE ? ESCAPE '\\') COLLATE NOCASE`,
-      );
-      params.push(like, like, like);
-    }
     const frag = songFilterWheres(parseLibraryFilter(c.req.queries()), 's');
     wheres.push(...frag.wheres);
     params.push(...frag.params);
-    const rows = db
-      .query<SongRow, (string | number)[]>(
-        `${SONG_SELECT} WHERE ${wheres.join(' AND ')}
-         ORDER BY ${songOrderBy(sort)} LIMIT ? OFFSET ?`,
-      )
-      .all(...params, size, offset);
+
+    // Free-text `q` matches through the shared folded matcher, not SQL (issue
+    // #719). `LIKE ? COLLATE NOCASE` is ASCII-only — it folds neither
+    // diacritics nor a non-ASCII upper case, so "Cancion" and even "CANCIÓN"
+    // both missed "Canción". That left this box answering differently from the
+    // cross-type find bar above it, which already folded.
+    //
+    // Matching therefore runs in JS, which means paging must too: SQL keeps the
+    // cheap row gating and the ordering, JS filters and slices. Measured on
+    // prod (16,253 landed songs) that costs ~40-55 ms against ~16-22 ms for the
+    // SQL-side version — the same trade `LibrarySearchProvider` already makes.
+    // If it stops being affordable the answer is a stored folded column with an
+    // index, written by the scanner; not a return to ASCII matching.
+    const where = `WHERE ${wheres.join(' AND ')} ORDER BY ${songOrderBy(sort)}`;
+    const tokens = tokenize(q);
+    let rows: SongRow[];
+    if (!q) {
+      // No text filter: SQL pages, as before.
+      rows = db
+        .query<SongRow, (string | number)[]>(`${SONG_SELECT} ${where} LIMIT ? OFFSET ?`)
+        .all(...params, size, offset);
+    } else if (tokens.length === 0) {
+      // A punctuation-only query ("%", "...") has nothing to match on. It must
+      // return nothing rather than everything — the wildcard-injection case the
+      // old LIKE-escaping guarded against.
+      rows = [];
+    } else {
+      rows = db
+        .query<SongRow, (string | number)[]>(`${SONG_SELECT} ${where}`)
+        .all(...params)
+        .filter((r) => matchesAllTokens(`${r.title} ${r.artist} ${r.album_name ?? ''}`, tokens))
+        .slice(offset, offset + size);
+    }
     const songs = rows.map(rowToSong);
     attachSongArtists(db, songs);
     return c.json(songs);

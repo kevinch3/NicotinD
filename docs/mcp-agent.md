@@ -68,7 +68,7 @@ applies it, then runs the handler; every write is audit-logged.
 
 | tool | access | fronts |
 | --- | --- | --- |
-| `search_library` | read | library artists/albums/songs by name |
+| `search_library` | read | library artists/albums/songs by name, via the shared folded matcher |
 | `list_recent_songs` | read | recently-landed songs, newest first, paged, optional missing-genre filter |
 | `get_artist` | read | one artist + their albums |
 | `get_album_tracks` | read | an album's songs, with their genre |
@@ -78,6 +78,66 @@ applies it, then runs the handler; every write is audit-logged.
 | `delete_song` | curate, **destructive** | `services/library-deletion.ts` `deleteOne` + `song.delete` audit |
 | `delete_album` | curate, **destructive** | `services/library-deletion.ts` `deleteAlbum` + `album.delete` audit |
 | `merge_artist` | curate, **destructive** | `services/artist-identity-mutate.ts` `mutateArtistIdentity` (merge mode, one or many raw names) + `artist.identity` audit |
+
+### `search_library` matches the way the UI does (issue #706)
+
+`search_library` is the **only** discovery tool on this surface, and it used to
+match with a raw `LIKE ? COLLATE NOCASE`. SQLite's `NOCASE` collation is
+ASCII-only: it folds neither diacritics nor a non-ASCII upper case. Against a
+table holding `Américo`:
+
+```
+LIKE '%Americo%' NOCASE -> []
+LIKE '%AMÉRICO%' NOCASE -> []      <- even the correctly-spelled query, in caps
+LIKE '%américo%' NOCASE -> ["Américo"]
+```
+
+The harm is not a missed result, it is a **wrong conclusion**. An agent doing
+what this document describes — find the canonical artist, merge the junk name
+into it — searched for the canonical name, got nothing, concluded the artist did
+not exist, and minted a duplicate instead of merging. On a Spanish-language
+library that is the common case, not the edge case.
+
+It now routes through `services/search-tokens.ts` (`tokenize` /
+`matchesAllTokens` / `rankBy`), the same matcher `routes/library.ts`,
+`catalog-search.service.ts`, `playlist.service.ts` and
+`providers/library-provider.ts` use: SQL does the cheap row gating, JS does the
+folded per-token AND match. The agent and the curator now find the same things.
+
+`check:shared-helpers` could not have caught this — `routes/mcp.ts` never
+re-declared `matchesAllTokens`, it *bypassed* it, and a name-based check cannot
+see a bypass. `check:search-matching` asserts that invariant instead of the
+symbol. → [quality-gates.md](quality-gates.md)
+
+### A case/accent duplicate is a rename, not a refusal (issue #707)
+
+`merge_artist` used to refuse any `mergeInto` that normalized the same as
+`rawName`, on the reasoning that a same-normalized pair is a rename rather than
+a merge. Correct on its own terms, and it made the tool unable to fix the only
+artist duplication this library actually accumulates.
+
+Measured over the **2,000 most recently added prod tracks** (2026-07-26 →
+2026-08-25): 13 duplicate artist identities, **12 refused** by that guard and
+**1 accepted** — and the accepted one (`ME` → `&ME`) was a false positive that
+must *not* be merged. The boundary was inverted: it blocked all 12 safe repairs
+and permitted the single risky one.
+
+| canonical | duplicate spelling | tracks split |
+| --- | --- | --- |
+| `Héroes del Silencio` | `Héroes Del Silencio` | 53 / 3 |
+| `Los Rodríguez` | `Los Rodriguez` | 23 / 2 |
+| `Bandana` | `BANDANA` | 11 / 12 |
+| `Ángela Leiva` | `Angela Leiva` | 2 / 7 |
+
+A same-normalized target now routes to the **rename** path
+(`library_artist_identity`'s alias fix), which is what the curator UI has always
+done for this and what `mutateArtistIdentity`'s `rename` branch already allowed.
+The alias write is byte-identical either way — only the reported `kind` differs,
+and it reports `renamed`, so a curator reading the audit ledger can still tell a
+respelling from a genuine two-artist merge. A batch can therefore hold both
+kinds; each name carries its own `kind` in `merged[]`, and the top-level `kind`
+reads `mixed` rather than mislabelling half the call. Only a **byte-identical**
+target is still refused, since that is a true no-op.
 
 ### `list_recent_songs` (issues #676, #678)
 
@@ -179,10 +239,10 @@ but deliberately does **not** resync the library or `recordAudit` itself: those
 stay caller-side, same as `deleteOne`/`deleteAlbum`, since the HTTP route
 formats a richer audit detail string than the MCP tool needs. The MCP tool
 surface is narrower than the route's: only `merge_artist` (mergeInto) shipped —
-rename/single/split are exposed to the curator UI but not (yet) to an agent,
-since a merge is the one case with an unambiguous, single, LLM-describable
-target name; a split's member list or a same-normalized rename's intent is
-harder to hand to a tool call safely. `artistIdentity: { dataDir, runSync }` on
+`single`/`split` are exposed to the curator UI but not to an agent, since a
+merge is the one case with an unambiguous, single, LLM-describable target name
+and a split's member list is harder to hand to a tool call safely.
+`artistIdentity: { dataDir, runSync }` on
 `McpToolContext` is separate from `deletion` — a different HTTP route wires
 these in `index.ts` (`expandedDataDir`, `runSyncAndCurate`), so `mcpRoutes` now
 takes both pairs of deps explicitly rather than growing an implicit shared
@@ -200,11 +260,11 @@ server's `requireCurator` gate on the same routes.
 
 ## Left as follow-ups
 
-- **Rename/single/split artist-identity tools** — `merge_artist` (issue #339)
-  shipped; the route's other three decision kinds (`rename`, `single`,
-  `split`) are exposed to `services/artist-identity-mutate.ts` already but have
-  no MCP tool wrapping them yet, since a merge is the one case with an
-  unambiguous single target name to hand an LLM.
+- **single/split artist-identity tools** — `merge_artist` (issue #339) shipped,
+  and it now reaches the `rename` kind too (see "A case/accent duplicate is a
+  rename" below); `single` and `split` are exposed to
+  `services/artist-identity-mutate.ts` already but have no MCP tool wrapping
+  them yet, since neither has an unambiguous single target name to hand an LLM.
 - **Acquisition tools** (`add_to_watchlist` / `acquire_album`) — the mechanism
   (`destructive` flag + `confirm` gate + `recordAudit` + the refiner cap) is
   proven by the delete tools above, so adding these is the same shape of work.

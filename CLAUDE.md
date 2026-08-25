@@ -63,7 +63,8 @@ bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
 size) · `check:ci-parity` (a gate job step `verify` misses, or a gate that stopped blocking
 `release`) · `check:route-auth` (an `/api` group mounted with no auth decision) · `check:audit` (an
 advisory that both ships and matches the resolved version) · `check:shared-helpers` (a shared helper
-re-implemented locally) · `check:json` (duplicate keys) · `check:shipped-issues` (report, not a gate)
+re-implemented locally) · `check:search-matching` (a name search done in raw SQL, bypassing the shared
+folded matcher) · `check:json` (duplicate keys) · `check:shipped-issues` (report, not a gate)
 · `check:isolated-specs` (slow, not a gate). → [quality-gates.md](docs/quality-gates.md)
 
 **Diagnostics**: `bun run packages/api/src/scripts/prod-probe.ts --orphans --jobs` (read-only prod/dev
