@@ -44,10 +44,11 @@ describe('recordingKey', () => {
   });
 
   it('is null when the title normalizes away', () => {
-    // `normalizeTitle` strips everything outside ASCII \w\s, so a CJK-only
-    // title reduces to "". Without this guard every such track by one artist
-    // at one duration would collapse into a single recording.
-    expect(recordingKey(ARTIST, '日本語', 200)).toBeNull();
+    // A title made only of punctuation carries no identity. This guard used to
+    // fire for CJK titles too, because `normalizeTitle` was ASCII-only — see
+    // the non-Latin test below, which is now the opposite assertion.
+    expect(recordingKey(ARTIST, '...', 200)).toBeNull();
+    expect(recordingKey(ARTIST, '!!! ???', 200)).toBeNull();
     expect(recordingKey(ARTIST, '   ', 200)).toBeNull();
     expect(recordingKey(ARTIST, '', 200)).toBeNull();
   });
@@ -55,10 +56,26 @@ describe('recordingKey', () => {
   it('never groups two unidentifiable rows together', () => {
     // Two nulls must not compare equal — ambiguity is left to dangle, never
     // guessed (the discipline `repointPlaylistsBeforePrune` encodes).
+    expect(recordingKey(ARTIST, '...', 200)).toBeNull();
+    expect(recordingKey(ARTIST, '---', 200)).toBeNull();
+  });
+
+  it('gives a non-Latin title a real, distinct key', () => {
+    // `normalizeTitle` was ASCII-only, so every CJK/Hangul/Cyrillic title
+    // reduced to "" and was excluded from recording identity altogether —
+    // those tracks could never be deduped. Now they key like any other.
     const a = recordingKey(ARTIST, '日本語', 200);
     const b = recordingKey(ARTIST, '한국어', 200);
-    expect(a).toBeNull();
-    expect(b).toBeNull();
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    expect(a).not.toBe(b!);
+  });
+
+  it('groups the album and compilation copies of one non-Latin track', () => {
+    // The point of the key: two files of one recording collapse to one.
+    expect(recordingKey(ARTIST, 'Группа крови', 245)).toBe(
+      recordingKey(ARTIST, 'Группа крови', 245)!,
+    );
   });
 
   it('is null when the artist id is empty', () => {

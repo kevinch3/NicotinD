@@ -6,18 +6,13 @@
 // be dropped in favour of a common first token. Kept here so there's one
 // definition instead of a copy per provider.
 
-// Combining diacritical marks block (U+0300–U+036F), stripped after NFD decompose.
-const COMBINING_MARKS = /[̀-ͯ]/g;
-
-/**
- * Fold text for accent-insensitive matching: NFD-decompose, drop combining
- * marks (diacritics — "Ídolo" → "idolo", "niño" → "nino"), lowercase. Base
- * letters (incl. non-Latin scripts) are preserved so Cyrillic/etc. queries
- * still match.
- */
-export function fold(s: string): string {
-  return s.normalize('NFD').replace(COMBINING_MARKS, '').toLowerCase();
-}
+// `fold` (NFD-decompose, drop combining marks, lowercase — "Ídolo" → "idolo",
+// "niño" → "nino"; base letters incl. non-Latin scripts are preserved) is the
+// one accent-folding primitive, and it lives in the addon-sdk because the hunt
+// engine needs it too. Re-exported here so the search lanes keep importing it
+// from their own module.
+import { fold } from '@nicotind/core';
+export { fold };
 
 /**
  * Split a query into folded tokens on any non-alphanumeric boundary (Unicode

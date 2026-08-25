@@ -116,6 +116,13 @@ jobs:
       - name: Check for locally re-implemented shared helpers
         run: bun run check:shared-helpers
 
+      # check:shared-helpers only sees a *re-declared* helper. The MCP agent
+      # surface bypassed the shared matcher with inline `LIKE ? COLLATE NOCASE`
+      # instead (#706, and #719 on the Songs tab) — no local copy to find, so
+      # that gate exited 0 truthfully while the invariant went unmeasured.
+      - name: Check every name search goes through the shared folded matcher
+        run: bun run check:search-matching
+
       # A check this job runs that no local command reaches is invisible until
       # push — how the web-spec typecheck drifted. This asserts `bun run verify`
       # still covers every step below.

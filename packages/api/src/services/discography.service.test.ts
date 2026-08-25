@@ -385,4 +385,82 @@ describe('DiscographyService', () => {
     const result = await svc.getArtistDiscography('ar1');
     expect(result.albums[0].status).toBe('present');
   });
+
+  // issue #662 — the local `normalizeTitle` copy stripped `[^\w\s]` without
+  // folding first, so an accent was *deleted* ("Canción" → "cancin") rather
+  // than folded ("cancion"). Lidarr and the local file tags routinely disagree
+  // about accents, so an album you own was reported missing.
+  describe('accent-insensitive matching against Lidarr metadata', () => {
+    const monitoredArjona: LidarrArtist = {
+      id: 99,
+      foreignArtistId: 'mbid-arjona',
+      artistName: 'Arjona',
+      sortName: 'Arjona',
+      status: 'continuing',
+      images: [],
+      monitored: true,
+    };
+
+    it('matches an accented Lidarr album title to an unaccented local one', async () => {
+      insertArtist(db, 'ar1', 'Arjona');
+      insertAlbum(db, 'al1', 'Cancion Animal', 'ar1'); // local tag: no accent
+      insertSong(db, 's1', 'al1', 'Corazon Delator', 'ar1');
+
+      const { lidarr } = makeLidarrStub({
+        albums: [makeLidarrAlbum({ id: 1, title: 'Canción Animal' })], // Lidarr: accented
+        tracksByAlbum: { 1: [makeTrack(11, 1, 'Corazón Delator')] },
+        monitoredArtist: monitoredArjona,
+      });
+
+      const result = await new DiscographyService(lidarr, db).getArtistDiscography('ar1');
+      expect(result.albums[0].status).toBe('present');
+      expect(result.albums[0].tracks[0].hasFile).toBe(true);
+    });
+
+    it('matches the other direction too (accented local, unaccented Lidarr)', async () => {
+      insertArtist(db, 'ar1', 'Arjona');
+      insertAlbum(db, 'al1', 'Galería Caribe', 'ar1');
+      insertSong(db, 's1', 'al1', 'Pingüinos en la Cama', 'ar1');
+
+      const { lidarr } = makeLidarrStub({
+        albums: [makeLidarrAlbum({ id: 1, title: 'Galeria Caribe' })],
+        tracksByAlbum: { 1: [makeTrack(11, 1, 'Pinguinos en la Cama')] },
+        monitoredArtist: monitoredArjona,
+      });
+
+      const result = await new DiscographyService(lidarr, db).getArtistDiscography('ar1');
+      expect(result.albums[0].status).toBe('present');
+    });
+
+    it('resolves an accented artist name to a monitored unaccented one', async () => {
+      insertArtist(db, 'ar1', 'Ángela Leiva');
+      insertAlbum(db, 'al1', 'Mono', 'ar1');
+      insertSong(db, 's1', 'al1', 'Track One', 'ar1');
+
+      const { lidarr, spies } = makeLidarrStub({
+        albums: [makeLidarrAlbum({ id: 1, title: 'Mono' })],
+        tracksByAlbum: { 1: [makeTrack(11, 1, 'Track One')] },
+        monitoredArtist: { ...monitoredArjona, id: 42, artistName: 'Angela Leiva' },
+      });
+
+      const result = await new DiscographyService(lidarr, db).getArtistDiscography('ar1');
+      expect(result.lidarrId).toBe(42);
+      expect(spies.add).not.toHaveBeenCalled(); // did not provision a duplicate
+    });
+
+    it('keeps two non-Latin albums distinct instead of matching both', async () => {
+      insertArtist(db, 'ar1', 'Kino');
+      insertAlbum(db, 'al1', 'Группа крови', 'ar1');
+      insertSong(db, 's1', 'al1', 'Спокойная ночь', 'ar1');
+
+      const { lidarr } = makeLidarrStub({
+        albums: [makeLidarrAlbum({ id: 1, title: 'Ночь' })], // a different record
+        tracksByAlbum: { 1: [makeTrack(11, 1, 'Мама, мы все тяжело больны')] },
+        monitoredArtist: { ...monitoredArjona, artistName: 'Kino' },
+      });
+
+      const result = await new DiscographyService(lidarr, db).getArtistDiscography('ar1');
+      expect(result.albums[0].status).toBe('missing');
+    });
+  });
 });

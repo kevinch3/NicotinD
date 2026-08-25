@@ -29,9 +29,13 @@
  * to dangle, never guessed — expressed as a return type. Both guards fire on
  * real data: `library_songs.duration` is `NOT NULL DEFAULT 0` and
  * `/songs/:id/similar` applies no duration gate, so un-scanned rows reach that
- * pool; and `normalizeTitle` strips everything outside ASCII `\w\s`, so a
- * CJK-only title reduces to `""` and would otherwise collapse every such track
- * by one artist at one duration into a single recording.
+ * pool; and a title made only of punctuation ("...") normalizes to `""`.
+ *
+ * The title guard used to catch far more than it should: `normalizeTitle` was
+ * ASCII-only, so *every* CJK/Hangul/Cyrillic title reduced to `""` and those
+ * tracks were excluded from recording identity altogether — they could never
+ * be deduped. Since that strip became Unicode-aware (issue #662's defect
+ * class) they key like any other row.
  *
  * Pure and IO-free (peer of `radio.service.ts`); every caller already holds the
  * three fields, so this needs no query and no stored column.

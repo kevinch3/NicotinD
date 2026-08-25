@@ -74,18 +74,25 @@ export function mutateArtistIdentity(
     resultArtistId = artistIdFor(rename);
   } else if (body.mergeInto != null) {
     const mergeInto = body.mergeInto.trim();
-    if (
-      !mergeInto ||
-      normalizeArtistForGrouping(mergeInto) === normalizeArtistForGrouping(rawName)
-    ) {
+    if (!mergeInto || mergeInto === rawName) {
       return { ok: false, error: 'mergeInto must be a different artist name', status: 400 };
     }
+    // A same-normalized target ("Héroes Del Silencio" → "Héroes del Silencio")
+    // used to be refused here. That refusal blocked the only artist duplication
+    // this library actually accumulates — measured over the 2,000 most recent
+    // prod tracks, 12 of 13 real duplicate identities were case/accent pairs,
+    // and the one pair the guard *did* accept was a false positive (issue #707).
+    // The write is identical either way: one alias row keyed on the normalized
+    // raw name. Only the reported `kind` differs, and it reports what actually
+    // happened — a canonical-spelling fix on one artist — so the audit ledger
+    // can still tell a respelling from a genuine two-artist merge.
+    const sameNorm = normalizeArtistForGrouping(mergeInto) === normalizeArtistForGrouping(rawName);
     upsertArtistAlias(db, {
       aliasNorm: normalizeArtistForGrouping(rawName),
       canonicalName: mergeInto,
       source: 'user',
     });
-    kind = 'merged';
+    kind = sameNorm ? 'renamed' : 'merged';
     resultArtistId = artistIdFor(mergeInto);
   } else if (body.decision === 'single') {
     upsertArtistIdentity(db, {

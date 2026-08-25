@@ -8,15 +8,22 @@ import { fold } from './hunt-queries.js';
  */
 
 export function normalizeTitle(title: string): string {
-  // Diacritics are folded (via the shared `fold`) *before* the ASCII-only
-  // `[^\w\s]` strip, so an accented "canción" and a peer's unaccented "cancion"
-  // both reduce to the same string — critical for this Latin-American-heavy
-  // library. `fold` already lowercases + NFD-strips combining marks.
-  return fold(title)
-    .replace(/^\d+[\s.\-]+/, '') // strip leading track numbers
-    .replace(/[^\w\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  // Diacritics are folded (via the shared `fold`) *before* the punctuation
+  // strip, so an accented "canción" and a peer's unaccented "cancion" both
+  // reduce to the same string — critical for this Latin-American-heavy library.
+  // `fold` already lowercases + NFD-strips combining marks.
+  return (
+    fold(title)
+      .replace(/^\d+[\s.\-]+/, '') // strip leading track numbers
+      // Unicode-aware. This was `[^\w\s]`, and `\w` is ASCII-only, so the class
+      // deleted every Cyrillic/CJK/Hangul/Arabic character and normalized those
+      // titles to "" — which made `titlesOverlap`'s equality fast path call
+      // every pair of them the same track, and excluded them from
+      // `recordingKey` entirely. `_` is kept so ASCII titles are unaffected.
+      .replace(/[^\p{L}\p{N}_\s]/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
 }
 
 export function titlesOverlap(canonical: string, filename: string): boolean {

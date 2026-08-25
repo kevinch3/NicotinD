@@ -1,10 +1,28 @@
 import type { Database } from 'bun:sqlite';
 import type { Lidarr, LidarrAlbum, LidarrTrack } from '@nicotind/lidarr-client';
-import { createLogger } from '@nicotind/core';
+import { createLogger, normalizeTitle } from '@nicotind/core';
 import { addArtistFromLookup } from './lidarr-provision.js';
 import { corroboratesLidarrHit } from './lidarr-confidence.js';
+import { normalizeArtistForGrouping, normalizeForGrouping } from './album-grouping.js';
 
 const log = createLogger('discography');
+
+/**
+ * Three comparisons, three normalizers — the same split `library-completeness.ts`
+ * already uses for the identical "do I already own this?" question (issue #662):
+ *
+ *  - **artist names** → `normalizeArtistForGrouping`: folds diacritics + case but
+ *    keeps punctuation, because "Miranda!" and "Miranda" are different acts.
+ *  - **album titles** → `normalizeForGrouping`: additionally drops edition
+ *    qualifiers, so a local "Hot Space" answers Lidarr's "Hot Space (Deluxe)".
+ *  - **track titles** → `normalizeTitle`: folds and strips leading track numbers.
+ *
+ * This file used to declare one local `normalizeTitle` for all three, and that
+ * copy stripped `[^\w\s]` *without* folding first — so an accent was deleted
+ * rather than folded ("Canción" → "cancin", not "cancion"). Lidarr metadata and
+ * local file tags routinely disagree about accents, so an album you owned was
+ * reported missing whenever only one side carried them.
+ */
 
 // Cache artist lookups for 7 days before re-querying Lidarr
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -108,7 +126,7 @@ export class DiscographyService {
     // Check if already monitored in Lidarr by name
     const monitored = await this.lidarr.artist.list();
     const existing = monitored.find(
-      (a) => normalizeTitle(a.artistName) === normalizeTitle(artistName),
+      (a) => normalizeArtistForGrouping(a.artistName) === normalizeArtistForGrouping(artistName),
     );
 
     if (existing) {
@@ -238,8 +256,8 @@ export class DiscographyService {
     localAlbums: Array<{ id: string; name: string }>,
     localSongs: Array<{ album_id: string; title: string }>,
   ): DiscographyAlbum {
-    const normalizedTitle = normalizeTitle(lidarrAlbum.title);
-    const matchedLocal = localAlbums.find((a) => normalizeTitle(a.name) === normalizedTitle);
+    const normalizedTitle = normalizeForGrouping(lidarrAlbum.title);
+    const matchedLocal = localAlbums.find((a) => normalizeForGrouping(a.name) === normalizedTitle);
 
     const localAlbumSongs = matchedLocal
       ? localSongs.filter((s) => s.album_id === matchedLocal.id)
@@ -288,20 +306,6 @@ export class DiscographyService {
       tracks: discographyTracks,
     };
   }
-}
-
-function normalizeTitle(title: string): string {
-  return (
-    title
-      .toLowerCase()
-      // Strip leading track numbers: "01 - ", "1. ", "01."
-      .replace(/^\d+[\s.\-]+/, '')
-      // Strip common suffixes like "(Remastered)", "[Live]", "(Deluxe Edition)"
-      .replace(/[\[(][^\])]*(remaster|deluxe|edition|version|live|bonus)[^\])]*[\])]/gi, '')
-      .replace(/[^\w\s]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-  );
 }
 
 function pickCoverArt(album: LidarrAlbum): string | undefined {
