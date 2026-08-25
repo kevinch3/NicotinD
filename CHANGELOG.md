@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.12](https://github.com/kevinch3/NicotinD/compare/v0.5.11...v0.5.12) (2026-08-25)
+
+### Bug Fixes
+
+* **library:** fold accents instead of deleting them, across every matcher ([#720](https://github.com/kevinch3/NicotinD/issues/720)) ([b00d02d](https://github.com/kevinch3/NicotinD/commit/b00d02d6d55141e433bead47170b6af46062d505)), closes [#706](https://github.com/kevinch3/NicotinD/issues/706) [#707](https://github.com/kevinch3/NicotinD/issues/707) [#662](https://github.com/kevinch3/NicotinD/issues/662) [#719](https://github.com/kevinch3/NicotinD/issues/719), references [#706](https://github.com/kevinch3/NicotinD/issues/706) [#719](https://github.com/kevinch3/NicotinD/issues/719) [#662](https://github.com/kevinch3/NicotinD/issues/662) [#707](https://github.com/kevinch3/NicotinD/issues/707)
 ## [0.5.11](https://github.com/kevinch3/NicotinD/compare/v0.5.10...v0.5.11) (2026-08-25)
 
 ### Bug Fixes
