@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.4](https://github.com/kevinch3/NicotinD/compare/v0.5.3...v0.5.4) (2026-08-25)
+
+### Bug Fixes
+
+* **processing:** make landing-gate eligibility explicit ([#691](https://github.com/kevinch3/NicotinD/issues/691)) ([#700](https://github.com/kevinch3/NicotinD/issues/700)) ([1dadb38](https://github.com/kevinch3/NicotinD/commit/1dadb38c5895adba3dafb5e4703f770a14b27de6)), references [#687](https://github.com/kevinch3/NicotinD/issues/687) [#687](https://github.com/kevinch3/NicotinD/issues/687) [#687](https://github.com/kevinch3/NicotinD/issues/687)
 ## [0.5.3](https://github.com/kevinch3/NicotinD/compare/v0.5.2...v0.5.3) (2026-08-25)
 
 ### Bug Fixes
