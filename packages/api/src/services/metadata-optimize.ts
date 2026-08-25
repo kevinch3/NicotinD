@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr, LidarrAlbum } from '@nicotind/lidarr-client';
 import { createLogger } from '@nicotind/core';
 import { normalizeForGrouping } from './album-grouping.js';
 import { setArtwork, pickAlbumCover } from './artwork-store.js';
@@ -10,7 +10,7 @@ import { clearCoverNegativeCache } from '../routes/streaming.js';
 const log = createLogger('metadata-optimize');
 
 /** Lidarr surface the optimizer needs — narrowed so tests can inject a mock. */
-export type OptimizeLidarr = Pick<Lidarr, 'album'>;
+export type OptimizeLidarr = Pick<Lidarr, 'album' | 'track'>;
 
 export interface OptimizeAlbumResult {
   /** A confident Lidarr release-group matched this album. */
@@ -18,6 +18,8 @@ export interface OptimizeAlbumResult {
   coverUpdated: boolean;
   yearUpdated: boolean;
   releaseTypeUpdated: boolean;
+  /** Songs whose NULL `track` this pass filled from the canonical tracklist. */
+  tracksNumbered: number;
   /**
    * False when the album was skipped before any Lidarr call (row missing, junk
    * grouping, placeholder artist). Lets the bulk pass report work actually done
@@ -37,6 +39,8 @@ export interface OptimizeAllResult {
   matched: number;
   coversUpdated: number;
   yearsUpdated: number;
+  /** Songs given a track number from the canonical tracklist (issue #694). */
+  tracksNumbered: number;
   releaseTypesUpdated: number;
   /** Albums whose write step threw; the pass carried on past them. */
   failed: number;
@@ -117,6 +121,7 @@ export async function optimizeAlbum(
     coverUpdated: false,
     yearUpdated: false,
     releaseTypeUpdated: false,
+    tracksNumbered: 0,
     lookedUp: false,
   };
   const album = db
@@ -168,7 +173,90 @@ export async function optimizeAlbum(
     out.releaseTypeUpdated = true;
   }
 
+  out.tracksNumbered = await fillTrackNumbers(db, lidarr, album.id, match, opts.apply);
+
   return out;
+}
+
+/**
+ * Minimum share of an album's un-numbered songs that must appear in the canonical
+ * tracklist before any of them are numbered. Below it the local folder is not the
+ * same release (a bootleg, a mixtape, a mis-grouped folder) and numbering the one
+ * or two that happen to match would interleave real positions with NULLs — worse
+ * than leaving the album unnumbered, because the player would sort on it.
+ */
+const TRACK_MATCH_FLOOR = 0.6;
+
+/**
+ * Fill `library_songs.track` for songs that have none, from Lidarr's canonical
+ * tracklist (issue #694).
+ *
+ * Nothing wrote `track` after the scan: the scanner reads `common.track.no` from
+ * tags and there is no fallback, so a source that omits TRACKNUMBER — yt-dlp,
+ * every YT Music download — left the whole album at NULL forever and its running
+ * order arbitrary.
+ *
+ * Only fills NULLs: a number from the file's own tags, or a curator, is better
+ * evidence than a title match and is never overwritten. All-or-nothing per album
+ * via {@link TRACK_MATCH_FLOOR}.
+ *
+ * Requires the matched release to exist in Lidarr's *library* — `track?albumId=`
+ * is the library endpoint, and an un-provisioned lookup hit carries no `id`. That
+ * is a quiet no-op rather than an error: this is opportunistic repair, and
+ * provisioning an artist just to number tracks would be a much bigger action than
+ * the user asked for.
+ */
+async function fillTrackNumbers(
+  db: Database,
+  lidarr: OptimizeLidarr,
+  albumId: string,
+  match: LidarrAlbum,
+  apply: boolean,
+): Promise<number> {
+  const lidarrAlbumId = match.id;
+  if (!lidarrAlbumId) return 0;
+
+  const songs = db
+    .query<{ id: string; title: string }, [string]>(
+      'SELECT id, title FROM library_songs WHERE album_id = ? AND track IS NULL',
+    )
+    .all(albumId);
+  if (songs.length === 0) return 0;
+
+  const tracks = await lidarr.track.listByAlbum(lidarrAlbumId).catch((err) => {
+    log.warn({ err, albumId }, 'Lidarr tracklist fetch failed');
+    return [];
+  });
+  if (tracks.length === 0) return 0;
+
+  // `normalizeForGrouping` is the shared, diacritic-folding normalizer already
+  // used for the album title above — reused rather than re-implemented so
+  // "Canción" folds instead of being mangled (cf. #662).
+  const byTitle = new Map<string, number>();
+  for (const t of tracks) {
+    const n = Number.parseInt(String(t.trackNumber), 10);
+    if (!Number.isFinite(n)) continue;
+    byTitle.set(normalizeForGrouping(t.title), n);
+  }
+
+  const hits = songs
+    .map((s) => ({ id: s.id, track: byTitle.get(normalizeForGrouping(s.title)) }))
+    .filter((x): x is { id: string; track: number } => x.track != null);
+
+  if (hits.length / songs.length < TRACK_MATCH_FLOOR) return 0;
+
+  if (apply) {
+    const write = db.transaction(() => {
+      for (const h of hits) {
+        db.run('UPDATE library_songs SET track = ? WHERE id = ? AND track IS NULL', [
+          h.track,
+          h.id,
+        ]);
+      }
+    });
+    write();
+  }
+  return hits.length;
 }
 
 /**
@@ -194,10 +282,17 @@ export async function optimizeAllAlbums(
   const afterId = opts.afterId ?? null;
   // `ORDER BY id` is index-backed (id is TEXT PRIMARY KEY) and load-bearing: without
   // a stable order a bounded pass re-walks an arbitrary head on every call.
+  // "Missing or poor" also covers an album with un-numbered songs (issue #694):
+  // without this the repair could never reach the albums that need it most —
+  // a yt-dlp download carries no TRACKNUMBER but often does have a year and a
+  // cover, so it would never be selected as a candidate.
   const scope = onlyMissingOrPoor
     ? `(year IS NULL
          OR NOT EXISTS (
            SELECT 1 FROM library_artwork w WHERE w.id = library_albums.id AND w.kind = 'album'
+         )
+         OR EXISTS (
+           SELECT 1 FROM library_songs s WHERE s.album_id = library_albums.id AND s.track IS NULL
          ))`
     : '1 = 1';
   const rows = db
@@ -217,6 +312,7 @@ export async function optimizeAllAlbums(
     matched: 0,
     coversUpdated: 0,
     yearsUpdated: 0,
+    tracksNumbered: 0,
     releaseTypesUpdated: 0,
     failed: 0,
     errorSample: null,
@@ -243,6 +339,7 @@ export async function optimizeAllAlbums(
       if (r.matched) result.matched += 1;
       if (r.coverUpdated) result.coversUpdated += 1;
       if (r.yearUpdated) result.yearsUpdated += 1;
+      result.tracksNumbered += r.tracksNumbered;
       if (r.releaseTypeUpdated) result.releaseTypesUpdated += 1;
     } catch (err) {
       // One album's write failure must not discard every counter accumulated so
