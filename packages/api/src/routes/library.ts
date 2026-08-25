@@ -328,10 +328,17 @@ function anyQuarantined(db: Database): boolean {
 }
 
 /**
- * Returns a SQL WHERE fragment excluding *quarantined* albums by id — an album is
- * quarantined if ANY of its songs is still un-landed (`landed_at IS NULL`), i.e.
- * its required processing steps haven't finished, so the whole album stays hidden
- * until it's complete (matching the "never show an incomplete album" intent).
+ * Returns a SQL WHERE fragment excluding albums that have **nothing** to show —
+ * every song still un-landed (`landed_at IS NULL`).
+ *
+ * This used to exclude an album if *any* song was un-landed, on a "never show an
+ * incomplete album" intent. In practice that produced the opposite (issue #693 /
+ * #687): the landed siblings still appeared in the artist Songs tab, so a
+ * downloaded album rendered as a pile of orphan singles under a header reading
+ * "0 albums", while the discography strip on the same page called it complete. An
+ * album shown as 7-of-10 and *marked* is strictly more honest than an album that
+ * silently disappears while its tracks do not.
+ *
  * Applied *inside* the query (pre-LIMIT) so pagination stays honest, mirroring
  * downloadingExclusion. Fast path: no quarantined song → empty fragment, no
  * subquery. No bind params — the fragment is self-contained.
@@ -339,20 +346,70 @@ function anyQuarantined(db: Database): boolean {
 function quarantineExclusion(db: Database): { sql: string; params: string[] } {
   if (!anyQuarantined(db)) return { sql: '', params: [] };
   return {
-    sql: `id NOT IN (SELECT DISTINCT album_id FROM library_songs WHERE landed_at IS NULL)`,
+    // "Has songs, but none landed" — an album row with no songs at all is a
+    // different condition (an aggregate awaiting prune) and is left alone.
+    sql: `id NOT IN (
+            SELECT album_id FROM library_songs
+             GROUP BY album_id HAVING SUM(landed_at IS NOT NULL) = 0
+          )`,
     params: [],
   };
 }
 
-/** True when the given album has any un-landed (quarantined) song. */
+/**
+ * Count of songs still being processed in an album — what the UI renders as
+ * "N tracks still processing" (issue #693). 0 when the album is fully landed.
+ */
+function processingTracksFor(db: Database, albumId: string): number {
+  if (!anyQuarantined(db)) return 0;
+  return Number(
+    db
+      .query<{ n: number }, [string]>(
+        `SELECT COUNT(*) AS n FROM library_songs WHERE album_id = ? AND landed_at IS NULL`,
+      )
+      .get(albumId)?.n ?? 0,
+  );
+}
+
+/**
+ * Annotate a page of albums with their processing-track counts. Done per page
+ * rather than as a correlated subquery in `ALBUM_SELECT` so a grid of thousands
+ * of albums doesn't pay for a count it will not display; the fast path skips the
+ * query entirely when nothing in the library is quarantined.
+ */
+function attachProcessingCounts(db: Database, albums: Array<{ id: string }>): void {
+  if (albums.length === 0 || !anyQuarantined(db)) return;
+  const placeholders = albums.map(() => '?').join(', ');
+  const rows = db
+    .query<{ album_id: string; n: number }, string[]>(
+      `SELECT album_id, COUNT(*) AS n FROM library_songs
+        WHERE landed_at IS NULL AND album_id IN (${placeholders})
+        GROUP BY album_id`,
+    )
+    .all(...albums.map((a) => a.id));
+  const byId = new Map(rows.map((r) => [r.album_id, r.n]));
+  for (const a of albums) {
+    const n = byId.get(a.id);
+    if (n) (a as { processingTracks?: number }).processingTracks = n;
+  }
+}
+
+/**
+ * True when the album has songs but *none* have landed — nothing to show yet, so
+ * the detail route still answers `ALBUM_PROCESSING`. An album row with no songs
+ * is a different condition and is not treated as processing.
+ */
 function isAlbumQuarantined(db: Database, albumId: string): boolean {
   if (!anyQuarantined(db)) return false;
   return (
     db
-      .query<{ n: number }, [string]>(
-        `SELECT EXISTS(SELECT 1 FROM library_songs WHERE album_id = ? AND landed_at IS NULL) AS n`,
+      .query<{ n: number }, [string, string]>(
+        `SELECT (EXISTS(SELECT 1 FROM library_songs WHERE album_id = ?)
+             AND NOT EXISTS(
+                   SELECT 1 FROM library_songs WHERE album_id = ? AND landed_at IS NOT NULL
+                 )) AS n`,
       )
-      .get(albumId)?.n === 1
+      .get(albumId, albumId)?.n === 1
   );
 }
 
@@ -708,6 +765,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .filter((r) => r.classification === 'single' || r.classification === 'ep')
       .map(rowToAlbum);
     attachAlbumArtists(db, albums);
+    attachProcessingCounts(db, albums);
     attachAlbumArtists(db, singlesAndEps);
     const meta = getArtistMeta(db, id);
     const origin = getArtistOrigin(db, id);
@@ -946,6 +1004,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .all(id, id);
     const albums = rows.map(rowToAlbum);
     attachAlbumArtists(db, albums);
+    attachProcessingCounts(db, albums);
     return c.json(albums);
   });
 
@@ -979,6 +1038,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       )
       .all(...params, size, offset);
     const singles = rows.map(rowToAlbum);
+    attachProcessingCounts(db, singles);
     attachAlbumArtists(db, singles);
     return c.json(singles);
   });
@@ -1029,6 +1089,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .all(...params, size, offset);
     const albums = rows.map(rowToAlbum);
     attachAlbumArtists(db, albums);
+    attachProcessingCounts(db, albums);
     return c.json(albums);
   });
 
@@ -1053,6 +1114,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       )
       .all(...params, size, offset);
     const compilations = rows.map(rowToAlbum);
+    attachProcessingCounts(db, compilations);
     attachAlbumArtists(db, compilations);
     return c.json(compilations);
   });
@@ -1087,7 +1149,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const songs = songRows.map(rowToSong);
     attachAlbumArtists(db, [album]);
     attachSongArtists(db, songs);
-    return c.json({ ...album, song: songs });
+    // Non-zero while some of the album's tracks are still behind the landing gate
+    // — the page renders "N tracks still processing" rather than silently showing
+    // a short tracklist (issue #693).
+    const processingTracks = processingTracksFor(db, id);
+    return c.json({ ...album, song: songs, ...(processingTracks ? { processingTracks } : {}) });
   });
 
   app.delete('/albums/:id', async (c) => {

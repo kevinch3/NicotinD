@@ -537,6 +537,7 @@
   "library.tab.singles": "Singles",
   "library.tab.songs": "Songs",
   "library.tab.stats": "Stats",
+  "library.tracksProcessing": "{count} tracks still processing",
   "login.password": "Password",
   "login.submit.register": "Create Account",
   "login.submit.signIn": "Sign In",

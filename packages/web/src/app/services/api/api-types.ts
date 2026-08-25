@@ -140,6 +140,8 @@ export interface Album {
   starred?: string;
   classification?: 'album' | 'ep' | 'single' | 'compilation' | 'unknown';
   hidden?: boolean;
+  /** Tracks still behind the landing gate; absent/0 = fully landed (issue #693). */
+  processingTracks?: number;
 }
 
 export interface AlbumDetail {
@@ -150,6 +152,8 @@ export interface AlbumDetail {
   artists?: ArtistCredit[];
   coverArt?: string;
   year?: number;
+  /** Tracks still behind the landing gate; absent/0 = fully landed (issue #693). */
+  processingTracks?: number;
   song: Array<{
     id: string;
     title: string;
