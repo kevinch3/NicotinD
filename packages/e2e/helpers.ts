@@ -89,6 +89,37 @@ export async function clearGroupState(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Trigger a library scan and **wait for it to finish**.
+ *
+ * `POST /api/system/scan` is deliberately fire-and-forget (`routes/system.ts`:
+ * "the client can poll /scan/status"), so a bare `request.post(...)` returns
+ * while the scanner is still reconciling `library_songs`/`library_albums`. With
+ * `workers: 1` and one shared server, that reconcile then runs *underneath
+ * whichever spec happens to be next*, and any assertion sampling mid-reconcile
+ * sees a missing or half-written album. That is issue #655's "a different test
+ * fails each run, and every one passes in isolation" — the victim is simply
+ * whoever was running when the scan landed.
+ *
+ * **Any spec that scans must use this**, never a bare post. Leaving a scan in
+ * flight is the e2e equivalent of a dangling promise.
+ */
+export async function scanAndWait(request: APIRequestContext, token: string): Promise<void> {
+  await request.post('/api/system/scan', { headers: bearer(token) });
+  // The POST flips `scanning` before it responds, so the first poll already
+  // observes a truthful value — no need to wait for the flag to rise first.
+  await expect
+    .poll(
+      async () => {
+        const r = await request.get('/api/system/scan/status', { headers: bearer(token) });
+        if (!r.ok()) return true; // treat an unreadable status as "still going"
+        return ((await r.json()) as { scanning: boolean }).scanning;
+      },
+      { timeout: 60_000, intervals: [200, 500, 1000] },
+    )
+    .toBe(false);
+}
+
 /** Wait until the library scan has settled and at least one album is listed. */
 export async function waitForLibrary(request: APIRequestContext, token: string): Promise<void> {
   await expect

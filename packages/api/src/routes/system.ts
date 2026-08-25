@@ -35,8 +35,15 @@ export function systemRoutes(
   // maintenance runner is wired it owns the truth, so /library/sync and this
   // route stop disagreeing about whether a scan blocks (issue #622).
   let scanning = false;
-  const scanRunning = () =>
-    opts.maintenance ? opts.maintenance.getStatus().taskId === 'library-sync' : scanning;
+  // `taskId` is deliberately RETAINED after a pass finishes (the admin UI shows
+  // "last run: library-sync, completed"), so testing it alone answers "was the
+  // last task a library sync?" — not "is one running now?". Without the `phase`
+  // check this reported `scanning: true` forever after the first scan.
+  const scanRunning = () => {
+    if (!opts.maintenance) return scanning;
+    const { phase, taskId } = opts.maintenance.getStatus();
+    return phase !== 'idle' && taskId === 'library-sync';
+  };
   const statfs = opts.statfs ?? (statfsSync as unknown as StatfsFn);
   const diskPath = opts.musicDir ?? config.musicDir;
 
