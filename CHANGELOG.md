@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.3](https://github.com/kevinch3/NicotinD/compare/v0.5.2...v0.5.3) (2026-08-25)
+
+### Bug Fixes
+
+* **processing:** a confident negative settles a landing gate ([#696](https://github.com/kevinch3/NicotinD/issues/696)) ([b4373cb](https://github.com/kevinch3/NicotinD/commit/b4373cb80eff88d4d4cc4c87a434506df6a4e3b2)), closes [#689](https://github.com/kevinch3/NicotinD/issues/689) [#690](https://github.com/kevinch3/NicotinD/issues/690), references [#689](https://github.com/kevinch3/NicotinD/issues/689) [#690](https://github.com/kevinch3/NicotinD/issues/690) [#687](https://github.com/kevinch3/NicotinD/issues/687) [#687](https://github.com/kevinch3/NicotinD/issues/687) [#689](https://github.com/kevinch3/NicotinD/issues/689) [#697](https://github.com/kevinch3/NicotinD/issues/697) [#697](https://github.com/kevinch3/NicotinD/issues/697)
 ## [0.5.2](https://github.com/kevinch3/NicotinD/compare/v0.5.1...v0.5.2) (2026-08-25)
 
 ### Bug Fixes
