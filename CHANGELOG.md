@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.5](https://github.com/kevinch3/NicotinD/compare/v0.5.4...v0.5.5) (2026-08-25)
+
+### Bug Fixes
+
+* **genre:** a junk genre is not a resolved genre ([#694](https://github.com/kevinch3/NicotinD/issues/694)) ([#701](https://github.com/kevinch3/NicotinD/issues/701)) ([7479b7a](https://github.com/kevinch3/NicotinD/commit/7479b7a77fb2280b9e0afec35a4476e9bac26a86)), references [#583](https://github.com/kevinch3/NicotinD/issues/583) [#687](https://github.com/kevinch3/NicotinD/issues/687)
 ## [0.5.4](https://github.com/kevinch3/NicotinD/compare/v0.5.3...v0.5.4) (2026-08-25)
 
 ### Bug Fixes
