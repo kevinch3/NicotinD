@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.8](https://github.com/kevinch3/NicotinD/compare/v0.5.7...v0.5.8) (2026-08-25)
+
+### Bug Fixes
+
+* **e2e:** wait for the library scan, so specs stop racing each other ([#655](https://github.com/kevinch3/NicotinD/issues/655)) ([#713](https://github.com/kevinch3/NicotinD/issues/713)) ([6b0ffbf](https://github.com/kevinch3/NicotinD/commit/6b0ffbf0239eb3ee6fef42056fdf30d63a19e82b)), references [#712](https://github.com/kevinch3/NicotinD/issues/712) [#616](https://github.com/kevinch3/NicotinD/issues/616)
 ## [0.5.7](https://github.com/kevinch3/NicotinD/compare/v0.5.6...v0.5.7) (2026-08-25)
 
 ### Bug Fixes
