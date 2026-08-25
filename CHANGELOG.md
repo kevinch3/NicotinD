@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.6](https://github.com/kevinch3/NicotinD/compare/v0.5.5...v0.5.6) (2026-08-25)
+
+### Bug Fixes
+
+* **artwork:** give albums a cover automatically, and a way to fix the backlog ([#694](https://github.com/kevinch3/NicotinD/issues/694)) ([#703](https://github.com/kevinch3/NicotinD/issues/703)) ([26f4d55](https://github.com/kevinch3/NicotinD/commit/26f4d556f2c13fe47acfa67bfbe5e3e05f3a4a2f))
+* **metadata:** fill missing track numbers from the canonical tracklist ([#694](https://github.com/kevinch3/NicotinD/issues/694)) ([#702](https://github.com/kevinch3/NicotinD/issues/702)) ([f4b2484](https://github.com/kevinch3/NicotinD/commit/f4b248454b0156a4da317c40b8d7d4fd183a540b)), references [#662](https://github.com/kevinch3/NicotinD/issues/662)
 ## [0.5.5](https://github.com/kevinch3/NicotinD/compare/v0.5.4...v0.5.5) (2026-08-25)
 
 ### Bug Fixes
