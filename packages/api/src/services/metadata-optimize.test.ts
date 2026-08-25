@@ -24,6 +24,30 @@ function seedAlbum(a: { id: string; name: string; artist: string; year?: number 
   );
 }
 
+function seedSong(id: string, albumId: string, title: string, track: number | null = null): void {
+  db.run(
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, track, synced_at)
+     VALUES (?, ?, ?, 'A', 'artist-1', 0, ?, ?, 0)`,
+    [id, albumId, title, `${id}.opus`, track],
+  );
+}
+
+const trackOf = (id: string): number | null =>
+  db
+    .query<{ track: number | null }, [string]>('SELECT track FROM library_songs WHERE id = ?')
+    .get(id)?.track ?? null;
+
+/** Lidarr stub with both the album lookup and a library tracklist. */
+function fakeLidarrWithTracks(
+  hits: Array<{ id?: number; title: string; artist?: { artistName: string } }>,
+  tracksByAlbumId: Record<number, Array<{ trackNumber: string; title: string }>>,
+): OptimizeLidarr {
+  return {
+    album: { lookup: async () => hits },
+    track: { listByAlbum: async (id: number) => tracksByAlbumId[id] ?? [] },
+  } as unknown as Lidarr;
+}
+
 /** Lidarr stub returning a fixed album.lookup payload. */
 function fakeLidarr(
   hits: Array<{
@@ -36,6 +60,89 @@ function fakeLidarr(
 ): OptimizeLidarr {
   return { album: { lookup: async () => hits } } as unknown as Lidarr;
 }
+
+describe('optimizeAlbum — track numbers (issue #694)', () => {
+  const TAPP = { artistName: 'The Alan Parsons Project' };
+
+  it('fills missing track numbers from the Lidarr tracklist', async () => {
+    seedAlbum({ id: 'alb-1', name: 'Eye In The Sky', artist: TAPP.artistName });
+    seedSong('s1', 'alb-1', 'Sirius');
+    seedSong('s2', 'alb-1', 'Eye In The Sky');
+
+    const lidarr = fakeLidarrWithTracks([{ id: 13343, title: 'Eye in the Sky', artist: TAPP }], {
+      13343: [
+        { trackNumber: '1', title: 'Sirius' },
+        { trackNumber: '2', title: 'Eye in the Sky' },
+      ],
+    });
+
+    const r = await optimizeAlbum(db, lidarr, 'alb-1', { apply: true });
+
+    expect(r.tracksNumbered).toBe(2);
+    expect(trackOf('s1')).toBe(1);
+    expect(trackOf('s2')).toBe(2);
+  });
+
+  it('never overwrites a track number the file already carries', async () => {
+    seedAlbum({ id: 'alb-1', name: 'Eye In The Sky', artist: TAPP.artistName });
+    seedSong('s1', 'alb-1', 'Sirius', 7); // curator/tag value wins
+
+    const lidarr = fakeLidarrWithTracks([{ id: 13343, title: 'Eye in the Sky', artist: TAPP }], {
+      13343: [{ trackNumber: '1', title: 'Sirius' }],
+    });
+
+    await optimizeAlbum(db, lidarr, 'alb-1', { apply: true });
+
+    expect(trackOf('s1')).toBe(7);
+  });
+
+  it('refuses to half-number an album when the tracklist barely matches', async () => {
+    seedAlbum({ id: 'alb-1', name: 'Eye In The Sky', artist: TAPP.artistName });
+    seedSong('s1', 'alb-1', 'Sirius');
+    seedSong('s2', 'alb-1', 'Some Live Bootleg Take');
+    seedSong('s3', 'alb-1', 'Another Unrelated Cut');
+
+    // Only 1 of 3 local songs is in the canonical tracklist — this is not the
+    // same release, so numbering one track would be worse than numbering none.
+    const lidarr = fakeLidarrWithTracks([{ id: 13343, title: 'Eye in the Sky', artist: TAPP }], {
+      13343: [{ trackNumber: '1', title: 'Sirius' }],
+    });
+
+    const r = await optimizeAlbum(db, lidarr, 'alb-1', { apply: true });
+
+    expect(r.tracksNumbered).toBe(0);
+    expect(trackOf('s1')).toBeNull();
+  });
+
+  it('degrades quietly when the matched release is not in Lidarr’s library', async () => {
+    seedAlbum({ id: 'alb-1', name: 'Eye In The Sky', artist: TAPP.artistName });
+    seedSong('s1', 'alb-1', 'Sirius');
+
+    // An un-provisioned release group comes back from lookup with no `id`, so
+    // there is no tracklist to fetch. Must not throw, must not renumber.
+    const lidarr = fakeLidarrWithTracks([{ title: 'Eye in the Sky', artist: TAPP }], {});
+
+    const r = await optimizeAlbum(db, lidarr, 'alb-1', { apply: true });
+
+    expect(r.matched).toBe(true);
+    expect(r.tracksNumbered).toBe(0);
+    expect(trackOf('s1')).toBeNull();
+  });
+
+  it('reports without writing on a dry run', async () => {
+    seedAlbum({ id: 'alb-1', name: 'Eye In The Sky', artist: TAPP.artistName });
+    seedSong('s1', 'alb-1', 'Sirius');
+
+    const lidarr = fakeLidarrWithTracks([{ id: 13343, title: 'Eye in the Sky', artist: TAPP }], {
+      13343: [{ trackNumber: '1', title: 'Sirius' }],
+    });
+
+    const r = await optimizeAlbum(db, lidarr, 'alb-1', { apply: false });
+
+    expect(r.tracksNumbered).toBe(1);
+    expect(trackOf('s1')).toBeNull();
+  });
+});
 
 describe('optimizeAlbum', () => {
   it('overwrites cover, year and release type on a confident match', async () => {
@@ -61,6 +168,7 @@ describe('optimizeAlbum', () => {
       coverUpdated: true,
       yearUpdated: true,
       releaseTypeUpdated: true,
+      tracksNumbered: 0, // this album has no songs seeded
       lookedUp: true,
     });
 
@@ -166,6 +274,7 @@ describe('optimizeAllAlbums', () => {
           coverUpdated: false,
           yearUpdated: false,
           releaseTypeUpdated: false,
+          tracksNumbered: 0,
           lookedUp: true,
         };
       },
@@ -192,6 +301,7 @@ describe('optimizeAllAlbums', () => {
             coverUpdated: false,
             yearUpdated: false,
             releaseTypeUpdated: false,
+            tracksNumbered: 0,
             lookedUp: true,
           };
         },
@@ -216,6 +326,7 @@ describe('optimizeAllAlbums', () => {
           coverUpdated: true,
           yearUpdated: false,
           releaseTypeUpdated: false,
+          tracksNumbered: 0,
           lookedUp: true,
         };
       },
@@ -237,6 +348,7 @@ describe('optimizeAllAlbums', () => {
           coverUpdated: true,
           yearUpdated: false,
           releaseTypeUpdated: false,
+          tracksNumbered: 0,
           lookedUp: true,
         };
       },

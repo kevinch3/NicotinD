@@ -133,6 +133,7 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
             matched: r.matched,
             coversUpdated: r.coversUpdated,
             yearsUpdated: r.yearsUpdated,
+            tracksNumbered: r.tracksNumbered,
             releaseTypesUpdated: r.releaseTypesUpdated,
             failed: r.failed,
           },

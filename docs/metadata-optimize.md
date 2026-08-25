@@ -14,10 +14,23 @@ This is deliberately distinct from `backfill-artwork.ts`, which only fills artwo
    - **cover** — `pickAlbumCover(match.images)` → `setArtwork()` (which purges the stale `c_<id>` cover-cache entry so the new image is served immediately);
    - **year** — parsed from `match.releaseDate`, ignoring the `0001`/implausible placeholders MusicBrainz emits, written to `library_albums.year`;
    - **release type** — `mapLidarrAlbumType(match.albumType)` → `setReleaseType()` (`library_release_meta`, the curator's authoritative source).
+4. fills **missing track numbers** from the canonical tracklist (`fillTrackNumbers`, issue #694).
 
-Returns `{ matched, coverUpdated, yearUpdated, releaseTypeUpdated }`. `apply: false` reports without writing.
+Returns `{ matched, coverUpdated, yearUpdated, releaseTypeUpdated, tracksNumbered }`. `apply: false` reports without writing.
 
-`optimizeAllAlbums(db, lidarr, opts)` iterates albums (one `album.lookup` each) and aggregates the per-album results. `onlyMissingOrPoor` (default **true**) restricts to albums with no canonical artwork or no year — the ones most likely wrong/empty — so a routine run stays cheap; pass `false`/`--all` to re-verify everything. `limit`/`afterId` bound and resume the walk, `shouldStop()` cancels between albums, and `onProgress` reports cumulatively — see "Running it in the background" below.
+### Track numbers (issue #694)
+
+Nothing wrote `library_songs.track` after the scan: the scanner reads `common.track.no` from tags and has no fallback, so a source that omits TRACKNUMBER — yt-dlp, i.e. every YT Music download — left the whole album at NULL forever and its running order arbitrary. Prod: **1,113 songs across 776 albums** (of 15,941), 718 of them fully unnumbered.
+
+Three rules, all deliberate:
+
+- **Only fills NULLs.** A number from the file's own tags, or from a curator, is better evidence than a title match and is never overwritten.
+- **All-or-nothing per album** (`TRACK_MATCH_FLOOR`, 0.6). If fewer than 60% of the album's un-numbered songs appear in the canonical tracklist, the local folder is not that release (a bootleg, a mixtape, a mis-grouped folder) and *none* are numbered — interleaving a couple of real positions with NULLs is worse than leaving it unnumbered, because the player sorts on the column.
+- **Quiet no-op when the release isn't in Lidarr's library.** `track?albumId=` is the *library* endpoint; an un-provisioned `album.lookup` hit carries no `id` (verified against prod: the top hit for a known artist has a real id and returns the tracklist, later release-group hits have none). Provisioning an artist just to number tracks would be a far bigger action than the repair warrants.
+
+Title matching reuses `normalizeForGrouping` — the same diacritic-folding normalizer used for the album title above — rather than a local copy, so "Canción" folds instead of being mangled (cf. #662).
+
+`optimizeAllAlbums(db, lidarr, opts)` iterates albums (one `album.lookup` each) and aggregates the per-album results. `onlyMissingOrPoor` (default **true**) restricts to albums with no canonical artwork, no year, **or any un-numbered song** — the ones most likely wrong/empty — so a routine run stays cheap; pass `false`/`--all` to re-verify everything. The track-number clause is load-bearing: a yt-dlp album often *does* have a year and a cover, so without it the albums that need the repair most would never be selected (on prod it widens the candidate set 2,623 → 2,719). `limit`/`afterId` bound and resume the walk, `shouldStop()` cancels between albums, and `onProgress` reports cumulatively — see "Running it in the background" below.
 
 Album-keyed stores (`library_artwork`, `library_release_meta`) are keyed on the tag-derived `albumId`, so these writes survive full rescans.
 
