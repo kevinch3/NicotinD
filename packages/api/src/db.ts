@@ -1056,6 +1056,15 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
   addColumnIfMissing(db, 'library_song_analysis_failures', 'orphaned_at', 'INTEGER');
+  // A confident negative ("we asked, no such data exists") rather than a failed
+  // attempt — terminal on the first answer instead of after MAX_ANALYSIS_ATTEMPTS,
+  // and deliberately independent of the file-size freshness check (issue #689).
+  addColumnIfMissing(
+    db,
+    'library_song_analysis_failures',
+    'terminal',
+    'INTEGER NOT NULL DEFAULT 0',
+  );
 
   db.run(`
     CREATE TABLE IF NOT EXISTS library_artists (

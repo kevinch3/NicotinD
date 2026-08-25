@@ -8,6 +8,7 @@ import {
   notPermanentlyFailedClause,
   permanentlyFailedClause,
   countSkippedFiles,
+  rebaseAnalysisFileSize,
 } from './analysis-failures.js';
 
 let db: Database;
@@ -168,5 +169,56 @@ describe('countSkippedFiles', () => {
   it('is zero below the cap', () => {
     recordAnalysisFailure(db, 's1', 'bpm', new Error('boom'), 100);
     expect(countSkippedFiles(db)).toBe(0);
+  });
+});
+
+describe('rebaseAnalysisFileSize (issue #690)', () => {
+  function seedSong(id: string, size: number): void {
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, synced_at)
+       VALUES (?, 'alb', ?, 'A', 'art', 0, ?, ?, 1)`,
+      [id, `T-${id}`, `${id}.opus`, size],
+    );
+  }
+
+  const pendingIds = (): string[] =>
+    db
+      .query<{ id: string }, []>(
+        `SELECT id FROM library_songs WHERE 1 = 1${notPermanentlyFailedClause('bpm')}`,
+      )
+      .all()
+      .map((r) => r.id);
+
+  it('a tag write that grows the file does not reset the attempt counter', () => {
+    seedSong('s1', 100);
+    recordAnalysisFailure(db, 's1', 'bpm', new Error('boom'), 100);
+
+    // Enrichment writes its own BPM/KEY/ENERGY tags back into the same file.
+    rebaseAnalysisFileSize(db, 's1', 269);
+    recordAnalysisFailure(db, 's1', 'bpm', new Error('boom'), 269);
+
+    expect(failCount('s1', 'bpm')).toBe(2);
+  });
+
+  it('keeps the ledger matched to library_songs.size so the cap still excludes the file', () => {
+    seedSong('s1', 100);
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
+      recordAnalysisFailure(db, 's1', 'bpm', new Error('boom'), 100);
+    }
+    expect(pendingIds()).toEqual([]);
+
+    // Our own write must not silently re-open a file that already hit the cap.
+    rebaseAnalysisFileSize(db, 's1', 269);
+
+    expect(pendingIds()).toEqual([]);
+  });
+
+  it('leaves a genuine re-download resetting the counter', () => {
+    seedSong('s1', 100);
+    recordAnalysisFailure(db, 's1', 'bpm', new Error('boom'), 100);
+    // No rebase — the bytes changed underneath us, so this is a fresh file.
+    recordAnalysisFailure(db, 's1', 'bpm', new Error('boom'), 900);
+
+    expect(failCount('s1', 'bpm')).toBe(1);
   });
 });

@@ -38,6 +38,14 @@ const MAX_ERROR_LEN = 500;
  * Record one hard failure for (song, task). If the file's size changed since the
  * last recorded failure (a re-download / repair), the counter resets to 1 rather
  * than continuing to climb — the new bytes deserve a fresh set of attempts.
+ *
+ * `terminal` marks a *confident negative* — the source answered "no such data
+ * exists for this recording" — as opposed to an attempt that failed. It settles
+ * the task on the first answer instead of after {@link MAX_ANALYSIS_ATTEMPTS},
+ * and is deliberately not size-guarded: the answer is a property of the
+ * recording, not of the bytes, and size-guarding it is what stranded 261 songs
+ * behind a landing gate (issue #689 / #687). `clearAnalysisFailure` on a later
+ * success remains the way back.
  */
 export function recordAnalysisFailure(
   db: Database,
@@ -45,6 +53,7 @@ export function recordAnalysisFailure(
   task: ProcessingTaskId,
   error: unknown,
   fileSize: number | null,
+  terminal = false,
 ): void {
   const message = (error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR_LEN);
   const now = Date.now();
@@ -55,13 +64,50 @@ export function recordAnalysisFailure(
     .get(songId, task);
   const sameFile = existing != null && existing.file_size === fileSize;
   const nextCount = sameFile ? existing!.fail_count + 1 : 1;
+  const flag = terminal ? 1 : 0;
   db.run(
-    `INSERT INTO library_song_analysis_failures (song_id, task, fail_count, last_error, file_size, last_attempt)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO library_song_analysis_failures (song_id, task, fail_count, last_error, file_size, last_attempt, terminal)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(song_id, task) DO UPDATE SET
-       fail_count = ?, last_error = ?, file_size = ?, last_attempt = ?`,
-    [songId, task, nextCount, message, fileSize, now, nextCount, message, fileSize, now],
+       fail_count = ?, last_error = ?, file_size = ?, last_attempt = ?, terminal = ?`,
+    [
+      songId,
+      task,
+      nextCount,
+      message,
+      fileSize,
+      now,
+      flag,
+      nextCount,
+      message,
+      fileSize,
+      now,
+      flag,
+    ],
   );
+}
+
+/**
+ * Re-anchor a song's file-size bookkeeping after **we** rewrote its file.
+ *
+ * The size comparison in {@link permanentlyFailedClause} exists to give genuinely
+ * new bytes (a re-download, a user re-tag) a fresh set of attempts. But enrichment
+ * writes its own results — BPM, KEY, ENERGY, MOOD — back into the same file, which
+ * moves the size by a couple of hundred bytes and makes our own write look like a
+ * replacement: the ledger row goes stale, `recordAnalysisFailure` resets the count
+ * to 1, and the file can never reach the cap. On prod that livelocked 62 songs and
+ * half-landed whole albums (issue #690 / #687).
+ *
+ * So the writer tells the ledger. Both `library_songs.size` and every ledger row
+ * for the song move to the post-write size together, leaving a *genuine* outside
+ * change — which nothing rebases — as the only thing that still resets a counter.
+ */
+export function rebaseAnalysisFileSize(db: Database, songId: string, newSize: number): void {
+  db.run('UPDATE library_songs SET size = ? WHERE id = ?', [newSize, songId]);
+  db.run('UPDATE library_song_analysis_failures SET file_size = ? WHERE song_id = ?', [
+    newSize,
+    songId,
+  ]);
 }
 
 /** Clear any failure record for (song, task) — a success, or a repaired file. */
@@ -84,7 +130,8 @@ export function notPermanentlyFailedClause(task: ProcessingTaskId, s = 'library_
   return (
     ` AND NOT EXISTS (SELECT 1 FROM library_song_analysis_failures f` +
     ` WHERE f.song_id = ${s}.id AND f.task = '${task}'` +
-    ` AND f.fail_count >= ${MAX_ANALYSIS_ATTEMPTS} AND f.file_size IS ${s}.size)`
+    ` AND (f.terminal = 1` +
+    ` OR (f.fail_count >= ${MAX_ANALYSIS_ATTEMPTS} AND f.file_size IS ${s}.size)))`
   );
 }
 
@@ -101,11 +148,19 @@ export function permanentlyFailedClause(task: ProcessingTaskId, s = 'library_son
   return (
     `EXISTS (SELECT 1 FROM library_song_analysis_failures f` +
     ` WHERE f.song_id = ${s}.id AND f.task = '${task}'` +
-    ` AND f.fail_count >= ${MAX_ANALYSIS_ATTEMPTS} AND f.file_size IS ${s}.size)`
+    ` AND (f.terminal = 1` +
+    ` OR (f.fail_count >= ${MAX_ANALYSIS_ATTEMPTS} AND f.file_size IS ${s}.size)))`
   );
 }
 
-/** Count of distinct files currently excluded (any task at the attempt cap). */
+/**
+ * Count of distinct files currently excluded (any task at the attempt cap).
+ *
+ * Deliberately counts only the attempt cap, never `terminal` rows: this number is
+ * reported as broken/undetectable files, and a confident negative means the file is
+ * fine — the data simply doesn't exist. Counting those would report most of the
+ * library as broken the moment a "no such data" source is enabled (issue #689).
+ */
 export function countSkippedFiles(db: Database): number {
   const row = db
     .query<{ n: number }, []>(

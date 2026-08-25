@@ -435,6 +435,24 @@ table (keyed `(song_id, task)`) fix that:
 - **Reset is content-based**: the clause matches on `file_size IS library_songs.size`, so
   a re-download (which changes the size) re-includes the file automatically. A *success*
   calls `clearAnalysisFailure` to wipe the row outright.
+- **A confident negative is terminal, not a strike** (issue #689). A
+  `NoConfidentResultError` means "we asked, no such data exists for this recording" — a
+  final answer. It sets `terminal = 1` on the ledger row, and both clauses read
+  `terminal = 1 OR (fail_count >= MAX AND size matches)`, so the task settles on the first
+  answer instead of after three. This matters most for a task used as a **landing gate**:
+  before it, a track whose licence was definitively unobtainable had to fail three times
+  before it was allowed into the library, which stranded 261 songs across 220 albums on
+  prod (#687). `terminal` is deliberately *not* size-guarded — the answer is a property of
+  the recording, not of the bytes — and `countSkippedFiles` deliberately ignores it, since
+  those files are not broken.
+- **Our own tag writes must not look like a re-download** (issue #690). Enrichment writes
+  its results back into the file, moving its size by a few hundred bytes; the ledger then
+  read that as new bytes and reset `fail_count` to 1, so the file could never reach the
+  cap. Tasks therefore write through `writeTagsRebased`, which calls
+  `rebaseAnalysisFileSize` to move `library_songs.size` and every ledger row for the song
+  to the post-write size together. A *genuine* outside change — which nothing rebases —
+  stays the only thing that resets a counter. On prod this livelocked 62 songs and
+  half-landed whole albums, landing 7 of 10 tracks and hiding the album entirely.
 - **Scope now covers the decode + metadata-resolution tasks**, each
   provenance-aware so environmental outages never get ledgered:
   - `bpm`/`key`/`energy`: an ffmpeg *decode* failure reliably means the *file*

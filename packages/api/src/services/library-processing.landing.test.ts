@@ -9,6 +9,7 @@ import { LibraryProcessingService } from './library-processing.service.js';
 import { MAX_ANALYSIS_ATTEMPTS } from './enrichment/analysis-failures.js';
 import type { EnrichmentContext } from './enrichment/tasks.js';
 import { createJob, getJob, recomputeStage } from './acquisition-job-store.js';
+import { NoConfidentResultError } from './track-analysis.js';
 import { armReviewHold, recordReviewDecision, reviewHoldArmed } from './download-review-store.js';
 
 /** `seedSong` mints all songs under this album id (see `seedSong` below). */
@@ -41,8 +42,19 @@ const isLanded = (id: string): boolean => landedAt(id) !== null;
  * Fake context. `bpmResult` lets a test force BPM to never resolve (null, and
  * NOT ledgered) so the TTL valve / ledger paths can be exercised in isolation.
  */
-function fakeCtx(opts: { bpmResult?: number | null; sidecar?: boolean } = {}) {
+function fakeCtx(
+  opts: { bpmResult?: number | null; sidecar?: boolean; bpmConfidentNegative?: boolean } = {},
+) {
   const bpm = opts.bpmResult === undefined ? 120 : opts.bpmResult;
+  // A *confident* negative: the analyzer ran and there is no tempo to find (too
+  // short / no beat), signalled on the onError callback exactly as the real
+  // analyzeBpm does. Distinct from a plain null, which means "environmental".
+  const analyzeBpm: EnrichmentContext['analyzeBpm'] = opts.bpmConfidentNegative
+    ? async (_abs, onError) => {
+        onError?.(new NoConfidentResultError('audio too short to estimate a tempo'));
+        return null;
+      }
+    : async () => bpm;
   return (): EnrichmentContext => ({
     musicDir: '/music',
     coverCacheDir: '/data/cover-cache',
@@ -51,7 +63,7 @@ function fakeCtx(opts: { bpmResult?: number | null; sidecar?: boolean } = {}) {
     ffmpegAvailable: () => true,
     readTags: async () => ({}),
     writeTags: async () => true,
-    analyzeBpm: async () => bpm,
+    analyzeBpm,
     analyzeRhythm: null,
     analyzeKey: async () => 'C major',
     analyzeLoudness: async () => ({ loudness: -9.5, energy: 0.7 }),
@@ -74,7 +86,7 @@ function fakeCtx(opts: { bpmResult?: number | null; sidecar?: boolean } = {}) {
 
 function service(
   now: Date,
-  ctxOpts?: { bpmResult?: number | null; sidecar?: boolean },
+  ctxOpts?: { bpmResult?: number | null; sidecar?: boolean; bpmConfidentNegative?: boolean },
   opts?: { acquisitionEnabled?: () => boolean },
 ) {
   return new LibraryProcessingService({
@@ -142,6 +154,33 @@ describe('landing gate', () => {
     await service(new Date(2024, 0, 1, 12, 0), { sidecar: false }).runNow();
 
     expect(isLanded('s1')).toBe(true);
+  });
+
+  it('lands a song whose gate step reports a confident negative on the first attempt (#689)', async () => {
+    seedSong('s1');
+    // BPM gates landing and the analyzer confidently reports "there is no tempo
+    // here" (NoConfidentResultError) — a final answer, not a failed attempt. It
+    // must not have to be re-asked MAX_ANALYSIS_ATTEMPTS times before the song
+    // lands: that is what stranded 261 songs behind the licence gate in #687.
+    setProcessingSettings(db, {
+      gates: { bpm: true, key: false, energy: false, genre: false },
+    });
+    await service(new Date(2024, 0, 1, 12, 0), { bpmConfidentNegative: true }).runNow();
+
+    expect(isLanded('s1')).toBe(true);
+  });
+
+  it('still holds a song whose gate step fails for an environmental reason (#689)', async () => {
+    seedSong('s1');
+    // A plain null is "the analyzer could not run", not "there is no answer" — it
+    // must stay quarantined (until the 24h valve), or the terminal shortcut would
+    // swallow real outages.
+    setProcessingSettings(db, {
+      gates: { bpm: true, key: false, energy: false, genre: false },
+    });
+    await service(new Date(2024, 0, 1, 12, 0), { bpmResult: null }).runNow();
+
+    expect(isLanded('s1')).toBe(false);
   });
 
   it('lands a song whose gate step is permanently failed (ledger at cap)', async () => {
