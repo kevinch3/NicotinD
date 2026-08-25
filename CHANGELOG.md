@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.9](https://github.com/kevinch3/NicotinD/compare/v0.5.8...v0.5.9) (2026-08-25)
+
+### Bug Fixes
+
+* **library:** repair-pollution can no longer delete real music ([#705](https://github.com/kevinch3/NicotinD/issues/705)) ([#716](https://github.com/kevinch3/NicotinD/issues/716)) ([f497340](https://github.com/kevinch3/NicotinD/commit/f497340073542f6912bf29869799aaf97aa813c8)), references [#715](https://github.com/kevinch3/NicotinD/issues/715)
 ## [0.5.8](https://github.com/kevinch3/NicotinD/compare/v0.5.7...v0.5.8) (2026-08-25)
 
 ### Bug Fixes
