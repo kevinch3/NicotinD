@@ -44,6 +44,7 @@ import {
   looksLikeSourceWatermark,
   looksLikeVenueCredit,
 } from './library-quality.js';
+import { cleanDisplayTitle } from './title-clean.js';
 
 const log = createLogger('library-organizer');
 
@@ -434,6 +435,15 @@ export class LibraryOrganizer {
       if (inferred.trackNumber && tags.trackNumber === undefined) {
         tags.trackNumber = Number(inferred.trackNumber);
       }
+    }
+
+    // YouTube junk ("(Official Video)", "(Audio Oficial)") in a tag or a
+    // filename-derived inference is stripped before landing (issue #722), so
+    // a loose single never mints a junk-named fake album.
+    if (title) title = cleanDisplayTitle(title).cleaned;
+    if (album) {
+      album = cleanDisplayTitle(album).cleaned;
+      tags.album = album;
     }
 
     // Folder-derived album that just echoes the artist (e.g. file lives in
