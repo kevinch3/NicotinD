@@ -172,7 +172,13 @@ describe('downloads routes', () => {
       artistName: string | null;
       albumTitle: string | null;
       albumId: string | null;
-      progress: { expected: number; delivered: number; unavailable: number; failed: number };
+      progress: {
+        expected: number;
+        delivered: number;
+        unavailable: number;
+        failed: number;
+        canonical: number | null;
+      };
     }>;
     expect(jobs).toHaveLength(1);
     expect(jobs[0].id).toBe(id);

@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import type { AcquireAlbumDestination, TrackStatus } from '@nicotind/core';
+import type { AcquireAlbumDestination, AcquisitionJobView, TrackStatus } from '@nicotind/core';
 import { fold } from '@nicotind/core';
 import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { albumIdFor } from './library-scanner.js';
@@ -891,7 +891,13 @@ export interface AcquisitionJobFeedItem {
   error: string | null;
   createdAt: number;
   updatedAt: number;
-  progress: { expected: number; delivered: number; unavailable: number; failed: number };
+  /**
+   * Borrowed from the core view the web actually reads, not restated: this
+   * shape was duplicated here, so widening one side left the other stale and
+   * only CI's `tsc --build` caught it (#745). Indexing makes that drift
+   * impossible. See `AcquisitionJobView['progress']` for what each tally means.
+   */
+  progress: AcquisitionJobView['progress'];
   /**
    * Dominant enqueue-time bitrate + codec across the job's items (mode wins;
    * ties broken by max kbps), upgraded post-scan via the items' matching
