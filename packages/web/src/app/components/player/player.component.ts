@@ -61,7 +61,7 @@ export const FALSE_ENDED_ABSOLUTE_FLOOR_SEC = 3;
  *
  * Without a bound the recovery is unterminating: `onEnded` re-enters
  * {@link PlayerComponent.startRecovery} on every false `ended`, and the 5 s
- * `recoveryTimeout` valve resets `recoveryState` to `'normal'` then seeks to 0
+ * `recoveryTimeout` valve resets `recoveryState` to `'normal'` then reloads
  * and plays — so a genuinely short/corrupt resource ends early again and the
  * track restarts every ~5 s, forever, never reaching the next queue item.
  * After this many attempts the resource is treated as legitimately short and
@@ -702,6 +702,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       // allowance the resource is genuinely short, so fall through to the
       // normal advance path instead of recovering forever.
       if (this.isFalseEnded(audio) && this.recoveryAttempts < MAX_RECOVERY_ATTEMPTS) {
+        // Sourced from a preserved blob? Then the *stored copy* is truncated
+        // and waiting/retrying can never help — swap to the network stream
+        // and drop the poisoned entry instead of blind recovery.
+        if (this.recoverFromTruncatedBlob(audio)) return;
         this.startRecovery(audio, boundGen);
         return;
       }
@@ -956,6 +960,43 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     return t < FALSE_ENDED_ABSOLUTE_FLOOR_SEC && d < FALSE_ENDED_ABSOLUTE_FLOOR_SEC;
   }
 
+  /**
+   * A false `ended` while playing from a preserved (IndexedDB) blob means the
+   * stored copy itself is truncated — a partial fetch that slipped into the
+   * store. Recovery-by-retry is pointless there: the blob replays the same
+   * few seconds on this and every future play (the store is durable), so the
+   * track stays broken long after the network recovered. Drop the poisoned
+   * entry and re-point the element at the network stream, keeping the user's
+   * play intent. Returns false (caller falls back to the bounded blind
+   * recovery) when there's no track, the source isn't a blob, or we're
+   * offline — where the bad blob is still the only source there is.
+   */
+  private recoverFromTruncatedBlob(audio: HTMLAudioElement): boolean {
+    const track = untracked(() => this.player.currentTrack());
+    if (!track) return false;
+    const src = audio.currentSrc || audio.src;
+    if (!src.startsWith('blob:')) return false;
+    if (!untracked(() => this.preserve.isPreserved(track.id))) return false;
+    if (untracked(() => !this.network.online())) return false;
+
+    // Counts against the same allowance as blind recovery, so a truncated
+    // network stream after the swap still has a bounded retry budget.
+    this.recoveryAttempts += 1;
+    void this.preserve.remove(track.id);
+    this.player.setBuffering(true);
+    this.player.setBufferedRanges([]);
+    const badUrl = this.lastManualObjectUrl;
+    this.lastManualObjectUrl = null;
+    audio.src = this.server.streamUrl(track.id, this.auth.token());
+    if (badUrl) URL.revokeObjectURL(badUrl);
+    if (untracked(() => this.player.isPlaying())) {
+      audio.play().catch((err) => {
+        if (err.name === 'NotAllowedError') this.handlePlayRejection();
+      });
+    }
+    return true;
+  }
+
   /** The timer handle for the false-ended recovery fallback (5 s). */
   private recoveryTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -975,9 +1016,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
    * Begin the false-ended recovery flow: pause the audio element, surface
    * the buffering indicator, and wait for a real `durationchange` (or
    * `canplay` with a sane duration) so we can resume from the correct
-   * position. If nothing arrives within 5 s, the server response is
-   * probably genuinely short/corrupt — give up waiting and seek to 0 +
-   * play so the user isn't stuck.
+   * position. If nothing arrives within 5 s, the response the browser holds
+   * is probably genuinely short/truncated — give up waiting, reload the
+   * source and play so the user isn't stuck.
    */
   private startRecovery(audio: HTMLAudioElement, boundGen: number): void {
     if (this.player.recoveryState() === 'awaiting-duration') return; // already recovering
@@ -990,7 +1031,14 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       this.recoveryTimeout = null;
       this.player.recoveryState.set('normal');
       this.player.setBuffering(false);
-      audio.currentTime = 0;
+      // load(), not `currentTime = 0`: after a stream cut short mid-transfer
+      // the browser's media cache still holds the truncated resource, so a
+      // bare seek-to-0 + play replays the same few seconds and feeds the next
+      // false `ended` without a single new byte ever being requested. load()
+      // drops the cached data, refetches the src from the start, and gives an
+      // interrupted stream a real second chance (position resets to 0 either
+      // way). A blob: src just re-reads the same blob — no worse than before.
+      audio.load();
       if (this.player.isPlaying()) {
         audio.play().catch((err) => {
           if (err.name === 'NotAllowedError') this.handlePlayRejection();

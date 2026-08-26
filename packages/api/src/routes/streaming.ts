@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { join, resolve, dirname, sep } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
@@ -121,6 +121,7 @@ export function streamingRoutes(
     const reqFormat = c.req.query('format');
     const reqBitRate = c.req.query('maxBitRate') ? Number(c.req.query('maxBitRate')) : undefined;
     const range = c.req.header('range');
+    const ifRange = c.req.header('if-range');
     // Karaoke vocal mute (?vocals=off). Filtering can only happen while re-encoding,
     // so it forces the transcode path even when transcoding is otherwise off — the
     // one thing that must override `transcodeEnabled`. Still needs ffmpeg; without
@@ -165,7 +166,7 @@ export function streamingRoutes(
         // longer affects the in-flight send, so the pin only needs to outlive
         // the open — released on a grace timer, not at stream end.
         schedulePinRelease(pinTranscodeCacheFile(cached));
-        return serveFileWithRange(cached, range, transcodeContentType(format));
+        return serveFileWithRange(cached, range, transcodeContentType(format), ifRange);
       } catch (err) {
         // Remember the verdict so the next play skips straight to the fallback.
         rememberTranscodeFailure(abs, err);
@@ -175,7 +176,7 @@ export function streamingRoutes(
     }
 
     // Passthrough with HTTP range support.
-    return serveFileWithRange(abs, range);
+    return serveFileWithRange(abs, range, undefined, ifRange);
   });
 
   /** Build a cover Response, downsizing to the requested `size` bucket when one
@@ -383,6 +384,16 @@ export function streamingRoutes(
  * passthrough and transcode-cache paths so both are seekable. `contentTypeOverride`
  * is used for transcoded files, whose extension Bun doesn't always sniff (`.aac`).
  *
+ * Every 200/206 carries a strong validator (`ETag` from size+mtime, plus
+ * `Last-Modified`), and a `Range` accompanied by a non-matching `If-Range` is
+ * ignored in favour of the full current file (RFC 9110 §13.1.5). Without a
+ * validator the browser's media loader has no way to notice the resource
+ * changing between its range requests — a library file rewritten (tag write,
+ * in-place transcode) mid-playback got its old and new bytes spliced into one
+ * buffer, a corrupt stream that decodes for the first buffered seconds and
+ * then dies with no error (the "plays 3-4 s then silently stalls" HAR capture:
+ * two consecutive 206es for one track reported different total sizes).
+ *
  * The body is always the `Bun.file` Blob (or a slice of it), never a wrapping
  * ReadableStream: Bun serializes an unknown-length stream as
  * `Transfer-Encoding: chunked` and drops the Content-Length header the route
@@ -394,10 +405,43 @@ export function serveFileWithRange(
   absPath: string,
   range: string | undefined,
   contentTypeOverride?: string,
+  ifRange?: string,
 ): Response {
   const file = Bun.file(absPath);
   const size = file.size;
   const contentType = contentTypeOverride || file.type || 'application/octet-stream';
+
+  // Strong validator: byte-identity holds for an unchanged size+mtime pair
+  // (mtimeMs sub-second precision; the transcode cache already keys source
+  // size+mtime for the same reason). A vanished file skips the headers — the
+  // body read is about to fail anyway.
+  let mtimeMs: number | null = null;
+  try {
+    mtimeMs = statSync(absPath).mtimeMs;
+  } catch {
+    /* raced deletion */
+  }
+  const etag =
+    mtimeMs === null ? null : `"${size.toString(16)}-${Math.round(mtimeMs).toString(16)}"`;
+  const lastModified = mtimeMs === null ? null : new Date(mtimeMs).toUTCString();
+
+  // If-Range: honour the Range only when the representation is provably the
+  // one the client holds — entity-tag form needs a strong match against the
+  // current ETag (a weak `W/` tag never matches, per the RFC); date form
+  // needs second-exact equality with our Last-Modified. Anything else
+  // (changed file, unparseable value, no local validator) falls through to
+  // the full 200, which media loaders handle as a clean reload.
+  if (range && ifRange !== undefined) {
+    const val = ifRange.trim();
+    let matches = false;
+    if (val.startsWith('"')) {
+      matches = etag !== null && val === etag;
+    } else if (!val.startsWith('W/') && mtimeMs !== null) {
+      const parsed = Date.parse(val);
+      matches = Number.isFinite(parsed) && Math.floor(parsed / 1000) === Math.floor(mtimeMs / 1000);
+    }
+    if (!matches) range = undefined;
+  }
 
   const buildResponse = (
     body: BodyInit,
@@ -409,6 +453,7 @@ export function serveFileWithRange(
       headers: {
         'content-type': contentType,
         ...extraHeaders,
+        ...(etag !== null && lastModified !== null ? { etag, 'last-modified': lastModified } : {}),
         'accept-ranges': 'bytes',
       },
     });
