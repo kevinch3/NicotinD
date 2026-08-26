@@ -259,9 +259,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   mis-classified albums via `contradictsTrackCount`, each row carrying its remediation
   (`fragment-remediation.ts`). → [library-scanner.md](docs/library-scanner.md)
 - **Library health report**: one `libraryHealth` module — every curation dimension as metric +
-  bounded worst-first worklist + remediation hint — rendered by `GET /api/library/health` (curator)
-  and the `library-health.ts` CLI. `missingAlbumArtSql` and `losslessSuffixSql` are the shared
-  predicates; on-demand only, never polled. → [library-audit.md](docs/library-audit.md)
+  bounded worst-first worklist + remediation hint — rendered by `GET /api/library/health` (curator),
+  the `library-health.ts` CLI and MCP `get_library_health`. `missingAlbumArtSql` and
+  `losslessSuffixSql` are the shared predicates; on-demand only, never polled.
+  → [library-audit.md](docs/library-audit.md)
 - **Metadata optimization**: conservative all-or-nothing bulk Lidarr re-fetch (`optimizeAllAlbums`),
   run as a cancellable background job on `MaintenanceService`, bounded by limit + cursor.
   → [metadata-optimize.md](docs/metadata-optimize.md)

@@ -14,7 +14,10 @@ import {
   createCurationFlag,
   isFlagTargetKind,
   listOpenCurationFlags,
+  resolveCurationFlag,
 } from '../services/curation-flags.js';
+import { libraryHealth } from '../services/library-health.js';
+import { missingAlbumArtSql } from '../services/artwork-store.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import { tokenize, matchesAllTokens, rankBy } from '../services/search-tokens.js';
 import { gatherSongCandidates } from '../services/candidate-sources.js';
@@ -156,6 +159,20 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: 'get_library_health',
+    description:
+      'The entry point of a curation pass: one report over every curation dimension — audit findings, duplicate-album fragments, missing covers / portraits / genres / years, unknown classification, format cohesion (mixed-format and low-bitrate albums, remaining lossless), album completeness (confirmed from hunt history; plus advisory track-gap suspicion that must never be acted on without a human confirming), lyrics coverage and open review flags. Each dimension carries a metric, a bounded worst-first worklist sample and a remediation hint. Read-only and cheap — call it before and after a pass to record deltas, then page deeper with search_library / get_album_tracks.',
+    access: 'read',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sample: { type: 'number', description: 'Worklist size per dimension (1–50, default 10).' },
+      },
+    },
+    handler: ({ db }, args) =>
+      JSON.stringify(libraryHealth(db, { sampleSize: clampLimit(args.sample, 10, 50) }), null, 2),
+  },
+  {
     name: 'list_recent_songs',
     description:
       'List recently-landed songs, newest first. Optionally filter to only songs missing a genre.',
@@ -225,7 +242,8 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: 'get_album_tracks',
-    description: 'List the songs on one album by album id, with their genre.',
+    description:
+      'One album by id: its header (year, classification, hidden, canonical-cover status) and its songs with genre, track/disc numbers and technical format (suffix, bitrate kbps).',
     access: 'read',
     inputSchema: {
       type: 'object',
@@ -233,6 +251,26 @@ export const MCP_TOOLS: McpTool[] = [
       required: ['id'],
     },
     handler: ({ db }, args) => {
+      const id = str(args.id);
+      const album = db
+        .query<
+          {
+            id: string;
+            name: string;
+            artist: string;
+            year: number | null;
+            classification: string;
+            hidden: number;
+            song_count: number;
+            has_cover: number;
+          },
+          [string]
+        >(
+          `SELECT id, name, artist, year, classification, hidden, song_count,
+                  CASE WHEN ${missingAlbumArtSql()} THEN 0 ELSE 1 END AS has_cover
+           FROM library_albums WHERE id = ?`,
+        )
+        .get(id);
       const songs = db
         .query<
           {
@@ -240,13 +278,45 @@ export const MCP_TOOLS: McpTool[] = [
             title: string;
             artist: string;
             genre: string | null;
+            track: number | null;
+            disc: number | null;
+            suffix: string | null;
+            bit_rate: number | null;
           },
           [string]
         >(
-          'SELECT id, title, artist, genre FROM library_songs WHERE album_id = ? ORDER BY disc, track',
+          `SELECT id, title, artist, genre, track, disc, suffix, bit_rate
+           FROM library_songs WHERE album_id = ? ORDER BY disc, track`,
         )
-        .all(str(args.id));
-      return JSON.stringify({ songs }, null, 2);
+        .all(id);
+      return JSON.stringify(
+        {
+          album: album
+            ? {
+                id: album.id,
+                name: album.name,
+                artist: album.artist,
+                year: album.year,
+                classification: album.classification,
+                hidden: !!album.hidden,
+                songCount: album.song_count,
+                hasCanonicalCover: !!album.has_cover,
+              }
+            : null,
+          songs: songs.map((s) => ({
+            id: s.id,
+            title: s.title,
+            artist: s.artist,
+            genre: s.genre,
+            track: s.track,
+            disc: s.disc,
+            suffix: s.suffix,
+            bitRateKbps: s.bit_rate,
+          })),
+        },
+        null,
+        2,
+      );
     },
   },
   {
@@ -447,6 +517,44 @@ export const MCP_TOOLS: McpTool[] = [
         null,
         2,
       ),
+  },
+  {
+    name: 'resolve_review_flag',
+    description:
+      'Mark one open review flag as handled, with an optional note on what was decided. Use it only after actually addressing the flagged question (fixed, or researched and found fine) — never to tidy away a flag you did not act on. Audit-logged.',
+    access: 'curate',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        flagId: { type: 'number', description: 'The flag id, from list_review_flags.' },
+        note: {
+          type: 'string',
+          description: 'What was decided or done — recorded in the audit log.',
+        },
+      },
+      required: ['flagId'],
+    },
+    handler: ({ db, identity }, args) => {
+      const flagId = typeof args.flagId === 'number' ? Math.trunc(args.flagId) : NaN;
+      if (!Number.isFinite(flagId)) return JSON.stringify({ error: 'flagId is required' });
+      // Target read before the resolve so the audit row can name it.
+      const flag = db
+        .query<{ target_kind: string; target_id: string }, [number]>(
+          'SELECT target_kind, target_id FROM curation_flags WHERE id = ?',
+        )
+        .get(flagId);
+      const actor = `agent:${identity.tokenId}`;
+      if (!resolveCurationFlag(db, flagId, actor)) {
+        return JSON.stringify({ error: 'Flag not found or already resolved' });
+      }
+      const note = str(args.note).trim();
+      recordAudit(db, { sub: identity.userId, username: actor }, 'curation.flag', {
+        targetKind: flag?.target_kind,
+        targetId: flag?.target_id,
+        detail: `resolved${note ? `: ${note}` : ''} (via MCP agent)`,
+      });
+      return JSON.stringify({ ok: true, id: flagId });
+    },
   },
   {
     name: 'delete_song',
