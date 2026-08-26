@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.13](https://github.com/kevinch3/NicotinD/compare/v0.5.12...v0.5.13) (2026-08-26)
+
+### Bug Fixes
+
+* prevent truncated preserved blobs from poisoning playback recovery ([#721](https://github.com/kevinch3/NicotinD/issues/721)) ([ac6e628](https://github.com/kevinch3/NicotinD/commit/ac6e6284b1a406996859eabf19815c5ab89f5b0b))
 ## [0.5.12](https://github.com/kevinch3/NicotinD/compare/v0.5.11...v0.5.12) (2026-08-25)
 
 ### Bug Fixes
