@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.18](https://github.com/kevinch3/NicotinD/compare/v0.5.17...v0.5.18) (2026-08-26)
+
+### Features
+
+* **api:** MCP album curation writes + album-route audit trail ([#741](https://github.com/kevinch3/NicotinD/issues/741)) ([373d3f0](https://github.com/kevinch3/NicotinD/commit/373d3f0ab3d8047bd837e65123197dbf3d5a864f)), closes [#732](https://github.com/kevinch3/NicotinD/issues/732) [#733](https://github.com/kevinch3/NicotinD/issues/733), references [#732](https://github.com/kevinch3/NicotinD/issues/732) [#734](https://github.com/kevinch3/NicotinD/issues/734) [#734](https://github.com/kevinch3/NicotinD/issues/734) [#735](https://github.com/kevinch3/NicotinD/issues/735)
 ## [0.5.17](https://github.com/kevinch3/NicotinD/compare/v0.5.16...v0.5.17) (2026-08-26)
 
 ### Features
