@@ -401,23 +401,12 @@ export function discographyRoutes({
       return c.json({ error: 'Missing selected candidate' }, 400);
     }
 
-    // Guard 1: an active job means a download for this album is already in flight.
-    const activeJob = db
-      .query<{ id: number }, [number]>(
-        `SELECT id FROM album_jobs WHERE lidarr_album_id = ? AND state = 'active' LIMIT 1`,
-      )
-      .get(albumId);
-    if (activeJob && !replace) {
-      return c.json({ error: 'already-downloading', jobId: activeJob.id }, 409);
-    }
-    if (replace && activeJob) {
-      // Supersede every active job for this album so at most one stays active.
-      db.run(
-        `UPDATE album_jobs SET state = 'superseded' WHERE lidarr_album_id = ? AND state = 'active'`,
-        [albumId],
-      );
-      supersedeActiveJobs(db, { lidarrAlbumId: albumId });
-    }
+    // The in-flight guard is the addon's own 409 below, not an `album_jobs`
+    // lookup: nothing has written that table since the addon cutover, so the
+    // check that used to live here could never fire (#748). What remains is
+    // superseding — previously gated behind that same dead lookup, which is why
+    // `replace` quietly stacked a second live card instead of replacing one.
+    if (replace) supersedeActiveJobs(db, { lidarrAlbumId: albumId });
 
     // Fetch canonical metadata up front — needed for the completeness guard and
     // the recorded job. Best-effort: a Lidarr hiccup must not block the download.
@@ -488,15 +477,24 @@ export function discographyRoutes({
         return c.json({ ok: true, queued: 0, alreadyComplete: true }, 200);
       }
 
+      // Same key the auto-acquire lane uses (`album-acquire.ts`), so a manual
+      // Get and the poller dedupe against *each other* — one album is one
+      // download whichever lane starts it. Omitted under `replace`, which is
+      // the user explicitly asking for another run: reusing the key there would
+      // hand back the very job they want replaced.
+      const idempotencyKey = replace ? undefined : `acquire:${albumId}`;
       const createAddonSide = () =>
-        addon.client.createJob({
-          intent: 'album',
-          artist: artistName ?? undefined,
-          album: albumTitle ?? undefined,
-          canonicalTracks: titles.map((title) => ({ title })),
-          wantedTracks: wanted.map((title) => ({ title })),
-          candidateRef: body.selected.candidateRef,
-        });
+        addon.client.createJob(
+          {
+            intent: 'album',
+            artist: artistName ?? undefined,
+            album: albumTitle ?? undefined,
+            canonicalTracks: titles.map((title) => ({ title })),
+            wantedTracks: wanted.map((title) => ({ title })),
+            candidateRef: body.selected.candidateRef,
+          },
+          idempotencyKey,
+        );
 
       let addonJob;
       try {

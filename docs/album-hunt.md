@@ -240,9 +240,16 @@ Idempotent: an album already on disk (`albumAlreadyComplete`, shared in `library
 
 `POST /api/discography/albums/:id/hunt-download` (`packages/api/src/routes/discography.ts`) guards against duplicate downloads:
 
-1. Returns **409 `already-downloading`** if an `album_jobs` row for that `lidarr_album_id` is still `state='active'`.
+1. Returns **409 `already-downloading`** when the addon rejects the create with its own 409 (the protocol's per-`albumKey` active-job guard), reinforced by an **`Idempotency-Key: acquire:<lidarrAlbumId>`** — the *same* key `album-acquire.ts` sends, so a manual Get and the auto-acquire poller dedupe against **each other** rather than each being idempotent only within its own lane. The key is omitted under `?replace=true`, which is the user explicitly asking for another run: reusing it there would hand back the very job they want replaced.
 2. Returns **409 `already-complete`** if the library already holds the album — `albumAlreadyComplete` matches by `normalizeForGrouping(artist)+title` with `song_count >= canonical track count`.
-3. On `?replace=true` (admin re-hunt) marks the prior active job `'superseded'` first, so at most one active job per album.
+3. On `?replace=true` (admin re-hunt) `supersedeActiveJobs` marks the album's prior active `acquisition_jobs` rows `'superseded'` first, so at most one stays active.
+
+   **The guard that used to be step 1 was dead code (#748).** It queried `album_jobs` for an
+   `active` row, but nothing has written that table since the addon cutover moved hunt state into the
+   addon's own database — prod holds 490 rows, all terminal, newest 2026-08-11. It could not fire.
+   Worse, `supersedeActiveJobs` was gated behind that same lookup, so `?replace=true` superseded
+   **nothing** and simply added a second live card. A guard that reads as protection and provides
+   none is worse than no guard: it stops anyone looking for the real one.
 4. **Complete-only / disk-aware enqueue**: `filesMissingOnDisk` (`library-completeness.ts`) filters the chosen folder's files to only those whose track isn't already in `library_songs` (matched via `normalizeTitle`/`titlesOverlap`). `hunt-download` enqueues **only the missing tracks**, returning `{ queued: 0, alreadyComplete: true }` when nothing is missing. A fresh hunt still downloads everything. The watchlist auto-hunt applies the same filter.
 
    **why it must not be keyed on an exact `albumIdFor`** (the duplicate-versions root cause): `hunt-download` runs with the **canonical Lidarr** artist/title, but the partial album already on disk is tagged with the **peer's** artist/title (accents, `feat.`, edition words, artist spelling — routine in this Latin-American-heavy library). Keying the on-disk lookup on `albumIdFor(canonicalArtist, canonicalTitle)` then finds **nothing**, so the *whole* folder re-downloads on top of what we have — and any rip whose filename differs slightly escapes the post-organize dedupe and lands as a second copy. So the filter resolves on-disk tracks two ways: the artist page sends the already-resolved **`localAlbumId`** (precise, divergence-proof), and absent that (catalog/watchlist, which only have canonical names) it unions the exact minted id with **every** local album whose `artist_id` + `normalizeForGrouping(title)` match (so an edition/divergent-id row still counts). `albumAlreadyComplete` (guard 2) uses the same `artist_id`-based identity match.
