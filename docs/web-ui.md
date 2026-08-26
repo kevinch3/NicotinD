@@ -579,8 +579,13 @@ contribute and both are defended in depth:
     `durationchange` (or `canplay` with a sane duration) before resuming
     playback from the audio element's current position.
   - A 5 s `recoveryTimeout` is the safety valve: if no sane duration
-    arrives, the recovery gives up waiting and seeks to 0 + plays, so a
-    truly-corrupt file doesn't strand the user on a frozen track.
+    arrives, the recovery gives up waiting, **reloads the source**
+    (`audio.load()`) and plays, so a truly-corrupt file doesn't strand the
+    user on a frozen track. It reloads rather than seeking to 0 because after
+    a stream cut short mid-transfer the browser's media cache still holds the
+    truncated resource — a bare seek + play replayed the same few seconds
+    without requesting a single new byte, ended early again, and burned the
+    whole recovery allowance without ever giving the network a second chance.
   - The seek bar's `safeProgress` no longer falls back to `t` when the
     duration is unknown — it stays at 0 — so the user does not see a
     100 %-filled bar during recovery (the "seek bar at 100 %" part of the
@@ -623,7 +628,7 @@ with no known duration still plays through normally (no false positive).
 **The recovery itself never terminated (bounded by `MAX_RECOVERY_ATTEMPTS`).** Both fixes above
 make `onEnded` *refuse* to advance on a false `ended` — but nothing capped how many times it could
 refuse. `onEnded` re-entered `startRecovery` on every false `ended`, and the 5 s valve resets
-`recoveryState` to `'normal'` and then seeks to 0 + plays. So a resource that is *genuinely* short
+`recoveryState` to `'normal'` and then reloads + plays. So a resource that is *genuinely* short
 (a truly truncated cache file, not a mis-parse) ends early again, is flagged false-ended again, and
 restarts every ~5 s — **forever, never reaching the next queue item**. The `startRecovery`
 early-return on `'awaiting-duration'` doesn't help: the valve has already cleared that state. The
@@ -637,10 +642,37 @@ recovery succeeds, so the same element can't refresh its own allowance indefinit
 
 Found alongside it: both recovery-exit sites assigned `this.recoveryTimeout = null` **without**
 `clearTimeout`, which only forgets the handle — the armed 5 s valve still fired after a *successful*
-recovery and ran `audio.currentTime = 0`, yanking the listener back to the start of the track. The
+recovery and ran the reload fallback, yanking the listener back to the start of the track. The
 two sites now share one `clearRecoveryTimeout()` helper (also used by `startRecovery` and
-`ngOnDestroy`), so the handle has a single teardown path. The two bugs compound: the stray seek-to-0
+`ngOnDestroy`), so the handle has a single teardown path. The two bugs compound: the stray restart
 can itself provoke another early `ended`, feeding the loop the bound is there to stop.
+
+**Truncated preserved blob — the "plays 3-4 s, feels cached" variant.** A user report of playback
+delivering only ~3-4 s per track, the buffered band instantly full at those few seconds, then a
+stall or an advance — on *every* play of the affected tracks. That signature (instantly-buffered,
+short, identical each time) is a preserved/auto-preserved IndexedDB blob, not the stream: a `fetch`
+cut short by a proxy or network drop can **resolve** with a partial body instead of rejecting (an
+intermediary that ends the stream cleanly — e.g. an HTTP/2 reverse proxy losing its backend — looks
+like a normal EOF to the browser), and `PreserveService.fetchTrackBlobs` stored whatever arrived.
+Because the store is durable, one bad fetch poisoned the track long after the network recovered,
+and the false-ended recovery above made it *worse* there: every retry replayed the very same bytes.
+Defended at both ends:
+
+- **Store-time gate** (`preservedAudioLooksComplete`, `preserve.service.ts`): an audio body is
+  rejected before it reaches IndexedDB when it is empty or its byte count disagrees with the
+  response's own `Content-Length`. A missing/unreadable header skips the comparison (older server,
+  CORS) rather than rejecting healthy fetches.
+- **Play-time self-heal** (`recoverFromTruncatedBlob`, `player.component.ts`): a false `ended`
+  while the element is sourced from a `blob:` URL of a preserved track means the stored copy itself
+  is short — waiting or retrying can never help. When online, the poisoned preservation is removed
+  and the element is re-pointed at the network stream, honoring the play intent; offline (the blob
+  is the only source there is) it falls back to the bounded blind recovery. Heals count against the
+  same `MAX_RECOVERY_ATTEMPTS` allowance so a truncated stream after the swap stays bounded.
+
+Regression coverage: `preserve.service.spec.ts` `store-time truncation gate` +
+`preservedAudioLooksComplete` blocks; `player.component.spec.ts`
+`false ended while sourced from a preserved blob (truncated store)` block (heal path, offline
+fallback, allowance exhaustion, stream-sourced false endeds leaving the preservation alone).
 
 ### Web test harness — plain vitest, NOT `ng test`
 

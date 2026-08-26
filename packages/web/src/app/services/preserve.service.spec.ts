@@ -1,7 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { vi } from 'vitest';
-import { PreserveService, PRESERVE_STORE, UNLIMITED_BUDGET } from './preserve.service';
+import {
+  PreserveService,
+  PRESERVE_STORE,
+  UNLIMITED_BUDGET,
+  preservedAudioLooksComplete,
+} from './preserve.service';
 import type { PreserveStore } from './preserve.service';
 import { AuthService } from './auth.service';
 import type { Track } from './player.service';
@@ -49,12 +54,17 @@ function track(id: string): Track {
   return { id, title: `Title ${id}`, artist: 'Artist' };
 }
 
-function mockFetch() {
+function mockFetch(opts: { contentLength?: string | null } = {}) {
   // Audio response only (tracks carry no coverArt → no second fetch).
+  // Content-Length matches the body by default so the store-time truncation
+  // gate passes; tests override it to model a cut-short transfer.
+  const contentLength = opts.contentLength === undefined ? String(BLOB_SIZE) : opts.contentLength;
   return vi.fn(async () => ({
     ok: true,
     blob: async () => new Blob([new Uint8Array(BLOB_SIZE)]),
-    headers: { get: () => 'audio/mpeg' },
+    headers: {
+      get: (name: string) => (name === 'content-length' ? contentLength : 'audio/mpeg'),
+    },
   })) as unknown as typeof fetch;
 }
 
@@ -175,6 +185,53 @@ describe('PreserveService', () => {
       expect(svc.batchFor('big')?.stoppedAtCap).toBe(true);
       svc.dismissBatch('big');
       expect(svc.batchFor('big')).toBeNull();
+    });
+  });
+
+  describe('store-time truncation gate', () => {
+    // A fetch cut short by a proxy/network drop can resolve with a partial
+    // body instead of rejecting. Storing it poisons IndexedDB — the player
+    // then replays a few-seconds "track" from the blob on every future play.
+    it('refuses to store a body whose size disagrees with Content-Length', async () => {
+      globalThis.fetch = mockFetch({ contentLength: String(BLOB_SIZE * 40) });
+
+      await svc.preserve(track('a'));
+
+      expect(svc.preservedIds().has('a')).toBe(false);
+      expect(store.preserve).not.toHaveBeenCalled();
+      // Not left stuck in the in-flight set either.
+      expect(svc.preserving().size).toBe(0);
+    });
+
+    it('stores normally when the response carries no readable Content-Length', async () => {
+      // Older server / CORS not exposing the header — the comparison is
+      // skipped rather than treated as truncation.
+      globalThis.fetch = mockFetch({ contentLength: null });
+
+      await svc.preserve(track('a'));
+
+      expect(svc.preservedIds().has('a')).toBe(true);
+    });
+  });
+
+  describe('preservedAudioLooksComplete', () => {
+    it('accepts a body matching Content-Length, rejects a mismatch', () => {
+      expect(preservedAudioLooksComplete(100, '100')).toBe(true);
+      expect(preservedAudioLooksComplete(100, '4000')).toBe(false);
+      // Over-long is just as wrong as short — the bytes are not the resource.
+      expect(preservedAudioLooksComplete(4000, '100')).toBe(false);
+    });
+
+    it('rejects an empty body regardless of headers', () => {
+      expect(preservedAudioLooksComplete(0, null)).toBe(false);
+      expect(preservedAudioLooksComplete(0, '0')).toBe(false);
+      expect(preservedAudioLooksComplete(-1, '100')).toBe(false);
+    });
+
+    it('skips the comparison when Content-Length is missing or unparseable', () => {
+      expect(preservedAudioLooksComplete(100, null)).toBe(true);
+      expect(preservedAudioLooksComplete(100, 'audio/mpeg')).toBe(true);
+      expect(preservedAudioLooksComplete(100, '')).toBe(true);
     });
   });
 

@@ -14,6 +14,7 @@ import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService } from '../../services/preserve.service';
 import { MediaControlsService } from '../../services/media-controls.service';
+import { NetworkStatusService } from '../../services/network-status.service';
 import type { Track } from '../../services/player.service';
 
 // Note: preserve-store (IndexedDB) is never reached in these tests because
@@ -35,22 +36,29 @@ describe('PlayerComponent', () => {
   let fakeAudio: HTMLAudioElement;
   let mockPlay: ReturnType<typeof vi.fn>;
   let mockPause: ReturnType<typeof vi.fn>;
+  let mockLoad: ReturnType<typeof vi.fn>;
   let likes: { isLiked: ReturnType<typeof vi.fn>; toggle: ReturnType<typeof vi.fn> };
+  let preserveMock: { isPreserved: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> };
 
-  // Shared signal — lets tests control isActiveDevice without re-providing
+  // Shared signals — let tests control device/network state without re-providing
   const isActiveDevice = signal(true);
+  const netOnline = signal(true);
 
   // Save originals so we can restore prototype methods after each test
   const origPlay = HTMLMediaElement.prototype.play;
   const origPause = HTMLMediaElement.prototype.pause;
+  const origLoad = HTMLMediaElement.prototype.load;
 
   beforeEach(async () => {
     mockPlay = vi.fn().mockResolvedValue(undefined);
     mockPause = vi.fn();
+    mockLoad = vi.fn();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     HTMLMediaElement.prototype.play = mockPlay as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     HTMLMediaElement.prototype.pause = mockPause as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    HTMLMediaElement.prototype.load = mockLoad as any;
 
     // Stub MediaSession (absent from jsdom)
     if (!('mediaSession' in navigator)) {
@@ -75,7 +83,12 @@ describe('PlayerComponent', () => {
 
     setVisibility('visible');
     isActiveDevice.set(true);
+    netOnline.set(true);
     likes = { isLiked: vi.fn().mockReturnValue(false), toggle: vi.fn() };
+    preserveMock = {
+      isPreserved: vi.fn().mockReturnValue(false),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
 
     await TestBed.configureTestingModule({
       imports: [PlayerComponent],
@@ -100,7 +113,17 @@ describe('PlayerComponent', () => {
           useValue: { sendProgressReport: vi.fn(), sendCommand: vi.fn() },
         },
         { provide: Router, useValue: { navigate: vi.fn() } },
-        { provide: PreserveService, useValue: { isPreserved: vi.fn().mockReturnValue(false) } },
+        { provide: PreserveService, useValue: preserveMock },
+        // `reconnects` is read by ListeningQueueService's drain effect, which
+        // instantiates through the component's ListeningTrackerService chain.
+        {
+          provide: NetworkStatusService,
+          useValue: {
+            online: netOnline,
+            reconnects: signal(0),
+            whenReady: () => Promise.resolve(),
+          },
+        },
         // Mocked so the Capacitor media-session plugin is never imported in jsdom.
         {
           provide: MediaControlsService,
@@ -137,6 +160,8 @@ describe('PlayerComponent', () => {
     HTMLMediaElement.prototype.play = origPlay as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     HTMLMediaElement.prototype.pause = origPause as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    HTMLMediaElement.prototype.load = origLoad as any;
     vi.clearAllMocks();
   });
 
@@ -872,7 +897,7 @@ describe('PlayerComponent', () => {
       expect(mockPlay).toHaveBeenCalled();
     });
 
-    it('falls back to seek-to-0 + play when no sane duration arrives within 5s', () => {
+    it('falls back to reload + play when no sane duration arrives within 5s', () => {
       vi.useFakeTimers();
       // False ended setup; we deliberately do NOT dispatch a real durationchange.
       Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
@@ -883,6 +908,7 @@ describe('PlayerComponent', () => {
       });
       playerService.isPlaying.set(true);
       mockPlay.mockClear();
+      mockLoad.mockClear();
       fakeAudio.dispatchEvent(new Event('ended'));
       expect(playerService.recoveryState()).toBe('awaiting-duration');
 
@@ -891,8 +917,11 @@ describe('PlayerComponent', () => {
 
       expect(playerService.recoveryState()).toBe('normal');
       expect(playerService.buffering()).toBe(false);
-      // The fallback seeks to 0 and resumes from the start of the (still bogus)
-      // resource, so the user isn't stuck on a frozen track.
+      // The fallback RELOADS the source rather than seeking to 0: a bare seek
+      // replays the truncated resource straight out of the browser's media
+      // cache (no new bytes requested), which is exactly what fed the
+      // "plays 3-4 s → ends → repeats" loop. load() forces a refetch.
+      expect(mockLoad).toHaveBeenCalled();
       expect(mockPlay).toHaveBeenCalled();
       vi.useRealTimers();
     });
@@ -914,8 +943,9 @@ describe('PlayerComponent', () => {
       for (let i = 0; i < MAX_RECOVERY_ATTEMPTS; i++) {
         fakeAudio.dispatchEvent(new Event('ended'));
         expect(playerService.recoveryState()).toBe('awaiting-duration');
-        // The 5 s valve gives up, seeks to 0 and replays — which is what feeds
-        // the next false `ended`.
+        // The 5 s valve gives up, reloads and replays — for a genuinely short
+        // resource the refetch delivers the same bytes and feeds the next
+        // false `ended`.
         vi.advanceTimersByTime(5000);
         expect(playerService.recoveryState()).toBe('normal');
         // Still on the same track: each cycle refused to advance.
@@ -1099,6 +1129,100 @@ describe('PlayerComponent', () => {
 
       expect(playerService.currentTrack()).toEqual(TRACK_2);
       expect(playerService.recoveryState()).toBe('normal');
+    });
+  });
+
+  // ─── Truncated preserved blob: self-heal by falling back to the stream ──────
+
+  describe('false ended while sourced from a preserved blob (truncated store)', () => {
+    // The "plays 3-4 s then stalls/advances, feels cached" report: a partial
+    // fetch slipped into IndexedDB, so every play sources the same short blob.
+    // Waiting/retrying that source can never help — the player must drop the
+    // poisoned entry and re-point at the network stream.
+    const knownTrack: Track = {
+      id: 't1',
+      title: 'Test Track',
+      artist: 'Test Artist',
+      duration: 240,
+    };
+
+    beforeEach(() => {
+      playerService.currentTrack.set(knownTrack);
+      fixture.detectChanges();
+      // The element is playing an object URL of the stored (truncated) blob.
+      Object.defineProperty(fakeAudio, 'currentSrc', {
+        value: 'blob:http://localhost/poisoned',
+        configurable: true,
+      });
+      Object.defineProperty(fakeAudio, 'duration', { value: 3.5, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 3.5, configurable: true });
+      // Only the current track is preserved — a queue advance to TRACK_2 must
+      // take the stream path (the real preserve-store would touch IndexedDB,
+      // which jsdom does not provide).
+      preserveMock.isPreserved.mockImplementation((id: string) => id === 't1');
+    });
+
+    it('drops the poisoned preservation and re-streams instead of blind recovery', () => {
+      playerService.queue.set([TRACK_2]);
+      playerService.isPlaying.set(true);
+      mockPlay.mockClear();
+
+      fakeAudio.dispatchEvent(new Event('ended'));
+
+      // Healed in place: same track, queue untouched, no recovery wait state.
+      expect(playerService.currentTrack()).toEqual(knownTrack);
+      expect(playerService.queue()).toEqual([TRACK_2]);
+      expect(playerService.recoveryState()).toBe('normal');
+      // The bad blob is deleted so future plays (and other devices' sync of
+      // this store) don't replay it, and the element now points at the stream.
+      expect(preserveMock.remove).toHaveBeenCalledWith('t1');
+      expect(fakeAudio.src).toContain('/api/stream/t1');
+      expect(mockPlay).toHaveBeenCalled();
+    });
+
+    it('falls back to bounded blind recovery when offline (the blob is the only source)', () => {
+      netOnline.set(false);
+      playerService.queue.set([TRACK_2]);
+      playerService.isPlaying.set(true);
+
+      fakeAudio.dispatchEvent(new Event('ended'));
+
+      expect(preserveMock.remove).not.toHaveBeenCalled();
+      expect(playerService.recoveryState()).toBe('awaiting-duration');
+      expect(playerService.queue()).toEqual([TRACK_2]);
+    });
+
+    it('advances normally once the recovery allowance is spent on a genuinely short blob', () => {
+      vi.useFakeTimers();
+      playerService.queue.set([TRACK_2]);
+      playerService.isPlaying.set(true);
+
+      // Each cycle: the heal swaps to the stream — make the element look
+      // blob-sourced again to model the pathological case where every source
+      // keeps ending short, and verify the shared allowance still terminates.
+      for (let i = 0; i < MAX_RECOVERY_ATTEMPTS; i++) {
+        fakeAudio.dispatchEvent(new Event('ended'));
+        vi.advanceTimersByTime(5000);
+        expect(playerService.currentTrack()).toEqual(knownTrack);
+      }
+
+      fakeAudio.dispatchEvent(new Event('ended'));
+
+      expect(playerService.currentTrack()).toEqual(TRACK_2);
+      vi.useRealTimers();
+    });
+
+    it('does not touch the preservation for a non-blob (stream) false ended', () => {
+      Object.defineProperty(fakeAudio, 'currentSrc', {
+        value: 'http://localhost/api/stream/t1',
+        configurable: true,
+      });
+      playerService.isPlaying.set(true);
+
+      fakeAudio.dispatchEvent(new Event('ended'));
+
+      expect(preserveMock.remove).not.toHaveBeenCalled();
+      expect(playerService.recoveryState()).toBe('awaiting-duration');
     });
   });
 });

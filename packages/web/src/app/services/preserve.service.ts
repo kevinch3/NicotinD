@@ -56,6 +56,27 @@ export interface PreserveBatch {
 
 const VALID_AUTO_MODES = new Set<AutoPreserveMode>(['off', '5', '20', 'full']);
 
+/**
+ * Store-time integrity gate for a fetched audio body. A `fetch` that is cut
+ * short by a proxy/network drop can resolve with a truncated blob instead of
+ * rejecting (an intermediary that ends the stream cleanly — e.g. an HTTP/2
+ * reverse proxy losing its backend — looks like a normal EOF to the browser).
+ * Persisting that body poisons IndexedDB: the player then sources a 3-4 s
+ * "track" from the blob on every future play, long after the network recovered.
+ * Reject an empty body outright, and any body whose byte count disagrees with
+ * the response's own Content-Length. A missing/unreadable header (older
+ * server, CORS not exposing it) skips the comparison rather than rejecting.
+ */
+export function preservedAudioLooksComplete(
+  blobSize: number,
+  contentLength: string | null,
+): boolean {
+  if (!(blobSize > 0)) return false;
+  const expected = contentLength == null ? NaN : Number(contentLength);
+  if (Number.isFinite(expected) && expected > 0 && blobSize !== expected) return false;
+  return true;
+}
+
 @Injectable({ providedIn: 'root' })
 export class PreserveService {
   private auth = inject(AuthService);
@@ -352,6 +373,11 @@ export class PreserveService {
     const audioRes = await fetch(this.server.streamUrl(track.id, token));
     if (!audioRes.ok) return null;
     const audioBlob = await audioRes.blob();
+    // A truncated body must not reach IndexedDB — a stored bad blob replays
+    // identically on every play until evicted (see preservedAudioLooksComplete).
+    if (!preservedAudioLooksComplete(audioBlob.size, audioRes.headers.get('content-length'))) {
+      return null;
+    }
 
     let coverBlob: Blob | null = null;
     if (track.coverArt) {
