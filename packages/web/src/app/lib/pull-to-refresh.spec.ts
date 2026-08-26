@@ -22,6 +22,14 @@ function mousePointer(type: string, clientY: number): PointerEvent {
   return e;
 }
 
+// jsdom lacks TouchEvent too; a plain Event with a fabricated `touches` list
+// is enough for the blocker, which only reads touches[0].clientX/clientY.
+function touchMove(clientY: number, clientX = 0, cancelable = true): Event {
+  const e = new Event('touchmove', { cancelable });
+  Object.defineProperty(e, 'touches', { value: [{ clientY, clientX }] });
+  return e;
+}
+
 @Component({ standalone: true, template: '' })
 class HostComponent {
   refreshes = 0;
@@ -173,7 +181,7 @@ describe('createPullToRefresh', () => {
     expect(host.refreshes).toBe(1);
   });
 
-  it('blocks touchmove (preventDefault) only while a pull is live', () => {
+  it('blocks touchmove (preventDefault) only while the gesture is live', () => {
     const { host } = setup();
     const dispatchTouchMove = () => {
       const e = new Event('touchmove', { cancelable: true });
@@ -185,6 +193,59 @@ describe('createPullToRefresh', () => {
     expect(dispatchTouchMove()).toBe(true);
     document.dispatchEvent(pointer('pointerup', 200));
     expect(dispatchTouchMove()).toBe(false);
+  });
+
+  // The blocker must be live BEFORE the first touchmove: preventing that first
+  // event is what stops touch browsers claiming the pan (and pointercancel-ing
+  // the gesture). Attached any later, every touchmove is already non-cancelable.
+  it('blocks a downward-dominant touchmove immediately after pointerdown, before any pointermove', () => {
+    const { host } = setup();
+    host.pull.onPointerDown(pointer('pointerdown', 100));
+    const e = touchMove(105); // 5px down — under slop, direction already decisive
+    document.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it('lets a horizontal-dominant first touchmove through so native pans keep working', () => {
+    const { host } = setup();
+    host.pull.onPointerDown(pointer('pointerdown', 100, 100));
+    const e = touchMove(103, 140); // dy 3 < |dx| 40
+    document.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it('lets an upward first touchmove through so native scrolling keeps working', () => {
+    const { host } = setup();
+    host.pull.onPointerDown(pointer('pointerdown', 100));
+    const e = touchMove(90);
+    document.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it('stops blocking once the gesture resolves to scroll intent', () => {
+    const { host } = setup();
+    host.pull.onPointerDown(pointer('pointerdown', 100));
+    document.dispatchEvent(pointer('pointermove', 100 - PULL_SLOP_PX - 5));
+    const e = touchMove(150);
+    document.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it('never calls preventDefault on a non-cancelable touchmove', () => {
+    const { host } = setup();
+    host.pull.onPointerDown(pointer('pointerdown', 100));
+    const e = touchMove(150, 0, /* cancelable */ false);
+    expect(() => document.dispatchEvent(e)).not.toThrow();
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it('detaches the blocker when the gesture ends without a pull', () => {
+    const { host } = setup();
+    host.pull.onPointerDown(pointer('pointerdown', 100));
+    document.dispatchEvent(pointer('pointerup', 100));
+    const e = touchMove(150);
+    document.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
   });
 
   it('ignores a new pointerdown while refreshing', () => {
