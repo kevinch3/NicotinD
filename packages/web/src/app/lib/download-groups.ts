@@ -71,8 +71,17 @@ export interface DownloadItem {
    * job came from to render "now playing" / "up next".
    */
   tracks?: { title: string; status: TrackStatus }[];
-  /** Completed / total tracks (or playlist items). */
+  /** Completed / total tracks (or playlist items). `total` is what the source itemized. */
   progress?: { done: number; total: number };
+  /**
+   * The release's own track count, when it exceeds what the source offered.
+   * `progress.total` alone silently became the album's size, so a 103-track
+   * release read "98 of 100" with nothing to show for the gap (#745). Set only
+   * when it differs, so an ordinary complete album renders unchanged.
+   */
+  canonicalTotal?: number;
+  /** Tracks the release has that this source never offered — renders "· K not offered". */
+  notOffered?: number;
   /** 0–100 progress for the in-flight bar, when a percentage is meaningful. */
   percent?: number;
   error?: string;
@@ -137,6 +146,22 @@ export function renderDownloadTitle(title: DownloadTitle, method: AcquisitionMet
     default:
       return `${label} download`;
   }
+}
+
+/**
+ * How many tracks the release has that this source never offered, or null when
+ * there is no shortfall to report — no tracklist, or a source that covered it
+ * whole. A source offering *more* than the tracklist (bonus tracks) is not a
+ * shortfall either, so it returns null rather than a negative. Exported for the
+ * card's own unit tests.
+ */
+export function canonicalShortfall(progress: {
+  expected: number;
+  canonical: number | null;
+}): number | null {
+  const { canonical, expected } = progress;
+  if (canonical === null || canonical <= expected) return null;
+  return canonical - expected;
 }
 
 /**
@@ -271,6 +296,7 @@ export function mergeAcquisitionJobs(
     // An admin import is a mirror row (docs/import.md): `import_jobs` owns its
     // lifecycle and its own routes, so the job-scoped controls don't apply.
     const isImport = job.kind === 'import';
+    const notOffered = canonicalShortfall(job.progress);
     merged.push({
       key: `job:${job.id}`,
       kind: 'network',
@@ -294,6 +320,11 @@ export function mergeAcquisitionJobs(
       startedAt: job.createdAt,
       tracks: job.items,
       progress: { done: job.progress.delivered, total: job.progress.expected },
+      // why: only a *shortfall* is news. A source that offered the whole
+      // tracklist (or more — a folder with bonus tracks) leaves these unset so
+      // the ordinary card is untouched.
+      canonicalTotal: notOffered === null ? undefined : (job.progress.canonical ?? undefined),
+      notOffered: notOffered ?? undefined,
       unavailable: job.progress.unavailable > 0 ? job.progress.unavailable : undefined,
       error: job.error ?? undefined,
       failures: failureGroupsFor(job.error),

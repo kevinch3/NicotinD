@@ -36,12 +36,23 @@
     <div class="flex items-center gap-2 mt-1 flex-wrap min-w-0">
       <app-pipeline-stage-badge [stage]="item().stage" />
       @if (item().progress; as p) {
-        <span class="text-xs text-theme-muted">{{ p.done }} of {{ p.total }}</span>
+        <!-- Denominator is the release's tracklist when the source offered less
+             of it than the release has, so "98 of 100" can't stand in for a
+             103-track album (#745). -->
+        <span class="text-xs text-theme-muted"
+          >{{ p.done }} of {{ item().canonicalTotal ?? p.total }}</span
+        >
       }
       @if (item().unavailable; as u) {
         <!-- Honest partial: the fallback gave up on these tracks (nobody has them). -->
         <span class="text-xs text-theme-muted" data-testid="download-unavailable"
           >· {{ u }} unavailable</span
+        >
+      }
+      @if (item().notOffered; as n) {
+        <!-- Distinct from `unavailable`: the source never listed these at all. -->
+        <span class="text-xs text-theme-muted" data-testid="download-not-offered"
+          >· {{ n }} not offered</span
         >
       }
       @if (item().startedAt) {

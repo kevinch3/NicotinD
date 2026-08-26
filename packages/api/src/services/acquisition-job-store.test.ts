@@ -409,7 +409,48 @@ describe('listJobFeed import fallback', () => {
   it('degrades to zero progress when the import row is missing', () => {
     const id = createJob(db, { id: 'imp-2', kind: 'import', method: 'import' });
     const job = listJobFeed(db).find((j) => j.id === id)!;
-    expect(job.progress).toEqual({ expected: 0, delivered: 0, unavailable: 0, failed: 0 });
+    expect(job.progress).toEqual({
+      expected: 0,
+      delivered: 0,
+      unavailable: 0,
+      failed: 0,
+      canonical: null,
+    });
+  });
+});
+
+/**
+ * #745. `expected` counts item rows — whatever the *source* itemized — so it
+ * silently stands in for the album's size. El salmón is a real 5-CD/103-track
+ * release whose peer offered 100 files: the card read "98 of 100" and nothing
+ * looked wrong. The tracklist was on the job row the whole time, unread.
+ */
+describe('listJobFeed canonical denominator (#745)', () => {
+  it("reports the album's tracklist length alongside the source's item count", () => {
+    const canonicalTracks = Array.from({ length: 103 }, (_, i) => `Track ${i + 1}`);
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: 'Andrés Calamaro',
+      albumTitle: 'El salmón',
+      canonicalTracks,
+      files: canonicalTracks.slice(0, 100).map((t, i) => ({
+        filename: `a\\${i}.flac`,
+        trackTitle: t,
+        username: 'peer',
+      })),
+    });
+
+    const job = listJobFeed(db).find((j) => j.id === id)!;
+    expect(job.progress.expected).toBe(100);
+    expect(job.progress.canonical).toBe(103);
+  });
+
+  /** Null, not 0 — a URL grab has no tracklist to be short of. */
+  it('reports null when the job carries no canonical tracklist', () => {
+    const id = createJob(db, { kind: 'url', method: 'ytdlp' });
+    const job = listJobFeed(db).find((j) => j.id === id)!;
+    expect(job.progress.canonical).toBeNull();
   });
 });
 

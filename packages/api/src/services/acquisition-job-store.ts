@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import type { AcquireAlbumDestination, TrackStatus } from '@nicotind/core';
+import type { AcquireAlbumDestination, AcquisitionJobView, TrackStatus } from '@nicotind/core';
 import { fold } from '@nicotind/core';
 import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { albumIdFor } from './library-scanner.js';
@@ -84,6 +84,23 @@ export function jobCanonicalTracklists(
     });
   }
   return out;
+}
+
+/**
+ * How many tracks the release *has*, from the tracklist resolved before the
+ * download started — the denominator `expected` (what the source itemized) is
+ * not (#745). Null rather than 0 when there is no tracklist: a URL grab is not
+ * "short of zero tracks". Parses defensively like `jobCanonicalTracklists` —
+ * malformed JSON is an absent count, never a throw in the feed read.
+ */
+export function canonicalTrackCount(json: string | null): number | null {
+  if (!json) return null;
+  try {
+    const titles: unknown = JSON.parse(json);
+    return Array.isArray(titles) && titles.length > 0 ? titles.length : null;
+  } catch {
+    return null;
+  }
 }
 
 export type AcquisitionJobKind =
@@ -874,7 +891,13 @@ export interface AcquisitionJobFeedItem {
   error: string | null;
   createdAt: number;
   updatedAt: number;
-  progress: { expected: number; delivered: number; unavailable: number; failed: number };
+  /**
+   * Borrowed from the core view the web actually reads, not restated: this
+   * shape was duplicated here, so widening one side left the other stale and
+   * only CI's `tsc --build` caught it (#745). Indexing makes that drift
+   * impossible. See `AcquisitionJobView['progress']` for what each tally means.
+   */
+  progress: AcquisitionJobView['progress'];
   /**
    * Dominant enqueue-time bitrate + codec across the job's items (mode wins;
    * ties broken by max kbps), upgraded post-scan via the items' matching
@@ -1132,6 +1155,7 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
         delivered,
         unavailable: counts.get('unavailable') ?? 0,
         failed: counts.get('failed') ?? 0,
+        canonical: canonicalTrackCount(row.canonical_tracks_json),
       },
       ...(quality ? { bitRate: quality.bitRate, audioFormat: quality.audioFormat } : {}),
       sources,
