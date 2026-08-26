@@ -69,14 +69,16 @@ applies it, then runs the handler; every write is audit-logged.
 | tool | access | fronts |
 | --- | --- | --- |
 | `search_library` | read | library artists/albums/songs by name, via the shared folded matcher |
+| `get_library_health` | read | `services/library-health.ts` `libraryHealth` — the curation-pass entry point |
 | `list_recent_songs` | read | recently-landed songs, newest first, paged, optional missing-genre filter |
 | `get_artist` | read | one artist + their albums |
-| `get_album_tracks` | read | an album's songs, with their genre |
+| `get_album_tracks` | read | one album: header (year/classification/cover status) + songs with genre, track/disc, suffix, bitrate |
 | `set_song_genre` | curate | `services/song-genre-mutate.ts` `mutateSongGenre` + `song.genre` audit |
 | `lookup_song_metadata` | read | `services/candidate-sources.ts` `gatherSongCandidates` + `services/title-clean.ts` `cleanDisplayTitle` |
 | `fix_song_metadata` | curate | `services/song-metadata-mutate.ts` `mutateSongMetadata` + `song.metadata` audit |
 | `flag_for_review` | curate | `services/curation-flags.ts` `createCurationFlag` + `curation.flag` audit |
 | `list_review_flags` | read | the open human-review queue, oldest first |
+| `resolve_review_flag` | curate | `services/curation-flags.ts` `resolveCurationFlag` + `curation.flag` audit |
 | `delete_song` | curate, **destructive** | `services/library-deletion.ts` `deleteOne` + `song.delete` audit |
 | `delete_album` | curate, **destructive** | `services/library-deletion.ts` `deleteAlbum` + `album.delete` audit |
 | `merge_artist` | curate, **destructive** | `services/artist-identity-mutate.ts` `mutateArtistIdentity` (merge mode, one or many raw names) + `artist.identity` audit |
@@ -215,6 +217,33 @@ This pairs with #679's `djSetArtistName`, which returns null precisely on the
 ambiguous `b2b` case — the sanitizer declines to guess, and this is where that
 case now goes instead of being lost.
 
+### `get_library_health` / `resolve_review_flag` (issue #734)
+
+Two real curator passes measured the same discovery failure: with only name-shaped
+reads, an agent finds problems *incidentally* — artists it happened to search for,
+songs that happened to be recent. There was no bulk "what needs fixing" view (the
+audit ran only via SSH), so a pass could neither plan nor prove progress.
+
+`get_library_health` wraps `libraryHealth` (`services/library-health.ts`, → see
+docs/library-audit.md "Library health report"): every curation dimension as a
+metric + bounded worst-first worklist + remediation hint. The intended loop is
+**snapshot → work the worklists → snapshot again**, so a pass records its own
+delta. The completeness dimension's `suspected` bucket is advisory-only — the
+tool description says so, and the agent rule stands: ambiguity goes to
+`flag_for_review`, never a guess.
+
+`resolve_review_flag` closes the loop `flag_for_review` opened: session 2 of the
+curator pass ended with four researched, answerable flags that *no agent could
+close* — resolution was web-UI-only, so agent-raised flags accumulated forever.
+It wraps the same `resolveCurationFlag` the HTTP route calls, audits as
+`curation.flag` with the decision note, and refuses to re-resolve (idempotence
+stays visible: "Flag not found or already resolved", no audit row).
+
+`get_album_tracks` also grew an album header (year, classification, hidden,
+`hasCanonicalCover` via the shared `missingAlbumArtSql`) and per-song
+track/disc/suffix/bitrate — read parity so an agent can *see* the states the
+upcoming album write tools will fix, without another tool.
+
 ### Destructive writes: the extraction that unblocked each one
 
 The delete path used to be inline in `routes/library.ts` (folder-first `rmSync`
@@ -324,6 +353,10 @@ music folder — confirm gate, scope gate, and the audited happy path —
 `lookup_song_metadata`'s read-only-token offline suggestion + unknown-song
 payload, `fix_song_metadata`'s audited tag-write/rescan happy path,
 failure-without-audit and read-only-token refusal,
+`get_library_health`'s read-token report + worklist bound,
+`resolve_review_flag`'s audited resolve / not-found-without-audit /
+read-only-token refusal, `get_album_tracks`' album header + per-song format
+fields and unknown-album shape,
 unknown-method JSON-RPC error, and `checkToolAccess` covering the scope +
 confirm gates with synthetic tools).
 `services/library-deletion.test.ts` covers `deleteOne`/`deleteAlbum` directly

@@ -778,6 +778,140 @@ describe('song metadata tools (issue #722)', () => {
   });
 });
 
+describe('library health & flag tools (issue #734)', () => {
+  const ctx = (scope: 'refiner:read' | 'refiner:curate'): McpToolContext => ({
+    db: testDb,
+    identity: { tokenId: 't', userId: 'u1', scope },
+    deletion: { musicDir, shareRescan: new ShareRescanScheduler(async () => {}) },
+    artistIdentity: { dataDir: undefined, runSync: undefined },
+    songGenre: { musicDir },
+    metadata: { musicDir },
+  });
+
+  it('tools/list includes get_library_health and resolve_review_flag', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+    const body = (await (await rpc(token, 'tools/list')).json()) as {
+      result: { tools: Array<{ name: string }> };
+    };
+    const names = body.result.tools.map((t) => t.name);
+    expect(names).toContain('get_library_health');
+    expect(names).toContain('resolve_review_flag');
+  });
+
+  it('get_library_health works on a read-only token and counts a coverless album', async () => {
+    testDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('art', 'Artist', 1, 1)`,
+    );
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, cover_art, song_count, classification, hidden, year, synced_at)
+       VALUES ('al', 'Album', 'Artist', 'art', 'al', 1, 'album', 0, 2000, 1)`,
+    );
+    seedSong('s1', 'One');
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:read' });
+    const body = (await (
+      await rpc(token, 'tools/call', { name: 'get_library_health', arguments: { sample: 5 } })
+    ).json()) as { result: { content: Array<{ text: string }>; isError?: boolean } };
+    expect(body.result.isError).toBeUndefined();
+    const parsed = JSON.parse(body.result.content[0]!.text) as {
+      totals: { albums: number };
+      dimensions: { albumCovers: { metric: { missing: number }; worklist: unknown[] } };
+    };
+    expect(parsed.totals.albums).toBe(1);
+    expect(parsed.dimensions.albumCovers.metric.missing).toBe(1);
+    expect(parsed.dimensions.albumCovers.worklist).toHaveLength(1);
+  });
+
+  it('resolve_review_flag resolves an open flag as the agent and audit-logs it', async () => {
+    const flagged = await dispatchTool(ctx('refiner:curate'), 'flag_for_review', {
+      targetKind: 'album',
+      targetId: 'al-x',
+      reason: 'which edition is canonical?',
+    });
+    const flagId = (JSON.parse(flagged.content[0]!.text) as { id: number }).id;
+    testDb.run('DELETE FROM audit_log');
+
+    const res = await dispatchTool(ctx('refiner:curate'), 'resolve_review_flag', {
+      flagId,
+      note: 'kept the 2001 pressing',
+    });
+    expect(JSON.parse(res.content[0]!.text)).toEqual({ ok: true, id: flagId });
+    const row = testDb
+      .query<{ resolved_at: number | null; resolved_by: string | null }, [number]>(
+        'SELECT resolved_at, resolved_by FROM curation_flags WHERE id = ?',
+      )
+      .get(flagId);
+    expect(row?.resolved_at).not.toBeNull();
+    expect(row?.resolved_by).toBe('agent:t');
+    const audit = testDb
+      .query<{ action: string; detail: string }, []>('SELECT action, detail FROM audit_log')
+      .all();
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({ action: 'curation.flag' });
+    expect(audit[0]?.detail).toContain('resolved: kept the 2001 pressing');
+    expect(audit[0]?.detail).toContain('(via MCP agent)');
+  });
+
+  it('resolve_review_flag reports unknown or already-resolved flags without auditing', async () => {
+    const res = await dispatchTool(ctx('refiner:curate'), 'resolve_review_flag', { flagId: 999 });
+    expect(JSON.parse(res.content[0]!.text)).toEqual({
+      error: 'Flag not found or already resolved',
+    });
+    expect(testDb.query('SELECT COUNT(*) AS n FROM audit_log').get()).toEqual({ n: 0 });
+  });
+
+  it('resolve_review_flag refuses a read-only token', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:read' });
+    const body = (await (
+      await rpc(token, 'tools/call', { name: 'resolve_review_flag', arguments: { flagId: 1 } })
+    ).json()) as { result: { content: Array<{ text: string }>; isError?: boolean } };
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0]!.text).toContain('read-only');
+  });
+
+  it('get_album_tracks reports the album header (classification, cover status) and per-song format', async () => {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, cover_art, song_count, classification, hidden, year, synced_at)
+       VALUES ('al', 'Album', 'Artist', 'art', 'al', 1, 'ep', 0, 1999, 1)`,
+    );
+    testDb.run(
+      `INSERT INTO library_artwork (id, kind, cover_url, updated_at) VALUES ('al', 'album', 'u', 1)`,
+    );
+    testDb.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, synced_at, landed_at, track, disc, suffix, bit_rate)
+       VALUES ('s1', 'al', 'One', 'Artist', 'art', 0, 'p/s1.opus', 1, '2024', 1, 1, 3, 1, 'opus', 192)`,
+    );
+    const res = await dispatchTool(ctx('refiner:read'), 'get_album_tracks', { id: 'al' });
+    const parsed = JSON.parse(res.content[0]!.text) as {
+      album: {
+        classification: string;
+        year: number;
+        hasCanonicalCover: boolean;
+        songCount: number;
+      } | null;
+      songs: Array<{
+        track: number | null;
+        disc: number | null;
+        suffix: string;
+        bitRateKbps: number;
+      }>;
+    };
+    expect(parsed.album).toMatchObject({
+      classification: 'ep',
+      year: 1999,
+      hasCanonicalCover: true,
+      songCount: 1,
+    });
+    expect(parsed.songs[0]).toMatchObject({ track: 3, disc: 1, suffix: 'opus', bitRateKbps: 192 });
+  });
+
+  it('get_album_tracks returns album: null for an unknown album', async () => {
+    const res = await dispatchTool(ctx('refiner:read'), 'get_album_tracks', { id: 'nope' });
+    const parsed = JSON.parse(res.content[0]!.text) as { album: unknown; songs: unknown[] };
+    expect(parsed.album).toBeNull();
+    expect(parsed.songs).toEqual([]);
+  });
+});
+
 describe('dispatchTool guards', () => {
   const ctx = (scope: 'refiner:read' | 'refiner:curate'): McpToolContext => ({
     db: testDb,
