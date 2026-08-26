@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.14](https://github.com/kevinch3/NicotinD/compare/v0.5.13...v0.5.14) (2026-08-26)
+
+### Features
+
+* **mcp:** curator tools to look up and fix song metadata (YouTube pollution) ([#728](https://github.com/kevinch3/NicotinD/issues/728)) ([095ad41](https://github.com/kevinch3/NicotinD/commit/095ad4197c38a7e582da4a5a49ae90712a79cab9)), closes [#722](https://github.com/kevinch3/NicotinD/issues/722), references [#722](https://github.com/kevinch3/NicotinD/issues/722) [#722](https://github.com/kevinch3/NicotinD/issues/722) [#722](https://github.com/kevinch3/NicotinD/issues/722) [#722](https://github.com/kevinch3/NicotinD/issues/722) [#722](https://github.com/kevinch3/NicotinD/issues/722)
 ## [0.5.13](https://github.com/kevinch3/NicotinD/compare/v0.5.12...v0.5.13) (2026-08-26)
 
 ### Bug Fixes
