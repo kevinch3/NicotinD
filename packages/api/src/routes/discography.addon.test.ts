@@ -43,6 +43,8 @@ function harness(clientOver: Partial<AddonClient> = {}) {
   const db = new Database(':memory:');
   applySchema(db);
   const jobRequests: unknown[] = [];
+  /** Idempotency keys the route sent, positionally aligned with `jobRequests`. */
+  const jobKeys: Array<string | undefined> = [];
   const client = {
     baseUrl: 'http://addon:9999',
     albumsSearch: mock(async () => ({
@@ -50,8 +52,9 @@ function harness(clientOver: Partial<AddonClient> = {}) {
       queries: ['q1'],
       skewNeeded: true,
     })),
-    createJob: mock(async (req: unknown) => {
+    createJob: mock(async (req: unknown, idempotencyKey?: string) => {
       jobRequests.push(req);
+      jobKeys.push(idempotencyKey);
       return {
         id: 'aj-1',
         intent: 'album',
@@ -99,7 +102,7 @@ function harness(clientOver: Partial<AddonClient> = {}) {
       getAddon: () => addon,
     }),
   );
-  return { app, db, jobRequests };
+  return { app, db, jobRequests, jobKeys };
 }
 
 const jsonPost = (body: unknown) => ({
@@ -217,6 +220,55 @@ describe('discography routes through a remote addon', () => {
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain('peer');
     expect(body.error).toContain('slskd rejected the enqueue');
+  });
+
+  /**
+   * #748. Pressing Get twice could mint two live jobs for one album: the
+   * `album_jobs` 409 guard is dead code (nothing has written that table since
+   * the addon cutover — prod holds 490 rows, all terminal, newest 2026-08-11),
+   * and the interactive lane sent no `Idempotency-Key` while auto-acquire did.
+   */
+  describe('one album, one download (#748)', () => {
+    const pick = {
+      selected: {
+        username: 'peer',
+        directory: 'd',
+        files: [{ filename: 'f', size: 1 }],
+        candidateRef: 'ref-1',
+      },
+    };
+
+    it('sends an idempotency key so a double press is one job addon-side', async () => {
+      const res = await h.app.request('/albums/42/hunt-download', jsonPost(pick));
+      expect(res.status).toBe(201);
+      expect(h.jobKeys[0]).toBe('acquire:42');
+    });
+
+    /** `replace` is the user saying "yes, start another" — reusing the key would defeat it. */
+    it('omits the key when the caller explicitly asked to replace', async () => {
+      const res = await h.app.request('/albums/42/hunt-download?replace=true', jsonPost(pick));
+      expect(res.status).toBe(201);
+      expect(h.jobKeys[0]).toBeUndefined();
+    });
+
+    /**
+     * `supersedeActiveJobs` was gated behind the same dead `album_jobs` lookup,
+     * so `replace=true` superseded nothing and simply added a second live card.
+     */
+    it('replace supersedes the album’s live job instead of stacking one', async () => {
+      h.db.run(
+        `INSERT INTO acquisition_jobs (id, kind, method, state, stage, lidarr_album_id, created_at, updated_at)
+         VALUES ('old-1', 'album-hunt', 'fixture-addon', 'active', 'downloading', 42, 1, 1)`,
+      );
+
+      const res = await h.app.request('/albums/42/hunt-download?replace=true', jsonPost(pick));
+      expect(res.status).toBe(201);
+
+      const old = h.db
+        .query<{ state: string }, []>(`SELECT state FROM acquisition_jobs WHERE id = 'old-1'`)
+        .get()!;
+      expect(old.state).toBe('superseded');
+    });
   });
 
   it('hunt-tracks runs addon-side and keeps the TrackHuntResult shape', async () => {
