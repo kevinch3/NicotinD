@@ -660,6 +660,124 @@ describe('MCP endpoint (issue #232)', () => {
   });
 });
 
+describe('song metadata tools (issue #722)', () => {
+  const seedPolluted = () => {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, cover_art, song_count, duration, year, synced_at)
+       VALUES ('al-yt', 'Pegao (Official Video)', 'Wisin & Yandel', 'art-wy', 'al-yt', 1, 228, NULL, 0)`,
+    );
+    seedSong('s-yt', 'Pegao (Official Video)', 'p/s-yt.opus', 'al-yt');
+  };
+  const metadataCtx = (
+    scope: 'refiner:read' | 'refiner:curate',
+    metadata: McpToolContext['metadata'],
+  ): McpToolContext => ({
+    db: testDb,
+    identity: { tokenId: 't', userId: 'u1', scope },
+    deletion: { musicDir, shareRescan: new ShareRescanScheduler(async () => {}) },
+    artistIdentity: { dataDir: undefined, runSync: undefined },
+    songGenre: { musicDir },
+    metadata,
+  });
+
+  it('tools/list includes lookup_song_metadata and fix_song_metadata', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+    const body = (await (await rpc(token, 'tools/list')).json()) as {
+      result: { tools: Array<{ name: string }> };
+    };
+    const names = body.result.tools.map((t) => t.name);
+    expect(names).toContain('lookup_song_metadata');
+    expect(names).toContain('fix_song_metadata');
+  });
+
+  it('lookup_song_metadata works on a read-only token and suggests the cleaned title offline', async () => {
+    seedPolluted();
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:read' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'lookup_song_metadata',
+        arguments: { songId: 's-yt' },
+      })
+    ).json()) as { result: { content: Array<{ text: string }>; isError?: boolean } };
+    expect(body.result.isError).toBeUndefined();
+    const parsed = JSON.parse(body.result.content[0]!.text) as {
+      song: { title: string };
+      suggested: { title: string; album: string | null } | null;
+      sources: Array<{ id: string; ok: boolean }>;
+    };
+    expect(parsed.song.title).toBe('Pegao (Official Video)');
+    expect(parsed.suggested).toMatchObject({ title: 'Pegao', album: 'Pegao' });
+  });
+
+  it('lookup_song_metadata reports an unknown song as an error payload', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:read' });
+    const body = (await (
+      await rpc(token, 'tools/call', { name: 'lookup_song_metadata', arguments: { songId: 'x' } })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    expect(JSON.parse(body.result.content[0]!.text)).toEqual({ error: 'Song not found' });
+  });
+
+  it('fix_song_metadata writes tags, rescans, and audit-logs as the agent', async () => {
+    seedPolluted();
+    mkdirSync(join(musicDir, 'p'), { recursive: true });
+    writeFileSync(join(musicDir, 'p/s-yt.opus'), 'x');
+    const written: Array<Record<string, unknown>> = [];
+    const rescanned: string[][] = [];
+    const ctx = metadataCtx('refiner:curate', {
+      musicDir,
+      writeTags: async (_abs, tags) => {
+        written.push(tags as Record<string, unknown>);
+        return true;
+      },
+      scanIncremental: async (paths) => {
+        rescanned.push(paths);
+      },
+    });
+    const res = await dispatchTool(ctx, 'fix_song_metadata', {
+      songId: 's-yt',
+      title: 'Pegao',
+      album: 'Los Extraterrestres',
+    });
+    expect(res.isError).toBeUndefined();
+    const parsed = JSON.parse(res.content[0]!.text) as { ok: boolean; rescanned: boolean };
+    expect(parsed).toMatchObject({ ok: true, rescanned: true });
+    expect(written[0]).toEqual({ title: 'Pegao', album: 'Los Extraterrestres' });
+    expect(rescanned[0]).toEqual(['p/s-yt.opus']);
+    const audit = testDb
+      .query<{ action: string; target_id: string; detail: string }, []>(
+        'SELECT action, target_id, detail FROM audit_log',
+      )
+      .all();
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({ action: 'song.metadata', target_id: 's-yt' });
+    expect(audit[0]?.detail).toContain('(via MCP agent)');
+    expect(audit[0]?.detail).toContain('Pegao (Official Video)');
+  });
+
+  it('fix_song_metadata surfaces mutation failures without auditing', async () => {
+    const ctx = metadataCtx('refiner:curate', { musicDir });
+    const unknown = await dispatchTool(ctx, 'fix_song_metadata', { songId: 'x', title: 'T' });
+    expect(JSON.parse(unknown.content[0]!.text)).toEqual({ error: 'Song not found' });
+    seedPolluted();
+    const empty = await dispatchTool(ctx, 'fix_song_metadata', { songId: 's-yt' });
+    expect(JSON.parse(empty.content[0]!.text)).toEqual({ error: 'No applicable fields' });
+    expect(testDb.query('SELECT COUNT(*) AS n FROM audit_log').get()).toEqual({ n: 0 });
+  });
+
+  it('fix_song_metadata refuses a read-only token', async () => {
+    seedPolluted();
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:read' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'fix_song_metadata',
+        arguments: { songId: 's-yt', title: 'Pegao' },
+      })
+    ).json()) as { result: { content: Array<{ text: string }>; isError?: boolean } };
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0]!.text).toContain('read-only');
+  });
+});
+
 describe('dispatchTool guards', () => {
   const ctx = (scope: 'refiner:read' | 'refiner:curate'): McpToolContext => ({
     db: testDb,
@@ -667,6 +785,7 @@ describe('dispatchTool guards', () => {
     deletion: { musicDir, shareRescan: new ShareRescanScheduler(async () => {}) },
     artistIdentity: { dataDir: undefined, runSync: undefined },
     songGenre: { musicDir },
+    metadata: { musicDir },
   });
 
   it('an unknown tool returns an error result, not a throw', async () => {

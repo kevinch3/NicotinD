@@ -413,10 +413,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   a printed fallback code; `parseApproveCode` and core `pairing-code.ts` `isPairingCodeShape` keep the
   minter and validator from drifting; `paired_devices` rows are revocable at refresh. Tailscale Funnel
   publishes the loopback backend. → [device-pairing.md](docs/device-pairing.md)
-- **MCP agent access**: an external agent curates via `/api/mcp`, authorized by a scoped revocable
-  `agent_tokens` bearer capped at refiner (`AGENT_EFFECTIVE_ROLE`), only the hash stored.
-  `checkToolAccess` gates curate scope and destructive confirm; `dispatchTool` audits every write.
-  `library-deletion.ts`, `artist-identity-mutate.ts` and `song-genre-mutate.ts` back HTTP and MCP.
+- **MCP agent access**: an external agent curates via `/api/mcp`, a scoped revocable
+  `agent_tokens` bearer capped at refiner (`AGENT_EFFECTIVE_ROLE`). `checkToolAccess` gates curate
+  scope and destructive confirm; `dispatchTool` audits every write. `library-deletion.ts`,
+  `artist-identity-mutate.ts`, `song-genre-mutate.ts` and `song-metadata-mutate.ts` back HTTP and
+  MCP; `gatherSongCandidates` + `cleanDisplayTitle` power online lookup.
   → [mcp-agent.md](docs/mcp-agent.md)
 - **WebMCP alignment (proposed — not yet implemented)**: `MCP_TOOLS` is already the shape Chrome's
   WebMCP registration takes; the plan promotes host exposure to a declared field and adds a flagged

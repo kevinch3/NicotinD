@@ -17,6 +17,15 @@ import {
 } from '../services/curation-flags.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import { tokenize, matchesAllTokens, rankBy } from '../services/search-tokens.js';
+import { gatherSongCandidates } from '../services/candidate-sources.js';
+import {
+  mutateSongMetadata,
+  type SongMetadataMutateBody,
+} from '../services/song-metadata-mutate.js';
+import type { FixLidarr } from '../services/metadata-fix.js';
+import type { MusicBrainzClient } from '../services/musicbrainz-client.js';
+import type { PluginRegistry } from '../services/plugins/registry.js';
+import type { writeAudioTags } from '../services/audio-tags.js';
 
 /**
  * MCP server for external LLM/agents (issue #232), served **inside the Hono app**
@@ -54,6 +63,17 @@ export interface McpToolContext {
   artistIdentity: { dataDir?: string; runSync?: () => Promise<void> };
   /** Song-genre dependencies (issue #677) — musicDir for the file-tag mirror. */
   songGenre: { musicDir?: string };
+  /** Song-metadata dependencies (issue #722) — the online lookup clients (each
+   *  optional: an absent one just omits that source) plus the retag/rescan
+   *  pair the fix tool shares with `PATCH /songs/:id/metadata`. */
+  metadata: {
+    lidarr?: FixLidarr | null;
+    mb?: MusicBrainzClient | null;
+    plugins?: PluginRegistry | null;
+    musicDir?: string;
+    scanIncremental?: (relPaths: string[]) => Promise<void>;
+    writeTags?: typeof writeAudioTags;
+  };
 }
 
 export interface McpTool {
@@ -271,6 +291,98 @@ export const MCP_TOOLS: McpTool[] = [
         },
       );
       return JSON.stringify({ ok: true, genres: result.genres });
+    },
+  },
+  {
+    name: 'lookup_song_metadata',
+    description:
+      "Look up a song's canonical metadata online: ranked real-album candidates from every " +
+      'available source (Lidarr, MusicBrainz recording search, Discogs, the file’s own tags, ' +
+      'and an AcoustID fingerprint when configured), plus an offline `suggested` cleanup of ' +
+      'YouTube junk like "(Official Video)". This is the surface’s first outbound-network tool: ' +
+      'it can take a few seconds; every source is timeout-bounded and a down source degrades to ' +
+      '`ok:false` in `sources` instead of failing the call. Use `fix_song_metadata` to apply a choice.',
+    access: 'read',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        songId: { type: 'string' },
+        query: {
+          type: 'string',
+          description:
+            'Override the default "<artist> <cleaned title>" search text when the stored tags are unusable.',
+        },
+        fingerprint: {
+          type: 'boolean',
+          description:
+            'AcoustID fingerprint the file too (default true; the strongest signal for a YouTube rip). Pass false for a faster tag-only lookup.',
+        },
+      },
+      required: ['songId'],
+    },
+    handler: async ({ db, metadata }, args) => {
+      const result = await gatherSongCandidates(
+        { db, ...metadata },
+        str(args.songId),
+        args.query === undefined ? undefined : str(args.query),
+        { fingerprint: args.fingerprint !== false },
+      );
+      if (!result) return JSON.stringify({ error: 'Song not found' });
+      return JSON.stringify(result, null, 2);
+    },
+  },
+  {
+    name: 'fix_song_metadata',
+    description:
+      "Fix a song's own metadata (title, artist, albumArtist, album, year) — the apply half of " +
+      '`lookup_song_metadata`. Retags the file in place and rescans it; NEVER moves or renames the ' +
+      'file, so playlists, likes and history keep pointing at the song. Fixing `album` (or just the ' +
+      'title) on a loose YouTube single dissolves its fake single-track album into the real one. ' +
+      'Empty values are ignored, never written — a tag can be replaced but not cleared. Audit-logged.',
+    access: 'curate',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        songId: { type: 'string' },
+        title: { type: 'string' },
+        artist: { type: 'string' },
+        albumArtist: { type: 'string' },
+        album: { type: 'string' },
+        year: { type: 'number' },
+      },
+      required: ['songId'],
+    },
+    handler: async ({ db, identity, metadata }, args) => {
+      const songId = str(args.songId);
+      const body: SongMetadataMutateBody = {
+        title: args.title === undefined ? undefined : str(args.title),
+        artist: args.artist === undefined ? undefined : str(args.artist),
+        albumArtist: args.albumArtist === undefined ? undefined : str(args.albumArtist),
+        album: args.album === undefined ? undefined : str(args.album),
+        year: typeof args.year === 'number' ? args.year : undefined,
+      };
+      const result = await mutateSongMetadata(db, metadata, songId, body);
+      if (!result.ok) return JSON.stringify({ error: result.error });
+      const changes = (['title', 'artist', 'albumArtist', 'album', 'year'] as const)
+        .filter((k) => result.applied[k] !== undefined)
+        .map((k) => {
+          const before = k in result.old ? result.old[k as keyof typeof result.old] : undefined;
+          return before !== undefined
+            ? `${k}: "${before}" → "${result.applied[k]}"`
+            : `${k}: "${result.applied[k]}"`;
+        })
+        .join('; ');
+      recordAudit(
+        db,
+        { sub: identity.userId, username: `agent:${identity.tokenId}` },
+        'song.metadata',
+        {
+          targetKind: 'song',
+          targetId: songId,
+          detail: `${changes} (via MCP agent)`,
+        },
+      );
+      return JSON.stringify({ ok: true, applied: result.applied, rescanned: result.rescanned });
     },
   },
   {
@@ -554,6 +666,7 @@ export function mcpRoutes(
   notifyLibraryChanged?: () => Promise<void>,
   dataDir?: string,
   runSync?: () => Promise<void>,
+  metadata?: Omit<McpToolContext['metadata'], 'musicDir'>,
 ) {
   const app = new Hono();
   // Debounced the same way the HTTP delete routes are (share-rescan-scheduler.ts):
@@ -610,6 +723,7 @@ export function mcpRoutes(
             deletion: { musicDir, shareRescan },
             artistIdentity: { dataDir, runSync },
             songGenre: { musicDir },
+            metadata: { ...metadata, musicDir },
           },
           name,
           args,
