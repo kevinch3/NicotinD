@@ -83,6 +83,17 @@ export function setArtwork(
   }
 }
 
+/**
+ * SQL predicate: the album has no canonical `kind='album'` artwork row — the
+ * set `backfillArtwork` acts on, shared by every "album lacks a cover" reader so
+ * the reported number is by construction what a fill would fix (issue #732: a
+ * local restatement checked `library_albums.cover_art`, which the scanner always
+ * fills with the album id, and structurally never fired).
+ */
+export function missingAlbumArtSql(alias = 'library_albums'): string {
+  return `NOT EXISTS (SELECT 1 FROM library_artwork w WHERE w.id = ${alias}.id AND w.kind = 'album')`;
+}
+
 /** Cache filename for a resolved canonical artwork key. */
 export function canonicalCacheKey(key: string): string {
   return CANONICAL_PREFIX + key;

@@ -2,7 +2,7 @@ import type { Database } from 'bun:sqlite';
 import type { Lidarr, LidarrAlbum } from '@nicotind/lidarr-client';
 import { createLogger } from '@nicotind/core';
 import { normalizeForGrouping } from './album-grouping.js';
-import { setArtwork, pickAlbumCover } from './artwork-store.js';
+import { setArtwork, pickAlbumCover, missingAlbumArtSql } from './artwork-store.js';
 import { setReleaseType, mapLidarrAlbumType } from './release-meta-store.js';
 import { looksLikeNonAlbum, normalizeName, isPlaceholderArtist } from './artwork-backfill.js';
 import { clearCoverNegativeCache } from '../routes/streaming.js';
@@ -288,9 +288,7 @@ export async function optimizeAllAlbums(
   // cover, so it would never be selected as a candidate.
   const scope = onlyMissingOrPoor
     ? `(year IS NULL
-         OR NOT EXISTS (
-           SELECT 1 FROM library_artwork w WHERE w.id = library_albums.id AND w.kind = 'album'
-         )
+         OR ${missingAlbumArtSql()}
          OR EXISTS (
            SELECT 1 FROM library_songs s WHERE s.album_id = library_albums.id AND s.track IS NULL
          ))`

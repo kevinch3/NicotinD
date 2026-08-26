@@ -2,7 +2,12 @@ import type { Database } from 'bun:sqlite';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import { createLogger } from '@nicotind/core';
 import { normalizeForGrouping } from './album-grouping.js';
-import { setArtwork, pickAlbumCover, pickArtistImage } from './artwork-store.js';
+import {
+  setArtwork,
+  pickAlbumCover,
+  pickArtistImage,
+  missingAlbumArtSql,
+} from './artwork-store.js';
 import { findLidarrArtist, indexLidarrArtists, normalizeName } from './artist-image.js';
 
 // Re-exported so existing importers (metadata-optimize) keep their path; the
@@ -223,7 +228,7 @@ export async function backfillArtwork(
       .query<AlbumLookupRow, [number]>(
         `SELECT id, name, artist, artist_id FROM library_albums
          WHERE song_count >= ?
-           AND NOT EXISTS (SELECT 1 FROM library_artwork w WHERE w.id = library_albums.id AND w.kind = 'album')`,
+           AND ${missingAlbumArtSql()}`,
       )
       .all(opts.albumLookupMinTracks);
 

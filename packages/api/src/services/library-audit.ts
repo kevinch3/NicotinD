@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { isUnknownLike } from './audio-tags.js';
 import { isPlaceholderArtistStrict } from './artwork-backfill.js';
+import { missingAlbumArtSql } from './artwork-store.js';
 import { normalizeForGrouping } from './album-grouping.js';
 import {
   looksLikeSourceWatermark,
@@ -304,6 +305,14 @@ export function checkMisSplitAlbums(db: Database): AuditFinding[] {
 /** Visible albums missing a usable year, artwork, or stuck at 'unknown'. */
 export function checkRenderGaps(db: Database): AuditFinding[] {
   const out: AuditFinding[] = [];
+  // "No artwork" = no canonical row (issue #732). `cover_art` is NOT art — the
+  // scanner fills it with the album id unconditionally.
+  const missingArt = new Set(
+    db
+      .query<{ id: string }, []>(`SELECT id FROM library_albums WHERE ${missingAlbumArtSql()}`)
+      .all()
+      .map((r) => r.id),
+  );
   for (const al of loadAlbums(db)) {
     if (al.hidden) continue;
     if (al.year == null || al.year <= 1) {
@@ -314,11 +323,7 @@ export function checkRenderGaps(db: Database): AuditFinding[] {
         message: `Album "${al.name}" (${al.artist}) has no year`,
       });
     }
-    const hasArtwork =
-      db
-        .query<{ c: number }, [string]>('SELECT COUNT(*) c FROM library_artwork WHERE id = ?')
-        .get(al.id)?.c ?? 0;
-    if (!hasArtwork && !al.cover_art) {
+    if (missingArt.has(al.id)) {
       out.push({
         rule: 'missing_artwork',
         severity: 'medium',
