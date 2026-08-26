@@ -1,7 +1,15 @@
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, statSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  existsSync,
+  statSync,
+  utimesSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { streamingRoutes } from './streaming.js';
@@ -306,6 +314,87 @@ describe('streaming routes — range parsing (RFC 9110)', () => {
     expect(res.status).toBe(206);
     expect(res.headers.get('content-range')).toBe('bytes 6-9/10');
     expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual([7, 8, 9, 10]);
+  });
+});
+
+describe('streaming routes — validators + If-Range (mixed-version range splice)', () => {
+  // A library file can be rewritten while a browser is mid-playback (tag
+  // write, in-place transcode landing). Without a validator the media loader
+  // splices ranges of the old and new bytes into one corrupt buffer — a
+  // stream that decodes for its first buffered seconds and then dies with no
+  // error (captured in a HAR as two consecutive 206es for one track
+  // reporting different total sizes). The ETag/Last-Modified + If-Range
+  // contract turns that into a clean full-file reload instead.
+
+  it('stamps a strong ETag and Last-Modified on full and range responses', async () => {
+    const full = await app.request('/stream/song-1');
+    expect(full.headers.get('etag')).toMatch(/^"[0-9a-f]+-[0-9a-f]+"$/);
+    expect(full.headers.get('last-modified')).toBeTruthy();
+
+    const partial = await app.request('/stream/song-1', { headers: { range: 'bytes=2-5' } });
+    expect(partial.status).toBe(206);
+    expect(partial.headers.get('etag')).toBe(full.headers.get('etag'));
+    expect(partial.headers.get('last-modified')).toBe(full.headers.get('last-modified'));
+  });
+
+  it('honours the Range when If-Range carries the current ETag', async () => {
+    const full = await app.request('/stream/song-1');
+    const res = await app.request('/stream/song-1', {
+      headers: { range: 'bytes=2-5', 'if-range': full.headers.get('etag')! },
+    });
+    expect(res.status).toBe(206);
+    expect(res.headers.get('content-range')).toBe('bytes 2-5/10');
+  });
+
+  it('honours the Range when If-Range carries the current Last-Modified date', async () => {
+    const full = await app.request('/stream/song-1');
+    const res = await app.request('/stream/song-1', {
+      headers: { range: 'bytes=2-5', 'if-range': full.headers.get('last-modified')! },
+    });
+    expect(res.status).toBe(206);
+    expect(res.headers.get('content-range')).toBe('bytes 2-5/10');
+  });
+
+  it('ignores the Range and serves the full current file when the file changed', async () => {
+    // The HAR scenario: the client asks for more bytes of the version it
+    // started buffering, but the file on disk is a different version now.
+    mkdirSync(join(musicDir, 'Mut'), { recursive: true });
+    const p = join(musicDir, 'Mut', 'song.mp3');
+    writeFileSync(p, AUDIO_BYTES);
+    seedSong('song-mut', 'Mut/song.mp3');
+
+    const v1 = await app.request('/stream/song-mut');
+    const v1Etag = v1.headers.get('etag')!;
+
+    // Rewrite the file (different size and a clearly different mtime).
+    const grown = new Uint8Array([9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9]);
+    writeFileSync(p, grown);
+    utimesSync(p, new Date(), new Date(Date.now() + 5_000));
+
+    const res = await app.request('/stream/song-mut', {
+      headers: { range: 'bytes=6-', 'if-range': v1Etag },
+    });
+    // Not a 206 of spliced-version bytes: the whole new representation.
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-range')).toBeNull();
+    expect(res.headers.get('etag')).not.toBe(v1Etag);
+    expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual(Array.from(grown));
+  });
+
+  it('never honours a weak If-Range validator', async () => {
+    const full = await app.request('/stream/song-1');
+    const res = await app.request('/stream/song-1', {
+      headers: { range: 'bytes=2-5', 'if-range': `W/${full.headers.get('etag')}` },
+    });
+    expect(res.status).toBe(200);
+    expect(new Uint8Array(await res.arrayBuffer()).length).toBe(10);
+  });
+
+  it('serves the full file for an unparseable If-Range value', async () => {
+    const res = await app.request('/stream/song-1', {
+      headers: { range: 'bytes=2-5', 'if-range': 'not-a-date' },
+    });
+    expect(res.status).toBe(200);
   });
 });
 
