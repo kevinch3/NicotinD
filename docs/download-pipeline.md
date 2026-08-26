@@ -454,7 +454,7 @@ Three rules make it hold:
   addon's own text, `done`/`partial` with zero items reports "No downloadable audio was found at
   this link."
 - `failOrphanedJob` writes `error = COALESCE(error, …)`. Releasing a terminal job is exactly what
-  makes the later `getJob` 404, so without this the generic "it likely restarted mid-download" guess
+  makes the later `getJob` 404, so without this the generic "stopped reporting this job" line
   would overwrite the accurate reason on every job that fails this way. The mirror is correspondingly
   **two-way** — an active job's error tracks the addon's current one, *including being cleared* —
   because a one-way write would let a transient note ("retrying: 429") outlive its condition and then
@@ -624,9 +624,34 @@ distorts.
 back to `allItemsFailedMessage` (mirroring `emptyOutcomeMessage`'s voice for the item-less
 case) whenever the recomputed stage is `error` and the addon gave no reason.
 
+### A released job is not an orphaned one (#744)
+
+`maybeReleaseAddonJob` deletes the addon-side job once every file is fetched and stamps
+`released:<jobId>` in `plugin_kv`. Releasing is precisely what makes `getJob` 404 — so
+`reconcileOrphanedJobs` was reading **its own cleanup** as evidence the addon had lost the job, and
+failing a healthy row. The marker existed from the start and was written-but-never-read;
+`wasReleasedByUs` is the read, and a released job is skipped so `recomputeStage` keeps ownership
+(the 24h idle valve remains the backstop for one that genuinely stalls).
+
+The core row is still `active` at release time more often than it looks: items are `organized` but
+not yet `scanned`, and under `holdForReview` the row waits on a curator for as long as the human
+takes — which widens the window from seconds to hours. Measured on prod 2026-08-26: a 5-CD, 103-track
+album whose 98 files had all landed *and scanned* was shown as `Error · 98 of 100 · 2 unavailable`,
+blaming a restart of an addon that had `RestartCount=0` and seven days of uptime.
+
+Two supporting rules came out of the same incident:
+
+- **`failOrphanedJob` states what it observed, not why.** The poller cannot tell a restart from a
+  crash, a janitor sweep, or an addon that never stored the job, so it no longer names a cause it did
+  not witness.
+- **Its item sweep is an allowlist (`state = 'downloading'`), not `NOT IN ('scanned','organized')`.**
+  `completed` and `organized` mean the file is on disk; relabelling those `unavailable` reported
+  missing tracks we were in fact holding — the phantom "2 unavailable" above. An allowlist also forces
+  a new item state to be considered deliberately rather than swept by default.
+
 ### A promoted job drops a stale reason
 
-`failOrphanedJob` writes `failed/error` plus "the addon no longer has this job", then a later
+`failOrphanedJob` writes `failed/error` plus its generic reason, then a later
 scan promotes the row back to `done` — leaving a success card carrying a failure message.
 `recomputeStage` now clears `error` when a job closes `done` with **no** failed or
 unavailable items. The rule is stated as "fully delivered", not "is the orphan message", so
