@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.19](https://github.com/kevinch3/NicotinD/compare/v0.5.18...v0.5.19) (2026-08-26)
+
+### Features
+
+* **api:** MCP complete_album — curator-approved only-missing-tracks hunt ([#742](https://github.com/kevinch3/NicotinD/issues/742)) ([6bd385e](https://github.com/kevinch3/NicotinD/commit/6bd385eadf534ee7b30c14f60e6d09fb4d565161)), closes [#732](https://github.com/kevinch3/NicotinD/issues/732) [#733](https://github.com/kevinch3/NicotinD/issues/733) [#735](https://github.com/kevinch3/NicotinD/issues/735), references [#732](https://github.com/kevinch3/NicotinD/issues/732) [#734](https://github.com/kevinch3/NicotinD/issues/734) [#734](https://github.com/kevinch3/NicotinD/issues/734) [#735](https://github.com/kevinch3/NicotinD/issues/735)
 ## [0.5.18](https://github.com/kevinch3/NicotinD/compare/v0.5.17...v0.5.18) (2026-08-26)
 
 ### Features
