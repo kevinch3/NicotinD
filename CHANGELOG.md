@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.18](https://github.com/kevinch3/NicotinD/compare/v0.5.17...v0.5.18) (2026-08-26)
+
+### Features
+
+* **api:** MCP album curation writes + album-route audit trail ([#741](https://github.com/kevinch3/NicotinD/issues/741)) ([373d3f0](https://github.com/kevinch3/NicotinD/commit/373d3f0ab3d8047bd837e65123197dbf3d5a864f)), closes [#732](https://github.com/kevinch3/NicotinD/issues/732) [#733](https://github.com/kevinch3/NicotinD/issues/733), references [#732](https://github.com/kevinch3/NicotinD/issues/732) [#734](https://github.com/kevinch3/NicotinD/issues/734) [#734](https://github.com/kevinch3/NicotinD/issues/734) [#735](https://github.com/kevinch3/NicotinD/issues/735)
+## [0.5.17](https://github.com/kevinch3/NicotinD/compare/v0.5.16...v0.5.17) (2026-08-26)
+
+### Features
+
+* **api:** MCP get_library_health + resolve_review_flag ([#751](https://github.com/kevinch3/NicotinD/issues/751)) ([3557e4e](https://github.com/kevinch3/NicotinD/commit/3557e4eee797d1e499648dba22d3b800e348fab5)), closes [#732](https://github.com/kevinch3/NicotinD/issues/732), references [#732](https://github.com/kevinch3/NicotinD/issues/732) [#734](https://github.com/kevinch3/NicotinD/issues/734) [#734](https://github.com/kevinch3/NicotinD/issues/734)
+## [0.5.16](https://github.com/kevinch3/NicotinD/compare/v0.5.15...v0.5.16) (2026-08-26)
+
+### Features
+
+* **api:** library health report ([#739](https://github.com/kevinch3/NicotinD/issues/739)) ([f87ed8c](https://github.com/kevinch3/NicotinD/commit/f87ed8c233c59749b0441b390cafbc5dda3ec290)), closes [#732](https://github.com/kevinch3/NicotinD/issues/732), references [#732](https://github.com/kevinch3/NicotinD/issues/732) [#734](https://github.com/kevinch3/NicotinD/issues/734)
+
+### Bug Fixes
+
+* **web:** arm the pull-to-refresh touch blocker before the browser can claim the pan ([#731](https://github.com/kevinch3/NicotinD/issues/731)) ([#738](https://github.com/kevinch3/NicotinD/issues/738)) ([0246ad8](https://github.com/kevinch3/NicotinD/commit/0246ad83e848e71a79eab66178cec1876a4bbfc8))
 ## [0.5.15](https://github.com/kevinch3/NicotinD/compare/v0.5.14...v0.5.15) (2026-08-26)
 
 ### Bug Fixes

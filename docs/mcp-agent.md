@@ -222,6 +222,33 @@ This pairs with #679's `djSetArtistName`, which returns null precisely on the
 ambiguous `b2b` case — the sanitizer declines to guess, and this is where that
 case now goes instead of being lost.
 
+### `get_library_health` / `resolve_review_flag` (issue #734)
+
+Two real curator passes measured the same discovery failure: with only name-shaped
+reads, an agent finds problems *incidentally* — artists it happened to search for,
+songs that happened to be recent. There was no bulk "what needs fixing" view (the
+audit ran only via SSH), so a pass could neither plan nor prove progress.
+
+`get_library_health` wraps `libraryHealth` (`services/library-health.ts`, → see
+docs/library-audit.md "Library health report"): every curation dimension as a
+metric + bounded worst-first worklist + remediation hint. The intended loop is
+**snapshot → work the worklists → snapshot again**, so a pass records its own
+delta. The completeness dimension's `suspected` bucket is advisory-only — the
+tool description says so, and the agent rule stands: ambiguity goes to
+`flag_for_review`, never a guess.
+
+`resolve_review_flag` closes the loop `flag_for_review` opened: session 2 of the
+curator pass ended with four researched, answerable flags that *no agent could
+close* — resolution was web-UI-only, so agent-raised flags accumulated forever.
+It wraps the same `resolveCurationFlag` the HTTP route calls, audits as
+`curation.flag` with the decision note, and refuses to re-resolve (idempotence
+stays visible: "Flag not found or already resolved", no audit row).
+
+`get_album_tracks` also grew an album header (year, classification, hidden,
+`hasCanonicalCover` via the shared `missingAlbumArtSql`) and per-song
+track/disc/suffix/bitrate — read parity so an agent can *see* the states the
+upcoming album write tools will fix, without another tool.
+
 ### Album curation writes (issue #735)
 
 The curator passes' hardest wall: album-level fixes (retag a watermark album, fix a
@@ -275,33 +302,6 @@ already on disk are enqueued. Every call that reaches the hunt is audited as
 `album.acquire` with `outcome=<x> lidarrAlbumId=<n>`. The runbook budget
 (≤10 hunts per session) lives in docs/curation-playbook.md, not in code —
 it bounds curator attention, and idempotence makes re-runs free.
-
-### `get_library_health` / `resolve_review_flag` (issue #734)
-
-Two real curator passes measured the same discovery failure: with only name-shaped
-reads, an agent finds problems *incidentally* — artists it happened to search for,
-songs that happened to be recent. There was no bulk "what needs fixing" view (the
-audit ran only via SSH), so a pass could neither plan nor prove progress.
-
-`get_library_health` wraps `libraryHealth` (`services/library-health.ts`, → see
-docs/library-audit.md "Library health report"): every curation dimension as a
-metric + bounded worst-first worklist + remediation hint. The intended loop is
-**snapshot → work the worklists → snapshot again**, so a pass records its own
-delta. The completeness dimension's `suspected` bucket is advisory-only — the
-tool description says so, and the agent rule stands: ambiguity goes to
-`flag_for_review`, never a guess.
-
-`resolve_review_flag` closes the loop `flag_for_review` opened: session 2 of the
-curator pass ended with four researched, answerable flags that *no agent could
-close* — resolution was web-UI-only, so agent-raised flags accumulated forever.
-It wraps the same `resolveCurationFlag` the HTTP route calls, audits as
-`curation.flag` with the decision note, and refuses to re-resolve (idempotence
-stays visible: "Flag not found or already resolved", no audit row).
-
-`get_album_tracks` also grew an album header (year, classification, hidden,
-`hasCanonicalCover` via the shared `missingAlbumArtSql`) and per-song
-track/disc/suffix/bitrate — read parity so an agent can *see* the states the
-upcoming album write tools will fix, without another tool.
 
 ### Destructive writes: the extraction that unblocked each one
 
