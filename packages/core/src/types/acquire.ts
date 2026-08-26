@@ -88,8 +88,20 @@ export interface AcquisitionJobView {
    * Per-item tallies. `delivered` = items on disk (completed/organized/
    * scanned); `unavailable` = tracks the fallback gave up on — a job with
    * some renders as an honest partial ("11 of 13 · 2 unavailable").
+   *
+   * `expected` counts what the *source* itemized, which is not the album's
+   * size: `canonical` is the tracklist length we resolved before downloading,
+   * so a source that offered fewer tracks than the release has is visible
+   * rather than silently becoming the denominator (#745). Null when the job
+   * has no tracklist to be short of — a URL grab, an import.
    */
-  progress: { expected: number; delivered: number; unavailable: number; failed: number };
+  progress: {
+    expected: number;
+    delivered: number;
+    unavailable: number;
+    failed: number;
+    canonical: number | null;
+  };
   /**
    * Per-track status, uniform across every acquisition backend (slskd hunts
    * expose this from `acquisition_job_items`; URL acquires expose it from

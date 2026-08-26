@@ -33,7 +33,13 @@ function makeJobView(stage: AcquisitionJobView['stage'], id = 'aj-1'): Acquisiti
     createdAt: 0,
     updatedAt: 0,
     albumId: null,
-    progress: { expected: 1, delivered: stage === 'done' ? 1 : 0, unavailable: 0, failed: 0 },
+    progress: {
+      expected: 1,
+      delivered: stage === 'done' ? 1 : 0,
+      unavailable: 0,
+      failed: 0,
+      canonical: null,
+    },
     items: [
       {
         title: 'Song',

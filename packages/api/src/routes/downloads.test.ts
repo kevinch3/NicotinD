@@ -181,7 +181,13 @@ describe('downloads routes', () => {
     // No such album is in the library, so the feed offers no deep link rather
     // than a name-derived id that cannot resolve (issue #468).
     expect(jobs[0].albumId).toBeNull();
-    expect(jobs[0].progress).toEqual({ expected: 2, delivered: 1, unavailable: 0, failed: 0 });
+    expect(jobs[0].progress).toEqual({
+      expected: 2,
+      delivered: 1,
+      unavailable: 0,
+      failed: 0,
+      canonical: null,
+    });
   });
 
   it('GET /jobs deep-links to the album once the job has actually landed', async () => {

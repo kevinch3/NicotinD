@@ -188,7 +188,7 @@ function acqJob(over: Partial<AcquisitionJobView> = {}): AcquisitionJobView {
     createdAt: 1000,
     updatedAt: 1000,
     albumId: 'album-id-1',
-    progress: { expected: 2, delivered: 1, unavailable: 0, failed: 0 },
+    progress: { expected: 2, delivered: 1, unavailable: 0, failed: 0, canonical: null },
     items: [],
     sources: [],
     destinationAlbums: [],
@@ -209,6 +209,57 @@ describe('mergeAcquisitionJobs', () => {
     expect(card.albumId).toBe('album-id-1');
     expect(card.progress).toEqual({ done: 1, total: 2 });
     expect(card.canCancel).toBe(true);
+  });
+
+  /**
+   * #745. `progress.total` is what the *source* itemized, not the album's size.
+   * El salmón is a 5-CD/103-track release whose peer offered 100 files: the
+   * card read "98 of 100" and the 3 it never had were invisible.
+   */
+  describe('canonical denominator', () => {
+    it('prefers the tracklist length and states what the source never offered', () => {
+      const card = mergeAcquisitionJobs(
+        [],
+        [
+          acqJob({
+            progress: { expected: 100, delivered: 98, unavailable: 2, failed: 0, canonical: 103 },
+          }),
+        ],
+      )[0]!;
+      expect(card.progress).toEqual({ done: 98, total: 100 });
+      expect(card.canonicalTotal).toBe(103);
+      expect(card.notOffered).toBe(3);
+    });
+
+    it('leaves both unset when the source offered the whole tracklist', () => {
+      const card = mergeAcquisitionJobs(
+        [],
+        [
+          acqJob({
+            progress: { expected: 13, delivered: 13, unavailable: 0, failed: 0, canonical: 13 },
+          }),
+        ],
+      )[0]!;
+      expect(card.canonicalTotal).toBeUndefined();
+      expect(card.notOffered).toBeUndefined();
+    });
+
+    /**
+     * A source may itemize *more* than the tracklist (a folder with bonus
+     * tracks). That is not a shortfall, and the item count stays the truth.
+     */
+    it('ignores a tracklist shorter than what the source offered', () => {
+      const card = mergeAcquisitionJobs(
+        [],
+        [
+          acqJob({
+            progress: { expected: 15, delivered: 15, unavailable: 0, failed: 0, canonical: 12 },
+          }),
+        ],
+      )[0]!;
+      expect(card.canonicalTotal).toBeUndefined();
+      expect(card.notOffered).toBeUndefined();
+    });
   });
 
   // Issue #587: an addon-run playlist job generates a native playlist server-
@@ -448,7 +499,7 @@ describe('mergeAcquisitionJobs', () => {
             kind: 'url',
             stage: 'done',
             error: 'Downloaded 5 of 89 tracks — the rest failed or were skipped.',
-            progress: { expected: 89, delivered: 5, unavailable: 84, failed: 0 },
+            progress: { expected: 89, delivered: 5, unavailable: 84, failed: 0, canonical: null },
           }),
         ],
       );
@@ -590,7 +641,7 @@ describe('mergeAcquisitionJobs', () => {
         acqJob({
           state: 'done',
           stage: 'done',
-          progress: { expected: 13, delivered: 11, unavailable: 2, failed: 0 },
+          progress: { expected: 13, delivered: 11, unavailable: 2, failed: 0, canonical: null },
         }),
       ],
     );

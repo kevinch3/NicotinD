@@ -96,7 +96,7 @@ function downloadingJob(id: string): AcquisitionJobView {
     createdAt: 0,
     updatedAt: 0,
     albumId: null,
-    progress: { expected: 12, delivered: 5, unavailable: 0, failed: 0 },
+    progress: { expected: 12, delivered: 5, unavailable: 0, failed: 0, canonical: null },
     items: [],
     sources: [],
     destinationAlbums: [],

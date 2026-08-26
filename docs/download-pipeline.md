@@ -487,6 +487,24 @@ Once a row is complete, it also offers an **"Open in Library"** deep-link to the
 
 **Multi-album acquire jobs — "View N albums".** A URL acquire job's files no longer collapse to a single (possibly wrong) album link. `AcquireWatcher.ingest()` groups every organized file by its destination directory, derives each distinct dir into an `AcquireAlbumDestination` (`{ albumArtist, albumTitle, albumId }` via the pure `deriveAcquireAlbum`, `services/acquire-album.ts` — last two path segments, `null` for a loose single with no album wrapper), and persists the full distinct set as `dest_albums_json` (`setDestAlbums`). `mapRow` exposes it as `AcquireJob.destinationAlbums`, and only sets the singular `albumId`/`albumArtist`/`albumTitle` convenience fields when that array has **exactly one** entry — a multi-album job (e.g. a large spotdl playlist spanning several releases) leaves them `null`, so `canOpenInLibrary` naturally goes false (no extra code needed there) instead of silently linking to just the first album. `acquireJobToDownloadItem` carries `destinationAlbums` through onto `DownloadItem`, and once `stage === 'done'` with more than one entry (`hasMultipleDestinationAlbums(item)`, `components/download-item/`), the row instead renders a **"View N albums"** trigger (`data-testid="download-view-albums"`) opening the shared `MenuPanelComponent` (viewport-safe dropdown, `components/menu-panel/`) with one row per album (`data-testid="download-album-row"`), each linking to its own `/library/albums/:id` via `resolveAlbumRoute`.
 
+#### The denominator is the release, not the source's offering (#745)
+
+`listJobFeed` derives `expected` from item rows — *whatever the source itemized*. Nothing read
+`acquisition_jobs.canonical_tracks_json`, the tracklist resolved from Lidarr **before** downloading,
+so the source's offering silently became the album's size. Prod 2026-08-26: *El salmón* is a real
+5-CD/103-track release whose peer offered 100 files; the card read `98 of 100` and the 3 tracks that
+peer never had were invisible.
+
+`progress.canonical` (`canonicalTrackCount`, null-not-zero — a URL grab is not short of zero tracks)
+now ships alongside the tallies. The pure `canonicalShortfall` turns it into the card's
+`canonicalTotal` + `notOffered`, **set only when there is a shortfall**, so an ordinary complete album
+renders exactly as before and a source offering *more* than the tracklist (bonus tracks) is not
+mistaken for one. The card reads `98 of 103 · 2 unavailable · 3 not offered` — an accounting that
+sums to the release.
+
+`unavailable` and `notOffered` are deliberately distinct: the first is a track the source *had* and
+could not deliver, the second one it never listed. Collapsing them would re-hide the thing this fixed.
+
 #### "Now: / Next:" track display
 
 Job cards also show what's currently downloading and up to two upcoming tracks, uniformly across every acquisition backend. The shared `TrackStatus` union (`'pending' | 'downloading' | 'done' | 'skipped' | 'failed'`, `@nicotind/core`) and a `PluginHostContext.emitTrack(jobId, { title, status })` method (`host-context.ts`, alongside `emitProgress`/`emitLabel`) are the plumbing: `emitTrack` upserts by title match (`upsertTrackStatus` — replace the existing entry's status in place, or append) into `acquire_jobs.tracks_json`, wired in `index.ts`'s `HostContextDeps.emitTrack` closure. `mapRow` exposes the column as `AcquireJob.tracks`.
