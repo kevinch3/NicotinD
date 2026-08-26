@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.17](https://github.com/kevinch3/NicotinD/compare/v0.5.16...v0.5.17) (2026-08-26)
+
+### Features
+
+* **api:** MCP get_library_health + resolve_review_flag ([#751](https://github.com/kevinch3/NicotinD/issues/751)) ([3557e4e](https://github.com/kevinch3/NicotinD/commit/3557e4eee797d1e499648dba22d3b800e348fab5)), closes [#732](https://github.com/kevinch3/NicotinD/issues/732), references [#732](https://github.com/kevinch3/NicotinD/issues/732) [#734](https://github.com/kevinch3/NicotinD/issues/734) [#734](https://github.com/kevinch3/NicotinD/issues/734)
 ## [0.5.16](https://github.com/kevinch3/NicotinD/compare/v0.5.15...v0.5.16) (2026-08-26)
 
 ### Features
