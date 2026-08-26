@@ -245,7 +245,7 @@ describe('AddonJobPoller', () => {
         )
         .get('ghost-1')!;
       expect(job.state).toBe('failed');
-      expect(job.error).toContain('restarted');
+      expect(job.error).toContain('stopped reporting');
     });
 
     it('leaves a stale active job the addon still knows about', async () => {
@@ -268,6 +268,107 @@ describe('AddonJobPoller', () => {
       expect(parseAddonJobId('addon:fixture-addon:abc-123', 'fixture-addon')).toBe('abc-123');
       expect(parseAddonJobId('peer', 'fixture-addon')).toBeNull();
       expect(parseAddonJobId(null, 'fixture-addon')).toBeNull();
+    });
+
+    /**
+     * #744. `maybeReleaseAddonJob` deletes the addon-side job once the addon is
+     * terminal and every file is fetched, and records that in `released:<id>`.
+     * The core row can still be `active` at that moment — items organized but
+     * not yet scanned, and under `holdForReview` waiting on a curator for as
+     * long as the human takes. The reconcile then re-checks it, gets a 404 *we*
+     * caused, and used to declare the addon had restarted.
+     *
+     * Measured on prod 2026-08-26: a 5-CD album whose 98 files had all landed
+     * and scanned was shown as `Error · 98 of 100 · 2 unavailable` — while the
+     * addon container had `RestartCount=0` and 7 days of uptime.
+     */
+    function armReleasedMarker(h: ReturnType<typeof harness>, addonJobId: string) {
+      h.db.run(`INSERT INTO plugin_kv (plugin_id, key, value) VALUES (?, ?, '1')`, [
+        'addon-poller:fixture-addon',
+        `released:${addonJobId}`,
+      ]);
+    }
+
+    it('does not fail a job whose addon-side 404 came from our own release', async () => {
+      h = harness(() => []); // default getJob throws 404
+      await h.registry.enable('fixture-addon', 'admin');
+      insertActiveUrlJob(h, 'released-1', 'released-uuid');
+      armReleasedMarker(h, 'released-uuid');
+
+      await h.poller.tick();
+
+      const job = h.db
+        .query<{ state: string; error: string | null }, [string]>(
+          `SELECT state, error FROM acquisition_jobs WHERE id = ?`,
+        )
+        .get('released-1')!;
+      expect(job.state).toBe('active');
+      expect(job.error).toBeNull();
+    });
+
+    it('still fails a job the addon genuinely forgot (no release marker)', async () => {
+      h = harness(() => []);
+      await h.registry.enable('fixture-addon', 'admin');
+      insertActiveUrlJob(h, 'ghost-2', 'forgotten-uuid');
+
+      await h.poller.tick();
+
+      const job = h.db
+        .query<{ state: string; error: string | null }, [string]>(
+          `SELECT state, error FROM acquisition_jobs WHERE id = ?`,
+        )
+        .get('ghost-2')!;
+      expect(job.state).toBe('failed');
+      expect(job.error).toBeTruthy();
+    });
+
+    /**
+     * A `completed` item is a file we already hold on disk. Relabelling it
+     * `unavailable` is how prod's card claimed "2 unavailable" for a source
+     * that had in fact served every track it offered.
+     */
+    it('an orphan sweep never relabels a downloaded item as unavailable', async () => {
+      h = harness(() => []);
+      await h.registry.enable('fixture-addon', 'admin');
+      insertActiveUrlJob(h, 'ghost-3', 'forgotten-uuid-2');
+      h.db.run(
+        `INSERT INTO acquisition_job_items (job_id, track_title, username, filename, transfer_key, state, updated_at)
+         VALUES ('ghost-3', 'Downloaded', 'peer', 'f1.mp3', 'k1', 'completed', ?),
+                ('ghost-3', 'Organized', 'peer', 'f2.mp3', 'k2', 'organized', ?),
+                ('ghost-3', 'InFlight', 'peer', 'f3.mp3', 'k3', 'downloading', ?)`,
+        [STALE, STALE, STALE],
+      );
+
+      await h.poller.tick();
+
+      const states = Object.fromEntries(
+        h.db
+          .query<{ track_title: string; state: string }, [string]>(
+            `SELECT track_title, state FROM acquisition_job_items WHERE job_id = ?`,
+          )
+          .all('ghost-3')
+          .map((r) => [r.track_title, r.state]),
+      );
+      expect(states['Downloaded']).toBe('completed');
+      expect(states['Organized']).toBe('organized');
+      expect(states['InFlight']).toBe('unavailable');
+    });
+
+    /** The poller cannot know why the addon 404s — it must not invent a cause. */
+    it('states what it observed rather than guessing at a restart', async () => {
+      h = harness(() => []);
+      await h.registry.enable('fixture-addon', 'admin');
+      insertActiveUrlJob(h, 'ghost-4', 'forgotten-uuid-3');
+
+      await h.poller.tick();
+
+      const job = h.db
+        .query<{ error: string | null }, [string]>(
+          `SELECT error FROM acquisition_jobs WHERE id = ?`,
+        )
+        .get('ghost-4')!;
+      expect(job.error).not.toContain('restarted');
+      expect(job.error).toContain('stopped reporting');
     });
   });
 
@@ -551,7 +652,9 @@ describe('AddonJobPoller', () => {
     /**
      * Releasing a terminal job addon-side is what makes the later `getJob`
      * 404 — so without COALESCE the orphan reconcile would overwrite the real
-     * reason with a generic "it likely restarted mid-download" guess.
+     * reason with the generic "stopped reporting this job" line. Since #744 a
+     * released job is skipped outright; this stays as the second line of
+     * defence for a job that 404s without a release marker.
      */
     it('never lets the orphan reconcile clobber a recorded reason', async () => {
       h = harness(() => []); // default getJob 404s

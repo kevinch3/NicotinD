@@ -226,8 +226,13 @@ export class AddonJobPoller {
         job = await plugin.client.getJob(addonJobId);
       } catch (err) {
         // A definitive 404 means the addon dropped the job and the files with
-        // it; anything else is a blip worth retrying next tick.
-        if (err instanceof AddonRequestError && err.status === 404) {
+        // it; anything else is a blip worth retrying next tick. Unless we
+        // released the job ourselves — then the 404 is our own doing (#744).
+        if (
+          err instanceof AddonRequestError &&
+          err.status === 404 &&
+          !this.wasReleasedByUs(addonId, addonJobId)
+        ) {
           this.failOrphanedJob(row.id, addonId);
         }
         continue;
@@ -251,7 +256,8 @@ export class AddonJobPoller {
    * re-check each stale active job via getJob and fail the ones the addon 404s, so
    * a deploy/crash surfaces as a prompt failure instead of a ghost card. The
    * staleness gate leaves a genuinely slow-but-live job (getJob returns it)
-   * untouched — only an addon-forgotten job (404) is failed.
+   * untouched — only an addon-forgotten job (404) is failed, which is what
+   * `wasReleasedByUs` separates from a 404 we caused ourselves (#744).
    */
   private async reconcileOrphanedJobs(plugin: RemoteAddonPlugin): Promise<void> {
     const { db } = this.deps;
@@ -266,6 +272,7 @@ export class AddonJobPoller {
     for (const row of rows) {
       const addonJobId = parseAddonJobId(row.source_ref, addonId);
       if (!addonJobId) continue;
+      if (this.wasReleasedByUs(addonId, addonJobId)) continue;
       try {
         await plugin.client.getJob(addonJobId);
         // Still known to the addon — leave it; the normal poll owns its lifecycle.
@@ -279,22 +286,33 @@ export class AddonJobPoller {
     }
   }
 
+  /**
+   * Did *we* delete this addon job? `maybeReleaseAddonJob` stamps
+   * `released:<jobId>` when it does, and releasing is what makes `getJob` 404 —
+   * so without this the poller reads its own cleanup as a lost job (#744).
+   * → docs/download-pipeline.md "A released job is not an orphaned one"
+   */
+  private wasReleasedByUs(addonId: string, addonJobId: string): boolean {
+    return this.kvGet(addonId, `released:${addonJobId}`) !== null;
+  }
+
   private failOrphanedJob(coreJobId: string, addonId: string): void {
     const now = Date.now();
-    const msg = 'The addon no longer has this job (it likely restarted mid-download).';
+    // why: states what the poller observed, never a cause it cannot witness.
+    const msg = 'The download source stopped reporting this job.';
     // COALESCE, not overwrite: when `applyAddonOutcome` already recorded the
-    // addon's own reason ("Unsupported URL: …"), the generic restart guess is
-    // strictly worse — and it is what a released terminal job would otherwise
-    // end up displaying, since releasing it is what makes getJob 404.
+    // addon's own reason ("Unsupported URL: …"), this generic line is worse.
     this.deps.db.run(
       `UPDATE acquisition_jobs SET state = 'failed', stage = 'error',
               error = COALESCE(error, ?), updated_at = ?
        WHERE id = ? AND state = 'active'`,
       [msg, now, coreJobId],
     );
+    // why: an allowlist of the one non-terminal state — `completed`/`organized`
+    // mean the file is on disk, so sweeping them reports tracks we do hold.
     this.deps.db.run(
       `UPDATE acquisition_job_items SET state = 'unavailable', updated_at = ?
-       WHERE job_id = ? AND state NOT IN ('scanned', 'organized')`,
+       WHERE job_id = ? AND state = 'downloading'`,
       [now, coreJobId],
     );
     log.info({ addonId, coreJobId }, 'failed an orphaned addon job (addon 404)');
