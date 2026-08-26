@@ -205,8 +205,56 @@ handles any other missing track.
   (same uuid, kind `url`); `updateState`/`setStage` dual-write
   (queued/running → `active`); the boot orphan-fail updates the mirror rows in
   the same pass. `acquire_jobs` stays authoritative.
-- **Boot + periodic hygiene**: `index.ts` runs `reconcileOnBoot` at startup and
-  after every retry sweep (alongside `fallback.sweep()`).
+- **Boot + periodic hygiene**: `index.ts` runs `reconcileOnBoot` at startup
+  (`:145`) **and every 60 s** on its own `jobHygieneTimer` interval (`:304`),
+  aliased there as `reconcileAcquisitionJobs`. The name is a historical
+  misnomer — it has not been boot-only since the slskd engine moved addon-side.
+  Worth knowing because a grep for `reconcileOnBoot` finds only the import and
+  reads as "boot only", which is how issue #710 came to blame a scheduling gap
+  that does not exist.
+
+## Cursor-stranded ingest (`ingestStrandedJobs`)
+
+`AddonJobPoller.pollAddon` polls `listJobs(cursor)` and only ever advances the
+cursor, which the addon applies as `?since=`. A job that stops updating — which
+every job does once terminal — therefore drops out of the listing as soon as any
+other job pushes the cursor past it. That is fine for a finished job, and data
+loss for one core has not finished collecting: `ingestReadyItems` runs only for
+jobs the poll returns, so an already-downloaded file core had not fetched yet is
+never fetched again.
+
+Nothing else recovered it, because the two components that could were each
+behaving correctly:
+
+- `maybeReleaseAddonJob` refuses to delete the addon-side job while items are
+  `completed` with a null `relative_path` — precisely *because* those files are
+  still needed.
+- `reconcileOrphanedJobs` fails only jobs the addon 404s. This job is alive, so
+  it is left alone: "the normal poll owns its lifecycle." The normal poll had
+  stopped owning it.
+
+The files then sat until the 24 h idle valve marked them `failed` and the
+addon's 7-day janitor deleted them. Measured on prod: 11 files across two jobs
+(issue #725).
+
+`ingestStrandedJobs` closes the loop — it enumerates active jobs of this addon
+holding items with outstanding ingest (the same predicate `maybeReleaseAddonJob`
+uses), skips the ones the poll already handled this tick, re-fetches each by
+`getJob`, and runs the normal ingest → outcome → release sequence. A 404 routes
+to `failOrphanedJob`, since a forgotten job's files are genuinely gone. It is
+bounded by the number of genuinely stuck jobs, which is normally zero.
+
+**It is throttled to once a minute per addon**, well below the poller's 5 s
+tick. The normal result set is empty, but a job whose file the addon can no
+longer serve stays in it until the 24 h valve clears it — at tick frequency that
+would be thousands of re-fetch attempts against the addon for one dead file.
+`strandedSweepIntervalMs` overrides the interval (tests set 0).
+
+**It keys on outstanding items, never on the job row's `updated_at`.**
+`recomputeStage` rewrites `updated_at` on every call even when the stage is
+unchanged, so a stranded job reads as seconds-idle while its items are
+hours-idle — any staleness-gated sweep would silently never fire on exactly the
+rows it exists to catch.
 
 ## Read model + web feed (Phase 3 — shipped)
 

@@ -29,6 +29,8 @@ const log = createLogger('addon-job-poller');
  * this timeout — is what actually fails an orphaned job.
  */
 const ORPHAN_STALE_MS = 5 * 60_000;
+/** How often the cursor-stranded ingest sweep may run, per addon (#725). */
+const STRANDED_SWEEP_INTERVAL_MS = 60_000;
 
 /** Extract the addon-side job id from a `addon:<addonId>:<jobId>` source_ref. */
 export function parseAddonJobId(sourceRef: string | null, addonId: string): string | null {
@@ -44,6 +46,11 @@ export interface AddonJobPollerDeps {
   organizer: { organizeBatch: (files: CompletedDownloadFile[]) => Promise<unknown> };
   scan?: (relPaths: string[]) => Promise<void> | void;
   intervalMs?: number;
+  /**
+   * How often the cursor-stranded ingest sweep may run, per addon (#725).
+   * Defaults to `STRANDED_SWEEP_INTERVAL_MS`; tests set 0 to sweep every tick.
+   */
+  strandedSweepIntervalMs?: number;
   /** Deployment-wide acquisition kill-switch (#235) — ticks no-op when off. */
   isEnabled?: () => boolean;
 }
@@ -135,10 +142,12 @@ export class AddonJobPoller {
     const cursor = Number(this.kvGet(addonId, 'poll_cursor') ?? '0') || undefined;
     const jobs = await plugin.client.listJobs(cursor);
     let maxUpdated = cursor ?? 0;
+    const handled = new Set<string>();
 
     for (const job of jobs) {
       maxUpdated = Math.max(maxUpdated, job.updatedAt);
       const coreJobId = this.ensureCoreJob(addonId, job);
+      handled.add(coreJobId);
       this.updateJobMeta(coreJobId, job);
       this.mirrorItems(addonId, coreJobId, job);
       recomputeStage(db, coreJobId);
@@ -159,7 +168,79 @@ export class AddonJobPoller {
     }
 
     if (maxUpdated > (cursor ?? 0)) this.kvSet(addonId, 'poll_cursor', String(maxUpdated));
+    await this.ingestStrandedJobs(plugin, handled);
     await this.reconcileOrphanedJobs(plugin);
+  }
+
+  /**
+   * Collect files from jobs the cursor has left behind.
+   *
+   * why: the poll is cursor-based, so a job that stops updating — every job
+   * that reaches a terminal state — falls out of `listJobs` as soon as any
+   * other job advances the cursor past it. Any file core had not fetched yet
+   * goes with it: `ingestReadyItems` only ever runs for jobs the poll returns.
+   * Nothing else picks them up, because the two components that could are both
+   * behaving correctly — `maybeReleaseAddonJob` keeps the addon job alive
+   * *because* those files are still needed, and `reconcileOrphanedJobs` fails
+   * only jobs the addon 404s, which this one is not. The files then sit until
+   * the 24h idle valve writes them off and the addon's janitor deletes them
+   * (issue #725: 11 files measured stranded on prod).
+   *
+   * Keyed on items with outstanding ingest — never on the job row's
+   * `updated_at`, which `recomputeStage` refreshes unconditionally, so a
+   * stranded job reads as seconds-idle while its items are hours-idle.
+   */
+  private async ingestStrandedJobs(
+    plugin: RemoteAddonPlugin,
+    handledCoreIds: Set<string>,
+  ): Promise<void> {
+    const { db } = this.deps;
+    const addonId = plugin.manifest.id;
+    // Throttled well below the poll interval: this is a recovery path, and a
+    // job whose file the addon can no longer serve stays in the result set
+    // until the 24h valve clears it. At the 5s tick that would be thousands of
+    // re-fetch attempts against the addon for one dead file; once a minute is
+    // ample for a sweep whose normal result set is empty.
+    const sweepInterval = this.deps.strandedSweepIntervalMs ?? STRANDED_SWEEP_INTERVAL_MS;
+    const lastSweep = Number(this.kvGet(addonId, 'stranded_sweep_at') ?? '0');
+    const now = Date.now();
+    if (now - lastSweep < sweepInterval) return;
+    this.kvSet(addonId, 'stranded_sweep_at', String(now));
+
+    const rows = db
+      .query<{ id: string; source_ref: string | null }, [string]>(
+        `SELECT DISTINCT j.id, j.source_ref
+           FROM acquisition_jobs j
+           JOIN acquisition_job_items i ON i.job_id = j.id
+          WHERE j.method = ? AND j.state = 'active'
+            AND i.state = 'completed' AND i.relative_path IS NULL`,
+      )
+      .all(addonId);
+
+    for (const row of rows) {
+      if (handledCoreIds.has(row.id)) continue; // the poll above already ran it
+      const addonJobId = parseAddonJobId(row.source_ref, addonId);
+      if (!addonJobId) continue;
+      let job: AddonJob;
+      try {
+        job = await plugin.client.getJob(addonJobId);
+      } catch (err) {
+        // A definitive 404 means the addon dropped the job and the files with
+        // it; anything else is a blip worth retrying next tick.
+        if (err instanceof AddonRequestError && err.status === 404) {
+          this.failOrphanedJob(row.id, addonId);
+        }
+        continue;
+      }
+      log.info(
+        { addonId, coreJobId: row.id, addonJobId },
+        'ingesting a job the poll cursor moved past',
+      );
+      await this.ingestReadyItems(plugin, row.id, job);
+      this.applyAddonOutcome(row.id, job);
+      if (job.state !== 'active') materializeAddonPlaylist(db, this.playlists, row.id);
+      await this.maybeReleaseAddonJob(plugin, row.id, job);
+    }
   }
 
   /**

@@ -56,21 +56,37 @@ function makeJob(over: Partial<AddonJob> = {}): AddonJob {
   };
 }
 
-function harness(jobs: () => AddonJob[], getJob?: (id: string) => Promise<AddonJob>) {
+/**
+ * `listSince` opts into a cursor-honouring `listJobs`, the way a real addon
+ * filters on `?since=`. The default deliberately ignores the cursor — that is
+ * what every pre-existing test assumes, and it is also why #725 shipped
+ * unnoticed: a stranded job is invisible to a lister that always returns
+ * everything. `fetchFile` is overridable so a test can fail one ingest attempt.
+ */
+function harness(
+  jobs: () => AddonJob[],
+  getJob?: (id: string) => Promise<AddonJob>,
+  opts: {
+    listSince?: (since: number | undefined) => AddonJob[];
+    fetchFile?: () => Promise<Response>;
+    /** Defaults to 0 so the stranded sweep runs every tick under test. */
+    strandedSweepIntervalMs?: number;
+  } = {},
+) {
   const db = new Database(':memory:');
   applySchema(db);
   const registry = new PluginRegistry({ db, dataDir: '/tmp/nicotind-test' });
   const deleted: string[] = [];
   const client = {
     baseUrl: 'http://addon:9999',
-    listJobs: async () => jobs(),
+    listJobs: async (since?: number) => (opts.listSince ? opts.listSince(since) : jobs()),
     // Default: the addon no longer knows any job (the orphan case after a restart).
     getJob:
       getJob ??
       (async (id: string): Promise<AddonJob> => {
         throw new AddonRequestError(`addon responded 404 for GET /addon/v1/jobs/${id}`, 404);
       }),
-    fetchFile: async () => new Response('audio-bytes'),
+    fetchFile: opts.fetchFile ?? (async () => new Response('audio-bytes')),
     deleteJob: async (id: string) => {
       deleted.push(id);
     },
@@ -86,6 +102,7 @@ function harness(jobs: () => AddonJob[], getJob?: (id: string) => Promise<AddonJ
     db,
     registry,
     incomingDir: mkdtempSync(join(tmpdir(), 'addon-incoming-')),
+    strandedSweepIntervalMs: opts.strandedSweepIntervalMs ?? 0,
     organizer: {
       organizeBatch: async (files) => {
         for (const f of files) {
@@ -690,5 +707,125 @@ describe('sanitizeAddonError (issue #601)', () => {
 
   it('never returns an empty string for non-empty input', () => {
     expect(sanitizeAddonError('│ │ │')).not.toBe('');
+  });
+});
+
+describe('stranded ingest — a job the poll cursor moved past (#725)', () => {
+  /** A terminal job carrying one already-downloaded file core has not fetched. */
+  function strandedJob(): AddonJob {
+    return makeJob({
+      id: 'aj-stranded',
+      state: 'done',
+      updatedAt: 2000,
+      items: [
+        {
+          itemId: 't:one',
+          title: 'Song One',
+          username: 'peer',
+          filename: 'Music\\Album\\01 Song One.mp3',
+          size: 100,
+          bitRateKbps: 320,
+          audioFormat: 'MP3 320kbps',
+          state: 'completed',
+          fileReady: true,
+          updatedAt: 2000,
+        },
+      ],
+    });
+  }
+
+  /**
+   * The first fetch fails, leaving the item `completed` with a null
+   * relative_path — the exact prod shape. Every later attempt succeeds, so the
+   * only thing that can keep the file stranded is never being retried.
+   */
+  function flakyFirstFetch() {
+    let attempt = 0;
+    return async () => {
+      attempt += 1;
+      if (attempt === 1) throw new Error('addon fetch blipped');
+      return new Response('audio-bytes');
+    };
+  }
+
+  it('ingests outstanding files after the cursor has advanced past their job', async () => {
+    const all = [strandedJob(), makeJob({ id: 'aj-newer', updatedAt: 9000, items: [] })];
+    const h = harness(
+      () => all,
+      async (id) => all.find((j) => j.id === id)!,
+      {
+        listSince: (since) => all.filter((j) => !since || j.updatedAt > since),
+        fetchFile: flakyFirstFetch(),
+      },
+    );
+    await h.registry.enable('fixture-addon', 'admin');
+
+    await h.poller.tick(); // both listed; the stranded fetch fails; cursor -> 9000
+    const afterFirst = h.db
+      .query<{ state: string; relative_path: string | null }, []>(
+        `SELECT state, relative_path FROM acquisition_job_items`,
+      )
+      .get()!;
+    expect(afterFirst.state).toBe('completed');
+    expect(afterFirst.relative_path).toBeNull();
+
+    await h.poller.tick(); // cursor 9000 now EXCLUDES aj-stranded from listJobs
+
+    const item = h.db
+      .query<{ state: string; relative_path: string | null }, []>(
+        `SELECT state, relative_path FROM acquisition_job_items`,
+      )
+      .get()!;
+    expect(item.relative_path).not.toBeNull();
+    expect(item.state).toBe('organized');
+  });
+
+  it('throttles the sweep so a dead file is not re-fetched every 5s tick', async () => {
+    const all = [strandedJob(), makeJob({ id: 'aj-newer', updatedAt: 9000, items: [] })];
+    let getJobCalls = 0;
+    const h = harness(
+      () => all,
+      async (id) => {
+        getJobCalls += 1;
+        return all.find((j) => j.id === id)!;
+      },
+      {
+        listSince: (since) => all.filter((j) => !since || j.updatedAt > since),
+        // The addon still has the job but can never serve the file.
+        fetchFile: async () => {
+          throw new Error('file gone');
+        },
+        strandedSweepIntervalMs: 60_000,
+      },
+    );
+    await h.registry.enable('fixture-addon', 'admin');
+
+    await h.poller.tick();
+    const afterFirst = getJobCalls;
+    // The poller ticks every 5s; the recovery sweep must not follow it.
+    await h.poller.tick();
+    await h.poller.tick();
+    expect(getJobCalls).toBe(afterFirst);
+  });
+
+  it('fails a stranded job the addon has genuinely forgotten', async () => {
+    const all = [strandedJob(), makeJob({ id: 'aj-newer', updatedAt: 9000, items: [] })];
+    // getJob 404s: the addon restarted and dropped the job, so the file is gone.
+    const h = harness(() => all, undefined, {
+      listSince: (since) => all.filter((j) => !since || j.updatedAt > since),
+      fetchFile: flakyFirstFetch(),
+    });
+    await h.registry.enable('fixture-addon', 'admin');
+
+    await h.poller.tick();
+    await h.poller.tick();
+
+    const job = h.db
+      .query<{ state: string; stage: string }, []>(
+        `SELECT state, stage FROM acquisition_jobs WHERE source_ref LIKE '%aj-stranded'`,
+      )
+      .get()!;
+    expect(job.state).toBe('failed');
+    expect(job.stage).toBe('error');
   });
 });
