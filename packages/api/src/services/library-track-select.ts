@@ -12,6 +12,16 @@ export function isLossless(suffix: string | null | undefined): boolean {
   return LOSSLESS.has((suffix ?? '').toLowerCase().replace(/^\./, ''));
 }
 
+/**
+ * SQL predicate matching the LOSSLESS set against a suffix column, derived from
+ * the same Set so the TS check and any SQL scan cannot drift (the
+ * `unresolvedGenreSql` pattern).
+ */
+export function losslessSuffixSql(col: string): string {
+  const list = [...LOSSLESS].map((s) => `'${s}'`).join(', ');
+  return `LOWER(COALESCE(${col}, '')) IN (${list})`;
+}
+
 /** Quality score for picking the best file among copies of one track. */
 export function formatQuality(
   suffix: string | null | undefined,

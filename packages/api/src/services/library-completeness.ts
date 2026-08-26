@@ -16,7 +16,7 @@ import { albumIdFor, artistIdFor } from './library-scanner.js';
  * fix for both the duplicate-acquisition guard and the complete-only filter silently
  * finding nothing and re-downloading the whole album.
  */
-function matchingLocalAlbums(
+export function matchingLocalAlbums(
   db: Database,
   artist: string,
   title: string,

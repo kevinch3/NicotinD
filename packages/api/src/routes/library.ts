@@ -74,6 +74,7 @@ import {
   writeFolderCover,
 } from '../services/cover-sources.js';
 import { checkFragments } from '../services/library-fragments.js';
+import { libraryHealth } from '../services/library-health.js';
 import {
   applyMissplitMerge,
   missplitClusterMembers,
@@ -1928,6 +1929,17 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // spellings, rows hidden from the grid by `hidden`/`classification`, and
   // one-track-per-release mis-splits. The web's Admin panel and the CLI
   // `scripts/check-fragments.ts` both consume this — see `docs/library-scanner.md`.
+  // Library health report (issue #734) — the on-demand entry point of a
+  // curation pass. Deliberately not part of the polled admin review snapshot:
+  // the audit half issues per-row queries, fine once, poison in a poll loop.
+  app.get('/health', (c) => {
+    requireCurator(c);
+    const sample = Number(c.req.query('sample'));
+    return c.json(
+      libraryHealth(getDatabase(), Number.isFinite(sample) ? { sampleSize: sample } : {}),
+    );
+  });
+
   app.get('/fragments', (c) => {
     requireAdmin(c);
     return c.json(checkFragments(getDatabase()));

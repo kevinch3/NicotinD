@@ -58,7 +58,13 @@ and a message. The CLI groups by rule (worst first); `--rule=<id>` lists one.
 
 ### Render (low/medium; **visible albums only**)
 - `missing_year` (low) — no usable year.
-- `missing_artwork` (medium) — no `library_artwork` row and no embedded/folder cover.
+- `missing_artwork` (medium) — no **canonical** `library_artwork` row of `kind='album'`, via the
+  shared `missingAlbumArtSql()` predicate (`artwork-store.ts`). Folder/embedded art still renders
+  through the `/api/cover` fallback chain — this deliberately measures exactly the set
+  `backfillArtwork` acts on. Fixed in issue #732: the rule previously also required
+  `cover_art` to be empty, but the scanner always fills `cover_art` with the album id, so the
+  rule structurally never fired (~0 findings against 2,691 actually-coverless prod albums). The
+  count jumping after the fix is the fix; severity stays `medium` so `report.ok` is unaffected.
 - `visible_unknown` (medium) — a visible album stuck at `classification='unknown'`.
 
 ### Disk (from `library-disk-audit.ts`)
@@ -219,12 +225,63 @@ Result — 759 artists · 1545 albums · 6630 songs; **51 HIGH (from 101)**, `nu
 `empty_dir 0`. Remaining `watermark_album 35` is the ambiguous `DJ KAIRUZ- SERVICIO ARG` DJ-pool
 dump — re-tag can't cleanly recover it; delete via `--rules=watermark_album` if undesired.
 
+## Library health report (issue #734)
+
+`libraryHealth(db, { sampleSize })` (`services/library-health.ts`) is the **aggregation** the
+auditor never had: one pure, synchronous, DB-only report where every curation dimension is
+`{ metric, worklist, remediation }` — how much is missing, a bounded worst-first sample, and which
+remediation acts on it. The route (`GET /api/library/health?sample=N`, curator), the CLI
+(`scripts/library-health.ts`, always exits 0 — a dashboard, while `audit-library.ts` remains the
+DB+disk *gate*) and the MCP `get_library_health` tool are three renderings of this one object; the
+planned Admin panel (issue #736) is the fourth.
+
+Dimensions: audit summary (per-rule counts, no findings array), fragments (dup-album clusters),
+album covers (`missingAlbumArtSql`), artist portraits (`artistImageCoverage`), genres
+(`unresolvedGenreSql`, landed songs only), years, classification, **format cohesion** (new),
+**completeness** (new), lyrics (count only — fetch is on-demand by design), open curation flags.
+
+Design rules it inherits:
+
+- **A metric is what its remediation acts on** (the `NEEDS_PORTRAIT_SQL` doctrine): the covers
+  number is `backfillArtwork`'s candidate set; the lossless-remaining count is
+  `transcodeLibraryToOpus`'s; the confirmed-incomplete rows use the *same* matcher (`onDiskTitles` +
+  `titlesOverlap`) as `acquireAlbum`, so "incomplete here" means "a hunt would enqueue something".
+- **On-demand only, never polled.** The audit half issues per-row queries — fine as a snapshot,
+  poison in the `ServiceReview` interval. The Admin panel fetches on expand.
+- **Shared predicates, derived not restated** (`check:shared-helpers` spirit): `missingAlbumArtSql`
+  (also adopted by `checkRenderGaps`, `backfillArtwork`, `optimizeAllAlbums`) and
+  `losslessSuffixSql` (derived from `LOSSLESS` in `library-track-select.ts`).
+
+### New detectors and their calibration (prod, 2026-08-26, 16,386 songs / 5,173 visible albums)
+
+**Format cohesion** — mixed-format albums (visible, ≥2 tracks, >1 distinct suffix; 238 on prod),
+low-bitrate albums (≥½ of known-bitrate tracks below the per-format floor: **128 kbps** lossy,
+**96 kbps** opus; lossless exempt; `bit_rate <= 0` = unknown, never low — prod holds 8 zero-bitrate
+probe-failure rows), and the lossless-remaining count (518). The floors are deliberate: a 160 kbps
+floor would have flagged 39% of all prod mp3s — noise, not signal. 128/96 flagged 15 albums, all
+genuinely degraded.
+
+**Completeness, two-source and honest about it**:
+
+- *confirmed* — `album_jobs` rows (newest per artist/title pair wins): canonical tracklist vs
+  `onDiskTitles`, carrying `lidarrAlbumId` for the `complete_album` tool. Albums with **zero**
+  matching tracks on disk are skipped — absent is a curator decision (maybe deleted on purpose),
+  not incomplete.
+- *suspected* — per-disc track-number gaps (`MAX(track) > COUNT(DISTINCT track)`), **advisory
+  only**, never fed to a hunt without a curator confirming. Guards, each earned on prod: every
+  owned track distinctly numbered (junk tags share one number), ≥3 numbered tracks owned (loose
+  rips keep their source compilation's track number), `maxTrack ≤ 40` (disc-track mashes like
+  `101`), albums/EPs/compilations only. Raw SQL found 1,627 album-discs; the guards cut it to 463,
+  and the survivors sampled real (The Dark Side of the Moon 8/9, Midnights 12/13).
+
 ## Tests / CI
 `library-quality.test.ts`, `library-audit.test.ts`, `library-disk-audit.test.ts`,
-and the new `library-curator.test.ts` cases run in the `ci` job
+`library-health.test.ts`, `routes/library.health.test.ts`,
+and the `library-curator.test.ts` cases run in the `ci` job
 (`bun test packages/api/src`). The pure predicates and `selectPollutionTargets`
-mis-split protection are unit-tested directly; the auditor rules and curator
-auto-hide use a seeded in-memory `bun:sqlite` DB.
+mis-split protection are unit-tested directly; the auditor rules, health dimensions and curator
+auto-hide use a seeded in-memory `bun:sqlite` DB (the health tests enumerate every
+suspected-gap false-positive guard by name).
 
 ## Follow-up (deferred): BPM / genre at acquisition
 On-demand `analyzeBpm` + `verifyGenre` (`track-analysis.ts`) could run in the ingest

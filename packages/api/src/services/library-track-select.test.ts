@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'bun:test';
-import { formatQuality, selectAlbumTracks, type SelectableTrack } from './library-track-select.js';
+import { Database } from 'bun:sqlite';
+import {
+  LOSSLESS,
+  formatQuality,
+  losslessSuffixSql,
+  selectAlbumTracks,
+  type SelectableTrack,
+} from './library-track-select.js';
 
 function t(relPath: string, title: string, suffix: string, bitRate = 320): SelectableTrack {
   return { relPath, title, suffix, bitRate };
@@ -98,5 +105,24 @@ describe('selectAlbumTracks — with a canonical Lidarr tracklist', () => {
     );
     expect(kept).toHaveLength(1);
     expect(kept[0]!.relPath).toBe('b.flac');
+  });
+});
+
+describe('losslessSuffixSql', () => {
+  it('matches exactly the lossless suffixes, case-insensitive, NULL-safe', () => {
+    const db = new Database(':memory:');
+    db.run('CREATE TABLE f (suffix TEXT)');
+    for (const s of ['flac', 'FLAC', 'wav', 'ape', 'mp3', 'opus', null]) {
+      db.run('INSERT INTO f (suffix) VALUES (?)', [s]);
+    }
+    const n = db
+      .query<{ c: number }, []>(`SELECT COUNT(*) c FROM f WHERE ${losslessSuffixSql('suffix')}`)
+      .get()?.c;
+    expect(n).toBe(4);
+  });
+
+  it('derives from LOSSLESS so the TS set and the SQL cannot drift', () => {
+    const sql = losslessSuffixSql('x');
+    for (const s of LOSSLESS) expect(sql).toContain(`'${s}'`);
   });
 });

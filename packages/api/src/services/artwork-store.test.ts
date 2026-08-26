@@ -7,6 +7,7 @@ import { applySchema } from '../db.js';
 import {
   setArtwork,
   resolveArtwork,
+  missingAlbumArtSql,
   pickAlbumCover,
   pickArtistImage,
   canonicalCacheKey,
@@ -135,5 +136,42 @@ describe('image pickers', () => {
   it('returns undefined for no images', () => {
     expect(pickAlbumCover(undefined)).toBeUndefined();
     expect(pickArtistImage([])).toBeUndefined();
+  });
+});
+
+describe('missingAlbumArtSql (issue #732)', () => {
+  function addAlbum(id: string): void {
+    db.run(
+      `INSERT INTO library_albums
+        (id, name, artist, artist_id, song_count, classification, hidden, year, cover_art, synced_at)
+       VALUES (?, 'n', 'a', 'ar', 1, 'album', 0, 2000, ?, 1)`,
+      // cover_art carries the album id by the scanner's convention — the predicate must ignore it.
+      [id, id],
+    );
+  }
+
+  it('selects only albums with no canonical album-kind artwork row', () => {
+    addAlbum('al-covered');
+    addAlbum('al-bare');
+    addAlbum('al-artist-kind');
+    setArtwork(db, 'al-covered', 'album', 'https://x/cover.jpg');
+    setArtwork(db, 'al-artist-kind', 'artist', 'https://x/poster.jpg');
+    const ids = db
+      .query<{ id: string }, []>(
+        `SELECT id FROM library_albums WHERE ${missingAlbumArtSql()} ORDER BY id`,
+      )
+      .all()
+      .map((r) => r.id);
+    expect(ids).toEqual(['al-artist-kind', 'al-bare']);
+  });
+
+  it('supports a table alias', () => {
+    addAlbum('al-bare');
+    const n = db
+      .query<{ c: number }, []>(
+        `SELECT COUNT(*) c FROM library_albums a WHERE ${missingAlbumArtSql('a')}`,
+      )
+      .get()?.c;
+    expect(n).toBe(1);
   });
 });

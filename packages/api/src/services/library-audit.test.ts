@@ -5,6 +5,7 @@ import {
   auditLibrary,
   summarize,
   checkMisSplitAlbums,
+  checkRenderGaps,
   selectPollutionTargets,
   DELETABLE_RULES,
 } from './library-audit.js';
@@ -340,5 +341,67 @@ describe('auditLibrary', () => {
     expect(report.summary[0]!.rule).toBe('watermark_artist');
     expect(report.ok).toBe(false);
     expect(report.highSeverityCount).toBe(1);
+  });
+});
+
+describe('checkRenderGaps — missing_artwork measures canonical covers (issue #732)', () => {
+  let db: Database;
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    applySchema(db);
+    addArtist(db, 'ar1', 'Soda Stereo', 1);
+  });
+
+  function rulesFor(albumId: string): string[] {
+    return checkRenderGaps(db)
+      .filter((f) => f.subject === albumId)
+      .map((f) => f.rule);
+  }
+
+  it('fires for an album whose cover_art is the scanner-set id but has no canonical artwork row', () => {
+    // The scanner always writes cover_art = <album id>; the rule must not read it as "has art".
+    addAlbum(db, {
+      id: 'al1',
+      name: 'Dynamo',
+      artist: 'Soda Stereo',
+      artistId: 'ar1',
+      classification: 'album',
+      year: 1992,
+      cover: 'al1',
+    });
+    expect(rulesFor('al1')).toContain('missing_artwork');
+  });
+
+  it('does not fire when a kind=album canonical artwork row exists', () => {
+    addAlbum(db, {
+      id: 'al1',
+      name: 'Dynamo',
+      artist: 'Soda Stereo',
+      artistId: 'ar1',
+      classification: 'album',
+      year: 1992,
+      cover: 'al1',
+    });
+    db.run(
+      `INSERT INTO library_artwork (id, kind, cover_url, updated_at) VALUES ('al1','album','u',1)`,
+    );
+    expect(rulesFor('al1')).not.toContain('missing_artwork');
+  });
+
+  it('ignores artwork rows of kind=artist when judging an album', () => {
+    addAlbum(db, {
+      id: 'al1',
+      name: 'Dynamo',
+      artist: 'Soda Stereo',
+      artistId: 'ar1',
+      classification: 'album',
+      year: 1992,
+      cover: 'al1',
+    });
+    db.run(
+      `INSERT INTO library_artwork (id, kind, cover_url, updated_at) VALUES ('al1','artist','u',1)`,
+    );
+    expect(rulesFor('al1')).toContain('missing_artwork');
   });
 });
