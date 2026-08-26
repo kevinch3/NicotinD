@@ -333,6 +333,12 @@ describe('PUT /albums/:id/cover — upload a custom image', () => {
     const after = await app.request('/api/cover/album-1');
     expect(after.status).toBe(200);
     expect(after.headers.get('content-type')).toBe('image/webp');
+
+    // Identity-changing curator write → audit trail (issue #733).
+    const audit = testDb
+      .query<{ action: string; target_id: string }, []>('SELECT action, target_id FROM audit_log')
+      .all();
+    expect(audit).toContainEqual({ action: 'album.cover', target_id: 'album-1' });
   });
 
   it('415s for a disallowed content type', async () => {

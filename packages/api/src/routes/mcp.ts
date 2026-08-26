@@ -20,12 +20,16 @@ import { libraryHealth } from '../services/library-health.js';
 import { missingAlbumArtSql } from '../services/artwork-store.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import { tokenize, matchesAllTokens, rankBy } from '../services/search-tokens.js';
-import { gatherSongCandidates } from '../services/candidate-sources.js';
+import { gatherCandidates, gatherSongCandidates } from '../services/candidate-sources.js';
 import {
   mutateSongMetadata,
   type SongMetadataMutateBody,
 } from '../services/song-metadata-mutate.js';
-import type { FixLidarr } from '../services/metadata-fix.js';
+import { applyAlbumCover } from '../services/album-cover-mutate.js';
+import { applyMetadataFix, type FixLidarr } from '../services/metadata-fix.js';
+import { VALID_CLASSIFICATIONS, type Classification } from '../services/library-curator.js';
+import type { LibraryCurator } from '../services/library-curator.js';
+import type { ApplyMetadataRequest, MetadataReleaseType } from '@nicotind/core';
 import type { MusicBrainzClient } from '../services/musicbrainz-client.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import type { writeAudioTags } from '../services/audio-tags.js';
@@ -74,9 +78,13 @@ export interface McpToolContext {
     mb?: MusicBrainzClient | null;
     plugins?: PluginRegistry | null;
     musicDir?: string;
+    /** Cover cache root, purged when a canonical cover URL changes. */
+    coverCacheDir?: string;
     scanIncremental?: (relPaths: string[]) => Promise<void>;
     writeTags?: typeof writeAudioTags;
   };
+  /** Album-curation dependencies (issue #735) — the classification/hide curator. */
+  curation: { curator?: LibraryCurator | null };
 }
 
 export interface McpTool {
@@ -456,6 +464,190 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: 'lookup_album_metadata',
+    description:
+      "Ranked real-album candidates for one album from every configured source (Lidarr, MusicBrainz, Discogs, the album's own file tags). Network tool: may take a few seconds; a down source degrades to ok:false in sources rather than failing the call. Candidate coverUrl values are what set_album_cover and fix_album_metadata accept; apply a chosen candidate with fix_album_metadata.",
+    access: 'read',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        albumId: { type: 'string', description: 'The album id.' },
+        query: {
+          type: 'string',
+          description:
+            'Override the search query (defaults to "<artist> <album>") — useful when the stored artist is a placeholder.',
+        },
+      },
+      required: ['albumId'],
+    },
+    handler: async ({ db, metadata }, args) => {
+      const result = await gatherCandidates(
+        {
+          db,
+          lidarr: metadata.lidarr,
+          mb: metadata.mb,
+          plugins: metadata.plugins,
+          musicDir: metadata.musicDir,
+        },
+        str(args.albumId),
+        str(args.query) || undefined,
+      );
+      if (!result) return JSON.stringify({ error: 'Album not found' });
+      return JSON.stringify(result, null, 2);
+    },
+  },
+  {
+    name: 'fix_album_metadata',
+    description:
+      "Correct an album's identity: artist, album title, year, release type (album|ep|single|compilation) and/or canonical cover URL. Persists an override the scanner honors (survives rescans), re-buckets the canonical rows immediately, and never moves files. IMPORTANT: album ids are name-derived, so the response's albumId is the album's NEW id — use it for every subsequent call. Audit-logged.",
+    access: 'curate',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        albumId: {
+          type: 'string',
+          description: 'The album id (from search or the health report).',
+        },
+        artist: { type: 'string', description: 'Corrected album artist.' },
+        album: { type: 'string', description: 'Corrected album title.' },
+        year: { type: 'number' },
+        releaseType: { type: 'string', enum: ['album', 'ep', 'single', 'compilation'] },
+        coverUrl: {
+          type: 'string',
+          description: 'Canonical cover URL, e.g. a candidate coverUrl from lookup_album_metadata.',
+        },
+      },
+      required: ['albumId'],
+    },
+    handler: ({ db, identity, metadata }, args) => {
+      const albumId = str(args.albumId);
+      const releaseTypeRaw = str(args.releaseType);
+      const input: ApplyMetadataRequest = {
+        artist: str(args.artist).trim() || undefined,
+        album: str(args.album).trim() || undefined,
+        year: typeof args.year === 'number' ? args.year : undefined,
+        releaseType:
+          releaseTypeRaw &&
+          releaseTypeRaw !== 'unknown' &&
+          VALID_CLASSIFICATIONS.has(releaseTypeRaw)
+            ? (releaseTypeRaw as MetadataReleaseType)
+            : undefined,
+        coverUrl: str(args.coverUrl).trim() || undefined,
+        source: 'manual',
+      };
+      if (
+        !input.artist &&
+        !input.album &&
+        input.year == null &&
+        !input.coverUrl &&
+        !input.releaseType
+      ) {
+        return JSON.stringify({ error: 'Nothing to apply' });
+      }
+      const old = db
+        .query<{ name: string; artist: string }, [string]>(
+          'SELECT name, artist FROM library_albums WHERE id = ?',
+        )
+        .get(albumId);
+      const result = applyMetadataFix(db, albumId, input, {
+        coverCacheDir: metadata.coverCacheDir,
+      });
+      if (!result) return JSON.stringify({ error: 'Album not found' });
+      const actor = `agent:${identity.tokenId}`;
+      recordAudit(db, { sub: identity.userId, username: actor }, 'album.metadata', {
+        targetKind: 'album',
+        targetId: result.albumId,
+        detail: `"${old?.artist} — ${old?.name}" → "${result.artist} — ${result.album}" (via MCP agent)`,
+      });
+      return JSON.stringify({ ok: true, ...result }, null, 2);
+    },
+  },
+  {
+    name: 'set_album_cover',
+    description:
+      "Set an album's cover: either a canonical remote URL (coverUrl — e.g. a candidate from lookup_album_metadata; survives rescans), or a track's embedded picture materialized as the folder cover (songId). Exactly one of the two. Only apply a URL you are confident matches the release — visual judgement belongs to the web cover picker. Audit-logged.",
+    access: 'curate',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        albumId: { type: 'string' },
+        coverUrl: { type: 'string', description: 'Canonical cover image URL.' },
+        songId: {
+          type: 'string',
+          description: "One of the album's song ids whose embedded art becomes the folder cover.",
+        },
+      },
+      required: ['albumId'],
+    },
+    handler: async ({ db, identity, metadata }, args) => {
+      const albumId = str(args.albumId);
+      const result = await applyAlbumCover(
+        db,
+        { musicDir: metadata.musicDir, coverCacheDir: metadata.coverCacheDir },
+        albumId,
+        { coverUrl: str(args.coverUrl) || undefined, songId: str(args.songId) || undefined },
+      );
+      if (!result.ok) return JSON.stringify({ error: result.error });
+      const actor = `agent:${identity.tokenId}`;
+      recordAudit(db, { sub: identity.userId, username: actor }, 'album.cover', {
+        targetKind: 'album',
+        targetId: albumId,
+        detail: `${result.mode} (via MCP agent)`,
+      });
+      return JSON.stringify({ ok: true, mode: result.mode });
+    },
+  },
+  {
+    name: 'set_album_classification',
+    description:
+      "Override an album's classification (album|ep|single|compilation|unknown) and/or hidden state. Sets the manual-override flag so the automatic curator leaves the choice alone across rescans. Fixes a visible 'unknown' or an oversized single/ep from the health report. Audit-logged.",
+    access: 'curate',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        albumId: { type: 'string' },
+        classification: {
+          type: 'string',
+          enum: ['album', 'ep', 'single', 'compilation', 'unknown'],
+        },
+        hidden: { type: 'boolean', description: 'Hide (true) or unhide (false) the album.' },
+      },
+      required: ['albumId'],
+    },
+    handler: ({ db, identity, curation }, args) => {
+      const albumId = str(args.albumId);
+      const classificationRaw = str(args.classification);
+      const hidden = typeof args.hidden === 'boolean' ? args.hidden : undefined;
+      if (classificationRaw && !VALID_CLASSIFICATIONS.has(classificationRaw)) {
+        return JSON.stringify({ error: 'Invalid classification' });
+      }
+      const classification = classificationRaw ? (classificationRaw as Classification) : undefined;
+      if (!classification && hidden === undefined) {
+        return JSON.stringify({ error: 'Provide classification and/or hidden' });
+      }
+      if (!curation.curator) return JSON.stringify({ error: 'Curator not available' });
+      const album = db
+        .query<{ name: string; artist: string; classification: string }, [string]>(
+          'SELECT name, artist, classification FROM library_albums WHERE id = ?',
+        )
+        .get(albumId);
+      if (!album) return JSON.stringify({ error: 'Album not found' });
+      const ok = curation.curator.setManualOverride(albumId, { classification, hidden });
+      if (!ok) return JSON.stringify({ error: 'Nothing changed' });
+      const changes = [
+        classification ? `${album.classification} → ${classification}` : null,
+        hidden !== undefined ? (hidden ? 'hidden' : 'unhidden') : null,
+      ].filter(Boolean);
+      const actor = `agent:${identity.tokenId}`;
+      recordAudit(db, { sub: identity.userId, username: actor }, 'album.classify', {
+        targetKind: 'album',
+        targetId: albumId,
+        detail: `${changes.join(', ')} (via MCP agent)`,
+      });
+      return JSON.stringify({ ok: true });
+    },
+  },
+  {
     name: 'flag_for_review',
     description:
       'Flag one artist, album, or song as needing a human decision, with a reason. Use this instead of guessing when a fix has no unambiguous answer — a b2b DJ credit naming two acts, an identity you cannot resolve confidently. Changes no library data. Re-flagging the same target updates the open flag rather than adding another.',
@@ -775,6 +967,7 @@ export function mcpRoutes(
   dataDir?: string,
   runSync?: () => Promise<void>,
   metadata?: Omit<McpToolContext['metadata'], 'musicDir'>,
+  curation?: McpToolContext['curation'],
 ) {
   const app = new Hono();
   // Debounced the same way the HTTP delete routes are (share-rescan-scheduler.ts):
@@ -832,6 +1025,7 @@ export function mcpRoutes(
             artistIdentity: { dataDir, runSync },
             songGenre: { musicDir },
             metadata: { ...metadata, musicDir },
+            curation: curation ?? {},
           },
           name,
           args,

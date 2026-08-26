@@ -11,7 +11,7 @@ import { errorHandler } from '../middleware/error-handler.js';
 import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
 import type { MaintenanceService } from '../services/maintenance/maintenance.service.js';
-import type { LibraryCurator } from '../services/library-curator.js';
+import { VALID_CLASSIFICATIONS, type LibraryCurator } from '../services/library-curator.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from '../services/album-grouping.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import { deleteAlbum, deleteOne } from '../services/library-deletion.js';
@@ -37,7 +37,6 @@ import {
   type SongMetadataMutateBody,
 } from '../services/song-metadata-mutate.js';
 import {
-  setArtwork,
   deleteArtwork,
   purgeDiskArtCache,
   purgeCanonicalCache,
@@ -75,6 +74,7 @@ import {
 } from '../services/cover-sources.js';
 import { checkFragments } from '../services/library-fragments.js';
 import { libraryHealth } from '../services/library-health.js';
+import { applyAlbumCover } from '../services/album-cover-mutate.js';
 import {
   applyMissplitMerge,
   missplitClusterMembers,
@@ -111,8 +111,6 @@ import {
 } from '../services/identify.js';
 
 const log = createLogger('library');
-
-const VALID_CLASSIFICATIONS = new Set(['album', 'ep', 'single', 'compilation', 'unknown']);
 
 /** Canonical MusicBrainz id shape — a plain UUID (issue #610). */
 const MBID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -1267,6 +1265,13 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     requireCurator(c);
     if (!curator) return c.json({ error: 'Curator not available' }, 503);
     const ok = curator.setManualOverride(c.req.param('id'), { hidden: true });
+    if (ok) {
+      recordAudit(getDatabase(), c.get('user'), 'album.classify', {
+        targetKind: 'album',
+        targetId: c.req.param('id'),
+        detail: 'hidden',
+      });
+    }
     return c.json({ ok });
   });
 
@@ -1274,6 +1279,13 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     requireCurator(c);
     if (!curator) return c.json({ error: 'Curator not available' }, 503);
     const ok = curator.setManualOverride(c.req.param('id'), { hidden: false });
+    if (ok) {
+      recordAudit(getDatabase(), c.get('user'), 'album.classify', {
+        targetKind: 'album',
+        targetId: c.req.param('id'),
+        detail: 'unhidden',
+      });
+    }
     return c.json({ ok });
   });
 
@@ -1288,6 +1300,13 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const ok = curator.setManualOverride(c.req.param('id'), {
       classification: cls as 'album' | 'single' | 'compilation' | 'unknown',
     });
+    if (ok) {
+      recordAudit(getDatabase(), c.get('user'), 'album.classify', {
+        targetKind: 'album',
+        targetId: c.req.param('id'),
+        detail: `classification → ${cls}`,
+      });
+    }
     return c.json({ ok });
   });
 
@@ -1364,8 +1383,19 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     ) {
       return c.json({ error: 'Nothing to apply' }, 400);
     }
-    const result = applyMetadataFix(getDatabase(), c.req.param('id'), body, { coverCacheDir });
+    const db = getDatabase();
+    const old = db
+      .query<{ name: string; artist: string }, [string]>(
+        'SELECT name, artist FROM library_albums WHERE id = ?',
+      )
+      .get(c.req.param('id'));
+    const result = applyMetadataFix(db, c.req.param('id'), body, { coverCacheDir });
     if (!result) return c.json({ error: 'Album not found' }, 404);
+    recordAudit(db, c.get('user'), 'album.metadata', {
+      targetKind: 'album',
+      targetId: result.albumId,
+      detail: `"${old?.artist} — ${old?.name}" → "${result.artist} — ${result.album}"`,
+    });
     return c.json(result);
   });
 
@@ -1439,45 +1469,18 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   app.post('/albums/:id/cover', async (c) => {
     requireCurator(c);
     const id = c.req.param('id');
-    const db = getDatabase();
-    const album = db
-      .query<{ id: string }, [string]>('SELECT id FROM library_albums WHERE id = ?')
-      .get(id);
-    if (!album) return c.json({ error: 'Album not found' }, 404);
-
     const body = await c.req.json<ApplyCoverRequest>().catch(() => ({}) as ApplyCoverRequest);
-
-    const coverUrl = body.coverUrl?.trim();
-    if (coverUrl) {
-      setArtwork(db, id, 'album', coverUrl, coverCacheDir);
-      clearCoverNegativeCache(id); // in case this id was 404-cached as artless
-      return c.json({ ok: true });
-    }
-
-    const songId = body.songId?.trim();
-    if (songId) {
-      if (!musicDir) return c.json({ error: 'Music directory not configured' }, 503);
-      const song = db
-        .query<{ path: string }, [string, string]>(
-          'SELECT path FROM library_songs WHERE id = ? AND album_id = ?',
-        )
-        .get(songId, id);
-      if (!song) return c.json({ error: 'Song not in this album' }, 404);
-      const md = expandDir(musicDir);
-      const abs = resolveSongPath(md, song.path);
-      if (!isUnderMusicDir(md, abs) || !existsSync(abs)) {
-        return c.json({ error: 'Song file not found' }, 404);
-      }
-      const pic = await extractEmbeddedPicture(abs);
-      if (!pic) return c.json({ error: 'That track has no embedded artwork' }, 400);
-      writeFolderCover(dirname(abs), pic);
-      deleteArtwork(db, id, coverCacheDir); // clear canonical → folder art wins
-      if (coverCacheDir) purgeDiskArtCache(coverCacheDir, id);
-      clearCoverNegativeCache(id); // in case this id was 404-cached as artless
-      return c.json({ ok: true });
-    }
-
-    return c.json({ error: 'Provide coverUrl or songId' }, 400);
+    const result = await applyAlbumCover(getDatabase(), { musicDir, coverCacheDir }, id, body);
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    recordAudit(getDatabase(), c.get('user'), 'album.cover', {
+      targetKind: 'album',
+      targetId: id,
+      detail:
+        result.mode === 'canonical-url'
+          ? `canonical URL: ${body.coverUrl?.trim()}`
+          : `folder cover from track ${body.songId?.trim()}`,
+    });
+    return c.json({ ok: true });
   });
 
   // Upload a custom cover image (multipart form-data, field "image"). Converted to
@@ -1535,6 +1538,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     deleteArtwork(db, id, coverCacheDir); // clear canonical → folder art wins
     if (coverCacheDir) purgeDiskArtCache(coverCacheDir, id);
     clearCoverNegativeCache(id); // in case this id was 404-cached as artless
+    recordAudit(db, c.get('user'), 'album.cover', {
+      targetKind: 'album',
+      targetId: id,
+      detail: 'uploaded image as folder cover',
+    });
     return c.json({ ok: true });
   });
 
