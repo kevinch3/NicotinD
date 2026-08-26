@@ -3,11 +3,16 @@
  * createPointerDrag. The caller (layout shell) binds `onPointerDown` on the
  * scrollable content and renders an indicator off `phase`/`pullPx`.
  *
- * While a pull is live a non-passive document `touchmove` listener calls
- * preventDefault(): without it, touch browsers reclaim the vertical pan after
- * ~10px, fire pointercancel and stop sending moves (overscroll-behavior does
- * NOT prevent that — it only suppresses the navigation/glow effect). This is
- * the sanctioned home for that wiring; see docs/web-ui.md "Pull to refresh".
+ * From pointerdown a non-passive document `touchmove` listener preventDefault()s
+ * downward-dominant moves (dy > 0 and dy >= |dx|): touch browsers reclaim an
+ * unprevented vertical pan after ~10px, fire pointercancel and stop sending
+ * moves, and once a scroll is in progress touchmove arrives non-cancelable —
+ * so the FIRST touchmove is the only winnable round, and the blocker must be
+ * armed before it (attaching on pull intent, after slop, always lost; that was
+ * the bug that made the gesture dead on real devices). Overscroll-behavior does
+ * NOT prevent the reclaim — it only suppresses the navigation/glow effect. The
+ * dominance test keeps horizontal pans (tab strips) native. This is the
+ * sanctioned home for that wiring; see docs/web-ui.md "Pull to refresh".
  *
  * A pointercancel while armed COMMITS the refresh — on touch, never rely on a
  * clean pointerup (same lesson as the player swipe-up).
@@ -49,9 +54,21 @@ export function createPullToRefresh(options: PullToRefreshOptions): PullToRefres
   const phase = signal<PullPhase>('idle');
   const pullPx = signal(0);
   let intent: 'undecided' | 'pull' | 'scroll' = 'undecided';
+  let startPoint: { x: number; y: number } | null = null;
 
   const blockTouchMove = (e: TouchEvent): void => {
-    if (e.cancelable) e.preventDefault();
+    if (intent === 'scroll' || !e.cancelable) return;
+    if (intent === 'pull') {
+      e.preventDefault();
+      return;
+    }
+    // Undecided: the first move's direction decides — dominance mirrors onMove's
+    // intent test, but can't wait for slop (see header).
+    const t = e.touches[0];
+    if (!t || !startPoint) return;
+    const dy = t.clientY - startPoint.y;
+    const dx = t.clientX - startPoint.x;
+    if (dy > 0 && dy >= Math.abs(dx)) e.preventDefault();
   };
   const attachBlocker = (): void =>
     document.addEventListener('touchmove', blockTouchMove, { passive: false });
@@ -60,6 +77,7 @@ export function createPullToRefresh(options: PullToRefreshOptions): PullToRefres
   const settle = (): void => {
     removeBlocker();
     intent = 'undecided';
+    startPoint = null;
     if (phase() !== 'refreshing') {
       phase.set('idle');
       pullPx.set(0);
@@ -69,6 +87,7 @@ export function createPullToRefresh(options: PullToRefreshOptions): PullToRefres
   const commit = (): void => {
     removeBlocker();
     intent = 'undecided';
+    startPoint = null;
     phase.set('refreshing');
     pullPx.set(PULL_THRESHOLD_PX);
     let result: Promise<void> | void;
@@ -91,6 +110,10 @@ export function createPullToRefresh(options: PullToRefreshOptions): PullToRefres
   };
 
   const drag = createPointerDrag({
+    onStart: (e) => {
+      startPoint = { x: e.clientX, y: e.clientY };
+      attachBlocker();
+    },
     onMove: (e, start) => {
       if (intent === 'scroll') return;
       const dy = e.clientY - start.clientY;
@@ -99,7 +122,6 @@ export function createPullToRefresh(options: PullToRefreshOptions): PullToRefres
         if (Math.abs(dy) < PULL_SLOP_PX && Math.abs(dx) < PULL_SLOP_PX) return;
         if (dy > 0 && dy > Math.abs(dx)) {
           intent = 'pull';
-          attachBlocker();
         } else {
           intent = 'scroll';
           return;
