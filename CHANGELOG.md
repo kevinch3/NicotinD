@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.21](https://github.com/kevinch3/NicotinD/compare/v0.5.20...v0.5.21) (2026-08-26)
+
+### Bug Fixes
+
+* **acquire:** make one album mean one download on the manual lane ([#748](https://github.com/kevinch3/NicotinD/issues/748)) ([#753](https://github.com/kevinch3/NicotinD/issues/753)) ([28524eb](https://github.com/kevinch3/NicotinD/commit/28524eb1198db46174882f788650da943f64109b))
+* **acquire:** report the release's tracklist as the denominator ([#752](https://github.com/kevinch3/NicotinD/issues/752)) ([3fefaad](https://github.com/kevinch3/NicotinD/commit/3fefaad8dfde02fe23295fe91b1cda17cecc392b)), references [#745](https://github.com/kevinch3/NicotinD/issues/745)
+* **acquire:** stop failing a job for a 404 core caused itself ([#744](https://github.com/kevinch3/NicotinD/issues/744)) ([#750](https://github.com/kevinch3/NicotinD/issues/750)) ([88cf7eb](https://github.com/kevinch3/NicotinD/commit/88cf7eb05e5ba9d10f5a88cb8d4edd3c7ee8cbb1))
 ## [0.5.20](https://github.com/kevinch3/NicotinD/compare/v0.5.19...v0.5.20) (2026-08-26)
 ## [0.5.19](https://github.com/kevinch3/NicotinD/compare/v0.5.18...v0.5.19) (2026-08-26)
 
