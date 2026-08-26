@@ -76,6 +76,10 @@ applies it, then runs the handler; every write is audit-logged.
 | `set_song_genre` | curate | `services/song-genre-mutate.ts` `mutateSongGenre` + `song.genre` audit |
 | `lookup_song_metadata` | read | `services/candidate-sources.ts` `gatherSongCandidates` + `services/title-clean.ts` `cleanDisplayTitle` |
 | `fix_song_metadata` | curate | `services/song-metadata-mutate.ts` `mutateSongMetadata` + `song.metadata` audit |
+| `lookup_album_metadata` | read | `services/candidate-sources.ts` `gatherCandidates` — the album-scoped candidate search behind the web metadata-fix modal |
+| `fix_album_metadata` | curate | `services/metadata-fix.ts` `applyMetadataFix` + `album.metadata` audit |
+| `set_album_cover` | curate | `services/album-cover-mutate.ts` `applyAlbumCover` + `album.cover` audit |
+| `set_album_classification` | curate | `LibraryCurator.setManualOverride` + `album.classify` audit |
 | `flag_for_review` | curate | `services/curation-flags.ts` `createCurationFlag` + `curation.flag` audit |
 | `list_review_flags` | read | the open human-review queue, oldest first |
 | `resolve_review_flag` | curate | `services/curation-flags.ts` `resolveCurationFlag` + `curation.flag` audit |
@@ -217,6 +221,35 @@ This pairs with #679's `djSetArtistName`, which returns null precisely on the
 ambiguous `b2b` case — the sanitizer declines to guess, and this is where that
 case now goes instead of being lost.
 
+### Album curation writes (issue #735)
+
+The curator passes' hardest wall: album-level fixes (retag a watermark album, fix a
+mis-classification, set a missing cover) were web-only, so the agent could *find*
+6 misplit clusters and wrong-field watermarks and fix none of them. Each tool
+wraps an existing tested module — nothing new was invented:
+
+- **`fix_album_metadata`** wraps `applyMetadataFix` (the DB-override album fix:
+  artist/title/year/releaseType/cover, merges album rows, survives rescans, never
+  moves files). One consequence is load-bearing: album ids are name-derived, so a
+  rename **re-mints the id** — the response's `albumId` is the new one and the
+  tool description tells the agent to use it thereafter.
+- **`set_album_cover`** wraps the new `services/album-cover-mutate.ts`
+  `applyAlbumCover` — extracted from the inline `POST /albums/:id/cover` body so
+  HTTP and MCP share one tested module (fifth instance of the shared-mutation
+  lineage). Canonical-URL mode or embedded-picture→folder-cover mode. There is
+  deliberately **no cover-candidates MCP tool**: `lookup_album_metadata` already
+  returns candidate `coverUrl`s, and visual judgement stays in the web picker —
+  the agent's use case is "no cover at all → apply the confident candidate".
+- **`set_album_classification`** wraps `curator.setManualOverride`, folding the
+  reclassify/hide/unhide routes into one tool and closing the measured
+  "classification unreachable over MCP" gap.
+
+Extracting these exposed that the HTTP album routes recorded **no audit at all**
+(issue #733, the #681 pattern again): `POST /albums/:id/metadata`, `/reclassify`,
+`/hide`, `/unhide` and both cover routes now `recordAudit` as `album.metadata` /
+`album.classify` / `album.cover` — the same action names the MCP tools write with
+their `agent:<tokenId>` actor.
+
 ### `get_library_health` / `resolve_review_flag` (issue #734)
 
 Two real curator passes measured the same discovery failure: with only name-shaped
@@ -356,7 +389,11 @@ failure-without-audit and read-only-token refusal,
 `get_library_health`'s read-token report + worklist bound,
 `resolve_review_flag`'s audited resolve / not-found-without-audit /
 read-only-token refusal, `get_album_tracks`' album header + per-song format
-fields and unknown-album shape,
+fields and unknown-album shape, the album curation tools
+(`lookup_album_metadata`'s read-token + unknown-album paths,
+`fix_album_metadata`'s re-mint + audited old→new / empty-body / unknown /
+read-only refusals, `set_album_cover`'s canonical write + error passthrough,
+`set_album_classification`'s override + hide + validation set),
 unknown-method JSON-RPC error, and `checkToolAccess` covering the scope +
 confirm gates with synthetic tools).
 `services/library-deletion.test.ts` covers `deleteOne`/`deleteAlbum` directly

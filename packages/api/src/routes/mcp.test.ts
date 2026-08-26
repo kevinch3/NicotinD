@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { applySchema } from '../db.js';
 import { mintAgentToken } from '../services/agent-tokens.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
+import { LibraryCurator } from '../services/library-curator.js';
 import { dispatchTool, checkToolAccess, type McpToolContext } from './mcp.js';
 
 const testDb = new Database(':memory:');
@@ -678,6 +679,7 @@ describe('song metadata tools (issue #722)', () => {
     artistIdentity: { dataDir: undefined, runSync: undefined },
     songGenre: { musicDir },
     metadata,
+    curation: {},
   });
 
   it('tools/list includes lookup_song_metadata and fix_song_metadata', async () => {
@@ -778,6 +780,229 @@ describe('song metadata tools (issue #722)', () => {
   });
 });
 
+describe('album curation tools (issue #735)', () => {
+  const albumCtx = (
+    scope: 'refiner:read' | 'refiner:curate',
+    curation?: McpToolContext['curation'],
+  ): McpToolContext => ({
+    db: testDb,
+    identity: { tokenId: 't', userId: 'u1', scope },
+    deletion: { musicDir, shareRescan: new ShareRescanScheduler(async () => {}) },
+    artistIdentity: { dataDir: undefined, runSync: undefined },
+    songGenre: { musicDir },
+    metadata: { musicDir },
+    curation: curation ?? { curator: new LibraryCurator(testDb) },
+  });
+
+  const seedAlbum = () => {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, cover_art, song_count, duration, year, classification, synced_at)
+       VALUES ('al-fix', 'Pegao (Official Video)', 'Wisin & Yandel', 'ar-wy', 'al-fix', 1, 228, NULL, 'single', 0)`,
+    );
+    seedSong('s-fix', 'Pegao', 'p/s-fix.opus', 'al-fix');
+  };
+
+  const audits = () =>
+    testDb
+      .query<{ action: string; target_id: string; detail: string }, []>(
+        'SELECT action, target_id, detail FROM audit_log',
+      )
+      .all();
+
+  it('tools/list includes the four album curation tools', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+    const body = (await (await rpc(token, 'tools/list')).json()) as {
+      result: { tools: Array<{ name: string }> };
+    };
+    const names = body.result.tools.map((t) => t.name);
+    for (const n of [
+      'lookup_album_metadata',
+      'fix_album_metadata',
+      'set_album_cover',
+      'set_album_classification',
+    ]) {
+      expect(names).toContain(n);
+    }
+  });
+
+  it('lookup_album_metadata works on a read-only token and reports per-source status', async () => {
+    seedAlbum();
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:read' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'lookup_album_metadata',
+        arguments: { albumId: 'al-fix' },
+      })
+    ).json()) as { result: { content: Array<{ text: string }>; isError?: boolean } };
+    expect(body.result.isError).toBeUndefined();
+    const parsed = JSON.parse(body.result.content[0]!.text) as {
+      album: { name: string };
+      sources: Array<{ id: string; ok: boolean }>;
+    };
+    expect(parsed.album.name).toBe('Pegao (Official Video)');
+    expect(Array.isArray(parsed.sources)).toBe(true);
+  });
+
+  it('lookup_album_metadata reports an unknown album as an error payload', async () => {
+    const res = await dispatchTool(albumCtx('refiner:read'), 'lookup_album_metadata', {
+      albumId: 'nope',
+    });
+    expect(JSON.parse(res.content[0]!.text)).toEqual({ error: 'Album not found' });
+  });
+
+  it('fix_album_metadata re-buckets the album, returns the NEW id, and audit-logs old → new', async () => {
+    seedAlbum();
+    const res = await dispatchTool(albumCtx('refiner:curate'), 'fix_album_metadata', {
+      albumId: 'al-fix',
+      album: 'Los Extraterrestres',
+      year: 2007,
+    });
+    const parsed = JSON.parse(res.content[0]!.text) as {
+      ok: boolean;
+      albumId: string;
+      album: string;
+    };
+    expect(parsed.ok).toBe(true);
+    expect(parsed.album).toBe('Los Extraterrestres');
+    expect(parsed.albumId).not.toBe('al-fix');
+    const row = testDb
+      .query<{ name: string; year: number | null }, [string]>(
+        'SELECT name, year FROM library_albums WHERE id = ?',
+      )
+      .get(parsed.albumId);
+    expect(row).toEqual({ name: 'Los Extraterrestres', year: 2007 });
+    const audit = audits();
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({ action: 'album.metadata', target_id: parsed.albumId });
+    expect(audit[0]!.detail).toContain('Pegao (Official Video)');
+    expect(audit[0]!.detail).toContain('(via MCP agent)');
+  });
+
+  it('fix_album_metadata refuses an empty body and an unknown album without auditing', async () => {
+    seedAlbum();
+    const empty = await dispatchTool(albumCtx('refiner:curate'), 'fix_album_metadata', {
+      albumId: 'al-fix',
+    });
+    expect(JSON.parse(empty.content[0]!.text)).toEqual({ error: 'Nothing to apply' });
+    const unknown = await dispatchTool(albumCtx('refiner:curate'), 'fix_album_metadata', {
+      albumId: 'nope',
+      album: 'X',
+    });
+    expect(JSON.parse(unknown.content[0]!.text)).toEqual({ error: 'Album not found' });
+    expect(audits()).toHaveLength(0);
+  });
+
+  it('fix_album_metadata refuses a read-only token', async () => {
+    seedAlbum();
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:read' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'fix_album_metadata',
+        arguments: { albumId: 'al-fix', album: 'X' },
+      })
+    ).json()) as { result: { content: Array<{ text: string }>; isError?: boolean } };
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0]!.text).toContain('read-only');
+  });
+
+  it('set_album_cover stores a canonical URL and audit-logs it', async () => {
+    seedAlbum();
+    const res = await dispatchTool(albumCtx('refiner:curate'), 'set_album_cover', {
+      albumId: 'al-fix',
+      coverUrl: 'https://img/real.jpg',
+    });
+    expect(JSON.parse(res.content[0]!.text)).toMatchObject({ ok: true, mode: 'canonical-url' });
+    const row = testDb
+      .query<{ cover_url: string; kind: string }, [string]>(
+        'SELECT cover_url, kind FROM library_artwork WHERE id = ?',
+      )
+      .get('al-fix');
+    expect(row).toEqual({ cover_url: 'https://img/real.jpg', kind: 'album' });
+    const audit = audits();
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({ action: 'album.cover', target_id: 'al-fix' });
+    expect(audit[0]!.detail).toContain('(via MCP agent)');
+  });
+
+  it('set_album_cover surfaces mutation errors without auditing', async () => {
+    const unknown = await dispatchTool(albumCtx('refiner:curate'), 'set_album_cover', {
+      albumId: 'nope',
+      coverUrl: 'https://x/c.jpg',
+    });
+    expect(JSON.parse(unknown.content[0]!.text)).toEqual({ error: 'Album not found' });
+    seedAlbum();
+    const neither = await dispatchTool(albumCtx('refiner:curate'), 'set_album_cover', {
+      albumId: 'al-fix',
+    });
+    expect(JSON.parse(neither.content[0]!.text)).toEqual({
+      error: 'Provide coverUrl or songId',
+    });
+    expect(audits()).toHaveLength(0);
+  });
+
+  it('set_album_classification sets the manual override and audit-logs old → new', async () => {
+    seedAlbum();
+    const res = await dispatchTool(albumCtx('refiner:curate'), 'set_album_classification', {
+      albumId: 'al-fix',
+      classification: 'ep',
+    });
+    expect(JSON.parse(res.content[0]!.text)).toEqual({ ok: true });
+    const row = testDb
+      .query<{ classification: string; manual_override: number }, [string]>(
+        'SELECT classification, manual_override FROM library_albums WHERE id = ?',
+      )
+      .get('al-fix');
+    expect(row).toEqual({ classification: 'ep', manual_override: 1 });
+    const audit = audits();
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({ action: 'album.classify', target_id: 'al-fix' });
+    expect(audit[0]!.detail).toContain('single → ep');
+    expect(audit[0]!.detail).toContain('(via MCP agent)');
+  });
+
+  it('set_album_classification can hide/unhide without touching classification', async () => {
+    seedAlbum();
+    const res = await dispatchTool(albumCtx('refiner:curate'), 'set_album_classification', {
+      albumId: 'al-fix',
+      hidden: true,
+    });
+    expect(JSON.parse(res.content[0]!.text)).toEqual({ ok: true });
+    const row = testDb
+      .query<{ hidden: number; classification: string }, [string]>(
+        'SELECT hidden, classification FROM library_albums WHERE id = ?',
+      )
+      .get('al-fix');
+    expect(row).toEqual({ hidden: 1, classification: 'single' });
+  });
+
+  it('set_album_classification validates input and dependencies', async () => {
+    seedAlbum();
+    const bad = await dispatchTool(albumCtx('refiner:curate'), 'set_album_classification', {
+      albumId: 'al-fix',
+      classification: 'mixtape',
+    });
+    expect(JSON.parse(bad.content[0]!.text)).toEqual({ error: 'Invalid classification' });
+    const none = await dispatchTool(albumCtx('refiner:curate'), 'set_album_classification', {
+      albumId: 'al-fix',
+    });
+    expect(JSON.parse(none.content[0]!.text)).toEqual({
+      error: 'Provide classification and/or hidden',
+    });
+    const unknown = await dispatchTool(albumCtx('refiner:curate'), 'set_album_classification', {
+      albumId: 'nope',
+      classification: 'ep',
+    });
+    expect(JSON.parse(unknown.content[0]!.text)).toEqual({ error: 'Album not found' });
+    const noCurator = await dispatchTool(
+      albumCtx('refiner:curate', { curator: null }),
+      'set_album_classification',
+      { albumId: 'al-fix', classification: 'ep' },
+    );
+    expect(JSON.parse(noCurator.content[0]!.text)).toEqual({ error: 'Curator not available' });
+    expect(audits()).toHaveLength(0);
+  });
+});
+
 describe('library health & flag tools (issue #734)', () => {
   const ctx = (scope: 'refiner:read' | 'refiner:curate'): McpToolContext => ({
     db: testDb,
@@ -786,6 +1011,7 @@ describe('library health & flag tools (issue #734)', () => {
     artistIdentity: { dataDir: undefined, runSync: undefined },
     songGenre: { musicDir },
     metadata: { musicDir },
+    curation: {},
   });
 
   it('tools/list includes get_library_health and resolve_review_flag', async () => {
@@ -920,6 +1146,7 @@ describe('dispatchTool guards', () => {
     artistIdentity: { dataDir: undefined, runSync: undefined },
     songGenre: { musicDir },
     metadata: { musicDir },
+    curation: {},
   });
 
   it('an unknown tool returns an error result, not a throw', async () => {

@@ -137,7 +137,16 @@ function albumKey(artist: string, title: string): string {
   return `${normalizeArtistForGrouping(artist)}::${normalizeForGrouping(title)}`;
 }
 
-type Classification = 'album' | 'ep' | 'single' | 'compilation' | 'unknown';
+export type Classification = 'album' | 'ep' | 'single' | 'compilation' | 'unknown';
+
+/** The classification vocabulary, shared by every surface that validates one. */
+export const VALID_CLASSIFICATIONS: ReadonlySet<string> = new Set([
+  'album',
+  'ep',
+  'single',
+  'compilation',
+  'unknown',
+]);
 
 /**
  * Classify one album. `metaType` (from library_release_meta) is authoritative
