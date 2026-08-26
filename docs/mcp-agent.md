@@ -83,6 +83,7 @@ applies it, then runs the handler; every write is audit-logged.
 | `flag_for_review` | curate | `services/curation-flags.ts` `createCurationFlag` + `curation.flag` audit |
 | `list_review_flags` | read | the open human-review queue, oldest first |
 | `resolve_review_flag` | curate | `services/curation-flags.ts` `resolveCurationFlag` + `curation.flag` audit |
+| `complete_album` | curate, **destructive** | `services/album-acquire.ts` `acquireAlbum` (only-missing-tracks hunt) + `album.acquire` audit |
 | `delete_song` | curate, **destructive** | `services/library-deletion.ts` `deleteOne` + `song.delete` audit |
 | `delete_album` | curate, **destructive** | `services/library-deletion.ts` `deleteAlbum` + `album.delete` audit |
 | `merge_artist` | curate, **destructive** | `services/artist-identity-mutate.ts` `mutateArtistIdentity` (merge mode, one or many raw names) + `artist.identity` audit |
@@ -250,6 +251,31 @@ Extracting these exposed that the HTTP album routes recorded **no audit at all**
 `album.classify` / `album.cover` — the same action names the MCP tools write with
 their `agent:<tokenId>` actor.
 
+### `complete_album` (issue #735) — acquisition behind the destructive gate
+
+The owner's call for the standardized curation pass: completion includes
+*acquiring the missing tracks* of incomplete albums, curator-approved per album.
+The tool is `destructive: true` even though it deletes nothing — the `confirm`
+gate **is** the per-album approval, and the destructive contract is the right
+one for a tool that spends bandwidth/disk and contacts peers.
+
+Order of refusals is deliberate: resolve the album, then the **kill-switch**
+(`isAcquisitionEnabled` — the runtime toggle with the `NICOTIND_ACQUISITION=off`
+env floor an agent cannot lift), then Lidarr-id resolution in owner-approved
+scope: **(a)** the newest `album_jobs` row for the artist/title pair (proven
+canonical tracklist — the health report's confirmed-incomplete population),
+**(b)** a `lidarr.album.lookup` hit whose title `normalizeForGrouping`-matches;
+anything else errors toward the web catalog flow — no Lidarr provisioning from
+the agent surface in v1.
+
+The hunt itself is `acquireAlbum` — the watchlist/auto-acquire shared core — so
+every idempotence guard rides along: `already-complete` comes back as a notice
+(never an error), an addon-side 409 maps to `in-flight`, and only the tracks not
+already on disk are enqueued. Every call that reaches the hunt is audited as
+`album.acquire` with `outcome=<x> lidarrAlbumId=<n>`. The runbook budget
+(≤10 hunts per session) lives in docs/curation-playbook.md, not in code —
+it bounds curator attention, and idempotence makes re-runs free.
+
 ### `get_library_health` / `resolve_review_flag` (issue #734)
 
 Two real curator passes measured the same discovery failure: with only name-shaped
@@ -364,9 +390,9 @@ server's `requireCurator` gate on the same routes.
   rename" below); `single` and `split` are exposed to
   `services/artist-identity-mutate.ts` already but have no MCP tool wrapping
   them yet, since neither has an unambiguous single target name to hand an LLM.
-- **Acquisition tools** (`add_to_watchlist` / `acquire_album`) — the mechanism
-  (`destructive` flag + `confirm` gate + `recordAudit` + the refiner cap) is
-  proven by the delete tools above, so adding these is the same shape of work.
+- **Acquisition tools** — `acquire_album` shipped as `complete_album` (issue
+  #735, see its section above); `add_to_watchlist` remains open, same shape of
+  work.
 - **Reuse existing routes via internal dispatch** — as the tool surface grows,
   fronting the real Hono routes (with a short-lived internal refiner token)
   instead of re-implementing each write keeps the MCP surface from drifting.
@@ -394,6 +420,9 @@ fields and unknown-album shape, the album curation tools
 `fix_album_metadata`'s re-mint + audited old→new / empty-body / unknown /
 read-only refusals, `set_album_cover`'s canonical write + error passthrough,
 `set_album_classification`'s override + hide + validation set),
+`complete_album`'s confirm gate, kill-switch refusal, album_jobs-first vs
+lookup-fallback resolution, idempotent already-complete notice and
+unresolvable-without-audit paths,
 unknown-method JSON-RPC error, and `checkToolAccess` covering the scope +
 confirm gates with synthetic tools).
 `services/library-deletion.test.ts` covers `deleteOne`/`deleteAlbum` directly
