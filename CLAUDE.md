@@ -413,12 +413,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   a printed fallback code; `parseApproveCode` and core `pairing-code.ts` `isPairingCodeShape` keep the
   minter and validator from drifting; `paired_devices` rows are revocable at refresh. Tailscale Funnel
   publishes the loopback backend. → [device-pairing.md](docs/device-pairing.md)
-- **MCP agent access**: an external agent curates via `/api/mcp`, a scoped revocable
-  `agent_tokens` bearer capped at refiner (`AGENT_EFFECTIVE_ROLE`). `checkToolAccess` gates curate
-  scope and destructive confirm; `dispatchTool` audits every write. `library-deletion.ts`,
-  `artist-identity-mutate.ts`, `song-genre-mutate.ts` and `song-metadata-mutate.ts` back HTTP and
-  MCP; `gatherSongCandidates` + `cleanDisplayTitle` power online lookup.
-  → [mcp-agent.md](docs/mcp-agent.md)
+- **MCP agent access**: external agents curate via `/api/mcp`, a revocable `agent_tokens` bearer
+  capped at refiner (`AGENT_EFFECTIVE_ROLE`). `checkToolAccess` gates scope + destructive confirm;
+  `dispatchTool` audits writes. `library-deletion.ts`, `artist-identity-mutate.ts`,
+  `song-genre-mutate.ts` and `song-metadata-mutate.ts` back HTTP and MCP; `gatherSongCandidates` +
+  `cleanDisplayTitle` power online lookup. → [mcp-agent.md](docs/mcp-agent.md)
 - **WebMCP alignment (proposed — not yet implemented)**: `MCP_TOOLS` is already the shape Chrome's
   WebMCP registration takes; the plan promotes host exposure to a declared field and adds a flagged
   browser host owning only session tools. Nothing destructive is ever browser-exposed, and client-side WebGPU/WebNN stays NO-GO.
