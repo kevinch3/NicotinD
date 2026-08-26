@@ -3,10 +3,15 @@ import { Database } from 'bun:sqlite';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { ADDON_PROTOCOL_VERSION, type AddonManifest } from '@nicotind/core';
+import type { Lidarr } from '@nicotind/lidarr-client';
 import { applySchema } from '../db.js';
 import { mintAgentToken } from '../services/agent-tokens.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import { LibraryCurator } from '../services/library-curator.js';
+import { artistIdFor } from '../services/library-scanner.js';
+import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
+import type { AddonClient } from '../services/addons/client.js';
 import { dispatchTool, checkToolAccess, type McpToolContext } from './mcp.js';
 
 const testDb = new Database(':memory:');
@@ -680,6 +685,7 @@ describe('song metadata tools (issue #722)', () => {
     songGenre: { musicDir },
     metadata,
     curation: {},
+    acquisition: { getAddon: () => null, isAcquisitionEnabled: () => false, minMatchPct: 80 },
   });
 
   it('tools/list includes lookup_song_metadata and fix_song_metadata', async () => {
@@ -792,6 +798,7 @@ describe('album curation tools (issue #735)', () => {
     songGenre: { musicDir },
     metadata: { musicDir },
     curation: curation ?? { curator: new LibraryCurator(testDb) },
+    acquisition: { getAddon: () => null, isAcquisitionEnabled: () => false, minMatchPct: 80 },
   });
 
   const seedAlbum = () => {
@@ -1003,6 +1010,238 @@ describe('album curation tools (issue #735)', () => {
   });
 });
 
+describe('complete_album (issue #735)', () => {
+  const MANIFEST: AddonManifest = {
+    id: 'fixture-addon',
+    name: 'Fixture',
+    description: 'x',
+    version: '0.1.0',
+    protocolVersion: ADDON_PROTOCOL_VERSION,
+    kind: 'acquisition',
+    capabilities: ['search', 'download'],
+  };
+  const CANDIDATE = {
+    candidateRef: 'ref-1',
+    username: 'peer',
+    directory: 'Music\\Album',
+    matchedTracks: 2,
+    totalTracks: 2,
+    matchPct: 100,
+    format: 'MP3 320kbps',
+    estimatedSizeMb: 10,
+    isLive: false,
+    files: [],
+  };
+
+  const artist = 'Queen';
+  const arId = artistIdFor(artist);
+
+  beforeEach(() => {
+    // The global cleanup predates acquisition tables — clear hunt state too.
+    testDb.run('DELETE FROM album_jobs');
+    testDb.run('DELETE FROM acquisition_jobs');
+  });
+
+  function makeAddon(): RemoteAddonPlugin {
+    const client = {
+      baseUrl: 'http://addon:9999',
+      albumsSearch: async () => ({ candidates: [CANDIDATE], queries: [], skewNeeded: false }),
+      createJob: async () => ({ id: 'aj-9', intent: 'album', items: [] }),
+    } as unknown as AddonClient;
+    return new RemoteAddonPlugin(MANIFEST, client);
+  }
+
+  function makeLidarr(o: {
+    tracks: string[];
+    lookupHits?: Array<{ id: number; title: string }>;
+    listCalls?: number[];
+    lookupCalls?: string[];
+  }): Lidarr {
+    return {
+      track: {
+        listByAlbum: async (id: number) => {
+          o.listCalls?.push(id);
+          return o.tracks.map((title) => ({ title }));
+        },
+      },
+      album: {
+        lookup: async (q: string) => {
+          o.lookupCalls?.push(q);
+          return (o.lookupHits ?? []).map((h) => ({
+            ...h,
+            foreignAlbumId: `rg-${h.id}`,
+            albumType: 'Album',
+            monitored: false,
+            artist: { artistName: artist },
+          }));
+        },
+      },
+    } as unknown as Lidarr;
+  }
+
+  const acquireCtx = (
+    acquisition: Partial<McpToolContext['acquisition']> = {},
+  ): McpToolContext => ({
+    db: testDb,
+    identity: { tokenId: 't', userId: 'u1', scope: 'refiner:curate' },
+    deletion: { musicDir, shareRescan: new ShareRescanScheduler(async () => {}) },
+    artistIdentity: { dataDir: undefined, runSync: undefined },
+    songGenre: { musicDir },
+    metadata: { musicDir },
+    curation: {},
+    acquisition: {
+      getAddon: () => makeAddon(),
+      isAcquisitionEnabled: () => true,
+      minMatchPct: 80,
+      lidarr: makeLidarr({ tracks: ['Mustapha', 'Fat Bottomed Girls'] }),
+      ...acquisition,
+    },
+  });
+
+  function seedOwned(titles: string[]): void {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, cover_art, song_count, duration, year, classification, synced_at)
+       VALUES ('al-jazz', 'Jazz', ?, ?, 'al-jazz', ?, 0, 1978, 'album', 0)`,
+      [artist, arId, titles.length],
+    );
+    titles.forEach((t, i) =>
+      testDb.run(
+        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, synced_at, landed_at)
+         VALUES (?, 'al-jazz', ?, ?, ?, 0, ?, 1, '2024', 1, 1)`,
+        [`jz-${i}`, t, artist, arId, `q/jz-${i}.opus`],
+      ),
+    );
+  }
+
+  function addJob(lidarrAlbumId: number): void {
+    testDb.run(
+      `INSERT INTO album_jobs (lidarr_album_id, username, directory, canonical_tracks_json, alternates_json, state, created_at, artist_name, album_title)
+       VALUES (?, 'u', 'd', '["Mustapha","Fat Bottomed Girls"]', '[]', 'exhausted', 1, ?, 'Jazz')`,
+      [lidarrAlbumId, artist],
+    );
+  }
+
+  const audits = () =>
+    testDb
+      .query<{ action: string; detail: string }, []>('SELECT action, detail FROM audit_log')
+      .all();
+
+  it('tools/list includes complete_album', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+    const body = (await (await rpc(token, 'tools/list')).json()) as {
+      result: { tools: Array<{ name: string }> };
+    };
+    expect(body.result.tools.map((t) => t.name)).toContain('complete_album');
+  });
+
+  it('requires confirm: true even with a curate token', async () => {
+    seedOwned(['Mustapha']);
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'complete_album',
+        arguments: { albumId: 'al-jazz' },
+      })
+    ).json()) as { result: { content: Array<{ text: string }>; isError?: boolean } };
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0]!.text).toContain('confirm');
+  });
+
+  it('refuses when the acquisition kill-switch is off, without auditing', async () => {
+    seedOwned(['Mustapha']);
+    const res = await dispatchTool(
+      acquireCtx({ isAcquisitionEnabled: () => false }),
+      'complete_album',
+      { albumId: 'al-jazz', confirm: true },
+    );
+    expect(JSON.parse(res.content[0]!.text)).toEqual({
+      error: 'Acquisition is disabled on this server',
+    });
+    expect(audits()).toHaveLength(0);
+  });
+
+  it('errors on an unknown albumId and on missing identifiers', async () => {
+    const unknown = await dispatchTool(acquireCtx(), 'complete_album', {
+      albumId: 'nope',
+      confirm: true,
+    });
+    expect(JSON.parse(unknown.content[0]!.text)).toEqual({ error: 'Album not found' });
+    const missing = await dispatchTool(acquireCtx(), 'complete_album', { confirm: true });
+    expect(JSON.parse(missing.content[0]!.text)).toEqual({
+      error: 'Provide albumId, or artist + album',
+    });
+  });
+
+  it('resolves via the newest album_jobs row first and enqueues only missing tracks', async () => {
+    seedOwned(['Mustapha']); // partial: canonical has 2
+    addJob(42);
+    const listCalls: number[] = [];
+    const lookupCalls: string[] = [];
+    const ctx = acquireCtx({
+      lidarr: makeLidarr({
+        tracks: ['Mustapha', 'Fat Bottomed Girls'],
+        listCalls,
+        lookupCalls,
+      }),
+    });
+    const res = await dispatchTool(ctx, 'complete_album', { albumId: 'al-jazz', confirm: true });
+    const parsed = JSON.parse(res.content[0]!.text) as { ok: boolean; outcome: string };
+    expect(parsed).toMatchObject({ ok: true, outcome: 'enqueued' });
+    expect(listCalls).toEqual([42]);
+    expect(lookupCalls).toEqual([]); // job history wins — no network lookup
+    const audit = audits();
+    expect(audit).toHaveLength(1);
+    expect(audit[0]!.action).toBe('album.acquire');
+    expect(audit[0]!.detail).toContain('outcome=enqueued');
+    expect(audit[0]!.detail).toContain('lidarrAlbumId=42');
+    expect(audit[0]!.detail).toContain('(via MCP agent)');
+  });
+
+  it('falls back to a normalize-matched Lidarr lookup hit', async () => {
+    seedOwned(['Mustapha', 'Fat Bottomed Girls']); // complete → idempotent notice
+    const listCalls: number[] = [];
+    const ctx = acquireCtx({
+      lidarr: makeLidarr({
+        tracks: ['Mustapha', 'Fat Bottomed Girls'],
+        lookupHits: [
+          { id: 77, title: 'Jazz' },
+          { id: 88, title: 'News of the World' },
+        ],
+        listCalls,
+      }),
+    });
+    const res = await dispatchTool(ctx, 'complete_album', { albumId: 'al-jazz', confirm: true });
+    expect(JSON.parse(res.content[0]!.text)).toMatchObject({
+      ok: true,
+      outcome: 'already-complete',
+      lidarrAlbumId: 77,
+    });
+    expect(listCalls).toEqual([77]);
+  });
+
+  it('reports an unresolvable album without hunting or auditing', async () => {
+    seedOwned(['Mustapha']);
+    const res = await dispatchTool(
+      acquireCtx({ lidarr: makeLidarr({ tracks: [], lookupHits: [] }) }),
+      'complete_album',
+      { albumId: 'al-jazz', confirm: true },
+    );
+    expect(JSON.parse(res.content[0]!.text)).toEqual({
+      error: 'Album not resolvable via Lidarr — use the web catalog flow',
+    });
+    expect(audits()).toHaveLength(0);
+  });
+
+  it('errors cleanly when Lidarr is not configured', async () => {
+    seedOwned(['Mustapha']);
+    const res = await dispatchTool(acquireCtx({ lidarr: null }), 'complete_album', {
+      albumId: 'al-jazz',
+      confirm: true,
+    });
+    expect(JSON.parse(res.content[0]!.text)).toEqual({ error: 'Lidarr not configured' });
+  });
+});
+
 describe('library health & flag tools (issue #734)', () => {
   const ctx = (scope: 'refiner:read' | 'refiner:curate'): McpToolContext => ({
     db: testDb,
@@ -1012,6 +1251,7 @@ describe('library health & flag tools (issue #734)', () => {
     songGenre: { musicDir },
     metadata: { musicDir },
     curation: {},
+    acquisition: { getAddon: () => null, isAcquisitionEnabled: () => false, minMatchPct: 80 },
   });
 
   it('tools/list includes get_library_health and resolve_review_flag', async () => {
@@ -1147,6 +1387,7 @@ describe('dispatchTool guards', () => {
     songGenre: { musicDir },
     metadata: { musicDir },
     curation: {},
+    acquisition: { getAddon: () => null, isAcquisitionEnabled: () => false, minMatchPct: 80 },
   });
 
   it('an unknown tool returns an error result, not a throw', async () => {

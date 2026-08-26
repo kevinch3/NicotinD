@@ -651,6 +651,12 @@ export function createApp({
         scanIncremental,
       },
       { curator },
+      {
+        getAddon: () => activeRemoteAcquisitionAddon(plugins),
+        isAcquisitionEnabled: acquisitionOn,
+        minMatchPct: config.watchlist.minMatchPct,
+        lidarr,
+      },
     ),
   );
   app.route('/api/presence', presenceRoutes());

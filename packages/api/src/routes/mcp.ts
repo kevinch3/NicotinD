@@ -29,6 +29,11 @@ import { applyAlbumCover } from '../services/album-cover-mutate.js';
 import { applyMetadataFix, type FixLidarr } from '../services/metadata-fix.js';
 import { VALID_CLASSIFICATIONS, type Classification } from '../services/library-curator.js';
 import type { LibraryCurator } from '../services/library-curator.js';
+import { acquireAlbum } from '../services/album-acquire.js';
+import { artistIdFor } from '../services/library-scanner.js';
+import { normalizeForGrouping } from '../services/album-grouping.js';
+import type { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
+import type { Lidarr } from '@nicotind/lidarr-client';
 import type { ApplyMetadataRequest, MetadataReleaseType } from '@nicotind/core';
 import type { MusicBrainzClient } from '../services/musicbrainz-client.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
@@ -85,6 +90,15 @@ export interface McpToolContext {
   };
   /** Album-curation dependencies (issue #735) — the classification/hide curator. */
   curation: { curator?: LibraryCurator | null };
+  /** Acquisition dependencies (issue #735, `complete_album`) — the same seams
+   *  the watchlist poller uses. `isAcquisitionEnabled` is the runtime
+   *  kill-switch (env floor an agent cannot lift). */
+  acquisition: {
+    getAddon: () => RemoteAddonPlugin | null;
+    isAcquisitionEnabled: () => boolean;
+    minMatchPct: number;
+    lidarr?: Lidarr | null;
+  };
 }
 
 export interface McpTool {
@@ -648,6 +662,104 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: 'complete_album',
+    description:
+      "Hunt and download ONLY the missing tracks of an incomplete album (from the health report's confirmed-incomplete worklist, or a curator-confirmed suspected gap). Idempotent: an already-complete album returns outcome 'already-complete' as a notice, an in-flight hunt returns 'in-flight' — never a duplicate download. Requires confirm: true — that IS the per-album curator approval, because this tool spends bandwidth and disk and contacts peers. Refused entirely when the server's acquisition kill-switch is off. Audit-logged.",
+    access: 'curate',
+    destructive: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        albumId: { type: 'string', description: 'Local album id (preferred).' },
+        artist: {
+          type: 'string',
+          description: 'With album: for hunted pairs whose local album row no longer resolves.',
+        },
+        album: { type: 'string' },
+        confirm: { type: 'boolean', description: 'Must be true — per-album curator approval.' },
+      },
+      required: ['confirm'],
+    },
+    handler: async ({ db, identity, acquisition }, args) => {
+      const albumId = str(args.albumId).trim();
+      let artist = str(args.artist).trim();
+      let album = str(args.album).trim();
+      if (albumId) {
+        const row = db
+          .query<{ name: string; artist: string }, [string]>(
+            'SELECT name, artist FROM library_albums WHERE id = ?',
+          )
+          .get(albumId);
+        if (!row) return JSON.stringify({ error: 'Album not found' });
+        artist = row.artist;
+        album = row.name;
+      }
+      if (!artist || !album) return JSON.stringify({ error: 'Provide albumId, or artist + album' });
+      if (!acquisition.isAcquisitionEnabled()) {
+        return JSON.stringify({ error: 'Acquisition is disabled on this server' });
+      }
+      const lidarr = acquisition.lidarr;
+      if (!lidarr) return JSON.stringify({ error: 'Lidarr not configured' });
+
+      // Resolve the Lidarr album id: hunt history first (proven canonical),
+      // then a normalize-matched lookup (owner-approved scope — no catalog
+      // provisioning here; anything else stays a web-flow decision).
+      const artistKey = artistIdFor(artist);
+      const titleKey = normalizeForGrouping(album);
+      let lidarrAlbumId: number | null = null;
+      try {
+        const jobs = db
+          .query<{ artist_name: string; album_title: string; lidarr_album_id: number }, []>(
+            `SELECT artist_name, album_title, lidarr_album_id FROM album_jobs
+             WHERE artist_name IS NOT NULL AND album_title IS NOT NULL AND lidarr_album_id IS NOT NULL
+             ORDER BY id DESC`,
+          )
+          .all();
+        for (const j of jobs) {
+          if (
+            artistIdFor(j.artist_name) === artistKey &&
+            normalizeForGrouping(j.album_title) === titleKey
+          ) {
+            lidarrAlbumId = j.lidarr_album_id;
+            break;
+          }
+        }
+      } catch {
+        /* album_jobs absent — lookup fallback below */
+      }
+      if (lidarrAlbumId == null) {
+        const hits = await lidarr.album.lookup(`${artist} ${album}`).catch(() => []);
+        const hit = hits.find(
+          (h) => typeof h.id === 'number' && h.id > 0 && normalizeForGrouping(h.title) === titleKey,
+        );
+        lidarrAlbumId = hit?.id ?? null;
+      }
+      if (lidarrAlbumId == null) {
+        return JSON.stringify({
+          error: 'Album not resolvable via Lidarr — use the web catalog flow',
+        });
+      }
+
+      const outcome = await acquireAlbum(
+        { db, lidarr, getAddon: acquisition.getAddon },
+        {
+          lidarrAlbumId,
+          artistName: artist,
+          albumTitle: album,
+          minMatchPct: acquisition.minMatchPct,
+          artistMbid: null,
+        },
+      );
+      const actor = `agent:${identity.tokenId}`;
+      recordAudit(db, { sub: identity.userId, username: actor }, 'album.acquire', {
+        targetKind: 'album',
+        targetId: albumId || `${artist} — ${album}`,
+        detail: `outcome=${outcome} lidarrAlbumId=${lidarrAlbumId} (via MCP agent)`,
+      });
+      return JSON.stringify({ ok: true, outcome, lidarrAlbumId });
+    },
+  },
+  {
     name: 'flag_for_review',
     description:
       'Flag one artist, album, or song as needing a human decision, with a reason. Use this instead of guessing when a fix has no unambiguous answer — a b2b DJ credit naming two acts, an identity you cannot resolve confidently. Changes no library data. Re-flagging the same target updates the open flag rather than adding another.',
@@ -968,6 +1080,7 @@ export function mcpRoutes(
   runSync?: () => Promise<void>,
   metadata?: Omit<McpToolContext['metadata'], 'musicDir'>,
   curation?: McpToolContext['curation'],
+  acquisition?: McpToolContext['acquisition'],
 ) {
   const app = new Hono();
   // Debounced the same way the HTTP delete routes are (share-rescan-scheduler.ts):
@@ -1026,6 +1139,12 @@ export function mcpRoutes(
             songGenre: { musicDir },
             metadata: { ...metadata, musicDir },
             curation: curation ?? {},
+            // Default-disabled: a wiring gap must refuse, never silently hunt.
+            acquisition: acquisition ?? {
+              getAddon: () => null,
+              isAcquisitionEnabled: () => false,
+              minMatchPct: 80,
+            },
           },
           name,
           args,
