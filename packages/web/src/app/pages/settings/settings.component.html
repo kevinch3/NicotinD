@@ -281,8 +281,13 @@
         </div>
       </app-settings-group>
 
-      <!-- Advanced -->
-      @if (auth.isAdmin() || isNativeApp || isElectron || isNativeIos) {
+      <!-- Advanced: every block inside is gated on a platform flag (Server:
+           isNativeApp, Desktop: isElectron, Now Playing diagnostics:
+           isNativeIos) — none is admin-only any more since the Developer
+           section (generation-feedback capture) was removed. Gating the card
+           itself on auth.isAdmin() too left a web admin with a fully
+           interactive but permanently empty card (#754). -->
+      @if (isNativeApp || isElectron || isNativeIos) {
         <app-settings-group
           groupId="settings-advanced"
           icon="sliders"
