@@ -31,7 +31,11 @@ import { optimizeAlbum } from '../services/metadata-optimize.js';
 import { rankCandidates, DEFAULT_WEIGHTS, type SongFeatures } from '../services/radio.service.js';
 import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.js';
 import { searchCandidates, applyMetadataFix } from '../services/metadata-fix.js';
-import { gatherCandidates } from '../services/candidate-sources.js';
+import { gatherCandidates, gatherSongCandidates } from '../services/candidate-sources.js';
+import {
+  mutateSongMetadata,
+  type SongMetadataMutateBody,
+} from '../services/song-metadata-mutate.js';
 import {
   setArtwork,
   deleteArtwork,
@@ -2222,6 +2226,50 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       detail: [tags.artist, tags.title].filter(Boolean).join(' — ') || undefined,
     });
     return c.json({ ok: true, rescanned: Boolean(scanIncremental) });
+  });
+
+  // Song-scoped sibling of GET /albums/:id/metadata-candidates (issue #722):
+  // "what is this track really called, and where does it belong?". Fingerprint
+  // identify is opt-in here (`?fingerprint=1`) — the track-info drawer already
+  // has a dedicated Identify button, so the default lookup stays fast.
+  app.get('/songs/:id/metadata-candidates', async (c) => {
+    requireCurator(c);
+    const result = await gatherSongCandidates(
+      { db: getDatabase(), lidarr, mb: mbClient, plugins: pluginRegistry, musicDir },
+      c.req.param('id'),
+      c.req.query('q'),
+      { fingerprint: c.req.query('fingerprint') === '1' },
+    );
+    if (!result) return c.json({ error: 'Song not found' }, 404);
+    return c.json(result);
+  });
+
+  // Curator fix for a song's own metadata (issue #722). A pure tag write +
+  // incremental rescan — never a file move, so the path-derived songId (and
+  // with it playlists/likes/history) survives; the name-derived album id
+  // re-minting is the point (a fake YouTube single-album dissolves).
+  app.patch('/songs/:id/metadata', async (c) => {
+    const user = requireCurator(c);
+    const db = getDatabase();
+    const id = c.req.param('id');
+    const body = await c.req
+      .json<SongMetadataMutateBody>()
+      .catch(() => ({}) as SongMetadataMutateBody);
+    const result = await mutateSongMetadata(db, { musicDir, scanIncremental, writeTags }, id, body);
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    const changes = (['title', 'artist', 'albumArtist', 'album', 'year'] as const)
+      .filter((k) => result.applied[k] !== undefined)
+      .map(
+        (k) =>
+          `${k}: ${k in result.old ? `"${result.old[k as keyof typeof result.old]}" → ` : ''}"${result.applied[k]}"`,
+      )
+      .join('; ');
+    recordAudit(db, user, 'song.metadata', {
+      targetKind: 'song',
+      targetId: id,
+      detail: changes || undefined,
+    });
+    return c.json({ ok: true, applied: result.applied, rescanned: result.rescanned });
   });
 
   // Stored lyrics for a song (any user — the library is shared). Returns the
