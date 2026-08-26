@@ -674,6 +674,13 @@ bundle silently tests the previous code. → [e2e.md](docs/e2e.md),
 [feedback-log-2026-08.md](docs/feedback-log-2026-08.md) is a rolling, dated log of friction noticed
 while actually *using* the app, one entry per observation with Severity/Status. Rotate monthly.
 
+### Curation playbook
+
+[curation-playbook.md](docs/curation-playbook.md) is the standardized library curation pass —
+measure (`libraryHealth`) → fix (bulk → MCP agent → human) → acquire (budgeted `complete_album`)
+→ re-measure — with a dated record per pass in `docs/measurements/curation-pass-YYYY-MM.md`.
+Monthly, or after any bulk ingest.
+
 ## Configuration
 
 Loaded from `config/default.yml`, overridden by environment variables. See `.env.example` for all
