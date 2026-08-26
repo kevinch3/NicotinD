@@ -638,7 +638,12 @@ export function createApp({
   app.route('/api/agent-tokens', agentTokensRoutes());
   app.route(
     '/api/mcp',
-    mcpRoutes(config.musicDir, notifyAddonLibraryChanged, expandedDataDir, runSyncAndCurate),
+    mcpRoutes(config.musicDir, notifyAddonLibraryChanged, expandedDataDir, runSyncAndCurate, {
+      lidarr,
+      mb: mbClient,
+      plugins,
+      scanIncremental,
+    }),
   );
   app.route('/api/presence', presenceRoutes());
   app.route('/api/history', historyRoutes(historyEnabled));

@@ -173,6 +173,11 @@ Two paths, depending on whether a live metadata service is available:
 ## Prevention (so new patterns can't recur)
 - `sanitizeArtistTag` / `sanitizeAlbumTag` (`library-organizer.ts`) now reject
   `looksLikeSourceWatermark` values at ingest, so a watermark never mints an artist/album.
+- `cleanDisplayTitle` (`services/title-clean.ts`, issue #722) strips YouTube junk —
+  "(Official Video)", "(Audio Oficial)", "[Lyric Video]" — from the title and album tags in
+  `readWithFallback` before landing, whole-segment conservative so "(Remix)"/"(En Vivo)" survive.
+  The curative half is the `lookup_song_metadata`/`fix_song_metadata` MCP pair
+  ([mcp-agent.md](mcp-agent.md)).
 - **Structural corruption (issue #679)** is caught by the same seam but handled
   differently, because it is not a keyword the source stamped on — it is a whole
   line of text that landed in the tag. `sanitizeArtistTag` first tries

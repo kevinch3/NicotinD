@@ -554,6 +554,52 @@ describe('LibraryOrganizer (real fs)', () => {
     expect(tags && typeof tags === 'object' ? tags.album : undefined).toBeFalsy();
   });
 
+  it('strips YouTube junk from title and album tags before landing (issue #722)', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    seed(staging, 'yt/Pegao (Official Video).mp3', {
+      artist: 'Wisin & Yandel',
+      title: 'Pegao (Official Video)',
+      album: 'Pegao (Official Video)',
+    });
+    await makeOrg(root, staging).organizeBatch([
+      {
+        username: 'u',
+        directory: 'yt',
+        filename: 'Pegao (Official Video).mp3',
+        directoryFileCount: 1,
+      },
+    ]);
+    const dest = join(root, 'Wisin & Yandel', 'Pegao', 'Pegao.mp3');
+    expect(existsSync(dest)).toBe(true);
+    const tags = nodeId3.read(dest) as { title?: string; album?: string } | false;
+    expect(tags && typeof tags === 'object' ? tags.title : undefined).toBe('Pegao');
+    expect(tags && typeof tags === 'object' ? tags.album : undefined).toBe('Pegao');
+  });
+
+  it('preserves real qualifiers like (Remix) at organize time', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    seed(staging, 'yt/Domino (Space 92 Remix).mp3', {
+      artist: 'Oxia',
+      title: 'Domino (Space 92 Remix)',
+    });
+    await makeOrg(root, staging).organizeBatch([
+      {
+        username: 'u',
+        directory: 'yt',
+        filename: 'Domino (Space 92 Remix).mp3',
+        directoryFileCount: 1,
+      },
+    ]);
+    const dest = join(root, 'Oxia', 'Singles', 'Domino (Space 92 Remix).mp3');
+    expect(existsSync(dest)).toBe(true);
+    const tags = nodeId3.read(dest) as { title?: string } | false;
+    expect(tags && typeof tags === 'object' ? tags.title : undefined).toBe(
+      'Domino (Space 92 Remix)',
+    );
+  });
+
   it('removes the source file from staging after a successful move', async () => {
     const root = tmpRoot();
     const staging = join(root, '_staging');

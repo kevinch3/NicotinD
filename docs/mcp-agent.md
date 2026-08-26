@@ -73,6 +73,8 @@ applies it, then runs the handler; every write is audit-logged.
 | `get_artist` | read | one artist + their albums |
 | `get_album_tracks` | read | an album's songs, with their genre |
 | `set_song_genre` | curate | `services/song-genre-mutate.ts` `mutateSongGenre` + `song.genre` audit |
+| `lookup_song_metadata` | read | `services/candidate-sources.ts` `gatherSongCandidates` + `services/title-clean.ts` `cleanDisplayTitle` |
+| `fix_song_metadata` | curate | `services/song-metadata-mutate.ts` `mutateSongMetadata` + `song.metadata` audit |
 | `flag_for_review` | curate | `services/curation-flags.ts` `createCurationFlag` + `curation.flag` audit |
 | `list_review_flags` | read | the open human-review queue, oldest first |
 | `delete_song` | curate, **destructive** | `services/library-deletion.ts` `deleteOne` + `song.delete` audit |
@@ -248,6 +250,41 @@ these in `index.ts` (`expandedDataDir`, `runSyncAndCurate`), so `mcpRoutes` now
 takes both pairs of deps explicitly rather than growing an implicit shared
 context object.
 
+### `lookup_song_metadata` / `fix_song_metadata` (issue #722)
+
+YouTube-sourced downloads land with the raw video title ("Pegao (Official
+Video)", "(Audio Oficial)", "[Lyric Video]"), and because the scanner derives
+`album = title` for loose singles, each one also mints a fake single-track
+album mirroring the junk. The agent could *see* the pollution but had no tool
+to look up what the track is really called or where it belongs, and none to fix
+it. These two tools are that pair — and their write goes through the same
+shared module as `PATCH /api/library/songs/:id/metadata`, per the extraction
+rule the other curate tools established.
+
+- **`lookup_song_metadata` is the surface's first outbound-network tool.** It
+  fronts `gatherSongCandidates`, the song-scoped sibling of the album
+  candidates gatherer: Lidarr album lookup, the MusicBrainz *recording* search
+  (track title → best Official release — the one track→album call in the
+  codebase), Discogs `release-candidates`, the file's own tags, and an opt-out
+  AcoustID fingerprint (`fingerprint: false`), each timeout-bounded with a
+  down source degrading to `ok:false` in `sources` rather than failing the
+  call. It also always returns an offline `suggested` block from
+  `cleanDisplayTitle` — a conservative whole-segment junk vocabulary that
+  strips "(Official Video)"-class noise while preserving "(Remix)", "(En
+  Vivo)", "(feat. X)" (deliberately unlike core's query-only
+  `stripTitleQualifiers`, which strips every bracket).
+- **`fix_song_metadata` retags the file in place and rescans — it never moves
+  or renames it.** `songId` is path-derived, so playlists/likes/history keep
+  pointing at the song; the *name-derived* album id re-minting on rescan is
+  the point — the fake single-album dissolves, merging into the real album
+  when the cleaned name collides with its group key. This follows the
+  retag-vs-override doctrine ([download-review.md](download-review.md)):
+  `applyMetadataFix`/`library_metadata_overrides` stay album-scoped (they have
+  no title column) and a per-song title is a file-tag fact. The tag write is
+  guarded by `buildIdentifyApplyTags` — add/replace only, a value can never be
+  cleared — and is `curate` but not `destructive`: like `set_song_genre` it is
+  a reversible, audited write, not a delete.
+
 ## Settings UI
 
 `pages/settings/agent-tokens/` (`AgentTokensComponent` +
@@ -284,6 +321,9 @@ batch `rawNames` form including a partial failure, the audited curate write,
 read-only-token refusal, `flag_for_review`'s record/inertness/bad-kind/scope
 cases and `list_review_flags`' ordering, `delete_song`/`delete_album` against a real temp-dir
 music folder — confirm gate, scope gate, and the audited happy path —
+`lookup_song_metadata`'s read-only-token offline suggestion + unknown-song
+payload, `fix_song_metadata`'s audited tag-write/rescan happy path,
+failure-without-audit and read-only-token refusal,
 unknown-method JSON-RPC error, and `checkToolAccess` covering the scope +
 confirm gates with synthetic tools).
 `services/library-deletion.test.ts` covers `deleteOne`/`deleteAlbum` directly
