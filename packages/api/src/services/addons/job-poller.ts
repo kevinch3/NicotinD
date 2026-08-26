@@ -29,6 +29,8 @@ const log = createLogger('addon-job-poller');
  * this timeout — is what actually fails an orphaned job.
  */
 const ORPHAN_STALE_MS = 5 * 60_000;
+/** How often the cursor-stranded ingest sweep may run, per addon (#725). */
+const STRANDED_SWEEP_INTERVAL_MS = 60_000;
 
 /** Extract the addon-side job id from a `addon:<addonId>:<jobId>` source_ref. */
 export function parseAddonJobId(sourceRef: string | null, addonId: string): string | null {
@@ -44,6 +46,11 @@ export interface AddonJobPollerDeps {
   organizer: { organizeBatch: (files: CompletedDownloadFile[]) => Promise<unknown> };
   scan?: (relPaths: string[]) => Promise<void> | void;
   intervalMs?: number;
+  /**
+   * How often the cursor-stranded ingest sweep may run, per addon (#725).
+   * Defaults to `STRANDED_SWEEP_INTERVAL_MS`; tests set 0 to sweep every tick.
+   */
+  strandedSweepIntervalMs?: number;
   /** Deployment-wide acquisition kill-switch (#235) — ticks no-op when off. */
   isEnabled?: () => boolean;
 }
@@ -189,6 +196,17 @@ export class AddonJobPoller {
   ): Promise<void> {
     const { db } = this.deps;
     const addonId = plugin.manifest.id;
+    // Throttled well below the poll interval: this is a recovery path, and a
+    // job whose file the addon can no longer serve stays in the result set
+    // until the 24h valve clears it. At the 5s tick that would be thousands of
+    // re-fetch attempts against the addon for one dead file; once a minute is
+    // ample for a sweep whose normal result set is empty.
+    const sweepInterval = this.deps.strandedSweepIntervalMs ?? STRANDED_SWEEP_INTERVAL_MS;
+    const lastSweep = Number(this.kvGet(addonId, 'stranded_sweep_at') ?? '0');
+    const now = Date.now();
+    if (now - lastSweep < sweepInterval) return;
+    this.kvSet(addonId, 'stranded_sweep_at', String(now));
+
     const rows = db
       .query<{ id: string; source_ref: string | null }, [string]>(
         `SELECT DISTINCT j.id, j.source_ref

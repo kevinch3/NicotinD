@@ -69,6 +69,8 @@ function harness(
   opts: {
     listSince?: (since: number | undefined) => AddonJob[];
     fetchFile?: () => Promise<Response>;
+    /** Defaults to 0 so the stranded sweep runs every tick under test. */
+    strandedSweepIntervalMs?: number;
   } = {},
 ) {
   const db = new Database(':memory:');
@@ -100,6 +102,7 @@ function harness(
     db,
     registry,
     incomingDir: mkdtempSync(join(tmpdir(), 'addon-incoming-')),
+    strandedSweepIntervalMs: opts.strandedSweepIntervalMs ?? 0,
     organizer: {
       organizeBatch: async (files) => {
         for (const f of files) {
@@ -775,6 +778,34 @@ describe('stranded ingest — a job the poll cursor moved past (#725)', () => {
       .get()!;
     expect(item.relative_path).not.toBeNull();
     expect(item.state).toBe('organized');
+  });
+
+  it('throttles the sweep so a dead file is not re-fetched every 5s tick', async () => {
+    const all = [strandedJob(), makeJob({ id: 'aj-newer', updatedAt: 9000, items: [] })];
+    let getJobCalls = 0;
+    const h = harness(
+      () => all,
+      async (id) => {
+        getJobCalls += 1;
+        return all.find((j) => j.id === id)!;
+      },
+      {
+        listSince: (since) => all.filter((j) => !since || j.updatedAt > since),
+        // The addon still has the job but can never serve the file.
+        fetchFile: async () => {
+          throw new Error('file gone');
+        },
+        strandedSweepIntervalMs: 60_000,
+      },
+    );
+    await h.registry.enable('fixture-addon', 'admin');
+
+    await h.poller.tick();
+    const afterFirst = getJobCalls;
+    // The poller ticks every 5s; the recovery sweep must not follow it.
+    await h.poller.tick();
+    await h.poller.tick();
+    expect(getJobCalls).toBe(afterFirst);
   });
 
   it('fails a stranded job the addon has genuinely forgotten', async () => {

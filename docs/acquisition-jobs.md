@@ -244,6 +244,12 @@ uses), skips the ones the poll already handled this tick, re-fetches each by
 to `failOrphanedJob`, since a forgotten job's files are genuinely gone. It is
 bounded by the number of genuinely stuck jobs, which is normally zero.
 
+**It is throttled to once a minute per addon**, well below the poller's 5 s
+tick. The normal result set is empty, but a job whose file the addon can no
+longer serve stays in it until the 24 h valve clears it — at tick frequency that
+would be thousands of re-fetch attempts against the addon for one dead file.
+`strandedSweepIntervalMs` overrides the interval (tests set 0).
+
 **It keys on outstanding items, never on the job row's `updated_at`.**
 `recomputeStage` rewrites `updated_at` on every call even when the stage is
 unchanged, so a stranded job reads as seconds-idle while its items are
