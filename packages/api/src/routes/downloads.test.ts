@@ -187,12 +187,15 @@ describe('downloads routes', () => {
     // No such album is in the library, so the feed offers no deep link rather
     // than a name-derived id that cannot resolve (issue #468).
     expect(jobs[0].albumId).toBeNull();
+    // canonical mirrors the 2-track tracklist this job was created with, and
+    // equals `expected` — the source offered the whole release, so there is no
+    // shortfall to report (#745).
     expect(jobs[0].progress).toEqual({
       expected: 2,
       delivered: 1,
       unavailable: 0,
       failed: 0,
-      canonical: null,
+      canonical: 2,
     });
   });
 
