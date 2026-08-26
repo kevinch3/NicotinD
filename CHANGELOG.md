@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.15](https://github.com/kevinch3/NicotinD/compare/v0.5.14...v0.5.15) (2026-08-26)
+
+### Bug Fixes
+
+* **acquire:** ingest files stranded when the poll cursor moves past their job ([#729](https://github.com/kevinch3/NicotinD/issues/729)) ([9e9ce31](https://github.com/kevinch3/NicotinD/commit/9e9ce3116a30b73c16464c861080db24672be827))
 ## [0.5.14](https://github.com/kevinch3/NicotinD/compare/v0.5.13...v0.5.14) (2026-08-26)
 
 ### Features
