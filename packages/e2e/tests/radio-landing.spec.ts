@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { FIXTURE } from '../helpers';
+import { FIXTURE, openAlbumCard } from '../helpers';
 
 /**
  * The post-login landing (route '') is the radio/mood starter: a resume shortcut
@@ -17,7 +17,7 @@ test.describe('radio landing', () => {
   test('resume-from-last-track appears after playback and disappears on tap', async ({ page }) => {
     // Play a fixture track so the player carries a "last track".
     await page.goto('/library');
-    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).click();
+    await openAlbumCard(page, FIXTURE.album.title);
     await page.getByTestId('play-album').click();
     await expect(page.getByTestId('track-row').first()).toHaveAttribute(
       'data-playback-state',

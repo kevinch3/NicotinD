@@ -6,7 +6,7 @@
  * a real browser: the unit harness (jsdom) has no layout engine.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { FIXTURE } from '../helpers';
+import { FIXTURE, openAlbumCard } from '../helpers';
 
 const DESKTOP = { width: 1280, height: 800 };
 
@@ -14,8 +14,7 @@ const DESKTOP = { width: 1280, height: 800 };
  *  (a tap anywhere on the bar opens it — width-independent). */
 async function openNowPlaying(page: Page): Promise<void> {
   await page.goto('/library');
-  await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).click();
-  await expect(page).toHaveURL(/\/library\/albums\//);
+  await openAlbumCard(page, FIXTURE.album.title);
   await page.getByTestId('play-album').click();
   await expect(page.getByTestId('player-title')).toBeVisible();
   await page.getByTestId('player-title').click();

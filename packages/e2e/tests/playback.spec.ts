@@ -1,11 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { FIXTURE, ADMIN, bearer } from '../helpers';
+import { FIXTURE, ADMIN, bearer, openAlbumCard } from '../helpers';
 
 test.describe('playback', () => {
   test('streams audio when an album is played', async ({ page }) => {
     await page.goto('/library');
-    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).click();
-    await expect(page).toHaveURL(/\/library\/albums\//);
+    await openAlbumCard(page, FIXTURE.album.title);
 
     // The player streams via GET /api/stream/:id?token= (range -> 206, or 200).
     const streamResponse = page.waitForResponse(
@@ -33,8 +32,7 @@ test.describe('playback', () => {
 
   test('track row acknowledges the click and settles into playing state', async ({ page }) => {
     await page.goto('/library');
-    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).click();
-    await expect(page).toHaveURL(/\/library\/albums\//);
+    await openAlbumCard(page, FIXTURE.album.title);
 
     const firstRow = page.getByTestId('track-row').first();
     await firstRow.getByTestId('track-row-title').click();
@@ -77,8 +75,7 @@ test.describe('playback', () => {
 
     try {
       await page.goto('/library');
-      await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).click();
-      await expect(page).toHaveURL(/\/library\/albums\//);
+      await openAlbumCard(page, FIXTURE.album.title);
 
       const firstRow = page.getByTestId('track-row').first();
       await firstRow.getByTestId('track-row-title').click();

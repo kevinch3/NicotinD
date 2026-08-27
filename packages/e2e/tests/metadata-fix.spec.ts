@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { FIXTURE } from '../helpers';
+import { FIXTURE, openAlbumCard } from '../helpers';
 
 /**
  * User-driven metadata fix — free-text fallback path. The e2e server runs with a
@@ -34,10 +34,7 @@ test.afterEach(async ({ page }) => {
 
 test('the fix modal shows the cover picker with the current cover', async ({ page }) => {
   await page.goto('/library');
-  const card = page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title });
-  await expect(card).toBeVisible();
-  await card.click();
-  await expect(page).toHaveURL(/\/library\/albums\//);
+  await openAlbumCard(page, FIXTURE.album.title);
 
   await page.getByTestId('optimize-metadata').click();
   await expect(page.getByTestId('metadata-fix-modal')).toBeVisible();
@@ -50,10 +47,7 @@ test('the fix modal shows the cover picker with the current cover', async ({ pag
 
 test('admin fixes album metadata via free-text and it re-buckets', async ({ page }) => {
   await page.goto('/library');
-  const card = page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title });
-  await expect(card).toBeVisible();
-  await card.click();
-  await expect(page).toHaveURL(/\/library\/albums\//);
+  await openAlbumCard(page, FIXTURE.album.title);
 
   // Open the fix modal (admin-only "Fix metadata" button).
   await page.getByTestId('optimize-metadata').click();

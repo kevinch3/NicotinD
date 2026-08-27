@@ -10,7 +10,7 @@
  * vacuously pass.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { ADMIN, FIXTURE, bearer } from '../helpers';
+import { ADMIN, FIXTURE, bearer, openAlbumCard } from '../helpers';
 
 /** The `request` fixture carries no auth — log in explicitly (see docs/e2e.md). */
 async function token(request: APIRequestContext): Promise<string> {
@@ -109,7 +109,7 @@ test.describe('genre modal bottom-chrome geometry', () => {
 
     // Start playback so the mini-player + tab bar chrome is actually present.
     await page.goto('/library');
-    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).click();
+    await openAlbumCard(page, FIXTURE.album.title);
     await page.getByTestId('play-album').click();
     await expect(page.getByTestId('player-title')).toBeVisible();
 

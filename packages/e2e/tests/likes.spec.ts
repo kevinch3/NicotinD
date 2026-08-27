@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { FIXTURE } from '../helpers';
+import { FIXTURE, openAlbumCard } from '../helpers';
 
 /**
  * Likes → auto-maintained "Liked Songs" playlist (issue #225). The heart on a
@@ -13,8 +13,7 @@ test.describe('likes', () => {
   }) => {
     // 1. Open an album with tracks.
     await page.goto('/library');
-    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).first().click();
-    await expect(page).toHaveURL(/\/library\/albums\//);
+    await openAlbumCard(page, FIXTURE.album.title);
 
     const row = page.getByTestId('track-row').first();
     await expect(row).toBeVisible();
@@ -44,7 +43,7 @@ test.describe('likes', () => {
     //    before looking for the album card.
     await page.goto('/library');
     await page.getByRole('button', { name: 'Albums', exact: true }).click();
-    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).first().click();
+    await openAlbumCard(page, FIXTURE.album.title);
     const heartAgain = page.getByTestId('track-row').first().getByTestId('track-like');
     await expect(heartAgain).toHaveAttribute('aria-pressed', 'true');
     await heartAgain.click();
@@ -59,8 +58,7 @@ test.describe('likes', () => {
     // looking at. Both the mini-player bar and the full-screen Now Playing
     // sheet now carry their own heart, wired to the same LikeService.
     await page.goto('/library');
-    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).first().click();
-    await expect(page).toHaveURL(/\/library\/albums\//);
+    await openAlbumCard(page, FIXTURE.album.title);
     await page.getByTestId('play-album').click();
     await expect(page.getByTestId('player-title')).toBeVisible();
 
