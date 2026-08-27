@@ -110,6 +110,16 @@ watches the list converge):
 
 **One song, many genres.** File tags are multi-valued in practice — multiple ID3 genre frames and `;`/`,`/`|`-joined strings ("Alternative Country;Alternative Pop;…"; a prod dry-run found 1,355/9,791 tagged songs with semicolon lists). The scanner keeps the FULL set: `ScannedTrack.genre` holds every frame (old single-string scan-cache rows remain valid input), `buildLibrary` runs each value through the pure `splitGenres` (`genre-split.ts`), writes the ordered set to **`library_song_genres`** (`song_id, genre, position`; position 0 = primary) and mirrors the primary into `library_songs.genre` for zero-breakage single-value reads. `library_genres` counts a song under **every** genre it has.
 
+**Every genre reader must match that same set.** `GET /api/library/genres/songs` (the genre detail
+page) originally matched only the mirrored `library_songs.genre`, so a genre that never lands at
+position 0 was counted by the facet and returned nothing — measured on prod at **397 of 764 genres
+opening to an empty page** and 631 of 764 showing an inflated count ("Synth-Pop 305" listed 3).
+The listing now matches the full set, `(s.genre = ? OR EXISTS(… library_song_genres …))` — the same
+predicate shape `songFilterWheres` uses (see [library-filters.md](library-filters.md)) — and orders
+by the genre's `position` in each song's set, so songs whose *primary* it is lead the page. The
+`s.genre` half of the predicate is a fallback for songs whose join rows drifted away; there it
+stands in as position 0.
+
 **splitGenres rules (deterministic, unit-tested):**
 
 - `;` `,` `|` always split; whitespace collapsed; case-insensitive de-dupe preserving order.

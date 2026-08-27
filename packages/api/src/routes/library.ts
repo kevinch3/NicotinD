@@ -2528,12 +2528,25 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const count = Math.min(Number(c.req.query('count') ?? 100), 10000);
     if (!genre) return c.json([]);
     const db = getDatabase();
+    // Match the FULL genre set, not just the mirrored primary — the facet count
+    // in library_genres counts a song under every genre it carries, so matching
+    // s.genre alone left counted genres opening to an empty page.
+    // s.genre is kept in the predicate as a fallback for songs whose join rows
+    // drifted away; there it stands in as position 0.
     const rows = db
-      .query<SongRow, [string, number]>(
-        `${SONG_SELECT} WHERE s.genre = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL
-         ORDER BY s.created DESC NULLS LAST LIMIT ?`,
+      .query<SongRow, [string, string, string, number]>(
+        `${SONG_SELECT}
+         WHERE s.hidden = 0 AND s.landed_at IS NOT NULL
+           AND (s.genre = ? OR EXISTS (
+             SELECT 1 FROM library_song_genres g WHERE g.song_id = s.id AND g.genre = ?))
+         ORDER BY COALESCE(
+             (SELECT MIN(g.position) FROM library_song_genres g
+              WHERE g.song_id = s.id AND g.genre = ?),
+             0
+           ) ASC, s.created DESC NULLS LAST
+         LIMIT ?`,
       )
-      .all(genre, count);
+      .all(genre, genre, genre, count);
     const songs = rows.map(rowToSong);
     attachSongArtists(db, songs);
     return c.json(songs);
