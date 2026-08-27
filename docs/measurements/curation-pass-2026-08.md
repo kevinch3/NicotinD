@@ -823,3 +823,16 @@ Skipped, insufficient/ambiguous evidence: Manuel Galán *Fronterizo*, Independen
 (genre claim rested on a thin single-source Beatport artist page), Las Sabrosas Zarigüellas, La
 Batucada Murguera *Mueve tu cucu* (one source called it "Pop", but a murga/batucada act singing Pop
 seemed like a mislabel worth not propagating without a second source).
+
+### Session 4i — genre lane continued, Argentine folclore/NOA cluster
+
+13 tagged, same `list_recent_songs` + web-search + `replace` pattern — a rich Argentine
+folclore/norteño cluster:
+Los Tekis `Folclore` (Jujuy folklore/carnaval fusion), Opus *Live Is Life* `Pop Rock` (Austrian
+80s band — file mismatch: landed on an "Oktoberfest 2019" comp), Los Cadiz `Cumbia` (Cumbia
+Santafesina), Los Del Suquía `Folclore` (Córdoba zamba ensemble since 1959), Teresa Parodi `Chamamé`,
+Los Cantores De Quilla Huasi `Folclore` (est. 1953, zamba/cueca/chacarera/chamamé), La Cantada
+`Carnavalito` (Jujuy), Los De Salta `Folclore` (zamba salteña specialists since 1958), Los Huayra
+`Carnavalito` (Salta), Perro Primo `RKT` (cumbia 420/RKT originator), Huguito Flores el Super
+`Cumbia` (cumbia santiagueña), La Base `Cumbia` (cumbia villera, "cumbia base" style), Ramiro y su
+banda `Cumbia`.
