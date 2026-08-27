@@ -806,3 +806,20 @@ Moxy Edits `Tech House`, Jezu (US) `Tech House`.
 
 New unresolvable stragglers (same "generic name + single-song album" shape as Alfonso/Banzai/Ennio):
 Rick Silva *the Rhythm Killa*, Noah Scannell *Lose My Breath*.
+
+### Session 4h — genre lane continued, Latin American cluster + cron switch
+
+Owner switched the loop driver mid-session: dynamic `ScheduleWakeup` self-pacing replaced by a fixed
+`CronCreate` job (`f90464f1`, every 10 minutes) — same "continue" prompt, session-only, 7-day
+auto-expiry.
+
+11 tagged, same `list_recent_songs` + web-search + `replace` pattern — a Latin American cluster this
+time, not electronic:
+Vassilis Saleas *Orama* (Vangelis covers) `New Age`, Los Sultanes `Cumbia`, Los Delfines `Cumbia`,
+Volcán `Cumbia`, Los Fatales `Cumbia`, Katunga `Cumbia`, Tomi Lago `Tango`, Joe Luciano `Dance`,
+Lázaro Caballero ×3 `Chamamé` (Formosa/Corrientes chamamé singer, confirmed via es.wikipedia).
+
+Skipped, insufficient/ambiguous evidence: Manuel Galán *Fronterizo*, Independent Lemon *Fiesta*
+(genre claim rested on a thin single-source Beatport artist page), Las Sabrosas Zarigüellas, La
+Batucada Murguera *Mueve tu cucu* (one source called it "Pop", but a murga/batucada act singing Pop
+seemed like a mislabel worth not propagating without a second source).
