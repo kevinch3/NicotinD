@@ -901,3 +901,13 @@ classification ("muy difícil de clasificar dentro de ningún género musical es
 anything would be a guess against the artist's own stated identity. Remaining 8 in this window are
 the long-documented unresolvable stragglers (Pesho & Dave Bo, Wrytzy, FIA, Ivy, Kilometro1, Fat Papi,
 Marcello Marchitto, Oravla Ziur, Shadi) — no new evidence surfaced.
+
+### Session 4o — genre lane continued
+
+10 tagged: Ramoss `House`, Voltech `Tech House`, Rawfox `Tech House`, Max Dean `Tech House` (UK #19
+chart hit), Hedge `Deep House`, Saraga `House`, Josh Burnett (UK) `Tech House` (2nd track, consistent
+with earlier tag), Marian (BR) `Tech House;Latin Tech` (2nd track, consistent), LEON (Italy)
+`Jackin House` (2nd track, consistent), Ramon Bedoya `Tech House;Latin Tech` (3rd track, consistent).
+
+Skipped: JS Alpha *Crashout* (no usable evidence). Ennio, Rick Silva, Noah Scannell reappeared in
+this window — still no evidence, remain on the unresolvable-stragglers list.
