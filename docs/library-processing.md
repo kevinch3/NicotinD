@@ -664,6 +664,31 @@ Persisted settings written before this field existed have no `paused` key;
 `undefined`. `PUT /api/admin/processing` rejects a non-boolean with a `400`, and the Admin panel
 exposes it as `data-testid="processing-paused"`.
 
+
+## A tag write must land on an already-tagged file (issue #760)
+
+`writeAudioTags` silently no-op'd on `.opus` and `.ogg` whenever the file **already carried the tag
+being replaced** — which is every retag, by definition.
+
+In an Ogg container the Vorbis comments *are* stream metadata, while ffmpeg's `-metadata` writes
+*global*. The muxer merges global into the comment header only where the stream has no value for
+that key, and `-c copy` brings the old comment along — so the old value wins. `.flac` and `.m4a`
+read global metadata and were never affected.
+
+The blast radius was the whole tag-writing surface — ~19 call sites including BPM, key, energy and
+genre analysis, lyrics, the organizer's ingest tagging, identify-apply and MCP `fix_song_metadata` —
+on a library that transcodes lossless to Opus by default. The fix writes every `-metadata` at
+`-metadata:s:a:0` as well; both scopes are set rather than branching per container, since neither
+family is harmed by carrying the same value twice.
+
+**Why it survived a round-trip test.** `audio-tags.test.ts` already asserted an Opus round-trip and
+passed — because it generates its fixture with *no* metadata, the one input shape where the bug
+cannot appear. The test was true and irrelevant: a fixture that excludes the defect is the
+"denominator" failure in test clothing. The regression tests now start from an already-tagged file
+across all four containers, and one reproduces prod's actual file (`CD A 2000.opus`, whose scrambled
+title matched its filename — so when the write vanished, the scanner's filename fallback refilled
+the same wrong value and the revert read as a scanner bug).
+
 ## One-time prod backfill
 
 For an existing library, run the manual scripts inside the container once to fill

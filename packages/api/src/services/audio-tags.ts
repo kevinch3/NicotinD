@@ -412,6 +412,25 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   if (tags.mbReleaseId) metaArgs.push('-metadata', `MUSICBRAINZ_ALBUMID=${tags.mbReleaseId}`);
   if (metaArgs.length === 0) return Promise.resolve(true);
 
+  // Every -metadata also goes to the first audio STREAM (issue #760).
+  //
+  // In an Ogg container (.opus/.ogg) the Vorbis comments ARE stream metadata,
+  // while `-metadata` writes *global*. The muxer merges global into the comment
+  // header only where the stream has no value for that key — so a global write
+  // lands on a tagless file and is silently discarded on one that already
+  // carries the tag, because `-c copy` brings the old comment along and it
+  // wins. Retagging is by definition the second case, so `fix_song_metadata`,
+  // identify-apply, the analysis writers and the organizer all no-op'd on the
+  // format this library transcodes everything into.
+  //
+  // Both scopes are written rather than branching per container: .flac and
+  // .m4a read the global one, Ogg reads the stream one, and neither is harmed
+  // by carrying the same value twice.
+  const streamMetaArgs: string[] = [];
+  for (let i = 0; i < metaArgs.length; i += 2) {
+    streamMetaArgs.push('-metadata:s:a:0', metaArgs[i + 1]!);
+  }
+
   const args = [
     '-y',
     '-i',
@@ -419,6 +438,7 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
     '-map_metadata',
     '0',
     ...metaArgs,
+    ...streamMetaArgs,
     '-c',
     'copy',
     '-f',

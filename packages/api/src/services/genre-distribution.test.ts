@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
-import { albumGenreDistribution, artistGenreDistribution, MAX_AXES } from './genre-distribution.js';
+import {
+  albumGenreDistribution,
+  artistGenreDistribution,
+  MAX_AXES,
+  rareGenres,
+} from './genre-distribution.js';
 
 function db(): Database {
   const d = new Database(':memory:');
@@ -149,5 +154,79 @@ describe('albumGenreDistribution', () => {
       genreCount: 0,
       slices: [],
     });
+  });
+});
+
+describe('rareGenres (#761)', () => {
+  function seed(d: Database, id: string, artistId: string, genres: string[], hidden = 0): void {
+    d.run(
+      `INSERT OR IGNORE INTO library_artists (id, name, album_count, hidden, synced_at)
+       VALUES (?, ?, 0, ?, 1)`,
+      [artistId, artistId, hidden],
+    );
+    d.run(
+      `INSERT OR IGNORE INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('al', 'A', 'X', 'x', 0, 0, 1)`,
+    );
+    d.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, synced_at)
+       VALUES (?, 'al', ?, ?, ?, 0, ?, 10, '2024-01-01', 1)`,
+      [id, id, artistId, artistId, `p/${id}.opus`],
+    );
+    genres.forEach((g, position) => {
+      d.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES (?, ?, ?)`, [
+        id,
+        g,
+        position,
+      ]);
+    });
+  }
+
+  it('orders genres fewest songs first', () => {
+    const d = db();
+    seed(d, 's1', 'a1', ['Rock']);
+    seed(d, 's2', 'a1', ['Rock']);
+    seed(d, 's3', 'a2', ['Rock']);
+    seed(d, 's4', 'a1', ['Merenguetón']);
+    seed(d, 's5', 'a2', ['Cuarteto']);
+    seed(d, 's6', 'a3', ['Cuarteto']);
+    const out = rareGenres(d);
+    expect(out.map((r) => r.genre)).toEqual(['Merenguetón', 'Cuarteto', 'Rock']);
+    expect(out[0]).toMatchObject({ genre: 'Merenguetón', songCount: 1, artistCount: 1 });
+    expect(out[2]).toMatchObject({ genre: 'Rock', songCount: 3, artistCount: 2 });
+  });
+
+  /**
+   * A rare *secondary* tag is ordinary enrichment noise; a rare PRIMARY is what
+   * actually mis-files a song, so only position 0 counts.
+   */
+  it('counts only the primary genre', () => {
+    const d = db();
+    seed(d, 's1', 'a1', ['Rock', 'Neo-Psychedelia']);
+    seed(d, 's2', 'a1', ['Rock', 'Neo-Psychedelia']);
+    expect(rareGenres(d).map((r) => r.genre)).toEqual(['Rock']);
+  });
+
+  it('applies the maxCount cap', () => {
+    const d = db();
+    seed(d, 's1', 'a1', ['Rare']);
+    seed(d, 's2', 'a1', ['Common']);
+    seed(d, 's3', 'a1', ['Common']);
+    expect(rareGenres(d, { maxCount: 1 }).map((r) => r.genre)).toEqual(['Rare']);
+  });
+
+  /** Same denominator as the rest of the curation surface. */
+  it('ignores songs owned by a hidden artist', () => {
+    const d = db();
+    seed(d, 's1', 'ghost', ['Phantom'], 1);
+    seed(d, 's2', 'a1', ['Real']);
+    expect(rareGenres(d).map((r) => r.genre)).toEqual(['Real']);
+  });
+
+  it('ignores blank genre rows', () => {
+    const d = db();
+    seed(d, 's1', 'a1', ['   ']);
+    seed(d, 's2', 'a1', ['Real']);
+    expect(rareGenres(d).map((r) => r.genre)).toEqual(['Real']);
   });
 });

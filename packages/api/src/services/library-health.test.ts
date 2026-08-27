@@ -292,6 +292,47 @@ describe('libraryHealth — completeness (confirmed, from album_jobs)', () => {
     addJob({ album: 'Hot Space', canonical: ['Staying Power', 'Dancer'] }); // newer, complete
     expect(libraryHealth(db).dimensions.completeness.metric.confirmedIncomplete).toBe(0);
   });
+
+  /**
+   * #758: the `confirmed` list promises "a hunt would enqueue these", so it has
+   * to apply the guard the hunt applies. It did not — the loop matches TITLES
+   * while `albumAlreadyComplete` counts ROWS, and the two disagree whenever a
+   * song sits on disk under a different spelling. Prod measured 4 of 10 sampled
+   * hunts returning `already-complete`, burning a budget capped at 10/session.
+   */
+  it('does not list an album the hunt would refuse as already-complete', () => {
+    // Full track count on disk, but one title is spelled differently — so the
+    // title matcher says "missing 1" while the hunt says "already-complete".
+    seedOwned('al-works', 'The Works', ['Radio Ga Ga', 'Machines (Back to Humans)']);
+    addJob({ album: 'The Works', canonical: ['Radio Ga Ga', 'Machines'] });
+    const d = libraryHealth(db).dimensions.completeness;
+    expect(d.metric.confirmedIncomplete).toBe(0);
+    expect(d.worklist.confirmed).toHaveLength(0);
+  });
+
+  it('reports that album as a title mismatch instead of dropping it', () => {
+    seedOwned('al-works', 'The Works', ['Radio Ga Ga', 'Machines (Back to Humans)']);
+    addJob({ album: 'The Works', canonical: ['Radio Ga Ga', 'Machines'] });
+    const d = libraryHealth(db).dimensions.completeness;
+    expect(d.metric.titleMismatch).toBe(1);
+    expect(d.worklist.titleMismatches[0]).toMatchObject({
+      artist,
+      album: 'The Works',
+      expected: 2,
+      onDisk: 2,
+      unmatched: 1,
+      albumId: 'al-works',
+    });
+  });
+
+  /** A genuine gap must still reach `confirmed` — the guard is not a blanket. */
+  it('still lists an album that is genuinely short a track', () => {
+    seedOwned('al-jazz2', 'Jazz', ['Mustapha']);
+    addJob({ album: 'Jazz', canonical: ['Mustapha', 'Jealousy', 'Bicycle Race'] });
+    const d = libraryHealth(db).dimensions.completeness;
+    expect(d.metric.confirmedIncomplete).toBe(1);
+    expect(d.metric.titleMismatch).toBe(0);
+  });
 });
 
 describe('libraryHealth — completeness (suspected, track-number gaps)', () => {

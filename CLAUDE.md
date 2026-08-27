@@ -427,6 +427,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `dispatchTool` audits writes. Shared mutation modules (`library-deletion.ts` …
   `album-cover-mutate.ts`) back HTTP and MCP alike; `gatherCandidates` + `gatherSongCandidates`
   power online lookup. → [mcp-agent.md](docs/mcp-agent.md)
+- **Curator origin + rare-genre tools**: `get_artist` returns origin *and* mbid (a wrong origin is
+  usually an inherited wrong MBID); `set_artist_origin` writes the shared `mutateArtistOrigin`, and
+  `get_rare_genres` (`rareGenres`) surfaces low-cardinality primary genres as mistag candidates.
+  → [mcp-agent.md](docs/mcp-agent.md)
 - **WebMCP alignment (proposed — not yet implemented)**: `MCP_TOOLS` is already the shape Chrome's
   WebMCP registration takes; the plan promotes host exposure to a declared field and adds a flagged
   browser host owning only session tools. Nothing destructive is ever browser-exposed, and client-side WebGPU/WebNN stays NO-GO.

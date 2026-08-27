@@ -274,6 +274,35 @@ genuinely degraded.
   `101`), albums/EPs/compilations only. Raw SQL found 1,627 album-discs; the guards cut it to 463,
   and the survivors sampled real (The Dark Side of the Moon 8/9, Midnights 12/13).
 
+
+### `confirmed` must mean "a hunt would enqueue this" (issue #758)
+
+The `completeness.confirmed` worklist is the input to Wave 4's bounded acquisition budget, so its
+contract is operational, not descriptive: every row must be an album `complete_album` would act on.
+It was not. A prod sample of 10 hunts returned **4 `already-complete`**, against a worklist whose
+whole premise is "confirmed missing 1 track".
+
+The cause is two predicates answering different questions:
+
+| | asks | answers |
+|---|---|---|
+| `confirmedIncomplete` (the worklist) | does every canonical **title** have an on-disk match? | missing: 1 |
+| `albumAlreadyComplete` (the hunt guard) | does the local album hold enough **rows**? | already-complete |
+
+They disagree exactly when a song is on disk under a different spelling — full track count, one
+title that does not overlap. The worklist's own comment claimed *"Same matcher acquireAlbum uses, so
+'incomplete here' ⇒ 'a hunt would enqueue'"*, which was simply false, and is why every sampled row
+carried `state: "done"` from a prior hunt that had in fact landed the file.
+
+An album with the full track count and an unmatched title is a **tagging** problem: hunting it would
+re-download a file already present. So `confirmedIncomplete` now applies the hunt's own guard, and
+the excluded rows surface as `completeness.worklist.titleMismatches` with a `titleMismatch` metric —
+reported rather than dropped, since 40% of a worklist is a finding, and its remediation (retag) is
+real work, just not acquisition work.
+
+The general rule, third instance of it: **a list whose contract is "X would act on these" must apply
+X's own predicate, not a predicate that looks equivalent.**
+
 ## Tests / CI
 `library-quality.test.ts`, `library-audit.test.ts`, `library-disk-audit.test.ts`,
 `library-health.test.ts`, `routes/library.health.test.ts`,

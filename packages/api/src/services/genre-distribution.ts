@@ -160,3 +160,61 @@ export function artistGenreShares(
   }
   return out;
 }
+
+/** One genre and how many songs carry it, for the rare-genre worklist. */
+export interface GenreCardinality {
+  genre: string;
+  songCount: number;
+  /** Distinct artists using it — a 1-song genre on 1 artist is the strongest candidate. */
+  artistCount: number;
+}
+
+/**
+ * Genres ordered fewest-songs-first (issue #761).
+ *
+ * A genre with very few members library-wide is usually a mistag, a scanner
+ * mis-split, or an over-specific tag that should fold into a broader one — the
+ * same class `library_genre_aliases` / `segmentConcatenatedGenre` already fix
+ * for concatenations, but reachable only by *looking* at the distribution.
+ * The MCP curator surface had no way to ask: the health report's `genres`
+ * dimension counts genre-LESS songs, `list_recent_songs(missingGenre)` filters
+ * the same, and `search_library` is text-match. Tallying 16k songs client-side
+ * over per-call limits is not a workaround.
+ *
+ * Worst-first and bounded, matching every other curation worklist so it
+ * composes with the same pass.
+ *
+ * @param maxCount only genres at or below this song count (default: all)
+ * @param limit    cap on rows returned
+ */
+export function rareGenres(
+  db: Database,
+  opts: { maxCount?: number; limit?: number } = {},
+): GenreCardinality[] {
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
+  // `position = 0` is the primary genre (docs/library-scanner.md). Extras are
+  // deliberately excluded: a rare *secondary* tag is normal enrichment noise,
+  // whereas a rare PRIMARY is what actually mis-files a song.
+  //
+  // Hidden artists are excluded so a genre kept alive only by rows the library
+  // does not show cannot look populated — the same denominator the rest of the
+  // curation surface uses.
+  const rows = db
+    .query<{ genre: string; songCount: number; artistCount: number }, [number]>(
+      `SELECT g.genre AS genre,
+              COUNT(DISTINCT g.song_id) AS songCount,
+              COUNT(DISTINCT s.artist_id) AS artistCount
+         FROM library_song_genres g
+         JOIN library_songs s ON s.id = g.song_id
+         LEFT JOIN library_artists ar ON ar.id = s.artist_id
+        WHERE g.position = 0
+          AND TRIM(COALESCE(g.genre, '')) <> ''
+          AND COALESCE(ar.hidden, 0) = 0
+        GROUP BY g.genre
+        ORDER BY songCount ASC, artistCount ASC, g.genre ASC
+        LIMIT ?`,
+    )
+    .all(limit);
+  const cap = opts.maxCount;
+  return cap === undefined ? rows : rows.filter((r) => r.songCount <= cap);
+}

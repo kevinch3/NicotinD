@@ -373,6 +373,49 @@ rule the other curate tools established.
   cleared — and is `curate` but not `destructive`: like `set_song_genre` it is
   a reversible, audited write, not a delete.
 
+## Origin and rare genres (issues #759, #761)
+
+Two gaps a curation pass hit that the MCP surface could not express at all.
+
+**`set_artist_origin` + origin/MBID on `get_artist`.** The library resolved `Emilia` (Emilia
+Mernes, Argentine) to Sweden — plausibly Emilia Rydberg, who performs under the same bare name.
+`get_artist` returned `id`/`name`/`albums` only, so an MCP-only curator could not see the wrong
+value, let alone fix it; the sole surface was the web UI's `ArtistOriginComponent`.
+
+`get_artist` now returns `origin` **and `mbid`** together, deliberately. A wrong origin is almost
+always *inherited* from a wrong MBID on a homonym — `routes/library.ts`'s own MBID-correction
+docblock uses "Emilia → ten exact hits" as its example — so an agent shown only the country will
+keep correcting the symptom while the bio, Discogs genres and artist image stay wrong. Seeing both
+is what makes "the MBID is wrong, escalate" a possible conclusion. Correcting the MBID itself
+remains web-only (`PUT /api/library/artists/:id/mbid`).
+
+`country: null` is a decision, not an absence: it writes the permanent `user` tombstone that stops
+the MusicBrainz pass re-deriving the wrong value, so `mutateArtistOrigin` distinguishes an explicit
+`null` from a missing key. The write is `services/artist-origin-mutate.ts`, shared with the HTTP
+route — the fifth instance of the one-tested-write doctrine.
+
+**`get_rare_genres`.** A genre carried by one or two songs library-wide is usually a mistag, a
+scanner mis-split, or an over-specific tag that should fold into a broader one. Nothing on the
+surface could ask: the health report's `genres` dimension counts genre-*less* songs,
+`list_recent_songs(missingGenre)` filters the same, and `search_library` is text-match — leaving
+"tally 16k songs client-side over per-call limits", which is not a workaround.
+
+`rareGenres` counts the **primary** genre only (`position = 0`): a rare *secondary* tag is ordinary
+enrichment noise, while a rare primary is what actually mis-files a song. It excludes hidden
+artists, so the denominator matches the rest of the curation surface.
+
+## Batch lookups have a concurrency ceiling (issue #757)
+
+`lookup_album_metadata` / `lookup_song_metadata` each fan out to ~4 outbound sources, so N parallel
+MCP calls is ~4N outbound requests. A pass running batches of ~10 measured two consecutive
+`origin_bad_gateway` 502s mid-batch (prod, 2026-08-26), with earlier and later batches of the same
+size succeeding.
+
+Both tool descriptions now carry the ceiling — **concurrency ≤ 4, back off on 502, `retry_after` is
+authoritative** — rather than only this page, because the description is what an agent actually
+reads. Whether the 502 originates in `nicotind` under load or in a source upstream of it is still
+unconfirmed and needs prod-side measurement; the guidance is a floor, not a diagnosis.
+
 ## Settings UI
 
 `pages/settings/agent-tokens/` (`AgentTokensComponent` +
