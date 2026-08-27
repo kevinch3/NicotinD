@@ -924,3 +924,16 @@ tag).
 
 Independent Lemon, Las Sabrosas Zarigüellas, La Batucada Murguera, Manuel Galán reappeared — still
 skipped, no new evidence since sessions 4h/4m.
+
+### Session 4q — genre lane continued, WebSearch budget exhausted mid-tick
+
+13 tagged: Juliana `Bolero` (Colombian, *Mar Adentro* album), TINI `Latin Pop`, RENEE `Indie Pop`
+(Monterrey), Milo j `Trap Pop`, LIT killah `Latin Trap` (2nd track, consistent), Rels B `Latin Hip
+Hop`, ROLE MODEL `Alt Pop` (Tucker Pillsbury, US Billboard #1), Sonido Basico `Cumbia` (cumbia
+villera, ex-La Base members), La Base ×2 `Cumbia` (consistent), Q' Lokura `Cumbia` (consistent),
+Perro Primo `RKT` (consistent), The La Planta `Cumbia` (consistent).
+
+**Session hit its WebSearch budget (200/200 calls)** mid-tick — two artists (Roman El Original, Nuke)
+went unresearched and were left untagged rather than guessed. This caps how much further evidence-
+gathering this session can do; future ticks should expect the same limit unless it resets, and
+should prioritize repeat-artist tags (no search needed) over fresh unknowns.
