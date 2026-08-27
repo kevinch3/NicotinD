@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.24](https://github.com/kevinch3/NicotinD/compare/v0.5.23...v0.5.24) (2026-08-27)
+
+### Bug Fixes
+
+* **acquire:** make the job state vocabulary say what is happening ([#763](https://github.com/kevinch3/NicotinD/issues/763)) ([fbfaa35](https://github.com/kevinch3/NicotinD/commit/fbfaa353e4284575c957e1b4f36669f205e64948)), closes [#667](https://github.com/kevinch3/NicotinD/issues/667) [#710](https://github.com/kevinch3/NicotinD/issues/710) [#711](https://github.com/kevinch3/NicotinD/issues/711) [#714](https://github.com/kevinch3/NicotinD/issues/714) [#749](https://github.com/kevinch3/NicotinD/issues/749), references [#711](https://github.com/kevinch3/NicotinD/issues/711) [#714](https://github.com/kevinch3/NicotinD/issues/714) [#667](https://github.com/kevinch3/NicotinD/issues/667) [#710](https://github.com/kevinch3/NicotinD/issues/710) [#710](https://github.com/kevinch3/NicotinD/issues/710) [#749](https://github.com/kevinch3/NicotinD/issues/749) [#714](https://github.com/kevinch3/NicotinD/issues/714)
 ## [0.5.23](https://github.com/kevinch3/NicotinD/compare/v0.5.22...v0.5.23) (2026-08-27)
 
 ### Bug Fixes
