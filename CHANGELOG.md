@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.27](https://github.com/kevinch3/NicotinD/compare/v0.5.26...v0.5.27) (2026-08-27)
+
+### Bug Fixes
+
+* **library:** give the genre set the mirror's durability contract ([#773](https://github.com/kevinch3/NicotinD/issues/773)) ([c081d8c](https://github.com/kevinch3/NicotinD/commit/c081d8c39eca8414c27039159648af79365dfae0))
 ## [0.5.26](https://github.com/kevinch3/NicotinD/compare/v0.5.25...v0.5.26) (2026-08-27)
 
 ### Bug Fixes
