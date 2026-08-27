@@ -860,3 +860,14 @@ Joaqui `Trap`, Papichamp `Reggaeton`, Zhamira `Latin Pop` (bolero/merengue/Latin
 
 Joaquín Da Rosa *El Traje del PSG* reappeared in this batch's window — still skipped, same reason as
 session 4j.
+
+### Session 4l — genre lane continued, mainstream Latin urban + more cumbia villera
+
+15 tagged: LIT killah `Latin Trap`, ZECCA `Latin Pop`, LUDMILLA `Funk Carioca` (Brazilian, feat.
+Latto/Emilia), Pala Ancha `Cumbia` (cumbia villera, "cumbia callejera" originator), Los Dragones
+`Cumbia` ("Kings of Southern Cumbia", Puerto Madryn), La Fase Buk `Cumbia` (Uruguayan), La Champions
+Liga `Cumbia`, La Piedra Urbana `Cumbia`, The La Planta `Cumbia` (Uruguayan), Migrantes `Cumbia`,
+Supermerk2 `Cumbia` (cumbia villera since 2003), La Base `Cumbia`, Ke Personajes `Cumbia`, OKY
+`RKT` (feat. L-Gante, the genre's originator), Perro Primo `RKT` (consistent with earlier tag).
+
+genres.missing dropping steadily across sessions 4f–4l (~140 songs tagged total this pass).
