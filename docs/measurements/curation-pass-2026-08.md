@@ -976,3 +976,25 @@ Fresh unresearched artists this window (La Banda De Lechuga, Los Cantores del Al
 Fraga, Leader Music, Roman El Original, Nuke, PAWSA, cassö, Niklas Dee, Morgan Seatree, Victor
 Mendivil, Los Dareyes De La Sierra, Rawayana, Ya Ice Dilan, Jetta) left untagged — no search budget.
 Joaquín Da Rosa reappeared, still skipped per session 4j reasoning.
+
+### Session 4u — loop stopped, WebSearch budget floor reached
+
+1 tagged (Maesic `House`, another re-ingested copy of the same track). Every other artist in this
+window is unresearched and fresh — yield has dropped from 15-19 tags/tick earlier in the session to
+1, a clear floor. Continuing the 10-minute cron tick past this point would just spin on empty
+windows until the session's WebSearch budget resets.
+
+**Cron job `f90464f1` stopped here.** Session totals for the genre lane (sessions 4f-4u): ~150 songs
+tagged, all `mode: 'replace'` with web-sourced evidence, spanning cumbia, chamamé, tango, folclore,
+carnavalito, rumba catalana, RKT, trap, reggaeton, tech house/deep house/house, samba reggae, funk
+carioca, bolero, and more. `genres.missing` fell from 616 to roughly 520 over the session (some
+regrowth from concurrent live ingests). Remaining unresolvable stragglers (Alfonso, Banzai, Ennio,
+Rick Silva, Noah Scannell, FIA, Ivy, Kilometro1, Fat Papi, Wrytzy, Shadi, Marcello Marchitto, Oravla
+Ziur, Flash ×2, Miralles, JS Alpha) share one shape: generic artist name + single-song album, no
+sibling context, no findable release to look up — genuinely closed off to web search, not a budget
+artifact.
+
+Next session: resume `list_recent_songs(missingGenre: true)` from wherever the backlog stands; the
+Catalan rumba/flamenco cluster from session 4m (María Ruiz, Maison Bélier, Montse Cortés, La Sra.
+Tomasa, Maruja Limón, Mayte Martin) is a good first target — high-confidence genre family, just
+needs per-artist confirmation searches.
