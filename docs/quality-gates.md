@@ -138,6 +138,19 @@ have, and its message says to fix the parser, never the threshold. Verified red
 against all three failure modes (an over-long entry, an over-budget file, and a
 format change that blinds the parser), not just green on the current file.
 
+## `bun run lint` covers `scripts/` too (#639)
+
+The glob was `packages/*/src` + `src` only, so **the directory holding every quality gate was
+itself unlinted** — `check-audit.ts`, `check-route-auth.ts`, `check-fetch-timeouts.ts` and the
+rest. `tsc --build` and their own tests covered correctness, so this was style and dead-code
+drift rather than a bug; it was a blind spot in exactly the directory whose job is to have
+none, which is why it is written down here rather than quietly widened.
+
+Widening it surfaced one finding: a stale `eslint-disable-next-line no-constant-condition` in
+`download-deps.ts` that no longer suppressed anything. A disable comment for a rule that has
+stopped firing is the lint equivalent of an allowlist entry nobody re-checks — the reason the
+config reports unused directives as problems rather than ignoring them.
+
 ## `bun run lint` — the shell was doing the globbing
 
 The script was:
@@ -544,6 +557,56 @@ scoping to the files would also hide a real secret added beside it. The `.auth/`
 allowlisted **by its four commit SHAs**, not by path, for the same reason: a path allowlist
 would hide a real secret added there tomorrow, and four SHAs cannot. Verified in both
 directions — planting a GitHub PAT under `.auth/` is still caught.
+
+## The apt layer must actually re-execute (#730)
+
+Trivy below is only as good as the image it scans, and for two releases it scanned an image
+whose security updates had never been fetched. The production stage runs `apt-get upgrade`
+precisely to pick up Debian updates published since the base image was built — but the build
+uses `--cache-from type=gha`, and buildx invalidates a layer only when its **command string**
+changes. The string never changed, so the layer was served from cache on every release:
+v0.5.13 and v0.5.14 both shipped apt blobs dating to July, and Trivy blocked both deploys on
+a `libssl3t64` CVE whose fix had been in the archive for days. Prod stayed on 0.5.12.
+
+This is the "gate asserts its own denominator" failure in a different costume: the mechanism
+was present, visible in the Dockerfile, commented as doing exactly what it was supposed to —
+and measured nothing.
+
+The fix is an `ARG APT_REFRESH` interpolated **inside that RUN**, with `deploy.yml` passing
+`${{ github.run_id }}`. Per-run rather than a daily date stamp on purpose: a date stamp leaves
+a window where Trivy scans an archive state newer than the image's, and Trivy is the thing
+that blocks the deploy, so the two must agree.
+
+`scripts/dockerfile-apt-refresh.test.ts` asserts the pairing, because each half fails
+**silently** on its own: an `ARG` declared but never interpolated is a no-op that reads as a
+fix, and a workflow that stops passing the value lets the Dockerfile's own default take over
+without breaking the build. It also rejects a constant value, which would satisfy both halves
+and restore the bug on the second build.
+
+## A release is only cut when something releasable landed (#755)
+
+`commit-and-tag-version` patch-bumps **even when nothing since the last tag bumps anything**,
+which contradicts this repo's own documented contract (CLAUDE.md: `chore` `refactor` `style`
+`docs` `test` `ci` `build` do not bump). Merging #750, #752 and #753 within a minute exposed
+it: run A published `v0.5.21` covering all three, and run B — queued behind it — cut an empty
+`v0.5.22` moments later, triggering a full multi-arch build and deploy for an identical tree.
+
+The `if:` guard on the release job cannot catch this. It reads `github.event.head_commit`, the
+commit that was *pushed*; the step then does `git reset --hard FETCH_HEAD`, which for run B
+lands it on run A's `chore(release)` commit. The guard's premise and the step's actual HEAD
+are two different commits.
+
+`scripts/release-needed.ts` answers the question the workflow was assuming: is there a
+`feat`/`fix`/`perf` — or any breaking marker — since the latest tag, and is the tip already
+that tag? It is a tested module rather than more inline bash deliberately: the release step
+froze releases for a day once (the orphan-tag incident in `ci.yml`), and shell that can
+silently `exit 0` is exactly how that stayed invisible.
+
+One implementation note worth keeping, because it is the same defect class as everything else
+on this page: `--match v*` must be **interpolated** into Bun's `$`, not written inline. Bun's
+shell glob-expands a bare `v*` against the working directory, so `git describe` never receives
+the pattern, reports no tag, and the guard answers "release" unconditionally — a gate that
+always passes, caught only by running it against the real repo.
 
 ## Image scanning — the base layer `bun audit` cannot see
 

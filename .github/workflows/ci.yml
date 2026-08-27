@@ -689,6 +689,18 @@ jobs:
             fi
             tag="v$version"
 
+            # Nothing releasable landed? Don't cut a version for it (#755).
+            # `commit-and-tag-version` patch-bumps even with zero bumping
+            # commits, so two master-push runs in flight produced v0.5.21 (real)
+            # and v0.5.22 (empty changelog, same tree, full docker build +
+            # deploy). Run B's `reset --hard` above lands it ON run A's
+            # `chore(release)` commit, which the `if:` guard cannot see because
+            # it reads the *pushed* head commit, not the tip after re-sync.
+            # Exit 1 means "not needed" — see scripts/release-needed.test.ts.
+            if ! bun run scripts/release-needed.ts; then
+              exit 0
+            fi
+
             if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
               if git merge-base --is-ancestor "$tag^{commit}" HEAD; then
                 echo "$tag already reachable from master — genuinely published, skipping."
