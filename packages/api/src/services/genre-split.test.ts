@@ -539,3 +539,58 @@ describe('isRealGenre / JUNK_GENRES (issue #583)', () => {
     }
   });
 });
+
+describe('repairGenreMirrorDrift (issue #770)', () => {
+  async function drifted() {
+    const { Database } = await import('bun:sqlite');
+    const { applySchema } = await import('../db.js');
+    const db = new Database(':memory:');
+    applySchema(db);
+    const song = (id: string, genre: string) =>
+      db.run(
+        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, genre, path, size, suffix, content_type, synced_at)
+         VALUES (?, 'al1', 'T', 'A', 'ar1', 200, ?, ?, 1, 'mp3', 'audio/mpeg', 0)`,
+        [id, genre, 'p-' + id],
+      );
+    // Mirror set, zero join rows — exactly the shape measured on prod.
+    song('lag', 'Progressive Rock'); // tag-lag: the set is the stale side
+    song('junk', 'Other'); // curator-dropped: the mirror is the stale side
+    song('multi', 'Rock;Pop'); // a mirror holding a whole compound
+    // A healthy song must be left alone.
+    song('ok', 'Techno');
+    db.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES ('ok','Techno',0)`);
+    db.run(
+      `INSERT INTO library_genre_aliases (alias, canonical, source, created_at)
+       VALUES ('Other', '', 'user', 0)`,
+    );
+    return db;
+  }
+
+  it('seeds the set from a real mirror and clears a dropped one', async () => {
+    const { repairGenreMirrorDrift, loadGenreSets } = await import('./genre-split.js');
+    const db = await drifted();
+
+    expect(repairGenreMirrorDrift(db)).toEqual({ seeded: 2, cleared: 1 });
+
+    const sets = loadGenreSets(db, ['lag', 'junk', 'multi', 'ok']);
+    expect(sets.get('lag')).toEqual(['Progressive Rock']);
+    expect(sets.get('multi')).toEqual(['Rock', 'Pop']);
+    expect(sets.get('junk')).toBeUndefined();
+    expect(sets.get('ok')).toEqual(['Techno']);
+
+    const mirror = (id: string) =>
+      db
+        .query<{ genre: string | null }, [string]>(`SELECT genre FROM library_songs WHERE id = ?`)
+        .get(id)?.genre;
+    expect(mirror('lag')).toBe('Progressive Rock');
+    expect(mirror('junk')).toBeNull();
+    expect(mirror('ok')).toBe('Techno');
+  });
+
+  it('is idempotent — a second run finds nothing drifted', async () => {
+    const { repairGenreMirrorDrift } = await import('./genre-split.js');
+    const db = await drifted();
+    repairGenreMirrorDrift(db);
+    expect(repairGenreMirrorDrift(db)).toEqual({ seeded: 0, cleared: 0 });
+  });
+});

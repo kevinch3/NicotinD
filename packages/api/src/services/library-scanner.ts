@@ -1069,9 +1069,17 @@ export class LibraryScanner {
         albumArtistStmt.run(link.parentId, link.artistId, link.role, link.position);
       }
       // Replace (not merge) each rescanned song's genre set so a changed tag
-      // leaves no stale rows behind.
+      // leaves no stale rows behind — but only where this build actually
+      // resolved a genre. A tag that is missing, junk, or dropped by the alias
+      // table carries no genre information, and `library_songs.genre` above is
+      // COALESCE-preserved in exactly that case; deleting here unconditionally
+      // gave the set the opposite durability contract, so an enrichment- or
+      // curator-written genre whose file-tag write had not landed survived in
+      // the mirror and vanished from the set (#770). Applying a newly-reviewed
+      // alias to stored rows is `backfillGenresFromAliases`, not a scan.
+      const resolvedGenres = new Set(built.songGenres.map((l) => l.songId));
       for (const s of built.songs) {
-        songGenreDeleteStmt.run(s.id);
+        if (resolvedGenres.has(s.id)) songGenreDeleteStmt.run(s.id);
       }
       for (const link of built.songGenres) {
         songGenreStmt.run(link.songId, link.genre, link.position);

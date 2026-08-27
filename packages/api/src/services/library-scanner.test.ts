@@ -13,6 +13,7 @@ import {
 } from './library-scanner.js';
 import { normalizeArtistForGrouping } from './album-grouping.js';
 import { loadGenreOverrides, upsertGenreOverride } from './genre-overrides.js';
+import { loadGenreContext } from './genre-split.js';
 
 function track(p: Partial<ScannedTrack> & { relPath: string }): ScannedTrack {
   return {
@@ -803,6 +804,65 @@ describe('LibraryScanner.persist — multi-genre join table', () => {
       )
       .all(id);
     expect(rows2).toEqual([{ genre: 'Techno' }]);
+  });
+
+  // #770: the mirror column is COALESCE-preserved on a tag-less rescan, so the
+  // join table must carry the same durability contract or the two stores drift.
+  it('keeps the genre set when a rescan reads no genre tag', () => {
+    const built = buildLibrary([
+      track({ relPath: 'A/Alb/01.mp3', artist: 'A', album: 'Alb', title: 'T', genre: 'Rock;Pop' }),
+    ]);
+    scanner.persist(built, Date.now(), true);
+    const id = built.songs[0]!.id;
+
+    // Same file, no genre tag at all — the enrichment-written value has not been
+    // flushed to the file yet.
+    const built2 = buildLibrary([
+      track({ relPath: 'A/Alb/01.mp3', artist: 'A', album: 'Alb', title: 'T', genre: undefined }),
+    ]);
+    expect(built2.songs[0]!.genre).toBeNull();
+    scanner.persist(built2, Date.now() + 1, true);
+
+    expect(db.query('SELECT genre FROM library_songs WHERE id = ?').get(id)).toEqual({
+      genre: 'Rock',
+    });
+    expect(
+      db.query('SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position').all(id),
+    ).toEqual([{ genre: 'Rock' }, { genre: 'Pop' }]);
+  });
+
+  // A tag the vocabulary *drops* (junk, or a curator-approved drop alias) states
+  // no genre, so it must not destroy a curated one either — that was #762's
+  // failure mode. Applying a new alias to stored rows is backfillGenresFromAliases.
+  it('keeps the genre set when a rescan reads a tag the alias table drops', () => {
+    const built = buildLibrary([
+      track({ relPath: 'A/Alb/01.mp3', artist: 'A', album: 'Alb', title: 'T', genre: 'Rock' }),
+    ]);
+    scanner.persist(built, Date.now(), true);
+    const id = built.songs[0]!.id;
+
+    // Curator approved dropping 'Other' as a genre.
+    db.run(
+      `INSERT INTO library_genre_aliases (alias, canonical, source, created_at)
+       VALUES ('Other', '', 'user', ?)`,
+      [Date.now()],
+    );
+    const built2 = buildLibrary(
+      [track({ relPath: 'A/Alb/01.mp3', artist: 'A', album: 'Alb', title: 'T', genre: 'Other' })],
+      undefined,
+      undefined,
+      undefined,
+      loadGenreContext(db),
+    );
+    expect(built2.songGenres).toEqual([]);
+    scanner.persist(built2, Date.now() + 1, true);
+
+    expect(db.query('SELECT genre FROM library_songs WHERE id = ?').get(id)).toEqual({
+      genre: 'Rock',
+    });
+    expect(db.query('SELECT genre FROM library_song_genres WHERE song_id = ?').all(id)).toEqual([
+      { genre: 'Rock' },
+    ]);
   });
 
   it('prunes join rows for songs removed by a full scan', () => {

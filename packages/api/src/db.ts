@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 import { armReviewHold, reviewHoldArmed } from './services/download-review-store.js';
+import { repairGenreMirrorDrift } from './services/genre-split.js';
 import {
   hasSomethingToLose,
   migrationBackupEnabled,
@@ -1700,6 +1701,27 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
         ['landing_backfill_v1', now],
       );
     })();
+  }
+
+  // One-time genre mirror/set reconvergence (issue #770). `library_songs.genre`
+  // was COALESCE-preserved on a tag-less rescan while `library_song_genres` was
+  // deleted unconditionally, so the two stores drifted in both directions. The
+  // scanner no longer produces either case; this repairs the rows already
+  // written. Marker-gated because it is a full-table pass, not because a repeat
+  // would be wrong — the repair is idempotent by construction.
+  const genreDriftRepaired = db
+    .query<{ value: string }, [string]>(`SELECT value FROM library_sync_state WHERE key = ?`)
+    .get('genre_mirror_drift_repair_v1');
+  if (!genreDriftRepaired) {
+    const now = Date.now();
+    const result = repairGenreMirrorDrift(db);
+    if (result.seeded > 0 || result.cleared > 0) {
+      log.info(result, 'repaired genre mirror/set drift');
+    }
+    db.run(
+      `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '1', ?)`,
+      ['genre_mirror_drift_repair_v1', now],
+    );
   }
 
   // Hold-for-review bootstrap exemption (issue #417): arm the one-way
