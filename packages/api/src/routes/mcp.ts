@@ -31,6 +31,11 @@ import { VALID_CLASSIFICATIONS, type Classification } from '../services/library-
 import type { LibraryCurator } from '../services/library-curator.js';
 import { acquireAlbum } from '../services/album-acquire.js';
 import { artistIdFor } from '../services/library-scanner.js';
+import { normalizeArtistForGrouping } from '../services/album-grouping.js';
+import { getArtistOrigin } from '../services/artist-origins.js';
+import { mutateArtistOrigin } from '../services/artist-origin-mutate.js';
+import { getMbid } from '../services/mbid-store.js';
+import { rareGenres } from '../services/genre-distribution.js';
 import { normalizeForGrouping } from '../services/album-grouping.js';
 import type { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
@@ -259,7 +264,22 @@ export const MCP_TOOLS: McpTool[] = [
           'SELECT id, name, year, genre FROM library_albums WHERE artist_id = ? ORDER BY year',
         )
         .all(id);
-      return JSON.stringify({ ...artist, albums }, null, 2);
+      // Origin + MBID are read-only here but not decoration (#759): a wrong
+      // origin is almost always INHERITED from a wrong MBID on a homonym, so an
+      // agent that can see only the country will keep correcting the symptom.
+      // Seeing both is what makes "the MBID is wrong, escalate" possible.
+      const origin = getArtistOrigin(db, id);
+      const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
+      return JSON.stringify(
+        {
+          ...artist,
+          origin: origin ? { country: origin.country, source: origin.source } : null,
+          mbid: mbidRow ? { id: mbidRow.mbid, source: mbidRow.source } : null,
+          albums,
+        },
+        null,
+        2,
+      );
     },
   },
   {
@@ -342,6 +362,70 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: 'get_rare_genres',
+    description:
+      'Genres with the fewest songs, worst-first — misclassification candidates. A genre carried by ' +
+      'one or two songs is usually a mistag, a scanner mis-split, or an over-specific tag that should ' +
+      'fold into a broader one. Counts the PRIMARY genre only. Use set_song_genre to fix one.',
+    access: 'read',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        maxCount: {
+          type: 'number',
+          description: 'Only genres with at most this many songs. Omit for all, worst-first.',
+        },
+        limit: { type: 'number', description: 'Rows to return (default 50, max 500).' },
+      },
+    },
+    handler: ({ db }, args) => {
+      const maxCount = typeof args.maxCount === 'number' ? args.maxCount : undefined;
+      const limit = typeof args.limit === 'number' ? args.limit : undefined;
+      return JSON.stringify({ genres: rareGenres(db, { maxCount, limit }) }, null, 2);
+    },
+  },
+  {
+    name: 'set_artist_origin',
+    description:
+      "Set an artist's country of origin (ISO 3166-1 alpha-2, e.g. 'AR'). Pass country: null when the " +
+      'library has it wrong and you cannot determine the right one — that writes a permanent tombstone ' +
+      'so the automatic MusicBrainz pass stops re-deriving the wrong value. Read the current value with ' +
+      'get_artist. A wrong origin usually means a wrong MBID on a homonym: if get_artist shows an mbid, ' +
+      'the origin is inherited from it and fixing only the country leaves the cause in place. ' +
+      'Audit-logged.',
+    access: 'curate',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        artistId: { type: 'string' },
+        country: {
+          type: ['string', 'null'],
+          description: 'ISO 3166-1 alpha-2 code, or null to tombstone the origin as unknown.',
+        },
+      },
+      required: ['artistId', 'country'],
+    },
+    handler: ({ db, identity }, args) => {
+      const artistId = str(args.artistId);
+      // `null` is a meaningful decision (the tombstone); only a MISSING key is
+      // an error, so this must not collapse null onto undefined.
+      const country = args.country === null ? null : str(args.country);
+      const result = mutateArtistOrigin(db, artistId, 'country' in args ? country : undefined);
+      if (!result.ok) return JSON.stringify({ error: result.error });
+      recordAudit(
+        db,
+        { sub: identity.userId, username: `agent:${identity.tokenId}` },
+        'artist.origin',
+        {
+          targetKind: 'artist',
+          targetId: artistId,
+          detail: `${result.previous?.country ?? 'none'} → ${result.origin.country ?? 'unknown'} (via MCP agent)`,
+        },
+      );
+      return JSON.stringify({ ok: true, origin: result.origin, previous: result.previous });
+    },
+  },
+  {
     name: 'set_song_genre',
     description:
       "Set a song's genre(s) (safe curation). Pass one genre or a ';'-separated list, primary first. " +
@@ -393,7 +477,7 @@ export const MCP_TOOLS: McpTool[] = [
       'and an AcoustID fingerprint when configured), plus an offline `suggested` cleanup of ' +
       'YouTube junk like "(Official Video)". This is the surface’s first outbound-network tool: ' +
       'it can take a few seconds; every source is timeout-bounded and a down source degrades to ' +
-      '`ok:false` in `sources` instead of failing the call. Use `fix_song_metadata` to apply a choice.',
+      '`ok:false` in `sources` instead of failing the call. Use `fix_song_metadata` to apply a choice. Each call fans out to ~4 outbound sources, so a batch of N parallel calls is ~4N outbound requests: keep concurrency at or below 4 and back off on a 502 (retry_after is authoritative). A wider batch has been measured to 502 the origin mid-pass (#757).',
     access: 'read',
     inputSchema: {
       type: 'object',
@@ -480,7 +564,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'lookup_album_metadata',
     description:
-      "Ranked real-album candidates for one album from every configured source (Lidarr, MusicBrainz, Discogs, the album's own file tags). Network tool: may take a few seconds; a down source degrades to ok:false in sources rather than failing the call. Candidate coverUrl values are what set_album_cover and fix_album_metadata accept; apply a chosen candidate with fix_album_metadata.",
+      "Ranked real-album candidates for one album from every configured source (Lidarr, MusicBrainz, Discogs, the album's own file tags). Network tool: may take a few seconds; a down source degrades to ok:false in sources rather than failing the call. Candidate coverUrl values are what set_album_cover and fix_album_metadata accept; apply a chosen candidate with fix_album_metadata. Each call fans out to ~4 outbound sources, so a batch of N parallel calls is ~4N outbound requests: keep concurrency at or below 4 and back off on a 502 (retry_after is authoritative). A wider batch has been measured to 502 the origin mid-pass (#757).",
     access: 'read',
     inputSchema: {
       type: 'object',

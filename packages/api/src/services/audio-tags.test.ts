@@ -143,6 +143,114 @@ describe.if(ffmpegAvailable())('audio-tags perceptual features (Opus/Vorbis roun
   });
 });
 
+/**
+ * Issue #760: a retag silently did nothing on `.opus`.
+ *
+ * On Ogg containers, Vorbis comments live in the **stream**, and `-metadata`
+ * writes *global* metadata. The muxer merges global into the comment header
+ * only where the stream has no value for that key — so a write lands on a
+ * tagless file and is silently discarded on one that already carries the tag,
+ * because `-c copy` brings the old comment along and it wins.
+ *
+ * The round-trip tests above never caught it because they generate their
+ * fixture with NO metadata, which is the one input shape where the bug cannot
+ * appear. Retagging is by definition the other shape. Every fixture here
+ * therefore starts *already tagged* — that is the premise under test.
+ *
+ * The blast radius was the whole tag-writing surface (~19 call sites: BPM, key,
+ * energy, genre, lyrics, the organizer's ingest tagging, `fix_song_metadata`),
+ * on a library that transcodes lossless to Opus by default.
+ */
+describe.if(ffmpegAvailable())('overwriting an existing tag (#760)', () => {
+  /** A one-second file of `ext`, already carrying TITLE/ARTIST/ALBUM. */
+  function tagged(ext: string, name: string): string {
+    const codec = { opus: 'libopus', ogg: 'libvorbis', flac: 'flac', m4a: 'aac' }[ext]!;
+    const path = join(dir, `${name}.${ext}`);
+    const gen = spawnSync('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=440:sample_rate=48000',
+      '-t',
+      '1',
+      '-c:a',
+      codec,
+      '-metadata',
+      'TITLE=OLD TITLE',
+      '-metadata',
+      'ARTIST=OLD ARTIST',
+      '-metadata',
+      'ALBUM=OLD ALBUM',
+      path,
+    ]);
+    expect(gen.status).toBe(0);
+    return path;
+  }
+
+  for (const ext of ['opus', 'ogg', 'flac', 'm4a']) {
+    it(`replaces an existing title/artist/album on .${ext}`, async () => {
+      const path = tagged(ext, `retag-${ext}`);
+      expect(
+        await writeAudioTags(path, {
+          title: 'NEW TITLE',
+          artist: 'NEW ARTIST',
+          album: 'NEW ALBUM',
+        }),
+      ).toBe(true);
+      const tags = await readAudioTags(path);
+      expect(tags.title).toBe('NEW TITLE');
+      expect(tags.artist).toBe('NEW ARTIST');
+      expect(tags.album).toBe('NEW ALBUM');
+    });
+  }
+
+  /**
+   * Prod's actual file: `CD A 2000.opus`, whose scrambled title matched its
+   * filename — so when the write vanished, the scanner's filename fallback
+   * refilled the same wrong value and the revert looked like a scanner bug.
+   */
+  it('persists a retag on an opus whose filename matches its old title', async () => {
+    const path = join(dir, 'CD A 2000.opus');
+    spawnSync('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=440:sample_rate=48000',
+      '-t',
+      '1',
+      '-c:a',
+      'libopus',
+      '-metadata',
+      'TITLE=CD A 2000',
+      '-metadata',
+      'ALBUM=CD A 2000',
+      path,
+    ]);
+    expect(await writeAudioTags(path, { title: 'El Aprendiz', album: 'Soy Cordobés' })).toBe(true);
+    const tags = await readAudioTags(path);
+    expect(tags.title).toBe('El Aprendiz');
+    expect(tags.album).toBe('Soy Cordobés');
+  });
+
+  /** A partial write must not blank the fields it was not asked to change. */
+  it('leaves untouched fields alone on opus', async () => {
+    const path = tagged('opus', 'partial');
+    expect(await writeAudioTags(path, { title: 'ONLY TITLE' })).toBe(true);
+    const tags = await readAudioTags(path);
+    expect(tags.title).toBe('ONLY TITLE');
+    expect(tags.artist).toBe('OLD ARTIST');
+    expect(tags.album).toBe('OLD ALBUM');
+  });
+});
+
 describe('featureTagsFromNative (pure)', () => {
   it('reads Vorbis comment frames case-insensitively', () => {
     const out = featureTagsFromNative({

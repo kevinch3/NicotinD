@@ -7,7 +7,7 @@ import { missingAlbumArtSql } from './artwork-store.js';
 import { losslessSuffixSql } from './library-track-select.js';
 import { unresolvedGenreSql } from './genre-split.js';
 import { countOpenCurationFlags } from './curation-flags.js';
-import { matchingLocalAlbums, onDiskTitles } from './library-completeness.js';
+import { albumAlreadyComplete, matchingLocalAlbums, onDiskTitles } from './library-completeness.js';
 
 /**
  * Library health report — the one aggregation of every curation dimension:
@@ -70,6 +70,26 @@ export interface ConfirmedIncomplete {
   state: string;
 }
 
+/**
+ * An album whose canonical titles do not all match on disk, but which already
+ * holds at least as many songs as the release has (issue #758).
+ *
+ * Not a gap: `complete_album` refuses it as `already-complete`, and hunting it
+ * would re-download a file that is present under a different spelling. The
+ * remediation is retagging, so it is reported apart from `confirmed` rather
+ * than dropped — 40% of a sampled `confirmed` worklist was this.
+ */
+export interface TitleMismatch {
+  albumId: string | null;
+  artist: string;
+  album: string;
+  expected: number;
+  /** Songs the local album actually holds — at or above `expected`. */
+  onDisk: number;
+  /** Canonical titles with no on-disk counterpart. */
+  unmatched: number;
+}
+
 export interface SuspectedGap extends AlbumRef {
   disc: number;
   maxTrack: number;
@@ -123,8 +143,13 @@ export interface LibraryHealthReport {
     };
     completeness: {
       /** `suspected` is advisory-only — never hunted without a curator confirming. */
-      metric: { confirmedIncomplete: number; suspected: number };
-      worklist: { confirmed: ConfirmedIncomplete[]; suspected: SuspectedGap[] };
+      metric: { confirmedIncomplete: number; suspected: number; titleMismatch: number };
+      worklist: {
+        confirmed: ConfirmedIncomplete[];
+        suspected: SuspectedGap[];
+        /** Full track count, unmatched titles — retag, never hunt (#758). */
+        titleMismatches: TitleMismatch[];
+      };
       remediation: string;
     };
     /** Lyrics are fetched on demand by design — count only, no worklist. */
@@ -137,7 +162,10 @@ function count(db: Database, sql: string): number {
   return db.query<{ c: number }, []>(`SELECT COUNT(*) c FROM ${sql}`).get()?.c ?? 0;
 }
 
-function confirmedIncomplete(db: Database): ConfirmedIncomplete[] {
+function confirmedIncomplete(db: Database): {
+  confirmed: ConfirmedIncomplete[];
+  titleMismatches: TitleMismatch[];
+} {
   let jobs: Array<{
     artist_name: string;
     album_title: string;
@@ -155,10 +183,11 @@ function confirmedIncomplete(db: Database): ConfirmedIncomplete[] {
       )
       .all();
   } catch {
-    return [];
+    return { confirmed: [], titleMismatches: [] };
   }
 
   const out: ConfirmedIncomplete[] = [];
+  const titleMismatches: TitleMismatch[] = [];
   const seen = new Set<string>();
   for (const j of jobs) {
     const key = `${j.artist_name.trim().toLowerCase()}|${j.album_title.trim().toLowerCase()}`;
@@ -181,8 +210,26 @@ function confirmedIncomplete(db: Database): ConfirmedIncomplete[] {
       (t) => !onDisk.some((d) => titlesOverlap(d, normalizeTitle(t))),
     ).length;
     if (missing === 0) continue;
+    const local = matchingLocalAlbums(db, j.artist_name, j.album_title);
+    // This list's contract is "a hunt would enqueue these" — so it must apply
+    // the SAME guard the hunt applies (#758). `albumAlreadyComplete` counts
+    // ROWS while the loop above matches TITLES, and the two disagree whenever a
+    // song is on disk under a different spelling: the title matcher reports it
+    // missing, the hunt refuses it as `already-complete`, and a curator spends
+    // bounded hunt budget on a no-op. Measured at 4 of 10 on prod.
+    if (albumAlreadyComplete(db, j.artist_name, j.album_title, titles.length)) {
+      titleMismatches.push({
+        albumId: local[0]?.id ?? null,
+        artist: j.artist_name,
+        album: j.album_title,
+        expected: titles.length,
+        onDisk: Math.max(...local.map((r) => r.song_count), 0),
+        unmatched: missing,
+      });
+      continue;
+    }
     out.push({
-      albumId: matchingLocalAlbums(db, j.artist_name, j.album_title)[0]?.id ?? null,
+      albumId: local[0]?.id ?? null,
       artist: j.artist_name,
       album: j.album_title,
       expected: titles.length,
@@ -192,8 +239,11 @@ function confirmedIncomplete(db: Database): ConfirmedIncomplete[] {
       state: j.state,
     });
   }
-  // Most completable first — one missing track is the cheapest win.
-  return out.sort((a, b) => a.missing - b.missing);
+  return {
+    // Most completable first — one missing track is the cheapest win.
+    confirmed: out.sort((a, b) => a.missing - b.missing),
+    titleMismatches: titleMismatches.sort((a, b) => b.unmatched - a.unmatched),
+  };
 }
 
 export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): LibraryHealthReport {
@@ -295,7 +345,7 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
     .all(sample);
   const suspectedCount = count(db, `(${gapSql})`);
 
-  const confirmed = confirmedIncomplete(db);
+  const { confirmed, titleMismatches } = confirmedIncomplete(db);
 
   const oldestFlag =
     db
@@ -439,9 +489,14 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
           'maintenance transcode-library clears lossless; mixed/low-bitrate albums are re-hunt candidates (complete_album / web hunt)',
       },
       completeness: {
-        metric: { confirmedIncomplete: confirmed.length, suspected: suspectedCount },
+        metric: {
+          confirmedIncomplete: confirmed.length,
+          suspected: suspectedCount,
+          titleMismatch: titleMismatches.length,
+        },
         worklist: {
           confirmed: confirmed.slice(0, sample),
+          titleMismatches: titleMismatches.slice(0, sample),
           suspected: suspected.map((r) => ({
             albumId: r.id,
             name: r.name,

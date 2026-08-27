@@ -89,12 +89,9 @@ import type {
   CoverCandidatesResponse,
   ApplyCoverRequest,
 } from '@nicotind/core';
-import { parseLibraryFilter, normalizeMbCountry } from '@nicotind/core';
-import {
-  getArtistOrigin,
-  listOriginFacets,
-  upsertArtistOrigin,
-} from '../services/artist-origins.js';
+import { parseLibraryFilter } from '@nicotind/core';
+import { getArtistOrigin, listOriginFacets } from '../services/artist-origins.js';
+import { mutateArtistOrigin } from '../services/artist-origin-mutate.js';
 import {
   albumFilterWheres,
   artistFilterWheres,
@@ -800,20 +797,14 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     requireCurator(c);
     const id = c.req.param('id');
     const db = getDatabase();
-    const exists = db
-      .query<{ id: string }, [string]>(`SELECT id FROM library_artists WHERE id = ?`)
-      .get(id);
-    if (!exists) return c.json({ error: 'Artist not found', code: 'NOT_FOUND' }, 404);
     const body = await c.req.json<{ country?: string | null }>().catch(() => null);
-    if (!body || !('country' in body)) {
-      return c.json({ error: 'country required', code: 'VALIDATION_ERROR' }, 400);
+    // Shared with MCP's `set_artist_origin` (#759) — one tested write, not two.
+    const result = mutateArtistOrigin(db, id, body && 'country' in body ? body.country : undefined);
+    if (!result.ok) {
+      const code = result.status === 404 ? 'NOT_FOUND' : 'VALIDATION_ERROR';
+      return c.json({ error: result.error, code }, result.status);
     }
-    const country = body.country == null ? null : normalizeMbCountry(body.country);
-    if (body.country != null && country === null) {
-      return c.json({ error: 'Not an ISO 3166-1 alpha-2 code', code: 'VALIDATION_ERROR' }, 400);
-    }
-    upsertArtistOrigin(db, { artistId: id, country, source: 'user' });
-    return c.json({ origin: { country, source: 'user' } });
+    return c.json({ origin: result.origin });
   });
 
   /**
