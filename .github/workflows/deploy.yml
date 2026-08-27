@@ -468,6 +468,12 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          # Busts ONLY the apt layer (issue #730): the rest of the cache stays
+          # useful, but `apt-get upgrade` re-executes every build instead of
+          # being served from a July-vintage blob while Trivy blocks the deploy
+          # over a CVE the archive had already fixed.
+          build-args: |
+            APT_REFRESH=${{ github.run_id }}
           cache-from: type=gha,scope=docker-${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,mode=max,scope=docker-${{ env.PLATFORM_PAIR }}
 

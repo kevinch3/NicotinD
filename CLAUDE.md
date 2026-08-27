@@ -48,7 +48,7 @@ in the native migration.
 bun install              # Install all workspace dependencies
 bun run verify           # Every gate the CI gate jobs run — run this before pushing
 bun run typecheck        # tsc --build + Angular templates + e2e specs + web specs (all four surfaces)
-bun run lint             # ESLint over packages/*/src + src (quote the globs). NOT packages/web (#612)
+bun run lint             # ESLint over packages/*/src + src + scripts (quote the globs). NOT packages/web (#612)
 bun run test             # Vitest across packages/ + src/
 bun run test:web         # Angular component tests (vitest, never `ng test`)
 bun run e2e              # Playwright suite — always run before declaring a feature done

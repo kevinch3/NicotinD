@@ -77,7 +77,6 @@ async function downloadFile(url: string, dest: string): Promise<void> {
   const reader = res.body.getReader();
 
   // Manual pipe with progress
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;

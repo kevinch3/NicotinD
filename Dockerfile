@@ -64,7 +64,23 @@ LABEL org.opencontainers.image.source="https://github.com/kevinch3/NicotinD" \
 # The cost is that the layer is not byte-reproducible across rebuilds. It never
 # was — none of the packages below are version-pinned — and shipping known-fixed
 # CVEs to self-hosters is the worse of the two.
-RUN apt-get update && \
+#
+# `APT_REFRESH` exists solely to make that upgrade actually run (issue #730).
+# The RUN string is otherwise constant, so buildx served this layer from the
+# `type=gha` cache on every release — v0.5.13 and v0.5.14 both shipped an apt
+# layer whose blobs dated to July, and Trivy blocked both deploys on a CVE whose
+# fix had been in the archive for days. The layer that exists to fetch security
+# updates structurally never re-executed: the same defect class as a gate that
+# asserts a denominator it computed itself.
+#
+# The workflow passes the run id, so the value differs per build and the layer
+# cannot be reused. A date stamp would be cheaper but leaves a window where
+# Trivy scans an archive state newer than the image's — and Trivy is what blocks
+# the deploy, so the two must see the same apt state.
+# `dockerfile-apt-refresh.test.ts` asserts this arg stays wired to both ends.
+ARG APT_REFRESH=unset
+RUN echo "apt refresh: ${APT_REFRESH}" && \
+    apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends curl ca-certificates ffmpeg libchromaprint-tools && \
     rm -rf /var/lib/apt/lists/*
