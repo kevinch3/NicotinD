@@ -911,3 +911,16 @@ with earlier tag), Marian (BR) `Tech House;Latin Tech` (2nd track, consistent), 
 
 Skipped: JS Alpha *Crashout* (no usable evidence). Ennio, Rick Silva, Noah Scannell reappeared in
 this window — still no evidence, remain on the unresolvable-stragglers list.
+
+### Session 4p — genre lane continued
+
+11 tagged: Vassilis Saleas ×2 `New Age` (repeat), Piano in a Living Room `New Age` (Vienna, piano
+covers of Vangelis — matches Saleas' own catalog thematically), Tomi Lago ×3 `Tango` (repeat),
+Miranda! `Pop` (iconic Argentine electropop duo), Jorge Rojas `Folclore` (ex-Los Nocheros, solo
+folclore/romántica), Los Palmareños `Cumbia` (cumbia santafesina roots, self-described as
+folklore/rock/cumbia hybrid — tagged on the dominant thread), Sele Vera Y Los Pampas `Cumbia`, Marama
+`Cumbia Pop` (Uruguayan cumbia-pop pioneers, distinct enough from plain Cumbia to warrant its own
+tag).
+
+Independent Lemon, Las Sabrosas Zarigüellas, La Batucada Murguera, Manuel Galán reappeared — still
+skipped, no new evidence since sessions 4h/4m.
