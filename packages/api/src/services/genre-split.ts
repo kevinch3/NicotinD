@@ -465,6 +465,45 @@ export function backfillGenresFromAliases(db: Database): { scanned: number; upda
   return { scanned: sets.size, updated };
 }
 
+/**
+ * Repair songs whose mirror column and join table disagree (issue #770).
+ *
+ * `library_songs.genre` was COALESCE-preserved on a tag-less rescan while
+ * `library_song_genres` was deleted unconditionally, so the two stores carried
+ * opposite durability contracts and drifted in both directions: a genre the file
+ * tag had not caught up with lost its set, and a genre a curator dropped kept its
+ * mirror. `buildLibrary` no longer produces either case; this re-converges the
+ * rows already written.
+ *
+ * The mirror is re-resolved through the *current* vocabulary rather than copied
+ * verbatim, so a value the alias table now drops clears instead of being seeded
+ * back into the set. Idempotent: a second run finds nothing drifted.
+ *
+ * Note this cannot be folded into {@link backfillGenresFromAliases} — that walks
+ * `SELECT DISTINCT song_id FROM library_song_genres`, so a song with *zero* join
+ * rows is invisible to it. The drift was self-perpetuating for exactly that reason.
+ */
+export function repairGenreMirrorDrift(db: Database): { seeded: number; cleared: number } {
+  const ctx = loadGenreContext(db);
+  const drifted = db
+    .query<{ id: string; genre: string }, []>(
+      `SELECT s.id, s.genre FROM library_songs s
+        WHERE s.genre IS NOT NULL AND TRIM(s.genre) != ''
+          AND NOT EXISTS (SELECT 1 FROM library_song_genres g WHERE g.song_id = s.id)`,
+    )
+    .all();
+
+  let seeded = 0;
+  let cleared = 0;
+  for (const row of drifted) {
+    const genres = splitGenres(row.genre, ctx);
+    setSongGenres(db, row.id, genres);
+    if (genres.length > 0) seeded++;
+    else cleared++;
+  }
+  return { seeded, cleared };
+}
+
 export function setSongGenres(db: Database, songId: string, genres: string[]): void {
   const touched = new Set<string>(genres);
   for (const r of db

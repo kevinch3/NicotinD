@@ -39,6 +39,23 @@ file tags → splitGenres → library_genre_aliases → applyGenreOverride → s
 Overrides live in a side table rather than a column because `persist` **deletes and rebuilds every
 rescanned song's join rows from the file tags** — a column would be destroyed on the next scan.
 
+### Both stores preserve what a rescan cannot resolve
+
+A file tag that is missing, junk, or dropped by the alias table states **no genre**. It is not an
+instruction to forget one. Enrichment and curation write the DB immediately while the file-tag write
+lags or fails, so a rescan that treated "resolved to nothing" as "clear it" would revert them.
+
+Both stores therefore preserve:
+
+- `library_songs.genre` via `genre = COALESCE(excluded.genre, library_songs.genre)` in the upsert —
+  the same durability contract as `bpm`/`key`/the perceptual axes.
+- `library_song_genres` by deleting a song's rows **only when this build resolved at least one
+  genre** for it.
+
+The cost is deliberate and shared by both: clearing a genre tag on disk does not clear the stored
+one. The way to apply a newly-reviewed alias to stored rows is `backfillGenresFromAliases`, not a
+scan.
+
 ## Who reads what
 
 | Reader                                            | Matches                        | Why                                                            |
@@ -81,9 +98,17 @@ but a large in-flight download batch would make the counts read high until the s
   **397 of 764 prod genres opened to an empty page**, 631 of 764 showed an inflated count. Fixed by
   matching the full set. The tell was asymmetric documentation — the scanner wrote its semantic
   down, the route documented no predicate at all.
-- **The mirror and the set drifted apart** (#770). 580 songs carry a primary in `library_songs.genre`
-  with *zero* join rows, making them invisible to every set reader above. This is why `/genres/songs`
-  keeps `s.genre = ?` as one half of its predicate — there it stands in as position 0.
+- **The two stores carried opposite durability contracts** (#770). The mirror was
+  COALESCE-preserved on a rescan that resolved no genre; the set was deleted unconditionally. Each
+  rule is right for one case and wrong for the other, and neither knew which case it was in, so
+  **580 prod songs** ended up with a primary and *zero* join rows — invisible to every set reader
+  above. It drifted in both directions: 380 were real genres whose file tag had not caught up (the
+  set was the stale side), 200 were junk the curator had dropped and `COALESCE` kept alive (the
+  mirror was the stale side). Fixed by giving the set the mirror's preserve contract, plus a
+  marker-gated one-time `repairGenreMirrorDrift`. The drift was self-perpetuating because
+  `backfillGenresFromAliases` walks `SELECT DISTINCT song_id FROM library_song_genres` — a song with
+  zero join rows is invisible to the very thing that would have repaired it. This is also why
+  `/genres/songs` keeps `s.genre = ?` as one half of its predicate.
 - **Junk vocab scored as identity** (#583). `Other` = `Other` matched at 1.0 in radio. `JUNK_GENRES`
   + `isRealGenre` now strip it before any comparison; an all-junk side reads as *absent*.
 - **An ASCII-only normaliser folded unrelated names together** (#720 cluster). Genre and artist
