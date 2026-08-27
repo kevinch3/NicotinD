@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.25](https://github.com/kevinch3/NicotinD/compare/v0.5.24...v0.5.25) (2026-08-27)
+
+### Bug Fixes
+
+* **library:** make retags land on opus, and MCP see origin and rare genres ([#765](https://github.com/kevinch3/NicotinD/issues/765)) ([86cd0e7](https://github.com/kevinch3/NicotinD/commit/86cd0e73501dd4ac2352b6ba4f68e298a9b5c8a9)), closes [#758](https://github.com/kevinch3/NicotinD/issues/758) [#759](https://github.com/kevinch3/NicotinD/issues/759) [#760](https://github.com/kevinch3/NicotinD/issues/760) [#761](https://github.com/kevinch3/NicotinD/issues/761), references [#760](https://github.com/kevinch3/NicotinD/issues/760) [#758](https://github.com/kevinch3/NicotinD/issues/758) [#759](https://github.com/kevinch3/NicotinD/issues/759) [#761](https://github.com/kevinch3/NicotinD/issues/761) [#757](https://github.com/kevinch3/NicotinD/issues/757) [#757](https://github.com/kevinch3/NicotinD/issues/757)
 ## [0.5.24](https://github.com/kevinch3/NicotinD/compare/v0.5.23...v0.5.24) (2026-08-27)
 
 ### Bug Fixes
