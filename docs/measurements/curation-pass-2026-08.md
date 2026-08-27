@@ -849,3 +849,14 @@ in the title).
 Skipped: Joaquín Da Rosa *El Traje del PSG* — a viral hit whose own genre was unclear from sources
 (trap/pop-adjacent); only fan-made remixes were confirmed cumbia, which isn't evidence for the
 original.
+
+### Session 4k — genre lane continued, more cumbia + genre diversity
+
+14 tagged: Los Grosos ×4 `Cumbia` (Argentina's first band of short-statured performers, cumbia
+tropical), Karina "La Princesita" `Cumbia` (romantic cumbia), Los Chicos de la Vía `Cumbia`,
+Q' Lokura `Cumbia`, Ytthamar Tropicália & Paulo Axé `Samba Reggae` (Bahia, Afro-Brazilian), La
+Repandilla `Cumbia` (cumbia villera, same "cumbia base" style as La Base), Mc Caco `Cumbia`, La
+Joaqui `Trap`, Papichamp `Reggaeton`, Zhamira `Latin Pop` (bolero/merengue/Latin-soul fusion).
+
+Joaquín Da Rosa *El Traje del PSG* reappeared in this batch's window — still skipped, same reason as
+session 4j.
