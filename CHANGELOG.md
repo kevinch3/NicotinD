@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.26](https://github.com/kevinch3/NicotinD/compare/v0.5.25...v0.5.26) (2026-08-27)
+
+### Bug Fixes
+
+* **library:** make the genre listing match the same set the count does ([#772](https://github.com/kevinch3/NicotinD/issues/772)) ([0ffddb2](https://github.com/kevinch3/NicotinD/commit/0ffddb23aab5c4768d742c5b90d8d4276adf29f9)), closes [#769](https://github.com/kevinch3/NicotinD/issues/769), references [#770](https://github.com/kevinch3/NicotinD/issues/770) [#771](https://github.com/kevinch3/NicotinD/issues/771) [#770](https://github.com/kevinch3/NicotinD/issues/770) [#770](https://github.com/kevinch3/NicotinD/issues/770) [#771](https://github.com/kevinch3/NicotinD/issues/771)
 ## [0.5.25](https://github.com/kevinch3/NicotinD/compare/v0.5.24...v0.5.25) (2026-08-27)
 
 ### Bug Fixes
