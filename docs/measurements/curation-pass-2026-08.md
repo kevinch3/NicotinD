@@ -955,3 +955,13 @@ correctly still deferred to the owner, nothing actionable without a decision onl
 from here will be limited to repeat artists already researched this session; fresh-artist tagging is
 paused until the budget resets (a new session) or `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` is
 raised.
+
+### Session 4s — still WebSearch-limited, repeat artists only
+
+3 tagged, all repeats with evidence from earlier this session: Marian (BR) `Tech House;Latin Tech`,
+Piano in a Living Room ×2 `New Age` (film-score piano covers, same pattern as their Vangelis work).
+
+Fresh unresearched artists in this window (ICE THOMPSON, Tony Amatore, Void, Mellizos, Mochakk,
+OldChild, Kieran San Jose, Memphis La Blusera) left untagged — no WebSearch budget to evidence them.
+Genre-tagging throughput is now bottlenecked on the exhausted session search budget; each tick nets
+only the handful of repeat-artist tracks still landing.
