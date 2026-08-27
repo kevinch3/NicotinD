@@ -214,6 +214,7 @@ The `/api/radio/next` endpoint builds a diverse pool in several passes:
 1. Shares ANY genre with the seed's full set (primary column OR a
    `library_song_genres` EXISTS, up to 150 random; junk tags — `JUNK_GENRES`,
    e.g. "Other" — are dropped from the seed's set first, issue #583)
+   (which genre readers match the set vs the primary: [genre-model.md](genre-model.md))
    1b. **Genre variants** — `LOWER(genre) LIKE '%<longest seed token>%'` (up to 100),
    so "Deep House" also pulls "House"/"Tech House" for `genreCloseness` to score
    (tokens shorter than 4 chars are skipped as non-selective; `longestGenreToken`)
