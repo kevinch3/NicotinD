@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openAlbumCard } from '../helpers';
 
 /**
  * The artist-photo edit control, on both surfaces that host it.
@@ -15,8 +16,7 @@ test.describe('artist image menu', () => {
   test('is reachable and opens on the artist page', async ({ page }) => {
     // Album detail → artist link, the same route library.spec.ts walks.
     await page.goto('/library');
-    await page.getByTestId('album-card').first().click();
-    await expect(page).toHaveURL(/\/library\/albums\//);
+    await openAlbumCard(page);
     await page.locator('a[href^="/library/artists/"]').first().click();
     await expect(page).toHaveURL(/\/library\/artists\//);
 

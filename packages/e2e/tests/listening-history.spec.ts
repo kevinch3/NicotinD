@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { FIXTURE } from '../helpers';
+import { FIXTURE, openAlbumCard } from '../helpers';
 
 /**
  * Listening history (docs/listening-history.md). Two halves, tested separately
@@ -15,8 +15,7 @@ import { FIXTURE } from '../helpers';
 test.describe('listening history', () => {
   test('playing then skipping a track reports a session to the server', async ({ page }) => {
     await page.goto('/library');
-    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).first().click();
-    await expect(page).toHaveURL(/\/library\/albums\//);
+    await openAlbumCard(page, FIXTURE.album.title);
 
     const reported = page.waitForRequest(
       (r) => r.url().includes('/api/history/plays') && r.method() === 'POST',

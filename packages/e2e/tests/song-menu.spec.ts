@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { FIXTURE, preserveMusicFixture } from '../helpers';
+import { FIXTURE, preserveMusicFixture, openAlbumCard } from '../helpers';
 
 /**
  * The unified `⋯` song row menu (SongMenuService.build) on an album detail
@@ -15,8 +15,7 @@ test.describe('song row menu', () => {
 
   test('shows the common actions and hides "Go to album" on an album page', async ({ page }) => {
     await page.goto('/library');
-    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).first().click();
-    await expect(page).toHaveURL(/\/library\/albums\//);
+    await openAlbumCard(page, FIXTURE.album.title);
 
     const row = page.getByTestId('track-row').first();
     await expect(row).toBeVisible();
@@ -44,8 +43,7 @@ test.describe('song row menu', () => {
 
   test('"Song info" opens the track-info sheet', async ({ page }) => {
     await page.goto('/library');
-    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).first().click();
-    await expect(page).toHaveURL(/\/library\/albums\//);
+    await openAlbumCard(page, FIXTURE.album.title);
 
     const row = page.getByTestId('track-row').first();
     await row.getByTestId('track-row-menu-toggle').click();
@@ -59,8 +57,7 @@ test.describe('song row menu', () => {
     page,
   }) => {
     await page.goto('/library');
-    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).first().click();
-    await expect(page).toHaveURL(/\/library\/albums\//);
+    await openAlbumCard(page, FIXTURE.album.title);
 
     const rows = page.getByTestId('track-row');
     // `count()` is an instant snapshot with no auto-retry, so reading it straight

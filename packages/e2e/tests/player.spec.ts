@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { FIXTURE, expandGroup } from '../helpers';
+import { FIXTURE, expandGroup, openAlbumCard } from '../helpers';
 
 /** Max currentTime across the (double-buffered) audio elements. */
 const audioTime = (page: Page) =>
@@ -17,8 +17,7 @@ const anyAudioPaused = (page: Page) =>
 /** Start the fixture album and wait until a track is loaded into the player. */
 async function startAlbum(page: Page): Promise<void> {
   await page.goto('/library');
-  await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).click();
-  await expect(page).toHaveURL(/\/library\/albums\//);
+  await openAlbumCard(page, FIXTURE.album.title);
   await page.getByTestId('play-album').click();
   await expect(page.getByTestId('player-title')).toBeVisible();
   // Wait for the audio to actually begin advancing before exercising controls.

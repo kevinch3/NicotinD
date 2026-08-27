@@ -134,3 +134,32 @@ export async function waitForLibrary(request: APIRequestContext, token: string):
     )
     .toBeGreaterThan(0);
 }
+
+/**
+ * Open an album from the library grid, tolerating the grid's re-chunk.
+ *
+ * Issue #726: the album grid chunks its cards into `role="row"` slices of
+ * `TvNavGroupDirective.gridColumns()`, which **starts at `signal(1)`** and is
+ * only measured after init. So the first paint is rows-of-one, and the measured
+ * value (5 on desktop) immediately re-chunks the whole grid — rows are
+ * `track $index` while albums redistribute across them, so every `<a>` is
+ * destroyed and recreated.
+ *
+ * `toBeVisible()` passes against the rows-of-one DOM, and a click landing in
+ * that window hits an anchor being replaced: the event fires on a detached node
+ * and the router never sees it. That is why the spec passes standalone and
+ * fails under full-suite load, where the window is wider.
+ *
+ * Retrying the click is the honest fix for the *spec* — the underlying grid
+ * still has a one-frame window a fast human could hit, which is an app-side
+ * change (measure columns before first paint) rather than a test one.
+ */
+export async function openAlbumCard(page: Page, title?: string): Promise<void> {
+  const grid = page.getByTestId('album-card');
+  const card = (title ? grid.filter({ hasText: title }) : grid).first();
+  await expect(card).toBeVisible();
+  await expect(async () => {
+    await card.click({ timeout: 2_000 });
+    await expect(page).toHaveURL(/\/library\/albums\//, { timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
+}

@@ -12,15 +12,14 @@
  * template in the prod bundle. Pure layout behavior: needs a browser engine.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { FIXTURE } from '../helpers';
+import { FIXTURE, openAlbumCard } from '../helpers';
 
 // 1080p TV / Google TV emulator: 1920×1080 physical at DPR 2.
 const TV_VIEWPORT = { width: 960, height: 540 };
 
 async function openNowPlaying(page: Page): Promise<void> {
   await page.goto('/library');
-  await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).click();
-  await expect(page).toHaveURL(/\/library\/albums\//);
+  await openAlbumCard(page, FIXTURE.album.title);
   await page.getByTestId('play-album').click();
   await expect(page.getByTestId('player-title')).toBeVisible();
   await page.getByTestId('player-title').click();

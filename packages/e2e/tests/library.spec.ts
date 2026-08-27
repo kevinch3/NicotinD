@@ -1,15 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { FIXTURE } from '../helpers';
+import { FIXTURE, openAlbumCard } from '../helpers';
 
 test.describe('library', () => {
   test('shows the fixture album in the grid and its tracklist', async ({ page }) => {
     await page.goto('/library');
 
-    const card = page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title });
-    await expect(card).toBeVisible();
-
-    await card.click();
-    await expect(page).toHaveURL(/\/library\/albums\//);
+    await openAlbumCard(page, FIXTURE.album.title);
 
     // Album detail renders the title and the bookend tracks of the 7-track album.
     await expect(page.getByText(FIXTURE.album.title, { exact: false }).first()).toBeVisible();
@@ -19,8 +15,7 @@ test.describe('library', () => {
 
   test('album track rows omit the redundant per-track thumbnail', async ({ page }) => {
     await page.goto('/library');
-    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).first().click();
-    await expect(page).toHaveURL(/\/library\/albums\//);
+    await openAlbumCard(page, FIXTURE.album.title);
     await expect(page.getByText('Opening Static')).toBeVisible();
 
     // In a single-album context every row shares the album cover, so the per-row
@@ -44,8 +39,7 @@ test.describe('library', () => {
 
   test('the artist page Songs tab lazily lists the artist’s tracks', async ({ page }) => {
     await page.goto('/library');
-    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).first().click();
-    await expect(page).toHaveURL(/\/library\/albums\//);
+    await openAlbumCard(page, FIXTURE.album.title);
 
     // Album detail → artist page via the artist name link.
     await page.getByRole('link', { name: FIXTURE.album.artist }).first().click();

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { ADMIN, FIXTURE, bearer, expandGroup } from '../helpers';
+import { ADMIN, FIXTURE, bearer, expandGroup, openAlbumCard } from '../helpers';
 
 /**
  * Mobile-viewport UX regressions (the G-series in
@@ -11,8 +11,7 @@ const PHONE = { width: 412, height: 915 }; // Pixel 7
 
 async function openAlbum(page: Page): Promise<void> {
   await page.goto('/library');
-  await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).click();
-  await expect(page).toHaveURL(/\/library\/albums\//);
+  await openAlbumCard(page, FIXTURE.album.title);
   await expect(page.getByTestId('play-album')).toBeVisible();
 }
 
@@ -203,7 +202,13 @@ test.describe('mobile UX', () => {
   // stricter test of the thing the comment above describes.
   test('downloads page does not overflow horizontally', async ({ page }) => {
     await page.goto('/downloads');
-    await expect(page.getByRole('heading', { name: 'Downloads' })).toBeVisible();
+    // `level: 1` is load-bearing (issue #727): the active-downloads section
+    // renders its own <h2>Downloads</h2>, so the unqualified role query is a
+    // strict-mode violation the moment an earlier spec leaves a job in flight.
+    // Ambiguous by construction — it passed only because the suite happened to
+    // arrive here with an empty feed, which is also the one state that cannot
+    // overflow (the same trap the #616 comment above describes).
+    await expect(page.getByRole('heading', { level: 1, name: 'Downloads' })).toBeVisible();
     const overflow = await page.evaluate(() => {
       const el = document.scrollingElement ?? document.documentElement;
       return el.scrollWidth - el.clientWidth;
