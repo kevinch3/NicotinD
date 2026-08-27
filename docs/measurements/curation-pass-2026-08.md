@@ -836,3 +836,16 @@ Los Cantores De Quilla Huasi `Folclore` (est. 1953, zamba/cueca/chacarera/chamam
 `Carnavalito` (Salta), Perro Primo `RKT` (cumbia 420/RKT originator), Huguito Flores el Super
 `Cumbia` (cumbia santiagueña), La Base `Cumbia` (cumbia villera, "cumbia base" style), Ramiro y su
 banda `Cumbia`.
+
+### Session 4j — genre lane continued, cumbia-heavy cluster
+
+13 tagged, same pattern: Los Palmeras `Cumbia` (cumbia santafesina pioneers since 1969), Lauty Gram
+`RKT`, Santaferia `Cumbia` (Chilean "cumbia casera"), Koli Arce `Cumbia` (ex-Quinteto Imperial),
+Juan Quin y Dago `Cumbia`, Migrantes ×3 `Cumbia` (cumbia-pop-reggaeton fusion), Los del Fuego
+`Cumbia` (cumbia santafesina since 1984), Mc Caco `Cumbia`, Roberto Moron `Cumbia`, Onda Sabanera
+`Cumbia`, La Joaqui `Trap`, aLee DJ *Soy Hincha de la Selección (Metal Cover)* `Metal` (self-declared
+in the title).
+
+Skipped: Joaquín Da Rosa *El Traje del PSG* — a viral hit whose own genre was unclear from sources
+(trap/pop-adjacent); only fan-made remixes were confirmed cumbia, which isn't evidence for the
+original.
