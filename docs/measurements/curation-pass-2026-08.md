@@ -965,3 +965,14 @@ Fresh unresearched artists in this window (ICE THOMPSON, Tony Amatore, Void, Mel
 OldChild, Kieran San Jose, Memphis La Blusera) left untagged — no WebSearch budget to evidence them.
 Genre-tagging throughput is now bottlenecked on the exhausted session search budget; each tick nets
 only the handful of repeat-artist tracks still landing.
+
+### Session 4t — still WebSearch-limited, repeat artists only
+
+4 tagged, all repeats: Jorge Rojas `Folclore`, Ramiro y su banda `Cumbia`, Prospa `House`, Maesic
+`House` (same track title as session 4e's tag, landed under a fresh songId — likely a re-ingest
+duplicate row, consistent tag applied regardless).
+
+Fresh unresearched artists this window (La Banda De Lechuga, Los Cantores del Alba, Roberto Rimoldi
+Fraga, Leader Music, Roman El Original, Nuke, PAWSA, cassö, Niklas Dee, Morgan Seatree, Victor
+Mendivil, Los Dareyes De La Sierra, Rawayana, Ya Ice Dilan, Jetta) left untagged — no search budget.
+Joaquín Da Rosa reappeared, still skipped per session 4j reasoning.
