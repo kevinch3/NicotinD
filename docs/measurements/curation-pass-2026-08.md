@@ -796,3 +796,13 @@ web-search-per-artist, all `mode: 'replace'`:
 "generic name + single-song album" stragglers list (no sibling context, no release to look up).
 
 **genres.missing**: 616 → ~597 (health snapshot mid-batch read 603 before this tick's last 5 landed).
+
+### Session 4g — genre lane continued
+
+12 more tagged, same `list_recent_songs` + web-search + `replace` pattern:
+Ramon Bedoya ×2 `Tech House(;Latin Tech)`, Omari `Deep Tech`, Souler (ES) `Deep Tech`, MichaelBM
+`Tech House;Latin Tech`, Michele Tiberio `Deep Tech`, SEBS `Tech House`, Joe Vanditti ×2 `House`,
+Moxy Edits `Tech House`, Jezu (US) `Tech House`.
+
+New unresolvable stragglers (same "generic name + single-song album" shape as Alfonso/Banzai/Ennio):
+Rick Silva *the Rhythm Killa*, Noah Scannell *Lose My Breath*.
