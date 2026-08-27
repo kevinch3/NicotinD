@@ -937,3 +937,21 @@ Perro Primo `RKT` (consistent), The La Planta `Cumbia` (consistent).
 went unresearched and were left untagged rather than guessed. This caps how much further evidence-
 gathering this session can do; future ticks should expect the same limit unless it resets, and
 should prioritize repeat-artist tags (no search needed) over fresh unknowns.
+
+### Session 4r — WebSearch budget exhausted, minimal tick
+
+Only one song taggable without fresh evidence this tick: Sabor De Gracia `Rumba Catalana` (repeat
+artist, tag established in session 4m). The rest of the current `list_recent_songs` window
+(María Ruiz, Maison Bélier ×3, Montse Cortés, La Sra. Tomasa, Maruja Limón ×2, Mayte Martin) sits in
+the same landedAt cluster as the confirmed Catalan rumba/flamenco ingest from session 4m and is
+very likely the same genre family — but cluster proximity is not evidence, and the standing
+"search, don't guess" policy holds even under budget pressure. Left untagged.
+
+Checked `list_review_flags` instead (no search budget needed): both open flags (#15 DJ Nu-Sky
+identity, #18 Green Velvet collaborator credits) are unchanged from their prior write-ups — both
+correctly still deferred to the owner, nothing actionable without a decision only they can make.
+
+**Session WebSearch budget remains exhausted for the rest of this session.** Genre-tagging progress
+from here will be limited to repeat artists already researched this session; fresh-artist tagging is
+paused until the budget resets (a new session) or `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` is
+raised.
