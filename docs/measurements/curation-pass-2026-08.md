@@ -871,3 +871,21 @@ Supermerk2 `Cumbia` (cumbia villera since 2003), La Base `Cumbia`, Ke Personajes
 `RKT` (feat. L-Gante, the genre's originator), Perro Primo `RKT` (consistent with earlier tag).
 
 genres.missing dropping steadily across sessions 4f–4l (~140 songs tagged total this pass).
+
+### Session 4m — genre lane continued, fresh ingest: Catalan rumba cluster
+
+A live ingest landed mid-tick (`get_library_health` totals jumped songs 16575→16769,
+albums 5235→5429, artists 2999→3090). Per the standing "pause destructive work during an ingest"
+rule, kept to additive genre tagging only — no dedupe/delete this tick.
+
+11 tagged, a Rumba Catalana / flamenco cluster (Barcelona's Romani-community genre, pioneered by
+Peret in the 1950s-60s): Malakaton `Rumba Catalana`, Banannabeach `Rumba Catalana`, Dumingu `Rumba
+Catalana`, Peret `Rumba Catalana` (the genre's originator, landing on his own catalog), Taburete
+`Pop`, Los Rebujitos `Flamenco Pop`, Sabor De Gracia `Rumba Catalana` (Barcelona band since 1994),
+ROSALÍA `New Flamenco` (a "Cap." single in the *Pienso en tu mirá* / *El mal querer* style), Decai
+`Rumba Catalana` (pioneered flamenco-rumba+reggaeton fusion), El Cigarrito de Después `Rumba
+Catalana`, El Sebas de la Calle `Rumba Catalana`.
+
+Skipped: El Quinto Carajillo (no evidence found), Las Karamba ×2 (no evidence found), Figa Flawas
+(confirmed genre-blending act with no single clear primary — pop/urban/reggaeton/rumba/drill all
+cited, tagging any one would be a guess).
