@@ -348,6 +348,44 @@ describe('SettingsComponent (universal prefs only)', () => {
     fixture.destroy();
   });
 
+  // The outer @if gating this card ('auth.isAdmin() || isNativeApp ||
+  // isElectron || isNativeIos') predates the Developer-section removal above.
+  // With that section gone, nothing inside the card is admin-gated any more —
+  // only the native/Electron-only blocks are — so an admin on plain web (no
+  // native/Electron flags set) got a fully interactive card whose body was
+  // permanently empty (GH #754). Asserted by card count, not by `groupId`/
+  // `title`: those are signal inputs on a nested imported component and never
+  // land in this JIT harness (docs/web-ui.md "Testing input()-signal
+  // components").
+  it('renders the same card count for a web admin as for a plain web user (Advanced has no content left for either)', async () => {
+    const { list: adminProviders } = makeProviders('admin');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: adminProviders,
+    }).compileComponents();
+    const adminFixture = TestBed.createComponent(SettingsComponent);
+    adminFixture.detectChanges();
+    const adminCardCount = adminFixture.nativeElement.querySelectorAll(
+      '[data-testid="settings-group-toggle"]',
+    ).length;
+    adminFixture.destroy();
+    TestBed.resetTestingModule();
+
+    const { list: userProviders } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: userProviders,
+    }).compileComponents();
+    const userFixture = TestBed.createComponent(SettingsComponent);
+    userFixture.detectChanges();
+    const userCardCount = userFixture.nativeElement.querySelectorAll(
+      '[data-testid="settings-group-toggle"]',
+    ).length;
+    userFixture.destroy();
+
+    expect(adminCardCount).toBe(userCardCount);
+  });
+
   it('hides the Advanced card entirely for a plain web user', async () => {
     const { list } = makeProviders('user');
     await TestBed.configureTestingModule({
