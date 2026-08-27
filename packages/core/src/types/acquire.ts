@@ -23,6 +23,13 @@ export type AcquisitionMethod =
  * `done`/`error` are terminal.
  */
 export type PipelineStage =
+  /**
+   * Accepted, but the source has not said what the link contains yet. Distinct
+   * from `queued`, which means "waiting behind other work": collapsing the two
+   * made a 46 s Spotify resolve read "Queued · 0 of 0", indistinguishable from
+   * a link that produced nothing (#711).
+   */
+  | 'resolving'
   | 'queued'
   | 'downloading'
   | 'organizing'

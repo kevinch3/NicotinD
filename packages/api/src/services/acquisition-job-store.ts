@@ -106,7 +106,7 @@ export function canonicalTrackCount(json: string | null): number | null {
 export type AcquisitionJobKind =
   'album-hunt' | 'auto-acquire' | 'direct' | 'track-search' | 'url' | 'import';
 export type AcquisitionJobItemState =
-  'downloading' | 'completed' | 'organized' | 'scanned' | 'failed' | 'unavailable';
+  'queued' | 'downloading' | 'completed' | 'organized' | 'scanned' | 'failed' | 'unavailable';
 
 export interface CreateJobInput {
   kind: AcquisitionJobKind;
@@ -169,10 +169,11 @@ export interface CreateJobInput {
    * honest for an enqueue that really has files moving — and a lie for a job
    * created *before* its source has resolved anything (an addon URL job: the
    * route mirrors the row at submit so the card appears instantly, but the
-   * addon has not fetched a byte yet). Those pass `'queued'` so a link that
-   * never resolves doesn't read as "Downloading 0 of 0".
+   * addon has not fetched a byte yet). Those pass `'resolving'` — the row is
+   * reserved before the addon call so the in-flight guard has something to
+   * find (#714) — and move to `'queued'` once it answers.
    */
-  stage?: 'queued' | 'downloading';
+  stage?: 'resolving' | 'queued' | 'downloading';
 }
 
 export interface AcquisitionJobItem {
@@ -405,9 +406,9 @@ export interface TransferJobMeta {
 }
 
 /** States that can still change peer/outcome — everything but a delivered file. */
-const REPOINTABLE_STATES = `('downloading', 'failed', 'unavailable')`;
+const REPOINTABLE_STATES = `('queued', 'downloading', 'failed', 'unavailable')`;
 /** States still waiting on pipeline progress (used by the idle valve). */
-const NON_TERMINAL_STATES = `('downloading', 'completed', 'organized')`;
+const NON_TERMINAL_STATES = `('queued', 'downloading', 'completed', 'organized')`;
 
 /** Idle valve: a job whose non-terminal items saw no activity for this long is closed out. */
 const ITEM_IDLE_VALVE_MS = 24 * 3_600_000;
@@ -666,6 +667,33 @@ export function repointOrAttachItem(
 }
 
 /**
+ * Attach the addon's job ref to a row reserved before the addon was called
+ * (#714), and move it out of `resolving` now that the link is understood.
+ */
+export function attachAddonRef(db: Database, jobId: string, sourceRef: string): void {
+  db.run(
+    `UPDATE acquisition_jobs SET source_ref = ?, stage = 'queued', updated_at = ?
+     WHERE id = ? AND source_ref IS NULL`,
+    [sourceRef, Date.now(), jobId],
+  );
+}
+
+/**
+ * Release a reservation whose addon call never succeeded. Closing it (rather
+ * than deleting) keeps the failure visible on the feed with its reason, and
+ * — because the in-flight guard only matches `state = 'active'` — frees the
+ * link for an immediate retry instead of blocking it until the 24 h valve.
+ */
+export function failReservedJob(db: Database, jobId: string, reason: string): void {
+  db.run(
+    `UPDATE acquisition_jobs
+        SET state = 'failed', stage = 'error', error = COALESCE(NULLIF(error, ''), ?), updated_at = ?
+      WHERE id = ? AND state = 'active'`,
+    [reason, Date.now(), jobId],
+  );
+}
+
+/**
  * Give up on a job's still-pending items (fallback exhausted / manual close):
  * they become `unavailable` so the job can finish as an honest partial
  * ("11 of 13 · 2 unavailable") instead of hanging on tracks nobody has.
@@ -676,6 +704,61 @@ export function markMissingItemsUnavailable(db: Database, jobId: string): void {
      WHERE job_id = ? AND state IN ${NON_TERMINAL_STATES}`,
     [Date.now(), jobId],
   );
+}
+
+/**
+ * How long an item may sit in a mid-pipeline state before `recomputeStage`
+ * stops letting it speak for the whole job. Distinct from
+ * `ITEM_IDLE_VALVE_MS`, which *writes off* the item; this only stops it
+ * out-ranking the majority in the stage the user is shown.
+ */
+const ITEM_STALL_MS = 30 * 60_000;
+
+/**
+ * Should a single stalled item still dictate the job's stage?
+ *
+ * Today's precedence chain is a pure "any of these exists" walk with no time
+ * component, so ONE item stuck at `completed` pins a job to `organizing`
+ * forever — prod's `Old-School Reggaeton` read "Organizing…" with all 73 of
+ * its songs landed, `landed_at` set, and the playlist already generated
+ * (issue #710). The 24 h valve is the backstop, not the answer: it writes the
+ * item off rather than recognising that the work is done.
+ *
+ * @param stalledCount  how many items sit in the mid-pipeline state
+ * @param settledCount  how many items reached `scanned`
+ * @param sinceLastMove  ms since anything in that state last moved
+ * @returns true to let the state keep dictating the stage, false to ignore it
+ *          and let the settled majority rule.
+ *
+ * Both conditions are required, deliberately. Age alone would abandon a job
+ * that is slow rather than stuck (a large FLAC set organizing on a busy HDD);
+ * a settled majority alone would close a card seconds after the first tracks
+ * scanned, while the rest are legitimately still moving. Together they only
+ * fire on the shape prod actually produced: most of the job demonstrably in
+ * the library, a remnant that has not moved in half an hour.
+ */
+function stalledItemStillRules(
+  stalledCount: number,
+  settledCount: number,
+  sinceLastMove: number,
+): boolean {
+  return !(sinceLastMove >= ITEM_STALL_MS && settledCount > stalledCount);
+}
+
+/**
+ * The last-resort reason for an Error card, derived from what the items
+ * actually did. Distinct from the poller's `allItemsFailedMessage`, which
+ * keys on the *addon's* job state (and can therefore say "cancelled"): by the
+ * time we are asked, the addon is out of the picture and item counts are the
+ * only evidence left. Only ever reached via COALESCE, so a component that
+ * knew something more specific always wins.
+ */
+function allItemsFailedReason(counts: Map<string, number>): string {
+  const failed = counts.get('failed') ?? 0;
+  const unavailable = counts.get('unavailable') ?? 0;
+  if (failed === 0 && unavailable > 0) return 'No source had these tracks.';
+  if (unavailable === 0 && failed > 0) return 'No file from this source could be downloaded.';
+  return 'This download did not complete and no files arrived.';
 }
 
 /**
@@ -694,27 +777,47 @@ export function recomputeStage(db: Database, jobId: string): string | null {
   if (job.state === 'superseded') return job.stage;
 
   const counts = new Map<string, number>();
+  // `lastMoved` is the MOST RECENT movement within a state, not the oldest: if
+  // any item in it advanced lately the group is progressing, and only a state
+  // where nothing has moved counts as stalled (see `stalledItemStillRules`).
+  const lastMoved = new Map<string, number>();
   for (const row of db
-    .query<{ state: string; c: number }, [string]>(
-      `SELECT state, COUNT(*) c FROM acquisition_job_items WHERE job_id = ? GROUP BY state`,
+    .query<{ state: string; c: number; last_moved: number }, [string]>(
+      `SELECT state, COUNT(*) c, MAX(updated_at) last_moved
+         FROM acquisition_job_items WHERE job_id = ? GROUP BY state`,
     )
     .all(jobId)) {
     counts.set(row.state, row.c);
+    lastMoved.set(row.state, row.last_moved);
   }
   if (counts.size === 0) return job.stage;
+
+  const now = Date.now();
+  const settled = counts.get('scanned') ?? 0;
+  /** Does a mid-pipeline state still get to speak for the whole job? (#710) */
+  const rules = (state: string): boolean =>
+    counts.has(state) &&
+    stalledItemStillRules(counts.get(state) ?? 0, settled, now - (lastMoved.get(state) ?? now));
 
   let stage: string;
   let state: string;
   if (counts.has('downloading')) {
     stage = 'downloading';
     state = 'active';
-  } else if (counts.has('completed')) {
+  } else if (counts.has('queued')) {
+    // Ranked below `downloading` deliberately: with one file moving and ten
+    // waiting behind a peer's slots, "Downloading" is the more informative
+    // word. `queued` wins only when nothing is moving at all — which is
+    // exactly the state #667 had no way to say.
+    stage = 'queued';
+    state = 'active';
+  } else if (rules('completed')) {
     stage = 'organizing';
     state = 'active';
-  } else if (counts.has('organized')) {
+  } else if (rules('organized')) {
     stage = 'scanning';
     state = 'active';
-  } else if ((counts.get('scanned') ?? 0) === 0) {
+  } else if (settled === 0) {
     stage = 'error';
     state = 'failed';
   } else {
@@ -739,12 +842,32 @@ export function recomputeStage(db: Database, jobId: string): string | null {
   // there, it is what explains the missing tracks.
   const fullyDelivered =
     state === 'done' && (counts.get('failed') ?? 0) === 0 && (counts.get('unavailable') ?? 0) === 0;
-  db.run(
-    fullyDelivered
-      ? `UPDATE acquisition_jobs SET state = ?, stage = ?, updated_at = ?, error = NULL WHERE id = ?`
-      : `UPDATE acquisition_jobs SET state = ?, stage = ?, updated_at = ? WHERE id = ?`,
-    [state, stage, Date.now(), jobId],
-  );
+  if (fullyDelivered) {
+    db.run(
+      `UPDATE acquisition_jobs SET state = ?, stage = ?, updated_at = ?, error = NULL WHERE id = ?`,
+      [state, stage, Date.now(), jobId],
+    );
+  } else if (stage === 'error') {
+    // "An Error card always states a reason" (docs/download-pipeline.md) is
+    // enforced HERE because this is the one funnel every failing path flows
+    // through — the idle valve, `cancelUnownedJob` and the poller all close a
+    // job by calling us. Guarding at the render site instead let prod job
+    // `b573cff5` reach `stage='error'` with `error IS NULL` (#749). COALESCE
+    // keeps a reason a component already knew: ours is the last resort.
+    db.run(
+      `UPDATE acquisition_jobs
+          SET state = ?, stage = ?, updated_at = ?, error = COALESCE(NULLIF(error, ''), ?)
+        WHERE id = ?`,
+      [state, stage, Date.now(), allItemsFailedReason(counts), jobId],
+    );
+  } else {
+    db.run(`UPDATE acquisition_jobs SET state = ?, stage = ?, updated_at = ? WHERE id = ?`, [
+      state,
+      stage,
+      Date.now(),
+      jobId,
+    ]);
+  }
   return stage;
 }
 
@@ -759,15 +882,19 @@ export function cancelUnownedJob(db: Database, jobId: string): void {
   const now = Date.now();
   db.run(
     `UPDATE acquisition_job_items SET state = 'unavailable', updated_at = ?
-     WHERE job_id = ? AND state IN ('downloading', 'completed')`,
+     WHERE job_id = ? AND state IN ('queued', 'downloading', 'completed')`,
     [now, jobId],
   );
-  recomputeStage(db, jobId);
+  // Record the reason BEFORE deriving state. `recomputeStage` now supplies a
+  // last-resort reason of its own when it closes a job as `error` (#749), and
+  // its COALESCE would preserve that generic text over this specific one if we
+  // wrote ours second. Whoever knows why speaks first.
   db.run(
-    `UPDATE acquisition_jobs SET error = COALESCE(error, 'Cancelled by user'), updated_at = ?
+    `UPDATE acquisition_jobs SET error = COALESCE(NULLIF(error, ''), 'Cancelled by user'), updated_at = ?
      WHERE id = ? AND state IN ('active', 'failed')`,
     [now, jobId],
   );
+  recomputeStage(db, jobId);
   // An item-less row has nothing for recomputeStage to rule on; close it directly.
   db.run(
     `UPDATE acquisition_jobs SET state = 'failed', stage = 'error', updated_at = ?
@@ -802,7 +929,19 @@ export function supersedeActiveJobs(db: Database, target: { lidarrAlbumId: numbe
  * fail items idle past the 24h valve so a restart or vanished transfer can
  * never strand a job "downloading" forever, then prune finished jobs.
  */
-export function reconcileOnBoot(db: Database, now = Date.now()): void {
+/**
+ * The item idle valve: rescue what landed, then write off what has not moved
+ * in `ITEM_IDLE_VALVE_MS`, so a vanished transfer can never strand a job.
+ *
+ * Split out of `reconcileOnBoot` for #710. Sampling staleness once per process
+ * lifetime made a *stable* host the worst case — the two prod jobs that
+ * prompted the issue crossed the threshold 12 h after the only boot, and would
+ * have read "Organizing…" until the next restart. The body was already
+ * idempotent and `now`-parameterised, so running it on the processor tick
+ * needs no new machinery; the boot-shaped work (ghost sweep, prune) stays in
+ * `reconcileOnBoot`.
+ */
+export function reapIdleItems(db: Database, now = Date.now()): void {
   // Rescue first, fail second: an item whose file *did* land must reach
   // 'scanned' rather than being written off by the idle valve below.
   reconcileOrganizedItems(db);
@@ -822,6 +961,14 @@ export function reconcileOnBoot(db: Database, now = Date.now()): void {
     );
     for (const jobId of staleJobIds) recomputeStage(db, jobId);
   }
+}
+
+/**
+ * Boot-shaped reconciliation: the item valve (now also on the tick), plus the
+ * ghost-card sweep and TTL prune, which are genuinely once-per-start work.
+ */
+export function reconcileOnBoot(db: Database, now = Date.now()): void {
+  reapIdleItems(db, now);
 
   // The valve above is ITEM-driven, so a job that never grew a single item is
   // structurally invisible to it — and `recomputeStage` refuses to rule on one
@@ -935,7 +1082,15 @@ export interface AcquisitionJobFeedItem {
  * uses to derive a job's own stage from its items.
  */
 export function dominantItemState(states: string[]): TrackStatus {
-  const order = ['failed', 'unavailable', 'downloading', 'completed', 'organized', 'scanned'];
+  const order = [
+    'failed',
+    'unavailable',
+    'downloading',
+    'queued',
+    'completed',
+    'organized',
+    'scanned',
+  ];
   for (const s of order) {
     if (states.includes(s)) return itemStateToTrackStatus(s);
   }
@@ -945,9 +1100,9 @@ export function dominantItemState(states: string[]): TrackStatus {
 /**
  * Map a slskd `acquisition_job_items.state` onto the shared `TrackStatus`
  * union used by every acquisition backend. `AcquisitionJobItemState` is
- * exhaustively `downloading | completed | organized | scanned | failed |
- * unavailable`; the `default` branch exists only to stay safe against a
- * malformed/legacy row, never as an expected fallthrough.
+ * exhaustively `queued | downloading | completed | organized | scanned |
+ * failed | unavailable`; the `default` branch exists only to stay safe against
+ * a malformed/legacy row, never as an expected fallthrough.
  */
 function itemStateToTrackStatus(state: string): TrackStatus {
   switch (state) {
@@ -961,6 +1116,8 @@ function itemStateToTrackStatus(state: string): TrackStatus {
       return 'failed';
     case 'downloading':
       return 'downloading';
+    case 'queued':
+      return 'pending';
     default:
       return 'pending';
   }

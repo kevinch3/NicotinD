@@ -15,6 +15,7 @@ import type {
 import { maybeRunDailyHistoryRetention } from './privacy.js';
 import { getProcessingSettings } from './processing-settings.js';
 import { maybeRefreshAutoPlaylists } from './auto-playlists.service.js';
+import { reapIdleItems } from './acquisition-job-store.js';
 import { maybeRunDailyBackup } from './backup.js';
 import { maybeRunDailyOrphanPrune } from './orphan-prune.js';
 import {
@@ -299,6 +300,13 @@ export class LibraryProcessingService extends EventEmitter {
     // being enabled. No-op unless an operator set a cap (default: keep forever).
     const expired = maybeRunDailyHistoryRetention(this.db, { now: this.now().getTime() });
     if (expired) log.info({ deleted: expired }, 'history retention prune');
+    // Acquisition idle valve (issue #710). Deliberately NOT marker-guarded like
+    // the daily sweeps above: it used to run only at boot, which made a stable
+    // host the worst case — an item crossing the 24 h threshold while the
+    // server was up was never reaped, so a job with one stalled item read
+    // "Organizing…" until the next restart. Same placement rationale: a
+    // stranded download must not depend on enrichment being enabled.
+    reapIdleItems(this.db, this.now().getTime());
     const settings = getProcessingSettings(this.db);
     if (!settings.enabled) {
       this.publish(settings, 'disabled');

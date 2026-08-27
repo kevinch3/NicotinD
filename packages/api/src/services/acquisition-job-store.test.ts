@@ -13,6 +13,8 @@ import {
   markItemOrganized,
   markItemsScanned,
   markMissingItemsUnavailable,
+  cancelUnownedJob,
+  reapIdleItems,
   reconcileOnBoot,
   reconcileOrganizedItems,
   recomputeStage,
@@ -1096,5 +1098,191 @@ describe('resolveJobAlbumId (issue #468)', () => {
   it('returns null when the job has no names and nothing landed', () => {
     const id = jobWithItem('X', 'Y', null);
     expect(resolveJobAlbumId(db, id, null, null)).toBeNull();
+  });
+});
+
+/**
+ * The five defects of the job-state cluster (#667, #710, #711, #714, #749)
+ * share one root pattern: the vocabulary could not express a state that
+ * actually occurs, so a real state collapsed onto the wrong word — or, for
+ * #749, a derived state was written without its mandatory companion.
+ */
+describe('an Error card always states a reason (#749)', () => {
+  /**
+   * `recomputeStage` is the single funnel every failing path flows through
+   * (the idle valve, `cancelUnownedJob`, the poller all call it), and its
+   * "no item survived" arm wrote `stage='error'` while leaving `error` NULL.
+   * Prod job `b573cff5` — 3 failed items, error IS NULL — is this branch.
+   * docs/download-pipeline.md states the invariant; this pins it.
+   */
+  it('supplies a reason when every item failed', () => {
+    const id = seedJob();
+    db.run(`UPDATE acquisition_job_items SET state = 'failed'`);
+    expect(recomputeStage(db, id)).toBe('error');
+    const job = getJob(db, id)!;
+    expect(job.state).toBe('failed');
+    expect(job.error && job.error.length > 0).toBe(true);
+  });
+
+  it('supplies a reason when the idle valve fails the last item', () => {
+    const id = seedJob();
+    db.run(`UPDATE acquisition_job_items SET updated_at = 1`);
+    db.run(`UPDATE acquisition_jobs SET created_at = 1, updated_at = 1`);
+    reconcileOnBoot(db);
+    const job = getJob(db, id)!;
+    expect(job.stage).toBe('error');
+    expect(job.error && job.error.length > 0).toBe(true);
+  });
+
+  it('never overwrites a reason a component already recorded', () => {
+    const id = seedJob();
+    db.run(`UPDATE acquisition_jobs SET error = 'No peer had track 3' WHERE id = ?`, [id]);
+    db.run(`UPDATE acquisition_job_items SET state = 'failed'`);
+    recomputeStage(db, id);
+    expect(getJob(db, id)?.error).toBe('No peer had track 3');
+  });
+
+  /**
+   * The invariant as an invariant, not as a list of examples: no reachable
+   * close path may leave an error card mute.
+   */
+  it('holds for cancelUnownedJob too', () => {
+    const id = seedJob();
+    cancelUnownedJob(db, id);
+    const job = getJob(db, id)!;
+    if (job.stage === 'error') expect(job.error && job.error.length > 0).toBe(true);
+  });
+});
+
+describe("a queued item reads 'Queued', not 'Downloading' (#667)", () => {
+  it('keeps a queued item out of the downloading stage', () => {
+    const id = seedJob();
+    db.run(`UPDATE acquisition_job_items SET state = 'queued'`);
+    expect(recomputeStage(db, id)).toBe('queued');
+    expect(getJob(db, id)?.state).toBe('active');
+  });
+
+  it('lets a genuinely downloading item outrank a queued sibling', () => {
+    const id = seedJob();
+    db.run(`UPDATE acquisition_job_items SET state = 'queued'`);
+    db.run(`UPDATE acquisition_job_items SET state = 'downloading' WHERE transfer_key = ?`, [
+      transferKeyFor('peer1', 'a\\01 Sunday.flac'),
+    ]);
+    expect(recomputeStage(db, id)).toBe('downloading');
+  });
+
+  it("surfaces a queued item to the feed as 'pending', never 'downloading'", () => {
+    const id = seedJob();
+    db.run(`UPDATE acquisition_job_items SET state = 'queued'`);
+    const job = listJobFeed(db).find((j) => j.id === id)!;
+    expect(job.items.every((i) => i.status === 'pending')).toBe(true);
+    expect(job.sources.every((srcRow) => srcRow.state === 'pending')).toBe(true);
+  });
+
+  it('treats queued as non-terminal, so the idle valve can still reap it', () => {
+    const id = seedJob();
+    db.run(`UPDATE acquisition_job_items SET state = 'queued', updated_at = 1`);
+    db.run(`UPDATE acquisition_jobs SET created_at = 1, updated_at = 1`);
+    reconcileOnBoot(db);
+    expect(getJob(db, id)?.state).toBe('failed');
+  });
+
+  it('gives up on a queued item when the user cancels', () => {
+    const id = seedJob();
+    db.run(`UPDATE acquisition_job_items SET state = 'queued'`);
+    cancelUnownedJob(db, id);
+    expect(getJob(db, id)?.items.every((i) => i.state === 'unavailable')).toBe(true);
+  });
+});
+
+describe('a stalled item cannot pin a finished job to Organizing forever (#710)', () => {
+  /**
+   * Prod's `Old-School Reggaeton` in miniature: a settled majority that reached
+   * `scanned` and landed, plus one `completed` item that never moved again.
+   */
+  function seedStalledJob(stalledAgeMs: number, settledCount = 3): string {
+    const files = Array.from({ length: settledCount }, (_, i) => ({
+      filename: `a\\1${i} Track.flac`,
+      trackTitle: `Track ${i}`,
+    }));
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: 'Bowie',
+      albumTitle: 'Heathen',
+      username: 'peer1',
+      files: [...files, { filename: 'a\\99 Stalled.flac', trackTitle: 'Stalled' }],
+    });
+    const scanned = new Map<string, string>();
+    files.forEach((f, i) => {
+      const key = transferKeyFor('peer1', f.filename);
+      markItemCompleted(db, key);
+      markItemOrganized(db, key, `p/1${i}.opus`);
+      seedSong(`s${i}`, `p/1${i}.opus`, true);
+      scanned.set(`p/1${i}.opus`, `s${i}`);
+    });
+    markItemsScanned(db, scanned);
+    // ...and the survivor sits at `completed`, untouched since `stalledAgeMs` ago.
+    markItemCompleted(db, transferKeyFor('peer1', 'a\\99 Stalled.flac'));
+    db.run(`UPDATE acquisition_job_items SET updated_at = ? WHERE state = 'completed'`, [
+      Date.now() - stalledAgeMs,
+    ]);
+    return id;
+  }
+
+  it('keeps reporting organizing while the stalled item is still fresh', () => {
+    const id = seedStalledJob(60_000);
+    expect(recomputeStage(db, id)).toBe('organizing');
+  });
+
+  it('lets the settled majority rule once the stall passes 30 minutes', () => {
+    const id = seedStalledJob(31 * 60_000);
+    expect(recomputeStage(db, id)).toBe('done');
+    expect(getJob(db, id)?.state).toBe('done');
+  });
+
+  /**
+   * Both conditions are required. A job that is mostly stalled is slow, not
+   * finished — closing it would be the opposite lie.
+   */
+  it('waits when the stalled item is not outnumbered', () => {
+    // One settled, one stalled — a tie is not a majority, so the job is slow,
+    // not finished, and closing it would be the opposite lie.
+    const id = seedStalledJob(31 * 60_000, 1);
+    expect(recomputeStage(db, id)).toBe('organizing');
+  });
+});
+
+describe('the idle valve runs on the tick, not only at boot (#710)', () => {
+  /**
+   * The valve used to be reachable only through `reconcileOnBoot`, so a stable
+   * host was the worst case: prod's two jobs crossed the threshold 12 h after
+   * the only boot and stayed stranded. `reapIdleItems` is the same body, now
+   * callable from the processor tick.
+   */
+  it('reaps a stale item without the boot-shaped sweep or prune', () => {
+    const id = seedJob();
+    db.run(`UPDATE acquisition_job_items SET updated_at = 1`);
+    reapIdleItems(db);
+    const job = getJob(db, id)!;
+    expect(job.items.every((i) => i.state === 'failed')).toBe(true);
+    expect(job.state).toBe('failed');
+    expect(job.error && job.error.length > 0).toBe(true);
+  });
+
+  it('leaves a fresh job alone', () => {
+    const id = seedJob();
+    reapIdleItems(db);
+    expect(getJob(db, id)?.state).toBe('active');
+  });
+
+  it('does not prune finished jobs — that stays boot-shaped', () => {
+    const old = seedJob();
+    db.run(
+      `UPDATE acquisition_jobs SET state = 'done', created_at = 1, updated_at = 1 WHERE id = ?`,
+      [old],
+    );
+    reapIdleItems(db);
+    expect(getJob(db, old)).not.toBeNull();
   });
 });

@@ -795,6 +795,10 @@ function allItemsFailedMessage(state: AddonJob['state']): string {
 function mapItemState(item: AddonJobItem): string {
   switch (item.state) {
     case 'queued':
+      // Kept distinct rather than flattened onto 'downloading' (#667): a file
+      // waiting behind a peer's 0 free slots is not progress, and reporting it
+      // as progress made a stalled queue look identical to a live download.
+      return 'queued';
     case 'downloading':
       return 'downloading';
     case 'completed':
