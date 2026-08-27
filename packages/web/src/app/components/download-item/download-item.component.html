@@ -35,12 +35,15 @@
     }
     <div class="flex items-center gap-2 mt-1 flex-wrap min-w-0">
       <app-pipeline-stage-badge [stage]="item().stage" />
-      @if (item().progress; as p) {
+      @if (showProgressCount()) {
         <!-- Denominator is the release's tracklist when the source offered less
              of it than the release has, so "98 of 100" can't stand in for a
-             103-track album (#745). -->
-        <span class="text-xs text-theme-muted"
-          >{{ p.done }} of {{ item().canonicalTotal ?? p.total }}</span
+             103-track album (#745). Suppressed entirely while resolving: zero
+             of zero is not yet a fact about anything, and reading it as one is
+             how a 46 s Spotify resolve looked like an empty job (#711). -->
+        <span class="text-xs text-theme-muted" data-testid="download-progress-count"
+          >{{ item().progress!.done }} of
+          {{ item().canonicalTotal ?? item().progress!.total }}</span
         >
       }
       @if (item().unavailable; as u) {

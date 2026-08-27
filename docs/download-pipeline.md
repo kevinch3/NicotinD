@@ -549,6 +549,60 @@ dropped" below and #590, which made core render `queued` placeholders correctly
 so an addon that knows its track count up front can announce the whole set on
 the first poll.
 
+## The state vocabulary says what is actually happening
+
+Three defects (#667, #711, #714) shared one root: a state that genuinely occurs had no word, so it
+collapsed onto a word that meant something else. A vocabulary too small to describe reality does not
+produce missing information — it produces **confident wrong information**.
+
+### `resolving` — accepted, contents unknown (#711)
+
+`PipelineStage` had no member between "submitted" and "downloading", so a link whose addon was still
+resolving it rendered as `queued`, which elsewhere means "waiting behind other work". Prod measured
+a 117-track Spotify artist page sitting at **`Spotify download · Queued · 0 of 0` for 46 seconds** —
+honest work, described as either an idle queue or an empty result. `0 of 0` is the same defect shape
+as the "Done 1 of 1" class #585 closed: a placeholder presented as a measurement.
+
+`resolving` is now its own stage, set at row creation and cleared by `attachAddonRef` when the addon
+answers. The card renders "Resolving link…" and the count is **suppressed** rather than shown as
+zero-of-zero (`showProgressCount`) — a denominator we do not have yet is not a denominator of zero.
+
+### `queued` on items — waiting behind a peer's slots (#667)
+
+`AcquisitionJobItemState` had no `queued`, so `mapItemState` flattened the addon's `queued` onto
+`downloading` and a file waiting behind **0 free slots** was reported as progress. A stalled queue
+looked identical to a live download.
+
+`queued` is now a real item state, threaded through `NON_TERMINAL_STATES` (so the idle valve can
+still reap it), `REPOINTABLE_STATES` (a queued file can still be re-sourced to another peer),
+`cancelUnownedJob`, `dominantItemState` and `recomputeStage`. In the stage chain it is ranked
+**below** `downloading` deliberately: with one file moving and ten waiting, "Downloading" is the more
+informative word, so `queued` wins only when nothing is moving at all.
+
+### The row is reserved before the source is called (#714)
+
+`startAddonUrlJob` read the in-flight guard, `await`ed the addon, and only then wrote the row — so
+the guard was blind for exactly as long as the addon took to resolve. Prod measured **three jobs
+created in the same second** for one Spotify album URL, each downloading it separately, because the
+user clicked Retry during that window.
+
+The fix inverts the order: the row is written first in `resolving`, and the addon ref is attached
+afterwards. The guard is a DB read, so it can only work if there is something to find — which makes
+this the same change as #711's, not a second one.
+
+Two details this forced:
+
+- `findInFlightAddonUrlJob` must match `source_ref IS NULL` as well as `addon:%`. Requiring a ref is
+  what made the guard blind during the reservation window.
+- A reservation must not outlive the attempt it stood in for. `failReservedJob` closes it with a
+  reason when the addon call throws — closing rather than deleting keeps the failure visible *and*
+  frees the link immediately, since the guard only matches `state = 'active'`.
+
+The web half was a separate defect with the same effect: the template asked
+`retrying().has(item.key)` while the handler registered the bare job id, and a network-lane item's
+key is `job:<id>`. The two namespaces never matched, so Retry stayed enabled throughout — which is
+what made the server race trivially reachable by an ordinary user.
+
 ## An addon's crash is reduced to a readable line (issue #601)
 
 `clampAddonText` only truncates, so whatever an addon puts in `AddonJob.error` is
@@ -636,11 +690,61 @@ distorts.
 
 ### An "Error" card always states a reason
 
-`recomputeStage` derives `error`/`failed` when no item scanned, but never writes text, and
-`applyAddonOutcome` wrote `null` when the addon reported no error — so prod showed two
-`Error · 0 of 12` cards that declined to say why. The terminal-with-items branch now falls
-back to `allItemsFailedMessage` (mirroring `emptyOutcomeMessage`'s voice for the item-less
-case) whenever the recomputed stage is `error` and the addon gave no reason.
+`recomputeStage` derives `error`/`failed` when no item scanned, and `applyAddonOutcome` wrote
+`null` when the addon reported no error — so prod showed two `Error · 0 of 12` cards that
+declined to say why. `applyAddonOutcome`'s terminal-with-items branch falls back to
+`allItemsFailedMessage` (mirroring `emptyOutcomeMessage`'s voice for the item-less case)
+whenever the recomputed stage is `error` and the addon gave no reason.
+
+**The invariant is enforced in `recomputeStage`, not at each call site (#749).** Patching the
+components that close a job left the guarantee only as strong as the list of components someone
+remembered: prod job `b573cff5` reached `state='failed' / stage='error'` with `error IS NULL`
+because the 24 h idle valve closed it, and the valve is not `applyAddonOutcome`. It *does* call
+`recomputeStage` — and so do `cancelUnownedJob` and the poller. That single funnel is where the
+fallback belongs, so a future closer inherits the guarantee instead of having to re-earn it.
+
+`allItemsFailedReason` supplies the text, classified from item counts (all-`unavailable` reads
+"No source had these tracks", all-`failed` reads "No file from this source could be downloaded").
+It is distinct from the poller's `allItemsFailedMessage`, which keys on the *addon's* job state
+and can therefore say "cancelled" — by the time the store is asked, the addon is out of the
+picture and counts are the only evidence left.
+
+**Ordering rule that falls out of this:** a component that knows *why* must write `error` **before**
+calling `recomputeStage`, never after. Both writes are `COALESCE`-guarded, so writing second means
+the generic fallback wins and the specific reason is discarded. `cancelUnownedJob` records
+"Cancelled by user" first for exactly this reason.
+
+### A single stalled item cannot pin a job to "Organizing" forever (#710)
+
+The stage precedence chain was a pure "any of these exists" walk with no time component, so **one**
+item stuck at `completed` outranked a `scanned` majority indefinitely. Prod's `Old-School Reggaeton`
+read "Organizing…" with all 73 of its songs landed, `landed_at` set and the playlist already
+generated, because a 74th item never advanced.
+
+`stalledItemStillRules` adds the missing time component. A mid-pipeline state stops speaking for the
+whole job only when **both** conditions hold: nothing in it has moved for `ITEM_STALL_MS` (30 min),
+**and** the `scanned` items outnumber it. Both are required deliberately — age alone would abandon a
+job that is slow rather than stuck (a large FLAC set organizing on a busy HDD), and a majority alone
+would close a card seconds after the first tracks scanned while the rest are legitimately moving.
+
+The 24 h valve remains the backstop that *writes the item off*; this only stops it dictating the word
+the user is shown. Note `ITEM_STALL_MS` and `ITEM_IDLE_VALVE_MS` are deliberately different
+constants answering different questions: "may this item still speak?" versus "is this item dead?".
+
+### The idle valve runs on the tick, not only at boot (#710)
+
+`reconcileOnBoot` was called from `packages/api/src/index.ts` and nowhere else, so the valve sampled
+staleness exactly **once per process lifetime**. That made a *stable* host the worst case: the two
+prod jobs that prompted the issue were 12.3 h old at the only boot (correctly under the threshold),
+crossed 24 h with the server up, and would have stayed stranded until the next restart. On a host
+that restarts nightly the bug is nearly invisible.
+
+`reapIdleItems` is the valve split out of `reconcileOnBoot`, called from the 60 s processor tick
+alongside the daily backup/prune hooks — and deliberately **not** marker-guarded like those, since
+frequent sampling is the entire point. It sits before the `enabled` check for the same reason they
+do: a stranded download must not depend on background enrichment being switched on. `reconcileOnBoot`
+keeps the genuinely boot-shaped work (the item-less ghost sweep and the TTL prune) and now calls
+`reapIdleItems` for the valve half.
 
 ### A released job is not an orphaned one (#744)
 

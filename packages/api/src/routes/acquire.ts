@@ -12,7 +12,7 @@ import { resolveAddonForUrl } from '../services/addons/resolve-router.js';
 import { AddonRequestError } from '../services/addons/client.js';
 import { mapAddonJob } from '../services/addons/job-poller.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
-import { createJob } from '../services/acquisition-job-store.js';
+import { attachAddonRef, createJob, failReservedJob } from '../services/acquisition-job-store.js';
 import {
   addonRefForUrlJob,
   addonUrlJobUrl,
@@ -80,27 +80,18 @@ export function acquireRoutes(watcher: AcquireWatcher, registry: PluginRegistry,
     // playlist arrived as a bare `as: undefined`, indistinguishable from a
     // single track. The caller's override still wins where it always did.
     const resolvedAs = resolveAcquireAs(url, as ?? null);
-    let addonJob;
-    try {
-      addonJob = await addon.client.createJob({ intent: 'url', url, as: resolvedAs }, `url:${url}`);
-    } catch (err) {
-      if (err instanceof AddonRequestError && err.status === 409) {
-        // The addon is already working on this link. If we know the core row,
-        // hand it back; otherwise the poller will mirror it on its next tick.
-        const known = findInFlightAddonUrlJob(db, url);
-        if (known) return { jobId: known.id, reused: true };
-      }
-      throw err;
-    }
 
+    // Reserve the row BEFORE calling the addon (#714). The guard above is a
+    // read, and `createJob` used to happen only after an await that prod
+    // measured at 46 s for a playlist — so every click in that window passed
+    // the check and started another download of the same album (three in one
+    // second, measured). Writing first means the guard has something to find;
+    // `resolving` is the honest word for it until the addon answers (#711).
     const coreJobId = createJob(db, {
       kind: 'url',
       method: addonId,
-      // Nothing is downloading yet — the addon resolves in the background — and
-      // the column default says otherwise. A link the addon cannot handle would
-      // otherwise render "Downloading 0 of 0" for as long as the row lived.
-      stage: 'queued',
-      sourceRef: `addon:${addonId}:${addonJob.id}`,
+      stage: 'resolving',
+      sourceRef: null,
       sourceUrl: url,
       // Playlist-from-acquisition on the addon lane (issue #587): the row
       // needs its own copy of who submitted it and whether the link is a
@@ -110,6 +101,30 @@ export function acquireRoutes(watcher: AcquireWatcher, registry: PluginRegistry,
       isPlaylist: resolvedAs === 'playlist',
       files: [],
     });
+
+    let addonJob;
+    try {
+      addonJob = await addon.client.createJob({ intent: 'url', url, as: resolvedAs }, `url:${url}`);
+    } catch (err) {
+      // The reservation must not outlive the attempt it was standing in for,
+      // or the link becomes unsubmittable until the 24 h valve reaps it.
+      if (err instanceof AddonRequestError && err.status === 409) {
+        // The addon is already working on this link. Some other row owns it;
+        // drop ours and hand back whichever one that is.
+        failReservedJob(db, coreJobId, 'This link is already being downloaded.');
+        const known = findInFlightAddonUrlJob(db, url);
+        if (known) return { jobId: known.id, reused: true };
+      } else {
+        failReservedJob(
+          db,
+          coreJobId,
+          err instanceof Error ? err.message : 'The source could not accept this link.',
+        );
+      }
+      throw err;
+    }
+
+    attachAddonRef(db, coreJobId, `addon:${addonId}:${addonJob.id}`);
     mapAddonJob(db, addonId, addonJob.id, coreJobId);
     return { jobId: coreJobId, reused: false };
   }

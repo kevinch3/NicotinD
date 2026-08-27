@@ -25,12 +25,15 @@ export function acquireStateFor(state: string, stage: string | null): AcquireJob
   if (state === 'done') return 'done';
   if (state === 'failed' || state === 'superseded') return 'failed';
   // Anything still active is 'running' once bytes are moving, 'queued' before.
-  return stage && stage !== 'queued' ? 'running' : 'queued';
+  // `resolving` is emphatically before: the addon has not reported a byte, a
+  // track count, or even a title yet.
+  return stage && stage !== 'queued' && stage !== 'resolving' ? 'running' : 'queued';
 }
 
 /** `acquisition_jobs.stage` → `AcquireJob['stage']`, falling back to null. */
 export function acquireStageFor(stage: string | null): AcquireJob['stage'] {
   const known: AcquireJob['stage'][] = [
+    'resolving',
     'queued',
     'downloading',
     'organizing',
@@ -46,6 +49,8 @@ function itemStatus(state: string): TrackStatus {
   if (state === 'scanned' || state === 'organized' || state === 'completed') return 'done';
   if (state === 'failed') return 'failed';
   if (state === 'unavailable') return 'skipped';
+  // A file waiting behind a peer's slots is not downloading (#667).
+  if (state === 'queued') return 'pending';
   return 'downloading';
 }
 
@@ -83,8 +88,14 @@ export function findInFlightAddonUrlJob(
   return (
     db
       .query<{ id: string; method: string }, [string]>(
+        // `source_ref IS NULL` is the reservation window (#714): the row is
+        // written *before* the addon is called, so for the seconds-to-minutes
+        // the addon takes to resolve there is no `addon:<id>:<job>` ref yet.
+        // Requiring one here is what made the guard blind during exactly the
+        // window a user is most likely to click Retry again.
         `SELECT id, method FROM acquisition_jobs
-         WHERE kind = 'url' AND state = 'active' AND source_url = ? AND source_ref LIKE 'addon:%'
+         WHERE kind = 'url' AND state = 'active' AND source_url = ?
+           AND (source_ref LIKE 'addon:%' OR source_ref IS NULL)
          ORDER BY created_at DESC LIMIT 1`,
       )
       .get(url) ?? null

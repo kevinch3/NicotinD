@@ -247,9 +247,11 @@ const STAGE_ORDER: Record<PipelineStage, number> = {
   organizing: 1,
   scanning: 2,
   processing: 3,
-  queued: 4,
-  error: 5,
-  done: 6,
+  // `resolving` sorts beside `queued`: both mean "accepted, nothing moving".
+  resolving: 4,
+  queued: 5,
+  error: 6,
+  done: 7,
 };
 
 /**

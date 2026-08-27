@@ -161,6 +161,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   transfer↔job linkage is stored at enqueue time, never re-derived. `markItemsScanned`,
   `reconcileOrganizedItems`, `filesForCanonicalTracks`, `backfillDirectJobAlbum`.
   → [acquisition-jobs.md](docs/acquisition-jobs.md)
+- **The job state vocabulary says what is happening**: `resolving` and item-state `queued` are real
+  members, the row is reserved before the source is called, a stalled item cannot pin the stage, and
+  an Error card always has a reason. `attachAddonRef`, `failReservedJob`, `reapIdleItems`,
+  `stalledItemStillRules`, `allItemsFailedReason`. → [download-pipeline.md](docs/download-pipeline.md)
 - **Unified downloads feed — one job = one card**: addon and URL jobs adapt into one `DownloadItem`;
   card identity is the job id recorded at enqueue. `listJobFeed`, `mergeAcquisitionJobs`,
   `mapAddonJob`, `cancelUnownedJob`, `methodForBackend`, `downloadTitleFor`.

@@ -173,7 +173,7 @@ export class DownloadsComponent {
     // An addon-run URL acquire renders in the network lane but retries through
     // the acquire endpoint (which re-submits the stored link). Without this the
     // Retry button would render and do nothing.
-    if (item.jobId) void this.retryJobById(item.jobId);
+    if (item.jobId) void this.retryJobById(item.jobId, item.key);
   }
 
   onItemCancel(item: DownloadItem): void {
@@ -223,9 +223,18 @@ export class DownloadsComponent {
     await this.transferService.kickPoll();
   }
 
-  /** Retry a unified-feed job by id (addon URL acquires; see `onItemRetry`). */
-  private async retryJobById(jobId: string): Promise<void> {
-    this.retrying.update((prev) => new Set(prev).add(jobId));
+  /**
+   * Retry a unified-feed job by id (addon URL acquires; see `onItemRetry`).
+   *
+   * `feedKey` is separate from `jobId` on purpose: the template asks
+   * `retrying().has(item.key)`, and a network-lane item's key is
+   * `job:<id>`, not the bare id. Registering the id here meant the two never
+   * matched, so Retry stayed enabled through the whole resolve window — which
+   * is what made #714's server-side race trivially reachable by clicking.
+   */
+  private async retryJobById(jobId: string, feedKey: string): Promise<void> {
+    if (this.retrying().has(feedKey)) return;
+    this.retrying.update((prev) => new Set(prev).add(feedKey));
     try {
       await firstValueFrom(this.api.retryAcquireJob(jobId));
     } catch (err) {
@@ -236,7 +245,7 @@ export class DownloadsComponent {
     } finally {
       this.retrying.update((prev) => {
         const next = new Set(prev);
-        next.delete(jobId);
+        next.delete(feedKey);
         return next;
       });
       await this.transferService.kickPoll();

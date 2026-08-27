@@ -143,6 +143,18 @@ export class DownloadItemComponent {
 
   /** The destination albums to list in the "View N albums" menu, when shown. */
   readonly destinationAlbums = computed(() => this.item().destinationAlbums ?? []);
+
+  /**
+   * "0 of 0" is a placeholder presented as a measurement — the same shape as
+   * the "Done 1 of 1" class #585 closed. While the source is still resolving
+   * the link we have no denominator, so the count is suppressed rather than
+   * guessed; the `resolving` badge carries the meaning instead (#711).
+   */
+  readonly showProgressCount = computed(() => {
+    const item = this.item();
+    if (!item.progress) return false;
+    return item.stage !== 'resolving';
+  });
   /** Whether to show the "View N albums" menu on this row. */
   readonly showAlbumsMenu = computed(() => hasMultipleDestinationAlbums(this.item()));
 
