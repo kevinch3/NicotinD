@@ -889,3 +889,15 @@ Catalana`, El Sebas de la Calle `Rumba Catalana`.
 Skipped: El Quinto Carajillo (no evidence found), Las Karamba ×2 (no evidence found), Figa Flawas
 (confirmed genre-blending act with no single clear primary — pop/urban/reggaeton/rumba/drill all
 cited, tagging any one would be a guess).
+
+### Session 4n — genre lane continued
+
+5 tagged: El Chipirón de Granada `Copla;Flamenco` (consistent repeat tag), Supernova `Tech House`,
+VITO (UK) `Tech House`, Michael Bibi `House`, Robbie Doherty `Deep Tech` — all repeat artists from
+earlier sessions, consistent genres reapplied to new tracks.
+
+Skipped: Albert Pla — his own biography material explicitly says his work resists genre
+classification ("muy difícil de clasificar dentro de ningún género musical establecido"); tagging
+anything would be a guess against the artist's own stated identity. Remaining 8 in this window are
+the long-documented unresolvable stragglers (Pesho & Dave Bo, Wrytzy, FIA, Ivy, Kilometro1, Fat Papi,
+Marcello Marchitto, Oravla Ziur, Shadi) — no new evidence surfaced.
