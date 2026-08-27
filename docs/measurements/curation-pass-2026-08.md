@@ -772,3 +772,27 @@ three patterns now return **zero** results. Plus 50 `Remastered` album names and
 **Remaining**: a few hundred `Remastered` song titles, dominated by the Beatles catalog. Best closed
 by the #775 script rather than one `fix_song_metadata` call at a time — but that script needs #776
 fixed first, or it cannot tell success from silent failure.
+
+### Session 4f — flag #17 resolution + genre lane resumed under Sonnet 5
+
+**Flag #17 resolved**: hid (not deleted) the 125-track Welsh-language Linguaphone course via
+`set_album_classification(hidden: true)` — verified `hidden: true` on read-back. Evidence:
+lesson-numbered filenames, Welsh section markers, 3 tracks already carrying a `Non-Music` genre tag
+from a prior pass. Not a delete — a language course is real content, just not library music.
+
+**Genre lane, 19 more songs tagged** via `list_recent_songs(missingGenre: true)` +
+web-search-per-artist, all `mode: 'replace'`:
+
+- Spanish rock/pop cluster: Nacha Pop `Pop Rock`, Loquillo Y Los Trogloditas `Rock`, Pereza ×2
+  `Alternative Rock`, Fran Perea `Pop Rock`, Melocos `Pop Rock`, El Chipirón de Granada
+  `Copla;Flamenco`, Maesic `House` (features house originator Marshall Jefferson).
+- Electronic long tail: Supernova `Tech House`, La Madone ×2 `Tech House`, Jombriel `Reggaeton`,
+  Sante Sansone `Tech House`, Michael Bibi `House`, Prospa `House`, Quliano `Tech House`, Robbie
+  Doherty `Deep Tech`, Nacho Scoppa `Tech House`, Jend `Tech House`, THE MASKING TAPES `House`,
+  LondonGround `Deep Tech`, nocapz. `Tech House`, LEON (Italy) `Jackin House`, Seeing Double `Dance`,
+  JACKSON (BRA) `House`, Josh Burnett (UK) `Tech House`, Marian (BR) `Tech House;Latin Tech`.
+
+**Untagged, no usable evidence**: Shadi *Take Control*, Miralles *Trapping* — joins the existing
+"generic name + single-song album" stragglers list (no sibling context, no release to look up).
+
+**genres.missing**: 616 → ~597 (health snapshot mid-batch read 603 before this tick's last 5 landed).
