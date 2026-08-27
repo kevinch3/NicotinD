@@ -188,7 +188,7 @@ Design notes worth keeping:
   string, and a stats page that errors on a typo is worse than one showing 30 days.
 - **Genres rank through `library_song_genres`**, not `library_songs.genre` — that column holds only
   the *primary*, so ranking on it would under-report every secondary genre (same reason filters match
-  the set via `EXISTS`).
+  the set via `EXISTS`). Full reader table: [genre-model.md](genre-model.md).
 - **Deleted songs still count.** Every aggregate `COALESCE`s the live library row with the event's own
   snapshot, which is the payoff for storing it.
 - **The clock buckets by local hour.** "When do I listen" is a wall-clock question; UTC would smear

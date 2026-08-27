@@ -242,6 +242,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `library_song_genres` (position 0 = primary); human-gated `library_genre_aliases` and
   `segmentConcatenatedGenre` fix concatenations at scan time; `backfillGenresFromAliases`.
   → [library-scanner.md](docs/library-scanner.md)
+- **Genre is stored twice — the set and the mirror**: `library_song_genres` is authoritative,
+  `library_songs.genre` mirrors position 0; a reader matching the mirror when it means the set
+  counts genres it cannot list. `primaryGenreOnly` is the sanctioned narrow read; the facet
+  `song_count` is a scan-time snapshot. → [genre-model.md](docs/genre-model.md)
 - **Curator-correctable genres**: `library_genre_overrides` (scope artist/album/song) is the one genre
   write that can *replace* a primary, carrying an explicit `mode`; `status` is the review queue;
   `backfillGenreOverrides`, `appendSongGenres`, `ArtistGenreModalComponent`.

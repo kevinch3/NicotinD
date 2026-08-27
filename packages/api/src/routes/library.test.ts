@@ -1099,6 +1099,97 @@ describe('genre-distribution routes (issue #222)', () => {
   });
 });
 
+// A genre's facet count and its detail listing must answer the SAME question.
+// The scanner counts a song under every genre it carries (library_song_genres,
+// all positions); the listing used to match only the mirrored primary column,
+// so 397 of 764 prod genres counted >0 songs and opened to an empty page.
+describe('GET /genres/songs (facet count and listing agree)', () => {
+  let app: Hono<AuthEnv>;
+
+  const song = (id: string, title: string, created: string, hidden = 0) =>
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size,
+       bit_rate, suffix, content_type, created, landed_at, synced_at, hidden)
+     VALUES ('${id}', 'gs-album', '${title}', 'GS Artist', 'gs-art', 0, '/gs/${id}.mp3', 1000,
+       320, 'mp3', 'audio/mpeg', '${created}', 1, 1, ${hidden})`;
+
+  beforeEach(() => {
+    app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'test-user', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route('/', libraryRoutes('/home/kevinch3/Music'));
+    sharedDb.run(`DELETE FROM library_songs WHERE album_id = 'gs-album'`);
+    sharedDb.run(`DELETE FROM library_albums WHERE id = 'gs-album'`);
+    sharedDb.run(`DELETE FROM library_song_genres WHERE song_id LIKE 'gs-%'`);
+    sharedDb.run(
+      `INSERT OR REPLACE INTO library_artists (id, name, album_count, synced_at) VALUES ('gs-art', 'GS Artist', 1, 1)`,
+    );
+    sharedDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('gs-album', 'GS Album', 'GS Artist', 'gs-art', 3, 0, 1)`,
+    );
+
+    // gs-secondary: 'Gabber' only at position 3 — the exact prod shape that
+    // counted 1 song and listed none.
+    sharedDb.run(song('gs-secondary', 'Secondary Only', '2024-03-01'));
+    sharedDb.run(`UPDATE library_songs SET genre = 'Hardcore' WHERE id = 'gs-secondary'`);
+    ['Hardcore', 'Techno', 'Industrial', 'Gabber'].forEach((g, i) => {
+      sharedDb.run(
+        `INSERT INTO library_song_genres (song_id, genre, position) VALUES ('gs-secondary', ?, ?)`,
+        [g, i],
+      );
+    });
+
+    // gs-primary: 'Gabber' at position 0, but OLDER than gs-secondary — so a
+    // created-only sort would rank the secondary match above it.
+    sharedDb.run(song('gs-primary', 'Primary Match', '2024-01-01'));
+    sharedDb.run(`UPDATE library_songs SET genre = 'Gabber' WHERE id = 'gs-primary'`);
+    sharedDb.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES ('gs-primary', 'Gabber', 0)`,
+    );
+
+    // gs-hidden: carries Gabber but is hidden — must stay out of the listing.
+    sharedDb.run(song('gs-hidden', 'Hidden One', '2024-04-01', 1));
+    sharedDb.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES ('gs-hidden', 'Gabber', 0)`,
+    );
+  });
+
+  it('returns a song whose match is a SECONDARY genre (counted but unreachable)', async () => {
+    const res = await app.request('/genres/songs?genre=Gabber');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body.map((s) => s.id)).toContain('gs-secondary');
+  });
+
+  it('orders primary matches ahead of secondary ones, regardless of age', async () => {
+    const res = await app.request('/genres/songs?genre=Gabber');
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body.map((s) => s.id)).toEqual(['gs-primary', 'gs-secondary']);
+  });
+
+  it('still excludes hidden and un-landed songs', async () => {
+    const res = await app.request('/genres/songs?genre=Gabber');
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body.map((s) => s.id)).not.toContain('gs-hidden');
+  });
+
+  it('returns exactly as many songs as the facet counts (the invariant that broke)', async () => {
+    // Mirror the scanner's rule: a song counts under every genre it carries.
+    const facet = sharedDb
+      .query<{ c: number }, [string]>(
+        `SELECT COUNT(*) c FROM library_song_genres g
+         JOIN library_songs s ON s.id = g.song_id
+         WHERE g.genre = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL`,
+      )
+      .get('Gabber')!.c;
+    const res = await app.request('/genres/songs?genre=Gabber');
+    const body = (await res.json()) as unknown[];
+    expect(body.length).toBe(facet);
+  });
+});
+
 describe('singles & EPs presentation', () => {
   const testDb = new Database(':memory:');
   applySchema(testDb);

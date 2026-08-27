@@ -71,6 +71,12 @@ the design and the class comes back.
   network-sourced and user-editable — precisely the curator data the design protects — and 35 rows
   don't justify trading that away.
 
+  **Zero orphans is not the same as complete.** The `orphans` column counts rows pointing at a
+  *dead* song. It says nothing about songs missing their rows: 580 songs carry a primary in
+  `library_songs.genre` with no `library_song_genres` rows at all (#770), which makes them
+  invisible to every genre-set reader. The two are independent failure modes and only one of
+  them is measured above. → [genre-model.md](genre-model.md)
+
   The pass is **mark → unmark → sweep**, guarded to one run per calendar day off the same
   processor-tick hook as the daily backup. `orphaned_at` (additive column) is stamped when a row is
   first seen with no owner, **cleared when its song comes back** — that unmark is what preserves the

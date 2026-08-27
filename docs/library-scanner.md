@@ -110,6 +110,12 @@ watches the list converge):
 
 **One song, many genres.** File tags are multi-valued in practice — multiple ID3 genre frames and `;`/`,`/`|`-joined strings ("Alternative Country;Alternative Pop;…"; a prod dry-run found 1,355/9,791 tagged songs with semicolon lists). The scanner keeps the FULL set: `ScannedTrack.genre` holds every frame (old single-string scan-cache rows remain valid input), `buildLibrary` runs each value through the pure `splitGenres` (`genre-split.ts`), writes the ordered set to **`library_song_genres`** (`song_id, genre, position`; position 0 = primary) and mirrors the primary into `library_songs.genre` for zero-breakage single-value reads. `library_genres` counts a song under **every** genre it has.
 
+**Every genre reader must match that same set.** A reader that consults the mirrored
+`library_songs.genre` when it means the full set counts genres it cannot list — that was #769,
+measured at 397 of 764 prod genres opening to an empty page. The reader-by-reader table, the
+`primaryGenreOnly` opt-in and the facet-count semantics live in
+[genre-model.md](genre-model.md); add a row there when you add a genre reader.
+
 **splitGenres rules (deterministic, unit-tested):**
 
 - `;` `,` `|` always split; whitespace collapsed; case-insensitive de-dupe preserving order.

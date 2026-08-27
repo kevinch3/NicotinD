@@ -52,7 +52,7 @@ so hand-edited URLs degrade gracefully).
 | Mood | `mood` (comma list from `MOOD_VOCAB`) | `mood=happy,party` |
 | Perceptual axes | axis name = comma list of buckets | `energy=low,high&valence=mid` |
 | Year range | `yearMin`, `yearMax` | `yearMin=1990&yearMax=1999` |
-| Genre | `genre` (repeated param — free text may contain commas). Matches the **full multi-genre set**: the predicate is `(s.genre IN (…) OR EXISTS(… library_song_genres …))`, so a track filed under "Electronic; House" matches a House filter; the primary-column IN keeps pre-first-rescan rows filterable. | `genre=Rock&genre=Hip-Hop` |
+| Genre | `genre` (repeated param — free text may contain commas). Matches the **full multi-genre set**: the predicate is `(s.genre IN (…) OR EXISTS(… library_song_genres …))`, so a track filed under "Electronic; House" matches a House filter; the primary-column IN keeps pre-first-rescan rows filterable. Which readers match the set and which match the primary is tabulated in [genre-model.md](genre-model.md). | `genre=Rock&genre=Hip-Hop` |
 | Starred | `starred=true` | entity-level, see below |
 | Duration range (s) | `durMin`, `durMax` | `durMin=120&durMax=360` |
 
