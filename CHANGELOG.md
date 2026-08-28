@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.28](https://github.com/kevinch3/NicotinD/compare/v0.5.27...v0.5.28) (2026-08-28)
+
+### Bug Fixes
+
+* **plugins:** a blank optional config field no longer defeats its default ([#782](https://github.com/kevinch3/NicotinD/issues/782)) ([01af4d7](https://github.com/kevinch3/NicotinD/commit/01af4d7539cbf24124846719bdfc03c2b9b08870)), closes [#765](https://github.com/kevinch3/NicotinD/issues/765) [14/#16](https://github.com/kevinch3/NicotinD/issues/16) [#781](https://github.com/kevinch3/NicotinD/issues/781), references [#774](https://github.com/kevinch3/NicotinD/issues/774) [#775](https://github.com/kevinch3/NicotinD/issues/775) [#776](https://github.com/kevinch3/NicotinD/issues/776) [#734](https://github.com/kevinch3/NicotinD/issues/734) [#17](https://github.com/kevinch3/NicotinD/issues/17) [#17](https://github.com/kevinch3/NicotinD/issues/17)
 ## [0.5.27](https://github.com/kevinch3/NicotinD/compare/v0.5.26...v0.5.27) (2026-08-27)
 
 ### Bug Fixes
