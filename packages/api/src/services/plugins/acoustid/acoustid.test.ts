@@ -212,3 +212,19 @@ describe('AcoustidPlugin', () => {
     });
   });
 });
+
+describe('AcoustidPlugin manifest', () => {
+  // Regression for #781: prod stored binaryPath:"" from a form saved with the
+  // path input blank, which overwrote the 'fpcalc' default and made the
+  // availability probe run execFileSync(''). The registry applies
+  // configFieldDefaults on every load; this asserts the field declares one.
+  it('declares fpcalc as the default for the optional binary path', () => {
+    const field = new AcoustidPlugin().manifest.configFields?.find((f) => f.key === 'binaryPath');
+    expect(field?.defaultValue).toBe('fpcalc');
+  });
+
+  it('declares no default for the api key, so a blank value still clears it', () => {
+    const field = new AcoustidPlugin().manifest.configFields?.find((f) => f.key === 'apiKey');
+    expect(field?.defaultValue).toBeUndefined();
+  });
+});

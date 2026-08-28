@@ -95,7 +95,7 @@
         }
       </div>
       @if (plugin.enabled && !plugin.available && missingBinaries(); as binaries) {
-        <p class="text-xs text-status-warn mt-2">
+        <p class="text-xs text-status-warn mt-2" data-testid="plugin-missing-binaries">
           {{ 'extensions.binariesMissing' | t: { binaries: binaries } }}
         </p>
       }

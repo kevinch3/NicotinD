@@ -1,4 +1,5 @@
 import {
+  applyConfigFieldDefaults,
   createLogger,
   validatePluginManifest,
   type Plugin,
@@ -7,6 +8,7 @@ import {
   type PluginCapability,
 } from '@nicotind/core';
 import { createPluginHostContext, type HostContextDeps } from './host-context.js';
+import { resolvesOnPath } from './acquire/process.js';
 
 const log = createLogger('plugin-registry');
 
@@ -55,7 +57,11 @@ export class PluginRegistry {
   private async initPlugin(plugin: Plugin): Promise<void> {
     const id = plugin.manifest.id;
     if (this.initialized.has(id)) return;
-    const ctx = createPluginHostContext(id, this.getConfig(id), this.opts);
+    // Defaults are applied on every load, not just at construction: a form
+    // saved with an optional field blank persists "" and would otherwise
+    // overwrite the plugin's own default (issue #781).
+    const config = applyConfigFieldDefaults(plugin.manifest, this.getConfig(id));
+    const ctx = createPluginHostContext(id, config, this.opts);
     try {
       await plugin.init(ctx);
       this.initialized.add(id);
@@ -268,6 +274,11 @@ export class PluginRegistry {
           if (f.type !== 'password' && value !== undefined) config[f.key] = value;
         }
       }
+      // Probed, never assumed: an unavailable plugin may be unavailable for a
+      // reason that has nothing to do with its binaries (issue #781).
+      const missingBinaries = m.requirements?.binaries
+        ? m.requirements.binaries.filter((b) => !resolvesOnPath(b))
+        : undefined;
       infos.push({
         id: m.id,
         name: m.name,
@@ -282,6 +293,7 @@ export class PluginRegistry {
         configFields: m.configFields,
         configured,
         config,
+        missingBinaries,
         remote: p.origin?.remote,
         addonUrl: p.origin?.url,
       });

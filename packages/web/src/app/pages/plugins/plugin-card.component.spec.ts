@@ -118,3 +118,68 @@ describe('PluginCardComponent — collapsible body', () => {
     expect(cardToggle.contains(toggleBtn)).toBe(false);
   });
 });
+
+describe('PluginCardComponent — missing-binaries notice', () => {
+  // The description/binaries block lives in the collapsible body, so the card
+  // must be opened before the notice can be asserted on.
+  function renderOpen(plugin: PluginInfo): { el: HTMLElement; cmp: PluginCardComponent } {
+    TestBed.configureTestingModule({
+      imports: [PluginCardComponent],
+      providers: [provideRouter([])],
+    });
+    const fixture = TestBed.createComponent(PluginCardComponent);
+    fixture.componentInstance.plugin = plugin;
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    // Click the real toggle: the component is OnPush and `isOpen()` is a plain
+    // getter, so setting it in code never marks the view dirty.
+    if (!fixture.componentInstance.isOpen()) {
+      el.querySelector<HTMLButtonElement>('[data-testid="plugin-card-toggle"]')?.click();
+    }
+    fixture.detectChanges();
+    return { el, cmp: fixture.componentInstance };
+  }
+
+  // Issue #781: the card used to echo the plugin's DECLARED requirements
+  // whenever it was enabled-but-unavailable, so an unavailable plugin whose
+  // binary is installed told the operator to install it.
+  it('names only the binaries the server reports as missing', () => {
+    const { el, cmp } = renderOpen(
+      basePlugin({
+        enabled: true,
+        available: false,
+        requirements: { binaries: ['fpcalc', 'ffmpeg'] },
+        missingBinaries: ['ffmpeg'],
+      }),
+    );
+    // The harness loads no i18n catalog, so the `t` pipe renders the raw key —
+    // assert the notice is present and that the interpolated value names only
+    // the unresolved binary.
+    expect(el.querySelector('[data-testid="plugin-missing-binaries"]')).not.toBeNull();
+    expect(cmp.missingBinaries()).toBe('ffmpeg');
+  });
+
+  it('shows no notice when the declared binaries all resolve', () => {
+    const { el } = renderOpen(
+      basePlugin({
+        enabled: true,
+        available: false,
+        requirements: { binaries: ['fpcalc'] },
+        missingBinaries: [],
+      }),
+    );
+    expect(el.querySelector('[data-testid="plugin-missing-binaries"]')).toBeNull();
+  });
+
+  it('shows no notice when the plugin is available', () => {
+    const { el } = renderOpen(
+      basePlugin({
+        enabled: true,
+        available: true,
+        requirements: { binaries: ['fpcalc'] },
+        missingBinaries: ['fpcalc'],
+      }),
+    );
+    expect(el.querySelector('[data-testid="plugin-missing-binaries"]')).toBeNull();
+  });
+});

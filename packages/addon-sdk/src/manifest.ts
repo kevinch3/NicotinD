@@ -54,6 +54,14 @@ export interface PluginConfigField {
   placeholder?: string;
   /** Short helper text shown under the input. */
   help?: string;
+  /**
+   * Value to use when the stored config has this key blank or absent. A form
+   * saved with an optional input left empty persists `""`, which would
+   * otherwise overwrite a code-side default (`??` does not fire for `""`).
+   * Only declare it for fields where blank genuinely means "use the default" —
+   * omit it for secrets, where blank is how a value is cleared.
+   */
+  defaultValue?: string;
 }
 
 /**
@@ -157,8 +165,36 @@ export interface PluginInfo {
    * prefill them. `password` fields are intentionally omitted.
    */
   config?: Record<string, unknown>;
+  /**
+   * Declared `requirements.binaries` that do not currently resolve, probed by
+   * the host. Present only when the plugin declares binaries. The UI must
+   * render this rather than assuming an unavailable plugin is missing every
+   * binary it declares (issue #781).
+   */
+  missingBinaries?: string[];
   /** True for a registered remote addon (acquisition addon protocol). */
   remote?: boolean;
   /** The remote addon's base URL (shown on its card; admins registered it). */
   addonUrl?: string;
+}
+
+/**
+ * Apply `configFields[].defaultValue` over a plugin's stored config, treating a
+ * blank string the same as an absent key. Pure. Must be applied on every config
+ * load rather than only at construction, or a later re-init re-applies the raw
+ * stored `""` and defeats the default.
+ */
+export function applyConfigFieldDefaults(
+  manifest: PluginManifest,
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  const out = { ...config };
+  for (const field of manifest.configFields ?? []) {
+    if (field.defaultValue === undefined) continue;
+    const value = out[field.key];
+    const blank =
+      value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
+    if (blank) out[field.key] = field.defaultValue;
+  }
+  return out;
 }
