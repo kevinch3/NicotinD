@@ -26,6 +26,7 @@ import {
   type SongMetadataMutateBody,
 } from '../services/song-metadata-mutate.js';
 import { applyAlbumCover } from '../services/album-cover-mutate.js';
+import { identifySongById, type IdentifySongRefusal } from '../services/identify.js';
 import { applyMetadataFix, type FixLidarr } from '../services/metadata-fix.js';
 import { VALID_CLASSIFICATIONS, type Classification } from '../services/library-curator.js';
 import type { LibraryCurator } from '../services/library-curator.js';
@@ -125,6 +126,15 @@ const strList = (v: unknown, fallback: string): string[] => {
   return [...new Set(list.map((s) => s.trim()).filter(Boolean))];
 };
 const MAX_MERGE_BATCH = 50;
+/** One sentence per refusal — the agent must never see a bare kind string. */
+const IDENTIFY_REFUSAL_MESSAGES: Record<IdentifySongRefusal, string> = {
+  'song-not-found': 'Song not found',
+  'identify-unavailable':
+    'AcoustID identify is not available: no enabled identify plugin. Ask an admin to enable the ' +
+    'AcoustID extension and set its API key.',
+  'music-dir-unset': 'Music directory not configured on this server',
+  'file-not-found': 'Song file not found on disk',
+};
 const clampLimit = (v: unknown, def: number, max: number): number => {
   const n = typeof v === 'number' ? Math.floor(v) : def;
   return Math.min(max, Math.max(1, Number.isFinite(n) ? n : def));
@@ -505,6 +515,45 @@ export const MCP_TOOLS: McpTool[] = [
       );
       if (!result) return JSON.stringify({ error: 'Song not found' });
       return JSON.stringify(result, null, 2);
+    },
+  },
+  {
+    name: 'identify_song',
+    description:
+      'Identify a song from its AUDIO via an AcoustID fingerprint — the recording identity, ' +
+      'independent of every tag. Use it when the metadata cannot be trusted at all: a junk or ' +
+      'episode-numbered filename, a watermark bucket (IPAUTA, SharingDB.top), or two files you ' +
+      'suspect are the same recording in different formats (the acoustId is the identity; ' +
+      'title+artist+duration is a heuristic that misses mp3-vs-opus pairs). Narrow and cheap: ' +
+      'fpcalc plus ONE outbound lookup, so unlike `lookup_song_metadata` (~4 sources per call) it ' +
+      'is safe to run over a batch. It suggests only — apply a result with `fix_song_metadata`. ' +
+      'Returns a typed `outcome`: `match`, `no-match` (the audio is genuinely unknown to AcoustID, ' +
+      'common for regional and long-tail catalogue), `undecodable` (the file itself is likely ' +
+      'truncated or corrupt — a triage signal, not a metadata answer), `fpcalc-missing`, ' +
+      '`file-missing` or `source-error`. It carries NO genre: `IdentifyResult` has no genre field, ' +
+      'and MusicBrainz genres measured empty for this library’s long tail (#777).',
+    access: 'read',
+    inputSchema: {
+      type: 'object',
+      properties: { songId: { type: 'string', description: 'The song id.' } },
+      required: ['songId'],
+    },
+    handler: async ({ db, metadata }, args) => {
+      const songId = str(args.songId);
+      const res = await identifySongById(db, metadata, songId);
+      if (!res.ok) return JSON.stringify({ error: IDENTIFY_REFUSAL_MESSAGES[res.reason] });
+      return JSON.stringify(
+        {
+          songId,
+          outcome: res.outcome.kind,
+          // fpcalc's stderr tail / the HTTP status — the difference between
+          // "retry later" and "this file is broken".
+          detail: res.outcome.kind === 'match' ? undefined : res.outcome.detail,
+          result: res.result,
+        },
+        null,
+        2,
+      );
     },
   },
   {
@@ -1125,9 +1174,47 @@ export function checkToolAccess(
 }
 
 /**
+ * Pure guard: is every argument the tool's own `inputSchema` marks required
+ * actually present? Returns a refusal naming the expected keys **and the keys
+ * the caller sent**, or null when the call may proceed.
+ *
+ * Issue #778: without this, a wrong key resolved to `undefined`, got queried,
+ * missed, and was reported as *data* — `get_album_tracks({albumId})` answered
+ * `{album: null, songs: []}`, which reads as "this album has no tracks" rather
+ * than "you did not give me an id". Agents guess these keys wrong routinely, so
+ * a soft empty result is how a curation pass records "the library does not
+ * contain X". Driven by the schema rather than per-handler checks so every
+ * tool — and every tool added later — is covered by construction.
+ *
+ * Present-but-falsy is present: `confirm: false` and `year: 0` are real values
+ * (the confirm gate above owns the former). Only undefined, null, a blank
+ * string and an empty array count as missing.
+ */
+export function missingRequiredArgs(
+  tool: { name: string; inputSchema: Record<string, unknown> },
+  args: Record<string, unknown>,
+): string | null {
+  const required = tool.inputSchema.required;
+  if (!Array.isArray(required) || required.length === 0) return null;
+  const absent = (v: unknown): boolean =>
+    v === undefined ||
+    v === null ||
+    (typeof v === 'string' && v.trim() === '') ||
+    (Array.isArray(v) && v.length === 0);
+  const missing = required.filter((k): k is string => typeof k === 'string' && absent(args[k]));
+  if (missing.length === 0) return null;
+  const sent = Object.keys(args);
+  return (
+    `"${tool.name}" requires ${missing.map((k) => `\`${k}\``).join(', ')}. ` +
+    `You sent ${sent.length ? sent.map((k) => `\`${k}\``).join(', ') : 'no arguments'}. ` +
+    'This is a missing argument, not an empty library — check the key name and retry.'
+  );
+}
+
+/**
  * Run one tool call under an agent identity: resolve the tool, apply
- * `checkToolAccess`, then run its handler. Returns an MCP tool result; never
- * throws (a handler error becomes an `isError` result).
+ * `checkToolAccess` and `missingRequiredArgs`, then run its handler. Returns an
+ * MCP tool result; never throws (a handler error becomes an `isError` result).
  */
 export async function dispatchTool(
   ctx: McpToolContext,
@@ -1138,6 +1225,8 @@ export async function dispatchTool(
   if (!tool) return err(`Unknown tool: ${name}`);
   const refusal = checkToolAccess(tool, ctx.identity.scope, args);
   if (refusal) return err(refusal);
+  const missing = missingRequiredArgs(tool, args);
+  if (missing) return err(missing);
   try {
     const text = await tool.handler(ctx, args);
     return { content: [{ type: 'text', text }] };

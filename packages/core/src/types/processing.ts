@@ -5,21 +5,34 @@
  * in the admin Settings panel.
  */
 
-/** Identifier of an enrichment task. Open union — new tasks append here. */
-export type ProcessingTaskId =
-  | 'bpm'
-  | 'genre'
-  | 'key'
-  | 'artist-image'
-  | 'artist-info'
-  | 'energy'
-  | 'audio-features'
-  | 'descriptors'
-  | 'artist-identity'
-  | 'genre-audio'
-  | 'genre-discogs'
-  | 'popularity'
-  | 'artist-origin';
+/**
+ * Every enrichment task that exists today — new tasks append here, retired ones
+ * are deleted here. It is a runtime array, not just a union, because two places
+ * need to ask "is this string still a task?" at run time: the persisted
+ * settings blob and the per-(song, task) failure ledger both outlive the code
+ * that wrote them. When the licence feature was rolled back (#683) neither
+ * could tell, so its key stayed in `app_settings.processing` and its 16,063
+ * ledger rows stayed the largest occupant of a table nothing read them from
+ * (#779). The union is derived from this so the two can never drift.
+ */
+export const PROCESSING_TASK_IDS = [
+  'bpm',
+  'genre',
+  'key',
+  'artist-image',
+  'artist-info',
+  'energy',
+  'audio-features',
+  'descriptors',
+  'artist-identity',
+  'genre-audio',
+  'genre-discogs',
+  'popularity',
+  'artist-origin',
+] as const;
+
+/** Identifier of an enrichment task. */
+export type ProcessingTaskId = (typeof PROCESSING_TASK_IDS)[number];
 
 /** Persisted, admin-editable processing configuration. */
 export interface ProcessingSettings {

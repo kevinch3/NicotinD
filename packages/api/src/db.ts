@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
-import { createLogger } from '@nicotind/core';
+import { createLogger, PROCESSING_TASK_IDS } from '@nicotind/core';
 import { armReviewHold, reviewHoldArmed } from './services/download-review-store.js';
 import { repairGenreMirrorDrift } from './services/genre-split.js';
 import {
@@ -1722,6 +1722,22 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
       `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '1', ?)`,
       ['genre_mirror_drift_repair_v1', now],
     );
+  }
+
+  // Retired-task ledger sweep (issue #779). `library_song_analysis_failures` is
+  // keyed on (song, task), and nothing dropped a task's rows when the task
+  // itself was removed: the rolled-back licence feature (#683) still owned
+  // 16,063 rows — 62% of the whole table — that no code path could ever read
+  // or clear. Deliberately NOT marker-gated: the sweep derives its denominator
+  // from the live task registry, so a task retired later is swept without
+  // needing a new migration, and on a ledger of live tasks it is a no-op.
+  const retired = db.run(
+    `DELETE FROM library_song_analysis_failures
+      WHERE task NOT IN (${PROCESSING_TASK_IDS.map(() => '?').join(', ')})`,
+    [...PROCESSING_TASK_IDS],
+  );
+  if (retired.changes > 0) {
+    log.info({ rows: retired.changes }, 'swept analysis-failure rows for retired tasks');
   }
 
   // Hold-for-review bootstrap exemption (issue #417): arm the one-way

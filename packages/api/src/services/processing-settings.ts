@@ -1,5 +1,9 @@
 import type { Database } from 'bun:sqlite';
-import type { ProcessingSettings, ProcessingTaskId } from '@nicotind/core';
+import {
+  PROCESSING_TASK_IDS,
+  type ProcessingSettings,
+  type ProcessingTaskId,
+} from '@nicotind/core';
 
 /** Patch shape: top-level optional, with partial nested tasks/gates (deep-merged). */
 export type ProcessingSettingsPatch = Partial<Omit<ProcessingSettings, 'tasks' | 'gates'>> & {
@@ -67,6 +71,26 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
   holdForReview: false,
 };
 
+const LIVE_TASK_IDS = new Set<string>(PROCESSING_TASK_IDS);
+
+/**
+ * Keep only flags for tasks that still exist. The field-by-field read below
+ * protects the TOP level from a retired key; this protects one level down,
+ * where `licence` survived its own rollback and was re-persisted on every save
+ * (#683 / #779). Allowlisted against the live task ids rather than against the
+ * gates defaults — gating a task the defaults do not gate is a legitimate
+ * admin choice, and filtering on the defaults would silently discard it.
+ */
+function liveTaskFlags(
+  stored: Partial<Record<string, boolean>> | undefined,
+): Partial<Record<ProcessingTaskId, boolean>> {
+  const out: Partial<Record<ProcessingTaskId, boolean>> = {};
+  for (const [key, value] of Object.entries(stored ?? {})) {
+    if (LIVE_TASK_IDS.has(key)) out[key as ProcessingTaskId] = value;
+  }
+  return out;
+}
+
 export function getProcessingSettings(db: Database): ProcessingSettings {
   const row = db
     .query<{ value: string }, [string]>('SELECT value FROM app_settings WHERE key = ?')
@@ -84,8 +108,8 @@ export function getProcessingSettings(db: Database): ProcessingSettings {
       paused: parsed.paused ?? DEFAULT_PROCESSING_SETTINGS.paused,
       holdForReview: parsed.holdForReview ?? DEFAULT_PROCESSING_SETTINGS.holdForReview,
       // Nested objects must deep-merge so an older/partial blob can't drop a field.
-      tasks: { ...DEFAULT_PROCESSING_SETTINGS.tasks, ...parsed.tasks },
-      gates: { ...DEFAULT_PROCESSING_SETTINGS.gates, ...parsed.gates },
+      tasks: { ...DEFAULT_PROCESSING_SETTINGS.tasks, ...liveTaskFlags(parsed.tasks) },
+      gates: { ...DEFAULT_PROCESSING_SETTINGS.gates, ...liveTaskFlags(parsed.gates) },
     };
   } catch {
     return clone(DEFAULT_PROCESSING_SETTINGS);
@@ -100,8 +124,8 @@ export function setProcessingSettings(
   const next: ProcessingSettings = {
     ...current,
     ...patch,
-    tasks: { ...current.tasks, ...patch.tasks },
-    gates: { ...current.gates, ...patch.gates },
+    tasks: { ...current.tasks, ...liveTaskFlags(patch.tasks) },
+    gates: { ...current.gates, ...liveTaskFlags(patch.gates) },
   };
   db.run(
     `INSERT INTO app_settings (key, value) VALUES (?, ?)
