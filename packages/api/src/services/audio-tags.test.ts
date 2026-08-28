@@ -137,9 +137,80 @@ describe.if(ffmpegAvailable())('audio-tags perceptual features (Opus/Vorbis roun
     ]);
     expect(await writeAudioTags(opus, { bpm: 128, key: 'A minor', genre: 'Techno' })).toBe(true);
     const tags = await readAudioTags(opus);
-    // genre is written but readAudioTags doesn't surface it (scanner reads it
-    // via common.genre) — assert the fields this module reads back.
     expect(tags.key).toBe('A minor');
+    // Issue #791: this test was named for genre while deliberately not
+    // asserting it, because the reader never mapped the field both writers set.
+    expect(tags.genre).toBe('Techno');
+  });
+});
+
+/**
+ * Issue #791: `AudioTags.genre` is declared and set by BOTH write paths, but
+ * neither read branch mapped it back — so `readAudioTags(f).genre` was
+ * `undefined` on a file that demonstrably carries the tag. A write-only field
+ * on a symmetric read/write API hands the next caller a silent `undefined`
+ * instead of an error.
+ *
+ * These assert through `readAudioTags` deliberately, never through
+ * `ffprobe -show_entries format_tags`: on an Ogg container the Vorbis comment
+ * lives in the STREAM, so that probe reports nothing for a correctly-tagged
+ * file. Verifying a tag with the wrong scope is what produced a whole false
+ * bug report (#790).
+ */
+describe.if(ffmpegAvailable())('genre round-trips through readAudioTags (#791)', () => {
+  it('reads back a genre written to mp3', async () => {
+    expect(await writeAudioTags(mp3, { genre: 'Cumbia Pop' })).toBe(true);
+    expect((await readAudioTags(mp3)).genre).toBe('Cumbia Pop');
+  });
+
+  for (const ext of ['opus', 'ogg', 'flac'] as const) {
+    it(`reads back a genre written to ${ext}`, async () => {
+      const codec = { opus: 'libopus', ogg: 'libvorbis', flac: 'flac' }[ext];
+      const path = join(dir, `genre.${ext}`);
+      spawnSync('ffmpeg', [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'sine=frequency=220:sample_rate=48000',
+        '-t',
+        '1',
+        '-c:a',
+        codec,
+        path,
+      ]);
+      expect(await writeAudioTags(path, { genre: 'Flamenco Pop' })).toBe(true);
+      expect((await readAudioTags(path)).genre).toBe('Flamenco Pop');
+    });
+  }
+
+  it('overwrites an existing genre rather than keeping the old one', async () => {
+    const path = join(dir, 'regenre.opus');
+    spawnSync('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=220:sample_rate=48000',
+      '-t',
+      '1',
+      '-c:a',
+      'libopus',
+      '-metadata',
+      'GENRE=Wrong',
+      '-metadata:s:a:0',
+      'GENRE=Wrong',
+      path,
+    ]);
+    expect((await readAudioTags(path)).genre).toBe('Wrong');
+    expect(await writeAudioTags(path, { genre: 'Right' })).toBe(true);
+    expect((await readAudioTags(path)).genre).toBe('Right');
   });
 });
 
