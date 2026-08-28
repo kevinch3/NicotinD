@@ -299,6 +299,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   continuously while enabled; failures are diagnosed and tallied into `ProcessingStatus`, and broken
   or undetectable files are excluded via a `library_song_analysis_failures` ledger.
   `NoConfidentResultError`, `AudioFileRejectedError`. → [library-processing.md](docs/library-processing.md)
+- **A retired task leaves nothing behind**: `PROCESSING_TASK_IDS` is the one runtime list of live
+  tasks (the `ProcessingTaskId` union derives from it); `applySchema` sweeps ledger rows for anything
+  absent from it and the settings blob is filtered the same way.
+  → [library-processing.md](docs/library-processing.md)
 - **Processing pause**: a `paused` flag is the runtime halt distinct from `enabled: false` (still
   clears quarantine), and the manual way to stand down for another GPU tenant. The failure tally's
   session boundary is one continuous drain (`drained`), not a time window.
@@ -436,6 +440,12 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   usually an inherited wrong MBID); `set_artist_origin` writes the shared `mutateArtistOrigin`, and
   `get_rare_genres` (`rareGenres`) surfaces low-cardinality primary genres as mistag candidates.
   → [mcp-agent.md](docs/mcp-agent.md)
+- **A missing MCP argument is an error, not empty data**: `missingRequiredArgs` rejects on each
+  tool's own `inputSchema.required`, naming the keys sent — a wrong key used to answer "not in the
+  library". → [mcp-agent.md](docs/mcp-agent.md)
+- **`identify_song` — identity from the audio**: `identifySongById` is fpcalc + AcoustID and nothing
+  else, batchable where `lookup_song_metadata`'s fan-out is not; typed outcome, suggests only,
+  carries no genre. → [mcp-agent.md](docs/mcp-agent.md)
 - **WebMCP alignment (proposed — not yet implemented)**: `MCP_TOOLS` is already the shape Chrome's
   WebMCP registration takes; the plan promotes host exposure to a declared field and adds a flagged
   browser host owning only session tools. Nothing destructive is ever browser-exposed, and client-side WebGPU/WebNN stays NO-GO.

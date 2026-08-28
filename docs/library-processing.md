@@ -177,7 +177,11 @@ Launch tasks:
   song from `genre`'s pending set). A Lidarr-less install never populates that
   ledger, so `genre-audio` never fires there — an accepted limitation, since
   this is a fallback, never a primary source. A confidence below
-  `NICOTIND_GENRE_AUDIO_CONFIDENCE` (default 0.5) is ledgered via
+  `NICOTIND_GENRE_AUDIO_CONFIDENCE` (default 0.5 — **measured, not guessed**:
+  the rejected-inference distribution peaks at 0.10-0.29 with no cluster under
+  the cutoff, so relaxing it buys noise, and a genre-audio write is durable
+  → [measurements/genre-audio-confidence-2026-08.md](measurements/genre-audio-confidence-2026-08.md))
+  is ledgered via
   `NoConfidentResultError` (not tallied — the classifier ran and found
   nothing confident, mirroring an unresolvable genre); a build without
   the head (`genre: null`) is treated the same way. A confident hit is
@@ -574,6 +578,20 @@ table (keyed `(song_id, task)`) fix that:
 - `countSkippedFiles` (distinct files at the cap) surfaces as `ProcessingStatus.skipped`,
   shown in the panel as "N files skipped: unreadable or not analyzable (re-download to
   retry)".
+- **A retired task's rows are swept, and its settings key with it** (issue #779). The
+  ledger is keyed `(song_id, task)` and nothing dropped a task's rows when the *task* was
+  removed: the rolled-back licence feature (#683) still owned **16,063 rows — 62% of the
+  whole table** — that no code path could read or clear, distorting the first read of
+  every ledger-shaped question. `PROCESSING_TASK_IDS` (core) is now the single runtime
+  list of live tasks, with `ProcessingTaskId` *derived* from it so the two cannot drift,
+  and `applySchema` deletes any ledger row whose `task` is not in it. Deliberately **not**
+  marker-gated: the sweep derives its denominator from the live registry, so a task
+  retired later is swept without a new migration, and on a ledger of live tasks it is a
+  no-op. The same list filters the persisted settings blob — `getProcessingSettings` read
+  its *top-level* fields one by one precisely so a retired one could not survive, but
+  `tasks`/`gates` were bare spreads, so `licence: true` sat in `app_settings.processing`
+  and was re-written on every save. The filter allowlists the live **task ids**, not the
+  gates defaults: gating a task the defaults do not gate is a legitimate admin choice.
 
 ### Runtime hardening — ffmpeg timeouts
 

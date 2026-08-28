@@ -12,7 +12,13 @@ import { LibraryCurator } from '../services/library-curator.js';
 import { artistIdFor } from '../services/library-scanner.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import type { AddonClient } from '../services/addons/client.js';
-import { dispatchTool, checkToolAccess, type McpToolContext } from './mcp.js';
+import {
+  dispatchTool,
+  checkToolAccess,
+  missingRequiredArgs,
+  MCP_TOOLS,
+  type McpToolContext,
+} from './mcp.js';
 
 const testDb = new Database(':memory:');
 applySchema(testDb);
@@ -1378,6 +1384,96 @@ describe('library health & flag tools (issue #734)', () => {
   });
 });
 
+describe('identify_song (fingerprint lane, issue #777)', () => {
+  const identifyCtx = (outcome: unknown | null): McpToolContext => ({
+    db: testDb,
+    identity: { tokenId: 't', userId: 'u1', scope: 'refiner:read' },
+    deletion: { musicDir, shareRescan: new ShareRescanScheduler(async () => {}) },
+    artistIdentity: {},
+    songGenre: { musicDir },
+    metadata: {
+      musicDir,
+      plugins: (outcome === null
+        ? { getEnabledWithCapability: () => [], getConfig: () => ({}) }
+        : {
+            getEnabledWithCapability: (cap: string) =>
+              cap === 'identify'
+                ? [
+                    {
+                      manifest: { id: 'acoustid' },
+                      identify: { identifyTrackDetailed: async () => outcome },
+                    },
+                  ]
+                : [],
+            getConfig: () => ({ apiKey: 'k' }),
+          }) as never,
+    },
+    curation: {},
+    acquisition: { getAddon: () => null, isAcquisitionEnabled: () => false, minMatchPct: 80 },
+  });
+
+  beforeEach(() => {
+    mkdirSync(join(musicDir, 'p'), { recursive: true });
+    writeFileSync(join(musicDir, 'p/s1.opus'), 'x');
+    seedSong('s1', 'CD A 2000');
+  });
+
+  it('returns the recording identity for a junk-named file', async () => {
+    const result = {
+      acoustId: 'ac-1',
+      score: 0.9,
+      artist: 'Los Chichos',
+      title: 'Quiero Ser Libre',
+    };
+    const res = await dispatchTool(identifyCtx({ kind: 'match', result }), 'identify_song', {
+      songId: 's1',
+    });
+    expect(res.isError).toBeUndefined();
+    expect(JSON.parse(res.content[0]!.text)).toMatchObject({
+      songId: 's1',
+      outcome: 'match',
+      result,
+    });
+  });
+
+  it('reports "no plugin configured" distinctly from "the audio matched nothing"', async () => {
+    const unconfigured = JSON.parse(
+      (await dispatchTool(identifyCtx(null), 'identify_song', { songId: 's1' })).content[0]!.text,
+    ) as { outcome?: string; error?: string };
+    const noMatch = JSON.parse(
+      (await dispatchTool(identifyCtx({ kind: 'no-match' }), 'identify_song', { songId: 's1' }))
+        .content[0]!.text,
+    ) as { outcome?: string; error?: string };
+    expect(unconfigured.outcome).toBeUndefined();
+    expect(unconfigured.error).toContain('AcoustID');
+    expect(noMatch).toMatchObject({ outcome: 'no-match', result: null });
+  });
+
+  it('surfaces undecodable audio as its own outcome (a corrupt-file signal)', async () => {
+    const res = await dispatchTool(identifyCtx({ kind: 'undecodable' }), 'identify_song', {
+      songId: 's1',
+    });
+    expect(JSON.parse(res.content[0]!.text)).toMatchObject({
+      outcome: 'undecodable',
+      result: null,
+    });
+  });
+
+  it('requires songId (the #778 guard covers the new tool too)', async () => {
+    const res = await dispatchTool(identifyCtx({ kind: 'no-match' }), 'identify_song', {
+      id: 's1',
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0]!.text).toContain('songId');
+  });
+
+  it('is a read tool — a read-only agent token can fingerprint', async () => {
+    const tool = MCP_TOOLS.find((t) => t.name === 'identify_song');
+    expect(tool?.access).toBe('read');
+    expect(tool?.destructive).toBeUndefined();
+  });
+});
+
 describe('dispatchTool guards', () => {
   const ctx = (scope: 'refiner:read' | 'refiner:curate'): McpToolContext => ({
     db: testDb,
@@ -1394,6 +1490,89 @@ describe('dispatchTool guards', () => {
     const res = await dispatchTool(ctx('refiner:curate'), 'does_not_exist', {});
     expect(res.isError).toBe(true);
     expect(res.content[0]!.text).toContain('Unknown tool');
+  });
+
+  // Issue #778: a wrong argument key used to resolve to `undefined`, get
+  // queried, miss, and be reported as data — "this album has no tracks"
+  // rather than "you did not give me an id".
+  it('a missing required argument is a validation error, not an empty result', async () => {
+    const res = await dispatchTool(ctx('refiner:read'), 'get_album_tracks', { albumId: 'al' });
+    expect(res.isError).toBe(true);
+    expect(res.content[0]!.text).toContain('id');
+    // The empty-data shape must NOT be what the caller sees.
+    expect(res.content[0]!.text).not.toContain('"songs"');
+  });
+
+  it('names the keys the caller actually sent, so a wrong key is visible', async () => {
+    const res = await dispatchTool(ctx('refiner:read'), 'get_artist', { name: 'Los Chichos' });
+    expect(res.isError).toBe(true);
+    expect(res.content[0]!.text).toContain('name');
+    expect(res.content[0]!.text).not.toContain('artist not found');
+  });
+
+  it('treats a blank string as missing', async () => {
+    const res = await dispatchTool(ctx('refiner:read'), 'get_artist', { id: '   ' });
+    expect(res.isError).toBe(true);
+    expect(res.content[0]!.text).toContain('id');
+  });
+
+  it('lets a satisfied required argument through to the handler', async () => {
+    const res = await dispatchTool(ctx('refiner:read'), 'get_artist', { id: 'nope' });
+    expect(res.isError).toBeUndefined();
+    expect(JSON.parse(res.content[0]!.text)).toEqual({ error: 'artist not found' });
+  });
+
+  // The guard reads the tool's own schema; it must not invent requirements.
+  // `complete_album` requires only `confirm` because albumId and artist+album
+  // are alternatives, and its handler owns that either/or message.
+  it('does not invent a requirement the schema does not declare', async () => {
+    const res = await dispatchTool(ctx('refiner:curate'), 'complete_album', { confirm: true });
+    expect(res.isError).toBeUndefined();
+    expect(JSON.parse(res.content[0]!.text)).toEqual({
+      error: 'Provide albumId, or artist + album',
+    });
+  });
+
+  it('a required boolean present-and-false is the confirm gate, not a missing argument', async () => {
+    const res = await dispatchTool(ctx('refiner:curate'), 'delete_song', {
+      songId: 's1',
+      confirm: false,
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0]!.text).toContain('confirm: true');
+  });
+});
+
+describe('missingRequiredArgs', () => {
+  const tool = (required: string[]) => ({
+    name: 't',
+    inputSchema: { type: 'object', properties: {}, required },
+  });
+
+  it('returns null when every declared requirement is satisfied', () => {
+    expect(missingRequiredArgs(tool(['id']), { id: 'x' })).toBeNull();
+  });
+
+  it('returns null for a tool that declares no requirements', () => {
+    expect(missingRequiredArgs({ name: 't', inputSchema: { type: 'object' } }, {})).toBeNull();
+  });
+
+  it('reports every missing key at once, not just the first', () => {
+    const msg = missingRequiredArgs(tool(['artistId', 'country']), {});
+    expect(msg).toContain('artistId');
+    expect(msg).toContain('country');
+  });
+
+  it('accepts false and 0 as present values', () => {
+    expect(missingRequiredArgs(tool(['confirm']), { confirm: false })).toBeNull();
+    expect(missingRequiredArgs(tool(['year']), { year: 0 })).toBeNull();
+  });
+
+  it('rejects null, undefined, blank strings and empty arrays', () => {
+    expect(missingRequiredArgs(tool(['id']), { id: null })).toContain('id');
+    expect(missingRequiredArgs(tool(['id']), {})).toContain('id');
+    expect(missingRequiredArgs(tool(['id']), { id: '' })).toContain('id');
+    expect(missingRequiredArgs(tool(['ids']), { ids: [] })).toContain('ids');
   });
 });
 

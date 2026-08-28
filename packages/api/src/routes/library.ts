@@ -102,12 +102,21 @@ import { expandDir, resolveSongPath, isUnderMusicDir } from '../services/song-pa
 import {
   buildIdentifyApplyTags,
   computeIdentifyAvailable,
-  identifyOne,
-  identifyPlugin,
+  identifySongById,
   type IdentifyApplyBody,
+  type IdentifySongRefusal,
 } from '../services/identify.js';
 
 const log = createLogger('library');
+
+/** Refusal → (message, status) for POST /songs/:id/identify. The messages are
+ *  the route's long-standing contract; `identifySongById` owns the decision. */
+const IDENTIFY_REFUSALS: Record<IdentifySongRefusal, [string, 404 | 503]> = {
+  'song-not-found': ['Song not found', 404],
+  'identify-unavailable': ['AcoustID not available', 503],
+  'music-dir-unset': ['Music directory not configured', 503],
+  'file-not-found': ['Song file not found', 404],
+};
 
 /** Canonical MusicBrainz id shape — a plain UUID (issue #610). */
 const MBID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -2183,25 +2192,13 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // Same contract as the review inbox's identify (routes/download-review.ts).
   app.post('/songs/:id/identify', async (c) => {
     requireCurator(c);
-    const db = getDatabase();
     const id = c.req.param('id');
-    const song = db
-      .query<{ path: string }, [string]>(`SELECT path FROM library_songs WHERE id = ?`)
-      .get(id);
-    if (!song) return c.json({ error: 'Song not found' }, 404);
-
-    const plugin = identifyPlugin(pluginRegistry);
-    if (!plugin) return c.json({ error: 'AcoustID not available' }, 503);
-    if (!musicDir) return c.json({ error: 'Music directory not configured' }, 503);
-
-    const md = expandDir(musicDir);
-    const abs = resolveSongPath(md, song.path);
-    if (!isUnderMusicDir(md, abs) || !existsSync(abs)) {
-      return c.json({ error: 'Song file not found' }, 404);
+    const res = await identifySongById(getDatabase(), { plugins: pluginRegistry, musicDir }, id);
+    if (!res.ok) {
+      const [message, status] = IDENTIFY_REFUSALS[res.reason];
+      return c.json({ error: message }, status);
     }
-
-    const outcome = await identifyOne(plugin, abs);
-    return c.json({ result: outcome.kind === 'match' ? outcome.result : null, outcome });
+    return c.json({ result: res.result, outcome: res.outcome });
   });
 
   // Write a curator-approved identify suggestion back to the file, then rescan

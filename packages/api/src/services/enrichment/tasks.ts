@@ -1385,9 +1385,18 @@ const artistIdentityTask: EnrichmentTask = {
  * ledgered-not-written (issue #187 task A2). Operator-tunable via env var
  * (like other sidecar knobs, e.g. NICOTIND_ANALYSIS_URL) rather than a
  * ProcessingSettings field — this is a classifier-quality knob, not a
- * structural toggle, and the right value is genuinely an open question this
- * PR can't fully settle until real confidence data comes in from a deployed
- * sidecar. 0.5 is a conservative starting default for a 400-way classifier.
+ * structural toggle.
+ *
+ * 0.5 shipped as a guess and has now been **measured** (issue #780): over 2,140
+ * rejected inferences on the prod library the confidence distribution is a
+ * smooth hump peaking at 0.10-0.29, thinning monotonically toward the cutoff —
+ * there is no cluster of nearly-confident predictions piled up just under it.
+ * Relaxing to 0.45 would admit ~135 songs and 0.40 ~293, all at scores close to
+ * noise for a 400-way classifier, and a genre-audio write is durable (a
+ * `library_genre_overrides` row the scanner re-applies), so a wrong one has to
+ * be found and fixed by hand. Keep 0.5. The number is a property of the sidecar
+ * MODEL, not of this codebase: re-measure if the model changes, don't re-argue.
+ * -> docs/measurements/genre-audio-confidence-2026-08.md
  */
 export const GENRE_AUDIO_CONFIDENCE_THRESHOLD = Number(
   process.env.NICOTIND_GENRE_AUDIO_CONFIDENCE ?? 0.5,

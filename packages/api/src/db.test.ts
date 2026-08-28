@@ -3,6 +3,7 @@ import { Database } from 'bun:sqlite';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { PROCESSING_TASK_IDS } from '@nicotind/core';
 import {
   SCHEMA_VERSION,
   addColumnIfMissing,
@@ -950,5 +951,54 @@ describe('applySchema — onBeforeMigrate (issue #612)', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('applySchema — retired-task ledger sweep (issue #779)', () => {
+  function seedFailure(db: Database, songId: string, task: string) {
+    db.run(
+      `INSERT INTO library_song_analysis_failures (song_id, task, fail_count, last_error, last_attempt)
+       VALUES (?, ?, 3, 'x', 1)`,
+      [songId, task],
+    );
+  }
+  const tasksIn = (db: Database) =>
+    db
+      .query<{ task: string }, []>(
+        'SELECT DISTINCT task FROM library_song_analysis_failures ORDER BY task',
+      )
+      .all()
+      .map((r) => r.task);
+
+  it('sweeps rows for a task that no longer exists', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    seedFailure(db, 's1', 'licence');
+    seedFailure(db, 's2', 'genre');
+    applySchema(db);
+    expect(tasksIn(db)).toEqual(['genre']);
+  });
+
+  // Unmarkered on purpose: the sweep derives its denominator from the live task
+  // registry, so a task retired later is swept without a new migration.
+  it('leaves every live task alone', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    for (const id of PROCESSING_TASK_IDS) seedFailure(db, `s-${id}`, id);
+    applySchema(db);
+    expect(tasksIn(db).sort()).toEqual([...PROCESSING_TASK_IDS].sort());
+  });
+
+  it('is a no-op on a ledger that holds only live tasks', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    seedFailure(db, 's1', 'genre-audio');
+    const before = db
+      .query<{ c: number }, []>('SELECT COUNT(*) c FROM library_song_analysis_failures')
+      .get()!.c;
+    applySchema(db);
+    expect(
+      db.query<{ c: number }, []>('SELECT COUNT(*) c FROM library_song_analysis_failures').get()!.c,
+    ).toBe(before);
   });
 });

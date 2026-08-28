@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
+import { PROCESSING_TASK_IDS, type ProcessingTaskId } from '@nicotind/core';
 import { applySchema } from '../db.js';
 import {
   DEFAULT_PROCESSING_SETTINGS,
@@ -102,6 +103,53 @@ describe('processing-settings', () => {
           .get()!.value,
       ),
     ).not.toHaveProperty('window');
+  });
+
+  // Issue #779: the top-level fields were already read field-by-field so a
+  // retired one could not survive, but tasks/gates were bare spreads — so
+  // `licence`, rolled back in #683, was still in the persisted blob on prod and
+  // was re-written on every save.
+  it('drops a retired task from a persisted blob, in tasks and in gates', () => {
+    db.run(`INSERT INTO app_settings (key, value) VALUES ('processing', ?)`, [
+      JSON.stringify({
+        enabled: true,
+        tasks: { bpm: true, licence: true },
+        gates: { bpm: true, licence: false },
+      }),
+    ]);
+    const s = getProcessingSettings(db);
+    expect(s.tasks).not.toHaveProperty('licence');
+    expect(s.gates).not.toHaveProperty('licence');
+    expect(s.tasks.bpm).toBe(true);
+  });
+
+  it('does not re-persist a retired task on the next write', () => {
+    db.run(`INSERT INTO app_settings (key, value) VALUES ('processing', ?)`, [
+      JSON.stringify({ enabled: true, tasks: { licence: true }, gates: { licence: false } }),
+    ]);
+    setProcessingSettings(db, { paused: true });
+    const stored = JSON.parse(
+      db
+        .query<{ value: string }, []>("SELECT value FROM app_settings WHERE key = 'processing'")
+        .get()!.value,
+    ) as { tasks: Record<string, boolean>; gates: Record<string, boolean> };
+    expect(stored.tasks).not.toHaveProperty('licence');
+    expect(stored.gates).not.toHaveProperty('licence');
+  });
+
+  // The filter is an allowlist of live task ids, NOT of the gates defaults —
+  // gating a task the defaults don't gate is a legitimate admin choice.
+  it('keeps a gate for a live task that the defaults do not gate', () => {
+    db.run(`INSERT INTO app_settings (key, value) VALUES ('processing', ?)`, [
+      JSON.stringify({ enabled: true, gates: { 'audio-features': true } }),
+    ]);
+    expect(getProcessingSettings(db).gates['audio-features']).toBe(true);
+  });
+
+  it('PROCESSING_TASK_IDS covers exactly the shipped task flags', () => {
+    expect([...PROCESSING_TASK_IDS].sort()).toEqual(
+      (Object.keys(DEFAULT_PROCESSING_SETTINGS.tasks) as ProcessingTaskId[]).sort(),
+    );
   });
 
   it('back-fills the gates map from a legacy blob that predates it', () => {

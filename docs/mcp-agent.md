@@ -64,7 +64,8 @@ it, and runs capped at refiner. An invalid/revoked token → 401.
 an optional `destructive` flag. `checkToolAccess` (pure, unit-tested) is the
 guard: a `curate` tool needs the `:curate` scope (a `refiner:read` token is
 refused), and a `destructive` tool needs `args.confirm === true`. `dispatchTool`
-applies it, then runs the handler; every write is audit-logged.
+applies it, then `missingRequiredArgs`, then runs the handler; every write is
+audit-logged.
 
 | tool | access | fronts |
 | --- | --- | --- |
@@ -75,6 +76,7 @@ applies it, then runs the handler; every write is audit-logged.
 | `get_album_tracks` | read | one album: header (year/classification/cover status) + songs with genre, track/disc, suffix, bitrate |
 | `set_song_genre` | curate | `services/song-genre-mutate.ts` `mutateSongGenre` + `song.genre` audit |
 | `lookup_song_metadata` | read | `services/candidate-sources.ts` `gatherSongCandidates` + `services/title-clean.ts` `cleanDisplayTitle` |
+| `identify_song` | read | `services/identify.ts` `identifySongById` — fpcalc + AcoustID only, the narrow fingerprint lane |
 | `fix_song_metadata` | curate | `services/song-metadata-mutate.ts` `mutateSongMetadata` + `song.metadata` audit |
 | `lookup_album_metadata` | read | `services/candidate-sources.ts` `gatherCandidates` — the album-scoped candidate search behind the web metadata-fix modal |
 | `fix_album_metadata` | curate | `services/metadata-fix.ts` `applyMetadataFix` + `album.metadata` audit |
@@ -372,6 +374,77 @@ rule the other curate tools established.
   guarded by `buildIdentifyApplyTags` — add/replace only, a value can never be
   cleared — and is `curate` but not `destructive`: like `set_song_genre` it is
   a reversible, audited write, not a delete.
+
+### A missing argument is an error, not an empty result (issue #778)
+
+`missingRequiredArgs` (pure, unit-tested) rejects a call whose declared-required
+argument is absent, naming both the keys the tool wants **and the keys the
+caller sent**. Before it, a wrong key resolved to `undefined`, got queried,
+missed, and the miss was reported as *data*: `get_artist({name})` answered
+`{"error":"artist not found"}` and `get_album_tracks({albumId})` answered
+`{"album": null, "songs": []}` — both of which read as "the library does not
+have this".
+
+That is not hypothetical. During the 2026-08-28 curation pass three consecutive
+`{album: null, songs: []}` responses were read as *the tool being broken*, and
+the album-sibling technique — which had closed 49 genre gaps in a single earlier
+pass — was written off as unavailable. The key was wrong each time. Separately,
+three planning subagents each invented a *different* wrong signature for
+`merge_artist`. Wrong-key calls are a routine failure mode for this surface, so
+the guard is driven by each tool's own `inputSchema.required` rather than by
+per-handler checks: every tool, including every tool added later, is covered by
+construction.
+
+Present-but-falsy is present — `confirm: false` and `year: 0` are real values,
+and the confirm gate owns the former. Only `undefined`, `null`, a blank string
+and an empty array count as missing. The guard reads the schema and never
+invents a requirement: `complete_album` declares only `confirm`, because
+`albumId` and `artist` + `album` are alternatives its handler arbitrates.
+
+### `identify_song` — identity from the audio (issue #777)
+
+Fingerprint identity answers questions no tag-derived tool can: a junk or
+episode-numbered filename (`CD A 2000.opus`), a watermark bucket (IPAUTA,
+SharingDB.top) where every field is polluted, and true cross-format duplicates —
+`acoustId` **is** the recording identity, where the `(title, artist, duration)`
+heuristic a curation pass used to delete 29 dupes misses an mp3-320-vs-opus
+pair.
+
+The fingerprint was already *reachable* before this tool: `lookup_song_metadata`
+runs it by default and returns the typed outcome. What was missing is a way to
+ask for **only** that. `lookup_song_metadata` fans out to ~4 outbound sources
+per call and is measured to 502 the origin above ~4 concurrent calls (#757), so
+the one lane that is safe to batch was locked behind the one that is not.
+`identify_song` is fpcalc plus a single lookup.
+
+It suggests only — applying stays `fix_song_metadata`, so the write keeps its
+audit row and its add/replace-never-clear guard. The typed `outcome` is the
+point: `no-match` (genuinely unknown to AcoustID — common for regional and
+long-tail catalogue), `undecodable` (**the file** is likely truncated or corrupt
+— a triage signal, not a metadata answer), `fpcalc-missing` (a deployment gap,
+no file at fault), `file-missing`, `source-error` (retry later). Every refusal
+before the attempt is likewise distinct: an agent that cannot tell "no plugin
+configured" from "the audio matched nothing" records the second as a fact about
+the recording — the same empty-result-as-data failure #778 fixes on the argument
+side.
+
+**It carries no genre, by construction.** `IdentifyResult` has no genre field;
+its only genre path is `recordingId` → MusicBrainz tags, which measured *empty*
+for this library's long tail (`Los Rebujitos`, `Niklas Dee`: `genres: []`,
+`tags: []`). It is also strictly weaker than what already failed — `genre-audio`
+is a real audio classifier that has listened to these files and ledgered 2,142
+of them as below-threshold
+([genre-audio-confidence-2026-08.md](measurements/genre-audio-confidence-2026-08.md)).
+
+Two premises this tool was proposed on turned out to be wrong and are recorded
+so nobody re-derives them: `fpcalc` **does** ship in the runtime image (#549
+installs `libchromaprint-tools`), and the AcoustID API key **was** configured on
+prod — the Extensions card read UNAVAILABLE because a blank optional config
+field defeated the plugin's own default (#781). A proposed `undecodable`
+health-report rollup was dropped on measurement: across 26,000 ledger rows the
+prod library has **no** decode-failure population at all (the `bpm`/`key` rows
+are low-confidence analysis, not corruption), so the dimension would have
+reported zero against a denominator that does not mean what its name says.
 
 ## Origin and rare genres (issues #759, #761)
 
