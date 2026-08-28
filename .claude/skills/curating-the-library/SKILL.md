@@ -137,10 +137,10 @@ which.
 
 `source-error` is documented as transient, **and is not always** — a `detail` of
 `AcoustID HTTP 400` is deterministic and no retry will ever succeed. On the 2026-08-28
-prod run all 8 test songs returned exactly that: the stored API key is an AcoustID
-*user* key where the lookup needs an *application* key (#786). One call plus its
-`detail` diagnosed it; a retry loop would have burned the pass. **A repeated
-`source-error` means escalate, not back off.**
+prod run all 8 test songs returned exactly that: AcoustID rejects the configured API
+key (`code 4`), identically to a key invented on the spot, so nothing about the file or
+the request is at fault (#786). One call plus its `detail` diagnosed it; a retry loop
+would have burned the pass. **A repeated `source-error` means escalate, not back off.**
 
 *Not yet proven on this library:* no `match` has been observed here, because of #786.
 When that key is fixed, measure the real hit rate on the long tail before promoting
