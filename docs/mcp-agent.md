@@ -406,9 +406,19 @@ invents a requirement: `complete_album` declares only `confirm`, because
 Fingerprint identity answers questions no tag-derived tool can: a junk or
 episode-numbered filename (`CD A 2000.opus`), a watermark bucket (IPAUTA,
 SharingDB.top) where every field is polluted, and true cross-format duplicates —
-`acoustId` **is** the recording identity, where the `(title, artist, duration)`
-heuristic a curation pass used to delete 29 dupes misses an mp3-320-vs-opus
-pair.
+the `(title, artist, duration)` heuristic a curation pass used to delete 29 dupes
+misses an mp3-320-vs-opus pair.
+
+**For dedupe the identity is `recordingId`, not `acoustId`** (issue #789).
+`acoustId` is a fingerprint *cluster*, and AcoustID can hold two unmerged
+clusters for one recording: measured on prod, four files of `Vilma Palma e
+Vampiros — La pachanga` carry **two** acoustIds and **one** `recordingId`. So the
+same `acoustId` proves the same recording, while a different `acoustId` proves
+nothing and needs the `recordingId` comparison. A match can also arrive with no
+`recordingId` at all (2 of 14 in a random sample) — a fingerprint hit AcoustID has
+not linked to MusicBrainz, still a real identification but with nothing to dedupe
+on. Duration is no substitute either: 162s and 163s are one recording here, while
+163s and 225s are two.
 
 The fingerprint was already *reachable* before this tool: `lookup_song_metadata`
 runs it by default and returns the typed outcome. What was missing is a way to

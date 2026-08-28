@@ -523,8 +523,12 @@ export const MCP_TOOLS: McpTool[] = [
       'Identify a song from its AUDIO via an AcoustID fingerprint — the recording identity, ' +
       'independent of every tag. Use it when the metadata cannot be trusted at all: a junk or ' +
       'episode-numbered filename, a watermark bucket (IPAUTA, SharingDB.top), or two files you ' +
-      'suspect are the same recording in different formats (the acoustId is the identity; ' +
-      'title+artist+duration is a heuristic that misses mp3-vs-opus pairs). Narrow and cheap: ' +
+      'suspect are the same recording in different formats. For dedupe compare `recordingId` ' +
+      '(MusicBrainz), NOT `acoustId`: acoustId is a fingerprint CLUSTER and AcoustID can hold two ' +
+      'unmerged clusters for one recording, so the same acoustId PROVES same recording but a ' +
+      'different acoustId proves nothing (measured: four files of one track carried two acoustIds ' +
+      'and one recordingId). A match can also arrive with no recordingId — a fingerprint hit not ' +
+      'linked to MusicBrainz — which is still a real identification. Narrow and cheap: ' +
       'fpcalc plus ONE outbound lookup, so unlike `lookup_song_metadata` (~4 sources per call) it ' +
       'is safe to run over a batch. It suggests only — apply a result with `fix_song_metadata`. ' +
       'Returns a typed `outcome`: `match`, `no-match` (the audio is genuinely unknown to AcoustID, ' +

@@ -74,6 +74,8 @@ type MusicMetadataApi = {
       year?: number;
       key?: string;
       mood?: string;
+      /** One entry per genre tag frame — an ARRAY, not a string (issue #791). */
+      genre?: string[];
       /** Normalised copyright text/URL (music-metadata folds TCOP/COPYRIGHT/©cpy). */
       copyright?: string;
       acoustid_id?: string;
@@ -248,6 +250,20 @@ function pickString(v: unknown): string | undefined {
   return typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
 }
 
+/**
+ * music-metadata returns `common.genre` as an ARRAY — one entry per tag frame,
+ * which is the multi-genre shape `splitGenres` parses (docs/genre-model.md).
+ * `AudioTags.genre` is the single-string form both writers emit, so join on the
+ * same `; ` separator the write paths use rather than dropping the extras.
+ */
+function pickGenre(raw: unknown): string | undefined {
+  if (Array.isArray(raw)) {
+    const parts = raw.map((v) => (typeof v === 'string' ? v.trim() : '')).filter(Boolean);
+    return parts.length > 0 ? parts.join('; ') : undefined;
+  }
+  return pickString(raw);
+}
+
 function parseTrackNumber(raw: unknown): number | undefined {
   if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
   if (typeof raw === 'string') {
@@ -286,6 +302,7 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         trackNumber: parseTrackNumber(d.trackNumber),
         year: parseYear(d.year),
         key: pickString(d.initialKey),
+        genre: pickString(d.genre),
         compilation: d.TCMP === '1' || d.compilation === '1',
         lyrics: readId3Lyrics(d),
         energy: parseUnit(readUserText(d, FEATURE_TAG_KEYS.energy)),
@@ -317,6 +334,7 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         trackNumber: c.track?.no ?? undefined,
         year: c.year,
         key: pickString(c.key),
+        genre: pickGenre(c.genre),
         lyrics: readVorbisLyrics(c.lyrics),
         ...featureTagsFromNative(parsed.native, c.mood),
         acoustIdId: pickString(c.acoustid_id),
