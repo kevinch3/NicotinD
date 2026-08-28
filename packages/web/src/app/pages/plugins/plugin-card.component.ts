@@ -92,11 +92,12 @@ export class PluginCardComponent {
     return this.draft[key] ?? '';
   }
 
-  /** The plugin's required binaries as one display string, or null when it
-   *  declares none. */
+  /** The binaries the server probed and found unresolved, as one display
+   *  string, or null when there are none to report. Never the declared list:
+   *  an unavailable plugin may be unavailable for another reason (issue #781). */
   missingBinaries(): string | null {
-    const binaries = this.plugin.requirements?.binaries;
-    return binaries?.length ? binaries.join(', ') : null;
+    const missing = this.plugin.missingBinaries;
+    return missing?.length ? missing.join(', ') : null;
   }
 
   /** The unified status pill state — see `pluginStatus()` for priority order. */

@@ -343,3 +343,101 @@ describe('PluginRegistry remote addons', () => {
     await expect(registry.unregister('nope')).rejects.toThrow(/unknown plugin/);
   });
 });
+
+describe('PluginRegistry config field defaults', () => {
+  let db: Database;
+  let registry: PluginRegistry;
+
+  const withDefault = (): PluginManifest => ({
+    id: 'acoustid-like',
+    name: 'AcoustID-like',
+    description: 'fingerprint',
+    kind: 'metadata',
+    capabilities: ['identify'],
+    defaultEnabled: false,
+    configSchema: z.object({ apiKey: z.string().optional(), binaryPath: z.string().optional() }),
+    configFields: [
+      { key: 'apiKey', label: 'API key', type: 'password' },
+      { key: 'binaryPath', label: 'binary path', type: 'text', defaultValue: 'fpcalc' },
+    ],
+  });
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    applySchema(db);
+    registry = new PluginRegistry({ db, dataDir: '/tmp/nicotind-test' });
+  });
+
+  it('hands a plugin the declared default when the stored value is blank', async () => {
+    const plugin = makePlugin(withDefault());
+    registry.register(plugin);
+    registry.setConfig('acoustid-like', { apiKey: 'k', binaryPath: '' });
+    await registry.enable('acoustid-like', 'admin');
+
+    expect(plugin.initCalls.at(-1)?.config.binaryPath).toBe('fpcalc');
+  });
+
+  it('still hands over a blank secret, so clearing a key keeps working', async () => {
+    const plugin = makePlugin(withDefault());
+    registry.register(plugin);
+    registry.setConfig('acoustid-like', { apiKey: '', binaryPath: '/usr/bin/fpcalc' });
+    await registry.enable('acoustid-like', 'admin');
+
+    expect(plugin.initCalls.at(-1)?.config.apiKey).toBe('');
+    expect(plugin.initCalls.at(-1)?.config.binaryPath).toBe('/usr/bin/fpcalc');
+  });
+
+  it('re-applies the default on a config-change re-init, not only at first init', async () => {
+    const plugin = makePlugin(withDefault());
+    registry.register(plugin);
+    registry.setConfig('acoustid-like', { binaryPath: '/opt/fpcalc' });
+    await registry.enable('acoustid-like', 'admin');
+
+    // The operator clears the field in the form — it persists as "".
+    registry.setConfig('acoustid-like', { binaryPath: '' });
+    await registry.flushReinit();
+
+    expect(plugin.initCalls.at(-1)?.config.binaryPath).toBe('fpcalc');
+  });
+});
+
+describe('PluginRegistry reported missing binaries', () => {
+  let db: Database;
+  let registry: PluginRegistry;
+
+  const needsBinary = (binaries: string[]): PluginManifest => ({
+    id: 'needs-binary',
+    name: 'Needs a binary',
+    description: 'x',
+    kind: 'metadata',
+    capabilities: ['identify'],
+    defaultEnabled: false,
+    requirements: { binaries },
+  });
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    applySchema(db);
+    registry = new PluginRegistry({ db, dataDir: '/tmp/nicotind-test' });
+  });
+
+  it('reports a declared binary that does not resolve', async () => {
+    registry.register(makePlugin(needsBinary(['nicotind-no-such-binary']), { available: false }));
+    const info = (await registry.list()).find((i) => i.id === 'needs-binary');
+    expect(info?.missingBinaries).toEqual(['nicotind-no-such-binary']);
+  });
+
+  it('reports nothing when the declared binary resolves, even if the plugin is unavailable', async () => {
+    // The #781 shape: fpcalc is installed, the plugin is unavailable for an
+    // unrelated reason, and the UI must not blame the binary.
+    registry.register(makePlugin(needsBinary(['sh']), { available: false }));
+    const info = (await registry.list()).find((i) => i.id === 'needs-binary');
+    expect(info?.missingBinaries).toEqual([]);
+  });
+
+  it('omits the field entirely for a plugin that declares no binaries', async () => {
+    registry.register(makePlugin(acquisitionManifest({ id: 'no-reqs' })));
+    const info = (await registry.list()).find((i) => i.id === 'no-reqs');
+    expect(info?.missingBinaries).toBeUndefined();
+  });
+});

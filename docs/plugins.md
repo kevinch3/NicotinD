@@ -369,13 +369,27 @@ Uploads()`, `options.get()` (new JSON options accessor), and `application.getInf
   fetched independently (`Promise.all` + `.catch`) so one failure degrades to zeros, never a 500.
   The panel polls every ~3s while the tab is visible.
 - **Generic config-field editor**: a plugin manifest may declare `configFields` (UI descriptors:
-  `{ key, label, type: 'text'|'password', placeholder?, help? }`). The card renders a small form
+  `{ key, label, type: 'text'|'password', placeholder?, help?, defaultValue? }`). The card renders a small form
   from them; `GET /api/plugins` echoes `configFields` + a `configured` map (which keys have a stored
   value) + `config` (non-secret prefill values only — **`password` fields are never returned**).
   A blank password input is omitted on save, and `registry.setConfig` **merges** the update over the
   stored config, so "leave the secret blank to keep it" round-trips safely. The build-submit /
   prefill logic is in the DI-free `lib/plugin-config.ts` (unit-tested). The Spotify plugin is the
   first consumer (client id/secret).
+- **A blank optional field is not an absent one** (issue #781): a form saved with a `text` input
+  left empty persists `""`, and `??` does not fire for `""` — so a code-side default applied only
+  in a constructor is silently overwritten on the next `init()`. A field declares its fallback as
+  `defaultValue`, and `applyConfigFieldDefaults` (addon-sdk `manifest.ts`, pure) is applied by
+  `PluginRegistry.initPlugin` on **every** config load, not just the first. Declare it only where
+  blank means "use the default" — never on a secret, where blank is how a value is cleared.
+  AcoustID's `binaryPath` is the first consumer: prod stored `""` and probed `execFileSync('')`,
+  reporting `fpcalc` as missing while it was installed.
+- **Missing binaries are probed, never assumed** (issue #781): `GET /api/plugins` returns
+  `missingBinaries` — the declared `requirements.binaries` that do not resolve, checked with
+  `resolvesOnPath` (a PATH lookup, not an execution: probe flags differ per binary). The card
+  renders that list. It previously echoed the *declared* list whenever a plugin was
+  enabled-but-unavailable, so any other cause of unavailability was reported to the operator as a
+  missing binary.
 - **Unified plugin status pill**: each card shows one derived status —
   Off / Needs config / Unavailable / Ready — computed by the pure
   `lib/plugin-status.ts` `pluginStatus()` from fields `GET /api/plugins` already

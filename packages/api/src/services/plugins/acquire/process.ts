@@ -1,5 +1,5 @@
 import { spawn, execFileSync } from 'node:child_process';
-import { readdirSync, statSync } from 'node:fs';
+import { accessSync, constants, readdirSync, statSync } from 'node:fs';
 import { join, extname, dirname } from 'node:path';
 import {
   createLogger,
@@ -70,6 +70,28 @@ export function acquireEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.Proces
   if (base.HOME) prepend.push(join(base.HOME, '.local/bin'));
   const missing = prepend.filter((dir) => !existing.includes(dir));
   return { ...base, PATH: [...missing, ...existing].join(':') };
+}
+
+/**
+ * Does this executable resolve? Matches the documented `PluginRequirements`
+ * contract ("must resolve on PATH, or at a configured path") — a lookup, not an
+ * execution, because probe flags differ per binary and guessing one reports a
+ * present binary as missing (issue #781).
+ */
+export function resolvesOnPath(binary: string, env: NodeJS.ProcessEnv = acquireEnv()): boolean {
+  const executable = (candidate: string): boolean => {
+    try {
+      accessSync(candidate, constants.X_OK);
+      return statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  };
+  if (binary.includes('/')) return executable(binary);
+  return (env.PATH ?? '')
+    .split(':')
+    .filter(Boolean)
+    .some((dir) => executable(join(dir, binary)));
 }
 
 /** Cached binary availability check results (keyed by binary path). */

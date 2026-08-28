@@ -43,6 +43,12 @@ export interface PluginInfo {
   configured?: Record<string, boolean>;
   /** Prefill values for non-secret (`text`) fields. */
   config?: Record<string, unknown>;
+  /**
+   * Declared binaries the server probed and found unresolved. Render this
+   * rather than `requirements.binaries` — an unavailable plugin is not
+   * necessarily missing a binary (issue #781).
+   */
+  missingBinaries?: string[];
   /** True for a registered remote addon (acquisition addon protocol). */
   remote?: boolean;
   /** The remote addon's base URL. */

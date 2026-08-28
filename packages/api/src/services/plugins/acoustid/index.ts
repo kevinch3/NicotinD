@@ -49,6 +49,7 @@ export class AcoustidPlugin implements Plugin {
         label: 'fpcalc binary path',
         type: 'text',
         placeholder: 'fpcalc',
+        defaultValue: 'fpcalc',
         help: 'Full path to the fpcalc executable if it is not on PATH.',
       },
     ],

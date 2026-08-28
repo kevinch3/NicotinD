@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { validatePluginManifest, type PluginManifest } from './manifest.js';
+import {
+  applyConfigFieldDefaults,
+  validatePluginManifest,
+  type PluginManifest,
+} from './manifest.js';
 
 function base(overrides: Partial<PluginManifest> = {}): PluginManifest {
   return {
@@ -93,5 +97,56 @@ describe('validatePluginManifest', () => {
   it('carries an optional zod config schema without complaint', () => {
     const m = base({ configSchema: z.object({ apiKey: z.string() }) });
     expect(validatePluginManifest(m)).toEqual([]);
+  });
+});
+
+describe('applyConfigFieldDefaults', () => {
+  const manifest = base({
+    configFields: [
+      { key: 'apiKey', label: 'API key', type: 'password' },
+      { key: 'binaryPath', label: 'binary path', type: 'text', defaultValue: 'fpcalc' },
+    ],
+  });
+
+  it('fills in the default when the stored value is a blank string', () => {
+    // The bug: a form saved with the optional path left empty persists "",
+    // which then overwrites the default and makes the probe run on "".
+    expect(applyConfigFieldDefaults(manifest, { binaryPath: '' })).toEqual({
+      binaryPath: 'fpcalc',
+    });
+  });
+
+  it('fills in the default when the key is absent entirely', () => {
+    expect(applyConfigFieldDefaults(manifest, {})).toEqual({ binaryPath: 'fpcalc' });
+  });
+
+  it('treats a whitespace-only value as blank', () => {
+    expect(applyConfigFieldDefaults(manifest, { binaryPath: '   ' })).toEqual({
+      binaryPath: 'fpcalc',
+    });
+  });
+
+  it('keeps a real stored value', () => {
+    expect(applyConfigFieldDefaults(manifest, { binaryPath: '/usr/bin/fpcalc' })).toEqual({
+      binaryPath: '/usr/bin/fpcalc',
+    });
+  });
+
+  it('leaves a blank field that declares no default alone, so a secret stays clearable', () => {
+    expect(applyConfigFieldDefaults(manifest, { apiKey: '', binaryPath: 'fpcalc' })).toEqual({
+      apiKey: '',
+      binaryPath: 'fpcalc',
+    });
+  });
+
+  it('passes through unrelated keys untouched', () => {
+    expect(applyConfigFieldDefaults(manifest, { other: 7, binaryPath: 'x' })).toEqual({
+      other: 7,
+      binaryPath: 'x',
+    });
+  });
+
+  it('is a no-op for a manifest with no configFields', () => {
+    expect(applyConfigFieldDefaults(base(), { a: 1 })).toEqual({ a: 1 });
   });
 });
