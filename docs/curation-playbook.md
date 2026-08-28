@@ -69,7 +69,8 @@ Dry-run first where supported; each step's counter is its health dimension.
 | Watermark / wrong-field albums, missing years | `lookup_album_metadata` → `fix_album_metadata` |
 | Visible `unknown` / oversized classification | `set_album_classification` |
 | Coverless albums with a confident candidate URL | `set_album_cover` |
-| Residual genre-less songs | `set_song_genre` (append) |
+| Residual genre-less songs | `set_song_genre` (`mode: 'replace'` — a curator decision must survive a rescan) |
+| A file whose tags cannot be trusted at all | `identify_song` — recording identity from the audio |
 | Anything ambiguous | `flag_for_review` — never a guess |
 
 *Exit*: every sampled worklist item fixed or flagged; `audit_log` tail spot-checked

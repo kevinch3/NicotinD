@@ -24,11 +24,9 @@ before assuming two adjacent pages are the same scene.
 
 ## Tool signatures that get guessed wrong
 
-**A wrong argument key does not error — it comes back as empty data** (issue #778).
-`get_artist` with `name` returns `{"error":"artist not found"}`; `get_album_tracks` with
-`albumId` returns `{"album": null, "songs": []}`. Both read as "the library doesn't have
-this", and both are wrong. Never conclude something is absent from one empty read —
-re-check the key first.
+A wrong argument key now **errors**, naming the key it wanted and the keys you sent
+(fixed in #778 — it used to answer with empty data that read as "not in the library").
+So a wrong signature costs a retry, not a wrong conclusion. Save the retry:
 
 | Tool | Key | Not |
 | --- | --- | --- |
@@ -60,14 +58,14 @@ re-applies at scan time. On a song whose file tag holds a real-but-wrong genre (
 like "Relief Records", a mistag), an append **adds your genre next to the wrong one and
 is then lost on rescan**. Leave `append` for automated detectors adding an extra tag.
 
-`docs/curation-playbook.md`'s Wave 2 table still says `set_song_genre` (append). It is
-stale on this point; `replace` is correct for curator decisions.
 
 ## Type bare characters in every MCP argument
 
 HTML entities arrive **literally** — there is no unescaping. Writing `&amp;` created two
 real artist rows named `Wisin &amp; Yandel`; writing `&lt;` created an album literally
-named `while(1&lt;2)`. Type `&`, `<`, `>`. Re-read any argument containing one before sending.
+named `while(1&lt;2)`. Type `&`, `<`, `>`. Re-read any argument containing one before
+sending. Unlike a wrong key, this one *lands* — undoing it costs a merge or a retag. (A
+server-side guard is proposed in #787; until it ships this is entirely on you.)
 
 ## Verify every write by reading back
 
@@ -112,6 +110,63 @@ Then, and only then, spend a search:
 `flag_for_review` is for ambiguity that risks **wrong data** — a b2b DJ credit, two
 plausible artist identities, an authenticity call — not for "I don't know this one".
 
+## `identify_song` — when the tags cannot be trusted at all
+
+Fingerprint identity from the audio, independent of every tag. It is `read` access,
+one fpcalc run plus **one** outbound call, and safe to batch — unlike
+`lookup_song_metadata`, whose ~4-source fan-out 502s the origin above ~4 concurrent
+calls (#757). It suggests only; apply with `fix_song_metadata`. It carries **no genre**,
+by construction — do not reach for it on the genre backlog.
+
+What it is actually for: a junk-named file (`Track 1`…`Track 10`, `Pista 4`, `CD A 2000`)
+and true cross-format duplicates.
+
+**Measured on prod 2026-08-28** (v0.5.29, after the API key was fixed — #786): a random
+sample of 14 songs matched **14/14**, scores 0.92–0.995, 12 of them carrying a
+MusicBrainz `recordingId`. Across all 22 songs tried, 21 matched. This library's Latin
+and regional catalogue turned out to be **very well covered** — I predicted thin
+coverage and was wrong. Treat `identify_song` as a high-yield lane, not a last resort.
+
+### For dedupe, `recordingId` is the identity — not `acoustId`
+
+`acoustId` is a fingerprint *cluster*; AcoustID sometimes holds two clusters for one
+recording. So:
+
+- **same `acoustId` → same recording.** Proof.
+- **different `acoustId` → inconclusive.** Compare `recordingId` before concluding
+  anything.
+
+Both cases occur in this library:
+
+| files | acoustId | recordingId | verdict |
+| --- | --- | --- | --- |
+| Chalchaleros 162s ogg + 163s mp3 | same | same | same recording, cross-format dupe |
+| Chalchaleros 225s mp3 | differs | differs | **a different recording** of the same song |
+| Vilma Palma 278s×2 opus + 279s/282s mp3 | **two ids** | **one id** | all four are one recording |
+
+Reading `acoustId` alone would have called the four Vilma Palma files two different
+recordings. It also shows why a duration window is not a substitute: 162 vs 163 is the
+same recording and 278 vs 282 is too, but 163 vs 225 is not.
+
+A match can arrive with **no** `recordingId` (2 of 14) — a fingerprint hit AcoustID has
+not linked to MusicBrainz. Still a real identification; just no MB id to dedupe on.
+
+**Read the `outcome`; it is the whole point.** Do not treat every negative the same:
+
+| outcome | what it means | what to do |
+| --- | --- | --- |
+| `match` | a recording identity, with `score` | apply via `fix_song_metadata` |
+| `no-match` | genuinely unknown to AcoustID — rare here (1 of 22), but real | retag by hand or leave it |
+| `undecodable` | **the file** is likely truncated or corrupt | a triage signal, not a metadata answer |
+| `fpcalc-missing` | deployment gap, no file at fault | escalate, stop calling it |
+| `source-error` | check `detail` before assuming transient | see below |
+
+`source-error` is documented as transient, **and is not always** — a `detail` of
+`AcoustID HTTP 400` is deterministic and no retry will ever succeed. Before the key was
+fixed every call returned exactly that, identically to a key invented on the spot (#786).
+One call plus its `detail` diagnosed it; a retry loop would have burned the pass.
+**A repeated `source-error` means escalate, not back off.**
+
 ## Before destructive work
 
 - **`get_artist` before merging a placeholder bucket.** Buckets named `artist`/`Unknown`
@@ -139,3 +194,23 @@ plausible artist identities, an authenticity call — not for "I don't know this
 Record the pass in `docs/measurements/curation-pass-YYYY-MM.md` (baseline → actions and
 counts → final → delta table → issues filed). Systemic friction becomes a GitHub issue,
 not prose. Confirm deltas against a re-run of the metric, not against your own tally.
+
+## Maintaining this file
+
+Two kinds of content live here and only one of them ages.
+
+**Judgment** — the genre mode rule, the search-spend gate, "junk metadata is not junk
+audio", "don't flag what you merely don't know" — is what no code can enforce. It stays.
+
+**Workarounds for defects** are debt. Each one is a bug that should be *filed*, and when
+that issue closes the line here becomes an active lie — it teaches distrust of a surface
+that no longer lies, and buys a retry that no longer helps. So every workaround carries
+its issue number, and closing an issue means pruning this file in the same pass.
+
+The wrong-key trap is the worked example: "a wrong key comes back as empty data, never
+conclude absence from one empty read" was the most useful line in this file until #778
+shipped, and the most misleading one the day after. It has been pruned to a signature
+table. **As of 2026-08-28 nothing here is a workaround** — read-back verification and
+bare characters survive because they are discipline that holds whether or not a guard
+ever ships, not because a bug is open. Keep it that way: if you find yourself writing
+"the tool lies, so do X", file the bug first and write the issue number next to X.
