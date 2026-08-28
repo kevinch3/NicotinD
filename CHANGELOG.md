@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.29](https://github.com/kevinch3/NicotinD/compare/v0.5.28...v0.5.29) (2026-08-28)
+
+### Features
+
+* **mcp:** make the curator surface say what it means ([#777](https://github.com/kevinch3/NicotinD/issues/777), [#778](https://github.com/kevinch3/NicotinD/issues/778), [#779](https://github.com/kevinch3/NicotinD/issues/779), [#780](https://github.com/kevinch3/NicotinD/issues/780)) ([#785](https://github.com/kevinch3/NicotinD/issues/785)) I ([c62bc3c](https://github.com/kevinch3/NicotinD/commit/c62bc3c8fe49e04b10e4b2f312687f0e4b48fbc4)), references [#757](https://github.com/kevinch3/NicotinD/issues/757) [#549](https://github.com/kevinch3/NicotinD/issues/549) [#781](https://github.com/kevinch3/NicotinD/issues/781) [#683](https://github.com/kevinch3/NicotinD/issues/683) [#784](https://github.com/kevinch3/NicotinD/issues/784)
 ## [0.5.28](https://github.com/kevinch3/NicotinD/compare/v0.5.27...v0.5.28) (2026-08-28)
 
 ### Bug Fixes
