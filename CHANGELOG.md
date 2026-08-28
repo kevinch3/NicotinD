@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.30](https://github.com/kevinch3/NicotinD/compare/v0.5.29...v0.5.30) (2026-08-28)
+
+### Bug Fixes
+
+* **library:** read the genre tag back, and name the right dedupe identity ([#789](https://github.com/kevinch3/NicotinD/issues/789), [#791](https://github.com/kevinch3/NicotinD/issues/791)) ([#792](https://github.com/kevinch3/NicotinD/issues/792)) ([bf093ff](https://github.com/kevinch3/NicotinD/commit/bf093ffbbc49244dfd47e0131144cac57972ab1f)), references [#790](https://github.com/kevinch3/NicotinD/issues/790)
 ## [0.5.29](https://github.com/kevinch3/NicotinD/compare/v0.5.28...v0.5.29) (2026-08-28)
 
 ### Features
