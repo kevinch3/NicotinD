@@ -998,3 +998,23 @@ Next session: resume `list_recent_songs(missingGenre: true)` from wherever the b
 Catalan rumba/flamenco cluster from session 4m (María Ruiz, Maison Bélier, Montse Cortés, La Sra.
 Tomasa, Maruja Limón, Mayte Martin) is a good first target — high-confidence genre family, just
 needs per-artist confirmation searches.
+
+### Session 4v — resumed after compaction, WebSearch budget still exhausted
+
+Confirmed the WebSearch budget (200/200) did NOT reset — this is a continuation of the same
+underlying session despite the context compaction/summary boundary, not a fresh one. All 10 search
+attempts this tick were refused by the harness.
+
+5 tagged from repeat artists with prior evidence: Pereza ×2 `Alternative Rock`, Fran Perea
+`Pop Rock`, El Chipirón de Granada `Copla;Flamenco`, Melocos `Pop Rock` — all re-landed copies of
+tracks already tagged in session 4e.
+
+A large fresh Catalan cluster landed (Joan Garriga i el Mariatxi galàctic, Els Catarres, Los
+Manolos, Remendaos, Arrels De Gràcia, Cesk Freixas, Maruja Limón, SanIsidro, Alma de Boquerón,
+ÉSSERS, Muchacho, Lluki Valverde, Complikaos, La Mare del Tanu, La Cabra Mecanica) — almost
+certainly the same rumba catalana / Catalan pop-rock family as sessions 4m/4r, but left entirely
+untagged: no budget to confirm per-artist, and cluster proximity is still not evidence.
+
+**Recommendation for the owner**: raise `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` to unblock this
+backlog, since it is now the sole bottleneck — the curation methodology and worklist are both ready
+to go the moment search is available again.
