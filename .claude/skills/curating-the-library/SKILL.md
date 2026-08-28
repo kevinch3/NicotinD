@@ -119,33 +119,53 @@ calls (#757). It suggests only; apply with `fix_song_metadata`. It carries **no 
 by construction — do not reach for it on the genre backlog.
 
 What it is actually for: a junk-named file (`Track 1`…`Track 10`, `Pista 4`, `CD A 2000`)
-and true cross-format duplicates, where `acoustId` **is** the recording identity and
-`(title, artist, duration)` is only a heuristic. Real prod cluster: three
-`Los Chalchaleros — Yo vendo unos ojos negros` rows at 162s / 163s / **225s**. Two of
-those are the same recording and one is not, and no amount of title matching decides
-which.
+and true cross-format duplicates.
+
+**Measured on prod 2026-08-28** (v0.5.29, after the API key was fixed — #786): a random
+sample of 14 songs matched **14/14**, scores 0.92–0.995, 12 of them carrying a
+MusicBrainz `recordingId`. Across all 22 songs tried, 21 matched. This library's Latin
+and regional catalogue turned out to be **very well covered** — I predicted thin
+coverage and was wrong. Treat `identify_song` as a high-yield lane, not a last resort.
+
+### For dedupe, `recordingId` is the identity — not `acoustId`
+
+`acoustId` is a fingerprint *cluster*; AcoustID sometimes holds two clusters for one
+recording. So:
+
+- **same `acoustId` → same recording.** Proof.
+- **different `acoustId` → inconclusive.** Compare `recordingId` before concluding
+  anything.
+
+Both cases occur in this library:
+
+| files | acoustId | recordingId | verdict |
+| --- | --- | --- | --- |
+| Chalchaleros 162s ogg + 163s mp3 | same | same | same recording, cross-format dupe |
+| Chalchaleros 225s mp3 | differs | differs | **a different recording** of the same song |
+| Vilma Palma 278s×2 opus + 279s/282s mp3 | **two ids** | **one id** | all four are one recording |
+
+Reading `acoustId` alone would have called the four Vilma Palma files two different
+recordings. It also shows why a duration window is not a substitute: 162 vs 163 is the
+same recording and 278 vs 282 is too, but 163 vs 225 is not.
+
+A match can arrive with **no** `recordingId` (2 of 14) — a fingerprint hit AcoustID has
+not linked to MusicBrainz. Still a real identification; just no MB id to dedupe on.
 
 **Read the `outcome`; it is the whole point.** Do not treat every negative the same:
 
 | outcome | what it means | what to do |
 | --- | --- | --- |
 | `match` | a recording identity, with `score` | apply via `fix_song_metadata` |
-| `no-match` | genuinely unknown to AcoustID — normal for regional and long-tail catalogue | retag by hand or leave it |
+| `no-match` | genuinely unknown to AcoustID — rare here (1 of 22), but real | retag by hand or leave it |
 | `undecodable` | **the file** is likely truncated or corrupt | a triage signal, not a metadata answer |
 | `fpcalc-missing` | deployment gap, no file at fault | escalate, stop calling it |
 | `source-error` | check `detail` before assuming transient | see below |
 
 `source-error` is documented as transient, **and is not always** — a `detail` of
-`AcoustID HTTP 400` is deterministic and no retry will ever succeed. On the 2026-08-28
-prod run all 8 test songs returned exactly that: AcoustID rejects the configured API
-key (`code 4`), identically to a key invented on the spot, so nothing about the file or
-the request is at fault (#786). One call plus its `detail` diagnosed it; a retry loop
-would have burned the pass. **A repeated `source-error` means escalate, not back off.**
-
-*Not yet proven on this library:* no `match` has been observed here, because of #786.
-When that key is fixed, measure the real hit rate on the long tail before promoting
-this to a first-choice lane — AcoustID coverage of regional catalogue is exactly the
-kind of thing this library has repeatedly turned out to be thin on.
+`AcoustID HTTP 400` is deterministic and no retry will ever succeed. Before the key was
+fixed every call returned exactly that, identically to a key invented on the spot (#786).
+One call plus its `detail` diagnosed it; a retry loop would have burned the pass.
+**A repeated `source-error` means escalate, not back off.**
 
 ## Before destructive work
 
