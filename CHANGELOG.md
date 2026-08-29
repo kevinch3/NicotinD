@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.40](https://github.com/kevinch3/NicotinD/compare/v0.5.39...v0.5.40) (2026-08-29)
+
+### Bug Fixes
+
+* **review:** approve-all / discard-all are one bulk request with a live queue ([#808](https://github.com/kevinch3/NicotinD/issues/808)) ([#814](https://github.com/kevinch3/NicotinD/issues/814)) ([65b9b55](https://github.com/kevinch3/NicotinD/commit/65b9b5512bd77b2754c1b51c87f960f08f365351)), references [#708](https://github.com/kevinch3/NicotinD/issues/708)
 ## [0.5.39](https://github.com/kevinch3/NicotinD/compare/v0.5.38...v0.5.39) (2026-08-29)
 
 ### Bug Fixes
