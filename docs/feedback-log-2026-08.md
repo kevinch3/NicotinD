@@ -21,6 +21,9 @@
 | 8   | ✅     | Medium   | Peer browse         | "Load full tree" offered, then "Browse provider not available" |
 | 9   | ✅     | High     | Raw-lane grab       | One folder click renders two download cards (twin rows, again) |
 | 10  | ✅     | Low      | Downloads feed      | Card subtitle shows the peer's junk path segment ("complete")  |
+| 11  | ✅     | Medium   | Radio poll wizard   | Binary 👍/👎 too coarse — first outside rater asked for 1–5    |
+| 12  | ✅     | Medium   | Radio poll wizard   | No way to skip a track/scenario; wizard force-rates everything |
+| 13  | ✅     | Medium   | Radio poll wizard   | Scenario steps never state the premise ("No veo la categoría") |
 
 ---
 
@@ -56,6 +59,12 @@
 - **(High) One click on an Advanced-lane folder produced two in-progress cards, both "BODAS 2024 (DJ ROBERT)" — one stuck "Downloading 0 of 1", one "Processing 1 of 1".** _Use:_ QA on v0.4.8. This is the #586 "Kaleo card" symptom, back. _Root cause:_ the #586 fix shipped without its provider half — `AddonSearchProvider.download` gained only the `DownloadReceipt` type import while the body kept discarding the created job's id, so the route never pre-mapped and the poller minted the twin. TypeScript accepted it (`Promise<void>` satisfies `Promise<DownloadReceipt | void>`), eslint flagged the unused import but the #615 sweep deleted the import instead of asking why, and the route test stubbed a receipt-returning provider the real class didn't match. **✅ Fixed** (issue #673): `download()` declares `Promise<DownloadReceipt>` (compiler refuses create-and-forget) and returns the id; a provider-level regression test asserts the receipt itself. _Lesson:_ an unused import added by the same feature IS the bug report — deleting it during a lint sweep silences the one net that fired; and a `| void` union on an interface return makes "forgot to return" invisible, so declare the implementation non-void.
 
 - **(Low) The surviving grab card's subtitle read "complete" — the peer's own slskd transfer dir, taken verbatim as the artist hint.** _Root cause:_ the route's inline `segments[-2]` parse had no junk filter, and a non-NULL junk hint permanently blocks `updateJobMeta`'s COALESCE backfill of the addon's real metadata — a junk hint is strictly worse than no hint. **✅ Fixed** (issue #674): generic segments (`isGenericFolderName`, now including slskd's `complete`/`incomplete`) store NULL, which self-heals on the poller's next backfill.
+
+### 2026-08-29
+
+- **(Medium) Radio poll wizard: "anda bastante bien pero le falta granularidad a la encuesta (1-5 sería mejor)".** _Use:_ the first outside rater (Diego) on a real seed poll; the same session's data agreed with him — with 2–3 raters the binary majority consensus tied constantly, and one poll's 25 graded candidates yielded only **4 usable AUC pairs** for `eval-radio-poll.ts`. **✅ Fixed** (issue #800): 1–5 star scale on every new poll (`voteScale` stamp, additive `rating` column, graded pairwise agreement), thumbs kept for legacy binary polls. _Lesson:_ the eval loop was starved by its own vote type, not by rater effort — instrument granularity is a formula-calibration concern, not a UI nicety.
+- **(Medium) Radio poll wizard force-rates: "…y la opción de saltear la pregunta".** `Next` was disabled until every candidate had a verdict, so a rater who didn't know a track had to fabricate an opinion — polluting exactly the signal the poll collects. **✅ Fixed** (issue #798): rating is optional per track, a zero-vote scenario advances without POSTing, and the hint shows live progress instead of a demand.
+- **(Medium) Scenario steps never state the premise: "No veo la categoría por ningún lado. ¿Importa?".** The now-playing → generated-queue premise lived only on the intro screen; explaining it took an out-of-band chat message. **✅ Fixed** (issue #799): a persistent per-step framing line (seed and station variants, the station one naming the station), intro copy rewritten, EN + ES.
 
 ---
 

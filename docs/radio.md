@@ -755,6 +755,24 @@ used — the version is the human/grouping label, not the ground truth.
   Alternative Rock), which is a product question nobody has answered: should a
   genre station prefer artists from the pool's modal country?
 
+- **v6 first human measurement (2026-08-29)** — 120 votes / 5 raters / 2 polls
+  (five seed scenarios; three stations + two seeds), the first votes collected
+  under v6 and the first from raters outside the household. Headline: pooled
+  v6·binary AUC **0.522 over 23 pairs** (~random, n far too small to move
+  weights). The sharper finding is about the *instrument*, not the formula:
+  with 2–3 raters, binary thumbs tie constantly and the majority consensus
+  discarded most of the effort — one poll's 25 graded candidates yielded only
+  **4 usable pairs**. That, plus the first outside rater's own ask ("1-5 sería
+  mejor", plus skip and clearer framing), produced the stars5 vote scale +
+  skippable wizard (issues #798–#800); v6·stars5 accumulates as its own fresh
+  baseline and is never pooled with these numbers. Also measured: approval 84%
+  (genre poll) vs 64% (seed poll); **no rank-position decay** across ranks 1–5;
+  and the downvote post-mortem splits cleanly into formula misses (cross-genre
+  leakage: Eminem served after Metallica's *Battery*, Downtempo/Britpop after
+  Radiohead) and **library mistags surfacing through radio** (a Rampa remix
+  tagged Death Metal, Guasones tagged Pop, a junk "Metal Cover" novelty in the
+  Metal station) — the latter are curation work and say nothing about weights.
+
 Measure any weight idea against the accumulated votes before shipping it:
 
 ```bash

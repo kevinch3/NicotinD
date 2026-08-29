@@ -20,6 +20,7 @@ function summary(over: Partial<RadioPollSummary> = {}): RadioPollSummary {
     voteCount: 12,
     raterCount: 4,
     formulaVersion: '2',
+    voteScale: 'binary',
     ...over,
   };
 }

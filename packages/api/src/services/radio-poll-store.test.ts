@@ -10,11 +10,13 @@ import {
   closePoll,
   createPoll,
   deletePoll,
+  deriveVerdict,
   getPollByToken,
   listPollSummaries,
   listScenarios,
   pollResults,
   pollStatus,
+  pollVoteScale,
   publicPollView,
   recordVotes,
 } from './radio-poll-store.js';
@@ -69,15 +71,22 @@ function scenario(id: string, position: number, candidateIds: string[]): Generat
   };
 }
 
-function makePoll(scenarios?: GeneratedScenario[]): { id: string; token: string } {
+function makePoll(
+  scenarios?: GeneratedScenario[],
+  settings?: Partial<import('@nicotind/core').RadioPollSettings>,
+): { id: string; token: string } {
   db.run("INSERT INTO users (id, username, password_hash) VALUES ('u1','admin','x')");
   return createPoll(db, {
     name: 'Test poll',
     createdBy: 'u1',
-    settings: { scenarioCount: 2, nextUpCount: 2 },
+    settings: { scenarioCount: 2, nextUpCount: 2, ...settings },
     engineVersion: '0.1.0',
     scenarios: scenarios ?? [scenario('sc1', 0, ['c1', 'c2']), scenario('sc2', 1, ['c3', 'c4'])],
   });
+}
+
+function makeStarsPoll(scenarios?: GeneratedScenario[]): { id: string; token: string } {
+  return makePoll(scenarios, { voteScale: 'stars5' });
 }
 
 const VOTE = { scenarioId: 'sc1', candidateSongId: 'c1', verdict: 'up' as const };
@@ -284,6 +293,132 @@ describe('formula_version (issue #583)', () => {
     const { token } = makePoll();
     expect(getPollByToken(db, token)!.formula_version).toBeNull();
     expect(listPollSummaries(db)[0]!.formulaVersion).toBeNull();
+  });
+});
+
+describe('vote scale (issue #800)', () => {
+  it('deriveVerdict maps 4-5 up and 1-3 down (a 3 is not an endorsement)', () => {
+    expect(deriveVerdict(5)).toBe('up');
+    expect(deriveVerdict(4)).toBe('up');
+    expect(deriveVerdict(3)).toBe('down');
+    expect(deriveVerdict(2)).toBe('down');
+    expect(deriveVerdict(1)).toBe('down');
+  });
+
+  it('pollVoteScale reads binary for scale-less settings (every pre-existing poll)', () => {
+    expect(pollVoteScale({ scenarioCount: 2, nextUpCount: 2 })).toBe('binary');
+    expect(pollVoteScale({ scenarioCount: 2, nextUpCount: 2, voteScale: 'stars5' })).toBe('stars5');
+  });
+
+  it('a stars5 poll accepts ratings and persists rating + derived verdict', () => {
+    const { id } = makeStarsPoll();
+    const res = recordVotes(db, id, {
+      raterKey: RATER,
+      votes: [
+        { scenarioId: 'sc1', candidateSongId: 'c1', rating: 5 },
+        { scenarioId: 'sc1', candidateSongId: 'c2', rating: 3 },
+      ],
+    });
+    expect(res.recorded).toBe(2);
+    const rows = db
+      .query<{ candidate_song_id: string; rating: number; verdict: string }, []>(
+        'SELECT candidate_song_id, rating, verdict FROM radio_poll_votes ORDER BY candidate_song_id',
+      )
+      .all();
+    expect(rows).toEqual([
+      { candidate_song_id: 'c1', rating: 5, verdict: 'up' },
+      { candidate_song_id: 'c2', rating: 3, verdict: 'down' },
+    ]);
+  });
+
+  it('rejects out-of-domain ratings on a stars5 poll', () => {
+    const { id } = makeStarsPoll();
+    for (const rating of [0, 6, 2.5, 'x'] as unknown[] as import('@nicotind/core').PollRating[]) {
+      expect(() =>
+        recordVotes(db, id, {
+          raterKey: RATER,
+          votes: [{ scenarioId: 'sc1', candidateSongId: 'c1', rating }],
+        }),
+      ).toThrow(RadioPollVoteError);
+    }
+  });
+
+  it('rejects a verdict on a stars5 poll and a rating on a binary poll', () => {
+    const stars = makeStarsPoll();
+    expect(() =>
+      recordVotes(db, stars.id, {
+        raterKey: RATER,
+        votes: [{ scenarioId: 'sc1', candidateSongId: 'c1', verdict: 'up' }],
+      }),
+    ).toThrow(RadioPollVoteError);
+    db = new Database(':memory:');
+    applySchema(db);
+    const binary = makePoll();
+    expect(() =>
+      recordVotes(db, binary.id, {
+        raterKey: RATER,
+        votes: [{ scenarioId: 'sc1', candidateSongId: 'c1', rating: 4 }],
+      }),
+    ).toThrow(RadioPollVoteError);
+  });
+
+  it('re-voting updates the rating in place', () => {
+    const { id } = makeStarsPoll();
+    recordVotes(db, id, {
+      raterKey: RATER,
+      votes: [{ scenarioId: 'sc1', candidateSongId: 'c1', rating: 2 }],
+    });
+    recordVotes(db, id, {
+      raterKey: RATER,
+      votes: [{ scenarioId: 'sc1', candidateSongId: 'c1', rating: 5 }],
+    });
+    const rows = db
+      .query<{ rating: number; verdict: string; n: number }, []>(
+        'SELECT rating, verdict, COUNT(*) AS n FROM radio_poll_votes GROUP BY rating, verdict',
+      )
+      .all();
+    expect(rows).toEqual([{ rating: 5, verdict: 'up', n: 1 }]);
+  });
+
+  it('pollResults aggregates ratingCount, meanRating and the 1..5 histogram', () => {
+    const { id, token } = makeStarsPoll();
+    recordVotes(db, id, {
+      raterKey: RATER,
+      votes: [{ scenarioId: 'sc1', candidateSongId: 'c1', rating: 5 }],
+    });
+    recordVotes(db, id, {
+      raterKey: 'rater-device-2',
+      votes: [{ scenarioId: 'sc1', candidateSongId: 'c1', rating: 4 }],
+    });
+    const results = pollResults(db, getPollByToken(db, token)!);
+    const c1 = results.scenarios[0]!.candidates.find((c) => c.song.id === 'c1')!;
+    expect(c1.ratingCount).toBe(2);
+    expect(c1.meanRating).toBe(4.5);
+    expect(c1.ratingCounts).toEqual([0, 0, 0, 1, 1]);
+    const c2 = results.scenarios[0]!.candidates.find((c) => c.song.id === 'c2')!;
+    expect(c2.ratingCount).toBe(0);
+    expect(c2.meanRating).toBeNull();
+    expect(c2.ratingCounts).toEqual([0, 0, 0, 0, 0]);
+  });
+
+  it('summaries and the public view carry the scale (absent settings = binary)', () => {
+    makeStarsPoll();
+    const summary = listPollSummaries(db)[0]!;
+    expect(summary.voteScale).toBe('stars5');
+    const poll = getPollByToken(db, summary.token)!;
+    const view = publicPollView(poll, listScenarios(db, poll.id), { jwt: 'j', expiresAt: 9 });
+    expect(view.poll.voteScale).toBe('stars5');
+    db = new Database(':memory:');
+    applySchema(db);
+    makePoll();
+    const legacy = listPollSummaries(db)[0]!;
+    expect(legacy.voteScale).toBe('binary');
+    const legacyPoll = getPollByToken(db, legacy.token)!;
+    const legacyView = publicPollView(legacyPoll, listScenarios(db, legacyPoll.id), {
+      jwt: 'j',
+      expiresAt: 9,
+    });
+    expect(legacyView.poll.voteScale).toBe('binary');
   });
 });
 

@@ -12,10 +12,14 @@ suggestions produced by the real radio engine (`buildSeedRadio`, no listener
 recency since there is no listener), snapshotted **with per-axis similarity
 explanations**. The admin gets a public URL (`/poll/<token>`). Anyone with the
 link walks a wizard that emulates the Now Playing screen — cover art and
-playable previews included — and thumbs 👍/👎 **each suggested track
-individually**. Every vote is therefore a `(seed, candidate, verdict)` triple
-that lines up exactly with the stored `SimilarityExplanation`, which is what
-makes the output usable for weight tuning later.
+playable previews included — and rates **each suggested track individually on
+1–5 stars** (issue #800; polls created before the scale existed collected
+👍/👎 and still render thumbs). Every vote is therefore a
+`(seed, candidate, rating)` triple that lines up exactly with the stored
+`SimilarityExplanation`, which is what makes the output usable for weight
+tuning later. The scale replaced binary thumbs because the first real session
+proved binary consensus starves the eval: 2–3 raters tie constantly, and one
+poll's 25 graded candidates collapsed to 4 usable AUC pairs.
 
 ## Why snapshots are mandatory
 
@@ -45,6 +49,18 @@ pre-versioning row, i.e. formula 1), `radio_poll_scenarios` (position-ordered
 snapshots), and
 `radio_poll_votes` with `UNIQUE (scenario_id, rater_key, candidate_song_id)` +
 upsert — a rater changing their mind updates in place, never double-counts.
+
+**Vote scale (issue #800)**: `radio_poll_votes.rating` is an additive nullable
+`INTEGER CHECK (rating BETWEEN 1 AND 5)` column; the original
+`verdict CHECK IN ('up','down')` stays NOT NULL, so stars5 votes also write a
+**derived verdict** (`deriveVerdict`: 4–5 → up, 1–3 → down — a 3 is not an
+endorsement) that graded analysis never reads. Which kind a poll collects is
+the `voteScale` stamp in `settings_json` (`pollVoteScale`; absent = `binary`,
+i.e. every pre-existing poll), written server-side by `normalizePollSettings`
+exactly like `formulaVersion` — every new poll is `stars5`, there is no admin
+toggle. `recordVotes` is scale-strict both ways: a `verdict` on a stars5 poll
+or a `rating` on a binary poll is a confused client and 400s rather than
+silently recording something the rater didn't cast.
 
 **Anonymity**: `rater_key` is a random per-device UUID the browser keeps in
 localStorage (`nicotind.pollRaterKey`). It is deliberately NOT a users FK and
@@ -108,26 +124,35 @@ optional (`expiresInHours`, capped at 90 days).
 `bun run packages/api/src/scripts/export-radio-poll.ts [--poll <id|token>]
 [--out <dir>]` — readonly DB open (prod-probe discipline), defaults to closed
 polls. Emits one self-contained JSON per poll: settings, engine version,
-weights, scenarios (seed/candidate features + score + rank + explanation) and
-per-candidate tallies with a **consensus** (`consensusVerdict`: majority up =
+`voteScale`, weights, scenarios (seed/candidate features + score + rank +
+explanation) and per-candidate tallies — on stars5 polls `ratingCount`,
+`meanRating` and a `ratingCounts` 1..5 histogram (variance and bimodality stay
+analyzable) — with a **consensus** (binary: `consensusVerdict`, majority up =
 `good`, majority down = `bad`, tie/zero = ungraded — an ambiguous grade is
-worse than none). This dataset is the input for offline weight tuning: replay
+worse than none; stars5: `gradedConsensus`, a dead zone — mean ≥ 3.5 `good`,
+≤ 2.5 `bad`, the middle ungraded rather than stamping a 3.2 "good" into a
+future fixture). This dataset is the input for offline weight tuning: replay
 `scoreSimilarity` under candidate weight sets (see `dump-radio.ts
 --weights`) and score them by agreement with the human consensus.
 
 **That replay ships as `scripts/eval-radio-poll.ts` (issue #583)** — per-poll +
 pooled within-scenario pairwise AUC of the current `DEFAULT_WEIGHTS` (and a
-`--weights` override side by side), grouped by `formula_version` so
-cross-formula votes are never pooled. The pure half is
-`services/radio-poll-eval.ts` (`evaluatePollAgreement`): axis values are
+`--weights` override side by side), grouped by (`formula_version`, `voteScale`)
+so neither cross-formula nor cross-scale votes are ever pooled. The pure half
+is `services/radio-poll-eval.ts` (`evaluatePollAgreement`): axis values are
 recomputed from the frozen features (so a formula change like the junk-genre
 fix is measurable against old votes), except the embedding axis, whose vector
 is stripped from snapshots — its frozen *value* is folded back in under the
-candidate weight set. Off-policy caveat: a poll only graded the top-K its
-generating formula served, so an AUC validates ordering among those
-candidates, not pool selection (v2's sub-60 s pool floor is invisible to it).
-The first calibration this loop produced is formula v2 — see docs/radio.md
-"Calibration history".
+candidate weight set. On stars5 datasets the metric generalizes: every
+within-scenario pair with **unequal mean ratings** counts (win = the weight
+set orders the pair like the humans, score-tie = half credit) — the binary
+good×bad cross-product is the special case, and the pairs binary consensus
+discarded as ties are exactly what the scale recovers. `gradedConsensus`
+deliberately plays no part here; it shapes summaries and future fixtures only.
+Off-policy caveat: a poll only graded the top-K its generating formula served,
+so an AUC validates ordering among those candidates, not pool selection (v2's
+sub-60 s pool floor is invisible to it). The first calibration this loop
+produced is formula v2 — see docs/radio.md "Calibration history".
 
 **Station (vibe/filter) scenarios — shipped with formula v3.** `kind: 'filter'`
 had been in the schema from the start with nothing generating it, and
@@ -155,7 +180,10 @@ with two weight sets interleaved.
 
 - **Public wizard** `pages/poll/` — guard-less route above the app shell
   (like `/share/:token`). Intro → one step per scenario (fake Now Playing seed
-  card, next-up rows with per-track 👍/👎 + preview play into one shared
+  card, next-up rows with a per-track 1–5 star row — `poll-rate-1..5`; the
+  thumbs markup survives behind an `@else` because an upgraded server can still
+  have an open binary poll, and the wizard picks the control off
+  `PublicPollView.poll.voteScale` — + preview play into one shared
   `<audio>`) → thanks. **Rating is optional per track** (issue #798): "Next" is
   never gated on completeness — the first rater feedback showed force-rating
   fabricates opinions, which is worse than a gap, and an absent vote row already
@@ -173,5 +201,7 @@ with two weight sets interleaved.
   `SongPickerComponent`, station genres as a comma-separated list; remaining
   slots use random genre-preferring auto seeds), list with
   copy-link/close/delete, and an expandable results view —
-  per-candidate 👍/👎 tallies, approval bar, and the per-axis breakdown in the
+  per-candidate tallies (`★ mean (count)` + mean bar on stars5 polls via
+  `ratingSummary`/`ratingShare`; 👍/👎 chips + approval bar on binary ones), a
+  vote-scale badge on each row, and the per-axis breakdown in the
   same `value×weight` string shape as dump-radio's `breakdownLine`.

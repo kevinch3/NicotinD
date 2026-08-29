@@ -59,6 +59,8 @@ export type { WaveformData } from '../../../core/src/types/waveform';
 
 export type {
   RadioPollVerdict,
+  PollRating,
+  RadioPollVoteScale,
   RadioPollSettings,
   RadioPollScenarioSnapshot,
   RadioPollCandidateSnapshot,

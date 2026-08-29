@@ -72,8 +72,11 @@ export interface PollAgreement {
   pollId: string;
   name: string;
   formulaVersion: string;
+  /** Scale the votes were cast under — pairs from different scales are
+   *  different objects and are never pooled (issue #800, same rule as #583). */
+  voteScale: 'binary' | 'stars5';
   scenarioCount: number;
-  /** Candidates with a non-null consensus (the graded population). */
+  /** Candidates with a non-null consensus (binary) or ≥1 rating (stars5). */
   gradedCandidates: number;
   tally: AgreementTally;
   auc: number | null;
@@ -83,6 +86,8 @@ export function evaluatePollAgreement(
   dataset: RadioPollExportDataset,
   weights: ScoringWeights = DEFAULT_WEIGHTS,
 ): PollAgreement {
+  // Older dataset files on disk predate the field — absent means binary.
+  const voteScale = dataset.voteScale ?? 'binary';
   const tally: AgreementTally = { wins: 0, ties: 0, pairs: 0 };
   let graded = 0;
   for (const sc of dataset.scenarios) {
@@ -93,6 +98,30 @@ export function evaluatePollAgreement(
     const seedFeatures = sc.seed?.features ?? sc.centroid;
     if (!seedFeatures) continue;
     const seed = seedFeatures as SongFeatures;
+    if (voteScale === 'stars5') {
+      // Graded votes generalize the binary metric: every within-scenario pair
+      // with UNEQUAL mean ratings is informative, which is exactly the signal
+      // binary consensus threw away as ties (issue #800).
+      const scored = sc.candidates
+        .filter((c) => (c.meanRating ?? null) !== null && (c.ratingCount ?? 0) > 0)
+        .map((c) => ({
+          mean: c.meanRating as number,
+          score: rescoreCandidate(seed, c, weights),
+        }));
+      graded += scored.length;
+      for (let i = 0; i < scored.length; i++) {
+        for (let j = i + 1; j < scored.length; j++) {
+          const a = scored[i]!;
+          const b = scored[j]!;
+          if (a.mean === b.mean) continue;
+          const [hi, lo] = a.mean > b.mean ? [a, b] : [b, a];
+          tally.pairs++;
+          if (hi.score > lo.score) tally.wins++;
+          else if (hi.score === lo.score) tally.ties++;
+        }
+      }
+      continue;
+    }
     const scored = sc.candidates.map((c) => ({
       consensus: c.consensus,
       score: rescoreCandidate(seed, c, weights),
@@ -112,6 +141,7 @@ export function evaluatePollAgreement(
     pollId: dataset.pollId,
     name: dataset.name,
     formulaVersion: dataset.formulaVersion,
+    voteScale,
     scenarioCount: dataset.scenarios.length,
     gradedCandidates: graded,
     tally,

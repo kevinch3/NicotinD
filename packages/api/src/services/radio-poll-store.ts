@@ -10,6 +10,8 @@ import type {
   RadioPollScenarioSnapshot,
   RadioPollSettings,
   RadioPollSummary,
+  RadioPollVerdict,
+  RadioPollVoteScale,
 } from '@nicotind/core';
 import type { GeneratedScenario } from './radio-poll-generate.js';
 import { describeFilter } from './radio-poll-generate.js';
@@ -131,6 +133,21 @@ export function parseSettings(poll: Pick<RadioPollRow, 'settings_json'>): RadioP
   return JSON.parse(poll.settings_json) as RadioPollSettings;
 }
 
+/** Absent = 'binary': every poll from before the scale existed (issue #800). */
+export function pollVoteScale(settings: Partial<RadioPollSettings>): RadioPollVoteScale {
+  return settings.voteScale ?? 'binary';
+}
+
+/**
+ * The binary shadow of a star rating, written alongside it so `verdict` stays
+ * NOT NULL and old readers keep working. 3 maps down — a 3 is not an
+ * endorsement, and the only naïve readers are approval-style surfaces that
+ * should err toward not endorsing. Graded analysis never reads it.
+ */
+export function deriveVerdict(rating: number): RadioPollVerdict {
+  return rating >= 4 ? 'up' : 'down';
+}
+
 /** `url` is composed by the route (needs the request origin). */
 export type StoredPollSummary = Omit<RadioPollSummary, 'url'>;
 
@@ -159,6 +176,7 @@ export function listPollSummaries(db: Database): StoredPollSummary[] {
     voteCount: r.vote_count,
     raterCount: r.rater_count,
     formulaVersion: r.formula_version ?? null,
+    voteScale: pollVoteScale(parseSettings(r)),
   }));
 }
 
@@ -186,6 +204,7 @@ function summaryFor(db: Database, poll: RadioPollRow): StoredPollSummary {
     voteCount: counts?.vote_count ?? 0,
     raterCount: counts?.rater_count ?? 0,
     formulaVersion: poll.formula_version ?? null,
+    voteScale: pollVoteScale(parseSettings(poll)),
   };
 }
 
@@ -216,6 +235,7 @@ export function publicPollView(
       name: poll.name,
       scenarioCount: scenarios.length,
       nextUpCount: settings.nextUpCount,
+      voteScale: pollVoteScale(settings),
     },
     scenarios: scenarios.map((s): PublicPollScenario => {
       const candidates = [...s.snapshot.candidates].sort((a, b) => a.displayOrder - b.displayOrder);
@@ -255,6 +275,8 @@ export function recordVotes(
     throw new RadioPollVoteError('votes must be a non-empty array');
   }
 
+  const poll = getPollById(db, pollId);
+  const scale = poll ? pollVoteScale(parseSettings(poll)) : 'binary';
   const scenarios = listScenarios(db, pollId);
   const candidatesByScenario = new Map<string, Set<string>>(
     scenarios.map((s) => [s.id, new Set(s.snapshot.candidates.map((c) => c.song.id))]),
@@ -270,8 +292,22 @@ export function recordVotes(
     if (!candidateIds.has(v.candidateSongId)) {
       throw new RadioPollVoteError(`candidate not in scenario: ${v.candidateSongId}`);
     }
-    if (v.verdict !== 'up' && v.verdict !== 'down') {
-      throw new RadioPollVoteError(`verdict must be "up" or "down"`);
+    // Scale-strict on purpose: the wrong vote kind means a confused client,
+    // and accepting it would silently record something the rater didn't cast.
+    if (scale === 'stars5') {
+      if (v.verdict !== undefined) {
+        throw new RadioPollVoteError('this poll takes "rating" (1..5), not "verdict"');
+      }
+      if (!Number.isInteger(v.rating) || (v.rating as number) < 1 || (v.rating as number) > 5) {
+        throw new RadioPollVoteError('rating must be an integer 1..5');
+      }
+    } else {
+      if (v.rating !== undefined) {
+        throw new RadioPollVoteError('this poll takes "verdict", not "rating"');
+      }
+      if (v.verdict !== 'up' && v.verdict !== 'down') {
+        throw new RadioPollVoteError(`verdict must be "up" or "down"`);
+      }
     }
     if (v.note != null && (typeof v.note !== 'string' || v.note.length > MAX_NOTE_LENGTH)) {
       throw new RadioPollVoteError(`note must be at most ${MAX_NOTE_LENGTH} characters`);
@@ -301,12 +337,15 @@ export function recordVotes(
 
   const write = db.transaction(() => {
     for (const v of body.votes) {
+      const rating = scale === 'stars5' ? (v.rating as number) : null;
+      const verdict = rating !== null ? deriveVerdict(rating) : (v.verdict as RadioPollVerdict);
       db.run(
-        `INSERT INTO radio_poll_votes (scenario_id, rater_key, candidate_song_id, verdict, note, at)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO radio_poll_votes (scenario_id, rater_key, candidate_song_id, verdict, rating, note, at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(scenario_id, rater_key, candidate_song_id)
-         DO UPDATE SET verdict = excluded.verdict, note = excluded.note, at = excluded.at`,
-        [v.scenarioId, raterKey, v.candidateSongId, v.verdict, v.note ?? null, now],
+         DO UPDATE SET verdict = excluded.verdict, rating = excluded.rating,
+                       note = excluded.note, at = excluded.at`,
+        [v.scenarioId, raterKey, v.candidateSongId, verdict, rating, v.note ?? null, now],
       );
     }
   });
@@ -324,23 +363,38 @@ export function pollResults(
   const scenarios = listScenarios(db, poll.id);
   const tallies = db
     .query<
-      { scenario_id: string; candidate_song_id: string; verdict: 'up' | 'down'; n: number },
+      {
+        scenario_id: string;
+        candidate_song_id: string;
+        up: number;
+        down: number;
+        rating_count: number;
+        mean_rating: number | null;
+        r1: number;
+        r2: number;
+        r3: number;
+        r4: number;
+        r5: number;
+      },
       [string]
     >(
-      `SELECT v.scenario_id, v.candidate_song_id, v.verdict, COUNT(*) AS n
+      `SELECT v.scenario_id, v.candidate_song_id,
+              SUM(v.verdict = 'up') AS up,
+              SUM(v.verdict = 'down') AS down,
+              COUNT(v.rating) AS rating_count,
+              AVG(v.rating) AS mean_rating,
+              COALESCE(SUM(v.rating = 1), 0) AS r1,
+              COALESCE(SUM(v.rating = 2), 0) AS r2,
+              COALESCE(SUM(v.rating = 3), 0) AS r3,
+              COALESCE(SUM(v.rating = 4), 0) AS r4,
+              COALESCE(SUM(v.rating = 5), 0) AS r5
          FROM radio_poll_votes v
          JOIN radio_poll_scenarios s ON s.id = v.scenario_id
         WHERE s.poll_id = ?
-        GROUP BY v.scenario_id, v.candidate_song_id, v.verdict`,
+        GROUP BY v.scenario_id, v.candidate_song_id`,
     )
     .all(poll.id);
-  const tally = new Map<string, { up: number; down: number }>();
-  for (const t of tallies) {
-    const key = `${t.scenario_id} ${t.candidate_song_id}`;
-    const entry = tally.get(key) ?? { up: 0, down: 0 };
-    entry[t.verdict] += t.n;
-    tally.set(key, entry);
-  }
+  const tally = new Map(tallies.map((t) => [t.scenario_id + ' ' + t.candidate_song_id, t]));
   return {
     poll: summaryFor(db, poll),
     settings: parseSettings(poll),
@@ -353,8 +407,15 @@ export function pollResults(
       filter: s.snapshot.filter,
       weights: s.snapshot.weights,
       candidates: s.snapshot.candidates.map((c) => {
-        const entry = tally.get(`${s.id} ${c.song.id}`);
-        return { ...c, up: entry?.up ?? 0, down: entry?.down ?? 0 };
+        const t = tally.get(s.id + ' ' + c.song.id);
+        return {
+          ...c,
+          up: t?.up ?? 0,
+          down: t?.down ?? 0,
+          ratingCount: t?.rating_count ?? 0,
+          meanRating: t != null && t.rating_count > 0 ? t.mean_rating : null,
+          ratingCounts: t ? [t.r1, t.r2, t.r3, t.r4, t.r5] : [0, 0, 0, 0, 0],
+        };
       }),
     })),
   };

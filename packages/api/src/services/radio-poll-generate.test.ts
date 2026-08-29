@@ -100,6 +100,13 @@ describe('normalizePollSettings', () => {
     });
     expect(s.pinnedSeedIds).toEqual(['a', 'b']);
   });
+
+  it('stamps voteScale stars5 server-side, overriding any client value', () => {
+    expect(normalizePollSettings({ scenarioCount: 3, nextUpCount: 3 }).voteScale).toBe('stars5');
+    expect(
+      normalizePollSettings({ scenarioCount: 3, nextUpCount: 3, voteScale: 'binary' }).voteScale,
+    ).toBe('stars5');
+  });
 });
 
 describe('generatePollScenarios', () => {

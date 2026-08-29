@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
-import { consensusVerdict, pollExportDataset } from './radio-poll-export.js';
+import { consensusVerdict, gradedConsensus, pollExportDataset } from './radio-poll-export.js';
 import { createPoll, getPollById, recordVotes } from './radio-poll-store.js';
 import type { GeneratedScenario } from './radio-poll-generate.js';
 import type { Song } from '@nicotind/core';
@@ -112,6 +112,72 @@ describe('pollExportDataset', () => {
     expect(c1.explanation).toBeDefined();
     // And it must be plain JSON.
     expect(JSON.parse(JSON.stringify(dataset))).toEqual(dataset);
+  });
+});
+
+describe('stars5 export (issue #800)', () => {
+  function starsScenario(): GeneratedScenario {
+    const base = scenario();
+    base.snapshot.candidates.push({
+      ...base.snapshot.candidates[0]!,
+      song: song('c3'),
+      rank: 3,
+      displayOrder: 3,
+    });
+    return base;
+  }
+
+  it('carries voteScale, rating stats and a graded consensus', () => {
+    db.run("INSERT INTO users (id, username, password_hash) VALUES ('u1','a','x')");
+    const { id } = createPoll(db, {
+      name: 'Stars',
+      createdBy: 'u1',
+      settings: { scenarioCount: 1, nextUpCount: 3, voteScale: 'stars5' },
+      scenarios: [starsScenario()],
+    });
+    recordVotes(db, id, {
+      raterKey: 'rater-one-x',
+      votes: [
+        { scenarioId: 'sc1', candidateSongId: 'c1', rating: 5 },
+        { scenarioId: 'sc1', candidateSongId: 'c2', rating: 3 },
+      ],
+    });
+    recordVotes(db, id, {
+      raterKey: 'rater-two-x',
+      votes: [{ scenarioId: 'sc1', candidateSongId: 'c1', rating: 4 }],
+    });
+
+    const dataset = pollExportDataset(db, getPollById(db, id)!);
+    expect(dataset.voteScale).toBe('stars5');
+    const c1 = dataset.scenarios[0]!.candidates.find((c) => c.songId === 'c1')!;
+    expect(c1).toMatchObject({ ratingCount: 2, meanRating: 4.5, ratingCounts: [0, 0, 0, 1, 1] });
+    expect(c1.consensus).toBe(gradedConsensus(4.5, 2));
+    const c3 = dataset.scenarios[0]!.candidates.find((c) => c.songId === 'c3')!;
+    expect(c3).toMatchObject({ ratingCount: 0, meanRating: null, consensus: null });
+  });
+
+  it('binary polls export voteScale binary with the old consensus untouched', () => {
+    db.run("INSERT INTO users (id, username, password_hash) VALUES ('u1','a','x')");
+    const { id } = createPoll(db, {
+      name: 'Legacy binary',
+      createdBy: 'u1',
+      settings: { scenarioCount: 1, nextUpCount: 2 },
+      scenarios: [scenario()],
+    });
+    recordVotes(db, id, {
+      raterKey: 'rater-one-x',
+      votes: [{ scenarioId: 'sc1', candidateSongId: 'c1', verdict: 'up' }],
+    });
+    const dataset = pollExportDataset(db, getPollById(db, id)!);
+    expect(dataset.voteScale).toBe('binary');
+    const c1 = dataset.scenarios[0]!.candidates.find((c) => c.songId === 'c1')!;
+    expect(c1).toMatchObject({ up: 1, down: 0, consensus: 'good', ratingCount: 0 });
+  });
+
+  it('gradedConsensus grades a mean rating, never a missing one', () => {
+    expect(gradedConsensus(null, 0)).toBeNull();
+    expect(gradedConsensus(5, 1)).toBe('good');
+    expect(gradedConsensus(1, 1)).toBe('bad');
   });
 });
 

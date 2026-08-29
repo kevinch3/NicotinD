@@ -11,7 +11,7 @@ import {
 import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import type { PublicPollScenario, PublicPollView, RadioPollVerdict } from '../../../types/core';
+import type { PublicPollScenario, PublicPollView } from '../../../types/core';
 import { ServerConfigService } from '../../services/server-config.service';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -24,15 +24,17 @@ import {
   votesForScenario,
   type PollPageState,
   type PollStep,
+  type PollVoteValue,
 } from './poll-view.lib';
 import { getRaterKey } from './rater-key';
 
 /**
  * Public radio-evaluation poll wizard (docs/radio-eval-polls.md). Guard-less
  * like /share: an anonymous rater walks intro → one step per frozen scenario
- * (a fake Now Playing card + the engine's next-up suggestions, each thumbed
- * up/down, each playable via the short-lived media JWT) → thanks. Votes POST
- * per scenario on advance so an abandoned session still contributes.
+ * (a fake Now Playing card + the engine's next-up suggestions, each rated 1–5
+ * stars — thumbs on legacy binary polls — each playable via the short-lived
+ * media JWT) → thanks. Votes POST per scenario on advance so an abandoned
+ * session still contributes.
  *
  * The poll GET is idempotent — re-fetching refreshes the media JWT, which this
  * component does silently when it expires mid-session or an audio load fails.
@@ -55,9 +57,12 @@ export class PollViewComponent implements OnInit, OnDestroy {
   readonly submitting = signal(false);
   readonly submitError = signal(false);
   readonly playbackFailed = signal(false);
-  /** voteKey(scenario, candidate) → verdict; local until the scenario advances. */
-  readonly votes = signal<ReadonlyMap<string, RadioPollVerdict>>(new Map());
+  /** voteKey(scenario, candidate) → rating or verdict; local until the scenario advances. */
+  readonly votes = signal<ReadonlyMap<string, PollVoteValue>>(new Map());
   readonly playingId = signal<string | null>(null);
+
+  /** Template loop for the stars5 rating row. */
+  readonly stars = [1, 2, 3, 4, 5] as const;
 
   private token = '';
   private mediaJwt = '';
@@ -71,6 +76,7 @@ export class PollViewComponent implements OnInit, OnDestroy {
     typeof this.step() === 'number' ? (this.step() as number) : -1,
   );
   readonly scenarioCount = computed(() => this.view()?.scenarios.length ?? 0);
+  readonly voteScale = computed(() => this.view()?.poll.voteScale ?? 'binary');
   readonly currentRated = computed(() => {
     const sc = this.scenario();
     return sc ? ratedCount(sc, this.votes()) : 0;
@@ -117,17 +123,23 @@ export class PollViewComponent implements OnInit, OnDestroy {
     return this.server.apiUrl(`/api/cover/${coverId}?size=300&token=${this.mediaJwt}`);
   }
 
-  vote(candidateId: string, verdict: RadioPollVerdict): void {
+  vote(candidateId: string, value: PollVoteValue): void {
     const sc = this.scenario();
     if (!sc) return;
     const next = new Map(this.votes());
-    next.set(voteKey(sc.id, candidateId), verdict);
+    next.set(voteKey(sc.id, candidateId), value);
     this.votes.set(next);
   }
 
-  verdictFor(candidateId: string): RadioPollVerdict | null {
+  verdictFor(candidateId: string): PollVoteValue | null {
     const sc = this.scenario();
     return sc ? (this.votes().get(voteKey(sc.id, candidateId)) ?? null) : null;
+  }
+
+  /** The candidate's star rating, or 0 when unrated (fills stars 1..n). */
+  ratingFor(candidateId: string): number {
+    const value = this.verdictFor(candidateId);
+    return typeof value === 'number' ? value : 0;
   }
 
   async togglePlay(trackId: string): Promise<void> {

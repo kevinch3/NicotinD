@@ -55,6 +55,17 @@ describe('votesForScenario', () => {
       { scenarioId: 'sc1', candidateSongId: 'c2', verdict: 'down' },
     ]);
   });
+
+  it('emits {rating} for star values and {verdict} for thumbs', () => {
+    const votes = new Map<string, 'down' | 5>([
+      [voteKey('sc1', 'c1'), 5],
+      [voteKey('sc1', 'c2'), 'down'],
+    ]);
+    expect(votesForScenario(scenario(), votes)).toEqual([
+      { scenarioId: 'sc1', candidateSongId: 'c1', rating: 5 },
+      { scenarioId: 'sc1', candidateSongId: 'c2', verdict: 'down' },
+    ]);
+  });
 });
 
 describe('pollFailureState', () => {

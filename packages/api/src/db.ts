@@ -1646,6 +1646,11 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     `CREATE INDEX IF NOT EXISTS idx_radio_poll_votes_scenario
        ON radio_poll_votes (scenario_id)`,
   );
+  // 1–5 star votes on stars5-scale polls (issue #800); NULL on every binary
+  // vote. verdict stays NOT NULL — stars5 writes a derived one (deriveVerdict)
+  // so old readers keep working, but graded analysis reads rating, keyed off
+  // the poll's settings voteScale stamp.
+  addColumnIfMissing(db, 'radio_poll_votes', 'rating', 'INTEGER CHECK (rating BETWEEN 1 AND 5)');
 
   // Listening history: one append-only row per playback session, per user.
   // Written by services/play-history.ts from client-reported raw facts; the
