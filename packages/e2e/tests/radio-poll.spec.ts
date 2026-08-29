@@ -94,6 +94,54 @@ test.describe('radio evaluation polls', () => {
     expect(body.poll.raterCount).toBe(1);
   });
 
+  test('a rater can skip tracks or whole scenarios, and only given ratings count', async ({
+    request,
+    browser,
+    baseURL,
+  }) => {
+    const { id, token, adminToken } = await createPoll(request);
+
+    const ctx = await browser.newContext({ baseURL: baseURL ?? undefined });
+    const page = await ctx.newPage();
+    await page.goto(`/poll/${token}`);
+    await page.getByTestId('poll-intro-start').click();
+
+    // Every scenario step states the premise (issue #799).
+    await expect(page.getByTestId('poll-framing')).toBeVisible();
+
+    // First scenario: rate only the first candidate — Next must not force the rest.
+    const firstUp = page.getByTestId('poll-candidate-row').first().getByTestId('poll-vote-up');
+    await firstUp.click();
+    await expect(firstUp).toHaveAttribute('aria-pressed', 'true');
+    const progress = await page.getByTestId('poll-progress').innerText();
+    await page.getByTestId('poll-next').click();
+    await expect(
+      page
+        .getByTestId('poll-done')
+        .or(page.getByTestId('poll-progress').filter({ hasNotText: progress })),
+    ).toBeVisible();
+
+    // Any remaining scenarios: skip outright with zero ratings — the advance
+    // must not POST (the API rejects empty vote arrays) and still reach done.
+    for (let guard = 0; guard < 10 && !(await page.getByTestId('poll-done').isVisible()); guard++) {
+      await page.getByTestId('poll-next').click();
+      await expect(
+        page.getByTestId('poll-done').or(page.getByTestId('poll-submit-error')),
+      ).toBeVisible();
+      await expect(page.getByTestId('poll-submit-error')).toHaveCount(0);
+    }
+    await expect(page.getByTestId('poll-done')).toBeVisible();
+    await ctx.close();
+
+    // Exactly the one given rating landed — skipped candidates left no rows.
+    const results = await request.get(`/api/admin/radio-polls/${id}`, {
+      headers: bearer(adminToken),
+    });
+    expect(results.status()).toBe(200);
+    const body = (await results.json()) as { poll: { voteCount: number } };
+    expect(body.poll.voteCount).toBe(1);
+  });
+
   test('a station scenario names its station and is votable', async ({
     request,
     browser,
@@ -125,6 +173,10 @@ test.describe('radio evaluation polls', () => {
     await expect(page.getByTestId('poll-station-card')).toBeVisible();
     await expect(page.getByTestId('poll-station-card')).toContainText('2000-2030');
     await expect(page.getByTestId('poll-seed-card')).toHaveCount(0);
+
+    // The framing line names the station — the "what am I grading?" answer.
+    await expect(page.getByTestId('poll-framing')).toBeVisible();
+    await expect(page.getByTestId('poll-framing')).toContainText('2000-2030');
 
     await rateScenario(page);
     await expect(page.getByTestId('poll-done')).toBeVisible();
