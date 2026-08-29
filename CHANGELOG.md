@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.31](https://github.com/kevinch3/NicotinD/compare/v0.5.30...v0.5.31) (2026-08-29)
+
+### Bug Fixes
+
+* **library:** verify a retag landed, and refresh an album after a single-song delete ([#774](https://github.com/kevinch3/NicotinD/issues/774), [#776](https://github.com/kevinch3/NicotinD/issues/776)) ([#793](https://github.com/kevinch3/NicotinD/issues/793)) ([123338e](https://github.com/kevinch3/NicotinD/commit/123338e45c170ffcef379205ae4393ba02201291))
 ## [0.5.30](https://github.com/kevinch3/NicotinD/compare/v0.5.29...v0.5.30) (2026-08-28)
 
 ### Bug Fixes
