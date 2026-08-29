@@ -3,6 +3,7 @@ import type { AcquireJob, AcquisitionJobView } from '@nicotind/core';
 import {
   acquireJobToDownloadItem,
   acquireJobLabel,
+  jobPercent,
   methodForBackend,
   buildDownloadFeed,
   mergeAcquisitionJobs,
@@ -715,5 +716,85 @@ describe('buildDownloadFeed', () => {
       job({ id: 'failed', state: 'failed', stage: 'error' }),
     ]);
     expect(feed.map((i) => i.stage)).toEqual(['downloading', 'error', 'done']);
+  });
+});
+
+describe('jobPercent (#805)', () => {
+  const progress = (over: Partial<AcquisitionJobView['progress']> = {}) => ({
+    expected: 9,
+    delivered: 0,
+    unavailable: 0,
+    failed: 0,
+    canonical: null,
+    ...over,
+  });
+
+  it('is bytes-weighted when the addon reports byte progress', () => {
+    expect(jobPercent(progress({ bytesTransferred: 430, bytesTotal: 1000 }))).toBe(43);
+  });
+
+  it('caps the byte percentage at 99 — the count chip is what says all landed', () => {
+    expect(jobPercent(progress({ bytesTransferred: 999, bytesTotal: 1000 }))).toBe(99);
+    expect(jobPercent(progress({ bytesTransferred: 1000, bytesTotal: 1000 }))).toBe(99);
+  });
+
+  it('falls back to whole-file counts without byte data', () => {
+    expect(jobPercent(progress({ delivered: 3 }))).toBe(33);
+    expect(jobPercent(progress({ bytesTransferred: null, bytesTotal: null, delivered: 3 }))).toBe(
+      33,
+    );
+  });
+
+  it('is undefined when nothing is countable', () => {
+    expect(jobPercent(progress({ expected: 0 }))).toBeUndefined();
+  });
+});
+
+describe('network-lane percent + cancelRequested (#805/#806)', () => {
+  it('a downloading slskd job renders the bar from bytes', () => {
+    const merged = mergeAcquisitionJobs(
+      [],
+      [
+        acqJob({
+          progress: {
+            expected: 9,
+            delivered: 0,
+            unavailable: 0,
+            failed: 0,
+            canonical: null,
+            bytesTransferred: 430,
+            bytesTotal: 1000,
+          },
+        }),
+      ],
+    );
+    expect(merged[0]!.percent).toBe(43);
+  });
+
+  it('the bar disappears once the job leaves the downloading stage', () => {
+    const merged = mergeAcquisitionJobs(
+      [],
+      [
+        acqJob({
+          stage: 'organizing',
+          progress: {
+            expected: 9,
+            delivered: 9,
+            unavailable: 0,
+            failed: 0,
+            canonical: null,
+            bytesTransferred: 1000,
+            bytesTotal: 1000,
+          },
+        }),
+      ],
+    );
+    expect(merged[0]!.percent).toBeUndefined();
+  });
+
+  it('carries the durable cancelRequested marker onto the card', () => {
+    const merged = mergeAcquisitionJobs([], [acqJob({ cancelRequested: true })]);
+    expect(merged[0]!.cancelRequested).toBe(true);
+    expect(mergeAcquisitionJobs([], [acqJob()])[0]!.cancelRequested).toBeUndefined();
   });
 });

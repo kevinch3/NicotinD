@@ -440,6 +440,7 @@
   "downloads.stage.organizing": "Organizando",
   "downloads.stage.scanning": "Escaneando",
   "downloads.stage.processing": "Procesando",
+  "downloads.cancelling": "Cancelando…",
   "downloads.stage.done": "Listo",
   "downloads.stage.error": "Error",
   "errors.accountDisabled": "Cuenta deshabilitada",

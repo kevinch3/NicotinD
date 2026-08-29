@@ -105,6 +105,28 @@ export interface DownloadItem {
   canRetry: boolean;
   canCancel: boolean;
   canRemove: boolean;
+  /**
+   * A cancel was requested and is being carried out (#806) — the durable
+   * server-side marker. Renders the "Cancelling…" chip and disables the cancel
+   * control, surviving reloads (unlike the request-in-flight `cancelling` set).
+   */
+  cancelRequested?: boolean;
+}
+
+/**
+ * The in-flight bar's percentage for a network job (#805): bytes-weighted when
+ * the addon reports byte progress, whole-file counts otherwise (the degraded
+ * mode when `bytesTotal` is null — an addon with no sizes, a legacy row).
+ * Bytes are capped at 99 — rounding up on the final chunk must not read 100%
+ * while files are still un-organized; the count chip is what says "all landed".
+ */
+export function jobPercent(progress: AcquisitionJobView['progress']): number | undefined {
+  if (progress.bytesTotal != null && progress.bytesTransferred != null && progress.bytesTotal > 0) {
+    const pct = Math.round((progress.bytesTransferred / progress.bytesTotal) * 100);
+    return Math.min(99, Math.max(0, pct));
+  }
+  if (progress.expected > 0) return Math.round((progress.delivered / progress.expected) * 100);
+  return undefined;
 }
 
 /** Map an acquisition-plugin/addon backend id to an AcquisitionMethod. Accepts
@@ -322,6 +344,10 @@ export function mergeAcquisitionJobs(
       startedAt: job.createdAt,
       tracks: job.items,
       progress: { done: job.progress.delivered, total: job.progress.expected },
+      // Only while downloading: the bar answers "how much is still moving", and
+      // any later stage (organizing/scanning/processing) has nothing in flight.
+      percent: job.stage === 'downloading' ? jobPercent(job.progress) : undefined,
+      cancelRequested: job.cancelRequested || undefined,
       // why: only a *shortfall* is news. A source that offered the whole
       // tracklist (or more — a folder with bonus tracks) leaves these unset so
       // the ordinary card is untouched.

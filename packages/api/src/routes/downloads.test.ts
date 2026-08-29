@@ -178,6 +178,8 @@ describe('downloads routes', () => {
         unavailable: number;
         failed: number;
         canonical: number | null;
+        bytesTransferred: number | null;
+        bytesTotal: number | null;
       };
     }>;
     expect(jobs).toHaveLength(1);
@@ -196,6 +198,8 @@ describe('downloads routes', () => {
       unavailable: 0,
       failed: 0,
       canonical: 2,
+      bytesTransferred: null,
+      bytesTotal: null,
     });
   });
 
@@ -241,7 +245,7 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
     capabilities: ['search', 'download'],
   } as import('@nicotind/core').AddonManifest;
 
-  function makeAddonApp() {
+  function makeAddonApp(opts: { failCancel?: boolean } = {}) {
     testDb.run('DELETE FROM acquisition_job_items');
     testDb.run('DELETE FROM acquisition_jobs');
     testDb.run('DELETE FROM plugins');
@@ -249,6 +253,7 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
     const client = {
       baseUrl: 'http://addon:9999',
       cancelJob: async (id: string) => {
+        if (opts.failCancel) throw new Error('addon unreachable');
         calls.cancelled.push(id);
       },
       deleteJob: async (id: string) => {
@@ -292,6 +297,35 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
     const res = await app.request(`/jobs/${jobId}/cancel`, { method: 'POST' });
     expect(res.status).toBe(200);
     expect(calls.cancelled).toEqual(['aj-7']);
+  });
+
+  const cancelMarker = (jobId: string) =>
+    testDb
+      .query<{ cancel_requested_at: number | null }, [string]>(
+        `SELECT cancel_requested_at FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(jobId)?.cancel_requested_at;
+
+  it('cancel stamps the durable marker before addon I/O and is idempotent (#806)', async () => {
+    const { app, calls, jobId } = makeAddonApp();
+    const first = await app.request(`/jobs/${jobId}/cancel`, { method: 'POST' });
+    expect(first.status).toBe(200);
+    expect(cancelMarker(jobId)).not.toBeNull();
+    expect(calls.cancelled).toEqual(['aj-7']);
+
+    const second = await app.request(`/jobs/${jobId}/cancel`, { method: 'POST' });
+    expect(second.status).toBe(200);
+    expect(((await second.json()) as { pending?: boolean }).pending).toBe(true);
+    expect(calls.cancelled).toEqual(['aj-7']); // the addon was not re-notified
+  });
+
+  it('an unreachable addon still records the cancel and returns 200 (#806)', async () => {
+    const { app, jobId } = makeAddonApp({ failCancel: true });
+    const res = await app.request(`/jobs/${jobId}/cancel`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { addonNotified?: boolean }).addonNotified).toBe(false);
+    // The marker is what closes the job (poller grace valve), not the addon call.
+    expect(cancelMarker(jobId)).not.toBeNull();
   });
 
   it('deletes an addon job on both sides', async () => {

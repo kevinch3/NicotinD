@@ -8,6 +8,7 @@ import { getDatabase } from '../db.js';
 import { requireAcquirer } from '../middleware/current-user.js';
 import {
   cancelUnownedJob,
+  requestJobCancel,
   createJob,
   listJobFeed,
   resolveJobAlbumId,
@@ -216,14 +217,23 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
       cancelUnownedJob(db, job.id);
       return c.json({ ok: true });
     }
+    // Durable intent FIRST (#806): the marker is what the feed renders as
+    // "Cancelling…", what stops the poller re-pinning the row, and what its
+    // grace valve closes if the addon never acts — so every path below returns
+    // 200 once it is stamped. A repeat request is a no-op that never
+    // re-notifies the addon (the old 502-on-error path muted the click and
+    // left re-clicks re-firing forever).
+    const first = requestJobCancel(db, job.id);
+    if (!first) return c.json({ ok: true, pending: true });
     const addon = pluginRegistry?.get(ref.addonId);
     if (!(addon instanceof RemoteAddonPlugin)) {
-      return c.json({ error: `Addon "${ref.addonId}" is not registered` }, 503);
+      return c.json({ ok: true, addonNotified: false });
     }
     try {
       await addon.client.cancelJob(ref.addonJobId);
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : 'cancel failed' }, 502);
+      log.warn({ jobId: job.id, err }, 'addon cancel failed; grace valve will close the job');
+      return c.json({ ok: true, addonNotified: false });
     }
     return c.json({ ok: true });
   });

@@ -11,6 +11,7 @@ import type { CompletedDownloadFile } from '../path-inference.js';
 import { RemoteAddonPlugin } from './remote-addon-plugin.js';
 import { recordAcquisition } from '../acquisition-store.js';
 import {
+  cancelUnownedJob,
   createJob,
   markItemsScanned,
   recomputeStage,
@@ -31,6 +32,12 @@ const log = createLogger('addon-job-poller');
 const ORPHAN_STALE_MS = 5 * 60_000;
 /** How often the cursor-stranded ingest sweep may run, per addon (#725). */
 const STRANDED_SWEEP_INTERVAL_MS = 60_000;
+/**
+ * How long a cancel request may sit unacknowledged before the poller closes the
+ * job core-side (#806). Many poll ticks — an addon that processes cancels never
+ * hits it; one that ignores them cannot strand a "Cancelling…" card.
+ */
+const CANCEL_GRACE_MS = 90_000;
 
 /** Extract the addon-side job id from a `addon:<addonId>:<jobId>` source_ref. */
 export function parseAddonJobId(sourceRef: string | null, addonId: string): string | null {
@@ -53,6 +60,8 @@ export interface AddonJobPollerDeps {
   strandedSweepIntervalMs?: number;
   /** Deployment-wide acquisition kill-switch (#235) — ticks no-op when off. */
   isEnabled?: () => boolean;
+  /** Grace before an unacknowledged cancel is closed core-side (#806). Test seam. */
+  cancelGraceMs?: number;
 }
 
 /** Mirror key for an addon item in `acquisition_job_items.transfer_key`. */
@@ -131,8 +140,39 @@ export class AddonJobPoller {
           log.debug({ addon: plugin.manifest.id, err }, 'addon poll failed');
         });
       }
+      this.sweepStaleCancels();
     } finally {
       this.ticking = false;
+    }
+  }
+
+  private cancelRequested(coreJobId: string): boolean {
+    return (
+      this.deps.db
+        .query<{ cancel_requested_at: number | null }, [string]>(
+          `SELECT cancel_requested_at FROM acquisition_jobs WHERE id = ?`,
+        )
+        .get(coreJobId)?.cancel_requested_at != null
+    );
+  }
+
+  /**
+   * Close cancel requests the addon never acted on (#806): past the grace
+   * period, `cancelUnownedJob` is the honest funnel — in-flight items become
+   * `unavailable` with a stated reason and the stage re-derives. The mirror
+   * skip above keeps the closed row closed while the addon still lists the job.
+   */
+  private sweepStaleCancels(): void {
+    const cutoff = Date.now() - (this.deps.cancelGraceMs ?? CANCEL_GRACE_MS);
+    const stale = this.deps.db
+      .query<{ id: string }, [number]>(
+        `SELECT id FROM acquisition_jobs
+         WHERE state = 'active' AND cancel_requested_at IS NOT NULL AND cancel_requested_at < ?`,
+      )
+      .all(cutoff);
+    for (const row of stale) {
+      log.info({ jobId: row.id }, 'closing a cancel request the addon never confirmed');
+      cancelUnownedJob(this.deps.db, row.id);
     }
   }
 
@@ -148,6 +188,12 @@ export class AddonJobPoller {
       maxUpdated = Math.max(maxUpdated, job.updatedAt);
       const coreJobId = this.ensureCoreJob(addonId, job);
       handled.add(coreJobId);
+      // Cancel pending, addon still winding down (#806): freeze the mirror.
+      // Mirroring would overwrite the closed states `cancelUnownedJob` writes
+      // and re-derive a live-looking stage; the addon's own terminal verdict
+      // (state != active) still flows through the full path below, and the
+      // grace valve in tick() closes the job if that verdict never comes.
+      if (job.state === 'active' && this.cancelRequested(coreJobId)) continue;
       this.updateJobMeta(coreJobId, job);
       this.mirrorItems(addonId, coreJobId, job);
       recomputeStage(db, coreJobId);
@@ -392,8 +438,8 @@ export class AddonJobPoller {
       if (!existing) {
         db.run(
           `INSERT INTO acquisition_job_items
-             (job_id, track_title, username, filename, transfer_key, bit_rate_kbps, audio_format, state, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             (job_id, track_title, username, filename, transfer_key, bit_rate_kbps, audio_format, size_bytes, bytes_transferred, state, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             coreJobId,
             item.title,
@@ -402,6 +448,8 @@ export class AddonJobPoller {
             key,
             item.bitRateKbps ?? null,
             item.audioFormat ?? null,
+            item.size || null,
+            item.bytesTransferred ?? null,
             state,
             now,
           ],
@@ -411,7 +459,7 @@ export class AddonJobPoller {
       if (existing.state === 'organized' || existing.state === 'scanned') continue;
       db.run(
         `UPDATE acquisition_job_items
-         SET track_title = ?, username = ?, filename = ?, bit_rate_kbps = ?, audio_format = ?, state = ?, updated_at = ?
+         SET track_title = ?, username = ?, filename = ?, bit_rate_kbps = ?, audio_format = ?, size_bytes = ?, bytes_transferred = ?, state = ?, updated_at = ?
          WHERE id = ?`,
         [
           item.title,
@@ -419,6 +467,8 @@ export class AddonJobPoller {
           item.filename,
           item.bitRateKbps ?? null,
           item.audioFormat ?? null,
+          item.size || null,
+          item.bytesTransferred ?? null,
           state,
           now,
           existing.id,
@@ -548,7 +598,7 @@ export class AddonJobPoller {
       // resolved yet does not claim to be downloading.
       db.run(
         `UPDATE acquisition_jobs SET state = 'active', stage = 'downloading', updated_at = ?
-         WHERE id = ? AND state IN ('active', 'failed')
+         WHERE id = ? AND state IN ('active', 'failed') AND cancel_requested_at IS NULL
            AND EXISTS (SELECT 1 FROM acquisition_job_items WHERE job_id = ?)`,
         [now, coreJobId, coreJobId],
       );

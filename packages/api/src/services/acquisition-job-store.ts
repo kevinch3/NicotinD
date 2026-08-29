@@ -278,8 +278,8 @@ export function createJob(db: Database, input: CreateJobInput): string {
           : null);
       db.run(
         `INSERT INTO acquisition_job_items
-           (job_id, track_title, username, filename, transfer_key, bit_rate_kbps, audio_format, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (job_id, track_title, username, filename, transfer_key, bit_rate_kbps, audio_format, size_bytes, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           trackTitle,
@@ -288,6 +288,7 @@ export function createJob(db: Database, input: CreateJobInput): string {
           username ? transferKeyFor(username, file.filename) : null,
           file.bitRate ?? null,
           file.audioFormat ?? null,
+          file.size ?? null,
           now,
         ],
       );
@@ -319,6 +320,7 @@ interface JobRow {
   error: string | null;
   created_at: number;
   updated_at: number;
+  cancel_requested_at: number | null;
 }
 
 interface ItemRow {
@@ -878,6 +880,27 @@ export function recomputeStage(db: Database, jobId: string): string | null {
  * terminal state the feed can clear. Items already organized/scanned are left
  * alone — those files landed and are in the library regardless.
  */
+/**
+ * Stamp durable cancel intent on a job (#806) — BEFORE any addon I/O, so the
+ * feed shows "Cancelling…" instantly and the poller stops re-pinning the row.
+ * Returns true when this call was the first request (the caller then notifies
+ * the addon once); a repeat is a no-op so re-clicks cannot re-fire it.
+ */
+export function requestJobCancel(db: Database, jobId: string, now = Date.now()): boolean {
+  const row = db
+    .query<{ cancel_requested_at: number | null }, [string]>(
+      `SELECT cancel_requested_at FROM acquisition_jobs WHERE id = ?`,
+    )
+    .get(jobId);
+  if (!row || row.cancel_requested_at != null) return false;
+  db.run(`UPDATE acquisition_jobs SET cancel_requested_at = ?, updated_at = ? WHERE id = ?`, [
+    now,
+    now,
+    jobId,
+  ]);
+  return true;
+}
+
 export function cancelUnownedJob(db: Database, jobId: string): void {
   const now = Date.now();
   db.run(
@@ -1045,6 +1068,8 @@ export interface AcquisitionJobFeedItem {
    * impossible. See `AcquisitionJobView['progress']` for what each tally means.
    */
   progress: AcquisitionJobView['progress'];
+  /** Mirrors `AcquisitionJobView.cancelRequested` — see the core doc (#806). */
+  cancelRequested: boolean;
   /**
    * Dominant enqueue-time bitrate + codec across the job's items (mode wins;
    * ties broken by max kbps), upgraded post-scan via the items' matching
@@ -1225,6 +1250,51 @@ export function resolveJobAlbumId(
  * or scanned); `unavailable`/`failed` make an honest partial renderable
  * ("11 of 13 · 2 unavailable").
  */
+/** Deliverable states for byte progress: in flight or on disk. `failed`/
+ *  `unavailable` are excluded from BOTH sides — those bytes will never arrive,
+ *  and the bar measures "of what can still land", matching how
+ *  `delivered/expected` renders an honest partial (#805). */
+const BYTE_DELIVERABLE = `('queued','downloading','completed','organized','scanned')`;
+
+interface ByteAggRow {
+  deliverable: number;
+  unsized: number;
+  bt: number;
+  sz: number;
+}
+
+/**
+ * Decide the byte tallies for one job from its SQL aggregate. Null (degrade to
+ * the whole-file count) when there is nothing deliverable or when ANY
+ * deliverable item has no known size — a partially-known denominator
+ * misreports worse than counts do.
+ */
+export function byteProgress(
+  agg: ByteAggRow | null,
+): { bytesTransferred: number; bytesTotal: number } | null {
+  if (!agg || agg.deliverable === 0 || agg.unsized > 0 || agg.sz <= 0) return null;
+  return { bytesTransferred: Math.min(agg.bt, agg.sz), bytesTotal: agg.sz };
+}
+
+function jobByteAgg(db: Database, jobId: string): ByteAggRow | null {
+  return (
+    db
+      .query<ByteAggRow, [string]>(
+        `SELECT
+           COALESCE(SUM(CASE WHEN state IN ${BYTE_DELIVERABLE} THEN 1 ELSE 0 END), 0) deliverable,
+           COALESCE(SUM(CASE WHEN state IN ${BYTE_DELIVERABLE}
+                             AND (size_bytes IS NULL OR size_bytes <= 0) THEN 1 ELSE 0 END), 0) unsized,
+           COALESCE(SUM(CASE WHEN state IN ('completed','organized','scanned') THEN size_bytes
+                             WHEN state IN ('queued','downloading')
+                               THEN MIN(COALESCE(bytes_transferred, 0), COALESCE(size_bytes, 0))
+                             ELSE 0 END), 0) bt,
+           COALESCE(SUM(CASE WHEN state IN ${BYTE_DELIVERABLE} THEN COALESCE(size_bytes, 0) ELSE 0 END), 0) sz
+         FROM acquisition_job_items WHERE job_id = ?`,
+      )
+      .get(jobId) ?? null
+  );
+}
+
 export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] {
   const jobs = db
     .query<JobRow, [number]>(`SELECT * FROM acquisition_jobs ORDER BY created_at DESC LIMIT ?`)
@@ -1274,6 +1344,7 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
         `SELECT track_title, state, username, filename FROM acquisition_job_items WHERE job_id = ? ORDER BY id`,
       )
       .all(row.id);
+    const bytes = byteProgress(jobByteAgg(db, row.id));
     const quality = rollupJobQuality(db, row.id);
     // Peer breakdown for the card's "Sources (N)" disclosure. One hunt can pull
     // from several peers (a fallback wave, a multi-disc release); the data was
@@ -1313,7 +1384,10 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
         unavailable: counts.get('unavailable') ?? 0,
         failed: counts.get('failed') ?? 0,
         canonical: canonicalTrackCount(row.canonical_tracks_json),
+        bytesTransferred: bytes?.bytesTransferred ?? null,
+        bytesTotal: bytes?.bytesTotal ?? null,
       },
+      cancelRequested: row.cancel_requested_at != null,
       ...(quality ? { bitRate: quality.bitRate, audioFormat: quality.audioFormat } : {}),
       sources,
       destinationAlbums: jobDestinationAlbums(db, row.id),

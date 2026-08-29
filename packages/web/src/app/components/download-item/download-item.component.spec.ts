@@ -8,6 +8,7 @@ import {
   canOpenPlaylist,
   hasMultipleDestinationAlbums,
   canShowNowNext,
+  isCancelPending,
   DownloadItemComponent,
 } from './download-item.component';
 import { resolveAlbumRoute, resolvePlaylistRoute } from '../../lib/route-utils';
@@ -409,5 +410,13 @@ describe('download-item failure breakdown', () => {
       fixture.nativeElement.querySelector('[data-testid="download-failure-breakdown"]'),
     ).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('JSONDecodeError');
+  });
+});
+
+describe('download-item cancel-pending gating (#806)', () => {
+  it('pends on the in-flight request or the durable server marker', () => {
+    expect(isCancelPending(item({ canCancel: true }), true)).toBe(true);
+    expect(isCancelPending(item({ canCancel: true, cancelRequested: true }), false)).toBe(true);
+    expect(isCancelPending(item({ canCancel: true }), false)).toBe(false);
   });
 });

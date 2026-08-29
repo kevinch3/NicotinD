@@ -56,6 +56,10 @@ export class DownloadsComponent {
   private readonly toasts = inject(ToastService);
 
   readonly retrying = signal(new Set<string>());
+  /** Feed keys with a cancel request in flight (#806) — the `retrying` pattern.
+   *  Only covers the request round-trip: the very next poll returns the durable
+   *  `cancelRequested` marker, which survives reloads. */
+  readonly cancelling = signal(new Set<string>());
   readonly scanning = signal(false);
 
   // Download inbox triage (issue #411): the review-inbox's "Fix metadata"
@@ -178,7 +182,7 @@ export class DownloadsComponent {
 
   onItemCancel(item: DownloadItem): void {
     if (item.kind === 'network') {
-      if (item.jobId) void this.cancelJob(item.jobId);
+      if (item.jobId) void this.cancelJob(item.jobId, item.key);
     } else {
       const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
       if (j) void this.dismissAcquireJob(j);
@@ -208,7 +212,11 @@ export class DownloadsComponent {
     }
   }
 
-  private async cancelJob(jobId: string): Promise<void> {
+  private async cancelJob(jobId: string, feedKey: string): Promise<void> {
+    // Same guard shape as `retryJobById` — the asymmetry (Retry had it, Cancel
+    // didn't) is what let re-clicks re-fire the cancel forever (#806).
+    if (this.cancelling().has(feedKey)) return;
+    this.cancelling.update((prev) => new Set(prev).add(feedKey));
     try {
       await firstValueFrom(this.api.cancelJob(jobId));
     } catch (err) {
@@ -219,8 +227,14 @@ export class DownloadsComponent {
         message: httpErrorMessage(err, 'Could not cancel this download'),
         kind: 'error',
       });
+    } finally {
+      this.cancelling.update((prev) => {
+        const next = new Set(prev);
+        next.delete(feedKey);
+        return next;
+      });
+      await this.transferService.kickPoll();
     }
-    await this.transferService.kickPoll();
   }
 
   /**
@@ -253,9 +267,11 @@ export class DownloadsComponent {
   }
 
   /** Cancel every in-flight card: addon jobs via their job endpoint, URL
-   *  acquire jobs via their delete. */
+   *  acquire jobs via their delete. Only genuinely cancellable rows (#806):
+   *  the old any-non-terminal filter re-fired at `processing` jobs — which
+   *  have nothing left to cancel — on every click. */
   async cancelAll(): Promise<void> {
-    const active = this.downloadFeed().filter((i) => i.stage !== 'done' && i.stage !== 'error');
+    const active = this.downloadFeed().filter((i) => i.canCancel && !i.cancelRequested);
     await Promise.all(
       active.map((i) =>
         i.kind === 'network' && i.jobId

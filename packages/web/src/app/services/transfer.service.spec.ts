@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { of } from 'rxjs';
-import { TransferService } from './transfer.service';
+import { TransferService, jobKeepsFastCadence } from './transfer.service';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { SystemApiService } from './api/system-api.service';
 import type { AcquireJob, AcquisitionJobView } from '@nicotind/core';
@@ -402,5 +402,24 @@ describe('TransferService.noteAlbumsLanded', () => {
     service.noteAlbumsLanded(['al1']);
     service.clearNewlyLandedAlbumIds();
     expect(service.newlyLandedAlbumIds().size).toBe(0);
+  });
+});
+
+describe('jobKeepsFastCadence (#806)', () => {
+  it('keeps the fast cadence through the whole active pipeline, not just downloading', () => {
+    for (const stage of ['resolving', 'queued', 'downloading', 'organizing', 'scanning'] as const) {
+      expect(jobKeepsFastCadence(makeJobView(stage))).toBe(true);
+    }
+  });
+
+  it('processing and terminal stages drop to the slow tier', () => {
+    // `processing` can honestly last hours behind the review hold — deliberate.
+    expect(jobKeepsFastCadence(makeJobView('processing'))).toBe(false);
+    expect(jobKeepsFastCadence(makeJobView('done'))).toBe(false);
+    expect(jobKeepsFastCadence({ ...makeJobView('error'), state: 'failed' })).toBe(false);
+  });
+
+  it('URL jobs never drive the network cadence (the acquire lane covers them)', () => {
+    expect(jobKeepsFastCadence({ ...makeJobView('downloading'), kind: 'url' })).toBe(false);
   });
 });

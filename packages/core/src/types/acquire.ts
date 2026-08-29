@@ -108,7 +108,22 @@ export interface AcquisitionJobView {
     unavailable: number;
     failed: number;
     canonical: number | null;
+    /**
+     * Byte tallies over the *deliverable* items (queued/downloading + on-disk;
+     * failed/unavailable excluded from both sides — the bar measures "of what
+     * can still land", issue #805). Null whenever any deliverable item has no
+     * known size: a partially-known denominator misreports worse than the
+     * whole-file count does, so the client falls back to `delivered/expected`.
+     */
+    bytesTransferred?: number | null;
+    bytesTotal?: number | null;
   };
+  /**
+   * A cancel was requested and is being carried out (issue #806). The durable
+   * marker, not a stage: the stage keeps deriving honestly from items while
+   * the addon winds down, and the client renders "Cancelling…" from this flag.
+   */
+  cancelRequested?: boolean;
   /**
    * Per-track status, uniform across every acquisition backend (slskd hunts
    * expose this from `acquisition_job_items`; URL acquires expose it from
