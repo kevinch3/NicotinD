@@ -10,6 +10,7 @@ import { TransferService } from '../../services/transfer.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { ToastService } from '../../services/toast.service';
 import type { AcquireJob } from '@nicotind/core';
+import { DownloadReviewService } from '../../services/download-review.service';
 
 function setup(opts: { acquireJobs?: AcquireJob[]; api?: Record<string, unknown> } = {}) {
   let scanned = false;
@@ -21,6 +22,7 @@ function setup(opts: { acquireJobs?: AcquireJob[]; api?: Record<string, unknown>
     acquisitionJobs: signal([]),
     libraryDirty: signal(false),
     kickPoll: vi.fn().mockResolvedValue(undefined),
+    markLibraryDirty: vi.fn(),
   };
   const p2rStub = {
     register: (h: () => Promise<void> | void) => {
@@ -267,5 +269,82 @@ describe('DownloadsComponent — cancel guard (#806)', () => {
     await component.cancelAll();
     expect(cancelJob).toHaveBeenCalledTimes(1);
     expect(cancelJob).toHaveBeenCalledWith('j1');
+  });
+});
+
+describe('DownloadsComponent — partial discard (#810)', () => {
+  const partialRow = (over: Record<string, unknown> = {}) =>
+    ({
+      key: 'job:j1',
+      kind: 'network',
+      title: 'X',
+      method: 'slskd',
+      stage: 'downloading',
+      jobId: 'j1',
+      progress: { done: 3, total: 9 },
+      canRetry: false,
+      canCancel: true,
+      canRemove: false,
+      ...over,
+    }) as never;
+
+  it('cancel with landed tracks asks, and a checked option also discards', async () => {
+    const cancelJob = vi.fn().mockReturnValue(of({ ok: true }));
+    const discardPartial = vi.fn().mockReturnValue(of({ ok: true, deletedCount: 3 }));
+    const { component } = setup({ api: { cancelJob, discardPartial } });
+    const review = TestBed.inject(DownloadReviewService);
+    vi.spyOn(review, 'refresh').mockResolvedValue(undefined);
+
+    component.onItemCancel(partialRow());
+    // Nothing fired yet — the dialog owns the decision.
+    expect(cancelJob).not.toHaveBeenCalled();
+    expect(component.showConfirm()).toBe(true);
+    expect(component.confirmOptionLabel()).toBeTruthy();
+
+    component.confirmOptionChecked.set(true);
+    component.onConfirm();
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+
+    expect(cancelJob).toHaveBeenCalledWith('j1');
+    expect(discardPartial).toHaveBeenCalledWith('j1');
+  });
+
+  it('cancel with landed tracks and an unchecked option only cancels', async () => {
+    const cancelJob = vi.fn().mockReturnValue(of({ ok: true }));
+    const discardPartial = vi.fn();
+    const { component } = setup({ api: { cancelJob, discardPartial } });
+
+    component.onItemCancel(partialRow());
+    component.onConfirm();
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+
+    expect(cancelJob).toHaveBeenCalledWith('j1');
+    expect(discardPartial).not.toHaveBeenCalled();
+  });
+
+  it('cancel with nothing landed stays a friction-free single click', async () => {
+    const cancelJob = vi.fn().mockReturnValue(of({ ok: true }));
+    const { component } = setup({ api: { cancelJob } });
+
+    component.onItemCancel(partialRow({ progress: { done: 0, total: 9 } }));
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+
+    expect(component.showConfirm()).toBe(false);
+    expect(cancelJob).toHaveBeenCalledWith('j1');
+  });
+
+  it('the card discard action confirms then deletes the held partial', async () => {
+    const discardPartial = vi.fn().mockReturnValue(of({ ok: true, deletedCount: 2 }));
+    const { component, transferService } = setup({ api: { discardPartial } });
+    const review = TestBed.inject(DownloadReviewService);
+    vi.spyOn(review, 'refresh').mockResolvedValue(undefined);
+
+    component.onItemDiscardPartial(partialRow({ stage: 'processing', quarantinedCount: 2 }));
+    expect(discardPartial).not.toHaveBeenCalled();
+    component.onConfirm();
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+
+    expect(discardPartial).toHaveBeenCalledWith('j1');
+    expect(transferService.markLibraryDirty).toHaveBeenCalled();
   });
 });

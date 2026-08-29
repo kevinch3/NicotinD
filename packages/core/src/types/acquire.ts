@@ -125,6 +125,13 @@ export interface AcquisitionJobView {
    */
   cancelRequested?: boolean;
   /**
+   * How many of this job's landed tracks still sit behind the quarantine gate
+   * (issue #810) — drives the card's "Held for review — Review / Discard"
+   * line, so a cancelled partial is a decision point rather than an opaque
+   * "Processing".
+   */
+  quarantinedCount?: number;
+  /**
    * Per-track status, uniform across every acquisition backend (slskd hunts
    * expose this from `acquisition_job_items`; URL acquires expose it from
    * `acquire_jobs.tracks_json` — see `AcquireJob.tracks`).

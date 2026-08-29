@@ -361,6 +361,53 @@ export async function deleteOne(
   return { ok: true };
 }
 
+export interface DeleteSongsResult {
+  deletedCount: number;
+  failed: Array<{ id: string; error: string }>;
+}
+
+/**
+ * Delete a specific set of songs (quarantined or landed) via `deleteOne` —
+ * album-survival-safe by construction: `pruneOrphanAlbum` inside each call only
+ * drops an album that ended up empty, so a `complete_album` partial can be
+ * discarded without touching the album it was completing (#810).
+ * `orphanRelPaths` covers organized-but-unscanned files (a job item with a
+ * `relative_path` and no `song_id` yet): no canonical row exists to delete, so
+ * the file itself is removed, path-safety-checked, with empty dirs cleaned.
+ */
+export async function deleteSongs(
+  db: Database,
+  ids: string[],
+  deps: DeletionDeps,
+  orphanRelPaths: string[] = [],
+): Promise<DeleteSongsResult> {
+  const failed: Array<{ id: string; error: string }> = [];
+  let deletedCount = 0;
+  for (const id of ids) {
+    const res = await deleteOne(db, id, deps);
+    if (res.ok) deletedCount++;
+    else failed.push({ id, error: res.error ?? 'delete failed' });
+  }
+  if (deps.musicDir && orphanRelPaths.length > 0) {
+    const expandedMusicDir = expandDir(deps.musicDir);
+    for (const relPath of orphanRelPaths) {
+      const fullPath = resolveSongPath(expandedMusicDir, relPath);
+      if (!isUnderMusicDir(expandedMusicDir, fullPath)) continue;
+      try {
+        if (existsSync(fullPath)) {
+          unlinkSync(fullPath);
+          deletedCount++;
+          cleanupEmptyDirs(fullPath, expandedMusicDir);
+        }
+      } catch (err) {
+        failed.push({ id: relPath, error: err instanceof Error ? err.message : 'unlink failed' });
+      }
+    }
+    deps.shareRescan.schedule();
+  }
+  return { deletedCount, failed };
+}
+
 export interface DeleteAlbumResult {
   ok: boolean;
   deletedCount: number;

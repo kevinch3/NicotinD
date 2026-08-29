@@ -111,6 +111,12 @@ export interface DownloadItem {
    * control, surviving reloads (unlike the request-in-flight `cancelling` set).
    */
   cancelRequested?: boolean;
+  /**
+   * Landed tracks of this job still held behind the quarantine gate (#810) —
+   * drives the "Held for review — Review / Discard" line, so a cancelled
+   * partial is a decision point rather than an opaque "Processing".
+   */
+  quarantinedCount?: number;
 }
 
 /**
@@ -348,6 +354,7 @@ export function mergeAcquisitionJobs(
       // any later stage (organizing/scanning/processing) has nothing in flight.
       percent: job.stage === 'downloading' ? jobPercent(job.progress) : undefined,
       cancelRequested: job.cancelRequested || undefined,
+      quarantinedCount: job.quarantinedCount || undefined,
       // why: only a *shortfall* is news. A source that offered the whole
       // tracklist (or more — a folder with bonus tracks) leaves these unset so
       // the ordinary card is untouched.

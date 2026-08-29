@@ -543,6 +543,30 @@ cadence) while staying infinitely re-clickable. The durable marker inverts that:
   `processing` jobs that have nothing left to cancel. The client keeps the fast 3 s poll through
   every live stage (`jobKeepsFastCadence`) instead of dropping to 30 s the moment the stage moves.
 
+#### A cancelled partial is a decision point, not an opaque card (#810)
+
+Cancelling a download that already landed tracks used to strand them: with the review hold armed
+they sat behind a pulsing "Processing" with no explanation, the card's Remove deleted only the feed
+row, and a plain acquirer had no legal path to remove the files at all (review discard is
+curator-gated while cancel is acquirer-gated). Now the decision has two entry points sharing one
+job-scoped primitive:
+
+- **`POST /jobs/:id/discard-partial`** deletes exactly what this job landed —
+  `jobPartialContents` (scanned `song_id`s + organized-but-unscanned `relative_path`s) through the
+  shared `deleteSongs` (per-song `deleteOne`: album survives unless emptied, genre facets refresh,
+  share-rescan debounces) — **never** the destination album, which a `complete_album` job only
+  added tracks to. Gate: the job's own `user_id` or a curator (docs/roles.md); audited as
+  `download.discard_partial`. `markPartialDiscarded` is stamped first, and `ingestReadyItems`
+  checks it, so a fileReady item mid-flight on the poller cannot land afterwards and resurrect the
+  album.
+- **Cancel-time**: when the card shows anything landed, cancel becomes a confirm with an opt-in
+  "also discard the N downloaded tracks" checkbox (default off — keep goes to review); a
+  nothing-landed cancel stays a friction-free single click.
+- **On the card**: the feed ships `quarantinedCount` (this job's tracks still behind the gate) and
+  the card renders "N held for review — Review / Discard" (`download-held-review`,
+  `download-review-jump`, `download-discard-partial`), so the held state names itself instead of
+  hiding inside "Processing".
+
 #### The denominator is the release, not the source's offering (#745)
 
 `listJobFeed` derives `expected` from item rows — *whatever the source itemized*. Nothing read

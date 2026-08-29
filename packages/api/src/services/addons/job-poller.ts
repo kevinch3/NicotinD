@@ -484,6 +484,15 @@ export class AddonJobPoller {
     job: AddonJob,
   ): Promise<void> {
     const { db } = this.deps;
+    // Partial discarded (#810): the user threw this job's landed tracks away,
+    // so a fileReady item that was still mid-flight must not land afterwards
+    // and resurrect the album. Covers the stranded-jobs sweep too.
+    const discarded = db
+      .query<{ partial_discarded_at: number | null }, [string]>(
+        `SELECT partial_discarded_at FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(coreJobId)?.partial_discarded_at;
+    if (discarded != null) return;
     const addonId = plugin.manifest.id;
     const batch: CompletedDownloadFile[] = [];
     const keys: string[] = [];

@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import type { AuthEnv } from '../middleware/auth.js';
-import { requireAcquirer } from '../middleware/current-user.js';
+import { getCurrentUser, requireAcquirer } from '../middleware/current-user.js';
 import type { DiscographyService } from '../services/discography.service.js';
 import type { AlbumHuntOrchestrator } from '../services/source-hunter.js';
 import { albumIdFor, artistIdFor } from '../services/library-scanner.js';
@@ -213,6 +213,7 @@ export function discographyRoutes({
           const coreJobId = createJob(db, {
             kind: 'track-search',
             method: trackAddon.manifest.id,
+            userId: getCurrentUser(c).sub,
             artistName: artistName || null,
             albumTitle: album.title ?? null,
             lidarrAlbumId: albumId,
@@ -547,6 +548,7 @@ export function discographyRoutes({
         const coreJobId = createJob(db, {
           kind: 'album-hunt',
           method: addon.manifest.id,
+          userId: getCurrentUser(c).sub,
           artistName,
           albumTitle,
           lidarrAlbumId: albumId,

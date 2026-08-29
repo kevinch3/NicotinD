@@ -15,7 +15,7 @@ import {
   parseAddonJobId,
   sanitizeAddonError,
 } from './job-poller.js';
-import { createJob, requestJobCancel } from '../acquisition-job-store.js';
+import { createJob, markPartialDiscarded, requestJobCancel } from '../acquisition-job-store.js';
 import type { CompletedDownloadFile } from '../path-inference.js';
 
 const MANIFEST: AddonManifest = {
@@ -1045,5 +1045,30 @@ describe('cancel intent (#806)', () => {
       .query<{ state: string }, []>(`SELECT state FROM acquisition_job_items`)
       .get()!;
     expect(item.state).toBe('unavailable');
+  });
+});
+
+describe('partial discard (#810)', () => {
+  it('never ingests a fileReady item of a partial-discarded job', async () => {
+    let jobsData = [makeJob()];
+    const h = harness(() => jobsData);
+    await h.registry.enable('fixture-addon', 'admin');
+    await h.poller.tick();
+
+    const { id } = h.db.query<{ id: string }, []>(`SELECT id FROM acquisition_jobs`).get()!;
+    markPartialDiscarded(h.db, id);
+
+    // The file arrives AFTER the discard — the exact late-landing race.
+    jobsData = [
+      makeJob({
+        state: 'done',
+        updatedAt: 4000,
+        items: [{ ...makeJob().items[0]!, state: 'completed', fileReady: true, updatedAt: 4000 }],
+      }),
+    ];
+    await h.poller.tick();
+
+    expect(h.organized).toHaveLength(0);
+    expect(h.scanned).toHaveLength(0);
   });
 });
