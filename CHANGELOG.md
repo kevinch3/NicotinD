@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.37](https://github.com/kevinch3/NicotinD/compare/v0.5.35...v0.5.37) (2026-08-29)
+
+### Features
+
+* **polls:** seek bar on the playing preview ([#804](https://github.com/kevinch3/NicotinD/issues/804)) ([2092fd5](https://github.com/kevinch3/NicotinD/commit/2092fd5487c2690dd312488e21bde0593779fa1a)), references [#803](https://github.com/kevinch3/NicotinD/issues/803)
+
+### Bug Fixes
+
+* **processing:** disabled tick still clears quarantine so 'Processing' cannot strand ([#807](https://github.com/kevinch3/NicotinD/issues/807)) ([#811](https://github.com/kevinch3/NicotinD/issues/811)) ([c719d89](https://github.com/kevinch3/NicotinD/commit/c719d89ee1917cd595f8a75effc2877bdebf6fd3))
 ## [0.5.36](https://github.com/kevinch3/NicotinD/compare/v0.5.35...v0.5.36) (2026-08-29)
 
 ### Features
