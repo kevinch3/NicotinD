@@ -1018,3 +1018,96 @@ untagged: no budget to confirm per-artist, and cluster proximity is still not ev
 **Recommendation for the owner**: raise `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` to unblock this
 backlog, since it is now the sole bottleneck — the curation methodology and worklist are both ready
 to go the moment search is available again.
+
+### Session 5 (2026-08-28) — zero-search lane + identify_song on an open flag
+
+Baseline: `genres.missing` 462, `flags.open` 2 (id 15 DJ Nu-Sky identity, id 18 Green Velvet
+*Unshakable* under-credited collaborators). No WebSearch used this session.
+
+**Genre, free lane only**: checked `get_artist` for every multi-album artist in the fresh
+`list_recent_songs(missingGenre: true)` window. Sibling album genres were all null (no
+propagation available), but four artists were confident from domain knowledge with no search
+needed: Nate Smith (jazz drummer, `KINFOLK`) and Joel Ross (jazz vibraphonist, `KingMaker`) →
+`Jazz`; Tangents (Australian jazz/electronic duo, `Timeslips & Chimeras`) → `Jazz`; Marsh
+(Anjunabeats trance/prog-house producer, US-origin MBID confirmed) → `Progressive House`. 8 songs
+tagged `mode: 'replace'`, all read back via `get_album_tracks` and confirmed persisted.
+`genres.missing` 462 → 454.
+
+**Flag 15 resolved** using `identify_song` (fpcalc/AcoustID) rather than web search: the flagged
+"Hold On" / DJ Nu-Sky track fingerprinted as a genuine DJ Nu-Sky recording (score 0.96, MB
+recordingId, MB title "Track 13" — a generic mix-CD rip), settling the flag's open identity
+question in favor of the Latin mix-CD act. Corrected genre `House` → `Latin` (replace), resolved
+the flag with the evidence cited.
+
+**Flag 18 investigated further, left open**: ran `identify_song` on the 5 remaining
+"Relief Records"-labeled-as-genre tracks on Green Velvet's *Unshakable* (Beatport 403s blocked
+this last session). All 5 fingerprinted cleanly as genuine Green Velvet recordings matching their
+existing titles — but `identify_song` carries no genre and no collaborator-credit data by design,
+so it couldn't resolve either open question on this flag (correct genre, or the 10 missing
+collaborator credits). The album's other 8 tracks split evenly Techno/Tech House, so sibling
+propagation doesn't clear the bar either. No write made; flag stands as before, still needing a
+manual Beatport/Discogs per-track pass.
+
+Final: `genres.missing` 454, `flags.open` 1. Net this session: 9 songs fixed (8 genre + 1 flag
+identity/genre correction), 0 searches spent, 1 flag closed. Confirms the skill's zero-search-lane
+guidance holds even mid-backlog — `get_artist`/domain knowledge and `identify_song` cleared real
+work with no search budget at all.
+
+### Session 5d (`/loop 5m`, same day) — paging `list_recent_songs(missingGenre:true)` by offset
+
+Continued the zero-search approach as a 5-minute cron loop, each tick reading a fresh page and
+tagging every artist recognizable from domain knowledge, still 0 WebSearch calls. `genres.missing`
+454 → 397 (tick 1, 25 songs across Jazz artists — Nate Smith, Joel Ross, Tangents, Henry Solomon,
+Ian Carr, Jon Gordon Quintet, Ray Gallon, Vels Trio, Valentino Jazz Bazar, Polar Bear — plus
+Progressive House/Nuevo Tango/Jazz-Rock/Tropicália/Pop-Rock/Hip-Hop/Post-Punk singles) → 384
+(tick 2, 33 songs: full Juana la Loca `Punk Rock`, full Matias Aguayo `Minimal House`, WhoMadeWho
+`Nu-Disco`, Miranda! `Pop`, Los Tekis `Folklore`). All writes read back via `get_album_tracks`.
+
+**Self-caught sibling-agreement violation**: tagged 2 Miranda! singles `Synth-Pop` from genre
+knowledge (accurate stylistically) while the album's other 8 tagged tracks already said `Pop`
+6-to-0. The skill's own rule — propagate only where ≥2 tagged siblings *agree* — says match the
+established majority, not substitute a more "correct" label; a more precise genre that disagrees
+with the album's consensus is still the violation, not an improvement. Caught it on the next
+read-back and retagged both (plus 2 more landing in the same tick) to `Pop`. Same pattern hit
+WhoMadeWho: initially guessed `Indie Dance` for 4 tracks landing before 9 sibling tracks were
+visible on the same page, corrected to `Nu-Disco` once the album read showed the majority.
+**Lesson: read the full album's existing genre spread before tagging a genre-less track on it —
+even a confident guess should defer to an established in-album majority.**
+
+Skipped without tagging (per policy, `list_recent_songs` continuing to surface the Linguaphone
+Welsh-course non-music rows from flag #17 and several generic-name/generic-title singles) —
+left untouched, not guessed.
+
+Running total this session: 462 → 384 (78 songs fixed), 0 searches, 1 flag closed. Loop continues
+via `CronCreate` job `b6e0dbc6` (every 5 min, session-only, 7-day auto-expiry).
+
+**Loop continued, 3 more ticks, then stopped deliberately.** 384 → 373 → 369, mostly finishing out
+partially-tagged albums as later pages surfaced their remaining tracks (rest of Juana la Loca's two
+albums, rest of Matias Aguayo's *The visitor CD2* and *NA*, WhoMadeWho's *Green Versions*, Los
+Tekis, Miranda!) — all `Punk Rock` / `Minimal House` / `Nu-Disco` / `Folklore` / `Pop` respectively,
+each read back confirmed. **Stopped the loop deliberately at 369**: the remaining backlog is now
+dominated by the Linguaphone Welsh-course non-music block (flag #17, ~125 rows, permanently
+unfixable by genre-tagging) and singleton generic-named regional Latin acts (Trace (UZ), La Fiesta,
+Mambru, La Barra, Sombras, Nestor En Bloque, Paulina, S.B.S., Los Nota Lokos, Los Bam Band, Super
+Mer Ka 2, Tu Voz, Siren, Tiburon Valdez) with no sibling context and no name I can resolve from
+domain knowledge alone — exactly the "genuinely closed off to web search" residue shape documented
+in session 5c. Continuing the zero-search loop past this point would burn ticks for near-zero yield;
+the productive next step is a `list_recent_songs(missingGenre:true)` pass **with** WebSearch
+available, not more zero-search ticks.
+
+Session total: 462 → 369 (93 songs fixed across ~6 ticks), 0 WebSearch calls, 1 review flag closed
+via `identify_song`. `CronCreate` job `b6e0dbc6` cancelled.
+
+### Session 5e (2026-08-29) — Linguaphone Welsh-course album deleted, owner's call
+
+Owner asked to finally remove the Linguaphone "Cwrs Cymraeg - Recordings" album (flag #17's
+subject, sitting untouched every session since it surfaced — 125 tracks of Welsh-language-course
+dialogue, permanent head of both the coverless and year-less worklists, `hidden: true` already).
+Confirmed via `get_album_tracks` before deleting (still 125 tracks, all Welsh dialogue, a few
+already carrying `Non-Music`/`Children's` genre tags from an earlier attempt), then
+`delete_album(confirm: true)` → `{"deletedCount":125,"failedCount":0}`, verified by a follow-up
+`search_library("Linguaphone")` returning zero rows and `get_library_health` showing songs
+16747→16622 (−125), artists 3089→3088, albums 5426→5425. **Side effect**: `genres.missing` dropped
+369→248 in one step (121 of the 125 tracks were genre-null) — a reminder that a stale unresolvable
+backlog item can be worth more as a deletion than as a tagging target. Flag #17 was not in the open
+list any more (only #18 remains) — already closed in an earlier session, nothing further to do.
