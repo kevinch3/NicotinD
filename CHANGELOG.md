@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.39](https://github.com/kevinch3/NicotinD/compare/v0.5.38...v0.5.39) (2026-08-29)
+
+### Bug Fixes
+
+* **downloads:** a cancelled partial's tracks are discardable by the canceller ([#810](https://github.com/kevinch3/NicotinD/issues/810)) ([#813](https://github.com/kevinch3/NicotinD/issues/813)) ([9753696](https://github.com/kevinch3/NicotinD/commit/975369683127901c7cd0ce82cc9e2a0fd1845665))
 ## [0.5.38](https://github.com/kevinch3/NicotinD/compare/v0.5.37...v0.5.38) (2026-08-29)
 
 ### Bug Fixes
