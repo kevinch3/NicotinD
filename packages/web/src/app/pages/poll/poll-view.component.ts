@@ -17,6 +17,7 @@ import { SeekBarComponent } from '../../components/seek-bar/seek-bar.component';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import {
+  fallbackTrackDuration,
   nextStep,
   pollFailureState,
   prevStep,
@@ -85,12 +86,7 @@ export class PollViewComponent implements OnInit, OnDestroy {
    *  track duration so the bar is usable from the first frame. */
   readonly playingDuration = computed(() => {
     const media = this.mediaDuration();
-    if (media > 0) return media;
-    const id = this.playingId();
-    const sc = this.scenario();
-    if (!id || !sc) return 0;
-    if (sc.seed?.id === id) return sc.seed.duration;
-    return sc.candidates.find((c) => c.id === id)?.duration ?? 0;
+    return media > 0 ? media : fallbackTrackDuration(this.scenario(), this.playingId());
   });
   readonly currentRated = computed(() => {
     const sc = this.scenario();
@@ -262,6 +258,8 @@ export class PollViewComponent implements OnInit, OnDestroy {
   private stopAudio(): void {
     this.audioRef()?.nativeElement.pause();
     this.playingId.set(null);
+    this.position.set(0);
+    this.mediaDuration.set(0);
   }
 
   formatTime(seconds: number): string {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PublicPollScenario } from '../../../types/core';
 import {
+  fallbackTrackDuration,
   nextStep,
   pollFailureState,
   prevStep,
@@ -65,6 +66,30 @@ describe('votesForScenario', () => {
       { scenarioId: 'sc1', candidateSongId: 'c1', rating: 5 },
       { scenarioId: 'sc1', candidateSongId: 'c2', verdict: 'down' },
     ]);
+  });
+});
+
+describe('fallbackTrackDuration', () => {
+  it('returns the seed duration when the seed is playing', () => {
+    expect(fallbackTrackDuration(scenario(), 'seed')).toBe(100);
+  });
+
+  it('returns the playing candidate’s duration', () => {
+    const sc = scenario();
+    sc.candidates[1].duration = 245;
+    expect(fallbackTrackDuration(sc, 'c2')).toBe(245);
+  });
+
+  it('returns 0 (bar disabled) for an unknown id, no playing track, or no scenario', () => {
+    expect(fallbackTrackDuration(scenario(), 'not-here')).toBe(0);
+    expect(fallbackTrackDuration(scenario(), null)).toBe(0);
+    expect(fallbackTrackDuration(null, 'c1')).toBe(0);
+  });
+
+  it('handles a station scenario (seed null) by matching candidates only', () => {
+    const sc = { ...scenario(), seed: null, filterLabel: 'Cumbia' };
+    expect(fallbackTrackDuration(sc, 'c1')).toBe(100);
+    expect(fallbackTrackDuration(sc, 'seed')).toBe(0);
   });
 });
 

@@ -44,6 +44,17 @@ export function votesForScenario(
   return out;
 }
 
+/** Frozen track duration of the playing row — the seek bar's stand-in until the
+ *  shared `<audio>` element's own metadata loads. 0 disables the bar. */
+export function fallbackTrackDuration(
+  scenario: PublicPollScenario | null,
+  playingId: string | null,
+): number {
+  if (!playingId || !scenario) return 0;
+  if (scenario.seed?.id === playingId) return scenario.seed.duration;
+  return scenario.candidates.find((c) => c.id === playingId)?.duration ?? 0;
+}
+
 /** Map a failed poll fetch onto a page state the template can explain. */
 export function pollFailureState(err: {
   status?: number;
