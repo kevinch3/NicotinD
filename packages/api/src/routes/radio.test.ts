@@ -4,6 +4,7 @@ import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { recordPlayEvents } from '../services/play-history.js';
 import { upsertArtistOrigin } from '../services/artist-origins.js';
+import { DESCRIPTOR_VERSION, upsertDescriptors } from '../services/descriptor-store.js';
 import { radioRoutes, buildFilterRadio } from './radio.js';
 
 let testDb: Database = (() => {
@@ -448,6 +449,55 @@ describe('radio /next', () => {
     // came back genre-less — meaning genre was SKIPPED for every candidate,
     // not merely weighted low. A genre-uniform pool's centroid must reflect it.
     expect(result.seed?.genre).toBe('Rock');
+  });
+
+  it('attaches descriptor blocks to pool members and seeds a descriptor centroid (formula v5)', () => {
+    seedSong(testDb, { id: 'd1', title: 'D1', artist: 'A', albumId: 'a1', album: 'A1', bpm: 120 });
+    seedSong(testDb, { id: 'd2', title: 'D2', artist: 'B', albumId: 'a2', album: 'A2', bpm: 121 });
+    seedSong(testDb, { id: 'd3', title: 'D3', artist: 'C', albumId: 'a3', album: 'A3', bpm: 122 });
+    const features = (centroid: number): Record<string, number | null> => {
+      const f: Record<string, number | null> = {};
+      for (let i = 0; i < 13; i++) f[`mfcc_${i}`] = i === 0 ? centroid : 0;
+      for (const n of [
+        'spectral_centroid',
+        'spectral_bandwidth',
+        'spectral_rolloff',
+        'spectral_flux',
+        'spectral_flatness',
+        'spectral_complexity',
+        'zero_crossing_rate',
+        'pitch_salience',
+        'onset_rate',
+        'beat_strength',
+        'tempo_stability',
+        'swing_ratio',
+        'groove_regularity',
+        'syncopation',
+        'danceability_dsp',
+        'kick_weight',
+      ])
+        f[n] = 0.5;
+      f.band_sub_bass = 0.1;
+      f.band_bass = 0.5;
+      f.band_low_mid = 0.1;
+      f.band_mid = 0.2;
+      f.band_high_mid = 0.05;
+      f.band_high = 0.05;
+      return f;
+    };
+    upsertDescriptors(testDb, { songId: 'd1', version: DESCRIPTOR_VERSION, features: features(-600), fileSize: 0 });
+    upsertDescriptors(testDb, { songId: 'd2', version: DESCRIPTOR_VERSION, features: features(-700), fileSize: 0 });
+    // d3 has no descriptors: it must still be in the pool, blocks undefined.
+    const result = buildFilterRadio(testDb, { bpmMin: 1 }, {});
+    const byId = new Map(result.pool.map((c) => [c._row.id, c]));
+    expect(byId.get('d1')?.timbre).toHaveLength(21);
+    expect(byId.get('d1')?.groove).toHaveLength(8);
+    expect(byId.get('d1')?.bands).toHaveLength(6);
+    expect(byId.get('d3')?.timbre).toBeUndefined();
+    expect(byId.get('d3')).toBeDefined();
+    // The station seed is the centroid of the members that carry blocks.
+    expect(result.seed?.timbre).toHaveLength(21);
+    expect(result.seed?.bands?.[1]).toBeCloseTo(0.5);
   });
 
   it('ranks a same-country candidate above a cross-world one when all else is equal', async () => {

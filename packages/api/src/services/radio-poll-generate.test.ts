@@ -207,6 +207,26 @@ describe('stripFeatures', () => {
     });
     expect(stripped).toEqual({ duration: 200, artistId: 'a', bpm: 120 });
   });
+
+  it('keeps the descriptor blocks (formula v5) — they are plain arrays and replayable', () => {
+    const stripped = stripFeatures({
+      duration: 200,
+      artistId: 'a',
+      timbre: [0.1, -0.2],
+      groove: [1, 0],
+      bands: [0.5, 0.5],
+      embedding: new Float32Array([1]),
+    });
+    expect(stripped).toEqual({
+      duration: 200,
+      artistId: 'a',
+      timbre: [0.1, -0.2],
+      groove: [1, 0],
+      bands: [0.5, 0.5],
+    });
+    // What a Float32Array would have become — the reason blocks are number[].
+    expect(JSON.parse(JSON.stringify(stripped)).timbre).toEqual([0.1, -0.2]);
+  });
 });
 
 describe('station (filter) scenarios', () => {

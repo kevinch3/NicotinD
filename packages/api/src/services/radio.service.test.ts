@@ -6,6 +6,7 @@ import {
   cosineSim,
   rankCandidates,
   DEFAULT_WEIGHTS,
+  RADIO_FORMULA_VERSION,
   RECENT_PLAY_WINDOW_MS,
   explainSimilarity,
   recentPlayFactor,
@@ -533,6 +534,11 @@ describe('explainSimilarity (per-axis breakdown — the diagnostic seam)', () =>
       instrumental: 3,
       acousticness: 2,
       embedding: 4,
+      // The descriptor axes did not exist before v5 — weight 0 keeps them
+      // invisible, which is exactly the historical formula.
+      timbre: 0,
+      groove: 0,
+      spectralBalance: 0,
       artistPenalty: 0.15,
       recentPlayPenalty: 0.2,
     };
@@ -593,6 +599,57 @@ describe('explainSimilarity (per-axis breakdown — the diagnostic seam)', () =>
  * property of the candidate alone, so it is applied post-normalization like
  * artistPenalty. See SongFeatures.recentPlayFactor.
  */
+describe('descriptor axes (formula v5, issue #642)', () => {
+  const timbreA = Array.from({ length: 21 }, (_, i) => Math.sin(i));
+  const timbreB = timbreA.map((v) => -v); // opposite direction
+  const grooveA = [1, 0.5, 0.2, -0.3, 0.8, -1, 0.4, 0.1];
+  const bandsA = [0.3, 0.45, 0.1, 0.1, 0.04, 0.01];
+  const bandsB = [0.05, 0.1, 0.15, 0.4, 0.2, 0.1];
+
+  it('ships three composite weights and stamps formula version 5', () => {
+    expect(DEFAULT_WEIGHTS.timbre).toBe(6);
+    expect(DEFAULT_WEIGHTS.groove).toBe(5);
+    expect(DEFAULT_WEIGHTS.spectralBalance).toBe(3);
+    expect(RADIO_FORMULA_VERSION).toBe(5);
+  });
+
+  it('rewards timbre / groove / spectral-balance closeness at equal classic features', () => {
+    const seed = makeSeed({ timbre: timbreA, groove: grooveA, bands: bandsA });
+    const near = makeCandidate({ timbre: timbreA, groove: grooveA, bands: bandsA });
+    const far = makeCandidate({ timbre: timbreB, groove: grooveA.map((v) => -v), bands: bandsB });
+    expect(scoreSimilarity(seed, near)).toBeGreaterThan(scoreSimilarity(seed, far));
+  });
+
+  it('skips a block one side lacks — an un-analysed candidate is not penalised', () => {
+    const base = scoreSimilarity(makeSeed(), makeCandidate());
+    expect(
+      scoreSimilarity(makeSeed({ timbre: timbreA, groove: grooveA, bands: bandsA }), makeCandidate()),
+    ).toBeCloseTo(base, 10);
+    expect(
+      scoreSimilarity(makeSeed(), makeCandidate({ timbre: timbreA, groove: grooveA, bands: bandsA })),
+    ).toBeCloseTo(base, 10);
+  });
+
+  it('reports the three axes by name in the breakdown, with their weights', () => {
+    const ex = explainSimilarity(
+      makeSeed({ timbre: timbreA, groove: grooveA, bands: bandsA }),
+      makeCandidate({ timbre: timbreA, groove: grooveA, bands: bandsA }),
+      DEFAULT_WEIGHTS,
+    );
+    const byAxis = Object.fromEntries(ex.axes.map((a) => [a.axis, a]));
+    expect(byAxis.timbre?.value).toBeCloseTo(1);
+    expect(byAxis.timbre?.weight).toBe(6);
+    expect(byAxis.groove?.value).toBeCloseTo(1);
+    expect(byAxis.spectralBalance?.value).toBeCloseTo(1);
+    expect(ex.skipped).not.toContain('timbre');
+  });
+
+  it('lists the blocks as skipped when absent on both sides', () => {
+    const ex = explainSimilarity(makeSeed(), makeCandidate(), DEFAULT_WEIGHTS);
+    expect(ex.skipped).toEqual(expect.arrayContaining(['timbre', 'groove', 'spectralBalance']));
+  });
+});
+
 describe('recentPlayFactor', () => {
   const NOW = 1_700_000_000_000;
   const DAY = 24 * 3_600_000;

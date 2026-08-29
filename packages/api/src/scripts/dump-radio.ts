@@ -201,6 +201,7 @@ function renderPoolHealth(pool: RadioCandidate[], seedTokens: Set<string>): stri
   let noGenre = 0;
   let noBpm = 0;
   let noEnergy = 0;
+  let noDescriptors = 0;
   let sharesGenre = 0;
   let disjointGenre = 0;
   for (const c of pool) {
@@ -215,12 +216,14 @@ function renderPoolHealth(pool: RadioCandidate[], seedTokens: Set<string>): stri
     }
     if (c.bpm === undefined) noBpm++;
     if (c.energy === undefined) noEnergy++;
+    if (c.timbre === undefined) noDescriptors++;
   }
   return [
     `  pool size                    : ${total}`,
     `  missing genre (data gap)     : ${noGenre} (${pct(noGenre, total)})`,
     `  missing bpm                  : ${noBpm} (${pct(noBpm, total)})`,
     `  missing energy               : ${noEnergy} (${pct(noEnergy, total)})`,
+    `  missing descriptors (v5 axes): ${noDescriptors} (${pct(noDescriptors, total)})`,
     `  shares ≥1 genre token w/ seed: ${sharesGenre} (${pct(sharesGenre, total)})`,
     `  has genre but disjoint       : ${disjointGenre} (${pct(disjointGenre, total)})`,
   ];
@@ -327,6 +330,43 @@ function renderStationHealth(
  * five of eight stations). The pool histograms above cannot show that, so this
  * line exists to make the v4 regression visible if it ever comes back.
  */
+/**
+ * The v4 tripwire applied to the v5 descriptor axes: mean/sd of each of
+ * timbre / groove / spectralBalance across the tracks actually SERVED. An
+ * axis with sd ≈ 0 over the served window is gating the pool, not ordering
+ * it — the exact failure the station axis had in v3. Also prints coverage,
+ * because mid-backfill most of a pool skips these axes and a spread over two
+ * tracks means nothing.
+ */
+export function descriptorSpreadLines(
+  seed: SongFeatures,
+  served: readonly SongFeatures[],
+  weights: ScoringWeights,
+): string[] {
+  if (served.length === 0) return [];
+  const axes = ['timbre', 'groove', 'spectralBalance'] as const;
+  const values = new Map<string, number[]>(axes.map((a) => [a, []]));
+  for (const c of served) {
+    const ex = explainSimilarity(seed, c, weights);
+    for (const a of ex.axes) if (values.has(a.axis)) values.get(a.axis)!.push(a.value);
+  }
+  if ([...values.values()].every((v) => v.length === 0)) return [];
+  return axes.map((axis) => {
+    const vals = values.get(axis)!;
+    const label = `  ${axis.padEnd(16)} across the SERVED ${served.length}`;
+    if (vals.length < 2) return `${label}: ${vals.length}/${served.length} carry it — no spread to report`;
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
+    const verdict =
+      sd < 0.01
+        ? '   ← GATING, NOT ORDERING: every served track scores the same'
+        : sd < 0.05
+          ? '   ← barely orders the served window'
+          : '';
+    return `${label}: ${vals.length}/${served.length} carry it · mean ${mean.toFixed(3)} sd ${sd.toFixed(3)}${verdict}`;
+  });
+}
+
 function servedSpreadLines(ranked: RadioCandidate[]): string[] {
   const vals = ranked
     .map((c) => c.stationAffinity)
@@ -545,6 +585,13 @@ function renderDump(
   }
   lines.push('```');
   lines.push(...renderPoolHealth(pool, seedTokens));
+  lines.push(
+    ...descriptorSpreadLines(
+      seed,
+      ranked.map((r) => r.song),
+      weights,
+    ),
+  );
   lines.push('```');
   lines.push('');
 

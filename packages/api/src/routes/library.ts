@@ -29,6 +29,8 @@ import type { PluginRegistry } from '../services/plugins/registry.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
 import { rankCandidates, DEFAULT_WEIGHTS, type SongFeatures } from '../services/radio.service.js';
 import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.js';
+import { loadDescriptors } from '../services/descriptor-store.js';
+import { descriptorBlocks } from '../services/descriptor-axes.js';
 import { searchCandidates, applyMetadataFix } from '../services/metadata-fix.js';
 import { gatherCandidates } from '../services/candidate-sources.js';
 import {
@@ -2435,6 +2437,13 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       ? loadEmbeddings(db, [id, ...candidateRows.map((r) => r.id)], model)
       : new Map<string, Float32Array>();
     seed.embedding = embeddings.get(id);
+    // Descriptor blocks (formula v5) ride the same attach step as embeddings.
+    const descriptors = loadDescriptors(db, [id, ...candidateRows.map((r) => r.id)]);
+    const blocksFor = (songId: string) => {
+      const f = descriptors.get(songId);
+      return f ? descriptorBlocks(f) : {};
+    };
+    Object.assign(seed, blocksFor(id));
 
     const candidateGenres = loadGenreSets(
       db,
@@ -2444,6 +2453,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       ...songRowFeatures(r),
       genres: candidateGenres.get(r.id),
       embedding: embeddings.get(r.id),
+      ...blocksFor(r.id),
       _row: r,
     }));
 
