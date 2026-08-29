@@ -100,6 +100,15 @@ export interface RadioPollSnapshotFeatures {
   /** Station scenarios: the graded membership that replaced the genre axis, so
    *  a replay reproduces the ranking the raters actually saw. */
   stationAffinity?: number;
+  /**
+   * Descriptor blocks (formula v5, issue #642) — plain arrays, kept in the
+   * snapshot on purpose: they are what lets the eval harness re-weight the
+   * timbre / groove / spectralBalance axes on frozen votes. A feature missing
+   * here is dropped from every snapshot and can never be measured.
+   */
+  timbre?: number[];
+  groove?: number[];
+  bands?: number[];
 }
 
 /** One frozen next-up suggestion inside a scenario. */

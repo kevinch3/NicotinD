@@ -24,7 +24,7 @@ are stored but never scored — not a bug this change fixes, but worth knowing.
 - **Composite axes, not 40 individual weights.** `RADIO_FORMULA_VERSION` is 4 after exactly one
   calibration round of 70 votes; fitting 40 free parameters from 70 votes is overfitting, and v3's
   `SHARE_REFERENCE` already showed a plausible constant shipping wrong. Three blocks — timbre,
-  groove, bands — each one pollable weight. Phase 2 (#642) adds the axes; this phase stores the
+  groove, bands — each one pollable weight. Phase 2 (#642) added the axes as formula v8; this phase stores the
   raw material.
 - **A separate endpoint, not an extension of `/analyze`.** `/analyze` decodes at 16 kHz for the
   models (Nyquist 8 kHz), so the 6–16 kHz band is physically unmeasurable there, and Essentia's
@@ -58,7 +58,7 @@ are stored but never scored — not a bug this change fixes, but worth knowing.
   consume. `library_song_descriptors` mirrors `library_embeddings`: `version` (the sidecar's
   `DESCRIPTOR_VERSION` — a definition change re-analyses rather than mixing definitions in one
   axis), `file_size` (#258 content check), `orphaned_at` (#259 prune marker). **Raw values**, so
-  the z-score constants phase 2 needs can be re-derived from the store without re-analysing 15k
+  the z-score constants phase 2 needs (`DESCRIPTOR_NORM`) can be re-derived from the store without re-analysing 15k
   files.
 - **Never a landing gate, never tag-mirrored.** ~5 s of CPU per track must not strand a fresh
   download, and 40 regenerable floats belong in the store, not the file.
@@ -102,7 +102,7 @@ by embedding — separate exactly where the new blocks look:
 | `onset_rate`        |              5.25/s |               5.81/s |
 
 A live band drifting (0.77) next to a quantised production (0.98); a mid-heavy brass mix next to a
-bass-dominant one. These are the axes phase 2 scores.
+bass-dominant one. These are the axes phase 2 scores, as formula v8 — see [radio.md](radio.md) "Calibration history".
 
 ## The contract
 
@@ -113,7 +113,7 @@ ledgered, so an environmental fault can't exclude the whole library. A `null` va
 sidecar could not define that one" (no off-beat onsets → no swing; silence → no band shares) —
 the file is fine.
 
-Names, in `DESCRIPTOR_NAMES` order (`app/descriptors.py`); the API groups them by name in phase 2:
+Names, in `DESCRIPTOR_NAMES` order (`app/descriptors.py`); the API groups them by name via `descriptorBlocks` in phase 2:
 
 | block                | names                                                                                                                                                                            |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -1,6 +1,7 @@
 import { originSetCloseness } from '@nicotind/core';
 import { keyToCamelot } from './key-detection.js';
 import { isRealGenre } from './genre-split.js';
+import { blockCosineCloseness, spectralBalanceCloseness } from './descriptor-axes.js';
 
 export interface SongFeatures {
   bpm?: number;
@@ -25,6 +26,16 @@ export interface SongFeatures {
    *  route layer via `loadEmbeddings`. Scored as an extra closeness axis when
    *  both seed and candidate carry one of matching dimensionality. */
   embedding?: Float32Array;
+  /**
+   * Descriptor blocks (formula v5, issue #642) from `library_song_descriptors`,
+   * attached by the route layer via `loadDescriptors` + `descriptorBlocks`.
+   * Plain `number[]`, never typed arrays: these survive `stripFeatures` into
+   * the poll snapshots so the eval harness can re-weight them, whereas a
+   * Float32Array would `JSON.stringify` into an index-keyed blob.
+   */
+  timbre?: number[];
+  groove?: number[];
+  bands?: number[];
   /**
    * How recently *this listener* played this track, 0..1 — 1 = just now,
    * 0 = outside the window or never. Precomputed by the route via
@@ -85,6 +96,10 @@ export interface ScoringWeights {
   instrumental: number;
   acousticness: number;
   embedding: number;
+  /** Descriptor composites (formula v5, issue #642): one weight per block. */
+  timbre: number;
+  groove: number;
+  spectralBalance: number;
 }
 
 export const DEFAULT_WEIGHTS: ScoringWeights = {
@@ -137,6 +152,17 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   // positive discriminator in the poll data (r=+0.32, ahead of every scalar
   // axis) was carried by the smallest perceptual weight.
   embedding: 8,
+  // Descriptor composites (formula v5, issue #642). PRIORS, not findings: the
+  // first calibration poll for v5 has not run (the 70 v1 votes predate these
+  // blocks, so they cannot grade them). Timbre starts near the learned
+  // embedding it is the hand-crafted analogue of; groove above `bpm` because
+  // "same tempo, different feel" — a cuarteto record and a hard-electronic one
+  // tying at 1.00 on bpm — is the stated defect; spectral balance is a coarse
+  // tiebreak. Measure with `dump-radio.ts --weights` and the poll harness
+  // before moving any of them.
+  timbre: 6,
+  groove: 5,
+  spectralBalance: 3,
   // Applied post-normalization as a delta on the 0..1 fit score.
   artistPenalty: 0.15,
   // Slightly above artistPenalty: hearing the *same track* again soon is more
@@ -183,8 +209,9 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
  *      generate with no listener and no excludeIds - but it matters here
  *      because a poll could previously present the seed's own clone as a
  *      candidate to grade, which a rater marks good because it IS the seed.
- *      (5 is reserved for the descriptor axes of #642, already documented as
- *      v5; the numbers are grouping labels, so a gap costs nothing.)
+ *      (5 was reserved for the descriptor axes of #642; those landed as v8
+ *      instead - see below. The numbers are grouping labels, so a gap and a
+ *      broken reservation both cost nothing.)
  * v7 - issue #861: duration 3->0 and acousticness 2->5, calibrated on the
  *      first stars5 poll data (2 polls, 75 votes, 71 pairs) — the pair of
  *      moves measured better on every v6 poll group on both scales (stars5
@@ -193,8 +220,20 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
  *      change (`stationCentroid`), which altered what a station poll serves
  *      without touching the weights — the 12 station pairs voted under the
  *      pre-#859 sampler must never pool with post-fix station votes.
+ * v8 - three composite descriptor axes (issue #642): timbre (21 z-scored
+ *      MFCC/spectral values, cosine), groove (8 z-scored beat/onset statistics,
+ *      cosine) and spectral balance (6 band shares, 1 - L1/2), each one weight
+ *      (6 / 5 / 3 - priors). The blend had no axis for what the drums do or
+ *      where the spectral energy sits; two tracks at the same bpm tied there.
+ *      A candidate without descriptors skips the three axes, as every
+ *      un-analysed candidate always has. Z-score constants are measured from
+ *      the library (descriptor-norm.ts). Written as v5 when the work was
+ *      branched, but v5/v6/v7 shipped underneath it, and a formula that adds
+ *      three axes must not pool its votes with any of them - so it takes the
+ *      next free number. The v1-v7 votes cannot grade v8: their snapshots
+ *      carry no descriptor blocks, so v8 needs its own poll.
  */
-export const RADIO_FORMULA_VERSION = 7;
+export const RADIO_FORMULA_VERSION = 8;
 
 /**
  * Parse a `--weights axis=n[,axis=n...]` override spec against a base weight
@@ -533,6 +572,18 @@ export function explainSimilarity(
     'acousticness',
     unitCloseness(seed.acousticness, candidate.acousticness),
     weights.acousticness,
+  );
+
+  // Descriptor composites (formula v5): one weight per block. A block either
+  // side lacks returns null and SKIPS through the same `add()` — no floor, so
+  // an un-analysed candidate is never penalised for a pass that hasn't
+  // reached it yet (the backfill takes days).
+  add('timbre', blockCosineCloseness(seed.timbre, candidate.timbre), weights.timbre);
+  add('groove', blockCosineCloseness(seed.groove, candidate.groove), weights.groove);
+  add(
+    'spectralBalance',
+    spectralBalanceCloseness(seed.bands, candidate.bands),
+    weights.spectralBalance,
   );
 
   // Cached embedding cosine, mapped from [−1,1] to [0,1] closeness.

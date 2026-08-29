@@ -1,6 +1,60 @@
 import { describe, it, expect } from 'bun:test';
-import { looksConcatenatedGenre, parseWeightOverrides } from './dump-radio';
-import { DEFAULT_WEIGHTS } from '../services/radio.service';
+import { descriptorSpreadLines, looksConcatenatedGenre, parseWeightOverrides } from './dump-radio';
+import { DEFAULT_WEIGHTS, type SongFeatures } from '../services/radio.service';
+
+describe('descriptorSpreadLines (the v4 tripwire, applied to the v5 axes)', () => {
+  const base = (over: Partial<SongFeatures>): SongFeatures => ({
+    duration: 200,
+    artistId: 'x',
+    ...over,
+  });
+  const t = (a: number, b: number): number[] => [
+    a,
+    b,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+  ];
+
+  it('reports mean/sd per new axis across the SERVED window and flags a constant axis', () => {
+    const seed = base({ timbre: t(1, 0), bands: [1, 0, 0, 0, 0, 0] });
+    const served = [
+      base({ timbre: t(1, 0), bands: [1, 0, 0, 0, 0, 0] }),
+      base({ timbre: t(0, 1), bands: [1, 0, 0, 0, 0, 0] }),
+      base({ timbre: t(-1, 0), bands: [1, 0, 0, 0, 0, 0] }),
+    ];
+    const lines = descriptorSpreadLines(seed, served, DEFAULT_WEIGHTS);
+    const timbre = lines.find((l) => l.includes('timbre'))!;
+    const balance = lines.find((l) => l.includes('spectralBalance'))!;
+    expect(timbre).toMatch(/mean 0\.500 sd 0\.408/);
+    expect(timbre).not.toContain('GATING');
+    expect(balance).toMatch(/sd 0\.000/);
+    expect(balance).toContain('GATING, NOT ORDERING');
+    // groove: no side carries it → reported as absent, not as a number.
+    expect(lines.find((l) => l.includes('groove'))).toContain('0/3');
+  });
+
+  it('is silent when no served track carries descriptors', () => {
+    const seed = base({});
+    expect(descriptorSpreadLines(seed, [base({}), base({})], DEFAULT_WEIGHTS)).toEqual([]);
+  });
+});
 
 describe('parseWeightOverrides (--weights, the A/B measurement lever)', () => {
   it('returns the defaults unchanged when no override is given', () => {
