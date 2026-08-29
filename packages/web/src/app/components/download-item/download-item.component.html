@@ -129,6 +129,40 @@
         {{ item().storagePath }}
       </p>
     }
+    <!-- Which tracks, not just how many (#746). The counts on the header line
+         answer "how much arrived"; this answers "what is missing", which was
+         previously undiscoverable for an album of any size. -->
+    @if (showTracks()) {
+      @if (breakdown(); as b) {
+        <details class="mt-1" data-testid="download-tracks">
+          <summary
+            class="text-xs text-theme-muted cursor-pointer select-none hover:text-theme-secondary"
+          >
+            Tracks ({{ b.done }}/{{ b.total }}<!--
+            -->@if (b.failed) {, {{ b.failed }} failed}<!--
+            -->@if (b.skipped) {, {{ b.skipped }} skipped}<!--
+            -->)
+          </summary>
+          <ul class="mt-1 space-y-0.5">
+            @for (t of item().tracks; track $index) {
+              <li
+                class="flex items-center gap-2 text-xs text-theme-muted"
+                data-testid="download-track-row"
+                [attr.data-status]="t.status"
+              >
+                <!-- Falls back to the filename: an untitled item is exactly the
+                     one whose identity the user most needs. -->
+                <span class="truncate flex-1">{{ t.title || t.filename || '—' }}</span>
+                @if (t.username) {
+                  <span class="opacity-70 truncate max-w-[8rem]">{{ t.username }}</span>
+                }
+                <span class="tabular-nums opacity-70">{{ t.status }}</span>
+              </li>
+            }
+          </ul>
+        </details>
+      }
+    }
     <!-- One job can pull from several peers (a fallback wave, a multi-disc
          release). They belong inside the job's card, not as sibling cards
          (issue #261). -->

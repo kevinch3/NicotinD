@@ -411,3 +411,74 @@ describe('download-item failure breakdown', () => {
     expect(fixture.nativeElement.textContent).toContain('JSONDecodeError');
   });
 });
+
+/**
+ * #746. The gap this closes: a slskd album hunt reporting "98 of 100 · 2
+ * unavailable" gave the user no way to learn *which* two. The per-track data
+ * was already on the item and rendered by nothing.
+ */
+describe('download-item track drilldown', () => {
+  function setup(over: Partial<DownloadItem>) {
+    TestBed.configureTestingModule({
+      imports: [DownloadItemComponent],
+      providers: [provideRouter([])],
+    });
+    TestBed.overrideComponent(DownloadItemComponent, {
+      set: { imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent] },
+    });
+    const fixture = TestBed.createComponent(DownloadItemComponent);
+    setInputValue(fixture.componentInstance.item, item(over));
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  const TRACKS: DownloadItem['tracks'] = [
+    { title: 'Output-Input', status: 'done', username: 'peer1' },
+    { title: 'Revolución turra', status: 'failed', username: 'peer2' },
+    { title: '', status: 'failed', username: 'peer2', filename: '05x22 - Untitled.flac' },
+  ];
+
+  it('lists every track with its status, and names the failures', () => {
+    const fixture = setup({ kind: 'network', stage: 'error', tracks: TRACKS });
+    const rows = fixture.nativeElement.querySelectorAll(
+      '[data-testid="download-track-row"]',
+    ) as NodeListOf<HTMLElement>;
+    expect(rows.length).toBe(3);
+    expect(rows[0].textContent).toContain('Output-Input');
+    expect(rows[0].getAttribute('data-status')).toBe('done');
+    expect(rows[1].textContent).toContain('Revolución turra');
+    expect(rows[1].getAttribute('data-status')).toBe('failed');
+  });
+
+  /** An untitled item is precisely the one whose identity the user most needs. */
+  it('falls back to the filename when a track has no title', () => {
+    const fixture = setup({ kind: 'network', stage: 'error', tracks: TRACKS });
+    const rows = fixture.nativeElement.querySelectorAll('[data-testid="download-track-row"]');
+    expect(rows[2].textContent).toContain('05x22 - Untitled.flac');
+  });
+
+  it('summarises the tally so the count is legible while collapsed', () => {
+    const fixture = setup({ kind: 'network', stage: 'error', tracks: TRACKS });
+    const summary = fixture.nativeElement.querySelector(
+      '[data-testid="download-tracks"] summary',
+    ) as HTMLElement;
+    expect(summary.textContent).toContain('1/3');
+    expect(summary.textContent).toContain('2 failed');
+  });
+
+  /**
+   * `canShowNowNext` suppresses "Now:" for slskd because the last-downloading
+   * title is arbitrary across parallel peers. A full list has no such
+   * ambiguity — and slskd hunts are the jobs that need this most.
+   */
+  it('renders for a slskd job, which the Now/Next block deliberately skips', () => {
+    const fixture = setup({ kind: 'network', stage: 'downloading', tracks: TRACKS });
+    expect(fixture.nativeElement.querySelector('[data-testid="download-tracks"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="download-now"]')).toBeNull();
+  });
+
+  it('renders nothing when the job exposes no tracks', () => {
+    const fixture = setup({ kind: 'network', stage: 'done', tracks: undefined });
+    expect(fixture.nativeElement.querySelector('[data-testid="download-tracks"]')).toBeNull();
+  });
+});

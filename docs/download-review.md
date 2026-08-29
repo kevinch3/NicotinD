@@ -448,6 +448,13 @@ even issues the `GET /api/review/count` request.
   quarantined tracks, skipped steps rendered visually distinct from
   satisfied ones) and action buttons: `review-listen`, `review-fix`,
   `review-approve`, `review-discard`.
+- **The card names the tracks it is asking about (#746).** It used to show only
+  `{count} tracks`, so approving meant trusting a number — on prod a 98-track
+  card gave a curator nothing to check it against. `review-tracklist` discloses
+  the titles (`review-tracklist-row`, with `review.viewTracklist` at en/es
+  parity); the data was already on `QuarantineAlbum.songs[]` and rendered
+  nowhere. A song with a null `track` still gets a row — dropping it would
+  understate the album.
 - `MetadataFixModal` gained a **review mode** (`reviewTracks` input): source
   chips (`data-testid="candidate-source"`, one per `sources[]` entry from
   `gatherCandidates`) alongside the existing candidate list, plus a per-track

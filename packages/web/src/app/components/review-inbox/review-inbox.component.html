@@ -57,6 +57,31 @@
                 {{ 'review.tracks' | t: { count: album.songs.length } }}
               </p>
 
+              <!-- "98 pistas" was the whole story: approving meant trusting a
+                   number. The titles were in the DTO and rendered nowhere. -->
+              @if (album.songs.length) {
+                <details class="mt-1" data-testid="review-tracklist">
+                  <summary
+                    class="text-xs text-theme-muted cursor-pointer select-none hover:text-theme-secondary"
+                  >
+                    {{ 'review.viewTracklist' | t }}
+                  </summary>
+                  <ol class="mt-1 space-y-0.5">
+                    @for (song of album.songs; track song.id) {
+                      <li
+                        class="flex items-center gap-2 text-xs text-theme-muted"
+                        data-testid="review-tracklist-row"
+                      >
+                        <span class="tabular-nums opacity-70 w-6 shrink-0">{{
+                          song.track ?? '—'
+                        }}</span>
+                        <span class="truncate flex-1">{{ song.title }}</span>
+                      </li>
+                    }
+                  </ol>
+                </details>
+              }
+
               <div class="mt-2 flex flex-wrap gap-1">
                 @for (step of stepKeys; track step) {
                   <span

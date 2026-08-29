@@ -70,7 +70,14 @@ export interface DownloadItem {
    * `AcquireJob.tracks`) — the frontend doesn't need to know which backend a
    * job came from to render "now playing" / "up next".
    */
-  tracks?: { title: string; status: TrackStatus }[];
+  tracks?: {
+    title: string;
+    status: TrackStatus;
+    /** Peer the item came from (slskd); null for URL items. Shown in the drilldown. */
+    username?: string | null;
+    /** Source filename — the only identity an untitled item has (#746). */
+    filename?: string | null;
+  }[];
   /** Completed / total tracks (or playlist items). `total` is what the source itemized. */
   progress?: { done: number; total: number };
   /**

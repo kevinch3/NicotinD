@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TrackStatus } from '@nicotind/core';
-import { currentAndNextTracks } from './track-status';
+import { currentAndNextTracks, trackBreakdown } from './track-status';
 
 function tracks(...entries: [string, TrackStatus][]) {
   return entries.map(([title, status]) => ({ title, status }));
@@ -69,5 +69,50 @@ describe('currentAndNextTracks', () => {
     );
     expect(result.current).toBe('A');
     expect(result.next).toEqual(['C', 'E']);
+  });
+});
+
+/**
+ * #746. The card reported counts and never names, so "2 unavailable" on a
+ * 103-track release was unanswerable without diffing the folder by hand. The
+ * per-track data was already in the browser and read by no rendering path.
+ */
+describe('trackBreakdown', () => {
+  it('is null when there is nothing to break down', () => {
+    expect(trackBreakdown(undefined)).toBeNull();
+    expect(trackBreakdown([])).toBeNull();
+  });
+
+  it('tallies each terminal status and folds the two in-flight ones together', () => {
+    expect(
+      trackBreakdown(
+        tracks(
+          ['A', 'done'],
+          ['B', 'done'],
+          ['C', 'failed'],
+          ['D', 'skipped'],
+          ['E', 'pending'],
+          ['F', 'downloading'],
+        ),
+      ),
+    ).toEqual({ total: 6, done: 2, failed: 1, skipped: 1, inFlight: 2 });
+  });
+
+  /** A finished, wholly successful job needs no breakdown — the stage badge says it. */
+  it('reports nothing missing when every track landed', () => {
+    const b = trackBreakdown(tracks(['A', 'done'], ['B', 'done']))!;
+    expect(b.failed + b.skipped).toBe(0);
+    expect(b.done).toBe(b.total);
+  });
+
+  /** An untitled item still counts: a missing name must not shrink the tally. */
+  it('counts an entry with no title', () => {
+    expect(trackBreakdown([{ title: '', status: 'failed' }])).toEqual({
+      total: 1,
+      done: 0,
+      failed: 1,
+      skipped: 0,
+      inFlight: 0,
+    });
   });
 });

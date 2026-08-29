@@ -4,7 +4,7 @@ import type { DownloadItem } from '../../lib/download-groups';
 import type { FailureClass } from '@nicotind/core';
 import { methodBadge } from '../../lib/acquisition-method';
 import { resolveAlbumRoute, resolvePlaylistRoute } from '../../lib/route-utils';
-import { currentAndNextTracks } from '../../lib/track-status';
+import { currentAndNextTracks, trackBreakdown } from '../../lib/track-status';
 import { formatQuality } from '../../lib/download-status';
 import { PipelineStageBadgeComponent } from '../pipeline-stage-badge/pipeline-stage-badge.component';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
@@ -150,6 +150,17 @@ export class DownloadItemComponent {
   readonly nowNext = computed(() => currentAndNextTracks(this.item().tracks));
   /** Whether to render the "Now: / Next:" block on this row. */
   readonly showNowNext = computed(() => canShowNowNext(this.item()) && !!this.nowNext().current);
+
+  /** Per-status tally behind the track disclosure; null when there are no tracks. */
+  readonly breakdown = computed(() => trackBreakdown(this.item().tracks));
+  /**
+   * The disclosure is offered whenever we know the tracks — including for
+   * slskd, which `canShowNowNext` suppresses. That suppression exists because
+   * "the last downloading title" is arbitrary across parallel peers; a full
+   * list has no such ambiguity, and slskd album hunts are exactly the jobs
+   * whose per-track outcome the user cannot otherwise discover (#746).
+   */
+  readonly showTracks = computed(() => (this.breakdown()?.total ?? 0) > 0);
 
   startedAgo(): string {
     const at = this.item().startedAt;
