@@ -200,7 +200,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   in-flight transfers via an SQL `WHERE` exclusion.
   → [design-patterns.md](docs/design-patterns.md)
 - **Album deletion**: folder-first `rmSync` + synchronous canonical-row delete + orphan-aggregate
-  prune; every delete route debounce-schedules a `ShareRescanScheduler` pass.
+  prune; every delete route debounce-schedules a `ShareRescanScheduler` pass. A single-song delete
+  refreshes its album through the shared `refreshAlbumAggregate` / `pruneOrphanAlbum`.
   → [download-pipeline.md](docs/download-pipeline.md)
 - **Download inbox triage (hold-for-review)**: opt-in `holdForReview` holds quarantined downloads for
   curator approval; `download_reviews` decisions, multi-source candidates, AcoustID identify with
@@ -214,6 +215,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   with deterministic SHA1 ids; `resolveTags` applies overrides before minting ids. Incremental
   `scan_cache` + `mapPool`, `applyPerformancePragmas`, `albumIdsByGroupKey`.
   → [library-scanner.md](docs/library-scanner.md)
+- **A canonical tracklist governs admission, not retention**: the Lidarr tracklist pinned in
+  `album_jobs` filters which *new* files an album admits; a file in `knownRelPaths` is never dropped
+  as foreign, so a curator's title edit is not silently reverted. `selectAlbumTracks`,
+  `LibraryScanner.knownRelPaths`. → [library-scanner.md](docs/library-scanner.md)
 - **VA / compilation handling**: `resolveTags` separates `albumArtist` from `trackArtist`;
   `classifyFolder` detects compilations; dedicated Compilations tab, VA hidden from artists.
   → [library-scanner.md](docs/library-scanner.md)

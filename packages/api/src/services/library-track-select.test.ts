@@ -126,3 +126,49 @@ describe('losslessSuffixSql', () => {
     for (const s of LOSSLESS) expect(sql).toContain(`'${s}'`);
   });
 });
+
+// Issue #776: a curator's title correction must not be mistaken for a foreign
+// rip. `titlesOverlap` asks how many of the CANONICAL words survive in the
+// file's title, so *removing* words (which is exactly what a cleanup does)
+// drops the ratio below 0.7 and the file was discarded from the scan — never
+// reaching persist, so library_songs kept the pre-edit title forever. Real
+// prod case: Juanes — Un Día Normal (20th Anniversary), 2026-08-27.
+describe('selectAlbumTracks — canonical governs admission, not retention', () => {
+  const JUANES_CANONICAL = [
+    'A Dios Le Pido (Remastered 2022)',
+    'Es Por Tí (Remastered 2022)',
+    'Un Día Normal (Remastered 2022)',
+  ];
+
+  it('drops a retagged file that is NOT already in the library (unchanged ingest behaviour)', () => {
+    const kept = selectAlbumTracks(
+      [t('02 - Es Por Ti.opus', 'Es Por Ti', 'opus', 200)],
+      JUANES_CANONICAL,
+    );
+    expect(kept).toEqual([]);
+  });
+
+  it('keeps a retagged file the library already holds, so the edit reaches persist', () => {
+    const track = t('02 - Es Por Ti (Remastered 2022).opus', 'Es Por Ti', 'opus', 200);
+    const kept = selectAlbumTracks([track], JUANES_CANONICAL, new Set([track.relPath]));
+    expect(kept.map((k) => k.title)).toEqual(['Es Por Ti']);
+  });
+
+  it('still drops a genuinely foreign rip that the library does not hold', () => {
+    const known = t('01 - A Dios Le Pido.opus', 'A Dios Le Pido', 'opus', 200);
+    const foreign = t('99 - Some Other Band - Filler.mp3', 'Some Other Band Filler', 'mp3', 320);
+    const kept = selectAlbumTracks([known, foreign], JUANES_CANONICAL, new Set([known.relPath]));
+    expect(kept.map((k) => k.relPath)).toEqual([known.relPath]);
+  });
+
+  it('still collapses format-duplicates of a known retagged track to the best copy', () => {
+    const flac = t('02 - Es Por Ti.flac', 'Es Por Ti', 'flac', 900);
+    const opus = t('02 - Es Por Ti.opus', 'Es Por Ti', 'opus', 200);
+    const kept = selectAlbumTracks(
+      [opus, flac],
+      JUANES_CANONICAL,
+      new Set([flac.relPath, opus.relPath]),
+    );
+    expect(kept.map((k) => k.suffix)).toEqual(['flac']);
+  });
+});

@@ -2264,7 +2264,17 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .json<SongMetadataMutateBody>()
       .catch(() => ({}) as SongMetadataMutateBody);
     const result = await mutateSongMetadata(db, { musicDir, scanIncremental, writeTags }, id, body);
-    if (!result.ok) return c.json({ error: result.error }, result.status);
+    if (!result.ok) {
+      // A verification failure carries what the row actually holds (issue #776).
+      return c.json(
+        {
+          error: result.error,
+          ...(result.requested ? { requested: result.requested } : {}),
+          ...(result.actual ? { actual: result.actual } : {}),
+        },
+        result.status,
+      );
+    }
     const changes = (['title', 'artist', 'albumArtist', 'album', 'year'] as const)
       .filter((k) => result.applied[k] !== undefined)
       .map(
@@ -2277,7 +2287,12 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       targetId: id,
       detail: changes || undefined,
     });
-    return c.json({ ok: true, applied: result.applied, rescanned: result.rescanned });
+    return c.json({
+      ok: true,
+      applied: result.applied,
+      rescanned: result.rescanned,
+      verified: result.verified,
+    });
   });
 
   // Stored lyrics for a song (any user — the library is shared). Returns the

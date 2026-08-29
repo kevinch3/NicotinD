@@ -137,8 +137,12 @@ describe('PATCH /songs/:id/metadata', () => {
         written.push(tags);
         return true;
       },
+      // Stands in for the real scan: a retag counts as applied only once the
+      // rescan has refreshed the row from disk (issue #776).
       scanIncremental: async (paths) => {
         rescanned.push(paths);
+        testDb.run(`UPDATE library_songs SET title = 'Pegao' WHERE id = 'song-yt'`);
+        testDb.run(`UPDATE library_albums SET name = 'Los Extraterrestres' WHERE id = 'album-yt'`);
       },
     });
     const res = await app.request('/songs/song-yt/metadata', {
@@ -150,6 +154,7 @@ describe('PATCH /songs/:id/metadata', () => {
     expect(await res.json()).toMatchObject({
       ok: true,
       rescanned: true,
+      verified: true,
       applied: { title: 'Pegao', album: 'Los Extraterrestres' },
     });
     expect(written[0]).toEqual({ title: 'Pegao', album: 'Los Extraterrestres' });
@@ -163,5 +168,29 @@ describe('PATCH /songs/:id/metadata', () => {
     expect(audit[0]).toMatchObject({ action: 'song.metadata', target_id: 'song-yt' });
     expect(audit[0]?.detail).toContain('Pegao (Official Video)');
     expect(audit[0]?.detail).toContain('Los Extraterrestres');
+  });
+
+  // Issue #776: the route must not report success for a write that never
+  // reached the row, and must not audit a change that did not happen.
+  it("500s with the row's actual value when the write did not persist", async () => {
+    const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-smc-'));
+    seedPollutedSong(musicDir);
+    const app = makeApp('refiner', musicDir, {
+      writeTags: async () => true,
+      scanIncremental: async () => {
+        /* the canonical-tracklist drop: row never refreshed */
+      },
+    });
+    const res = await app.request('/songs/song-yt/metadata', {
+      method: 'PATCH',
+      body: JSON.stringify({ title: 'Pegao' }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({
+      error: 'Tag write did not persist',
+      actual: { title: 'Pegao (Official Video)' },
+    });
+    expect(testDb.query('SELECT COUNT(*) AS n FROM audit_log').get()).toEqual({ n: 0 });
   });
 });

@@ -19,7 +19,7 @@ import {
   emptyAuthority,
   type SplitAuthority,
 } from './artist-identity-store.js';
-import { pruneOrphanArtist } from './library-aggregates.js';
+import { pruneOrphanAlbum, refreshAlbumAggregate } from './library-aggregates.js';
 import {
   applyGenreOverride,
   emptyOverrideIndex,
@@ -382,11 +382,15 @@ function resolveTags(
  * editions dedupe together), then defers to `selectAlbumTracks` — which keys to
  * the canonical Lidarr tracklist when `canonicalByAlbum` has one (dropping foreign
  * rips) and otherwise collapses format-duplicates by title. Pure.
+ *
+ * `knownRelPaths` (the files the library already holds) is forwarded so the
+ * canonical list only ever governs admission — see `selectAlbumTracks` (#776).
  */
 export function selectLibraryTracks(
   tracks: ScannedTrack[],
   canonicalByAlbum?: Map<string, string[]>,
   overrides?: ReadonlyMap<string, MetadataOverrideValue>,
+  knownRelPaths?: ReadonlySet<string>,
 ): ScannedTrack[] {
   const byAlbum = new Map<
     string,
@@ -401,7 +405,7 @@ export function selectLibraryTracks(
   }
   const kept: ScannedTrack[] = [];
   for (const [albId, group] of byAlbum) {
-    for (const sel of selectAlbumTracks(group, canonicalByAlbum?.get(albId))) {
+    for (const sel of selectAlbumTracks(group, canonicalByAlbum?.get(albId), knownRelPaths)) {
       kept.push(sel.track);
     }
   }
@@ -421,8 +425,9 @@ export function buildLibrary(
   authority: SplitAuthority = emptyAuthority(),
   genreCtx: GenreContext = emptyGenreContext(),
   genreOverrides: OverrideIndex = emptyOverrideIndex(),
+  knownRelPaths?: ReadonlySet<string>,
 ): BuiltLibrary {
-  tracks = selectLibraryTracks(tracks, canonicalByAlbum, overrides);
+  tracks = selectLibraryTracks(tracks, canonicalByAlbum, overrides, knownRelPaths);
 
   // Genre context: the caller's loaded vocabulary/aliases (db-settled display
   // casing wins) merged over the in-batch vocabulary, so the `/` rule and
@@ -729,6 +734,7 @@ export class LibraryScanner {
       loadSplitAuthority(this.db),
       loadGenreContext(this.db),
       loadGenreOverrides(this.db),
+      this.knownRelPaths(),
     );
     const result = this.persist(built, startedAt, true);
     log.info({ ...result }, 'Full scan complete');
@@ -755,6 +761,21 @@ export class LibraryScanner {
   }
 
   /**
+   * Relative paths the library already holds. Passed to `buildLibrary` so a
+   * pinned canonical tracklist only governs which NEW files are admitted — a
+   * file we already own is never dropped as "foreign" just because a curator
+   * corrected its title out of `titlesOverlap` range (issue #776).
+   */
+  private knownRelPaths(): Set<string> {
+    const out = new Set<string>();
+    for (const r of this.db
+      .query<{ path: string }, []>('SELECT path FROM library_songs WHERE path IS NOT NULL')
+      .all())
+      out.add(r.path);
+    return out;
+  }
+
+  /**
    * Incremental scan of specific just-organized files (relative paths). Adds /
    * updates only those songs and recomputes the albums they touch. Does not
    * prune — used right after a download batch lands.
@@ -770,6 +791,7 @@ export class LibraryScanner {
       loadSplitAuthority(this.db),
       loadGenreContext(this.db),
       loadGenreOverrides(this.db),
+      this.knownRelPaths(),
     );
     this.persist(built, Date.now(), false);
     log.info({ files: tracks.length, albums: built.albums.length }, 'Incremental scan complete');
@@ -1118,15 +1140,7 @@ export class LibraryScanner {
     } else {
       // Incremental: an album we just touched may have gained songs; recompute
       // its aggregate counts from all of its current songs so the card is right.
-      for (const a of built.albums) {
-        this.db.run(
-          `UPDATE library_albums SET
-             song_count = (SELECT COUNT(*) FROM library_songs WHERE album_id = ?),
-             duration   = (SELECT COALESCE(SUM(duration),0) FROM library_songs WHERE album_id = ?)
-           WHERE id = ?`,
-          [a.id, a.id, a.id],
-        );
-      }
+      for (const a of built.albums) refreshAlbumAggregate(this.db, a.id);
     }
 
     this.db.run(
@@ -1172,6 +1186,7 @@ export class LibraryScanner {
         // the touched albums until the next full scan.
         loadGenreContext(this.db),
         loadGenreOverrides(this.db),
+        this.knownRelPaths(),
       );
       this.persist(built, syncedAt, false);
       this.pruneAlbumOrphans(built.albums.map((a) => a.id));
@@ -1195,32 +1210,9 @@ export class LibraryScanner {
         this.db.run('DELETE FROM library_song_genres WHERE song_id = ?', [r.id]);
         removed++;
       }
-      if (removed > 0) {
-        // Recompute the album aggregate from its surviving songs.
-        this.db.run(
-          `UPDATE library_albums SET
-             song_count = (SELECT COUNT(*) FROM library_songs WHERE album_id = ?),
-             duration   = (SELECT COALESCE(SUM(duration),0) FROM library_songs WHERE album_id = ?)
-           WHERE id = ?`,
-          [albumId, albumId, albumId],
-        );
-        // Drop an album row that lost all songs, and prune a now-orphan artist.
-        const count = this.db
-          .query<{ n: number }, [string]>(
-            'SELECT COUNT(*) AS n FROM library_songs WHERE album_id = ?',
-          )
-          .get(albumId)!.n;
-        if (count === 0) {
-          const artistRow = this.db
-            .query<{ artist_id: string | null }, [string]>(
-              'SELECT artist_id FROM library_albums WHERE id = ?',
-            )
-            .get(albumId);
-          this.db.run('DELETE FROM library_albums WHERE id = ?', [albumId]);
-          this.db.run('DELETE FROM library_album_artists WHERE album_id = ?', [albumId]);
-          if (artistRow?.artist_id) pruneOrphanArtist(this.db, artistRow.artist_id);
-        }
-      }
+      // Recompute the album aggregate from its surviving songs, dropping the
+      // album (and any artist it orphans) when nothing is left.
+      if (removed > 0) pruneOrphanAlbum(this.db, albumId);
     }
   }
 }

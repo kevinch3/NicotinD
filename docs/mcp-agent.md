@@ -374,6 +374,15 @@ rule the other curate tools established.
   guarded by `buildIdentifyApplyTags` — add/replace only, a value can never be
   cleared — and is `curate` but not `destructive`: like `set_song_genre` it is
   a reversible, audited write, not a delete.
+- **`applied` is read back, never echoed (issue #776).** It used to return the
+  *request*, so a write that never reached the row was indistinguishable from
+  success. `mutateSongMetadata` now re-reads the song after the rescan: a
+  divergence fails with `Tag write did not persist` plus `requested` and the
+  `actual` row values, and a success carries `verified: true` with the values
+  actually on the row. Without a rescanner wired there is nothing to read back
+  through, so the result says `verified: false` rather than claiming a check it
+  did not perform. Anything automating retags depends on this to avoid
+  reporting a clean run having changed nothing.
 
 ### A missing argument is an error, not an empty result (issue #778)
 

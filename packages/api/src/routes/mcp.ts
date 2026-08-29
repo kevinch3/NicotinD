@@ -591,7 +591,15 @@ export const MCP_TOOLS: McpTool[] = [
         year: typeof args.year === 'number' ? args.year : undefined,
       };
       const result = await mutateSongMetadata(db, metadata, songId, body);
-      if (!result.ok) return JSON.stringify({ error: result.error });
+      if (!result.ok) {
+        // Carry the divergence through, so a silently-lost write is actionable
+        // rather than a bare error string (issue #776).
+        return JSON.stringify({
+          error: result.error,
+          ...(result.requested ? { requested: result.requested } : {}),
+          ...(result.actual ? { actual: result.actual } : {}),
+        });
+      }
       const changes = (['title', 'artist', 'albumArtist', 'album', 'year'] as const)
         .filter((k) => result.applied[k] !== undefined)
         .map((k) => {
@@ -611,7 +619,12 @@ export const MCP_TOOLS: McpTool[] = [
           detail: `${changes} (via MCP agent)`,
         },
       );
-      return JSON.stringify({ ok: true, applied: result.applied, rescanned: result.rescanned });
+      return JSON.stringify({
+        ok: true,
+        applied: result.applied,
+        rescanned: result.rescanned,
+        verified: result.verified,
+      });
     },
   },
   {
