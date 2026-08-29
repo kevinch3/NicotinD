@@ -78,32 +78,36 @@
             <button
               type="button"
               (click)="listen(album)"
+              [disabled]="bulkBusy() || busyAlbums().has(album.albumId)"
               data-testid="review-listen"
-              class="rounded-full border border-theme px-3 py-1.5 text-xs font-medium text-theme-secondary transition hover:border-theme hover:text-theme-primary"
+              class="rounded-full border border-theme px-3 py-1.5 text-xs font-medium text-theme-secondary transition hover:border-theme hover:text-theme-primary disabled:opacity-50"
             >
               {{ 'review.listen' | t }}
             </button>
             <button
               type="button"
               (click)="fix(album)"
+              [disabled]="bulkBusy() || busyAlbums().has(album.albumId)"
               data-testid="review-fix"
-              class="rounded-full border border-theme px-3 py-1.5 text-xs font-medium text-theme-secondary transition hover:border-theme hover:text-theme-primary"
+              class="rounded-full border border-theme px-3 py-1.5 text-xs font-medium text-theme-secondary transition hover:border-theme hover:text-theme-primary disabled:opacity-50"
             >
               {{ 'review.fix' | t }}
             </button>
             <button
               type="button"
               (click)="approve(album)"
+              [disabled]="bulkBusy() || busyAlbums().has(album.albumId)"
               data-testid="review-approve"
-              class="status-done rounded-full px-3 py-1.5 text-xs font-medium transition hover:opacity-90"
+              class="status-done rounded-full px-3 py-1.5 text-xs font-medium transition hover:opacity-90 disabled:opacity-50"
             >
               {{ 'review.approve' | t }}
             </button>
             <button
               type="button"
               (click)="discard(album)"
+              [disabled]="bulkBusy() || busyAlbums().has(album.albumId)"
               data-testid="review-discard"
-              class="rounded-full border border-theme px-3 py-1.5 text-xs font-medium text-status-error transition hover:border-status-error"
+              class="rounded-full border border-theme px-3 py-1.5 text-xs font-medium text-status-error transition hover:border-status-error disabled:opacity-50"
             >
               {{ 'review.discard' | t }}
             </button>

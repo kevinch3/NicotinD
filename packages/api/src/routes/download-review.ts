@@ -9,7 +9,8 @@
  */
 import { relative } from 'node:path';
 import { existsSync } from 'node:fs';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import type { Database } from 'bun:sqlite';
 import type { IdentifyOutcome, IdentifyResult } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import type { AuthEnv } from '../middleware/auth.js';
@@ -87,6 +88,26 @@ export function voteAlbumIdentity(
   return { artist: winner.artist, album: winner.album, votes: winner.votes, total };
 }
 
+/** Sanity ceiling for one bulk request — far above any real inbox. */
+const BULK_MAX_ALBUMS = 500;
+
+function albumExists(db: Database, id: string): boolean {
+  return db.query(`SELECT id FROM library_albums WHERE id = ?`).get(id) !== null;
+}
+
+/** Parse + bound a bulk body's `albumIds`, or the 400 response to return. */
+async function bulkAlbumIds(c: Context<AuthEnv>): Promise<string[] | Response> {
+  const body = await c.req
+    .json<{ albumIds?: unknown }>()
+    .catch(() => ({}) as { albumIds?: unknown });
+  const ids = Array.isArray(body.albumIds)
+    ? body.albumIds.filter((x): x is string => typeof x === 'string')
+    : [];
+  if (ids.length === 0) return c.json({ error: 'albumIds required' }, 400);
+  if (ids.length > BULK_MAX_ALBUMS) return c.json({ error: 'Too many albums in one request' }, 400);
+  return ids;
+}
+
 export function downloadReviewRoutes(deps: DownloadReviewDeps): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
   // Self-contained error mapping, mirroring library.ts, so requireCurator's
@@ -114,10 +135,86 @@ export function downloadReviewRoutes(deps: DownloadReviewDeps): Hono<AuthEnv> {
     return c.json({ pending });
   });
 
+  /**
+   * Bulk approve (#808). One request instead of the client's old N-POST loop —
+   * each of which blocked ~8 s on `landAlbumNow`, so "Approve all (54)" took
+   * minutes, a reload stranded the remainder, and the count never moved. The
+   * decisions + per-album audit rows (the fan-out design's stated rationale,
+   * preserved) are written in one transaction in milliseconds; landing happens
+   * in the background (`kickEager` now, the tick within ≤60 s — #807 made that
+   * hold in every processing config). Deliberately NO `landed` claims: the
+   * client must never call `noteAlbumsLanded` speculatively (#708's rule).
+   * Body is an explicit `albumIds` snapshot — the count the curator confirmed
+   * is what gets approved; albums arriving mid-dialog stay pending.
+   */
+  app.post('/albums/approve-all', async (c) => {
+    const user = requireCurator(c);
+    const db = getDatabase();
+    const ids = await bulkAlbumIds(c);
+    if (!Array.isArray(ids)) return ids;
+    const approved: string[] = [];
+    const notFound: string[] = [];
+    db.transaction(() => {
+      for (const id of ids) {
+        // The exists check closes the approve-after-discard hole: an id a
+        // concurrent discard just deleted must not mint an orphan decision row.
+        if (!albumExists(db, id)) {
+          notFound.push(id);
+          continue;
+        }
+        recordReviewDecision(db, id, 'approved', user.sub);
+        recordAudit(db, user, 'download_review.approve', { targetKind: 'album', targetId: id });
+        approved.push(id);
+      }
+    })();
+    if (approved.length > 0) void deps.kickEager?.();
+    return c.json({ approved, notFound });
+  });
+
+  /**
+   * Bulk discard (#808). Same shape; the deletes run sequentially INSIDE one
+   * handler — the original design's "34 simultaneous deletes" concern holds,
+   * it just never required 34 round-trips.
+   */
+  app.post('/albums/discard-all', async (c) => {
+    const user = requireCurator(c);
+    const db = getDatabase();
+    const ids = await bulkAlbumIds(c);
+    if (!Array.isArray(ids)) return ids;
+    const discarded: string[] = [];
+    const notFound: string[] = [];
+    const failed: string[] = [];
+    for (const id of ids) {
+      try {
+        const result = await deleteAlbum(db, id, {
+          musicDir: deps.musicDir,
+          shareRescan: deps.shareRescan,
+        });
+        if (!result) {
+          notFound.push(id);
+          continue;
+        }
+        recordReviewDecision(db, id, 'discarded', user.sub);
+        recordAudit(db, user, 'download_review.discard', {
+          targetKind: 'album',
+          targetId: id,
+          detail: result.albumRow
+            ? `${result.albumRow.artist} — ${result.albumRow.name}`
+            : undefined,
+        });
+        discarded.push(id);
+      } catch {
+        failed.push(id);
+      }
+    }
+    return c.json({ discarded, notFound, failed });
+  });
+
   app.post('/albums/:id/approve', async (c) => {
     const user = requireCurator(c);
     const db = getDatabase();
     const id = c.req.param('id');
+    if (!albumExists(db, id)) return c.json({ error: 'Album not found' }, 404);
     recordReviewDecision(db, id, 'approved', user.sub);
     recordAudit(db, user, 'download_review.approve', { targetKind: 'album', targetId: id });
     if (deps.landAlbumNow) {

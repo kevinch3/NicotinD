@@ -107,4 +107,29 @@ export class DownloadReviewService {
     })();
     return this.inflight;
   }
+
+  /**
+   * Refresh that is guaranteed fresh (#808). The coalescing above is right for
+   * the poller but wrong after a mutation: awaiting an already-in-flight
+   * promise returns data whose GETs were issued BEFORE the mutation landed —
+   * the post-approve-all list still showed approved albums. Mutation paths
+   * call this; the poller keeps plain `refresh()`.
+   */
+  async forceRefresh(): Promise<void> {
+    if (this.inflight) await this.inflight.catch(() => {});
+    await this.refresh();
+  }
+
+  /**
+   * Optimistically drop albums the server just confirmed acted on (#808) — the
+   * live count. The next poll re-syncs from the server either way.
+   */
+  dropFromQueue(albumIds: string[]): void {
+    if (albumIds.length === 0) return;
+    const drop = new Set(albumIds);
+    const before = this.queue().length;
+    this.queue.update((q) => q.filter((a) => !drop.has(a.albumId)));
+    const removed = before - this.queue().length;
+    if (removed > 0) this.pending.update((n) => Math.max(0, n - removed));
+  }
 }

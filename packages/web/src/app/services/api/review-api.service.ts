@@ -41,6 +41,23 @@ export class ReviewApiService {
     );
   }
 
+  /** Bulk approve (#808): decisions land in one transactional request; landing
+   *  happens in the background — never any `landed` claim. */
+  approveAll(albumIds: string[]) {
+    return this.http.post<{ approved: string[]; notFound: string[] }>(
+      '/api/review/albums/approve-all',
+      { albumIds },
+    );
+  }
+
+  /** Bulk discard (#808): one request, deletes run sequentially server-side. */
+  discardAll(albumIds: string[]) {
+    return this.http.post<{ discarded: string[]; notFound: string[]; failed: string[] }>(
+      '/api/review/albums/discard-all',
+      { albumIds },
+    );
+  }
+
   identifySong(id: string) {
     return this.http.post<{ result: IdentifyResult | null; outcome: IdentifyOutcome }>(
       `/api/review/songs/${encodeURIComponent(id)}/identify`,

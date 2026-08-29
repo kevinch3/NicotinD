@@ -55,10 +55,19 @@ function setup(
     start: vi.fn(() => () => {}),
     watchQueue: vi.fn(() => () => {}),
     refresh: vi.fn().mockResolvedValue(undefined),
+    forceRefresh: vi.fn().mockResolvedValue(undefined),
+    dropFromQueue: vi.fn((ids: string[]) => {
+      const drop = new Set(ids);
+      queue.update((q) => q.filter((a) => !drop.has(a.albumId)));
+    }),
   };
   const apiStub = {
     approve: vi.fn().mockReturnValue(of({ ok: true })),
     discard: vi.fn().mockReturnValue(of({ ok: true, deletedCount: 1 })),
+    approveAll: vi.fn((ids: string[]) => of({ approved: ids, notFound: [] as string[] })),
+    discardAll: vi.fn((ids: string[]) =>
+      of({ discarded: ids, notFound: [] as string[], failed: [] as string[] }),
+    ),
   };
   const authStub = {
     canCurate: signal(opts.canCurate ?? true),
@@ -148,11 +157,52 @@ describe('ReviewInboxComponent', () => {
     const a = album();
     await component.approve(a);
     expect(apiStub.approve).toHaveBeenCalledWith('a1');
-    expect(reviewStub.refresh).toHaveBeenCalled();
+    expect(reviewStub.dropFromQueue).toHaveBeenCalledWith(['a1']);
+    expect(reviewStub.forceRefresh).toHaveBeenCalled();
     expect(transfersStub.markLibraryDirty).toHaveBeenCalled();
     expect(toastStub.show).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'review.approved' }),
     );
+  });
+
+  it('approve() surfaces a failure as a toast and keeps the row (#808)', async () => {
+    const { component, apiStub, toastStub, reviewStub } = setup();
+    apiStub.approve.mockReturnValue(throwError(() => ({ status: 500, error: { error: 'boom' } })));
+    await component.approve(album());
+    expect(toastStub.show).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }));
+    expect(reviewStub.dropFromQueue).not.toHaveBeenCalled();
+  });
+
+  it('approve() on a 404 drops the stale row — a concurrent decision beat it (#808)', async () => {
+    const { component, apiStub, reviewStub, toastStub } = setup();
+    apiStub.approve.mockReturnValue(
+      throwError(() => ({ status: 404, error: { error: 'Album not found' } })),
+    );
+    await component.approve(album());
+    expect(reviewStub.dropFromQueue).toHaveBeenCalledWith(['a1']);
+    expect(toastStub.show).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'review.alreadyRemoved' }),
+    );
+  });
+
+  it('a second click on the same card while one is in flight is a no-op (#808)', async () => {
+    const { component, apiStub } = setup();
+    let resolve!: (v: { ok: boolean }) => void;
+    apiStub.approve.mockReturnValue(
+      new (await import('rxjs')).Observable((sub) => {
+        resolve = (v) => {
+          sub.next(v);
+          sub.complete();
+        };
+      }),
+    );
+    const first = component.approve(album());
+    void component.approve(album());
+    expect(apiStub.approve).toHaveBeenCalledTimes(1);
+    expect(component.busyAlbums().has('a1')).toBe(true);
+    resolve({ ok: true });
+    await first;
+    expect(component.busyAlbums().has('a1')).toBe(false);
   });
 
   it('approve() notes the album landed only when the server confirms landed: true (issue #708)', async () => {
@@ -191,7 +241,8 @@ describe('ReviewInboxComponent', () => {
     const a = album();
     await component.discard(a);
     expect(apiStub.discard).toHaveBeenCalledWith('a1');
-    expect(reviewStub.refresh).toHaveBeenCalled();
+    expect(reviewStub.dropFromQueue).toHaveBeenCalledWith(['a1']);
+    expect(reviewStub.forceRefresh).toHaveBeenCalled();
     expect(transfersStub.markLibraryDirty).toHaveBeenCalled();
     expect(toastStub.show).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'review.discarded' }),
@@ -199,28 +250,32 @@ describe('ReviewInboxComponent', () => {
   });
 
   // Issue #592 — prod had 34 pending albums with no way to clear the queue
-  // other than one card at a time.
-  it('approveAll() confirms with the count, approves every queued album, then refreshes once', async () => {
+  // other than one card at a time. #808 turned the client's N-POST loop into
+  // ONE bulk request: the old sweep took minutes (each approve blocked on
+  // landAlbumNow since #708) and a mid-sweep reload stranded the remainder.
+  it('approveAll() confirms with the count, sends ONE bulk request, drops the queue live', async () => {
     const albums = [album({ albumId: 'a1' }), album({ albumId: 'a2' }), album({ albumId: 'a3' })];
-    const { component, apiStub, confirmStub, reviewStub, transfersStub } = setup({
+    const { component, apiStub, confirmStub, reviewStub, transfersStub, toastStub } = setup({
       queueAlbums: albums,
     });
     await component.approveAll();
     expect(confirmStub.ask).toHaveBeenCalled();
     expect(String(confirmStub.ask.mock.calls[0][0])).toContain('3');
-    expect(apiStub.approve.mock.calls.map((c: unknown[]) => c[0])).toEqual(['a1', 'a2', 'a3']);
-    expect(reviewStub.refresh).toHaveBeenCalledTimes(1);
+    expect(apiStub.approveAll).toHaveBeenCalledTimes(1);
+    expect(apiStub.approveAll).toHaveBeenCalledWith(['a1', 'a2', 'a3']);
+    expect(apiStub.approve).not.toHaveBeenCalled();
+    expect(reviewStub.dropFromQueue).toHaveBeenCalledWith(['a1', 'a2', 'a3']);
+    expect(reviewStub.forceRefresh).toHaveBeenCalledTimes(1);
     expect(transfersStub.markLibraryDirty).toHaveBeenCalledTimes(1);
+    expect(toastStub.show).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('review.bulkApproved') }),
+    );
   });
 
-  it('approveAll() notes only the albums the server actually confirmed landed (issue #708)', async () => {
-    const albums = [album({ albumId: 'a1' }), album({ albumId: 'a2' }), album({ albumId: 'a3' })];
-    const { component, apiStub, transfersStub } = setup({ queueAlbums: albums });
-    apiStub.approve.mockImplementation(
-      (id: string) => of({ ok: true, landed: id !== 'a2' }), // a2 is still processing
-    );
+  it('approveAll() never claims landed — the background drain owns visibility (#708)', async () => {
+    const { component, transfersStub } = setup({ queueAlbums: [album({ albumId: 'a1' })] });
     await component.approveAll();
-    expect(transfersStub.noteAlbumsLanded).toHaveBeenCalledWith(['a1', 'a3']);
+    expect(transfersStub.noteAlbumsLanded).not.toHaveBeenCalled();
   });
 
   it('approveAll() does nothing when the confirm is declined', async () => {
@@ -229,16 +284,16 @@ describe('ReviewInboxComponent', () => {
       queueAlbums: [album({ albumId: 'a1' })],
     });
     await component.approveAll();
-    expect(apiStub.approve).not.toHaveBeenCalled();
-    expect(reviewStub.refresh).not.toHaveBeenCalled();
+    expect(apiStub.approveAll).not.toHaveBeenCalled();
+    expect(reviewStub.forceRefresh).not.toHaveBeenCalled();
   });
 
-  it('discardAll() confirms with the count and discards every queued album', async () => {
+  it('discardAll() confirms with the count and sends one bulk request', async () => {
     const albums = [album({ albumId: 'a1' }), album({ albumId: 'a2' })];
     const { component, apiStub, confirmStub } = setup({ queueAlbums: albums });
     await component.discardAll();
     expect(String(confirmStub.ask.mock.calls[0][0])).toContain('2');
-    expect(apiStub.discard.mock.calls.map((c: unknown[]) => c[0])).toEqual(['a1', 'a2']);
+    expect(apiStub.discardAll).toHaveBeenCalledWith(['a1', 'a2']);
   });
 
   it('discardAll() does nothing when the confirm is declined', async () => {
@@ -247,21 +302,51 @@ describe('ReviewInboxComponent', () => {
       queueAlbums: [album({ albumId: 'a1' })],
     });
     await component.discardAll();
-    expect(apiStub.discard).not.toHaveBeenCalled();
+    expect(apiStub.discardAll).not.toHaveBeenCalled();
   });
 
-  // One album failing must not abandon the rest of the queue — the whole point
-  // of a bulk action is not having to retry 33 cards by hand.
-  it('approveAll() keeps going past a failing album and reports the partial result', async () => {
+  it('discardAll() reports a server-side partial result honestly', async () => {
     const albums = [album({ albumId: 'a1' }), album({ albumId: 'a2' }), album({ albumId: 'a3' })];
     const { component, apiStub, toastStub } = setup({ queueAlbums: albums });
-    apiStub.approve.mockImplementation((id: string) =>
-      id === 'a2' ? throwError(() => new Error('boom')) : of({ ok: true }),
+    apiStub.discardAll.mockReturnValue(
+      of({ discarded: ['a1', 'a3'], notFound: [], failed: ['a2'] }),
     );
-    await component.approveAll();
-    expect(apiStub.approve).toHaveBeenCalledTimes(3);
+    await component.discardAll();
     const msg = String(toastStub.show.mock.calls.at(-1)?.[0]?.message ?? '');
     expect(msg).toContain('review.bulkPartial');
+  });
+
+  it('a failed bulk request surfaces as an error toast, never a silent no-op (#808)', async () => {
+    const { component, apiStub, toastStub } = setup({ queueAlbums: [album({ albumId: 'a1' })] });
+    apiStub.approveAll.mockReturnValue(
+      throwError(() => ({ status: 500, error: { error: 'boom' } })),
+    );
+    await component.approveAll();
+    expect(toastStub.show).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }));
+    expect(component.bulkBusy()).toBe(false);
+  });
+
+  // The mid-sweep window the old synchronous stubs could never observe: while
+  // the bulk request is pending, every per-row button reports disabled.
+  it('per-row actions are disabled for the whole bulk window (#808)', async () => {
+    const { Subject } = await import('rxjs');
+    const pending = new Subject<{ approved: string[]; notFound: string[] }>();
+    const albums = [album({ albumId: 'a1' }), album({ albumId: 'a2' })];
+    const { component, apiStub } = setup({ queueAlbums: albums });
+    apiStub.approveAll.mockReturnValue(pending.asObservable());
+
+    const run = component.approveAll();
+    // Let the confirm promise resolve and the request fire.
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+    expect(component.bulkBusy()).toBe(true);
+    // The single-action guard refuses while the sweep runs.
+    await component.approve(albums[0]!);
+    expect(apiStub.approve).not.toHaveBeenCalled();
+
+    pending.next({ approved: ['a1', 'a2'], notFound: [] });
+    pending.complete();
+    await run;
+    expect(component.bulkBusy()).toBe(false);
   });
 
   it('bulkBusy() is false once a bulk run settles', async () => {
