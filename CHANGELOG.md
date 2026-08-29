@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.38](https://github.com/kevinch3/NicotinD/compare/v0.5.37...v0.5.38) (2026-08-29)
+
+### Bug Fixes
+
+* **downloads:** byte progress on addon cards + reactive, idempotent cancel ([#805](https://github.com/kevinch3/NicotinD/issues/805), [#806](https://github.com/kevinch3/NicotinD/issues/806)) ([#812](https://github.com/kevinch3/NicotinD/issues/812)) ([b211b66](https://github.com/kevinch3/NicotinD/commit/b211b669d562777a8c2cb1ee4c64ae25a3b80324))
 ## [0.5.37](https://github.com/kevinch3/NicotinD/compare/v0.5.35...v0.5.37) (2026-08-29)
 
 ### Features
