@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.33](https://github.com/kevinch3/NicotinD/compare/v0.5.32...v0.5.33) (2026-08-29)
+
+### Bug Fixes
+
+* **mcp:** make a genre curation durable, and refuse an entity before it lands ([#762](https://github.com/kevinch3/NicotinD/issues/762), [#771](https://github.com/kevinch3/NicotinD/issues/771), [#787](https://github.com/kevinch3/NicotinD/issues/787)) ([#796](https://github.com/kevinch3/NicotinD/issues/796)) ([b93f147](https://github.com/kevinch3/NicotinD/commit/b93f1478bf352d9be3945dcbcba853ea9a19227e)), references [#773](https://github.com/kevinch3/NicotinD/issues/773)
 ## [0.5.32](https://github.com/kevinch3/NicotinD/compare/v0.5.31...v0.5.32) (2026-08-29)
 
 ### Bug Fixes
