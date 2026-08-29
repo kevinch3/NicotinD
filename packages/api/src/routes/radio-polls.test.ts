@@ -188,13 +188,29 @@ describe('public radio-poll routes', () => {
     expect((await publicApp().request(`/public/${token}`)).status).toBe(200);
   });
 
-  it('accepts votes, validates ids, and reports them in admin results', async () => {
+  it('accepts star ratings, validates ids, and reports them in admin results', async () => {
     seedLibrary();
     const { id, token } = await createPollViaRoute();
     const view = (await (await publicApp().request(`/public/${token}`)).json()) as PublicPollView;
+    // Route-created polls are stamped stars5 server-side (issue #800).
+    expect(view.poll.voteScale).toBe('stars5');
     const scenario = view.scenarios[0]!;
 
     const ok = await publicApp().request(`/public/${token}/votes`, {
+      method: 'POST',
+      body: JSON.stringify({
+        raterKey: RATER,
+        votes: [
+          { scenarioId: scenario.id, candidateSongId: scenario.candidates[0]!.id, rating: 4 },
+        ],
+      }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ recorded: 1 });
+
+    // A thumbs verdict on a graded poll means a confused client → 400.
+    const wrongKind = await publicApp().request(`/public/${token}/votes`, {
       method: 'POST',
       body: JSON.stringify({
         raterKey: RATER,
@@ -204,24 +220,26 @@ describe('public radio-poll routes', () => {
       }),
       headers: { 'content-type': 'application/json' },
     });
-    expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ recorded: 1 });
+    expect(wrongKind.status).toBe(400);
 
     const bad = await publicApp().request(`/public/${token}/votes`, {
       method: 'POST',
       body: JSON.stringify({
         raterKey: RATER,
-        votes: [{ scenarioId: scenario.id, candidateSongId: 'not-in-scenario', verdict: 'up' }],
+        votes: [{ scenarioId: scenario.id, candidateSongId: 'not-in-scenario', rating: 1 }],
       }),
       headers: { 'content-type': 'application/json' },
     });
     expect(bad.status).toBe(400);
 
     const results = (await (await adminApp().request(`/${id}`)).json()) as {
-      poll: { voteCount: number; raterCount: number };
+      poll: { voteCount: number; raterCount: number; voteScale: string };
+      scenarios: Array<{ candidates: Array<{ meanRating: number | null }> }>;
     };
     expect(results.poll.voteCount).toBe(1);
     expect(results.poll.raterCount).toBe(1);
+    expect(results.poll.voteScale).toBe('stars5');
+    expect(results.scenarios[0]!.candidates[0]!.meanRating).toBe(4);
   });
 
   it('closed poll → 410 POLL_CLOSED on view and vote', async () => {
@@ -242,7 +260,7 @@ describe('public radio-poll routes', () => {
           {
             scenarioId: view.scenarios[0]!.id,
             candidateSongId: view.scenarios[0]!.candidates[0]!.id,
-            verdict: 'up',
+            rating: 5,
           },
         ],
       }),

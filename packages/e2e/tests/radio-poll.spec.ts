@@ -27,9 +27,10 @@ test.describe('radio evaluation polls', () => {
     return { ...body, adminToken };
   }
 
-  /** Thumb every candidate in the visible scenario, then advance — waiting for
-   *  the step to actually change (the advance POSTs first), so the loop can't
-   *  re-vote a scenario that is still submitting. */
+  /** Star-rate every candidate in the visible scenario (5 on even rows, 1 on
+   *  odd — the admin tally assertions can then see both ends), then advance —
+   *  waiting for the step to actually change (the advance POSTs first), so the
+   *  loop can't re-vote a scenario that is still submitting. */
   async function rateScenario(page: Page): Promise<void> {
     await expect(page.getByTestId('poll-scenario')).toBeVisible();
     const progress = await page.getByTestId('poll-progress').innerText();
@@ -37,7 +38,7 @@ test.describe('radio evaluation polls', () => {
     const count = await rows.count();
     expect(count, 'a scenario should have at least one candidate').toBeGreaterThanOrEqual(1);
     for (let i = 0; i < count; i++) {
-      const btn = rows.nth(i).getByTestId(i % 2 === 0 ? 'poll-vote-up' : 'poll-vote-down');
+      const btn = rows.nth(i).getByTestId(i % 2 === 0 ? 'poll-rate-5' : 'poll-rate-1');
       await btn.click();
       await expect(btn).toHaveAttribute('aria-pressed', 'true');
     }
@@ -80,18 +81,28 @@ test.describe('radio evaluation polls', () => {
     await expect(page.getByTestId('poll-done')).toBeVisible();
     await ctx.close();
 
-    // Admin results carry the votes (every candidate got exactly one).
+    // Admin results carry the votes (every candidate got exactly one rating).
     const results = await request.get(`/api/admin/radio-polls/${id}`, {
       headers: bearer(adminToken),
     });
     expect(results.status()).toBe(200);
     const body = (await results.json()) as {
-      poll: { voteCount: number; raterCount: number };
-      scenarios: Array<{ candidates: Array<{ up: number; down: number }> }>;
+      poll: { voteCount: number; raterCount: number; voteScale: string };
+      scenarios: Array<{
+        candidates: Array<{ meanRating: number | null; ratingCount: number }>;
+      }>;
     };
     const candidateCount = body.scenarios.reduce((n, s) => n + s.candidates.length, 0);
     expect(body.poll.voteCount).toBe(candidateCount);
     expect(body.poll.raterCount).toBe(1);
+    expect(body.poll.voteScale).toBe('stars5');
+    // Every candidate got exactly one 5 or 1 — the graded tally must show it.
+    for (const sc of body.scenarios) {
+      for (const c of sc.candidates) {
+        expect(c.ratingCount).toBe(1);
+        expect([1, 5]).toContain(c.meanRating);
+      }
+    }
   });
 
   test('a rater can skip tracks or whole scenarios, and only given ratings count', async ({
@@ -110,9 +121,9 @@ test.describe('radio evaluation polls', () => {
     await expect(page.getByTestId('poll-framing')).toBeVisible();
 
     // First scenario: rate only the first candidate — Next must not force the rest.
-    const firstUp = page.getByTestId('poll-candidate-row').first().getByTestId('poll-vote-up');
-    await firstUp.click();
-    await expect(firstUp).toHaveAttribute('aria-pressed', 'true');
+    const firstStar = page.getByTestId('poll-candidate-row').first().getByTestId('poll-rate-4');
+    await firstStar.click();
+    await expect(firstStar).toHaveAttribute('aria-pressed', 'true');
     const progress = await page.getByTestId('poll-progress').innerText();
     await page.getByTestId('poll-next').click();
     await expect(

@@ -4,8 +4,9 @@ import type {
   LibraryFilter,
   RadioPollCandidateResult,
   RadioPollSettings,
+  RadioPollVoteScale,
 } from '@nicotind/core';
-import { pollResults, type RadioPollRow } from './radio-poll-store.js';
+import { pollResults, pollVoteScale, type RadioPollRow } from './radio-poll-store.js';
 
 /**
  * Offline dataset distilled from one poll — the "digested later" half of
@@ -22,6 +23,9 @@ export interface RadioPollExportDataset {
    *  before versioning report '1'. Datasets with different values must not be
    *  pooled into one agreement measurement. */
   formulaVersion: string;
+  /** Vote scale the poll collected under (issue #800). Same never-pool rule as
+   *  `formulaVersion`; older dataset files on disk lack the field = binary. */
+  voteScale: RadioPollVoteScale;
   settings: RadioPollSettings;
   raterCount: number;
   voteCount: number;
@@ -46,6 +50,10 @@ export interface RadioPollExportDataset {
       explanation: unknown;
       up: number;
       down: number;
+      ratingCount: number;
+      meanRating: number | null;
+      /** Histogram of ratings 1..5 — keeps variance/bimodality analyzable. */
+      ratingCounts: number[];
       consensus: PollConsensusVerdict | null;
     }>;
   }>;
@@ -62,8 +70,28 @@ export function consensusVerdict(up: number, down: number): PollConsensusVerdict
   return null;
 }
 
+/**
+ * The stars5 counterpart of `consensusVerdict`: distill a candidate's mean
+ * rating into the good/bad/ungraded vocabulary for summaries and future
+ * fixtures. The pairwise eval deliberately does NOT use this — its pairs come
+ * from raw mean inequality — so this rule shapes only human-readable output.
+ *
+ * Current rule: a dead zone. ≥3.5 is an endorsement, ≤2.5 a rejection, and
+ * the middle stays ungraded rather than stamping a 3.2 "good" into a fixture.
+ */
+export function gradedConsensus(
+  meanRating: number | null,
+  ratingCount: number,
+): PollConsensusVerdict | null {
+  if (meanRating === null || ratingCount === 0) return null;
+  if (meanRating >= 3.5) return 'good';
+  if (meanRating <= 2.5) return 'bad';
+  return null;
+}
+
 function exportCandidate(
   c: RadioPollCandidateResult,
+  scale: RadioPollVoteScale,
 ): RadioPollExportDataset['scenarios'][number]['candidates'][number] {
   return {
     songId: c.song.id,
@@ -75,18 +103,26 @@ function exportCandidate(
     explanation: c.explanation,
     up: c.up,
     down: c.down,
-    consensus: consensusVerdict(c.up, c.down),
+    ratingCount: c.ratingCount,
+    meanRating: c.meanRating,
+    ratingCounts: c.ratingCounts,
+    consensus:
+      scale === 'stars5'
+        ? gradedConsensus(c.meanRating, c.ratingCount)
+        : consensusVerdict(c.up, c.down),
   };
 }
 
 export function pollExportDataset(db: Database, poll: RadioPollRow): RadioPollExportDataset {
   const results = pollResults(db, poll);
+  const scale = pollVoteScale(results.settings);
   return {
     pollId: poll.id,
     name: poll.name,
     createdAt: poll.created_at,
     engineVersion: poll.engine_version,
     formulaVersion: poll.formula_version ?? '1',
+    voteScale: scale,
     settings: results.settings,
     raterCount: results.poll.raterCount,
     voteCount: results.poll.voteCount,
@@ -105,7 +141,7 @@ export function pollExportDataset(db: Database, poll: RadioPollRow): RadioPollEx
       centroid: s.centroid,
       filter: s.filter,
       weights: s.weights,
-      candidates: s.candidates.map(exportCandidate),
+      candidates: s.candidates.map((c) => exportCandidate(c, scale)),
     })),
   };
 }

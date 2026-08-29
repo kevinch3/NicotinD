@@ -113,7 +113,8 @@
               <p class="text-xs text-theme-muted">
                 {{ formatWhen(row.createdAt) }} ·
                 {{ 'admin.radioPollsCounts' | t: { scenarios: row.scenarioCount, votes: row.voteCount, raters: row.raterCount } }} ·
-                {{ 'admin.radioPollsFormula' | t: { v: row.formulaVersion || '1' } }}
+                {{ 'admin.radioPollsFormula' | t: { v: row.formulaVersion || '1' } }} ·
+                {{ 'admin.radioPollsScale_' + row.voteScale | t }}
               </p>
             </div>
             <div class="flex items-center gap-2 flex-shrink-0">
@@ -160,10 +161,22 @@
                           <div class="flex items-center gap-2">
                             <span class="text-theme-muted w-5 text-right flex-shrink-0">#{{ c.rank }}</span>
                             <span class="flex-1 min-w-0 truncate text-theme-primary">{{ c.song.title }} — {{ c.song.artist }}</span>
-                            <span class="text-emerald-500 flex-shrink-0">👍 {{ c.up }}</span>
-                            <span class="text-red-400 flex-shrink-0">👎 {{ c.down }}</span>
+                            @if (res.poll.voteScale === 'stars5') {
+                              <span class="text-amber-500 flex-shrink-0" data-testid="radio-polls-rating">
+                                {{ ratingSummary(c.meanRating, c.ratingCount) ?? '—' }}
+                              </span>
+                            } @else {
+                              <span class="text-emerald-500 flex-shrink-0">👍 {{ c.up }}</span>
+                              <span class="text-red-400 flex-shrink-0">👎 {{ c.down }}</span>
+                            }
                           </div>
-                          @if (approvalShare(c.up, c.down) !== null) {
+                          @if (res.poll.voteScale === 'stars5') {
+                            @if (ratingShare(c.meanRating) !== null) {
+                              <div class="ml-7 mt-1 h-1 rounded bg-theme-surface-2 overflow-hidden">
+                                <div class="h-full bg-amber-500" [style.width.%]="ratingShare(c.meanRating)! * 100"></div>
+                              </div>
+                            }
+                          } @else if (approvalShare(c.up, c.down) !== null) {
                             <div class="ml-7 mt-1 h-1 rounded bg-theme-surface-2 overflow-hidden">
                               <div class="h-full bg-emerald-500" [style.width.%]="approvalShare(c.up, c.down)! * 100"></div>
                             </div>

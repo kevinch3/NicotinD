@@ -94,6 +94,9 @@ export function normalizePollSettings(settings: RadioPollSettings): RadioPollSet
     filters: (settings.filters ?? [])
       .filter((f) => f && Object.keys(f).length > 0)
       .slice(0, MAX_SCENARIOS),
+    // Server-authoritative like formulaVersion: every new poll is stars5
+    // (issue #800 — binary consensus measurably starved the eval of pairs).
+    voteScale: 'stars5',
   };
 }
 

@@ -8,8 +8,9 @@
  * `explainSimilarity` (see services/radio-poll-eval.ts for exactly what is
  * recomputed vs frozen) and reports the within-scenario pairwise AUC of the
  * CURRENT DEFAULT_WEIGHTS — and, with --weights, of the overridden set side by
- * side. Results are grouped by `formula_version`: votes graded under different
- * formulas are never pooled into one number.
+ * side. Results are grouped by (`formula_version`, vote scale): votes graded
+ * under different formulas — or cast on different scales (thumbs vs 1–5 stars,
+ * issue #800) — are never pooled into one number.
  *
  * Off-policy caveat: a poll only graded the top-K its *generating* formula
  * served, so an AUC validates ordering among those candidates, not pool
@@ -82,17 +83,18 @@ function main(): void {
 
   const byFormula = new Map<string, Array<{ poll: RadioPollRow; ds: RadioPollExportDataset }>>();
   for (const [poll, ds] of datasets) {
-    const group = byFormula.get(ds.formulaVersion) ?? [];
+    const key = `${ds.formulaVersion} · ${ds.voteScale}`;
+    const group = byFormula.get(key) ?? [];
     group.push({ poll, ds });
-    byFormula.set(ds.formulaVersion, group);
+    byFormula.set(key, group);
   }
 
   console.log(
     `Agreement of weight sets with the human poll votes (within-scenario pairwise AUC;` +
       ` 0.5 = random). Off-policy: each poll only graded the top-K its generating formula served.\n`,
   );
-  for (const [formula, group] of [...byFormula.entries()].sort()) {
-    console.log(`Formula v${formula} — ${group.length} poll(s):`);
+  for (const [groupKey, group] of [...byFormula.entries()].sort()) {
+    console.log(`Formula v${groupKey} — ${group.length} poll(s):`);
     const base: PollAgreement[] = [];
     const over: PollAgreement[] = [];
     for (const { poll, ds } of group) {

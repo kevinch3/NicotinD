@@ -20,3 +20,14 @@ export function approvalShare(up: number, down: number): number | null {
   const total = up + down;
   return total === 0 ? null : up / total;
 }
+
+/** Stars5 counterpart of the 👍/👎 chips: `★ 4.5 (12)`. Null when unrated. */
+export function ratingSummary(meanRating: number | null, ratingCount: number): string | null {
+  if (meanRating === null || ratingCount === 0) return null;
+  return `★ ${meanRating.toFixed(1)} (${ratingCount})`;
+}
+
+/** A 1..5 mean as the tally bar's 0..1 fill. Null when unrated. */
+export function ratingShare(meanRating: number | null): number | null {
+  return meanRating === null ? null : (meanRating - 1) / 4;
+}

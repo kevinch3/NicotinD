@@ -13,8 +13,20 @@ import type { Song } from './navidrome.js';
  * package; the API's types are assignable to these.
  */
 
-/** One rater's thumb on one suggestion. */
+/** One rater's thumb on one suggestion (binary-scale polls). */
 export type RadioPollVerdict = 'up' | 'down';
+
+/** One rater's 1–5 star rating on one suggestion (stars5-scale polls). */
+export type PollRating = 1 | 2 | 3 | 4 | 5;
+
+/**
+ * How a poll's votes are cast. Stamped server-side into `settings_json` at
+ * creation (all new polls are `stars5`); absent = `binary`, i.e. every poll
+ * from before the scale existed. Gets the same treatment as
+ * `formulaVersion` (issue #583): votes cast under different scales are never
+ * silently pooled into one agreement measurement.
+ */
+export type RadioPollVoteScale = 'binary' | 'stars5';
 
 /**
  * The distilled human consensus for a candidate across all of its votes — a
@@ -43,6 +55,8 @@ export interface RadioPollSettings {
   filters?: LibraryFilter[];
   /** Scoring-weight overrides actually used, merged onto the engine defaults. */
   weights?: Record<string, number>;
+  /** Vote scale, stamped server-side at creation; absent = 'binary' (legacy). */
+  voteScale?: RadioPollVoteScale;
 }
 
 /** Structural copy of the API's `AxisContribution`. */
@@ -146,7 +160,13 @@ export interface PublicPollScenario {
 
 /** Response of `GET /api/radio-polls/public/:token`. */
 export interface PublicPollView {
-  poll: { name: string; scenarioCount: number; nextUpCount: number };
+  poll: {
+    name: string;
+    scenarioCount: number;
+    nextUpCount: number;
+    /** Drives which rating control the wizard renders (stars vs thumbs). */
+    voteScale: RadioPollVoteScale;
+  };
   scenarios: PublicPollScenario[];
   /** Short-lived read-only JWT for `/api/stream` + `/api/cover` (`?token=`). */
   mediaJwt: string;
@@ -161,7 +181,10 @@ export interface PublicPollVoteBody {
   votes: Array<{
     scenarioId: string;
     candidateSongId: string;
-    verdict: RadioPollVerdict;
+    /** Binary polls: required. Rejected on a stars5 poll (client confusion). */
+    verdict?: RadioPollVerdict;
+    /** Stars5 polls: required. Rejected on a binary poll. */
+    rating?: PollRating;
     note?: string;
   }>;
 }
@@ -185,11 +208,18 @@ export interface RadioPollSummary {
   /** Similarity-formula version that generated the scenarios
    *  (`RADIO_FORMULA_VERSION`); null = created before versioning (formula 1). */
   formulaVersion: string | null;
+  voteScale: RadioPollVoteScale;
 }
 
 export interface RadioPollCandidateResult extends RadioPollCandidateSnapshot {
+  /** Derived-verdict tallies on stars5 polls; the raw thumbs on binary polls. */
   up: number;
   down: number;
+  /** Votes that carried a star rating (0 on binary polls). */
+  ratingCount: number;
+  meanRating: number | null;
+  /** Histogram of ratings 1..5 (index 0 = one star). */
+  ratingCounts: number[];
 }
 
 export interface RadioPollScenarioResult {

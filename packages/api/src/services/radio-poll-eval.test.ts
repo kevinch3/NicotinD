@@ -24,6 +24,7 @@ function dataset(
     createdAt: 0,
     engineVersion: null,
     formulaVersion: '1',
+    voteScale: 'binary',
     settings: { scenarioCount: 1, nextUpCount: candidates.length },
     raterCount: 1,
     voteCount: candidates.length,
@@ -44,6 +45,9 @@ function dataset(
           explanation: c.explanation ?? { axes: [] },
           up: c.consensus === 'good' ? 1 : 0,
           down: c.consensus === 'bad' ? 1 : 0,
+          ratingCount: 0,
+          meanRating: null,
+          ratingCounts: [0, 0, 0, 0, 0],
           consensus: c.consensus,
         })),
       },
@@ -123,6 +127,7 @@ describe('evaluatePollAgreement (issue #583)', () => {
       pollId: 'p',
       name: 'n',
       formulaVersion: '1',
+      voteScale: 'binary',
       scenarioCount: 1,
       gradedCandidates: 2,
       tally: { wins, ties: 0, pairs },
@@ -131,6 +136,70 @@ describe('evaluatePollAgreement (issue #583)', () => {
     const pooled = pooledTally([mk(1, 2), mk(3, 4)]);
     expect(pooled).toEqual({ wins: 4, ties: 0, pairs: 6 });
     expect(agreementAuc(pooled)).toBeCloseTo(4 / 6, 10);
+  });
+});
+
+describe('stars5 graded agreement (issue #800)', () => {
+  function starsDataset(
+    seedFeatures: Record<string, unknown>,
+    candidates: Array<{ features: Record<string, unknown>; meanRating: number | null }>,
+  ): RadioPollExportDataset {
+    const base = dataset(
+      seedFeatures,
+      candidates.map((c) => ({ features: c.features, consensus: null })),
+    );
+    base.voteScale = 'stars5';
+    base.settings.voteScale = 'stars5';
+    for (const [i, c] of candidates.entries()) {
+      const target = base.scenarios[0]!.candidates[i]!;
+      target.meanRating = c.meanRating;
+      target.ratingCount = c.meanRating === null ? 0 : 1;
+      target.ratingCounts = [0, 0, 0, 0, 0];
+    }
+    return base;
+  }
+
+  const seed = { duration: 200, artistId: 'seed-a', genres: ['Rock'], bpm: 120 };
+
+  it('forms pairs from unequal mean ratings, ordered by the weight set', () => {
+    const ds = starsDataset(seed, [
+      { features: { duration: 200, artistId: 'x', genres: ['Rock'], bpm: 60 }, meanRating: 5 },
+      { features: { duration: 200, artistId: 'y', genres: ['Salsa'], bpm: 120 }, meanRating: 2 },
+      { features: { duration: 200, artistId: 'z', genres: ['Jazz'], bpm: 90 }, meanRating: null },
+    ]);
+    const genreWise = evaluatePollAgreement(ds, onlyAxes({ genre: 18 }));
+    expect(genreWise.voteScale).toBe('stars5');
+    expect(genreWise.gradedCandidates).toBe(2);
+    expect(genreWise.tally.pairs).toBe(1);
+    expect(genreWise.auc).toBe(1);
+    expect(evaluatePollAgreement(ds, onlyAxes({ bpm: 8 })).auc).toBe(0);
+  });
+
+  it('a middling pair binary consensus would have discarded still counts', () => {
+    // Two raters split 4/3 vs 3/3 — under thumbs both would tie into ungraded.
+    const ds = starsDataset(seed, [
+      { features: { duration: 200, artistId: 'x', genres: ['Rock'] }, meanRating: 3.5 },
+      { features: { duration: 200, artistId: 'y', genres: ['Salsa'] }, meanRating: 3 },
+    ]);
+    const r = evaluatePollAgreement(ds, onlyAxes({ genre: 18 }));
+    expect(r.tally.pairs).toBe(1);
+    expect(r.auc).toBe(1);
+  });
+
+  it('equal means contribute no pair; identical scores get half credit', () => {
+    const equalMeans = starsDataset(seed, [
+      { features: { duration: 200, artistId: 'x', genres: ['Rock'] }, meanRating: 4 },
+      { features: { duration: 200, artistId: 'y', genres: ['Salsa'] }, meanRating: 4 },
+    ]);
+    expect(evaluatePollAgreement(equalMeans).tally.pairs).toBe(0);
+    expect(evaluatePollAgreement(equalMeans).auc).toBeNull();
+
+    const sameFeatures = { duration: 200, artistId: 'x', genres: ['Rock'] };
+    const scoreTie = starsDataset(seed, [
+      { features: sameFeatures, meanRating: 5 },
+      { features: { ...sameFeatures, artistId: 'y' }, meanRating: 1 },
+    ]);
+    expect(evaluatePollAgreement(scoreTie, onlyAxes({ genre: 18 })).auc).toBe(0.5);
   });
 });
 
@@ -147,6 +216,9 @@ describe('station (filter) scenarios are measured, not skipped', () => {
       explanation: { axes: [] },
       up: consensus === 'good' ? 1 : 0,
       down: consensus === 'bad' ? 1 : 0,
+      ratingCount: 0,
+      meanRating: null,
+      ratingCounts: [0, 0, 0, 0, 0],
       consensus,
     });
     return {
@@ -155,6 +227,7 @@ describe('station (filter) scenarios are measured, not skipped', () => {
       createdAt: 0,
       engineVersion: null,
       formulaVersion: '3',
+      voteScale: 'binary',
       settings: { scenarioCount: 1, nextUpCount: 2 },
       raterCount: 1,
       voteCount: 2,

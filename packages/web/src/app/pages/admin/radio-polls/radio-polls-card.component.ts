@@ -9,7 +9,7 @@ import { ConfirmService } from '../../../services/confirm.service';
 import { TranslateService } from '../../../services/translate.service';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { SongPickerComponent } from '../../../components/song-picker/song-picker.component';
-import { approvalShare, breakdownLine } from './radio-polls-card.lib';
+import { approvalShare, breakdownLine, ratingShare, ratingSummary } from './radio-polls-card.lib';
 
 /**
  * Admin card for radio evaluation polls (docs/radio-eval-polls.md): create a
@@ -49,6 +49,8 @@ export class RadioPollsCardComponent {
 
   readonly breakdownLine = breakdownLine;
   readonly approvalShare = approvalShare;
+  readonly ratingSummary = ratingSummary;
+  readonly ratingShare = ratingShare;
 
   /** Fetch once per page visit — the group re-emits `opened` on every expand. */
   load(): void {

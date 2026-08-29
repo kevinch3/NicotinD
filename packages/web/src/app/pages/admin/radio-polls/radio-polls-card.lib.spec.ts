@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { approvalShare, breakdownLine } from './radio-polls-card.lib';
+import { approvalShare, breakdownLine, ratingShare, ratingSummary } from './radio-polls-card.lib';
 
 describe('breakdownLine', () => {
   it('renders axes as value×weight with skipped appended', () => {
@@ -37,5 +37,20 @@ describe('approvalShare', () => {
     expect(approvalShare(3, 1)).toBe(0.75);
     expect(approvalShare(0, 2)).toBe(0);
     expect(approvalShare(0, 0)).toBeNull();
+  });
+});
+
+describe('ratingSummary / ratingShare (stars5 results)', () => {
+  it('formats the mean with its vote count, null when unrated', () => {
+    expect(ratingSummary(4.5, 12)).toBe('★ 4.5 (12)');
+    expect(ratingSummary(3, 1)).toBe('★ 3.0 (1)');
+    expect(ratingSummary(null, 0)).toBeNull();
+  });
+
+  it('maps a 1..5 mean onto a 0..1 bar fill, null when unrated', () => {
+    expect(ratingShare(5)).toBe(1);
+    expect(ratingShare(1)).toBe(0);
+    expect(ratingShare(3)).toBe(0.5);
+    expect(ratingShare(null)).toBeNull();
   });
 });
