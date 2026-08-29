@@ -242,7 +242,16 @@ phase 3).
   `<dataDir>/addon-incoming`, runs them through the same organize→scan pipeline, records
   provenance under the addon id (`AcquisitionMethod` opened to any string), and releases
   fully-ingested terminal jobs addon-side. Gated on the #235 kill-switch; cursor + job
-  mapping in `plugin_kv`.
+  mapping in `plugin_kv`. **The tick mirrors; a background queue ingests (#809).** File
+  fetch (600 s/file budget) + organize + scan used to run inside the non-reentrant tick,
+  so one big album froze every addon's mirroring — item states, stage recomputes, cancel
+  outcomes — for minutes. `scheduleFinish` now hands a job's whole finish tail
+  (ingest → outcome → playlist → release, the ordering that was always load-bearing) to a
+  **strictly serial** pump (`pumpIngest`, single-flight per job — the organizer and
+  scanner were never called concurrently and are not assumed safe for it); the tick stays
+  cheap and re-observes an in-flight job next round. A failed fetch keeps its retry
+  semantics (the job stays open, the slot frees, the next observation re-queues).
+  `idle()` is the drain seam tests and shutdown use.
 - `acquireAlbum` addon path: hunt/pick/wanted-scope/fallback run addon-side; every
   library guard (albumAlreadyComplete, on-disk wanted filtering via the now-exported
   `onDiskTitles`, artist identity, the feed row + hunt metadata) stays core-side; the
