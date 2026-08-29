@@ -11,13 +11,21 @@
  */
 import { existsSync } from 'node:fs';
 import type { Database } from 'bun:sqlite';
-import { appendSongGenres, loadGenreSets, setSongGenres } from './genre-split.js';
-import { applyGenreOverride, buildOverrideIndex, upsertGenreOverride } from './genre-overrides.js';
+import { loadGenreSets, setSongGenres } from './genre-split.js';
+import {
+  applyGenreOverride,
+  buildOverrideIndex,
+  getGenreOverride,
+  upsertGenreOverride,
+  type GenreOverrideMode,
+} from './genre-overrides.js';
 import { writeAudioTags } from './audio-tags.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from './song-path.js';
 
 export interface SongGenreMutateDeps {
   musicDir?: string;
+  /** Injectable for tests, mirroring `SongMetadataMutateDeps`. */
+  writeTags?: (abs: string, tags: { genre: string }) => Promise<boolean>;
 }
 
 export interface SongGenreMutateBody {
@@ -28,7 +36,20 @@ export interface SongGenreMutateBody {
 }
 
 export type SongGenreMutateResult =
-  { ok: true; genres: string[] } | { ok: false; error: string; status: 400 | 404 };
+  | {
+      ok: true;
+      genres: string[];
+      /**
+       * Whether the file's own genre tag was updated: `true`, `false` (the
+       * write was attempted and failed), or `null` (not attempted — no
+       * `musicDir`, or the file is missing / outside it).
+       *
+       * The result used to be `{ok: true}` either way, so a swallowed tag
+       * failure was indistinguishable from a landed one (issue #762).
+       */
+      tagWritten: boolean | null;
+    }
+  | { ok: false; error: string; status: 400 | 404 };
 
 /** Split a caller-supplied genre string into the stored list shape. */
 export function parseGenreList(raw: string | undefined): string[] {
@@ -58,54 +79,82 @@ export async function mutateSongGenre(
     .get(songId);
   if (!song) return { ok: false, error: 'Song not found', status: 404 };
 
-  // Default 'append': a detected genre adds to, never clobbers, the song's
-  // other genres. 'replace' (issue #187 A3) writes a song-scoped user override
-  // so the set's PRIMARY becomes these genres and stays that way across
-  // rescans; the tag mirror below is then a convenience for external players,
-  // not the durability mechanism.
-  let merged: string[];
-  if (body.mode === 'replace') {
-    upsertGenreOverride(db, {
-      scope: 'song',
-      key: songId,
-      genres,
-      source: 'user',
-      mbid: null,
-      confidence: null,
-      status: 'applied',
-      note: null,
-      mode: 'replace',
-    });
-    // Mirror what buildLibrary will compute on the next scan (override first,
-    // then the tag genres it doesn't already carry) so the UI and the eventual
-    // scan agree instead of briefly disagreeing.
-    const existing = loadGenreSets(db, [songId]).get(songId) ?? [];
-    merged = applyGenreOverride(
-      buildOverrideIndex([
-        {
-          scope: 'song',
-          key: songId,
-          genres,
-          source: 'user',
-          mbid: null,
-          confidence: null,
-          status: 'applied',
-          note: null,
-        },
-      ]),
-      { songId, albumKey: '', artistKey: '' },
-      existing,
-    );
-    setSongGenres(db, songId, merged);
-  } else {
-    merged = appendSongGenres(db, songId, genres);
-  }
+  // BOTH modes write a song-scoped user override, because that row is the only
+  // thing a rescan re-applies (`applyGenreOverride`, called from buildLibrary).
+  // 'append' used to write only `library_song_genres`, which the scanner
+  // rebuilds from the file tag — so a curated genre on a song whose tag held a
+  // real-but-wrong value ("Music", a label name) was silently reverted by the
+  // next scan (issue #762). The tag mirror below is a convenience for external
+  // players; the override is the durability mechanism, in both modes.
+  //
+  // 'replace' (issue #187 A3) makes the curated genres the whole set.
+  // 'append' keeps the tag's genres and adds to them, which is what an
+  // automated detector wants — so the override stores only the CURATED
+  // additions, accumulated across calls, never a snapshot of the tags as they
+  // happened to read today.
+  const prior = getGenreOverride(db, 'song', songId);
+  const mode: GenreOverrideMode =
+    // A song already under an explicit 'replace' decision stays there: the
+    // curator has claimed its genre set, and appending to it must not silently
+    // hand authority back to the file tag.
+    body.mode === 'replace' || prior?.mode === 'replace' ? 'replace' : 'append';
+  // An explicit 'replace' claims the whole set. Anything else accumulates onto
+  // whatever the curator already decided, so a second append never discards the
+  // first — the row is keyed (scope, key) and upserts, so storing only this
+  // call's genres would quietly drop the earlier ones.
+  const overrideGenres =
+    body.mode === 'replace' ? genres : dedupeGenres([...(prior?.genres ?? []), ...genres]);
 
+  const row = {
+    scope: 'song',
+    key: songId,
+    genres: overrideGenres,
+    source: 'user',
+    mbid: null,
+    confidence: null,
+    status: 'applied',
+    note: null,
+    mode,
+  } as const;
+  upsertGenreOverride(db, { ...row });
+
+  // Mirror what buildLibrary will compute on the next scan, so the UI and the
+  // eventual scan agree instead of briefly disagreeing. Running the stored set
+  // through the same `applyGenreOverride` the scanner uses is what keeps the
+  // two from drifting.
+  const stored = loadGenreSets(db, [songId]).get(songId) ?? [];
+  const merged = applyGenreOverride(
+    buildOverrideIndex([{ ...row }]),
+    { songId, albumKey: '', artistKey: '' },
+    stored,
+  );
+  setSongGenres(db, songId, merged);
+
+  // The tag write's outcome is reported, not swallowed. It used to be
+  // `.catch(() => false)` with the return value dropped, so `{ok: true}` came
+  // back whether or not anything reached the file (issue #762).
+  let tagWritten: boolean | null = null;
   if (deps.musicDir) {
     const abs = resolveSongPath(expandDir(deps.musicDir), song.path);
     if (isUnderMusicDir(expandDir(deps.musicDir), abs) && existsSync(abs)) {
-      await writeAudioTags(abs, { genre: merged.join('; ') }).catch(() => false);
+      tagWritten = await (deps.writeTags ?? writeAudioTags)(abs, {
+        genre: merged.join('; '),
+      }).catch(() => false);
     }
   }
-  return { ok: true, genres: merged };
+  return { ok: true, genres: merged, tagWritten };
+}
+
+/** Case/whitespace-insensitive dedupe preserving first-seen order. */
+function dedupeGenres(genres: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const g of genres) {
+    const cleaned = g.trim().replace(/\s+/g, ' ');
+    const k = cleaned.toLocaleLowerCase();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(cleaned);
+  }
+  return out;
 }

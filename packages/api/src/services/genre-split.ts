@@ -521,12 +521,40 @@ export function setSongGenres(db: Database, songId: string, genres: string[]): v
       ]);
     }
     db.run(`UPDATE library_songs SET genre = ? WHERE id = ?`, [genres[0] ?? null, songId]);
-    const now = Date.now();
-    for (const name of touched) {
-      db.run(
-        `INSERT INTO library_genres (name, song_count, album_count, synced_at)
+    refreshGenreCounts(db, touched);
+  })();
+}
+
+/**
+ * Recompute `library_genres.song_count` / `album_count` for the named genres
+ * from `library_song_genres`, dropping any that just went empty.
+ *
+ * `library_genres` is a scan-time snapshot, not a live aggregate — the Genres
+ * tab reads the stored columns straight (`GET /api/library/genres`). Every
+ * *mutation* path already routes through `setSongGenres` and so stays correct;
+ * the gap was **deletion** (issue #771). The album-delete path only dropped
+ * genres that went empty, so removing a 12-track album from a 300-song genre
+ * left it reading 300, and the per-song delete did not even do that. Measured
+ * on prod 2026-08-27: Synth-Pop listed 283 against a facet of 305,
+ * Avant-Garde Jazz 35 against 37.
+ *
+ * Both counts JOIN `library_songs`. Per-song side tables deliberately have no
+ * FK cascade (docs/cache-invalidation.md — a rescan rebuilds `library_songs`
+ * wholesale, and orphans are swept later on a grace period), so a deleted song
+ * leaves its `library_song_genres` rows behind for a while. Counting those rows
+ * unjoined would report the pre-delete number and defeat the point of calling
+ * this from a delete path at all.
+ *
+ * Callers must already be inside a transaction if they need one.
+ */
+export function refreshGenreCounts(db: Database, names: Iterable<string>): void {
+  const now = Date.now();
+  for (const name of new Set(names)) {
+    db.run(
+      `INSERT INTO library_genres (name, song_count, album_count, synced_at)
          VALUES (?,
-           (SELECT COUNT(*) FROM library_song_genres WHERE genre = ?),
+           (SELECT COUNT(*) FROM library_song_genres sg
+             JOIN library_songs s ON s.id = sg.song_id WHERE sg.genre = ?),
            (SELECT COUNT(DISTINCT s.album_id) FROM library_song_genres sg
              JOIN library_songs s ON s.id = sg.song_id WHERE sg.genre = ?),
            ?)
@@ -534,9 +562,8 @@ export function setSongGenres(db: Database, songId: string, genres: string[]): v
            song_count = excluded.song_count,
            album_count = excluded.album_count,
            synced_at = excluded.synced_at`,
-        [name, name, name, now],
-      );
-      db.run(`DELETE FROM library_genres WHERE name = ? AND song_count = 0`, [name]);
-    }
-  })();
+      [name, name, name, now],
+    );
+    db.run(`DELETE FROM library_genres WHERE name = ? AND song_count = 0`, [name]);
+  }
 }

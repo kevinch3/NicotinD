@@ -2178,7 +2178,12 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       targetId: id,
       detail: `${body.mode === 'replace' ? 'replace' : 'append'}: ${result.genres.join(';')}`,
     });
-    return c.json({ ok: true, genre: result.genres[0], genres: result.genres });
+    return c.json({
+      ok: true,
+      genre: result.genres[0],
+      genres: result.genres,
+      tagWritten: result.tagWritten,
+    });
   });
 
   // Cheap "can the user hit Identify" flag for the track-info sheet — see

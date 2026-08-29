@@ -379,17 +379,23 @@ describe('library routes', () => {
       body: JSON.stringify({ genre: 'Deep House' }),
     });
     expect(res.status).toBe(200);
+    // Still an append — `House` and `Techno` both survive. The curated genre
+    // leads because it is now backed by a durable override row, and the scanner
+    // resolves override genres ahead of tag genres (issue #762); mirroring any
+    // other order here would just disagree with the next scan. `tagWritten` is
+    // null because this route was called without a musicDir.
     expect(await res.json()).toEqual({
       ok: true,
-      genre: 'House',
-      genres: ['House', 'Techno', 'Deep House'],
+      genre: 'Deep House',
+      genres: ['Deep House', 'House', 'Techno'],
+      tagWritten: null,
     });
     const rows = sharedDb
       .query<{ genre: string }, [string]>(
         `SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position`,
       )
       .all('gsong');
-    expect(rows.map((r) => r.genre)).toEqual(['House', 'Techno', 'Deep House']);
+    expect(rows.map((r) => r.genre)).toEqual(['Deep House', 'House', 'Techno']);
   });
 
   it('GET /untracked lists completed downloads with no relative_path', async () => {

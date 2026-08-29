@@ -11,8 +11,9 @@
  * **once per artist** (not per song); the suggested genre is fanned out to every
  * one of that artist's songs that has no genre yet. On --apply each is written to
  * `library_songs.genre` **and** the file tag (`writeAudioTags`) so it survives a
- * rescan. The `library_genres` facet counts are NOT recomputed here — they
- * refresh on the next full library scan (matching the per-song genre route).
+ * rescan. The `library_genres` facet counts are refreshed per touched genre by
+ * `setSongGenres` (matching the per-song genre route), so they do not wait for
+ * a full scan.
  *
  * Env: NICOTIND_DATA_DIR, NICOTIND_MUSIC_DIR, NICOTIND_CONFIG,
  * LIDARR_URL or NICOTIND_LIDARR_URL, LIDARR_API_KEY (falls back to config.lidarr.url
@@ -136,7 +137,7 @@ async function main(): Promise<void> {
 
   if (!apply) {
     console.log('\nDry run only. Re-run with --apply to write genres to the DB and file tags.');
-    console.log('Note: library_genres facet counts refresh on the next full library scan.\n');
+    console.log('Note: library_genres facet counts are refreshed as each genre is written.\n');
     return;
   }
 
@@ -159,7 +160,7 @@ async function main(): Promise<void> {
     applied++;
   }
   console.log(`\n✅ Applied genre to ${applied} songs. Log: ${logPath}`);
-  console.log('library_genres facet counts refresh on the next full library scan.\n');
+  console.log('library_genres facet counts were refreshed as each genre was written.\n');
 }
 
 if (import.meta.main) {

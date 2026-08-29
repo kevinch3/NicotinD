@@ -415,6 +415,34 @@ and an empty array count as missing. The guard reads the schema and never
 invents a requirement: `complete_album` declares only `confirm`, because
 `albumId` and `artist` + `album` are alternatives its handler arbitrates.
 
+### An HTML entity in a name is refused, not stored (issue #787)
+
+`htmlEntityArgs` is the same guard shape one step later in `dispatchTool`: a
+string argument matching a named or numeric HTML entity is refused with the
+character it probably meant.
+
+```
+"fix_song_metadata": `artist` contains the HTML entity "&amp;".
+Send the bare character ("&"). MCP arguments are not HTML-escaped,
+so this would be stored literally.
+```
+
+This is **not** a server bug in the strict sense — JSON carries no escaping
+convention, so `&amp;` is a legitimate five-character string and the server is
+right not to unescape it. But on the fields where it shows up it is a mistake
+essentially every time, and unlike the wrong-key case above it is **durable**:
+it lands in the library instead of bouncing. An agent that wrote `&amp;` got an
+artist row literally named `Wisin &amp; Yandel`; `&lt;` produced an album
+literally named `while(1&lt;2)`. Both happened during real curation passes, and
+each needed a follow-up **destructive** `merge_artist` to undo — which is the
+asymmetry that justifies refusing a technically-valid string.
+
+Like `missingRequiredArgs` it is pure, unit-tested and applied to every tool by
+construction, and it walks arrays because the identity arguments that matter
+most (`merge_artist.rawNames`) are lists of names. `reason` and `note` are
+exempt: they are free text written for a human to read, never an identity, so
+quoting an entity in one is a legitimate thing to do.
+
 ### `identify_song` — identity from the audio (issue #777)
 
 Fingerprint identity answers questions no tag-derived tool can: a junk or
