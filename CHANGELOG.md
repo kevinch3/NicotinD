@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.35](https://github.com/kevinch3/NicotinD/compare/v0.5.34...v0.5.35) (2026-08-29)
+
+### Features
+
+* **polls:** 1–5 star ratings with graded export and eval ([#802](https://github.com/kevinch3/NicotinD/issues/802)) ([4aaac60](https://github.com/kevinch3/NicotinD/commit/4aaac605887c904f8857eccd4707bccb353ae5b7)), references [#800](https://github.com/kevinch3/NicotinD/issues/800)
 ## [0.5.34](https://github.com/kevinch3/NicotinD/compare/v0.5.33...v0.5.34) (2026-08-29)
 
 ### Features
