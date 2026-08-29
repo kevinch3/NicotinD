@@ -626,6 +626,7 @@
   "poll.progress": "Escenario {current} de {total}",
   "poll.rateStar": "Valorar con {n} de 5",
   "poll.ratingLegend": "1 = mala elección · 5 = elección perfecta",
+  "poll.seek": "Saltar a otro punto de la pista",
   "poll.skipHint": "{rated} de {total} valoradas — las pistas sin valorar simplemente se saltan.",
   "poll.start": "Empezar a valorar",
   "poll.station": "Emisora",

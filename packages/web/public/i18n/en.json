@@ -626,6 +626,7 @@
   "poll.progress": "Scenario {current} of {total}",
   "poll.rateStar": "Rate {n} of 5",
   "poll.ratingLegend": "1 = bad pick · 5 = perfect pick",
+  "poll.seek": "Seek within the track",
   "poll.skipHint": "{rated} of {total} rated — unrated tracks are simply skipped.",
   "poll.start": "Start rating",
   "poll.station": "Station",

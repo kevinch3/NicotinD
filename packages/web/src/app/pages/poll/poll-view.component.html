@@ -57,7 +57,7 @@
 
           <!-- Fake Now Playing card: the seed -->
           @if (sc.seed; as seed) {
-            <div class="rounded-xl bg-theme-surface border border-theme p-4 flex items-center gap-4 mb-6"
+            <div class="rounded-xl bg-theme-surface border border-theme p-4 flex flex-wrap items-center gap-4 mb-6"
               data-testid="poll-seed-card">
               <img [src]="coverUrl(seed.coverArt)" alt=""
                 class="w-20 h-20 rounded-lg object-cover flex-shrink-0 shadow" />
@@ -79,6 +79,12 @@
                   </svg>
                 }
               </button>
+              @if (playingId() === seed.id) {
+                <div class="basis-full" data-testid="poll-seek">
+                  <app-seek-bar [position]="position()" [duration]="playingDuration()"
+                    [ariaLabel]="'poll.seek' | t" (seek)="onSeek($event)" />
+                </div>
+              }
             </div>
           } @else if (sc.filterLabel) {
             <!-- Station scenario: no seed track, so name the station instead —
@@ -177,6 +183,12 @@
                   </button>
                 </div>
                 }
+                @if (playingId() === c.id) {
+                  <div class="basis-full" data-testid="poll-seek">
+                    <app-seek-bar [position]="position()" [duration]="playingDuration()"
+                      [ariaLabel]="'poll.seek' | t" (seek)="onSeek($event)" />
+                  </div>
+                }
               </div>
             }
           </div>
@@ -232,5 +244,5 @@
     </div>
   </div>
 
-  <audio #audioEl (ended)="onEnded()"></audio>
+  <audio #audioEl (ended)="onEnded()" (timeupdate)="onTimeUpdate()"></audio>
 }
