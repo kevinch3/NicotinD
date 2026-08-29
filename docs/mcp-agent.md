@@ -362,7 +362,11 @@ rule the other curate tools established.
   `cleanDisplayTitle` — a conservative whole-segment junk vocabulary that
   strips "(Official Video)"-class noise while preserving "(Remix)", "(En
   Vivo)", "(feat. X)" (deliberately unlike core's query-only
-  `stripTitleQualifiers`, which strips every bracket).
+  `stripTitleQualifiers`, which strips every bracket). The vocabulary also
+  covers reissue labels (`remaster*`, with year-like tokens, `version` and
+  `edition` as modifiers), and `scripts/normalize-titles.ts` applies the same
+  cleaner to rows already in the library — see
+  [library-scanner.md](library-scanner.md).
 - **`fix_song_metadata` retags the file in place and rescans — it never moves
   or renames it.** `songId` is path-derived, so playlists/likes/history keep
   pointing at the song; the *name-derived* album id re-minting on rescan is
@@ -381,8 +385,9 @@ rule the other curate tools established.
   `actual` row values, and a success carries `verified: true` with the values
   actually on the row. Without a rescanner wired there is nothing to read back
   through, so the result says `verified: false` rather than claiming a check it
-  did not perform. Anything automating retags depends on this to avoid
-  reporting a clean run having changed nothing.
+  did not perform. Anything automating retags — an agent, the `normalize-titles`
+  bulk pass — depends on this to avoid reporting a clean run having changed
+  nothing.
 
 ### A missing argument is an error, not an empty result (issue #778)
 
