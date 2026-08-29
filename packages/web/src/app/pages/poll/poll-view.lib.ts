@@ -10,12 +10,12 @@ export function voteKey(scenarioId: string, candidateId: string): string {
   return `${scenarioId} ${candidateId}`;
 }
 
-/** True once every candidate in the scenario has a verdict — gates "Next". */
-export function scenarioComplete(
+/** How many of the scenario's candidates the rater has rated — feeds the skip hint. */
+export function ratedCount(
   scenario: PublicPollScenario,
   votes: ReadonlyMap<string, RadioPollVerdict>,
-): boolean {
-  return scenario.candidates.every((c) => votes.has(voteKey(scenario.id, c.id)));
+): number {
+  return scenario.candidates.filter((c) => votes.has(voteKey(scenario.id, c.id))).length;
 }
 
 /** The scenario's votes in wire shape for POST /votes. */

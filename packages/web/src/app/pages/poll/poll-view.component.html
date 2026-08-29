@@ -90,6 +90,16 @@
             </div>
           }
 
+          <!-- The premise, restated on every step (#799): a rater mid-wizard
+               should never have to remember the intro to know what the list is. -->
+          <p class="text-xs text-theme-secondary leading-relaxed mb-3" data-testid="poll-framing">
+            @if (sc.seed) {
+              {{ 'poll.framingSeed' | t }}
+            } @else {
+              {{ 'poll.framingStation' | t: { station: sc.filterLabel ?? '' } }}
+            }
+          </p>
+
           <p class="text-[11px] uppercase tracking-wide text-theme-muted mb-2">
             {{ (sc.seed ? 'poll.nextUp' : 'poll.stationTracks') | t }}
           </p>
@@ -166,14 +176,16 @@
               }
             </div>
             <button (click)="next()" data-testid="poll-next"
-              [disabled]="!currentComplete() || submitting()"
+              [disabled]="submitting()"
               class="px-6 py-2 rounded-full bg-theme-accent text-theme-on-accent font-semibold text-sm hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed">
               @if (scenarioIndex() + 1 === scenarioCount()) { {{ 'poll.finish' | t }} }
               @else { {{ 'common.next' | t }} }
             </button>
           </div>
-          @if (!currentComplete()) {
-            <p class="text-[11px] text-theme-muted text-center mt-3">{{ 'poll.rateAllHint' | t }}</p>
+          @if (currentRated() < sc.candidates.length) {
+            <p class="text-[11px] text-theme-muted text-center mt-3">
+              {{ 'poll.skipHint' | t: { rated: currentRated(), total: sc.candidates.length } }}
+            </p>
           }
         </div>
       }

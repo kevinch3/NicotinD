@@ -19,7 +19,7 @@ import {
   nextStep,
   pollFailureState,
   prevStep,
-  scenarioComplete,
+  ratedCount,
   voteKey,
   votesForScenario,
   type PollPageState,
@@ -71,9 +71,9 @@ export class PollViewComponent implements OnInit, OnDestroy {
     typeof this.step() === 'number' ? (this.step() as number) : -1,
   );
   readonly scenarioCount = computed(() => this.view()?.scenarios.length ?? 0);
-  readonly currentComplete = computed(() => {
+  readonly currentRated = computed(() => {
     const sc = this.scenario();
-    return sc ? scenarioComplete(sc, this.votes()) : false;
+    return sc ? ratedCount(sc, this.votes()) : 0;
   });
 
   async ngOnInit(): Promise<void> {
@@ -182,14 +182,23 @@ export class PollViewComponent implements OnInit, OnDestroy {
 
   async next(): Promise<void> {
     const sc = this.scenario();
-    if (!sc || !this.currentComplete() || this.submitting()) return;
+    if (!sc || this.submitting()) return;
+    // Rating is optional (#798): a fully skipped scenario advances without
+    // POSTing — the API rejects empty vote batches.
+    const votes = votesForScenario(sc, this.votes());
+    if (votes.length === 0) {
+      this.stopAudio();
+      this.submitError.set(false);
+      this.step.set(nextStep(this.step(), this.scenarioCount()));
+      return;
+    }
     this.submitting.set(true);
     this.submitError.set(false);
     try {
       await firstValueFrom(
         this.http.post(`/api/radio-polls/public/${this.token}/votes`, {
           raterKey: getRaterKey(),
-          votes: votesForScenario(sc, this.votes()),
+          votes,
         }),
       );
       this.stopAudio();

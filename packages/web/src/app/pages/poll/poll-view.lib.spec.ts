@@ -4,7 +4,7 @@ import {
   nextStep,
   pollFailureState,
   prevStep,
-  scenarioComplete,
+  ratedCount,
   voteKey,
   votesForScenario,
 } from './poll-view.lib';
@@ -25,13 +25,13 @@ function scenario(id = 'sc1', candidateIds = ['c1', 'c2']): PublicPollScenario {
   };
 }
 
-describe('scenarioComplete', () => {
-  it('is true only once every candidate has a verdict', () => {
+describe('ratedCount', () => {
+  it('counts only this scenario’s rated candidates', () => {
     const sc = scenario();
     const votes = new Map<string, 'up' | 'down'>([[voteKey('sc1', 'c1'), 'up']]);
-    expect(scenarioComplete(sc, votes)).toBe(false);
+    expect(ratedCount(sc, votes)).toBe(1);
     votes.set(voteKey('sc1', 'c2'), 'down');
-    expect(scenarioComplete(sc, votes)).toBe(true);
+    expect(ratedCount(sc, votes)).toBe(2);
   });
 
   it('ignores votes from other scenarios', () => {
@@ -39,7 +39,7 @@ describe('scenarioComplete', () => {
       [voteKey('other', 'c1'), 'up' as const],
       [voteKey('other', 'c2'), 'up' as const],
     ]);
-    expect(scenarioComplete(scenario(), votes)).toBe(false);
+    expect(ratedCount(scenario(), votes)).toBe(0);
   });
 });
 

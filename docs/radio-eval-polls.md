@@ -156,10 +156,17 @@ with two weight sets interleaved.
 - **Public wizard** `pages/poll/` — guard-less route above the app shell
   (like `/share/:token`). Intro → one step per scenario (fake Now Playing seed
   card, next-up rows with per-track 👍/👎 + preview play into one shared
-  `<audio>`) → thanks. "Next" enables once every candidate has a verdict, and
-  advancing POSTs that scenario's votes — partial sessions still contribute,
-  and the upsert makes back-navigation safe. Pure step/vote logic lives in
-  `poll-view.lib.ts`.
+  `<audio>`) → thanks. **Rating is optional per track** (issue #798): "Next" is
+  never gated on completeness — the first rater feedback showed force-rating
+  fabricates opinions, which is worse than a gap, and an absent vote row already
+  means "no vote" in the tally, the export and the eval. Advancing POSTs only
+  the ratings actually given (a zero-vote scenario advances without POSTing at
+  all — `recordVotes` rejects empty batches); partial sessions still contribute,
+  and the upsert makes back-navigation safe. Every scenario step repeats the
+  premise in one framing line (issue #799 — a rater mid-wizard no longer has to
+  remember the intro): the seed variant restates now-playing → generated-queue,
+  the station variant names the station. Pure step/vote logic lives in
+  `poll-view.lib.ts` (`ratedCount` feeds the "N of M rated" hint).
 - **Admin card** `pages/admin/radio-polls/` — a `SettingsGroupComponent` on
   /admin (lazy `load()` on expand): create
   form (name, counts, optional expiry, pinned seed songs via the shared
