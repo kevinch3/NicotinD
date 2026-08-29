@@ -10,7 +10,9 @@ gate** section of [library-processing.md](library-processing.md) for the graduat
 predicate, the per-task `gates` flag, the availability guarantee, and the 24h safety
 valve. `scanIncremental` fires an eager `kickEager()` right after organize+scan so
 gate steps run immediately (out of window) and the download surfaces as soon as it's
-ready.
+ready. The periodic tick clears quarantine even when processing is disabled or paused
+(issue #807), so a job stuck at stage `processing` self-heals within ~60 s — with the
+review hold armed, the honest residual is the curator's pending decision, not a hang.
 
 **Listing coverage** — quarantine is enforced at query time, mirroring the
 `downloadingExclusion` pattern (`routes/library.ts`):

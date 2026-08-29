@@ -427,6 +427,70 @@ describe('landing gate', () => {
   });
 });
 
+describe('a disabled processor still clears quarantine on the tick (issue #807)', () => {
+  it('tick lands a gateless quarantined song and closes its processing-stage job', async () => {
+    seedSong('s1');
+    const jobId = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'peer',
+      files: [{ filename: 'a\\s1.opus' }],
+    });
+    db.run(
+      `UPDATE acquisition_job_items SET state = 'scanned', song_id = 's1', relative_path = 'Artist/Album/s1.opus'`,
+    );
+    recomputeStage(db, jobId);
+    expect(getJob(db, jobId)?.stage).toBe('processing');
+
+    setProcessingSettings(db, {
+      enabled: false,
+      gates: { bpm: false, key: false, energy: false, genre: false },
+    });
+    await service(new Date(2024, 0, 1, 12, 0)).tick();
+
+    expect(isLanded('s1')).toBe(true);
+    expect(getJob(db, jobId)?.stage).toBe('done');
+  });
+
+  it('tick runs the gate steps for a fresh download while disabled (same stance as kickEager)', async () => {
+    seedSong('s1');
+    setProcessingSettings(db, {
+      enabled: false,
+      gates: { bpm: true, key: true, energy: true, genre: true },
+    });
+    await service(new Date(2024, 0, 1, 12, 0)).tick();
+
+    expect(isLanded('s1')).toBe(true);
+  });
+
+  it('tick lands an approved song while disabled with the review hold armed', async () => {
+    armReviewHold(db);
+    seedSong('s1', '2024-01-01');
+    setProcessingSettings(db, { enabled: false, holdForReview: true });
+    recordReviewDecision(db, ALBUM_ID_OF_S1, 'approved', 'u1', new Date('2024-01-02'));
+    await service(new Date('2024-03-01T00:00:00Z')).tick();
+
+    expect(isLanded('s1')).toBe(true);
+  });
+
+  it('an unapproved song stays held while disabled with the review hold armed', async () => {
+    armReviewHold(db);
+    seedSong('s1', '2024-01-01');
+    setProcessingSettings(db, { enabled: false, holdForReview: true });
+    await service(new Date('2024-03-01T00:00:00Z')).tick();
+
+    expect(isLanded('s1')).toBe(false);
+  });
+
+  it('with nothing quarantined the disabled tick just publishes and returns', async () => {
+    setProcessingSettings(db, { enabled: false });
+    const svc = service(new Date(2024, 0, 1, 12, 0));
+    await svc.tick();
+
+    expect(svc.getState().status.phase).toBe('disabled');
+  });
+});
+
 describe('a freshly-landed album gets its cover automatically (issue #694)', () => {
   function seedAlbumRow(id: string, name: string, artist: string): void {
     db.run(

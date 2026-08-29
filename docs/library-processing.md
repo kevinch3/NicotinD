@@ -298,9 +298,15 @@ checkbox renders from `settings.tasks`/`status.availability`).
 
 Modeled on `WatchlistService` (interval + a `busy` guard so runs never overlap):
 
-- **`tick()`** (periodic, default 60 s): no-op when disabled (`phase: disabled`) or
-  paused (`phase: paused`, see below); otherwise runs **one bounded batch per
-  runnable task**. The short interval + guard make the work effectively continuous.
+- **`tick()`** (periodic, default 60 s): when disabled (`phase: disabled`) or paused
+  (`phase: paused`, see below) it skips background enrichment but **still clears
+  quarantine** (`hasQuarantined()` → the eager gate drain — issue #807 for disabled,
+  #224 for paused; the steady state pays one `EXISTS` per tick); otherwise runs
+  **one bounded batch per runnable task**. The short interval + guard make the work
+  effectively continuous. Quarantine clearing must never depend on enrichment being
+  on: the scan-seam `kickEager` doesn't check `enabled`, and before #807 a job whose
+  songs scanned with no later scan event read "Processing" forever (a cancelled
+  partial download was the reported case).
 - **`runNow()`** (admin "Run now"): drains batches in a loop, overriding `paused`,
   until nothing is pending or a batch makes no progress.
 - **`cancelRun()`** (admin "Stop"): aborts the current run between tasks/batches
