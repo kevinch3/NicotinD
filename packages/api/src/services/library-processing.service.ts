@@ -308,7 +308,17 @@ export class LibraryProcessingService extends EventEmitter {
     // stranded download must not depend on enrichment being enabled.
     reapIdleItems(this.db, this.now().getTime());
     const settings = getProcessingSettings(this.db);
+    // Disabled (issue #807): background enrichment is off, but quarantine must
+    // still clear — same stance as the paused branch below and the scan-seam
+    // kickEager, neither of which checks `enabled`. Without this, a job whose
+    // songs scanned while nothing else triggers a scan reads "Processing"
+    // forever (a cancelled partial was the reported case).
     if (!settings.enabled) {
+      if (this.hasQuarantined()) {
+        await this.guarded(async () => {
+          await this.kickEagerInner();
+        });
+      }
       this.publish(settings, 'disabled');
       return;
     }
