@@ -14,6 +14,7 @@ import { existsSync, readdirSync, rmdirSync, rmSync, unlinkSync } from 'node:fs'
 import { createLogger } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { pruneOrphanArtist, pruneOrphanAlbum } from './library-aggregates.js';
+import { refreshGenreCounts } from './genre-split.js';
 import type { ShareRescanScheduler } from './share-rescan-scheduler.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from './song-path.js';
 
@@ -203,6 +204,28 @@ export function tryDeleteAlbumFolder(songFullPaths: string[], expandedMusicDir: 
   }
 }
 
+/**
+ * The genres one song carries, read BEFORE its row is deleted. `library_genres`
+ * is a stored facet, so the delete paths have to name what shrank (issue #771).
+ */
+function genresOfSong(db: Database, songId: string): string[] {
+  return db
+    .query<{ genre: string }, [string]>('SELECT genre FROM library_song_genres WHERE song_id = ?')
+    .all(songId)
+    .map((r) => r.genre);
+}
+
+/** The same, for every song of an album. */
+function genresOfSongsIn(db: Database, albumId: string): string[] {
+  return db
+    .query<{ genre: string }, [string]>(
+      `SELECT DISTINCT sg.genre FROM library_song_genres sg
+         JOIN library_songs s ON s.id = sg.song_id WHERE s.album_id = ?`,
+    )
+    .all(albumId)
+    .map((r) => r.genre);
+}
+
 export interface DeleteOneResult {
   ok: boolean;
   error?: string;
@@ -227,8 +250,10 @@ export async function deleteOne(
     .get(id);
   const songPath: string | null = canonical?.path ?? null;
   // Captured before the row goes: the parent album's aggregates are recomputed
-  // from its surviving songs afterwards (issue #774).
+  // from its surviving songs afterwards (issue #774), and so are the facet
+  // counts of every genre this song carried (issue #771).
   const albumId: string | null = canonical?.album_id ?? null;
+  const songGenres = genresOfSong(db, id);
   if (!songPath) {
     return { ok: false, error: 'Song not found in library', status: 404 };
   }
@@ -300,6 +325,7 @@ export async function deleteOne(
             db.run('DELETE FROM completed_downloads WHERE navidrome_id = ?', [id]);
             db.run('DELETE FROM library_songs WHERE id = ?', [id]);
             if (albumId) pruneOrphanAlbum(db, albumId);
+            refreshGenreCounts(db, songGenres);
           } catch (err) {
             log.debug({ err }, 'Failed to remove orphaned record');
           }
@@ -325,6 +351,7 @@ export async function deleteOne(
       ]);
       db.run('DELETE FROM library_songs WHERE id = ?', [id]);
       if (albumId) pruneOrphanAlbum(db, albumId);
+      refreshGenreCounts(db, songGenres);
       log.info({ relPath }, 'Removed song from completion history + canonical DB');
     } catch (err) {
       log.debug({ err }, 'Failed to remove from completion history');
@@ -415,6 +442,10 @@ export async function deleteAlbum(
       const placeholders = songIds.map(() => '?').join(',');
       db.run(`DELETE FROM completed_downloads WHERE navidrome_id IN (${placeholders})`, songIds);
     }
+    // Captured before the rows go, so the facet counts can be recomputed from
+    // what survives (issue #771). The album's own `genre` mirror is one value;
+    // its songs between them can carry many, and every one of them shrinks.
+    const affectedGenres = genresOfSongsIn(db, albumId);
     db.run('DELETE FROM library_songs WHERE album_id = ?', [albumId]);
     db.run('DELETE FROM library_albums WHERE id = ?', [albumId]);
 
@@ -428,16 +459,12 @@ export async function deleteAlbum(
     const artistId = albumRow?.artist_id ?? canonicalSongs.find((s) => s.artist_id)?.artist_id;
     if (artistId) pruneOrphanArtist(db, artistId);
 
-    // Drop a genre row only once nothing references it — recomputing exact
-    // counts for a large shared genre on every delete isn't worth it (a full
-    // scan refreshes them), but a genre that's now empty should disappear.
-    const genre = albumRow?.genre;
-    if (genre) {
-      const stillUsed =
-        db.query('SELECT 1 FROM library_albums WHERE genre = ? LIMIT 1').get(genre) !== null ||
-        db.query('SELECT 1 FROM library_songs WHERE genre = ? LIMIT 1').get(genre) !== null;
-      if (!stillUsed) db.run('DELETE FROM library_genres WHERE name = ?', [genre]);
-    }
+    // Recompute the facet counts for every genre this album's songs carried,
+    // and drop the ones that just went empty. This used to prune empties only
+    // — correct as far as it went, but a genre that merely *shrank* kept its
+    // old count until the next full scan, so deleting a 12-track album out of a
+    // 300-song genre left it reading 300 (issue #771).
+    refreshGenreCounts(db, [...affectedGenres, ...(albumRow?.genre ? [albumRow.genre] : [])]);
 
     // The album's own canonical artwork row survives rescans by design, but a
     // deleted album should not keep one.

@@ -82,10 +82,22 @@ use this flag rather than reaching for `s.genre` directly.
 
 ## The facet count is a snapshot, not a live count
 
-`library_genres.song_count` is materialised at scan time (stamped `synced_at`) and refreshed by a
-few mutation paths — it is **not** computed on read. It can therefore lag a delete. Measured on prod
-2026-08-27: 2 of 764 genres (Synth-Pop 305 → 283, Avant-Garde Jazz 37 → 35). Whether the refresh
-paths are complete is #771.
+`library_genres.song_count` is materialised at scan time (stamped `synced_at`) and refreshed by the
+mutation paths — it is **not** computed on read (`GET /api/library/genres` selects the stored columns
+straight).
+
+**The refresh paths are now complete (#771).** The audit found every *mutation* path already correct
+— they all route through `setSongGenres`, which recomputes each touched genre — and the gap was
+entirely in **deletion**. The album delete pruned only genres that went *empty*, so a genre that
+merely shrank kept its old count (removing a 12-track album from a 300-song genre left it reading
+300), and the per-song delete did not even do that. Measured on prod 2026-08-27, before the fix:
+Synth-Pop 305 → 283, Avant-Garde Jazz 37 → 35.
+
+Both delete paths now call the shared `refreshGenreCounts` (`genre-split.ts`), lifted out of
+`setSongGenres` so the two cannot drift. It **joins `library_songs`** in both counts: per-song side
+tables deliberately have no FK cascade ([cache-invalidation.md](cache-invalidation.md)), so a deleted
+song's `library_song_genres` rows outlive it until the orphan sweep — counting them unjoined would
+report the pre-delete number and defeat the point of calling it from a delete at all.
 
 It also counts *every* scanned song, including `hidden` and quarantined (`landed_at IS NULL`) ones,
 which the listings exclude. Prod currently has zero of both, so this is latent rather than active —
@@ -109,6 +121,27 @@ but a large in-flight download batch would make the counts read high until the s
   `backfillGenresFromAliases` walks `SELECT DISTINCT song_id FROM library_song_genres` — a song with
   zero join rows is invisible to the very thing that would have repaired it. This is also why
   `/genres/songs` keeps `s.genre = ?` as one half of its predicate.
+- **A curator write that only the scanner could undo** (#762). `set_song_genre` in `mode: 'append'`
+  — the **default** — wrote `library_song_genres` and the file tag but **no
+  `library_genre_overrides` row**. The override is the only store the scanner re-applies
+  (`applyGenreOverride` in `buildLibrary`), so on a song whose tag held a real-but-wrong value the
+  rebuild simply won: a genre curated to `Cumbia Pop` came back as `Music`, the generic string
+  embedded in the file. It looked like a mid-session regression — `get_library_health` genres-missing
+  jumped 734 → 988 with no curator action — because the reverting scan was triggered by unrelated
+  downloads landing. #770's fix did not cover it: that protects a rescan resolving *zero* genres, and
+  a real-but-wrong tag resolves fine.
+
+  Both modes now write the override, so both are durable. `append` stores only the **curated**
+  additions, accumulated across calls, rather than a snapshot of whatever the tags read that day; a
+  song already under an explicit `replace` stays there, since appending must not hand authority back
+  to the tag. One consequence is deliberate: because `applyGenreOverride` resolves override genres
+  ahead of tag genres, an appended curator genre now becomes the **primary**. Mirroring anything else
+  at write time would simply disagree with the next scan — which is the drift above.
+
+  The second half was the same defect class as #776: the tag write's boolean was discarded and its
+  rejection swallowed, so `{ok: true}` came back either way. It now returns `tagWritten:
+  true | false | null` (`null` = not attempted). The curation is durable regardless — the override,
+  not the tag, is the mechanism.
 - **Junk vocab scored as identity** (#583). `Other` = `Other` matched at 1.0 in radio. `JUNK_GENRES`
   + `isRealGenre` now strip it before any comparison; an all-junk side reads as *absent*.
 - **An ASCII-only normaliser folded unrelated names together** (#720 cluster). Genre and artist

@@ -16,6 +16,7 @@ import {
   dispatchTool,
   checkToolAccess,
   missingRequiredArgs,
+  htmlEntityArgs,
   MCP_TOOLS,
   type McpToolContext,
 } from './mcp.js';
@@ -264,15 +265,19 @@ describe('MCP endpoint (issue #232)', () => {
     ).json()) as { result: { content: Array<{ text: string }> } };
     const parsed = JSON.parse(body.result.content[0]!.text) as { ok: boolean; genres: string[] };
     expect(parsed.ok).toBe(true);
-    // Append keeps the existing genre first — it adds, it does not clobber.
-    expect(parsed.genres).toEqual(['Techno', 'Minimal Techno']);
+    // Append still adds rather than clobbers — `Techno` survives. It now leads
+    // with the curated genre because the durable override is what a rescan
+    // re-applies, and `applyGenreOverride` resolves override genres ahead of
+    // tag genres (issue #762). Mirroring anything else here would only disagree
+    // with the very next scan.
+    expect(parsed.genres).toEqual(['Minimal Techno', 'Techno']);
 
     const stored = testDb
       .query<{ genre: string }, [string]>(
         'SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position',
       )
       .all('s1');
-    expect(stored.map((g) => g.genre)).toEqual(['Techno', 'Minimal Techno']);
+    expect(stored.map((g) => g.genre)).toEqual(['Minimal Techno', 'Techno']);
     const audit = testDb.query('SELECT action, detail FROM audit_log').all() as Array<{
       action: string;
       detail: string;
@@ -1600,6 +1605,49 @@ describe('missingRequiredArgs', () => {
     expect(missingRequiredArgs(tool(['id']), {})).toContain('id');
     expect(missingRequiredArgs(tool(['id']), { id: '' })).toContain('id');
     expect(missingRequiredArgs(tool(['ids']), { ids: [] })).toContain('ids');
+  });
+});
+
+// Issue #787. Both cases below actually reached the library during curation
+// passes and each needed a destructive merge to undo, which is what separates
+// this from #778: a wrong key bounces, an entity is stored.
+describe('htmlEntityArgs', () => {
+  const tool = { name: 'merge_artist', inputSchema: { type: 'object', properties: {} } };
+
+  it('refuses the ampersand that produced `Wisin &amp; Yandel`', () => {
+    const refusal = htmlEntityArgs(tool, { mergeInto: 'Wisin &amp; Yandel' });
+    expect(refusal).toContain('&amp;');
+    expect(refusal).toContain('"&"');
+    expect(refusal).toContain('mergeInto');
+  });
+
+  it('refuses the escape that produced the album `while(1&lt;2)`', () => {
+    expect(htmlEntityArgs(tool, { album: 'while(1&lt;2)' })).toContain('"<"');
+  });
+
+  it('walks arrays, since the name lists are where identities live', () => {
+    const refusal = htmlEntityArgs(tool, { rawNames: ['Los Rodríguez', 'Wisin &amp; Yandel'] });
+    expect(refusal).toContain('rawNames');
+  });
+
+  it('refuses numeric and hex character references too', () => {
+    expect(htmlEntityArgs(tool, { artist: 'AC&#47;DC' })).not.toBeNull();
+    expect(htmlEntityArgs(tool, { artist: 'AC&#x2F;DC' })).not.toBeNull();
+  });
+
+  it('allows an ordinary name carrying the real characters', () => {
+    expect(htmlEntityArgs(tool, { mergeInto: 'Wisin & Yandel' })).toBeNull();
+    expect(htmlEntityArgs(tool, { album: 'while(1<2)' })).toBeNull();
+    expect(htmlEntityArgs(tool, { artist: 'Sam & Dave', confirm: true })).toBeNull();
+  });
+
+  it('leaves free text alone — a note may legitimately quote an entity', () => {
+    expect(htmlEntityArgs(tool, { note: 'the tag literally says &amp; here' })).toBeNull();
+    expect(htmlEntityArgs(tool, { reason: 'title contains &lt;' })).toBeNull();
+  });
+
+  it('ignores non-string arguments', () => {
+    expect(htmlEntityArgs(tool, { confirm: true, year: 0, ids: [1, 2] })).toBeNull();
   });
 });
 

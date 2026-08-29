@@ -476,7 +476,10 @@ export const MCP_TOOLS: McpTool[] = [
           detail: `${mode}: ${result.genres.join(';')} (via MCP agent)`,
         },
       );
-      return JSON.stringify({ ok: true, genres: result.genres });
+      // `tagWritten` reports whether the file's own tag mirror landed — the
+      // curation itself is durable either way, because both modes now write a
+      // `library_genre_overrides` row (issue #762).
+      return JSON.stringify({ ok: true, genres: result.genres, tagWritten: result.tagWritten });
     },
   },
   {
@@ -1228,10 +1231,68 @@ export function missingRequiredArgs(
   );
 }
 
+const ENTITY = /&(amp|lt|gt|quot|apos|nbsp|#\d+|#x[0-9a-fA-F]+);/;
+const ENTITY_MEANS: Record<string, string> = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&apos;': "'",
+  '&nbsp;': ' ',
+};
+
+/**
+ * Free text a curator writes for a human to read. A value here is never an
+ * identity, so an entity in it corrupts nothing — and quoting one ("the tag
+ * literally says &amp;") is a legitimate thing to write in a note.
+ */
+const FREE_TEXT_ARGS = new Set(['reason', 'note']);
+
+/**
+ * Pure guard: does a string argument carry a literal HTML entity? Returns a
+ * refusal naming the character it probably meant, or null.
+ *
+ * Issue #787: JSON carries no escaping convention, so `&amp;` is a legitimate
+ * five-character string and the server is right not to unescape it. But on the
+ * fields where it shows up it is ~always a mistake, and unlike the wrong-key
+ * case of #778 this one is **durable** — it lands in the library rather than
+ * bouncing. Both of these happened during real curation passes and both needed
+ * a follow-up destructive merge to undo:
+ *
+ *     merge_artist    -> an artist row literally named `Wisin &amp; Yandel`
+ *     fix_album_metadata -> an album literally named `while(1&lt;2)`
+ *
+ * Schema-driven like `missingRequiredArgs`, so every tool and every tool added
+ * later is covered by construction. Arrays are walked because the identity
+ * arguments that matter most (`merge_artist.rawNames`) are lists of names.
+ */
+export function htmlEntityArgs(
+  tool: { name: string; inputSchema: Record<string, unknown> },
+  args: Record<string, unknown>,
+): string | null {
+  for (const [key, value] of Object.entries(args)) {
+    if (FREE_TEXT_ARGS.has(key)) continue;
+    const values = Array.isArray(value) ? value : [value];
+    for (const v of values) {
+      if (typeof v !== 'string') continue;
+      const hit = ENTITY.exec(v);
+      if (!hit) continue;
+      const meant = ENTITY_MEANS[hit[0].toLowerCase()];
+      return (
+        `"${tool.name}": \`${key}\` contains the HTML entity "${hit[0]}". ` +
+        (meant ? `Send the bare character ("${meant}"). ` : 'Send the bare character. ') +
+        'MCP arguments are not HTML-escaped, so this would be stored literally.'
+      );
+    }
+  }
+  return null;
+}
+
 /**
  * Run one tool call under an agent identity: resolve the tool, apply
- * `checkToolAccess` and `missingRequiredArgs`, then run its handler. Returns an
- * MCP tool result; never throws (a handler error becomes an `isError` result).
+ * `checkToolAccess`, `missingRequiredArgs` and `htmlEntityArgs`, then run its
+ * handler. Returns an MCP tool result; never throws (a handler error becomes an
+ * `isError` result).
  */
 export async function dispatchTool(
   ctx: McpToolContext,
@@ -1244,6 +1305,8 @@ export async function dispatchTool(
   if (refusal) return err(refusal);
   const missing = missingRequiredArgs(tool, args);
   if (missing) return err(missing);
+  const entity = htmlEntityArgs(tool, args);
+  if (entity) return err(entity);
   try {
     const text = await tool.handler(ctx, args);
     return { content: [{ type: 'text', text }] };

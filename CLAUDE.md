@@ -215,14 +215,13 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   with deterministic SHA1 ids; `resolveTags` applies overrides before minting ids. Incremental
   `scan_cache` + `mapPool`, `applyPerformancePragmas`, `albumIdsByGroupKey`.
   → [library-scanner.md](docs/library-scanner.md)
-- **A canonical tracklist governs admission, not retention**: the Lidarr tracklist pinned in
-  `album_jobs` filters which *new* files an album admits; a file in `knownRelPaths` is never dropped
-  as foreign, so a curator's title edit is not silently reverted. `selectAlbumTracks`,
-  `LibraryScanner.knownRelPaths`. → [library-scanner.md](docs/library-scanner.md)
-- **Title cleanup runs over the existing library too**: `cleanDisplayTitle` covers reissue labels
-  (`remaster*`, year/`version`/`edition` as modifiers) and `normalize-titles.ts` applies it to rows
-  already stored, through the verified retag path. `planTitleNormalization`.
+- **A canonical tracklist governs admission, not retention**: the pinned `album_jobs` tracklist
+  filters which *new* files an album admits; a file in `knownRelPaths` is never dropped as foreign.
+  `selectAlbumTracks`, `LibraryScanner.knownRelPaths`.
   → [library-scanner.md](docs/library-scanner.md)
+- **Title cleanup runs over the existing library too**: `cleanDisplayTitle` covers reissue labels,
+  and `normalize-titles.ts` applies it to stored rows through the verified retag path.
+  `planTitleNormalization`. → [library-scanner.md](docs/library-scanner.md)
 - **VA / compilation handling**: `resolveTags` separates `albumArtist` from `trackArtist`;
   `classifyFolder` detects compilations; dedicated Compilations tab, VA hidden from artists.
   → [library-scanner.md](docs/library-scanner.md)
@@ -252,13 +251,14 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `segmentConcatenatedGenre` fix concatenations at scan time; `backfillGenresFromAliases`.
   → [library-scanner.md](docs/library-scanner.md)
 - **Genre is stored twice — the set and the mirror**: `library_song_genres` is authoritative,
-  `library_songs.genre` mirrors position 0; a reader matching the mirror when it means the set
-  counts genres it cannot list, and both stores must preserve what a rescan cannot resolve or they
-  drift (`repairGenreMirrorDrift`). `primaryGenreOnly` is the sanctioned narrow read; the facet
-  `song_count` is a scan-time snapshot. → [genre-model.md](docs/genre-model.md)
+  `library_songs.genre` mirrors position 0; the two drift unless both preserve what a rescan cannot
+  resolve (`repairGenreMirrorDrift`). `primaryGenreOnly` is the sanctioned narrow read; the facet
+  `song_count` is a stored snapshot refreshed by `refreshGenreCounts`.
+  → [genre-model.md](docs/genre-model.md)
 - **Curator-correctable genres**: `library_genre_overrides` (scope artist/album/song) is the one genre
   write that can *replace* a primary, carrying an explicit `mode`; `status` is the review queue;
-  `backfillGenreOverrides`, `appendSongGenres`, `ArtistGenreModalComponent`.
+  `backfillGenreOverrides`, `appendSongGenres`, `ArtistGenreModalComponent`. Both modes write the
+  row, so a curation outlives the next scan (`mutateSongGenre`).
   → [library-scanner.md](docs/library-scanner.md)
 - **Genre radar**: `artistGenreDistribution` + `albumGenreDistribution` feed an inline-SVG radar and a
   read-only `GenreDistributionStripComponent`; pure `radar-geometry.ts` + `genre-projection.ts`;
@@ -451,7 +451,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   → [mcp-agent.md](docs/mcp-agent.md)
 - **A missing MCP argument is an error, not empty data**: `missingRequiredArgs` rejects on each
   tool's own `inputSchema.required`, naming the keys sent — a wrong key used to answer "not in the
-  library". → [mcp-agent.md](docs/mcp-agent.md)
+  library"; `htmlEntityArgs` refuses a literal HTML entity, which lands in the library rather than
+  bouncing. → [mcp-agent.md](docs/mcp-agent.md)
 - **`identify_song` — identity from the audio**: `identifySongById` is fpcalc + AcoustID and nothing
   else, batchable where `lookup_song_metadata`'s fan-out is not; typed outcome, suggests only,
   carries no genre. → [mcp-agent.md](docs/mcp-agent.md)

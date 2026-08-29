@@ -183,6 +183,106 @@ describe('deleteOne — album aggregates', () => {
   });
 });
 
+// Issue #771: `library_genres.song_count` is a stored facet, not a live
+// aggregate — `GET /api/library/genres` reads the column straight. Every
+// MUTATION path already refreshes it through `setSongGenres`; the gap was
+// deletion. Measured on prod 2026-08-27: Synth-Pop listed 283 against a facet
+// of 305, Avant-Garde Jazz 35 against 37.
+describe('deletion — genre facet counts', () => {
+  beforeEach(() => {
+    fsState.clear();
+    dirEntries.clear();
+    sharedDb.run('DELETE FROM library_albums');
+    sharedDb.run('DELETE FROM library_songs');
+    sharedDb.run('DELETE FROM library_song_genres');
+    sharedDb.run('DELETE FROM library_genres');
+  });
+
+  function seedGenre(songId: string, genre: string): void {
+    sharedDb.run('INSERT INTO library_song_genres (song_id, genre, position) VALUES (?, ?, 0)', [
+      songId,
+      genre,
+    ]);
+  }
+  function facet(name: string): number | null {
+    return (
+      sharedDb
+        .query<{ song_count: number }, [string]>(
+          'SELECT song_count FROM library_genres WHERE name = ?',
+        )
+        .get(name)?.song_count ?? null
+    );
+  }
+
+  it('decrements a genre that merely shrank on a single-song delete', async () => {
+    sharedDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, cover_art, song_count, duration, synced_at)
+       VALUES ('alb-g', 'Album', 'Artist', 'art', 'alb-g', 2, 400, 1)`,
+    );
+    seedSong('sg1', 'alb-g', '/music/Artist/Album/sg1.mp3');
+    seedSong('sg2', 'alb-g', '/music/Artist/Album/sg2.mp3');
+    seedGenre('sg1', 'Synth-Pop');
+    seedGenre('sg2', 'Synth-Pop');
+    sharedDb.run(
+      `INSERT INTO library_genres (name, song_count, album_count, synced_at) VALUES ('Synth-Pop', 2, 1, 1)`,
+    );
+    fsState.set('/music/Artist/Album/sg1.mp3', true);
+
+    await deleteOne(sharedDb, 'sg1', { musicDir: '/music', shareRescan: noopScheduler() });
+
+    // Not 2. The orphaned library_song_genres row survives the delete (no FK
+    // cascade, by design), so the count only moves because it JOINs.
+    expect(facet('Synth-Pop')).toBe(1);
+  });
+
+  it('drops a genre whose last song went away', async () => {
+    sharedDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, cover_art, song_count, duration, synced_at)
+       VALUES ('alb-h', 'Album', 'Artist', 'art', 'alb-h', 1, 200, 1)`,
+    );
+    seedSong('sh1', 'alb-h', '/music/Artist/Album/sh1.mp3');
+    seedGenre('sh1', 'Gabber');
+    sharedDb.run(
+      `INSERT INTO library_genres (name, song_count, album_count, synced_at) VALUES ('Gabber', 1, 1, 1)`,
+    );
+    fsState.set('/music/Artist/Album/sh1.mp3', true);
+
+    await deleteOne(sharedDb, 'sh1', { musicDir: '/music', shareRescan: noopScheduler() });
+
+    expect(facet('Gabber')).toBeNull();
+  });
+
+  it('deleting a whole album decrements every genre its songs carried', async () => {
+    // The album's own `genre` mirror is ONE value; its songs between them can
+    // carry many, and the old prune only ever looked at that one.
+    sharedDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, cover_art, song_count, duration, genre, synced_at)
+       VALUES ('alb-multi', 'Album', 'Artist', 'art', 'alb-multi', 2, 400, 'Techno', 1)`,
+    );
+    seedSong('m1', 'alb-multi', '/music/Artist/Album/m1.mp3');
+    seedSong('m2', 'alb-multi', '/music/Artist/Album/m2.mp3');
+    seedGenre('m1', 'Techno');
+    seedGenre('m2', 'Acid House');
+    // A survivor elsewhere keeps 'Acid House' alive, so it must shrink, not vanish.
+    sharedDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, cover_art, song_count, duration, synced_at)
+       VALUES ('alb-other', 'Other', 'Artist', 'art', 'alb-other', 1, 200, 1)`,
+    );
+    seedSong('o1', 'alb-other', '/music/Artist/Other/o1.mp3');
+    seedGenre('o1', 'Acid House');
+    sharedDb.run(
+      `INSERT INTO library_genres (name, song_count, album_count, synced_at) VALUES ('Techno', 1, 1, 1), ('Acid House', 2, 2, 1)`,
+    );
+    fsState.set('/music/Artist/Album/m1.mp3', true);
+    fsState.set('/music/Artist/Album/m2.mp3', true);
+
+    await deleteAlbum(sharedDb, 'alb-multi', { musicDir: '/music', shareRescan: noopScheduler() });
+
+    expect(facet('Techno')).toBeNull();
+    expect(facet('Acid House')).toBe(1);
+  });
+});
+
 describe('deleteAlbum', () => {
   beforeEach(() => {
     fsState.clear();

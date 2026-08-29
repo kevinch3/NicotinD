@@ -13,7 +13,8 @@
  * duplicates a genre. verifyGenre is artist-scoped, so songs are grouped by artist
  * and looked up **once per artist**. On --apply the merged set is written to
  * `library_song_genres` + the primary column **and** the file tag (so it survives a
- * rescan). `library_genres` facet counts refresh on the next full library scan.
+ * rescan). `library_genres` facet counts are refreshed per touched genre by
+ * `setSongGenres`, so they do not wait for a full scan.
  *
  * Env: NICOTIND_DATA_DIR, NICOTIND_MUSIC_DIR, NICOTIND_CONFIG,
  * LIDARR_URL or NICOTIND_LIDARR_URL, LIDARR_API_KEY (falls back to config.lidarr.url
@@ -155,7 +156,7 @@ async function main(): Promise<void> {
 
   if (!apply) {
     console.log('\nDry run only. Re-run with --apply to append genres to the DB and file tags.');
-    console.log('Note: library_genres facet counts refresh on the next full library scan.\n');
+    console.log('Note: library_genres facet counts are refreshed as each genre is written.\n');
     return;
   }
 
@@ -181,7 +182,7 @@ async function main(): Promise<void> {
     applied++;
   }
   console.log(`\n✅ Appended genres to ${applied} songs. Log: ${logPath}`);
-  console.log('library_genres facet counts refresh on the next full library scan.\n');
+  console.log('library_genres facet counts were refreshed as each genre was written.\n');
 }
 
 if (import.meta.main) {
