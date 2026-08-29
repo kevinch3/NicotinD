@@ -13,6 +13,7 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import type { PublicPollScenario, PublicPollView } from '../../../types/core';
 import { ServerConfigService } from '../../services/server-config.service';
+import { SeekBarComponent } from '../../components/seek-bar/seek-bar.component';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import {
@@ -42,7 +43,7 @@ import { getRaterKey } from './rater-key';
 @Component({
   selector: 'app-poll-view',
   templateUrl: './poll-view.component.html',
-  imports: [SkeletonComponent, TranslatePipe],
+  imports: [SeekBarComponent, SkeletonComponent, TranslatePipe],
 })
 export class PollViewComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
@@ -60,6 +61,9 @@ export class PollViewComponent implements OnInit, OnDestroy {
   /** voteKey(scenario, candidate) → rating or verdict; local until the scenario advances. */
   readonly votes = signal<ReadonlyMap<string, PollVoteValue>>(new Map());
   readonly playingId = signal<string | null>(null);
+  /** Playback clock of the shared <audio>, driving the playing row's seek bar. */
+  readonly position = signal(0);
+  private readonly mediaDuration = signal(0);
 
   /** Template loop for the stars5 rating row. */
   readonly stars = [1, 2, 3, 4, 5] as const;
@@ -77,6 +81,17 @@ export class PollViewComponent implements OnInit, OnDestroy {
   );
   readonly scenarioCount = computed(() => this.view()?.scenarios.length ?? 0);
   readonly voteScale = computed(() => this.view()?.poll.voteScale ?? 'binary');
+  /** Seek-bar duration: the element's own once metadata loads, else the frozen
+   *  track duration so the bar is usable from the first frame. */
+  readonly playingDuration = computed(() => {
+    const media = this.mediaDuration();
+    if (media > 0) return media;
+    const id = this.playingId();
+    const sc = this.scenario();
+    if (!id || !sc) return 0;
+    if (sc.seed?.id === id) return sc.seed.duration;
+    return sc.candidates.find((c) => c.id === id)?.duration ?? 0;
+  });
   readonly currentRated = computed(() => {
     const sc = this.scenario();
     return sc ? ratedCount(sc, this.votes()) : 0;
@@ -152,6 +167,8 @@ export class PollViewComponent implements OnInit, OnDestroy {
     }
     if (Date.now() >= this.mediaJwtExpiresAt) await this.refreshMediaJwt();
     this.playbackFailed.set(false);
+    this.position.set(0);
+    this.mediaDuration.set(0);
     audio.src = this.server.streamUrl(trackId, this.mediaJwt);
     audio.load();
     try {
@@ -181,6 +198,21 @@ export class PollViewComponent implements OnInit, OnDestroy {
 
   onEnded(): void {
     this.playingId.set(null);
+    this.position.set(0);
+  }
+
+  onTimeUpdate(): void {
+    const audio = this.audioRef()?.nativeElement;
+    if (!audio) return;
+    this.position.set(audio.currentTime);
+    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      this.mediaDuration.set(audio.duration);
+    }
+  }
+
+  onSeek(seconds: number): void {
+    const audio = this.audioRef()?.nativeElement;
+    if (audio) audio.currentTime = seconds;
   }
 
   start(): void {

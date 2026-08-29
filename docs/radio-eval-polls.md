@@ -184,7 +184,9 @@ with two weight sets interleaved.
   thumbs markup survives behind an `@else` because an upgraded server can still
   have an open binary poll, and the wizard picks the control off
   `PublicPollView.poll.voteScale` — + preview play into one shared
-  `<audio>`) → thanks. **Rating is optional per track** (issue #798): "Next" is
+  `<audio>`; the playing row grows a seek bar (issue #803) reusing the shared
+  `SeekBarComponent`, so a rater can judge the chorus instead of the intro —
+  the stream route's Range/206 support makes the scrub free) → thanks. **Rating is optional per track** (issue #798): "Next" is
   never gated on completeness — the first rater feedback showed force-rating
   fabricates opinions, which is worse than a gap, and an absent vote row already
   means "no vote" in the tally, the export and the eval. Advancing POSTs only

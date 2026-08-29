@@ -74,6 +74,19 @@ test.describe('radio evaluation polls', () => {
     await page.getByTestId('poll-play').first().click();
     await expect(page.locator('audio')).toHaveAttribute('src', /token=/);
 
+    // The playing row grows a seek bar (#803); scrubbing moves the audio clock.
+    const seek = page.getByTestId('poll-seek');
+    await expect(seek).toBeVisible();
+    const range = seek.locator('input[type="range"]');
+    await expect(range).toBeEnabled();
+    for (let i = 0; i < 5; i++) await range.press('ArrowRight');
+    await expect
+      .poll(async () => page.locator('audio').evaluate((a: HTMLAudioElement) => a.currentTime))
+      .toBeGreaterThan(0.2);
+    // Pause hides it again — one slider exists only for the playing track.
+    await page.getByTestId('poll-play').first().click();
+    await expect(seek).toHaveCount(0);
+
     // Rate every scenario until the thanks screen.
     for (let guard = 0; guard < 10 && !(await page.getByTestId('poll-done').isVisible()); guard++) {
       await rateScenario(page);

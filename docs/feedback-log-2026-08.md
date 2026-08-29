@@ -24,6 +24,7 @@
 | 11  | ✅     | Medium   | Radio poll wizard   | Binary 👍/👎 too coarse — first outside rater asked for 1–5    |
 | 12  | ✅     | Medium   | Radio poll wizard   | No way to skip a track/scenario; wizard force-rates everything |
 | 13  | ✅     | Medium   | Radio poll wizard   | Scenario steps never state the premise ("No veo la categoría") |
+| 14  | ✅     | Low      | Radio poll wizard   | Previews play from the start only — no way to scrub to the chorus |
 
 ---
 
@@ -65,6 +66,7 @@
 - **(Medium) Radio poll wizard: "anda bastante bien pero le falta granularidad a la encuesta (1-5 sería mejor)".** _Use:_ the first outside rater (Diego) on a real seed poll; the same session's data agreed with him — with 2–3 raters the binary majority consensus tied constantly, and one poll's 25 graded candidates yielded only **4 usable AUC pairs** for `eval-radio-poll.ts`. **✅ Fixed** (issue #800): 1–5 star scale on every new poll (`voteScale` stamp, additive `rating` column, graded pairwise agreement), thumbs kept for legacy binary polls. _Lesson:_ the eval loop was starved by its own vote type, not by rater effort — instrument granularity is a formula-calibration concern, not a UI nicety.
 - **(Medium) Radio poll wizard force-rates: "…y la opción de saltear la pregunta".** `Next` was disabled until every candidate had a verdict, so a rater who didn't know a track had to fabricate an opinion — polluting exactly the signal the poll collects. **✅ Fixed** (issue #798): rating is optional per track, a zero-vote scenario advances without POSTing, and the hint shows live progress instead of a demand.
 - **(Medium) Scenario steps never state the premise: "No veo la categoría por ningún lado. ¿Importa?".** The now-playing → generated-queue premise lived only on the intro screen; explaining it took an out-of-band chat message. **✅ Fixed** (issue #799): a persistent per-step framing line (seed and station variants, the station one naming the station), intro copy rewritten, EN + ES.
+- **(Low) Poll previews play from the start only — a rater judging a pick hears 30 seconds of intro, never the chorus.** Asked for "as lightweight as possible". **✅ Fixed** (issue #803): the playing row grows a seek bar reusing the shared `SeekBarComponent` bound to the wizard's one `<audio>`; the stream route's existing Range/206 + seekable transcode cache makes the scrub free server-side.
 
 ---
 
