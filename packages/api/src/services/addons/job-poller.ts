@@ -106,6 +106,16 @@ const KIND_BY_INTENT: Record<string, AcquisitionJobKind> = {
 export class AddonJobPoller {
   private timer: ReturnType<typeof setInterval> | null = null;
   private ticking = false;
+  // Background ingest queue (#809). File fetch (600 s/file budget) + organize
+  // + scan used to run INSIDE the non-reentrant tick, so one big album froze
+  // every addon's mirroring — item states, stage recomputation, cancel
+  // outcomes — for minutes. The queue keeps ingest strictly SERIAL (the
+  // organizer and scanner were never called concurrently by the old code and
+  // are not known to be safe for it) but off the tick, which stays cheap.
+  private ingestQueue: Array<{ plugin: RemoteAddonPlugin; coreJobId: string; job: AddonJob }> = [];
+  private ingestQueuedJobs = new Set<string>();
+  private ingestPump: Promise<void> | null = null;
+  private stopped = false;
   // Trivial to construct (wraps deps.db) — built here rather than threaded
   // through AddonJobPollerDeps so every existing/future construction site
   // doesn't need a new required dependency for the one lane that uses it.
@@ -117,15 +127,22 @@ export class AddonJobPoller {
 
   start(): void {
     if (this.timer) return;
+    this.stopped = false;
     this.timer = setInterval(() => void this.tick(), this.deps.intervalMs ?? 5_000);
     void this.tick();
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
     }
+  }
+
+  /** Resolve once the background ingest queue has drained (tests, shutdown). */
+  async idle(): Promise<void> {
+    while (this.ingestPump) await this.ingestPump;
   }
 
   /** One poll+ingest pass across every enabled remote addon (public for tests). */
@@ -197,18 +214,21 @@ export class AddonJobPoller {
       this.updateJobMeta(coreJobId, job);
       this.mirrorItems(addonId, coreJobId, job);
       recomputeStage(db, coreJobId);
-      await this.ingestReadyItems(plugin, coreJobId, job);
-      // Ordering is load-bearing: AFTER ingest (so files delivered this tick
-      // organize first and a finished job closes `done`, not a false partial)
-      // and BEFORE the release, which deletes the addon-side job and with it
-      // the only copy of `job.error`.
+      // Files to fetch → the background queue owns the whole finish tail
+      // (#809): outcome/playlist/release stay ordered AFTER ingest there, and
+      // this tick moves on to the next job instead of blocking for minutes.
+      // A job whose finish is already queued/running is left alone — the next
+      // tick re-observes it once the single-flight slot frees.
+      if (this.ingestQueuedJobs.has(coreJobId) || this.hasIngestableWork(coreJobId, job)) {
+        this.scheduleFinish(plugin, coreJobId, job);
+        continue;
+      }
       this.applyAddonOutcome(coreJobId, job);
       // Playlist-from-acquisition on the addon lane (issue #587): once the
       // addon says the job is closed, any track that landed this tick or a
-      // prior one already carries a song_id (ingestReadyItems ran above), so
-      // there is nothing left to wait for. Safe to call every tick the job
-      // stays closed-but-unreleased — it refreshes the same playlist in place
-      // rather than duplicating (see addon-playlist.ts).
+      // prior one already carries a song_id, so there is nothing left to wait
+      // for. Safe to call every tick the job stays closed-but-unreleased — it
+      // refreshes the same playlist in place rather than duplicating.
       if (job.state !== 'active') materializeAddonPlaylist(db, this.playlists, coreJobId);
       await this.maybeReleaseAddonJob(plugin, coreJobId, job);
     }
@@ -287,11 +307,72 @@ export class AddonJobPoller {
         { addonId, coreJobId: row.id, addonJobId },
         'ingesting a job the poll cursor moved past',
       );
-      await this.ingestReadyItems(plugin, row.id, job);
-      this.applyAddonOutcome(row.id, job);
-      if (job.state !== 'active') materializeAddonPlaylist(db, this.playlists, row.id);
-      await this.maybeReleaseAddonJob(plugin, row.id, job);
+      // Same background queue as the live poll (#809) — the sweep's query
+      // selects exactly rows with outstanding ingest, so there is always work.
+      this.scheduleFinish(plugin, row.id, job);
     }
+  }
+
+  /** Any addon-ready file this job still needs fetched — the predicate
+   *  `ingestReadyItems` applies per item, asked cheaply up front. */
+  private hasIngestableWork(coreJobId: string, job: AddonJob): boolean {
+    if (!job.items.some((i) => i.state === 'completed' && i.fileReady)) return false;
+    return (
+      (this.deps.db
+        .query<{ n: number }, [string]>(
+          `SELECT COUNT(*) n FROM acquisition_job_items
+           WHERE job_id = ? AND state = 'completed' AND relative_path IS NULL`,
+        )
+        .get(coreJobId)?.n ?? 0) > 0
+    );
+  }
+
+  /** Enqueue one job's finish tail; single-flight per job, serial overall. */
+  private scheduleFinish(plugin: RemoteAddonPlugin, coreJobId: string, job: AddonJob): void {
+    if (this.stopped || this.ingestQueuedJobs.has(coreJobId)) return;
+    this.ingestQueuedJobs.add(coreJobId);
+    this.ingestQueue.push({ plugin, coreJobId, job });
+    if (!this.ingestPump) this.ingestPump = this.pumpIngest();
+  }
+
+  private async pumpIngest(): Promise<void> {
+    try {
+      for (;;) {
+        if (this.stopped) break;
+        const next = this.ingestQueue.shift();
+        if (!next) break;
+        try {
+          await this.finishJob(next.plugin, next.coreJobId, next.job);
+        } catch (err) {
+          log.warn({ coreJobId: next.coreJobId, err }, 'background job finish failed');
+        } finally {
+          this.ingestQueuedJobs.delete(next.coreJobId);
+        }
+      }
+    } finally {
+      this.ingestPump = null;
+      // Work scheduled while the loop was winding down restarts the pump.
+      if (this.ingestQueue.length > 0 && !this.stopped) this.ingestPump = this.pumpIngest();
+    }
+  }
+
+  /**
+   * The finish tail for one job. Ordering is load-bearing: outcome AFTER
+   * ingest (so files delivered this pass organize first and a finished job
+   * closes `done`, not a false partial) and BEFORE the release, which deletes
+   * the addon-side job and with it the only copy of `job.error`.
+   */
+  private async finishJob(
+    plugin: RemoteAddonPlugin,
+    coreJobId: string,
+    job: AddonJob,
+  ): Promise<void> {
+    await this.ingestReadyItems(plugin, coreJobId, job);
+    this.applyAddonOutcome(coreJobId, job);
+    if (job.state !== 'active') {
+      materializeAddonPlaylist(this.deps.db, this.playlists, coreJobId);
+    }
+    await this.maybeReleaseAddonJob(plugin, coreJobId, job);
   }
 
   /**

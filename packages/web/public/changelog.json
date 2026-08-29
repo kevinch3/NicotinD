@@ -1,5 +1,128 @@
 [
   {
+    "version": "0.5.39",
+    "date": "2026-08-29",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.38...v0.5.39",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**downloads:** a cancelled partial's tracks are discardable by the canceller ([#810](https://github.com/kevinch3/NicotinD/issues/810)) ([#813](https://github.com/kevinch3/NicotinD/issues/813)) ([9753696](https://github.com/kevinch3/NicotinD/commit/975369683127901c7cd0ce82cc9e2a0fd1845665))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.5.38",
+    "date": "2026-08-29",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.37...v0.5.38",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**downloads:** byte progress on addon cards + reactive, idempotent cancel ([#805](https://github.com/kevinch3/NicotinD/issues/805), [#806](https://github.com/kevinch3/NicotinD/issues/806)) ([#812](https://github.com/kevinch3/NicotinD/issues/812)) ([b211b66](https://github.com/kevinch3/NicotinD/commit/b211b669d562777a8c2cb1ee4c64ae25a3b80324))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.5.37",
+    "date": "2026-08-29",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.35...v0.5.37",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**polls:** seek bar on the playing preview ([#804](https://github.com/kevinch3/NicotinD/issues/804)) ([2092fd5](https://github.com/kevinch3/NicotinD/commit/2092fd5487c2690dd312488e21bde0593779fa1a)), references [#803](https://github.com/kevinch3/NicotinD/issues/803)"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**processing:** disabled tick still clears quarantine so 'Processing' cannot strand ([#807](https://github.com/kevinch3/NicotinD/issues/807)) ([#811](https://github.com/kevinch3/NicotinD/issues/811)) ([c719d89](https://github.com/kevinch3/NicotinD/commit/c719d89ee1917cd595f8a75effc2877bdebf6fd3))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.5.36",
+    "date": "2026-08-29",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.35...v0.5.36",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**polls:** seek bar on the playing preview ([#804](https://github.com/kevinch3/NicotinD/issues/804)) ([2092fd5](https://github.com/kevinch3/NicotinD/commit/2092fd5487c2690dd312488e21bde0593779fa1a)), references [#803](https://github.com/kevinch3/NicotinD/issues/803)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.5.35",
+    "date": "2026-08-29",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.34...v0.5.35",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**polls:** 1–5 star ratings with graded export and eval ([#802](https://github.com/kevinch3/NicotinD/issues/802)) ([4aaac60](https://github.com/kevinch3/NicotinD/commit/4aaac605887c904f8857eccd4707bccb353ae5b7)), references [#800](https://github.com/kevinch3/NicotinD/issues/800)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.5.34",
+    "date": "2026-08-29",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.33...v0.5.34",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**polls:** optional ratings with skip, and the premise restated on every step ([#798](https://github.com/kevinch3/NicotinD/issues/798), [#799](https://github.com/kevinch3/NicotinD/issues/799)) ([#801](https://github.com/kevinch3/NicotinD/issues/801)) ([730b810](https://github.com/kevinch3/NicotinD/commit/730b8105a21d89279cac983d3c61c90dcab3f349))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.5.33",
+    "date": "2026-08-29",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.32...v0.5.33",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**mcp:** make a genre curation durable, and refuse an entity before it lands ([#762](https://github.com/kevinch3/NicotinD/issues/762), [#771](https://github.com/kevinch3/NicotinD/issues/771), [#787](https://github.com/kevinch3/NicotinD/issues/787)) ([#796](https://github.com/kevinch3/NicotinD/issues/796)) ([b93f147](https://github.com/kevinch3/NicotinD/commit/b93f1478bf352d9be3945dcbcba853ea9a19227e)), references [#773](https://github.com/kevinch3/NicotinD/issues/773)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.5.32",
+    "date": "2026-08-29",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.31...v0.5.32",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**library:** run the title cleaner over the existing library, and teach it remaster labels ([#775](https://github.com/kevinch3/NicotinD/issues/775)) ([#794](https://github.com/kevinch3/NicotinD/issues/794)) ([da8187e](https://github.com/kevinch3/NicotinD/commit/da8187edcd12301f4682c99ab2a6c1f7892c4d63)), references [#722](https://github.com/kevinch3/NicotinD/issues/722) [#722](https://github.com/kevinch3/NicotinD/issues/722) [#776](https://github.com/kevinch3/NicotinD/issues/776)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.5.31",
+    "date": "2026-08-29",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.30...v0.5.31",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**library:** verify a retag landed, and refresh an album after a single-song delete ([#774](https://github.com/kevinch3/NicotinD/issues/774), [#776](https://github.com/kevinch3/NicotinD/issues/776)) ([#793](https://github.com/kevinch3/NicotinD/issues/793)) ([123338e](https://github.com/kevinch3/NicotinD/commit/123338e45c170ffcef379205ae4393ba02201291))"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.5.30",
     "date": "2026-08-28",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.29...v0.5.30",
@@ -524,119 +647,6 @@
         "title": "Bug Fixes",
         "items": [
           "**acquisition:** generate a native playlist for addon-run playlist jobs ([#656](https://github.com/kevinch3/NicotinD/issues/656)) ([b41252d](https://github.com/kevinch3/NicotinD/commit/b41252d6301a5982d775aaaf0ecbfa9dfd4d4b22)), references [#590](https://github.com/kevinch3/NicotinD/issues/590)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.4.2",
-    "date": "2026-08-24",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.4.1...v0.4.2",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**downloads:** a partial download says why it failed, and can be retried ([#653](https://github.com/kevinch3/NicotinD/issues/653)) ([675acf7](https://github.com/kevinch3/NicotinD/commit/675acf7fb144d50e2678bda1289ec507b91c2727)), closes [#652](https://github.com/kevinch3/NicotinD/issues/652), references [#585](https://github.com/kevinch3/NicotinD/issues/585) [#601](https://github.com/kevinch3/NicotinD/issues/601) [#651](https://github.com/kevinch3/NicotinD/issues/651)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.4.1",
-    "date": "2026-08-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.4.0...v0.4.1",
-    "sections": []
-  },
-  {
-    "version": "0.4.0",
-    "date": "2026-08-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.66...v0.4.0",
-    "sections": [
-      {
-        "title": "Removed",
-        "items": [
-          "**Processing window** — background enrichment no longer runs only inside a daily time window; it runs continuously while enabled. Pausing is now the way to stand down.",
-          "**Compute regulator** — the concurrency, batch-size and \"yield above N % GPU\" controls are gone. Measurement (issue [#224](https://github.com/kevinch3/NicotinD/issues/224)) found the GPU yield changed neither throughput nor GPU memory. Use **Pause** when another application needs the card.",
-          "**Resume playback on app open** — the app never auto-plays on load. Your queue, track and position are still restored exactly as before; only the automatic play is gone.",
-          "**Generation feedback** — the 👍/👎 hunt-match capture and its admin queue. It had stopped recording anything when acquisition moved to addons. Radio evaluation polls are unaffected."
-        ]
-      },
-      {
-        "title": "Changed",
-        "items": [
-          "**Admin page reorganised** — User management is now first, followed by Library processing. Each section is its own component, so the order can be changed cheaply from here on.",
-          "Admin no longer blanks the whole page while the user list loads; only that card waits."
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.66",
-    "date": "2026-08-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.65...v0.3.66",
-    "sections": []
-  },
-  {
-    "version": "0.3.65",
-    "date": "2026-08-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.64...v0.3.65",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**api:** clamp waveform peaks to the -1..1 contract for over-full-scale masters ([#649](https://github.com/kevinch3/NicotinD/issues/649)) ([52a834b](https://github.com/kevinch3/NicotinD/commit/52a834b652a14994d608cc82bb1792660329e0c4)), references [#643](https://github.com/kevinch3/NicotinD/issues/643)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.64",
-    "date": "2026-08-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.63...v0.3.64",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**player:** waveform strip + karaoke VFX from a precomputed peaks artifact ([#648](https://github.com/kevinch3/NicotinD/issues/648)) ([085a23b](https://github.com/kevinch3/NicotinD/commit/085a23b0450aba79211fdd2acc9537b53747ddc6)), references [#640](https://github.com/kevinch3/NicotinD/issues/640) [#643](https://github.com/kevinch3/NicotinD/issues/643) [#438](https://github.com/kevinch3/NicotinD/issues/438) [#643](https://github.com/kevinch3/NicotinD/issues/643) [#457](https://github.com/kevinch3/NicotinD/issues/457)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.63",
-    "date": "2026-08-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.62...v0.3.63",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**admin:** run whole-library passes as background jobs, not in the handler ([#645](https://github.com/kevinch3/NicotinD/issues/645)) ([566c6a1](https://github.com/kevinch3/NicotinD/commit/566c6a1752a9f475de9d1a4b7173f7163daa3c83)), references [#622](https://github.com/kevinch3/NicotinD/issues/622)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.62",
-    "date": "2026-08-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.61...v0.3.62",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**analysis:** run descriptor extraction in a worker process so /health stays responsive ([#647](https://github.com/kevinch3/NicotinD/issues/647)) ([e76cc76](https://github.com/kevinch3/NicotinD/commit/e76cc760c6efe9dec95a8817879ce7088917727a)), references [#640](https://github.com/kevinch3/NicotinD/issues/640)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.3.61",
-    "date": "2026-08-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.3.60...v0.3.61",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**analysis:** per-track audio descriptors (timbre/groove/bands) + descriptor store ([#646](https://github.com/kevinch3/NicotinD/issues/646)) ([3635644](https://github.com/kevinch3/NicotinD/commit/363564404a1c65c797b6fa3f1ddc2165f891363e)), references [#640](https://github.com/kevinch3/NicotinD/issues/640) [#641](https://github.com/kevinch3/NicotinD/issues/641)"
         ]
       }
     ]

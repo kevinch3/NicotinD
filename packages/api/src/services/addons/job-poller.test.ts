@@ -125,6 +125,7 @@ describe('AddonJobPoller', () => {
   it('does nothing while the addon plugin is disabled', async () => {
     h = harness(() => [makeJob()]);
     await h.poller.tick();
+    await h.poller.idle();
     const jobs = h.db.query(`SELECT * FROM acquisition_jobs`).all();
     expect(jobs).toHaveLength(0);
   });
@@ -140,6 +141,7 @@ describe('AddonJobPoller', () => {
 
     it('mirrors an addon job + items into the feed tables', async () => {
       await h.poller.tick();
+      await h.poller.idle();
       const job = h.db
         .query<{ id: string; method: string; artist_name: string }, []>(
           `SELECT * FROM acquisition_jobs`,
@@ -157,11 +159,13 @@ describe('AddonJobPoller', () => {
 
       // A second tick with no updates creates nothing new (cursor advanced).
       await h.poller.tick();
+      await h.poller.idle();
       expect(h.db.query(`SELECT id FROM acquisition_jobs`).all()).toHaveLength(1);
     });
 
     it('a fallback repoint updates the same mirrored item in place', async () => {
       await h.poller.tick();
+      await h.poller.idle();
       jobsData = [
         makeJob({
           updatedAt: 3000,
@@ -177,6 +181,7 @@ describe('AddonJobPoller', () => {
         }),
       ];
       await h.poller.tick();
+      await h.poller.idle();
       const items = h.db
         .query<{ username: string; audio_format: string }, []>(
           `SELECT * FROM acquisition_job_items`,
@@ -196,6 +201,7 @@ describe('AddonJobPoller', () => {
         }),
       ];
       await h.poller.tick();
+      await h.poller.idle();
 
       expect(h.organized).toHaveLength(1);
       expect(h.scanned[0]).toEqual(['Artist/Album/01 Song One.mp3']);
@@ -238,6 +244,7 @@ describe('AddonJobPoller', () => {
       insertActiveUrlJob(h, 'ghost-1', 'gone-uuid');
 
       await h.poller.tick();
+      await h.poller.idle();
 
       const job = h.db
         .query<{ state: string; error: string | null }, [string]>(
@@ -257,6 +264,7 @@ describe('AddonJobPoller', () => {
       insertActiveUrlJob(h, 'live-1', 'live-uuid');
 
       await h.poller.tick();
+      await h.poller.idle();
 
       const job = h.db
         .query<{ state: string }, [string]>(`SELECT state FROM acquisition_jobs WHERE id = ?`)
@@ -296,6 +304,7 @@ describe('AddonJobPoller', () => {
       armReleasedMarker(h, 'released-uuid');
 
       await h.poller.tick();
+      await h.poller.idle();
 
       const job = h.db
         .query<{ state: string; error: string | null }, [string]>(
@@ -312,6 +321,7 @@ describe('AddonJobPoller', () => {
       insertActiveUrlJob(h, 'ghost-2', 'forgotten-uuid');
 
       await h.poller.tick();
+      await h.poller.idle();
 
       const job = h.db
         .query<{ state: string; error: string | null }, [string]>(
@@ -340,6 +350,7 @@ describe('AddonJobPoller', () => {
       );
 
       await h.poller.tick();
+      await h.poller.idle();
 
       const states = Object.fromEntries(
         h.db
@@ -361,6 +372,7 @@ describe('AddonJobPoller', () => {
       insertActiveUrlJob(h, 'ghost-4', 'forgotten-uuid-3');
 
       await h.poller.tick();
+      await h.poller.idle();
 
       const job = h.db
         .query<{ error: string | null }, [string]>(
@@ -382,6 +394,7 @@ describe('AddonJobPoller', () => {
       h = harness(() => [makeJob({ artist: null, album: null, title: 'Summer Mix 2024' })]);
       await h.registry.enable('fixture-addon', 'admin');
       await h.poller.tick();
+      await h.poller.idle();
       const row = h.db
         .query<{ display_title: string | null; album_title: string | null }, []>(
           `SELECT display_title, album_title FROM acquisition_jobs`,
@@ -402,8 +415,10 @@ describe('AddonJobPoller', () => {
       h = harness(() => [makeJob({ title, updatedAt: title.length })]);
       await h.registry.enable('fixture-addon', 'admin');
       await h.poller.tick();
+      await h.poller.idle();
       title = 'Grateful Dead Live at Barton Hall';
       await h.poller.tick();
+      await h.poller.idle();
       const row = h.db
         .query<{ display_title: string | null }, []>(`SELECT display_title FROM acquisition_jobs`)
         .get()!;
@@ -414,6 +429,7 @@ describe('AddonJobPoller', () => {
       h = harness(() => [makeJob({ title: 'x'.repeat(5000) })]);
       await h.registry.enable('fixture-addon', 'admin');
       await h.poller.tick();
+      await h.poller.idle();
       const row = h.db
         .query<{ display_title: string }, []>(`SELECT display_title FROM acquisition_jobs`)
         .get()!;
@@ -424,6 +440,7 @@ describe('AddonJobPoller', () => {
       h = harness(() => [makeJob()]);
       await h.registry.enable('fixture-addon', 'admin');
       await h.poller.tick();
+      await h.poller.idle();
       const row = h.db
         .query<{ display_title: string | null; artist_name: string }, []>(
           `SELECT display_title, artist_name FROM acquisition_jobs`,
@@ -458,6 +475,7 @@ describe('AddonJobPoller', () => {
       h = harness(() => [job]);
       await h.registry.enable('fixture-addon', 'admin');
       await h.poller.tick();
+      await h.poller.idle();
       return h.db
         .query<{ state: string; stage: string; error: string | null }, []>(
           `SELECT state, stage, error FROM acquisition_jobs`,
@@ -506,8 +524,10 @@ describe('AddonJobPoller', () => {
       h = harness(() => [urlJob({ state: 'active', error, updatedAt: error ? 1 : 2 })]);
       await h.registry.enable('fixture-addon', 'admin');
       await h.poller.tick();
+      await h.poller.idle();
       error = null;
       await h.poller.tick();
+      await h.poller.idle();
       const row = h.db
         .query<{ error: string | null }, []>(`SELECT error FROM acquisition_jobs`)
         .get()!;
@@ -530,6 +550,7 @@ describe('AddonJobPoller', () => {
       h = harness(() => [job]);
       await h.registry.enable('fixture-addon', 'admin');
       await h.poller.tick();
+      await h.poller.idle();
       const row = h.db
         .query<{ state: string; stage: string }, []>(`SELECT state, stage FROM acquisition_jobs`)
         .get()!;
@@ -548,6 +569,7 @@ describe('AddonJobPoller', () => {
       h = harness(() => [job]);
       await h.registry.enable('fixture-addon', 'admin');
       await h.poller.tick();
+      await h.poller.idle();
       const row = h.db
         .query<{ state: string; stage: string }, []>(`SELECT state, stage FROM acquisition_jobs`)
         .get()!;
@@ -568,6 +590,7 @@ describe('AddonJobPoller', () => {
       });
       mapAddonJob(h.db, 'fixture-addon', job.id, coreJobId);
       await h.poller.tick();
+      await h.poller.idle();
       const row = h.db
         .query<{ state: string; stage: string }, []>(`SELECT state, stage FROM acquisition_jobs`)
         .get()!;
@@ -590,6 +613,7 @@ describe('AddonJobPoller', () => {
       h = harness(() => [job]);
       await h.registry.enable('fixture-addon', 'admin');
       await h.poller.tick();
+      await h.poller.idle();
       const states = h.db
         .query<{ state: string }, []>(`SELECT state FROM acquisition_job_items ORDER BY id`)
         .all()
@@ -612,6 +636,7 @@ describe('AddonJobPoller', () => {
       h = harness(() => [job]);
       await h.registry.enable('fixture-addon', 'admin');
       await h.poller.tick();
+      await h.poller.idle();
 
       const states = h.db
         .query<{ state: string }, []>(`SELECT state FROM acquisition_job_items ORDER BY id`)
@@ -639,6 +664,7 @@ describe('AddonJobPoller', () => {
       h = harness(() => [job]);
       await h.registry.enable('fixture-addon', 'admin');
       await h.poller.tick();
+      await h.poller.idle();
 
       const row = h.db
         .query<{ stage: string; error: string | null }, []>(
@@ -667,6 +693,7 @@ describe('AddonJobPoller', () => {
       );
 
       await h.poller.tick();
+      await h.poller.idle();
 
       const row = h.db
         .query<{ state: string; error: string }, []>(
@@ -712,6 +739,7 @@ describe('AddonJobPoller', () => {
         }),
       ];
       await h.poller.tick();
+      await h.poller.idle();
 
       const row = h.db
         .query<{ playlist_id: string | null }, [string]>(
@@ -750,6 +778,7 @@ describe('AddonJobPoller', () => {
       ];
 
       await h.poller.tick();
+      await h.poller.idle();
 
       const row = h.db
         .query<{ playlist_id: string | null }, [string]>(
@@ -863,7 +892,8 @@ describe('stranded ingest — a job the poll cursor moved past (#725)', () => {
     );
     await h.registry.enable('fixture-addon', 'admin');
 
-    await h.poller.tick(); // both listed; the stranded fetch fails; cursor -> 9000
+    await h.poller.tick();
+    await h.poller.idle(); // both listed; the stranded fetch fails; cursor -> 9000
     const afterFirst = h.db
       .query<{ state: string; relative_path: string | null }, []>(
         `SELECT state, relative_path FROM acquisition_job_items`,
@@ -872,7 +902,8 @@ describe('stranded ingest — a job the poll cursor moved past (#725)', () => {
     expect(afterFirst.state).toBe('completed');
     expect(afterFirst.relative_path).toBeNull();
 
-    await h.poller.tick(); // cursor 9000 now EXCLUDES aj-stranded from listJobs
+    await h.poller.tick();
+    await h.poller.idle(); // cursor 9000 now EXCLUDES aj-stranded from listJobs
 
     const item = h.db
       .query<{ state: string; relative_path: string | null }, []>(
@@ -904,10 +935,13 @@ describe('stranded ingest — a job the poll cursor moved past (#725)', () => {
     await h.registry.enable('fixture-addon', 'admin');
 
     await h.poller.tick();
+    await h.poller.idle();
     const afterFirst = getJobCalls;
     // The poller ticks every 5s; the recovery sweep must not follow it.
     await h.poller.tick();
+    await h.poller.idle();
     await h.poller.tick();
+    await h.poller.idle();
     expect(getJobCalls).toBe(afterFirst);
   });
 
@@ -921,7 +955,9 @@ describe('stranded ingest — a job the poll cursor moved past (#725)', () => {
     await h.registry.enable('fixture-addon', 'admin');
 
     await h.poller.tick();
+    await h.poller.idle();
     await h.poller.tick();
+    await h.poller.idle();
 
     const job = h.db
       .query<{ state: string; stage: string }, []>(
@@ -943,6 +979,7 @@ describe('byte progress mirroring (#805)', () => {
     const h = harness(() => jobsData);
     await h.registry.enable('fixture-addon', 'admin');
     await h.poller.tick();
+    await h.poller.idle();
 
     const item = () =>
       h.db
@@ -960,6 +997,7 @@ describe('byte progress mirroring (#805)', () => {
       }),
     ];
     await h.poller.tick();
+    await h.poller.idle();
     expect(item().bytes_transferred).toBe(70);
   });
 });
@@ -977,6 +1015,7 @@ describe('cancel intent (#806)', () => {
     const h = harness(() => jobsData);
     await h.registry.enable('fixture-addon', 'admin');
     await h.poller.tick();
+    await h.poller.idle();
 
     const { id } = coreJob(h);
     expect(requestJobCancel(h.db, id)).toBe(true);
@@ -989,6 +1028,7 @@ describe('cancel intent (#806)', () => {
       }),
     ];
     await h.poller.tick();
+    await h.poller.idle();
 
     expect(coreJob(h).stage).toBe('queued');
     const item = h.db
@@ -1004,10 +1044,12 @@ describe('cancel intent (#806)', () => {
     const h = harness(() => jobsData);
     await h.registry.enable('fixture-addon', 'admin');
     await h.poller.tick();
+    await h.poller.idle();
 
     const { id } = coreJob(h);
     requestJobCancel(h.db, id, Date.now() - 120_000); // well past the grace period
     await h.poller.tick();
+    await h.poller.idle();
 
     const after = coreJob(h);
     expect(after.state).not.toBe('active');
@@ -1019,6 +1061,7 @@ describe('cancel intent (#806)', () => {
 
     // The addon still lists the job as active — the closed row must stay closed.
     await h.poller.tick();
+    await h.poller.idle();
     expect(coreJob(h).state).toBe(after.state);
   });
 
@@ -1027,6 +1070,7 @@ describe('cancel intent (#806)', () => {
     const h = harness(() => jobsData);
     await h.registry.enable('fixture-addon', 'admin');
     await h.poller.tick();
+    await h.poller.idle();
 
     const { id } = coreJob(h);
     requestJobCancel(h.db, id);
@@ -1038,6 +1082,7 @@ describe('cancel intent (#806)', () => {
       }),
     ];
     await h.poller.tick();
+    await h.poller.idle();
 
     const after = coreJob(h);
     expect(after.state).not.toBe('active');
@@ -1054,6 +1099,7 @@ describe('partial discard (#810)', () => {
     const h = harness(() => jobsData);
     await h.registry.enable('fixture-addon', 'admin');
     await h.poller.tick();
+    await h.poller.idle();
 
     const { id } = h.db.query<{ id: string }, []>(`SELECT id FROM acquisition_jobs`).get()!;
     markPartialDiscarded(h.db, id);
@@ -1067,8 +1113,114 @@ describe('partial discard (#810)', () => {
       }),
     ];
     await h.poller.tick();
+    await h.poller.idle();
 
     expect(h.organized).toHaveLength(0);
     expect(h.scanned).toHaveLength(0);
+  });
+});
+
+describe('ingest decoupled from the tick (#809)', () => {
+  function gatedFetch() {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    const fetchFile = async () => {
+      calls++;
+      await gate;
+      return new Response('audio-bytes');
+    };
+    return { fetchFile, release: () => release(), calls: () => calls };
+  }
+
+  const readyJob = (bytes?: number) =>
+    makeJob({
+      state: 'done',
+      updatedAt: 4000,
+      items: [
+        {
+          ...makeJob().items[0]!,
+          state: 'completed',
+          fileReady: true,
+          bytesTransferred: bytes,
+          updatedAt: 4000,
+        },
+      ],
+    });
+
+  it('a slow ingest no longer freezes mirroring — the next tick still lands updates', async () => {
+    const gate = gatedFetch();
+    let jobsData = [readyJob()];
+    const h = harness(() => jobsData, undefined, { fetchFile: gate.fetchFile });
+    await h.registry.enable('fixture-addon', 'admin');
+
+    await h.poller.tick(); // schedules the ingest; fetch now hangs
+    expect(gate.calls()).toBe(1);
+
+    // A second addon-side update arrives while the ingest is still in flight.
+    // The old code could not even start this tick until the fetch finished.
+    jobsData = [
+      makeJob({
+        id: 'aj-2',
+        updatedAt: 5000,
+        items: [
+          {
+            ...makeJob().items[0]!,
+            itemId: 't:song two',
+            filename: 'Music\\Album\\02 Song Two.mp3',
+            bytesTransferred: 40,
+            updatedAt: 5000,
+          },
+        ],
+      }),
+    ];
+    await h.poller.tick();
+    const mirrored = h.db
+      .query<{ bytes_transferred: number | null }, [string]>(
+        `SELECT bytes_transferred FROM acquisition_job_items WHERE transfer_key = ?`,
+      )
+      .get(addonTransferKey('fixture-addon', 't:song two'));
+    expect(mirrored?.bytes_transferred).toBe(40); // mirrored DURING the hung ingest
+
+    gate.release();
+    await h.poller.idle();
+    expect(h.organized).toHaveLength(1);
+  });
+
+  it('re-observing a job mid-ingest never double-ingests it', async () => {
+    const gate = gatedFetch();
+    const h = harness(() => [readyJob()], undefined, { fetchFile: gate.fetchFile });
+    await h.registry.enable('fixture-addon', 'admin');
+
+    await h.poller.tick();
+    await h.poller.tick(); // same job again while its finish is in flight
+    expect(gate.calls()).toBe(1); // single-flight held
+
+    gate.release();
+    await h.poller.idle();
+    expect(h.organized).toHaveLength(1);
+  });
+
+  it('a failing fetch never wedges the queue — the next tick retries it', async () => {
+    let calls = 0;
+    const h = harness(() => [readyJob()], undefined, {
+      fetchFile: async () => {
+        calls++;
+        throw new Error('addon fell over mid-transfer');
+      },
+    });
+    await h.registry.enable('fixture-addon', 'admin');
+
+    await h.poller.tick();
+    await h.poller.idle();
+    expect(calls).toBe(1);
+    expect(h.organized).toHaveLength(0);
+
+    // Same contract as the old inline path: a fetch failure is a retry, not a
+    // verdict — the job stays open and the single-flight slot was released,
+    // so the next observation re-queues the ingest.
+    await h.poller.tick();
+    await h.poller.idle();
+    expect(calls).toBe(2);
   });
 });

@@ -451,9 +451,12 @@ is the `^https?://` catch-all, and it has no beatport extractor) left a card rea
 
 Three rules make it hold:
 
-- The call sits **after** `ingestReadyItems` (so files delivered on the same tick organize first and
+- The call sits **after** `ingestReadyItems` (so files delivered on the same pass organize first and
   a genuinely finished job closes `done`, not a false partial) and **before** `maybeReleaseAddonJob`
-  — which deletes the addon-side job and with it the only copy of `job.error`.
+  — which deletes the addon-side job and with it the only copy of `job.error`. Since #809 that
+  whole ordered tail runs on the poller's serial background queue when there are files to fetch
+  (`scheduleFinish`/`finishJob`) — the ordering guarantee is unchanged, it just no longer holds the
+  tick hostage for the duration of an album ingest.
 - A terminal addon job marks any item still `downloading` as `unavailable`, so the job closes as an
   honest partial instead of hanging on a track nobody is sending. An **item-less** terminal job is
   the case `recomputeStage` cannot rule on, and is never a success: `failed`/`cancelled` carry the
