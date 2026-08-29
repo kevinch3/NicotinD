@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.32](https://github.com/kevinch3/NicotinD/compare/v0.5.31...v0.5.32) (2026-08-29)
+
+### Bug Fixes
+
+* **library:** run the title cleaner over the existing library, and teach it remaster labels ([#775](https://github.com/kevinch3/NicotinD/issues/775)) ([#794](https://github.com/kevinch3/NicotinD/issues/794)) ([da8187e](https://github.com/kevinch3/NicotinD/commit/da8187edcd12301f4682c99ab2a6c1f7892c4d63)), references [#722](https://github.com/kevinch3/NicotinD/issues/722) [#722](https://github.com/kevinch3/NicotinD/issues/722) [#776](https://github.com/kevinch3/NicotinD/issues/776)
 ## [0.5.31](https://github.com/kevinch3/NicotinD/compare/v0.5.30...v0.5.31) (2026-08-29)
 
 ### Bug Fixes
