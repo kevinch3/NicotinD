@@ -746,6 +746,7 @@
   "review.tracks": "{count} pistas",
   "review.tracksPartial": "Guardadas {updated}, fallaron {failed}",
   "review.tracksSaved": "Pistas re-etiquetadas — reescaneando",
+  "review.viewTracklist": "Ver lista de pistas",
   "settings.account": "Cuenta",
   "settings.adminPanel": "Panel de administración →",
   "settings.agentTokens": "Tokens de agente →",

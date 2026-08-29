@@ -43,3 +43,36 @@ export function currentAndNextTracks(
 
   return { current, next };
 }
+
+/** Per-status tally behind the card's track disclosure. */
+export interface TrackBreakdown {
+  total: number;
+  done: number;
+  /** The source tried and could not deliver these. */
+  failed: number;
+  /** Deliberately not fetched — already held, or filtered out. */
+  skipped: number;
+  /** `pending` + `downloading` folded together: not yet resolved either way. */
+  inFlight: number;
+}
+
+/**
+ * Tally a job's tracks by status, or null when there is nothing to tally.
+ *
+ * `failed` and `skipped` stay separate because they answer different questions
+ * — "the source couldn't deliver it" vs "we chose not to fetch it" — and a card
+ * that merges them re-hides the distinction the drilldown exists to show (#746).
+ */
+export function trackBreakdown(
+  tracks: { title: string; status: TrackStatus }[] | undefined,
+): TrackBreakdown | null {
+  if (!tracks || tracks.length === 0) return null;
+  const b: TrackBreakdown = { total: tracks.length, done: 0, failed: 0, skipped: 0, inFlight: 0 };
+  for (const t of tracks) {
+    if (t.status === 'done') b.done++;
+    else if (t.status === 'failed') b.failed++;
+    else if (t.status === 'skipped') b.skipped++;
+    else b.inFlight++;
+  }
+  return b;
+}

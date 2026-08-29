@@ -90,6 +90,9 @@ function setup(
     t: vi.fn((key: string, params?: Record<string, string | number>) =>
       params ? `${key}::${JSON.stringify(params)}` : key,
     ),
+    // The `t` pipe reads `lang()` to know when to re-evaluate; only the specs
+    // that actually render the template need it.
+    lang: signal('en'),
   };
   const playerStub = {
     playSingle: vi.fn(),
@@ -128,6 +131,7 @@ function setup(
 
   const fixture = TestBed.createComponent(ReviewInboxComponent);
   return {
+    fixture,
     component: fixture.componentInstance,
     reviewStub,
     apiStub,
@@ -482,5 +486,47 @@ describe('aggregateAlbumSteps', () => {
       genre: 'done',
       mood: 'done',
     });
+  });
+});
+
+/**
+ * #746. The card said "98 pistas" and nothing else, so approving an album meant
+ * trusting a count. The titles were already in the DTO and rendered nowhere.
+ */
+describe('ReviewInboxComponent tracklist', () => {
+  const STEPS: QuarantineSong['steps'] = {
+    download: 'done',
+    bpm: 'done',
+    key: 'done',
+    energy: 'done',
+    genre: 'done',
+    mood: 'done',
+  };
+  const THREE = album({
+    songs: [
+      { id: 's1', title: 'Output-Input', track: 1, steps: STEPS },
+      { id: 's2', title: 'El salmón', track: 2, steps: STEPS },
+      { id: 's3', title: 'Días distintos', track: null, steps: STEPS },
+    ],
+  });
+
+  it('lists every quarantined track with its number', () => {
+    const { fixture } = setup({ canCurate: true, queueAlbums: [THREE] });
+    fixture.detectChanges();
+    const rows = fixture.nativeElement.querySelectorAll(
+      '[data-testid="review-tracklist-row"]',
+    ) as NodeListOf<HTMLElement>;
+    expect(rows.length).toBe(3);
+    expect(rows[0].textContent).toContain('Output-Input');
+    expect(rows[1].textContent).toContain('El salmón');
+  });
+
+  /** An untracked song still gets a row — omitting it would understate the album. */
+  it('renders a track with no number rather than dropping it', () => {
+    const { fixture } = setup({ canCurate: true, queueAlbums: [THREE] });
+    fixture.detectChanges();
+    const rows = fixture.nativeElement.querySelectorAll('[data-testid="review-tracklist-row"]');
+    expect(rows[2].textContent).toContain('Días distintos');
+    expect(rows[2].textContent).toContain('—');
   });
 });

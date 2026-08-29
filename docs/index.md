@@ -79,7 +79,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   → [download-pipeline.md](download-pipeline.md)
 - **A partial download says why, and can be retried**: per-track failures grouped by class on the
   card; Retry reaches partial addon URL jobs, not just failed ones. `parseJobFailureSummary`,
-  `classifyTrackFailure`, `summarizeFailures`, `failureClassLabel`, `allItemsFailedMessage`.
+  `classifyTrackFailure`, `summarizeFailures`, `failureClassLabel`, `allItemsFailedMessage`. A
+  `trackBreakdown` disclosure lists which tracks, not just how many — offered for slskd too, which
+  `canShowNowNext` skips.
   → [download-pipeline.md](download-pipeline.md)
 - **Inline download lifecycle**: result cards go idle → progress % → "Open in Library", driven by
   `TransferService` + a `libraryDirty` signal. → [design-patterns.md](design-patterns.md),

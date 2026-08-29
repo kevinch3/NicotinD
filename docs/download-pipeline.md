@@ -670,6 +670,34 @@ sums to the release.
 `unavailable` and `notOffered` are deliberately distinct: the first is a track the source *had* and
 could not deliver, the second one it never listed. Collapsing them would re-hide the thing this fixed.
 
+#### Which tracks, not just how many (#746)
+
+The card reported counts and never names, so "2 unavailable" on a 103-track release was
+unanswerable short of diffing the folder by hand. Every input already existed client-side:
+`DownloadItem.tracks[]` carried `{title, status}` for every track across the full `TrackStatus`
+union, and `TransferService` holds the raw `AcquisitionJobView[]` in a signal — so **no API change
+was needed**, only a render path. Per-item `username`/`filename` were reaching the browser and being
+narrowed away in `mergeAcquisitionJobs`; they are now kept.
+
+A `<details data-testid="download-tracks">` (the same idiom as "Sources") lists every track with its
+status and peer, summarised while collapsed as `Tracks (98/103, 2 failed)` from the pure
+`trackBreakdown`. Rows carry `data-status` for e2e. An untitled item falls back to its filename —
+that is precisely the item whose identity the user most needs.
+
+Two deliberate choices:
+
+- **`failed` and `skipped` stay separate** in the breakdown. They answer different questions — "the
+  source tried and could not" vs "we chose not to fetch it" — and merging them re-hides the
+  distinction the drilldown exists to show.
+- **The list is shown for slskd**, which `canShowNowNext` suppresses. That suppression is right for
+  "Now:", where the last-downloading title is arbitrary across parallel peers; a full list has no
+  such ambiguity, and slskd album hunts are exactly the jobs whose per-track outcome is otherwise
+  undiscoverable.
+
+The review inbox gets the same treatment: its card said `98 pistas` and nothing more, so approving
+meant trusting a number. `review-tracklist` discloses the quarantined titles (already in the DTO,
+rendered nowhere), keeping a track with no number rather than dropping it.
+
 #### "Now: / Next:" track display
 
 Job cards also show what's currently downloading and up to two upcoming tracks, uniformly across every acquisition backend. The shared `TrackStatus` union (`'pending' | 'downloading' | 'done' | 'skipped' | 'failed'`, `@nicotind/core`) and a `PluginHostContext.emitTrack(jobId, { title, status })` method (`host-context.ts`, alongside `emitProgress`/`emitLabel`) are the plumbing: `emitTrack` upserts by title match (`upsertTrackStatus` — replace the existing entry's status in place, or append) into `acquire_jobs.tracks_json`, wired in `index.ts`'s `HostContextDeps.emitTrack` closure. `mapRow` exposes the column as `AcquireJob.tracks`.
