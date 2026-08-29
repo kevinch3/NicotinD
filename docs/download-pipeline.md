@@ -491,6 +491,56 @@ Once a row is complete, it also offers an **"Open in Library"** deep-link to the
 
 **Multi-album acquire jobs — "View N albums".** A URL acquire job's files no longer collapse to a single (possibly wrong) album link. `AcquireWatcher.ingest()` groups every organized file by its destination directory, derives each distinct dir into an `AcquireAlbumDestination` (`{ albumArtist, albumTitle, albumId }` via the pure `deriveAcquireAlbum`, `services/acquire-album.ts` — last two path segments, `null` for a loose single with no album wrapper), and persists the full distinct set as `dest_albums_json` (`setDestAlbums`). `mapRow` exposes it as `AcquireJob.destinationAlbums`, and only sets the singular `albumId`/`albumArtist`/`albumTitle` convenience fields when that array has **exactly one** entry — a multi-album job (e.g. a large spotdl playlist spanning several releases) leaves them `null`, so `canOpenInLibrary` naturally goes false (no extra code needed there) instead of silently linking to just the first album. `acquireJobToDownloadItem` carries `destinationAlbums` through onto `DownloadItem`, and once `stage === 'done'` with more than one entry (`hasMultipleDestinationAlbums(item)`, `components/download-item/`), the row instead renders a **"View N albums"** trigger (`data-testid="download-view-albums"`) opening the shared `MenuPanelComponent` (viewport-safe dropdown, `components/menu-panel/`) with one row per album (`data-testid="download-album-row"`), each linking to its own `/library/albums/:id` via `resolveAlbumRoute`.
 
+#### Byte progress — the bar moves before the first file lands (#805)
+
+The count chip (`delivered = completed+organized+scanned`) counts **whole files on disk**, so a
+9-track album with every track mid-transfer read a frozen "0 of 9" for as long as the first file
+took — which is how a healthy 2-CD FLAC download got cancelled as "stuck" (2026-08-29). The
+protocol always carried the missing signal (`AddonJobItem.bytesTransferred` + `size`);
+`mirrorItems` now stores both (`acquisition_job_items.size_bytes` / `bytes_transferred`) and
+`listJobFeed` aggregates them (`jobByteAgg` + the exported `byteProgress`) into
+`progress.bytesTransferred/bytesTotal`:
+
+- **Deliverable states only** (queued/downloading + on-disk) on *both* sides of the fraction —
+  failed/unavailable bytes will never arrive, and the bar measures "of what can still land",
+  matching how `delivered/expected` renders an honest partial.
+- **Null over a guess**: any deliverable item without a positive `size_bytes` nulls both fields — a
+  partially-known denominator misreports worse than counts do — and the client falls back to
+  whole-file `delivered/expected`.
+- On-disk items count at full size, in-flight bytes are clamped per item in SQL, and `createJob`
+  now stores enqueue-time `files[].size` so slskd jobs have totals before the first mirror.
+
+The client's `jobPercent` (`lib/download-groups.ts`) renders it, **capped at 99 while
+`downloading`** — rounding up on the final chunk must not read 100% with files still un-organized;
+the count chip is what says "all landed". The two deliberately disagree: "0 of 9" + a 43% bar *is*
+the truthful state. Set only for stage `downloading`; the bar disappears once nothing is in
+flight. External dependency: the poll cursor filters `updatedAt > since`, so an addon must bump
+`job.updatedAt` as bytes advance (kevinch3/nicotind-slskd-addon#3) or the card degrades to count
+mode — by design, no core coupling.
+
+#### Cancel is a request, not a state change (#806)
+
+For an addon-backed job the cancel route used to be a bare proxy: no DB write, a 502 on addon
+error, and `applyAddonOutcome` re-pinning the still-active job to `downloading` every tick — so a
+click produced **no visible change for up to ~45 s** (addon RTT + poller tick + the client's idle
+cadence) while staying infinitely re-clickable. The durable marker inverts that:
+
+- `POST /jobs/:id/cancel` stamps `acquisition_jobs.cancel_requested_at` **before any addon I/O**
+  (`requestJobCancel`). A repeat request returns `{ok, pending: true}` without re-notifying the
+  addon; an unreachable addon returns `{ok, addonNotified: false}` — the old 502 muted the click
+  and left the row untouched.
+- While the addon still reports `active` and the marker is set, the poller **freezes the mirror**
+  for that job (mirroring would overwrite closed item states and re-derive a live-looking stage)
+  and the re-pin gains `AND cancel_requested_at IS NULL`. The addon's own terminal verdict still
+  flows through the full outcome path.
+- `sweepStaleCancels` (poller tick, 90 s grace) closes a request the addon never acted on via the
+  existing `cancelUnownedJob` funnel — an ignoring addon cannot strand a "Cancelling…" card.
+- The feed ships `cancelRequested`; the card renders a **"Cancelling…" chip** in place of the ✕
+  (instant via the component's `cancelling` request-set, durable across reloads via the marker),
+  and "Cancel all" targets only `canCancel && !cancelRequested` rows instead of re-firing at
+  `processing` jobs that have nothing left to cancel. The client keeps the fast 3 s poll through
+  every live stage (`jobKeepsFastCadence`) instead of dropping to 30 s the moment the stage moves.
+
 #### The denominator is the release, not the source's offering (#745)
 
 `listJobFeed` derives `expected` from item rows — *whatever the source itemized*. Nothing read

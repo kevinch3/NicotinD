@@ -219,3 +219,53 @@ describe('DownloadsComponent — active feed', () => {
     );
   });
 });
+
+describe('DownloadsComponent — cancel guard (#806)', () => {
+  const networkRow = (over: Record<string, unknown> = {}) =>
+    ({
+      key: 'job:j1',
+      kind: 'network',
+      title: 'X',
+      method: 'slskd',
+      stage: 'downloading',
+      jobId: 'j1',
+      canRetry: false,
+      canCancel: true,
+      canRemove: false,
+      ...over,
+    }) as never;
+
+  it('registers the feed key in the cancelling set for the request round-trip', async () => {
+    let resolve!: (v: { ok: boolean }) => void;
+    const pending = new Promise<{ ok: boolean }>((r) => (resolve = r));
+    const { from } = await import('rxjs');
+    const cancelJob = vi.fn().mockReturnValue(from(pending));
+    const { component } = setup({ api: { cancelJob } });
+
+    component.onItemCancel(networkRow());
+    expect(component.cancelling().has('job:j1')).toBe(true);
+
+    // A re-click while in flight must not re-fire the request.
+    component.onItemCancel(networkRow());
+    expect(cancelJob).toHaveBeenCalledTimes(1);
+
+    resolve({ ok: true });
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+    expect(component.cancelling().has('job:j1')).toBe(false);
+  });
+
+  it('cancelAll skips rows that are not cancellable or already cancel-requested', async () => {
+    const cancelJob = vi.fn().mockReturnValue(of({ ok: true }));
+    const { component, transferService } = setup({ api: { cancelJob } });
+    transferService.acquisitionJobs.set([]);
+    vi.spyOn(component, 'downloadFeed').mockReturnValue([
+      networkRow(),
+      networkRow({ key: 'job:j2', jobId: 'j2', stage: 'processing', canCancel: false }),
+      networkRow({ key: 'job:j3', jobId: 'j3', cancelRequested: true }),
+    ] as never);
+
+    await component.cancelAll();
+    expect(cancelJob).toHaveBeenCalledTimes(1);
+    expect(cancelJob).toHaveBeenCalledWith('j1');
+  });
+});

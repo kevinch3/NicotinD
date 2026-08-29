@@ -57,6 +57,7 @@
               <app-download-item
                 [item]="item"
                 [retrying]="retrying().has(item.key)"
+                [cancelling]="cancelling().has(item.key)"
                 (retry)="onItemRetry(item)"
                 (cancel)="onItemCancel(item)"
                 (remove)="onItemRemove(item)"

@@ -53,6 +53,8 @@ interface FixtureJobItem {
   audioFormat?: string;
   state: string;
   fileReady: boolean;
+  /** Byte progress while `downloading` (#805) — mirrored by the host poller. */
+  bytesTransferred?: number;
   updatedAt: number;
 }
 
@@ -74,6 +76,14 @@ export interface FixtureAddon {
   configPushes: unknown[];
   /** Flip every job to completed + fileReady (the "download finished" hook). */
   completeJobs(): void;
+  /** Advance every downloading item's bytesTransferred to `fraction` of its
+   *  size and bump updatedAt so the change crosses the poll cursor (#805). */
+  advanceBytes(fraction: number): void;
+  /** Job ids the host asked to cancel via POST /jobs/:id/cancel (#806). */
+  cancelRequests: string[];
+  /** Act on every recorded cancel request: job → cancelled, in-flight items →
+   *  unavailable. Used with `deferCancel` to hold the "Cancelling…" window open. */
+  confirmCancels(): void;
   /** Make `/albums/search` report the search was throttled (429) — an empty +
    *  rate-limited result, so the UI shows "keep trying" not "no results". */
   setRateLimited(v: boolean): void;
@@ -95,6 +105,10 @@ export interface FixtureAddonOptions {
   urlPatterns?: string[];
   /** What the addon delivers + advertises (default: the "Addon Artist" song). */
   payload?: FixturePayload;
+  /** When true, POST /jobs/:id/cancel only records the request — the job stays
+   *  active until `confirmCancels()` — modelling an addon that is slow to act
+   *  on a cancel (the #806 window). Default: cancels apply immediately. */
+  deferCancel?: boolean;
 }
 
 export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise<FixtureAddon> {
@@ -105,8 +119,21 @@ export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise
   const payloadSize = payloadBytes.length;
   const configPushes: unknown[] = [];
   const jobs: FixtureJob[] = [];
+  const cancelRequests: string[] = [];
   let nextJob = 1;
   let rateLimited = false;
+
+  function applyCancel(job: FixtureJob): void {
+    const now = Date.now();
+    job.state = 'cancelled';
+    job.updatedAt = now;
+    for (const item of job.items) {
+      if (item.state === 'downloading' || item.state === 'queued') {
+        item.state = 'unavailable';
+        item.updatedAt = now;
+      }
+    }
+  }
 
   const server: Server = createServer((req, res) => {
     const path = req.url?.split('?')[0] ?? '';
@@ -264,6 +291,15 @@ export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise
       return res.end(bytes);
     }
 
+    const cancelMatch = path.match(/^\/addon\/v1\/jobs\/([^/]+)\/cancel$/);
+    if (cancelMatch && req.method === 'POST') {
+      const job = jobs.find((j) => j.id === cancelMatch[1]);
+      if (!job) return json(404, { error: 'not found' });
+      cancelRequests.push(job.id);
+      if (!opts.deferCancel) applyCancel(job);
+      return json(200, { ok: true });
+    }
+
     const jobMatch = path.match(/^\/addon\/v1\/jobs\/([^/]+)$/);
     if (jobMatch && req.method === 'DELETE') {
       const idx = jobs.findIndex((j) => j.id === jobMatch[1]);
@@ -295,6 +331,26 @@ export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise
           item.fileReady = true;
           item.updatedAt = now;
         }
+      }
+    },
+    advanceBytes(fraction: number) {
+      const now = Date.now();
+      for (const job of jobs) {
+        let touched = false;
+        for (const item of job.items) {
+          if (item.state !== 'downloading') continue;
+          item.bytesTransferred = Math.round(item.size * fraction);
+          item.updatedAt = now;
+          touched = true;
+        }
+        if (touched) job.updatedAt = now;
+      }
+    },
+    cancelRequests,
+    confirmCancels() {
+      for (const id of cancelRequests) {
+        const job = jobs.find((j) => j.id === id);
+        if (job && job.state === 'active') applyCancel(job);
       }
     },
     setRateLimited(v: boolean) {

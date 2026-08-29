@@ -93,6 +93,11 @@ process/repo boundary.
   the "generic" DTOs.
 - **Progress transport: polling** (`GET jobs?since=`), on the adaptive cadence
   `DownloadWatcher` uses today. SSE/webhooks are a compatible later optimization.
+- **Byte progress is consumed** (#805): the host mirrors `AddonJobItem.size` and
+  `.bytesTransferred` into `acquisition_job_items` and renders a bytes-weighted bar.
+  Because the poll filters `updatedAt > since`, an addon must **bump `job.updatedAt`
+  when bytes advance** (throttled is fine — ≥1% of size or ≥5 s) or its byte progress
+  never crosses the cursor and the card degrades to whole-file counts.
 
 Endpoints under `/addon/v1/`:
 

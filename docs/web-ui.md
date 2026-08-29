@@ -351,7 +351,7 @@ Every recurring client poll goes through one helper, `createVisibilityPoller` (`
 
 | service | visible | hidden |
 | --- | --- | --- |
-| `TransferService` | 3 s while a job is active, 30 s idle | **paused** |
+| `TransferService` | 3 s while a job is in a live stage (resolving/queued/downloading/organizing/scanning — `jobKeepsFastCadence`, #806), 30 s idle **and during `processing`** (it can honestly last hours behind the review hold) | **paused** |
 | `AcquireService` | 2 s (and it self-stops when no job is active) | **60 s** |
 | `ServiceReviewService` | 5 s | paused |
 | `DownloadReviewService` | 30 s | paused |

@@ -19,6 +19,7 @@ import {
   reconcileOrganizedItems,
   recomputeStage,
   repointItem,
+  requestJobCancel,
   resolveJobAlbumId,
   supersedeActiveJobs,
   transferKeyFor,
@@ -417,6 +418,8 @@ describe('listJobFeed import fallback', () => {
       unavailable: 0,
       failed: 0,
       canonical: null,
+      bytesTransferred: null,
+      bytesTotal: null,
     });
   });
 });
@@ -1284,5 +1287,116 @@ describe('the idle valve runs on the tick, not only at boot (#710)', () => {
     );
     reapIdleItems(db);
     expect(getJob(db, old)).not.toBeNull();
+  });
+});
+
+describe('listJobFeed byte progress (#805)', () => {
+  function seedBytesJob(
+    items: Array<{ state: string; size?: number | null; bt?: number | null }>,
+  ): string {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'peer',
+      files: items.map((_, i) => ({ filename: `dir\\${i}.flac` })),
+    });
+    const rows = db
+      .query<{ id: number }, [string]>(
+        `SELECT id FROM acquisition_job_items WHERE job_id = ? ORDER BY id`,
+      )
+      .all(id);
+    items.forEach((item, i) => {
+      db.run(
+        `UPDATE acquisition_job_items SET state = ?, size_bytes = ?, bytes_transferred = ? WHERE id = ?`,
+        [item.state, item.size ?? null, item.bt ?? null, rows[i]!.id],
+      );
+    });
+    return id;
+  }
+
+  const feedProgress = (id: string) => listJobFeed(db).find((j) => j.id === id)!.progress;
+
+  it('sums clamped in-flight bytes over downloading items', () => {
+    const id = seedBytesJob([
+      { state: 'downloading', size: 100, bt: 40 },
+      { state: 'downloading', size: 100, bt: 0 },
+      // A broken addon reporting more than the size must not overflow the bar.
+      { state: 'downloading', size: 100, bt: 150 },
+    ]);
+    expect(feedProgress(id).bytesTotal).toBe(300);
+    expect(feedProgress(id).bytesTransferred).toBe(140);
+  });
+
+  it('counts on-disk items at full size regardless of stale bytes_transferred', () => {
+    const id = seedBytesJob([
+      { state: 'scanned', size: 100, bt: 10 },
+      { state: 'completed', size: 50 },
+      { state: 'downloading', size: 100, bt: 25 },
+    ]);
+    expect(feedProgress(id).bytesTotal).toBe(250);
+    expect(feedProgress(id).bytesTransferred).toBe(175);
+  });
+
+  it('excludes failed and unavailable items from both sides', () => {
+    const id = seedBytesJob([
+      { state: 'downloading', size: 100, bt: 30 },
+      { state: 'failed', size: 999, bt: 999 },
+      { state: 'unavailable', size: 999 },
+    ]);
+    expect(feedProgress(id).bytesTotal).toBe(100);
+    expect(feedProgress(id).bytesTransferred).toBe(30);
+  });
+
+  it('degrades to null when any deliverable item has no known size', () => {
+    const id = seedBytesJob([
+      { state: 'downloading', size: 100, bt: 40 },
+      { state: 'queued' }, // mirrored without a size
+    ]);
+    expect(feedProgress(id).bytesTotal).toBeNull();
+    expect(feedProgress(id).bytesTransferred).toBeNull();
+  });
+
+  it('is null for an item-less job', () => {
+    const id = createJob(db, { kind: 'url', method: 'ytdlp-addon' });
+    expect(feedProgress(id).bytesTotal).toBeNull();
+    expect(feedProgress(id).bytesTransferred).toBeNull();
+  });
+
+  it('createJob stores enqueue-time file sizes', () => {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'peer',
+      files: [{ filename: 'dir\\a.flac', size: 123 }],
+    });
+    const row = db
+      .query<{ size_bytes: number | null }, [string]>(
+        `SELECT size_bytes FROM acquisition_job_items WHERE job_id = ?`,
+      )
+      .get(id);
+    expect(row?.size_bytes).toBe(123);
+  });
+});
+
+describe('requestJobCancel (#806)', () => {
+  it('stamps the marker once and reports repeat requests', () => {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'peer',
+      files: [{ filename: 'dir\\a.flac' }],
+    });
+    expect(listJobFeed(db).find((j) => j.id === id)!.cancelRequested).toBe(false);
+
+    expect(requestJobCancel(db, id, 1000)).toBe(true);
+    expect(requestJobCancel(db, id, 2000)).toBe(false);
+
+    const row = db
+      .query<{ cancel_requested_at: number | null }, [string]>(
+        `SELECT cancel_requested_at FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(id);
+    expect(row?.cancel_requested_at).toBe(1000); // first stamp wins
+    expect(listJobFeed(db).find((j) => j.id === id)!.cancelRequested).toBe(true);
   });
 });

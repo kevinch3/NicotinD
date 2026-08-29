@@ -358,6 +358,17 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // Optional so legacy rows survive untouched; null renders as "no quality info".
   addColumnIfMissing(db, 'acquisition_job_items', 'bit_rate_kbps', 'INTEGER');
   addColumnIfMissing(db, 'acquisition_job_items', 'audio_format', 'TEXT');
+  // Byte-level progress mirrored from the addon protocol (issue #805) — the only
+  // signal that can show a 9-track album moving before the first whole file
+  // lands. Nullable: an addon that reports no bytes degrades the card to the
+  // whole-file count.
+  addColumnIfMissing(db, 'acquisition_job_items', 'size_bytes', 'INTEGER');
+  addColumnIfMissing(db, 'acquisition_job_items', 'bytes_transferred', 'INTEGER');
+  // Durable cancel intent (issue #806), stamped by the cancel route BEFORE any
+  // addon I/O: the feed shows "Cancelling…" instantly and idempotently, the
+  // poller stops re-pinning the job to `downloading`, and its grace valve
+  // closes a request the addon never acts on.
+  addColumnIfMissing(db, 'acquisition_jobs', 'cancel_requested_at', 'INTEGER');
 
   // The submitted URL for kind='url' jobs run by an **addon** (yt-dlp/spotdl/
   // archive). Those never get an `acquire_jobs` row — that table belongs to the

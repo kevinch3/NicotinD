@@ -9,6 +9,7 @@ import { formatQuality } from '../../lib/download-status';
 import { PipelineStageBadgeComponent } from '../pipeline-stage-badge/pipeline-stage-badge.component';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 import { timeAgo } from '../../lib/relative-time';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 /**
  * Layout-critical classes for the row, exported and *bound* (not hardcoded in
@@ -85,6 +86,16 @@ export function canShowNowNext(item: DownloadItem): boolean {
 }
 
 /**
+ * Cancel is underway for this row (#806): the request round-trip
+ * (`requestInFlight`, component-local) or the server's durable
+ * `cancelRequested` marker — instant feedback that also survives a reload.
+ * Exported so the gating contract is unit-testable without rendering.
+ */
+export function isCancelPending(item: DownloadItem, requestInFlight: boolean): boolean {
+  return requestInFlight || !!item.cancelRequested;
+}
+
+/**
  * One row in the unified Downloads feed. Renders the four facets the user asked
  * for — how (method badge), what stage, when (started), where (storage path,
  * tucked behind a toggle) — plus, once complete, an "Open in Library" deep-link
@@ -104,7 +115,7 @@ export function failureClassLabel(klass: FailureClass): string {
 @Component({
   selector: 'app-download-item',
   standalone: true,
-  imports: [PipelineStageBadgeComponent, RouterLink, MenuPanelComponent],
+  imports: [PipelineStageBadgeComponent, RouterLink, MenuPanelComponent, TranslatePipe],
   host: { '[class]': 'hostClass' },
   templateUrl: './download-item.component.html',
 })
@@ -114,6 +125,8 @@ export class DownloadItemComponent {
 
   readonly item = input.required<DownloadItem>();
   readonly retrying = input(false);
+  /** True while the parent's cancel request is in flight (#806). */
+  readonly cancelling = input(false);
 
   readonly retry = output<void>();
   readonly cancel = output<void>();
@@ -157,6 +170,9 @@ export class DownloadItemComponent {
   });
   /** Whether to show the "View N albums" menu on this row. */
   readonly showAlbumsMenu = computed(() => hasMultipleDestinationAlbums(this.item()));
+
+  /** Whether the row shows the "Cancelling…" chip instead of the X (#806). */
+  readonly cancelPending = computed(() => isCancelPending(this.item(), this.cancelling()));
 
   /** "Now: / Next:" track titles derived from this job's per-track statuses. */
   readonly nowNext = computed(() => currentAndNextTracks(this.item().tracks));

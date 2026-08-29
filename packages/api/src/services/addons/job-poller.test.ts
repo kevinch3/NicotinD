@@ -15,7 +15,7 @@ import {
   parseAddonJobId,
   sanitizeAddonError,
 } from './job-poller.js';
-import { createJob } from '../acquisition-job-store.js';
+import { createJob, requestJobCancel } from '../acquisition-job-store.js';
 import type { CompletedDownloadFile } from '../path-inference.js';
 
 const MANIFEST: AddonManifest = {
@@ -930,5 +930,120 @@ describe('stranded ingest — a job the poll cursor moved past (#725)', () => {
       .get()!;
     expect(job.state).toBe('failed');
     expect(job.stage).toBe('error');
+  });
+});
+
+describe('byte progress mirroring (#805)', () => {
+  it('mirrors size and bytesTransferred on insert and on update', async () => {
+    let jobsData = [
+      makeJob({
+        items: [{ ...makeJob().items[0]!, bytesTransferred: 40 }],
+      }),
+    ];
+    const h = harness(() => jobsData);
+    await h.registry.enable('fixture-addon', 'admin');
+    await h.poller.tick();
+
+    const item = () =>
+      h.db
+        .query<{ size_bytes: number | null; bytes_transferred: number | null }, []>(
+          `SELECT size_bytes, bytes_transferred FROM acquisition_job_items`,
+        )
+        .get()!;
+    expect(item().size_bytes).toBe(100);
+    expect(item().bytes_transferred).toBe(40);
+
+    jobsData = [
+      makeJob({
+        updatedAt: 3000,
+        items: [{ ...makeJob().items[0]!, bytesTransferred: 70, updatedAt: 3000 }],
+      }),
+    ];
+    await h.poller.tick();
+    expect(item().bytes_transferred).toBe(70);
+  });
+});
+
+describe('cancel intent (#806)', () => {
+  const coreJob = (h: ReturnType<typeof harness>) =>
+    h.db
+      .query<{ id: string; state: string; stage: string; error: string | null }, []>(
+        `SELECT id, state, stage, error FROM acquisition_jobs`,
+      )
+      .get()!;
+
+  it('stops mirroring and never re-pins a cancel-requested job while the addon is still active', async () => {
+    let jobsData = [makeJob()];
+    const h = harness(() => jobsData);
+    await h.registry.enable('fixture-addon', 'admin');
+    await h.poller.tick();
+
+    const { id } = coreJob(h);
+    expect(requestJobCancel(h.db, id)).toBe(true);
+    // Force a non-downloading stage: the next tick must not re-pin it.
+    h.db.run(`UPDATE acquisition_jobs SET stage = 'queued' WHERE id = ?`, [id]);
+    jobsData = [
+      makeJob({
+        updatedAt: 3000,
+        items: [{ ...makeJob().items[0]!, bytesTransferred: 99, updatedAt: 3000 }],
+      }),
+    ];
+    await h.poller.tick();
+
+    expect(coreJob(h).stage).toBe('queued');
+    const item = h.db
+      .query<{ bytes_transferred: number | null }, []>(
+        `SELECT bytes_transferred FROM acquisition_job_items`,
+      )
+      .get()!;
+    expect(item.bytes_transferred).toBeNull(); // mirror skipped
+  });
+
+  it('the grace valve closes a cancel request the addon never acted on', async () => {
+    const jobsData = [makeJob()];
+    const h = harness(() => jobsData);
+    await h.registry.enable('fixture-addon', 'admin');
+    await h.poller.tick();
+
+    const { id } = coreJob(h);
+    requestJobCancel(h.db, id, Date.now() - 120_000); // well past the grace period
+    await h.poller.tick();
+
+    const after = coreJob(h);
+    expect(after.state).not.toBe('active');
+    expect(after.error && after.error.length > 0).toBe(true);
+    const item = h.db
+      .query<{ state: string }, []>(`SELECT state FROM acquisition_job_items`)
+      .get()!;
+    expect(item.state).toBe('unavailable');
+
+    // The addon still lists the job as active — the closed row must stay closed.
+    await h.poller.tick();
+    expect(coreJob(h).state).toBe(after.state);
+  });
+
+  it("the addon's own cancelled verdict still closes the job through the normal path", async () => {
+    let jobsData = [makeJob()];
+    const h = harness(() => jobsData);
+    await h.registry.enable('fixture-addon', 'admin');
+    await h.poller.tick();
+
+    const { id } = coreJob(h);
+    requestJobCancel(h.db, id);
+    jobsData = [
+      makeJob({
+        state: 'cancelled',
+        updatedAt: 3000,
+        items: [{ ...makeJob().items[0]!, updatedAt: 3000 }],
+      }),
+    ];
+    await h.poller.tick();
+
+    const after = coreJob(h);
+    expect(after.state).not.toBe('active');
+    const item = h.db
+      .query<{ state: string }, []>(`SELECT state FROM acquisition_job_items`)
+      .get()!;
+    expect(item.state).toBe('unavailable');
   });
 });

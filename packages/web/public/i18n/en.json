@@ -440,6 +440,7 @@
   "downloads.stage.organizing": "Organizing",
   "downloads.stage.scanning": "Scanning",
   "downloads.stage.processing": "Processing",
+  "downloads.cancelling": "Cancelling…",
   "downloads.stage.done": "Done",
   "downloads.stage.error": "Error",
   "errors.accountDisabled": "Account disabled",

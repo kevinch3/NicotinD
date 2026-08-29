@@ -10,6 +10,27 @@ import { createVisibilityPoller, type VisibilityPoller } from '../lib/visibility
 
 export type { TransferEntry } from '../lib/transfer-types';
 
+/**
+ * Stages that keep the fast 3 s poll cadence (#806). Not just `downloading`:
+ * the moment a cancel or completion moved a job to organizing/scanning the
+ * poll used to drop to 30 s — exactly when the user is watching for the
+ * change. `processing` stays on the slow tier on purpose: behind the review
+ * hold it can honestly last hours (docs/web-ui.md cadence table).
+ */
+const FAST_POLL_STAGES: ReadonlySet<string> = new Set([
+  'resolving',
+  'queued',
+  'downloading',
+  'organizing',
+  'scanning',
+]);
+
+/** Whether one network job keeps the poller on the fast cadence. Exported pure
+ *  so the cadence rule is unit-testable without the service. */
+export function jobKeepsFastCadence(job: AcquisitionJobView): boolean {
+  return job.kind !== 'url' && job.state === 'active' && FAST_POLL_STAGES.has(job.stage);
+}
+
 /** Map a feed item status onto the transfer-state vocabulary the result cards
  *  key their lifecycle on (the raw slskd states, kept for compatibility). */
 function itemStatusToTransferState(status: string): string {
@@ -176,7 +197,7 @@ export class TransferService {
   }
 
   private get hasActive(): boolean {
-    if (this.activeDownloadCount() > 0) return true;
+    if (this.acquisitionJobs().some(jobKeepsFastCadence)) return true;
     return this.acquireJobs().some((j) => j.state === 'queued' || j.state === 'running');
   }
 
