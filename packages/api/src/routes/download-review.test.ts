@@ -729,3 +729,114 @@ describe('download-review identify + retag routes', () => {
     expect(writeTags).not.toHaveBeenCalled();
   });
 });
+
+describe('bulk approve/discard (#808)', () => {
+  const decisions = () =>
+    testDb
+      .query<{ album_id: string; state: string }, []>(
+        `SELECT album_id, state FROM download_reviews ORDER BY album_id`,
+      )
+      .all();
+  const auditCount = (action: string) =>
+    (
+      testDb
+        .query<{ n: number }, [string]>(`SELECT COUNT(*) n FROM audit_log WHERE action = ?`)
+        .get(action) ?? { n: 0 }
+    ).n;
+
+  it('approve-all records N decisions + N audit rows in one request and kicks the drain', async () => {
+    seedAlbum('b1', 'bs1');
+    seedAlbum('b2', 'bs2');
+    const kickEager = mock(() => Promise.resolve());
+    const app = authed(downloadReviewRoutes({ shareRescan: noopScheduler(), kickEager }));
+
+    const res = await app.request('/albums/approve-all', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ albumIds: ['b1', 'b2', 'gone'] }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { approved: string[]; notFound: string[] };
+    expect(body.approved.sort()).toEqual(['b1', 'b2']);
+    expect(body.notFound).toEqual(['gone']);
+    // Per-album audit granularity — the fan-out design's rationale, preserved.
+    expect(auditCount('download_review.approve')).toBe(2);
+    expect(decisions().map((d) => d.album_id)).toEqual(['b1', 'b2']);
+    // The nonexistent id minted NO orphan decision row.
+    expect(decisions().find((d) => d.album_id === 'gone')).toBeUndefined();
+    expect(kickEager).toHaveBeenCalledTimes(1);
+
+    // Idempotent repeat: upserts, no duplicates, still 200.
+    const again = await app.request('/albums/approve-all', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ albumIds: ['b1', 'b2'] }),
+    });
+    expect(again.status).toBe(200);
+    expect(decisions()).toHaveLength(2);
+  });
+
+  it('approve-all never claims landed and never calls landAlbumNow', async () => {
+    seedAlbum('b1', 'bs1');
+    const landAlbumNow = mock(() =>
+      Promise.resolve({ landed: true, timedOut: false, pendingSongCount: 0, pendingTasks: [] }),
+    );
+    const app = authed(downloadReviewRoutes({ shareRescan: noopScheduler(), landAlbumNow }));
+    const res = await app.request('/albums/approve-all', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ albumIds: ['b1'] }),
+    });
+    expect(res.status).toBe(200);
+    expect('landed' in ((await res.json()) as object)).toBe(false);
+    expect(landAlbumNow).not.toHaveBeenCalled();
+  });
+
+  it('discard-all deletes each album and records its decision', async () => {
+    seedAlbum('b1', 'bs1');
+    seedAlbum('b2', 'bs2');
+    const app = authed(downloadReviewRoutes({ shareRescan: noopScheduler() }));
+    const res = await app.request('/albums/discard-all', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ albumIds: ['b1', 'b2', 'gone'] }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      discarded: string[];
+      notFound: string[];
+      failed: string[];
+    };
+    expect(body.discarded.sort()).toEqual(['b1', 'b2']);
+    expect(body.notFound).toEqual(['gone']);
+    expect(body.failed).toEqual([]);
+    expect(testDb.query(`SELECT id FROM library_albums`).all()).toHaveLength(0);
+    expect(decisions().every((d) => d.state === 'discarded')).toBe(true);
+    expect(auditCount('download_review.discard')).toBe(2);
+  });
+
+  it('rejects an empty or oversized id list', async () => {
+    const app = authed(downloadReviewRoutes({ shareRescan: noopScheduler() }));
+    const empty = await app.request('/albums/approve-all', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(empty.status).toBe(400);
+    const huge = await app.request('/albums/approve-all', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ albumIds: Array.from({ length: 501 }, (_, i) => `a${i}`) }),
+    });
+    expect(huge.status).toBe(400);
+  });
+
+  it('single approve 404s a nonexistent album and mints no decision row (approve-after-discard)', async () => {
+    const app = authed(downloadReviewRoutes({ shareRescan: noopScheduler() }));
+    const res = await app.request('/albums/deleted-by-a-concurrent-discard/approve', {
+      method: 'POST',
+    });
+    expect(res.status).toBe(404);
+    expect(decisions()).toHaveLength(0);
+  });
+});

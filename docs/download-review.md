@@ -191,6 +191,8 @@ case it).
 | `GET /count` | `{ pending: number }` — backs the nav badge + inbox poller. Returns `{ pending: 0 }` when `holdForReview` is off or the bootstrap marker hasn't armed yet (same gating as `/queue`). |
 | `POST /albums/:id/approve` | Records an `approved` decision, audits `download_review.approve`, then **awaits `landAlbumNow`** (issue #708) so the album shows up in the library essentially immediately instead of waiting on the next window tick. Idempotent (upsert on `album_id`). Response is `{ ok: true, landed: true }` (200) once landed, or `{ ok: true, landed: false, timedOut, pendingTasks, pendingSongCount }` (202) if it's still processing — the approve decision itself always succeeds either way; `landed` only reports visibility. |
 | `POST /albums/:id/discard` | Runs the **shared** `deleteAlbum` (same function library delete + the MCP delete tool use — `services/library-deletion.ts`), then records a `discarded` decision, audits `download_review.discard`. |
+| `POST /albums/approve-all` | Bulk approve (#808): body `{ albumIds }` (≤500, the client's confirmed snapshot). One transaction — per id an exists check (a missing id lands in `notFound` and mints **no** orphan decision row, closing the approve-after-discard hole), then decision + per-album audit. Fire-and-forgets `kickEager`; responds `{ approved, notFound }` in milliseconds with **no** `landed` claims. Single approve gained the same exists check (404). |
+| `POST /albums/discard-all` | Bulk discard (#808): same body shape; `deleteAlbum` + decision + audit run sequentially inside the handler; responds `{ discarded, notFound, failed }`. |
 | `POST /songs/:id/identify` | Fingerprint one track via the enabled `identify` plugin (AcoustID). 503 if no plugin/music dir configured. |
 | `POST /albums/:id/identify` | Fingerprints up to 5 quarantined tracks for the album sequentially (rate-limit-friendly), returns each track's result plus a majority-vote album guess (`voteAlbumIdentity`: needs ≥2 votes **and** more than half of successful results to agree — a lone match or a tie suggests nothing). |
 | `POST /albums/:id/tracks` | Per-track retag (title/artist), writes tags to the file, then an incremental rescan. A track with no fields to update fails with `'No fields to update'`; other tracks in the same request still get written (partial success surfaces per-track). Audits `download_review.retag`. |
@@ -462,18 +464,31 @@ even issues the `GET /api/review/count` request.
   didn't) surfaces via a `review.tracksPartial` message and **keeps the modal
   open** rather than closing on a half-success, so the curator can see and
   retry the failed rows.
-- **Bulk sweep + mobile layout (issue #592).** The section header carries
-  `review-approve-all` / `review-discard-all`. Both are confirmed through
-  `ConfirmService` with the queue count named, because prod reached 34 pending
-  albums with no way to clear the queue but one card at a time. `runBulk` fans
-  out over the *existing* per-album routes rather than a new bulk endpoint:
-  each already writes its own audit row, and per-album audit granularity is
-  worth more for a destructive mass action than the atomicity one route would
-  buy. It runs **sequentially** (34 simultaneous deletes is not a reasonable
-  thing to emit) and **never aborts on a failure** — the point of a bulk action
-  is not having to retry the remainder by hand — so the outcome is reported as
-  `review.bulkDone` or `review.bulkPartial`, and `bulkBusy()` disables both
-  buttons for the duration.
+- **Bulk sweep + mobile layout (issues #592, #808).** The section header carries
+  `review-approve-all` / `review-discard-all`, confirmed through `ConfirmService`
+  with the queue count named — prod reached 34 pending albums with no way to
+  clear the queue but one card at a time. Since #808, `runBulk` sends **one**
+  server request (`POST /albums/approve-all` / `/albums/discard-all`, body an
+  explicit `albumIds` snapshot — the count the curator confirmed is what gets
+  acted on). The original fan-out over per-album routes was designed before #708
+  made every approve block ~8 s on `landAlbumNow`: a 54-album sweep took
+  minutes, nothing decremented the count mid-sweep, and a reload silently
+  stranded the remainder ("Approve all (54)" → reload → "Approve all (45)",
+  observed 2026-08-29). Its stated rationale — per-album audit granularity — is
+  preserved server-side: the bulk routes write one audit row per album.
+  Approve-all records decisions transactionally in milliseconds and
+  fire-and-forgets `kickEager` (**never** `landAlbumNow`, and never any `landed`
+  claim — #708's `noteAlbumsLanded` rule; the background drain lands the albums
+  within ≤60 s, which #807 guarantees in every processing config). Discard-all
+  runs `deleteAlbum` sequentially *inside* the handler — the "34 simultaneous
+  deletes" concern holds, it just never required 34 round-trips. Client side:
+  `dropFromQueue` decrements the count the moment the response lands,
+  `forceRefresh` bypasses the poller's coalesced in-flight promise (which used
+  to hand the post-sweep refresh pre-sweep data), `bulkBusy()` disables the bulk
+  buttons and — with the per-album `busyAlbums` set that also guards single
+  actions against double-clicks — every per-row button too; errors surface as
+  toasts (`review.actionFailed`, a 404 drops the stale row via
+  `review.alreadyRemoved`) instead of being swallowed.
   The card itself stacks on a phone (`flex-col … sm:flex-row`): the four
   actions used to sit in a `shrink-0` row whose ~300 px minimum overflowed a
   360 px viewport and clipped **Discard** off the right edge, unreachable.

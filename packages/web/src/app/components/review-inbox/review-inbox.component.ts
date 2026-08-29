@@ -12,6 +12,7 @@ import { TransferService } from '../../services/transfer.service';
 import { PlayerService } from '../../services/player.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { toTrack } from '../../lib/track-utils';
+import { httpErrorMessage } from '../../lib/http-error';
 import type {
   QuarantineSong,
   ReviewQueueAlbum,
@@ -83,6 +84,9 @@ export class ReviewInboxComponent implements OnDestroy {
 
   /** True while a bulk approve/discard sweep is in flight — disables both bulk buttons. */
   readonly bulkBusy = signal(false);
+  /** Albums with a single-item action in flight (#808) — per-row disabling +
+   *  re-entrancy guard (double-clicking a card used to fire two POSTs). */
+  readonly busyAlbums = signal(new Set<string>());
 
   private stopStart: () => void;
   private stopWatch: () => void;
@@ -124,18 +128,52 @@ export class ReviewInboxComponent implements OnDestroy {
     this.fixRequested.emit(album);
   }
 
+  /** Claim the per-row busy slot, or report the action is already covered. */
+  private claimBusy(albumId: string): boolean {
+    if (this.bulkBusy() || this.busyAlbums().has(albumId)) return false;
+    this.busyAlbums.update((s) => new Set(s).add(albumId));
+    return true;
+  }
+
+  private releaseBusy(albumId: string): void {
+    this.busyAlbums.update((s) => {
+      const next = new Set(s);
+      next.delete(albumId);
+      return next;
+    });
+  }
+
+  /** Errors are surfaced, never swallowed (#808): a 404 means a concurrent
+   *  decision already removed the album — drop the stale row; anything else
+   *  toasts so the curator knows the click did not stick. */
+  private surfaceActionError(err: unknown, albumId: string): void {
+    if ((err as { status?: number }).status === 404) {
+      this.review.dropFromQueue([albumId]);
+      this.toast.show({ message: this.i18n.t('review.alreadyRemoved'), kind: 'error' });
+      return;
+    }
+    this.toast.show({
+      message: httpErrorMessage(err, this.i18n.t('review.actionFailed')),
+      kind: 'error',
+    });
+  }
+
   async approve(album: ReviewQueueAlbum): Promise<void> {
+    if (!this.claimBusy(album.albumId)) return;
     try {
       const res = await firstValueFrom(this.api.approve(album.albumId));
-      await this.review.refresh();
+      this.review.dropFromQueue([album.albumId]);
+      await this.review.forceRefresh();
       this.transfers.markLibraryDirty();
       // Only ever claim landed visibility the server actually confirmed
       // (issue #708) — a timed-out/still-processing approve still succeeds
       // as a decision, it just doesn't light up the Library banner yet.
       if (res.landed) this.transfers.noteAlbumsLanded([album.albumId]);
       this.toast.show({ message: this.i18n.t('review.approved'), kind: 'success' });
-    } catch {
-      // Leave the album in the queue; the curator can retry.
+    } catch (err) {
+      this.surfaceActionError(err, album.albumId);
+    } finally {
+      this.releaseBusy(album.albumId);
     }
   }
 
@@ -144,13 +182,17 @@ export class ReviewInboxComponent implements OnDestroy {
       this.i18n.t('review.confirmDiscard', { album: album.albumTitle }),
     );
     if (!ok) return;
+    if (!this.claimBusy(album.albumId)) return;
     try {
       await firstValueFrom(this.api.discard(album.albumId));
-      await this.review.refresh();
+      this.review.dropFromQueue([album.albumId]);
+      await this.review.forceRefresh();
       this.transfers.markLibraryDirty();
       this.toast.show({ message: this.i18n.t('review.discarded'), kind: 'success' });
-    } catch {
-      // Leave the album in the queue; the curator can retry.
+    } catch (err) {
+      this.surfaceActionError(err, album.albumId);
+    } finally {
+      this.releaseBusy(album.albumId);
     }
   }
 
@@ -165,48 +207,61 @@ export class ReviewInboxComponent implements OnDestroy {
   }
 
   /**
-   * Shared bulk sweep. Deliberately fans out over the *existing* per-album
-   * endpoints rather than adding a bulk route: each one already records its own
-   * audit entry, and per-album granularity is worth more for a destructive mass
-   * action than the atomicity a single route would buy. Runs sequentially (a
-   * queue of 34 shouldn't arrive as 34 simultaneous deletes) and never aborts on
-   * a failure — the point of a bulk action is not having to retry the rest by
-   * hand — so the outcome is reported as a count, partial or complete.
+   * Shared bulk sweep (#808): ONE server request per action. The old design
+   * fanned out N per-album POSTs — written before #708 made each approve block
+   * ~8 s on `landAlbumNow`, so a 54-album sweep took minutes, a mid-sweep
+   * reload stranded the remainder, and the count never moved. The per-album
+   * audit granularity the fan-out existed for is preserved server-side; the
+   * explicit id snapshot means the count the curator confirmed is what gets
+   * acted on. Bulk approve NEVER claims landed (#708's rule — the background
+   * drain lands them within ≤60 s, #807), so `noteAlbumsLanded` is not called.
    */
   private async runBulk(action: 'approve' | 'discard'): Promise<void> {
     if (this.bulkBusy()) return;
-    const albums = [...this.queue()];
-    if (albums.length === 0) return;
+    const ids = this.queue().map((a) => a.albumId);
+    if (ids.length === 0) return;
     const confirmKey =
       action === 'approve' ? 'review.confirmApproveAll' : 'review.confirmDiscardAll';
-    const ok = await this.confirm.ask(this.i18n.t(confirmKey, { count: albums.length }));
+    const ok = await this.confirm.ask(this.i18n.t(confirmKey, { count: ids.length }));
     if (!ok) return;
 
     this.bulkBusy.set(true);
-    let failed = 0;
-    const landedAlbumIds: string[] = [];
     try {
-      for (const album of albums) {
-        try {
-          if (action === 'approve') {
-            const res = await firstValueFrom(this.api.approve(album.albumId));
-            if (res.landed) landedAlbumIds.push(album.albumId);
-          } else {
-            await firstValueFrom(this.api.discard(album.albumId));
-          }
-        } catch {
-          failed++;
-        }
+      if (action === 'approve') {
+        const res = await firstValueFrom(this.api.approveAll(ids));
+        this.review.dropFromQueue([...res.approved, ...res.notFound]);
+        this.transfers.markLibraryDirty();
+        this.toast.show({
+          message: this.i18n.t('review.bulkApproved', { count: res.approved.length }),
+          kind: 'success',
+        });
+      } else {
+        const res = await firstValueFrom(this.api.discardAll(ids));
+        this.review.dropFromQueue([...res.discarded, ...res.notFound]);
+        this.transfers.markLibraryDirty();
+        this.toast.show(
+          res.failed.length > 0
+            ? {
+                message: this.i18n.t('review.bulkPartial', {
+                  done: res.discarded.length,
+                  failed: res.failed.length,
+                }),
+                kind: 'error',
+              }
+            : {
+                message: this.i18n.t('review.bulkDone', { count: res.discarded.length }),
+                kind: 'success',
+              },
+        );
       }
-      await this.review.refresh();
-      this.transfers.markLibraryDirty();
-      this.transfers.noteAlbumsLanded(landedAlbumIds);
-      const done = albums.length - failed;
-      this.toast.show(
-        failed > 0
-          ? { message: this.i18n.t('review.bulkPartial', { done, failed }), kind: 'error' }
-          : { message: this.i18n.t('review.bulkDone', { count: done }), kind: 'success' },
-      );
+      await this.review.forceRefresh();
+    } catch (err) {
+      // One failed request is one legible error — never a silently-swallowed
+      // partial sweep.
+      this.toast.show({
+        message: httpErrorMessage(err, this.i18n.t('review.actionFailed')),
+        kind: 'error',
+      });
     } finally {
       this.bulkBusy.set(false);
     }

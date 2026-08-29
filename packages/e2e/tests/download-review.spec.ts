@@ -81,6 +81,49 @@ test.describe('download review inbox', () => {
       .toBe(0);
   });
 
+  // #808: "Approve all" is one bulk request now — the count drops immediately
+  // and no reload can strand a half-swept queue (the old client loop of
+  // blocking per-album POSTs took minutes and died with the page).
+  test('Approve all clears the queue in one request, live', async ({ page, request }) => {
+    const login = await request.post('/api/auth/login', { data: ADMIN });
+    const token = ((await login.json()) as { token: string }).token;
+    await request.put('/api/admin/processing', {
+      headers: bearer(token),
+      data: { holdForReview: true },
+    });
+
+    cpSync(SRC, join(REVIEW_DIR, 'review-track.flac'));
+    await scanAndWait(request, token);
+    await expect
+      .poll(
+        async () =>
+          (
+            (await (await request.get('/api/review/count', { headers: bearer(token) })).json()) as {
+              pending: number;
+            }
+          ).pending,
+      )
+      .toBeGreaterThan(0);
+
+    await page.goto('/downloads');
+    await page.getByTestId('review-approve-all').click();
+    await page.getByTestId('confirm-ok').click();
+
+    // The inbox empties without any reload — the optimistic drop + the bulk
+    // response, not a 30 s poll, own the count.
+    await expect(page.getByTestId('review-inbox')).toHaveCount(0, { timeout: 15_000 });
+    await expect
+      .poll(
+        async () =>
+          (
+            (await (await request.get('/api/review/count', { headers: bearer(token) })).json()) as {
+              pending: number;
+            }
+          ).pending,
+      )
+      .toBe(0);
+  });
+
   // Issue #415: the discard half of the flow, at the e2e level (route-tested
   // before). Discard must delete the held files from disk, not just dismiss
   // the inbox row.
