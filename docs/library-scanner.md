@@ -530,3 +530,19 @@ bun run packages/api/src/scripts/append-genre-backfill.ts               # dry ru
 bun run packages/api/src/scripts/append-genre-backfill.ts --apply       # write DB + tags
 bun run packages/api/src/scripts/append-genre-backfill.ts --apply --limit 500
 ```
+
+**`scripts/normalize-titles.ts` — applies `cleanDisplayTitle` to titles already in the library** (issue #775). The cleaner only ever ran on the way *in* (the organizer at ingest, and the advisory `suggested` field of `lookup_song_metadata`), so anything that landed before #722 — or was imported rather than organized — kept its junk title forever. The pure `planTitleNormalization` selects only the rows the cleaner actually rewrites; `--apply` puts each one through `mutateSongMetadata`, the same write `fix_song_metadata` uses (tag write → rescan → **verify**), never a direct `UPDATE` — a title lives in the file, so a DB-only write is reverted by the next scan. Counts only a change that verified, and appends every applied change to `<dataDir>/normalize-titles.log`.
+
+`shouldStopAfterFailures` is the apply loop's circuit breaker, and both of its halves are load-bearing: it aborts only once failures pass an absolute floor (5) **and** exceed a strict majority of attempts. A run can cover thousands of songs, and #776 proved a whole *class* of write can fail silently and systematically — 407 albums pinned to a canonical tracklist vetoed every retag on them — so grinding on would achieve nothing and bury the signal. The floor alone would abort a good long run on one missing file; the ratio alone would fire on the first two failures of a short one. Neither fires without the other.
+
+Run it **before** any dedupe sweep: normalizing is what makes `El Sucu Tucu (Official Video) 'The Visitor' Album` and `El Sucu Tucu` comparable at all — after it, Matias Aguayo showed four identical `El Sucu Tucu`.
+
+```bash
+bun run packages/api/src/scripts/normalize-titles.ts                     # dry run
+bun run packages/api/src/scripts/normalize-titles.ts --apply
+bun run packages/api/src/scripts/normalize-titles.ts --apply --limit=50
+```
+
+**Vocabulary (`services/title-clean.ts`).** A bracketed segment or `- X` / `| X` tail is removed only when **every** word in it is junk and at least one is CORE, which is what keeps `(Remix)`, `(En Vivo)`, `(feat. X)` and mixed segments like `(Official Video Remix)` intact. CORE names the artifact itself (video/audio/visualizer/lyric/letra/videoclip/hd/hq/4k/1080p/720p, plus `remaster`/`remastered`/`remasterd`/`remastering`); MODIFIER only ever qualifies one (official/oficial/music/full/version/edition) and a four-digit year. The year had to become a MODIFIER rather than CORE: `(Remastered 2009)` tokenises to `remastered` + `2009`, so a bare year would otherwise make the segment non-junk — but a year alone must never strip, so `(1999)` and `- 2003` survive. Apostrophes are dropped before tokenising so `Remaster'd` is one token instead of `remaster` + a bare `d`.
+
+This conservatism is load-bearing, not incidental. Evanescence carries *Bring Me To Life* four times distinguished **only** by the suffix — `- Remastered 2023`, `- Demo / Remastered 2023`, `- AOL Session / 2003 / Remastered`, `- Live On Triple M's Garage Session / 2020 / Remastered 2023`. Because `demo`/`session`/`live` are not junk, only the first collapses and the four stay distinct; stripping the whole tail would turn them into four identical titles that a later dedupe pass would read as duplicates. Segments stay atomic for the same reason: `Fallen (Deluxe Edition / Remastered 2023)` is left whole rather than reduced to `Fallen`, because an edition marker can carry bonus tracks. `title-clean.test.ts` holds the Evanescence cluster as the regression.

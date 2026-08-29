@@ -219,6 +219,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `album_jobs` filters which *new* files an album admits; a file in `knownRelPaths` is never dropped
   as foreign, so a curator's title edit is not silently reverted. `selectAlbumTracks`,
   `LibraryScanner.knownRelPaths`. → [library-scanner.md](docs/library-scanner.md)
+- **Title cleanup runs over the existing library too**: `cleanDisplayTitle` covers reissue labels
+  (`remaster*`, year/`version`/`edition` as modifiers) and `normalize-titles.ts` applies it to rows
+  already stored, through the verified retag path. `planTitleNormalization`.
+  → [library-scanner.md](docs/library-scanner.md)
 - **VA / compilation handling**: `resolveTags` separates `albumArtist` from `trackArtist`;
   `classifyFolder` detects compilations; dedicated Compilations tab, VA hidden from artists.
   → [library-scanner.md](docs/library-scanner.md)

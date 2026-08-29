@@ -37,7 +37,6 @@ describe('cleanDisplayTitle', () => {
     'Amor (feat. CERES)',
     'Ella Y Yo (ft. Don Omar)',
     'Rakata (Salsa Version)',
-    'Gasolina (Remastered 2009)',
     'Down (Acoustic)',
     // Label / edition brackets are not junk — a human decides.
     'Start Of Madness [Drumcode]',
@@ -85,5 +84,60 @@ describe('cleanDisplayTitle', () => {
 
   it('returns the input verbatim when there is nothing to strip', () => {
     expect(cleanDisplayTitle('Dancing Thing')).toEqual({ cleaned: 'Dancing Thing', removed: [] });
+  });
+});
+
+// Issue #775: remaster labels were absent from the vocabulary entirely, so
+// several hundred rows kept them. Adding `remastered` to CORE alone is not
+// enough — "(Remastered 2009)" tokenises to `remastered` + `2009`, and the bare
+// year made the segment non-junk. Year-like tokens, `version` and `edition`
+// therefore count as MODIFIERs.
+describe('cleanDisplayTitle — remaster labels', () => {
+  it('strips a bare remaster segment', () => {
+    expect(cleanDisplayTitle('About a Girl (Remastered)').cleaned).toBe('About a Girl');
+  });
+
+  it('strips a remaster tail carrying a year', () => {
+    expect(cleanDisplayTitle('Help! - Remastered 2009').cleaned).toBe('Help!');
+  });
+
+  it('strips a year + remaster + version tail', () => {
+    expect(cleanDisplayTitle('Asturias - 2006 Remastered Version').cleaned).toBe('Asturias');
+  });
+
+  it("strips the stylised Remaster'd", () => {
+    expect(cleanDisplayTitle("Sunshine (Remaster'd)").cleaned).toBe('Sunshine');
+  });
+
+  it('leaves a bare year alone — a year is only ever a modifier', () => {
+    expect(cleanDisplayTitle('Nineteen (1999)').cleaned).toBe('Nineteen (1999)');
+    expect(cleanDisplayTitle('Summer - 2003').cleaned).toBe('Summer - 2003');
+  });
+
+  it('leaves an edition marker that may carry bonus tracks', () => {
+    expect(cleanDisplayTitle('Fallen (Deluxe Edition)').cleaned).toBe('Fallen (Deluxe Edition)');
+    expect(cleanDisplayTitle('Fallen (Deluxe Edition / Remastered 2023)').cleaned).toBe(
+      'Fallen (Deluxe Edition / Remastered 2023)',
+    );
+  });
+
+  // The load-bearing regression: these four are distinguished ONLY by the
+  // suffix. Stripping the whole tail would collapse them into four identical
+  // titles, and a later dedupe pass would read them as duplicates.
+  it('keeps the Evanescence variants distinct', () => {
+    const variants = [
+      'Bring Me To Life - Remastered 2023',
+      'Bring Me To Life - Demo / Remastered 2023',
+      'Bring Me To Life - AOL Session / 2003 / Remastered',
+      "Bring Me To Life - Live On Triple M's Garage Session / 2020 / Remastered 2023",
+    ].map((t) => cleanDisplayTitle(t).cleaned);
+
+    expect(variants[0]).toBe('Bring Me To Life');
+    expect(variants[1]).toBe('Bring Me To Life - Demo / Remastered 2023');
+    expect(variants[2]).toBe('Bring Me To Life - AOL Session / 2003 / Remastered');
+    expect(variants[3]).toBe(
+      "Bring Me To Life - Live On Triple M's Garage Session / 2020 / Remastered 2023",
+    );
+    expect(new Set(variants).size).toBe(4);
   });
 });
