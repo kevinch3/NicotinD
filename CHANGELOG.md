@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.36](https://github.com/kevinch3/NicotinD/compare/v0.5.35...v0.5.36) (2026-08-29)
+
+### Features
+
+* **polls:** seek bar on the playing preview ([#804](https://github.com/kevinch3/NicotinD/issues/804)) ([2092fd5](https://github.com/kevinch3/NicotinD/commit/2092fd5487c2690dd312488e21bde0593779fa1a)), references [#803](https://github.com/kevinch3/NicotinD/issues/803)
 ## [0.5.35](https://github.com/kevinch3/NicotinD/compare/v0.5.34...v0.5.35) (2026-08-29)
 
 ### Features
