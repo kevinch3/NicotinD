@@ -108,7 +108,7 @@ carrying a second copy.
 | Cap | Value | Set from |
 |---|---|---|
 | `MAX_ENTRY_CHARS` | 440 | measured max **prose** 371 after the restructure |
-| `MAX_FILE_BYTES` | 60,000 | measured 50 KB, leaving room for ~35 more entries |
+| `MAX_FILE_BYTES` | 65,000 | measured 50 KB at the restructure (cap 60,000); raised 2026-08-29 at 55.3 KB / 151 entries — growth was new entries, not narrative |
 | `MIN_PLAUSIBLE_ENTRIES` | 60 | the gate's own denominator (139 parse today) |
 
 Entry length is measured with **whitespace collapsed**, so re-wrapping a line

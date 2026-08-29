@@ -111,9 +111,14 @@ export const EXTERNAL_SYMBOLS = new Map<string, string>([
  * reflexively, and a threshold nobody believes is a threshold nobody enforces.
  * Neither cap is a law of nature: raising one is fine, but it should be a commit
  * that says why, which is exactly what an un-measured prose rule never forced.
+ *
+ * Raised 60 KB → 65 KB on 2026-08-29, measured at 151 entries / 55.3 KB with
+ * median prose 246 and max 387: the growth since the baseline is twelve new
+ * index entries, not narrative regrowth, and the old cap fell inside the test's
+ * 5 KB headroom floor. ~26 more entries fit again at the current average.
  */
 export const MAX_ENTRY_CHARS = 440;
-export const MAX_FILE_BYTES = 60_000;
+export const MAX_FILE_BYTES = 65_000;
 
 /**
  * The gate's denominator. If entry parsing silently found nothing — a heading

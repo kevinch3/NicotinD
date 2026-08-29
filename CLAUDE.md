@@ -120,6 +120,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   default-off; in-process plugins are spotify/lrclib/discogs/acoustid, built in
   `registerBuiltinPlugins`. `ADDON_CATALOG` + `promotePendingAddons` back one-click install.
   → [plugins.md](docs/plugins.md)
+- **Peer Share (proposed — not yet implemented)**: a NicotinD instance would serve its own library
+  over `/addon/v1` so another instance registers it like any addon — peer results blend via
+  `AddonSearchProvider`, land through `AddonJobPoller`, and every job item is fileReady at creation.
+  Read the doc as the pitch it is. → [peer-share.md](docs/peer-share.md)
 - **Album hunt** — *addon-owned*: `AlbumHunterService`, `huntBase`, `searchAndScore`,
   `isBloatedFolder`, `FallbackHost`, `isStalled`, `stallThresholdMs` and `TransferPoller` live in the
   `kevinch3/nicotind-slskd-addon` repo, not here. Core keeps `buildSkewedQueries`/`buildTrackQueries`.
