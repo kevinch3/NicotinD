@@ -452,3 +452,137 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
     );
   });
 });
+
+describe('POST /jobs/:id/discard-partial (#810)', () => {
+  const DEPS = {
+    musicDir: '/tmp/nicotind-discard-test-music',
+    shareRescan: { schedule: () => {} } as never,
+  };
+
+  function makeDiscardApp(user: { sub: string; role: string }) {
+    const app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { ...user, iat: 0, exp: 9999999999 } as never);
+      return next();
+    });
+    app.route('/', downloadRoutes(new ProviderRegistry(), undefined, DEPS));
+    return app;
+  }
+
+  function seedSong(id: string, albumId: string): void {
+    testDb.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+       VALUES (?, ?, ?, 'Artist', 'art', 0, ?, 10, 320, 'opus', 'audio/opus', '2024-01-01', 1)`,
+      [id, albumId, `T-${id}`, `Artist/Album/${id}.opus`],
+    );
+  }
+
+  /** A job owned by `userId` whose single item landed song `songId`. */
+  function seedJob(userId: string | null, songId: string): string {
+    const jobId = createJob(testDb, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      userId,
+      username: 'peer',
+      files: [{ filename: `a\\${songId}.opus` }],
+    });
+    testDb.run(
+      `UPDATE acquisition_job_items SET state = 'scanned', song_id = ?, relative_path = ? WHERE job_id = ?`,
+      [songId, `Artist/Album/${songId}.opus`, jobId],
+    );
+    return jobId;
+  }
+
+  const songExists = (id: string) =>
+    testDb.query(`SELECT id FROM library_songs WHERE id = ?`).get(id) !== null;
+
+  beforeEach(() => {
+    testDb.run('DELETE FROM acquisition_job_items');
+    testDb.run('DELETE FROM acquisition_jobs');
+    testDb.run('DELETE FROM library_songs');
+    testDb.run('DELETE FROM library_albums');
+    testDb.run('DELETE FROM audit_log');
+  });
+
+  it('the job owner may discard their own partial, even below refiner', async () => {
+    seedSong('s1', 'alb1');
+    const jobId = seedJob('owner-1', 's1');
+    const app = makeDiscardApp({ sub: 'owner-1', role: 'user' });
+
+    const res = await app.request(`/jobs/${jobId}/discard-partial`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { deletedCount: number }).deletedCount).toBe(1);
+    expect(songExists('s1')).toBe(false);
+    // Durable marker: the poller must never ingest this job's late arrivals.
+    const marker = testDb
+      .query<{ partial_discarded_at: number | null }, [string]>(
+        `SELECT partial_discarded_at FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(jobId);
+    expect(marker?.partial_discarded_at).not.toBeNull();
+    // Destructive mutation → audit trail.
+    const audit = testDb
+      .query<{ action: string }, []>(`SELECT action FROM audit_log ORDER BY at DESC`)
+      .get();
+    expect(audit?.action).toBe('download.discard_partial');
+  });
+
+  it("another plain user cannot discard someone else's job", async () => {
+    seedSong('s1', 'alb1');
+    const jobId = seedJob('owner-1', 's1');
+    const app = makeDiscardApp({ sub: 'someone-else', role: 'user' });
+
+    const res = await app.request(`/jobs/${jobId}/discard-partial`, { method: 'POST' });
+    expect(res.status).toBe(403);
+    expect(songExists('s1')).toBe(true);
+  });
+
+  it('a curator may discard any job, owner or not', async () => {
+    seedSong('s1', 'alb1');
+    const jobId = seedJob('owner-1', 's1');
+    const app = makeDiscardApp({ sub: 'curator-1', role: 'refiner' });
+
+    const res = await app.request(`/jobs/${jobId}/discard-partial`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(songExists('s1')).toBe(false);
+  });
+
+  it('a NULL-owner job (system lane, pre-#810 row) is curator-only', async () => {
+    seedSong('s1', 'alb1');
+    const jobId = seedJob(null, 's1');
+
+    const plain = makeDiscardApp({ sub: 'u', role: 'user' });
+    expect((await plain.request(`/jobs/${jobId}/discard-partial`, { method: 'POST' })).status).toBe(
+      403,
+    );
+
+    const curator = makeDiscardApp({ sub: 'c', role: 'refiner' });
+    expect(
+      (await curator.request(`/jobs/${jobId}/discard-partial`, { method: 'POST' })).status,
+    ).toBe(200);
+  });
+
+  it('a complete_album partial leaves the pre-existing album intact', async () => {
+    // The album existed with its own track; this job only ADDED one file to it.
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('alb1', 'Album', 'Artist', 'art', 2, 0, 1)`,
+    );
+    seedSong('pre-existing', 'alb1');
+    seedSong('job-added', 'alb1');
+    const jobId = seedJob('owner-1', 'job-added');
+    const app = makeDiscardApp({ sub: 'owner-1', role: 'user' });
+
+    const res = await app.request(`/jobs/${jobId}/discard-partial`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(songExists('job-added')).toBe(false);
+    expect(songExists('pre-existing')).toBe(true);
+    expect(testDb.query(`SELECT id FROM library_albums WHERE id = 'alb1'`).get()).not.toBeNull();
+  });
+
+  it('404s an unknown job', async () => {
+    const app = makeDiscardApp({ sub: 'u', role: 'user' });
+    const res = await app.request(`/jobs/nope/discard-partial`, { method: 'POST' });
+    expect(res.status).toBe(404);
+  });
+});

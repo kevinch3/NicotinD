@@ -5,15 +5,23 @@ import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { createLogger, isGenericFolderName, type DownloadReceipt } from '@nicotind/core';
 import { getDatabase } from '../db.js';
-import { requireAcquirer } from '../middleware/current-user.js';
+import { getCurrentUser, requireAcquirer } from '../middleware/current-user.js';
+import { ForbiddenError, asRole, canCurate } from '@nicotind/core';
 import {
   cancelUnownedJob,
   requestJobCancel,
   createJob,
+  jobPartialContents,
   listJobFeed,
+  markPartialDiscarded,
+  recomputeStage,
   resolveJobAlbumId,
 } from '../services/acquisition-job-store.js';
 import { mapAddonJob } from '../services/addons/job-poller.js';
+import { deleteSongs } from '../services/library-deletion.js';
+import { errorHandler } from '../middleware/error-handler.js';
+import { recordAudit } from '../services/audit-log.js';
+import type { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 
 const log = createLogger('downloads');
 
@@ -49,8 +57,21 @@ function parseAddonRef(sourceRef: string | null): { addonId: string; addonJobId:
   return { addonId: rest.slice(0, sep), addonJobId: rest.slice(sep + 1) };
 }
 
-export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: PluginRegistry) {
+export interface DownloadDiscardDeps {
+  musicDir?: string;
+  shareRescan: ShareRescanScheduler;
+}
+
+export function downloadRoutes(
+  registry: ProviderRegistry,
+  pluginRegistry?: PluginRegistry,
+  discardDeps?: DownloadDiscardDeps,
+) {
   const app = new OpenAPIHono<AuthEnv>();
+  // Self-contained error mapping (the download-review.ts pattern): the
+  // discard-partial gate's ForbiddenError must map to 403 even when this
+  // router is mounted bare (route tests) without the app-level onError.
+  app.onError(errorHandler);
 
   // The Downloads feed is acquisition — hidden from listeners, gated server-side.
   app.use('*', async (c, next) => {
@@ -160,6 +181,7 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
           kind: 'direct',
           // The provider's name is the source id (the addon's manifest id).
           method: provider.name,
+          userId: getCurrentUser(c).sub,
           artistName: hintFor(segments.length >= 2 ? segments[segments.length - 2] : undefined),
           albumTitle: hintFor(segments[segments.length - 1]),
           sourceRef: addonJobId ? `addon:${provider.name}:${addonJobId}` : username,
@@ -236,6 +258,46 @@ export function downloadRoutes(registry: ProviderRegistry, pluginRegistry?: Plug
       return c.json({ ok: true, addonNotified: false });
     }
     return c.json({ ok: true });
+  });
+
+  /**
+   * Discard the partial tracks a job landed (#810): the decision point a
+   * cancelled download's owner was missing — with the review hold armed the
+   * partial sat as an opaque "Processing" card, and a plain acquirer had no
+   * legal path to remove it at all (review discard is curator-gated).
+   * Job-scoped by design: `deleteSongs` via per-song `deleteOne`, never the
+   * whole destination album — a `complete_album` job only added tracks to it.
+   * Gate: the job's own user (removing your own aborted download is not
+   * curation — docs/roles.md), or a curator; a NULL-owner row (system lanes,
+   * pre-#810 rows) stays curator-only.
+   */
+  app.post('/jobs/:id/discard-partial', async (c) => {
+    const db = getDatabase();
+    const user = getCurrentUser(c);
+    const job = db
+      .query<{ id: string; user_id: string | null }, [string]>(
+        `SELECT id, user_id FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(c.req.param('id'));
+    if (!job) return c.json({ error: 'Job not found' }, 404);
+    const isOwner = job.user_id != null && job.user_id === user.sub;
+    if (!isOwner && !canCurate(asRole(user.role))) {
+      throw new ForbiddenError("Requires curator role, or the job's own user");
+    }
+    if (!discardDeps) return c.json({ error: 'Discard is not available' }, 503);
+
+    // Marker FIRST: a fileReady item mid-flight on the poller must not land
+    // after (or while) its siblings are being deleted.
+    markPartialDiscarded(db, job.id);
+    const { songIds, orphanRelPaths } = jobPartialContents(db, job.id);
+    const result = await deleteSongs(db, songIds, discardDeps, orphanRelPaths);
+    recomputeStage(db, job.id);
+    recordAudit(db, user, 'download.discard_partial', {
+      targetKind: 'acquisition_job',
+      targetId: job.id,
+      detail: `deleted ${result.deletedCount} track(s), ${result.failed.length} failed`,
+    });
+    return c.json({ ok: true, deletedCount: result.deletedCount, failed: result.failed });
   });
 
   app.delete('/jobs/:id', async (c) => {

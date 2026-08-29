@@ -47,6 +47,14 @@ Three guards in `packages/api/src/middleware/current-user.ts` (all throw `Forbid
   `library.ts`: `POST /sync` (rescan), `GET /untracked`, `GET /duplicates` (heavier/diagnostic, not
   curation).
 
+**Owner-scoped discard (#810)** is the repo's first owner-OR-role gate:
+`POST /api/downloads/jobs/:id/discard-partial` allows the job's own `user_id` even below refiner —
+removing the partial your own aborted download brought in is not curation — while any other job
+(including NULL-owner rows from system lanes and pre-#810 history) stays curator-gated. The
+request-initiated `createJob` sites (hunt, track-search, direct grab, `/api/acquire`) stamp
+`user_id`; the system lanes (auto-acquire, watcher, import, the poller's `ensureCoreJob`) leave it
+NULL deliberately.
+
 **Search is the one exception** (filter, not 403): `GET /api/search` must still return **library**
 results for a listener, so it only _suppresses the network fan-out_ when `!canAcquire(role)` — the
 library provider always runs; the slskd/plugin providers are skipped. The **deployment-wide

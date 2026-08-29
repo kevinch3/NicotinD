@@ -42,6 +42,15 @@ export class DownloadsApiService {
     return this.http.delete<{ ok: boolean }>(`/api/downloads/jobs/${jobId}`);
   }
 
+  /** Delete the partial tracks this job landed (#810) — job-scoped, never the
+   *  whole destination album. Owner-or-curator gated server-side. */
+  discardPartial(jobId: string) {
+    return this.http.post<{ ok: boolean; deletedCount: number }>(
+      `/api/downloads/jobs/${jobId}/discard-partial`,
+      {},
+    );
+  }
+
   getAcquisitionJobs() {
     return this.http.get<AcquisitionJobView[]>('/api/downloads/jobs');
   }

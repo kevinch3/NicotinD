@@ -131,6 +131,10 @@ export class DownloadItemComponent {
   readonly retry = output<void>();
   readonly cancel = output<void>();
   readonly remove = output<void>();
+  /** Discard the held partial tracks this job landed (#810). */
+  readonly discardPartial = output<void>();
+  /** Jump to the review inbox on the same page (#810). */
+  readonly reviewJump = output<void>();
 
   readonly showPath = signal(false);
 

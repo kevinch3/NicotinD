@@ -195,7 +195,11 @@ case it).
 | `POST /albums/:id/identify` | Fingerprints up to 5 quarantined tracks for the album sequentially (rate-limit-friendly), returns each track's result plus a majority-vote album guess (`voteAlbumIdentity`: needs ≥2 votes **and** more than half of successful results to agree — a lone match or a tie suggests nothing). |
 | `POST /albums/:id/tracks` | Per-track retag (title/artist), writes tags to the file, then an incremental rescan. A track with no fields to update fails with `'No fields to update'`; other tracks in the same request still get written (partial success surfaces per-track). Audits `download_review.retag`. |
 
-All routes require `requireCurator` — role gating detail below.
+All routes require `requireCurator` — role gating detail below. Since #810 the inbox is no longer
+the only path to a decision: a held **partial** (a cancelled download's landed tracks) can also be
+resolved from its own Downloads card via `POST /api/downloads/jobs/:id/discard-partial` —
+job-scoped (never `deleteAlbum`), and open to the job's own user below refiner (see
+[roles.md](roles.md) "Owner-scoped discard" and the download-pipeline doc's #810 section).
 
 ## Instant landing on approve (`landAlbumNow`, issue #708)
 

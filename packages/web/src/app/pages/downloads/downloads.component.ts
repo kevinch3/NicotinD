@@ -5,6 +5,7 @@ import { SystemApiService } from '../../services/api/system-api.service';
 import { TransferService } from '../../services/transfer.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { ToastService } from '../../services/toast.service';
+import { TranslateService } from '../../services/translate.service';
 import { httpErrorMessage } from '../../lib/http-error';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import type { AcquireJob } from '@nicotind/core';
@@ -54,6 +55,7 @@ export class DownloadsComponent {
   private readonly p2r = inject(PullToRefreshService);
   private readonly review = inject(DownloadReviewService);
   private readonly toasts = inject(ToastService);
+  private readonly i18n = inject(TranslateService);
 
   readonly retrying = signal(new Set<string>());
   /** Feed keys with a cancel request in flight (#806) — the `retrying` pattern.
@@ -97,26 +99,41 @@ export class DownloadsComponent {
       });
   }
 
-  // Confirm dialog
+  // Confirm dialog. The optional checkbox (#810: "also discard the N tracks
+  // already downloaded") is projected into the dialog's ng-content by this
+  // page's template — the shared component stays a plain two-button confirm.
   readonly confirmMessage = signal('');
-  readonly confirmCallback = signal<(() => void | Promise<void>) | null>(null);
+  readonly confirmCallback = signal<((optionChecked: boolean) => void | Promise<void>) | null>(
+    null,
+  );
+  readonly confirmOptionLabel = signal<string | null>(null);
+  readonly confirmOptionChecked = signal(false);
   readonly showConfirm = computed(() => this.confirmCallback() !== null);
 
-  private askConfirm(message: string, cb: () => void): void {
+  private askConfirm(
+    message: string,
+    cb: (optionChecked: boolean) => void | Promise<void>,
+    optionLabel?: string,
+  ): void {
     this.confirmMessage.set(message);
+    this.confirmOptionLabel.set(optionLabel ?? null);
+    this.confirmOptionChecked.set(false);
     this.confirmCallback.set(cb);
   }
 
   onConfirm(): void {
     const cb = this.confirmCallback();
+    const checked = this.confirmOptionChecked();
     this.confirmCallback.set(null);
-    Promise.resolve(cb?.()).catch(() => {
+    this.confirmOptionLabel.set(null);
+    Promise.resolve(cb?.(checked)).catch(() => {
       /* ignore */
     });
   }
 
   onCancelConfirm(): void {
     this.confirmCallback.set(null);
+    this.confirmOptionLabel.set(null);
   }
 
   // Computed — acquire jobs (the finished buckets drive "Clear finished").
@@ -182,11 +199,57 @@ export class DownloadsComponent {
 
   onItemCancel(item: DownloadItem): void {
     if (item.kind === 'network') {
-      if (item.jobId) void this.cancelJob(item.jobId, item.key);
+      if (!item.jobId) return;
+      const jobId = item.jobId;
+      const landed = item.progress?.done ?? 0;
+      // Nothing landed yet → cancel stays one friction-free click. With tracks
+      // already on disk, cancelling is also the moment to decide their fate
+      // (#810) — default keep: they go to review, discard is the opt-in.
+      if (landed === 0) {
+        void this.cancelJob(jobId, item.key);
+        return;
+      }
+      this.askConfirm(
+        this.i18n.t('downloads.cancelConfirm'),
+        async (discard) => {
+          await this.cancelJob(jobId, item.key);
+          if (discard) await this.discardPartial(jobId);
+        },
+        this.i18n.t('downloads.cancelAlsoDiscard', { count: landed }),
+      );
     } else {
       const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
       if (j) void this.dismissAcquireJob(j);
     }
+  }
+
+  /** Card action on a held partial (#810): throw this job's landed tracks away. */
+  onItemDiscardPartial(item: DownloadItem): void {
+    if (!item.jobId) return;
+    const jobId = item.jobId;
+    this.askConfirm(
+      this.i18n.t('downloads.discardPartialConfirm', { count: item.quarantinedCount ?? 0 }),
+      () => this.discardPartial(jobId),
+    );
+  }
+
+  /** "Review" on a held partial: the inbox is on this same page — jump to it. */
+  onItemReviewJump(): void {
+    document.querySelector('[data-testid="review-inbox"]')?.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  private async discardPartial(jobId: string): Promise<void> {
+    try {
+      await firstValueFrom(this.api.discardPartial(jobId));
+      this.transferService.markLibraryDirty();
+      await this.review.refresh();
+    } catch (err) {
+      this.toasts.show({
+        message: httpErrorMessage(err, this.i18n.t('downloads.discardPartialFailed')),
+        kind: 'error',
+      });
+    }
+    await this.transferService.kickPoll();
   }
 
   onItemRemove(item: DownloadItem): void {

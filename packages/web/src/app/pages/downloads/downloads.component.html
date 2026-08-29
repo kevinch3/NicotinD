@@ -61,6 +61,8 @@
                 (retry)="onItemRetry(item)"
                 (cancel)="onItemCancel(item)"
                 (remove)="onItemRemove(item)"
+                (discardPartial)="onItemDiscardPartial(item)"
+                (reviewJump)="onItemReviewJump()"
               />
             }
           </div>
@@ -75,6 +77,19 @@
           confirmLabel="Remove"
           (confirm)="onConfirm()"
           (cancel)="onCancelConfirm()"
-        />
+        >
+          <ng-container ngProjectAs="[belowMessage]">
+            @if (confirmOptionLabel(); as optionLabel) {
+              <label class="flex items-center gap-2 text-sm text-theme-secondary mb-4" data-testid="confirm-option">
+                <input
+                  type="checkbox"
+                  [checked]="confirmOptionChecked()"
+                  (change)="confirmOptionChecked.set(!confirmOptionChecked())"
+                />
+                {{ optionLabel }}
+              </label>
+            }
+          </ng-container>
+        </app-confirm-dialog>
       }
     </div>

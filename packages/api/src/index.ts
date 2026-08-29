@@ -662,7 +662,15 @@ export function createApp({
   app.route('/api/presence', presenceRoutes());
   app.route('/api/history', historyRoutes(historyEnabled));
   app.route('/api/privacy', privacyRoutes(historyEnabled));
-  app.route('/api/downloads', downloadRoutes(registry, plugins));
+  // Partial-track discard (#810) deletes files, so it carries the same
+  // debounced share-rescan the review inbox's discard uses.
+  app.route(
+    '/api/downloads',
+    downloadRoutes(registry, plugins, {
+      musicDir: config.musicDir,
+      shareRescan: new ShareRescanScheduler(notifyAddonLibraryChanged),
+    }),
+  );
   app.route(
     '/api/library',
     libraryRoutes(config.musicDir, {

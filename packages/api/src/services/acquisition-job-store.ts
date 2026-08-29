@@ -321,6 +321,7 @@ interface JobRow {
   created_at: number;
   updated_at: number;
   cancel_requested_at: number | null;
+  partial_discarded_at: number | null;
 }
 
 interface ItemRow {
@@ -901,6 +902,40 @@ export function requestJobCancel(db: Database, jobId: string, now = Date.now()):
   return true;
 }
 
+/**
+ * What a job's partial discard would remove (#810): songs its items landed
+ * (quarantined or already graduated), plus organized-but-unscanned files that
+ * have no canonical row yet. Job-scoped by construction — never the whole
+ * destination album, which a `complete_album` job only added tracks to.
+ */
+export function jobPartialContents(
+  db: Database,
+  jobId: string,
+): { songIds: string[]; orphanRelPaths: string[] } {
+  const rows = db
+    .query<{ song_id: string | null; relative_path: string | null }, [string]>(
+      `SELECT song_id, relative_path FROM acquisition_job_items WHERE job_id = ?`,
+    )
+    .all(jobId);
+  const songIds = [...new Set(rows.flatMap((r) => (r.song_id ? [r.song_id] : [])))];
+  const orphanRelPaths = rows.flatMap((r) =>
+    !r.song_id && r.relative_path ? [r.relative_path] : [],
+  );
+  return { songIds, orphanRelPaths };
+}
+
+/** Stamp the partial-discard marker (#810) so the poller stops ingesting this
+ *  job's remaining fileReady items — a track mid-flight when the discard fired
+ *  must not resurrect the album. Idempotent like `requestJobCancel`. */
+export function markPartialDiscarded(db: Database, jobId: string, now = Date.now()): void {
+  db.run(
+    `UPDATE acquisition_jobs
+     SET partial_discarded_at = COALESCE(partial_discarded_at, ?), updated_at = ?
+     WHERE id = ?`,
+    [now, now, jobId],
+  );
+}
+
 export function cancelUnownedJob(db: Database, jobId: string): void {
   const now = Date.now();
   db.run(
@@ -1070,6 +1105,8 @@ export interface AcquisitionJobFeedItem {
   progress: AcquisitionJobView['progress'];
   /** Mirrors `AcquisitionJobView.cancelRequested` — see the core doc (#806). */
   cancelRequested: boolean;
+  /** Mirrors `AcquisitionJobView.quarantinedCount` — see the core doc (#810). */
+  quarantinedCount: number;
   /**
    * Dominant enqueue-time bitrate + codec across the job's items (mode wins;
    * ties broken by max kbps), upgraded post-scan via the items' matching
@@ -1345,6 +1382,18 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
       )
       .all(row.id);
     const bytes = byteProgress(jobByteAgg(db, row.id));
+    // How many of this job's landed tracks still sit behind the quarantine
+    // gate (#810) — what the card's "Held for review" line counts. One indexed
+    // join per feed row, zero when nothing is held.
+    const quarantined =
+      db
+        .query<{ n: number }, [string]>(
+          `SELECT COUNT(DISTINCT s.id) n
+           FROM acquisition_job_items i
+           JOIN library_songs s ON s.id = i.song_id
+           WHERE i.job_id = ? AND s.landed_at IS NULL AND s.hidden = 0`,
+        )
+        .get(row.id)?.n ?? 0;
     const quality = rollupJobQuality(db, row.id);
     // Peer breakdown for the card's "Sources (N)" disclosure. One hunt can pull
     // from several peers (a fallback wave, a multi-disc release); the data was
@@ -1388,6 +1437,7 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
         bytesTotal: bytes?.bytesTotal ?? null,
       },
       cancelRequested: row.cancel_requested_at != null,
+      quarantinedCount: quarantined,
       ...(quality ? { bitRate: quality.bitRate, audioFormat: quality.audioFormat } : {}),
       sources,
       destinationAlbums: jobDestinationAlbums(db, row.id),

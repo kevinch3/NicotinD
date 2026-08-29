@@ -6,6 +6,9 @@
            (click)="$event.stopPropagation()">
         <ng-content />
         <p class="text-theme-primary text-sm mb-6">{{ message() }}</p>
+        <!-- Options that belong under the question (e.g. #810's "also discard"
+             checkbox) — additive slot, existing projectors are unaffected. -->
+        <ng-content select="[belowMessage]" />
         <div class="flex gap-3 justify-end">
           <button
             class="px-4 py-2 text-sm text-theme-secondary hover:text-theme-primary rounded-lg transition-colors"

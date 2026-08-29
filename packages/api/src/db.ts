@@ -369,6 +369,10 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // poller stops re-pinning the job to `downloading`, and its grace valve
   // closes a request the addon never acts on.
   addColumnIfMissing(db, 'acquisition_jobs', 'cancel_requested_at', 'INTEGER');
+  // The user discarded this job's partial tracks (issue #810): the poller
+  // stops ingesting its remaining fileReady items so a track that was
+  // mid-flight when the discard fired cannot resurrect the album.
+  addColumnIfMissing(db, 'acquisition_jobs', 'partial_discarded_at', 'INTEGER');
 
   // The submitted URL for kind='url' jobs run by an **addon** (yt-dlp/spotdl/
   // archive). Those never get an `acquire_jobs` row — that table belongs to the

@@ -8,6 +8,7 @@ import {
   jobAlbumPairs,
   jobCanonicalTracklists,
   jobMetaForTransfer,
+  jobPartialContents,
   listJobFeed,
   markItemCompleted,
   markItemOrganized,
@@ -1398,5 +1399,34 @@ describe('requestJobCancel (#806)', () => {
       .get(id);
     expect(row?.cancel_requested_at).toBe(1000); // first stamp wins
     expect(listJobFeed(db).find((j) => j.id === id)!.cancelRequested).toBe(true);
+  });
+});
+
+describe('jobPartialContents (#810)', () => {
+  it('splits scanned song ids from organized-but-unscanned files, ignoring the rest', () => {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'peer',
+      files: [{ filename: 'a\\1.opus' }, { filename: 'a\\2.opus' }, { filename: 'a\\3.opus' }],
+    });
+    const rows = db
+      .query<{ id: number }, [string]>(
+        `SELECT id FROM acquisition_job_items WHERE job_id = ? ORDER BY id`,
+      )
+      .all(id);
+    db.run(
+      `UPDATE acquisition_job_items SET state = 'scanned', song_id = 's1', relative_path = 'A/1.opus' WHERE id = ?`,
+      [rows[0]!.id],
+    );
+    db.run(
+      `UPDATE acquisition_job_items SET state = 'organized', relative_path = 'A/2.opus' WHERE id = ?`,
+      [rows[1]!.id],
+    );
+    // Row 3 stays downloading: nothing on disk, nothing to discard.
+
+    const contents = jobPartialContents(db, id);
+    expect(contents.songIds).toEqual(['s1']);
+    expect(contents.orphanRelPaths).toEqual(['A/2.opus']);
   });
 });
