@@ -49,6 +49,12 @@ export interface SelectableTrack {
  *   same song ripped at different track numbers/formats collapses to one entry,
  *   and any file matching **no** canonical track is **dropped** (foreign /
  *   mislabeled rips that a bad Soulseek folder mixed in — "as Lidarr proposes").
+ *   The tracklist decides what to **admit**, never what to **retain**: a file
+ *   `knownRelPaths` says the library already holds is keyed by title like the
+ *   no-canonical case, so it is never dropped as foreign. Without that, a
+ *   curator's title correction removed canonical words, fell under the 0.7
+ *   `titlesOverlap` threshold and was discarded from the scan — so the edit
+ *   never reached persist and the DB silently kept the old title (issue #776).
  * - **Without one** — files are keyed by normalized title, so format-duplicates
  *   of the same song still collapse to the best copy, but nothing is dropped as
  *   "foreign" (we have no authority on what belongs).
@@ -59,6 +65,7 @@ export interface SelectableTrack {
 export function selectAlbumTracks<T extends SelectableTrack>(
   tracks: T[],
   canonicalTitles?: readonly string[] | null,
+  knownRelPaths?: ReadonlySet<string>,
 ): T[] {
   const canon = (canonicalTitles ?? []).map((c) => normalizeTitle(c)).filter((c) => c.length > 0);
   const useCanonical = canon.length > 0;
@@ -68,7 +75,7 @@ export function selectAlbumTracks<T extends SelectableTrack>(
     const norm = normalizeTitle(t.title);
 
     let key: string;
-    if (useCanonical) {
+    if (useCanonical && !knownRelPaths?.has(t.relPath)) {
       const match = canon.find((c) => titlesOverlap(c, norm));
       if (!match) continue; // foreign track — not part of the canonical album
       key = `c:${match}`;

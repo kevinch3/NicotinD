@@ -45,8 +45,15 @@ describe('mutateSongMetadata', () => {
           written.push({ abs, tags });
           return true;
         },
+        // Stands in for the real scan: a retag is only "applied" once the
+        // rescan has refreshed the row from disk (issue #776).
         scanIncremental: async (paths) => {
           rescanned.push(paths);
+          db.run('UPDATE library_songs SET title = ? WHERE id = ?', ['Pegao', 'song-yt']);
+          db.run('UPDATE library_albums SET name = ? WHERE id = ?', [
+            'Wisin vs. Yandel: Los Extraterrestres',
+            'album-yt',
+          ]);
         },
       },
       'song-yt',
@@ -111,5 +118,55 @@ describe('mutateSongMetadata', () => {
       { title: 'X' },
     );
     expect(result).toEqual({ ok: false, error: 'Failed to write tags', status: 500 });
+  });
+});
+
+// Issue #776: `applied` used to echo the REQUEST, so a write that never landed
+// was indistinguishable from success — the caller (an MCP agent, or the bulk
+// normalize pass of #775) reported a clean run while changing nothing.
+describe('mutateSongMetadata — verifies the write actually persisted', () => {
+  /** A scanIncremental that behaves like the real one: refreshes the row from "disk". */
+  const scanThatPersists = (title: string) => async () => {
+    db.run('UPDATE library_songs SET title = ? WHERE id = ?', [title, 'song-yt']);
+  };
+
+  it('fails with the actual value when the rescan did not persist the request', async () => {
+    const result = await mutateSongMetadata(
+      db,
+      {
+        musicDir,
+        writeTags: async () => true,
+        scanIncremental: async () => {
+          /* the #776 canonical-tracklist drop: row never refreshed */
+        },
+      },
+      'song-yt',
+      { title: 'Pegao' },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      requested: { title: 'Pegao' },
+      actual: { title: 'Pegao (Official Video)' },
+    });
+  });
+
+  it('reports the read-back value in `applied`, not the request', async () => {
+    const result = await mutateSongMetadata(
+      db,
+      { musicDir, writeTags: async () => true, scanIncremental: scanThatPersists('Pegao') },
+      'song-yt',
+      { title: 'Pegao' },
+    );
+    expect(result).toMatchObject({ ok: true, verified: true, applied: { title: 'Pegao' } });
+  });
+
+  it('does not claim verification when there is no rescanner to read back through', async () => {
+    const result = await mutateSongMetadata(
+      db,
+      { musicDir, writeTags: async () => true },
+      'song-yt',
+      { title: 'Pegao' },
+    );
+    expect(result).toMatchObject({ ok: true, rescanned: false, verified: false });
   });
 });

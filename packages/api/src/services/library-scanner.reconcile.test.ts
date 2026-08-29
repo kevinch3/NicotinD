@@ -118,3 +118,53 @@ describe('reconcileAlbums', () => {
     // No assertion needed beyond "no throw"
   });
 });
+
+// Issue #776: a canonical Lidarr tracklist is pinned in `album_jobs` at download
+// time and consulted on EVERY later rescan. After a curator cleans a title the
+// file stops matching that tracklist, so it was dropped from the scan as a
+// "foreign rip" — never reaching persist, leaving library_songs stale forever.
+// Prod repro: Juanes — Un Día Normal (20th Anniversary), 2026-08-27.
+describe('reconcileAlbums — a pinned canonical tracklist cannot veto a curator retag', () => {
+  it('still refreshes a song row whose title no longer matches the canonical list', async () => {
+    const albumDir = join(musicDir, 'Juanes', 'Un Dia Normal');
+    mkdirSync(albumDir, { recursive: true });
+    writeFileSync(join(albumDir, '02 - Es Por Ti.mp3'), Buffer.alloc(0));
+
+    const scanner = new LibraryScanner(musicDir, db);
+    await scanner.reconcileAlbums([albumDir]);
+
+    const song = db
+      .query<{ id: string; title: string }, []>('SELECT id, title FROM library_songs LIMIT 1')
+      .get();
+    expect(song).not.toBeNull();
+    const scannedTitle = song!.title;
+    // Pin the tracklist to the album the scanner actually minted — the job's
+    // artist/album must hash to the same `albumIdFor`, or the canonical list
+    // silently never applies and this test proves nothing.
+    const album = db
+      .query<{ name: string; artist: string }, []>(
+        'SELECT name, artist FROM library_albums LIMIT 1',
+      )
+      .get()!;
+
+    // The album is now pinned to a tracklist the file's title does NOT satisfy:
+    // titlesOverlap counts canonical words present in the file title, so the
+    // shorter cleaned title scores 3/5 = 0.6, under the 0.7 threshold.
+    db.run(
+      `INSERT INTO album_jobs
+         (username, directory, canonical_tracks_json, alternates_json, created_at,
+          artist_name, album_title)
+       VALUES ('peer', ?, ?, '[]', 1, ?, ?)`,
+      [albumDir, JSON.stringify([`${scannedTitle} (Remastered 2022)`]), album.artist, album.name],
+    );
+
+    // Simulate the stale row the bug leaves behind, then rescan.
+    db.run('UPDATE library_songs SET title = ? WHERE id = ?', ['STALE TITLE', song!.id]);
+    await scanner.reconcileAlbums([albumDir]);
+
+    const after = db
+      .query<{ title: string }, [string]>('SELECT title FROM library_songs WHERE id = ?')
+      .get(song!.id);
+    expect(after?.title).toBe(scannedTitle);
+  });
+});

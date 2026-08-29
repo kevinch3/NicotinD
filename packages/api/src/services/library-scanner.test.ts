@@ -981,3 +981,41 @@ describe('genre overrides (issue #187 A3)', () => {
     expect(built.songs[0]!.genre).toBe('Latin');
   });
 });
+
+// Issue #776 — the canonical Lidarr tracklist pinned at download time must not
+// veto a curator's later title correction. Prod repro: Juanes — Un Día Normal
+// (20th Anniversary); the retag landed on disk but the file was then dropped
+// from every rescan as "foreign", so library_songs kept the pre-edit title.
+describe('buildLibrary — a known file survives a canonical tracklist it no longer matches', () => {
+  const CANONICAL = new Map([
+    [
+      albumIdFor('Juanes', 'Un Día Normal'),
+      ['A Dios Le Pido (Remastered 2022)', 'Es Por Tí (Remastered 2022)'],
+    ],
+  ]);
+  const retagged = track({
+    relPath: 'Juanes/Un Día Normal/02 - Es Por Ti (Remastered 2022).opus',
+    artist: 'Juanes',
+    album: 'Un Día Normal',
+    title: 'Es Por Ti', // curator stripped the "(Remastered 2022)" suffix
+    suffix: 'opus',
+  });
+
+  it('drops it when the library does not already hold it (ingest is unchanged)', () => {
+    const built = buildLibrary([retagged], CANONICAL);
+    expect(built.songs).toHaveLength(0);
+  });
+
+  it('keeps it, with the corrected title, when the library already holds the file', () => {
+    const built = buildLibrary(
+      [retagged],
+      CANONICAL,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      new Set([retagged.relPath]),
+    );
+    expect(built.songs.map((s) => s.title)).toEqual(['Es Por Ti']);
+  });
+});

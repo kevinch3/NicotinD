@@ -122,6 +122,67 @@ describe('deleteOne', () => {
   });
 });
 
+// Issue #774: `song_count` is the `owned` side of the completeness dimension and
+// feeds album cards, so a stale high count makes a freshly-deduped album look
+// complete. Prod, 2026-08-27: deadmau5 `while(1<2)` read 40 after 16 dupes were
+// deleted (24 actually listed); Ana Tijoux `Kaos` read 24 against 14.
+describe('deleteOne — album aggregates', () => {
+  beforeEach(() => {
+    fsState.clear();
+    dirEntries.clear();
+    sharedDb.run('DELETE FROM library_albums');
+    sharedDb.run('DELETE FROM library_songs');
+  });
+
+  function seedAlbum(id: string, songCount: number, duration: number): void {
+    sharedDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, cover_art, song_count, duration, synced_at)
+       VALUES (?, 'Album', 'Artist', 'art', ?, ?, ?, 1)`,
+      [id, id, songCount, duration],
+    );
+  }
+
+  it('recomputes song_count and duration from the surviving songs', async () => {
+    seedAlbum('alb-agg', 2, 400);
+    seedSong('a1', 'alb-agg', '/music/Artist/Album/a1.mp3');
+    seedSong('a2', 'alb-agg', '/music/Artist/Album/a2.mp3');
+    sharedDb.run('UPDATE library_songs SET duration = 200 WHERE album_id = ?', ['alb-agg']);
+    fsState.set('/music/Artist/Album/a1.mp3', true);
+
+    await deleteOne(sharedDb, 'a1', { musicDir: '/music', shareRescan: noopScheduler() });
+
+    const album = sharedDb
+      .query<{ song_count: number; duration: number }, [string]>(
+        'SELECT song_count, duration FROM library_albums WHERE id = ?',
+      )
+      .get('alb-agg');
+    expect(album).toMatchObject({ song_count: 1, duration: 200 });
+  });
+
+  it('recomputes them on the already-gone-from-disk path too', async () => {
+    seedAlbum('alb-ghost', 2, 400);
+    seedSong('g1', 'alb-ghost', '/music/Artist/Album/g1.mp3');
+    seedSong('g2', 'alb-ghost', '/music/Artist/Album/g2.mp3');
+    // No fsState entry for g1 — the file is already missing.
+    await deleteOne(sharedDb, 'g1', { musicDir: '/music', shareRescan: noopScheduler() });
+
+    const album = sharedDb
+      .query<{ song_count: number }, [string]>('SELECT song_count FROM library_albums WHERE id = ?')
+      .get('alb-ghost');
+    expect(album?.song_count).toBe(1);
+  });
+
+  it('drops an album that lost its last song rather than leaving an empty shell', async () => {
+    seedAlbum('alb-last', 1, 200);
+    seedSong('l1', 'alb-last', '/music/Artist/Album/l1.mp3');
+    fsState.set('/music/Artist/Album/l1.mp3', true);
+
+    await deleteOne(sharedDb, 'l1', { musicDir: '/music', shareRescan: noopScheduler() });
+
+    expect(sharedDb.query('SELECT id FROM library_albums WHERE id = ?').get('alb-last')).toBeNull();
+  });
+});
+
 describe('deleteAlbum', () => {
   beforeEach(() => {
     fsState.clear();

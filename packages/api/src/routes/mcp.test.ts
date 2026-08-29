@@ -743,8 +743,12 @@ describe('song metadata tools (issue #722)', () => {
         written.push(tags as Record<string, unknown>);
         return true;
       },
+      // Stands in for the real scan — a retag counts as applied only once the
+      // rescan has refreshed the row from disk (issue #776).
       scanIncremental: async (paths) => {
         rescanned.push(paths);
+        testDb.run(`UPDATE library_songs SET title = 'Pegao' WHERE id = 's-yt'`);
+        testDb.run(`UPDATE library_albums SET name = 'Los Extraterrestres' WHERE id = 'al-yt'`);
       },
     });
     const res = await dispatchTool(ctx, 'fix_song_metadata', {
@@ -766,6 +770,29 @@ describe('song metadata tools (issue #722)', () => {
     expect(audit[0]).toMatchObject({ action: 'song.metadata', target_id: 's-yt' });
     expect(audit[0]?.detail).toContain('(via MCP agent)');
     expect(audit[0]?.detail).toContain('Pegao (Official Video)');
+  });
+
+  // Issue #776: a write that never reached the row used to come back ok:true
+  // with `applied` echoing the request, so an agent (or a bulk normalize pass)
+  // reported a clean run having changed nothing.
+  it('fix_song_metadata reports a write that did not persist, and does not audit it', async () => {
+    seedPolluted();
+    mkdirSync(join(musicDir, 'p'), { recursive: true });
+    writeFileSync(join(musicDir, 'p/s-yt.opus'), 'x');
+    const ctx = metadataCtx('refiner:curate', {
+      musicDir,
+      writeTags: async () => true,
+      scanIncremental: async () => {
+        /* the canonical-tracklist drop: row never refreshed */
+      },
+    });
+    const res = await dispatchTool(ctx, 'fix_song_metadata', { songId: 's-yt', title: 'Pegao' });
+    expect(JSON.parse(res.content[0]!.text)).toMatchObject({
+      error: 'Tag write did not persist',
+      requested: { title: 'Pegao' },
+      actual: { title: 'Pegao (Official Video)' },
+    });
+    expect(testDb.query('SELECT COUNT(*) AS n FROM audit_log').get()).toEqual({ n: 0 });
   });
 
   it('fix_song_metadata surfaces mutation failures without auditing', async () => {

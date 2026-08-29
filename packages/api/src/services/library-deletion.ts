@@ -13,7 +13,7 @@ import { basename, dirname, join, normalize, relative } from 'node:path';
 import { existsSync, readdirSync, rmdirSync, rmSync, unlinkSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 import { getDatabase } from '../db.js';
-import { pruneOrphanArtist } from './library-aggregates.js';
+import { pruneOrphanArtist, pruneOrphanAlbum } from './library-aggregates.js';
 import type { ShareRescanScheduler } from './share-rescan-scheduler.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from './song-path.js';
 
@@ -221,9 +221,14 @@ export async function deleteOne(
   }
 
   const canonical = db
-    .query<{ path: string }, [string]>(`SELECT path FROM library_songs WHERE id = ?`)
+    .query<{ path: string; album_id: string | null }, [string]>(
+      `SELECT path, album_id FROM library_songs WHERE id = ?`,
+    )
     .get(id);
   const songPath: string | null = canonical?.path ?? null;
+  // Captured before the row goes: the parent album's aggregates are recomputed
+  // from its surviving songs afterwards (issue #774).
+  const albumId: string | null = canonical?.album_id ?? null;
   if (!songPath) {
     return { ok: false, error: 'Song not found in library', status: 404 };
   }
@@ -294,6 +299,7 @@ export async function deleteOne(
           try {
             db.run('DELETE FROM completed_downloads WHERE navidrome_id = ?', [id]);
             db.run('DELETE FROM library_songs WHERE id = ?', [id]);
+            if (albumId) pruneOrphanAlbum(db, albumId);
           } catch (err) {
             log.debug({ err }, 'Failed to remove orphaned record');
           }
@@ -318,6 +324,7 @@ export async function deleteOne(
         relPath,
       ]);
       db.run('DELETE FROM library_songs WHERE id = ?', [id]);
+      if (albumId) pruneOrphanAlbum(db, albumId);
       log.info({ relPath }, 'Removed song from completion history + canonical DB');
     } catch (err) {
       log.debug({ err }, 'Failed to remove from completion history');

@@ -8,7 +8,7 @@ import { pickAlbumCover } from './artwork-store.js';
 import { setArtwork } from './artwork-store.js';
 import { setReleaseType, mapLidarrAlbumType } from './release-meta-store.js';
 import { setOverride, findByCorrectedId } from './metadata-override-store.js';
-import { pruneOrphanArtist } from './library-aggregates.js';
+import { pruneOrphanArtist, refreshAlbumAggregate } from './library-aggregates.js';
 import { isPlaceholderArtist } from './artwork-backfill.js';
 import { clearCoverNegativeCache } from '../routes/streaming.js';
 
@@ -214,16 +214,7 @@ export function applyMetadataFix(
     }
 
     // Recompute the (possibly merged) album's aggregates from its songs.
-    const agg = db
-      .query<{ c: number; d: number }, [string]>(
-        'SELECT COUNT(*) AS c, COALESCE(SUM(duration), 0) AS d FROM library_songs WHERE album_id = ?',
-      )
-      .get(newAlbumId);
-    db.run('UPDATE library_albums SET song_count = ?, duration = ? WHERE id = ?', [
-      agg?.c ?? 0,
-      agg?.d ?? 0,
-      newAlbumId,
-    ]);
+    refreshAlbumAggregate(db, newAlbumId);
 
     // Upsert the corrected artist (cover_art = artistId convention), refresh its
     // album_count, and prune the artist the album moved away from.
