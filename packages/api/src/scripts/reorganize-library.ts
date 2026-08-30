@@ -19,6 +19,10 @@ import { readFileSync, readdirSync, statSync, existsSync, unlinkSync, rmdirSync 
 import { resolve, join, extname, dirname, basename } from 'node:path';
 import { parse } from 'yaml';
 import { LibraryOrganizer } from '../services/library-organizer.js';
+import {
+  resolveTranscodeLossless,
+  type ResolvedTranscodeLossless,
+} from '../services/transcode-settings.js';
 import { AcoustIdLookup } from '../services/acoustid-lookup.js';
 import { AUDIO_EXTS } from '../services/audio-tags.js';
 import { expandHome } from '@nicotind/core';
@@ -27,6 +31,7 @@ interface LoadedConfig {
   dataDir: string;
   musicDir: string;
   acoustidApiKey: string | undefined;
+  transcodeLossless: ResolvedTranscodeLossless;
 }
 
 function loadConfig(): LoadedConfig {
@@ -57,7 +62,12 @@ function loadConfig(): LoadedConfig {
     /* no secrets file */
   }
 
-  return { dataDir, musicDir, acoustidApiKey };
+  return {
+    dataDir,
+    musicDir,
+    acoustidApiKey,
+    transcodeLossless: resolveTranscodeLossless(fileConfig),
+  };
 }
 
 /** Recursively yield every audio file under `root`, skipping `excludeDirs` (absolute paths). */
@@ -169,7 +179,7 @@ function cleanJunk(root: string): number {
 }
 
 async function main(): Promise<void> {
-  const { dataDir, musicDir, acoustidApiKey } = loadConfig();
+  const { dataDir, musicDir, acoustidApiKey, transcodeLossless } = loadConfig();
   const moveLogPath = join(dataDir, 'reorg-moves.log');
 
   console.log(`Data dir : ${dataDir}`);
@@ -192,6 +202,9 @@ async function main(): Promise<void> {
     musicDir,
     acoustid,
     moveLogPath,
+    // Reorganize is an ingest path like any other: a lossless file it moves is
+    // standardized on Opus by the same hook the download path uses.
+    transcodeLossless,
     // Park unsortable files OUTSIDE musicDir so Navidrome doesn't scan them.
     unsortedRoot: unsortedDir,
   });

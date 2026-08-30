@@ -29,6 +29,7 @@ const noDeps = {
   db: null as never,
   lidarr: null,
   musicDir: '/music',
+  transcodeLossless: { enabled: true, bitRate: 192 },
   runSync: null,
 };
 

@@ -4,6 +4,21 @@ export const ServiceModeSchema = z.enum(['embedded', 'external']);
 export type ServiceMode = z.infer<typeof ServiceModeSchema>;
 
 /**
+ * Named so the offline backfill entry points (`reorganize-library.ts`,
+ * `convert-library.ts`, the `transcode-library` maintenance task) resolve the
+ * same settings the download path uses instead of inventing their own fallback
+ * — four disagreeing hardcoded defaults is how the library ended up with 27 GB
+ * of un-transcoded FLAC. → docs/download-pipeline.md
+ */
+export const TranscodeLosslessSchema = z.object({
+  enabled: z.boolean().default(true),
+  // Only opus today; left as an enum for headroom.
+  format: z.enum(['opus']).default('opus'),
+  bitRate: z.number().int().min(64).max(320).default(192),
+});
+export type TranscodeLossless = z.infer<typeof TranscodeLosslessSchema>;
+
+/**
  * Resolve port from environment variable or file config.
  * Handles the falsy-0 case: `NICOTIND_PORT=0` (ephemeral port) must survive.
  * @param envValue - the NICOTIND_PORT environment variable (undefined if unset)
@@ -82,14 +97,11 @@ export const NicotinDConfigSchema = z.object({
       // transcode lossless downloads (FLAC/WAV/…) to Opus in place before they
       // enter the library, leaving already-lossy files untouched. Default-on at
       // 192 kbps (transparent headroom since the source lossless file is dropped).
-      transcodeLossless: z
-        .object({
-          enabled: z.boolean().default(true),
-          // Only opus today; left as an enum for headroom.
-          format: z.enum(['opus']).default('opus'),
-          bitRate: z.number().int().min(64).max(320).default(192),
-        })
-        .default({ enabled: true, format: 'opus', bitRate: 192 }),
+      transcodeLossless: TranscodeLosslessSchema.default({
+        enabled: true,
+        format: 'opus',
+        bitRate: 192,
+      }),
     })
     .default({
       autoRetryEnabled: true,

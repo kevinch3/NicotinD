@@ -89,6 +89,9 @@ export interface MaintenanceDeps {
   lidarr: (OptimizeLidarr & BackfillLidarr) | null;
   musicDir: string;
   coverCacheDir?: string;
+  /** Resolved `downloads.transcodeLossless`, so the Admin task and the download
+   *  path encode at the same bitrate. */
+  transcodeLossless: { enabled: boolean; bitRate: number };
   /** Full library scan + curation pass, or null when unavailable. */
   runSync: (() => Promise<void>) | null;
 }
@@ -196,6 +199,7 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
       run: async (ctx, p) => {
         const r = await transcodeLibraryToOpus(deps.db, deps.musicDir, {
           apply: p.apply,
+          bitRate: deps.transcodeLossless.bitRate,
           limit: p.limit,
           shouldStop: ctx.shouldStop,
           onProgress: (x) => ctx.onProgress({ total: x.total, visited: x.visited, label: x.label }),
