@@ -1251,3 +1251,41 @@ harness permission classifier** (the track-1 opus, `0cebfc72`) and is left in pl
 **#774 did not reproduce.** The album's `song_count` read 7 against 7 actual rows immediately after
 five single-song deletes; the stale-aggregate bug filed in the 08-27 pass did not bite here. Worth
 a confirmation before the issue is closed on this evidence alone.
+
+#### Flag #18 (Green Velvet, *Unshakable*) — worked, not closed; filed #817
+
+The flag said three duplicate fragment albums existed. There are **seven**, and each is a 1-track
+"Unshakable" single whose FLAC bitrate matches its main-album counterpart *exactly* — duplicate rips
+that still carry the collaborator credit the main album lost. **The fragments are themselves the
+evidence**, so seven of the thirteen credits were recoverable with no search at all: Riva Starr,
+Gary Beck, Nathan Barato, Craig Williams, Harvard Bass, Saso Recyd, Phil Kieran.
+
+Four more came from the web (Zcarab, wAFF, Oliver Dollar, and *Leave My Body* being Green Velvet
+**solo** — Sonny Fodera is the remixer, not a collaborator). That is 12 of 13 mapped; only
+*Check U Out* is unconfirmed, and DJ Gant-Man being the one unused name on the credits is inference,
+not evidence.
+
+**None of it could be applied.** All 13 `fix_song_metadata` artist writes were *refused*:
+`{"error":"Tag write did not persist", requested "Green Velvet, Riva Starr", actual "Green Velvet"}`,
+persistent across a full re-read. The post-#760 guard did its job — it refused instead of returning
+a false `ok:true`. Something upstream pins the field; `set_song_genre` on the *same tracks in the
+same session* wrote and persisted fine, so it is specific to `artist` on this album. Filed as
+**#817**, with the `library_metadata_overrides` explanation written down explicitly as a
+*hypothesis*: it could not be verified from a refiner MCP session, and #710 and #762 both shipped
+with filed diagnoses that turned out to be wrong.
+
+**The flag's recommendation reversed, and that is the finding worth carrying.** It originally said
+to delete the duplicate fragments after retagging. Since the retag is blocked, the fragments are
+currently the library's **only** carrier of 7 of the 13 credits — deleting them now would take the
+library from 7/13 to 0/13, causing precisely the loss the flag was raised to prevent. **A cleanup
+step that is correct in the intended order becomes destructive when the step before it fails.**
+
+Genre: label-as-genre rows down 5 → 3 (*Move Your Body*, *Leave My Body* → `Tech House`, both from
+Beatport, both read back). *Dance To My Beat*, *In Your Spirit* and *Check U Out* still read the
+literal label `Relief Records`; four searches found no per-track genre and they were **not** guessed
+— Relief is documented as mixing Chicago/acid/ghetto house with harder techno, so defaulting them to
+the album-dominant Tech House is genuinely risky, most of all on a possible DJ Gant-Man track. Worth
+noting these three are **invisible to the genre worklist**, because a wrong genre still counts as a
+genre — label pollution hides where a null would show.
+
+Flag #18 left **open**, deliberately: the data question is answered, the write path is not.
