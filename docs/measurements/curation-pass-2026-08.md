@@ -1181,5 +1181,42 @@ metadata answer); Pesho & Dave Bo's *Lemon Tree* matched at 0.953 with no MusicB
   (a live arrival), and the skill's mid-ingest rule says suspend destructive work. Needs an owner
   ruling and a `recordingId` comparison first.
 - **Flag #18 (Green Velvet, *Unshakable*)** — still open, unchanged.
-- **Not searched** (0 searches spent): Las Karamba ×3, Figa Flawas ×1, and the 08-27 Spanish
-  cluster (Maison Bélier ×4, Maruja Limón ×2, Montse Cortés ×2) — the first candidates next pass.
+
+#### Then searched — the lane session 5d stopped at
+
+Session 5d ended its zero-search loop noting that "the productive next step is a
+`list_recent_songs(missingGenre:true)` pass **with** WebSearch available, not more zero-search
+ticks." That pass ran here: **eight searches, one per artist, covering 13 songs** — the whole
+2026-08-27 Catalan/Spanish ingest wave, which arrived in a single tick.
+
+| Artist | Songs | Genre | Basis |
+| --- | --- | --- | --- |
+| Maruja Limón | 2 | `Rumba Catalana` | a sibling album already carried it; search confirms "next-gen rumba catalana", Barcelona sextet |
+| Maison Bélier | 3 | `Rumba Catalana` | Catalan duo (ex-Ojos de Brujo); repertoire straddles rumba and flamenco pop |
+| Las Karamba | 3 | `Salsa` | Barcelona sextet with Cuban/Venezuelan members; son, cha-cha-chá, timba |
+| Figa Flawas | 1 | `Reggaeton` | Catalan urban duo from Valls |
+| Montse Cortés | 1 | `Rumba Flamenca` | cantaora; track titled "(Rumba)", from *La Rosa Blanca* (2004) |
+| Mayte Martín | 1 | `Flamenco` | Barcelona cantaora, *Al Cantar a Manuel* (2009) |
+| La Sra. Tomasa | 1 | `Latin Fusion` | Barcelona; Afro-Cuban rhythms over electronic bases |
+| María Ruiz | 1 | `Cantautor` | word/poetry-forward; her collaborators are cantautores |
+
+Plus two off the new list head, both the "distinctive proper noun" shape the skill says actually
+resolves: **Los Chichos** → `Rumba Flamenca` (they pioneered the genre; RateYourMusic lists the
+*Quiero ser libre* single as exactly that) and **Juan Arvizu** → `Bolero` (Mexican lyric tenor;
+"Santa" is an Agustín Lara composition).
+
+**The wave was not one genre, and that is the finding.** Eight Catalan/Spanish artists landing in
+one tick invited a single label — the searches split them across five, and Las Karamba sit
+geographically among rumba-catalana acts while playing Cuban salsa. The skill's rule that a
+coherent ingest wave carries one judgment is about *arrival*, not sound: **a wave justifies
+amortizing one search per artist, never sharing one artist's answer across the wave.**
+
+#### Session total
+
+`genres.missing` **255 → 231** across the pass (26 writes: 23 genre-less filled, 3 mistags
+replaced; the extra point of movement is a live arrival mid-pass). Every write `mode: 'replace'`
+and confirmed by read-back.
+
+The list head is now the residue in its documented shape — a corrupt file (`undecodable`), a
+singleton with no MBID, a generic producer name, and an AcoustID `no-match`. Nothing there is a
+search away, and low yield past this point is the expected state, not neglect.
