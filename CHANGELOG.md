@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.42](https://github.com/kevinch3/NicotinD/compare/v0.5.41...v0.5.42) (2026-08-30)
+
+### Bug Fixes
+
+* **player:** hold a seek past the loaded region, collapse skip bursts ([#816](https://github.com/kevinch3/NicotinD/issues/816)) ([4e8720b](https://github.com/kevinch3/NicotinD/commit/4e8720bea5fa2ff2461e1db9174f70947f65a4d3))
 ## [0.5.41](https://github.com/kevinch3/NicotinD/compare/v0.5.40...v0.5.41) (2026-08-29)
 
 ### Bug Fixes
