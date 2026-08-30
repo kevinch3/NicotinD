@@ -149,6 +149,72 @@ describe('auditLibrary', () => {
     expect(rules).not.toContain('numeric_single');
   });
 
+  it('still flags the genuine single-track warez albums under a real artist', () => {
+    // Both real prod hits: a real artist, a real track title, ONE track. The
+    // corroboration the issue originally proposed (junk artist OR no real
+    // titles) is satisfied by neither, so it would have taken the rule to zero
+    // findings rather than to two — this asserts it did not.
+    addArtist(db, 'arl', 'Nestor En Bloque', 1);
+    addAlbum(db, {
+      id: 'all',
+      name: 'LOSERPOWER.ORG - VOLUMEN 8',
+      artist: 'Nestor En Bloque',
+      artistId: 'arl',
+      songCount: 1,
+    });
+    addSong(db, 'sl', 'all', 'arl', 'Vas A Volver');
+
+    addArtist(db, 'are', 'Cassian', 1);
+    addAlbum(db, {
+      id: 'ale',
+      name: 'Most Wanted 80 Djs Chart Top 53 Tracks - ElectronicFresh.com',
+      artist: 'Cassian',
+      artistId: 'are',
+      songCount: 1,
+    });
+    addSong(db, 'se', 'ale', 'are', 'Magics');
+
+    const flagged = auditLibrary(db)
+      .findings.filter((f) => f.rule === 'watermark_album')
+      .map((f) => f.subject)
+      .sort();
+    expect(flagged).toEqual(['ale', 'all']);
+  });
+
+  it('still flags a multi-track watermark album when an axis other than count fails', () => {
+    // Many tracks and real titles, but the ARTIST is itself a watermark — a pool
+    // dump, not a release. The conjunction must not be satisfied by count alone.
+    addArtist(db, 'arp', 'musicauno.com', 1);
+    addAlbum(db, {
+      id: 'alp',
+      name: 'Remix Pack Vol 3 - musicauno.com',
+      artist: 'musicauno.com',
+      artistId: 'arp',
+      songCount: 12,
+      classification: 'album',
+    });
+    for (let i = 0; i < 12; i++) addSong(db, `sp${i}`, 'alp', 'arp', `Real Song ${i}`);
+
+    // Many tracks and a real artist, but every file is named after the watermark,
+    // so there is no real music to lose.
+    addArtist(db, 'arq', 'Some Artist', 1);
+    addAlbum(db, {
+      id: 'alq',
+      name: 'ftpdjemilio.com',
+      artist: 'Some Artist',
+      artistId: 'arq',
+      songCount: 9,
+      classification: 'album',
+    });
+    for (let i = 0; i < 9; i++) addSong(db, `sq${i}`, 'alq', 'arq', 'ftpdjemilio.com');
+
+    const flagged = auditLibrary(db)
+      .findings.filter((f) => f.rule === 'watermark_album')
+      .map((f) => f.subject)
+      .sort();
+    expect(flagged).toEqual(['alp', 'alq']);
+  });
+
   it('flags a track-number-titled one-track single only when the ARTIST is junk too', () => {
     // A mis-parsed disc/track number lands next to a mis-parsed artist.
     addArtist(db, 'arj', 'musicauno.com', 1);
@@ -251,8 +317,11 @@ describe('auditLibrary', () => {
   });
 
   // Issue #705: `Coolio.com` is Coolio's genuine 2001 album — 14 real tracks, one
-  // `--apply` away from deletion because the title ends in ".com".
-  it('protects a real album whose title merely looks like a domain', () => {
+  // `--apply` away from deletion because the title ends in ".com". Issue #819
+  // moved the catch one layer earlier: it is no longer *flagged*, so it never
+  // reaches the delete guard that used to be the only thing saving it. Both
+  // layers are asserted — the guard still has to hold for every other rule.
+  it('does not flag a real album whose title merely looks like a domain', () => {
     addArtist(db, 'arc', 'Coolio', 1);
     addAlbum(db, {
       id: 'alc',
@@ -262,9 +331,8 @@ describe('auditLibrary', () => {
       songCount: 14,
     });
     addSong(db, 'sc', 'alc', 'arc', 'Ghetto Square Dance');
-    const res = selectPollutionTargets(db, DELETABLE_RULES);
-    expect(res.targets).toEqual([]);
-    expect(res.protectedRealAudio).toBeGreaterThan(0);
+    expect(auditLibrary(db).findings.map((f) => f.rule)).not.toContain('watermark_album');
+    expect(selectPollutionTargets(db, DELETABLE_RULES).targets).toEqual([]);
   });
 
   // Issue #705: `!!!` (chk chk chk) is a real band. `isPlaceholderArtist` answers
