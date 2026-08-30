@@ -29,8 +29,12 @@ const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), '..');
 /** The module every musicDir walker must consult. */
 const CANONICAL = 'library-paths';
 
-/** Anything that enumerates directory entries. */
-const WALK_CALL = /\b(readdirSync|readdir|opendirSync|opendir)\s*\(/;
+/**
+ * Anything that enumerates directory entries. Bun's `Glob` is included even
+ * though no musicDir walker uses it today — a gate that only knows the APIs
+ * already in use stops measuring the moment someone reaches for a new one.
+ */
+const WALK_CALL = /\b(readdirSync|readdir|opendirSync|opendir|globSync)\s*\(|new Glob\(/;
 
 /** A module is a candidate when it walks *and* talks about the music dir. */
 const MUSIC_DIR = /\bmusicDir\b/;
