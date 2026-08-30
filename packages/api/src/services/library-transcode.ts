@@ -32,7 +32,8 @@ export interface TranscodeProgress {
 
 export interface TranscodeAllOptions {
   apply: boolean;
-  bitRate?: number;
+  /** Required: a backfill must not invent a bitrate the download path disagrees with. */
+  bitRate: number;
   /** Max files to visit. Omitted/<=0 → unbounded. */
   limit?: number;
   /** Checked before each file; true → stop and return the partial counters. */
@@ -103,7 +104,7 @@ export async function transcodeLibraryToOpus(
   result.candidates = rows.length;
 
   const scanner = new LibraryScanner(musicDir, db);
-  const bitRate = opts.bitRate ?? 128;
+  const bitRate = opts.bitRate;
 
   let visited = 0;
   for (const row of rows) {

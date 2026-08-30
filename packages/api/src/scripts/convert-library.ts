@@ -16,9 +16,10 @@ import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { transcodeLibraryToOpus } from '../services/library-transcode.js';
+import { resolveTranscodeLossless } from '../services/transcode-settings.js';
 import { expandHome } from '@nicotind/core';
 
-function loadConfig(): { dataDir: string; musicDir: string } {
+function loadConfig(): { dataDir: string; musicDir: string; bitRate: number } {
   let fileConfig: Record<string, unknown> = {};
   const configPath = resolve(process.env.NICOTIND_CONFIG ?? 'config/default.yml');
   try {
@@ -31,14 +32,19 @@ function loadConfig(): { dataDir: string; musicDir: string } {
   );
   const musicDirRaw = process.env.NICOTIND_MUSIC_DIR ?? (fileConfig.musicDir as string | undefined);
   if (!musicDirRaw) throw new Error('musicDir not configured');
-  return { dataDir, musicDir: expandHome(musicDirRaw) };
+  return {
+    dataDir,
+    musicDir: expandHome(musicDirRaw),
+    bitRate: resolveTranscodeLossless(fileConfig).bitRate,
+  };
 }
 
 async function main(): Promise<void> {
   const apply = process.argv.includes('--apply');
   const bitrateIdx = process.argv.indexOf('--bitrate');
-  const bitRate = bitrateIdx >= 0 ? Number(process.argv[bitrateIdx + 1]) : 128;
-  const { dataDir, musicDir } = loadConfig();
+  const { dataDir, musicDir, bitRate: configuredBitRate } = loadConfig();
+  // --bitrate overrides; otherwise match what the download path encodes at.
+  const bitRate = bitrateIdx >= 0 ? Number(process.argv[bitrateIdx + 1]) : configuredBitRate;
   const dbPath = join(dataDir, 'nicotind.db');
 
   if (!existsSync(dbPath)) {

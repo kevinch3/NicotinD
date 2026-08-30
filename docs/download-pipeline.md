@@ -143,6 +143,44 @@ The hook fires in `LibraryOrganizer.placeFile()` **after the move and before the
 
 Returns `{ candidates, converted, skipped, failed, bytesReclaimed }`.
 
+### One resolved setting, never a per-entry-point default
+
+`downloads.transcodeLossless` is resolved **once** by `resolveTranscodeLossless()`
+(`services/transcode-settings.ts`) against the exported `TranscodeLosslessSchema`, and
+`LibraryOrganizer.transcodeLossless` / `TranscodeAllOptions.bitRate` are **required** options
+— a caller that forgets is a compile error, not a silent divergence.
+
+This is a fix, not a style preference. Every offline entry point used to invent its own
+fallback and all four disagreed with the shipped config:
+
+| Site | Was | Effect |
+| --- | --- | --- |
+| `LibraryOrganizer` constructor | `?? { enabled: false, bitRate: 128 }` | transcoding **off** for any caller that didn't opt in |
+| `reorganize-library.ts` | passed nothing | organized the whole library and left every lossless file as-is |
+| `library-transcode.ts` | `opts.bitRate ?? 128` | 128 k, against a configured 192 k |
+| `transcode-library` maintenance task | passed no `bitRate` | the Admin button quietly wrote a second quality tier |
+
+Measured on prod 2026-08-30: 847 FLAC files / 27.3 GB had accumulated un-standardized.
+The offline scripts don't build a full `NicotinDConfig` (it requires `jwt`, service URLs, …),
+which is why they hand-rolled defaults; `resolveTranscodeLossless` takes the raw parsed YAML
+and `safeParse`s just the one sub-schema, so a missing config file or a typo'd bitrate lands
+on the shipped default instead of aborting the run.
+
+### An addon's downloads dir MUST sit outside `musicDir`
+
+The transcode hook lives in `LibraryOrganizer.placeFile()`, so **a file that never reaches the
+organizer is never standardized**. If an addon downloads *into* the tree `LibraryScanner`
+walks, the scanner ingests the raw peer folder in place and the organizer never sees it — the
+album then exists twice: once organized and transcoded (with an `acquisitions` provenance
+row), once as the raw source (with none).
+
+Prod hit exactly this: `SLSKD_ADDON_DOWNLOADS_DIR=/data/music` with the slskd container
+mounting that same host dir `rw`. The fingerprint of the failure is a `library_songs` row at a
+depth-2 path (`<peer folder>/<file>` rather than `<Artist>/<Album>/<Track>`) with
+`acquisitions.relative_path` absent — 922 such rows / 27.5 GB, of which 173 were provable
+duplicates of an already-organized copy.
+
+
 ---
 
 ## Album deletion (reliability)

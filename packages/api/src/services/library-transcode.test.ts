@@ -85,7 +85,7 @@ describe('transcodeLibraryToOpus', () => {
     await Bun.write(join(music, rel), 'x'); // dry-run only existsSync-checks
     seedSongRow(db, rel);
 
-    const r = await transcodeLibraryToOpus(db, music, { apply: false });
+    const r = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 192 });
     expect(r.candidates).toBe(1);
     expect(r.converted).toBe(1); // would-convert count
     // Row unchanged (still flac).
@@ -196,7 +196,7 @@ describe('transcodeLibraryToOpus', () => {
       `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, suffix, synced_at)
        VALUES ('m', 'alb', 'T', 'A', 'art', 'A/B/01.mp3', 'mp3', 1)`,
     );
-    const r = await transcodeLibraryToOpus(db, music, { apply: true });
+    const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 192 });
     expect(r.candidates).toBe(0);
     expect(r.converted).toBe(0);
   });

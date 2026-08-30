@@ -69,7 +69,11 @@ describe('two-wave hunt lands one clean album (regression)', () => {
 
     const db = new Database(':memory:');
     applySchema(db);
-    const organizer = new LibraryOrganizer({ musicDir: music, autoDedupe: true });
+    const organizer = new LibraryOrganizer({
+      transcodeLossless: { enabled: false, bitRate: 192 },
+      musicDir: music,
+      autoDedupe: true,
+    });
     const scanner = new LibraryScanner(music, db);
 
     // ── Wave 1 ──────────────────────────────────────────────────────────────

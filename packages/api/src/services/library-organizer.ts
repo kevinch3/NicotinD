@@ -70,7 +70,7 @@ export interface LibraryOrganizerOptions {
    * library standardizes on a small browser-native codec and the song's stable id
    * (derived from its final path) is computed once. Lossy files are left as-is.
    */
-  transcodeLossless?: { enabled: boolean; bitRate: number };
+  transcodeLossless: { enabled: boolean; bitRate: number };
   /**
    * After placing a batch, remove redundant duplicate copies (`02 - Song (2)`,
    * mixed FLAC/MP3 of the same track) from each album folder it touched. On by
@@ -151,7 +151,7 @@ export class LibraryOrganizer {
     this.acoustid = opts.acoustid;
     this.moveLogPath = opts.moveLogPath;
     this.preferFlacSkipMp3 = opts.preferFlacSkipMp3 ?? false;
-    this.transcodeLossless = opts.transcodeLossless ?? { enabled: false, bitRate: 128 };
+    this.transcodeLossless = opts.transcodeLossless;
     this.autoDedupe = opts.autoDedupe ?? true;
     this.dedupeAcrossEditions = opts.dedupeAcrossEditions ?? true;
     this.jobLookup = opts.jobLookup;

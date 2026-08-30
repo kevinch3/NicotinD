@@ -108,7 +108,11 @@ function tmpRoot() {
 }
 
 function makeOrg(musicDir: string, stagingDir?: string) {
-  return new LibraryOrganizer({ musicDir, stagingDir });
+  return new LibraryOrganizer({
+    transcodeLossless: { enabled: false, bitRate: 192 },
+    musicDir,
+    stagingDir,
+  });
 }
 
 describe('LibraryOrganizer (real fs)', () => {
@@ -183,6 +187,7 @@ describe('LibraryOrganizer (real fs)', () => {
       trackNumber: 1,
     });
     const org = new LibraryOrganizer({
+      transcodeLossless: { enabled: false, bitRate: 192 },
       musicDir: root,
       stagingDir: staging,
       jobLookup: (dir) =>
@@ -213,6 +218,7 @@ describe('LibraryOrganizer (real fs)', () => {
       trackNumber: 1,
     });
     const org = new LibraryOrganizer({
+      transcodeLossless: { enabled: false, bitRate: 192 },
       musicDir: root,
       stagingDir: staging,
       jobLookup: () => null, // folder matching finds nothing
@@ -499,7 +505,12 @@ describe('LibraryOrganizer (real fs)', () => {
     seed(staging, 'src/b.mp3', { artist: 'Dupe', album: 'Album', title: 'Same' });
     // autoDedupe off so we observe the raw uniquePath collision suffix; with it on
     // (the default) the "(2)" copy is intentionally reaped (see auto-dedupe tests).
-    const org = new LibraryOrganizer({ musicDir: root, stagingDir: staging, autoDedupe: false });
+    const org = new LibraryOrganizer({
+      transcodeLossless: { enabled: false, bitRate: 192 },
+      musicDir: root,
+      stagingDir: staging,
+      autoDedupe: false,
+    });
     await org.organizeBatch([
       { username: 'u', directory: 'src', filename: 'a.mp3', directoryFileCount: 2 },
       { username: 'u', directory: 'src', filename: 'b.mp3', directoryFileCount: 2 },
@@ -632,6 +643,7 @@ describe('LibraryOrganizer (real fs)', () => {
       });
 
       const org = new LibraryOrganizer({
+        transcodeLossless: { enabled: false, bitRate: 192 },
         musicDir: root,
         stagingDir: staging,
         preferFlacSkipMp3: true,
@@ -670,7 +682,11 @@ describe('LibraryOrganizer (real fs)', () => {
 
       // preferFlacSkipMp3 off, but autoDedupe (default on) cleans up the collision
       // after placement.
-      const org = new LibraryOrganizer({ musicDir: root, stagingDir: staging });
+      const org = new LibraryOrganizer({
+        transcodeLossless: { enabled: false, bitRate: 192 },
+        musicDir: root,
+        stagingDir: staging,
+      });
       const result = await org.organizeBatch([
         {
           username: 'u',
@@ -699,7 +715,12 @@ describe('LibraryOrganizer (real fs)', () => {
       });
 
       // Both dedupe paths off → the MP3 is placed and kept alongside the FLAC.
-      const org = new LibraryOrganizer({ musicDir: root, stagingDir: staging, autoDedupe: false });
+      const org = new LibraryOrganizer({
+        transcodeLossless: { enabled: false, bitRate: 192 },
+        musicDir: root,
+        stagingDir: staging,
+        autoDedupe: false,
+      });
       const result = await org.organizeBatch([
         {
           username: 'u',
@@ -734,7 +755,11 @@ describe('LibraryOrganizer (real fs)', () => {
         artist: 'Britney Spears',
         album: 'Circus',
       });
-      const org = new LibraryOrganizer({ musicDir: music, autoDedupe: true });
+      const org = new LibraryOrganizer({
+        transcodeLossless: { enabled: false, bitRate: 192 },
+        musicDir: music,
+        autoDedupe: true,
+      });
       const res = await org.reconcileTouched([albumDir], () => null);
       // One copy removed (lexicographic tiebreak keeps '02 - Circus.mp3')
       expect(res.deletedRelPaths.length).toBe(1);
@@ -789,7 +814,11 @@ describe('LibraryOrganizer (real fs)', () => {
           title: 'Music Is Math',
           trackNumber: 1,
         });
-        const org = new LibraryOrganizer({ musicDir: root, stagingDir: staging });
+        const org = new LibraryOrganizer({
+          transcodeLossless: { enabled: false, bitRate: 192 },
+          musicDir: root,
+          stagingDir: staging,
+        });
         const result = await org.organizeBatch([
           {
             username: 'u',

@@ -620,6 +620,10 @@ export function createApp({
     lidarr,
     musicDir: expandedMusicDir,
     coverCacheDir: `${expandedDataDir}/cover-cache`,
+    transcodeLossless: {
+      enabled: config.downloads.transcodeLossless.enabled,
+      bitRate: config.downloads.transcodeLossless.bitRate,
+    },
     runSync: runSyncAndCurate,
   });
   app.route(
