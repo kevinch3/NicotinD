@@ -1363,10 +1363,33 @@ majority.
 `songCount` read 14 against 14 actual rows straight after nine deletes — **#774 did not reproduce a
 second time.**
 
-#### A delta not attributable to this pass
+#### Chasing a 426-song delta — the orphan sweep catching up, not data loss
 
-Total songs read 17523 → **17097** across the two health calls, a drop of 426 against the 11 files
-this pass deleted. About four hours of wall-clock separates the two `collectedAt` stamps, so a
-scheduled scan and orphan sweep almost certainly ran in between. **Recorded as unexplained rather
-than assumed benign**: nothing here verified it, and a 415-row discrepancy is worth a deliberate
-look before anyone treats these numbers as a clean before/after.
+Total songs read 17523 → 17097 across two health calls, against the 11 files this pass deleted. That
+looked alarming enough to record as unexplained. A read-only prod probe resolved it, and the answer
+is the designed mechanism working:
+
+- **`audit_log` shows exactly 16 `song.delete` entries in 24h** — 5 Umoja, 9 Coolio, 2 surfaced by
+  the retags. Every one mine. **No unaudited deletion happened by any route.**
+- `library_sync_state.last_full_sync_at` = 1788094287964, falling *between* the two health calls.
+- The surviving rows are real: 0 of 40 random rows missing from disk; `landed_at IS NULL` = 0 and
+  `hidden` = 0, so it is not a denominator shift either.
+- `scan_cache` holds 1774 entries with no `library_songs` row, and **1281 of them already carry
+  `orphaned_at`** — the mark→sweep-with-grace-period pruner, mid-cycle.
+
+The largest orphan bucket is **125 rows under `Linguaphone/`, whose directory no longer exists on
+disk** — the Welsh-course album the owner deleted on 08-29. That single fact validates the whole
+reading: the sweep is retiring rows for deletions made in *earlier* sessions, which is exactly what
+a grace period defers. The 426 is accumulated catch-up, not this pass's doing.
+
+**Residual worth a look, not an issue:** ~493 of those 1774 are *not* marked `orphaned_at`, and a
+300-row sample found 282 files still present on disk. Concentrated in `Andrés Calamaro` (98),
+`Various Artists` (94), `Laura Pausini` (93), `Radiohead` (44). That may be entirely legitimate —
+canonical-tracklist admission filtering, or parse failures — but it is on-disk audio with no library
+row, so it is worth someone confirming deliberately. **Not filed as a bug**: the evidence points at
+designed behaviour, and filing a data-loss issue on this reading would have been the third wrong
+diagnosis of the session.
+
+**The lesson is about the alarm, not the number.** "426 rows vanished" and "a deferred sweep
+retired rows for music deleted last week" are the same measurement. The difference was four probes,
+and the decisive one was the cheapest: counting audited deletes.
