@@ -3,6 +3,11 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
 @Component({
   selector: 'app-password-field',
+  // Angular's default host display is `inline`, which collapses to a ~24px line box
+  // regardless of the `px-4 py-3` input inside it — a sibling's `space-y-*` margin then
+  // measures from that collapsed box instead of the input's real height, eating the gap
+  // (issue #832). `block` lets the host size to its content like a native <input> would.
+  host: { class: 'block' },
   providers: [
     {
       provide: NG_VALUE_ACCESSOR,
