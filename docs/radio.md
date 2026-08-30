@@ -591,6 +591,35 @@ recently-played shelf would (no history, endpoint down, empty generation).
 Tapping a tile calls `startRadio(track)` on the recommendation, so the vibe
 continues past the tapped track.
 
+## Taste breakers (random, recency-demoted)
+
+The landing page's "Taste breakers" shelf sits directly under "Keep the vibe"
+and is its deliberate counterweight: where that shelf converges on the mood the
+listener is already in, this one is a uniformly random slice of the landed
+library (`GET /api/library/random` via `getRandomSongs`, `ORDER BY RANDOM()`).
+Tapping a tile calls `startRadio(track)`, so an unfamiliar song becomes a whole
+direction rather than one orphan play.
+
+Two rules distinguish it from the shelves around it.
+
+**It does not gate its fetch on `seeds`.** `KeepVibeComponent` waits for the
+recently-played rows because a list-seeded generation is meaningless without
+them; random songs are not. Gating here would leave a fresh install — no
+history, therefore no seeds — staring at a shelf that never appears. So
+`TasteBreakersComponent` fetches a `POOL_SIZE` (24) pool once in `ngOnInit`,
+and `picks` is a `computed()` over the live `seeds` input: the shelf paints
+immediately and re-orders in place when the history arrives, with no second
+request.
+
+**Recent plays are demoted, never excluded.** `picks` orders the pool
+unheard-first and then cuts to `SHELF_SIZE` (10), so a recently-played song
+falls off the end rather than being filtered out. A hard filter reads fine
+against a large library, but the client fetches up to 20 recent plays — a small
+library can have every random pick inside that window, and the shelf would
+vanish precisely for the listener with the least to explore. This is the same
+rule `stationAffinity` follows for genre stations (see "What is NOT graded"):
+a demotion, never an exclusion.
+
 ## Tastemakers (curated blend radio)
 
 The landing page's "Tastemakers" shelf surfaces the **curated playlists** (the
@@ -881,4 +910,4 @@ collapse, which it needed most (see "Same recording, multiple files").
 | `packages/web/src/app/services/api/library-api.service.ts`            | `getRadioNext()` + `getFilterRadio()` API methods                                                                                                                                                                                                              |
 | `packages/web/src/app/services/player.service.ts`                     | `radioFilter` signal + `startRadioWithFilter()` (persisted vibe)                                                                                                                                                                                               |
 | `packages/web/src/app/components/layout/layout.component.ts`          | Smart RadioProvider registration (filter-aware)                                                                                                                                                                                                                |
-| `packages/web/src/app/pages/radio-landing/radio-landing.component.ts` | Radio/mood landing: resume shortcut + vibe presets + genre chips                                                                                                                                                                                               |
+| `packages/web/src/app/pages/radio-landing/radio-landing.component.ts` | Radio/mood landing: resume, shelves, vibe tiles + genre tiles                                                                                                                                                                                               |

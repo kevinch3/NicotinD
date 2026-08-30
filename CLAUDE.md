@@ -390,6 +390,13 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **One recording is one thing**: two files of one track (album + compilation) are two
   `library_songs` rows, so radio served it twice as often; `recordingKey` collapses them in the
   served window, the pool exclusion and the recency demotion. → [radio.md](docs/radio.md)
+- **Taste breakers (random, recency-demoted)**: the landing shelf that counterweights "Keep the
+  vibe" — `TasteBreakersComponent` over `getRandomSongs`, fetching without seeds so a fresh install
+  still fills, and demoting recent plays rather than excluding them. `POOL_SIZE`, `SHELF_SIZE`.
+  → [radio.md](docs/radio.md)
+- **One tile, two tones**: `VibeTileComponent` renders the landing's vibe row and genre row so they
+  cannot drift — `tone`/`wide` carry the whole difference, and the vibe gradients are fixed pairs,
+  never `--theme-*`. → [web-ui.md](docs/web-ui.md)
 - **Filter-seeded radio / stations**: the same route starts a vibe with no seed song from a
   `LibraryFilter` via `buildFilterRadio` + `songFilterWheres` + `seedCentroid`; a genre station is
   graded not tag-tested by `stationAffinity` (`genreDepthScore` × `artistGenreShares`), a demotion

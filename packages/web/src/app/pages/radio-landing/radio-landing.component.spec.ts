@@ -38,7 +38,18 @@ function setup(overrides: { getFilterRadio?: () => unknown; getGenres?: () => un
     imports: [RadioLandingComponent],
     providers: [
       provideRouter([]),
-      { provide: LibraryApiService, useValue: { getFilterRadio, getGenres } },
+      // The nested shelves (Keep the vibe, Taste breakers) fetch on init, so the
+      // stub must answer their calls too or the host spec dies on an unhandled
+      // rejection rather than on its own assertions.
+      {
+        provide: LibraryApiService,
+        useValue: {
+          getFilterRadio,
+          getGenres,
+          getRandomSongs: () => of([]),
+          getListRadio: () => of([]),
+        },
+      },
       { provide: ToastService, useValue: { show: toastShow } },
       { provide: AuthService, useValue: { token: signal('test-token') } },
     ],
@@ -91,6 +102,7 @@ describe('RadioLandingComponent', () => {
       id: 'happy',
       label: 'Happy',
       emoji: '😊',
+      gradient: 'from-amber-400 to-orange-500',
       filter: { moods: ['happy'] },
     });
     await Promise.resolve();
@@ -108,40 +120,35 @@ describe('RadioLandingComponent', () => {
     expect(toastShow).toHaveBeenCalled();
   });
 
-  // Visual-contract assertions: pin chip hover utility classes so a refactor
-  // can't silently regress the light-theme legibility (Daylight #6366f1 +
-  // text-theme-on-accent ~ #ffffff ≈ 4.5:1 — borderline AA). The fix moves
-  // hover to a tinted overlay + accent text so every theme reads cleanly.
-  describe('visual contract', () => {
-    it('preset chips use the accent-tinted hover (not a solid accent fill)', () => {
-      const { fixture } = setup();
-      const preset = fixture.nativeElement.querySelector(
-        '[data-testid="radio-preset"]',
-      ) as HTMLButtonElement;
-      expect(preset).toBeTruthy();
-      const cls = preset.className;
-      expect(cls).toContain('hover:bg-theme-accent/15');
-      expect(cls).toContain('hover:text-theme-accent-text');
-      expect(cls).not.toContain('hover:bg-theme-accent ');
-      expect(cls).not.toContain('hover:text-theme-on-accent');
+  // The two tones (colored vibe / muted genre) are pinned in
+  // vibe-tile.component.spec.ts, and the wiring that assigns them in
+  // e2e/tests/radio-landing.spec.ts. Not here: the JIT vitest harness never
+  // binds a nested component's signal inputs, so every <app-vibe-tile> in this
+  // fixture renders its DEFAULTS — an assertion on its classes would pass or
+  // fail on the default, never on what the template actually passes. The same
+  // reasoning already governs the resume-cover test above.
+  describe('start-a-radio block', () => {
+    it('renders one tile per vibe preset', () => {
+      const { fixture, component } = setup();
+      const tiles = fixture.nativeElement.querySelectorAll('[data-testid="radio-preset"]');
+      expect(tiles).toHaveLength(component.presets.length);
     });
 
-    it('genre chips match the preset-chip hover treatment', async () => {
+    it('renders one tile per loaded genre', async () => {
       const { fixture } = setup();
       // ngOnInit fires loadGenres() which awaits firstValueFrom; let the
-      // promise microtask settle so the @for renders the chips.
+      // promise microtask settle so the @for renders the tiles.
       await Promise.resolve();
       await Promise.resolve();
       fixture.detectChanges();
-      const genre = fixture.nativeElement.querySelector(
-        '[data-testid="radio-genre"]',
-      ) as HTMLButtonElement;
-      expect(genre).toBeTruthy();
-      const cls = genre.className;
-      expect(cls).toContain('hover:bg-theme-accent/15');
-      expect(cls).toContain('hover:text-theme-accent-text');
-      expect(cls).not.toContain('hover:bg-theme-accent ');
-      expect(cls).not.toContain('hover:text-theme-on-accent');
+      expect(fixture.nativeElement.querySelectorAll('[data-testid="radio-genre"]')).toHaveLength(2);
+    });
+
+    it('gives every preset a gradient, since the colored tone renders one', () => {
+      const { component } = setup();
+      for (const preset of component.presets) {
+        expect(preset.gradient, `preset ${preset.id} has no gradient`).toMatch(/from-\S+ to-\S+/);
+      }
     });
   });
 });

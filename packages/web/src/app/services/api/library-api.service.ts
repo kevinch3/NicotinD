@@ -514,6 +514,12 @@ export class LibraryApiService {
     });
   }
 
+  /** A uniformly random slice of the landed library — the "Taste breakers"
+   *  shelf's source. Server-side `ORDER BY RANDOM()`, so every call differs. */
+  getRandomSongs(size = 10) {
+    return this.http.get<Song[]>('/api/library/random', { params: { size } });
+  }
+
   /** Fetch a single song (incl. stored bpm/genre) by id; 404 → null. */
   getSong(id: string) {
     return this.http.get<Song>(`/api/library/songs/${id}`);

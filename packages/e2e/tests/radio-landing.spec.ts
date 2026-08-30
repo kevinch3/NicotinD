@@ -74,6 +74,46 @@ test.describe('radio landing', () => {
     }
   });
 
+  // The two tones are the whole point of the Start-a-radio block, and this is
+  // the only layer that can assert them: the web unit harness never binds a
+  // nested component's signal inputs, so <app-vibe-tile> renders its defaults
+  // there (see radio-landing.component.spec.ts).
+  test('vibe tiles are colored and 2x wide; genre tiles stay muted and narrow', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const preset = page.getByTestId('radio-preset').first().locator('button');
+    await expect(preset).toBeVisible();
+    await expect(preset).toHaveClass(/bg-gradient-to-br/);
+    await expect(preset).toHaveClass(/text-white/);
+    await expect(preset).toHaveClass(/w-40/);
+
+    // The fixture library always has at least one genre, so the row renders.
+    const genre = page.getByTestId('radio-genre').first().locator('button');
+    await expect(genre).toBeVisible();
+    await expect(genre).toHaveClass(/bg-theme-surface-2/);
+    await expect(genre).not.toHaveClass(/bg-gradient-to-br/);
+
+    // The wide tile really is wider on screen, not just in class names.
+    const presetBox = await preset.boundingBox();
+    const genreBox = await genre.boundingBox();
+    expect(presetBox!.width).toBeGreaterThan(genreBox!.width * 1.5);
+  });
+
+  test('taste breakers shelf renders and a tap starts playback', async ({ page }) => {
+    await page.goto('/');
+    const shelf = page.getByTestId('taste-breakers');
+    // Never order-dependent: the pick list demotes recent plays rather than
+    // excluding them, so the shelf survives a suite that played every fixture
+    // song (the 10-song library would otherwise be fully covered by the last
+    // 20 plays and the shelf would vanish).
+    await expect(shelf).toBeVisible({ timeout: 10_000 });
+    expect(await shelf.getByTestId('taste-breakers-item').count()).toBeGreaterThan(0);
+
+    await shelf.getByTestId('taste-breakers-item').first().click();
+    await expect(page.getByTestId('player-title')).not.toHaveText('', { timeout: 15_000 });
+  });
+
   test('tastemakers shelf appears after curated shelves exist and a tap starts playback', async ({
     page,
     request,
