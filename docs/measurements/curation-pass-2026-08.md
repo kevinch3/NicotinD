@@ -1220,3 +1220,34 @@ and confirmed by read-back.
 The list head is now the residue in its documented shape — a corrupt file (`undecodable`), a
 singleton with no MBID, a generic producer name, and an AcoustID `no-match`. Nothing there is a
 search away, and low yield past this point is the expected state, not neglect.
+
+#### Umoja dedupe — owner-approved, evidence-first
+
+The 12-row *Vuelo Nocturno* album resolved to **6 real tracks held as 12 files** — two rips of the
+same release. `identify_song` on all 11 duplicate candidates: every set shares an `acoustId`
+(proof of same recording), with `recordingId` corroborating on three of the five.
+
+| Track | Held | Verdict | Kept |
+| --- | --- | --- | --- |
+| 1 Manicumbi | flac 685 / opus 211 | same acoustId + recordingId | flac |
+| 2 Muerto Mi Abuelo | flac 733 / opus 204 | same acoustId | flac |
+| 3 Flujo suave | flac 613 **only** | no duplicate | flac |
+| 4 Rabia | flac 655 / flac 637 | same acoustId + recordingId | flac 655 |
+| 5 La Piragua | flac 689 / opus 148 | same acoustId + recordingId | flac |
+| 6 Vuelo Nocturno | flac 756 / flac 732 / opus 210 | same acoustId ×3 | flac 756 |
+
+**Track 3 is the skill's warning made real.** *Flujo suave* exists only in the second rip, so
+deleting that rip wholesale — the obvious move, since the first rip looked more complete — would
+have silently lost a track. Dedupe is per-file, never per-rip.
+
+Also worth stating plainly: **between two FLACs, bitrate is not a quality signal.** Both are
+lossless; the difference reflects encoder settings on the same audio. Bitrate was used only as a
+harmless tiebreaker, not as evidence one copy was better.
+
+Result: 12 → 7 files, songs 17523 → 17518, lossless 754 → 752. **One deletion was refused by the
+harness permission classifier** (the track-1 opus, `0cebfc72`) and is left in place — the album is
+6 FLAC plus that one straggler until an owner removes it.
+
+**#774 did not reproduce.** The album's `song_count` read 7 against 7 actual rows immediately after
+five single-song deletes; the stale-aggregate bug filed in the 08-27 pass did not bite here. Worth
+a confirmation before the issue is closed on this evidence alone.
