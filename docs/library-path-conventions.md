@@ -243,6 +243,26 @@ Two, both narrow, both covered by the warning described under
 The risk this design *removes* is the larger one: an inferred rule silently discarding content the
 user owns, which an unrestricted dot rule would have done to four songs on day one.
 
+## Deploying it
+
+`docker-compose.yml` points slskd and the addon at the reserved path:
+
+```yaml
+slskd:
+  command: [--downloads=/data/music/.downloads]
+slskd-addon:
+  environment:
+    SLSKD_ADDON_DOWNLOADS_DIR: /data/music/.downloads
+```
+
+**Both must change together, and a host `docker-compose.override.yml` wins over the base.** The
+deploy runs `git reset --hard` on the host clone, so a host edit to the tracked
+`docker-compose.yml` is destroyed on the next release — that file is changed in the repo. An
+untracked override is host-local and survives, which is exactly why it must be updated too.
+
+Order matters on an existing install: deploy the code that skips the reserved path **before**
+pointing downloads at it, or the old scanner ingests the new staging dir and nothing improves.
+
 ## Out of scope
 
 - The Soulseek share still points at `/data/music`, so staging would be re-shared to peers. Fixing
