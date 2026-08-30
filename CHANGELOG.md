@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.48](https://github.com/kevinch3/NicotinD/compare/v0.5.47...v0.5.48) (2026-08-30)
+
+### Bug Fixes
+
+* **compose:** point slskd staging at the reserved .downloads path ([#827](https://github.com/kevinch3/NicotinD/issues/827)) ([#839](https://github.com/kevinch3/NicotinD/issues/839)) ([52b717b](https://github.com/kevinch3/NicotinD/commit/52b717b0a7619f1f1787da43dc10cd2f9fd6ee14))
 ## [0.5.47](https://github.com/kevinch3/NicotinD/compare/v0.5.46...v0.5.47) (2026-08-30)
 
 ### Features
