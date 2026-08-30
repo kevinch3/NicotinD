@@ -36,6 +36,7 @@ import type { AcoustIdLookup } from './acoustid-lookup.js';
 import { normalizeTitle } from '@nicotind/core';
 import { reconcileAlbumFolder } from './album-reconcile.js';
 import { albumGroupKey } from './album-grouping.js';
+import { DEFAULT_UNSORTED_DIR } from './library-paths.js';
 import { isLosslessFile, transcodeToOpus } from './post-download-transcode.js';
 import { ffmpegAvailable } from './transcode.js';
 import {
@@ -157,8 +158,10 @@ export class LibraryOrganizer {
     this.jobLookup = opts.jobLookup;
     this.canonicalTitlesLookup = opts.canonicalTitlesLookup;
     // unsortedRoot may be relative (resolved under musicDir) or absolute (e.g.
-    // <dataDir>/unsorted so Navidrome doesn't index the bucket).
-    const rawUnsorted = opts.unsortedRoot ?? 'Unsorted';
+    // <dataDir>/unsorted). The relative default is a *reserved* name so an
+    // un-overridden deployment is safe: the old 'Unsorted' was an ordinary
+    // folder the scanner walked straight back in (#827's latent twin).
+    const rawUnsorted = opts.unsortedRoot ?? DEFAULT_UNSORTED_DIR;
     this.unsortedRoot = isAbsolute(rawUnsorted) ? expandHome(rawUnsorted) : rawUnsorted;
     mkdirSync(this.musicDir, { recursive: true });
   }

@@ -93,6 +93,18 @@ export const NicotinDConfigSchema = z.object({
       autoAcquireIntervalMs: z.number().int().min(10_000).default(3_600_000),
       // Max albums acquired per sweep, so a large missing list never floods slskd.
       autoAcquireMaxPerSweep: z.number().int().min(1).default(3),
+      // Acquisition staging. Relative → resolved under musicDir, so ingest is
+      // an atomic rename on one filesystem and a self-hoster mounts one path.
+      // Must be a single top-level name: only a top-level name can be reserved,
+      // so a nested value would be written to but never skipped (#827).
+      // Absolute → its own disk, outside musicDir, invisible to every walker.
+      dir: z
+        .string()
+        .min(1)
+        .refine((v) => v.startsWith('/') || !v.includes('/'), {
+          message: 'downloads.dir must be a single top-level name or an absolute path',
+        })
+        .default('.downloads'),
       // Standardize on a small, browser-native codec for storage + web playback:
       // transcode lossless downloads (FLAC/WAV/…) to Opus in place before they
       // enter the library, leaving already-lossy files untouched. Default-on at
@@ -116,6 +128,7 @@ export const NicotinDConfigSchema = z.object({
       autoAcquireEnabled: false,
       autoAcquireIntervalMs: 3_600_000,
       autoAcquireMaxPerSweep: 3,
+      dir: '.downloads',
       transcodeLossless: { enabled: true, format: 'opus', bitRate: 192 },
     }),
 
