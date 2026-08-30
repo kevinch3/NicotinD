@@ -15,9 +15,9 @@ tree. Two live consequences:
    present twice.
 2. **A latent twin.** `library-organizer.ts:161` defaults `unsortedRoot` to the **relative**
    `'Unsorted'`, resolved under `musicDir`. Production only escapes it because `index.ts:234`
-   overrides it to `${dataDir}/unsorted`, with the comment *"Park unsortable files OUTSIDE musicDir
-   so Navidrome doesn't scan them."* A self-hoster who doesn't override gets unsortable files
-   scanned straight back into their library.
+   and `reorganize-library.ts:208` both override it to `${dataDir}/unsorted` — the latter with the
+   comment *"Park unsortable files OUTSIDE musicDir so Navidrome doesn't scan them."* A self-hoster
+   who doesn't override gets unsortable files scanned straight back into their library.
 
 `LibraryScanner.walk()` (`library-scanner.ts:800-818`) descends into every directory
 unconditionally — there is no exclusion mechanism to extend.
@@ -36,15 +36,13 @@ things worth keeping:
 
 ## The rule
 
-Two layers, deliberately. The general rule keeps foreign junk out; the named constants give our own
-writers and guards something canonical to point at.
+Reserved directories are **named, never inferred** — and the names come from config, so the
+staging dir a deployment actually uses is the one the walkers actually skip.
 
-1. **Any directory whose basename starts with `.` is not library content.** One rule, matching the
-   Plex / Jellyfin / Navidrome convention. Sweeps up `@eaDir`-style NAS junk, `.Trash-1000`,
-   `.stfolder` and our own dirs alike.
-2. **Reserved names are declared, not discovered.** `RESERVED_DIRS` names the ones NicotinD itself
-   writes into, so the organizer, the addons, the boot guard and the docs share one constant rather
-   than a string literal each.
+1. **A directory is skipped only when its name is in the reserved set**, matched at the top level
+   of `musicDir` only. The set is derived from config (`downloads.dir` and `unsortedRoot` when
+   relative), defaulting to `.downloads` and `.unsorted`.
+2. **A file is skipped when its basename starts with `.`** — the ordinary hidden-file convention.
 
 ```
 <musicDir>/
@@ -53,27 +51,68 @@ writers and guards something canonical to point at.
 └── .unsorted/                  ← files the organizer could not place
 ```
 
-`.` is a directory-level rule only. A dot-prefixed *file* is already ignored by the
-`AUDIO_EXTENSIONS` check and needs no new handling.
+The leading dot on the shipped defaults is a **convention** (keeps them out of the way in a file
+manager), not the mechanism. Nothing is excluded *because* it starts with a dot.
+
+### Why not "skip every dot-directory"
+
+That was the first draft of this spec, and it is wrong. Verified against the prod library
+2026-08-30 — **two real albums already present would have silently disappeared**:
+
+```
+Memphis La Blusera/...Etc/07 - Arrepentido.mp3
+DMX/...And Then There Was X/07 - Party Up.mp3
+```
+
+Album titles opening with an ellipsis are ordinary (`...And Justice for All`), and restricting the
+rule to the top level does not save it either — `...And You Will Know Us by the Trail of Dead` is
+an *artist*. A music library is precisely the domain where a leading dot carries no meaning.
+
+The justification offered for the general rule was also false on inspection: it does **not** sweep
+up `@eaDir` (Synology), which starts with `@`, not `.`.
+
+### Why the file rule is safe where the directory rule is not
+
+A dot-prefixed *filename* has no such counter-example: the organizer writes `NN - Title.ext`, so a
+track file never leads with a dot even when its album title does. And the rule fixes a live
+problem — macOS AppleDouble sidecars (`._Track.flac`) are **currently scanned as audio**, because
+`extname('._Track.flac')` is `'.flac'`:
+
+```
+".flac"        -> extname ""
+"._Track.flac" -> extname ".flac"      ← matches AUDIO_EXTENSIONS today
+```
+
+The prod library has `/data/music/._.DS_Store` at its root, so it has had Mac contact; the sidecars
+are a matter of when, not whether. Each would ingest as a multi-KB "track" with unreadable tags.
 
 ## The shared predicate
 
 One module, `packages/api/src/services/library-paths.ts`:
 
 ```ts
-export const RESERVED_DIRS = ['.downloads', '.unsorted'] as const;
+export const DEFAULT_RESERVED_DIRS = ['.downloads', '.unsorted'] as const;
 
-/** True when this path segment is staging/junk rather than library content. */
-export function isReservedSegment(name: string): boolean;
+/** The reserved top-level names for a deployment: the shipped defaults plus any
+ *  relative `downloads.dir` / `unsortedRoot` the operator configured. */
+export function reservedDirsFor(cfg: PathConfig): ReadonlySet<string>;
 
-/** True when any segment of a musicDir-relative path is reserved. */
-export function isReservedPath(relPath: string): boolean;
+/** True when a musicDir-relative path is staging rather than library content:
+ *  its FIRST segment is reserved, or any segment is a dot-prefixed file. */
+export function isReservedPath(relPath: string, reserved: ReadonlySet<string>): boolean;
+
+/** True for a hidden file basename (`._Track.flac`, `.DS_Store`). Directory
+ *  names are NOT judged by their leading dot — see "Why not skip every
+ *  dot-directory". */
+export function isHiddenFile(basename: string): boolean;
 
 /** Resolve the acquisition staging dir for a musicDir. */
-export function downloadsDirFor(musicDir: string): string;
+export function downloadsDirFor(musicDir: string, cfg: PathConfig): string;
 ```
 
-`isReservedSegment` is the single place the dot rule lives. Everything else composes it.
+Deriving the set from config is what makes the exclusion honest: an operator who sets
+`downloads.dir: staging` gets `staging` reserved, so the dir that is written to is the dir that is
+skipped. A hardcoded constant would silently stop matching the moment anyone overrode it.
 
 ### Enforced at two depths, not one
 
@@ -121,11 +160,13 @@ downloads:
 Same relative-or-absolute shape `unsortedRoot` already uses (`library-organizer.ts:159-162`), so
 this is an existing idiom rather than a new one.
 
-**A relative `downloads.dir` MUST start with `.`** — config validation rejects it otherwise. A
-relative `downloads/` would resolve under `musicDir` and be walked like any other folder, which is
-#827 again wearing a different name. An absolute path is unconstrained: it is outside `musicDir`, so
-the walkers never see it. This is why the dot rule and the named constants are both load-bearing —
-rule 1 covers a user who overrides the name, `RESERVED_DIRS` covers the default we ship.
+A relative value needs no naming constraint, because `reservedDirsFor()` reads the same config the
+organizer writes to — set `downloads.dir: staging` and `staging` becomes reserved. An absolute path
+is unconstrained too: it sits outside `musicDir`, so the walkers never see it.
+
+The one rule config must enforce: a relative `downloads.dir` may not be nested
+(`a/b`) and may not collide with an existing top-level artist folder. Both are startup errors, not
+warnings — a staging dir that shadows an artist would hide that artist's whole discography.
 
 **Boot guard.** `findInsecureDefaults` warns when a registered addon's downloads dir resolves
 inside `musicDir` but is *not* a reserved path — the exact #827 shape, currently silent.
@@ -150,8 +191,11 @@ schema default and must be settable by env alone.
 
 ## Testing
 
-- `library-paths.test.ts` — the dot rule, nested reserved segments, absolute-vs-relative resolution,
-  and that a legitimately-named `Artist/.../Album` is untouched.
+- `library-paths.test.ts` — reserved-name matching at top level only; `isHiddenFile` on
+  `._Track.flac` / `.DS_Store`; absolute-vs-relative resolution; `reservedDirsFor` picking up a
+  configured override. **Regression cases from the real library:** `Memphis La Blusera/...Etc/` and
+  `DMX/...And Then There Was X/` must scan normally, and an artist named
+  `...And You Will Know Us by the Trail of Dead` must not be skipped.
 - `library-scanner.test.ts` — a file under `.downloads` is not scanned by `scanFull`, **and** is
   refused by `scanPaths` when passed explicitly.
 - `library-organizer.test.ts` — the organizer moves *out of* `.downloads` into `Artist/Album`, and
@@ -161,18 +205,23 @@ schema default and must be settable by env alone.
 
 ## Rejected alternatives
 
-- **Named reserved dirs only, no dot rule.** Fully predictable, nothing a user owns can vanish —
-  but leaves NAS junk dirs walked, and every new staging dir is another special case.
-- **Dot rule only, no named constants.** Then `.downloads` is a string literal in the organizer, the
-  addon env, the boot guard and the docs — the drift #826 was made of.
+- **Skip every dot-directory.** Rejected on evidence — it deletes real albums from this very
+  library. See the section above.
+- **Hardcoded `RESERVED_DIRS` constant.** Stops matching as soon as an operator overrides
+  `downloads.dir`, which is the same "the default disagrees with the config" defect as #826.
 - **Staging outside `musicDir`.** Costs the single mount and the atomic rename, and does not fix the
   underlying "exclusion is implicit" defect for any *other* directory.
 
 ## Known risk
 
-A user with a legitimately dot-prefixed music folder loses it from the library silently. Mitigation:
-`LibraryScanner` logs skipped reserved dirs at debug, and the `unorganized` health dimension counts
-audio files found under reserved paths so a surprising number is visible rather than invisible.
+An operator points `downloads.dir` at a name that later becomes a real artist folder, or ships music
+in a file whose name starts with a dot. Both are narrow, and both are made visible rather than
+silent: `LibraryScanner` logs every skipped path at debug, and the `unorganized` health dimension
+counts audio files sitting under reserved paths, so a surprising number shows up in the health
+report instead of vanishing.
+
+The risk this design *removes* is the larger one — an inferred rule silently discarding content the
+user owns, which the rejected dot-directory rule would have done to four songs on day one.
 
 ## Out of scope
 
