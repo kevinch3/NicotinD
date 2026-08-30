@@ -286,10 +286,19 @@ export function isLooseSinglesBucket(dir: string, album: string): boolean {
 
 /**
  * Resolve final artist/album/title for a track, falling back to path inference
- * when ID3 tags are missing (common with Soulseek peers). Returns both the
- * album-level artist (for grouping/ownership) and the track-level artist (for
- * display). On compilations the two differ: albumArtist = "Various Artists",
- * trackArtist = the actual performer.
+ * when ID3 tags are missing (common with Soulseek peers).
+ *
+ * Three artist values come out, because display and ownership are different
+ * questions that used to share one answer (issue #817):
+ *   - `albumArtist`  — groups the album and owns it.
+ *   - `trackArtist`  — the **credit** shown for this track.
+ *   - `trackArtistOwner` — the name this track's `artist_id` is minted from.
+ *
+ * On a compilation all three differ meaningfully: albumArtist = "Various
+ * Artists", and both track values are the actual performer. On a normal album
+ * the credit may be a collaboration ("Green Velvet, Riva Starr") while
+ * ownership stays with the album artist, so a per-track `feat.` cannot mint a
+ * new artist and fragment the grid.
  */
 function resolveTags(
   t: ScannedTrack,
@@ -297,6 +306,7 @@ function resolveTags(
 ): {
   albumArtist: string;
   trackArtist: string;
+  trackArtistOwner: string;
   album: string;
   title: string;
   year: number | undefined;
@@ -314,15 +324,25 @@ function resolveTags(
     (hasUsableValue(inferred.artist) ? inferred.artist : undefined) ||
     UNKNOWN_ARTIST;
 
-  // Track artist: the actual performer on this track. For compilations where
-  // albumArtist is "Various Artists", prefer the per-track artist tag.
+  // Track artist: the actual performer on this track. The per-track ARTIST tag
+  // used to be honoured ONLY on a compilation and discarded everywhere else, so
+  // a collaboration credit was unwritable on a normal album — a tag write landed
+  // on disk, the rescan read it, and this line overwrote it with the album
+  // artist, which the #760 verify-on-write guard then correctly refused (issue
+  // #817: every track of Green Velvet's *Unshakable* is a different
+  // collaboration, and none of the 13 credits could be stored).
+  //
+  // The tag is now honoured everywhere. Ownership is what stays pinned: a
+  // differing per-track artist is usually a `feat.` variant, and minting an
+  // artist id from it is the fragmentation `splitArtists` and
+  // `library_artist_identity` exist to prevent. So the credit follows the tag
+  // and the id follows the album — except on a compilation, where the performer
+  // IS the owner and pinning ownership to "Various Artists" would hand every
+  // compilation track to an artist the grid deliberately hides.
   const albumArtistIsVA = hasUsableValue(t.albumArtist) && isVariousArtists(t.albumArtist!);
-  let trackArtist: string;
-  if (albumArtistIsVA && hasUsableValue(t.artist)) {
-    trackArtist = t.artist!;
-  } else {
-    trackArtist = albumArtist;
-  }
+  const taggedTrackArtist = hasUsableValue(t.artist) ? t.artist! : undefined;
+  let trackArtist = taggedTrackArtist ?? albumArtist;
+  let trackArtistOwner = albumArtistIsVA ? trackArtist : albumArtist;
 
   const title =
     (hasUsableValue(t.title) && t.title) ||
@@ -352,7 +372,10 @@ function resolveTags(
     // playlist). Adopt the performer that trackArtist already resolved, so the
     // single is owned by whoever actually made it. A genuine compilation keeps
     // a real album name and never reaches this branch.
-    if (albumArtistIsVA && trackArtist !== albumArtist) albumArtist = trackArtist;
+    if (albumArtistIsVA && trackArtist !== albumArtist) {
+      albumArtist = trackArtist;
+      trackArtistOwner = trackArtist;
+    }
   }
 
   let year = t.year ?? undefined;
@@ -365,13 +388,21 @@ function resolveTags(
   if (ov) {
     if (ov.artist != null) {
       albumArtist = ov.artist;
-      if (!albumArtistIsVA) trackArtist = ov.artist;
+      if (!albumArtistIsVA) {
+        trackArtistOwner = ov.artist;
+        // The override corrects the ALBUM's artist (a mis-tagged
+        // "<Desconocido>"), so it replaces a credit that was only ever a copy
+        // of that album artist. A real per-track credit is a different fact and
+        // survives — otherwise fixing an album artist would silently erase every
+        // collaboration on it (issue #817).
+        if (taggedTrackArtist === undefined) trackArtist = ov.artist;
+      }
     }
     if (ov.album != null) album = ov.album;
     if (ov.year != null) year = ov.year;
   }
 
-  return { albumArtist, trackArtist, album, title, year };
+  return { albumArtist, trackArtist, trackArtistOwner, album, title, year };
 }
 
 /**
@@ -461,11 +492,14 @@ export function buildLibrary(
     confirmedArtists.add(normalizeArtistForGrouping(canonical));
   }
   for (const t of tracks) {
-    const { albumArtist, trackArtist } = resolveTags(t, overrides);
+    // The OWNER, not the credit: a compound credit ("A, B") must never be
+    // confirmed as an artist in its own right, or it becomes the authority that
+    // lets the next compound through the split gate (issue #817).
+    const { albumArtist, trackArtistOwner } = resolveTags(t, overrides);
     if (isAtomicArtist(albumArtist))
       confirmedArtists.add(normalizeArtistForGrouping(aliasFix(albumArtist)));
-    if (isAtomicArtist(trackArtist))
-      confirmedArtists.add(normalizeArtistForGrouping(aliasFix(trackArtist)));
+    if (isAtomicArtist(trackArtistOwner))
+      confirmedArtists.add(normalizeArtistForGrouping(aliasFix(trackArtistOwner)));
   }
   const known = { confirmedArtists, canonicalWhole };
 
@@ -499,8 +533,12 @@ export function buildLibrary(
     const { album, title, year, ...rawArtists } = resolveTags(t, overrides);
     const albumArtist = aliasFix(rawArtists.albumArtist);
     const trackArtist = aliasFix(rawArtists.trackArtist);
+    const trackArtistOwner = aliasFix(rawArtists.trackArtistOwner);
     const albumArtistId = artistIdFor(albumArtist);
-    const trackArtistId = artistIdFor(trackArtist);
+    // `artist` carries the credit, `artist_id` the ownership key — the whole
+    // point of #817. On a non-VA album the owner IS the album artist, so this
+    // resolves to `albumArtistId`; on a compilation it is the real performer.
+    const trackArtistId = artistIdFor(trackArtistOwner);
     const albId = albumIdFor(albumArtist, album);
     const id = songId(t.relPath);
     const created = new Date(t.mtimeMs).toISOString();
@@ -560,12 +598,29 @@ export function buildLibrary(
       created,
     });
 
+    // `library_song_artists` means *confirmed performers*, so it must never be
+    // the door a compound sneaks an artist row in through. `splitCredits` is
+    // confirmation-gated: an unknown collaborator leaves the credit whole, and
+    // linking that whole string would mint an `album_count = 0` artist named
+    // "Green Velvet, Riva Starr" — and the artists query filters on
+    // `split_compound = 0` without an album-count floor, so it would render as a
+    // real tile. *Unshakable* alone has 13 collaborators, i.e. up to 13 phantom
+    // tiles (issue #817).
+    //
+    // So an unsplit credit that is not already the owner falls back to the owner.
+    // Nothing is lost: the verbatim credit still lives in `library_songs.artist`,
+    // and once the collaborator is independently in the library the gate opens
+    // and the real split lands on the next scan.
     const trackCredits = splitCredits(trackArtist);
-    for (let i = 0; i < trackCredits.length; i++) {
+    const credited =
+      trackCredits.length === 1 && artistIdFor(trackCredits[0]!.name) !== trackArtistId
+        ? [{ name: trackArtistOwner, role: trackCredits[0]!.role }]
+        : trackCredits;
+    for (let i = 0; i < credited.length; i++) {
       songArtistLinks.push({
         parentId: id,
-        artistId: artistIdFor(trackCredits[i].name),
-        role: trackCredits[i].role,
+        artistId: artistIdFor(credited[i]!.name),
+        role: credited[i]!.role,
         position: i,
       });
     }

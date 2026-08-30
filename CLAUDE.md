@@ -232,8 +232,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Title cleanup runs over the existing library too**: `cleanDisplayTitle` covers reissue labels,
   and `normalize-titles.ts` applies it to stored rows through the verified retag path.
   `planTitleNormalization`. → [library-scanner.md](docs/library-scanner.md)
-- **VA / compilation handling**: `resolveTags` separates `albumArtist` from `trackArtist`;
-  `classifyFolder` detects compilations; dedicated Compilations tab, VA hidden from artists.
+- **VA / compilation handling — the credit is not the owner**: `resolveTags` returns
+  `albumArtist`, the displayed `trackArtist` and the id-minting `trackArtistOwner`, so a
+  per-track collaboration credit is storable without fragmenting the artist grid;
+  `classifyFolder` detects compilations; Compilations tab, VA hidden from artists.
   → [library-scanner.md](docs/library-scanner.md)
 - **Multi-artist support (confirmation-gated)**: `splitArtists` splits a compound only when every part
   is a confirmed artist; `segmentConcatenatedArtist` handles delimiter-less mashes;
