@@ -1111,3 +1111,75 @@ already carrying `Non-Music`/`Children's` genre tags from an earlier attempt), t
 369→248 in one step (121 of the 125 tracks were genre-null) — a reminder that a stale unresolvable
 backlog item can be worth more as a deletion than as a tagging target. Flag #17 was not in the open
 list any more (only #18 remains) — already closed in an earlier session, nothing further to do.
+
+### Session 6 (2026-08-30) — a false "the tool does not exist" finding, and the album under it
+
+Baseline 255 genre-less (378 on 08-28; the 08-29 Linguaphone delete accounts for most of the drop).
+
+**The pass first concluded that `set_song_genre` does not exist and that genre curation is
+impossible over MCP. That was wrong, and the way it went wrong is the useful part.** MCP tools
+arrive deferred: a name is listed, but the schema must be fetched with `ToolSearch` before the tool
+is callable. The opening `ToolSearch` selected ten tools and simply omitted `set_song_genre`. Not
+finding it among the loaded ten, the pass read its own incomplete selection as the library's
+capability surface, checked `fix_song_metadata` (which has no `genre` param — correctly, it is a
+different tool), and wrote up a "critical structural gap" in this file and in memory. A second
+`ToolSearch` produced the tool immediately, with exactly the `{songId, genre, mode}` signature the
+skill documents. Eleven `mode: 'replace'` writes then went through, every one `tagWritten: true`
+and confirmed by read-back.
+
+This is the skill's own "never conclude absence from an empty read" rule (written about the
+pre-#778 wrong-key trap) reappearing one layer down — **the same inference, made about the tool
+list rather than about a query result**. It is worth its own line because the tell is different: a
+wrong argument key now errors loudly, but an unfetched deferred tool is *silently* absent, and the
+absence looks exactly like a missing feature. **Before reporting any capability as missing,
+re-run `ToolSearch` for it by name.**
+
+Cost of the wrong turn: five `fix_song_metadata` calls issued as a substitute for the genre write,
+setting `album` to the value each song already had. Four returned `ok:true` as no-ops; the fifth was
+correctly *refused* — `{"error":"Tag write did not persist", requested "Vuelo Nocturno", actual
+"Vuelo nocturno"}` — the file's tag differs only in case and the post-#760 verify-on-write guard
+caught it rather than reporting success. Nothing was corrupted, but five prod audio files were
+rewritten and rescanned for no benefit. **A no-op retag is not free, and reaching for the nearest
+tool that accepts the id is not a workaround for the right tool.**
+
+#### The album the triage missed
+
+The pass reported Umoja's *Vuelo Nocturno* as "3 genre-less songs, apply Afrobeat" from
+`list_recent_songs` alone. `get_album_tracks` shows 12 rows: **six** genre-less, and five
+duplicate pairs/triples (`Rabia` twice as FLAC, `Vuelo Nocturno` as two FLACs plus an opus,
+`Manicumbi`/`Muerto Mi Abuelo`/`La Piragua` each FLAC + opus). Three opus copies also carried junk
+genres — `Music` on one, `Electro` on two — against a FLAC-side majority of `Afrobeat` that matches
+the artist- and album-level genre.
+
+`list_recent_songs(missingGenre:true)` pages by `landedAt`, so it shows the *arrivals*, never the
+album's shape. Reading the album is what turns "3 songs need a tag" into "12 rows, 6 untagged, 3
+mistagged, 5 duplicate sets". Session 5d's lesson was to read the album before choosing a genre;
+this extends it — **read the album before believing the worklist's count.**
+
+#### Applied — 11 songs, all `mode: 'replace'`, all read back
+
+| Album | Songs | Genre | Evidence |
+| --- | --- | --- | --- |
+| Rosalía — *LUX* | 2 (`Mundo Nuevo`, `Dios Es Un Stalker`, both opus) | `Art Pop` | 18 of 20 siblings already `Art Pop`; both are opus duplicates of FLACs that carry it |
+| Umoja — *Vuelo Nocturno* | 6 genre-less | `Afrobeat` | 3 tagged FLAC siblings agree; matches artist- and album-level genre |
+| Umoja — *Vuelo Nocturno* | 3 mistagged (`Music` ×1, `Electro` ×2) | `Afrobeat` | in-album majority 9–3 after the six; `Music` is not a genre |
+
+`genres.missing` 255 → 246. Total songs moved 17522 → 17523 mid-pass (a live arrival), so the
+report's own delta is not a clean subtraction of the writes — the read-back per song is the
+authoritative check, not the metric.
+
+#### Audio identity probes
+
+`identify_song` on three junk-named rows: the `Unknown Artist` Radiohead *Pablo Honey* row returned
+`undecodable` (`Could not find any audio stream` — a **broken file**, a triage signal rather than a
+metadata answer); Pesho & Dave Bo's *Lemon Tree* matched at 0.953 with no MusicBrainz
+`recordingId`; Wrytzy's *I Will Find The Hood* returned a genuine `no-match`.
+
+#### Left open, deliberately
+
+- **The Umoja duplicate sets** — not deleted. Dedupe is destructive, `songs` moved during the pass
+  (a live arrival), and the skill's mid-ingest rule says suspend destructive work. Needs an owner
+  ruling and a `recordingId` comparison first.
+- **Flag #18 (Green Velvet, *Unshakable*)** — still open, unchanged.
+- **Not searched** (0 searches spent): Las Karamba ×3, Figa Flawas ×1, and the 08-27 Spanish
+  cluster (Maison Bélier ×4, Maruja Limón ×2, Montse Cortés ×2) — the first candidates next pass.
