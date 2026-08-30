@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.43](https://github.com/kevinch3/NicotinD/compare/v0.5.42...v0.5.43) (2026-08-30)
+
+### Features
+
+* **web:** taste breakers shelf + colored vibe tiles on the home page ([#821](https://github.com/kevinch3/NicotinD/issues/821)) ([2a34222](https://github.com/kevinch3/NicotinD/commit/2a342224b55a4b08e716d87ad722b0cb220e4780))
 ## [0.5.42](https://github.com/kevinch3/NicotinD/compare/v0.5.41...v0.5.42) (2026-08-30)
 
 ### Bug Fixes
