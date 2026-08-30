@@ -351,7 +351,15 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   → [library-scanner.md](docs/library-scanner.md)
 - **Frontend false-ended recovery**: `browserDurationIsAcceptable`, `isFalseEnded`, `startRecovery`,
   `loadGeneration`, bounded by `MAX_RECOVERY_ATTEMPTS` with both gates falling back to
-  `FALSE_ENDED_ABSOLUTE_FLOOR_SEC` when the known duration is missing. → [web-ui.md](docs/web-ui.md)
+  `FALSE_ENDED_ABSOLUTE_FLOOR_SEC` when the known duration is missing; the valve resumes where the
+  listener was, never at 0. → [web-ui.md](docs/web-ui.md)
+- **A seek is an intent, not a poke**: a forward seek past the loaded region is held and applied once
+  `audio.seekable` covers it, never assigned and silently clamped into a false `ended`.
+  `pendingSeek`, `requestSeek`, `applyPendingSeek`, `seekTargetIsAvailable`,
+  `PENDING_SEEK_TIMEOUT_MS`. → [web-ui.md](docs/web-ui.md)
+- **A skip burst costs one load**: navigation stays instant while the byte-level load settles on the
+  trailing edge, and every `src` change bumps the load generation rather than only element swaps.
+  `LOAD_SETTLE_MS`, `assignSource`, `playIfIntended`. → [web-ui.md](docs/web-ui.md)
 - **Playback loading feedback (HDD-aware)**: one `buffering` signal (delayed `bufferingVisible`)
   drives spinners, row indicators and the buffered band; every stream URL goes through `streamUrl()`,
   which appends `ngsw-bypass`. Restore-on-load never autoplays — `wasPlaying` is written, not read.

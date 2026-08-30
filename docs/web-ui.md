@@ -590,9 +590,17 @@ contribute and both are defended in depth:
     duration is unknown — it stays at 0 — so the user does not see a
     100 %-filled bar during recovery (the "seek bar at 100 %" part of the
     symptom).
-  - A `loadGeneration` counter (bumped on element swap, captured at listener
-    bind time) is a defense-in-depth filter against stale events that could
-    otherwise leak into queue handling during a cross-element handoff.
+  - A `loadGeneration` counter (bumped on every resource change, captured at
+    listener bind time) is a defense-in-depth filter against stale events that
+    could otherwise leak into queue handling — see "Every `src` change bumps
+    the load generation" below.
+  - The 5 s valve **resumes where the listener was**, not at 0. `startRecovery`
+    captures `restoredTime ?? audio.currentTime` when it arms, and the valve
+    writes it back to `restoredTime` before `audio.load()`, which `onDuration`
+    replays once a sane duration lands. Without this, every valve fire threw
+    away everything before the fault — a recovery three minutes into a track
+    restarted it from the beginning, which is the visible half of the
+    "I seek forward and the track starts over" report.
 
 Regression coverage: `player.component.spec.ts` has a dedicated
 `premature ended (false positive) recovery` block — browser durations that
@@ -673,6 +681,131 @@ Regression coverage: `preserve.service.spec.ts` `store-time truncation gate` +
 `preservedAudioLooksComplete` blocks; `player.component.spec.ts`
 `false ended while sourced from a preserved blob (truncated store)` block (heal path, offline
 fallback, allowance exhaustion, stream-sourced false endeds leaving the preservation alone).
+
+## Seeking past the loaded region
+
+**The bug.** Drag the seek bar forward on a track that has not finished
+loading and the track froze for five seconds, then restarted from the
+beginning. Two mechanisms compounded:
+
+1. The seek bar is enabled the moment a track becomes current — Effect 1 sets
+   the duration from API metadata before a single byte has moved — while
+   `onSeek` poked `audio.currentTime` directly. Assigning a position past what
+   the browser holds does **not** fail: the element clamps to the end of its
+   seekable region and fires `ended`.
+2. Downstream, that `ended` is indistinguishable from a track finishing. It
+   landed in `isFalseEnded` (position far short of the API-known duration),
+   which paused playback for the 5 s recovery valve — and the valve then called
+   `audio.load()`, resetting the timeline to 0. The machinery built to rescue
+   corrupt streams was destroying a perfectly ordinary seek.
+
+**A seek is an intent, not a poke.** `PlayerService.pendingSeek` holds
+`{ trackId, time }` — the position the user asked for, keyed by track so a skip
+during the wait voids it. The flow:
+
+- Every seek funnels through `player.seekTo` and Effect 6, which is the single
+  place a request becomes a media-element operation. `onSeek` (the seek bar)
+  now calls `player.seek()` rather than touching the element, so the bar and the
+  OS media-session handlers share one applier and one gate. Remote-device seeks
+  still short-circuit to a WS `SEEK` command.
+- `requestSeek` clamps the target to the known duration (the bar cannot exceed
+  it, an OS `seekto` can), records the intent, arms the valve, and tries once.
+- `applyPendingSeek` assigns `currentTime` **only** when `seekTargetReachable`
+  says the element can satisfy it: the target sits inside an `audio.seekable`
+  range with `SEEK_AVAILABILITY_EPSILON_SEC` to spare, *or* the seekable region
+  already reaches the end of the track (a fully-seekable resource cannot clamp,
+  so a deliberate drag to the last second is a seek to the end, not something to
+  sit and wait on). Otherwise the intent is held and buffering stays up. It is
+  re-tried on every signal the region may have grown: `durationchange`/
+  `loadedmetadata`, `progress` and `canplay`.
+- The seek bar reads the target while the intent is held (`displayTime` prefers
+  `pendingSeek` over `currentTime`), so the bar sits where the user dropped it
+  instead of snapping back to the old position.
+- `PENDING_SEEK_TIMEOUT_MS` (10 s) is the valve, and it is not optional: some
+  resources never report a range covering the target (a transcode the server
+  never finishes, a file shorter than its tags claim). It lands the user as far
+  forward as the element can actually go and drops the intent — a bounded
+  disappointment rather than a spinner that never resolves.
+
+The pure range logic lives in `lib/seek-availability.ts`
+(`timeRangesToArray` / `seekableEnd` / `seekTargetIsAvailable`), DI-free and
+free of `TimeRanges` in value positions because jsdom cannot construct one.
+
+**Defense in depth.** If a resource's `seekable` over-promises and `ended`
+fires anyway, `onEnded` moves the outstanding target into `restoredTime` before
+handing off to `startRecovery`, so the reload resumes at the seek target rather
+than 0. A genuine end clears the intent instead of letting it leak onto the
+next track.
+
+Regression coverage: `player.component.spec.ts` `seek past the loaded region`
+block (immediate apply inside the region, held intent past it, the bar showing
+the target, apply-on-growth via both `progress` and `durationchange`, the
+clamped-`ended` case not advancing the queue, the valve resuming at the target,
+the timeout landing at the reachable edge, a skip voiding the intent, a token
+refresh *not* voiding it, and remote-device forwarding). Plus
+`seek-availability.spec.ts` for the pure helpers.
+
+## Rapid track changes — a skip burst costs one load
+
+Five quick Next presses used to fire five stream requests and abort four. On an
+HDD library each aborted request can spin the disk and start server-side
+transcode work, and the audio element was asked to begin and abandon four loads
+in a row while four `play()` promises raced. The result felt broken: audio
+stuttering in and out, the spinner flickering, the wrong track occasionally
+winning.
+
+**Navigation and loading are now separate concerns.** Effect 1 still applies
+every press instantly — `currentTrack`, title, artwork, duration, buffering
+flag and the row indicators all land on every change, so nothing looks frozen.
+Only the byte-level load is gated by `LOAD_SETTLE_MS` (250 ms):
+
+- **Leading edge** — the first change after a quiet period commits
+  immediately, so a single Next has exactly today's latency. This is why the
+  window is not a plain trailing debounce: paying 250 ms on every ordinary
+  track start to fix a burst would be a bad trade.
+- **Trailing edge** — a change arriving inside the window cancels the pending
+  commit (via the effect's `onCleanup`) and re-arms. The outgoing element is
+  paused for the duration, through `pausingByStore` so `onPause` does not
+  commit a store-level pause. A five-press burst therefore costs the leading
+  load plus one for wherever the user actually landed.
+
+The natural-end path is deliberately **not** debounced: `onEnded` pre-loads the
+next track synchronously (to keep the Android audio session alive) and marks it
+via `lastManualSrc`, which returns before the gate. Gapless playback is
+unaffected.
+
+**`loadDeferred` is why Effect 5 needs a guard.** Effect 5 syncs the element to
+`isPlaying`, and during the settle window the element still holds the
+*outgoing* resource — so an unguarded `play()` there audibly resumes the track
+the user just skipped away from. The flag is cleared at the top of every
+Effect 1 run and set only by the deferring branch, so it can never outlive the
+window it describes; the deferred commit's `playIfIntended` owns starting the
+incoming track. Reachable whenever `isPlaying` goes false→true inside the
+window (paused, then a skip).
+
+**Every `src` change bumps the load generation.** It used to be bumped only on
+the cross-element standby swap, reasoning that the browser discards queued
+events when `src` is reassigned on the same element. That covers *events* but
+not the `play()` promises already in flight, and a skip burst produces a pile
+of them. `assignSource(audio, src)` is now the only way the component points an
+element at a resource: it bumps `loadGeneration`, re-binds the listeners (they
+compare against the value captured at bind time, so bumping *without*
+re-binding would silence the element permanently), then assigns. `playIfIntended`
+is the matching play helper — it starts playback only when `isPlaying` is set
+and ignores the `AbortError` a superseded load produces.
+
+Regression coverage: `player.component.spec.ts` `rapid track changes` block —
+a single change loading immediately, five changes collapsing to two loads with
+the final track winning, store state staying current while the load is
+deferred, a settled burst loading immediately again, and a handler from a
+superseded load being inert (invoked directly, since dispatching on the element
+would reach the new listeners and prove nothing).
+
+**Deliberately not in scope:** the standby element still pre-loads only in the
+last 30 s of playback, so a skip is a cold load. Extending the preload to the
+queue head at all times would make a single Next near-instant and is the
+natural follow-up; it needs `preloadedTrackId` invalidation on every queue-head
+change, which is a larger change than this one.
 
 ### Web test harness — plain vitest, NOT `ng test`
 

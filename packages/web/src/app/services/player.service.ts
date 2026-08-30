@@ -26,6 +26,19 @@ export interface PlayContext {
   originalOrder: Track[];
 }
 
+/**
+ * A seek the user asked for that the media element could not satisfy yet —
+ * the target sits past the region the browser can currently seek into.
+ * PlayerComponent holds it and re-tries as data arrives; surfaces read it so
+ * the seek bar shows where the user asked to be rather than where playback
+ * still is. Keyed by track so a skip during the wait voids it.
+ */
+export interface PendingSeek {
+  trackId: string;
+  /** Absolute target position, in seconds. */
+  time: number;
+}
+
 function isTrack(v: unknown): v is Track {
   return typeof v === 'object' && v !== null && typeof (v as Track).id === 'string';
 }
@@ -81,6 +94,10 @@ export class PlayerService {
   readonly currentTime = signal(0);
   readonly duration = signal(0);
   readonly seekTo = signal<number | null>(null);
+  // A seek waiting on data (see PendingSeek). Written only by PlayerComponent's
+  // seek applier; read by the transport surfaces so the position they render
+  // follows the user's intent while the element catches up.
+  readonly pendingSeek = signal<PendingSeek | null>(null);
   // Karaoke vocal mute: when true, streams include ?vocals=off for center-channel
   // cancellation. Persists across tracks until toggled off or player cleared.
   readonly vocalsMuted = signal(false);
@@ -343,6 +360,8 @@ export class PlayerService {
     this.context.set(null);
     this.currentTime.set(0);
     this.duration.set(0);
+    this.seekTo.set(null);
+    this.pendingSeek.set(null);
     this.vocalsMuted.set(false);
     this.setBuffering(false);
     this.bufferedRanges.set([]);

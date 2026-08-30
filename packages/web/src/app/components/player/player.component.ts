@@ -28,6 +28,12 @@ import { buildMediaMetadata } from '../../lib/media-metadata';
 import * as db from '../../lib/preserve-store';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { miniPlayerSlideClass } from '../../lib/player-chrome';
+import {
+  SEEK_AVAILABILITY_EPSILON_SEC,
+  seekTargetIsAvailable,
+  seekableEnd,
+  timeRangesToArray,
+} from '../../lib/seek-availability';
 import { SeekBarComponent } from '../seek-bar/seek-bar.component';
 import { TranslateService } from '../../services/translate.service';
 import { ListeningTrackerService } from '../../services/listening-tracker.service';
@@ -68,6 +74,36 @@ export const FALSE_ENDED_ABSOLUTE_FLOOR_SEC = 3;
  * the normal advance path runs.
  */
 export const MAX_RECOVERY_ATTEMPTS = 3;
+
+/**
+ * How long a burst of track changes is allowed to settle before the player
+ * actually fetches anything.
+ *
+ * Navigation itself stays instant — `currentTrack`, the title, the artwork and
+ * the seek bar update on every press. Only the byte-level load is deferred, so
+ * hammering Next five times costs one stream request instead of five started
+ * and aborted (each of which can spin an HDD and start server-side transcode
+ * work), and the audio element is never asked to start and abandon four loads
+ * in a row.
+ *
+ * Applied on the trailing edge only: the first change after a quiet period
+ * loads immediately, so a single Next keeps today's latency. A burst collapses
+ * into that leading load plus one more for wherever the user landed.
+ */
+export const LOAD_SETTLE_MS = 250;
+
+/**
+ * How long an unsatisfiable seek is held before the player gives up waiting
+ * and lands the user as far forward as the element can actually go.
+ *
+ * The seekable region normally grows to cover the target within a second or
+ * two (the browser issues a Range request for it). It may never get there —
+ * a transcode the server never finishes, or a file genuinely shorter than its
+ * tags claim — and without a valve the seek bar would sit on a spinner
+ * forever, which is the failure mode {@link PlayerComponent.requestSeek} was
+ * written to remove, not reproduce.
+ */
+export const PENDING_SEEK_TIMEOUT_MS = 10_000;
 
 /**
  * Frontend duration gate. The API-known `track.duration` (from the library
@@ -157,13 +193,26 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private preloadedTrackId: string | null = null;
   // Tracks the last vocal mute state to detect toggle changes (Effect 6b).
   private lastVocalsMuted: boolean | null = null;
-  // Load generation: bumped only on the element swap (onEnded standby swap).
-  // Every event handler closure captures the generation at bind time and
-  // ignores events from a prior element's listener scope. (The browser
-  // already discards queued events when `audio.src` is reassigned on the
-  // same element, so we don't bump for in-place src changes — only for
-  // cross-element handoffs where the old listeners were removed.)
+  // Load generation: bumped on every resource change — an in-place `audio.src`
+  // reassignment (always via `assignSource`) as well as the onEnded standby
+  // swap. Every event handler closure captures the generation at bind time and
+  // ignores events from a prior resource's listener scope.
+  //
+  // It used to be bumped only on the cross-element swap, on the grounds that
+  // the browser discards queued events when `src` is reassigned on the same
+  // element. That covers *events*, but not the `play()` promises already in
+  // flight, and rapid Next presses produce a pile of them — so the guard is
+  // applied uniformly now. Bumping requires re-binding (handlers compare
+  // against the captured value), which is why `assignSource` does both.
   private loadGeneration = 0;
+  // Timestamp of the last committed load, for the LOAD_SETTLE_MS burst gate.
+  private lastLoadCommitAt = 0;
+  // True while a load is waiting out the settle window. Read by Effect 5,
+  // which must not start the outgoing resource during that gap.
+  private loadDeferred = false;
+  // The track id the load path last acted on, so an Effect 1 re-run that is
+  // *not* a track change (a token refresh) doesn't void an in-flight seek.
+  private loadedTrackId: string | null = null;
 
   // Playback progress interpolation
   private interpolatedTime = signal(0);
@@ -173,8 +222,14 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   readonly slideClass = computed(() => miniPlayerSlideClass(this.player.currentTrack() !== null));
 
   readonly displayTime = computed(() => {
-    if (this.isActiveDevice()) return this.player.currentTime();
-    return this.interpolatedTime();
+    if (!this.isActiveDevice()) return this.interpolatedTime();
+    // A seek waiting on data shows its target, not the position the element is
+    // still playing from: the user asked to be at 3:00, so the bar reads 3:00
+    // while the bytes are fetched. Guarded on track id — a skip during the
+    // wait leaves the intent stale until the applier collects it.
+    const pending = this.player.pendingSeek();
+    if (pending && pending.trackId === this.player.currentTrack()?.id) return pending.time;
+    return this.player.currentTime();
   });
 
   readonly displayDuration = computed(() => {
@@ -223,6 +278,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       const isActive = this.isActiveDevice();
       const audio = this.audioEl()?.nativeElement;
       if (!audio) return;
+      // Cleared on every run; only the deferring branch below sets it again, so
+      // it can never outlive the settle window it describes.
+      this.loadDeferred = false;
 
       // Listening history: this device only. A controller tab mirroring a remote
       // device gets its `currentTrack` set by RemotePlaybackService without any
@@ -239,9 +297,19 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         }
       }
 
+      // A genuine track change voids any seek still waiting on data — the
+      // target meant nothing outside the track it was made against. Keyed on
+      // the id rather than "this effect ran" because a token refresh re-runs
+      // the effect with the same track and must not cancel the user's seek.
+      if ((track?.id ?? null) !== this.loadedTrackId) {
+        this.loadedTrackId = track?.id ?? null;
+        this.clearPendingSeek();
+      }
+
       // onEnded pre-loaded this track synchronously to keep the Android audio session alive.
       if (track && this.lastManualSrc === track.id) {
         this.lastManualSrc = null;
+        this.lastLoadCommitAt = Date.now();
         return;
       }
 
@@ -250,80 +318,82 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         if (objectUrl) URL.revokeObjectURL(objectUrl);
       });
 
-      if (!isActive) {
-        this.pausingByStore = true;
-        audio.pause();
-        this.pausingByStore = false;
-        audio.src = '';
-        this.player.setBuffering(false);
-        this.player.setBufferedRanges([]);
+      if (!isActive || !track) {
+        this.teardownAudio(audio);
+        if (!track) {
+          this.player.setCurrentTime(0);
+          this.player.setDuration(0);
+        }
         return;
       }
 
-      if (track) {
-        // Different audio — a fresh MAX_RECOVERY_ATTEMPTS allowance. Deliberately
-        // NOT reset when a recovery succeeds: that's the same resource, and
-        // refreshing its budget there lets a flaky one recover indefinitely.
-        this.recoveryAttempts = 0;
-        this.player.setCurrentTime(0);
-        this.player.setDuration(track.duration ?? 0);
-        // New load beginning — flag it before any bytes move so track rows and
-        // play buttons can acknowledge instantly (HDD loads take seconds).
-        this.player.setBuffering(true);
-        this.player.setBufferedRanges([]);
+      // ── Instant acknowledgement ───────────────────────────────────────────
+      // Never deferred: the store-side state behind the title, artwork, seek
+      // bar and row indicators has to land on every press, or a burst of skips
+      // looks frozen while the settle window runs.
+      //
+      // Different audio — a fresh MAX_RECOVERY_ATTEMPTS allowance. Deliberately
+      // NOT reset when a recovery succeeds: that's the same resource, and
+      // refreshing its budget there lets a flaky one recover indefinitely.
+      this.recoveryAttempts = 0;
+      this.player.setCurrentTime(0);
+      this.player.setDuration(track.duration ?? 0);
+      // New load beginning — flag it before any bytes move so track rows and
+      // play buttons can acknowledge instantly (HDD loads take seconds).
+      this.player.setBuffering(true);
+      this.player.setBufferedRanges([]);
+
+      const commit = () => {
+        this.lastLoadCommitAt = Date.now();
+        this.loadDeferred = false;
 
         if (untracked(() => this.preserve.isPreserved(track.id))) {
           // Load from IndexedDB — no network request
-          (async () => {
+          void (async () => {
             const blob = await db.getBlob(track.id);
             if (blob) {
               objectUrl = URL.createObjectURL(blob.audio);
-              audio.src = objectUrl;
+              this.assignSource(audio, objectUrl);
               db.updateLastAccessed(track.id);
             } else {
               // Metadata exists but blob missing — fall back to stream
-              audio.src = this.server.streamUrl(track.id, token);
+              this.assignSource(audio, this.server.streamUrl(track.id, token));
             }
             // Don't autoplay on a fresh track load: the user must have pressed
             // play (or have autoplay_on_load + restored session — which routes
             // through Effect 5 via isPlaying). Otherwise just loading the
             // metadata is enough — the seek position is restored by onDuration.
-            if (untracked(() => this.player.isPlaying())) {
-              audio.play().catch((err) => {
-                if (err.name === 'NotAllowedError') this.handlePlayRejection();
-              });
-            }
+            this.playIfIntended(audio);
           })();
         } else if (untracked(() => !this.network.online())) {
           // Offline and this track isn't downloaded — don't point <audio> at an
           // unreachable stream. Left unguarded, the element stalls on a spinner
           // that never resolves (`onError` only clears buffering). Bail cleanly.
-          audio.src = '';
-          this.player.setBuffering(false);
-          this.player.setBufferedRanges([]);
-          this.toast.show({
-            message: this.i18n.t('player.unavailableOffline', { title: track.title }),
-            kind: 'error',
-          });
+          this.stopForOffline(audio, track.title);
         } else {
-          audio.src = this.server.streamUrl(track.id, token);
+          this.assignSource(audio, this.server.streamUrl(track.id, token));
           // See the preserve branch above for why play() is gated here.
-          if (untracked(() => this.player.isPlaying())) {
-            audio.play().catch((err) => {
-              if (err.name === 'NotAllowedError') this.handlePlayRejection();
-            });
-          }
+          this.playIfIntended(audio);
         }
-      } else {
-        this.pausingByStore = true;
-        audio.pause();
-        this.pausingByStore = false;
-        audio.src = '';
-        this.player.setCurrentTime(0);
-        this.player.setDuration(0);
-        this.player.setBuffering(false);
-        this.player.setBufferedRanges([]);
+      };
+
+      // ── Skip-burst collapsing ─────────────────────────────────────────────
+      // Leading edge: the first change after a quiet period loads at once, so
+      // a single Next is as fast as it ever was.
+      const sinceLastCommit = Date.now() - this.lastLoadCommitAt;
+      if (sinceLastCommit >= LOAD_SETTLE_MS) {
+        commit();
+        return;
       }
+      // Trailing edge: silence the outgoing track for the settle window (the
+      // user has already left it) and let the burst land on one load. Paused
+      // through `pausingByStore` so onPause doesn't commit a store-level pause.
+      this.loadDeferred = true;
+      this.pausingByStore = true;
+      audio.pause();
+      this.pausingByStore = false;
+      const timer = setTimeout(commit, LOAD_SETTLE_MS - sinceLastCommit);
+      onCleanup(() => clearTimeout(timer));
     });
 
     // Effect 2: Media Session metadata (OS lock-screen / notification). Routed
@@ -403,9 +473,15 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         return;
       }
       if (playing) {
-        audio.play().catch((err) => {
-          if (err.name === 'NotAllowedError') this.handlePlayRejection();
-        });
+        // While a load waits out the settle window the element still holds the
+        // *outgoing* resource, so playing here would briefly resume the track
+        // the user just skipped away from. The deferred commit's
+        // `playIfIntended` starts the incoming one instead.
+        if (!this.loadDeferred) {
+          audio.play().catch((err) => {
+            if (err.name === 'NotAllowedError') this.handlePlayRejection();
+          });
+        }
         void this.acquireWakeLock();
       } else {
         this.pausingByStore = true;
@@ -415,13 +491,18 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       }
     });
 
-    // Effect 6: Seek from store
+    // Effect 6: Seek from store. Every seek funnels through `player.seekTo` —
+    // the seek bar (via onSeek), the OS media-session handlers, and anything
+    // else calling `player.seek()` — so there is exactly one place that turns
+    // a request into a media-element operation. It records an *intent* rather
+    // than poking `currentTime` directly: see requestSeek for why a forward
+    // seek past the loaded region must wait instead of being clamped.
     effect(() => {
       const seekTo = this.player.seekTo();
       const audio = this.audioEl()?.nativeElement;
       if (!audio || seekTo === null) return;
-      audio.currentTime = seekTo;
       this.player.clearSeek();
+      this.requestSeek(audio, seekTo);
     });
 
     // Effect 6b: Vocal mute toggle — reloads the stream with/without the
@@ -454,7 +535,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       if (audio.currentTime > 1) this.player.restoredTime = audio.currentTime;
       const wasPlaying = this.player.isPlaying();
       const token = this.auth.token();
-      audio.src = this.server.streamUrl(track.id, token, { vocalsOff: vocalsMuted });
+      this.assignSource(audio, this.server.streamUrl(track.id, token, { vocalsOff: vocalsMuted }));
       if (wasPlaying) {
         audio.play().catch((err) => {
           if (err.name === 'NotAllowedError') this.handlePlayRejection();
@@ -532,21 +613,165 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   }
 
   /**
+   * Point the active element at a new resource.
+   *
+   * The generation bump plus re-bind is the whole point: handlers compare the
+   * generation they captured at bind time against the current one, so bumping
+   * without re-binding would silence the element permanently. Every in-place
+   * `src` assignment goes through here so that an aborted load — the four
+   * discarded ones in a five-press skip burst, above all — cannot land a
+   * `play()` resolution or a late event on the resource that replaced it.
+   */
+  private assignSource(audio: HTMLAudioElement, src: string): void {
+    this.loadGeneration += 1;
+    this.bindAudioListeners(audio);
+    audio.src = src;
+  }
+
+  /**
+   * Start playback only if the user actually asked for it. An `AbortError`
+   * from a load this one superseded is expected and ignored — only a revoked
+   * autoplay permission needs handling.
+   */
+  private playIfIntended(audio: HTMLAudioElement): void {
+    if (!untracked(() => this.player.isPlaying())) return;
+    audio.play().catch((err) => {
+      if (err.name === 'NotAllowedError') this.handlePlayRejection();
+    });
+  }
+
+  /** Park the element with no resource: remote device took over, or queue empty. */
+  private teardownAudio(audio: HTMLAudioElement): void {
+    this.pausingByStore = true;
+    audio.pause();
+    this.pausingByStore = false;
+    this.assignSource(audio, '');
+    this.player.setBuffering(false);
+    this.player.setBufferedRanges([]);
+  }
+
+  /**
    * Stop playback cleanly when the current/next track can't be sourced offline
    * (not downloaded, or its blob is missing). Avoids the silent, infinite
    * buffering spinner that a doomed network `<audio>` load would produce.
    */
   private stopForOffline(audio: HTMLAudioElement, title: string): void {
-    this.pausingByStore = true;
-    audio.pause();
-    this.pausingByStore = false;
-    audio.src = '';
-    this.player.setBuffering(false);
-    this.player.setBufferedRanges([]);
+    this.teardownAudio(audio);
     this.toast.show({
       message: this.i18n.t('player.unavailableOffline', { title }),
       kind: 'error',
     });
+  }
+
+  /** The timer bounding how long an unsatisfiable seek is held. */
+  private pendingSeekTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  private clearPendingSeekTimeout(): void {
+    if (this.pendingSeekTimeout !== null) {
+      clearTimeout(this.pendingSeekTimeout);
+      this.pendingSeekTimeout = null;
+    }
+  }
+
+  /** Drop the outstanding seek intent and its valve. Leaves buffering alone —
+   *  callers know whether the seek resolved or was abandoned. */
+  private clearPendingSeek(): void {
+    this.clearPendingSeekTimeout();
+    if (untracked(() => this.player.pendingSeek()) !== null) this.player.pendingSeek.set(null);
+  }
+
+  /** The outstanding seek target for the track that is current *now*, or null. */
+  private pendingSeekTarget(): number | null {
+    const pending = untracked(() => this.player.pendingSeek());
+    if (!pending) return null;
+    if (pending.trackId !== untracked(() => this.player.currentTrack())?.id) return null;
+    return pending.time;
+  }
+
+  /**
+   * Turn a seek request into an intent and apply it as soon as the element can
+   * reach it.
+   *
+   * Assigning `currentTime` past the seekable region does not fail — the
+   * browser clamps to the end of what it holds and fires `ended`, which the
+   * rest of the player reads as "track finished". On a stream still filling
+   * (an HDD read, a transcode in progress, a VBR container mid-parse) that
+   * turned a forward seek into a 5 s freeze followed by the track restarting
+   * at 0, because the false-ended recovery took over. So: record the target,
+   * apply it the moment `audio.seekable` covers it, and let
+   * {@link PENDING_SEEK_TIMEOUT_MS} bound the wait.
+   */
+  private requestSeek(audio: HTMLAudioElement, time: number): void {
+    const track = untracked(() => this.player.currentTrack());
+    if (!track) return;
+    // Clamp to the duration the player believes in — the seek bar can't exceed
+    // it, but `seekto` from an OS media control can.
+    const known = untracked(() => this.player.duration());
+    const target = Math.max(0, known > 0 ? Math.min(time, known) : time);
+
+    this.player.pendingSeek.set({ trackId: track.id, time: target });
+    this.clearPendingSeekTimeout();
+    this.pendingSeekTimeout = setTimeout(() => {
+      this.pendingSeekTimeout = null;
+      this.forcePendingSeek();
+    }, PENDING_SEEK_TIMEOUT_MS);
+
+    this.applyPendingSeek(audio);
+  }
+
+  /**
+   * Can the element be sent to `target` without silently clamping?
+   *
+   * Normally that means the target sits inside a seekable range. The second
+   * clause covers the case the first one gets wrong: when the element can
+   * already reach the end of the track, the whole resource is seekable and
+   * nothing is going to clamp — so a deliberate drag to the last second is a
+   * seek to the end, not a target to sit and wait on.
+   */
+  private seekTargetReachable(audio: HTMLAudioElement, target: number): boolean {
+    const ranges = timeRangesToArray(audio.seekable);
+    if (seekTargetIsAvailable(target, ranges)) return true;
+    const known = untracked(() => this.player.duration());
+    return known > 0 && seekableEnd(ranges) >= known - SEEK_AVAILABILITY_EPSILON_SEC;
+  }
+
+  /**
+   * Apply the outstanding seek if the element can satisfy it, otherwise hold.
+   * Called on every signal that the seekable region may have grown:
+   * `durationchange`/`loadedmetadata`, `progress` and `canplay`.
+   */
+  private applyPendingSeek(audio: HTMLAudioElement): void {
+    const target = this.pendingSeekTarget();
+    if (target === null) {
+      // Either nothing pending, or it belonged to a track we have since left.
+      this.clearPendingSeek();
+      return;
+    }
+    if (!this.seekTargetReachable(audio, target)) {
+      // Not reachable yet. Keep the intent, keep the spinner up, and let the
+      // next growth event (or the valve) resolve it.
+      this.player.setBuffering(true);
+      return;
+    }
+    this.clearPendingSeek();
+    audio.currentTime = target;
+  }
+
+  /**
+   * The valve: stop waiting and land as far forward as the element can go.
+   * Better than stranding the user on a spinner when the seekable region is
+   * never going to reach the target.
+   */
+  private forcePendingSeek(): void {
+    const target = this.pendingSeekTarget();
+    const audio = this.audioEl()?.nativeElement;
+    this.clearPendingSeek();
+    this.player.setBuffering(false);
+    if (target === null || !audio) return;
+    const reachable =
+      seekableEnd(timeRangesToArray(audio.seekable)) - SEEK_AVAILABILITY_EPSILON_SEC;
+    const landing = Math.min(target, reachable);
+    if (landing > 0) audio.currentTime = landing;
   }
 
   private async acquireWakeLock(): Promise<void> {
@@ -608,9 +833,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
 
     // Capture the load generation at bind time. Every handler below closes
     // over this number and bails if `loadGeneration` has moved on (the standby
-    // element was swapped in, a vocal-mute toggle reloaded src, etc). Without
-    // this, a stale `ended` from the pre-swap load could advance the queue
-    // right after the user manually picks the next track.
+    // element was swapped in, a vocal-mute toggle reloaded src, a skip
+    // replaced the stream). Without this, a stale `ended` from the superseded
+    // load could advance the queue right after the user picked a track.
     const boundGen = this.loadGeneration;
 
     const onTime = () => {
@@ -688,6 +913,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         audio.currentTime = this.player.restoredTime;
         this.player.restoredTime = null;
       }
+      // A real duration usually means the seekable region just became known.
+      this.applyPendingSeek(audio);
     };
 
     const onEnded = () => {
@@ -702,6 +929,17 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       // allowance the resource is genuinely short, so fall through to the
       // normal advance path instead of recovering forever.
       if (this.isFalseEnded(audio) && this.recoveryAttempts < MAX_RECOVERY_ATTEMPTS) {
+        // A seek was still waiting on data: this `ended` is the browser having
+        // clamped that target to the end of what it holds, not the track
+        // finishing. Hand the target to the recovery reload so the listener
+        // lands where they asked instead of back at 0. (The seekable gate in
+        // applyPendingSeek should keep us out of here — this is the net for a
+        // resource whose `seekable` over-promised.)
+        const seekTarget = this.pendingSeekTarget();
+        if (seekTarget !== null) {
+          this.clearPendingSeek();
+          this.player.restoredTime = seekTarget;
+        }
         // Sourced from a preserved blob? Then the *stored copy* is truncated
         // and waiting/retrying can never help — swap to the network stream
         // and drop the poisoned entry instead of blind recovery.
@@ -709,6 +947,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         this.startRecovery(audio, boundGen);
         return;
       }
+      // The track genuinely ended — a seek that never became reachable dies
+      // with it rather than leaking onto whatever plays next.
+      this.clearPendingSeek();
       const repeat = this.player.repeat();
       const token = this.auth.token();
 
@@ -744,7 +985,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
             this.preloadedTrackId = null;
             // New load on a new element — bump the generation so any stale
             // event still queued on the now-cleared old element can't make
-            // it through (the new listeners capture the bumped value).
+            // it through (the new listeners capture the bumped value). Hand
+            // -rolled rather than via `assignSource` because the standby's src
+            // is already set (that is the point of the preload) and the
+            // re-bind has to target the standby, not the element we are in.
             this.loadGeneration += 1;
             // Gapless swap — the preloaded element is different audio too.
             this.recoveryAttempts = 0;
@@ -782,18 +1026,18 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
             };
 
             if (isPreserved) {
-              db.getBlob(nextTrack.id).then((blob) => {
+              void db.getBlob(nextTrack.id).then((blob) => {
                 if (blob) {
                   const url = URL.createObjectURL(blob.audio);
                   this.lastManualObjectUrl = url;
-                  audio.src = url;
+                  this.assignSource(audio, url);
                   playNext();
                 } else if (untracked(() => !this.network.online())) {
                   // Metadata preserved but blob missing, and offline — don't
                   // stall on an unreachable stream.
                   this.stopForOffline(audio, nextTrack.title);
                 } else {
-                  audio.src = this.server.streamUrl(nextTrack.id, token);
+                  this.assignSource(audio, this.server.streamUrl(nextTrack.id, token));
                   playNext();
                 }
               });
@@ -802,7 +1046,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               // pointing <audio> at a stream that will only spin forever.
               this.stopForOffline(audio, nextTrack.title);
             } else {
-              audio.src = this.server.streamUrl(nextTrack.id, token);
+              this.assignSource(audio, this.server.streamUrl(nextTrack.id, token));
               playNext();
             }
           }
@@ -870,6 +1114,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     const onCanPlay = () => {
       if (boundGen !== this.loadGeneration) return;
       this.player.setBuffering(false);
+      this.applyPendingSeek(audio);
       // `canplay` is a coarser signal than `durationchange` but it's the
       // earliest event that proves the browser has enough bytes to play —
       // exit recovery if the current duration is sane.
@@ -902,6 +1147,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         ranges.push({ start: audio.buffered.start(i), end: audio.buffered.end(i) });
       }
       this.player.setBufferedRanges(ranges);
+      // Data arriving is the signal a held seek has been waiting for.
+      this.applyPendingSeek(audio);
     };
 
     audio.addEventListener('timeupdate', onTime);
@@ -987,13 +1234,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     this.player.setBufferedRanges([]);
     const badUrl = this.lastManualObjectUrl;
     this.lastManualObjectUrl = null;
-    audio.src = this.server.streamUrl(track.id, this.auth.token());
+    this.assignSource(audio, this.server.streamUrl(track.id, this.auth.token()));
     if (badUrl) URL.revokeObjectURL(badUrl);
-    if (untracked(() => this.player.isPlaying())) {
-      audio.play().catch((err) => {
-        if (err.name === 'NotAllowedError') this.handlePlayRejection();
-      });
-    }
+    this.playIfIntended(audio);
     return true;
   }
 
@@ -1026,11 +1269,21 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     this.player.recoveryState.set('awaiting-duration');
     this.player.setBuffering(true);
     this.clearRecoveryTimeout();
+    // Where the listener should come back to once the reload produces a real
+    // timeline: the target of a seek that provoked this `ended` (onEnded parks
+    // it in restoredTime), otherwise however far playback had actually got.
+    // Captured now because `load()` below resets the element's own clock.
+    const resumeAt = this.player.restoredTime ?? audio.currentTime;
     this.recoveryTimeout = setTimeout(() => {
       if (boundGen !== this.loadGeneration) return;
       this.recoveryTimeout = null;
       this.player.recoveryState.set('normal');
       this.player.setBuffering(false);
+      // Resume where the listener was, not at 0. onDuration replays
+      // `restoredTime` once a sane duration lands; without this the valve
+      // threw away everything before the fault on every fire — the visible
+      // half of "I seek forward and the track starts over".
+      if (Number.isFinite(resumeAt) && resumeAt > 1) this.player.restoredTime = resumeAt;
       // load(), not `currentTime = 0`: after a stream cut short mid-transfer
       // the browser's media cache still holds the truncated resource, so a
       // bare seek-to-0 + play replays the same few seconds and feeds the next
@@ -1051,6 +1304,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     this.audioListenerCleanups.forEach((fn) => fn());
     if (this.backgroundPauseTimer !== null) clearTimeout(this.backgroundPauseTimer);
     this.clearRecoveryTimeout();
+    this.clearPendingSeekTimeout();
     if (this.progressReportInterval) clearInterval(this.progressReportInterval);
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.releaseWakeLock();
@@ -1116,9 +1370,11 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   // Firefox). Fires once on release: scrub locally for the active device, or
   // forward a SEEK command to the remote device.
   onSeek(time: number): void {
-    const audio = this.audioEl()?.nativeElement;
-    if (this.isActiveDevice() && audio) {
-      audio.currentTime = time;
+    if (this.isActiveDevice()) {
+      // Through the store, not straight at the element: Effect 6 is the single
+      // applier, so the seek bar and the OS media controls share one
+      // pending-intent record and one availability gate.
+      this.player.seek(time);
     } else {
       this.ws.sendCommand('SEEK', { position: time });
       this.remote.setRemoteProgress(time, this.safeDuration());

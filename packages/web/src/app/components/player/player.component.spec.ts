@@ -6,7 +6,10 @@ import {
   PlayerComponent,
   browserDurationIsAcceptable,
   MAX_RECOVERY_ATTEMPTS,
+  LOAD_SETTLE_MS,
+  PENDING_SEEK_TIMEOUT_MS,
 } from './player.component';
+import { SEEK_AVAILABILITY_EPSILON_SEC } from '../../lib/seek-availability';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { LikeService } from '../../services/like.service';
@@ -1019,6 +1022,393 @@ describe('PlayerComponent', () => {
       fakeAudio.dispatchEvent(new Event('ended'));
       expect(playerService.recoveryState()).toBe('normal');
       expect(playerService.currentTrack()).toEqual(TRACK_2);
+    });
+  });
+
+  // ─── Seeking past the loaded region ───────────────────────────────────────
+
+  describe('seek past the loaded region', () => {
+    const longTrack: Track = { id: 't1', title: 'Test Track', artist: 'A', duration: 240 };
+
+    /** Stub what the element can currently seek into. */
+    function setSeekable(...pairs: [number, number][]): void {
+      Object.defineProperty(fakeAudio, 'seekable', {
+        value: {
+          length: pairs.length,
+          start: (i: number) => pairs[i][0],
+          end: (i: number) => pairs[i][1],
+        },
+        configurable: true,
+      });
+    }
+
+    /** currentTime has to be writable for the applier's assignment to stick. */
+    function setCurrentTime(value: number): void {
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value,
+        writable: true,
+        configurable: true,
+      });
+    }
+
+    beforeEach(() => {
+      playerService.currentTrack.set(longTrack);
+      fixture.detectChanges();
+      setCurrentTime(10);
+      playerService.setCurrentTime(10);
+    });
+
+    it('applies a seek that lands inside the loaded region immediately', () => {
+      setSeekable([0, 240]);
+
+      component.onSeek(90);
+      fixture.detectChanges();
+
+      expect(fakeAudio.currentTime).toBe(90);
+      expect(playerService.pendingSeek()).toBeNull();
+    });
+
+    // The reported bug. Assigning currentTime past what the browser holds does
+    // not fail — it clamps to the end and fires `ended`, which the rest of the
+    // player reads as "track finished".
+    it('does not move the element when the target is past everything loaded', () => {
+      setSeekable([0, 40]);
+
+      component.onSeek(180);
+      fixture.detectChanges();
+
+      expect(fakeAudio.currentTime).toBe(10);
+      expect(playerService.pendingSeek()).toEqual({ trackId: 't1', time: 180 });
+      expect(playerService.buffering()).toBe(true);
+    });
+
+    it('shows the target on the seek bar while the intent is held', () => {
+      setSeekable([0, 40]);
+
+      component.onSeek(180);
+      fixture.detectChanges();
+
+      // Not 10 — the user asked to be at 3:00, so the bar reads 3:00.
+      expect(component.displayTime()).toBe(180);
+    });
+
+    it('applies the held seek as soon as the loaded region reaches it', () => {
+      setSeekable([0, 40]);
+      component.onSeek(180);
+      fixture.detectChanges();
+      expect(playerService.pendingSeek()).not.toBeNull();
+
+      // More bytes arrive and the region now covers the target.
+      setSeekable([0, 200]);
+      fakeAudio.dispatchEvent(new Event('progress'));
+
+      expect(fakeAudio.currentTime).toBe(180);
+      expect(playerService.pendingSeek()).toBeNull();
+    });
+
+    it('applies the held seek when a real duration lands', () => {
+      setSeekable([0, 40]);
+      component.onSeek(180);
+      fixture.detectChanges();
+
+      setSeekable([0, 240]);
+      Object.defineProperty(fakeAudio, 'duration', { value: 240, configurable: true });
+      fakeAudio.dispatchEvent(new Event('durationchange'));
+
+      expect(fakeAudio.currentTime).toBe(180);
+      expect(playerService.pendingSeek()).toBeNull();
+    });
+
+    // Defense in depth for a resource whose `seekable` over-promised: the
+    // element clamps to its end and fires `ended`, and the old code advanced
+    // the queue / restarted the track at 0 from there.
+    it('does not advance the queue when a clamped seek provokes ended', () => {
+      setSeekable([0, 40]);
+      component.onSeek(180);
+      fixture.detectChanges();
+
+      playerService.queue.set([TRACK_2]);
+      playerService.isPlaying.set(true);
+      Object.defineProperty(fakeAudio, 'duration', { value: 40, configurable: true });
+      setCurrentTime(40);
+
+      fakeAudio.dispatchEvent(new Event('ended'));
+
+      expect(playerService.currentTrack()).toEqual(longTrack);
+      expect(playerService.queue()).toEqual([TRACK_2]);
+      expect(playerService.recoveryState()).toBe('awaiting-duration');
+    });
+
+    it('resumes at the seek target — not 0 — after the recovery valve reloads', () => {
+      vi.useFakeTimers();
+      setSeekable([0, 40]);
+      component.onSeek(180);
+      fixture.detectChanges();
+
+      playerService.isPlaying.set(true);
+      Object.defineProperty(fakeAudio, 'duration', { value: 40, configurable: true });
+      setCurrentTime(40);
+      fakeAudio.dispatchEvent(new Event('ended'));
+
+      mockLoad.mockClear();
+      vi.advanceTimersByTime(5000);
+
+      expect(mockLoad).toHaveBeenCalled();
+      // onDuration replays restoredTime once a sane duration lands, so the
+      // listener comes back to where they asked to be.
+      expect(playerService.restoredTime).toBe(180);
+      vi.useRealTimers();
+    });
+
+    // Without a pending seek the valve still preserves the listener's place —
+    // it used to throw away everything before the fault on every fire.
+    it('resumes at the played position after a recovery with no pending seek', () => {
+      vi.useFakeTimers();
+      playerService.isPlaying.set(true);
+      Object.defineProperty(fakeAudio, 'duration', { value: 90, configurable: true });
+      setCurrentTime(90);
+
+      fakeAudio.dispatchEvent(new Event('ended'));
+      vi.advanceTimersByTime(5000);
+
+      expect(playerService.restoredTime).toBe(90);
+      vi.useRealTimers();
+    });
+
+    it('lands at the reachable edge when the target never becomes available', () => {
+      vi.useFakeTimers();
+      setSeekable([0, 40]);
+      component.onSeek(180);
+      fixture.detectChanges();
+
+      vi.advanceTimersByTime(PENDING_SEEK_TIMEOUT_MS);
+
+      // As far forward as the element can actually go, rather than a spinner
+      // that never resolves.
+      expect(fakeAudio.currentTime).toBe(40 - SEEK_AVAILABILITY_EPSILON_SEC);
+      expect(playerService.pendingSeek()).toBeNull();
+      expect(playerService.buffering()).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('voids a held seek when the user skips to another track', () => {
+      setSeekable([0, 40]);
+      component.onSeek(180);
+      fixture.detectChanges();
+      expect(playerService.pendingSeek()).not.toBeNull();
+
+      playerService.currentTrack.set(TRACK_2);
+      fixture.detectChanges();
+
+      expect(playerService.pendingSeek()).toBeNull();
+      // And the target must not land on the incoming track.
+      setSeekable([0, 240]);
+      fakeAudio.dispatchEvent(new Event('progress'));
+      expect(fakeAudio.currentTime).not.toBe(180);
+    });
+
+    it('survives a token refresh — a re-run that is not a track change', () => {
+      setSeekable([0, 40]);
+      component.onSeek(180);
+      fixture.detectChanges();
+
+      TestBed.inject(AuthService).token.set('refreshed-token');
+      fixture.detectChanges();
+
+      expect(playerService.pendingSeek()).toEqual({ trackId: 't1', time: 180 });
+    });
+
+    it('clamps a media-session seekto past the known duration', () => {
+      setSeekable([0, 240]);
+
+      playerService.seek(9999);
+      fixture.detectChanges();
+
+      expect(fakeAudio.currentTime).toBe(240);
+      expect(playerService.pendingSeek()).toBeNull();
+    });
+
+    // A fully-seekable resource cannot clamp, so a deliberate drag to the last
+    // second is a seek to the end — not a target to sit on a spinner for.
+    it('applies a seek to the very end when the whole track is seekable', () => {
+      setSeekable([0, 240]);
+
+      component.onSeek(240);
+      fixture.detectChanges();
+
+      expect(fakeAudio.currentTime).toBe(240);
+      expect(playerService.pendingSeek()).toBeNull();
+    });
+
+    it('forwards a seek to the remote device instead of holding an intent', () => {
+      isActiveDevice.set(false);
+      fixture.detectChanges();
+      const ws = TestBed.inject(PlaybackWsService);
+
+      component.onSeek(90);
+
+      expect(ws.sendCommand).toHaveBeenCalledWith('SEEK', { position: 90 });
+      expect(playerService.pendingSeek()).toBeNull();
+    });
+  });
+
+  // ─── Rapid skips (burst collapsing) ───────────────────────────────────────
+
+  describe('rapid track changes', () => {
+    const tracks: Track[] = [1, 2, 3, 4, 5, 6].map((n) => ({
+      id: `b${n}`,
+      title: `Burst ${n}`,
+      artist: 'A',
+      duration: 200,
+    }));
+
+    /** Every src the element was actually pointed at. */
+    function loadedIds(): string[] {
+      return mockSrcSets
+        .filter((s) => s.includes('/api/stream/'))
+        .map((s) => s.split('/api/stream/')[1].split('?')[0]);
+    }
+
+    let mockSrcSets: string[];
+    let srcDescriptor: PropertyDescriptor | undefined;
+
+    beforeEach(() => {
+      mockSrcSets = [];
+      srcDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+      Object.defineProperty(fakeAudio, 'src', {
+        get: () => mockSrcSets[mockSrcSets.length - 1] ?? '',
+        set: (v: string) => mockSrcSets.push(v),
+        configurable: true,
+      });
+    });
+
+    afterEach(() => {
+      if (srcDescriptor) Object.defineProperty(HTMLMediaElement.prototype, 'src', srcDescriptor);
+    });
+
+    it('loads a single track change immediately (no added latency)', () => {
+      vi.useFakeTimers();
+      playerService.currentTrack.set(tracks[0]);
+      fixture.detectChanges();
+
+      expect(loadedIds()).toEqual(['b1']);
+      vi.useRealTimers();
+    });
+
+    // The felt bug: five presses used to start and abort five stream requests,
+    // each of which can spin an HDD and start server-side transcode work.
+    it('collapses a burst of five changes into the leading load plus one', () => {
+      vi.useFakeTimers();
+      playerService.currentTrack.set(tracks[0]);
+      fixture.detectChanges();
+      expect(loadedIds()).toEqual(['b1']);
+
+      for (const track of tracks.slice(1)) {
+        vi.advanceTimersByTime(30);
+        playerService.currentTrack.set(track);
+        fixture.detectChanges();
+      }
+      // Nothing new fetched while the burst is still in flight.
+      expect(loadedIds()).toEqual(['b1']);
+
+      vi.advanceTimersByTime(LOAD_SETTLE_MS);
+
+      // Exactly one more load, and it is where the user actually landed.
+      expect(loadedIds()).toEqual(['b1', 'b6']);
+      vi.useRealTimers();
+    });
+
+    it('acknowledges every press instantly even while the load is deferred', () => {
+      vi.useFakeTimers();
+      playerService.currentTrack.set(tracks[0]);
+      fixture.detectChanges();
+
+      vi.advanceTimersByTime(30);
+      playerService.currentTrack.set(tracks[1]);
+      fixture.detectChanges();
+
+      // Title/artwork/seek-bar state is current even though no bytes have moved.
+      expect(playerService.currentTrack()).toEqual(tracks[1]);
+      expect(playerService.duration()).toBe(200);
+      expect(playerService.buffering()).toBe(true);
+      expect(loadedIds()).toEqual(['b1']);
+      vi.useRealTimers();
+    });
+
+    // Effect 5 syncs play/pause off `isPlaying`. During a deferred load the
+    // element still holds the *outgoing* resource, so an unguarded play() there
+    // audibly resumes the track the user just skipped away from.
+    it('does not resume the outgoing track while a load is deferred', () => {
+      vi.useFakeTimers();
+      playerService.currentTrack.set(tracks[0]);
+      playerService.isPlaying.set(true);
+      fixture.detectChanges();
+
+      playerService.isPlaying.set(false);
+      fixture.detectChanges();
+
+      vi.advanceTimersByTime(30);
+      mockPlay.mockClear();
+      // Paused, then a skip inside the settle window: isPlaying flips back on
+      // while the element is still pointed at the previous track.
+      playerService.currentTrack.set(tracks[1]);
+      playerService.isPlaying.set(true);
+      fixture.detectChanges();
+
+      expect(mockPlay).not.toHaveBeenCalled();
+
+      // The deferred commit owns the play, once the new source is in place.
+      vi.advanceTimersByTime(LOAD_SETTLE_MS);
+      expect(loadedIds()).toEqual(['b1', 'b2']);
+      expect(mockPlay).toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it('loads again immediately once the burst has settled', () => {
+      vi.useFakeTimers();
+      playerService.currentTrack.set(tracks[0]);
+      fixture.detectChanges();
+
+      vi.advanceTimersByTime(LOAD_SETTLE_MS + 10);
+      playerService.currentTrack.set(tracks[1]);
+      fixture.detectChanges();
+
+      expect(loadedIds()).toEqual(['b1', 'b2']);
+      vi.useRealTimers();
+    });
+
+    // Generation guard: it used to be bumped only on the cross-element swap,
+    // so an in-place src replacement left the superseded load's handlers live.
+    // The handler has to be invoked directly — dispatching on the element
+    // would reach the *new* listeners and prove nothing.
+    it('makes the handlers of a load a skip replaced inert', () => {
+      vi.useFakeTimers();
+      const bound: { type: string; fn: EventListener }[] = [];
+      const origAdd = fakeAudio.addEventListener.bind(fakeAudio);
+      fakeAudio.addEventListener = ((type: string, fn: EventListener, opts?: unknown) => {
+        bound.push({ type, fn });
+        origAdd(type, fn, opts as never);
+      }) as typeof fakeAudio.addEventListener;
+
+      playerService.currentTrack.set(tracks[0]);
+      fixture.detectChanges();
+      Object.defineProperty(fakeAudio, 'duration', { value: 200, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 200, configurable: true });
+
+      // The `ended` handler belonging to the load now in progress.
+      const staleEnded = [...bound].reverse().find((b) => b.type === 'ended')!.fn;
+
+      vi.advanceTimersByTime(LOAD_SETTLE_MS + 10);
+      playerService.currentTrack.set(tracks[1]);
+      playerService.queue.set([tracks[2]]);
+      fixture.detectChanges();
+
+      // A late `ended` from the resource the skip replaced must not advance.
+      staleEnded(new Event('ended'));
+
+      expect(playerService.currentTrack()).toEqual(tracks[1]);
+      expect(playerService.queue()).toEqual([tracks[2]]);
+      vi.useRealTimers();
     });
   });
 
