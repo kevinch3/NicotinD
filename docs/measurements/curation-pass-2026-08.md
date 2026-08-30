@@ -1289,3 +1289,36 @@ noting these three are **invisible to the genre worklist**, because a wrong genr
 genre — label pollution hides where a null would show.
 
 Flag #18 left **open**, deliberately: the data question is answered, the write path is not.
+
+#### #817 — the filed hypothesis was wrong; the verified cause is `resolveTags`
+
+A read-only prod probe killed the `library_metadata_overrides` theory outright: 574 rows, **zero**
+referencing this album. Writing it into the issue as an explicit hypothesis rather than a finding is
+the only reason that cost nothing — #710 and #762 each shipped a filed diagnosis that was wrong, and
+this would have been the third.
+
+The real cause, in `library-scanner.ts:319-327`:
+
+```js
+const albumArtistIsVA = hasUsableValue(t.albumArtist) && isVariousArtists(t.albumArtist!);
+if (albumArtistIsVA && hasUsableValue(t.artist)) { trackArtist = t.artist!; }
+else { trackArtist = albumArtist; }   // per-track ARTIST tag discarded
+```
+
+**A track's own `ARTIST` tag is honoured only when `albumArtist` is literally "Various Artists".**
+Everywhere else the tag is read and then overwritten with the album artist. The probe confirmed the
+write itself succeeds — files are mode 644 owned by the container's own uid, and their mtime is the
+exact minute of the attempts. So the write lands and the rescan discards it; the post-#760 guard
+reports that correctly. It is a design limitation, not a bad row: **a collaboration-heavy album that
+is not VA-tagged cannot express per-track credits at all.**
+
+**A second self-correction in the same probe.** I had reported the `library_song_artists.role`
+column as never populated outside tests. Wrong — I grepped `'featured'`, the *test* literal;
+production emits **`'featuring'`** from `artist-split.ts:206`, and prod holds 9 real rows of it. The
+dimension works, but only when the *resolved* artist string itself carries a `feat.`-style compound
+for `splitArtists` to parse — and on a non-VA album that string is the albumArtist, so a collaborator
+living only in the per-track tag can never reach it.
+
+Two wrong claims in one issue, both caught by one read-only probe that took two minutes. **The
+grep-for-the-wrong-literal failure is the same shape as the session's opening mistake: concluding
+absence from a search that was never capable of finding the thing.**
