@@ -265,6 +265,120 @@ describe('loose singles (un-bucketing)', () => {
     expect(built.albums[0]!.artist).toBe('Various Artists');
   });
 
+  // Issue #817: the per-track ARTIST tag used to be honoured only when albumArtist
+  // was "Various Artists" and discarded everywhere else, so a collaboration credit
+  // was unwritable on a normal album — the tag landed on disk, the rescan read it,
+  // and resolveTags overwrote it with the album artist. Green Velvet's *Unshakable*
+  // is credited with 13 different collaborators and stored all 13 as bare
+  // "Green Velvet".
+  it('keeps a per-track collaboration credit on a non-VA album (issue #817)', () => {
+    const built = buildLibrary([
+      track({
+        relPath: 'Green Velvet/Unshakable/01.mp3',
+        artist: 'Green Velvet, Riva Starr',
+        albumArtist: 'Green Velvet',
+        album: 'Unshakable',
+        title: 'Leave My Body',
+      }),
+      track({
+        relPath: 'Green Velvet/Unshakable/02.mp3',
+        artist: 'Green Velvet',
+        albumArtist: 'Green Velvet',
+        album: 'Unshakable',
+        title: 'Move Your Body',
+      }),
+    ]);
+
+    const collab = built.songs.find((x) => x.title === 'Leave My Body')!;
+    // The credit follows the tag…
+    expect(collab.artist).toBe('Green Velvet, Riva Starr');
+    // …while ownership stays with the album artist, so the compound cannot mint
+    // an artist of its own and fragment the grid.
+    expect(collab.artistId).toBe(artistIdFor('Green Velvet'));
+    expect(collab.albumArtist).toBe('Green Velvet');
+
+    // One album, still owned by Green Velvet — no album id churn.
+    expect(built.albums).toHaveLength(1);
+    expect(built.albums[0]!.artist).toBe('Green Velvet');
+  });
+
+  it('splits the credit once the collaborator is independently confirmed', () => {
+    const built = buildLibrary([
+      track({
+        relPath: 'Green Velvet/Unshakable/01.mp3',
+        artist: 'Green Velvet, Riva Starr',
+        albumArtist: 'Green Velvet',
+        album: 'Unshakable',
+        title: 'Leave My Body',
+      }),
+      // `splitCredits` is confirmation-gated — it only splits a compound whose
+      // every part is a known artist. Riva Starr owning something is what opens
+      // the gate.
+      track({
+        relPath: 'Riva Starr/Serious Danger/01.mp3',
+        artist: 'Riva Starr',
+        albumArtist: 'Riva Starr',
+        album: 'Serious Danger',
+        title: 'X',
+      }),
+    ]);
+
+    const song = built.songs.find((x) => x.title === 'Leave My Body')!;
+    const credits = built.songArtists
+      .filter((l) => l.parentId === song.id)
+      .sort((a, b) => a.position - b.position)
+      .map((l) => l.artistId);
+    expect(credits).toEqual([artistIdFor('Green Velvet'), artistIdFor('Riva Starr')]);
+    // Ownership is still the album artist — the split changes the credit, not who
+    // the track belongs to.
+    expect(song.artistId).toBe(artistIdFor('Green Velvet'));
+    expect(built.artists.map((a) => a.name)).not.toContain('Green Velvet, Riva Starr');
+  });
+
+  it('never mints an artist row for a compound it could not confirm', () => {
+    // With no independent Riva Starr the gate stays shut and the credit stays
+    // whole. Linking that whole string would create an album_count = 0 artist
+    // named "Green Velvet, Riva Starr", and the artists query filters on
+    // split_compound = 0 with no album-count floor — so it would render as a real
+    // tile. *Unshakable* has 13 collaborators, i.e. up to 13 phantom tiles.
+    const built = buildLibrary([
+      track({
+        relPath: 'Green Velvet/Unshakable/01.mp3',
+        artist: 'Green Velvet, Riva Starr',
+        albumArtist: 'Green Velvet',
+        album: 'Unshakable',
+        title: 'Leave My Body',
+      }),
+    ]);
+
+    expect(built.artists.map((a) => a.name)).toEqual(['Green Velvet']);
+    // The verbatim credit is not lost — it is still on the song row.
+    expect(built.songs[0]!.artist).toBe('Green Velvet, Riva Starr');
+    // …and the join row falls back to the owner rather than inventing anyone.
+    expect(built.songArtists.map((l) => l.artistId)).toEqual([artistIdFor('Green Velvet')]);
+  });
+
+  it('still resolves ownership to the performer on a real compilation', () => {
+    // The VA half is load-bearing: pinning artist_id to the album artist
+    // unconditionally would hand every compilation track to "Various Artists",
+    // which the artist grid deliberately hides.
+    const comp = (n: string, artist: string) =>
+      track({
+        relPath: `Various Artists/Verano Hits/0${n} - ${n}.mp3`,
+        artist,
+        albumArtist: 'Various Artists',
+        album: 'Verano Hits',
+        title: n,
+      });
+    const built = buildLibrary([comp('T1', 'Mora'), comp('T2', 'Becky G'), comp('T3', 'Fuego')]);
+
+    const mora = built.songs.find((x) => x.title === 'T1')!;
+    expect(mora.artist).toBe('Mora');
+    expect(mora.artistId).toBe(artistIdFor('Mora'));
+    expect(mora.artistId).not.toBe(artistIdFor('Various Artists'));
+    expect(mora.albumArtist).toBe('Various Artists');
+  });
+
   it('keeps a coherent multi-track loose download as one album (not split)', () => {
     const built = buildLibrary([
       track({ relPath: 'A/Some EP/01.mp3', artist: 'A', album: 'Some EP', title: 'T1' }),
@@ -311,6 +425,37 @@ describe('LibraryScanner.persist', () => {
     );
     expect(db.query('SELECT COUNT(*) AS c FROM library_songs').get()).toEqual({ c: 0 });
     expect(db.query('SELECT COUNT(*) AS c FROM library_albums').get()).toEqual({ c: 0 });
+  });
+
+  // Issue #817 end-to-end at the row level: this is the exact shape
+  // `song-metadata-mutate`'s readSnapshot reads back, and it is what used to
+  // diverge from the request and trigger "Tag write did not persist".
+  it('stores a per-track collaboration credit while ownership stays on the album artist', () => {
+    const built = buildLibrary([
+      track({
+        relPath: 'Green Velvet/Unshakable/01.mp3',
+        artist: 'Green Velvet, Riva Starr',
+        albumArtist: 'Green Velvet',
+        album: 'Unshakable',
+        title: 'Leave My Body',
+      }),
+    ]);
+    scanner.persist(built, Date.now(), true);
+
+    const row = db
+      .query<{ artist: string; artist_id: string }, []>(
+        'SELECT artist, artist_id FROM library_songs',
+      )
+      .get()!;
+    expect(row.artist).toBe('Green Velvet, Riva Starr');
+    expect(row.artist_id).toBe(artistIdFor('Green Velvet'));
+
+    // The compound is not an artist anyone can browse to.
+    const names = db
+      .query<{ name: string }, []>('SELECT name FROM library_artists ORDER BY name')
+      .all()
+      .map((r) => r.name);
+    expect(names).toEqual(['Green Velvet']);
   });
 
   it('preserves curation columns (hidden/classification) across rescans', () => {
