@@ -63,7 +63,13 @@ services:
       - --slsk-listen-port=50300
       - --username=slskd
       - --password=slskd
-      - --downloads=/data/music
+      # Staging is a RESERVED path inside the music dir: same filesystem, so
+      # ingest is an atomic rename and a self-hoster still mounts one volume —
+      # but every library walker skips it. Downloading straight into /data/music
+      # meant the scanner ingested the raw peer folder in place, so every album
+      # landed twice and 27.5 GB was never transcoded (#827).
+      # → docs/library-path-conventions.md
+      - --downloads=/data/music/.downloads
     environment:
       SLSKD_REMOTE_CONFIGURATION: "true"
       SLSKD_HTTP_PORT: "5030"
@@ -135,11 +141,12 @@ services:
       SLSKD_ADDON_SLSKD_URL: http://slskd:5030
       SLSKD_ADDON_SLSKD_USERNAME: slskd
       SLSKD_ADDON_SLSKD_PASSWORD: slskd
-      # This compose's slskd lands completed files in /data/music
-      # (--downloads above) — the addon resolves + serves them from there.
+      # slskd lands completed files in the reserved staging dir (--downloads
+      # above) and the addon resolves + serves them from there. Must match, and
+      # must stay a reserved path — see docs/library-path-conventions.md.
       # During a soak run, disable the in-process slskd plugin in Extensions
       # so the addon and the legacy watcher don't both process completions.
-      SLSKD_ADDON_DOWNLOADS_DIR: /data/music
+      SLSKD_ADDON_DOWNLOADS_DIR: /data/music/.downloads
       SLSKD_ADDON_MUSIC_DIR: /data/music
     volumes:
       - slskd-addon-data:/data
