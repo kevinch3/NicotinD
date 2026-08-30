@@ -224,7 +224,22 @@ export function checkPollutedAlbums(db: Database): AuditFinding[] {
   const out: AuditFinding[] = [];
   const albums = loadAlbums(db);
   for (const al of albums) {
-    if (looksLikeSourceWatermark(al.name)) {
+    // A domain-shaped title is not decisive on its own: some real releases are
+    // genuinely named after a domain (issue #819 — Coolio's 2001 album is titled
+    // "coolio.com", and it was 1 of only 3 findings on prod, so a third of a
+    // high-severity bucket was false). Corroborate the way `numeric_single`
+    // below already does, but on three axes at once rather than the artist
+    // alone: the two genuine prod hits both have REAL artists and at least one
+    // real track title, so either signal by itself would suppress them too and
+    // take the rule to zero findings.
+    //
+    // What separates them is that a real release is real on every axis at once
+    // — more than one track, real titles on them, and an artist that is not
+    // itself junk. A pool rip is missing at least one (both genuine hits are
+    // single-track). An album that somehow clears all three and still carries a
+    // watermark title is a real release with a bad album tag, whose remediation
+    // is a retag, never the delete this rule feeds.
+    if (looksLikeSourceWatermark(al.name) && !looksLikeRealRelease(db, al)) {
       out.push({
         rule: 'watermark_album',
         severity: 'high',
@@ -417,6 +432,16 @@ function albumHasRealTrackTitles(db: Database, albumId: string): boolean {
     if (!title || !title.trim()) return false;
     return !looksLikeSourceWatermark(title) && !isNumericLikeName(title);
   });
+}
+
+/**
+ * True when the album looks like a genuine release on every axis at once, so a
+ * watermark-shaped *title* is more likely a real name than pollution (#819).
+ * All three are required together — each alone is satisfied by known real
+ * pollution, and the conjunction is what the prod data actually separates on.
+ */
+function looksLikeRealRelease(db: Database, al: AlbumRow): boolean {
+  return al.song_count > 1 && albumHasRealTrackTitles(db, al.id) && !artistLooksJunk(al.artist);
 }
 
 export interface PollutionTarget {

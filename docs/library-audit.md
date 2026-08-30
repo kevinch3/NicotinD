@@ -42,7 +42,8 @@ and a message. The CLI groups by rule (worst first); `--rule=<id>` lists one.
   `Batea Especial…`). The distinct artist row often owns hundreds of junk singles.
 - `numeric_artist` — artist name is a bare/disc-track number (`101`–`208`): a mis-parsed tag.
 - `watermark_album` — album title is a source watermark (a **real** artist with the
-  source in the album field, e.g. UMEK / `MUSICAUNO.COM`).
+  source in the album field, e.g. UMEK / `MUSICAUNO.COM`). Corroborated — see
+  *Per-rule corroboration* below; a domain-shaped title alone does not flag.
 - `djset_artist` (medium) — the artist name is a whole **DJ-set / release-listing
   line**, not a name (issue #679): `Enrico Sangiuliano @ Awakenings`,
   `Adam Beyer plays … "Biomorph"`, `Artist - Title - Label - CatNum [Vol`,
@@ -110,7 +111,9 @@ irreversible — every deletion is appended to `<dataDir>/repair-pollution.log`.
   This was measured, not assumed: on the prod library (2,885 artists / 4,924 albums) the
   audit flagged 6 pollution targets and **all 6 held real music** — including
   `Coolio.com`, Coolio's genuine 14-track 2001 album, one `--apply` from deletion because
-  the title ends in `.com`. `You Love Dance.TV` is a real DJ-pool watermark *as an
+  the title ends in `.com`. That one is now caught a layer earlier — #819 stopped it
+  being *flagged* at all, so it no longer depends on this guard; the guard still holds
+  for every other rule. `You Love Dance.TV` is a real DJ-pool watermark *as an
   artist* — and held a real 4 Strings track, "Acid Phase". The remediation for all of
   them is a retag, never a delete.
 
@@ -119,6 +122,24 @@ irreversible — every deletion is appended to `<dataDir>/repair-pollution.log`.
     A one-track album with a numeric title is exactly what a real numeric-titled single
     looks like — `777` (Latto), `2000` (Manuel Turizo), `666`, `222`, `7171` were all
     real. The single-track guard cannot discriminate; the artist can.
+  - `watermark_album` additionally requires the album **not** to look like a genuine
+    release on all three axes at once — more than one track, at least one real track
+    title, and a non-junk artist (`looksLikeRealRelease`). Coolio's 2001 album is
+    genuinely titled *coolio.com*, and it was 1 of only 3 findings on prod, so a third
+    of a high-severity bucket was false (issue #819).
+
+    The conjunction is load-bearing and was arrived at by measurement, not taste. The
+    corroboration first proposed for this rule — *junk artist **or** no real track
+    titles* — is satisfied by **neither** of the two genuine prod hits: `LOSERPOWER.ORG
+    … VOLUMEN 8` (Nestor En Bloque) and `Most Wanted … ElectronicFresh.com` (Cassian)
+    both have a real artist and a real track title. Applying it takes the rule from
+    three findings to **zero**. What actually separates them is that the false positive
+    has 23 tracks and both genuine hits have exactly one. `library-audit.test.ts`
+    asserts that the genuine pair still flags, so a future "simplification" back to
+    either single axis fails loudly rather than silently emptying the bucket.
+
+    An album that clears all three and still carries a watermark title is a real release
+    with a bad album tag; its remediation is a retag, never the delete this rule feeds.
   - `placeholder_single` uses `isPlaceholderArtistStrict`, not `isPlaceholderArtist`.
     The latter answers *"is this usable as a Lidarr query key?"*, under which the real
     band `!!!` (chk chk chk) normalizes to `""` and reads as a placeholder. That is the
