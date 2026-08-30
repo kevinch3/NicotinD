@@ -39,6 +39,7 @@ import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { dedupeFolder, dupKey, pickKeeper, type DupFile } from '../services/album-dedupe.js';
 import { expandHome } from '@nicotind/core';
+import { isReservedTopLevel, reservedDirsFor } from '../services/library-paths.js';
 
 // Re-exported so existing importers/tests keep working after the core moved to
 // the shared album-dedupe module.
@@ -74,7 +75,9 @@ function* walkAlbumDirs(
 ): Generator<{ artist: string; album: string; dir: string }> {
   let artistEntries: string[];
   try {
-    artistEntries = readdirSync(musicDir);
+    artistEntries = readdirSync(musicDir).filter(
+      (n) => !isReservedTopLevel(n, reservedDirsFor()),
+    );
   } catch {
     return;
   }

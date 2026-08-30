@@ -1,6 +1,7 @@
 import { readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { AUDIO_EXTS } from './audio-tags.js';
+import { isHiddenFile, isReservedTopLevel, reservedDirsFor } from './library-paths.js';
 import type { AuditFinding } from './library-audit.js';
 
 /**
@@ -24,10 +25,13 @@ function isAudio(name: string): boolean {
 }
 
 /** Recursively walk `musicDir`, collecting audio files + truly-empty directories. */
-export function scanMusicDir(musicDir: string): DiskScan {
+export function scanMusicDir(
+  musicDir: string,
+  reserved: ReadonlySet<string> = reservedDirsFor(),
+): DiskScan {
   const audioPaths: string[] = [];
   const emptyDirs: string[] = [];
-  const walk = (dir: string): void => {
+  const walk = (dir: string, isRoot: boolean): void => {
     let entries: string[];
     try {
       entries = readdirSync(dir);
@@ -46,11 +50,17 @@ export function scanMusicDir(musicDir: string): DiskScan {
       } catch {
         continue;
       }
-      if (st.isDirectory()) walk(full);
-      else if (isAudio(e)) audioPaths.push(relative(musicDir, full));
+      // Staging is not library content, so it is neither a finding nor an
+      // empty-dir report. → docs/library-path-conventions.md
+      if (st.isDirectory()) {
+        if (isRoot && isReservedTopLevel(e, reserved)) continue;
+        walk(full, false);
+      } else if (!isHiddenFile(e) && isAudio(e)) {
+        audioPaths.push(relative(musicDir, full));
+      }
     }
   };
-  walk(musicDir);
+  walk(musicDir, true);
   return { audioPaths, emptyDirs };
 }
 

@@ -10,6 +10,7 @@ import { join, relative, extname } from 'node:path';
 import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
 import { AUDIO_EXTS } from './audio-tags.js';
+import { isHiddenFile, isReservedTopLevel, reservedDirsFor } from './library-paths.js';
 
 const log = createLogger('untracked-backfill');
 
@@ -23,10 +24,13 @@ export interface BackfillResult {
 }
 
 /** Recursively map lowercased audio-file basename → relative paths under root. */
-export function buildBasenameIndex(musicDir: string): Map<string, string[]> {
+export function buildBasenameIndex(
+  musicDir: string,
+  reserved: ReadonlySet<string> = reservedDirsFor(),
+): Map<string, string[]> {
   const index = new Map<string, string[]>();
 
-  const walk = (dir: string): void => {
+  const walk = (dir: string, isRoot: boolean): void => {
     let entries: string[];
     try {
       entries = readdirSync(dir);
@@ -42,8 +46,15 @@ export function buildBasenameIndex(musicDir: string): Map<string, string[]> {
         continue;
       }
       if (st.isDirectory()) {
-        walk(full);
-      } else if (st.isFile() && AUDIO_EXTS.has(extname(name).toLowerCase())) {
+        // A staging hit would point a canonical library row at a file that is
+        // about to be moved by the organizer.
+        if (isRoot && isReservedTopLevel(name, reserved)) continue;
+        walk(full, false);
+      } else if (
+        st.isFile() &&
+        !isHiddenFile(name) &&
+        AUDIO_EXTS.has(extname(name).toLowerCase())
+      ) {
         const key = name.toLowerCase();
         const rel = relative(musicDir, full).replace(/\\/g, '/');
         const list = index.get(key);
@@ -53,7 +64,7 @@ export function buildBasenameIndex(musicDir: string): Map<string, string[]> {
     }
   };
 
-  walk(musicDir);
+  walk(musicDir, true);
   return index;
 }
 

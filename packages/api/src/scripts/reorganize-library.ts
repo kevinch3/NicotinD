@@ -19,6 +19,7 @@ import { readFileSync, readdirSync, statSync, existsSync, unlinkSync, rmdirSync 
 import { resolve, join, extname, dirname, basename } from 'node:path';
 import { parse } from 'yaml';
 import { LibraryOrganizer } from '../services/library-organizer.js';
+import { downloadsDirFor, reservedDirsFor } from '../services/library-paths.js';
 import {
   resolveTranscodeLossless,
   type ResolvedTranscodeLossless,
@@ -209,7 +210,10 @@ async function main(): Promise<void> {
     unsortedRoot: unsortedDir,
   });
   // Avoid looping over our own unsorted bucket if it happens to live under musicDir.
-  const excludeDirs = new Set<string>([unsortedDir]);
+  // Staging is not library content: reorganize must not sweep in-flight
+  // downloads into <Artist>/<Album>. → docs/library-path-conventions.md
+  const excludeDirs = new Set<string>([unsortedDir, downloadsDirFor(musicDir)]);
+  for (const name of reservedDirsFor()) excludeDirs.add(join(musicDir, name));
 
   console.log('Pass 1+2+3: Organize every audio file');
   let processed = 0;
