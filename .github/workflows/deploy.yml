@@ -6,9 +6,21 @@ on:
       - 'v*'
   workflow_dispatch: {}
 
+# One release deploys at a time, whatever the tag. `github.sha` grouped by
+# *commit*, so two releases were two groups and raced `docker compose up -d`
+# against each other on the same host (issue #768) — it only ever deduped
+# re-runs of one commit. The group is workflow-level rather than on the `deploy`
+# job alone so releases stay ordered: `deploy` waits on `docker-merge`, and with
+# only the job serialized a later tag could finish building first, deploy, and
+# then be overwritten by the earlier one downgrading the host.
+#
+# `cancel-in-progress: false` is the load-bearing half — abandoning a deploy
+# mid-`up -d` leaves the host half-applied, which is worse than queueing behind
+# it. Same shape as storybook-pages.yml; ci.yml keys on `github.ref` because it
+# serializes per-branch, not per-host.
 concurrency:
-  group: deploy-${{ github.sha }}
-  cancel-in-progress: true
+  group: deploy-host
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true

@@ -808,3 +808,55 @@ but produced no release" at a glance. Unlucky timing could cancel the
 a cosmetic one. Fixed by scoping `cancel-in-progress` off for `master`:
 pushes to `master` run sequentially and can never cancel each other, while a
 PR branch keeps the original supersede-and-cancel behavior.
+
+### Two releases must never deploy to the host at once (issue #768)
+
+`ci.yml` above serializes *per branch*, which is the right key for a branch's
+own runs. `deploy.yml` needs a different one: it serializes per **host**, and it
+used to group on `github.sha`.
+
+A tag push sets `github.sha` to the commit the tag points at, so two releases
+are two different commits, therefore two different concurrency groups, therefore
+no mutual exclusion whatsoever. The grouping only ever deduplicated re-runs of a
+single commit — a manual re-run, or a second tag on one commit. Everything it
+looked like it was protecting was unprotected.
+
+The `deploy` job SSHes to the host and runs `docker compose pull` + `up -d`. Two
+releases cut close together — exactly what happens when several PRs land in one
+sitting — reached that step concurrently, racing container restarts against each
+other, with the second deploy able to pull an image the first was mid-way
+through starting. A second, quieter race sat in `docker-merge`: its manifest
+push claims `:release` and `:vX` as well as `:vX.Y.Z`, and those two are shared
+mutable tags, so concurrent releases fought over which one they finally pointed
+at.
+
+Fixed with a constant group and queueing:
+
+```yaml
+concurrency:
+  group: deploy-host
+  cancel-in-progress: false
+```
+
+Two details are load-bearing.
+
+`cancel-in-progress: false`, because abandoning a deploy mid-`up -d` leaves the
+host half-applied — strictly worse than waiting for it. This is the same shape
+`storybook-pages.yml` already uses for its own single-destination publish.
+
+The group is **workflow-level, not on the `deploy` job alone**. Serializing only
+the job looks tighter — expensive per-platform builds would still overlap — but
+`deploy` waits on `docker-merge`, so a later tag whose build finished first
+would deploy first and then be overwritten by the earlier release still in
+flight. That is a version downgrade wearing a green check, which is the #457
+failure shape. Ordering is worth more here than build overlap.
+
+`scripts/deploy-concurrency.test.ts` guards all three properties. It parses the
+workflow rather than grepping it, so a `group:` sitting in a comment cannot
+satisfy the assertion, and it rejects any `${{ … }}` in the group rather than
+just the one `github.sha` spelling — a gate that only knew the old spelling
+would pass on `github.ref_name`, which is equally per-release.
+
+`#755` fixed the adjacent half of this problem (a release cut for nothing
+releasable); it did not touch the case where two genuine releases are in flight
+at once.
