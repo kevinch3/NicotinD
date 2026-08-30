@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.47](https://github.com/kevinch3/NicotinD/compare/v0.5.46...v0.5.47) (2026-08-30)
+
+### Features
+
+* **library:** reserved-path convention — staging lives inside musicDir, invisibly ([#838](https://github.com/kevinch3/NicotinD/issues/838)) ([7f3f63c](https://github.com/kevinch3/NicotinD/commit/7f3f63cd3373d8d5d6695f0183fae609a7d11af9)), references [#827](https://github.com/kevinch3/NicotinD/issues/827) [#827](https://github.com/kevinch3/NicotinD/issues/827) [#827](https://github.com/kevinch3/NicotinD/issues/827) [#827](https://github.com/kevinch3/NicotinD/issues/827) [#827](https://github.com/kevinch3/NicotinD/issues/827) [#827](https://github.com/kevinch3/NicotinD/issues/827) [#824](https://github.com/kevinch3/NicotinD/issues/824)
 ## [0.5.46](https://github.com/kevinch3/NicotinD/compare/v0.5.45...v0.5.46) (2026-08-30)
 
 ### Features
