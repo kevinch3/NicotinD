@@ -52,6 +52,7 @@ import { sanitizeSegment } from '../services/path-sanitize.js';
 import { normalizeTagValue } from '../services/audio-tags.js';
 import { MusicBrainzClient } from '../services/musicbrainz-client.js';
 import { expandHome } from '@nicotind/core';
+import { isReservedTopLevel, reservedDirsFor } from '../services/library-paths.js';
 
 // ─── CLI flags ────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,12 @@ const RUN_A = PHASE_ARG === 'A' || PHASE_ARG === 'all';
 const RUN_B = PHASE_ARG === 'B' || PHASE_ARG === 'all';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
+
+/** Top-level entries of musicDir that are real artist folders, never staging. */
+function artistDirs(musicDir: string): string[] {
+  const reserved = reservedDirsFor();
+  return listDir(musicDir).filter((n) => !isReservedTopLevel(n, reserved));
+}
 
 function loadConfig() {
   let fileConfig: Record<string, unknown> = {};
@@ -368,7 +375,7 @@ function phaseA1b_removeDupsByTrackNumber(musicDir: string): void {
 
   const TRACK_NUM_RE = /^(\d+)/;
 
-  for (const artistName of listDir(musicDir)) {
+  for (const artistName of artistDirs(musicDir)) {
     const artistDir = join(musicDir, artistName);
     if (!isDir(artistDir)) continue;
 
@@ -506,7 +513,7 @@ function phaseA0_mergeArtistAlbumFolders(musicDir: string): void {
   log('\nPhase A0: Merging "Artist - Album" top-level folders...');
 
   // Build normalized→canonical map from existing artist folders
-  const allDirs = listDir(musicDir).filter((name) => isDir(join(musicDir, name)));
+  const allDirs = artistDirs(musicDir).filter((name) => isDir(join(musicDir, name)));
   const normToArtist = new Map<string, string>();
   for (const name of allDirs) {
     normToArtist.set(normalizeName(name), name);
@@ -631,7 +638,7 @@ interface ArtistGroup {
 
 function groupArtistFolders(musicDir: string): ArtistGroup[] {
   const byNorm = new Map<string, string[]>();
-  for (const name of listDir(musicDir)) {
+  for (const name of artistDirs(musicDir)) {
     const full = join(musicDir, name);
     if (!isDir(full)) continue;
     const key = normalizeName(name);
@@ -760,7 +767,7 @@ function mergeArtistFolders(
 
 function phaseA3_mergeAlbumFolders(musicDir: string): void {
   log('\nPhase A3: Merging case-variant album folders...');
-  for (const artistName of listDir(musicDir)) {
+  for (const artistName of artistDirs(musicDir)) {
     const artistDir = join(musicDir, artistName);
     if (!isDir(artistDir)) continue;
 
@@ -829,7 +836,7 @@ function phaseA3_mergeAlbumFolders(musicDir: string): void {
 async function phaseB2_resolveSingles(musicDir: string, mb: MusicBrainzClient): Promise<void> {
   log('\nPhase B2: Resolving Singles to real albums via MusicBrainz...');
 
-  for (const artistName of listDir(musicDir)) {
+  for (const artistName of artistDirs(musicDir)) {
     const singlesDir = join(musicDir, artistName, 'Singles');
     if (!existsSync(singlesDir) || !isDir(singlesDir)) continue;
 
@@ -894,7 +901,7 @@ async function phaseB2_resolveSingles(musicDir: string, mb: MusicBrainzClient): 
 async function phaseB3_normalizeAlbumNames(musicDir: string, mb: MusicBrainzClient): Promise<void> {
   log('\nPhase B3: Normalizing album names via MusicBrainz...');
 
-  for (const artistName of listDir(musicDir)) {
+  for (const artistName of artistDirs(musicDir)) {
     const artistDir = join(musicDir, artistName);
     if (!isDir(artistDir)) continue;
 

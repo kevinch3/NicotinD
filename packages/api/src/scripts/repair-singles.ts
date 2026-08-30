@@ -38,6 +38,7 @@ import { readAudioTags, writeAudioTags, AUDIO_EXTS } from '../services/audio-tag
 import { sanitizeSegment } from '../services/path-sanitize.js';
 import { normalizeTagValue } from '../services/audio-tags.js';
 import { expandHome } from '@nicotind/core';
+import { isReservedTopLevel, reservedDirsFor } from '../services/library-paths.js';
 
 interface Config {
   dataDir: string;
@@ -69,7 +70,7 @@ function* walkSinglesFiles(
 ): Generator<{ artistDir: string; artist: string; filePath: string }> {
   let artistEntries: string[];
   try {
-    artistEntries = readdirSync(musicDir);
+    artistEntries = readdirSync(musicDir).filter((n) => !isReservedTopLevel(n, reservedDirsFor()));
   } catch {
     return;
   }

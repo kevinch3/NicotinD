@@ -63,7 +63,8 @@ bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
 size) · `check:ci-parity` (a gate job step `verify` misses, or a gate that stopped blocking
 `release`) · `check:route-auth` (an `/api` group mounted with no auth decision) · `check:audit` (an
 advisory that both ships and matches the resolved version) · `check:shared-helpers` (a shared helper
-re-implemented locally) · `check:search-matching` (a name search done in raw SQL, bypassing the shared
+re-implemented locally) · `check:library-walkers` (a `musicDir` walker that skips the reserved-path
+predicate) · `check:search-matching` (a name search done in raw SQL, bypassing the shared
 folded matcher) · `check:json` (duplicate keys) · `check:shipped-issues` (report, not a gate)
 · `check:isolated-specs` (slow, not a gate). → [quality-gates.md](docs/quality-gates.md)
 
@@ -195,6 +196,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Lossless → Opus standardization**: lossless downloads transcoded in place (default-on 192 kbps),
   codec-aware via `isLosslessFile`, gated on ffmpeg, surfaced read-only at
   `GET /api/settings/downloads`. → [download-pipeline.md](docs/download-pipeline.md)
+- **Reserved paths — staging lives inside `musicDir`, invisibly**: one `library-paths.ts`
+  (`reservedDirsFor`, `isReservedTopLevel`, `isHiddenFile`, `isReservedPath`) is the only answer to
+  "is this library content?"; the rule is depth-scoped (root dot-dirs skipped, album titles never
+  judged) and `check:library-walkers` keeps all 14 walkers honest.
+  → [library-path-conventions.md](docs/library-path-conventions.md)
 - **Import music from a folder or archive (API-only)**: `LibraryImportService` runs a server folder or
   `.zip` through the same organize → scan → quarantine pipeline; `import-archive.ts` is a
   dependency-free central-directory-first reader with `safeArchivePath`. → [import.md](docs/import.md)

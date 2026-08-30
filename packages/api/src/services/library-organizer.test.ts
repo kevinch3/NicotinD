@@ -425,7 +425,7 @@ describe('LibraryOrganizer (real fs)', () => {
     expect(existsSync(join(root, 'Artist.'))).toBe(false);
   });
 
-  it('routes missing-artist tracks to Unsorted/<sourceFolder>/', async () => {
+  it('routes missing-artist tracks to the reserved .unsorted/<sourceFolder>/', async () => {
     const root = tmpRoot();
     const staging = join(root, '_staging');
     seed(staging, 'Mystery Folder/orphan.mp3', { title: 'Orphan Track' });
@@ -434,7 +434,9 @@ describe('LibraryOrganizer (real fs)', () => {
       { username: 'u', directory: 'Mystery Folder', filename: 'orphan.mp3', directoryFileCount: 1 },
     ]);
     expect(result.unsorted).toBe(1);
-    expect(existsSync(join(root, 'Unsorted', 'Mystery Folder', 'Orphan Track.mp3'))).toBe(true);
+    // The relative default is a *reserved* name (#827): the old plain 'Unsorted'
+    // sat inside musicDir and the scanner walked it straight back in.
+    expect(existsSync(join(root, '.unsorted', 'Mystery Folder', 'Orphan Track.mp3'))).toBe(true);
   });
 
   it('routes artist+title without album into <Artist>/Singles/ when folder is generic', async () => {

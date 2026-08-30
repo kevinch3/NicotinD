@@ -53,6 +53,7 @@ import { AUDIO_EXTS } from '../services/audio-tags.js';
 import { albumGroupKey, normalizeForGrouping } from '../services/album-grouping.js';
 import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { expandHome } from '@nicotind/core';
+import { isReservedTopLevel, reservedDirsFor } from '../services/library-paths.js';
 
 export interface FolderEntry {
   artist: string;
@@ -164,7 +165,7 @@ function collectAlbumFolders(musicDir: string): FolderEntry[] {
   const out: FolderEntry[] = [];
   let artists: string[];
   try {
-    artists = readdirSync(musicDir);
+    artists = readdirSync(musicDir).filter((n) => !isReservedTopLevel(n, reservedDirsFor()));
   } catch {
     return out;
   }

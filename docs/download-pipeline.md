@@ -166,7 +166,13 @@ which is why they hand-rolled defaults; `resolveTranscodeLossless` takes the raw
 and `safeParse`s just the one sub-schema, so a missing config file or a typo'd bitrate lands
 on the shipped default instead of aborting the run.
 
-### An addon's downloads dir MUST sit outside `musicDir`
+### An addon's downloads dir belongs in a reserved path
+
+**Resolved by [library-path-conventions.md](library-path-conventions.md)** — staging now lives at
+`<musicDir>/.downloads`, which every walker skips, so one volume mount still gives an atomic
+same-filesystem rename on ingest. The history below is why that convention exists.
+
+#### The original failure
 
 The transcode hook lives in `LibraryOrganizer.placeFile()`, so **a file that never reaches the
 organizer is never standardized**. If an addon downloads *into* the tree `LibraryScanner`

@@ -9,6 +9,7 @@ of truth; this page summarizes the ones most installs touch.
 | `NICOTIND_PORT`                        | `8484`                  | API server port                                                |
 | `NICOTIND_DATA_DIR`                    | `~/.nicotind`           | Data directory (SQLite DB, secrets, artist-overrides)          |
 | `NICOTIND_MUSIC_DIR`                   | `~/Music`               | Shared music folder                                            |
+| `NICOTIND_DOWNLOADS_DIR`               | `.downloads`            | Acquisition staging; top-level name under the music dir, or an absolute path |
 | `NICOTIND_MODE`                        | `embedded`              | `embedded` (best-effort manage Lidarr; slskd is its own addon) or `external` (connect to existing) |
 | `NICOTIND_ACQUISITION`                 | `on`                    | Deployment-wide acquisition kill-switch (`off` = streaming-only install) |
 | `NICOTIND_REGISTRATION`                | *(unset)*               | Public self-signup. Unset = the Admin → User Management toggle owns it (starts closed); setting `off`/`on` pins it and makes that toggle read-only |

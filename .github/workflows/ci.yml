@@ -116,6 +116,12 @@ jobs:
       - name: Check for locally re-implemented shared helpers
         run: bun run check:shared-helpers
 
+      # An addon downloading into musicDir made every album land twice -- once
+      # organized+transcoded, once as the raw peer folder scanned in place
+      # (27.5 GB, #827). This keeps walker #15 from re-deriving the exclusion.
+      - name: Check every musicDir walker honours the reserved-path predicate
+        run: bun run check:library-walkers
+
       # check:shared-helpers only sees a *re-declared* helper. The MCP agent
       # surface bypassed the shared matcher with inline `LIKE ? COLLATE NOCASE`
       # instead (#706, and #719 on the Songs tab) — no local copy to find, so

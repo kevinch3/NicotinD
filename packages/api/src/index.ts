@@ -95,6 +95,7 @@ import { LibraryProcessingService } from './services/library-processing.service.
 import { AudioFeaturesClient } from './services/audio-features-client.js';
 import { ProviderRegistry } from './services/provider-registry.js';
 import { LibrarySearchProvider } from './services/providers/library-provider.js';
+import { reservedDirsFor } from './services/library-paths.js';
 import { LibraryScanner } from './services/library-scanner.js';
 import { backfillAcquisitions } from './services/acquisition-backfill.js';
 import { LibraryCurator } from './services/library-curator.js';
@@ -152,7 +153,13 @@ export function createApp({
   // Canonical-library pipeline: the native LibraryScanner reads tags off disk
   // straight into our sqlite (replacing Navidrome's async scan), LibraryCurator
   // hides/classifies. The UI reads only from these tables.
-  const scanner = new LibraryScanner(expandedMusicDir, db);
+  // One reserved set for the whole process: the dirs the organizer writes to
+  // are exactly the dirs the scanner skips. → docs/library-path-conventions.md
+  const reservedDirs = reservedDirsFor({
+    downloadsDir: config.downloads.dir,
+    unsortedRoot: `${expandedDataDir}/unsorted`,
+  });
+  const scanner = new LibraryScanner(expandedMusicDir, db, reservedDirs);
   const curator = new LibraryCurator(db);
   const syncLog = createLogger('library-sync');
   // Declared here (assigned below, once its deps exist) so the incremental scan
