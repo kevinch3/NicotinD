@@ -1,6 +1,6 @@
-# Library Path Conventions (design spec)
+# Library Path Conventions
 
-**Status:** proposed — not yet implemented. Refs #827.
+**Status:** implemented. Closes #827.
 
 ## The problem
 

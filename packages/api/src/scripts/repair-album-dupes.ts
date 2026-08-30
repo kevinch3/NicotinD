@@ -75,9 +75,7 @@ function* walkAlbumDirs(
 ): Generator<{ artist: string; album: string; dir: string }> {
   let artistEntries: string[];
   try {
-    artistEntries = readdirSync(musicDir).filter(
-      (n) => !isReservedTopLevel(n, reservedDirsFor()),
-    );
+    artistEntries = readdirSync(musicDir).filter((n) => !isReservedTopLevel(n, reservedDirsFor()));
   } catch {
     return;
   }

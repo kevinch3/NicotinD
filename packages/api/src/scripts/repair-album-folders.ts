@@ -165,9 +165,7 @@ function collectAlbumFolders(musicDir: string): FolderEntry[] {
   const out: FolderEntry[] = [];
   let artists: string[];
   try {
-    artists = readdirSync(musicDir).filter(
-      (n) => !isReservedTopLevel(n, reservedDirsFor()),
-    );
+    artists = readdirSync(musicDir).filter((n) => !isReservedTopLevel(n, reservedDirsFor()));
   } catch {
     return out;
   }

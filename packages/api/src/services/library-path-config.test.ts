@@ -17,7 +17,9 @@ describe('downloads.dir config', () => {
   test('rejects a nested relative dir — only a top-level name can be reserved', () => {
     // isReservedTopLevel matches a single segment, so `a/b` would be written to
     // but never skipped: #827 again under a new name.
-    expect(() => NicotinDConfigSchema.parse({ ...base, downloads: { dir: 'staging/tmp' } })).toThrow();
+    expect(() =>
+      NicotinDConfigSchema.parse({ ...base, downloads: { dir: 'staging/tmp' } }),
+    ).toThrow();
   });
 
   test('accepts an absolute dir (its own disk, outside musicDir)', () => {

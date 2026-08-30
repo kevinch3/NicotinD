@@ -276,6 +276,9 @@ export function loadConfig() {
     },
     downloads: {
       ...((fileConfig as Record<string, unknown>).downloads as Record<string, unknown>),
+      // Env override is not optional polish: .dockerignore drops
+      // config/default.yml, so a key with no env var is unsettable in prod (#824).
+      ...(process.env.NICOTIND_DOWNLOADS_DIR ? { dir: process.env.NICOTIND_DOWNLOADS_DIR } : {}),
       ...(process.env.NICOTIND_AUTO_RETRY_ENABLED
         ? { autoRetryEnabled: parseBooleanEnv(process.env.NICOTIND_AUTO_RETRY_ENABLED) }
         : {}),

@@ -70,9 +70,7 @@ function* walkSinglesFiles(
 ): Generator<{ artistDir: string; artist: string; filePath: string }> {
   let artistEntries: string[];
   try {
-    artistEntries = readdirSync(musicDir).filter(
-      (n) => !isReservedTopLevel(n, reservedDirsFor()),
-    );
+    artistEntries = readdirSync(musicDir).filter((n) => !isReservedTopLevel(n, reservedDirsFor()));
   } catch {
     return;
   }
