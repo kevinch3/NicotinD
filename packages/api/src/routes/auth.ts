@@ -38,6 +38,23 @@ const ErrorSchema = z
   })
   .openapi('Error');
 
+/**
+ * Whether `POST /register` should be refused. Pure so the policy is testable
+ * without a request: the route only supplies the two facts it depends on.
+ *
+ * `isFirstUser` is true when the users table is empty — that account is minted
+ * as `admin`, and it bypasses the switch **deliberately**: a closed instance can
+ * still bootstrap without an env edit. The switch is a policy, not a lock.
+ *
+ * The cost of that choice, accepted knowingly: an emptied users table (bad
+ * restore, fresh volume, wrong dataDir) re-opens self-registration as admin on a
+ * deploy that closed it. `auth.test.ts` pins both halves so the exemption stays
+ * intentional rather than becoming an accident someone "fixes".
+ */
+export function registrationBlocked(registrationEnabled: boolean, isFirstUser: boolean): boolean {
+  return !registrationEnabled && !isFirstUser;
+}
+
 export function authRoutes(
   jwtSecret: string,
   jwtExpiresIn: string,
@@ -126,10 +143,10 @@ export function authRoutes(
       const userCount = db
         .query<{ count: number }, []>('SELECT COUNT(*) as count FROM users')
         .get();
-      const role = userCount?.count === 0 ? 'admin' : 'user';
+      const isFirstUser = userCount?.count === 0;
+      const role = isFirstUser ? 'admin' : 'user';
 
-      // Block public registration when disabled (first-user setup always allowed)
-      if (!registrationEnabled && role !== 'admin') {
+      if (registrationBlocked(registrationEnabled, isFirstUser)) {
         return c.json({ error: 'Registration is disabled', code: 'REGISTRATION_DISABLED' }, 403);
       }
 

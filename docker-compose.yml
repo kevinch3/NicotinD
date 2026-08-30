@@ -23,6 +23,9 @@ services:
     environment:
       NICOTIND_MODE: external
       NICOTIND_PORT: "8484"
+      # Public self-signup is closed; an admin creates accounts in
+      # Admin -> User Management. Set "on" to reopen /register.
+      NICOTIND_REGISTRATION: "off"
       NICOTIND_DATA_DIR: /data/nicotind
       NICOTIND_MUSIC_DIR: /data/music
       NICOTIND_LIDARR_URL: http://lidarr:8686

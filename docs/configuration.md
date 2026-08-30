@@ -11,6 +11,7 @@ of truth; this page summarizes the ones most installs touch.
 | `NICOTIND_MUSIC_DIR`                   | `~/Music`               | Shared music folder                                            |
 | `NICOTIND_MODE`                        | `embedded`              | `embedded` (best-effort manage Lidarr; slskd is its own addon) or `external` (connect to existing) |
 | `NICOTIND_ACQUISITION`                 | `on`                    | Deployment-wide acquisition kill-switch (`off` = streaming-only install) |
+| `NICOTIND_REGISTRATION`                | `on`                    | Public self-signup kill-switch (`off` = accounts created in Admin → User Management) |
 | `NICOTIND_METADATA_FIX_ENABLED`        | `true`                  | Auto-repair missing MP3 tags after download                    |
 | `NICOTIND_METADATA_FIX_MIN_SCORE`      | `85`                    | Minimum MusicBrainz match score (0-100) for auto-fill          |
 | `NICOTIND_TRANSCODE_LOSSLESS_ENABLED`  | `true`                  | Transcode FLAC → Opus in place after download                  |

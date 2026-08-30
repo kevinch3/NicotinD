@@ -455,6 +455,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   short-lived, read-only and non-refreshable. `authGuard` preserves the attempted URL and
   `sanitizeReturnUrl` validates it; an already-logged-in share link resolves in-app without burning
   the public token. → [design-patterns.md](docs/design-patterns.md), [web-ui.md](docs/web-ui.md)
+- **Public-signup kill-switch**: `registrationEnabled` (env `NICOTIND_REGISTRATION=off`, shipped off)
+  closes `POST /register`; accounts are created in Admin → User Management. The pure
+  `registrationBlocked` owns the rule, and the first-user bootstrap is exempt on purpose.
+  → [deployment.md](docs/deployment.md)
 - **Device pairing (QR link) + remote access**: a 5-minute single-use token rendered as a QR link plus
   a printed fallback code; `parseApproveCode` and core `pairing-code.ts` `isPairingCodeShape` keep the
   minter and validator from drifting; `paired_devices` rows are revocable at refresh. Tailscale Funnel
