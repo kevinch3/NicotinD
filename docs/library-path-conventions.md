@@ -36,55 +36,73 @@ things worth keeping:
 
 ## The rule
 
-Reserved directories are **named, never inferred** — and the names come from config, so the
-staging dir a deployment actually uses is the one the walkers actually skip.
+Scoped by **depth**, because that is where the meaning actually differs: the top level of
+`musicDir` is ours to manage, everything below it is user content.
 
-1. **A directory is skipped only when its name is in the reserved set**, matched at the top level
-   of `musicDir` only. The set is derived from config (`downloads.dir` and `unsortedRoot` when
-   relative), defaulting to `.downloads` and `.unsorted`.
-2. **A file is skipped when its basename starts with `.`** — the ordinary hidden-file convention.
+1. **At the top level of `musicDir` only**, a directory whose name starts with `.` is not library
+   content.
+2. **At any depth**, a *file* whose basename starts with `.` is not library content.
+3. **Reserved names** (`downloads.dir`, `unsortedRoot`; defaults `.downloads`, `.unsorted`) are
+   skipped at the top level **whether or not they start with a dot**, so an operator who sets
+   `downloads.dir: staging` still gets `staging` skipped. Declaring them in config also gives the
+   organizer, the addon env, the boot guard and these docs one constant to share.
+
+So the skip decision for a top-level directory is: *starts with `.`* **or** *is a reserved name*.
+Rule 1 covers junk nobody declared; rule 3 covers whatever this deployment actually writes to.
 
 ```
 <musicDir>/
-├── Artist/Album/Track.opus     ← library content
-├── .downloads/                 ← acquisition staging (addons write here)
-└── .unsorted/                  ← files the organizer could not place
+├── Artist/Album/Track.opus              ← library content
+├── Artist/...And Then There Was X/      ← library content (rule 1 is root-only)
+├── .downloads/                          ← acquisition staging
+├── .unsorted/                           ← organizer could not place
+└── .stversions/                         ← Syncthing; not ours, still correctly skipped
 ```
 
-The leading dot on the shipped defaults is a **convention** (keeps them out of the way in a file
-manager), not the mechanism. Nothing is excluded *because* it starts with a dot.
+### Why root-only, and why a dot at all
 
-### Why not "skip every dot-directory"
+Verified against the real library 2026-08-30:
 
-That was the first draft of this spec, and it is wrong. Verified against the prod library
-2026-08-30 — **two real albums already present would have silently disappeared**:
+| Where | Dot-directories containing audio |
+| --- | --- |
+| Top level | **0** |
+| Below top level | **2** — `DMX/...And Then There Was X`, `Memphis La Blusera/...Etc` |
 
-```
-Memphis La Blusera/...Etc/07 - Arrepentido.mp3
-DMX/...And Then There Was X/07 - Party Up.mp3
-```
+An unrestricted dot rule would silently drop those two albums; album titles opening with an
+ellipsis are ordinary (`...And Justice for All`). Restricting to the top level costs nothing on a
+real library and still earns its keep, because the junk that lands at a music root is dot-prefixed
+and *contains audio*: `.stversions` holds prior versions of every synced track, `.Trash-1000` holds
+deleted ones. Both would otherwise scan in as a duplicate library.
 
-Album titles opening with an ellipsis are ordinary (`...And Justice for All`), and restricting the
-rule to the top level does not save it either — `...And You Will Know Us by the Trail of Dead` is
-an *artist*. A music library is precisely the domain where a leading dot carries no meaning.
+Note the rule does **not** catch `@eaDir` (Synology), which starts with `@`. An earlier draft
+claimed it did.
 
-The justification offered for the general rule was also false on inspection: it does **not** sweep
-up `@eaDir` (Synology), which starts with `@`, not `.`.
+### The residual risk, and why it is not silent
 
-### Why the file rule is safe where the directory rule is not
+Rule 1 can still hit a legitimately dot-prefixed **artist** — `...And You Will Know Us by the Trail
+of Dead` is a real band. That risk is accepted, but never invisible:
 
-A dot-prefixed *filename* has no such counter-example: the organizer writes `NN - Title.ext`, so a
-track file never leads with a dot even when its album title does. And the rule fixes a live
-problem — macOS AppleDouble sidecars (`._Track.flac`) are **currently scanned as audio**, because
-`extname('._Track.flac')` is `'.flac'`:
+- `LibraryScanner` counts audio files under each skipped root directory and logs a **warning**
+  naming the directory and the count when it is non-zero and the directory is not a reserved name.
+- `libraryHealth` reports the same as a `skipped_paths` metric, so it surfaces in the curation
+  playbook rather than only in logs.
+
+A user whose artist vanishes sees "skipped 47 audio files under `/.../...And You Will Know Us...`"
+rather than an unexplained gap. Renaming the folder is then an obvious fix.
+
+### Why the file rule is unrestricted by depth
+
+A dot-prefixed *filename* has no counter-example — the organizer writes `NN - Title.ext`, so a track
+file never leads with a dot even when its album title does. And it fixes a live bug: macOS
+AppleDouble sidecars are **currently scanned as audio**, because
 
 ```
 ".flac"        -> extname ""
 "._Track.flac" -> extname ".flac"      ← matches AUDIO_EXTENSIONS today
 ```
 
-The prod library has `/data/music/._.DS_Store` at its root, so it has had Mac contact; the sidecars
-are a matter of when, not whether. Each would ingest as a multi-KB "track" with unreadable tags.
+The prod library has `/data/music/._.DS_Store` at its root, so it has had Mac contact; each sidecar
+would ingest as a multi-KB "track" with unreadable tags.
 
 ## The shared predicate
 
@@ -97,13 +115,12 @@ export const DEFAULT_RESERVED_DIRS = ['.downloads', '.unsorted'] as const;
  *  relative `downloads.dir` / `unsortedRoot` the operator configured. */
 export function reservedDirsFor(cfg: PathConfig): ReadonlySet<string>;
 
-/** True when a musicDir-relative path is staging rather than library content:
- *  its FIRST segment is reserved, or any segment is a dot-prefixed file. */
+/** True when a musicDir-relative path is not library content: its FIRST
+ *  segment is a dot-dir, or its basename is a dot-file. Depth matters —
+ *  see "Why root-only, and why a dot at all". */
 export function isReservedPath(relPath: string, reserved: ReadonlySet<string>): boolean;
 
-/** True for a hidden file basename (`._Track.flac`, `.DS_Store`). Directory
- *  names are NOT judged by their leading dot — see "Why not skip every
- *  dot-directory". */
+/** True for a hidden file basename (`._Track.flac`, `.DS_Store`), at any depth. */
 export function isHiddenFile(basename: string): boolean;
 
 /** Resolve the acquisition staging dir for a musicDir. */
@@ -205,8 +222,10 @@ schema default and must be settable by env alone.
 
 ## Rejected alternatives
 
-- **Skip every dot-directory.** Rejected on evidence — it deletes real albums from this very
-  library. See the section above.
+- **Skip every dot-directory at any depth.** Rejected on evidence — it drops
+  `DMX/...And Then There Was X` and `Memphis La Blusera/...Etc` from this very library.
+- **Named reserved dirs only, no dot rule.** Safe, but leaves `.stversions` / `.Trash-1000` walked,
+  and those contain audio — a Syncthing user would scan in a second copy of their whole library.
 - **Hardcoded `RESERVED_DIRS` constant.** Stops matching as soon as an operator overrides
   `downloads.dir`, which is the same "the default disagrees with the config" defect as #826.
 - **Staging outside `musicDir`.** Costs the single mount and the atomic rename, and does not fix the
@@ -214,14 +233,15 @@ schema default and must be settable by env alone.
 
 ## Known risk
 
-An operator points `downloads.dir` at a name that later becomes a real artist folder, or ships music
-in a file whose name starts with a dot. Both are narrow, and both are made visible rather than
-silent: `LibraryScanner` logs every skipped path at debug, and the `unorganized` health dimension
-counts audio files sitting under reserved paths, so a surprising number shows up in the health
-report instead of vanishing.
+Two, both narrow, both covered by the warning described under
+[The residual risk](#the-residual-risk-and-why-it-is-not-silent):
 
-The risk this design *removes* is the larger one — an inferred rule silently discarding content the
-user owns, which the rejected dot-directory rule would have done to four songs on day one.
+- a legitimately dot-prefixed **artist** folder at the top level;
+- an operator pointing `downloads.dir` at a name that later becomes a real artist folder — which
+  config validation rejects at startup when the collision already exists, but cannot predict.
+
+The risk this design *removes* is the larger one: an inferred rule silently discarding content the
+user owns, which an unrestricted dot rule would have done to four songs on day one.
 
 ## Out of scope
 
