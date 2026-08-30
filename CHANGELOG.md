@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.44](https://github.com/kevinch3/NicotinD/compare/v0.5.43...v0.5.44) (2026-08-30)
+
+### Bug Fixes
+
+* **auth:** give the registration kill-switch an env lever ([#824](https://github.com/kevinch3/NicotinD/issues/824)) ([#825](https://github.com/kevinch3/NicotinD/issues/825)) ([fdcc29b](https://github.com/kevinch3/NicotinD/commit/fdcc29b62deb2ab04dfea41c769a4004b9289421)), references [#235](https://github.com/kevinch3/NicotinD/issues/235) [#454](https://github.com/kevinch3/NicotinD/issues/454)
 ## [0.5.43](https://github.com/kevinch3/NicotinD/compare/v0.5.42...v0.5.43) (2026-08-30)
 
 ### Features
