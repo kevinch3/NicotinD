@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.45](https://github.com/kevinch3/NicotinD/compare/v0.5.44...v0.5.45) (2026-08-30)
+
+### Bug Fixes
+
+* **downloads:** resolve transcodeLossless once instead of four disagreeing defaults ([#828](https://github.com/kevinch3/NicotinD/issues/828)) ([e0c51ab](https://github.com/kevinch3/NicotinD/commit/e0c51abb85683f3c5ebd85015a93d0199d861802))
 ## [0.5.44](https://github.com/kevinch3/NicotinD/compare/v0.5.43...v0.5.44) (2026-08-30)
 
 ### Bug Fixes
