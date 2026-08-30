@@ -1322,3 +1322,51 @@ living only in the per-track tag can never reach it.
 Two wrong claims in one issue, both caught by one read-only probe that took two minutes. **The
 grep-for-the-wrong-literal failure is the same shape as the session's opening mistake: concluding
 absence from a search that was never capable of finding the thing.**
+
+#### Audit high-severity lane — `watermark_album` 3 → 1
+
+The health report gives counts, not ids. Rather than re-implement `looksLikeSourceWatermark` in a
+probe — which the prod-inspection doc warns will drift from shipped code — this used the documented
+replay pattern: dump prod `library_albums`/`library_artists` to JSON, then run the **real** exported
+predicate from `library-quality.ts` locally against it. It returned exactly 3, matching the health
+report. **The denominator agreed rather than being asserted.**
+
+All three were the #705 shape — junk metadata, real audio — and none was deletable:
+
+| Album | Verdict |
+| --- | --- |
+| **Coolio — "Coolio.com"** (23 tracks, cover, visible) | **False positive.** `coolio.com` is the genuine title of Coolio's 2001 album. Filed as **#819**. |
+| LOSERPOWER.ORG … VOLUMEN 8 — Nestor En Bloque (1 track) | Real cumbia villera song under a warez title → retagged *Mi Único Amor* (2005) |
+| Most Wanted 80 Djs Chart … ElectronicFresh.com — Cassian (1 track) | Real track under a warez title → retagged *Laps* (2020, single) |
+
+**The false positive is noise, not danger — and checking which mattered.** `watermark_album` is in
+`DELETABLE_RULES`, so the first read looked like a data-loss risk on a real 23-track album. It is
+not: `selectPollutionTargets` calls `albumHasRealTrackTitles` before adding anything to the delete
+set, and Coolio's real titles route it to `protectedRealAudio`. **The #705 protection does exactly
+its job.** #819 is filed for metric accuracy — a third of a high-severity bucket being false costs a
+curator attention every pass — not for a phantom risk. Reading the guard before filing changed the
+issue from "may delete a real album" to "inflates a count", which are very different asks.
+
+**Both retags merged into albums that already existed**, and each surfaced a duplicate — the
+"consolidating buckets surfaces duplicates" pattern from the 08-27 pass, reproduced twice in one
+step. Both pairs proven same-recording by `acoustId` + `recordingId`, then the weaker copy deleted
+(Cassian: kept the copy carrying the verified `House` genre; Nestor: kept 192 kbps over 128).
+
+**Coolio dedupe — 23 → 14 files.** Nine pairs, each tagged `Hip Hop` in one rip and `Gangsta Rap` in
+the other, all nine proven identical by `acoustId` **and** `recordingId`. Track 9 *"Life"* exists
+**only** in the Gangsta Rap rip and tracks 1–4 only in the Hip Hop rip — neither rip is complete, so
+per-rip deletion would have lost music either way. This is the second album in one session where
+that held. Unlike the Umoja FLAC case, these are opus, so bitrate **is** a real quality signal; the
+`Hip Hop` copy was higher in all nine. *"Life"* then moved to `Hip Hop` on the 13–1 in-album
+majority.
+
+`songCount` read 14 against 14 actual rows straight after nine deletes — **#774 did not reproduce a
+second time.**
+
+#### A delta not attributable to this pass
+
+Total songs read 17523 → **17097** across the two health calls, a drop of 426 against the 11 files
+this pass deleted. About four hours of wall-clock separates the two `collectedAt` stamps, so a
+scheduled scan and orphan sweep almost certainly ran in between. **Recorded as unexplained rather
+than assumed benign**: nothing here verified it, and a 415-row discrepancy is worth a deliberate
+look before anyone treats these numbers as a clean before/after.
