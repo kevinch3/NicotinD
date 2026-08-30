@@ -17,6 +17,34 @@
     </div>
   }
 
+  <!-- Public-signup kill-switch (issue #824). Sits above the users table because
+       it answers the same question: who is allowed to become a user. Rendered
+       read-only when NICOTIND_REGISTRATION pins the value. -->
+  <div class="flex flex-col gap-2 mb-8" data-testid="signup-panel">
+    <label class="flex items-center justify-between gap-4">
+      <span class="text-sm text-theme-primary"
+        >{{ 'admin.publicSignup' | t }}
+        @if (!signupConfigurable()) {
+          <span class="block text-xs text-status-warn" data-testid="signup-env-locked">
+            {{ 'admin.publicSignupEnvLocked' | t }}
+          </span>
+        } @else {
+          <span class="block text-xs text-theme-muted">
+            {{ 'admin.publicSignupHint' | t }}
+          </span>
+        }
+      </span>
+      <input
+        type="checkbox"
+        [checked]="signupEnabled()"
+        data-testid="signup-toggle"
+        [disabled]="signupSaving() || !signupConfigurable()"
+        (change)="setSignup($any($event.target))"
+        class="w-4 h-4 rounded accent-emerald-500"
+      />
+    </label>
+  </div>
+
   <div class="flex items-center justify-end mb-4">
     <button
       (click)="showCreateUser.set(true)"

@@ -36,11 +36,16 @@ describe('UserManagementPanelComponent', () => {
       confirm?: boolean;
       updateUserRole?: unknown;
       deleteUser?: unknown;
+      registration?: { enabled: boolean; configurable: boolean };
+      setRegistration?: unknown;
     } = {},
   ) {
     TestBed.resetTestingModule();
     const updateUserRole = over.updateUserRole ?? vi.fn(() => of({ ok: true }));
     const deleteUser = over.deleteUser ?? vi.fn(() => of({ ok: true }));
+    const registration = over.registration ?? { enabled: false, configurable: true };
+    const setRegistration =
+      over.setRegistration ?? vi.fn((enabled: boolean) => of({ ...registration, enabled }));
     const ask = vi.fn(async () => over.confirm ?? true);
     await TestBed.configureTestingModule({
       imports: [UserManagementPanelComponent],
@@ -52,6 +57,8 @@ describe('UserManagementPanelComponent', () => {
             updateUserRole,
             deleteUser,
             updateUserStatus: vi.fn(() => of({ ok: true })),
+            getRegistration: vi.fn(() => of(registration)),
+            setRegistration,
           },
         },
         { provide: AuthService, useValue: { token: () => over.token ?? null } },
@@ -64,7 +71,14 @@ describe('UserManagementPanelComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expandAllGroups(fixture);
-    return { fixture, el: fixture.nativeElement as HTMLElement, updateUserRole, deleteUser, ask };
+    return {
+      fixture,
+      el: fixture.nativeElement as HTMLElement,
+      updateUserRole,
+      deleteUser,
+      ask,
+      setRegistration,
+    };
   }
 
   /** A JWT whose only job is to carry `sub` — the component base64-decodes it.
@@ -245,5 +259,101 @@ describe('UserManagementPanelComponent', () => {
     ]) {
       expect(BASE_CATALOG).not.toHaveProperty([key]);
     }
+  });
+
+  // Public-signup switch (issue #824). It lives on this card because it answers
+  // the same question the users table does: who is allowed to become a user.
+  describe('public-signup toggle', () => {
+    it('reflects the server value and is operable when the env leaves it unset', async () => {
+      const { el } = await mountWithUsers([testUser], {
+        registration: { enabled: true, configurable: true },
+      });
+      const toggle = el.querySelector<HTMLInputElement>('[data-testid="signup-toggle"]')!;
+
+      expect(toggle.checked).toBe(true);
+      expect(toggle.disabled).toBe(false);
+      expect(el.querySelector('[data-testid="signup-env-locked"]')).toBeNull();
+    });
+
+    it('renders read-only with an explanation when the env pins the value', async () => {
+      const { el } = await mountWithUsers([testUser], {
+        registration: { enabled: false, configurable: false },
+      });
+      const toggle = el.querySelector<HTMLInputElement>('[data-testid="signup-toggle"]')!;
+
+      expect(toggle.disabled).toBe(true);
+      expect(el.querySelector('[data-testid="signup-env-locked"]')).not.toBeNull();
+    });
+
+    it('persists a flip through the API', async () => {
+      const { el, fixture, setRegistration } = await mountWithUsers([testUser], {
+        registration: { enabled: false, configurable: true },
+      });
+      const toggle = el.querySelector<HTMLInputElement>('[data-testid="signup-toggle"]')!;
+
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event('change'));
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(setRegistration).toHaveBeenCalledWith(true);
+      expect(el.querySelector<HTMLInputElement>('[data-testid="signup-toggle"]')!.checked).toBe(
+        true,
+      );
+    });
+
+    it('adopts the server effective value rather than what was asked', async () => {
+      // The server is the authority: a pinned env makes the effective value
+      // differ from the request, and the UI must not keep showing the request.
+      const { el, fixture } = await mountWithUsers([testUser], {
+        registration: { enabled: false, configurable: true },
+        setRegistration: vi.fn(() => of({ enabled: false, configurable: false })),
+      });
+      const toggle = el.querySelector<HTMLInputElement>('[data-testid="signup-toggle"]')!;
+
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event('change'));
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(el.querySelector<HTMLInputElement>('[data-testid="signup-toggle"]')!.checked).toBe(
+        false,
+      );
+    });
+
+    it('leaves the users table usable when the signup lookup fails', async () => {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [UserManagementPanelComponent],
+        providers: [
+          {
+            provide: SystemApiService,
+            useValue: {
+              getUsers: vi.fn(() => of([testUser])),
+              updateUserRole: vi.fn(() => of({ ok: true })),
+              deleteUser: vi.fn(() => of({ ok: true })),
+              updateUserStatus: vi.fn(() => of({ ok: true })),
+              getRegistration: vi.fn(() => {
+                throw new Error('boom');
+              }),
+              setRegistration: vi.fn(),
+            },
+          },
+          { provide: AuthService, useValue: { token: () => null } },
+          { provide: ConfirmService, useValue: { ask: vi.fn(async () => true) } },
+        ],
+      }).compileComponents();
+      const fixture = TestBed.createComponent(UserManagementPanelComponent);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expandAllGroups(fixture);
+      const el = fixture.nativeElement as HTMLElement;
+
+      expect(el.querySelector('[data-testid="users-table"]')).not.toBeNull();
+      expect(el.querySelector<HTMLInputElement>('[data-testid="signup-toggle"]')!.disabled).toBe(
+        true,
+      );
+    });
   });
 });

@@ -78,6 +78,7 @@ import { registerBundledAddons } from './services/addons/bundled/registry.js';
 import { AddonJobPoller } from './services/addons/job-poller.js';
 import { AddonCircuitBreaker } from './services/addons/circuit-breaker.js';
 import { AcquisitionToggle } from './services/acquisition-toggle.js';
+import { RegistrationToggle, readRegistrationEnv } from './services/registration-toggle.js';
 import {
   requireAcquisitionEnabledMiddleware,
   requireAcquisitionMiddleware,
@@ -524,6 +525,17 @@ export function createApp({
   // slskd/Lidarr services from the shipped compose file for the off profile.
   // Runtime kill-switch (issue #235). `NICOTIND_ACQUISITION=off` stays a hard
   // floor an admin cannot lift; within that, the toggle is live.
+  // Public-signup kill-switch (issue #824). `readRegistrationEnv()` is what makes
+  // the UI control possible: `config.registrationEnabled` has already collapsed
+  // env/file/default into one boolean, so only the raw var says whether an
+  // operator *pinned* the value or left the decision to the admin.
+  const registrationToggle = new RegistrationToggle(
+    db,
+    readRegistrationEnv(),
+    config.registrationEnabled,
+  );
+  const registrationOn = () => registrationToggle.enabled();
+
   const acquisitionToggle = new AcquisitionToggle(db, config.acquisitionEnabled);
   const acquisitionOn = () => acquisitionToggle.enabled();
   acquisitionOnRef.enabled = acquisitionOn;
@@ -532,7 +544,7 @@ export function createApp({
   // Public routes
   app.route(
     '/api/auth',
-    authRoutes(config.jwt.secret, config.jwt.expiresIn, config.registrationEnabled, acquisitionOn),
+    authRoutes(config.jwt.secret, config.jwt.expiresIn, registrationOn, acquisitionOn),
   );
   app.route(
     '/api/setup',
@@ -630,6 +642,7 @@ export function createApp({
     '/api/admin',
     adminRoutes({
       acquisition: acquisitionToggle,
+      registration: registrationToggle,
       historyEnabled,
       musicDir: expandedMusicDir,
       dataDir: expandedDataDir,

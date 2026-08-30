@@ -58,7 +58,9 @@ export function registrationBlocked(registrationEnabled: boolean, isFirstUser: b
 export function authRoutes(
   jwtSecret: string,
   jwtExpiresIn: string,
-  registrationEnabled: boolean,
+  // Getter or plain boolean, same shape as `acquisitionEnabled` below: the admin
+  // toggle must take effect on the next request, not the next restart (#824).
+  registrationEnabled: boolean | (() => boolean),
   // Deployment-wide acquisition kill-switch (#235). Surfaced on `/me` so the web
   // can hide every acquisition surface (nav, Search's acquire lane, guards) when
   // the whole module is off — the web-side half of the shared `acquisitionEnabled`
@@ -69,6 +71,8 @@ export function authRoutes(
   // immediately rather than at the next restart (issue #235).
   const acquisitionOn =
     typeof acquisitionEnabled === 'function' ? acquisitionEnabled : () => acquisitionEnabled;
+  const registrationOn =
+    typeof registrationEnabled === 'function' ? registrationEnabled : () => registrationEnabled;
   const app = new OpenAPIHono<AuthEnv>();
 
   // Public endpoint: check if registration is open
@@ -83,7 +87,7 @@ export function authRoutes(
         },
       },
     }),
-    (c) => c.json({ enabled: registrationEnabled }),
+    (c) => c.json({ enabled: registrationOn() }),
   );
 
   app.openapi(
@@ -146,7 +150,7 @@ export function authRoutes(
       const isFirstUser = userCount?.count === 0;
       const role = isFirstUser ? 'admin' : 'user';
 
-      if (registrationBlocked(registrationEnabled, isFirstUser)) {
+      if (registrationBlocked(registrationOn(), isFirstUser)) {
         return c.json({ error: 'Registration is disabled', code: 'REGISTRATION_DISABLED' }, 403);
       }
 

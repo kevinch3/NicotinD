@@ -65,10 +65,60 @@ export class UserManagementPanelComponent implements OnInit {
 
   readonly roles = ROLES;
 
+  // ── Public-signup switch (issue #824) ───────────────────────────────────
+  // Lives on this card because "who can create an account" is the same question
+  // the users table answers. `signupConfigurable` false = NICOTIND_REGISTRATION
+  // pins the value, so the control renders read-only with an explanatory note
+  // rather than silently doing nothing.
+  readonly signupEnabled = signal(false);
+  readonly signupConfigurable = signal(false);
+  readonly signupSaving = signal(false);
+
   private readonly translate: Translator = (key, params) => this.i18n.t(key, params);
 
   ngOnInit(): void {
     void this.loadUsers();
+    void this.loadSignup();
+  }
+
+  /** Non-fatal: a failure here must not blank the users table beside it. */
+  private async loadSignup(): Promise<void> {
+    try {
+      const res = await firstValueFrom(this.api.getRegistration());
+      this.signupEnabled.set(res.enabled);
+      this.signupConfigurable.set(res.configurable);
+    } catch {
+      this.signupConfigurable.set(false);
+    }
+  }
+
+  /**
+   * Optimistic, then reconciled against the server's *effective* value — which
+   * can differ from what was asked when the environment pins the switch.
+   */
+  async setSignup(target: HTMLInputElement): Promise<void> {
+    const enabled = target.checked;
+    // Hand the checkbox back to the model before touching it. A native checkbox
+    // mutates its own `checked` on click, and Angular only writes `[checked]`
+    // when the *bound value* changes — so a false→true→false round trip (server
+    // returned a different effective value, or the save failed) is invisible to
+    // it and the DOM would keep showing the click. Resetting first makes both
+    // transitions real changes that the binding does apply.
+    target.checked = this.signupEnabled();
+    if (!this.signupConfigurable() || this.signupSaving()) return;
+    const prev = this.signupEnabled();
+    this.signupEnabled.set(enabled);
+    this.signupSaving.set(true);
+    try {
+      const res = await firstValueFrom(this.api.setRegistration(enabled));
+      this.signupEnabled.set(res.enabled);
+      this.signupConfigurable.set(res.configurable);
+    } catch {
+      this.signupEnabled.set(prev);
+      this.error.set(this.i18n.t('admin.signupToggleFailed'));
+    } finally {
+      this.signupSaving.set(false);
+    }
   }
 
   /**

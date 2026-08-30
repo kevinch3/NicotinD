@@ -125,6 +125,22 @@ export class SystemApiService {
     });
   }
 
+  /**
+   * Public-signup kill-switch (issue #824). `configurable` is false when the
+   * environment *sets* NICOTIND_REGISTRATION at all — presence pins the value in
+   * either direction, so the UI renders the control read-only rather than
+   * offering something that silently does nothing.
+   */
+  getRegistration() {
+    return this.http.get<{ enabled: boolean; configurable: boolean }>('/api/admin/registration');
+  }
+
+  setRegistration(enabled: boolean) {
+    return this.http.put<{ enabled: boolean; configurable: boolean }>('/api/admin/registration', {
+      enabled,
+    });
+  }
+
   runProcessing() {
     return this.http.post<{ ok: boolean }>('/api/admin/processing/run', {});
   }

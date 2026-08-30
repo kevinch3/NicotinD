@@ -23,9 +23,10 @@ services:
     environment:
       NICOTIND_MODE: external
       NICOTIND_PORT: "8484"
-      # Public self-signup is closed; an admin creates accounts in
-      # Admin -> User Management. Set "on" to reopen /register.
-      NICOTIND_REGISTRATION: "off"
+      # Public self-signup. Left UNSET on purpose: the default is closed, and the
+      # Admin -> User Management toggle owns it from there. Setting this pins the
+      # value in either direction and renders that toggle read-only.
+      # NICOTIND_REGISTRATION: "off"
       NICOTIND_DATA_DIR: /data/nicotind
       NICOTIND_MUSIC_DIR: /data/music
       NICOTIND_LIDARR_URL: http://lidarr:8686

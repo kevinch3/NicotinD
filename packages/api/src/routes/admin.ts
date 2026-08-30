@@ -7,6 +7,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { listAudit, recordAudit } from '../services/audit-log.js';
 import type { AcquisitionToggle } from '../services/acquisition-toggle.js';
+import type { RegistrationToggle } from '../services/registration-toggle.js';
 import {
   getInstanceHistoryEnabled,
   getRetentionDays,
@@ -52,6 +53,8 @@ export interface AdminRoutesDeps {
   version?: string;
   /** Runtime acquisition kill-switch (issue #235); absent → the routes 503. */
   acquisition?: AcquisitionToggle | null;
+  /** Runtime public-signup kill-switch (issue #824); absent → the routes 503. */
+  registration?: RegistrationToggle | null;
   /** Env-level listening-history floor (issue #454); absent → treated as on. */
   historyEnabled?: () => boolean;
 }
@@ -409,6 +412,32 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     }
     const effective = t.set(body.enabled);
     recordAudit(getDatabase(), c.get('user'), 'acquisition.toggle', {
+      detail: `requested=${body.enabled} effective=${effective}`,
+    });
+    return c.json({ enabled: effective, configurable: t.configurable() });
+  });
+
+  // ─── Public-signup kill-switch (issue #824) ──────────────────────────────
+  // Same response shape as `/acquisition`, but `configurable` means something
+  // slightly different: false when the environment *sets* NICOTIND_REGISTRATION
+  // at all, in either direction — presence pins the value, not just `off`.
+  app.get('/registration', (c) => {
+    const t = deps.registration;
+    if (!t) return c.json({ error: 'Registration toggle not wired' }, 503);
+    return c.json({ enabled: t.enabled(), configurable: t.configurable() });
+  });
+
+  app.put('/registration', async (c) => {
+    const t = deps.registration;
+    if (!t) return c.json({ error: 'Registration toggle not wired' }, 503);
+    const body = await c.req
+      .json<{ enabled?: unknown }>()
+      .catch(() => ({}) as { enabled?: unknown });
+    if (typeof body.enabled !== 'boolean') {
+      return c.json({ error: 'enabled must be a boolean' }, 400);
+    }
+    const effective = t.set(body.enabled);
+    recordAudit(getDatabase(), c.get('user'), 'registration.toggle', {
       detail: `requested=${body.enabled} effective=${effective}`,
     });
     return c.json({ enabled: effective, configurable: t.configurable() });
