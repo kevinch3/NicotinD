@@ -9,6 +9,8 @@ import { CoverArtComponent } from '../../components/cover-art/cover-art.componen
 import { KeepVibeComponent } from '../../components/keep-vibe/keep-vibe.component';
 import { RecentlyPlayedComponent } from '../../components/recently-played/recently-played.component';
 import { TastemakersComponent } from '../../components/tastemakers/tastemakers.component';
+import { TasteBreakersComponent } from '../../components/taste-breakers/taste-breakers.component';
+import { VibeTileComponent } from '../../components/vibe-tile/vibe-tile.component';
 import { toTrack } from '../../lib/track-utils';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
@@ -17,52 +19,99 @@ interface VibePreset {
   id: string;
   label: string;
   emoji: string;
+  /** Tailwind `from-*`/`to-*` pair painted by <app-vibe-tile> behind white text. */
+  gradient: string;
   filter: LibraryFilter;
 }
 
 // Simplified, human-named starters mapped onto the shared filter vocabulary
 // (moods, perceptual buckets, bpm). Each starts filter-seeded radio instantly.
 // `label` is an i18n key (issue #236), rendered through the `t` pipe.
+//
+// Each `gradient` is a fixed Tailwind pair painted `to-br` behind bold white
+// text. Two rules shaped the choices:
+//
+//  - **The `to-` stop carries the label.** The tile is `justify-end`, so the
+//    text sits at the bottom-right — over the gradient's *end* colour. Every
+//    `to-` stop is therefore a 700, which clears 4.5:1 against white; the `from-`
+//    stop is free to be light because no text sits on it. A flat 400/500 fill
+//    would have put 2–3:1 under the label.
+//  - **Neighbours must differ, not just look nice.** The row is
+//    `grid-flow-col grid-rows-2`, so the array order fills COLUMNS: (happy,
+//    chill) (party, energetic) (danceable, uplifting) (fast, acoustic). Each
+//    pair above is a vertical neighbour and was picked to contrast with the one
+//    beside it, which is why the two hot vibes (energetic, fast) sit in
+//    different rows and columns rather than next to each other.
 const VIBE_PRESETS: readonly VibePreset[] = [
-  { id: 'happy', label: 'vibe.happy', emoji: '😊', filter: { moods: ['happy'] } },
-  { id: 'chill', label: 'vibe.chill', emoji: '😌', filter: { moods: ['relaxed'] } },
-  { id: 'party', label: 'vibe.party', emoji: '🎉', filter: { moods: ['party'] } },
+  {
+    id: 'happy',
+    label: 'vibe.happy',
+    emoji: '😊',
+    gradient: 'from-amber-400 to-orange-700',
+    filter: { moods: ['happy'] },
+  },
+  {
+    id: 'chill',
+    label: 'vibe.chill',
+    emoji: '😌',
+    gradient: 'from-sky-400 to-cyan-700',
+    filter: { moods: ['relaxed'] },
+  },
+  {
+    id: 'party',
+    label: 'vibe.party',
+    emoji: '🎉',
+    gradient: 'from-fuchsia-500 to-purple-700',
+    filter: { moods: ['party'] },
+  },
   {
     id: 'energetic',
     label: 'vibe.energetic',
     emoji: '⚡',
+    gradient: 'from-red-500 to-rose-700',
     filter: { buckets: { energy: ['high'] } },
   },
   {
     id: 'danceable',
     label: 'vibe.danceable',
     emoji: '💃',
+    gradient: 'from-violet-500 to-indigo-700',
     filter: { buckets: { danceability: ['high'] } },
   },
   {
     id: 'uplifting',
     label: 'vibe.uplifting',
     emoji: '☀️',
+    gradient: 'from-yellow-400 to-amber-700',
     filter: { buckets: { valence: ['high'] } },
   },
-  { id: 'fast', label: 'vibe.fast', emoji: '🏃', filter: { bpmMin: 120 } },
+  {
+    id: 'fast',
+    label: 'vibe.fast',
+    emoji: '🏃',
+    gradient: 'from-orange-500 to-red-700',
+    filter: { bpmMin: 120 },
+  },
   {
     id: 'acoustic',
     label: 'vibe.acoustic',
     emoji: '🎸',
+    gradient: 'from-emerald-500 to-teal-700',
     filter: { buckets: { acousticness: ['high'] } },
   },
 ];
 
 /**
- * The app's landing surface: start listening in one tap. Five blocks:
+ * The app's landing surface: start listening in one tap. Six blocks:
  *  1. Resume — radio seeded from your last-played track (disappears once tapped).
  *  2. Keep the vibe — list-seeded radio recommendations over the
  *     recently-played rows (KeepVibeComponent, fed the child shelf's data).
- *  3. Recently played — the listening-history shelf.
- *  4. Tastemakers — curated-playlist blend radios (TastemakersComponent).
- *  5. New mood — one-tap vibe presets + top-genre chips, each of which starts
- *     filter-seeded radio immediately.
+ *  3. Taste breakers — random library picks minus the recent plays, the
+ *     deliberate counterweight to block 2 (TasteBreakersComponent).
+ *  4. Recently played — the listening-history shelf.
+ *  5. Tastemakers — curated-playlist blend radios (TastemakersComponent).
+ *  6. Start a radio — vibe presets as wide colored tiles in two scrolling rows,
+ *     plus the same tile muted for top genres; each starts filter-seeded radio.
  * Mobile-first (thumb-reachable chips, no manual bottom padding — inherited from
  * <main>). Music acquisition lives on the merged workspace (nav "Get", /get).
  */
@@ -74,6 +123,8 @@ const VIBE_PRESETS: readonly VibePreset[] = [
     KeepVibeComponent,
     RecentlyPlayedComponent,
     TastemakersComponent,
+    TasteBreakersComponent,
+    VibeTileComponent,
     TranslatePipe,
   ],
   templateUrl: './radio-landing.component.html',
