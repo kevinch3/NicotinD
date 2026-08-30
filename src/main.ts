@@ -222,7 +222,7 @@ export function saveSecrets(dataDir: string, secrets: PersistedSecrets): void {
   writeFileSync(secretsPath, JSON.stringify(secrets, null, 2), { mode: 0o600 });
 }
 
-function loadConfig() {
+export function loadConfig() {
   // Try loading config file
   let fileConfig = {};
   const configPath = resolve(process.env.NICOTIND_CONFIG ?? 'config/default.yml');
@@ -259,6 +259,13 @@ function loadConfig() {
     // Listening-history kill-switch (#454), same env-as-hard-floor semantics.
     ...(parseBooleanEnv(process.env.NICOTIND_HISTORY) !== undefined
       ? { historyEnabled: parseBooleanEnv(process.env.NICOTIND_HISTORY) }
+      : {}),
+    // Public-signup kill-switch, same env-as-hard-floor semantics. The shipped
+    // image carries no config file (`.dockerignore` excludes config/default.yml),
+    // so env is the only lever a deploy has; accounts are created by an admin in
+    // Admin → User Management instead.
+    ...(parseBooleanEnv(process.env.NICOTIND_REGISTRATION) !== undefined
+      ? { registrationEnabled: parseBooleanEnv(process.env.NICOTIND_REGISTRATION) }
       : {}),
     metadataFix: {
       ...((fileConfig as Record<string, unknown>).metadataFix as Record<string, unknown>),
@@ -347,7 +354,10 @@ function loadConfig() {
   return NicotinDConfigSchema.parse(merged);
 }
 
-main().catch((err) => {
-  log.fatal({ err }, 'Failed to start NicotinD');
-  process.exit(1);
-});
+// Guarded so a spec can import `loadConfig` without booting the server.
+if (import.meta.main) {
+  main().catch((err) => {
+    log.fatal({ err }, 'Failed to start NicotinD');
+    process.exit(1);
+  });
+}

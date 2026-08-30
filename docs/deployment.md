@@ -300,6 +300,29 @@ hold an admin account. `GET`/`PUT /api/admin/acquisition` return `configurable:
 false` in that case so the UI can render the control read-only instead of
 offering something that silently does nothing. Flips are audit-logged.
 
+### Public signup (`NICOTIND_REGISTRATION`)
+
+`registrationEnabled` gates `POST /register`; the login page hides its "create an
+account" toggle from the public `GET /registration-status`. Both halves already
+existed — what did not was any way to *set* the flag on a real deploy.
+
+`.dockerignore` excludes `config/default.yml`, so the shipped image carries no
+config file and the value fell through to the schema default (`true`). A stock
+container therefore had public signup **open**, with no lever to close it: there
+was no env override, unlike its `NICOTIND_ACQUISITION` / `NICOTIND_HISTORY`
+siblings. `NICOTIND_REGISTRATION=off` closes it, and `docker-compose.yml` ships
+that way; accounts are then created by an admin in Admin → User Management,
+which — unlike `/register` — records a `user.create` audit entry.
+
+**The first-user bootstrap is exempt on purpose.** When the users table is empty
+that account is minted `admin` and bypasses the switch, so a closed instance can
+still bootstrap without an env edit. The accepted cost: an emptied users table (a
+bad restore, a fresh volume, a wrong `dataDir`) re-opens self-registration on an
+instance that was closed. The pure `registrationBlocked` predicate owns that
+rule, and `auth.test.ts` pins both halves so the exemption stays a decision
+rather than becoming an accident. If you would rather it be an absolute kill,
+that is a one-line change to the predicate.
+
 ### Infra image pins
 
 Images the app doesn't own are version-pinned so users can't drift on risky

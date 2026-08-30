@@ -408,3 +408,29 @@ describe('GET /me', () => {
     expect(body.welcomeDismissed).toBe(true);
   });
 });
+
+// Pins a deliberate policy choice rather than driving new behavior: the
+// first-user bootstrap bypasses the registration switch on purpose, so a closed
+// instance can still mint its first admin. Both halves are asserted so a future
+// reader cannot mistake the exemption for an oversight and "fix" it.
+describe('registrationBlocked — the first-user bootstrap exemption', () => {
+  // Matches the file's existing style: auth.js is imported lazily so the
+  // module-level mocks above are installed first.
+  const load = async () => (await import('./auth.js')).registrationBlocked;
+
+  it('blocks a normal signup when registration is closed', async () => {
+    expect((await load())(false, false)).toBe(true);
+  });
+
+  it('exempts the first user when registration is closed', async () => {
+    expect((await load())(false, true)).toBe(false);
+  });
+
+  it('allows a normal signup when registration is open', async () => {
+    expect((await load())(true, false)).toBe(false);
+  });
+
+  it('allows the first user when registration is open', async () => {
+    expect((await load())(true, true)).toBe(false);
+  });
+});
