@@ -22,7 +22,14 @@ export const NicotinDConfigSchema = z.object({
   dataDir: z.string().default('~/.nicotind'),
   musicDir: z.string().default('~/Music'),
   mode: ServiceModeSchema.default('embedded'),
-  registrationEnabled: z.boolean().default(true),
+  // Public self-signup. Default-CLOSED: the shipped image carries no config file
+  // (`.dockerignore` excludes config/default.yml), so this default *is* what a
+  // stock deploy gets — and an install that silently accepts accounts from
+  // anyone who can reach the login page is the wrong thing to ship (#824). It is
+  // only the floor: `NICOTIND_REGISTRATION` pins it, and with that unset an
+  // admin owns it from Admin → User Management. The first-user bootstrap is
+  // exempt either way, so a fresh install can still be set up.
+  registrationEnabled: z.boolean().default(false),
   // Deployment-wide acquisition kill-switch (issue #235). When false, the whole
   // acquisition module is turned off for the entire install — every acquisition
   // route hard-404s, the unattended pollers (watchlist / auto-acquire) never

@@ -307,12 +307,43 @@ account" toggle from the public `GET /registration-status`. Both halves already
 existed — what did not was any way to *set* the flag on a real deploy.
 
 `.dockerignore` excludes `config/default.yml`, so the shipped image carries no
-config file and the value fell through to the schema default (`true`). A stock
-container therefore had public signup **open**, with no lever to close it: there
-was no env override, unlike its `NICOTIND_ACQUISITION` / `NICOTIND_HISTORY`
-siblings. `NICOTIND_REGISTRATION=off` closes it, and `docker-compose.yml` ships
-that way; accounts are then created by an admin in Admin → User Management,
-which — unlike `/register` — records a `user.create` audit entry.
+config file and the value fell through to the schema default — which was `true`.
+A stock container therefore had public signup **open**, with no lever to close
+it: there was no env override, unlike its `NICOTIND_ACQUISITION` /
+`NICOTIND_HISTORY` siblings.
+
+Two things changed. The schema default is now `false`, so the value a stock
+deploy actually gets is closed rather than open; and the switch gained both an
+env lever (`NICOTIND_REGISTRATION`) and an admin toggle. Accounts are created in
+Admin → User Management, which — unlike `/register` — records a `user.create`
+audit entry.
+
+### The admin toggle, and why `configurable` means something different here
+
+`RegistrationToggle` (`services/registration-toggle.ts`) is the persisted half:
+`GET`/`PUT /api/admin/registration`, rendered as a switch on the Admin → User
+Management card, audited as `registration.toggle`. Like `AcquisitionToggle` it
+reads `app_settings` per call and is deliberately **not** memoized — a stale
+cache would mean an admin closing signup and the route carrying on accepting
+accounts.
+
+The precedence rule is deliberately *not* acquisition's. There, `off` is a floor
+and an admin may still restrict further. Here the env var is authoritative **when
+present**, in either direction:
+
+| `NICOTIND_REGISTRATION` | Effective value | `configurable` |
+| --- | --- | --- |
+| unset | the admin's stored choice, else the config default (closed) | `true` |
+| `off` | closed | `false` |
+| `on` | open | `false` |
+
+One rule, both directions. An operator who pins the value in compose gets exactly
+that value and a read-only control; an operator who leaves it unset hands the
+decision to the admin UI. The shipped `docker-compose.yml` leaves it unset and
+commented, so a stock deploy starts closed and is flippable from the UI.
+
+A stored choice is still written while the env pins the value, so removing the
+var later restores what the admin actually asked for rather than discarding it.
 
 **The first-user bootstrap is exempt on purpose.** When the users table is empty
 that account is minted `admin` and bypasses the switch, so a closed instance can
