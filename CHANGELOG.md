@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.46](https://github.com/kevinch3/NicotinD/compare/v0.5.45...v0.5.46) (2026-08-30)
+
+### Features
+
+* **auth:** admin toggle for public signup, default closed ([#833](https://github.com/kevinch3/NicotinD/issues/833)) ([19532af](https://github.com/kevinch3/NicotinD/commit/19532af5ed7f31cb3c29def8530ac805a2dd634e)), references [#824](https://github.com/kevinch3/NicotinD/issues/824) [#824](https://github.com/kevinch3/NicotinD/issues/824)
 ## [0.5.45](https://github.com/kevinch3/NicotinD/compare/v0.5.44...v0.5.45) (2026-08-30)
 
 ### Bug Fixes
