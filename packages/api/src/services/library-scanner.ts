@@ -12,6 +12,12 @@ import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-
 import { getMusicMetadata } from './music-metadata-loader.js';
 import { featureTagsFromNative } from './audio-tags.js';
 import { selectAlbumTracks } from './library-track-select.js';
+import {
+  isHiddenFile,
+  isReservedPath,
+  isReservedTopLevel,
+  reservedDirsFor,
+} from './library-paths.js';
 import { loadOverrides, type MetadataOverrideValue } from './metadata-override-store.js';
 import { splitArtists, isAtomicArtist, type ArtistCredit } from './artist-split.js';
 import {
@@ -720,12 +726,15 @@ export class LibraryScanner {
   constructor(
     private musicDir: string,
     private db: Database,
+    /** Reserved top-level names. Derived from config by the caller so the dir
+     *  the organizer writes to is the dir the walk skips. */
+    private reserved: ReadonlySet<string> = reservedDirsFor(),
   ) {}
 
   /** Full rescan: walk the whole music dir and reconcile the library tables. */
   async scanFull(): Promise<ScanResult> {
     const startedAt = Date.now();
-    const files = await this.walk(this.musicDir);
+    const files = await this.walk(this.musicDir, true);
     const tracks = await this.readTracks(files);
     const built = buildLibrary(
       tracks,
@@ -781,7 +790,11 @@ export class LibraryScanner {
    * prune — used right after a download batch lands.
    */
   async scanPaths(relPaths: string[]): Promise<void> {
-    const abs = relPaths.map((p) => join(this.musicDir, p));
+    // Filter here too: a walk-only guard is one forgotten call site away from
+    // the bug it exists to prevent.
+    const abs = relPaths
+      .filter((p) => !isReservedPath(p, this.reserved))
+      .map((p) => join(this.musicDir, p));
     const tracks = await this.readTracks(abs);
     if (tracks.length === 0) return;
     const built = buildLibrary(
@@ -797,7 +810,7 @@ export class LibraryScanner {
     log.info({ files: tracks.length, albums: built.albums.length }, 'Incremental scan complete');
   }
 
-  private async walk(dir: string): Promise<string[]> {
+  private async walk(dir: string, isRoot: boolean): Promise<string[]> {
     const out: string[] = [];
     let entries;
     try {
@@ -809,12 +822,39 @@ export class LibraryScanner {
     for (const entry of entries) {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) {
-        out.push(...(await this.walk(full)));
-      } else if (entry.isFile() && AUDIO_EXTENSIONS.has(extname(entry.name).toLowerCase())) {
+        // Staging/junk is a top-level concept only: below the root, a leading
+        // dot is an ordinary album title ("...And Then There Was X").
+        if (isRoot && isReservedTopLevel(entry.name, this.reserved)) {
+          await this.warnIfSkippedDirHoldsAudio(full, entry.name);
+          continue;
+        }
+        out.push(...(await this.walk(full, false)));
+      } else if (
+        entry.isFile() &&
+        !isHiddenFile(entry.name) &&
+        AUDIO_EXTENSIONS.has(extname(entry.name).toLowerCase())
+      ) {
         out.push(full);
       }
     }
     return out;
+  }
+
+  /**
+   * Skipping is never silent. A dot-prefixed *artist* folder is rare but real
+   * ("...And You Will Know Us by the Trail of Dead"), so a skipped directory we
+   * did not name is reported with a count rather than vanishing.
+   */
+  private async warnIfSkippedDirHoldsAudio(full: string, name: string): Promise<void> {
+    if (this.reserved.has(name)) return; // ours, expected to hold audio
+    const found = await this.walk(full, false);
+    if (found.length > 0) {
+      log.warn(
+        { dir: name, audioFiles: found.length },
+        'skipped a dot-prefixed top-level directory that contains audio — ' +
+          'rename it if this is an artist folder',
+      );
+    }
   }
 
   /**
@@ -1172,7 +1212,8 @@ export class LibraryScanner {
     const dirs = [...new Set(albumDirs)];
     if (dirs.length === 0) return;
     const abs: string[] = [];
-    for (const d of dirs) abs.push(...(await this.walk(d)));
+    // Album dirs are already below the top level, so the root rule cannot apply.
+    for (const d of dirs) abs.push(...(await this.walk(d, false)));
     const syncedAt = Date.now();
     const tracks = await this.readTracks(abs);
     if (tracks.length > 0) {
