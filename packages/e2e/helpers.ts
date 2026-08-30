@@ -153,13 +153,47 @@ export async function waitForLibrary(request: APIRequestContext, token: string):
  * Retrying the click is the honest fix for the *spec* — the underlying grid
  * still has a one-frame window a fast human could hit, which is an app-side
  * change (measure columns before first paint) rather than a test one.
+ *
+ * Issue #784: the retry's URL assertion used to be `/\/library\/albums\//` — a
+ * **shape** check that any album satisfies. Under full-suite state the grid also
+ * holds albums other specs created, and the card locator re-resolves on every
+ * `toPass` attempt, so a re-chunk between click and retry could navigate to a
+ * *different* album and the helper still reported success. The caller then waited
+ * for a track that album does not have, and failed somewhere else entirely with a
+ * message that named neither the helper nor the real cause.
+ *
+ * The id is read from `data-album-id` (carried by both album-card anchors — the
+ * browse grid and the find-bar results) **inside** each attempt, and that
+ * attempt's own id is what the URL must match. Re-reading per attempt is
+ * deliberate: pinning one id up front would make the documented re-chunk above a
+ * hard failure instead of the thing the retry exists to absorb, while still
+ * leaving the helper unable to claim an album it did not click.
  */
 export async function openAlbumCard(page: Page, title?: string): Promise<void> {
   const grid = page.getByTestId('album-card');
   const card = (title ? grid.filter({ hasText: title }) : grid).first();
   await expect(card).toBeVisible();
   await expect(async () => {
+    // Read and click in the same attempt so the assertion below is about the
+    // element this iteration actually clicked, not one a re-chunk has replaced.
+    const albumId = await card.getAttribute('data-album-id', { timeout: 2_000 });
+    expect(albumId, 'album card must expose data-album-id').toBeTruthy();
     await card.click({ timeout: 2_000 });
-    await expect(page).toHaveURL(/\/library\/albums\//, { timeout: 2_000 });
+    await expect(page).toHaveURL(new RegExp(`/library/albums/${albumId}(?:[/?#]|$)`), {
+      timeout: 2_000,
+    });
   }).toPass({ timeout: 15_000 });
+
+  // Landing on the URL is not the same as the album being there to act on, and
+  // every caller's next line assumes the latter. `play-album` is the sentinel:
+  // unconditional inside the loaded-album block, so it is present exactly when
+  // the album rendered — not role-gated, and not suppressed by an empty
+  // tracklist. Waiting here absorbs the load race once instead of at 22 call
+  // sites, and names the helper as the failure site rather than leaving a spec
+  // to time out on some track title three lines later (issue #784).
+  await expect(
+    page.getByTestId('play-album'),
+    'album detail did not load — page is likely showing album-not-found, ' +
+      'album-unavailable, or the whole-page album-processing state',
+  ).toBeVisible();
 }
