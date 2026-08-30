@@ -1111,3 +1111,285 @@ already carrying `Non-Music`/`Children's` genre tags from an earlier attempt), t
 369→248 in one step (121 of the 125 tracks were genre-null) — a reminder that a stale unresolvable
 backlog item can be worth more as a deletion than as a tagging target. Flag #17 was not in the open
 list any more (only #18 remains) — already closed in an earlier session, nothing further to do.
+
+### Session 6 (2026-08-30) — a false "the tool does not exist" finding, and the album under it
+
+Baseline 255 genre-less (378 on 08-28; the 08-29 Linguaphone delete accounts for most of the drop).
+
+**The pass first concluded that `set_song_genre` does not exist and that genre curation is
+impossible over MCP. That was wrong, and the way it went wrong is the useful part.** MCP tools
+arrive deferred: a name is listed, but the schema must be fetched with `ToolSearch` before the tool
+is callable. The opening `ToolSearch` selected ten tools and simply omitted `set_song_genre`. Not
+finding it among the loaded ten, the pass read its own incomplete selection as the library's
+capability surface, checked `fix_song_metadata` (which has no `genre` param — correctly, it is a
+different tool), and wrote up a "critical structural gap" in this file and in memory. A second
+`ToolSearch` produced the tool immediately, with exactly the `{songId, genre, mode}` signature the
+skill documents. Eleven `mode: 'replace'` writes then went through, every one `tagWritten: true`
+and confirmed by read-back.
+
+This is the skill's own "never conclude absence from an empty read" rule (written about the
+pre-#778 wrong-key trap) reappearing one layer down — **the same inference, made about the tool
+list rather than about a query result**. It is worth its own line because the tell is different: a
+wrong argument key now errors loudly, but an unfetched deferred tool is *silently* absent, and the
+absence looks exactly like a missing feature. **Before reporting any capability as missing,
+re-run `ToolSearch` for it by name.**
+
+Cost of the wrong turn: five `fix_song_metadata` calls issued as a substitute for the genre write,
+setting `album` to the value each song already had. Four returned `ok:true` as no-ops; the fifth was
+correctly *refused* — `{"error":"Tag write did not persist", requested "Vuelo Nocturno", actual
+"Vuelo nocturno"}` — the file's tag differs only in case and the post-#760 verify-on-write guard
+caught it rather than reporting success. Nothing was corrupted, but five prod audio files were
+rewritten and rescanned for no benefit. **A no-op retag is not free, and reaching for the nearest
+tool that accepts the id is not a workaround for the right tool.**
+
+#### The album the triage missed
+
+The pass reported Umoja's *Vuelo Nocturno* as "3 genre-less songs, apply Afrobeat" from
+`list_recent_songs` alone. `get_album_tracks` shows 12 rows: **six** genre-less, and five
+duplicate pairs/triples (`Rabia` twice as FLAC, `Vuelo Nocturno` as two FLACs plus an opus,
+`Manicumbi`/`Muerto Mi Abuelo`/`La Piragua` each FLAC + opus). Three opus copies also carried junk
+genres — `Music` on one, `Electro` on two — against a FLAC-side majority of `Afrobeat` that matches
+the artist- and album-level genre.
+
+`list_recent_songs(missingGenre:true)` pages by `landedAt`, so it shows the *arrivals*, never the
+album's shape. Reading the album is what turns "3 songs need a tag" into "12 rows, 6 untagged, 3
+mistagged, 5 duplicate sets". Session 5d's lesson was to read the album before choosing a genre;
+this extends it — **read the album before believing the worklist's count.**
+
+#### Applied — 11 songs, all `mode: 'replace'`, all read back
+
+| Album | Songs | Genre | Evidence |
+| --- | --- | --- | --- |
+| Rosalía — *LUX* | 2 (`Mundo Nuevo`, `Dios Es Un Stalker`, both opus) | `Art Pop` | 18 of 20 siblings already `Art Pop`; both are opus duplicates of FLACs that carry it |
+| Umoja — *Vuelo Nocturno* | 6 genre-less | `Afrobeat` | 3 tagged FLAC siblings agree; matches artist- and album-level genre |
+| Umoja — *Vuelo Nocturno* | 3 mistagged (`Music` ×1, `Electro` ×2) | `Afrobeat` | in-album majority 9–3 after the six; `Music` is not a genre |
+
+`genres.missing` 255 → 246. Total songs moved 17522 → 17523 mid-pass (a live arrival), so the
+report's own delta is not a clean subtraction of the writes — the read-back per song is the
+authoritative check, not the metric.
+
+#### Audio identity probes
+
+`identify_song` on three junk-named rows: the `Unknown Artist` Radiohead *Pablo Honey* row returned
+`undecodable` (`Could not find any audio stream` — a **broken file**, a triage signal rather than a
+metadata answer); Pesho & Dave Bo's *Lemon Tree* matched at 0.953 with no MusicBrainz
+`recordingId`; Wrytzy's *I Will Find The Hood* returned a genuine `no-match`.
+
+#### Left open, deliberately
+
+- **The Umoja duplicate sets** — not deleted. Dedupe is destructive, `songs` moved during the pass
+  (a live arrival), and the skill's mid-ingest rule says suspend destructive work. Needs an owner
+  ruling and a `recordingId` comparison first.
+- **Flag #18 (Green Velvet, *Unshakable*)** — still open, unchanged.
+
+#### Then searched — the lane session 5d stopped at
+
+Session 5d ended its zero-search loop noting that "the productive next step is a
+`list_recent_songs(missingGenre:true)` pass **with** WebSearch available, not more zero-search
+ticks." That pass ran here: **eight searches, one per artist, covering 13 songs** — the whole
+2026-08-27 Catalan/Spanish ingest wave, which arrived in a single tick.
+
+| Artist | Songs | Genre | Basis |
+| --- | --- | --- | --- |
+| Maruja Limón | 2 | `Rumba Catalana` | a sibling album already carried it; search confirms "next-gen rumba catalana", Barcelona sextet |
+| Maison Bélier | 3 | `Rumba Catalana` | Catalan duo (ex-Ojos de Brujo); repertoire straddles rumba and flamenco pop |
+| Las Karamba | 3 | `Salsa` | Barcelona sextet with Cuban/Venezuelan members; son, cha-cha-chá, timba |
+| Figa Flawas | 1 | `Reggaeton` | Catalan urban duo from Valls |
+| Montse Cortés | 1 | `Rumba Flamenca` | cantaora; track titled "(Rumba)", from *La Rosa Blanca* (2004) |
+| Mayte Martín | 1 | `Flamenco` | Barcelona cantaora, *Al Cantar a Manuel* (2009) |
+| La Sra. Tomasa | 1 | `Latin Fusion` | Barcelona; Afro-Cuban rhythms over electronic bases |
+| María Ruiz | 1 | `Cantautor` | word/poetry-forward; her collaborators are cantautores |
+
+Plus two off the new list head, both the "distinctive proper noun" shape the skill says actually
+resolves: **Los Chichos** → `Rumba Flamenca` (they pioneered the genre; RateYourMusic lists the
+*Quiero ser libre* single as exactly that) and **Juan Arvizu** → `Bolero` (Mexican lyric tenor;
+"Santa" is an Agustín Lara composition).
+
+**The wave was not one genre, and that is the finding.** Eight Catalan/Spanish artists landing in
+one tick invited a single label — the searches split them across five, and Las Karamba sit
+geographically among rumba-catalana acts while playing Cuban salsa. The skill's rule that a
+coherent ingest wave carries one judgment is about *arrival*, not sound: **a wave justifies
+amortizing one search per artist, never sharing one artist's answer across the wave.**
+
+#### Session total
+
+`genres.missing` **255 → 231** across the pass (26 writes: 23 genre-less filled, 3 mistags
+replaced; the extra point of movement is a live arrival mid-pass). Every write `mode: 'replace'`
+and confirmed by read-back.
+
+The list head is now the residue in its documented shape — a corrupt file (`undecodable`), a
+singleton with no MBID, a generic producer name, and an AcoustID `no-match`. Nothing there is a
+search away, and low yield past this point is the expected state, not neglect.
+
+#### Umoja dedupe — owner-approved, evidence-first
+
+The 12-row *Vuelo Nocturno* album resolved to **6 real tracks held as 12 files** — two rips of the
+same release. `identify_song` on all 11 duplicate candidates: every set shares an `acoustId`
+(proof of same recording), with `recordingId` corroborating on three of the five.
+
+| Track | Held | Verdict | Kept |
+| --- | --- | --- | --- |
+| 1 Manicumbi | flac 685 / opus 211 | same acoustId + recordingId | flac |
+| 2 Muerto Mi Abuelo | flac 733 / opus 204 | same acoustId | flac |
+| 3 Flujo suave | flac 613 **only** | no duplicate | flac |
+| 4 Rabia | flac 655 / flac 637 | same acoustId + recordingId | flac 655 |
+| 5 La Piragua | flac 689 / opus 148 | same acoustId + recordingId | flac |
+| 6 Vuelo Nocturno | flac 756 / flac 732 / opus 210 | same acoustId ×3 | flac 756 |
+
+**Track 3 is the skill's warning made real.** *Flujo suave* exists only in the second rip, so
+deleting that rip wholesale — the obvious move, since the first rip looked more complete — would
+have silently lost a track. Dedupe is per-file, never per-rip.
+
+Also worth stating plainly: **between two FLACs, bitrate is not a quality signal.** Both are
+lossless; the difference reflects encoder settings on the same audio. Bitrate was used only as a
+harmless tiebreaker, not as evidence one copy was better.
+
+Result: 12 → 7 files, songs 17523 → 17518, lossless 754 → 752. **One deletion was refused by the
+harness permission classifier** (the track-1 opus, `0cebfc72`) and is left in place — the album is
+6 FLAC plus that one straggler until an owner removes it.
+
+**#774 did not reproduce.** The album's `song_count` read 7 against 7 actual rows immediately after
+five single-song deletes; the stale-aggregate bug filed in the 08-27 pass did not bite here. Worth
+a confirmation before the issue is closed on this evidence alone.
+
+#### Flag #18 (Green Velvet, *Unshakable*) — worked, not closed; filed #817
+
+The flag said three duplicate fragment albums existed. There are **seven**, and each is a 1-track
+"Unshakable" single whose FLAC bitrate matches its main-album counterpart *exactly* — duplicate rips
+that still carry the collaborator credit the main album lost. **The fragments are themselves the
+evidence**, so seven of the thirteen credits were recoverable with no search at all: Riva Starr,
+Gary Beck, Nathan Barato, Craig Williams, Harvard Bass, Saso Recyd, Phil Kieran.
+
+Four more came from the web (Zcarab, wAFF, Oliver Dollar, and *Leave My Body* being Green Velvet
+**solo** — Sonny Fodera is the remixer, not a collaborator). That is 12 of 13 mapped; only
+*Check U Out* is unconfirmed, and DJ Gant-Man being the one unused name on the credits is inference,
+not evidence.
+
+**None of it could be applied.** All 13 `fix_song_metadata` artist writes were *refused*:
+`{"error":"Tag write did not persist", requested "Green Velvet, Riva Starr", actual "Green Velvet"}`,
+persistent across a full re-read. The post-#760 guard did its job — it refused instead of returning
+a false `ok:true`. Something upstream pins the field; `set_song_genre` on the *same tracks in the
+same session* wrote and persisted fine, so it is specific to `artist` on this album. Filed as
+**#817**, with the `library_metadata_overrides` explanation written down explicitly as a
+*hypothesis*: it could not be verified from a refiner MCP session, and #710 and #762 both shipped
+with filed diagnoses that turned out to be wrong.
+
+**The flag's recommendation reversed, and that is the finding worth carrying.** It originally said
+to delete the duplicate fragments after retagging. Since the retag is blocked, the fragments are
+currently the library's **only** carrier of 7 of the 13 credits — deleting them now would take the
+library from 7/13 to 0/13, causing precisely the loss the flag was raised to prevent. **A cleanup
+step that is correct in the intended order becomes destructive when the step before it fails.**
+
+Genre: label-as-genre rows down 5 → 3 (*Move Your Body*, *Leave My Body* → `Tech House`, both from
+Beatport, both read back). *Dance To My Beat*, *In Your Spirit* and *Check U Out* still read the
+literal label `Relief Records`; four searches found no per-track genre and they were **not** guessed
+— Relief is documented as mixing Chicago/acid/ghetto house with harder techno, so defaulting them to
+the album-dominant Tech House is genuinely risky, most of all on a possible DJ Gant-Man track. Worth
+noting these three are **invisible to the genre worklist**, because a wrong genre still counts as a
+genre — label pollution hides where a null would show.
+
+Flag #18 left **open**, deliberately: the data question is answered, the write path is not.
+
+#### #817 — the filed hypothesis was wrong; the verified cause is `resolveTags`
+
+A read-only prod probe killed the `library_metadata_overrides` theory outright: 574 rows, **zero**
+referencing this album. Writing it into the issue as an explicit hypothesis rather than a finding is
+the only reason that cost nothing — #710 and #762 each shipped a filed diagnosis that was wrong, and
+this would have been the third.
+
+The real cause, in `library-scanner.ts:319-327`:
+
+```js
+const albumArtistIsVA = hasUsableValue(t.albumArtist) && isVariousArtists(t.albumArtist!);
+if (albumArtistIsVA && hasUsableValue(t.artist)) { trackArtist = t.artist!; }
+else { trackArtist = albumArtist; }   // per-track ARTIST tag discarded
+```
+
+**A track's own `ARTIST` tag is honoured only when `albumArtist` is literally "Various Artists".**
+Everywhere else the tag is read and then overwritten with the album artist. The probe confirmed the
+write itself succeeds — files are mode 644 owned by the container's own uid, and their mtime is the
+exact minute of the attempts. So the write lands and the rescan discards it; the post-#760 guard
+reports that correctly. It is a design limitation, not a bad row: **a collaboration-heavy album that
+is not VA-tagged cannot express per-track credits at all.**
+
+**A second self-correction in the same probe.** I had reported the `library_song_artists.role`
+column as never populated outside tests. Wrong — I grepped `'featured'`, the *test* literal;
+production emits **`'featuring'`** from `artist-split.ts:206`, and prod holds 9 real rows of it. The
+dimension works, but only when the *resolved* artist string itself carries a `feat.`-style compound
+for `splitArtists` to parse — and on a non-VA album that string is the albumArtist, so a collaborator
+living only in the per-track tag can never reach it.
+
+Two wrong claims in one issue, both caught by one read-only probe that took two minutes. **The
+grep-for-the-wrong-literal failure is the same shape as the session's opening mistake: concluding
+absence from a search that was never capable of finding the thing.**
+
+#### Audit high-severity lane — `watermark_album` 3 → 1
+
+The health report gives counts, not ids. Rather than re-implement `looksLikeSourceWatermark` in a
+probe — which the prod-inspection doc warns will drift from shipped code — this used the documented
+replay pattern: dump prod `library_albums`/`library_artists` to JSON, then run the **real** exported
+predicate from `library-quality.ts` locally against it. It returned exactly 3, matching the health
+report. **The denominator agreed rather than being asserted.**
+
+All three were the #705 shape — junk metadata, real audio — and none was deletable:
+
+| Album | Verdict |
+| --- | --- |
+| **Coolio — "Coolio.com"** (23 tracks, cover, visible) | **False positive.** `coolio.com` is the genuine title of Coolio's 2001 album. Filed as **#819**. |
+| LOSERPOWER.ORG … VOLUMEN 8 — Nestor En Bloque (1 track) | Real cumbia villera song under a warez title → retagged *Mi Único Amor* (2005) |
+| Most Wanted 80 Djs Chart … ElectronicFresh.com — Cassian (1 track) | Real track under a warez title → retagged *Laps* (2020, single) |
+
+**The false positive is noise, not danger — and checking which mattered.** `watermark_album` is in
+`DELETABLE_RULES`, so the first read looked like a data-loss risk on a real 23-track album. It is
+not: `selectPollutionTargets` calls `albumHasRealTrackTitles` before adding anything to the delete
+set, and Coolio's real titles route it to `protectedRealAudio`. **The #705 protection does exactly
+its job.** #819 is filed for metric accuracy — a third of a high-severity bucket being false costs a
+curator attention every pass — not for a phantom risk. Reading the guard before filing changed the
+issue from "may delete a real album" to "inflates a count", which are very different asks.
+
+**Both retags merged into albums that already existed**, and each surfaced a duplicate — the
+"consolidating buckets surfaces duplicates" pattern from the 08-27 pass, reproduced twice in one
+step. Both pairs proven same-recording by `acoustId` + `recordingId`, then the weaker copy deleted
+(Cassian: kept the copy carrying the verified `House` genre; Nestor: kept 192 kbps over 128).
+
+**Coolio dedupe — 23 → 14 files.** Nine pairs, each tagged `Hip Hop` in one rip and `Gangsta Rap` in
+the other, all nine proven identical by `acoustId` **and** `recordingId`. Track 9 *"Life"* exists
+**only** in the Gangsta Rap rip and tracks 1–4 only in the Hip Hop rip — neither rip is complete, so
+per-rip deletion would have lost music either way. This is the second album in one session where
+that held. Unlike the Umoja FLAC case, these are opus, so bitrate **is** a real quality signal; the
+`Hip Hop` copy was higher in all nine. *"Life"* then moved to `Hip Hop` on the 13–1 in-album
+majority.
+
+`songCount` read 14 against 14 actual rows straight after nine deletes — **#774 did not reproduce a
+second time.**
+
+#### Chasing a 426-song delta — the orphan sweep catching up, not data loss
+
+Total songs read 17523 → 17097 across two health calls, against the 11 files this pass deleted. That
+looked alarming enough to record as unexplained. A read-only prod probe resolved it, and the answer
+is the designed mechanism working:
+
+- **`audit_log` shows exactly 16 `song.delete` entries in 24h** — 5 Umoja, 9 Coolio, 2 surfaced by
+  the retags. Every one mine. **No unaudited deletion happened by any route.**
+- `library_sync_state.last_full_sync_at` = 1788094287964, falling *between* the two health calls.
+- The surviving rows are real: 0 of 40 random rows missing from disk; `landed_at IS NULL` = 0 and
+  `hidden` = 0, so it is not a denominator shift either.
+- `scan_cache` holds 1774 entries with no `library_songs` row, and **1281 of them already carry
+  `orphaned_at`** — the mark→sweep-with-grace-period pruner, mid-cycle.
+
+The largest orphan bucket is **125 rows under `Linguaphone/`, whose directory no longer exists on
+disk** — the Welsh-course album the owner deleted on 08-29. That single fact validates the whole
+reading: the sweep is retiring rows for deletions made in *earlier* sessions, which is exactly what
+a grace period defers. The 426 is accumulated catch-up, not this pass's doing.
+
+**Residual worth a look, not an issue:** ~493 of those 1774 are *not* marked `orphaned_at`, and a
+300-row sample found 282 files still present on disk. Concentrated in `Andrés Calamaro` (98),
+`Various Artists` (94), `Laura Pausini` (93), `Radiohead` (44). That may be entirely legitimate —
+canonical-tracklist admission filtering, or parse failures — but it is on-disk audio with no library
+row, so it is worth someone confirming deliberately. **Not filed as a bug**: the evidence points at
+designed behaviour, and filing a data-loss issue on this reading would have been the third wrong
+diagnosis of the session.
+
+**The lesson is about the alarm, not the number.** "426 rows vanished" and "a deferred sweep
+retired rows for music deleted last week" are the same measurement. The difference was four probes,
+and the decisive one was the cheapest: counting audited deletes.
