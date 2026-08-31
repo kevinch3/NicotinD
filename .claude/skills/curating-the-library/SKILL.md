@@ -114,6 +114,16 @@ Then, and only then, spend a search:
    genre worklist is already the tracker; a flag per unknown-genre single is queue noise.
 5. Prefer the release page (Beatport/Discogs/MusicBrainz) over a downloaded file's own tag.
 
+**The same discipline applies to `missing_year`, and the trap is the same shape.** A compilation's
+own title is not proof of its contents' date — a locally-stored "album" is often one track ripped
+out of a much larger release, and that track can predate or postdate the compilation's title year by
+years. `fix_album_metadata`'s `year` writes onto whatever songs the row actually holds, so check
+`get_album_tracks` first: "Superventas 07" holding only Shakira's own 2007-titled single is safe to
+date from the title; a various-artists "Watergate 08" holding one WhoMadeWho remix is not — "08" is
+that mix series' *installment number*, not a year, and the compilation's own real year (2011) still
+would not have been the remix's true release year. When recall and a title-derived guess disagree,
+that disagreement is the signal to search, not to silently pick the more confident-sounding one.
+
 `flag_for_review` is for ambiguity that risks **wrong data** — a b2b DJ credit, two
 plausible artist identities, an authenticity call — not for "I don't know this one".
 

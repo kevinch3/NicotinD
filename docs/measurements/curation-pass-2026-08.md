@@ -1529,3 +1529,64 @@ this session did not re-run that probe. Recorded as open.
 verified on read-back as 9 albums and every song under one artist row. The residual
 `Los Autenticos Decadentes;El Gran Silencio` is a compound multi-artist *field*, not an artist row,
 and is out of scope for a merge by design.
+
+### Session 7 continued — genre lane resumed under `/loop`, hunts budgeted, one near-miss caught
+
+Run as a `/loop 10m` cron across several ticks after the write-up above. Genre-less continued
+228 → **209** (19 more songs, mostly zero-search) and years-missing 194 → **190**, both confirmed by
+re-running the metric each tick, never by tally.
+
+**Zero-search genre wins, all from an album's own established genre or ≥2 independent siblings**:
+Matias Aguayo `Ritmo Juarez` (Minimal House, the album's own genre), Turf `Pasos Al Costado` (Rock,
+5/6 sibling albums), Mambru ×4 (Cumbia, 4 sibling albums), Ella Es Tan Cargosa `Ex Noche` (Rock, the
+album's own genre), Ke Personajes ×3 across two albums (Cumbia — the pattern held even mid-album:
+6 independent siblings on the same rip settled a 7th untagged track), Los Palmeras ×2 (Cumbia — a
+real 7-vs-4 sibling split resolved by known artist identity, Santa Fe's canonical cumbia act, not
+guessed), Miranda! ×2 and WhoMadeWho ×1 (each the album's own unanimous genre), Charly García `10`
+(Rock, 12 siblings spanning 1982–2012 — independent releases, not one rip).
+
+**One searched win**: Coyu → Techno, corroborated by his Drumcode roster listing and his own Suara
+label's techno reputation. **One searched-and-declined**: El Quinto Carajillo — search was
+inconclusive, left untagged rather than guessed, per the skill's own rule.
+
+**A missplit found and fixed for free**: Mid-Air Thief's 2015 album existed as two rows — the real
+one (`Gongjoong Doduk`, tagged) and a duplicate whose *artist* field was the album's own garbled
+title (`公衆道徳`) instead of the band name. `merge_artist` folded it in; verified via `get_artist`
+as 3 albums, one artist, all `Folktronica`.
+
+**A caught near-miss, worth keeping as the lesson of this stretch**: Jennifer Lopez's
+*On The 6 / J. Lo (Coffret 2 CD)* holds exactly one track, `Una Noche Más`. Its title was dated by
+guessing the compilation's implied year (1999) without checking what the single track actually was
+— a mirror of the trap the skill's new sibling-independence rule exists to prevent, just for years
+instead of genres. Mid-correction, unverified recall said "actually this track is from the 2001 era"
+and nearly overwrote a correct guess with a wrong one; a `WebSearch` settled it definitively at 1999
+([Discogs](https://www.discogs.com/release/5665995-Jennifer-Lopez-Una-Noche-M%C3%A1s),
+[Wikipedia](https://en.wikipedia.org/wiki/Una_Noche_M%C3%A1s)). **A bundle's title is not its
+contents' date — check the track before dating the wrapper**, and second-guessing a guess is not the
+same as verifying it. The same trap re-appeared one tick later on WhoMadeWho's `Watergate 08` (the
+*8th installment* of a mix series, 2011 — not literally 2008) and was caught *before* writing this
+time, by searching first.
+
+**Real-world-knowledge year fixes, applied without incident**: Britney Spears `Circus` → 2008,
+Shakira `Superventas 07` → 2007 (the title's own year claim, which held up here unlike Watergate's).
+
+**Ten confirmed-incomplete hunts (the session's full `complete_album` budget)**: 3 already-complete,
+2 no-candidate, 1 unresolved timeout (Çantamarta, not retried a third time), 2 real downloads
+enqueued (Backstreet Boys — confirmed **landed**, 29/29 tracks, re-verified via `get_album_tracks`
+after the fact; Los Auténticos Decadentes *Mi vida loca* — left ambiguous, likely still in flight),
+and **2 hit `enqueue-failed`** (El Kuelgue *Ruli*, Los Auténticos Decadentes *Club Atlético
+Decadente*). Read the actual code before filing: `album-acquire.ts` captures the real addon error in
+a `log.warn` and then discards it, so the MCP caller gets the bare string with nothing to diagnose
+from — unlike `identify_song`'s `source-error`, which carries `detail` for exactly this reason.
+Filed as **#858**, evidence-first (the two repro cases plus the exact line), not a guessed cause.
+
+**The `djset_artist` audit bucket (count 2) was investigated and left alone** — the flagged rows
+aren't distinguishable from the MCP surface alone (the pattern lives in `artist`-field values the
+health report doesn't expose per-item), and chasing 2 items through a prod SSH probe wasn't worth
+the session's remaining time. Recorded as a gap, not fixed.
+
+Final for this extended session: genre-less 209, years-missing 190, confirmedIncomplete 116 (one
+hunt landed, one still pending, two failed-with-no-detail), 0 open flags, 2 issues filed (#856,
+#858), 1 more missplit resolved, 1 more genre-and-hunt cluster closed out. Stopped deliberately once
+the remaining residue matched the documented low-yield shape (singleton artists, no MBID, no
+siblings) rather than grinding per-song searches with poor odds.
