@@ -70,6 +70,16 @@ services:
       # landed twice and 27.5 GB was never transcoded (#827).
       # → docs/library-path-conventions.md
       - --downloads=/data/music/.downloads
+      # Share the library (giving back is the point of the network) but NOT the
+      # staging dir it now lives inside: those files are about to be moved,
+      # retagged or re-encoded away, so advertising them hands peers paths that
+      # vanish mid-transfer — and browse results full of raw rip folder names.
+      # Regex over the path, not a glob: the leading dot and both slashes anchor
+      # it to a real path segment so "Downloads Vol. 2" still shares. Keep in
+      # sync with --downloads above; scripts/compose-share-filter.test.ts
+      # enforces it. → docs/library-path-conventions.md (#843)
+      - --share-filter=/\.downloads/
+      - --share-filter=/\.unsorted/
     environment:
       SLSKD_REMOTE_CONFIGURATION: "true"
       SLSKD_HTTP_PORT: "5030"

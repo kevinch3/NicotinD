@@ -54,6 +54,9 @@ const ALLOWLIST: Record<string, string> = {
     'walks one album dir handed to it by the caller, never the musicDir root',
   'packages/api/src/services/library-organizer.ts':
     'writes INTO reserved dirs by design; placement is guarded by unsortedRoot',
+  'packages/api/src/services/post-download-transcode.ts':
+    'sweepStaleTranscodeTemps deletes only *.nicotind-transcode.opus and must reach ' +
+    'reserved dirs too — a temp orphaned during addon ingest leaks inside .downloads',
   'packages/api/src/routes/streaming.ts':
     'folderCover() reads one album dir for cover art; never walks the musicDir root',
   'packages/api/src/scripts/repair-pollution.ts':

@@ -107,6 +107,13 @@ Shared logic lives in `packages/api/src/services/album-dedupe.ts` (`dupKey`/`pic
 
 FLAC is overkill for web streaming and large on disk. `downloads.transcodeLossless` is **default-on at 192 kbps** (config / `NICOTIND_TRANSCODE_LOSSLESS_ENABLED` + `NICOTIND_TRANSCODE_LOSSLESS_BITRATE`; set `enabled:false` to keep originals). When enabled, lossless downloads are transcoded to Opus and **already-lossy files (MP3/AAC/…) are left untouched**. The lossless set is shared (`isLossless()` in `library-track-select.ts`); the encoder is `post-download-transcode.ts` `transcodeToOpus()` (ffmpeg `libopus`, replace-in-place: write `<name>.opus`, drop the original). Everything is gated on `ffmpegAvailable()`.
 
+The in-progress encode is written to a **dot-prefixed** temp path
+(`transcodeTempPathFor`) so that a run killed mid-write — a deploy restart, an OOM — leaves a file
+the scanner cannot ingest. Every *handled* failure already unlinks the temp; the hidden name is
+for the failures no `finally` can catch, which is how a truncated 2 MiB artifact sat in the library
+tree for seven weeks. `sweepStaleTranscodeTemps()` runs at boot and clears leftovers, including
+ones written under the old un-hidden name (#841).
+
 **Imperfect-but-playable sources retry leniently (issue #534)**: the first pass runs strict (`-err_detect explode -xerror` + `+discardcorrupt`) so damage fails fast; on a non-zero exit it retries once **without** the strict flags — a single corrupt frame (routine in Soulseek rips; a real prod album hit this on every track) decodes fine leniently, and rejecting it left the file un-standardized forever. The post-write duration validation still guards the lenient output, so a genuinely truncated source is rejected in both modes. ffmpeg's stderr tail is captured into the thrown error (same contract `track-analysis.ts` adopted) — the log now says `invalid sync code`, not the opaque `exited with code 183`.
 
 **Detection is codec-aware, not extension-only** (`isLosslessFile()` in
