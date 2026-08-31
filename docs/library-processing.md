@@ -541,6 +541,20 @@ table (keyed `(song_id, task)`) fix that:
 - **Reset is content-based**: the clause matches on `file_size IS library_songs.size`, so
   a re-download (which changes the size) re-includes the file automatically. A *success*
   calls `clearAnalysisFailure` to wipe the row outright.
+- **An un-ledgered failure must still stamp an attempt** (issue #851). Several modes are
+  deliberately never ledgered, so an outage cannot permanently exclude a song. That rule
+  is right; combined with a `LIMIT`-bounded pool ordered on a fixed key it livelocks —
+  the window is refilled from the very rows that just failed, so the frontier never
+  advances. On prod that froze `popularity` with 12,309 of 17,622 songs never examined
+  once. Every un-ledgered path therefore calls `noteAnalysisAttempt`, which upserts
+  `last_attempt` and *only* `last_attempt` (touching `fail_count` there would let a
+  genuinely broken file evade the cap forever), and every song pool orders on
+  `leastRecentlyAttemptedOrderSql`: never-attempted first — newest-first among them, so a
+  fresh download still enriches promptly — then least-recently-attempted. A task that
+  writes no attempt rows sorts entirely on NULLs and keeps its old `created DESC` order.
+  `artistOriginTask` solved the same class earlier with a TTL tombstone
+  (`ORIGIN_RECHECK_TTL_MS`); the ledger stamp generalises it.
+  → [popularity.md](popularity.md)
 - **A confident negative is terminal, not a strike** (issue #689). A
   `NoConfidentResultError` means "we asked, no such data exists for this recording" — a
   final answer. It sets `terminal = 1` on the ledger row, and both clauses read

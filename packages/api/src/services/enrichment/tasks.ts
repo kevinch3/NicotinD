@@ -46,12 +46,15 @@ import { getMbid, libraryAlbumTitles, upsertMbid } from '../mbid-store.js';
 import { upsertArtistMeta } from '../artist-meta-store.js';
 import { upsertArtistOrigin } from '../artist-origins.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../musicbrainz-client.js';
+import { isMbidShape } from '@nicotind/core';
 import type { ArtistInfoResult, GenreQuery, GenreResult } from '@nicotind/core';
 import {
   recordAnalysisFailure,
   clearAnalysisFailure,
   rebaseAnalysisFileSize,
   notPermanentlyFailedClause,
+  leastRecentlyAttemptedOrderSql,
+  noteAnalysisAttempt,
 } from './analysis-failures.js';
 
 /**
@@ -605,7 +608,7 @@ const bpmTask: EnrichmentTask = {
     const params: (string | number)[] = albumId ? [albumId, limit] : [limit];
     const rows = db
       .query<SongRow, (string | number)[]>(
-        `SELECT id, path, artist, title, size FROM library_songs WHERE bpm IS NULL${notPermanentlyFailedClause('bpm')}${albumId ? ' AND album_id = ?' : ''} ORDER BY created DESC LIMIT ?`,
+        `SELECT id, path, artist, title, size FROM library_songs WHERE bpm IS NULL${notPermanentlyFailedClause('bpm')}${albumId ? ' AND album_id = ?' : ''}${leastRecentlyAttemptedOrderSql('bpm')} LIMIT ?`,
       )
       .all(...params);
 
@@ -690,7 +693,7 @@ const genreTask: EnrichmentTask = {
       .query<SongRow, (string | number)[]>(
         `SELECT id, path, artist, title, size FROM library_songs WHERE ${unresolvedGenreSql()}${notPermanentlyFailedClause(
           'genre',
-        )}${albumId ? ' AND album_id = ?' : ''} ORDER BY created DESC LIMIT ?`,
+        )}${albumId ? ' AND album_id = ?' : ''}${leastRecentlyAttemptedOrderSql('genre')} LIMIT ?`,
       )
       .all(...params);
 
@@ -753,7 +756,7 @@ const keyTask: EnrichmentTask = {
     const params: (string | number)[] = albumId ? [albumId, limit] : [limit];
     const rows = db
       .query<SongRow, (string | number)[]>(
-        `SELECT id, path, artist, title, size FROM library_songs WHERE (key IS NULL OR key = '')${notPermanentlyFailedClause('key')}${albumId ? ' AND album_id = ?' : ''} ORDER BY created DESC LIMIT ?`,
+        `SELECT id, path, artist, title, size FROM library_songs WHERE (key IS NULL OR key = '')${notPermanentlyFailedClause('key')}${albumId ? ' AND album_id = ?' : ''}${leastRecentlyAttemptedOrderSql('key')} LIMIT ?`,
       )
       .all(...params);
 
@@ -821,7 +824,7 @@ const energyTask: EnrichmentTask = {
     const params: (string | number)[] = albumId ? [albumId, limit] : [limit];
     const rows = db
       .query<SongRow, (string | number)[]>(
-        `SELECT id, path, artist, title, size FROM library_songs WHERE energy IS NULL${notPermanentlyFailedClause('energy')}${albumId ? ' AND album_id = ?' : ''} ORDER BY created DESC LIMIT ?`,
+        `SELECT id, path, artist, title, size FROM library_songs WHERE energy IS NULL${notPermanentlyFailedClause('energy')}${albumId ? ' AND album_id = ?' : ''}${leastRecentlyAttemptedOrderSql('energy')} LIMIT ?`,
       )
       .all(...params);
 
@@ -912,7 +915,7 @@ const audioFeaturesTask: EnrichmentTask = {
       .query<SongRow, (string | number)[]>(
         `SELECT id, path, artist, title, size FROM library_songs WHERE danceability IS NULL${notPermanentlyFailedClause(
           'audio-features',
-        )}${albumId ? ' AND album_id = ?' : ''} ORDER BY created DESC LIMIT ?`,
+        )}${albumId ? ' AND album_id = ?' : ''}${leastRecentlyAttemptedOrderSql('audio-features')} LIMIT ?`,
       )
       .all(...params);
 
@@ -1468,8 +1471,8 @@ const genreDiscogsTask: EnrichmentTask = {
          FROM library_songs JOIN library_albums a ON a.id = library_songs.album_id
          WHERE (library_songs.genre IS NULL OR library_songs.genre = '')${GENRE_AUDIO_LEDGER_CLAUSE}${notPermanentlyFailedClause(
            'genre-discogs',
-         )}
-         ORDER BY library_songs.created DESC LIMIT ?`,
+         )}${leastRecentlyAttemptedOrderSql('genre-discogs')}
+         LIMIT ?`,
       )
       .all(limit);
 
@@ -1612,7 +1615,7 @@ const genreAudioTask: EnrichmentTask = {
       .query<SongRow, [number]>(
         `SELECT id, path, artist, title, size FROM library_songs WHERE ${unresolvedGenreSql()}${GENRE_AUDIO_LEDGER_CLAUSE}${notPermanentlyFailedClause(
           'genre-audio',
-        )} ORDER BY created DESC LIMIT ?`,
+        )}${leastRecentlyAttemptedOrderSql('genre-audio')} LIMIT ?`,
       )
       .all(limit);
 
@@ -1768,7 +1771,7 @@ const popularityTask: EnrichmentTask = {
       .query<SongRow, (string | number)[]>(
         `SELECT id, path, artist, title, size FROM library_songs WHERE popularity IS NULL${notPermanentlyFailedClause(
           'popularity',
-        )}${albumId ? ' AND album_id = ?' : ''} ORDER BY created DESC LIMIT ?`,
+        )}${albumId ? ' AND album_id = ?' : ''}${leastRecentlyAttemptedOrderSql('popularity')} LIMIT ?`,
       )
       .all(...params);
 
@@ -1781,7 +1784,10 @@ const popularityTask: EnrichmentTask = {
     const songsByMbid = new Map<string, SongRow[]>();
     for (const song of rows) {
       const abs = resolveSongAbsPath(ctx.musicDir, song.path);
-      if (!ctx.fileExists(abs)) continue;
+      if (!ctx.fileExists(abs)) {
+        noteAnalysisAttempt(db, song.id, 'popularity', song.size);
+        continue;
+      }
       const tags = await ctx.readTags(abs).catch(() => null);
       const mbid = tags?.mbRecordingId;
       if (!mbid) {
@@ -1797,6 +1803,20 @@ const popularityTask: EnrichmentTask = {
         );
         continue;
       }
+      if (!isMbidShape(mbid)) {
+        // A tag is not a trusted MBID source, and ListenBrainz 400s the *whole*
+        // batch on the first invalid id — one Discogs ref (`5333377-B5`) cost the
+        // other 24 songs in the window, forever (issue #851). Same confident miss
+        // as no tag at all: only a re-tag can change it.
+        noteItemFailure(
+          db,
+          tally,
+          song,
+          'popularity',
+          new NoConfidentResultError('invalid recording MBID'),
+        );
+        continue;
+      }
       const group = songsByMbid.get(mbid);
       if (group) group.push(song);
       else songsByMbid.set(mbid, [song]);
@@ -1809,9 +1829,11 @@ const popularityTask: EnrichmentTask = {
       for (const song of songs) {
         try {
           if (count === undefined) {
-            // Transient failure (429 / outage): NOT ledgered, so a misconfig or a
-            // ListenBrainz hiccup can't permanently exclude the song — it retries
-            // next window (mirrors the sidecar 404/503 un-ledgered rule).
+            // Transient failure (429 / outage): never a strike, so a hiccup can't
+            // permanently exclude the song. It is still *stamped*, or the pool
+            // re-serves this same window forever and the frontier never advances
+            // (issue #851).
+            noteAnalysisAttempt(db, song.id, 'popularity', song.size);
             continue;
           }
           if (count === null) {
@@ -1880,7 +1902,7 @@ const descriptorsTask: EnrichmentTask = {
       .query<SongRow, [number]>(
         `SELECT s.id, s.path, s.artist, s.title, s.size FROM library_songs s WHERE ${descriptorsPendingClause(
           's',
-        )}${notPermanentlyFailedClause('descriptors', 's')} ORDER BY s.created DESC LIMIT ?`,
+        )}${notPermanentlyFailedClause('descriptors', 's')}${leastRecentlyAttemptedOrderSql('descriptors', 's')} LIMIT ?`,
       )
       .all(limit);
 

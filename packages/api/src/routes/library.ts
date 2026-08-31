@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { basename, dirname, join, relative } from 'node:path';
 import { existsSync } from 'node:fs';
-import { createLogger } from '@nicotind/core';
+import { createLogger, isMbidShape } from '@nicotind/core';
 import type { Song, Album, Artist } from '@nicotind/core';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
@@ -117,9 +117,6 @@ const IDENTIFY_REFUSALS: Record<IdentifySongRefusal, [string, 404 | 503]> = {
   'music-dir-unset': ['Music directory not configured', 503],
   'file-not-found': ['Song file not found', 404],
 };
-
-/** Canonical MusicBrainz id shape — a plain UUID (issue #610). */
-const MBID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // Lazily-built, per-dataDir MusicBrainz client for on-demand lookups (artist
 // MBID resolution). Reuses the on-disk cache file so repeats don't re-hit MB.
@@ -845,7 +842,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       return c.json({ error: 'mbid required', code: 'VALIDATION_ERROR' }, 400);
     }
     const mbid = body.mbid == null ? null : body.mbid.trim().toLowerCase();
-    if (mbid !== null && !MBID_SHAPE.test(mbid)) {
+    if (mbid !== null && !isMbidShape(mbid)) {
       return c.json({ error: 'Not a MusicBrainz id', code: 'VALIDATION_ERROR' }, 400);
     }
 

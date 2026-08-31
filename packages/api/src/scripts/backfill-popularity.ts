@@ -16,10 +16,11 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
-import { expandHome } from '@nicotind/core';
+import { expandHome, isMbidShape } from '@nicotind/core';
 import { readAudioTags } from '../services/audio-tags.js';
 import { resolveSongAbsPath } from '../services/track-backfill.js';
 import { ListenBrainzClient, normalizePopularity } from '../services/listenbrainz-client.js';
+import { notPermanentlyFailedClause } from '../services/enrichment/analysis-failures.js';
 
 function loadConfig(): { dataDir: string; musicDir: string | null } {
   let fileConfig: Record<string, unknown> = {};
@@ -65,7 +66,9 @@ async function main(): Promise<void> {
 
   const rows = db
     .query<SongRow, []>(
-      'SELECT id, path, artist, title FROM library_songs WHERE popularity IS NULL',
+      `SELECT id, path, artist, title FROM library_songs WHERE popularity IS NULL${notPermanentlyFailedClause(
+        'popularity',
+      )}`,
     )
     .all();
 
@@ -76,13 +79,22 @@ async function main(): Promise<void> {
   // Resolve recording MBIDs from tags, grouping songs that share one.
   const songsByMbid = new Map<string, SongRow[]>();
   let noMbid = 0;
+  let badMbid = 0;
+  let missingFile = 0;
   for (const song of rows) {
     const abs = resolveSongAbsPath(musicDir, song.path);
-    if (!existsSync(abs)) continue;
+    if (!existsSync(abs)) {
+      missingFile++;
+      continue;
+    }
     const tags = await readAudioTags(abs).catch(() => null);
     const mbid = tags?.mbRecordingId;
     if (!mbid) {
       noMbid++;
+      continue;
+    }
+    if (!isMbidShape(mbid)) {
+      badMbid++;
       continue;
     }
     const group = songsByMbid.get(mbid);
@@ -101,9 +113,13 @@ async function main(): Promise<void> {
   let applied = 0;
   let noData = 0;
   let shown = 0;
+  let transient = 0;
   for (const [mbid, songs] of songsByMbid) {
     const count = counts.get(mbid);
-    if (count === undefined) continue; // transient — will retry on a later run
+    if (count === undefined) {
+      transient += songs.length;
+      continue; // will retry on a later run
+    }
     if (count === null) {
       noData += songs.length;
       continue;
@@ -131,8 +147,13 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `\nScored: ${shown}   ·   No ListenBrainz data: ${noData}   ·   No MBID tag: ${noMbid}`,
+    `\nScored: ${shown}   ·   No ListenBrainz data: ${noData}   ·   No MBID tag: ${noMbid}` +
+      `   ·   Invalid MBID tag: ${badMbid}   ·   File missing: ${missingFile}`,
   );
+  // Without this line an outage reports 0/0/0 and reads as "nothing to do".
+  if (transient > 0) {
+    console.log(`Not answered by ListenBrainz this run (retryable): ${transient}`);
+  }
   if (!apply) {
     console.log('\nDry run only. Re-run with --apply to write popularity to the DB.\n');
     return;
