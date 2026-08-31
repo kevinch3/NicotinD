@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.54](https://github.com/kevinch3/NicotinD/compare/v0.5.53...v0.5.54) (2026-08-31)
+
+### Bug Fixes
+
+* **enrichment:** one malformed MBID no longer poisons every popularity batch ([#855](https://github.com/kevinch3/NicotinD/issues/855)) ([a5953aa](https://github.com/kevinch3/NicotinD/commit/a5953aa80b29bcc2897274d4820610e3d328cf61))
 ## [0.5.53](https://github.com/kevinch3/NicotinD/compare/v0.5.52...v0.5.53) (2026-08-31)
 
 ### Bug Fixes
