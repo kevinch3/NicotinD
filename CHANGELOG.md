@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.52](https://github.com/kevinch3/NicotinD/compare/v0.5.51...v0.5.52) (2026-08-31)
+
+### Bug Fixes
+
+* **audit:** corroborate watermark_album so a domain-shaped real title is not junk ([9d21ee5](https://github.com/kevinch3/NicotinD/commit/9d21ee5ebd430347e9111291a161ec53e55054cd)), references [#705](https://github.com/kevinch3/NicotinD/issues/705)
+* **scanner:** honour the per-track ARTIST tag, pinning ownership to the album ([782c5e3](https://github.com/kevinch3/NicotinD/commit/782c5e30bec32cfe13adaf323820a4a7e7e70f2c)), references [#760](https://github.com/kevinch3/NicotinD/issues/760) [#817](https://github.com/kevinch3/NicotinD/issues/817)
+* **web:** give app-password-field a block-display host ([41e2954](https://github.com/kevinch3/NicotinD/commit/41e2954d3bd445a9ed548fc398bc45a8b50b100d)), closes [#832](https://github.com/kevinch3/NicotinD/issues/832)
+* **web:** use the real app icon for the login brand mark ([1b5e491](https://github.com/kevinch3/NicotinD/commit/1b5e4910a19bd7f36dd90f6a8cfdd355c40e9a31))
 ## [0.5.51](https://github.com/kevinch3/NicotinD/compare/v0.5.50...v0.5.51) (2026-08-31)
 
 ### Bug Fixes
