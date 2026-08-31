@@ -263,8 +263,22 @@ untracked override is host-local and survives, which is exactly why it must be u
 Order matters on an existing install: deploy the code that skips the reserved path **before**
 pointing downloads at it, or the old scanner ingests the new staging dir and nothing improves.
 
+## Sharing the staging dir to peers
+
+The library is shared to Soulseek on purpose. Staging is not: slskd runs with
+
+```
+--share-filter=/\.downloads/
+--share-filter=/\.unsorted/
+```
+
+A staged file is complete (slskd writes partials to its own `incomplete` dir), but it is about to
+be moved, retagged and — when lossless — **re-encoded, deleting the source**. Advertising it hands
+peers a path that disappears mid-transfer, and fills browse results with raw rip folder names
+instead of the organised library. `--share-filter` takes a **regex over the path, not a glob**, so
+the pattern is anchored on both slashes and the leading dot: `Downloads Vol. 2` still shares.
+`scripts/compose-share-filter.test.ts` keeps it in sync with `--downloads`.
+
 ## Out of scope
 
-- The Soulseek share still points at `/data/music`, so staging would be re-shared to peers. Fixing
-  that is a slskd `shares` exclusion, tracked separately.
 - The 25 scripts that each hand-roll `loadConfig()` — a real duplication, but not this change.

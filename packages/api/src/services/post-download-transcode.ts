@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { renameSync, rmSync } from 'node:fs';
-import { extname } from 'node:path';
+import { readdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { basename, dirname, join, extname } from 'node:path';
 import { createLogger } from '@nicotind/core';
 import { isLossless } from './library-track-select.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
@@ -64,13 +64,68 @@ export async function isLosslessFile(absPath: string): Promise<boolean> {
  *     the streaming equivalent — the user can't tell a single track in the
  *     library is short without playing it.
  */
+const TEMP_SUFFIX = '.nicotind-transcode.opus';
+
+/**
+ * Where the in-progress encode is written.
+ *
+ * **Dot-prefixed on purpose.** Every handled failure in `transcodeToOpus` already
+ * unlinks this file, so the only way one survives is the process dying mid-write
+ * — a deploy restart, an OOM kill — where no `finally` runs. A hidden basename
+ * means `isHiddenFile()` keeps the scanner from ever ingesting the leftover as a
+ * track with a mangled title and a truncated duration (#841). A leak then costs
+ * disk, not library correctness.
+ */
+export function transcodeTempPathFor(absPath: string): string {
+  const ext = extname(absPath);
+  const stem = basename(ext ? absPath.slice(0, -ext.length) : absPath);
+  return join(dirname(absPath), `.${stem}${TEMP_SUFFIX}`);
+}
+
+/**
+ * Delete abandoned encode temps under `musicDir`. Existing installs already hold
+ * leaks under the pre-#841 *un-hidden* name, which the scanner would ingest, so
+ * this matches both shapes. Files younger than the grace period are left alone —
+ * they may be an encode in flight.
+ */
+export function sweepStaleTranscodeTemps(musicDir: string, graceMs = 10 * 60_000): number {
+  const cutoff = Date.now() - graceMs;
+  let removed = 0;
+  const walk = (dir: string): void => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile() && entry.name.endsWith(TEMP_SUFFIX)) {
+        try {
+          if (statSync(full).mtimeMs < cutoff) {
+            rmSync(full, { force: true });
+            removed += 1;
+          }
+        } catch {
+          /* raced with another sweep or the encode itself */
+        }
+      }
+    }
+  };
+  walk(musicDir);
+  if (removed > 0) log.info({ musicDir, removed }, 'swept abandoned transcode temp files');
+  return removed;
+}
+
 export async function transcodeToOpus(absPath: string, bitRate = 128): Promise<string> {
   const ext = extname(absPath);
   const base = ext ? absPath.slice(0, -ext.length) : absPath;
   const destPath = `${base}.opus`;
   // Distinct temp name so an interrupted run never half-writes the destination
   // (which may equal absPath only if the source were already .opus — excluded).
-  const tmpPath = `${base}.nicotind-transcode.opus`;
+  const tmpPath = transcodeTempPathFor(absPath);
   const ffmpegArgs = (strict: boolean) => [
     '-hide_banner',
     '-loglevel',

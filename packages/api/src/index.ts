@@ -96,6 +96,7 @@ import { AudioFeaturesClient } from './services/audio-features-client.js';
 import { ProviderRegistry } from './services/provider-registry.js';
 import { LibrarySearchProvider } from './services/providers/library-provider.js';
 import { reservedDirsFor } from './services/library-paths.js';
+import { sweepStaleTranscodeTemps } from './services/post-download-transcode.js';
 import { LibraryScanner } from './services/library-scanner.js';
 import { backfillAcquisitions } from './services/acquisition-backfill.js';
 import { LibraryCurator } from './services/library-curator.js';
@@ -160,6 +161,10 @@ export function createApp({
     unsortedRoot: `${expandedDataDir}/unsorted`,
   });
   const scanner = new LibraryScanner(expandedMusicDir, db, reservedDirs);
+  // A temp encode orphaned by a hard kill (deploy restart, OOM) is invisible to
+  // the scanner as of #841, but still costs disk — and installs predating that
+  // fix hold leaks under the old scannable name. Sweep once at boot.
+  sweepStaleTranscodeTemps(expandedMusicDir);
   const curator = new LibraryCurator(db);
   const syncLog = createLogger('library-sync');
   // Declared here (assigned below, once its deps exist) so the incremental scan
