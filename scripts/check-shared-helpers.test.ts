@@ -7,7 +7,10 @@ const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), '..');
 
 describe('findLocalDeclarations', () => {
   it('flags a plain function declaration', () => {
-    const hits = findLocalDeclarations('function expandHome(p: string) {\n  return p;\n}', 'expandHome');
+    const hits = findLocalDeclarations(
+      'function expandHome(p: string) {\n  return p;\n}',
+      'expandHome',
+    );
     expect(hits.map((h) => h.line)).toEqual([1]);
   });
 
@@ -64,9 +67,15 @@ describe('SHARED_HELPERS registry', () => {
   });
 
   it('actually exports the named helper from its canonical module', async () => {
+    // Not `typeof === 'function'`: a shared **constant** drifts just as readily,
+    // and more quietly. `AUDIO_EXTENSIONS` existed six times with six different
+    // memberships until #845 — the registry has to be able to guard a Set.
     for (const h of SHARED_HELPERS) {
       const mod = (await import(resolve(repoRoot, h.canonical))) as Record<string, unknown>;
-      expect(typeof mod[h.name]).toBe('function');
+      expect({ name: h.name, exported: mod[h.name] !== undefined }).toEqual({
+        name: h.name,
+        exported: true,
+      });
     }
   });
 });

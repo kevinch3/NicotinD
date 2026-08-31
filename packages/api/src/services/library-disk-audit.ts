@@ -1,8 +1,8 @@
 import { readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { AUDIO_EXTS } from './audio-tags.js';
 import { isHiddenFile, isReservedTopLevel, reservedDirsFor } from './library-paths.js';
 import type { AuditFinding } from './library-audit.js';
+import { AUDIO_EXTENSIONS } from '@nicotind/core';
 
 /**
  * Disk-side half of the library auditor: walks the music dir once and compares
@@ -21,7 +21,7 @@ export interface DiskScan {
 
 function isAudio(name: string): boolean {
   const dot = name.lastIndexOf('.');
-  return dot >= 0 && AUDIO_EXTS.has(name.slice(dot).toLowerCase());
+  return dot >= 0 && AUDIO_EXTENSIONS.has(name.slice(dot).toLowerCase());
 }
 
 /** Recursively walk `musicDir`, collecting audio files + truly-empty directories. */

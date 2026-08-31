@@ -24,10 +24,24 @@ describe('slskd share filters cover the acquisition staging dir', () => {
     expect(downloads).toHaveLength(1);
   });
 
-  test('some share-filter matches the configured staging dir', () => {
-    const staging = `${downloads[0]!}/Some Album/01 - Track.flac`;
-    const matched = filters.some((f) => new RegExp(f).test(staging));
-    expect(matched).toBe(true);
+  // slskd stores share paths Soulseek-style: backslash-separated, prefixed with
+  // the share ALIAS, e.g. `music\\Elvis Presley\\Gold Collection Vol. 1`. The
+  // first version of this test asserted only against the absolute local path,
+  // which is why a filter using forward slashes passed here while slskd
+  // reported `0 were filtered` on 23 staged files. Assert BOTH forms.
+  const stagingForms = (dir: string) => {
+    const rel = dir.replace(/^\/data\/music\/?/, '');
+    return [
+      `${dir}/Some Album/01 - Track.flac`, // local absolute, forward slashes
+      `music\\${rel}\\Some Album\\01 - Track.flac`, // slskd remote, backslashes
+    ];
+  };
+
+  test('a share-filter matches the staging dir in BOTH path forms slskd may use', () => {
+    for (const p of stagingForms(downloads[0]!)) {
+      const matched = filters.some((f) => new RegExp(f).test(p));
+      expect({ path: p, matched }).toEqual({ path: p, matched: true });
+    }
   });
 
   test('the filters do not exclude a legitimate album whose name contains the word', () => {
@@ -37,6 +51,8 @@ describe('slskd share filters cover the acquisition staging dir', () => {
       '/data/music/Artist/Downloads Vol. 2/01 - Track.opus',
       '/data/music/Artist/Unsorted Rarities/01 - Track.opus',
       '/data/music/Artist/Album/01 - Track.opus',
+      'music\\Artist\\Downloads Vol. 2\\01 - Track.opus',
+      'music\\Artist\\Album\\01 - Track.opus',
     ]) {
       const matched = filters.some((f) => new RegExp(f).test(p));
       expect({ path: p, matched }).toEqual({ path: p, matched: false });

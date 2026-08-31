@@ -5,22 +5,8 @@ import type {
   NetworkPollResult,
   ProviderType,
 } from '@nicotind/core';
-import { BrowseUnavailableError } from '@nicotind/core';
+import { AUDIO_EXTENSIONS, BrowseUnavailableError } from '@nicotind/core';
 import { inferMetadataFromPath } from '../services/path-inference.js';
-
-const AUDIO_EXTENSIONS = new Set([
-  '.mp3',
-  '.flac',
-  '.ogg',
-  '.opus',
-  '.m4a',
-  '.aac',
-  '.wav',
-  '.aiff',
-  '.wma',
-  '.ape',
-  '.wv',
-]);
 
 interface SlskdLike {
   searches?: {

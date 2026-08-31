@@ -1,7 +1,13 @@
 import { existsSync, renameSync, unlinkSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { spawn } from 'node:child_process';
-import { cleanFolderName, createLogger, parseYearFromFolder } from '@nicotind/core';
+import {
+  ID3_EXTS,
+  VORBIS_EXTS,
+  cleanFolderName,
+  createLogger,
+  parseYearFromFolder,
+} from '@nicotind/core';
 import { extractAlbumName, inferMetadataFromPath } from './path-inference.js';
 import type { CompletedDownloadFile } from './path-inference.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
@@ -225,8 +231,7 @@ async function getMusicMetadata(): Promise<MusicMetadataApi | null> {
   return mmPromise;
 }
 
-const ID3_EXTS = new Set(['.mp3']);
-const VORBIS_EXTS = new Set(['.flac', '.ogg', '.opus']);
+// Tag-container subsets come from core (#845); they are NOT a membership test.
 
 /**
  * Folder-aware compilation tagger. Runs after a batch of downloads

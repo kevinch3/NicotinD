@@ -2,6 +2,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { accessSync, constants, readdirSync, statSync } from 'node:fs';
 import { join, extname, dirname } from 'node:path';
 import {
+  AUDIO_EXTENSIONS,
   createLogger,
   parseSpotdlPlaylistTitle,
   parseSpotdlTrackEvent,
@@ -14,21 +15,8 @@ import {
 
 const log = createLogger('acquire-process');
 
-export const AUDIO_EXTENSIONS = new Set([
-  '.mp3',
-  '.flac',
-  '.m4a',
-  '.aac',
-  '.ogg',
-  '.opus',
-  '.wav',
-  '.wma',
-  '.alac',
-  '.aiff',
-  '.aif',
-  '.ape',
-  '.webm', // yt-dlp with bestaudio produces webm (opus in a WebM container)
-]);
+// Canonical set lives in core (#845); re-exported for existing importers.
+export { AUDIO_EXTENSIONS };
 
 /**
  * The downloader-stdout parsers moved to **@nicotind/addon-sdk**

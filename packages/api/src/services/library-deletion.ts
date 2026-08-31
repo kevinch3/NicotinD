@@ -11,7 +11,7 @@
 import type { Database } from 'bun:sqlite';
 import { basename, dirname, join, normalize, relative } from 'node:path';
 import { existsSync, readdirSync, rmdirSync, rmSync, unlinkSync } from 'node:fs';
-import { createLogger } from '@nicotind/core';
+import { AUDIO_EXTENSIONS, createLogger } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { pruneOrphanArtist, pruneOrphanAlbum } from './library-aggregates.js';
 import { refreshGenreCounts } from './genre-split.js';
@@ -19,21 +19,6 @@ import type { ShareRescanScheduler } from './share-rescan-scheduler.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from './song-path.js';
 
 const log = createLogger('library-deletion');
-
-const AUDIO_EXTENSIONS = new Set([
-  '.mp3',
-  '.flac',
-  '.m4a',
-  '.aac',
-  '.ogg',
-  '.opus',
-  '.wav',
-  '.wma',
-  '.alac',
-  '.aiff',
-  '.aif',
-  '.ape',
-]);
 
 export interface DeletionDeps {
   musicDir?: string;

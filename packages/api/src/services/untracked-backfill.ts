@@ -8,8 +8,7 @@
 import { readdirSync, statSync } from 'node:fs';
 import { join, relative, extname } from 'node:path';
 import type { Database } from 'bun:sqlite';
-import { createLogger } from '@nicotind/core';
-import { AUDIO_EXTS } from './audio-tags.js';
+import { AUDIO_EXTENSIONS, createLogger } from '@nicotind/core';
 import { isHiddenFile, isReservedTopLevel, reservedDirsFor } from './library-paths.js';
 
 const log = createLogger('untracked-backfill');
@@ -53,7 +52,7 @@ export function buildBasenameIndex(
       } else if (
         st.isFile() &&
         !isHiddenFile(name) &&
-        AUDIO_EXTS.has(extname(name).toLowerCase())
+        AUDIO_EXTENSIONS.has(extname(name).toLowerCase())
       ) {
         const key = name.toLowerCase();
         const rel = relative(musicDir, full).replace(/\\/g, '/');

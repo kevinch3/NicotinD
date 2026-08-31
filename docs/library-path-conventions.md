@@ -268,16 +268,21 @@ pointing downloads at it, or the old scanner ingests the new staging dir and not
 The library is shared to Soulseek on purpose. Staging is not: slskd runs with
 
 ```
---share-filter=/\.downloads/
---share-filter=/\.unsorted/
+--share-filter=[\\/]\.downloads[\\/]
+--share-filter=[\\/]\.unsorted[\\/]
 ```
 
 A staged file is complete (slskd writes partials to its own `incomplete` dir), but it is about to
 be moved, retagged and — when lossless — **re-encoded, deleting the source**. Advertising it hands
 peers a path that disappears mid-transfer, and fills browse results with raw rip folder names
-instead of the organised library. `--share-filter` takes a **regex over the path, not a glob**, so
-the pattern is anchored on both slashes and the leading dot: `Downloads Vol. 2` still shares.
-`scripts/compose-share-filter.test.ts` keeps it in sync with `--downloads`.
+instead of the organised library. `--share-filter` takes a **regex over the path, not a glob**, and slskd stores share paths
+Soulseek-style — backslash-separated and alias-prefixed (`music\Artist\Album`). A
+forward-slash-only pattern is therefore **inert**: the first version of this shipped that way and
+slskd reported `0 were filtered` against 23 staged files, with staging excluded only by slskd's own
+hidden-directory handling. The separator class accepts both forms; the leading dot plus a separator
+on each side anchors it to a real path segment, so `Downloads Vol. 2` still shares.
+`scripts/compose-share-filter.test.ts` asserts both path forms and keeps it in sync with
+`--downloads`.
 
 ## Out of scope
 
