@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.49](https://github.com/kevinch3/NicotinD/compare/v0.5.48...v0.5.49) (2026-08-31)
+
+### Bug Fixes
+
+* **scripts:** reorganize-library previews before it writes ([#840](https://github.com/kevinch3/NicotinD/issues/840)) ([#842](https://github.com/kevinch3/NicotinD/issues/842)) ([286b22e](https://github.com/kevinch3/NicotinD/commit/286b22ebe5479274816002aa651dd85d2d24c63a)), references [#838](https://github.com/kevinch3/NicotinD/issues/838)
 ## [0.5.48](https://github.com/kevinch3/NicotinD/compare/v0.5.47...v0.5.48) (2026-08-30)
 
 ### Bug Fixes
