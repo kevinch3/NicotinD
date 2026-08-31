@@ -1,0 +1,100 @@
+# Runs Renovate against this repo on a schedule.
+#
+# WHY THIS FILE EXISTS: `renovate.json` has been in the repo since the
+# dependency-management sweep, but nothing ever ran it — step 3 of that plan
+# ("install the Renovate GitHub App, or a self-hosted workflow") was never done,
+# so the config sat inert. Verified in #848: zero Renovate PRs had ever opened,
+# and no Dependency Dashboard issue existed even though `:dependencyDashboard`
+# is enabled and would create one on the first run.
+#
+# The visible cost was 14 of 17 GitHub Actions drifting onto a retired Node 20
+# runtime across 67 call sites. The invisible cost is every other manager
+# `config:recommended` enables — npm, Dockerfile base images, and the three
+# custom regex pins — going equally unattended.
+#
+# Self-hosted rather than the GitHub App: it needs no third-party app access,
+# it mirrors the existing RELEASE_TOKEN secret pattern, and the schedule is
+# visible in the repo instead of in someone's app settings.
+#
+# DAILY, not weekly, on purpose. `renovate.json` carries its own
+# `schedule: ["before 6am on monday"]`, which is what actually batches the
+# routine PR noise — this cron only decides how often Renovate gets to *look*.
+# Weekly here would mean a single missed run costs a whole week, and it would
+# defeat the deliberately unscheduled `vulnerabilityAlerts` block
+# (`"schedule": ["at any time"]`, `"prCreation": "immediate"`): an advisory
+# against something that ships now fails `bun run check:audit`, so waiting for
+# Monday would block `verify` in the meantime.
+name: Renovate
+
+on:
+  schedule:
+    # 05:00 UTC daily —02:00 in the repo's America/Argentina/Buenos_Aires
+    # timezone, so a run has already happened before the "before 6am" window
+    # that renovate.json schedules its routine PRs into.
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Renovate log level'
+        required: false
+        default: 'info'
+        type: choice
+        options: [info, debug]
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    steps:
+      # Skip cleanly instead of failing when the token is absent.
+      #
+      # Without this, a repo that has not yet had RENOVATE_TOKEN added gets a red
+      # X every single morning, and a workflow that is always red is a workflow
+      # nobody reads — which is the failure mode that let renovate.json sit inert
+      # in the first place. A skipped job says "not configured yet"; a failed one
+      # says "something broke", and those must not look the same.
+      - name: Check for token
+        id: token
+        env:
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RENOVATE_TOKEN}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Renovate is not configured yet"
+              echo
+              echo 'No `RENOVATE_TOKEN` secret is set, so this run did nothing.'
+              echo
+              echo 'To enable: create a fine-grained PAT scoped to this repo with'
+              echo '**Contents: read & write**, **Pull requests: read & write** and'
+              echo '**Issues: read & write** (the Dependency Dashboard is an issue),'
+              echo 'then add it as the `RENOVATE_TOKEN` repository secret.'
+              echo
+              echo 'Until then `renovate.json` is inert — see docs/dependency-management.md.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.token.outputs.configured == 'true'
+
+      - name: Run Renovate
+        if: steps.token.outputs.configured == 'true'
+        uses: renovatebot/github-action@v46.2.5
+        with:
+          token: ${{ secrets.RENOVATE_TOKEN }}
+        env:
+          # Only this repo. The token could reach others the user can write to,
+          # and autodiscovery would silently open PRs on all of them.
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_AUTODISCOVER: 'false'
+          # renovate.json is the config; this only sets how loudly it narrates.
+          LOG_LEVEL: ${{ inputs.logLevel || 'info' }}

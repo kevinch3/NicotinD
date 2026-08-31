@@ -57,13 +57,33 @@ them casually; they move only together with a tested Essentia/TF upgrade.
 
 ## Automating updates — configured
 
-**Renovate is configured** in [`renovate.json`](../renovate.json), following the plan below.
-It is at **step 2**: grouping, major-isolation, weekly schedule, **automerge off**. Steps 3–4
+**Renovate is configured** in [`renovate.json`](../renovate.json) and **run** by
+[`.github/workflows/renovate.yml`](../.github/workflows/renovate.yml), following the plan below.
+It is at **step 3**: grouping, major-isolation, weekly PR schedule, **automerge off**. Steps 4–5
 (build trust in the cadence, then enable automerge for patch/minor devDeps) are deliberate
 follow-ups, not oversights.
 
-Enabling it in the repo settings (the Renovate GitHub App, or a self-hosted workflow) is the
-remaining manual step — the config is inert until then.
+> **One manual step remains.** The workflow needs a `RENOVATE_TOKEN` repository secret — a
+> fine-grained PAT scoped to this repo with **Contents: read & write**, **Pull requests: read &
+> write** and **Issues: read & write** (the Dependency Dashboard is an issue). Without it the
+> workflow *skips* with an explanatory job summary rather than failing, so an unconfigured repo
+> does not go red every morning — but Renovate is not running until the secret exists.
+
+### What "configured but not running" cost (#848)
+
+Step 3 sat undone long enough to matter, and the gap was invisible because the config *looked*
+complete. `github-actions` is one of the managers `config:recommended` enables, so nothing was
+bumping GitHub Actions at all: **14 of 17** pinned actions had drifted onto the retired Node 20
+runtime across **67 call sites**, some four majors behind.
+
+It surfaced as a deprecation warning in a deploy log — not as a failure. The lesson is in
+[quality-gates.md](quality-gates.md): the fix was both *enabling* Renovate and adding
+`check:action-runtimes`, because enabling an updater fixes drift while only a gate makes drift
+**fail**. Config that nothing enforces is how this sat inert in the first place.
+
+The evidence that it was inert, rather than merely quiet: zero Renovate PRs had ever been opened on
+the repo, and no Dependency Dashboard issue existed — `:dependencyDashboard` creates one on the very
+first run.
 
 ### Why Renovate over Dependabot
 - First-class **Bun lockfile** support (Dependabot's Bun support lags).
@@ -103,11 +123,21 @@ finds no version-bumping commit, no-ops).
    Done — plus `customManagers` for the three non-npm pins, and a `vulnerabilityAlerts` block
    that is deliberately **unscheduled**: an advisory against something that ships now fails
    `bun run check:audit`, so waiting for Monday would block `verify` in the meantime.
-3. Install the Renovate GitHub App (or a self-hosted workflow) — the config does nothing
-   until something runs it.
+3. ~~Install the Renovate GitHub App (or a self-hosted workflow) — the config does nothing
+   until something runs it.~~ Done — self-hosted via `.github/workflows/renovate.yml` (#848),
+   chosen over the App so the schedule lives in the repo and no third-party app access is needed.
+   **Add the `RENOVATE_TOKEN` secret** to actually start it.
 4. Let it run 1–2 weeks to build trust in the PR cadence.
 5. Enable automerge for patch/minor devDeps once the cadence looks safe.
 6. Revisit the held majors when their upstream blockers clear (table above).
+
+### Why the workflow runs daily when the PRs are weekly
+
+`renovate.json`'s own `schedule` (`before 6am on monday`) is what batches routine PR noise; the cron
+only decides how often Renovate gets to *look*. Weekly on both would mean one missed run costs a
+week, and it would defeat the deliberately unscheduled `vulnerabilityAlerts` block
+(`"schedule": ["at any time"]`, `"prCreation": "immediate"`) — an advisory against something that
+ships now fails `bun run check:audit`, so waiting for Monday would block `verify` in the meantime.
 
 ### What the custom managers cover
 

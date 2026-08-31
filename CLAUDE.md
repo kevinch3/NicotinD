@@ -61,7 +61,8 @@ bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
 
 **Check gates** (all CI-blocking unless noted): `check:claude-md` (this file's symbols, links and
 size) · `check:ci-parity` (a gate job step `verify` misses, or a gate that stopped blocking
-`release`) · `check:route-auth` (an `/api` group mounted with no auth decision) · `check:audit` (an
+`release`) · `check:action-runtimes` (an action pinned to a retired Node runtime, or one the floor
+table cannot classify) · `check:route-auth` (an `/api` group mounted with no auth decision) · `check:audit` (an
 advisory that both ships and matches the resolved version) · `check:shared-helpers` (a shared helper
 re-implemented locally) · `check:library-walkers` (a `musicDir` walker that skips the reserved-path
 predicate) · `check:search-matching` (a name search done in raw SQL, bypassing the shared
