@@ -110,6 +110,25 @@ export interface OrganizeResult {
   affectedAlbumDirs: string[];
 }
 
+/**
+ * Where a file *would* go, decided without touching disk. `placeFile` computes
+ * one of these and then performs it; a dry run computes one and stops — so the
+ * preview and the real run cannot disagree about the destination.
+ */
+export interface PlacementPlan {
+  /** The outcome `placeFile` would report (`failed` is an effect-only result). */
+  outcome: 'moved' | 'skipped' | 'unsorted';
+  /** Which destination bucket the file lands in. */
+  kind: 'album' | 'singles' | 'unsorted';
+  srcPath: string;
+  destDir: string;
+  destPath: string;
+  /** The move would be followed by an irreversible lossless→Opus transcode. */
+  wouldTranscode: boolean;
+  /** Why nothing would move, when `outcome` is `skipped`. */
+  skipReason?: 'same-path' | 'flac-twin';
+}
+
 /** A file already located on disk, plus its read tags. */
 interface ResolvedFile {
   /** Source absolute path (where the file currently is). */
@@ -139,6 +158,12 @@ export class LibraryOrganizer {
   private canonicalTitlesLookup?: (dir: string) => readonly string[] | null;
   /** Real <Artist>/<Album> dirs written during the current batch (for dedupe). */
   private touchedAlbumDirs = new Set<string>();
+  /**
+   * Destinations claimed by `planOrganizeFile` so far. A dry run moves nothing,
+   * so disk alone cannot tell one planned file that another already took its
+   * path — without this, a preview under-reports collisions.
+   */
+  private planned = new Set<string>();
   /**
    * Per-batch cache of an artist's album folders (name + group key + audio-file
    * count), so cross-edition consolidation is one disk read per artist and dirs
@@ -408,7 +433,11 @@ export class LibraryOrganizer {
     else list.push({ name: folderName, key: albumGroupKey(artist, folderName), count: 1 });
   }
 
-  private async readWithFallback(path: string, peerDirectory: string): Promise<AudioTags> {
+  private async readWithFallback(
+    path: string,
+    peerDirectory: string,
+    opts?: { persist?: boolean },
+  ): Promise<AudioTags> {
     const tags = await readAudioTags(path);
     let artist = sanitizeArtistTag(normalizeTagValue(tags.artist));
     let title = normalizeTagValue(tags.title);
@@ -486,17 +515,21 @@ export class LibraryOrganizer {
             'AcoustID fingerprint matched, no MB metadata',
           );
         }
-        await writeAudioTags(path, {
-          artist,
-          title,
-          album,
-          albumArtist: tags.albumArtist,
-          year: tags.year,
-          trackNumber: tags.trackNumber,
-          acoustIdId: tags.acoustIdId,
-          mbRecordingId: tags.mbRecordingId,
-          mbReleaseId: tags.mbReleaseId,
-        });
+        // A dry run must not persist the fingerprint — this is the one disk
+        // write on the read path.
+        if (opts?.persist !== false) {
+          await writeAudioTags(path, {
+            artist,
+            title,
+            album,
+            albumArtist: tags.albumArtist,
+            year: tags.year,
+            trackNumber: tags.trackNumber,
+            acoustIdId: tags.acoustIdId,
+            mbRecordingId: tags.mbRecordingId,
+            mbReleaseId: tags.mbReleaseId,
+          });
+        }
       }
     }
 
@@ -533,10 +566,19 @@ export class LibraryOrganizer {
     return classificationToAlbumTags(classification, files);
   }
 
-  private async placeFile(
+  /**
+   * Decide where `file` belongs. Reads disk, writes nothing — every effect
+   * (mkdir, move, transcode, tag rewrite, prune) lives in `placeFile`.
+   *
+   * `taken` lets a dry run account for destinations earlier files in the same
+   * pass would already have claimed, so the preview's `(2)` suffixes and
+   * cross-edition folder consolidation match what a real run would produce.
+   */
+  private async planPlacement(
     file: ResolvedFile,
     folderTags: AlbumTags,
-  ): Promise<'moved' | 'skipped' | 'unsorted' | 'failed'> {
+    taken?: Set<string>,
+  ): Promise<PlacementPlan> {
     const ext = extname(file.srcPath).toLowerCase();
     const tags = file.tags;
 
@@ -556,6 +598,7 @@ export class LibraryOrganizer {
       ? this.unsortedRoot
       : join(this.musicDir, this.unsortedRoot);
     let destDir: string;
+    let kind: PlacementPlan['kind'];
     if (folderArtist && folderAlbum && trackTitle) {
       // Reuse an existing same-album folder (edition-collapsed) so deluxe/remaster/
       // JP editions converge into one dir instead of spawning siblings the
@@ -563,9 +606,7 @@ export class LibraryOrganizer {
       const canonicalFolder =
         this.findCanonicalAlbumFolder(folderArtist, folderAlbum) ?? folderAlbum;
       destDir = join(this.musicDir, folderArtist, canonicalFolder);
-      // Only real <Artist>/<Album> dirs are dedupe targets — never Singles (many
-      // distinct tracks) or the unsorted bucket.
-      this.touchedAlbumDirs.add(destDir);
+      kind = 'album';
       this.rememberAlbumFolder(folderArtist, canonicalFolder);
     } else if (folderArtist && trackTitle) {
       // Single artist, no album info → place under <Artist>/Singles/ on disk,
@@ -574,14 +615,17 @@ export class LibraryOrganizer {
       // title, so loose tracks become individual cards instead of one hidden
       // "Singles" bucket. (See isLooseSinglesBucket in library-scanner.ts.)
       destDir = join(this.musicDir, folderArtist, 'Singles');
+      kind = 'singles';
     } else if (trackTitle) {
       // No artist info at all
       const cleanedPeer = stripAudioExt(file.peerDirectory);
       const stripped = stripTrackPrefix(cleanFolderName(cleanedPeer));
       const sourceFolder = sanitizeSegment(stripped || cleanFolderName(cleanedPeer) || 'Unknown');
       destDir = join(unsortedDir, sourceFolder);
+      kind = 'unsorted';
     } else {
       destDir = join(unsortedDir, '_no_title');
+      kind = 'unsorted';
     }
 
     const trackName =
@@ -594,6 +638,90 @@ export class LibraryOrganizer {
     // exists as FLAC in the destination album folder, so we don't accumulate the
     // mixed-format duplicate albums the usage analysis flagged.
     if (this.preferFlacSkipMp3 && ext === '.mp3' && flacTwinExists(destDir, trackTitle || title)) {
+      return {
+        outcome: 'skipped',
+        skipReason: 'flac-twin',
+        kind,
+        srcPath: file.srcPath,
+        destDir,
+        destPath: join(destDir, trackName),
+        wouldTranscode: false,
+      };
+    }
+
+    const destPath = uniquePath(join(destDir, trackName), file.srcPath, taken);
+    const unsortedDest = destPath.startsWith(unsortedDir);
+
+    if (destPath === file.srcPath) {
+      // The move is a no-op; only the tag rewrite below would run.
+      return {
+        outcome: unsortedDest ? 'unsorted' : 'skipped',
+        skipReason: 'same-path',
+        kind,
+        srcPath: file.srcPath,
+        destDir,
+        destPath,
+        wouldTranscode: false,
+      };
+    }
+
+    // Probing the source is equivalent to probing the destination post-move (same
+    // bytes), and it lets a dry run answer this without the file having moved.
+    // isLosslessFile (not isLossless): ALAC hides behind the same .m4a extension
+    // as lossy AAC, so .m4a needs a codec probe.
+    const wouldTranscode =
+      this.transcodeLossless.enabled && ffmpegAvailable() && (await isLosslessFile(file.srcPath));
+
+    return {
+      outcome: unsortedDest ? 'unsorted' : 'moved',
+      kind,
+      srcPath: file.srcPath,
+      destDir,
+      destPath,
+      wouldTranscode,
+    };
+  }
+
+  /**
+   * Compute where `absPath` would be organized to, without moving, transcoding,
+   * rewriting a tag or creating a directory. Backs `reorganize-library.ts`'s
+   * dry run.
+   */
+  async planOrganizeFile(absPath: string, peerDirectory?: string): Promise<PlacementPlan> {
+    // Plan against the path the phantom-dir flatten *would* produce, without
+    // performing that rename.
+    const finalSrc = this.phantomDirTarget(absPath) ?? absPath;
+    const peer = peerDirectory ?? basename(dirname(finalSrc));
+    // persist:false — readWithFallback writes AcoustID results back into the file.
+    const tags = await this.readWithFallback(finalSrc, peer, { persist: false });
+    const resolved: ResolvedFile = {
+      srcPath: finalSrc,
+      peerDirectory: peer,
+      filename: basename(finalSrc),
+      tags,
+    };
+    const plan = await this.planPlacement(
+      resolved,
+      this.deriveFolderTags([resolved]),
+      this.planned,
+    );
+    this.planned.add(plan.destPath);
+    return plan;
+  }
+
+  private async placeFile(
+    file: ResolvedFile,
+    folderTags: AlbumTags,
+  ): Promise<'moved' | 'skipped' | 'unsorted' | 'failed'> {
+    const plan = await this.planPlacement(file, folderTags);
+    const { destDir } = plan;
+    let destPath = plan.destPath;
+
+    // Only real <Artist>/<Album> dirs are dedupe targets — never Singles (many
+    // distinct tracks) or the unsorted bucket.
+    if (plan.kind === 'album') this.touchedAlbumDirs.add(destDir);
+
+    if (plan.skipReason === 'flac-twin') {
       log.info({ src: file.srcPath, destDir }, 'Skipping MP3 — FLAC of this track already present');
       if (file.source) file.source.relativePath = undefined;
       try {
@@ -604,9 +732,7 @@ export class LibraryOrganizer {
       return 'skipped';
     }
 
-    let destPath = uniquePath(join(destDir, trackName), file.srcPath);
-
-    const samePath = destPath === file.srcPath;
+    const samePath = plan.skipReason === 'same-path';
     if (!samePath) {
       try {
         mkdirSync(destDir, { recursive: true });
@@ -620,9 +746,7 @@ export class LibraryOrganizer {
       // Standardize lossless on Opus before the scan sees the file, so the song's
       // stable id (derived from its final path) is computed once and storage is
       // reclaimed. Best-effort: a transcode failure leaves the original in place.
-      // isLosslessFile (not isLossless): ALAC hides behind the same .m4a
-      // extension as lossy AAC, so .m4a needs a codec probe.
-      if (this.transcodeLossless.enabled && ffmpegAvailable() && (await isLosslessFile(destPath))) {
+      if (plan.wouldTranscode) {
         try {
           destPath = await transcodeToOpus(destPath, this.transcodeLossless.bitRate);
         } catch (err) {
@@ -646,6 +770,7 @@ export class LibraryOrganizer {
       toWrite.year = folderTags.year;
     }
     // Also clean up artist if it had leading junk we stripped
+    const tags = file.tags;
     if (tags.artist && currentRaw.artist !== tags.artist) toWrite.artist = tags.artist;
     if (tags.title && currentRaw.title !== tags.title) toWrite.title = tags.title;
     if (tags.trackNumber !== undefined && currentRaw.trackNumber !== tags.trackNumber) {
@@ -670,16 +795,14 @@ export class LibraryOrganizer {
 
     if (samePath) {
       // The move was a no-op but we may have cleaned tags above.
-      const wasUnsortedSame = file.srcPath.startsWith(unsortedDir);
-      return wasUnsortedSame ? 'unsorted' : 'skipped';
+      return plan.outcome;
     }
 
     // Cleanup empty source dirs (bounded walk-up, never crosses staging/music root)
     const stopAt = this.stagingDir ?? this.musicDir;
     pruneEmptyAncestors(dirname(file.srcPath), stopAt);
 
-    const wasUnsorted = destPath.startsWith(unsortedDir);
-    return wasUnsorted ? 'unsorted' : 'moved';
+    return plan.outcome;
   }
 
   /**
@@ -688,10 +811,29 @@ export class LibraryOrganizer {
    * move the file one level up and return the new path. Otherwise null.
    */
   private flattenPhantomDir(path: string): string | null {
+    const newPath = this.phantomDirTarget(path);
+    if (!newPath) return null;
     const parent = dirname(path);
-    const parentName = basename(parent);
+
+    try {
+      renameSync(path, newPath);
+      try {
+        rmdirSync(parent);
+      } catch {
+        /* ignore */
+      }
+      this.logMove(path, newPath);
+      return newPath;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The path `flattenPhantomDir` would move `path` to, decided without moving it. */
+  private phantomDirTarget(path: string): string | null {
+    const parent = dirname(path);
     const fileName = basename(path);
-    if (parentName !== fileName) return null;
+    if (basename(parent) !== fileName) return null;
 
     // The parent must contain only this one audio file
     let siblings: string[];
@@ -707,19 +849,7 @@ export class LibraryOrganizer {
 
     const newPath = join(grandparent, fileName);
     if (existsSync(newPath) && newPath !== path) return null;
-
-    try {
-      renameSync(path, newPath);
-      try {
-        rmdirSync(parent);
-      } catch {
-        /* ignore */
-      }
-      this.logMove(path, newPath);
-      return newPath;
-    } catch {
-      return null;
-    }
+    return newPath;
   }
 
   /** Find the file on disk given slskd's reported directory/filename pair. */
@@ -806,14 +936,15 @@ function classificationToAlbumTags(c: Classification, files: ResolvedFile[]): Al
   };
 }
 
-function uniquePath(desired: string, sourcePath: string): string {
-  if (!existsSync(desired) || desired === sourcePath) return desired;
+function uniquePath(desired: string, sourcePath: string, taken?: Set<string>): string {
+  const free = (p: string) => !existsSync(p) && !taken?.has(p);
+  if (free(desired) || desired === sourcePath) return desired;
   // collision: append counter
   const ext = extname(desired);
   const stem = desired.slice(0, desired.length - ext.length);
   for (let i = 2; i < 1000; i++) {
     const cand = `${stem} (${i})${ext}`;
-    if (!existsSync(cand) || cand === sourcePath) return cand;
+    if (free(cand) || cand === sourcePath) return cand;
   }
   return desired;
 }
