@@ -33,6 +33,9 @@ export * from './hunt-queries.js';
 // Pairing / TV sign-in code alphabet (shared by the API minter + web scanner)
 export * from './pairing-code.js';
 
+// MusicBrainz id shape (shared by the curator route + tag-sourced lookups)
+export * from './mbid.js';
+
 // Plugin SDK (capability contracts + manifest)
 export * from './plugin/index.js';
 

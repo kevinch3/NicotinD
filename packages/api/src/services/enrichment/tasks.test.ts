@@ -1544,7 +1544,7 @@ describe('popularity task (issue #220)', () => {
     seedSong('a', { artist: 'Radiohead', title: 'Creep' });
     const c = ctx({
       fileExists: () => true,
-      readTags: async () => ({ mbRecordingId: 'mbid-1' }) as never,
+      readTags: async () => ({ mbRecordingId: '98ddbc99-af41-4722-93ea-1db8e2433878' }) as never,
       // 1,000 listens → log10(1001)/log10(1e6) ≈ 0.5 on the documented log scale.
       lookupPopularity: async (mbids) => new Map(mbids.map((m) => [m, 1000])),
     });
@@ -1566,7 +1566,7 @@ describe('popularity task (issue #220)', () => {
     let calls = 0;
     const c = ctx({
       fileExists: () => true,
-      readTags: async () => ({ mbRecordingId: 'shared-mbid' }) as never,
+      readTags: async () => ({ mbRecordingId: '3861ee38-4741-453b-8068-dd029e248f78' }) as never,
       lookupPopularity: async (mbids) => {
         calls++;
         return new Map(mbids.map((m) => [m, 500_000]));
@@ -1592,7 +1592,7 @@ describe('popularity task (issue #220)', () => {
     seedSong('a');
     const c = ctx({
       fileExists: () => true,
-      readTags: async () => ({ mbRecordingId: 'mbid-x' }) as never,
+      readTags: async () => ({ mbRecordingId: '98ddbc99-af41-4722-93ea-1db8e2433878' }) as never,
       lookupPopularity: async (mbids) => new Map(mbids.map((m) => [m, null])),
     });
     for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
@@ -1609,7 +1609,7 @@ describe('popularity task (issue #220)', () => {
     // exclude the song, so it stays pending across many passes.
     const c = ctx({
       fileExists: () => true,
-      readTags: async () => ({ mbRecordingId: 'mbid-x' }) as never,
+      readTags: async () => ({ mbRecordingId: '98ddbc99-af41-4722-93ea-1db8e2433878' }) as never,
       lookupPopularity: async () => new Map(),
     });
     for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS + 2; i++) {
@@ -1617,6 +1617,119 @@ describe('popularity task (issue #220)', () => {
       expect(res.applied).toBe(0);
     }
     expect(pop.countPending(db)).toBe(1);
+  });
+});
+
+describe('popularity pool livelock (issue #851)', () => {
+  const pop = getTask('popularity')!;
+
+  // Well-formed MusicBrainz recording ids, and the shape prod actually carries:
+  // an external tagger wrote a Discogs release ref (release 5333377, track B5)
+  // into MUSICBRAINZ_TRACKID. ListenBrainz 400s the *whole* batch on it.
+  const MBID_A = '98ddbc99-af41-4722-93ea-1db8e2433878';
+  const MBID_B = '3861ee38-4741-453b-8068-dd029e248f78';
+  const DISCOGS_REF = '5333377-B5';
+
+  /** Fake `readTags` that keys off the seeded path (`<artist>/Album/<id>.opus`). */
+  function tagsById(byId: Record<string, string>, seen?: string[]) {
+    return async (abs: string) => {
+      const id = abs.slice(abs.lastIndexOf('/') + 1).replace('.opus', '');
+      seen?.push(id);
+      const mbid = byId[id];
+      return (mbid ? { mbRecordingId: mbid } : {}) as never;
+    };
+  }
+
+  function ledgerRow(id: string) {
+    return db
+      .query<
+        { fail_count: number; terminal: number; last_attempt: number; last_error: string | null },
+        [string]
+      >(
+        `SELECT fail_count, terminal, last_attempt, last_error FROM library_song_analysis_failures
+         WHERE song_id = ? AND task = 'popularity'`,
+      )
+      .get(id);
+  }
+
+  it('never sends a malformed tag to ListenBrainz, so one bad id cannot poison the batch', async () => {
+    seedSong('good1');
+    seedSong('good2');
+    seedSong('bad');
+    const sent: string[] = [];
+    const c = ctx({
+      readTags: tagsById({ good1: MBID_A, good2: MBID_B, bad: DISCOGS_REF }),
+      lookupPopularity: async (mbids) => {
+        sent.push(...mbids);
+        return new Map(mbids.map((m) => [m, 1000] as const));
+      },
+    });
+
+    const res = await pop.run(db, c, 25);
+
+    // The whole point: the invalid id never reaches the batch API.
+    expect(sent).not.toContain(DISCOGS_REF);
+    expect([...sent].sort()).toEqual([MBID_B, MBID_A].sort());
+    // ...and the other two songs are scored rather than lost with it.
+    expect(res.applied).toBe(2);
+    expect(res.failed).toBe(0); // a confident miss is not a run failure
+    expect(ledgerRow('bad')?.terminal).toBe(1);
+    expect(ledgerRow('bad')?.last_error).toBe('invalid recording MBID');
+    expect(pop.countPending(db)).toBe(0);
+  });
+
+  it('advances the frontier when a whole batch fails, instead of re-serving it forever', async () => {
+    for (let i = 0; i < 30; i++) seedSong(`s${String(i).padStart(2, '0')}`);
+    const byId: Record<string, string> = {};
+    for (let i = 0; i < 30; i++) byId[`s${String(i).padStart(2, '0')}`] = MBID_A;
+
+    const windows: string[][] = [];
+    for (let w = 0; w < 2; w++) {
+      const seen: string[] = [];
+      const c = ctx({
+        readTags: tagsById(byId, seen),
+        lookupPopularity: async () => new Map(), // whole-batch failure (400/429/outage)
+      });
+      await pop.run(db, c, 25);
+      windows.push(seen);
+    }
+
+    expect(windows[0]).toHaveLength(25);
+    // Before the fix both windows are the identical 25 songs and this is 0.
+    const fresh = windows[1]!.filter((id) => !windows[0]!.includes(id));
+    expect(fresh).toHaveLength(5);
+  });
+
+  it('stamps an attempt on a transient failure without ever excluding the song', async () => {
+    seedSong('a');
+    const c = ctx({
+      readTags: tagsById({ a: MBID_A }),
+      lookupPopularity: async () => new Map(),
+    });
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS + 2; i++) await pop.run(db, c, 25);
+
+    // An outage must never be a strike: the song stays retryable indefinitely.
+    expect(pop.countPending(db)).toBe(1);
+    const row = ledgerRow('a');
+    expect(row?.fail_count).toBe(0);
+    expect(row?.terminal).toBe(0);
+    expect(row?.last_attempt).toBeGreaterThan(0);
+  });
+
+  it('still serves never-attempted songs newest-first, so a fresh download enriches promptly', async () => {
+    seedSong('older');
+    seedSong('newer');
+    db.run("UPDATE library_songs SET created = '2024-01-01' WHERE id = 'older'");
+    db.run("UPDATE library_songs SET created = '2026-08-31' WHERE id = 'newer'");
+    const seen: string[] = [];
+    const c = ctx({
+      readTags: tagsById({ older: MBID_A, newer: MBID_B }, seen),
+      lookupPopularity: async () => new Map(),
+    });
+
+    await pop.run(db, c, 25);
+
+    expect(seen[0]).toBe('newer');
   });
 });
 

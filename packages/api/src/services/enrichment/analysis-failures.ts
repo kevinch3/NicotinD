@@ -110,6 +110,36 @@ export function rebaseAnalysisFileSize(db: Database, songId: string, newSize: nu
   ]);
 }
 
+/**
+ * Stamp an attempt for (song, task) **without** counting it as a strike.
+ *
+ * Some failure modes are deliberately never ledgered, so an outage or a misconfig
+ * cannot permanently exclude a song. On its own that rule is right; combined with
+ * a `LIMIT`-bounded pool ordered on a fixed key it livelocks — the window is
+ * refilled from the very rows that just failed, and the frontier never advances.
+ * On prod that froze `popularity` with half the library never examined once
+ * (issue #851). Stamping the attempt moves the song to the back of
+ * {@link leastRecentlyAttemptedOrderSql} while leaving it fully retryable.
+ *
+ * The upsert touches `last_attempt` only. `fail_count`, `terminal` and
+ * `file_size` are a real failure's bookkeeping, and a non-strike must never
+ * disturb them — resetting a count here would let a genuinely broken file evade
+ * the cap forever.
+ */
+export function noteAnalysisAttempt(
+  db: Database,
+  songId: string,
+  task: ProcessingTaskId,
+  fileSize: number | null,
+): void {
+  db.run(
+    `INSERT INTO library_song_analysis_failures (song_id, task, fail_count, file_size, last_attempt)
+     VALUES (?, ?, 0, ?, ?)
+     ON CONFLICT(song_id, task) DO UPDATE SET last_attempt = excluded.last_attempt`,
+    [songId, task, fileSize, Date.now()],
+  );
+}
+
 /** Clear any failure record for (song, task) — a success, or a repaired file. */
 export function clearAnalysisFailure(db: Database, songId: string, task: ProcessingTaskId): void {
   db.run('DELETE FROM library_song_analysis_failures WHERE song_id = ? AND task = ?', [
@@ -132,6 +162,26 @@ export function notPermanentlyFailedClause(task: ProcessingTaskId, s = 'library_
     ` WHERE f.song_id = ${s}.id AND f.task = '${task}'` +
     ` AND (f.terminal = 1` +
     ` OR (f.fail_count >= ${MAX_ANALYSIS_ATTEMPTS} AND f.file_size IS ${s}.size)))`
+  );
+}
+
+/**
+ * Pool ordering: never-attempted songs first (newest-first among them, so a fresh
+ * download still enriches promptly), then least-recently-attempted.
+ *
+ * Ordering on `created` alone is what turns a deliberately un-ledgered failure
+ * into a livelock — see {@link noteAnalysisAttempt}. Same contract as
+ * {@link notPermanentlyFailedClause}: a bare fragment with no bind params, so it
+ * splices into an existing `WHERE ... LIMIT ?` without disturbing the params.
+ */
+export function leastRecentlyAttemptedOrderSql(
+  task: ProcessingTaskId,
+  s = 'library_songs',
+): string {
+  return (
+    ` ORDER BY (SELECT f.last_attempt FROM library_song_analysis_failures f` +
+    ` WHERE f.song_id = ${s}.id AND f.task = '${task}') ASC NULLS FIRST,` +
+    ` ${s}.created DESC`
   );
 }
 

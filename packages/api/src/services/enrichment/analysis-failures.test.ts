@@ -9,6 +9,7 @@ import {
   permanentlyFailedClause,
   countSkippedFiles,
   rebaseAnalysisFileSize,
+  noteAnalysisAttempt,
 } from './analysis-failures.js';
 
 let db: Database;
@@ -220,5 +221,78 @@ describe('rebaseAnalysisFileSize (issue #690)', () => {
     recordAnalysisFailure(db, 's1', 'bpm', new Error('boom'), 900);
 
     expect(failCount('s1', 'bpm')).toBe(1);
+  });
+});
+
+describe('noteAnalysisAttempt — a stamp, not a strike (issue #851)', () => {
+  function seedSong(id: string, size: number): void {
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, synced_at)
+       VALUES (?, 'alb', ?, 'A', 'art', 0, ?, ?, 1)`,
+      [id, `T-${id}`, `${id}.mp3`, size],
+    );
+  }
+
+  function pendingIds(task: 'bpm' | 'popularity'): string[] {
+    return db
+      .query<{ id: string }, []>(
+        `SELECT id FROM library_songs WHERE 1=1${notPermanentlyFailedClause(task)} ORDER BY id`,
+      )
+      .all()
+      .map((r) => r.id);
+  }
+
+  function row(songId: string, task: string) {
+    return db
+      .query<
+        { fail_count: number; terminal: number; file_size: number | null; last_attempt: number },
+        [string, string]
+      >(
+        'SELECT fail_count, terminal, file_size, last_attempt FROM library_song_analysis_failures WHERE song_id = ? AND task = ?',
+      )
+      .get(songId, task);
+  }
+
+  it('inserts a zero-strike row so the song stays in the pending pool', () => {
+    seedSong('s1', 100);
+    noteAnalysisAttempt(db, 's1', 'popularity', 100);
+
+    expect(row('s1', 'popularity')?.fail_count).toBe(0);
+    expect(row('s1', 'popularity')?.terminal).toBe(0);
+    expect(row('s1', 'popularity')?.last_attempt).toBeGreaterThan(0);
+    expect(pendingIds('popularity')).toEqual(['s1']);
+  });
+
+  it('repeated stamps never accumulate into an exclusion', () => {
+    seedSong('s1', 100);
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS + 3; i++) {
+      noteAnalysisAttempt(db, 's1', 'popularity', 100);
+    }
+    expect(row('s1', 'popularity')?.fail_count).toBe(0);
+    expect(pendingIds('popularity')).toEqual(['s1']);
+  });
+
+  it("never disturbs a real failure's bookkeeping", () => {
+    seedSong('s1', 100);
+    recordAnalysisFailure(db, 's1', 'bpm', new Error('boom'), 100);
+    recordAnalysisFailure(db, 's1', 'bpm', new Error('boom'), 100);
+    const before = row('s1', 'bpm')!;
+
+    noteAnalysisAttempt(db, 's1', 'bpm', 100);
+
+    const after = row('s1', 'bpm')!;
+    // A stamp that reset the count would let a broken file evade the cap forever.
+    expect(after.fail_count).toBe(before.fail_count);
+    expect(after.file_size).toBe(before.file_size);
+    expect(after.terminal).toBe(before.terminal);
+  });
+
+  it('does not resurrect a song already settled by a confident negative', () => {
+    seedSong('s1', 100);
+    recordAnalysisFailure(db, 's1', 'popularity', new Error('no listen data'), 100, true);
+    noteAnalysisAttempt(db, 's1', 'popularity', 100);
+
+    expect(row('s1', 'popularity')?.terminal).toBe(1);
+    expect(pendingIds('popularity')).toEqual([]);
   });
 });

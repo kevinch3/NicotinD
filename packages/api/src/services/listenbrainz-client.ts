@@ -126,7 +126,13 @@ export class ListenBrainzClient {
         return result; // leave uncached so a later pass retries
       }
       if (!res.ok) {
-        log.debug({ status: res.status }, 'ListenBrainz error');
+        // Warn, not debug: a 4xx here is our bug, not noise. A 400 on one invalid
+        // recording id rejects the whole batch, and at debug level that stalled
+        // popularity for months with nothing in the log to show it (issue #851).
+        log.warn(
+          { status: res.status, body: (await res.text().catch(() => '')).slice(0, 200) },
+          'ListenBrainz rejected the batch',
+        );
         return result;
       }
       const data = (await res.json()) as Array<{

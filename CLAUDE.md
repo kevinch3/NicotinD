@@ -337,6 +337,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   (`landed_at IS NULL`, hidden from listings) until its required steps finish; a per-task `gates` flag
   intersected with availability is the required set. `graduatePending`, `scanIncremental`,
   `kickEager`, `albumLoadFailureFor`. → [library-processing.md](docs/library-processing.md)
+- **A pool that cannot advance**: an un-ledgered failure mode plus a fixed pool order
+  livelocks a `LIMIT`-bounded task on its own head; every un-ledgered path stamps
+  `noteAnalysisAttempt` and every song pool orders on `leastRecentlyAttemptedOrderSql`.
+  Tag-sourced ids are shape-checked with core `isMbidShape` before any batch call.
+  → [library-processing.md](docs/library-processing.md), [popularity.md](docs/popularity.md)
 - **Perceptual audio features (no LLM)**: energy/loudness via ffmpeg ebur128; danceability, valence,
   mood, vocals, acousticness and cached embeddings from the Essentia sidecar; all written to file tags
   and COALESCE-preserved columns. `library_embeddings`, `embedding-store.ts`.

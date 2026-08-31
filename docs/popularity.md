@@ -72,17 +72,49 @@ the other optional fills:
 - **Batched**: it reads each pending song's `mbRecordingId` tag, groups songs
   sharing one, and sends all the MBIDs in a single `getListenCounts` call — a
   large backlog costs a handful of requests, not one per song.
-- **Three miss modes**, deliberately distinct:
+- **A tag is not a trusted MBID.** Every `mbRecordingId` is checked against core
+  `isMbidShape` before it is batched. This is not defensive tidiness: ListenBrainz
+  validates the whole request up front and rejects *all* of it on the first
+  invalid id, so one bad tag costs every song batched beside it. See
+  [The #851 livelock](#the-851-livelock).
+- **Four miss modes**, deliberately distinct:
   - *No recording MBID* → confident miss, ledgered-not-tallied via
     `NoConfidentResultError` (the file must be re-tagged/re-downloaded to change
     this, which resets the ledger).
+  - *Invalid recording MBID* (the tag holds something that is not a UUID) → the
+    same ledgered-not-tallied confident miss. Only a re-tag can change it.
   - *ListenBrainz confirmed no data* (a `null` count in the response) → same
     ledgered-not-tallied miss.
-  - *Transient failure* (429 / outage → the MBID is absent from the response
-    map) → **not** ledgered, so it retries next window. A misconfig or a
-    ListenBrainz hiccup can never permanently exclude a song — the same posture
-    as the sidecar 404/503 un-ledgered rule.
+  - *Transient failure* (429 / outage / a rejected batch → the MBID is absent
+    from the response map) → **never a strike**, so a hiccup cannot permanently
+    exclude a song. It is still stamped via `noteAnalysisAttempt`, which moves it
+    to the back of the pool without excluding it.
 - On a hit: `UPDATE … SET popularity, popularity_source` + `clearAnalysisFailure`.
+
+### The #851 livelock
+
+Un-ledgered-on-transient is the right rule, and `ORDER BY created DESC` is a
+reasonable pool order. Together they deadlock, and on prod they did:
+
+One album was ingested with Discogs refs (`5333377-B5`) in `MUSICBRAINZ_TRACKID`.
+Its tracks shared a `created` timestamp, so they sat together at the head of the
+pool. Every window batched at least one of them, ListenBrainz 400'd the whole
+batch, all 25 songs came back "transient", nothing was ledgered — and the next
+window selected the identical 25. The frontier froze with **half the library
+never examined once** (12,309 of 17,622 songs), coverage stuck at 3.1%, and the
+400 logged at `debug` so nothing in the log said why.
+
+Two independent things had to change, and both matter:
+
+1. Validate the tag, so a malformed id never reaches the batch (the cause).
+2. Stamp every un-ledgered failure via `noteAnalysisAttempt` and order the pool
+   on `leastRecentlyAttemptedOrderSql`, so no un-ledgered failure mode can pin
+   the head again (the class).
+
+Measured ceiling, sampling 250 never-examined songs and querying ListenBrainz
+directly: 137 have no MBID tag at all, 1 was malformed, and **110 of 250 (44%)
+return a real listen count**. Coverage was never structurally low — the tail had
+simply never been looked at.
 
 Admin panel: a "Popularity (ListenBrainz)" task toggle in Library processing.
 
@@ -90,8 +122,11 @@ Admin panel: a "Popularity (ListenBrainz)" task toggle in Library processing.
 
 `packages/api/src/scripts/backfill-popularity.ts` — dry-run by default, `--apply`
 writes the DB (no file-tag write, since popularity isn't tagged). Same shape as
-the other backfill scripts; resolves MBIDs from tags, batches the ListenBrainz lookup,
-reports scored / no-data / no-MBID-tag counts.
+the other backfill scripts; resolves MBIDs from tags, validates them, batches the
+ListenBrainz lookup, and reports scored / no-data / no-MBID-tag / invalid-MBID /
+missing-file counts. It skips ledgered songs via `notPermanentlyFailedClause`, and
+reports the retryable "not answered this run" count separately — without that line
+a run during an outage prints zeroes and reads as a no-op.
 
 ## Deliberately left as follow-ups
 

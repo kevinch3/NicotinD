@@ -68,6 +68,38 @@ describe('ListenBrainzClient', () => {
     expect(calls).toBe(1);
   });
 
+  it('loses the whole batch on a 400, so one invalid id must never reach it (issue #851)', async () => {
+    // ListenBrainz validates the request before doing any work: one malformed
+    // recording id rejects every id sent with it. The client cannot rescue that,
+    // which is why the caller validates the tag before batching.
+    const fetchFn = (async (_u: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { recording_mbids: string[] };
+      const bad = body.recording_mbids.find((m) => !/^[0-9a-f-]{36}$/.test(m));
+      if (bad) {
+        return new Response(
+          JSON.stringify({ code: 400, error: `recording_mbid ${bad} is not valid.` }),
+          {
+            status: 400,
+          },
+        );
+      }
+      return new Response(
+        JSON.stringify(
+          body.recording_mbids.map((m) => ({ recording_mbid: m, total_listen_count: 7 })),
+        ),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+    const client = new ListenBrainzClient({ fetchFn, sleep: noSleep, now: frozenClock });
+
+    const good = '98ddbc99-af41-4722-93ea-1db8e2433878';
+    const poisoned = await client.getListenCounts([good, '5333377-B5']);
+    expect(poisoned.size).toBe(0); // the well-formed id is lost with the bad one
+
+    const clean = await client.getListenCounts([good]);
+    expect(clean.get(good)).toBe(7); // ...and nothing was cached against it
+  });
+
   it('leaves a throttled MBID absent (not null) so a later pass retries it', async () => {
     let throttled = true;
     const fetchFn = (async (_u: string, init?: RequestInit) => {
