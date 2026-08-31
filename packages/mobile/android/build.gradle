@@ -38,6 +38,19 @@ allprojects {
             }
         }
     }
+
+    // The plugin asks for `osbarcode-android:1.1.+@aar`. A dynamic range is
+    // re-checked against the remote every cacheDynamicVersionsFor window, so a
+    // cached dependency does NOT make the build offline-safe: an OutSystems Azure
+    // outage still fails resolution and reddens the whole release run (v0.5.53,
+    // HTTP 503). Pinning the range to the version it already resolves to makes
+    // the APK reproducible and lets the CI gradle cache actually serve it.
+    // Bump deliberately; 1.1.5 is the highest 1.1.x published.
+    configurations.all {
+        resolutionStrategy {
+            force 'com.github.outsystems:osbarcode-android:1.1.5'
+        }
+    }
 }
 
 task clean(type: Delete) {

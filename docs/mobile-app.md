@@ -778,20 +778,28 @@ carry it — the first release with this feature must still be sideloaded manual
 ### `@capacitor/barcode-scanner` build requirements (root `build.gradle` + `variables.gradle`)
 
 The QR device-pairing plugin (`@capacitor/barcode-scanner`) pulls its native lib
-`com.github.outsystems:osbarcode-android` — and building it needs two things that broke the
-`android` release job when the plugin first landed (v0.1.222):
+`com.github.outsystems:osbarcode-android` — and building it needs three things, each of which has
+broken the `android` release job in production:
 
-- **An extra Maven repo.** Despite the `com.github.*` group name, osbarcode is **not** on JitPack,
+- **An extra Maven repo** (v0.1.222). Despite the `com.github.*` group name, osbarcode is **not** on JitPack,
   Google, or Maven Central — it lives on OutSystems' **Azure Artifacts** public feed. The plugin
   declares that repo in _its own_ `build.gradle`, but a subproject's repositories are **not**
   consulted when `:app` resolves its transitive runtime classpath — only the root `allprojects`
   repos are. So `android/build.gradle`'s `allprojects.repositories` must mirror it (scoped with
   `content { includeGroup 'com.github.outsystems' }` so nothing else routes through Azure).
-- **`minSdkVersion = 26`.** osbarcode declares `minSdk 26`; with the Capacitor default of 22 the
+- **`minSdkVersion = 26`** (v0.1.222). osbarcode declares `minSdk 26`; with the Capacitor default of 22 the
   manifest merger fails (_"minSdkVersion 22 cannot be smaller than version 26"_). Bumped in
   `variables.gradle` (drops Android < 8.0, forced by the merged QR feature).
+- **A pinned version** (v0.5.53). The plugin asks for `osbarcode-android:1.1.+@aar`. A dynamic range
+  makes Gradle fetch that feed's `maven-metadata.xml` to list versions on every resolution, so an
+  OutSystems outage fails the release even though nothing of ours changed — which is exactly what an
+  Azure Artifacts **HTTP 503** did to v0.5.53's `assembleRelease`. `allprojects.configurations.all`
+  in `android/build.gradle` forces `1.1.5` (the highest 1.1.x published, i.e. what the range already
+  selected — the pin changes nothing but determinism). Measured with `--refresh-dependencies --info`:
+  the metadata request to Azure is present without the force and absent with it, which is what lets
+  the `android` job's `~/.gradle/caches/modules-2` cache actually serve a re-run. Bump deliberately.
 
-Both were verified locally by `./gradlew :app:assembleDebug` (unsigned; exercises the same
+The first two were verified locally by `./gradlew :app:assembleDebug` (unsigned; exercises the same
 dependency resolution + manifest merge as `assembleRelease`) producing a working APK. CI only
 surfaced the repo error first because it fails at dependency resolution before the manifest merge.
 

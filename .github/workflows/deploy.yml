@@ -157,6 +157,22 @@ jobs:
 
       - uses: android-actions/setup-android@v4
 
+      # Gradle resolves the phone AND tv assembleRelease classpaths over the
+      # network otherwise. One of those deps (osbarcode-android) is served only
+      # by OutSystems' Azure feed, whose 503 broke the v0.5.53 release. Caching
+      # the module store lets a re-run resolve offline; the pinned version in
+      # packages/mobile/android/build.gradle is what makes that cache authoritative
+      # (a dynamic range would re-check the remote regardless of the cache).
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('packages/mobile/android/**/*.gradle', 'packages/mobile/android/gradle/wrapper/gradle-wrapper.properties', 'bun.lock') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
       - name: Install dependencies
         run: bun install
 
