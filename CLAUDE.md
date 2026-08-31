@@ -362,6 +362,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `loadGeneration`, bounded by `MAX_RECOVERY_ATTEMPTS` with both gates falling back to
   `FALSE_ENDED_ABSOLUTE_FLOOR_SEC` when the known duration is missing; the valve resumes where the
   listener was, never at 0. → [web-ui.md](docs/web-ui.md)
+- **A dead stream is reloaded, not abandoned**: a media `error` — or a stall that raises nothing at
+  all — reloads the track and resumes where it stopped, bounded by `MAX_RECOVERY_ATTEMPTS`, while an
+  outage holds the intent until the network returns. `recoverFromDeadStream`, `armStallWatchdog`,
+  `STREAM_STALL_TIMEOUT_MS`, `holdPausedState`, `parkedGeneration`. → [web-ui.md](docs/web-ui.md)
 - **A seek is an intent, not a poke**: a forward seek past the loaded region is held and applied once
   `audio.seekable` covers it, never assigned and silently clamped into a false `ended`.
   `pendingSeek`, `requestSeek`, `applyPendingSeek`, `seekTargetIsAvailable`,

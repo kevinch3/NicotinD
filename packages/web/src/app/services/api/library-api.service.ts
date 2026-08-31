@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { type Observable, of, map, catchError, tap } from 'rxjs';
+import { type Observable, of, map, catchError, tap, timeout } from 'rxjs';
 import { createCachedObservable } from '../../lib/cached-observable';
 import type {
   SongAcquisition,
@@ -23,6 +23,13 @@ import type { MaintenanceStatus } from './api-types';
 import type { WaveformData } from '../../../types/core';
 
 type QueryParams = Record<string, string | number | boolean | string[]>;
+
+/**
+ * How long the silent artist-info auto-fetch may hold a connection. Matches the
+ * interceptor's GET budget: it is opportunistic enrichment, not something the
+ * page is waiting to render.
+ */
+const AUTO_FETCH_TIMEOUT_MS = 30_000;
 
 /** Merge the standardized filter's query params into a request's params. */
 function withFilter(params: QueryParams, filter?: LibraryFilter): QueryParams {
@@ -339,10 +346,25 @@ export class LibraryApiService {
    * re-query (the auto-fetch is naturally a one-shot per artist).
    */
   autoFetchArtistInfo(id: string) {
-    return this.http.post<ArtistInfoResponse>(
-      `/api/library/artists/${encodeURIComponent(id)}/auto-fetch-info`,
-      {},
-    );
+    return this.http
+      .post<ArtistInfoResponse>(
+        `/api/library/artists/${encodeURIComponent(id)}/auto-fetch-info`,
+        {},
+      )
+      .pipe(
+        // Bounded like a read, unlike the POSTs the interceptor deliberately
+        // leaves unbounded (rescans, uploads). Nothing here is interactive —
+        // the server resolves an MBID through Lidarr, corroborates it against
+        // MusicBrainz and then asks the metadata plugin, any of which can hang
+        // for as long as those hosts take. A browser allows only a handful of
+        // connections per origin, and the audio stream needs one of them every
+        // time the media element re-opens its range request, so an enrichment
+        // request left waiting on a third party can end up starving playback
+        // on the page that fired it. Giving up on the *response* costs
+        // nothing: the server still finishes and stores (or tombstones) the
+        // bio, and the next visit reads it.
+        timeout(AUTO_FETCH_TIMEOUT_MS),
+      );
   }
 
   /** Hand-edit an artist's bio/links — locks the background task out (curator). */

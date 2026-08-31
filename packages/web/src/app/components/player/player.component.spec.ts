@@ -6,6 +6,8 @@ import {
   PlayerComponent,
   browserDurationIsAcceptable,
   MAX_RECOVERY_ATTEMPTS,
+  MEDIA_ERROR_RETRY_MS,
+  STREAM_STALL_TIMEOUT_MS,
   LOAD_SETTLE_MS,
   PENDING_SEEK_TIMEOUT_MS,
 } from './player.component';
@@ -588,6 +590,153 @@ describe('PlayerComponent', () => {
       release(104);
 
       expect(router.navigate).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── Dead-stream recovery (playback stops with nothing to restart it) ──────
+
+  describe('dead-stream recovery', () => {
+    // A stream that dies mid-playback used to be terminal: `error` only cleared
+    // the spinner, and a stall raised nothing at all, so the store kept saying
+    // "playing" over silence until the user pressed play again.
+    const knownTrack: Track = {
+      id: 't1',
+      title: 'Test Track',
+      artist: 'Test Artist',
+      duration: 240,
+    };
+
+    function loadAndPlay(atSecond = 42): void {
+      playerService.currentTrack.set(knownTrack);
+      fixture.detectChanges();
+      playerService.isPlaying.set(true);
+      Object.defineProperty(fakeAudio, 'currentTime', { value: atSecond, configurable: true });
+      mockPlay.mockClear();
+    }
+
+    it('reloads the stream and resumes where the listener was when the element errors', () => {
+      vi.useFakeTimers();
+      loadAndPlay(42);
+
+      fakeAudio.dispatchEvent(new Event('error'));
+      // The retry is announced immediately (spinner), then runs after the backoff.
+      expect(playerService.buffering()).toBe(true);
+      expect(mockPlay).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(MEDIA_ERROR_RETRY_MS + 10);
+
+      expect(mockPlay).toHaveBeenCalled();
+      expect(fakeAudio.src).toContain('/api/stream/t1');
+      // Resumes at the interruption, not at 0 — onDuration replays this.
+      expect(playerService.restoredTime).toBe(42);
+      vi.useRealTimers();
+    });
+
+    it('does not resurrect a stream the user paused', () => {
+      vi.useFakeTimers();
+      loadAndPlay(42);
+      playerService.isPlaying.set(false);
+      mockPlay.mockClear();
+
+      fakeAudio.dispatchEvent(new Event('error'));
+      vi.advanceTimersByTime(MEDIA_ERROR_RETRY_MS + 10);
+
+      expect(mockPlay).not.toHaveBeenCalled();
+      expect(playerService.restoredTime).toBeNull();
+      vi.useRealTimers();
+    });
+
+    it('stops claiming to play once the retry budget is spent', () => {
+      vi.useFakeTimers();
+      loadAndPlay(42);
+
+      for (let i = 0; i < MAX_RECOVERY_ATTEMPTS; i++) {
+        fakeAudio.dispatchEvent(new Event('error'));
+        vi.advanceTimersByTime(MEDIA_ERROR_RETRY_MS + 10);
+      }
+      expect(playerService.isPlaying()).toBe(true); // still trying
+
+      // One failure past the allowance: the resource is genuinely unreachable,
+      // so the UI must say paused rather than lie about playing.
+      fakeAudio.dispatchEvent(new Event('error'));
+
+      expect(playerService.isPlaying()).toBe(false);
+      expect(playerService.buffering()).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('recovers a stall that never raises an error', () => {
+      vi.useFakeTimers();
+      loadAndPlay(10);
+
+      // The silent failure: the element parks on `waiting` and never asks for
+      // another byte.
+      fakeAudio.dispatchEvent(new Event('waiting'));
+      vi.advanceTimersByTime(STREAM_STALL_TIMEOUT_MS + 10);
+      vi.advanceTimersByTime(MEDIA_ERROR_RETRY_MS + 10);
+
+      expect(mockPlay).toHaveBeenCalled();
+      // `restoredTime` is written by the reload and nothing else here, so it
+      // is the assertion that the *recovery* ran rather than the play/pause
+      // sync effect flushing under the fake clock.
+      expect(playerService.restoredTime).toBe(10);
+      vi.useRealTimers();
+    });
+
+    it('leaves a slow-but-alive load alone', () => {
+      vi.useFakeTimers();
+      loadAndPlay(10);
+
+      fakeAudio.dispatchEvent(new Event('waiting'));
+      // Bytes land: the clock advances before the watchdog window is out.
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 12, configurable: true });
+      fakeAudio.dispatchEvent(new Event('timeupdate'));
+      vi.advanceTimersByTime(STREAM_STALL_TIMEOUT_MS + MEDIA_ERROR_RETRY_MS + 20);
+
+      // No reload: the watchdog was disarmed by the progress it was watching for.
+      expect(playerService.restoredTime).toBeNull();
+      vi.useRealTimers();
+    });
+
+    it('waits for the network rather than dropping the track when the stream dies offline', () => {
+      vi.useFakeTimers();
+      loadAndPlay(42);
+      netOnline.set(false);
+
+      fakeAudio.dispatchEvent(new Event('error'));
+      vi.advanceTimersByTime(MEDIA_ERROR_RETRY_MS + 10);
+
+      // A tunnel is not a reason to lose the track: the intent (and the
+      // spinner) are held, and no retry is spent against a dead radio.
+      expect(playerService.currentTrack()).toEqual(knownTrack);
+      expect(playerService.buffering()).toBe(true);
+      expect(playerService.restoredTime).toBeNull();
+
+      netOnline.set(true);
+      fixture.detectChanges(); // the reconnect effect runs
+      vi.advanceTimersByTime(MEDIA_ERROR_RETRY_MS + 10);
+
+      expect(playerService.restoredTime).toBe(42);
+      vi.useRealTimers();
+    });
+
+    it('ignores the error raised by parking the element (offline stop)', () => {
+      vi.useFakeTimers();
+      loadAndPlay(42);
+      // Offline + not preserved: the load path parks the element deliberately.
+      netOnline.set(false);
+      playerService.play(TRACK_2);
+      fixture.detectChanges();
+      mockPlay.mockClear();
+
+      // Assigning `src = ''` raises `error` in a real browser. Recovering from
+      // it would re-point the element at audio the app just decided to stop.
+      fakeAudio.dispatchEvent(new Event('error'));
+      vi.advanceTimersByTime(MEDIA_ERROR_RETRY_MS + 10);
+
+      expect(mockPlay).not.toHaveBeenCalled();
+      expect(playerService.restoredTime).toBeNull();
+      vi.useRealTimers();
     });
   });
 

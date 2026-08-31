@@ -621,6 +621,7 @@
   "nowPlaying.unmuteVocals": "Activar voz",
   "player.like": "Me gusta",
   "player.openNowPlaying": "Abrir Reproduciendo ahora",
+  "player.streamInterrupted": "La reproducción de «{title}» se interrumpió: se cortó la conexión",
   "player.unavailableOffline": "\"{title}\" no está disponible sin conexión",
   "player.unlike": "Quitar me gusta",
   "poll.closed": "Esta encuesta está cerrada.",

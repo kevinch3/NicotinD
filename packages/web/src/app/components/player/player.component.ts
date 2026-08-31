@@ -76,6 +76,33 @@ export const FALSE_ENDED_ABSOLUTE_FLOOR_SEC = 3;
 export const MAX_RECOVERY_ATTEMPTS = 3;
 
 /**
+ * How long to wait before re-pointing the element at a stream the browser gave
+ * up on.
+ *
+ * A media `error` almost always means the transfer died, not that the resource
+ * is gone — a socket the network dropped, a connection the WebView could not
+ * re-open while a page's request burst held every one it had, a server that
+ * blinked. Retrying in the same tick would re-run straight into whatever is
+ * still busy; a short pause costs the listener nothing and turns most of these
+ * into an unnoticed hiccup.
+ */
+export const MEDIA_ERROR_RETRY_MS = 1_000;
+
+/**
+ * How long playback may make no progress at all before the stream is treated
+ * as dead and reloaded.
+ *
+ * A dropped stream does NOT reliably raise `error`: the element frequently just
+ * parks on `waiting`/`stalled` and never asks for another byte, which is the
+ * silent half of "the music stopped" — the store still says playing, the
+ * position is frozen, and nothing in the app ever retries. The threshold is
+ * deliberately far above a slow first load (an HDD spin-up plus a server-side
+ * transcode is seconds, not tens of seconds), so a legitimately slow load is
+ * never mistaken for a dead one.
+ */
+export const STREAM_STALL_TIMEOUT_MS = 20_000;
+
+/**
  * How long a burst of track changes is allowed to settle before the player
  * actually fetches anything.
  *
@@ -336,6 +363,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       // NOT reset when a recovery succeeds: that's the same resource, and
       // refreshing its budget there lets a flaky one recover indefinitely.
       this.recoveryAttempts = 0;
+      this.retryOnReconnect = false;
+      this.recoveringStream = false;
       this.player.setCurrentTime(0);
       this.player.setDuration(track.duration ?? 0);
       // New load beginning — flag it before any bytes move so track rows and
@@ -594,6 +623,22 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       rafId = requestAnimationFrame(tick);
       onCleanup(() => cancelAnimationFrame(rafId));
     });
+
+    // Effect 9: resume a stream the network killed, the moment it comes back.
+    //
+    // Reads the monotonic `reconnects` counter as well as `online`, for the
+    // reason NetworkStatusService documents: signals coalesce, so a fast
+    // offline→online pair (a lift, a tunnel, a cell handover — the everyday
+    // failure this recovery is for) leaves `online` looking unchanged and the
+    // edge invisible.
+    effect(() => {
+      this.network.reconnects();
+      const online = this.network.online();
+      const audio = this.audioEl()?.nativeElement;
+      if (!online || !audio || !this.retryOnReconnect) return;
+      this.retryOnReconnect = false;
+      untracked(() => this.recoverFromDeadStream(audio, this.loadGeneration));
+    });
   }
 
   private handlePlayRejection(): void {
@@ -645,7 +690,14 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     this.pausingByStore = true;
     audio.pause();
     this.pausingByStore = false;
+    this.clearMediaRetryTimeout();
+    this.clearStallTimeout();
+    this.retryOnReconnect = false;
+    this.recoveringStream = false;
     this.assignSource(audio, '');
+    // Assigning an empty src raises `error` on the element: mark the parked
+    // generation so dead-stream recovery ignores it (see `parkedGeneration`).
+    this.parkedGeneration = this.loadGeneration;
     this.player.setBuffering(false);
     this.player.setBufferedRanges([]);
   }
@@ -830,6 +882,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       clearTimeout(this.backgroundPauseTimer);
       this.backgroundPauseTimer = null;
     }
+    // The stall watchdog belongs to the load being replaced. (The reload timer
+    // does not: it is the one thing that legitimately outlives its own bind,
+    // and it carries its own generation check.)
+    this.clearStallTimeout();
 
     // Capture the load generation at bind time. Every handler below closes
     // over this number and bails if `loadGeneration` has moved on (the standby
@@ -841,6 +897,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     const onTime = () => {
       if (boundGen !== this.loadGeneration) return;
       const value = audio.currentTime;
+      // The clock advancing is proof the stream is alive; disarm the watchdog
+      // rather than let it fire against a load that merely started slowly.
+      if (this.stallTimeout !== null && value > this.stallWatchFrom + 0.5) this.clearStallTimeout();
       if (Number.isFinite(value) && value >= 0) {
         this.player.setCurrentTime(value);
         this.tracker.progress(value);
@@ -1070,7 +1129,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     };
     const onPause = () => {
       if (boundGen !== this.loadGeneration) return;
-      if (this.pausingByStore) return;
+      if (this.pausingByStore || this.recoveringStream) return;
       if (document.visibilityState === 'hidden') {
         this.resumePendingAfterVisible = this.player.isPlaying();
         return;
@@ -1079,6 +1138,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       // OS yanks audio focus. Defer committing the pause so visibilitychange arrives first.
       this.backgroundPauseTimer = setTimeout(() => {
         this.backgroundPauseTimer = null;
+        if (this.recoveringStream) return;
         if (document.visibilityState === 'hidden') {
           this.resumePendingAfterVisible = this.player.isPlaying();
         } else if (this.player.isPlaying()) {
@@ -1090,6 +1150,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     const onWaiting = () => {
       if (boundGen !== this.loadGeneration) return;
       this.player.setBuffering(true);
+      this.armStallWatchdog(audio, boundGen);
     };
     const onSeeking = () => {
       if (boundGen !== this.loadGeneration) return;
@@ -1105,15 +1166,20 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     // stalled also fires on harmless network hiccups while plenty is buffered —
     // only treat it as buffering when playback genuinely can't proceed.
     const onStalled = () => {
-      if (audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) this.player.setBuffering(true);
+      if (audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+        this.player.setBuffering(true);
+        this.armStallWatchdog(audio, boundGen);
+      }
     };
     const onPlaying = () => {
       if (boundGen !== this.loadGeneration) return;
       this.player.setBuffering(false);
+      this.clearStallTimeout();
     };
     const onCanPlay = () => {
       if (boundGen !== this.loadGeneration) return;
       this.player.setBuffering(false);
+      this.clearStallTimeout();
       this.applyPendingSeek(audio);
       // `canplay` is a coarser signal than `durationchange` but it's the
       // earliest event that proves the browser has enough bytes to play —
@@ -1139,6 +1205,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     const onError = () => {
       if (boundGen !== this.loadGeneration) return;
       this.player.setBuffering(false);
+      // Not the end of the story: the transfer died, and the resource is
+      // almost always still there. Reload it and resume (bounded) rather than
+      // leaving a player that claims to be playing silence.
+      this.recoverFromDeadStream(audio, boundGen);
     };
     const onProgress = () => {
       if (boundGen !== this.loadGeneration) return;
@@ -1240,6 +1310,157 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     return true;
   }
 
+  // ─── Dead-stream recovery ────────────────────────────────────────────────
+  // The false-ended flow above handles a stream that ends *too early*. This one
+  // handles a stream that stops delivering altogether: the element raises
+  // `error`, or simply parks on `waiting` and never asks for another byte. Both
+  // used to be terminal — `onError` only cleared the spinner — so a transfer
+  // the network dropped left the player silently dead while the store still
+  // said "playing" and the seek bar sat frozen. Nothing retried, and only a
+  // manual press brought the music back.
+
+  /** Backoff timer for the pending stream reload. */
+  private mediaRetryTimeout: ReturnType<typeof setTimeout> | null = null;
+  /** Watchdog for a stream that stopped progressing without raising `error`. */
+  private stallTimeout: ReturnType<typeof setTimeout> | null = null;
+  /** `currentTime` when the watchdog was armed — progress past it means alive. */
+  private stallWatchFrom = 0;
+  /**
+   * The load generation `teardownAudio` parked. Assigning `src = ''` raises
+   * `error` on the element, and that error must never be read as a stream to
+   * recover — recovering a parked element would re-point it at audio the app
+   * just decided to stop (and, offline, would re-enter `stopForOffline`
+   * forever).
+   */
+  private parkedGeneration = -1;
+  /** A dead stream waiting for the network to come back (see Effect 9). */
+  private retryOnReconnect = false;
+  /**
+   * True while a dead-stream reload owns the element's paused state.
+   *
+   * A fatal media error pauses the element itself, and `onPause` would commit
+   * that to the store ~250 ms later — before the reload runs, and against an
+   * intent the listener never withdrew. The recovery then found `isPlaying`
+   * already false and stood down, which is precisely the "it just stops" this
+   * whole path exists to remove.
+   */
+  private recoveringStream = false;
+
+  /**
+   * Take ownership of the element's paused state for the length of a recovery:
+   * the `pause` the failure itself raises must not reach the store, and a
+   * deferred one already in flight must not land either.
+   */
+  private holdPausedState(): void {
+    this.recoveringStream = true;
+    if (this.backgroundPauseTimer !== null) {
+      clearTimeout(this.backgroundPauseTimer);
+      this.backgroundPauseTimer = null;
+    }
+  }
+
+  private clearMediaRetryTimeout(): void {
+    if (this.mediaRetryTimeout !== null) {
+      clearTimeout(this.mediaRetryTimeout);
+      this.mediaRetryTimeout = null;
+    }
+  }
+
+  private clearStallTimeout(): void {
+    if (this.stallTimeout !== null) {
+      clearTimeout(this.stallTimeout);
+      this.stallTimeout = null;
+    }
+  }
+
+  /**
+   * Watch a stream that has stopped delivering. Armed by `waiting`/`stalled`,
+   * disarmed the moment a byte lands (`playing`/`canplay`/`timeupdate`), so it
+   * only ever fires for a load that made no progress for the whole window.
+   */
+  private armStallWatchdog(audio: HTMLAudioElement, boundGen: number): void {
+    if (this.stallTimeout !== null) return;
+    if (!untracked(() => this.player.isPlaying())) return;
+    this.stallWatchFrom = audio.currentTime;
+    this.stallTimeout = setTimeout(() => {
+      this.stallTimeout = null;
+      if (boundGen !== this.loadGeneration) return;
+      // A seek in flight, or the false-ended valve mid-flight, owns the
+      // element's silence and has its own bounded resolution. Don't race them.
+      if (audio.seeking) return;
+      if (untracked(() => this.player.recoveryState()) === 'awaiting-duration') return;
+      if (audio.currentTime > this.stallWatchFrom + 0.5) return;
+      this.recoverFromDeadStream(audio, boundGen);
+    }, STREAM_STALL_TIMEOUT_MS);
+  }
+
+  /**
+   * Re-point the element at the same track and resume where the listener was.
+   *
+   * Bounded by the same `MAX_RECOVERY_ATTEMPTS` allowance as the false-ended
+   * flow (one budget per resource, reset when a new one loads), so a track
+   * whose bytes are genuinely unreachable cannot retry forever. When the budget
+   * is spent the player pauses for real: a paused player the user can restart
+   * is honest, a "playing" one with no sound is not.
+   */
+  private recoverFromDeadStream(audio: HTMLAudioElement, boundGen: number): void {
+    if (boundGen !== this.loadGeneration) return;
+    if (this.loadGeneration === this.parkedGeneration) return;
+    if (this.mediaRetryTimeout !== null) return; // a reload is already pending
+    if (!untracked(() => this.player.isPlaying())) return; // paused: nothing to save
+    if (!this.isActiveDevice()) return; // a remote device owns playback
+    const track = untracked(() => this.player.currentTrack());
+    if (!track) return;
+
+    // A truncated preserved blob has a better cure than a reload of itself:
+    // drop the poisoned entry and swap to the network stream.
+    if (this.recoverFromTruncatedBlob(audio)) return;
+    if (untracked(() => !this.network.online())) {
+      // The bytes are not coming back until the network does. Retrying now
+      // would burn the budget against a dead radio, and tearing the track down
+      // would punish exactly the case this recovery exists for — a phone that
+      // loses signal for a few seconds. Hold the intent and let the reconnect
+      // effect resume it.
+      this.retryOnReconnect = true;
+      this.holdPausedState();
+      this.player.setBuffering(true);
+      return;
+    }
+    if (this.recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
+      this.clearStallTimeout();
+      this.recoveringStream = false;
+      this.player.setBuffering(false);
+      this.player.pause();
+      this.toast.show({
+        message: this.i18n.t('player.streamInterrupted', { title: track.title }),
+        kind: 'error',
+      });
+      return;
+    }
+
+    this.recoveryAttempts += 1;
+    const resumeAt = audio.currentTime;
+    this.clearStallTimeout();
+    this.holdPausedState();
+    this.player.setBuffering(true);
+    this.mediaRetryTimeout = setTimeout(() => {
+      this.mediaRetryTimeout = null;
+      this.recoveringStream = false;
+      if (boundGen !== this.loadGeneration) return;
+      if (!untracked(() => this.player.isPlaying())) {
+        this.player.setBuffering(false);
+        return;
+      }
+      // Same restore mechanism as the vocal-mute reload: `onDuration` replays
+      // `restoredTime` once the new load reports a sane duration, so the
+      // listener lands where the stream died instead of back at 0.
+      if (Number.isFinite(resumeAt) && resumeAt > 1) this.player.restoredTime = resumeAt;
+      const vocalsOff = untracked(() => this.player.vocalsMuted());
+      this.assignSource(audio, this.server.streamUrl(track.id, this.auth.token(), { vocalsOff }));
+      this.playIfIntended(audio);
+    }, MEDIA_ERROR_RETRY_MS);
+  }
+
   /** The timer handle for the false-ended recovery fallback (5 s). */
   private recoveryTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -1304,6 +1525,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     this.audioListenerCleanups.forEach((fn) => fn());
     if (this.backgroundPauseTimer !== null) clearTimeout(this.backgroundPauseTimer);
     this.clearRecoveryTimeout();
+    this.clearMediaRetryTimeout();
+    this.clearStallTimeout();
     this.clearPendingSeekTimeout();
     if (this.progressReportInterval) clearInterval(this.progressReportInterval);
     if (this.rafId) cancelAnimationFrame(this.rafId);
