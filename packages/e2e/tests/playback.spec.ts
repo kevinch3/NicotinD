@@ -140,4 +140,46 @@ test.describe('playback', () => {
       });
     }
   });
+
+  // Regression for "the music just stops": a transfer that dies leaves the
+  // <audio> element with an `error` and nothing else. That used to be terminal
+  // — the handler only cleared the spinner, so the store still said playing
+  // while there was silence, and only a manual press brought it back. The
+  // player now reloads the stream (bounded) and resumes.
+  //
+  // The failure is injected as a real aborted request rather than a synthetic
+  // event: it is the browser's own media pipeline that has to raise the error
+  // for this wiring to be worth anything.
+  test('a stream whose transfer dies is retried instead of leaving the player dead', async ({
+    page,
+  }) => {
+    let aborted = 0;
+    await page.route('**/api/stream/**', async (route) => {
+      if (aborted === 0) {
+        aborted++;
+        await route.abort('connectionreset');
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto('/library');
+    await openAlbumCard(page, FIXTURE.album.title);
+    await page.getByTestId('play-album').click();
+
+    // The first transfer is killed; the retry is what gets audio moving.
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() =>
+            Array.from(document.querySelectorAll('audio')).some(
+              (a) => !a.paused && a.currentTime > 0,
+            ),
+          ),
+        { timeout: 20_000, intervals: [250, 500] },
+      )
+      .toBe(true);
+
+    expect(aborted, 'the injected failure actually happened').toBe(1);
+  });
 });

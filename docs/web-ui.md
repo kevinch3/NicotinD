@@ -686,6 +686,63 @@ Regression coverage: `preserve.service.spec.ts` `store-time truncation gate` +
 `false ended while sourced from a preserved blob (truncated store)` block (heal path, offline
 fallback, allowance exhaustion, stream-sourced false endeds leaving the preservation alone).
 
+## A stream that dies is reloaded, not abandoned
+
+**The bug.** "The music just stops." A transfer that dies mid-track — a socket the network dropped,
+a connection the WebView could not re-open while a page's request burst held the ones it had, a
+server that blinked — reached the app in one of two shapes, and *neither* was handled:
+
+1. **`error`.** The handler cleared the buffering flag and returned. Nothing retried. The store
+   still said `isPlaying`, so the mini-player kept showing a pause button over silence, the seek bar
+   sat frozen, and only a manual press brought the track back.
+2. **Nothing at all.** The element parks on `waiting`/`stalled` and never asks for another byte.
+   That path raised no event the player acted on, so it was the same dead end without even an error
+   to look at afterwards.
+
+Mobile is where this actually bites: a phone changing cells, or a page firing a burst of requests
+against the handful of connections a browser keeps per origin, is an everyday event on Android and
+a rarity on a desktop talking to localhost — which is why it reads as "playback stops when I open
+*this* page" rather than as a network fault.
+
+**The fix** (`recoverFromDeadStream`, `player.component.ts`), reached from `error` and from the
+stall watchdog alike:
+
+- **Reload and resume.** After `MEDIA_ERROR_RETRY_MS` (retrying in the same tick would only re-run
+  into whatever is still busy) the element is re-pointed at the same track and the position is
+  handed to `player.restoredTime`, so the listener lands where the stream died rather than at 0 —
+  the same restore mechanism the vocal-mute toggle uses.
+- **The stall watchdog** (`armStallWatchdog`, `STREAM_STALL_TIMEOUT_MS`). Armed by
+  `waiting`/`stalled`, disarmed by the first byte that moves the clock (`playing`/`canplay`/
+  `timeupdate`), so it only ever fires for a load that made no progress for the whole window. The
+  threshold sits far above a slow first load — an HDD spin-up plus a server-side transcode is
+  seconds, not tens of seconds — and it stands down while a seek or the false-ended valve is in
+  flight, since both own the element's silence and resolve on their own bounded clocks.
+- **The failure's own `pause` is suppressed** (`recoveringStream`, `holdPausedState`). A fatal media
+  error pauses the element, and `onPause` would commit that to the store 250 ms later — before the
+  reload runs, and against an intent the listener never withdrew. The first version of this fix
+  stood down for exactly that reason: the retry fired, found `isPlaying` already false, and did
+  nothing.
+- **Offline holds the intent instead of dropping the track** (`retryOnReconnect` + the reconnect
+  effect). The bytes are not coming back until the network is, so no retry is spent against a dead
+  radio and nothing is torn down; the reconnect effect resumes it. It reads the monotonic
+  `reconnects` counter as well as `online` for the reason `NetworkStatusService` documents — signals
+  coalesce, so a fast offline→online pair (a tunnel, a lift, a cell handover) is invisible in
+  `online` alone, and that pair is precisely this case.
+- **Bounded, and honest when the bound is reached.** Retries count against the same
+  `MAX_RECOVERY_ATTEMPTS` allowance as the false-ended flow (one budget per resource, reset when a
+  new one loads). When it is spent the player *pauses for real* and toasts
+  `player.streamInterrupted`: a paused player the user can restart is honest, a "playing" one with
+  no sound is not.
+- **A parked element is not a dead stream** (`parkedGeneration`). `teardownAudio` assigns `src = ''`,
+  which raises `error` on the element. Recovering from that would re-point it at audio the app just
+  decided to stop — and, offline, would re-enter `stopForOffline` forever.
+
+Regression coverage: `player.component.spec.ts` `dead-stream recovery` block (reload-and-resume,
+paused intent, allowance exhaustion, watchdog fire, slow-but-alive load, offline hold + reconnect
+resume, parked element); `packages/e2e/tests/playback.spec.ts` aborts a real stream request in
+Chromium — it is the browser's own media pipeline that has to raise the error for this wiring to be
+worth anything.
+
 ## Seeking past the loaded region
 
 **The bug.** Drag the seek bar forward on a track that has not finished

@@ -621,6 +621,7 @@
   "nowPlaying.unmuteVocals": "Unmute vocals",
   "player.like": "Like",
   "player.openNowPlaying": "Open Now Playing",
+  "player.streamInterrupted": "Playback of \"{title}\" was interrupted — the connection dropped",
   "player.unavailableOffline": "\"{title}\" isn't available offline",
   "player.unlike": "Unlike",
   "poll.closed": "This poll is closed.",
