@@ -94,6 +94,13 @@ amortize every search over an artist or a cluster.**
 Propagate from siblings only where **≥2 tagged siblings agree** — a lone sibling
 propagates one mistag.
 
+**And only where the siblings are independent.** Check `suffix`/`bitRateKbps` before
+counting them: 11 tracks that are all mp3 320 from one rip carrying one blanket
+album-level genre are **n=1, not n=11**. Green Velvet *Unshakable* read 11×`Techno` that
+way, while the 2 stragglers were opus from a different rip — and a third copy of one of
+those tracks disagreed outright (`Tech House`). A uniform genre across a uniform format
+is one source's tag, not a majority.
+
 Then, and only then, spend a search:
 
 1. **Triage first.** Singleton artist (one album, one song) with no `mbid` and no
@@ -179,6 +186,10 @@ One call plus its `detail` diagnosed it; a retry loop would have burned the pass
   kept copy lacks.
 - **Mid-ingest, suspend destructive work.** A "duplicate" during an ingest can be an
   in-flight partial. `list_recent_songs` detects arrivals; wait for them to stop.
+  Read **`landedAt` clustering, never the row count**: song ids are `sha1(path)`, so a
+  reorganize or transcode re-mints every id and the whole library reads as "just landed".
+  One identical `landedAt` across a page of long-owned catalogue is a re-land, not an
+  arrival — and a genuine arrival is a page of *distinct*, recent timestamps.
 
 ## Reading the health report honestly
 

@@ -1393,3 +1393,139 @@ diagnosis of the session.
 **The lesson is about the alarm, not the number.** "426 rows vanished" and "a deferred sweep
 retired rows for music deleted last week" are the same measurement. The difference was four probes,
 and the decisive one was the cheapest: counting audited deletes.
+
+### Session 7 (2026-08-31) — a flag that fixed itself, and the durability mechanism that is not durable
+
+**Baseline** (prod, after the v0.5.52/v0.5.53 deploys): 3,185 artists / 5,739 albums / 17,622 songs;
+audit high 68; genres.missing 228; 1 open flag (#18); misSplitAlbums 9.
+
+**Final**: 3,177 artists / 5,732 albums / 17,495 songs; audit high 67; genres.missing 228; **0 open
+flags**; misSplitAlbums 8.
+
+| dimension | before | after | delta |
+| --- | ---: | ---: | ---: |
+| open review flags | 1 | 0 | −1 |
+| missplit albums | 9 | 8 | −1 |
+| albums | 5,739 | 5,732 | −7 |
+| artists | 3,185 | 3,177 | −8 |
+| audit high | 68 | 67 | −1 |
+| years missing | 194 | 193 | −1 |
+| genres.missing | 228 | 228 | 0 |
+
+#### The +525 songs at baseline were not an ingest
+
+`list_recent_songs` showed 30 rows sharing **one identical `landedAt`**, all of them long-owned
+catalogue (*Pescado 2*, *Freaky Styley*, *El Mal Querer*). Song ids are `sha1(path)`, so a
+reorganize re-mints every id and the whole library reads as "just landed". **`landedAt` clustering,
+not row count, is the honest test for "did something arrive"** — and the answer decided whether
+destructive work was safe to start.
+
+#### Flag #18 was resolved by a deploy, not by curation
+
+#817 shipped as `782c5e30 fix(scanner): honour the per-track ARTIST tag, pinning ownership to the
+album` (v0.5.52). Re-reading the album afterwards, **all 13 Green Velvet collaborator credits were
+present, with zero writes from this session.**
+
+Three things worth keeping:
+
+- The flag's premise — *"the fragments are the library's ONLY carrier of 7 of the 13 credits"* — was
+  drawn from a **DB read**, and the DB was the lossy layer. The file tags had every credit all
+  along; the scanner was discarding them. **A conclusion is only as good as the reader that produced
+  it**, and the flag's whole do-not-delete recommendation rested on that one bad read.
+- The flag's **filed root cause was wrong again** (it proposed a `library_metadata_overrides` row;
+  the real cause was per-track ARTIST being discarded unless albumArtist is Various Artists). That is
+  #710, #762, #817, #819 and #851's pattern. The flag did mark it "NOT confirmed", which is the only
+  reason it cost nothing.
+- Its one *inferred* credit was right: Check U Out now reads **Green Velvet & Gant Garrard**, and
+  Gant Garrard is DJ Gant-Man's real name. Inference correctly labelled as inference, later confirmed
+  by evidence, is the system working.
+
+#### The 7 fragments: deleted, after proving duplication on both ids
+
+All 7 `Unshakable` fragment albums were verified against their main-album counterparts with
+`identify_song` — **14 calls, 14 matches, and every pair shared BOTH `acoustId` and `recordingId`**
+(scores 0.97–1.0). Only then deleted. Main album re-read after: 13 tracks intact.
+
+Note the quality direction: the fragments were opus ~184–207 (transcodes of the original FLACs) and
+the main-album tracks are mp3 320, so this was **not** "keep the better copy" — it was a wash between
+two lossy encodes, and the tie was broken by the main album being the coherent release. Recorded
+because the very next cluster inverts it.
+
+#### Sibling agreement is only evidence when the siblings are independent
+
+Two tracks still carry the literal label `Relief Records` as their genre. The album's other 11 read
+`Techno`, which looks like an overwhelming sibling majority — and propagating it would have been a
+mistag. Those 11 are **all mp3 320 from one rip carrying one blanket album-level genre**; the 2
+stragglers are opus 193 from a different rip. The opus fragments *disagreed* with the mp3 rip: the
+fragment of *Robots* read `Tech House` where the main album reads `Techno`.
+
+**An 11-way majority sourced from one rip is n=1, not n=11.** The sibling rule needs independent
+siblings. Left untagged, deliberately, and not flagged — an unknown genre is worklist material, not a
+human-decision blocker.
+
+#### Matias Aguayo *Anenoa* — the same missplit shape, the opposite remediation
+
+Four per-collaborator fragment albums, exactly like Green Velvet. But every fragment is **mp3 320**
+and every main-album counterpart is **172–176 kbps**. Here the fragments are the better copies, so
+the correct fix is to fold them *in* and delete the main-album copies — the reverse of what was just
+done to Green Velvet. **Left for an owner ruling**: destructive, and it inverts the obvious reading.
+
+#### RHCP *Greatest Hits* — the free lane beat the network lane
+
+`lookup_album_metadata` returned five candidates all at **score 100** (1999, 2003, 2005, 2008, 2020):
+a tie the scorer cannot break. The stored tracklist breaks it — *"Save the Population"* (track 16) was
+written for the 2003 compilation and appears on no earlier one, and *"Universally Speaking"* comes
+from *By the Way* (2002), ruling out 1999. Set to 2003. **Read the album you already own before
+spending a network call on it.**
+
+#### The finding: a curator genre override is keyed on the least durable id in the system — #856
+
+`song-genre-mutate.ts` says it plainly: *"The tag mirror below is a convenience for external players;
+the override is the durability mechanism, in both modes"* — and that row is `key: songId`, i.e.
+`sha1(path)`. Measured read-only on prod:
+
+```
+song-scope overrides:  total 953   orphaned 290   (30.4%)
+  user      replace   171     <- curator decisions
+  essentia  (null)    117     <- regenerable
+  user      append      2
+```
+
+**Severity splits by what happened to the file, and checking that changed the issue.** The first
+framing written this session — "essentially every genre decision from sessions 5–6 is gone" — was
+wrong:
+
+- **File MOVED** (the reorganize): the tag mirror rescues the value. UMOJA *Vuelo Nocturno*, 8
+  `mode:'replace'` writes to `Afrobeat`, all orphaned rows — and all 7 surviving tracks still read
+  `Afrobeat`. No visible loss.
+- **File REPLACED** (re-encode / re-acquire): total silent loss. The two Green Velvet tracks set to
+  `Tech House` last session now read `Techno`, and a direct query for an override on their live ids
+  returns **0 rows**.
+
+The subtler half: even where the value survived, the row that was supposed to protect it now points
+at a dead id, so the song is tag-governed again with no protection — one bad retag from reverting.
+That is #762's exact scenario re-armed.
+
+`orphan-prune.ts` documents this table as `311 rows | 0 orphans`, reasoning that *"the scanner
+rebuilds them rather than accumulating"*. True for `library_song_genres` (keyed on the **live** id);
+false for an override keyed on a **dead** one. The 0 predates the mass transcode. Curator tables are
+correctly excluded from `ORPHAN_TABLES` — they must never be deleted — but nothing repoints them
+either, and the fix pattern already exists twice in this repo
+(`repointOrphanedAcquisitions`, `repointPlaylistsBeforePrune`).
+
+Filed as **#856**, with the attribution of the 290 to specific events marked explicitly as a
+hypothesis rather than a finding.
+
+#### Songs 17,622 → 17,495 against 7 deletions
+
+Same shape as session 6's 426-song delta, and the same suspected cause (the deferred orphan sweep).
+**Not asserted here** — session 6 only earned that conclusion by counting audited deletes first, and
+this session did not re-run that probe. Recorded as open.
+
+#### Also done
+
+`Los Auténticos Decadentes` was split across three spellings (`Los Autenticos Decadentes`,
+`Los Áutenticos Decadentes`, and the correct form). One `merge_artist` batch collapsed all three;
+verified on read-back as 9 albums and every song under one artist row. The residual
+`Los Autenticos Decadentes;El Gran Silencio` is a compound multi-artist *field*, not an artist row,
+and is out of scope for a merge by design.
