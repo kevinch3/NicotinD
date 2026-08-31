@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.50](https://github.com/kevinch3/NicotinD/compare/v0.5.49...v0.5.50) (2026-08-31)
+
+### Bug Fixes
+
+* **transcode:** hide the encode temp file, and stop sharing staging to peers ([#844](https://github.com/kevinch3/NicotinD/issues/844)) ([d389774](https://github.com/kevinch3/NicotinD/commit/d3897745a1d86000b94e81a845b7035c1b811634)), closes [#841](https://github.com/kevinch3/NicotinD/issues/841) [#843](https://github.com/kevinch3/NicotinD/issues/843)
 ## [0.5.49](https://github.com/kevinch3/NicotinD/compare/v0.5.48...v0.5.49) (2026-08-31)
 
 ### Bug Fixes
