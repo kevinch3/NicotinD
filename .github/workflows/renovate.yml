@@ -67,18 +67,26 @@ jobs:
           set -euo pipefail
           if [ -z "${RENOVATE_TOKEN}" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            {
-              echo "### Renovate is not configured yet"
-              echo
-              echo 'No `RENOVATE_TOKEN` secret is set, so this run did nothing.'
-              echo
-              echo 'To enable: create a fine-grained PAT scoped to this repo with'
-              echo '**Contents: read & write**, **Pull requests: read & write** and'
-              echo '**Issues: read & write** (the Dependency Dashboard is an issue),'
-              echo 'then add it as the `RENOVATE_TOKEN` repository secret.'
-              echo
-              echo 'Until then `renovate.json` is inert — see docs/dependency-management.md.'
-            } >> "$GITHUB_STEP_SUMMARY"
+            # Quoted heredoc: the summary is literal Markdown, backticks and
+            # all, and nothing in it should expand.
+            #
+            # The body and the SUMMARY terminator sit at this block scalar's base
+            # indent on purpose. YAML strips that indent, so both land at column
+            # 0 in the real script — which is where a heredoc terminator must be,
+            # and where Markdown must start to not read as an indented code
+            # block. Re-indenting them breaks one or the other.
+            cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ### Renovate is not configured yet
+
+          No `RENOVATE_TOKEN` secret is set, so this run did nothing.
+
+          To enable: create a fine-grained PAT scoped to this repo with
+          **Contents: read & write**, **Pull requests: read & write** and
+          **Issues: read & write** (the Dependency Dashboard is an issue),
+          then add it as the `RENOVATE_TOKEN` repository secret.
+
+          Until then `renovate.json` is inert — see docs/dependency-management.md.
+          SUMMARY
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
