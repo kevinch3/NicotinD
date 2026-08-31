@@ -410,6 +410,72 @@ archive.org (full-text search is genuinely slow). Lidarr's three tiers and
 MusicBrainz's 15s are documented in
 [design-patterns.md](design-patterns.md).
 
+## `check:action-runtimes` — the warning nothing reads (#848)
+
+Every action that ships JavaScript declares its runtime in its own `action.yml` as
+`runs.using: node20` / `node24`. GitHub retires those runtimes on its own schedule, and it
+announces the retirement as a **warning in the run log** — a channel this repo has no reader for.
+
+So the drift accumulated in the open. #848 measured **14 of 17** pinned actions still on `node20`
+across **67 call sites**, several two to four majors behind (`checkout` v4 against v7,
+`download-artifact` v4 against v8). It was found because a human happened to scroll a deploy log,
+which is not a control.
+
+The warning is also the *gentle* phase. While it lasts, the runner force-upgrades the action to a
+newer Node and the step still works. When the fallback is removed the step simply stops — and for
+the `deploy.yml` pins, that failure lands in the release lane, **after the tag is cut**.
+
+### The cause was a manager with no updater
+
+The bumps were the symptom. `renovate.json` had been in the repo since the dependency-management
+sweep, but step 3 of that plan — *install the App, or a self-hosted workflow* — was never done, so
+the config was inert. `github-actions` was an entire dependency manager with nothing behind it.
+
+Confirmed rather than assumed: **zero** Renovate PRs had ever opened, and no Dependency Dashboard
+issue existed, though `:dependencyDashboard` is enabled and creates one on the first run.
+
+`.github/workflows/renovate.yml` now runs it. But enabling Renovate fixes the *drift*; it does not
+make the drift **fail**. An unenforced convention is exactly how `renovate.json` sat inert for
+months, so the gate is the part that asserts.
+
+### Network-free, because a gate that cannot run stops being run
+
+Resolving `runs.using` live would mean an outbound call per action inside `verify` —
+offline-hostile and rate-limited. Instead `RUNTIME_FLOORS` records, per action, the minimum major
+known to carry a current runtime. That is a fact that changes only when someone deliberately bumps
+an action, so a table is the right shape for it.
+
+The floor is the **lowest** major with a current runtime, not the newest release. Pinning the newest
+would turn every upstream major into a red gate — proposing those is Renovate's job and reviewing
+them is a human's, not this gate's to force.
+
+### The denominator, both ways
+
+A floor table quietly covering fewer actions than the workflows use would still exit 0 truthfully.
+So it fails three ways:
+
+| Failure | What it catches |
+| --- | --- |
+| Pin below its floor | the regression itself |
+| Action with **no** floor entry | a new action whose runtime nobody classified |
+| Floor entry **no workflow uses** | dead config — a rule that guards nothing while reading as though it does |
+
+It also fails when the scan matches **nothing at all**. That is not paranoia: the first run returned
+zero files, because Bun's `Glob` skips dot-directories by default and every path here is under
+`.github`. Without that assertion the gate would have passed, silently, forever — the exact shape
+this document opens with.
+
+Composite actions (`trivy-action`, `upload-pages-artifact`) are recorded in the table **explicitly**
+rather than skipped, so "no Node runtime" is a classification someone made rather than a gap. A SHA
+pin is reported as unclassifiable, because its runtime genuinely is not derivable offline.
+
+### Two couplings the table carries as notes
+
+- **`upload-artifact` and `download-artifact` must move together.** `deploy.yml` uploads in one job
+  and downloads in another; a producer/consumer major mismatch breaks inside the release lane.
+- **`actions/cache` v5+ crosses the cache-service v2 migration.** A cache miss degrades to a slow
+  build, it does not fail — so a bump is verified by cache **hits** in the log, not a green step.
+
 ## `check:search-matching` — asserting the invariant, not the symbol
 
 `check:shared-helpers` exists to stop a shared helper being **re-declared**

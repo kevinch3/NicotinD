@@ -44,7 +44,7 @@ jobs:
       mobile: ${{ steps.f.outputs.mobile }}
       desktop: ${{ steps.f.outputs.desktop }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history + tags for the diff base
       - id: f
@@ -84,7 +84,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Extract the `## [<version>] …` section (up to the next version heading)
       # from CHANGELOG.md — the file commit-and-tag-version regenerates on each
@@ -106,7 +106,7 @@ jobs:
           echo "----- release notes -----"; cat release-notes.md
 
       - name: Set the GitHub Release description
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           body_path: release-notes.md
@@ -130,14 +130,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Cache bun dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
@@ -145,17 +145,17 @@ jobs:
             bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
       # ng build (web) requires Node >= 22.22.3; pin from .nvmrc.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
 
       # Capacitor 6 targets JDK 17.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
 
       - name: Install dependencies
         run: bun install
@@ -228,7 +228,7 @@ jobs:
         run: mv app-release.apk "$RUNNER_TEMP/apks/NicotinD-TV-${NICOTIND_VERSION_NAME}.apk"
 
       - name: Attach APKs to the GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           files: ${{ runner.temp }}/apks/*.apk
@@ -248,14 +248,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Cache bun dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
@@ -263,7 +263,7 @@ jobs:
             bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
       # ng build (web) requires Node >= 22.22.3; pin from .nvmrc.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
 
@@ -315,7 +315,7 @@ jobs:
           zip -r "NicotinD-${NICOTIND_IOS_SHORT_VERSION}-unsigned.ipa" Payload
 
       - name: Attach unsigned IPA to the GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           files: packages/mobile/ios/App/NicotinD-*-unsigned.ipa
@@ -338,14 +338,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Cache bun dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
@@ -354,7 +354,7 @@ jobs:
 
       # electron-builder itself (and ng build for the web bundle it stages)
       # wants Node >= 22.22.3; pin from .nvmrc, same as android/ios.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
 
@@ -397,21 +397,21 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Cache bun dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
           restore-keys: |
             bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
 
@@ -455,7 +455,7 @@ jobs:
     env:
       IMAGE: ghcr.io/kevinch3/nicotind
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # linux/amd64 -> linux-amd64, for artifact names + cache scopes.
       - name: Prepare platform slug
@@ -463,9 +463,9 @@ jobs:
           platform="${{ matrix.platform }}"
           echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -475,7 +475,7 @@ jobs:
       # half-published release can never move the `release`/version tags.
       - name: Build + push by digest
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: ${{ matrix.platform }}
@@ -495,7 +495,7 @@ jobs:
           digest="${{ steps.build.outputs.digest }}"
           touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: digests-${{ env.PLATFORM_PAIR }}
           path: ${{ runner.temp }}/digests/*
@@ -517,15 +517,15 @@ jobs:
     env:
       IMAGE: ghcr.io/kevinch3/nicotind
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/digests
           pattern: digests-*
           merge-multiple: true
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -597,11 +597,11 @@ jobs:
     env:
       IMAGE: ghcr.io/kevinch3/nicotind-analysis
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -616,7 +616,7 @@ jobs:
           echo "tags=${IMAGE}:${version},${IMAGE}:${major},${IMAGE}:release" >> "$GITHUB_OUTPUT"
 
       - name: Build + push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: packages/analysis
           platforms: linux/amd64
@@ -638,11 +638,11 @@ jobs:
     env:
       IMAGE: ghcr.io/kevinch3/nicotind-pot-provider
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -657,7 +657,7 @@ jobs:
           echo "tags=${IMAGE}:${version},${IMAGE}:${major},${IMAGE}:release" >> "$GITHUB_OUTPUT"
 
       - name: Build + push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: packages/pot-provider
           platforms: linux/amd64
