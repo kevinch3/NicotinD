@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.5.50",
+    "date": "2026-08-31",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.49...v0.5.50",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**transcode:** hide the encode temp file, and stop sharing staging to peers ([#844](https://github.com/kevinch3/NicotinD/issues/844)) ([d389774](https://github.com/kevinch3/NicotinD/commit/d3897745a1d86000b94e81a845b7035c1b811634)), closes [#841](https://github.com/kevinch3/NicotinD/issues/841) [#843](https://github.com/kevinch3/NicotinD/issues/843)"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.5.49",
     "date": "2026-08-31",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.48...v0.5.49",
@@ -633,25 +646,6 @@
         "title": "Features",
         "items": [
           "**curation:** a durable \"needs a human decision\" flag ([#699](https://github.com/kevinch3/NicotinD/issues/699)) ([7371c8c](https://github.com/kevinch3/NicotinD/commit/7371c8c3d49b460fd95c4ac0774dccce890cb241)), closes [#682](https://github.com/kevinch3/NicotinD/issues/682)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.5.0",
-    "date": "2026-08-24",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.4.12...v0.5.0",
-    "sections": [
-      {
-        "title": "⚠ BREAKING CHANGES",
-        "items": [
-          "GET /api/library/songs/:id/licence-suggestion and POST"
-        ]
-      },
-      {
-        "title": "Features",
-        "items": [
-          "roll back the licence feature ([#697](https://github.com/kevinch3/NicotinD/issues/697)) ([262b8d9](https://github.com/kevinch3/NicotinD/commit/262b8d9b49a4de9e744f0c2ff4aa1611fd277f67)), closes [#683](https://github.com/kevinch3/NicotinD/issues/683), references [#683](https://github.com/kevinch3/NicotinD/issues/683) [#329](https://github.com/kevinch3/NicotinD/issues/329) [#329](https://github.com/kevinch3/NicotinD/issues/329)"
         ]
       }
     ]

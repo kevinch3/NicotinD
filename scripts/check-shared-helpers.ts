@@ -51,6 +51,17 @@ export const SHARED_HELPERS: SharedHelper[] = [
   // traversal. Registered at the moment of extraction, which is when a copy is most
   // likely to reappear. (`serve` is deliberately not listed: too generic a name to
   // assert on repo-wide.)
+  // "Is this file library content?" existed six times with six different
+  // memberships. library-disk-audit walked disk with a set lacking .wma while
+  // the scanner indexed it, so every .wma row reported as `missing_file` — a
+  // finding whose obvious remediation deletes a row for a file that is present
+  // (#845). Registered so copy #7 fails CI instead of lying in a report.
+  // `AUDIO_EXTS` was the second name for this concept and is retired, not
+  // listed: a registry entry must name something the canonical module actually
+  // exports, and reviving the alias to satisfy that would recreate the drift.
+  { name: 'AUDIO_EXTENSIONS', canonical: 'packages/core/src/audio-extensions.ts' },
+  { name: 'ID3_EXTS', canonical: 'packages/core/src/audio-extensions.ts' },
+  { name: 'VORBIS_EXTS', canonical: 'packages/core/src/audio-extensions.ts' },
   { name: 'readStories', canonical: 'packages/e2e/scripts/lib/storybook-runner.mjs' },
   { name: 'visitStories', canonical: 'packages/e2e/scripts/lib/storybook-runner.mjs' },
   { name: 'storyUrl', canonical: 'packages/e2e/scripts/lib/storybook-runner.mjs' },

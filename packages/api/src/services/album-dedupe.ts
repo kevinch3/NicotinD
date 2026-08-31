@@ -11,7 +11,7 @@
  */
 import { readdirSync, statSync, unlinkSync } from 'node:fs';
 import { extname, join } from 'node:path';
-import { AUDIO_EXTS } from './audio-tags.js';
+import { AUDIO_EXTENSIONS } from '@nicotind/core';
 
 export interface DupFile {
   name: string;
@@ -87,7 +87,7 @@ export function dedupeFolder(
 
   const audio: DupFile[] = [];
   for (const name of entries) {
-    if (!AUDIO_EXTS.has(extname(name).toLowerCase())) continue;
+    if (!AUDIO_EXTENSIONS.has(extname(name).toLowerCase())) continue;
     try {
       const st = statSync(join(dir, name));
       if (st.isFile()) audio.push({ name, size: st.size });

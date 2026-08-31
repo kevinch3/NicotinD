@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { join, relative, sep, extname } from 'node:path';
 import { readdir, stat } from 'node:fs/promises';
-import { createLogger } from '@nicotind/core';
+import { AUDIO_EXTENSIONS, createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import { albumGroupKey, normalizeArtistForGrouping } from './album-grouping.js';
 import { jobCanonicalTracklists } from './acquisition-job-store.js';
@@ -75,17 +75,9 @@ export async function mapPool<T, R>(
 }
 
 /** File extensions we treat as scannable audio. */
-export const AUDIO_EXTENSIONS = new Set([
-  '.mp3',
-  '.flac',
-  '.m4a',
-  '.aac',
-  '.ogg',
-  '.opus',
-  '.wav',
-  '.wma',
-  '.webm', // yt-dlp bestaudio output; contains opus audio
-]);
+// Canonical set lives in core (#845) — re-exported so the many existing
+// importers of this symbol keep working.
+export { AUDIO_EXTENSIONS };
 
 const CONTENT_TYPES: Record<string, string> = {
   mp3: 'audio/mpeg',

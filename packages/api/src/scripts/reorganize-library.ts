@@ -37,8 +37,7 @@ import {
   type ResolvedTranscodeLossless,
 } from '../services/transcode-settings.js';
 import { AcoustIdLookup } from '../services/acoustid-lookup.js';
-import { AUDIO_EXTS } from '../services/audio-tags.js';
-import { expandHome } from '@nicotind/core';
+import { AUDIO_EXTENSIONS, expandHome } from '@nicotind/core';
 
 interface LoadedConfig {
   dataDir: string;
@@ -128,7 +127,7 @@ function* walkAudioFiles(root: string, excludeDirs: Set<string>): Generator<stri
       if (st.isDirectory()) {
         if (excludeDirs.has(full)) continue;
         stack.push(full);
-      } else if (st.isFile() && AUDIO_EXTS.has(extname(full).toLowerCase())) {
+      } else if (st.isFile() && AUDIO_EXTENSIONS.has(extname(full).toLowerCase())) {
         yield full;
       }
     }

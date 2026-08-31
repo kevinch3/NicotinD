@@ -1,22 +1,15 @@
 import { spawn } from 'node:child_process';
 import { extname } from 'node:path';
 import { renameSync, unlinkSync } from 'node:fs';
-import { createLogger, MOOD_VOCAB, type MoodLabel } from '@nicotind/core';
+import { ID3_EXTS, VORBIS_EXTS, createLogger, MOOD_VOCAB, type MoodLabel } from '@nicotind/core';
 import { ffmpegBinary } from './ffmpeg-path.js';
 
 const log = createLogger('audio-tags');
 
-export const ID3_EXTS = new Set(['.mp3']);
-export const VORBIS_EXTS = new Set(['.flac', '.ogg', '.opus']);
-export const AUDIO_EXTS = new Set([
-  ...ID3_EXTS,
-  ...VORBIS_EXTS,
-  '.m4a',
-  '.wav',
-  '.aac',
-  '.aiff',
-  '.alac',
-]);
+// #845: "is this library content?" is answered once, in core. This module used
+// to own a narrower set (no .wma/.webm) that library-disk-audit walked disk
+// with, so every .wma row reported as missing_file.
+export { ID3_EXTS, VORBIS_EXTS };
 
 export interface AudioTags {
   artist?: string;

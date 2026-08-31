@@ -47,11 +47,11 @@ import { resolve, join, extname, dirname, basename, relative } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { initDatabase } from '../db.js';
-import { readAudioTags, writeAudioTags, AUDIO_EXTS } from '../services/audio-tags.js';
+import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { sanitizeSegment } from '../services/path-sanitize.js';
 import { normalizeTagValue } from '../services/audio-tags.js';
 import { MusicBrainzClient } from '../services/musicbrainz-client.js';
-import { expandHome } from '@nicotind/core';
+import { AUDIO_EXTENSIONS, expandHome } from '@nicotind/core';
 import { isReservedTopLevel, reservedDirsFor } from '../services/library-paths.js';
 
 // ─── CLI flags ────────────────────────────────────────────────────────────────
@@ -132,7 +132,7 @@ function getFileSize(p: string): number {
 }
 
 function isAudioFile(p: string): boolean {
-  return AUDIO_EXTS.has(extname(p).toLowerCase());
+  return AUDIO_EXTENSIONS.has(extname(p).toLowerCase());
 }
 
 function listDir(d: string): string[] {

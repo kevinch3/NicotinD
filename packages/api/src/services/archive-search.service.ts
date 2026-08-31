@@ -1,4 +1,9 @@
-import { createLogger, ServiceUnavailableError, type ArchiveCandidate } from '@nicotind/core';
+import {
+  AUDIO_EXTENSIONS,
+  createLogger,
+  ServiceUnavailableError,
+  type ArchiveCandidate,
+} from '@nicotind/core';
 
 const log = createLogger('archive-search');
 
@@ -44,8 +49,6 @@ interface MetaFile {
   format?: string;
 }
 
-const AUDIO_EXTS = new Set(['.mp3', '.flac', '.ogg', '.opus', '.m4a', '.wav', '.aac', '.wma']);
-
 /**
  * Count the audio tracks an item would yield: group audio files by format and
  * return the largest group's size (mirrors the archive plugin's single-format
@@ -55,7 +58,7 @@ export function countArchiveTracks(files: MetaFile[]): number {
   const byFormat = new Map<string, number>();
   for (const f of files) {
     const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
-    if (!AUDIO_EXTS.has(ext)) continue;
+    if (!AUDIO_EXTENSIONS.has(ext)) continue;
     const key = (f.format ?? ext).toLowerCase();
     byFormat.set(key, (byFormat.get(key) ?? 0) + 1);
   }

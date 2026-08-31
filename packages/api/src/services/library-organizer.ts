@@ -10,17 +10,17 @@ import {
   unlinkSync,
 } from 'node:fs';
 import { basename, dirname, extname, join, relative, sep } from 'node:path';
-import { cleanFolderName, createLogger, expandHome, parseYearFromFolder } from '@nicotind/core';
+import {
+  AUDIO_EXTENSIONS,
+  cleanFolderName,
+  createLogger,
+  expandHome,
+  parseYearFromFolder,
+} from '@nicotind/core';
 import { classifyFolder, type Classification } from './compilation-tagger.js';
 import { extractAlbumName, inferFolderAlbum, inferMetadataFromPath } from './path-inference.js';
 import type { CompletedDownloadFile } from './path-inference.js';
-import {
-  readAudioTags,
-  writeAudioTags,
-  normalizeTagValue,
-  AUDIO_EXTS,
-  type AudioTags,
-} from './audio-tags.js';
+import { readAudioTags, writeAudioTags, normalizeTagValue, type AudioTags } from './audio-tags.js';
 import {
   sanitizeSegment,
   trackNumberPrefix,
@@ -293,7 +293,7 @@ export class LibraryOrganizer {
         continue;
       }
       const ext = extname(src).toLowerCase();
-      if (!AUDIO_EXTS.has(ext)) {
+      if (!AUDIO_EXTENSIONS.has(ext)) {
         result.skipped++;
         continue;
       }
@@ -410,7 +410,7 @@ export class LibraryOrganizer {
       let count = 0;
       try {
         for (const f of readdirSync(dir)) {
-          if (AUDIO_EXTS.has(extname(f).toLowerCase())) count++;
+          if (AUDIO_EXTENSIONS.has(extname(f).toLowerCase())) count++;
         }
       } catch {
         /* unreadable — count stays 0 */

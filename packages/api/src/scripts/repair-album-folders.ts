@@ -49,9 +49,8 @@ import { resolve, join, basename, extname } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { dupKey, pickKeeper, type DupFile } from '../services/album-dedupe.js';
-import { AUDIO_EXTS } from '../services/audio-tags.js';
 import { albumGroupKey, normalizeForGrouping } from '../services/album-grouping.js';
-import { normalizeTitle, titlesOverlap } from '@nicotind/core';
+import { AUDIO_EXTENSIONS, normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { expandHome } from '@nicotind/core';
 import { isReservedTopLevel, reservedDirsFor } from '../services/library-paths.js';
 
@@ -204,7 +203,7 @@ function audioFilesIn(dir: string): SourcedFile[] {
     return out;
   }
   for (const name of entries) {
-    if (!AUDIO_EXTS.has(extname(name).toLowerCase())) continue;
+    if (!AUDIO_EXTENSIONS.has(extname(name).toLowerCase())) continue;
     try {
       const st = statSync(join(dir, name));
       if (st.isFile()) out.push({ name, size: st.size, dir });

@@ -74,12 +74,16 @@ services:
       # staging dir it now lives inside: those files are about to be moved,
       # retagged or re-encoded away, so advertising them hands peers paths that
       # vanish mid-transfer — and browse results full of raw rip folder names.
-      # Regex over the path, not a glob: the leading dot and both slashes anchor
-      # it to a real path segment so "Downloads Vol. 2" still shares. Keep in
-      # sync with --downloads above; scripts/compose-share-filter.test.ts
-      # enforces it. → docs/library-path-conventions.md (#843)
-      - --share-filter=/\.downloads/
-      - --share-filter=/\.unsorted/
+      # Regex over the path, not a glob. slskd stores share paths Soulseek-style
+      # — backslash-separated and alias-prefixed (`music\Artist\Album`) — so the
+      # separator class must accept BOTH forms; a forward-slash-only pattern is
+      # inert (it reported "0 were filtered" against 23 staged files). The
+      # leading dot plus a separator on each side anchors it to a real path
+      # segment, so "Downloads Vol. 2" still shares. Keep in sync with
+      # --downloads above; scripts/compose-share-filter.test.ts enforces it.
+      # → docs/library-path-conventions.md (#843)
+      - --share-filter=[\\/]\.downloads[\\/]
+      - --share-filter=[\\/]\.unsorted[\\/]
     environment:
       SLSKD_REMOTE_CONFIGURATION: "true"
       SLSKD_HTTP_PORT: "5030"

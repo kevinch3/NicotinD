@@ -1,9 +1,9 @@
 // packages/api/src/services/album-reconcile.ts
 import { readdirSync, statSync, unlinkSync } from 'node:fs';
 import { extname, join } from 'node:path';
-import { AUDIO_EXTS } from './audio-tags.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
 import { selectAlbumTracks, type SelectableTrack } from './library-track-select.js';
+import { AUDIO_EXTENSIONS } from '@nicotind/core';
 
 /** Album folders that must never be collapsed as one album (each loose track is its own single). */
 export const SINGLES_DIR_RE = /(^|[/\\])Singles$/i;
@@ -58,7 +58,7 @@ export async function readFolderTracks(dir: string): Promise<ReconcileFile[]> {
   const out: ReconcileFile[] = [];
   for (const name of entries) {
     const ext = extname(name).toLowerCase();
-    if (!AUDIO_EXTS.has(ext)) continue;
+    if (!AUDIO_EXTENSIONS.has(ext)) continue;
     const abs = join(dir, name);
     try {
       if (!statSync(abs).isFile()) continue;
