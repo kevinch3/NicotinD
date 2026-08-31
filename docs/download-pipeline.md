@@ -166,6 +166,37 @@ which is why they hand-rolled defaults; `resolveTranscodeLossless` takes the raw
 and `safeParse`s just the one sub-schema, so a missing config file or a typo'd bitrate lands
 on the shipped default instead of aborting the run.
 
+### A destructive script previews before it writes (`reorganize-library.ts`, #840)
+
+`reorganize-library.ts` is **dry run by default**; `--apply` is required before it moves a file,
+rewrites a tag, deletes junk or prunes a directory. It matches `convert-library.ts`'s contract,
+and adds `--limit N` so a first real run can be bounded to a small batch and inspected.
+
+The irreversible half is separately gated. Once the organizer took a resolved
+`transcodeLossless` (above), the script re-encoded every lossless file it moved — deleting the
+source, which `reorg-moves.log` **cannot** revert (the log reverses moves, and the source no
+longer exists). So the transcode needs `--transcode` *as well as* `--apply`; the header states
+`enabled` + `bitRate` + `ffmpegAvailable` up front, because that is the part a curator fixing
+folder structure did not ask for. It also only reaches files that actually *move* — an
+already-placed FLAC is `skipped`, and `convert-library.ts` is the tool for those.
+
+**A dry run has to be a real dry run**, which is why this is a refactor and not a flag.
+Three effects hid on the read path and each had to be lifted out of the decision:
+
+| Effect | Where it hid | Split into |
+| --- | --- | --- |
+| move / mkdir / transcode / tag rewrite / prune | `placeFile` interleaved them with the routing decision | `planPlacement()` decides, `placeFile()` performs |
+| a `renameSync` before any decision | `flattenPhantomDir` moved the file to *find* its path | `phantomDirTarget()` computes, `flattenPhantomDir()` moves |
+| `writeAudioTags` on an AcoustID hit | `readWithFallback` persists the fingerprint it looks up | `{ persist: false }` |
+
+`planOrganizeFile()` returns a `PlacementPlan` (`outcome`, `kind`, `destDir`, `destPath`,
+`wouldTranscode`) and calls none of the effect code — a dry run is safe because the writes are
+never reached, not because a flag no-oped them. `placeFile` consumes the same plan, so the
+preview and the real run cannot disagree; `library-organizer.test.ts` asserts exactly that, plus
+a byte-identical tree after planning. Planned destinations accumulate in a `planned` set so the
+preview's `(2)` collision suffixes and cross-edition folder consolidation match a real run —
+nothing has moved, so disk alone cannot tell one planned file that another took its path.
+
 ### An addon's downloads dir belongs in a reserved path
 
 **Resolved by [library-path-conventions.md](library-path-conventions.md)** — staging now lives at

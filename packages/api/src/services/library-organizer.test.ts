@@ -19,6 +19,7 @@ import {
   existsSync,
   writeFileSync,
   readdirSync,
+  statSync,
 } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -92,6 +93,21 @@ function seed(dir: string, relPath: string, tags: SeedTags): string {
   if (tags.compilation) id3.partOfCompilation = '1';
   nodeId3.update(id3, dest);
   return dest;
+}
+
+/** Every file under `root` as `relpath -> size:mtimeMs`, so a dry run's no-op is provable. */
+function snapshotTree(root: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (dir: string, prefix: string) => {
+    for (const name of readdirSync(dir).sort()) {
+      const full = join(dir, name);
+      const st = statSync(full);
+      if (st.isDirectory()) walk(full, `${prefix}${name}/`);
+      else out[`${prefix}${name}`] = `${st.size}:${st.mtimeMs}`;
+    }
+  };
+  walk(root, '');
+  return out;
 }
 
 const cleanups: Array<() => void> = [];
@@ -914,4 +930,85 @@ describe('LibraryOrganizer (real fs)', () => {
       expect(existsSync(join(dir, '01 - Rollerskate.opus'))).toBe(false);
     });
   });
+});
+
+describe('planOrganizeFile (dry run)', () => {
+  it('plans the same destination organizeFile actually writes', async () => {
+    const root = tmpRoot();
+    const src = seed(root, 'Loose/track.mp3', {
+      artist: 'Soda Stereo',
+      album: 'Canción Animal',
+      title: 'De Música Ligera',
+      trackNumber: 3,
+    });
+
+    const planned = await makeOrg(root).planOrganizeFile(src, 'Loose');
+    const outcome = await makeOrg(root).organizeFile(src, 'Loose');
+
+    expect(outcome).toBe(planned.outcome);
+    expect(existsSync(planned.destPath)).toBe(true);
+  });
+
+  it('leaves every file untouched — no move, no tag rewrite', async () => {
+    const root = tmpRoot();
+    const src = seed(root, 'Loose/track.mp3', {
+      artist: 'Soda Stereo',
+      album: 'Canción Animal',
+      title: 'De Música Ligera',
+    });
+    const before = snapshotTree(root);
+
+    const plan = await makeOrg(root).planOrganizeFile(src, 'Loose');
+
+    expect(plan.outcome).toBe('moved');
+    expect(snapshotTree(root)).toEqual(before);
+  });
+
+  it('accounts for an earlier planned file when two collide on one destination', async () => {
+    const root = tmpRoot();
+    const tags = { artist: 'Zoé', album: 'Memo Rex Commander', title: 'Love' };
+    const a = seed(root, 'A/one.mp3', tags);
+    const b = seed(root, 'B/two.mp3', tags);
+
+    const org = makeOrg(root);
+    const first = await org.planOrganizeFile(a, 'A');
+    const second = await org.planOrganizeFile(b, 'B');
+
+    expect(first.destPath).not.toBe(second.destPath);
+    expect(second.destPath).toContain('(2)');
+  });
+
+  it('does not flatten a phantom dir while planning', async () => {
+    const root = tmpRoot();
+    const src = seed(root, 'Loose/track.mp3/track.mp3', {
+      artist: 'Caifanes',
+      album: 'El Silencio',
+      title: 'Nubes',
+    });
+
+    await makeOrg(root).planOrganizeFile(src, 'track.mp3');
+
+    expect(existsSync(src)).toBe(true);
+  });
+
+  it.skipIf(!ffmpegAvailable())(
+    'reports a lossless file as one that would be transcoded when the hook is on',
+    async () => {
+      const root = tmpRoot();
+      const src = seedFlac(root, 'Loose/track.flac', {
+        artist: 'Café Tacvba',
+        album: 'Re',
+        title: 'La Ingrata',
+      });
+
+      const org = new LibraryOrganizer({
+        musicDir: root,
+        transcodeLossless: { enabled: true, bitRate: 96 },
+      });
+      const plan = await org.planOrganizeFile(src, 'Loose');
+
+      expect(plan.wouldTranscode).toBe(true);
+      expect(existsSync(src)).toBe(true);
+    },
+  );
 });
