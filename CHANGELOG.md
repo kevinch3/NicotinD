@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.51](https://github.com/kevinch3/NicotinD/compare/v0.5.50...v0.5.51) (2026-08-31)
+
+### Bug Fixes
+
+* **library:** one canonical audio-extension set; make the share filter actually match ([#846](https://github.com/kevinch3/NicotinD/issues/846)) ([ca91e23](https://github.com/kevinch3/NicotinD/commit/ca91e23df2cb96db21b6d8ed57b4d2105548c593)), closes [#845](https://github.com/kevinch3/NicotinD/issues/845) [#843](https://github.com/kevinch3/NicotinD/issues/843), references [#7](https://github.com/kevinch3/NicotinD/issues/7)
 ## [0.5.50](https://github.com/kevinch3/NicotinD/compare/v0.5.49...v0.5.50) (2026-08-31)
 
 ### Bug Fixes
