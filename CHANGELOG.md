@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.53](https://github.com/kevinch3/NicotinD/compare/v0.5.52...v0.5.53) (2026-08-31)
+
+### Bug Fixes
+
+* **player:** reload a stream that dies instead of leaving playback stopped ([#850](https://github.com/kevinch3/NicotinD/issues/850)) ([960ccb0](https://github.com/kevinch3/NicotinD/commit/960ccb083de5f315d0d7b54f53af72ac5b19c99b))
 ## [0.5.52](https://github.com/kevinch3/NicotinD/compare/v0.5.51...v0.5.52) (2026-08-31)
 
 ### Bug Fixes
