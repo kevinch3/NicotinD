@@ -1723,3 +1723,33 @@ Two more matched the same shape but were **correctly left alone**: `Jamsha El Pu
 and `BabyChiefDoit` (1 song) have no independently-confirmed sub-names in this library to split
 against — leaving them whole is the confirmation gate working as designed, not a miss. All three
 fixes and both declines added to #860 as a comment.
+
+### Session 7, sixth stretch — the folklore radio-poll feedback, traced and fixed
+
+External feedback (a radio evaluation poll) named a concrete failure: the folklore seed (Sanampay,
+"Embrujo") produced the worst-served set (2.6★ mean, served Afro-jazz/tropical house/cumbia against
+it) because its genre reads `Music` — junk vocabulary, so the weight-18 genre axis and the origin axis
+were both blind — and the library's folklore pool was fragmented across three spellings
+(`Folklore` 14, `Folklore Argentino` 5, `Folklore latino-américain` 1), too thin and split for the
+axis to have signal even where it wasn't blind.
+
+Checked before fixing, not assumed: **all 16 Sanampay tracks** carry `Music` at position 0 (junk, not
+just this one song — the feedback's own example was one visible symptom of a whole-artist tagging
+gap). The user supplied a Wikipedia detail mid-task that changed the fix: Sanampay is not an Argentine
+act specifically — *"un grupo vocal e instrumental creado en México en 1977... con el fin de difundir
+la música folclórica... de América Latina"*, founded in exile by musicians from both countries. Tagging
+them `Folklore Argentino` would have been a new, different wrong answer. Consolidated everything to
+the plain **`Folklore`** umbrella instead — already the majority spelling (Los Tekis, Los Tucu Tucu,
+both genuinely Argentine) and the one that doesn't assert a nationality Sanampay doesn't have.
+
+Every song's full ordered list was fetched and reconstructed in place before writing, same discipline
+as the RKT/Synth-Pop stretch — the Los Nocheros tracks keep `Latin Music` as position 0 with
+`Folklore Argentino` renamed to `Folklore` at position 1, and *Vuela una Lágrima* (which already
+carried both `Folklore latino-américain` and `Folklore Argentino` in one list) had the resulting
+duplicate collapsed rather than left in. Verified by re-query: **35 songs now share one canonical
+`Folklore`** (14 + 16 + 4 + 1, arithmetic confirmed), zero Sanampay songs still read `Music`.
+
+**Not fixed, flagged instead**: the same read revealed **83 total songs** carry the `Music` junk
+genre library-wide — only the 16 in this feedback's blast radius were touched. That is a
+substantially bigger cleanup than this stretch's scope, left for a dedicated pass rather than
+absorbed here.
