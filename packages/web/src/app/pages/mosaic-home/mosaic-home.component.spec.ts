@@ -9,6 +9,7 @@ import { LibraryApiService } from '../../services/api/library-api.service';
 import { HistoryApiService } from '../../services/api/history-api.service';
 import { PlaylistsApiService } from '../../services/api/playlists-api.service';
 import { ToastService } from '../../services/toast.service';
+import { TrackInfoService } from '../../services/track-info.service';
 import type {
   ListeningStats,
   PlaylistSummary,
@@ -16,6 +17,8 @@ import type {
   Song,
 } from '../../services/api/api-types';
 import type { Track } from '../../services/player.service';
+import type { MosaicTile } from '../../lib/mosaic-tiles';
+import type { PackedTile, Packing } from '../../lib/mosaic-packing';
 
 const song = (over: Partial<Song> = {}): Song => ({
   id: 's1',
@@ -106,6 +109,7 @@ function setup(opts: SetupOptions = {}) {
       of({ ...playlist(), songs: opts.playlistSongs ?? [song({ id: 'ps1' })] }),
     ),
   };
+  const trackInfo = { open: vi.fn(), close: vi.fn() };
 
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -117,6 +121,7 @@ function setup(opts: SetupOptions = {}) {
       { provide: HistoryApiService, useValue: historyApi },
       { provide: PlaylistsApiService, useValue: playlistsApi },
       { provide: AuthService, useValue: { token: () => 'tok' } },
+      { provide: TrackInfoService, useValue: trackInfo },
     ],
   });
   const fixture = TestBed.createComponent(MosaicHomeComponent);
@@ -129,6 +134,7 @@ function setup(opts: SetupOptions = {}) {
     libraryApi,
     playlistsApi,
     historyApi,
+    trackInfo,
   };
 }
 
@@ -293,5 +299,138 @@ describe('MosaicHomeComponent', () => {
     const track = component.tiles().find((t) => t.kind === 'song')!;
     expect(component.label(vibe)).not.toBe('');
     expect(component.label(track)).toBe('Real Title');
+  });
+});
+
+/**
+ * The private surface the next suites drive directly. jsdom gives the stage no
+ * size, so the packing — and everything pointer- or frame-driven — never runs
+ * through the DOM here; these tests exercise the glue behind it instead.
+ */
+interface MosaicInternals {
+  schedulePress(t: MosaicTile): void;
+  cancelPress(): void;
+  onStageClick(e: MouseEvent): void;
+  suppressTap: boolean;
+  packing: Packing | null;
+  cells: Map<string, unknown>;
+  loadCell(cell: string): Promise<void>;
+}
+const internals = (c: unknown): MosaicInternals => c as MosaicInternals;
+
+const packedStub = (id: number, size: number): PackedTile => ({
+  tile: {
+    key: `slot:${id}`,
+    kind: 'song',
+    title: '',
+    subtitle: '',
+    score: 0.5,
+    action: { type: 'song', track: { id: `slot${id}`, title: '', artist: '' } },
+  },
+  id,
+  x: 0,
+  y: 0,
+  size,
+  half: size / 2,
+});
+
+describe('hold-for-info', () => {
+  it('a held press on a song tile opens the track-info sheet and swallows the tap', async () => {
+    vi.useFakeTimers();
+    try {
+      const { component, trackInfo, player, fixture } = setup({
+        tasteBreakers: [song({ id: 'a', title: 'T', artist: 'A' })],
+      });
+      await settle(fixture);
+      const c = internals(component);
+      c.schedulePress(component.tiles().find((t) => t.kind === 'song')!);
+      vi.advanceTimersByTime(450);
+      expect(trackInfo.open).toHaveBeenCalledWith(
+        expect.objectContaining({ songId: 'a', title: 'T', artist: 'A' }),
+      );
+      // The release that follows the hold must not start a radio under the
+      // sheet it just opened — the suppress flag eats exactly one click.
+      expect(c.suppressTap).toBe(true);
+      c.onStageClick(new MouseEvent('click'));
+      expect(c.suppressTap).toBe(false);
+      expect(player.startRadio).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a press released before the hold threshold opens nothing', async () => {
+    vi.useFakeTimers();
+    try {
+      const { component, trackInfo, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+      await settle(fixture);
+      const c = internals(component);
+      c.schedulePress(component.tiles().find((t) => t.kind === 'song')!);
+      vi.advanceTimersByTime(200);
+      c.cancelPress();
+      vi.advanceTimersByTime(1000);
+      expect(trackInfo.open).not.toHaveBeenCalled();
+      expect(c.suppressTap).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('holding a non-song tile does nothing — only songs carry track info', async () => {
+    vi.useFakeTimers();
+    try {
+      const { component, trackInfo, fixture } = setup();
+      await settle(fixture);
+      const c = internals(component);
+      c.schedulePress(component.tiles().find((t) => t.kind === 'vibe')!);
+      vi.advanceTimersByTime(1000);
+      expect(trackInfo.open).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('discovery cells', () => {
+  it('fills a sighted cell with fresh songs, the hottest into the biggest slot', async () => {
+    const { component, libraryApi, fixture } = setup();
+    await settle(fixture);
+    const c = internals(component);
+    c.packing = { W: 500, tiles: [packedStub(0, 200), packedStub(1, 100)] };
+    c.cells.set('1,0', 'loading');
+    libraryApi.getRandomSongs.mockReturnValue(
+      of([song({ id: 'y', popularity: 0 }), song({ id: 'x', popularity: 1 })]) as never,
+    );
+    await c.loadCell('1,0');
+    const state = c.cells.get('1,0') as Map<number, MosaicTile>;
+    expect(state.get(0)!.key).toBe('song:x');
+    expect(state.get(1)!.key).toBe('song:y');
+    // The accessible list mirrors what discovery surfaced.
+    expect(component.discovered().map((t) => t.key)).toEqual(
+      expect.arrayContaining(['song:x', 'song:y']),
+    );
+  });
+
+  it('falls back to the home copy when the fetch fails — never a hole, never a retry loop', async () => {
+    const { component, libraryApi, fixture } = setup();
+    await settle(fixture);
+    const c = internals(component);
+    c.packing = { W: 500, tiles: [packedStub(0, 100)] };
+    c.cells.set('0,1', 'loading');
+    libraryApi.getRandomSongs.mockReturnValue(throwError(() => new Error('down')) as never);
+    await c.loadCell('0,1');
+    expect(c.cells.get('0,1')).toBe('base');
+    expect(component.discovered()).toEqual([]);
+  });
+
+  it('drops a batch that lands after its cell was evicted', async () => {
+    const { component, libraryApi, fixture } = setup();
+    await settle(fixture);
+    const c = internals(component);
+    c.packing = { W: 500, tiles: [packedStub(0, 100)] };
+    libraryApi.getRandomSongs.mockReturnValue(of([song({ id: 'late' })]) as never);
+    await c.loadCell('2,2'); // never marked 'loading' — the cell was evicted meanwhile
+    expect(c.cells.has('2,2')).toBe(false);
+    expect(component.discovered()).toEqual([]);
   });
 });

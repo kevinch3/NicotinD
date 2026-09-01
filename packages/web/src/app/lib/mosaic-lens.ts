@@ -20,6 +20,24 @@ export const COS_MAX = Math.cos(THETA_MAX);
 /** Opacity fades over the last this-much of the cosine range. */
 export const FADE_BAND = 0.4;
 
+/** Per-frame velocity decay after release. */
+export const FRICTION = 0.94;
+/** Squared speed below which the camera snaps to a dead stop. */
+export const REST_EPSILON = 0.0025;
+
+/**
+ * One inertia step: friction, then a hard snap to zero below the rest
+ * threshold. The snap matters — exponential decay alone never reaches zero, so
+ * the mosaic would creep sub-pixel forever, which reads as "it never stops"
+ * rather than "it is alive". A resting mosaic is genuinely at rest.
+ */
+export function decayVelocity(vx: number, vy: number): { vx: number; vy: number } {
+  const nvx = vx * FRICTION;
+  const nvy = vy * FRICTION;
+  if (nvx * nvx + nvy * nvy < REST_EPSILON) return { vx: 0, vy: 0 };
+  return { vx: nvx, vy: nvy };
+}
+
 const LUT_SIZE = 2048;
 const COS_LUT = new Float32Array(LUT_SIZE + 1);
 const SIN_LUT = new Float32Array(LUT_SIZE + 1);
@@ -33,6 +51,9 @@ export interface Placement {
   /** Pool key: one packed tile can be on screen several times, once per torus copy. */
   key: string;
   packed: PackedTile;
+  /** Which torus copy this is — the discovery cells key their content on it. */
+  i: number;
+  j: number;
   /** Top-left in stage pixels (the tile's own transform origin). */
   left: number;
   top: number;
@@ -97,6 +118,8 @@ export function visiblePlacements(
         out.push({
           key: `${t.id}_${i}_${j}`,
           packed: t,
+          i,
+          j,
           left: sx - t.half,
           top: sy - t.half,
           scale: cos,

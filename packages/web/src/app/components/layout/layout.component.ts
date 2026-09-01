@@ -1,7 +1,8 @@
 import { Component, inject, computed, signal, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { APP_VERSION } from '../../app.config';
-import { Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { NavigationEnd, Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, shuffleArray } from '../../services/player.service';
@@ -54,9 +55,21 @@ const ONLINE_ONLY_ROUTES = new Set(['/']);
 
 /** Shared header layout — same pixels everywhere so the brand/title row
  *  doesn't shift between platform states (only the chrome integration
- *  bits change). */
+ *  bits change). The display class is prepended by `headerDisplayClass`. */
 const HEADER_BASE_CLASSES =
-  'flex items-center justify-between px-4 md:px-6 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] border-b border-theme bg-theme-base/80 backdrop-blur-sm';
+  'items-center justify-between px-4 md:px-6 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] border-b border-theme bg-theme-base/80 backdrop-blur-sm';
+
+/**
+ * On the mosaic home the header collapses below `md`: every control in it is
+ * already `hidden md:*` there (nav lives in the bottom tab bar), so on a phone
+ * the bar is a dead brand row eating a strip of an immersive, full-bleed
+ * surface. Every other route keeps it — a scrolling page wants the sticky
+ * backdrop and the safe-area padding it carries.
+ */
+export function headerDisplayClass(url: string): string {
+  const path = url.split(/[?#]/)[0];
+  return path === '/' || path === '' ? 'hidden md:flex' : 'flex';
+}
 
 @Component({
   selector: 'app-layout',
@@ -98,6 +111,15 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private readonly p2r = inject(PullToRefreshService);
   private readonly scrollLock = inject(ScrollLockService);
 
+  /** Current route URL as a signal, for route-dependent chrome (headerClass). */
+  private readonly currentUrl = signal(this.router.url);
+
+  constructor() {
+    this.router.events.pipe(takeUntilDestroyed()).subscribe((e) => {
+      if (e instanceof NavigationEnd) this.currentUrl.set(e.urlAfterRedirects);
+    });
+  }
+
   /** Touch pull-to-refresh — the one gesture host for every route; pages
    *  register what "refresh" means via PullToRefreshService. */
   readonly pull = createPullToRefresh({
@@ -134,7 +156,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
    *  the entire bar into a drag handle for the frameless window — see
    *  `electron/window.ts` for the matching shape. */
   readonly headerClass = computed(() => {
-    const base = `${HEADER_BASE_CLASSES} sticky top-0 z-40`;
+    const base = `${headerDisplayClass(this.currentUrl())} ${HEADER_BASE_CLASSES} sticky top-0 z-40`;
     if (!this.isElectronLinux()) {
       return base;
     }
