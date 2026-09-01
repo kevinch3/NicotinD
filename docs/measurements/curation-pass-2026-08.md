@@ -1638,3 +1638,23 @@ Not filed as an issue: this is curation work the MCP surface already supports co
 check is exactly why `mode:'replace'` exists and is documented as dangerous when misapplied) — the
 gap is in this session's own tooling (no bulk multi-genre-position read/write path), not a product
 defect.
+
+### Session 7, fourth stretch — the remaining 65 dupe-genre songs, done properly
+
+Came back to finish what the third stretch deliberately deferred. For each of the three remaining
+clusters, fetched every affected song's **full ordered genre list** via a read-only probe, built the
+corrected list in place (same order, same members, one spelling fixed), and wrote it back with
+`mode:'replace'` — never the bare corrected string alone.
+
+- **Avant-Garde Jazz** (2 songs): both carried 4- and 7-genre sets spanning Electronic/Jazz/Rock
+  subgenres; reconstructed and verified position-by-position identical except the one fix.
+- **RKT** (41 songs): 38 shared one 3–4-genre Cumbia/Latin/Cuarteto pattern, 2 carried a much richer
+  10-genre set (Reggaeton, Trap Latino, Hip Hop, etc.) that would have been silently destroyed by a
+  bare-string replace. RKT total: 4 → 51 (4 original + 6 fixed earlier at position 0 + 41 now).
+- **Synth-Pop** (22 songs): two sub-clusters (`Electronic;Pop;Synth-Pop;Dance-pop` ×12,
+  `Electronic;Rock;Indie Rock;Synth-Pop;Disco` ×9, one 3-genre outlier). Synth-Pop total: 299 → 321.
+
+**Every one of the 65 verified two ways**: zero rows remain under the old spelling, and a per-song
+`COUNT(*)` against `library_song_genres` matches each song's original list length exactly — nothing
+lost, nothing duplicated. Combined with the earlier 16 position-0 fixes, this closes out all 81 songs
+found by the third stretch's `get_rare_genres` probe.
