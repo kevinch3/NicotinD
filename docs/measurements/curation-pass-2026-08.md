@@ -1861,3 +1861,17 @@ producer handles (Helucze, Jengi, Joep Mencke, Julian Jeweil, Omeria, Zedjue, an
 library sibling and no search result confident enough to act on, plus a few multi-artist collab
 credits (Ladji Mouflet cluster, Nato & Sahalé, Legendary Baller/4ize) in the same position. Correctly
 left alone — searched-and-declined, not skipped.
+
+### Session 7, twelfth stretch — Turf's *Para mí, para vos*, both dimensions at once
+
+After several genuinely idle ticks (state unchanged, confirmed by re-reading `get_library_health`
+twice with no diff — not chased further), a fresh year candidate appeared: Turf's *Para mí, para vos*.
+Checked the same way as RHCP earlier rather than trusting a single source: two **independent**
+sources — Lidarr's official release group and a separate Discogs listing — agree on **2004**; a third
+Discogs entry claiming 2023 is a lower-confidence, reissue-shaped listing. Applied 2004.
+
+While there, noticed all 11 of the album's tracks were genre-null. Turf's genre (`Rock`) is already
+established by 5 independent sibling albums from earlier this session — filled all 11 directly.
+
+Both dimensions verified by re-running the metric: years 191 → **190**, genre-less 165 → **154**
+(11-song drop matches exactly, on top of unrelated background enrichment already in progress).
