@@ -5,6 +5,7 @@ import {
   looksLikeDjSetTag,
   looksLikeVenueCredit,
   djSetArtistName,
+  findArtistFragmentClusters,
 } from './library-quality.js';
 
 describe('looksLikeSourceWatermark', () => {
@@ -148,5 +149,57 @@ describe('djSetArtistName', () => {
     expect(djSetArtistName('this is a very long sentence fragment indeed @ Venue')).toBeNull();
     expect(djSetArtistName('ftpdjemilio.com @ Awakenings')).toBeNull();
     expect(djSetArtistName('101 @ Awakenings')).toBeNull();
+  });
+});
+
+describe('findArtistFragmentClusters', () => {
+  // The real prod population that motivated the rule (issue #864).
+  const SANAMPAY = [
+    'Sanampay',
+    'Sanampay, V. PARRA',
+    'Sanampay, CH. BUARQUE',
+    'Sanampay, D.P.',
+    'Sanampay, J.C. COBIÁN - E. CADICAMO',
+  ];
+
+  it('clusters per-track credit rows under the base artist they extend', () => {
+    const clusters = findArtistFragmentClusters(SANAMPAY, 2);
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0]!.base).toBe('Sanampay');
+    expect(clusters[0]!.fragments).toHaveLength(4);
+  });
+
+  it('needs the base to exist as its own row — a lone compound is not a cluster', () => {
+    expect(findArtistFragmentClusters(['Sanampay, V. PARRA', 'Sanampay, D.P.'], 2)).toEqual([]);
+  });
+
+  it('matches the base accent- and case-insensitively', () => {
+    const clusters = findArtistFragmentClusters(
+      [
+        'Los Ángeles Azules',
+        'Los Angeles Azules, Ximena Sariñana',
+        'LOS ÁNGELES AZULES, Nicki Nicole',
+      ],
+      2,
+    );
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0]!.fragments).toHaveLength(2);
+  });
+
+  it('honours minFragments so a caller can trade recall for quiet', () => {
+    expect(findArtistFragmentClusters(SANAMPAY, 5)).toEqual([]);
+    expect(findArtistFragmentClusters(SANAMPAY, 4)).toHaveLength(1);
+  });
+
+  it('reports the root of a chain once, not the same rows under every prefix', () => {
+    const clusters = findArtistFragmentClusters(['A', 'A, B', 'A, B, C', 'A, B, D', 'A, E'], 2);
+    expect(clusters.map((c) => c.base)).toEqual(['A']);
+  });
+
+  it('does not treat an unrelated name sharing a word prefix as a fragment', () => {
+    // "Sanampay Trio" extends the *string* but not the "<base>, " credit shape.
+    expect(findArtistFragmentClusters(['Sanampay', 'Sanampay Trio', 'Sanampayasos'], 2)).toEqual(
+      [],
+    );
   });
 });

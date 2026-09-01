@@ -155,3 +155,65 @@ export function isNumericLikeName(name: string | undefined | null): boolean {
   if (/^\d{1,2}\s*[-.,]\s*\d{1,2}(\s*,\s*\d{1,2})*$/.test(t)) return true;
   return false;
 }
+
+/** One base artist and the `"<base>, …"` rows that extend it. */
+export type ArtistFragmentCluster = {
+  /** The base row's name as stored, e.g. "Sanampay". */
+  base: string;
+  /** Rows extending it, e.g. ["Sanampay, V. PARRA", "Sanampay, D.P."]. */
+  fragments: string[];
+};
+
+/**
+ * Issue #864. Every predicate above judges a name **on its own**; this one
+ * cannot, and that is the whole point. These two rows are the same string shape:
+ *
+ *   Sanampay, V. PARRA                                  ← junk (a composer credit)
+ *   Charlotte de Witte, David Robertson                 ← real (a collaboration)
+ *
+ * Nothing in the string separates them, so the signal has to be **relational**:
+ * how many rows extend one base name. Measured on the prod library, that number
+ * is what actually splits the two populations —
+ *
+ *   Sanampay            14 rows, all inside one album  → a shredded album
+ *   Luciano Pavarotti   15 rows, all inside one album  → a shredded album
+ *   Matias Aguayo        4 rows                        → real collaborations
+ *   Charlotte de Witte   2 rows                        → real collaborations
+ *
+ * — because a per-track credit list shreds an album into one artist row per
+ * track, while genuine collaborations accumulate a handful at most.
+ *
+ * Never a `DeletableRule`: like `djset_artist` the music is real and the base
+ * name is right there, so the remediation is a merge into `base`.
+ *
+ * `minFragments` is the caller's recall dial, and the auditor passes 2 — the
+ * lowest gate there is. A size threshold would have to sit inside the measured
+ * 4→14 gap, and a rule that silently drops a real 3-row shredding to spare a
+ * curator two dismissals is the wrong trade: the finding is advisory, and only
+ * a human can tell a composer credit from an orchestra credit anyway.
+ */
+export function findArtistFragmentClusters(
+  names: readonly string[],
+  minFragments: number,
+): ArtistFragmentCluster[] {
+  const folded = names.map((name) => ({ name, key: fold(name).trim() }));
+  // Only a compound can extend a base, and they are a small minority (141 of
+  // 3,175 on the prod library), so scanning them per base keeps this linear
+  // enough to sit in the on-demand health report.
+  const compounds = folded.filter((c) => c.key.includes(', '));
+
+  const clusters: ArtistFragmentCluster[] = [];
+  for (const base of folded) {
+    const prefix = `${base.key}, `;
+    const fragments = compounds.filter((c) => c.key !== base.key && c.key.startsWith(prefix));
+    if (fragments.length < minFragments) continue;
+    clusters.push({ base: base.name, fragments: fragments.map((f) => f.name) });
+  }
+
+  // A compound base is itself a fragment of a shorter one ("A, B" sits under
+  // "A"), which would report the same rows twice under two bases. Keep the root
+  // of each chain — it is the name a curator would merge into.
+  return clusters.filter(
+    (c) => !clusters.some((other) => other !== c && other.fragments.includes(c.base)),
+  );
+}
