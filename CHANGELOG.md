@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.56](https://github.com/kevinch3/NicotinD/compare/v0.5.55...v0.5.56) (2026-09-01)
+
+### Bug Fixes
+
+* **radio:** recalibrate to formula v7 on the first stars5 polls ([#862](https://github.com/kevinch3/NicotinD/issues/862)) ([61cab2a](https://github.com/kevinch3/NicotinD/commit/61cab2ae87bfb748041115414acaf2113365ebd3))
 ## [0.5.55](https://github.com/kevinch3/NicotinD/compare/v0.5.54...v0.5.55) (2026-09-01)
 
 ### Bug Fixes
