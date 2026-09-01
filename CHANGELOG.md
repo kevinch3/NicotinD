@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.58](https://github.com/kevinch3/NicotinD/compare/v0.5.57...v0.5.58) (2026-09-01)
+
+### Features
+
+* **library:** detect an artist shredded into per-track credit rows ([#868](https://github.com/kevinch3/NicotinD/issues/868)) ([fa39a4c](https://github.com/kevinch3/NicotinD/commit/fa39a4cf30bc84529ce75d3708bb567a79502ad4)), references [#864](https://github.com/kevinch3/NicotinD/issues/864) [#865](https://github.com/kevinch3/NicotinD/issues/865) [#866](https://github.com/kevinch3/NicotinD/issues/866)
 ## [0.5.57](https://github.com/kevinch3/NicotinD/compare/v0.5.56...v0.5.57) (2026-09-01)
 
 ### Bug Fixes
