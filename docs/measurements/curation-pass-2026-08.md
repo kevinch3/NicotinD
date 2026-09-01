@@ -1839,3 +1839,25 @@ cover's genre, and only the cover is what's in this library).
 propagation, bracket self-declaration, or a confident search; it is the genuine floor for this lane
 without a broader tool (a bulk audio-classifier pass, or the `library_genre_aliases` path #860
 already flagged as unreachable from this surface).
+
+### Session 7, tenth stretch — 3 more, all high-confidence identity, then the real floor
+
+A batch of `continue` prompts arrived stacked while a `WebSearch` call was in flight (the 10-minute
+cron re-firing during a slow tool call); treated as "keep going," not as separate requests, and
+folded into one more pass.
+
+- **Romy, Fred again.. — "Strong"** → `Trance`. Both artists are currently prominent; Official Charts
+  calls the track "the trance anthem" outright, and multiple independent sources agree.
+- **Hernan y La Champion's Liga — "La Quiero a Ella"** → `Latin`. 2 of the artist's 3 other library
+  songs already agree on `Latin` (the third, a collab credit, reads `Cumbia Pop` — compatible, not
+  contradictory) — clears the sibling threshold cleanly.
+- **"Jorge Drexler: NPR Music Tiny Desk Concert"** → `Cantautor`. The artist field here is "NPR
+  Music" (the channel, not the performer) — Jorge Drexler is a well-known Uruguayan singer-songwriter
+  (Cantautor, this library's own already-established genre for the form), identifiable without a
+  search.
+
+`Music` junk backlog: 31 → **28**. This is the real floor: the remaining songs are electronic/world
+producer handles (Helucze, Jengi, Joep Mencke, Julian Jeweil, Omeria, Zedjue, and similar) with no
+library sibling and no search result confident enough to act on, plus a few multi-artist collab
+credits (Ladji Mouflet cluster, Nato & Sahalé, Legendary Baller/4ize) in the same position. Correctly
+left alone — searched-and-declined, not skipped.
