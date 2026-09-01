@@ -4,7 +4,7 @@ import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { recordPlayEvents } from '../services/play-history.js';
 import { upsertArtistOrigin } from '../services/artist-origins.js';
-import { radioRoutes, buildFilterRadio } from './radio.js';
+import { radioRoutes, buildFilterRadio, stationCentroid } from './radio.js';
 
 let testDb: Database = (() => {
   const d = new Database(':memory:');
@@ -507,6 +507,98 @@ describe('radio /next', () => {
     // a column left out of it never reaches seedCentroid, and the axis silently
     // dies for every filter-radio candidate.
     expect(result.seed?.originCountries).toEqual(['AR']);
+  });
+
+  it("filter radio: the station's target ignores the caller's exclusions (issue #598)", () => {
+    for (const id of ['s1', 's2', 's3']) {
+      seedSong(testDb, {
+        id,
+        title: id,
+        artist: 'A',
+        albumId: `alb-${id}`,
+        album: id,
+        genre: 'Testcore',
+        bpm: 100,
+        key: 'A minor',
+      });
+    }
+    seedSong(testDb, {
+      id: 's4',
+      title: 'S4',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'alb-s4',
+      album: 'S4',
+      genre: 'Testcore',
+      bpm: 200,
+      key: 'B minor',
+    });
+
+    const result = buildFilterRadio(
+      testDb,
+      { genres: ['Testcore'] },
+      { excludeIds: new Set(['s1', 's2', 's3']) },
+    );
+
+    // A station's sound target is a property of the STATION, not of one
+    // request. Built from the post-exclusion pool it was the leftover row's
+    // own features (bpm 200, B minor); it must be the whole eligible set's
+    // centroid regardless of who is asking or what they have already heard.
+    expect(result.seed?.bpm).toBe(125);
+    expect(result.seed?.key).toBe('A minor');
+  });
+
+  it("filter radio: the station's target ignores which rows the sampler drew (issue #598)", () => {
+    // 350 rows at 100 bpm + 50 at 200 bpm -> full-set mean 112.5. The pool is
+    // `ORDER BY RANDOM() LIMIT 300`, and a 300-row subset holds k of the fast
+    // rows for some integer k in [0, 50], giving mean 100 + k/3. That series
+    // never hits 112.5, so this asserts the centroid saw all 400 rows -- no
+    // draw can reach the expected value by luck.
+    for (let i = 0; i < 400; i++) {
+      seedSong(testDb, {
+        id: `p${i}`,
+        title: `P${i}`,
+        artist: `Artist ${i % 40}`,
+        artistId: `artist-${i % 40}`,
+        albumId: `alb-p${i}`,
+        album: `P${i}`,
+        genre: 'Samplecore',
+        bpm: i < 350 ? 100 : 200,
+      });
+    }
+
+    const result = buildFilterRadio(testDb, { genres: ['Samplecore'] }, {});
+
+    expect(result.pool.length).toBe(300);
+    expect(result.seed?.bpm).toBe(112.5);
+  });
+
+  it('filter radio: the station centroid answers every filter from library_songs alone', () => {
+    // `stationCentroid` drops the album join the pool query carries, so any
+    // predicate `songFilterWheres` learns to emit against another alias would
+    // throw on stations only. Called directly, because `buildFilterRadio`
+    // returns early on an empty pool and would never reach the query.
+    expect(() =>
+      stationCentroid(
+        testDb,
+        {
+          bpmMin: 120,
+          bpmMax: 140,
+          keys: ['8A', '3B'],
+          moods: ['happy', 'party'],
+          buckets: { energy: ['low', 'high'], valence: ['mid'] },
+          yearMin: 1990,
+          yearMax: 1999,
+          genres: ['Rock'],
+          primaryGenreOnly: true,
+          countries: ['AR', 'unknown'],
+          starred: true,
+          durationMin: 120,
+          durationMax: 360,
+        },
+        60,
+      ),
+    ).not.toThrow();
   });
 
   it('still returns results when embeddings are present for some songs', async () => {

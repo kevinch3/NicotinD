@@ -118,7 +118,110 @@ Changing them would have been a version bump that moved no music.
   a station's ranking quality is bounded by a sampler nobody has evaluated — and
   that the sampler's churn is the same order of magnitude as every formula change
   measured here, so the two are hard to tell apart without many repeats. Filed as
-  **#598**.
+  **#598** — and **measured below**, where the claim in the sentence above
+  ("the sound target is stable") turns out to be half wrong.
+
+## #598 — the sampler, evaluated (run 2026-09-01)
+
+Replayed against the nightly snapshot `nicotind-20260831-040022` (17,873 landed
+songs, 18,404 embeddings), same eight chips, same replay habit: the shipped
+`buildFilterRadio` / `scoreSimilarity` / `rankCandidates`, never a
+re-implementation.
+
+**The ground truth needs no human vote.** #598 was filed "needs a human-vote
+baseline first (see #597), otherwise *better* has no definition here". That is
+true of the *taste* question and false of the *fidelity* one: rank the whole
+eligible set once and you have the formula's own answer, which is a definition
+of "better" that costs no votes. Every number below is measured against that,
+under one reference seed, so anchor jitter is never mistaken for candidate loss.
+
+### The complaint, quantified
+
+| chip | eligible | median rank of a served track in the full ordering | of the served 10, in the formula's own top 10 | score deficit |
+| --- | --- | --- | --- | --- |
+| Pop | 3,718 | 90 | 1.1 | 0.55 sd |
+| Rock | 3,773 | 84 | 0.7 | 0.47 sd |
+| Latin | 2,476 | 52 | 1.3 | 0.66 sd |
+| Electronic | 1,741 | 42 | 1.1 | 0.86 sd |
+| Reggae | 795 | 16 | 3.3 | 0.21 sd |
+| Alternative Rock | 907 | 30 | 2.0 | 0.30 sd |
+| Hip Hop | 805 | 15 | 3.5 | 0.24 sd |
+| Cumbia | 670 | 26 | 3.8 | 0.15 sd |
+
+And the number the issue was really about: **a real formula change (the
+embedding 8 → 0 A/B) moves 0–3 of the served 10; the sampler moves 6.2–9.3.**
+Formula work was not merely hard to measure through this sampler, it was
+3–9× smaller than the noise it had to be read through.
+
+### Both options priced — and the issue guessed the wrong one
+
+**Option A (rank a larger sample, draw from the ranked head)** — modelled as
+the real fix would work, `maxPerArtist` and recording dedup included, sweeping
+sample size S × head depth K. **At matched variety the gain is 0–35%, and zero
+on 4 of 8 chips.** Random sampling already sits near the deficit/variety
+frontier. It also buys fidelity to a formula no human has voted on, which is
+the one thing #597 must settle first. **Not implemented.**
+
+**Option B (target from the whole eligible set)** — recovers **8–70% of the
+deficit at zero variety cost**, because the pool stays sampled and only the
+target changes. Decomposed further, the whole gain is in the **scalar**
+centroid and **none** of it in the embedding anchor:
+
+| chip | today | B1 whole seed | B2 scalars only | B3 embedding anchor only |
+| --- | --- | --- | --- | --- |
+| Pop | 0.48 | 0.44 | 0.44 | 0.48 |
+| Rock | 0.55 | 0.39 | 0.39 | 0.55 |
+| Electronic | 0.78 | 0.58 | 0.58 | 0.78 |
+| Hip Hop | 0.37 | 0.16 | 0.16 | 0.37 |
+| Cumbia | 0.30 | 0.09 | 0.09 | 0.29 |
+
+B2 ≡ B1 and B3 ≡ today, to two decimals, on all eight chips. **Implemented** as
+`stationCentroid`.
+
+### What the 08-20 run missed, and why
+
+The row above says "the *sound target* is stable across those draws (anchor cos
+0.99)". The cosine was right; the conclusion drawn from it was not.
+`seedCentroid` takes **means** of the numeric axes and **modes** of the
+categorical ones (key, genre, origin). A mean over a 300-row sample of a
+3,700-row population is stable — which is why the embedding anchor, a mean,
+read 0.99 and why mean bpm is within 1.1 bpm of the full set. A **mode is not**:
+
+| chip | draws whose modal key matched the full station's | mean bpm error |
+| --- | --- | --- |
+| Pop | 93% | 1.1 bpm |
+| Rock | 80% | 1.1 bpm |
+| Latin | 67% | 0.8 bpm |
+| Electronic | 47% | 0.7 bpm |
+| Alternative Rock | 67% | 1.1 bpm |
+| Cumbia | 33% | 0.7 bpm |
+| Reggae / Hip Hop | 100% / 80% | 1.3 / 0.8 bpm |
+
+Key carries weight 6 and was measured above as the #1 or #2 ordering force in
+the served window. So on Cumbia the target key — the thing the entire station is
+ranked against — changed on two taps out of three. **The 08-20 run measured the
+one axis of the target that was a mean, and generalised to the target.** The
+lesson is not about radio: *when a summary mixes means and modes, sampling
+stability measured on the means says nothing about the modes.*
+
+### The fix, and what it costs
+
+`stationCentroid` (`routes/radio.ts`) runs the existing `seedCentroid` over the
+whole eligible set through a narrow projection — only the columns `toOrderable`
+reads, no album join, no embeddings. Reusing `seedCentroid` rather than writing
+the centroid a second time in SQL costs nothing: measured **13–24ms**, the same
+as hand-rolled aggregates, and it reproduced the full-set seed exactly on 8 of
+8 chips. Ranking the full set instead would have been 27–135ms.
+
+| | before | after |
+| --- | --- | --- |
+| distinct target keys over 8 taps | up to 3 | **1 on 8 of 8 chips** |
+| distinct target bpm over 8 taps | 8 | **1 on 8 of 8 chips** |
+| request | 23–40ms | 39–75ms |
+
+**Still open after this.** The variety/fidelity trade (option A) is a taste
+question and stays with the station poll — #597 and #600. What #598 removes is
+the part that was never a taste question: the target itself wobbling.
 
 ### Unexplained, and larger than anything above
 
