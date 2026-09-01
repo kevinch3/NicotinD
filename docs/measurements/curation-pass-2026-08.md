@@ -1875,3 +1875,37 @@ established by 5 independent sibling albums from earlier this session — filled
 
 Both dimensions verified by re-running the metric: years 191 → **190**, genre-less 165 → **154**
 (11-song drop matches exactly, on top of unrelated background enrichment already in progress).
+
+### Session 7, thirteenth stretch — the Anenoa missplit ruling, closed
+
+Asked the user for closed decisions to resolve the missplit this session had left open. Four questions,
+each a genuine fork in how the fix could go: **fold in vs. delete** (opposite of Green Velvet, since
+the fragments here are the higher-quality copies), **fingerprint proof vs. weaker evidence**,
+**which artist credit survives the merge**, and **delete timing**. All four answered before touching
+anything.
+
+**The chosen proof bar couldn't be met as specified.** All 4 pairs (8 files) returned AcoustID
+`no-match` — this is a 2025/2026 release, genuinely too new to be fingerprinted yet, not a tool
+failure or something a retry fixes. Rather than silently substitute weaker evidence for the proof the
+user had just approved, asked again: proceed on title+track+collaborator-credit alignment instead, or
+hold the album until AcoustID catches up. Answer: proceed.
+
+**A real tooling gap surfaced along the way**: no MCP tool swaps audio bytes between two files — there
+is no "replace this track's file with that one." The actual mechanism, already documented on
+`fix_song_metadata` itself (*"Fixing `album`... dissolves its fake single-track album into the real
+one"*), is to retag the higher-quality fragment's `album`/`albumArtist` to match the real album
+exactly, let it join as its own row, then delete the now-redundant low-bitrate original. Executed that
+sequence for all 4 pairs — verified each fold-in landed (12 → 16 songs) before deleting the 4 old
+low-bitrate rows (16 → 12, net unchanged, quality upgraded, all 4 collaborator credits intact).
+
+**Found a 5th duplicate along the way that the original flag never counted**: a *third* copy of
+"Anenoa Pt. 2 (Original Mix)" sitting under a single-track album literally named "Platoon" (likely a
+label-name tag mixed up as an album name — the same class of tagging accident as the "Poké & Sleep 2"
+album found earlier this session). Identical title, identical 320 kbps, identical collaborator credit
+— a pure surplus duplicate with nothing to fold in, not a new fork of the ruling. Deleted under the
+standing "duplicate rip, keep one copy" policy from earlier sessions.
+
+Verified by reading the main album back (still 12 tracks, all 4 upgraded tracks present with their
+collaborator credits) and by re-searching "Anenoa" (only one copy of every title remains). The 5 stale
+single-track album/artist rows are now orphaned (0 songs) and left for the next `orphan_artist` sweep,
+same pattern as every other fold-in this session.
