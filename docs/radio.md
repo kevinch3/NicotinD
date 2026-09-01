@@ -3,7 +3,8 @@
 Radio mode keeps playback going by auto-appending musically similar tracks
 when the queue runs low. It replaces the old "shuffle 200 recent songs"
 provider with a server-side scoring engine that uses BPM, key, genre, year,
-and duration to find tracks that flow naturally from whatever is playing.
+and the perceptual audio axes to find tracks that flow naturally from whatever
+is playing.
 
 ## How the next track is chosen — in plain language
 
@@ -31,13 +32,18 @@ competes on what it has instead of being punished for missing data.
 | Origin           | Are the artists from musically related countries/scenes?                                                                                                                                              | 8      |
 | Key              | Would a DJ call the musical keys compatible (Camelot wheel)?                                                                                                                                          | 6      |
 | Energy           | Same intensity — a quiet ballad shouldn't follow a banger.                                                                                                                                            | 5      |
+| Acousticness     | Acoustic textures with acoustic textures.                                                                                                                                                             | 5      |
 | BPM              | Similar tempo (the pool is already tempo-filtered, so this is a mild nudge).                                                                                                                          | 4      |
 | Valence          | Same emotional brightness (happy vs melancholy).                                                                                                                                                      | 4      |
-| Duration         | A 4-minute song follows a 4-minute song, not a 40-second interlude.                                                                                                                                   | 3      |
 | Danceability     | Same groove factor.                                                                                                                                                                                   | 3      |
 | Instrumentalness | Vocal tracks with vocal tracks, instrumentals with instrumentals.                                                                                                                                     | 3      |
-| Acousticness     | Acoustic textures with acoustic textures.                                                                                                                                                             | 2      |
 | Year             | Same era, loosely (20-year scale).                                                                                                                                                                    | 2      |
+
+Duration stopped being a scored criterion in formula v7: the sub-60 s pool
+floor already removes the interlude/lesson case before scoring, and duration
+_closeness_ among real songs measured anti-correlated with listener ratings
+(see "Calibration history"). The axis code remains, at weight 0, so
+`--weights duration=n` can still measure it.
 
 **3. Apply penalties and pick.** A candidate by the _same artist_ as the seed
 loses 0.15, and a track _you_ played in the last 7 days loses up to 0.2 (fading
@@ -810,6 +816,33 @@ used — the version is the human/grouping label, not the ground truth.
   Radiohead) and **library mistags surfacing through radio** (a Rampa remix
   tagged Death Metal, Guasones tagged Pop, a junk "Metal Cover" novelty in the
   Metal station) — the latter are curation work and say nothing about weights.
+
+- **v7** (2026-09-01, issue #861): calibrated on the first stars5 data — two
+  polls closed 08-30/31: "Latin taste control (V6)" (25 votes / 1 rater,
+  including the **first two station scenarios ever voted**) and "Genre taste
+  control (v6 - star)" (50 votes / 2 raters). Baseline: pooled v6·stars5 AUC
+  **0.592 over 71 pairs** (Latin 0.710, Genre-star 0.500) — the star scale
+  tripled the informative pairs the same vote volume yielded under binary
+  (23 → 71), which is what #800/#802 predicted. Single-axis agreement over all
+  71 pairs: acousticness **0.655** (on the smallest perceptual weight, 2), key
+  0.642, energy 0.620 … duration **0.415** (anti-correlated); genre tied on
+  50/50 pairs and origin on 49/58 — both order-dead _within the served window_
+  (off-policy: they pick the pool, then have nothing left to order), so these
+  polls cannot measure weights 18/8 at all. Changes: **duration 3→0**
+  (v2 raised it to flag junk content; v2's own sub-60 s pool floor now removes
+  that case before scoring) and **acousticness 2→5**. Replay agreement:
+  stars5 pooled 0.592 → **0.704** (both polls improve, ≈0.81 / 0.625) and the
+  v6-binary group 0.522 → **0.696** — consistent across all four v6 polls and
+  both scales. Measured and rejected: `danceability=0` (0.535, hurts),
+  `embedding=12` / `key=10` / `year=0` (wash). Same discipline as v2: 3–4
+  raters and 94 v6 pairs support surgical pre-registered moves, not a fitted
+  vector. The bump also fences off #859's station-target fix
+  (`stationCentroid`): the 12 station pairs above were voted under the
+  pre-#859 wobbly sampler — every served candidate rated 1–2★ (a
+  pool-selection failure the AUC cannot see) — and must never pool with
+  post-fix station votes (#600). One curation finding worth repeating: the
+  worst seed scenario's seed still carries the junk genre "Music" on prod, so
+  the two identity axes were blind — no weight change fixes a mistag.
 
 Measure any weight idea against the accumulated votes before shipping it:
 

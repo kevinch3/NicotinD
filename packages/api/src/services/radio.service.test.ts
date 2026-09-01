@@ -601,6 +601,52 @@ describe('explainSimilarity (per-axis breakdown — the diagnostic seam)', () =>
     );
   });
 
+  it('v7 recalibration: a matched acoustic texture outranks a matched runtime (issue #861)', () => {
+    // In the stars5 polls duration closeness ordered AGAINST the ratings
+    // (single-axis AUC 0.415) while acousticness agreed most (0.655) on the
+    // smallest perceptual weight. The v6 vector is pinned in full so later
+    // recalibrations can't silently rewrite this comparison.
+    const v6Weights: ScoringWeights = {
+      genre: 18,
+      origin: 8,
+      bpm: 4,
+      key: 6,
+      year: 2,
+      duration: 3,
+      energy: 5,
+      valence: 4,
+      danceability: 3,
+      instrumental: 3,
+      acousticness: 2,
+      embedding: 8,
+      artistPenalty: 0.15,
+      recentPlayPenalty: 0.2,
+    };
+    const seed: SongFeatures = { duration: 240, acousticness: 0.9, artistId: 'a-seed' };
+    const sameLengthWrongTexture: SongFeatures = {
+      duration: 240,
+      acousticness: 0.1,
+      artistId: 'a1',
+    };
+    const acousticTwinLongerSong: SongFeatures = {
+      duration: 400,
+      acousticness: 0.88,
+      artistId: 'a2',
+    };
+
+    expect(scoreSimilarity(seed, sameLengthWrongTexture, v6Weights)).toBeGreaterThan(
+      scoreSimilarity(seed, acousticTwinLongerSong, v6Weights),
+    );
+    expect(scoreSimilarity(seed, acousticTwinLongerSong, DEFAULT_WEIGHTS)).toBeGreaterThan(
+      scoreSimilarity(seed, sameLengthWrongTexture, DEFAULT_WEIGHTS),
+    );
+  });
+
+  it('v7: duration at weight 0 drops out of the axis breakdown entirely', () => {
+    const ex = explainSimilarity(makeSeed(), makeCandidate(), DEFAULT_WEIGHTS);
+    expect(ex.axes.find((a) => a.axis === 'duration')).toBeUndefined();
+  });
+
   it('flags the same-artist penalty', async () => {
     const { explainSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');
     const seed = makeSeed({ artistId: 'same' });

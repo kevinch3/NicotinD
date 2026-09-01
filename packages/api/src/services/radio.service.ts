@@ -108,23 +108,30 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   // culture-blind tie when genre is broad/missing, under genre so a right
   // genre still leads. Starting point pending a dump-radio A/B.
   origin: 8,
-  // bpm 8 -> 4, duration 1 -> 3 (formula v2, issue #583): in the first human
-  // poll data (70 votes / 3 raters) bpm closeness was consistently *negative*
-  // within the served queue (the pool already pre-filters bpm +/-15%, so extra
-  // closeness buys nothing a listener wants), while duration closeness was a
-  // robust positive - and the loudest available red flag on non-music content
-  // (46 s language lessons, a 4 s clip) that used to sail through at weight 1.
+  // bpm 8 -> 4 (formula v2, issue #583): in the first human poll data bpm
+  // closeness was consistently *negative* within the served queue (the pool
+  // already pre-filters bpm +/-15%, so extra closeness buys nothing a
+  // listener wants).
   bpm: 4,
   key: 6,
   year: 2,
-  duration: 3,
+  // duration 1 -> 3 (v2) -> 0 (v7, issue #861): v2 raised it as the loudest
+  // red flag on non-music content, but v2's own sub-60 s pool floor now
+  // removes that content BEFORE scoring, and in the stars5 polls duration
+  // closeness was anti-correlated with the ratings (single-axis AUC 0.415);
+  // zeroing it improved every v6 poll group. The axis code stays, so
+  // --weights duration=n can still measure it.
+  duration: 0,
   // Perceptual axes. Energy leads (it defines the "momentum" of a set);
   // valence shapes the mood arc; the rest refine.
   energy: 5,
   valence: 4,
   danceability: 3,
   instrumental: 3,
-  acousticness: 2,
+  // 2 -> 5 (v7, issue #861): the strongest single-axis agreement with the
+  // stars5 votes (pairwise AUC 0.655 over 71 pairs) sat on the smallest
+  // perceptual weight.
+  acousticness: 5,
   // Cached embedding cosine — overlaps the 5 scalar axes (they are classifier
   // heads over the same vector). 4 -> 8 (formula v2, issue #583): the strongest
   // positive discriminator in the poll data (r=+0.32, ahead of every scalar
@@ -178,8 +185,16 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
  *      candidate to grade, which a rater marks good because it IS the seed.
  *      (5 is reserved for the descriptor axes of #642, already documented as
  *      v5; the numbers are grouping labels, so a gap costs nothing.)
+ * v7 - issue #861: duration 3->0 and acousticness 2->5, calibrated on the
+ *      first stars5 poll data (2 polls, 75 votes, 71 pairs) — the pair of
+ *      moves measured better on every v6 poll group on both scales (stars5
+ *      pooled 0.592->0.704, v6-binary 0.522->0.696); see docs/radio.md
+ *      "Calibration history". The bump also fences off #859's station-target
+ *      change (`stationCentroid`), which altered what a station poll serves
+ *      without touching the weights — the 12 station pairs voted under the
+ *      pre-#859 sampler must never pool with post-fix station votes.
  */
-export const RADIO_FORMULA_VERSION = 6;
+export const RADIO_FORMULA_VERSION = 7;
 
 /**
  * Parse a `--weights axis=n[,axis=n...]` override spec against a base weight
