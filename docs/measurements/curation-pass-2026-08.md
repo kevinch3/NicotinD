@@ -1693,3 +1693,13 @@ Chamame album's 4-track genre concatenation split the same way, and the artist f
 `fix_song_metadata` to `Los Nocheros, Los Tekis` — verified on read-back, not on the tool's own
 `verified: true` claim. The stale `Los NocherosLos Tekis` artist/album rows are now orphaned (0 songs)
 and left for the next `orphan_artist` sweep rather than forced.
+
+**Caught after the fact, from a screenshot of the app's own listing**: the song-level fix above was
+not sufficient on its own. The album's `artist` column is a separately-stored value that does not
+re-derive from its track, so the listing rendered **both** the stale concatenated bucket and the
+corrected per-track credit at once — displaying as three artists
+(`Los NocherosLos Tekis, Los Nocheros & Los Tekis`) instead of two. `fix_album_metadata` on the album
+row (id re-minted, per its own documented behaviour) closed the gap; both album and track now read
+`Los Nocheros, Los Tekis`, verified, and the old bucket is gone from every surface. Added as a comment
+on #860 — a real fix for that bug needs to touch both the song and its album's artist field, or
+re-derive the album row afterward, not just one.
