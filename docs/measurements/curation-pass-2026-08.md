@@ -1393,3 +1393,485 @@ diagnosis of the session.
 **The lesson is about the alarm, not the number.** "426 rows vanished" and "a deferred sweep
 retired rows for music deleted last week" are the same measurement. The difference was four probes,
 and the decisive one was the cheapest: counting audited deletes.
+
+### Session 7 (2026-08-31) — a flag that fixed itself, and the durability mechanism that is not durable
+
+**Baseline** (prod, after the v0.5.52/v0.5.53 deploys): 3,185 artists / 5,739 albums / 17,622 songs;
+audit high 68; genres.missing 228; 1 open flag (#18); misSplitAlbums 9.
+
+**Final**: 3,177 artists / 5,732 albums / 17,495 songs; audit high 67; genres.missing 228; **0 open
+flags**; misSplitAlbums 8.
+
+| dimension | before | after | delta |
+| --- | ---: | ---: | ---: |
+| open review flags | 1 | 0 | −1 |
+| missplit albums | 9 | 8 | −1 |
+| albums | 5,739 | 5,732 | −7 |
+| artists | 3,185 | 3,177 | −8 |
+| audit high | 68 | 67 | −1 |
+| years missing | 194 | 193 | −1 |
+| genres.missing | 228 | 228 | 0 |
+
+#### The +525 songs at baseline were not an ingest
+
+`list_recent_songs` showed 30 rows sharing **one identical `landedAt`**, all of them long-owned
+catalogue (*Pescado 2*, *Freaky Styley*, *El Mal Querer*). Song ids are `sha1(path)`, so a
+reorganize re-mints every id and the whole library reads as "just landed". **`landedAt` clustering,
+not row count, is the honest test for "did something arrive"** — and the answer decided whether
+destructive work was safe to start.
+
+#### Flag #18 was resolved by a deploy, not by curation
+
+#817 shipped as `782c5e30 fix(scanner): honour the per-track ARTIST tag, pinning ownership to the
+album` (v0.5.52). Re-reading the album afterwards, **all 13 Green Velvet collaborator credits were
+present, with zero writes from this session.**
+
+Three things worth keeping:
+
+- The flag's premise — *"the fragments are the library's ONLY carrier of 7 of the 13 credits"* — was
+  drawn from a **DB read**, and the DB was the lossy layer. The file tags had every credit all
+  along; the scanner was discarding them. **A conclusion is only as good as the reader that produced
+  it**, and the flag's whole do-not-delete recommendation rested on that one bad read.
+- The flag's **filed root cause was wrong again** (it proposed a `library_metadata_overrides` row;
+  the real cause was per-track ARTIST being discarded unless albumArtist is Various Artists). That is
+  #710, #762, #817, #819 and #851's pattern. The flag did mark it "NOT confirmed", which is the only
+  reason it cost nothing.
+- Its one *inferred* credit was right: Check U Out now reads **Green Velvet & Gant Garrard**, and
+  Gant Garrard is DJ Gant-Man's real name. Inference correctly labelled as inference, later confirmed
+  by evidence, is the system working.
+
+#### The 7 fragments: deleted, after proving duplication on both ids
+
+All 7 `Unshakable` fragment albums were verified against their main-album counterparts with
+`identify_song` — **14 calls, 14 matches, and every pair shared BOTH `acoustId` and `recordingId`**
+(scores 0.97–1.0). Only then deleted. Main album re-read after: 13 tracks intact.
+
+Note the quality direction: the fragments were opus ~184–207 (transcodes of the original FLACs) and
+the main-album tracks are mp3 320, so this was **not** "keep the better copy" — it was a wash between
+two lossy encodes, and the tie was broken by the main album being the coherent release. Recorded
+because the very next cluster inverts it.
+
+#### Sibling agreement is only evidence when the siblings are independent
+
+Two tracks still carry the literal label `Relief Records` as their genre. The album's other 11 read
+`Techno`, which looks like an overwhelming sibling majority — and propagating it would have been a
+mistag. Those 11 are **all mp3 320 from one rip carrying one blanket album-level genre**; the 2
+stragglers are opus 193 from a different rip. The opus fragments *disagreed* with the mp3 rip: the
+fragment of *Robots* read `Tech House` where the main album reads `Techno`.
+
+**An 11-way majority sourced from one rip is n=1, not n=11.** The sibling rule needs independent
+siblings. Left untagged, deliberately, and not flagged — an unknown genre is worklist material, not a
+human-decision blocker.
+
+#### Matias Aguayo *Anenoa* — the same missplit shape, the opposite remediation
+
+Four per-collaborator fragment albums, exactly like Green Velvet. But every fragment is **mp3 320**
+and every main-album counterpart is **172–176 kbps**. Here the fragments are the better copies, so
+the correct fix is to fold them *in* and delete the main-album copies — the reverse of what was just
+done to Green Velvet. **Left for an owner ruling**: destructive, and it inverts the obvious reading.
+
+#### RHCP *Greatest Hits* — the free lane beat the network lane
+
+`lookup_album_metadata` returned five candidates all at **score 100** (1999, 2003, 2005, 2008, 2020):
+a tie the scorer cannot break. The stored tracklist breaks it — *"Save the Population"* (track 16) was
+written for the 2003 compilation and appears on no earlier one, and *"Universally Speaking"* comes
+from *By the Way* (2002), ruling out 1999. Set to 2003. **Read the album you already own before
+spending a network call on it.**
+
+#### The finding: a curator genre override is keyed on the least durable id in the system — #856
+
+`song-genre-mutate.ts` says it plainly: *"The tag mirror below is a convenience for external players;
+the override is the durability mechanism, in both modes"* — and that row is `key: songId`, i.e.
+`sha1(path)`. Measured read-only on prod:
+
+```
+song-scope overrides:  total 953   orphaned 290   (30.4%)
+  user      replace   171     <- curator decisions
+  essentia  (null)    117     <- regenerable
+  user      append      2
+```
+
+**Severity splits by what happened to the file, and checking that changed the issue.** The first
+framing written this session — "essentially every genre decision from sessions 5–6 is gone" — was
+wrong:
+
+- **File MOVED** (the reorganize): the tag mirror rescues the value. UMOJA *Vuelo Nocturno*, 8
+  `mode:'replace'` writes to `Afrobeat`, all orphaned rows — and all 7 surviving tracks still read
+  `Afrobeat`. No visible loss.
+- **File REPLACED** (re-encode / re-acquire): total silent loss. The two Green Velvet tracks set to
+  `Tech House` last session now read `Techno`, and a direct query for an override on their live ids
+  returns **0 rows**.
+
+The subtler half: even where the value survived, the row that was supposed to protect it now points
+at a dead id, so the song is tag-governed again with no protection — one bad retag from reverting.
+That is #762's exact scenario re-armed.
+
+`orphan-prune.ts` documents this table as `311 rows | 0 orphans`, reasoning that *"the scanner
+rebuilds them rather than accumulating"*. True for `library_song_genres` (keyed on the **live** id);
+false for an override keyed on a **dead** one. The 0 predates the mass transcode. Curator tables are
+correctly excluded from `ORPHAN_TABLES` — they must never be deleted — but nothing repoints them
+either, and the fix pattern already exists twice in this repo
+(`repointOrphanedAcquisitions`, `repointPlaylistsBeforePrune`).
+
+Filed as **#856**, with the attribution of the 290 to specific events marked explicitly as a
+hypothesis rather than a finding.
+
+#### Songs 17,622 → 17,495 against 7 deletions
+
+Same shape as session 6's 426-song delta, and the same suspected cause (the deferred orphan sweep).
+**Not asserted here** — session 6 only earned that conclusion by counting audited deletes first, and
+this session did not re-run that probe. Recorded as open.
+
+#### Also done
+
+`Los Auténticos Decadentes` was split across three spellings (`Los Autenticos Decadentes`,
+`Los Áutenticos Decadentes`, and the correct form). One `merge_artist` batch collapsed all three;
+verified on read-back as 9 albums and every song under one artist row. The residual
+`Los Autenticos Decadentes;El Gran Silencio` is a compound multi-artist *field*, not an artist row,
+and is out of scope for a merge by design.
+
+### Session 7 continued — genre lane resumed under `/loop`, hunts budgeted, one near-miss caught
+
+Run as a `/loop 10m` cron across several ticks after the write-up above. Genre-less continued
+228 → **209** (19 more songs, mostly zero-search) and years-missing 194 → **190**, both confirmed by
+re-running the metric each tick, never by tally.
+
+**Zero-search genre wins, all from an album's own established genre or ≥2 independent siblings**:
+Matias Aguayo `Ritmo Juarez` (Minimal House, the album's own genre), Turf `Pasos Al Costado` (Rock,
+5/6 sibling albums), Mambru ×4 (Cumbia, 4 sibling albums), Ella Es Tan Cargosa `Ex Noche` (Rock, the
+album's own genre), Ke Personajes ×3 across two albums (Cumbia — the pattern held even mid-album:
+6 independent siblings on the same rip settled a 7th untagged track), Los Palmeras ×2 (Cumbia — a
+real 7-vs-4 sibling split resolved by known artist identity, Santa Fe's canonical cumbia act, not
+guessed), Miranda! ×2 and WhoMadeWho ×1 (each the album's own unanimous genre), Charly García `10`
+(Rock, 12 siblings spanning 1982–2012 — independent releases, not one rip).
+
+**One searched win**: Coyu → Techno, corroborated by his Drumcode roster listing and his own Suara
+label's techno reputation. **One searched-and-declined**: El Quinto Carajillo — search was
+inconclusive, left untagged rather than guessed, per the skill's own rule.
+
+**A missplit found and fixed for free**: Mid-Air Thief's 2015 album existed as two rows — the real
+one (`Gongjoong Doduk`, tagged) and a duplicate whose *artist* field was the album's own garbled
+title (`公衆道徳`) instead of the band name. `merge_artist` folded it in; verified via `get_artist`
+as 3 albums, one artist, all `Folktronica`.
+
+**A caught near-miss, worth keeping as the lesson of this stretch**: Jennifer Lopez's
+*On The 6 / J. Lo (Coffret 2 CD)* holds exactly one track, `Una Noche Más`. Its title was dated by
+guessing the compilation's implied year (1999) without checking what the single track actually was
+— a mirror of the trap the skill's new sibling-independence rule exists to prevent, just for years
+instead of genres. Mid-correction, unverified recall said "actually this track is from the 2001 era"
+and nearly overwrote a correct guess with a wrong one; a `WebSearch` settled it definitively at 1999
+([Discogs](https://www.discogs.com/release/5665995-Jennifer-Lopez-Una-Noche-M%C3%A1s),
+[Wikipedia](https://en.wikipedia.org/wiki/Una_Noche_M%C3%A1s)). **A bundle's title is not its
+contents' date — check the track before dating the wrapper**, and second-guessing a guess is not the
+same as verifying it. The same trap re-appeared one tick later on WhoMadeWho's `Watergate 08` (the
+*8th installment* of a mix series, 2011 — not literally 2008) and was caught *before* writing this
+time, by searching first.
+
+**Real-world-knowledge year fixes, applied without incident**: Britney Spears `Circus` → 2008,
+Shakira `Superventas 07` → 2007 (the title's own year claim, which held up here unlike Watergate's).
+
+**Ten confirmed-incomplete hunts (the session's full `complete_album` budget)**: 3 already-complete,
+2 no-candidate, 1 unresolved timeout (Çantamarta, not retried a third time), 2 real downloads
+enqueued (Backstreet Boys — confirmed **landed**, 29/29 tracks, re-verified via `get_album_tracks`
+after the fact; Los Auténticos Decadentes *Mi vida loca* — left ambiguous, likely still in flight),
+and **2 hit `enqueue-failed`** (El Kuelgue *Ruli*, Los Auténticos Decadentes *Club Atlético
+Decadente*). Read the actual code before filing: `album-acquire.ts` captures the real addon error in
+a `log.warn` and then discards it, so the MCP caller gets the bare string with nothing to diagnose
+from — unlike `identify_song`'s `source-error`, which carries `detail` for exactly this reason.
+Filed as **#858**, evidence-first (the two repro cases plus the exact line), not a guessed cause.
+
+**The `djset_artist` audit bucket (count 2) was investigated and left alone** — the flagged rows
+aren't distinguishable from the MCP surface alone (the pattern lives in `artist`-field values the
+health report doesn't expose per-item), and chasing 2 items through a prod SSH probe wasn't worth
+the session's remaining time. Recorded as a gap, not fixed.
+
+Final for this extended session: genre-less 209, years-missing 190, confirmedIncomplete 116 (one
+hunt landed, one still pending, two failed-with-no-detail), 0 open flags, 2 issues filed (#856,
+#858), 1 more missplit resolved, 1 more genre-and-hunt cluster closed out. Stopped deliberately once
+the remaining residue matched the documented low-yield shape (singleton artists, no MBID, no
+siblings) rather than grinding per-song searches with poor odds.
+
+### Session 7, third stretch — `get_rare_genres` finds a whole defect class, and a majority-count near-miss
+
+Resumed via `/loop 5m`. Three ticks were genuine no-ops (state read identically three times running —
+the enqueue-failed hunts and Çantamarta's timeout hadn't progressed, and every zero-search genre/year
+avenue was already exhausted). Reported that plainly rather than manufacturing busywork, then tried a
+lane not yet worked this session: `get_rare_genres`, which the tool description calls "the fewest
+songs, worst-first — misclassification candidates."
+
+**First hit**: `Alt Pop` and `Alt-Pop` each showed `songCount: 1` in the tool's own output — but
+`get_rare_genres` counts the **primary** genre only, and a quick probe of `library_song_genres`
+showed `Alt-Pop` actually had 2 songs (one at a non-zero position, invisible to the tool), `Alt Pop`
+had 1. Unified the minority spelling; verified it dropped out of the rare-genres list entirely.
+
+**That surfaced a bigger, undocumented defect class.** A broader probe (`GROUP BY LOWER(genre)`)
+found four more case-only duplicate pairs, plus one accent-only pair the LOWER-based query couldn't
+even catch on its own (SQLite's default collation doesn't fold accents):
+
+| minority spelling | majority spelling | songs (minority / majority) |
+| --- | --- | --- |
+| Avant-garde Jazz | Avant-Garde Jazz | 2 / 35 |
+| Dance-Pop | Dance-pop | 1 / 674 |
+| Rkt | **RKT** | 47 / 4 |
+| Synth-pop | Synth-Pop | 22 / 299 |
+| Amerique latine | Amérique latine | 9 / 34 |
+
+**RKT is the near-miss worth keeping.** Majority-count (47 vs. 4) said "Rkt" was the library's
+convention — but a search confirmed **RKT** (all-caps acronym) is the only real-world styling of this
+Argentine cumbia/reggaeton-fusion genre, per its own
+[Wikipedia article](https://es.wikipedia.org/wiki/RKT) and every source describing it. Fixing by
+majority count alone would have corrected 4 *right* entries into the *wrong* spelling. This is the
+third time this session real-world knowledge overrode a database-internal signal (RHCP's tracklist,
+"Watergate 08"'s series number, and now this) — a majority is evidence, never proof.
+
+**None of the fixes above were applied blindly.** `library_song_genres` position was checked for
+every one of the 81 total songs across these 5 pairs first, because `set_song_genre`'s `mode:'replace'`
+overwrites a song's **entire** genre set — applying it to a secondary-position entry (most of them:
+65 of 81) would have silently deleted that song's real primary genre and every other tag it carried.
+Only the 16 **position-0** entries (9 Amérique latine, 1 Dance-pop, 6 RKT) were safe to fix with a
+single-genre `replace` call; all 16 verified by re-querying `position = 0` counts afterward (0
+remaining under each old spelling). **The other 65 — 2 Avant-Garde Jazz, 41 RKT, 22 Synth-Pop — need
+each song's full ordered genre list reconstructed before a safe `replace`, which is real per-song
+work, not a bulk operation, and was deliberately left for a dedicated pass rather than rushed.**
+
+Not filed as an issue: this is curation work the MCP surface already supports correctly (the position
+check is exactly why `mode:'replace'` exists and is documented as dangerous when misapplied) — the
+gap is in this session's own tooling (no bulk multi-genre-position read/write path), not a product
+defect.
+
+### Session 7, fourth stretch — the remaining 65 dupe-genre songs, done properly
+
+Came back to finish what the third stretch deliberately deferred. For each of the three remaining
+clusters, fetched every affected song's **full ordered genre list** via a read-only probe, built the
+corrected list in place (same order, same members, one spelling fixed), and wrote it back with
+`mode:'replace'` — never the bare corrected string alone.
+
+- **Avant-Garde Jazz** (2 songs): both carried 4- and 7-genre sets spanning Electronic/Jazz/Rock
+  subgenres; reconstructed and verified position-by-position identical except the one fix.
+- **RKT** (41 songs): 38 shared one 3–4-genre Cumbia/Latin/Cuarteto pattern, 2 carried a much richer
+  10-genre set (Reggaeton, Trap Latino, Hip Hop, etc.) that would have been silently destroyed by a
+  bare-string replace. RKT total: 4 → 51 (4 original + 6 fixed earlier at position 0 + 41 now).
+- **Synth-Pop** (22 songs): two sub-clusters (`Electronic;Pop;Synth-Pop;Dance-pop` ×12,
+  `Electronic;Rock;Indie Rock;Synth-Pop;Disco` ×9, one 3-genre outlier). Synth-Pop total: 299 → 321.
+
+**Every one of the 65 verified two ways**: zero rows remain under the old spelling, and a per-song
+`COUNT(*)` against `library_song_genres` matches each song's original list length exactly — nothing
+lost, nothing duplicated. Combined with the earlier 16 position-0 fixes, this closes out all 81 songs
+found by the third stretch's `get_rare_genres` probe.
+
+### Session 7, fifth stretch — a different defect class, and a real bug filed against a working feature
+
+A wider `get_rare_genres` pass (`maxCount: 5`) found two more genuine cosmetic dupes (`Dance Pop` — a
+**third** spelling of the already-fixed Dance-pop cluster; `Chill Out`/`Chillout`, genuinely tied 1-1
+with no majority signal, correctly left alone) — and something structurally different: genre strings
+that look like **multiple values run together with no delimiter at all**: `ElectronicEurodance`,
+`SkaLatin Alternative`, `Folklore latino-américainLatin MusicFolkFolklore Argentino`, and
+`Latin MusicFolklore Argentino` on 4 separate tracks of one album.
+
+Read `genre-split.ts` before touching anything: `splitGenres` only ever splits on `;`, `,`, `|` (and
+a confirmation-gated `/`) — it deliberately never guesses a word boundary inside an unseparated
+string, by design, the same discipline as its `/` rule. The doc comment names the intended fix path:
+a human-gated `library_genre_aliases` table. **That table has no MCP tool reaching it** — a curator
+session can only patch the symptom (the already-scanned song's stored genre row), which will revert
+on the next rescan if the source file's own tag is still malformed.
+
+**The artist-field twin of this bug was worse: a genuine duplicate album.** `Los NocherosLos Tekis`
+existed as its own artist row on prod, owning a fake one-track "Chamame" (2011) that was really one
+track of the real 7-track *Chamame* (2005) under `Los Nocheros`. Checked before fixing: **both**
+`Los Nocheros` and `Los Tekis` are independently, fully confirmed artists already in the library with
+their own albums. `artist-split.ts`'s `segmentConcatenatedArtist` documents its own gate as
+*"every segment must be a confirmed real artist... The confirmation gate makes it safe to apply
+automatically at scan time"* — both segments here satisfy it, and the cut position is legal by the
+function's own rule. **By the function's own logic this should have split cleanly and didn't.** That
+is a real bug in a working feature, not just bad source data — filed as **#860**, with the likely
+cause (confirmation timing: the file scanned before `Los Tekis` was independently confirmed, and
+nothing re-segments once a name becomes confirmed later) marked explicitly as a hypothesis, not a
+finding, per this session's own established discipline.
+
+Fixed the symptom: 4 genre strings split into their evident components (position-0, safe), the
+Chamame album's 4-track genre concatenation split the same way, and the artist field corrected via
+`fix_song_metadata` to `Los Nocheros, Los Tekis` — verified on read-back, not on the tool's own
+`verified: true` claim. The stale `Los NocherosLos Tekis` artist/album rows are now orphaned (0 songs)
+and left for the next `orphan_artist` sweep rather than forced.
+
+**Caught after the fact, from a screenshot of the app's own listing**: the song-level fix above was
+not sufficient on its own. The album's `artist` column is a separately-stored value that does not
+re-derive from its track, so the listing rendered **both** the stale concatenated bucket and the
+corrected per-track credit at once — displaying as three artists
+(`Los NocherosLos Tekis, Los Nocheros & Los Tekis`) instead of two. `fix_album_metadata` on the album
+row (id re-minted, per its own documented behaviour) closed the gap; both album and track now read
+`Los Nocheros, Los Tekis`, verified, and the old bucket is gone from every surface. Added as a comment
+on #860 — a real fix for that bug needs to touch both the song and its album's artist field, or
+re-derive the album row afterward, not just one.
+
+**Asked to check for other cases, and it is not isolated.** Swept the whole library for the same
+"lowercase directly followed by uppercase" pattern on artist fields. Most hits are false positives —
+real stylized band names (`CamelPhat`, `WhoMadeWho`, `Mac DeMarco`, `DaBaby`, `Tate McRae`, `ScHoolboy
+Q`, dozens more) that legitimately carry internal capitals. Three, though, checked out the same way as
+Los Nocheros/Los Tekis — every segment independently exists as a confirmed artist in the library:
+
+- **`2 MinutosTruenoDie Toten Hosen`** → `2 Minutos, Trueno, Die Toten Hosen`. This is not a
+  hypothetical: it is the *exact string* `artist-split.ts`'s own doc comment for
+  `segmentConcatenatedArtist` uses as its worked example — and it was sitting live on prod, unsplit,
+  the entire time that comment was written. Both song and album fixed (same album-row gap as before).
+- **`MalumaCosculluela`** → `Maluma, Cosculluela` (song-only; its album already had the right artist).
+- **`J. BalvinDua LipaBad Bunny & Tainy`** → `J Balvin, Dua Lipa, Bad Bunny & Tainy`, the real 2018
+  four-artist collaboration "Un Día (One Day)" (song-only; its album, Dua Lipa's *Future Nostalgia*,
+  already had the right artist).
+
+Two more matched the same shape but were **correctly left alone**: `Jamsha El PutiPuerko` (5 songs)
+and `BabyChiefDoit` (1 song) have no independently-confirmed sub-names in this library to split
+against — leaving them whole is the confirmation gate working as designed, not a miss. All three
+fixes and both declines added to #860 as a comment.
+
+### Session 7, sixth stretch — the folklore radio-poll feedback, traced and fixed
+
+External feedback (a radio evaluation poll) named a concrete failure: the folklore seed (Sanampay,
+"Embrujo") produced the worst-served set (2.6★ mean, served Afro-jazz/tropical house/cumbia against
+it) because its genre reads `Music` — junk vocabulary, so the weight-18 genre axis and the origin axis
+were both blind — and the library's folklore pool was fragmented across three spellings
+(`Folklore` 14, `Folklore Argentino` 5, `Folklore latino-américain` 1), too thin and split for the
+axis to have signal even where it wasn't blind.
+
+Checked before fixing, not assumed: **all 16 Sanampay tracks** carry `Music` at position 0 (junk, not
+just this one song — the feedback's own example was one visible symptom of a whole-artist tagging
+gap). The user supplied a Wikipedia detail mid-task that changed the fix: Sanampay is not an Argentine
+act specifically — *"un grupo vocal e instrumental creado en México en 1977... con el fin de difundir
+la música folclórica... de América Latina"*, founded in exile by musicians from both countries. Tagging
+them `Folklore Argentino` would have been a new, different wrong answer. Consolidated everything to
+the plain **`Folklore`** umbrella instead — already the majority spelling (Los Tekis, Los Tucu Tucu,
+both genuinely Argentine) and the one that doesn't assert a nationality Sanampay doesn't have.
+
+Every song's full ordered list was fetched and reconstructed in place before writing, same discipline
+as the RKT/Synth-Pop stretch — the Los Nocheros tracks keep `Latin Music` as position 0 with
+`Folklore Argentino` renamed to `Folklore` at position 1, and *Vuela una Lágrima* (which already
+carried both `Folklore latino-américain` and `Folklore Argentino` in one list) had the resulting
+duplicate collapsed rather than left in. Verified by re-query: **35 songs now share one canonical
+`Folklore`** (14 + 16 + 4 + 1, arithmetic confirmed), zero Sanampay songs still read `Music`.
+
+**Not fixed, flagged instead**: the same read revealed **83 total songs** carry the `Music` junk
+genre library-wide — only the 16 in this feedback's blast radius were touched. That is a
+substantially bigger cleanup than this stretch's scope, left for a dedicated pass rather than
+absorbed here.
+
+### Session 7, seventh stretch — the `Music` junk backlog, starting with the biggest cluster
+
+Grouped the remaining 67 `Music`-junk songs by artist. One cluster dwarfed the rest: **Luca Prodan,
+12 songs**, all from one 1996 posthumous release, *Time, Fate, Love* — his pre-Sumo solo demos,
+recorded in Córdoba 1981–83. Verified via search rather than relying on recall (RateYourMusic lists
+the release as both *Post-Punk* and *Psychedelic Folk*, and the descriptive sources agree: acoustic,
+folk-and-Nick-Drake-influenced recordings, a quieter register than Sumo's later post-punk explosion,
+with Sumo's future guitarist Germán Daffunchio playing on it). Applied both genres
+(`Post-Punk;Psychedelic Folk`) rather than picking one arbitrarily, since the sources themselves
+disagree and both are independently well-supported. All 12 were simple single-genre rows (position 0
+only), so no full-list reconstruction was needed. Verified: zero Luca Prodan songs still read `Music`,
+and both new genres now hold healthy independent counts (120 and 21) confirming this didn't mint a
+one-off tag. `Music` junk backlog: 83 → 71.
+
+Deliberately stopped there for this stretch — the remaining ~71 are almost entirely singleton or
+2-3-song artists, the documented low-yield shape, not a repeat of the Luca Prodan-sized win.
+
+### Session 7, eighth stretch — pushed back on stopping early, cleared the rest of the `Music` backlog
+
+The user's response to stretch six's "flagged, not fixed" note was direct: *"Shouldn't be any 'Music'
+genre actually."* Correct — `Music` conveys zero discriminating information and is actively harmful
+(that is the exact mechanism that broke the folklore radio seed). Went back in rather than treating
+the earlier stop as final.
+
+A fresh count read **106 rows** (not 83/71 — background deploy/rescan churn shifted the number between
+stretches, consistent with the pattern already documented this session; not chased further). Reading
+the full set revealed the dominant shape: for most electronic tracks, `Music` sits as a **redundant
+second tag right behind a real genre already present** (`Electronic;Music`, `Latin;Music`,
+`Reggae;Music` — almost certainly a source tag like "Electronic Music" arriving as two separate
+values). For those, the fix is simply dropping the redundant tag, not guessing a replacement:
+
+- **Pan-Pot** (6 tracks, `Electronic;Music`) → upgraded to **Techno**, their well-known genre (German
+  minimal/techno duo), rather than settling for the generic `Electronic` that was already there.
+- **Karotte** (3 live-DJ-set tracks, `Music`-only) → **Techno** (Cocoon Recordings techno DJ).
+- **Mha Iri** (5 tracks: 2 already `Electronic;Music`, 3 `Music`-only) — the 2 tagged tracks are
+  **2 independent siblings agreeing on `Electronic`**, clearing the sibling-agreement bar, so the
+  other 3 (including one literally titled "Post Punk" — the title, not evidence of genre, correctly
+  not used as a signal) got `Electronic` too.
+- **38 more single-genre drops**: `Electronic`, `Latin`, or `Reggae` already present on each song;
+  `Music` removed, nothing else touched. One (Fatoumata Diawara) carried 3 real genres
+  (`Folk;World;Country`) — position order read and preserved before writing.
+- **Genuine duplicate-rip propagation** (same song, two files, one already correctly tagged): Jambao
+  "Yo No Sé Mañana", Los del Fuego "Jurabas tu", La Nueva Luna "Te Vas a Arrepentir" / "Y Ahora Te
+  Vas", and "La Cumbia" (an artist literally named after the genre) "Porque te Amo" — each `Music`-only
+  copy's sibling file already carried the real genre; propagated directly, not guessed.
+- **Verified via search, not recall**: Rodrigo Tapari (Cumbia — "uno de los artistas más
+  representativos de... la cumbia," [Buena Música](https://www.buenamusica.com/rodrigo-tapari/biografia));
+  "Frágil" by Yahritza Y Su Esencia & Grupo Frontera (`Cumbia;Sierreño` — Wikipedia describes it as
+  *"a Mexican northern cumbia song with arrangements of sierreña and grupera music"*).
+- **A second missplit found for free**: "Matias Aguayo Boiler Room London DJ Set" credits the artist
+  as `Boiler Room` — a DJ-mix brand, not the performer. The real artist, Matias Aguayo, already has
+  this exact recording in his own artist page from an earlier stretch, also genre `Music`. Fixed the
+  genre to `Electronic` (his established convention for live/DJ-set material); the artist-field
+  missplit itself was left alone, out of scope for this stretch.
+- **Left alone, correctly**: Karla Blum, Maite Dedecker, Marie Vaunt's second songs (1 sibling each,
+  below the ≥2 threshold), Yeahman (2 songs, no siblings, no confident identity), and roughly 35 more
+  singleton electronic-producer names with no library sibling and no confident real-world
+  identification — search-then-decline, not skipped.
+
+`Music` junk backlog: **106 rows → 37**, every fix verified by re-querying the database directly, not
+by the tool's own `ok: true`. The remaining 37 are the genuine unresolvable tail this session's skill
+update already describes for the genre-less lane generally — distinct in mechanism (an existing wrong
+tag, not a missing one) but identical in shape.
+
+### Session 7, ninth stretch — 6 more, one new signal worth keeping
+
+Found a fresh, strong signal in the remaining 37 that the earlier passes hadn't looked for: several
+track **titles carry a self-declared genre in brackets** — `"As Time Goes By (Original Mix) [Pipe &
+Pochet] [Downtempo / Electronic music]"`, `"Doorways [Downtempo / Folktronica]"`,
+`"Mojave [World Downtempo / Slow Rave / Desert Rock]"`. That is not a guess or an inference — it is
+the file's own metadata declaring its genre in a place the scanner doesn't parse. Applied all three
+directly from the bracket text.
+
+Two more verified via search: **Kolinga** → `Afrobeat` (a real Franco-Congolese band, Afrobeat/soul/
+jazz/folk fusion, confirmed independently of the library's own already-established `Afrobeat` tag);
+**Ibu Selva** → `Organic House` for "Milonga" specifically, per Beatport's own categorization of that
+exact track — the skill's own "prefer the release page" rule, applied literally. And **Taco**'s cover
+of "Puttin' on the Ritz" (1982) → `Synth-Pop;New Wave`, the well-documented genre of that specific
+recording (a jazz standard reinvented as an '80s synth-pop hit — the original song's era is not the
+cover's genre, and only the cover is what's in this library).
+
+`Music` junk backlog: 37 → **31**. Stopped there — the remainder no longer yields to either sibling
+propagation, bracket self-declaration, or a confident search; it is the genuine floor for this lane
+without a broader tool (a bulk audio-classifier pass, or the `library_genre_aliases` path #860
+already flagged as unreachable from this surface).
+
+### Session 7, tenth stretch — 3 more, all high-confidence identity, then the real floor
+
+A batch of `continue` prompts arrived stacked while a `WebSearch` call was in flight (the 10-minute
+cron re-firing during a slow tool call); treated as "keep going," not as separate requests, and
+folded into one more pass.
+
+- **Romy, Fred again.. — "Strong"** → `Trance`. Both artists are currently prominent; Official Charts
+  calls the track "the trance anthem" outright, and multiple independent sources agree.
+- **Hernan y La Champion's Liga — "La Quiero a Ella"** → `Latin`. 2 of the artist's 3 other library
+  songs already agree on `Latin` (the third, a collab credit, reads `Cumbia Pop` — compatible, not
+  contradictory) — clears the sibling threshold cleanly.
+- **"Jorge Drexler: NPR Music Tiny Desk Concert"** → `Cantautor`. The artist field here is "NPR
+  Music" (the channel, not the performer) — Jorge Drexler is a well-known Uruguayan singer-songwriter
+  (Cantautor, this library's own already-established genre for the form), identifiable without a
+  search.
+
+`Music` junk backlog: 31 → **28**. This is the real floor: the remaining songs are electronic/world
+producer handles (Helucze, Jengi, Joep Mencke, Julian Jeweil, Omeria, Zedjue, and similar) with no
+library sibling and no search result confident enough to act on, plus a few multi-artist collab
+credits (Ladji Mouflet cluster, Nato & Sahalé, Legendary Baller/4ize) in the same position. Correctly
+left alone — searched-and-declined, not skipped.
+
+### Session 7, twelfth stretch — Turf's *Para mí, para vos*, both dimensions at once
+
+After several genuinely idle ticks (state unchanged, confirmed by re-reading `get_library_health`
+twice with no diff — not chased further), a fresh year candidate appeared: Turf's *Para mí, para vos*.
+Checked the same way as RHCP earlier rather than trusting a single source: two **independent**
+sources — Lidarr's official release group and a separate Discogs listing — agree on **2004**; a third
+Discogs entry claiming 2023 is a lower-confidence, reissue-shaped listing. Applied 2004.
+
+While there, noticed all 11 of the album's tracks were genre-null. Turf's genre (`Rock`) is already
+established by 5 independent sibling albums from earlier this session — filled all 11 directly.
+
+Both dimensions verified by re-running the metric: years 191 → **190**, genre-less 165 → **154**
+(11-song drop matches exactly, on top of unrelated background enrichment already in progress).

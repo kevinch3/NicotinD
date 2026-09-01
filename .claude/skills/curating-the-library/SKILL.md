@@ -58,6 +58,17 @@ re-applies at scan time. On a song whose file tag holds a real-but-wrong genre (
 like "Relief Records", a mistag), an append **adds your genre next to the wrong one and
 is then lost on rescan**. Leave `append` for automated detectors adding an extra tag.
 
+**`replace` overwrites the song's ENTIRE genre set, not just the one string you're
+fixing.** A rare-genre near-duplicate (`Alt Pop` vs `Alt-Pop`, `Rkt` vs `RKT` — see
+`get_rare_genres`) is usually the song's genre at a *non-zero* position, meaning the
+mistag sits alongside a real primary genre and other tags. Calling `set_song_genre` with
+just the corrected string on one of those songs **deletes everything else it carried**.
+Read the song's actual genre list (a targeted `prod-probe.ts --sql` read against
+`library_song_genres WHERE song_id = ?`, ordered by `position`) before touching any
+non-zero-position match, and pass the full corrected ordered list back, not the one
+string that was wrong. Position-0 matches are the only ones safe to fix with a bare
+single-genre `replace`.
+
 
 ## Type bare characters in every MCP argument
 
@@ -94,6 +105,13 @@ amortize every search over an artist or a cluster.**
 Propagate from siblings only where **≥2 tagged siblings agree** — a lone sibling
 propagates one mistag.
 
+**And only where the siblings are independent.** Check `suffix`/`bitRateKbps` before
+counting them: 11 tracks that are all mp3 320 from one rip carrying one blanket
+album-level genre are **n=1, not n=11**. Green Velvet *Unshakable* read 11×`Techno` that
+way, while the 2 stragglers were opus from a different rip — and a third copy of one of
+those tracks disagreed outright (`Tech House`). A uniform genre across a uniform format
+is one source's tag, not a majority.
+
 Then, and only then, spend a search:
 
 1. **Triage first.** Singleton artist (one album, one song) with no `mbid` and no
@@ -106,6 +124,21 @@ Then, and only then, spend a search:
 4. Search inconclusive → **leave the song untagged**. Do not flag it. The health report's
    genre worklist is already the tracker; a flag per unknown-genre single is queue noise.
 5. Prefer the release page (Beatport/Discogs/MusicBrainz) over a downloaded file's own tag.
+
+**Check the track title for a self-declared genre before searching at all.** A downloaded track's
+title sometimes carries its own genre in brackets — `"Doorways [Downtempo / Folktronica]"`,
+`"Mojave [World Downtempo / Slow Rave / Desert Rock]"` — text the scanner's genre field never parses.
+That is source evidence, not a guess; apply it directly, zero search spent.
+
+**The same discipline applies to `missing_year`, and the trap is the same shape.** A compilation's
+own title is not proof of its contents' date — a locally-stored "album" is often one track ripped
+out of a much larger release, and that track can predate or postdate the compilation's title year by
+years. `fix_album_metadata`'s `year` writes onto whatever songs the row actually holds, so check
+`get_album_tracks` first: "Superventas 07" holding only Shakira's own 2007-titled single is safe to
+date from the title; a various-artists "Watergate 08" holding one WhoMadeWho remix is not — "08" is
+that mix series' *installment number*, not a year, and the compilation's own real year (2011) still
+would not have been the remix's true release year. When recall and a title-derived guess disagree,
+that disagreement is the signal to search, not to silently pick the more confident-sounding one.
 
 `flag_for_review` is for ambiguity that risks **wrong data** — a b2b DJ credit, two
 plausible artist identities, an authenticity call — not for "I don't know this one".
@@ -179,6 +212,10 @@ One call plus its `detail` diagnosed it; a retry loop would have burned the pass
   kept copy lacks.
 - **Mid-ingest, suspend destructive work.** A "duplicate" during an ingest can be an
   in-flight partial. `list_recent_songs` detects arrivals; wait for them to stop.
+  Read **`landedAt` clustering, never the row count**: song ids are `sha1(path)`, so a
+  reorganize or transcode re-mints every id and the whole library reads as "just landed".
+  One identical `landedAt` across a page of long-owned catalogue is a re-land, not an
+  arrival — and a genuine arrival is a page of *distinct*, recent timestamps.
 
 ## Reading the health report honestly
 
