@@ -1753,3 +1753,20 @@ duplicate collapsed rather than left in. Verified by re-query: **35 songs now sh
 genre library-wide — only the 16 in this feedback's blast radius were touched. That is a
 substantially bigger cleanup than this stretch's scope, left for a dedicated pass rather than
 absorbed here.
+
+### Session 7, seventh stretch — the `Music` junk backlog, starting with the biggest cluster
+
+Grouped the remaining 67 `Music`-junk songs by artist. One cluster dwarfed the rest: **Luca Prodan,
+12 songs**, all from one 1996 posthumous release, *Time, Fate, Love* — his pre-Sumo solo demos,
+recorded in Córdoba 1981–83. Verified via search rather than relying on recall (RateYourMusic lists
+the release as both *Post-Punk* and *Psychedelic Folk*, and the descriptive sources agree: acoustic,
+folk-and-Nick-Drake-influenced recordings, a quieter register than Sumo's later post-punk explosion,
+with Sumo's future guitarist Germán Daffunchio playing on it). Applied both genres
+(`Post-Punk;Psychedelic Folk`) rather than picking one arbitrarily, since the sources themselves
+disagree and both are independently well-supported. All 12 were simple single-genre rows (position 0
+only), so no full-list reconstruction was needed. Verified: zero Luca Prodan songs still read `Music`,
+and both new genres now hold healthy independent counts (120 and 21) confirming this didn't mint a
+one-off tag. `Music` junk backlog: 83 → 71.
+
+Deliberately stopped there for this stretch — the remaining ~71 are almost entirely singleton or
+2-3-song artists, the documented low-yield shape, not a repeat of the Luca Prodan-sized win.
