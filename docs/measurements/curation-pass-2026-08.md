@@ -1770,3 +1770,50 @@ one-off tag. `Music` junk backlog: 83 → 71.
 
 Deliberately stopped there for this stretch — the remaining ~71 are almost entirely singleton or
 2-3-song artists, the documented low-yield shape, not a repeat of the Luca Prodan-sized win.
+
+### Session 7, eighth stretch — pushed back on stopping early, cleared the rest of the `Music` backlog
+
+The user's response to stretch six's "flagged, not fixed" note was direct: *"Shouldn't be any 'Music'
+genre actually."* Correct — `Music` conveys zero discriminating information and is actively harmful
+(that is the exact mechanism that broke the folklore radio seed). Went back in rather than treating
+the earlier stop as final.
+
+A fresh count read **106 rows** (not 83/71 — background deploy/rescan churn shifted the number between
+stretches, consistent with the pattern already documented this session; not chased further). Reading
+the full set revealed the dominant shape: for most electronic tracks, `Music` sits as a **redundant
+second tag right behind a real genre already present** (`Electronic;Music`, `Latin;Music`,
+`Reggae;Music` — almost certainly a source tag like "Electronic Music" arriving as two separate
+values). For those, the fix is simply dropping the redundant tag, not guessing a replacement:
+
+- **Pan-Pot** (6 tracks, `Electronic;Music`) → upgraded to **Techno**, their well-known genre (German
+  minimal/techno duo), rather than settling for the generic `Electronic` that was already there.
+- **Karotte** (3 live-DJ-set tracks, `Music`-only) → **Techno** (Cocoon Recordings techno DJ).
+- **Mha Iri** (5 tracks: 2 already `Electronic;Music`, 3 `Music`-only) — the 2 tagged tracks are
+  **2 independent siblings agreeing on `Electronic`**, clearing the sibling-agreement bar, so the
+  other 3 (including one literally titled "Post Punk" — the title, not evidence of genre, correctly
+  not used as a signal) got `Electronic` too.
+- **38 more single-genre drops**: `Electronic`, `Latin`, or `Reggae` already present on each song;
+  `Music` removed, nothing else touched. One (Fatoumata Diawara) carried 3 real genres
+  (`Folk;World;Country`) — position order read and preserved before writing.
+- **Genuine duplicate-rip propagation** (same song, two files, one already correctly tagged): Jambao
+  "Yo No Sé Mañana", Los del Fuego "Jurabas tu", La Nueva Luna "Te Vas a Arrepentir" / "Y Ahora Te
+  Vas", and "La Cumbia" (an artist literally named after the genre) "Porque te Amo" — each `Music`-only
+  copy's sibling file already carried the real genre; propagated directly, not guessed.
+- **Verified via search, not recall**: Rodrigo Tapari (Cumbia — "uno de los artistas más
+  representativos de... la cumbia," [Buena Música](https://www.buenamusica.com/rodrigo-tapari/biografia));
+  "Frágil" by Yahritza Y Su Esencia & Grupo Frontera (`Cumbia;Sierreño` — Wikipedia describes it as
+  *"a Mexican northern cumbia song with arrangements of sierreña and grupera music"*).
+- **A second missplit found for free**: "Matias Aguayo Boiler Room London DJ Set" credits the artist
+  as `Boiler Room` — a DJ-mix brand, not the performer. The real artist, Matias Aguayo, already has
+  this exact recording in his own artist page from an earlier stretch, also genre `Music`. Fixed the
+  genre to `Electronic` (his established convention for live/DJ-set material); the artist-field
+  missplit itself was left alone, out of scope for this stretch.
+- **Left alone, correctly**: Karla Blum, Maite Dedecker, Marie Vaunt's second songs (1 sibling each,
+  below the ≥2 threshold), Yeahman (2 songs, no siblings, no confident identity), and roughly 35 more
+  singleton electronic-producer names with no library sibling and no confident real-world
+  identification — search-then-decline, not skipped.
+
+`Music` junk backlog: **106 rows → 37**, every fix verified by re-querying the database directly, not
+by the tool's own `ok: true`. The remaining 37 are the genuine unresolvable tail this session's skill
+update already describes for the genre-less lane generally — distinct in mechanism (an existing wrong
+tag, not a missing one) but identical in shape.
