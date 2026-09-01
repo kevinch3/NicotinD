@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.55](https://github.com/kevinch3/NicotinD/compare/v0.5.54...v0.5.55) (2026-09-01)
+
+### Bug Fixes
+
+* **radio:** a station's target is the whole station, not the 300 rows sampled ([#859](https://github.com/kevinch3/NicotinD/issues/859)) ([81a827a](https://github.com/kevinch3/NicotinD/commit/81a827acb3b752d90a6f2e3d24b68d9f75a5cc58)), references [#1](https://github.com/kevinch3/NicotinD/issues/1) [#2](https://github.com/kevinch3/NicotinD/issues/2) [#598](https://github.com/kevinch3/NicotinD/issues/598) [#597](https://github.com/kevinch3/NicotinD/issues/597) [#600](https://github.com/kevinch3/NicotinD/issues/600) [#598](https://github.com/kevinch3/NicotinD/issues/598)
 ## [0.5.54](https://github.com/kevinch3/NicotinD/compare/v0.5.53...v0.5.54) (2026-08-31)
 
 ### Bug Fixes
