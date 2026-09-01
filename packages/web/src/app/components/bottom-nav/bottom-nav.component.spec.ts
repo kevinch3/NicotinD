@@ -88,14 +88,14 @@ describe('BottomNavComponent', () => {
     expect(fixture.componentInstance.tabs().some((t) => t.to === '/get')).toBe(false);
   });
 
-  it('renders online-only tabs as disabled spans when offline', () => {
+  it('keeps every tab reachable offline, since none of them needs the server outright', () => {
     const { fixture } = setup({ offline: true });
-    // Only Home (radio landing) is online-only → 1 span; Library (offline
-    // Songs), Get (Downloads half) and Settings stay links.
-    const anchors = fixture.nativeElement.querySelectorAll('a');
-    const spans = fixture.nativeElement.querySelectorAll('nav span');
-    expect(anchors.length).toBe(3);
-    expect(spans.length).toBe(1);
+    // Home was the last online-only tab: the mosaic used to be a wall of dead
+    // server-backed shelves and now fills with the device's downloaded tracks.
+    // Library serves its offline Songs tab, Get keeps its Downloads half, and
+    // Settings never needed the network — so nothing renders as a dead span.
+    expect(fixture.nativeElement.querySelectorAll('a').length).toBe(4);
+    expect(fixture.nativeElement.querySelectorAll('nav span').length).toBe(0);
   });
 
   it('sizes the grid to the four visible tabs', () => {

@@ -7,9 +7,14 @@ import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { HistoryApiService } from '../../services/api/history-api.service';
+import { Router } from '@angular/router';
 import { PlaylistsApiService } from '../../services/api/playlists-api.service';
 import { ToastService } from '../../services/toast.service';
 import { TrackInfoService } from '../../services/track-info.service';
+import { SetupService } from '../../services/setup.service';
+import { NetworkStatusService } from '../../services/network-status.service';
+import { PreserveService } from '../../services/preserve.service';
+import type { PreservedTrackMeta } from '../../lib/preserve-store';
 import type {
   ListeningStats,
   PlaylistSummary,
@@ -69,6 +74,8 @@ const EMPTY_STATS: ListeningStats = {
 };
 
 interface SetupOptions {
+  offline?: boolean;
+  preserved?: PreservedTrackMeta[];
   recentPlays?: RecentPlay[];
   tasteBreakers?: Song[];
   keepVibe?: Song[];
@@ -87,6 +94,8 @@ function setup(opts: SetupOptions = {}) {
     startRadio: vi.fn(),
     startRadioWithFilter: vi.fn(),
     startRadioWithTracks: vi.fn(),
+    playWithContext: vi.fn(),
+    playSingle: vi.fn(),
   };
   const toast = { show: vi.fn() };
   const libraryApi = {
@@ -110,6 +119,13 @@ function setup(opts: SetupOptions = {}) {
     ),
   };
   const trackInfo = { open: vi.fn(), close: vi.fn() };
+  const isOffline = signal(opts.offline ?? false);
+  const reconnects = signal(0);
+  const preserve = {
+    preservedTracks: signal(opts.preserved ?? []),
+    refreshList: vi.fn(() => Promise.resolve()),
+  };
+  const router = { navigateByUrl: vi.fn() };
 
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -122,6 +138,10 @@ function setup(opts: SetupOptions = {}) {
       { provide: PlaylistsApiService, useValue: playlistsApi },
       { provide: AuthService, useValue: { token: () => 'tok' } },
       { provide: TrackInfoService, useValue: trackInfo },
+      { provide: SetupService, useValue: { isOffline } },
+      { provide: NetworkStatusService, useValue: { reconnects } },
+      { provide: PreserveService, useValue: preserve },
+      { provide: Router, useValue: router },
     ],
   });
   const fixture = TestBed.createComponent(MosaicHomeComponent);
@@ -135,6 +155,10 @@ function setup(opts: SetupOptions = {}) {
     playlistsApi,
     historyApi,
     trackInfo,
+    preserve,
+    router,
+    isOffline,
+    reconnects,
   };
 }
 
@@ -315,7 +339,21 @@ interface MosaicInternals {
   packing: Packing | null;
   cells: Map<string, unknown>;
   loadCell(cell: string): Promise<void>;
+  enterCell(cell: string): unknown;
 }
+
+const preservedMeta = (over: Partial<PreservedTrackMeta> = {}): PreservedTrackMeta => ({
+  id: 'p1',
+  title: 'Downloaded',
+  artist: 'Artist',
+  album: 'Album',
+  size: 1000,
+  format: 'flac',
+  preservedAt: 1,
+  lastAccessedAt: 1,
+  source: 'user',
+  ...over,
+});
 const internals = (c: unknown): MosaicInternals => c as MosaicInternals;
 
 const packedStub = (id: number, size: number): PackedTile => ({
@@ -423,6 +461,19 @@ describe('discovery cells', () => {
     expect(component.discovered()).toEqual([]);
   });
 
+  it('fetches nothing at all while offline — a doomed request per cell is worse than a repeat', async () => {
+    const { component, libraryApi, fixture } = setup({
+      offline: true,
+      preserved: [preservedMeta({ id: 'd1' })],
+    });
+    await settle(fixture);
+    libraryApi.getRandomSongs.mockClear();
+    const c = internals(component);
+    c.packing = { W: 500, tiles: [packedStub(0, 100)] };
+    expect(c.enterCell('1,1')).toBe('base');
+    expect(libraryApi.getRandomSongs).not.toHaveBeenCalled();
+  });
+
   it('drops a batch that lands after its cell was evicted', async () => {
     const { component, libraryApi, fixture } = setup();
     await settle(fixture);
@@ -432,5 +483,101 @@ describe('discovery cells', () => {
     await c.loadCell('2,2'); // never marked 'loading' — the cell was evicted meanwhile
     expect(c.cells.has('2,2')).toBe(false);
     expect(component.discovered()).toEqual([]);
+  });
+});
+
+describe('offline', () => {
+  it('fills with the downloaded set instead of dead server-backed tiles', async () => {
+    const { component, fixture, libraryApi, historyApi } = setup({
+      offline: true,
+      preserved: [preservedMeta({ id: 'd1' }), preservedMeta({ id: 'd2' })],
+    });
+    await settle(fixture);
+
+    expect(component.tiles().filter((t) => t.kind === 'song')).toHaveLength(2);
+    // None of the online lanes should even have been attempted.
+    expect(libraryApi.getRandomSongs).not.toHaveBeenCalled();
+    expect(libraryApi.getGenres).not.toHaveBeenCalled();
+    expect(historyApi.getRecentPlays).not.toHaveBeenCalled();
+    // And no vibe tiles, whose filters can only be resolved by the server.
+    expect(component.tiles().filter((t) => t.kind === 'vibe')).toHaveLength(0);
+  });
+
+  it('plays a downloaded tile with the whole downloaded set as its queue', async () => {
+    const { component, player, fixture } = setup({
+      offline: true,
+      preserved: [preservedMeta({ id: 'd1' }), preservedMeta({ id: 'd2' })],
+    });
+    await settle(fixture);
+
+    await component.start(component.tiles().find((t) => t.key === 'song:d2')!);
+    expect(player.playWithContext).toHaveBeenCalledWith(
+      [expect.objectContaining({ id: 'd1' }), expect.objectContaining({ id: 'd2' })],
+      1,
+      { type: 'saved-offline', name: 'Downloaded' },
+    );
+    // Radio would need the server to supply a next track.
+    expect(player.startRadio).not.toHaveBeenCalled();
+  });
+
+  it('routes the downloads tile to the list rather than starting playback', async () => {
+    const { component, player, router, fixture } = setup({
+      offline: true,
+      preserved: [preservedMeta({ id: 'd1' })],
+    });
+    await settle(fixture);
+
+    await component.start(component.tiles().find((t) => t.kind === 'downloads')!);
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/library');
+    expect(player.playWithContext).not.toHaveBeenCalled();
+    // A navigation must not raise the Now Playing sheet over the page it opens.
+    expect(player.nowPlayingOpen()).toBe(false);
+  });
+
+  it('swaps to the downloaded set when the network drops mid-session', async () => {
+    const { component, fixture, isOffline, preserve } = setup({
+      tasteBreakers: [song({ id: 'online-only' })],
+      preserved: [preservedMeta({ id: 'd1' })],
+    });
+    await settle(fixture);
+    expect(component.tiles().some((t) => t.key === 'song:online-only')).toBe(true);
+
+    isOffline.set(true);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    expect(preserve.refreshList).toHaveBeenCalled();
+    expect(component.tiles().some((t) => t.key === 'song:online-only')).toBe(false);
+    expect(component.tiles().some((t) => t.kind === 'downloads')).toBe(true);
+  });
+
+  it('restores the real sources on reconnect', async () => {
+    const { component, fixture, isOffline, reconnects } = setup({
+      offline: true,
+      preserved: [preservedMeta({ id: 'd1' })],
+      tasteBreakers: [song({ id: 'back' })],
+    });
+    await settle(fixture);
+    expect(component.tiles().some((t) => t.kind === 'downloads')).toBe(true);
+
+    isOffline.set(false);
+    reconnects.set(1);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    expect(component.tiles().some((t) => t.key === 'song:back')).toBe(true);
+    expect(component.tiles().some((t) => t.kind === 'downloads')).toBe(false);
+  });
+
+  it('says it is offline rather than telling you to add music', async () => {
+    const { fixture, component } = setup({ offline: true, preserved: [] });
+    await settle(fixture);
+    expect(component.tiles()).toEqual([]);
+    expect(component.isEmpty()).toBe(true);
+    const text = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="mosaic-empty"]',
+    )?.textContent;
+    expect(text).toContain("You're offline");
+    expect(text).not.toContain('add some music');
   });
 });

@@ -3,6 +3,7 @@ import {
   SCORE_WEIGHTS,
   assignSongsToSlots,
   buildMosaicTiles,
+  buildOfflineTiles,
   dedupeTiles,
   jitter,
   ownPlayShare,
@@ -13,6 +14,7 @@ import {
   type MosaicTile,
 } from './mosaic-tiles';
 import type { ListeningStats, PlaylistSummary, RecentPlay, Song } from '../services/api/api-types';
+import type { PreservedTrackMeta } from './preserve-store';
 
 const song = (over: Partial<Song> = {}): Song => ({
   id: 's1',
@@ -320,5 +322,68 @@ describe('assignSongsToSlots', () => {
 
   it('returns an empty map for an empty batch', () => {
     expect(assignSongsToSlots(slots, [], w).size).toBe(0);
+  });
+});
+
+describe('buildOfflineTiles', () => {
+  const meta = (over: Partial<PreservedTrackMeta> = {}): PreservedTrackMeta => ({
+    id: 'p1',
+    title: 'Downloaded',
+    artist: 'Artist',
+    album: 'Album',
+    size: 1000,
+    format: 'flac',
+    preservedAt: 1,
+    lastAccessedAt: 1,
+    source: 'user',
+    ...over,
+  });
+
+  it('turns every downloaded track into a tile, plus one way to the list', () => {
+    const tiles = buildOfflineTiles([meta({ id: 'a' }), meta({ id: 'b' })], '/library');
+    expect(tiles.filter((t) => t.kind === 'song')).toHaveLength(2);
+    const downloads = tiles.find((t) => t.kind === 'downloads')!;
+    expect(downloads.action).toEqual({ type: 'route', path: '/library' });
+    expect(downloads.subtitle).toBe('2 on this device');
+  });
+
+  /**
+   * The rule the online surface rests on is "every tile starts a radio", and
+   * offline it *cannot* hold: every radio provider fetches its next tracks
+   * from the server. A song tile that offered radio here would fail on tap.
+   */
+  it('never offers radio — offline there is nothing to fetch a next track from', () => {
+    const tiles = buildOfflineTiles([meta({ id: 'a' }), meta({ id: 'b' })], '/library');
+    for (const t of tiles) {
+      expect(['offline', 'route']).toContain(t.action.type);
+    }
+  });
+
+  it('sizes the most recently downloaded track above the oldest', () => {
+    const tiles = buildOfflineTiles(
+      [meta({ id: 'old', preservedAt: 1 }), meta({ id: 'new', preservedAt: 999 })],
+      '/library',
+    );
+    const score = (id: string): number => tiles.find((t) => t.key === `song:${id}`)!.score;
+    expect(score('new')).toBeGreaterThan(score('old'));
+  });
+
+  // A cover id would build an /api/cover URL that cannot resolve offline; the
+  // face falls back to its placeholder gradient when there is none.
+  it('carries no cover art, since fetching one offline cannot succeed', () => {
+    const tiles = buildOfflineTiles([meta({ id: 'a', coverArt: 'cover-1' })], '/library');
+    expect(tiles.find((t) => t.kind === 'song')!.coverArt).toBeUndefined();
+  });
+
+  it('renders nothing at all when the device holds no downloads', () => {
+    // Not even the Downloads tile: a list of nothing is not worth a trip.
+    expect(buildOfflineTiles([], '/library')).toEqual([]);
+  });
+
+  it('survives a single downloaded track, where recency has no spread', () => {
+    const tiles = buildOfflineTiles([meta({ id: 'solo' })], '/library');
+    const song = tiles.find((t) => t.kind === 'song')!;
+    expect(Number.isFinite(song.score)).toBe(true);
+    expect(song.score).toBeGreaterThan(0);
   });
 });

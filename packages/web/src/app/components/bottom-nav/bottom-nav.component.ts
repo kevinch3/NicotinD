@@ -20,7 +20,9 @@ interface BottomNavItem {
 // works offline, and the Find tab surfaces its own offline state.
 const TABS: BottomNavItem[] = [
   // `label` is an i18n key (issue #236), rendered through the `t` pipe.
-  { to: '/', label: 'nav.home', onlineOnly: true },
+  // Home is not online-only: the mosaic fills with the device's downloaded
+  // tracks when the network is gone (docs/web-ui.md "Mosaic home").
+  { to: '/', label: 'nav.home', onlineOnly: false },
   { to: '/library', label: 'nav.library', onlineOnly: false },
   { to: '/get', label: 'nav.get', onlineOnly: false },
   { to: '/settings', label: 'nav.settings', onlineOnly: false },

@@ -45,13 +45,13 @@ const BASE_NAV: NavItem[] = [
   { to: '/get', label: 'nav.get' },
   { to: '/settings', label: 'nav.settings' },
 ];
-// Nav items that require the backend to be available. Library stays enabled
-// offline: its Songs tab serves the on-device downloaded songs. The radio
-// landing (/) needs the backend. /get is deliberately NOT online-only even
-// though its Find tab needs the network — its Downloads tab never was, and
-// blocking the whole item would hide the download feed offline; the app-shell
-// offline banner carries the message instead.
-const ONLINE_ONLY_ROUTES = new Set(['/']);
+// Nav items that require the backend to be available — currently none, but the
+// gate stays because "this route cannot work offline" is a real category.
+// Library serves its on-device downloaded songs; /get keeps its Downloads tab;
+// and home is no longer online-only either, since the mosaic fills with the
+// downloaded set when the network is gone (docs/web-ui.md "Mosaic home").
+// Everything else surfaces its own offline state under the app-shell banner.
+const ONLINE_ONLY_ROUTES = new Set<string>([]);
 
 /** Shared header layout — same pixels everywhere so the brand/title row
  *  doesn't shift between platform states (only the chrome integration

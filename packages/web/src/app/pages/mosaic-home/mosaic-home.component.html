@@ -6,8 +6,14 @@
   }
 
   @if (isEmpty()) {
-    <div class="page-shell text-center text-theme-muted">
-      <p class="mt-12">Nothing to play yet — add some music and this fills itself.</p>
+    <div class="page-shell text-center text-theme-muted" data-testid="mosaic-empty">
+      @if (offline()) {
+        <!-- Offline with nothing downloaded is a different fact from an empty
+             library, and saying "add some music" here would be wrong advice. -->
+        <p class="mt-12">You're offline, and nothing is downloaded to this device yet.</p>
+      } @else {
+        <p class="mt-12">Nothing to play yet — add some music and this fills itself.</p>
+      }
     </div>
   }
 

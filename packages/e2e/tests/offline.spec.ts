@@ -143,3 +143,132 @@ test.describe('offline network detection', () => {
     });
   });
 });
+
+/**
+ * The mosaic home offline (docs/web-ui.md "Mosaic home").
+ *
+ * Losing the network used to *navigate away* from home: `/` was the shell's
+ * only online-only route, and `app.ts` redirected to `/library` on every
+ * `isOffline()` flip. The mosaic now fills from the device's downloaded tracks
+ * instead, so these assert the listener keeps the page they were on.
+ */
+test.describe('mosaic home offline', () => {
+  test('stays on home when the network drops, and says what is going on', async ({
+    page,
+    context,
+  }) => {
+    await page.goto('/');
+    await expectBootedShell(page);
+    await expect(page.getByTestId('mosaic-home')).toBeVisible();
+
+    await flipConnectivity(context, page, true);
+    await expect(page.getByTestId('offline-banner')).toBeVisible();
+
+    // The regression this whole change is about: no redirect to /library.
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByTestId('mosaic-home')).toBeVisible();
+
+    // Nothing is downloaded in a fresh browser context, so the field is empty —
+    // and must say *why*, not tell the listener to go add music.
+    const empty = page.getByTestId('mosaic-empty');
+    await expect(empty).toBeVisible();
+    await expect(empty).toContainText("You're offline");
+
+    await flipConnectivity(context, page, false);
+    await expect(page.getByTestId('offline-banner')).toHaveCount(0);
+  });
+
+  test('fills with the downloaded set and offers a way to the list', async ({ page, context }) => {
+    // Visit the destination once while online first. `/library` is a lazy
+    // route, and opening it offline is slow enough under load to dominate this
+    // spec's timing (issue #872); warming it keeps the assertion about the
+    // tile rather than about route-loading latency.
+    await page.goto('/library');
+    await expectBootedShell(page);
+
+    await page.goto('/');
+    await expect(page.getByTestId('mosaic-home')).toBeVisible();
+
+    // Seed the preserve store directly rather than driving auto-preserve.
+    //
+    // The realistic path — enable auto-preserve, play an album, poll until the
+    // blobs land — takes ~40s and leaves side effects in the SHARED server
+    // (stream reads, play events) and in the audio element, which is a poor
+    // neighbour in an order-dependent suite. Reading the store directly is
+    // already the established idiom here (see player.spec.ts). Meta rows are
+    // enough on purpose: the mosaic renders from `preservedTracks`, which is
+    // the meta store — the audio blob only matters once something plays.
+    await seedPreserved(page, [
+      { id: 'seed-1', title: 'Seeded One', artist: 'Offline Artist' },
+      { id: 'seed-2', title: 'Seeded Two', artist: 'Offline Artist' },
+    ]);
+    await flipConnectivity(context, page, true);
+    await expect(page.getByTestId('offline-banner')).toBeVisible();
+
+    // The field is now the downloaded set plus the one tile that navigates.
+    const downloads = page.locator('[data-testid="mosaic-tile-link"][data-tile-kind="downloads"]');
+    await expect(downloads).toHaveCount(1, { timeout: 10_000 });
+    const songs = page.locator('[data-testid="mosaic-tile-link"][data-tile-kind="song"]');
+    expect(await songs.count()).toBeGreaterThan(0);
+
+    // That tile is the way to the downloads list, and navigates rather than plays.
+    //
+    // Generous timeout on purpose, and measured rather than guessed: offline,
+    // this navigation took just over 5s under full-suite load — past
+    // `toHaveURL`'s 5s default, which made it look like the click did nothing.
+    // The navigation is slow, not cancelled (issue #872).
+    await downloads.dispatchEvent('click');
+    await page.waitForURL(/\/library/, { timeout: 20_000 });
+
+    // Leave the context as it was found. Playwright gives each test its own
+    // context, so this is hygiene rather than a fix — but a spec that ends with
+    // the network switched off is a bad neighbour to inherit from.
+    await flipConnectivity(context, page, false);
+  });
+});
+
+/**
+ * Write meta rows straight into the preserve store.
+ *
+ * Opened without a version, so this joins the database the app already created
+ * at boot rather than racing it to define the schema — call it only after the
+ * shell is up.
+ */
+const seedPreserved = (
+  page: Page,
+  rows: Array<{ id: string; title: string; artist: string }>,
+): Promise<void> =>
+  page.evaluate(
+    (seed) =>
+      new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open('nicotind-preserve');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('tracks')) {
+            db.close();
+            reject(new Error('preserve store not initialised — seed after the shell has booted'));
+            return;
+          }
+          const tx = db.transaction('tracks', 'readwrite');
+          const store = tx.objectStore('tracks');
+          for (const [i, r] of seed.entries()) {
+            store.put({
+              ...r,
+              album: 'Offline Album',
+              size: 1024,
+              format: 'flac',
+              preservedAt: 1000 + i,
+              lastAccessedAt: 1000 + i,
+              source: 'user',
+            });
+          }
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = () => reject(tx.error);
+        };
+      }),
+    rows,
+  );
