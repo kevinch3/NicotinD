@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.57](https://github.com/kevinch3/NicotinD/compare/v0.5.56...v0.5.57) (2026-09-01)
+
+### Bug Fixes
+
+* **e2e:** close 3 flakes in the order-dependent family ([#829](https://github.com/kevinch3/NicotinD/issues/829), [#837](https://github.com/kevinch3/NicotinD/issues/837), [#854](https://github.com/kevinch3/NicotinD/issues/854)) ([#867](https://github.com/kevinch3/NicotinD/issues/867)) ([ab3dbf6](https://github.com/kevinch3/NicotinD/commit/ab3dbf60746f100a2973e840bd903a25531802c9)), references [#820](https://github.com/kevinch3/NicotinD/issues/820) [#863](https://github.com/kevinch3/NicotinD/issues/863) [#863](https://github.com/kevinch3/NicotinD/issues/863)
 ## [0.5.56](https://github.com/kevinch3/NicotinD/compare/v0.5.55...v0.5.56) (2026-09-01)
 
 ### Bug Fixes
