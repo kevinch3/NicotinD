@@ -85,6 +85,29 @@ server-side guard is proposed in #787; until it ships this is entirely on you.)
 `list_recent_songs` / `search_library` / `get_album_tracks` and confirm the new value.
 Never resolve a flag or report a fix on the apply call's return value alone.
 
+**`verified: true` is not proof either.** On a `COMPILATION=1` file, `fix_song_metadata`
+echoes `albumArtist` back in `applied` and reports `verified: true` while writing nothing —
+16 tracks retagged, `album_artist` still `Various Artists` on all 16 (issue #865). Fix an
+album's identity with `fix_album_metadata`, which writes a durable
+`library_metadata_overrides` row the scanner honors.
+
+## Always corroborate the artist
+
+**Owner's standing rule.** Before merging, splitting, or retagging an artist, establish
+that the name means what you think it means — the band exists, and the suffix is what you
+assume. Corroborate against the *track*, not the name alone.
+
+`Sanampay, A. ZITARROSA` looks like a collaboration and is a **composer credit**: Zitarrosa
+wrote *Adagio en mi país*, Violeta Parra wrote *Volver a los 17*, and `D.P.` is *dominio
+público* — which only ever appears in a composer field. One suffix checked against its own
+song title settles it; the name alone never would. Guessing here would have minted a
+Chico Buarque album out of a Sanampay record.
+
+The same rule cuts the other way: a compound is not junk because it has a comma.
+`Charlotte de Witte, David Robertson` is a real collaboration. The `fragmented_artist`
+audit rule reports clusters at ≥2 deliberately, so **you** judge each one — it is advisory
+and finding a real duo in the list is expected, not a bug.
+
 ## Spend searches on artists and clusters, never on songs
 
 **The remaining genre-less songs are the residue after every automated lane already ran

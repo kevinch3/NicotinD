@@ -9,6 +9,7 @@ import {
   looksLikeDjSetTag,
   looksLikeVenueCredit,
   djSetArtistName,
+  findArtistFragmentClusters,
 } from './library-quality.js';
 
 /**
@@ -210,6 +211,36 @@ export function checkPollutedArtists(db: Database): AuditFinding[] {
     }
   }
   return out;
+}
+
+/**
+ * Issue #864: artist rows that are one base name plus a per-track credit —
+ * `Sanampay, V. PARRA`, `Luciano Pavarotti, Philharmonia Orchestra, Piero Gamba`.
+ * A per-track credit list mints one artist row per track, so a single album
+ * arrives as a dozen tiles in the artists grid and no other rule sees it: the
+ * fragmentation detectors key on album *title*, and every pollution predicate
+ * judges a name on its own, which cannot separate these from a real duo.
+ *
+ * Reported against the **base** row so the finding names what to merge into.
+ */
+export function checkFragmentedArtists(db: Database): AuditFinding[] {
+  const rows = db
+    .query<{ id: string; name: string }, []>('SELECT id, name FROM library_artists')
+    .all();
+  const idByName = new Map(rows.map((r) => [r.name, r.id]));
+
+  return findArtistFragmentClusters(
+    rows.map((r) => r.name),
+    2,
+  ).map((c) => ({
+    rule: 'fragmented_artist',
+    severity: 'medium' as const,
+    subject: idByName.get(c.base) ?? c.base,
+    message:
+      `Artist "${c.base}" has ${c.fragments.length} rows extending it with a per-track credit ` +
+      `(${c.fragments.slice(0, 3).join('; ')}${c.fragments.length > 3 ? '; …' : ''}) — ` +
+      `confirm each is not a real collaboration, then merge into "${c.base}"`,
+  }));
 }
 
 /**
@@ -533,6 +564,7 @@ export function auditLibrary(db: Database, extraFindings: AuditFinding[] = []): 
     ...checkArtistIntegrity(db),
     ...checkAlbumIntegrity(db),
     ...checkPollutedArtists(db),
+    ...checkFragmentedArtists(db),
     ...checkPollutedAlbums(db),
     ...checkMisSplitAlbums(db),
     ...checkRenderGaps(db),

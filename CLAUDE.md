@@ -310,6 +310,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Library quality auditor**: assert (audit) + clean (repair/retag) + prevent (ingest sanitize) for
   DJ-pool/VA-source pollution across DB and disk; structural DJ-set tags recover their real
   artist via `djSetArtistName`. → [library-audit.md](docs/library-audit.md)
+- **A wrong artist *name* is relational, not lexical**: `fragmented_artist` clusters
+  `"<base>, …"` rows against a base that is itself an artist row
+  (`findArtistFragmentClusters`), because no predicate over a single name separates a
+  composer credit from a real duo. → [library-audit.md](docs/library-audit.md)
 - **Discogs metadata plugin**: default-off consent-gated `metadata` plugin resolving release
   genres/styles, MBID-first via `parseDiscogsRef` then corroborated `selectBestRelease`; the
   album-scoped `genre-discogs` task writes gated `library_genre_overrides`.

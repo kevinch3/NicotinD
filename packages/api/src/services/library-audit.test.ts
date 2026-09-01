@@ -116,6 +116,28 @@ describe('auditLibrary', () => {
     expect(finding?.message).toContain('merge into "Enrico Sangiuliano"');
   });
 
+  it('flags an artist shredded into per-track credit rows, against the base (issue #864)', () => {
+    addArtist(db, 'arbase', 'Sanampay', 1);
+    for (const [id, name] of [
+      ['arf1', 'Sanampay, V. PARRA'],
+      ['arf2', 'Sanampay, CH. BUARQUE'],
+      ['arf3', 'Sanampay, D.P.'],
+    ] as const) {
+      addArtist(db, id, name, 0);
+    }
+    const finding = auditLibrary(db).findings.find((f) => f.rule === 'fragmented_artist');
+    expect(finding?.subject).toBe('arbase');
+    expect(finding?.severity).toBe('medium');
+    expect(finding?.message).toContain('merge into "Sanampay"');
+  });
+
+  it('never routes a fragmented artist to deletion — the music itself is real', () => {
+    addArtist(db, 'arb2', 'Sanampay', 1);
+    addArtist(db, 'arf4', 'Sanampay, V. PARRA', 0);
+    addArtist(db, 'arf5', 'Sanampay, D.P.', 0);
+    expect(DELETABLE_RULES).not.toContain('fragmented_artist');
+  });
+
   it('never routes a DJ-set artist to deletion — the music itself is real', () => {
     addArtist(db, 'ard2', 'Secret Cinema B2B Egbert', 1);
     addAlbum(db, {

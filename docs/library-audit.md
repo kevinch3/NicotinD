@@ -51,6 +51,11 @@ and a message. The CLI groups by rule (worst first); `--rule=<id>` lists one.
   real and the artist is usually recoverable, so the finding carries its own
   remediation (`merge into "…"` from `djSetArtistName`), or says a human must
   decide when the credit is ambiguous.
+- `fragmented_artist` (medium) — a base artist name plus N rows extending it with a
+  per-track credit (issue #864): `Sanampay, V. PARRA`, `Luciano Pavarotti, Philharmonia
+  Orchestra, Piero Gamba`. One album arrives as a dozen tiles in the artists grid.
+  **Reported against the base row**, so the finding names the merge target; **never
+  deletable** — the music is real. See *Why a name predicate cannot decide this* below.
 - `numeric_single` — a one-track album titled a bare number (`07`).
 - `placeholder_single` (medium) — a single whose identity is unknown/placeholder.
 - `missplit_album` — ≥3 one-track singles share an edition-stripped title: a real
@@ -196,6 +201,52 @@ Two paths, depending on whether a live metadata service is available:
   accuracy, when Lidarr is configured. The admin route is **asynchronous** since issue #622: it
   answers 202 and reports progress through `GET /api/admin/review`; the script stays synchronous.
   See [metadata-optimize.md](metadata-optimize.md).
+
+## Why a name predicate cannot decide `fragmented_artist` (issue #864)
+
+Every other rule in this catalogue judges a name **on its own**. This one cannot, and
+the reason is worth keeping: these two rows are the same string shape.
+
+```
+Sanampay, V. PARRA                    ← junk: the composer of that track
+Charlotte de Witte, David Robertson   ← real: a collaboration
+```
+
+Nothing in the string separates them, so the signal is **relational** — how many rows
+extend one base name that is itself an artist row. A per-track credit list shreds an
+album into one artist row per track; genuine collaborations accumulate a handful.
+Measured on the prod library (3,157 artists, 6.1 ms):
+
+| base | rows | verdict |
+| --- | --- | --- |
+| Luciano Pavarotti | 15 | shredded album (`Luciano Pavarotti - The Best`) |
+| Sanampay | 14 | shredded album (`En Esta Hora...`) |
+| Charlotte de Witte / Eelke Kleijn / Los Ángeles Azules / Sentimental Animals / Tego Calderón | 2 each | real collaborations |
+
+The gate is `minFragments = 2` — the lowest there is. A size threshold would have to sit
+inside the measured 4→14 gap, and dropping a real 3-row shredding to spare a curator two
+dismissals is the wrong trade: the finding is advisory and only a human can tell a
+composer credit from an orchestra credit. **Recall over precision, deliberately.**
+
+### How it stayed invisible
+
+Worth recording, because four separate things had to line up:
+
+1. **No name validation on the scan path.** `resolveTags` takes the tag as-is;
+   `sanitizeArtistTag` is organizer-only, and `normalizeArtistForGrouping` preserves
+   punctuation by design, so `Sanampay, A. BORDA` and `Sanampay` are different ids.
+2. **`split_compound` inverts visibility.** `splitArtists` is all-or-nothing; an
+   *unresolved* compound yields one primary, so `split_compound = 0` and the grid
+   renders it — while a resolved one is hidden. The rows most likely to be junk are
+   exactly the ones that show.
+3. **No detector iterated `library_artists` for fragmentation.** `checkFragments` and
+   `checkMisSplitAlbums` both key on album *title*; `checkPollutedArtists` was a
+   keyword/number/DJ-set list.
+4. **The system already knew and had nowhere to say it.** `pendingArtistIdentityRows`
+   selects on `name LIKE '%, %'` — it picked these rows up, failed to resolve them
+   against Lidarr, recorded `decision: 'unknown'` and muted itself for 7 days. No
+   finding, no flag, no metric. *A component that detects something and reports nothing
+   is indistinguishable from no detector at all.*
 
 ## Prevention (so new patterns can't recur)
 - `sanitizeArtistTag` / `sanitizeAlbumTag` (`library-organizer.ts`) now reject
