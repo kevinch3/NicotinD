@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.59](https://github.com/kevinch3/NicotinD/compare/v0.5.58...v0.5.59) (2026-09-01)
+
+### Features
+
+* **web:** one pannable mosaic home where every tile starts a radio ([#869](https://github.com/kevinch3/NicotinD/issues/869)) ([9a2d802](https://github.com/kevinch3/NicotinD/commit/9a2d8026889fc2e6fad49d3ff52ba5a86fe475e0))
 ## [0.5.58](https://github.com/kevinch3/NicotinD/compare/v0.5.57...v0.5.58) (2026-09-01)
 
 ### Features
