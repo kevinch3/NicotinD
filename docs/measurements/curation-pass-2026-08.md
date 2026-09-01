@@ -1590,3 +1590,51 @@ hunt landed, one still pending, two failed-with-no-detail), 0 open flags, 2 issu
 #858), 1 more missplit resolved, 1 more genre-and-hunt cluster closed out. Stopped deliberately once
 the remaining residue matched the documented low-yield shape (singleton artists, no MBID, no
 siblings) rather than grinding per-song searches with poor odds.
+
+### Session 7, third stretch — `get_rare_genres` finds a whole defect class, and a majority-count near-miss
+
+Resumed via `/loop 5m`. Three ticks were genuine no-ops (state read identically three times running —
+the enqueue-failed hunts and Çantamarta's timeout hadn't progressed, and every zero-search genre/year
+avenue was already exhausted). Reported that plainly rather than manufacturing busywork, then tried a
+lane not yet worked this session: `get_rare_genres`, which the tool description calls "the fewest
+songs, worst-first — misclassification candidates."
+
+**First hit**: `Alt Pop` and `Alt-Pop` each showed `songCount: 1` in the tool's own output — but
+`get_rare_genres` counts the **primary** genre only, and a quick probe of `library_song_genres`
+showed `Alt-Pop` actually had 2 songs (one at a non-zero position, invisible to the tool), `Alt Pop`
+had 1. Unified the minority spelling; verified it dropped out of the rare-genres list entirely.
+
+**That surfaced a bigger, undocumented defect class.** A broader probe (`GROUP BY LOWER(genre)`)
+found four more case-only duplicate pairs, plus one accent-only pair the LOWER-based query couldn't
+even catch on its own (SQLite's default collation doesn't fold accents):
+
+| minority spelling | majority spelling | songs (minority / majority) |
+| --- | --- | --- |
+| Avant-garde Jazz | Avant-Garde Jazz | 2 / 35 |
+| Dance-Pop | Dance-pop | 1 / 674 |
+| Rkt | **RKT** | 47 / 4 |
+| Synth-pop | Synth-Pop | 22 / 299 |
+| Amerique latine | Amérique latine | 9 / 34 |
+
+**RKT is the near-miss worth keeping.** Majority-count (47 vs. 4) said "Rkt" was the library's
+convention — but a search confirmed **RKT** (all-caps acronym) is the only real-world styling of this
+Argentine cumbia/reggaeton-fusion genre, per its own
+[Wikipedia article](https://es.wikipedia.org/wiki/RKT) and every source describing it. Fixing by
+majority count alone would have corrected 4 *right* entries into the *wrong* spelling. This is the
+third time this session real-world knowledge overrode a database-internal signal (RHCP's tracklist,
+"Watergate 08"'s series number, and now this) — a majority is evidence, never proof.
+
+**None of the fixes above were applied blindly.** `library_song_genres` position was checked for
+every one of the 81 total songs across these 5 pairs first, because `set_song_genre`'s `mode:'replace'`
+overwrites a song's **entire** genre set — applying it to a secondary-position entry (most of them:
+65 of 81) would have silently deleted that song's real primary genre and every other tag it carried.
+Only the 16 **position-0** entries (9 Amérique latine, 1 Dance-pop, 6 RKT) were safe to fix with a
+single-genre `replace` call; all 16 verified by re-querying `position = 0` counts afterward (0
+remaining under each old spelling). **The other 65 — 2 Avant-Garde Jazz, 41 RKT, 22 Synth-Pop — need
+each song's full ordered genre list reconstructed before a safe `replace`, which is real per-song
+work, not a bulk operation, and was deliberately left for a dedicated pass rather than rushed.**
+
+Not filed as an issue: this is curation work the MCP surface already supports correctly (the position
+check is exactly why `mode:'replace'` exists and is documented as dangerous when misapplied) — the
+gap is in this session's own tooling (no bulk multi-genre-position read/write path), not a product
+defect.

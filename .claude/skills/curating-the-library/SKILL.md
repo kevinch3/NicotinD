@@ -58,6 +58,17 @@ re-applies at scan time. On a song whose file tag holds a real-but-wrong genre (
 like "Relief Records", a mistag), an append **adds your genre next to the wrong one and
 is then lost on rescan**. Leave `append` for automated detectors adding an extra tag.
 
+**`replace` overwrites the song's ENTIRE genre set, not just the one string you're
+fixing.** A rare-genre near-duplicate (`Alt Pop` vs `Alt-Pop`, `Rkt` vs `RKT` — see
+`get_rare_genres`) is usually the song's genre at a *non-zero* position, meaning the
+mistag sits alongside a real primary genre and other tags. Calling `set_song_genre` with
+just the corrected string on one of those songs **deletes everything else it carried**.
+Read the song's actual genre list (a targeted `prod-probe.ts --sql` read against
+`library_song_genres WHERE song_id = ?`, ordered by `position`) before touching any
+non-zero-position match, and pass the full corrected ordered list back, not the one
+string that was wrong. Position-0 matches are the only ones safe to fix with a bare
+single-genre `replace`.
+
 
 ## Type bare characters in every MCP argument
 
