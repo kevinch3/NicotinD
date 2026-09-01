@@ -101,8 +101,9 @@ test.describe('i18n (#236)', () => {
     await page.addInitScript(() => localStorage.setItem('nicotind-lang', 'es'));
     await page.goto('/');
 
-    // Reuse the existing section hook rather than adding a testid for the test.
-    const presets = page.getByTestId('radio-new-mood');
+    // The mosaic's accessible tile list is the deterministic place to read the
+    // labels: the pooled tiles in the stage are recycled as they cross the lens.
+    const presets = page.getByTestId('mosaic-tile-list');
     await expect(presets).toContainText('Bailable');
     await expect(presets).not.toContainText('vibe.'); // no key leaked
 

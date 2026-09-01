@@ -2,14 +2,15 @@ import { test, expect } from '@playwright/test';
 import { FIXTURE, openAlbumCard } from '../helpers';
 
 /**
- * The post-login landing (route '') is the radio/mood starter: a resume shortcut
- * for the last track plus one-tap vibe presets. The /acquire page (nav "Acquire",
- * formerly /search) is reachable from the desktop top-nav and mobile bottom-nav.
- * Acquisition stays default-off in e2e.
+ * The shelf-based landing, now at '/classic' — the mosaic home took route ''.
+ * It is the radio/mood starter: a resume shortcut for the last track plus
+ * one-tap vibe presets. The /acquire page (nav "Acquire", formerly /search) is
+ * reachable from the desktop top-nav and mobile bottom-nav. Acquisition stays
+ * default-off in e2e.
  */
 test.describe('radio landing', () => {
   test('renders vibe presets', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/classic');
     await expect(page.getByTestId('radio-landing')).toBeVisible();
     await expect(page.getByTestId('radio-preset').first()).toBeVisible();
   });
@@ -26,7 +27,7 @@ test.describe('radio landing', () => {
     );
 
     // Land on the radio landing: the resume shortcut is offered.
-    await page.goto('/');
+    await page.goto('/classic');
     const resume = page.getByTestId('radio-resume');
     await expect(resume).toBeVisible();
 
@@ -46,7 +47,7 @@ test.describe('radio landing', () => {
   }) => {
     // Grab this session's token — the Playwright `request` fixture is
     // unauthenticated, and /api/radio is behind the JWT middleware.
-    await page.goto('/');
+    await page.goto('/classic');
     const token = await page.evaluate(() => localStorage.getItem('nicotind_token'));
     expect(token).toBeTruthy();
     const auth = { Authorization: `Bearer ${token}` };
@@ -81,7 +82,7 @@ test.describe('radio landing', () => {
   test('vibe tiles are colored and 2x wide; genre tiles stay muted and narrow', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/classic');
     const preset = page.getByTestId('radio-preset').first().locator('button');
     await expect(preset).toBeVisible();
     await expect(preset).toHaveClass(/bg-gradient-to-br/);
@@ -101,7 +102,7 @@ test.describe('radio landing', () => {
   });
 
   test('taste breakers shelf renders and a tap starts playback', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/classic');
     const shelf = page.getByTestId('taste-breakers');
     // Never order-dependent: the pick list demotes recent plays rather than
     // excluding them, so the shelf survives a suite that played every fixture
@@ -121,7 +122,7 @@ test.describe('radio landing', () => {
     // Materialize the auto-recipe shelves (admin "Generate now") — a fresh e2e
     // server has zero curated playlists, so the shelf is hidden until this
     // runs. Safe mid-suite: workers=1, and no spec asserts playlist counts.
-    await page.goto('/');
+    await page.goto('/classic');
     const token = await page.evaluate(() => localStorage.getItem('nicotind_token'));
     expect(token).toBeTruthy();
     const auth = { Authorization: `Bearer ${token}` };
@@ -134,7 +135,7 @@ test.describe('radio landing', () => {
     const fresh = shelves.find((s) => s.slug === 'fresh-this-week');
     expect(fresh?.count ?? 0).toBeGreaterThan(0);
 
-    await page.goto('/');
+    await page.goto('/classic');
     const shelf = page.getByTestId('tastemakers');
     await expect(shelf).toBeVisible({ timeout: 10_000 });
     expect(await shelf.getByTestId('tastemaker-item').count()).toBeGreaterThan(0);

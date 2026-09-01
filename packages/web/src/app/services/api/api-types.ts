@@ -221,6 +221,14 @@ export interface Song {
   instrumental?: number;
   /** Dominant mood label (happy|sad|aggressive|relaxed|party). */
   mood?: string;
+  /**
+   * Extrinsic popularity 0..1 (ListenBrainz). Absent = never scored, which is
+   * NOT 0 — `normalizePopularity` maps a real zero-listen recording to 0, so
+   * `?? 0` would conflate "nobody listened" with "we never looked". Guard with
+   * `typeof x === 'number'`. Most of the library is absent: coverage is
+   * mid-backfill, and ~half of it has no recording-MBID tag to score against.
+   */
+  popularity?: number;
 }
 
 export interface StreamingSettings {

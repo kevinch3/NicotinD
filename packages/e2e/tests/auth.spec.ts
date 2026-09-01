@@ -25,7 +25,7 @@ test.describe('auth', () => {
     await page.getByTestId('login-submit').click();
 
     // The root route is the authenticated radio landing.
-    await expect(page.getByTestId('radio-landing')).toBeVisible();
+    await expect(page.getByTestId('mosaic-home')).toBeVisible();
     await expect(page).not.toHaveURL(/\/login/);
 
     await page.getByTestId('logout').click();

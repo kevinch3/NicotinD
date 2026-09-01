@@ -98,6 +98,9 @@ export interface Song {
   instrumental?: number;
   /** Dominant mood label (happy|sad|aggressive|relaxed|party). Absent when unknown. */
   mood?: string;
+  /** Extrinsic popularity 0..1 (ListenBrainz). Absent when never scored — which
+   *  is NOT the same as 0, a real recording nobody has listened to. */
+  popularity?: number;
 }
 
 export interface SearchResult3 {

@@ -83,7 +83,9 @@ test.describe('listening history', () => {
     expect(post.ok()).toBeTruthy();
     expect(await post.json()).toMatchObject({ inserted: 1 });
 
-    await page.goto('/');
+    // The shelves live on the classic landing; the mosaic flattens them into
+    // tiles with no per-shelf container to assert.
+    await page.goto('/classic');
     const shelf = page.getByTestId('recently-played');
     await expect(shelf).toBeVisible({ timeout: 10_000 });
     await expect(

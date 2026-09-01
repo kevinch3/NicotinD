@@ -416,9 +416,13 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   vibe" — `TasteBreakersComponent` over `getRandomSongs`, fetching without seeds so a fresh install
   still fills, and demoting recent plays rather than excluding them. `POOL_SIZE`, `SHELF_SIZE`.
   → [radio.md](docs/radio.md)
-- **One tile, two tones**: `VibeTileComponent` renders the landing's vibe row and genre row so they
-  cannot drift — `tone`/`wide` carry the whole difference, and the vibe gradients are fixed pairs,
-  never `--theme-*`. → [web-ui.md](docs/web-ui.md)
+- **Mosaic home — one surface, one verb**: the `''` route is an infinite pannable tile field over
+  every landing source where every tile starts a radio; pure `mosaic-tiles`/`mosaic-packing`/
+  `mosaic-lens` under a pooled rAF shell. `patchSide`, `cellCount`, `visiblePlacements`,
+  `SCORE_WEIGHTS`. The shelf landing lives on at `/classic`. → [web-ui.md](docs/web-ui.md)
+- **One tile, two tones**: `VibeTileComponent` renders the classic landing's vibe row and genre row
+  so they cannot drift — `tone`/`wide` carry the whole difference, and the vibe gradients are fixed
+  pairs, never `--theme-*`. → [web-ui.md](docs/web-ui.md)
 - **Filter-seeded radio / stations**: the same route starts a vibe with no seed song from a
   `LibraryFilter` via `buildFilterRadio` + `songFilterWheres` + `stationCentroid`; a genre station is
   graded not tag-tested by `stationAffinity` (`genreDepthScore` × `artistGenreShares`), a demotion

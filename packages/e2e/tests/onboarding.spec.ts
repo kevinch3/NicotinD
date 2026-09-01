@@ -46,7 +46,7 @@ test.describe('onboarding', () => {
     await page.getByTestId('setup-done').click();
 
     // Reloads authenticated and lands in the app (radio landing at root).
-    await expect(page.getByTestId('radio-landing')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('mosaic-home')).toBeVisible({ timeout: 10000 });
 
     if (errors.length) console.log('Browser errors:', errors);
   });
