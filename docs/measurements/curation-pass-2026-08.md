@@ -1658,3 +1658,38 @@ corrected list in place (same order, same members, one spelling fixed), and wrot
 `COUNT(*)` against `library_song_genres` matches each song's original list length exactly — nothing
 lost, nothing duplicated. Combined with the earlier 16 position-0 fixes, this closes out all 81 songs
 found by the third stretch's `get_rare_genres` probe.
+
+### Session 7, fifth stretch — a different defect class, and a real bug filed against a working feature
+
+A wider `get_rare_genres` pass (`maxCount: 5`) found two more genuine cosmetic dupes (`Dance Pop` — a
+**third** spelling of the already-fixed Dance-pop cluster; `Chill Out`/`Chillout`, genuinely tied 1-1
+with no majority signal, correctly left alone) — and something structurally different: genre strings
+that look like **multiple values run together with no delimiter at all**: `ElectronicEurodance`,
+`SkaLatin Alternative`, `Folklore latino-américainLatin MusicFolkFolklore Argentino`, and
+`Latin MusicFolklore Argentino` on 4 separate tracks of one album.
+
+Read `genre-split.ts` before touching anything: `splitGenres` only ever splits on `;`, `,`, `|` (and
+a confirmation-gated `/`) — it deliberately never guesses a word boundary inside an unseparated
+string, by design, the same discipline as its `/` rule. The doc comment names the intended fix path:
+a human-gated `library_genre_aliases` table. **That table has no MCP tool reaching it** — a curator
+session can only patch the symptom (the already-scanned song's stored genre row), which will revert
+on the next rescan if the source file's own tag is still malformed.
+
+**The artist-field twin of this bug was worse: a genuine duplicate album.** `Los NocherosLos Tekis`
+existed as its own artist row on prod, owning a fake one-track "Chamame" (2011) that was really one
+track of the real 7-track *Chamame* (2005) under `Los Nocheros`. Checked before fixing: **both**
+`Los Nocheros` and `Los Tekis` are independently, fully confirmed artists already in the library with
+their own albums. `artist-split.ts`'s `segmentConcatenatedArtist` documents its own gate as
+*"every segment must be a confirmed real artist... The confirmation gate makes it safe to apply
+automatically at scan time"* — both segments here satisfy it, and the cut position is legal by the
+function's own rule. **By the function's own logic this should have split cleanly and didn't.** That
+is a real bug in a working feature, not just bad source data — filed as **#860**, with the likely
+cause (confirmation timing: the file scanned before `Los Tekis` was independently confirmed, and
+nothing re-segments once a name becomes confirmed later) marked explicitly as a hypothesis, not a
+finding, per this session's own established discipline.
+
+Fixed the symptom: 4 genre strings split into their evident components (position-0, safe), the
+Chamame album's 4-track genre concatenation split the same way, and the artist field corrected via
+`fix_song_metadata` to `Los Nocheros, Los Tekis` — verified on read-back, not on the tool's own
+`verified: true` claim. The stale `Los NocherosLos Tekis` artist/album rows are now orphaned (0 songs)
+and left for the next `orphan_artist` sweep rather than forced.
