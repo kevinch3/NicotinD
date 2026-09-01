@@ -21,6 +21,38 @@ export const STEP = 8;
  * sparse. 0.5 keeps it dense without dropping tiles.
  */
 export const DENSITY = 0.5;
+/**
+ * Positions weighed per tile before it lands (Mitchell's best-candidate): of
+ * the first few that fit, take the one farthest from its nearest neighbour.
+ *
+ * This is what separates an *even* field from a merely random one. First-fit
+ * over a shuffled scan has no preferred region — but random points clump, and
+ * a clump reads as a blob with a hole beside it, which is the artefact this
+ * whole ordering exists to avoid.
+ */
+export const CANDIDATE_SAMPLES = 12;
+/**
+ * Positions scanned per tile once at least one fit is known. Without a bound,
+ * a late tile in a nearly-full patch walks the whole candidate list looking
+ * for a twelfth fit that may not exist.
+ */
+export const MAX_SCAN = 4000;
+
+/**
+ * Deterministic rank for a candidate position — the scan order.
+ *
+ * The ordering used to be centre-out, which is what made the field visibly
+ * repeat: first-fit from the middle packs an inscribed *disc* and leaves the
+ * square patch's corners empty, so tiling the patch merged four empty corners
+ * into one void every W pixels. **A torus has no centre**, so the packing must
+ * not have one either. A hash gives a fixed, centre-free permutation — fixed
+ * because a tile must not move between reloads.
+ */
+function positionRank(x: number, y: number): number {
+  let h = Math.imul(x | 0, 73856093) ^ Math.imul(y | 0, 19349663);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return (h ^ (h >>> 16)) >>> 0;
+}
 
 export interface PackedTile {
   tile: MosaicTile;
@@ -71,13 +103,13 @@ export function cellCount(W: number, maxSize: number): number {
 }
 
 /**
- * Place tiles largest-and-smallest alternating, each at the free position
- * nearest the patch centre.
+ * Place tiles largest-and-smallest alternating, each at the best-spaced free
+ * position found in a centre-free scan.
  *
- * The alternation matters: placing strictly largest-first clumps every big tile
- * in the middle and rings it with small ones. Interleaving keeps sizes mixed
- * across the whole patch, which is what makes the field read as a mosaic rather
- * than a target.
+ * The alternation keeps sizes mixed across the patch, so the field reads as a
+ * mosaic rather than as bands of one size. The *positions* come from a hashed
+ * permutation scored by `CANDIDATE_SAMPLES` best-candidate — see
+ * `positionRank` for why the old centre-out ordering made the plane repeat.
  */
 export function packMosaic(
   tiles: readonly MosaicTile[],
@@ -111,34 +143,68 @@ export function packMosaic(
     return true;
   };
 
-  // Alternate biggest, smallest, second-biggest, second-smallest, …
-  const bySize = [...tiles].sort((a, b) => sizeOf(b) - sizeOf(a));
-  const order: MosaicTile[] = [];
-  let lo = 0;
-  let hi = bySize.length - 1;
-  while (lo <= hi) {
-    order.push(bySize[hi--]);
-    if (lo <= hi) order.push(bySize[lo++]);
-  }
+  // Largest first. The old alternation existed to stop big tiles clumping in
+  // the middle, which was an artefact of the centre-out scan; the spacing rule
+  // now spreads them by construction. Order therefore serves packing instead:
+  // a big tile needs a big gap, and gaps only shrink as the patch fills, so
+  // taking the biggest first is what keeps every tile placeable. Interleaving
+  // sizes here strands the largest tiles and silently drops them.
+  const order = [...tiles].sort((a, b) => sizeOf(b) - sizeOf(a));
 
-  // Candidate positions, centre-out, so the patch fills from the middle.
+  // Candidate positions in a fixed, centre-free permutation.
   const candidates: Array<[number, number]> = [];
   for (let y = 0; y < W; y += STEP) for (let x = 0; x < W; x += STEP) candidates.push([x, y]);
-  const c = W / 2;
-  candidates.sort((a, b) => Math.hypot(a[0] - c, a[1] - c) - Math.hypot(b[0] - c, b[1] - c));
+  candidates.sort((a, b) => positionRank(a[0], a[1]) - positionRank(b[0], b[1]));
 
-  for (const tile of order) {
-    const size = sizeOf(tile);
-    for (const [x, y] of candidates) {
-      if (!fits(x, y, size)) continue;
-      const p: PackedTile = { tile, id: packed.length, x, y, size, half: size / 2 };
-      packed.push(p);
-      const k = hashKey(x, y);
-      const bucket = hash.get(k);
-      if (bucket) bucket.push(p);
-      else hash.set(k, [p]);
-      break;
+  /** Squared wrapped distance to the nearest placed tile, capped at one cell. */
+  const nearestSq = (x: number, y: number): number => {
+    let best = CELL * CELL;
+    for (let i = -1; i <= 1; i++) {
+      for (let j = -1; j <= 1; j++) {
+        const bucket = hash.get(hashKey(x + i * CELL, y + j * CELL));
+        if (!bucket) continue;
+        for (const t of bucket) {
+          const dx = wrapDelta(x - t.x, W);
+          const dy = wrapDelta(y - t.y, W);
+          const d = dx * dx + dy * dy;
+          if (d < best) best = d;
+        }
+      }
     }
+    return best;
+  };
+
+  for (let n = 0; n < order.length; n++) {
+    const tile = order[n];
+    const size = sizeOf(tile);
+    let bestX = -1;
+    let bestY = -1;
+    let bestSpacing = -1;
+    let found = 0;
+    // Each tile enters the permutation at its own offset, so the early tiles
+    // do not all contend for the same head of the list.
+    const start = (n * 7919) % candidates.length;
+    for (let k = 0; k < candidates.length; k++) {
+      if (found > 0 && k > MAX_SCAN) break;
+      const [x, y] = candidates[(start + k) % candidates.length];
+      if (!fits(x, y, size)) continue;
+      const spacing = nearestSq(x, y);
+      if (spacing > bestSpacing) {
+        bestSpacing = spacing;
+        bestX = x;
+        bestY = y;
+      }
+      if (++found >= CANDIDATE_SAMPLES) break;
+    }
+    // Nothing anywhere in the patch fits this tile; drop it rather than overlap.
+    if (bestX < 0) continue;
+
+    const p: PackedTile = { tile, id: packed.length, x: bestX, y: bestY, size, half: size / 2 };
+    packed.push(p);
+    const key = hashKey(bestX, bestY);
+    const bucket = hash.get(key);
+    if (bucket) bucket.push(p);
+    else hash.set(key, [p]);
   }
 
   return { tiles: packed, W };
