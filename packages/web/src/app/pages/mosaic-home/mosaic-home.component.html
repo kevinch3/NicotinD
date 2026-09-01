@@ -1,0 +1,44 @@
+<div class="absolute inset-0 overflow-hidden" data-testid="mosaic-home">
+  @if (loading()) {
+    <div class="page-shell">
+      <app-skeleton variant="shelf-tile" [count]="6" />
+    </div>
+  }
+
+  @if (isEmpty()) {
+    <div class="page-shell text-center text-theme-muted">
+      <p class="mt-12">Nothing to play yet — add some music and this fills itself.</p>
+    </div>
+  }
+
+  <!-- The stage. Children are pooled elements written by the render loop, not
+       by Angular, so this element is deliberately empty in the template. -->
+  <div
+    #stage
+    data-testid="mosaic-stage"
+    role="group"
+    aria-label="Music mosaic — drag to explore, tap a tile to start a radio"
+    class="mosaic-stage-contain absolute inset-x-0 top-0 overflow-hidden touch-none select-none cursor-grab"
+    [style.bottom.px]="chromeInset()"
+    (pointerdown)="drag.start($event)"
+  ></div>
+
+  <!-- The same tiles as a real, linear, focusable list. Pooled tiles are
+       recycled as they cross the lens, so they can carry no stable focus
+       order; this is how keyboard and screen-reader users reach every tile. -->
+  <ul class="sr-only" data-testid="mosaic-tile-list">
+    @for (tile of tiles(); track tile.key) {
+      <li>
+        <button
+          type="button"
+          data-testid="mosaic-tile-link"
+          [attr.data-tile-kind]="tile.kind"
+          [disabled]="starting() !== null"
+          (click)="start(tile)"
+        >
+          Start radio from {{ label(tile) }} — {{ tile.subtitle }}
+        </button>
+      </li>
+    }
+  </ul>
+</div>

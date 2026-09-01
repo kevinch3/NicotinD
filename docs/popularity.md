@@ -44,9 +44,19 @@ Additive columns on `library_songs` (`db.ts`), the same additive-column contract
 - `popularity_source TEXT` — provenance, `'listenbrainz'` today.
 
 Unlike genre/bpm, popularity is **not mirrored to a file tag**: it is
-extrinsic and drifts over time, so it lives only in the DB column. That also
+extrinsic and drifts over time, so it is stored only in the DB column. That also
 means the scanner never writes it — the column is simply absent from the
 scanner's upsert, so it survives a rescan untouched (no COALESCE needed).
+
+It *is* surfaced on the `Song` DTO via `rowToSong` / `SONG_SELECT`
+(`routes/library.ts`) and `RADIO_SONG_SELECT` (`routes/radio.ts`), so clients
+can weight by hotness — the mosaic home sizes its tiles with it. The mapper
+emits `undefined` for a NULL column, never `0`, and clients must guard with
+`typeof x === 'number'`: `normalizePopularity` maps a real zero-listen
+recording to `0`, so `?? 0` conflates "nobody listened" with "we never looked".
+Given the coverage numbers below, absent is the common case, and a client that
+defaults it to a constant flattens whatever it was ranking. `PlaylistService`'s
+leaner song mapper deliberately omits it, along with the whole analysis block.
 
 ### Normalization
 

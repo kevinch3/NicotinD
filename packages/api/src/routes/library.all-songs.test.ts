@@ -117,6 +117,19 @@ describe('library /songs (whole-library listing)', () => {
     testDb.close();
   });
 
+  // `popularity` crosses the wire so the client can size things by hotness.
+  // The absent case is the one that matters: normalizePopularity maps a real
+  // zero-listen recording to 0, so a client seeing 0 where we simply never
+  // scored the song would treat "unknown" as "nobody listens to this".
+  it('surfaces popularity, and omits it entirely when never scored', async () => {
+    testDb.run(`UPDATE library_songs SET popularity = 0.72 WHERE id = 'song-1'`);
+    const res = await app.request('/songs');
+    const data = (await res.json()) as Array<{ id: string; popularity?: number }>;
+    const byId = new Map(data.map((s) => [s.id, s]));
+    expect(byId.get('song-1')?.popularity).toBe(0.72);
+    expect('popularity' in (byId.get('song-2') as object)).toBe(false);
+  });
+
   it('defaults to newest-first ordering', async () => {
     const res = await app.request('/songs');
     expect(res.status).toBe(200);

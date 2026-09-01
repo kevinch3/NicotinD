@@ -388,7 +388,7 @@ rows — an invisible penalty is an unmeasurable one.
 
 The same endpoint also starts radio from a **`LibraryFilter`** — a mood/genre/bpm
 "vibe" (e.g. "happy rock", "120bpm+ danceable") — with **no seed song**. This
-powers the radio/mood landing (see [web-ui.md](web-ui.md) → "Radio landing").
+powers the radio/mood landing (see [web-ui.md](web-ui.md) → "Mosaic home").
 
 ### The problem this path had (formula v3)
 
@@ -572,6 +572,12 @@ plays the first track, queues the rest, sets `radio` on, and stores the filter;
 starting seed radio or turning radio off clears it.
 
 ## Keep the vibe (list-seeded radio)
+
+> **On the mosaic home** (the `''` route) all of the shelves below are flattened
+> into one tile field, and every tile — including a recently-played one — starts
+> a radio. Recently-played is the only source whose verb changed: it used
+> `playWithContext` on the classic landing, which kept the shelf as the queue.
+> The shelves themselves still render on `/classic`.
 
 The landing page's "Keep the vibe" shelf recommends **variations of the
 recently-played list**: tracks that would come up if a radio were started from
@@ -952,4 +958,5 @@ collapse, which it needed most (see "Same recording, multiple files").
 | `packages/web/src/app/services/api/library-api.service.ts`            | `getRadioNext()` + `getFilterRadio()` API methods                                                                                                                                                                                                              |
 | `packages/web/src/app/services/player.service.ts`                     | `radioFilter` signal + `startRadioWithFilter()` (persisted vibe)                                                                                                                                                                                               |
 | `packages/web/src/app/components/layout/layout.component.ts`          | Smart RadioProvider registration (filter-aware)                                                                                                                                                                                                                |
-| `packages/web/src/app/pages/radio-landing/radio-landing.component.ts` | Radio/mood landing: resume, shelves, vibe tiles + genre tiles                                                                                                                                                                                               |
+| `packages/web/src/app/pages/mosaic-home/mosaic-home.component.ts` | The home route: one pannable mosaic, every tile a radio start                                                                                                                                                                                                |
+| `packages/web/src/app/pages/radio-landing/radio-landing.component.ts` | Classic landing at `/classic`: resume, shelves, vibe tiles + genre tiles                                                                                                                                                                                               |

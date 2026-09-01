@@ -76,6 +76,7 @@ export interface RadioSongRow {
   acousticness: number | null;
   instrumental: number | null;
   mood: string | null;
+  popularity: number | null;
   genres_all: string | null;
   origin_countries: string | null;
 }
@@ -86,7 +87,7 @@ export const RADIO_SONG_SELECT = `
          s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
          s.created, s.starred, s.bpm, s.key,
          s.energy, s.loudness, s.valence, s.danceability, s.acousticness,
-         s.instrumental, s.mood,
+         s.instrumental, s.mood, s.popularity,
          (SELECT GROUP_CONCAT(genre, '; ') FROM (
             SELECT genre FROM library_song_genres WHERE song_id = s.id ORDER BY position
           )) AS genres_all,
@@ -139,6 +140,7 @@ export function rowToSong(r: RadioSongRow): Song & SongFeatures {
     acousticness: r.acousticness ?? undefined,
     instrumental: r.instrumental ?? undefined,
     mood: r.mood ?? undefined,
+    popularity: r.popularity ?? undefined,
   };
 }
 

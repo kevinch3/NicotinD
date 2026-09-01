@@ -97,6 +97,13 @@ export const routes: Routes = [
       {
         path: '',
         loadComponent: () =>
+          import('./pages/mosaic-home/mosaic-home.component').then((m) => m.MosaicHomeComponent),
+      },
+      {
+        // The shelf-based landing the mosaic replaced, kept reachable so the
+        // two are comparable side by side and the swap is a one-line revert.
+        path: 'classic',
+        loadComponent: () =>
           import('./pages/radio-landing/radio-landing.component').then(
             (m) => m.RadioLandingComponent,
           ),

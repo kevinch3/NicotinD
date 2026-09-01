@@ -509,6 +509,7 @@ interface SongRow {
   acousticness: number | null;
   instrumental: number | null;
   mood: string | null;
+  popularity: number | null;
 }
 
 interface ArtistRow {
@@ -533,7 +534,7 @@ const SONG_SELECT = `
          s.suffix, s.content_type,
          s.created, s.starred, s.bpm, s.key,
          s.energy, s.loudness, s.valence, s.danceability, s.acousticness,
-         s.instrumental, s.mood
+         s.instrumental, s.mood, s.popularity
   FROM library_songs s
   LEFT JOIN library_albums a ON a.id = s.album_id
 `;
@@ -595,6 +596,7 @@ function rowToSong(r: SongRow): Song {
     acousticness: r.acousticness ?? undefined,
     instrumental: r.instrumental ?? undefined,
     mood: r.mood ?? undefined,
+    popularity: r.popularity ?? undefined,
   };
 }
 

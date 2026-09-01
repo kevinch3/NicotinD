@@ -43,7 +43,7 @@ test.describe('admin role switching affects the user view', () => {
     await userPage.getByTestId('login-username').fill(target.username);
     await userPage.getByTestId('login-password').fill(target.password);
     await userPage.getByTestId('login-submit').click();
-    await expect(userPage.getByTestId('radio-landing')).toBeVisible();
+    await expect(userPage.getByTestId('mosaic-home')).toBeVisible();
     await expect(userPage.locator(acquisitionNav)).toBeVisible();
 
     // Admin demotes them to `listener` through the role picker in the users
@@ -70,7 +70,7 @@ test.describe('admin role switching affects the user view', () => {
     // acquisition workspace is gone from the nav and the route bounces back to
     // the radio landing.
     await userPage.reload();
-    await expect(userPage.getByTestId('radio-landing')).toBeVisible();
+    await expect(userPage.getByTestId('mosaic-home')).toBeVisible();
     await expect(userPage.locator(acquisitionNav)).toHaveCount(0);
 
     // Both the merged route and its legacy alias must bounce.
@@ -78,7 +78,7 @@ test.describe('admin role switching affects the user view', () => {
     await expect(userPage).not.toHaveURL(/\/get/);
     await userPage.goto('/downloads');
     await expect(userPage).not.toHaveURL(/\/downloads/);
-    await expect(userPage.getByTestId('radio-landing')).toBeVisible();
+    await expect(userPage.getByTestId('mosaic-home')).toBeVisible();
 
     await userContext.close();
   });
