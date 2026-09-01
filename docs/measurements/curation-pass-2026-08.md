@@ -1703,3 +1703,23 @@ row (id re-minted, per its own documented behaviour) closed the gap; both album 
 `Los Nocheros, Los Tekis`, verified, and the old bucket is gone from every surface. Added as a comment
 on #860 — a real fix for that bug needs to touch both the song and its album's artist field, or
 re-derive the album row afterward, not just one.
+
+**Asked to check for other cases, and it is not isolated.** Swept the whole library for the same
+"lowercase directly followed by uppercase" pattern on artist fields. Most hits are false positives —
+real stylized band names (`CamelPhat`, `WhoMadeWho`, `Mac DeMarco`, `DaBaby`, `Tate McRae`, `ScHoolboy
+Q`, dozens more) that legitimately carry internal capitals. Three, though, checked out the same way as
+Los Nocheros/Los Tekis — every segment independently exists as a confirmed artist in the library:
+
+- **`2 MinutosTruenoDie Toten Hosen`** → `2 Minutos, Trueno, Die Toten Hosen`. This is not a
+  hypothetical: it is the *exact string* `artist-split.ts`'s own doc comment for
+  `segmentConcatenatedArtist` uses as its worked example — and it was sitting live on prod, unsplit,
+  the entire time that comment was written. Both song and album fixed (same album-row gap as before).
+- **`MalumaCosculluela`** → `Maluma, Cosculluela` (song-only; its album already had the right artist).
+- **`J. BalvinDua LipaBad Bunny & Tainy`** → `J Balvin, Dua Lipa, Bad Bunny & Tainy`, the real 2018
+  four-artist collaboration "Un Día (One Day)" (song-only; its album, Dua Lipa's *Future Nostalgia*,
+  already had the right artist).
+
+Two more matched the same shape but were **correctly left alone**: `Jamsha El PutiPuerko` (5 songs)
+and `BabyChiefDoit` (1 song) have no independently-confirmed sub-names in this library to split
+against — leaving them whole is the confirmation gate working as designed, not a miss. All three
+fixes and both declines added to #860 as a comment.
