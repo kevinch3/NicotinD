@@ -1817,3 +1817,25 @@ values). For those, the fix is simply dropping the redundant tag, not guessing a
 by the tool's own `ok: true`. The remaining 37 are the genuine unresolvable tail this session's skill
 update already describes for the genre-less lane generally — distinct in mechanism (an existing wrong
 tag, not a missing one) but identical in shape.
+
+### Session 7, ninth stretch — 6 more, one new signal worth keeping
+
+Found a fresh, strong signal in the remaining 37 that the earlier passes hadn't looked for: several
+track **titles carry a self-declared genre in brackets** — `"As Time Goes By (Original Mix) [Pipe &
+Pochet] [Downtempo / Electronic music]"`, `"Doorways [Downtempo / Folktronica]"`,
+`"Mojave [World Downtempo / Slow Rave / Desert Rock]"`. That is not a guess or an inference — it is
+the file's own metadata declaring its genre in a place the scanner doesn't parse. Applied all three
+directly from the bracket text.
+
+Two more verified via search: **Kolinga** → `Afrobeat` (a real Franco-Congolese band, Afrobeat/soul/
+jazz/folk fusion, confirmed independently of the library's own already-established `Afrobeat` tag);
+**Ibu Selva** → `Organic House` for "Milonga" specifically, per Beatport's own categorization of that
+exact track — the skill's own "prefer the release page" rule, applied literally. And **Taco**'s cover
+of "Puttin' on the Ritz" (1982) → `Synth-Pop;New Wave`, the well-documented genre of that specific
+recording (a jazz standard reinvented as an '80s synth-pop hit — the original song's era is not the
+cover's genre, and only the cover is what's in this library).
+
+`Music` junk backlog: 37 → **31**. Stopped there — the remainder no longer yields to either sibling
+propagation, bracket self-declaration, or a confident search; it is the genuine floor for this lane
+without a broader tool (a bulk audio-classifier pass, or the `library_genre_aliases` path #860
+already flagged as unreachable from this surface).
