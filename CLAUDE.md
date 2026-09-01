@@ -416,7 +416,7 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   cannot drift — `tone`/`wide` carry the whole difference, and the vibe gradients are fixed pairs,
   never `--theme-*`. → [web-ui.md](docs/web-ui.md)
 - **Filter-seeded radio / stations**: the same route starts a vibe with no seed song from a
-  `LibraryFilter` via `buildFilterRadio` + `songFilterWheres` + `seedCentroid`; a genre station is
+  `LibraryFilter` via `buildFilterRadio` + `songFilterWheres` + `stationCentroid`; a genre station is
   graded not tag-tested by `stationAffinity` (`genreDepthScore` × `artistGenreShares`), a demotion
   never an exclusion. → [radio.md](docs/radio.md),
   [radio-stations-2026-08.md](docs/measurements/radio-stations-2026-08.md)

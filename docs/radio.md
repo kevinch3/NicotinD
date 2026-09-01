@@ -501,11 +501,13 @@ query params (the shared `serializeLibraryFilter` grammar — `mood`, `genre`
 3. Grades every candidate's **station affinity** (above) when the filter names
    genres — one batched `artistGenreShares` query for the whole pool, never one
    per candidate.
-4. Seeds the scorer with the pool's **centroid** (`seedCentroid`, reused from
-   `playlist-recipe.ts`) for the scalar axes, **overriding its genre with the
-   requested genres** (the listener asked for them; the modal primary of a
-   random sample is a statistic about the tag), and with the **anchor** vector
-   as its embedding.
+4. Seeds the scorer with the **station's** centroid — `stationCentroid` runs
+   `seedCentroid` (reused from `playlist-recipe.ts`) over the *whole eligible
+   set*, not the sampled pool — for the scalar axes, **overriding its genre with
+   the requested genres** (the listener asked for them; the modal primary is a
+   statistic about the tag), and with the **anchor** vector as its embedding.
+   The target is a property of the station, so neither the sampler's draw nor
+   the caller's `exclude` list may move it (#598, below).
 5. Runs the identical `rankCandidates`; returns `Song[]` (`[]` when nothing
    matches — the client surfaces a neutral "no tracks yet" notice, never an error).
 
@@ -534,12 +536,19 @@ re-reading before touching this path: **a field omitted from `toOrderable` never
 reaches `seedCentroid`, and the axis dies silently for every station.** That is
 also exactly how the embedding axis stayed dark here for as long as it did.
 
-**The `seedCentroid.key` "collapses to C major" investigation — a measured
-null result, not a bug.** The modal key genuinely varies with the filtered
-pool (a `Rock` filter's centroid differs from `Pop`'s or `Electronic`'s), and
-repeated draws of the _same_ filter land on the same key reliably — C major
-simply has a real, if modest (~1–2 percentage point), plurality lead in this
-library's overall key distribution, and `mode()` correctly finds it. The
+**The `seedCentroid.key` "collapses to C major" investigation — half of it was
+wrong, and #598 found the half that mattered.** The modal key genuinely varies
+with the filtered pool (a `Rock` filter's centroid differs from `Pop`'s or
+`Electronic`'s), and C major does have a real, if modest (~1–2 percentage
+point), plurality lead in this library's key distribution. But "repeated draws
+of the _same_ filter land on the same key reliably" — which this paragraph
+asserted for a year — **is false, and was never measured**. On prod the modal
+key of a draw matched the full station's on only 33% of Cumbia draws, 47% of
+Electronic, 67% of Latin (see
+[measurements/radio-stations-2026-08.md](measurements/radio-stations-2026-08.md)
+"#598"). A mode over a 300-row sample of a 3,700-row station is not stable, and
+a plurality lead of 1–2 points is precisely the size that sampling noise
+overturns. Fixed by taking the centroid over the whole eligible set. The
 resulting Camelot compatibility scores in real output are not degenerate
 (mostly 0.7–1.0, per the wheel's own adjacency rules) — key isn't dragging the
 pool down. A spot check with `--weights key=0` produced an equally coherent
@@ -902,7 +911,7 @@ collapse, which it needed most (see "Same recording, multiple files").
 | `packages/api/src/services/station-affinity.ts`                       | **Stations (v3)**: `genreDepthScore` / `stationAffinity` / `anchorCentroid` — pure graded membership + the audio anchor                                                                                                                                        |
 | `packages/api/src/services/genre-distribution.ts`                     | `artistGenreShares` — batched "how much of this artist is this genre", the artist half of station affinity (shares the radar's definition)                                                                                                                     |
 | `packages/api/src/services/embedding-store.ts`                        | `loadEmbeddings` / `embeddingModelFor` / `dominantEmbeddingModel` — pooled read of cached Essentia vectors (the last picks a station's vector space, which has no seed song to pin)                                                                            |
-| `packages/api/src/routes/radio.ts`                                    | `/api/radio/next` route (seed **and** filter paths); exports the shared generators `buildSeedRadio` / `buildFilterRadio` / `radioSongs` (pool build + rank, optional `weights` override for the dump), `toOrderable` (via `songFilterWheres` + `seedCentroid`) |
+| `packages/api/src/routes/radio.ts`                                    | `/api/radio/next` route (seed **and** filter paths); exports the shared generators `buildSeedRadio` / `buildFilterRadio` / `radioSongs` (pool build + rank, optional `weights` override for the dump), `toOrderable` (via `songFilterWheres` + `seedCentroid`), `stationCentroid` (the station's target, over the whole eligible set) |
 | `packages/api/src/services/genre-split.ts`                            | `segmentConcatenatedGenre` — splits mashed genre tags feeding the genre axis (see [library-scanner.md](library-scanner.md))                                                                                                                                    |
 | `packages/api/src/scripts/dump-radio.ts`                              | Developer diagnostic dump (read-only) — see "Diagnostic dump" above; `looksConcatenatedGenre` flags un-split genre tags, `parseWeightOverrides` backs `--weights`                                                                                              |
 | `packages/api/src/routes/radio.test.ts`                               | Route tests (incl. filter-radio cases)                                                                                                                                                                                                                         |

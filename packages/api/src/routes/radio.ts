@@ -189,6 +189,54 @@ export function toOrderable(r: RadioSongRow): OrderableRow {
   };
 }
 
+/**
+ * Everything `toOrderable` reads and nothing else — no album join, no cover or
+ * path columns. `stationCentroid` walks the WHOLE eligible set, so the columns
+ * it does not need are the ones worth not carrying.
+ */
+const STATION_CENTROID_SELECT = `
+  SELECT s.id, s.artist, s.artist_id, s.duration, s.year, s.genre, s.created,
+         s.bpm, s.key, s.energy, s.valence, s.danceability, s.acousticness,
+         s.instrumental,
+         (SELECT GROUP_CONCAT(genre, '; ') FROM (
+            SELECT genre FROM library_song_genres WHERE song_id = s.id ORDER BY position
+          )) AS genres_all,
+         (SELECT GROUP_CONCAT(DISTINCT o.country) FROM library_artist_origins o
+          WHERE o.country IS NOT NULL AND o.artist_id IN (
+            SELECT artist_id FROM library_song_artists WHERE song_id = s.id
+            UNION SELECT s.artist_id)) AS origin_countries
+  FROM library_songs s
+`;
+
+/**
+ * A station's sound target, built from every eligible track rather than from
+ * the sampled pool that happens to serve one request.
+ *
+ * `seedCentroid` averages the numeric axes but takes the MODE of the
+ * categorical ones (key, genre, origin). A mean over a 300-row sample of a
+ * 3,700-row station is stable; a mode is not — the modal key flipped on 7-67%
+ * of draws on prod, and key carries weight 6, so the target the whole station
+ * was ranked against moved between taps. Issue #598 measured the cost at
+ * 8-70% of the station's score deficit; this query is 13-24ms on prod's
+ * largest chip. The embedding anchor stays pool-derived: it is a mean, it is
+ * stable under sampling, and swapping it changed nothing measurable.
+ */
+export function stationCentroid(
+  db: ReturnType<typeof getDatabase>,
+  filter: LibraryFilter,
+  durGate: number,
+): SongFeatures | null {
+  const { wheres, params } = songFilterWheres(filter, 's');
+  const filterSql = wheres.length ? `${wheres.join(' AND ')} AND ` : '';
+  const rows = db
+    .query<RadioSongRow, (string | number)[]>(
+      `${STATION_CENTROID_SELECT} WHERE ${filterSql} s.hidden = 0 AND s.landed_at IS NOT NULL
+       AND s.duration >= ${durGate}`,
+    )
+    .all(...params);
+  return seedCentroid(rows.map(toOrderable));
+}
+
 /** A ranked candidate carrying its source row so callers can map back to a
  *  full Song (route) or re-run the score breakdown against it (dump). */
 export type RadioCandidate = SongFeatures & { _row: RadioSongRow; embedding?: Float32Array };
@@ -633,18 +681,20 @@ export function buildFilterRadio(
     opts.now,
   );
   if (pool.length === 0) return { seed: null, pool, ranked: [] };
-  // Centroid from the raw rows: the seed is a *vibe*, and biasing it by what
-  // the listener recently played would drift the whole target, not just demote
+  // Centroid over the whole eligible set, not `poolRows`: the seed is a *vibe*
+  // — a property of the station, not of one request — so neither the sampler's
+  // draw nor the caller's exclusions may move it (#598). Biasing it by what the
+  // listener recently played would drift the whole target rather than demote
   // individual repeats.
-  const seed = seedCentroid(poolRows.map(toOrderable));
+  const seed = stationCentroid(db, filter, durGate);
   if (!seed) return { seed: null, pool, ranked: [] };
 
-  // The listener asked for these genres; the modal primary of a random 300-row
-  // sample is a statistic *about* the tag, not the request — and on an umbrella
-  // tag that mostly sits on pop records it comes back as the wrong genre
-  // entirely. Only reachable when `stationAffinity` is absent (no genre
-  // filter), but wrong is wrong, and the centroid is also what the poll
-  // harness freezes.
+  // The listener asked for these genres; the centroid's modal primary is a
+  // statistic *about* the tag, not the request — and on an umbrella tag that
+  // mostly sits on pop records it comes back as the wrong genre entirely.
+  // Stable since #598 made the mode a whole-station one, but stable and right
+  // are different things. Only reachable when `stationAffinity` is absent (no
+  // genre filter), and the centroid is also what the poll harness freezes.
   if (stationGenres.length) seed.genres = [...stationGenres];
 
   // Embeddings were NEVER loaded on this path (they are in buildSeedRadio and
