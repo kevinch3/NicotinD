@@ -125,6 +125,11 @@ Then, and only then, spend a search:
    genre worklist is already the tracker; a flag per unknown-genre single is queue noise.
 5. Prefer the release page (Beatport/Discogs/MusicBrainz) over a downloaded file's own tag.
 
+**Check the track title for a self-declared genre before searching at all.** A downloaded track's
+title sometimes carries its own genre in brackets — `"Doorways [Downtempo / Folktronica]"`,
+`"Mojave [World Downtempo / Slow Rave / Desert Rock]"` — text the scanner's genre field never parses.
+That is source evidence, not a guess; apply it directly, zero search spent.
+
 **The same discipline applies to `missing_year`, and the trap is the same shape.** A compilation's
 own title is not proof of its contents' date — a locally-stored "album" is often one track ripped
 out of a much larger release, and that track can predate or postdate the compilation's title year by
