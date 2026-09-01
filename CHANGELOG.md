@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.61](https://github.com/kevinch3/NicotinD/compare/v0.5.60...v0.5.61) (2026-09-01)
+
+### Bug Fixes
+
+* **web:** the mosaic plane no longer repeats as visible patches ([#871](https://github.com/kevinch3/NicotinD/issues/871)) ([db8d371](https://github.com/kevinch3/NicotinD/commit/db8d3714a87498d941e34db714fc9ce3cfde1dfb))
 ## [0.5.60](https://github.com/kevinch3/NicotinD/compare/v0.5.59...v0.5.60) (2026-09-01)
 
 ### Features
