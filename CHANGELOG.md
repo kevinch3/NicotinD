@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.60](https://github.com/kevinch3/NicotinD/compare/v0.5.59...v0.5.60) (2026-09-01)
+
+### Features
+
+* **web:** the mosaic keeps discovering, holds for info, and actually stops ([#870](https://github.com/kevinch3/NicotinD/issues/870)) ([777c9c5](https://github.com/kevinch3/NicotinD/commit/777c9c53aa733cc837a9289ffad31a96de27a602))
 ## [0.5.59](https://github.com/kevinch3/NicotinD/compare/v0.5.58...v0.5.59) (2026-09-01)
 
 ### Features
