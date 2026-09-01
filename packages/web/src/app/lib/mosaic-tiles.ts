@@ -201,6 +201,21 @@ export function tileSize(score: number, stageMin: number): number {
 // Building
 // ---------------------------------------------------------------------------
 
+/** One library song as a mosaic tile — the shape both the home patch and the
+ *  discovery cells build from. */
+export function songToTile(s: Song, w: PlayWeights): MosaicTile {
+  const key = `song:${s.id}`;
+  return {
+    key,
+    kind: 'song',
+    title: s.title,
+    subtitle: s.artist,
+    score: scoreSong(key, s.id, s.artist, s.popularity, w),
+    action: { type: 'song', track: toTrack(s) },
+    coverArt: s.coverArt,
+  };
+}
+
 const recentToTrack = (p: RecentPlay): Track =>
   toTrack({
     id: p.songId,
@@ -237,20 +252,8 @@ export function buildMosaicTiles(sources: MosaicSources): MosaicTile[] {
     });
   }
 
-  const pushSong = (s: Song): void => {
-    const key = `song:${s.id}`;
-    tiles.push({
-      key,
-      kind: 'song',
-      title: s.title,
-      subtitle: s.artist,
-      score: scoreSong(key, s.id, s.artist, s.popularity, w),
-      action: { type: 'song', track: toTrack(s) },
-      coverArt: s.coverArt,
-    });
-  };
-  for (const s of sources.keepVibe) pushSong(s);
-  for (const s of sources.tasteBreakers) pushSong(s);
+  for (const s of sources.keepVibe) tiles.push(songToTile(s, w));
+  for (const s of sources.tasteBreakers) tiles.push(songToTile(s, w));
 
   for (const p of sources.recentPlays) {
     const key = `song:${p.songId}`;
@@ -311,6 +314,29 @@ export function buildMosaicTiles(sources: MosaicSources): MosaicTile[] {
   }
 
   return dedupeTiles(tiles);
+}
+
+/**
+ * Fill an already-packed slot geometry with a fresh batch of songs — the
+ * discovery cells' content mapping.
+ *
+ * The torus repeats the home patch's *geometry*, but repeating its *content*
+ * is what made exploring feel like a loop. Every cell but home substitutes its
+ * own batch into the same slots, best score into the biggest slot, so tile
+ * size keeps meaning "hotter" out in the field. Surplus slots (a batch smaller
+ * than the patch) are simply left unassigned and the renderer skips them.
+ */
+export function assignSongsToSlots(
+  slots: ReadonlyArray<{ id: number; size: number }>,
+  songs: readonly Song[],
+  w: PlayWeights,
+): Map<number, MosaicTile> {
+  const tiles = dedupeTiles(songs.map((s) => songToTile(s, w)));
+  tiles.sort((a, b) => b.score - a.score);
+  const bySize = [...slots].sort((a, b) => b.size - a.size);
+  const out = new Map<number, MosaicTile>();
+  for (let k = 0; k < bySize.length && k < tiles.length; k++) out.set(bySize[k].id, tiles[k]);
+  return out;
 }
 
 /** Collapse tiles sharing a key, keeping the highest-scoring one. */

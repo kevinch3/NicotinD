@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import {
   SkeletonComponent,
+  mosaicSkeletonSpot,
   skeletonAria,
   skeletonBarWidth,
   skeletonContainerClass,
@@ -18,6 +19,7 @@ const ALL_VARIANTS: SkeletonVariant[] = [
   'shelf-tile',
   'detail-header',
   'artist-header',
+  'mosaic',
 ];
 
 describe('skeletonItemCount', () => {
@@ -129,6 +131,29 @@ describe('skeletonAria', () => {
       const a = skeletonAria(label);
       expect(a.role !== null && a.ariaHidden !== null).toBe(false);
     }
+  });
+});
+
+describe('mosaicSkeletonSpot', () => {
+  it('is deterministic — the same index always yields the same spot', () => {
+    expect(mosaicSkeletonSpot(4)).toEqual(mosaicSkeletonSpot(4));
+    expect(mosaicSkeletonSpot(0)).toEqual(mosaicSkeletonSpot(12));
+  });
+
+  it('keeps every spot inside the stage with a clamped width', () => {
+    for (let i = 0; i < 12; i++) {
+      const spot = mosaicSkeletonSpot(i);
+      expect(parseFloat(spot.left)).toBeGreaterThanOrEqual(0);
+      expect(parseFloat(spot.left)).toBeLessThanOrEqual(90);
+      expect(parseFloat(spot.top)).toBeGreaterThanOrEqual(0);
+      expect(parseFloat(spot.top)).toBeLessThanOrEqual(90);
+      expect(spot.width).toMatch(/^clamp\(64px, \d+%, 220px\)$/);
+    }
+  });
+
+  it('scatters — adjacent indices land in different places', () => {
+    const spots = Array.from({ length: 12 }, (_, i) => mosaicSkeletonSpot(i));
+    expect(new Set(spots.map((s) => `${s.left},${s.top}`)).size).toBe(12);
   });
 });
 

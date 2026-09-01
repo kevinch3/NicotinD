@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { vi } from 'vitest';
-import { LayoutComponent } from './layout.component';
+import { LayoutComponent, headerDisplayClass } from './layout.component';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
@@ -473,5 +473,22 @@ describe('LayoutComponent — desktop chrome bar (Electron)', () => {
     expect(chrome.shellHeaderActive()).toBe(true);
     fixture.destroy();
     expect(chrome.shellHeaderActive()).toBe(false);
+  });
+});
+
+describe('headerDisplayClass — the top bar yields to the mosaic on phones', () => {
+  it('collapses below md on the mosaic home, where every control is already md-gated', () => {
+    expect(headerDisplayClass('/')).toBe('hidden md:flex');
+  });
+
+  it('ignores query params and fragments when matching the home route', () => {
+    expect(headerDisplayClass('/?utm=x')).toBe('hidden md:flex');
+    expect(headerDisplayClass('/#top')).toBe('hidden md:flex');
+  });
+
+  it('keeps the header everywhere else — scrolling pages want the sticky backdrop', () => {
+    for (const url of ['/library', '/classic', '/get?tab=find', '/settings']) {
+      expect(headerDisplayClass(url)).toBe('flex');
+    }
   });
 });

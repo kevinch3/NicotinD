@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COS_MAX, THETA_MAX, visiblePlacements } from './mosaic-lens';
+import { COS_MAX, FRICTION, THETA_MAX, decayVelocity, visiblePlacements } from './mosaic-lens';
 import type { PackedTile } from './mosaic-packing';
 import type { MosaicTile } from './mosaic-tiles';
 
@@ -79,5 +79,42 @@ describe('visiblePlacements', () => {
         .map((p) => `${p.left.toFixed(2)},${p.top.toFixed(2)},${p.scale.toFixed(4)}`)
         .sort();
     expect(key({ x: 800, y: 800 })).toEqual(key({ x: 800 + W, y: 800 }));
+  });
+
+  it('reports which torus copy each placement belongs to', () => {
+    // The discovery cells key their content on (i, j); a placement that lied
+    // about its copy would fetch or show the wrong cell's batch.
+    const out = visiblePlacements([packed(0, 0, 0)], { x: 0, y: 0 }, VIEW, 400, R);
+    for (const p of out) expect(p.key).toBe(`${p.packed.id}_${p.i}_${p.j}`);
+    expect(new Set(out.map((p) => `${p.i},${p.j}`)).size).toBeGreaterThan(1);
+  });
+});
+
+describe('decayVelocity', () => {
+  it('decays by the friction factor while moving fast', () => {
+    const { vx, vy } = decayVelocity(10, -4);
+    expect(vx).toBeCloseTo(10 * FRICTION);
+    expect(vy).toBeCloseTo(-4 * FRICTION);
+  });
+
+  it('snaps to a dead stop below the rest threshold — never an asymptote', () => {
+    // Exponential decay alone never reaches zero; the camera would creep
+    // sub-pixel forever and the mosaic would visibly "never stop".
+    expect(decayVelocity(0.03, 0.03)).toEqual({ vx: 0, vy: 0 });
+  });
+
+  it('holds a stopped camera at exactly zero', () => {
+    expect(decayVelocity(0, 0)).toEqual({ vx: 0, vy: 0 });
+  });
+
+  it('reaches exactly zero from any release speed in finite steps', () => {
+    let v = { vx: 40, vy: -25 };
+    let steps = 0;
+    while ((v.vx !== 0 || v.vy !== 0) && steps < 1000) {
+      v = decayVelocity(v.vx, v.vy);
+      steps++;
+    }
+    expect(v).toEqual({ vx: 0, vy: 0 });
+    expect(steps).toBeLessThan(1000);
   });
 });

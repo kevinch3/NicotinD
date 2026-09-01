@@ -9,6 +9,7 @@
            Double-click on the header toggles maximize (matches the Linux
            GTK convention). -->
       <header
+        data-testid="app-header"
         [class]="headerClass()"
         [attr.data-electron-title-bar]="isElectronLinux() ? '' : null"
         (dblclick)="onHeaderDoubleClick()"

@@ -53,7 +53,9 @@ export type SkeletonVariant =
   /** Large square cover + title block: album, playlist and share pages. */
   | 'detail-header'
   /** 80px round cover + title block: the artist page. */
-  | 'artist-header';
+  | 'artist-header'
+  /** Scattered squares filling the stage: the mosaic home. */
+  | 'mosaic';
 
 /**
  * Container classes per variant, copied verbatim from the real list they stand
@@ -68,6 +70,9 @@ const CONTAINER: Record<SkeletonVariant, string> = {
   'shelf-tile': 'flex gap-3 overflow-x-auto pb-2 -mx-1 px-1',
   'detail-header': 'flex flex-col sm:flex-row items-center sm:items-end gap-6 mb-8',
   'artist-header': 'flex items-center gap-5 mb-8',
+  // The mosaic's "list" is a free canvas, so there is no grid to mirror; the
+  // host just fills whatever box the page absolutely positions it in.
+  mosaic: 'block absolute inset-0 overflow-hidden',
 };
 
 /** Placeholder count when the caller doesn't pick one. */
@@ -79,6 +84,7 @@ const DEFAULT_COUNT: Record<SkeletonVariant, number> = {
   'shelf-tile': 6,
   'detail-header': 1,
   'artist-header': 1,
+  mosaic: 12,
 };
 
 /** Variants that render exactly one block regardless of what the caller asks for. */
@@ -151,6 +157,39 @@ export function skeletonBarWidth(index: number): string {
   return BAR_WIDTHS[i];
 }
 
+export interface MosaicSkeletonSpot {
+  left: string;
+  top: string;
+  width: string;
+}
+
+/**
+ * Hand-placed scatter for the `mosaic` variant: mixed sizes around a large
+ * centre tile, mimicking the packed field the loop will draw. Percent-based so
+ * one table serves phone and desktop; the clamp keeps a square from ballooning
+ * on an ultrawide stage or vanishing on a phone. Deterministic (a fixed table,
+ * cycled) for the same reason `skeletonBarWidth` is.
+ */
+const MOSAIC_SPOTS: readonly [number, number, number][] = [
+  [40, 36, 22],
+  [12, 10, 14],
+  [68, 12, 16],
+  [30, 8, 12],
+  [8, 44, 16],
+  [72, 44, 16],
+  [18, 74, 16],
+  [44, 68, 14],
+  [66, 68, 15],
+  [88, 26, 10],
+  [54, 14, 11],
+  [90, 60, 10],
+];
+
+export function mosaicSkeletonSpot(index: number): MosaicSkeletonSpot {
+  const [left, top, w] = MOSAIC_SPOTS[Math.abs(Math.floor(index)) % MOSAIC_SPOTS.length];
+  return { left: `${left}%`, top: `${top}%`, width: `clamp(64px, ${w}%, 220px)` };
+}
+
 @Component({
   selector: 'app-skeleton',
   standalone: true,
@@ -193,4 +232,5 @@ export class SkeletonComponent {
 
   /** Exposed for the template; pure so the spec can pin its determinism. */
   readonly barWidth = skeletonBarWidth;
+  readonly mosaicSpot = mosaicSkeletonSpot;
 }

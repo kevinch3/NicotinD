@@ -1,8 +1,8 @@
 <div class="absolute inset-0 overflow-hidden" data-testid="mosaic-home">
   @if (loading()) {
-    <div class="page-shell">
-      <app-skeleton variant="shelf-tile" [count]="6" />
-    </div>
+    <!-- Shape-matched: scattered squares where the packed field will appear,
+         not a list skeleton borrowed from another page. -->
+    <app-skeleton variant="mosaic" label="Loading your music" testId="mosaic-skeleton" />
   }
 
   @if (isEmpty()) {
@@ -17,7 +17,7 @@
     #stage
     data-testid="mosaic-stage"
     role="group"
-    aria-label="Music mosaic — drag to explore, tap a tile to start a radio"
+    aria-label="Music mosaic — drag to explore, tap a tile to start a radio, press and hold a song for details"
     class="mosaic-stage-contain absolute inset-x-0 top-0 overflow-hidden touch-none select-none cursor-grab"
     [style.bottom.px]="chromeInset()"
     (pointerdown)="drag.start($event)"
@@ -25,9 +25,23 @@
 
   <!-- The same tiles as a real, linear, focusable list. Pooled tiles are
        recycled as they cross the lens, so they can carry no stable focus
-       order; this is how keyboard and screen-reader users reach every tile. -->
+       order; this is how keyboard and screen-reader users reach every tile.
+       Discovery-cell finds are appended as they surface. -->
   <ul class="sr-only" data-testid="mosaic-tile-list">
     @for (tile of tiles(); track tile.key) {
+      <li>
+        <button
+          type="button"
+          data-testid="mosaic-tile-link"
+          [attr.data-tile-kind]="tile.kind"
+          [disabled]="starting() !== null"
+          (click)="start(tile)"
+        >
+          Start radio from {{ label(tile) }} — {{ tile.subtitle }}
+        </button>
+      </li>
+    }
+    @for (tile of discovered(); track tile.key) {
       <li>
         <button
           type="button"

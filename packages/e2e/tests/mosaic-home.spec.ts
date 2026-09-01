@@ -87,8 +87,59 @@ test.describe('mosaic home', () => {
     expect(await title.textContent()).toBe(before);
   });
 
+  test('holding a song tile opens its track info instead of starting a radio', async ({ page }) => {
+    await page.goto('/');
+    const tiles = page.locator('[data-testid="mosaic-tile"][data-tile-kind="song"]');
+    await expect(tiles.first()).toBeVisible({ timeout: 10_000 });
+
+    // Same shared-session rule as the drag test: assert the playback did not
+    // CHANGE, never that it is empty.
+    const title = page.getByTestId('player-title');
+    const before = await title.textContent();
+
+    // Inertia snaps to a dead stop and there is no idle drift, so a resting
+    // pooled tile is a stable press target. Pick one fully inside the viewport
+    // — .first() can be a rim tile whose centre sits off screen.
+    const viewport = page.viewportSize()!;
+    const boxes = await tiles.evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, w: r.width, h: r.height };
+      }),
+    );
+    const box = boxes.find(
+      (b) => b.x > 0 && b.y > 0 && b.x + b.w < viewport.width && b.y + b.h < viewport.height,
+    )!;
+    expect(box).toBeDefined();
+
+    await page.mouse.move(box.x + box.w / 2, box.y + box.h / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(700); // past the 450ms hold threshold
+    await page.mouse.up();
+
+    await expect(page.getByTestId('track-info-sheet')).toBeVisible({ timeout: 10_000 });
+    // The release that follows the hold must not have started a radio.
+    expect(await title.textContent()).toBe(before);
+  });
+
   test('the classic landing is still reachable', async ({ page }) => {
     await page.goto('/classic');
     await expect(page.getByTestId('radio-landing')).toBeVisible();
+  });
+});
+
+test.describe('mosaic home on a phone', () => {
+  test.use({ viewport: { width: 390, height: 780 } });
+
+  test('the top bar yields to the mosaic below md, and only there', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('mosaic-home')).toBeVisible();
+    // Every header control is md-gated on a phone (nav lives in the bottom tab
+    // bar), so on the immersive home the bar is dead space and collapses.
+    await expect(page.getByTestId('app-header')).toBeHidden();
+
+    // Any other route keeps the sticky header.
+    await page.goto('/settings');
+    await expect(page.getByTestId('app-header')).toBeVisible();
   });
 });

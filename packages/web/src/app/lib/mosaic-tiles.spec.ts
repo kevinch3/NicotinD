@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   SCORE_WEIGHTS,
+  assignSongsToSlots,
   buildMosaicTiles,
   dedupeTiles,
   jitter,
@@ -279,5 +280,45 @@ describe('buildMosaicTiles', () => {
     const rock = tiles.find((t) => t.key === 'genre:rock')!;
     // Jazz is tiny by count but heavily played, so it holds its own.
     expect(jazz.score).toBeCloseTo(rock.score);
+  });
+});
+
+describe('assignSongsToSlots', () => {
+  const w = playWeights(null);
+  const slots = [
+    { id: 0, size: 100 },
+    { id: 1, size: 200 },
+    { id: 2, size: 150 },
+  ];
+
+  it('maps the highest score into the biggest slot, so size still means hotter', () => {
+    const out = assignSongsToSlots(
+      slots,
+      [
+        song({ id: 'cold', popularity: 0 }),
+        song({ id: 'hot', popularity: 1 }),
+        song({ id: 'mid', popularity: 0.5 }),
+      ],
+      w,
+    );
+    expect(out.get(1)!.key).toBe('song:hot');
+    expect(out.get(2)!.key).toBe('song:mid');
+    expect(out.get(0)!.key).toBe('song:cold');
+  });
+
+  it('dedupes a song the random batch returned twice', () => {
+    const out = assignSongsToSlots(slots, [song({ id: 'a' }), song({ id: 'a' })], w);
+    expect(out.size).toBe(1);
+  });
+
+  it('leaves surplus slots unassigned when the batch runs short', () => {
+    const out = assignSongsToSlots(slots, [song({ id: 'only', popularity: 1 })], w);
+    expect(out.size).toBe(1);
+    // The one song still lands in the biggest slot, not an arbitrary one.
+    expect(out.get(1)!.key).toBe('song:only');
+  });
+
+  it('returns an empty map for an empty batch', () => {
+    expect(assignSongsToSlots(slots, [], w).size).toBe(0);
   });
 });

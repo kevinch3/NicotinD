@@ -95,6 +95,19 @@
     </div>
   }
 
+  @case ('mosaic') {
+    @for (i of items(); track i) {
+      <!-- rounded-[14px] matches .mosaic-face, so the shapes that pulse are the
+           shapes that arrive. -->
+      <div
+        class="skeleton-block absolute aspect-square rounded-[14px]"
+        [style.left]="mosaicSpot(i).left"
+        [style.top]="mosaicSpot(i).top"
+        [style.width]="mosaicSpot(i).width"
+      ></div>
+    }
+  }
+
   @case ('artist-header') {
     <div class="skeleton-block w-20 h-20 rounded-full flex-shrink-0"></div>
     <div class="flex flex-col min-w-0 w-full max-w-xs">
