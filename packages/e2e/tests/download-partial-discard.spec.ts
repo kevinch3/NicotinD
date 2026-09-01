@@ -78,29 +78,36 @@ test.describe('partial discard from the download card', () => {
     addon.completeJobs();
 
     // Ingested but held: the job carries a quarantined track and the review
-    // inbox counts it.
+    // inbox counts it. Capture this job's own id — the hunt-download spec's
+    // done job points at the same landed song (same path → same sha1 id), so
+    // both cards can honestly carry the held line, and only a locator scoped
+    // to the job *this* spec created is safe to discard.
+    let jobId = '';
     await expect
       .poll(
         async () => {
           const res = await request.get('/api/downloads/jobs', { headers: auth });
           if (!res.ok()) return 0;
           const jobs = (await res.json()) as Array<{
+            id: string;
             method: string;
             quarantinedCount?: number;
           }>;
-          return jobs.find((j) => j.method === ADDON_ID)?.quarantinedCount ?? 0;
+          const job = jobs.find((j) => j.method === ADDON_ID);
+          jobId = job?.id ?? '';
+          return job?.quarantinedCount ?? 0;
         },
         { timeout: 30_000 },
       )
       .toBe(1);
+    expect(jobId).not.toBe('');
 
     await page.goto('/downloads');
-    // The hunt-download spec's done job points at the same landed song (same
-    // path → same sha1 id), so both cards honestly carry the held line.
-    const held = page.getByTestId('download-held-review').first();
+    const card = page.locator(`[data-job-id="${jobId}"]`);
+    const held = card.getByTestId('download-held-review');
     await expect(held).toBeVisible({ timeout: 15_000 });
 
-    await page.getByTestId('download-discard-partial').first().click();
+    await card.getByTestId('download-discard-partial').click();
     await page.getByTestId('confirm-ok').click();
 
     // The held track is gone from the review queue and from the feed row.

@@ -139,6 +139,9 @@ test.describe('download review inbox', () => {
     cpSync(SRC, join(REVIEW_DIR, 'review-track.flac'));
     await scanAndWait(request, token);
 
+    // Exact, not toBeGreaterThan(0): a leftover pending row from another
+    // spec would make `.first()` below discard the wrong one and this test
+    // would then wait forever for a count that never reaches 0 (#854).
     await expect
       .poll(
         async () =>
@@ -148,7 +151,7 @@ test.describe('download review inbox', () => {
             }
           ).pending,
       )
-      .toBeGreaterThan(0);
+      .toBe(1);
 
     await page.goto('/downloads');
     await expect(page.getByTestId('review-inbox')).toBeVisible();
