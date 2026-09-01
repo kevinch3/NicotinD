@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { GAP, cellCount, packMosaic, patchSide, wrapDelta } from './mosaic-packing';
+import {
+  GAP,
+  cellCount,
+  packMosaic,
+  patchSide,
+  wrapDelta,
+  type PackedTile,
+} from './mosaic-packing';
 import type { MosaicTile } from './mosaic-tiles';
 
 const tile = (key: string, score: number): MosaicTile => ({
@@ -55,10 +62,44 @@ describe('cellCount', () => {
   });
 });
 
+/** Which blocks of a 3x3 grid over the patch the `n` biggest tiles land in. */
+const blocksTouchedByBiggest = (packed: PackedTile[], W: number, n: number): number => {
+  const big = [...packed].sort((a, b) => b.size - a.size).slice(0, n);
+  const block = (v: number): number => Math.min(2, Math.floor((v / W) * 3));
+  return new Set(big.map((p) => `${block(p.x)},${block(p.y)}`)).size;
+};
+
+/**
+ * Widest run of vertical strips containing no tile at all, measured around the
+ * wrap. This is the seam itself: an empty channel repeats every W pixels, and
+ * the eye reads the repetition as "one patch ending and another starting".
+ */
+const widestEmptyBand = (packed: PackedTile[], W: number): number => {
+  const STRIP = 10;
+  const strips = Math.ceil(W / STRIP);
+  const occupied = new Array<boolean>(strips).fill(false);
+  for (const p of packed) {
+    for (let s = Math.floor((p.x - p.half) / STRIP); s <= Math.ceil((p.x + p.half) / STRIP); s++) {
+      occupied[((s % strips) + strips) % strips] = true;
+    }
+  }
+  let worst = 0;
+  let run = 0;
+  // Twice around, so a band straddling the wrap is measured whole.
+  for (let i = 0; i < strips * 2; i++) {
+    if (occupied[i % strips]) run = 0;
+    else worst = Math.max(worst, Math.min(++run, strips));
+  }
+  return worst * STRIP;
+};
+
 describe('packMosaic', () => {
-  it('places every tile', () => {
-    const list = tiles(40);
-    expect(packMosaic(list, sizeOf).tiles).toHaveLength(40);
+  // Spreading tiles evenly fragments the free space, so a big tile placed late
+  // can find nowhere to go — which the packer resolves by silently dropping it.
+  // Ordering largest-first is what prevents that, and only a spread of counts
+  // catches it: 40 tiles placed fine while 81 lost seven.
+  it.each([1, 8, 40, 81, 120])('places every one of %i tiles', (n) => {
+    expect(packMosaic(tiles(n), sizeOf).tiles).toHaveLength(n);
   });
 
   /**
@@ -95,12 +136,39 @@ describe('packMosaic', () => {
     }
   });
 
-  it('mixes sizes rather than clumping the big tiles in the middle', () => {
-    // Alternating placement order is what prevents a bullseye: the largest and
-    // smallest tiles are both placed early, near the centre.
-    const { tiles: packed } = packMosaic(tiles(40), sizeOf);
-    const first = packed.slice(0, 6).map((p) => p.size);
-    expect(Math.max(...first) - Math.min(...first)).toBeGreaterThan(40);
+  /**
+   * The patch tiles the plane, so any region the packing systematically avoids
+   * repeats as a visible seam. These two assert the field is actually
+   * continuous — the property the surface is built on.
+   *
+   * Both were written against the centre-out packing they replaced, which
+   * filled an inscribed disc: it left **zero** tiles outside that disc at every
+   * tile count, and channels 30-120px wide. Neither number was close.
+   */
+  it.each([40, 81, 120])(
+    'fills the patch corners rather than an inscribed disc (%i tiles)',
+    (n) => {
+      const { tiles: packed, W } = packMosaic(tiles(n), sizeOf);
+      const c = W / 2;
+      const corners = packed.filter((p) => Math.hypot(p.x - c, p.y - c) > c).length;
+      expect(corners).toBeGreaterThan(0);
+    },
+  );
+
+  it.each([40, 81, 120])('leaves no empty channel across the patch (%i tiles)', (n) => {
+    const { tiles: packed, W } = packMosaic(tiles(n), sizeOf);
+    expect(widestEmptyBand(packed, W)).toBe(0);
+  });
+
+  /**
+   * Replaces a test that asserted the placement *order* interleaved sizes — a
+   * mechanism, not the property. It passed happily while the old packer put all
+   * eight of its biggest tiles into a SINGLE block of nine at 120 tiles. The
+   * spacing rule is what spreads them now, so assert position instead.
+   */
+  it.each([40, 81, 120])('spreads the largest tiles across the patch (%i tiles)', (n) => {
+    const { tiles: packed, W } = packMosaic(tiles(n), sizeOf);
+    expect(blocksTouchedByBiggest(packed, W, 8)).toBeGreaterThanOrEqual(5);
   });
 
   it('handles an empty and a single-tile set', () => {
