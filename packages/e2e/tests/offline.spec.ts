@@ -217,8 +217,18 @@ test.describe('mosaic home offline', () => {
     // this navigation took just over 5s under full-suite load — past
     // `toHaveURL`'s 5s default, which made it look like the click did nothing.
     // The navigation is slow, not cancelled (issue #872).
+    //
+    // 20s itself proved not generous enough (issue #878): three clean full
+    // local runs — including a stash baseline on unmodified origin/master —
+    // all timed out here, while CI stayed green (6m30s, this spec included)
+    // and the spec alone was 6/6. That combination points at local CPU
+    // contention rather than a defect: a shared dev box under full-suite load
+    // can push this navigation well past 20s even though nothing regressed.
+    // Widened rather than replaced with a condition-wait, because the thing
+    // being waited on already *is* the real signal (the URL changing) — a
+    // slow machine needs a bigger number, not a different check.
     await downloads.dispatchEvent('click');
-    await page.waitForURL(/\/library/, { timeout: 20_000 });
+    await page.waitForURL(/\/library/, { timeout: 45_000 });
 
     // Leave the context as it was found. Playwright gives each test its own
     // context, so this is hygiene rather than a fix — but a spec that ends with
