@@ -61,6 +61,7 @@
                 (retry)="onItemRetry(item)"
                 (cancel)="onItemCancel(item)"
                 (remove)="onItemRemove(item)"
+                [reviewAvailable]="reviewAvailable()"
                 (discardPartial)="onItemDiscardPartial(item)"
                 (reviewJump)="onItemReviewJump()"
               />

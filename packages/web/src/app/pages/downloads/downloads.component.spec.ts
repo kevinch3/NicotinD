@@ -348,3 +348,33 @@ describe('DownloadsComponent — partial discard (#810)', () => {
     expect(transferService.markLibraryDirty).toHaveBeenCalled();
   });
 });
+
+// #894. The jump was `document.querySelector(...)?.scrollIntoView()`, so when
+// the inbox is not rendered the optional chain made a missing target
+// indistinguishable from a successful scroll — the button did nothing, silently,
+// which is exactly what the user reported.
+describe('DownloadsComponent — review jump (#894)', () => {
+  it('reports that the inbox is unreachable instead of silently doing nothing', () => {
+    const { component, toastShow } = setup();
+    expect(document.querySelector('[data-testid="review-inbox"]')).toBeNull();
+
+    component.onItemReviewJump();
+
+    expect(toastShow).toHaveBeenCalled();
+    expect(toastShow.mock.calls[0]![0]).toMatchObject({ kind: 'error' });
+  });
+
+  it('scrolls to the inbox when it is on the page', () => {
+    const { component, toastShow } = setup();
+    const inbox = document.createElement('div');
+    inbox.setAttribute('data-testid', 'review-inbox');
+    inbox.scrollIntoView = vi.fn();
+    document.body.appendChild(inbox);
+
+    component.onItemReviewJump();
+
+    expect(inbox.scrollIntoView).toHaveBeenCalled();
+    expect(toastShow).not.toHaveBeenCalled();
+    inbox.remove();
+  });
+});

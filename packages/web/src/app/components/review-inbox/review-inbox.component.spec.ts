@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { NO_ERRORS_SCHEMA, computed, signal } from '@angular/core';
 import { vi } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { ReviewInboxComponent, aggregateAlbumSteps } from './review-inbox.component';
@@ -52,6 +52,9 @@ function setup(
     pending: signal(0),
     queue,
     loading: signal(false),
+    // Mirrors the real service's derivation (#894) — the component delegates to
+    // this rather than recomputing it, so the stub has to be faithful.
+    inboxVisible: computed(() => (opts.canCurate ?? true) && queue().length > 0),
     start: vi.fn(() => () => {}),
     watchQueue: vi.fn(() => () => {}),
     refresh: vi.fn().mockResolvedValue(undefined),

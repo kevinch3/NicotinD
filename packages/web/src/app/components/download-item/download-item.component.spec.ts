@@ -9,11 +9,13 @@ import {
   hasMultipleDestinationAlbums,
   canShowNowNext,
   isCancelPending,
+  canShowReviewHold,
   DownloadItemComponent,
 } from './download-item.component';
 import { resolveAlbumRoute, resolvePlaylistRoute } from '../../lib/route-utils';
 import type { DownloadItem } from '../../lib/download-groups';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import { setInputValue } from '../../../testing/signal-input';
 
 /**
@@ -418,5 +420,64 @@ describe('download-item cancel-pending gating (#806)', () => {
     expect(isCancelPending(item({ canCancel: true }), true)).toBe(true);
     expect(isCancelPending(item({ canCancel: true, cancelRequested: true }), false)).toBe(true);
     expect(isCancelPending(item({ canCancel: true }), false)).toBe(false);
+  });
+});
+
+// #894. `quarantinedCount` counts tracks behind the *processing* quarantine
+// gate (`landed_at IS NULL`) — a mechanism that runs on every install. The
+// "Held for review — Review / Discard" line it used to gate assumes the
+// *review* hold, which is a different thing entirely. The consequence was not a
+// cosmetic mismatch: Review scrolled to an element that isn't in the DOM when
+// the inbox is hidden (a silent no-op), while Discard beside it really did
+// throw the job's landed tracks away.
+describe('download-item review-hold gating (#894)', () => {
+  it('is suppressed when the review inbox is not reachable, however many are quarantined', () => {
+    expect(canShowReviewHold(item({ quarantinedCount: 3 }), false)).toBe(false);
+  });
+
+  it('is shown only when the inbox is reachable AND something is held', () => {
+    expect(canShowReviewHold(item({ quarantinedCount: 3 }), true)).toBe(true);
+    expect(canShowReviewHold(item({ quarantinedCount: 0 }), true)).toBe(false);
+    expect(canShowReviewHold(item({}), true)).toBe(false);
+  });
+
+  function setup(one: DownloadItem, reviewAvailable: boolean) {
+    TestBed.configureTestingModule({
+      imports: [DownloadItemComponent],
+      providers: [provideRouter([])],
+    });
+    // Unlike the other describes here, this branch renders the `| t` pipe, so
+    // the override has to keep TranslatePipe — `set:` replaces the list wholesale.
+    TestBed.overrideComponent(DownloadItemComponent, {
+      set: {
+        imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent, TranslatePipe],
+      },
+    });
+    const fixture = TestBed.createComponent(DownloadItemComponent);
+    setInputValue(fixture.componentInstance.item, one);
+    setInputValue(fixture.componentInstance.reviewAvailable, reviewAvailable);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  // The destructive half is the one that matters: a Discard button must never
+  // render on a card whose Review twin cannot work.
+  it('renders neither Review nor Discard while the inbox is unreachable', () => {
+    const fixture = setup(item({ stage: 'processing', quarantinedCount: 4 }), false);
+    expect(fixture.nativeElement.querySelector('[data-testid="download-held-review"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="download-review-jump"]')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="download-discard-partial"]'),
+    ).toBeNull();
+  });
+
+  it('renders both once the inbox is reachable', () => {
+    const fixture = setup(item({ stage: 'processing', quarantinedCount: 4 }), true);
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="download-review-jump"]'),
+    ).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="download-discard-partial"]'),
+    ).not.toBeNull();
   });
 });

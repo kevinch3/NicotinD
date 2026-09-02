@@ -441,6 +441,45 @@ curation surface (identity fixes, genre overrides, deletion). A `user` or
 gated the same way on the web side, so a non-curator's Downloads page never
 even issues the `GET /api/review/count` request.
 
+## A card offers only the actions it can carry out (issue #894)
+
+The download card's "Held for review — Review / Discard" line was gated on
+`quarantinedCount > 0`. That count is
+`WHERE i.job_id = ? AND s.landed_at IS NULL AND s.hidden = 0` — the **processing
+quarantine gate**, which runs on every install and has nothing to do with
+`holdForReview`. The line therefore rendered during ordinary enrichment on
+installs with review switched off entirely.
+
+Two consequences, and the asymmetry between them is the point:
+
+- **Review could not fail.** `onItemReviewJump` was
+  `document.querySelector('[data-testid="review-inbox"]')?.scrollIntoView(…)`.
+  The inbox renders under `@if (visible())`, so when it is hidden the element is
+  absent, `querySelector` returns `null`, and the optional chain no-ops. A
+  missing target was indistinguishable from a successful scroll — the button
+  did nothing, silently, with no way for the user to tell why.
+- **Discard could.** Its neighbour posts to `/api/review/.../discard-partial` and
+  really does throw the job's landed tracks away, behind one confirm whose count
+  came from that same misapplied number.
+
+So the safe action was broken while the irreversible one beside it worked. A
+user who clicks Review, sees nothing happen, and reaches for the adjacent button
+gets the destructive path — which is how this was reported.
+
+The fix is two rules:
+
+1. **`canShowReviewHold(item, reviewAvailable)`** gates the whole line, Discard
+   included. `reviewAvailable` comes from **`DownloadReviewService.inboxVisible`**
+   (`canCurate() && queue().length > 0`) — the *same signal the inbox itself
+   renders on*, owned by the service rather than computed in both places,
+   because two copies of a predicate are how they drift apart.
+2. **A missing jump target is reported, not swallowed.** `onItemReviewJump`
+   toasts `downloads.reviewUnavailable` when the inbox is not on the page.
+
+Same defect class as the #687 landing-gate strand: a predicate that answered an
+easier question (*"is anything quarantined?"*) than the one asked (*"can this
+user act on it right now?"*).
+
 ## Web surface
 
 - `ReviewApiService` (`services/api/`) + `DownloadReviewService` — a
