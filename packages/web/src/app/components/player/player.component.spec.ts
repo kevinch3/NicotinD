@@ -18,6 +18,7 @@ import { LikeService } from '../../services/like.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService } from '../../services/preserve.service';
+import { VocalSeparationService } from '../../services/vocal-separation.service';
 import { MediaControlsService } from '../../services/media-controls.service';
 import { NetworkStatusService } from '../../services/network-status.service';
 import type { Track } from '../../services/player.service';
@@ -119,6 +120,16 @@ describe('PlayerComponent', () => {
         },
         { provide: Router, useValue: { navigate: vi.fn() } },
         { provide: PreserveService, useValue: preserveMock },
+        // Basic-only stand-in for the separation service (issue #603): the URL
+        // follows the mute flag directly, as it does on an instance without
+        // a separator. The service's own spec covers the ML states.
+        {
+          provide: VocalSeparationService,
+          useValue: {
+            shouldServeVocalsOff: (_id: string) => playerService.vocalsMuted(),
+            currentServeVocalsOff: () => playerService.vocalsMuted(),
+          },
+        },
         // `reconnects` is read by ListeningQueueService's drain effect, which
         // instantiates through the component's ListeningTrackerService chain.
         {

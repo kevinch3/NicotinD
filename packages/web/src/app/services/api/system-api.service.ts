@@ -115,6 +115,25 @@ export class SystemApiService {
    * cannot lift — so the UI renders the control read-only rather than offering
    * something that silently does nothing.
    */
+  /**
+   * ML vocal-separation opt-in (issue #603). `configurable` is false when no
+   * sidecar URL is set — a structural floor, so the control renders read-only.
+   */
+  getVocalSeparation() {
+    return this.http.get<{ enabled: boolean; configurable: boolean }>(
+      '/api/admin/vocal-separation',
+    );
+  }
+
+  setVocalSeparation(enabled: boolean) {
+    return this.http.put<{ enabled: boolean; configurable: boolean }>(
+      '/api/admin/vocal-separation',
+      {
+        enabled,
+      },
+    );
+  }
+
   getAcquisition() {
     return this.http.get<{ enabled: boolean; configurable: boolean }>('/api/admin/acquisition');
   }

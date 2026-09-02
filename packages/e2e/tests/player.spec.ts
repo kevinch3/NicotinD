@@ -285,6 +285,9 @@ test.describe('player controls', () => {
     await toggle.click();
     // The aria-label toggles between "Mute vocals" and "Unmute vocals".
     await expect(toggle).toHaveAttribute('aria-label', /Unmute vocals/);
+    // No separator in the e2e stack: the mute is served by the basic filter and
+    // the overlay says so (issue #603 — the ML mode is unit-tested).
+    await expect(page.getByTestId('vocal-mute-status')).toContainText('Basic');
 
     // Position should not have reset — restoredTime carries it across the src
     // reload. Allow a small advance for the audio continuing to play.

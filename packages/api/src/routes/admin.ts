@@ -7,6 +7,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { listAudit, recordAudit } from '../services/audit-log.js';
 import type { AcquisitionToggle } from '../services/acquisition-toggle.js';
+import type { VocalSeparationToggle } from '../services/vocal-separation-toggle.js';
 import type { RegistrationToggle } from '../services/registration-toggle.js';
 import {
   getInstanceHistoryEnabled,
@@ -53,6 +54,8 @@ export interface AdminRoutesDeps {
   version?: string;
   /** Runtime acquisition kill-switch (issue #235); absent → the routes 503. */
   acquisition?: AcquisitionToggle | null;
+  /** ML vocal-separation opt-in (issue #603); null/undefined when not wired. */
+  vocalSeparation?: VocalSeparationToggle | null;
   /** Runtime public-signup kill-switch (issue #824); absent → the routes 503. */
   registration?: RegistrationToggle | null;
   /** Env-level listening-history floor (issue #454); absent → treated as on. */
@@ -385,6 +388,33 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     } catch (err) {
       return c.json({ error: `Import failed: ${err instanceof Error ? err.message : err}` }, 500);
     }
+  });
+
+  // ─── ML vocal separation opt-in (issue #603) ─────────────────────────────
+  // Same shape as the acquisition switch, opposite default: `enabled` is the
+  // effective value, `configurable` is false when NICOTIND_SEPARATOR_URL is
+  // unset — a structural floor, so the UI renders the toggle read-only with
+  // the reason instead of a control that silently does nothing.
+  app.get('/vocal-separation', (c) => {
+    const t = deps.vocalSeparation;
+    if (!t) return c.json({ error: 'Vocal-separation toggle not wired' }, 503);
+    return c.json({ enabled: t.enabled(), configurable: t.configurable() });
+  });
+
+  app.put('/vocal-separation', async (c) => {
+    const t = deps.vocalSeparation;
+    if (!t) return c.json({ error: 'Vocal-separation toggle not wired' }, 503);
+    const body = await c.req
+      .json<{ enabled?: unknown }>()
+      .catch(() => ({}) as { enabled?: unknown });
+    if (typeof body.enabled !== 'boolean') {
+      return c.json({ error: 'enabled must be a boolean' }, 400);
+    }
+    const effective = t.set(body.enabled);
+    recordAudit(getDatabase(), c.get('user'), 'vocal-separation.toggle', {
+      detail: `requested=${body.enabled} effective=${effective}`,
+    });
+    return c.json({ enabled: effective, configurable: t.configurable() });
   });
 
   // --- Automated playlists (see services/auto-playlists.service.ts) ---------

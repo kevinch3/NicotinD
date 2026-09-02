@@ -79,12 +79,37 @@ describe('transcode cache', () => {
     expect(t.calls()).toBe(2);
   });
 
+  it('the stem variant encodes an alternate input while keyed on the original (issue #603)', async () => {
+    const inputs: string[] = [];
+    const vocalFlags: boolean[] = [];
+    const transcoder: FileTranscoder = async (absPath, outPath, _f, _k, vocalRemoval) => {
+      inputs.push(absPath);
+      vocalFlags.push(vocalRemoval);
+      writeFileSync(outPath, 'STEM-ENCODE-'.repeat(128));
+    };
+    const stemFlac = join(musicDir, 'stem.flac');
+    writeFileSync(stemFlac, 'INSTRUMENTAL'.repeat(512));
+    const out = await getTranscodedFile(cacheDir, srcPath, 'mp3', 192, {
+      transcoder,
+      variant: 'stem',
+      inputPath: stemFlac,
+    });
+    // ffmpeg read the stem; the cache name is the ORIGINAL's identity + |stem;
+    // the basic center-cancel filter is NOT applied on top of an ML stem.
+    expect(inputs).toEqual([stemFlac]);
+    const st = statSync(srcPath);
+    expect(out).toBe(
+      join(cacheDir, `${transcodeCacheKey(srcPath, st.mtimeMs, st.size, 'mp3', 192, 'stem')}.mp3`),
+    );
+    expect(vocalFlags).toEqual([false]);
+  });
+
   it('keys by vocal-removal flag (filtered stream is a distinct cache entry)', async () => {
     const t = makeTranscoder();
     const normal = await getTranscodedFile(cacheDir, srcPath, 'mp3', 192, { transcoder: t.fn });
     const noVocals = await getTranscodedFile(cacheDir, srcPath, 'mp3', 192, {
       transcoder: t.fn,
-      vocalRemoval: true,
+      variant: 'novox',
     });
     expect(noVocals).not.toBe(normal);
     expect(t.calls()).toBe(2);
@@ -181,10 +206,14 @@ describe('transcode cache', () => {
 
   it('vocal-removal changes the key, and the default key is unchanged (cache-preserving)', () => {
     const normal = transcodeCacheKey('/m/a.flac', 1000, 12345, 'mp3', 192);
-    const noVocals = transcodeCacheKey('/m/a.flac', 1000, 12345, 'mp3', 192, true);
+    const noVocals = transcodeCacheKey('/m/a.flac', 1000, 12345, 'mp3', 192, 'novox');
+    const stem = transcodeCacheKey('/m/a.flac', 1000, 12345, 'mp3', 192, 'stem');
+    // Three distinct entries: plain, the basic filter, the ML stem (issue #603).
+    expect(stem).not.toBe(normal);
+    expect(stem).not.toBe(noVocals);
     expect(noVocals).not.toBe(normal);
     // Passing the flag falsy must match the 5-arg call so existing cache entries survive.
-    expect(transcodeCacheKey('/m/a.flac', 1000, 12345, 'mp3', 192, false)).toBe(normal);
+    expect(transcodeCacheKey('/m/a.flac', 1000, 12345, 'mp3', 192, 'plain')).toBe(normal);
   });
 
   it('evicts oldest files when over the disk budget', async () => {

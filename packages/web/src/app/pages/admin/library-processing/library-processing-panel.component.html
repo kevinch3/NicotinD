@@ -118,6 +118,44 @@
             </span>
           </div>
         }
+        @if (separator(); as a) {
+          <div
+            class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
+            data-testid="processing-separator-status"
+          >
+            <span class="min-w-0 text-sm text-theme-primary"
+              >{{ 'admin.separatorSidecar' | t }}
+              <span class="block text-xs text-theme-muted">
+                @if (!a.configured) {
+                  {{ 'admin.sidecarNotConfigured' | t }}
+                } @else if (a.healthy) {
+                  {{ 'admin.separatorHealthy' | t }}
+                } @else {
+                  {{ 'admin.separatorUnreachable' | t }}
+                }
+              </span>
+            </span>
+            <span
+              class="text-xs px-2 py-0.5 rounded-full"
+              [class]="
+                a.configured && a.healthy
+                  ? 'bg-emerald-500/15 text-emerald-500'
+                  : a.configured
+                    ? 'bg-status-error/15 text-status-error'
+                    : 'bg-theme-surface-2 text-theme-muted'
+              "
+            >
+              {{
+                (a.configured
+                  ? a.healthy
+                    ? 'admin.online'
+                    : 'admin.unreachable'
+                  : 'admin.notConfigured'
+                ) | t
+              }}
+            </span>
+          </div>
+        }
 
         <!-- grid, not vertical: each row lays its run + gate checkbox out
              side-by-side (`flex`) while DOM order is run₁,gate₁,run₂,… — on

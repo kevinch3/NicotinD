@@ -346,6 +346,11 @@ export function loadConfig() {
       ...((fileConfig as Record<string, unknown>).analysis as Record<string, unknown>),
       ...(process.env.NICOTIND_ANALYSIS_URL ? { url: process.env.NICOTIND_ANALYSIS_URL } : {}),
     },
+    separator: {
+      url: '',
+      ...((fileConfig as Record<string, unknown>).separator as Record<string, unknown>),
+      ...(process.env.NICOTIND_SEPARATOR_URL ? { url: process.env.NICOTIND_SEPARATOR_URL } : {}),
+    },
     jwt: {
       secret: secrets.jwtSecret,
       expiresIn: '30d',

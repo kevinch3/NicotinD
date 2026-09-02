@@ -7,6 +7,7 @@ import type { LyricsDto, WaveformData } from '@nicotind/core';
 import { provideRouter } from '@angular/router';
 import { NowPlayingComponent } from './now-playing.component';
 import { PlayerService } from '../../services/player.service';
+import { VocalSeparationService } from '../../services/vocal-separation.service';
 import { AuthService } from '../../services/auth.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
@@ -81,6 +82,15 @@ function setup() {
     providers: [
       provideRouter([]),
       { provide: PlayerService, useValue: playerStub },
+      {
+        provide: VocalSeparationService,
+        useValue: {
+          vocalMode: () => 'off',
+          etaSec: () => null,
+          queuePosition: () => null,
+          setKaraokeOpen: () => {},
+        },
+      },
       { provide: AuthService, useValue: { token: signal('tok') } },
       { provide: LibraryApiService, useValue: libraryStub },
       { provide: RemotePlaybackService, useValue: remoteStub },

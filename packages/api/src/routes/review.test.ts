@@ -350,6 +350,19 @@ describe('GET /api/admin/review', () => {
     expect(data.errors).toEqual([]);
   });
 
+  it('reports the separator sidecar beside the analysis one (issue #603)', async () => {
+    const app = new Hono<AuthEnv>();
+    app.use('*', async (c, next) => {
+      c.set('user', makeAdminUser());
+      await next();
+    });
+    app.route('/', reviewRoutes({ separatorClient: { healthy: async () => true } }));
+    const data = (await (await app.request('/')).json()) as ServiceReview;
+    expect(data.services.separator).toEqual({ configured: true, healthy: true });
+    expect(data.services.analysis).toEqual({ configured: false, healthy: false });
+    expect(data.errors.join(' ')).not.toMatch(/separatorStatus/);
+  });
+
   it('probes the sidecar when a client is wired', async () => {
     const healthy = mock(async () => true);
     const app = new Hono<AuthEnv>();

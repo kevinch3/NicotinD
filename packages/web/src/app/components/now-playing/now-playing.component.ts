@@ -14,6 +14,7 @@ import { NowPlayingKaraokeFullscreenComponent } from './now-playing-karaoke-full
 import { TrackContextMenuComponent } from '../track-context-menu/track-context-menu.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TrackInfoService } from '../../services/track-info.service';
+import { VocalSeparationService } from '../../services/vocal-separation.service';
 import { resolveArtistTarget } from '../../lib/route-utils';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { parseLrc, findActiveLine } from '../../lib/lrc-parser';
@@ -64,6 +65,8 @@ export class NowPlayingComponent {
   private server = inject(ServerConfigService);
   private destroyRef = inject(DestroyRef);
   readonly trackInfo = inject(TrackInfoService);
+  /** Karaoke ML separation (issue #603): overlay-open trigger + the mute's serve state. */
+  readonly vocalSep = inject(VocalSeparationService);
 
   // Context menu state
   readonly contextMenu = signal<{ x: number; y: number } | null>(null);
@@ -155,6 +158,12 @@ export class NowPlayingComponent {
   // Fullscreen karaoke overlay (the in-place lyrics panel is always open when
   // lyricsOpen is true; this flag expands it to a gradient-covered immersive view).
   readonly karaokeFullscreen = signal(false);
+  // The separation service prepares the current track the moment the overlay
+  // opens (issue #603) — mirrored here rather than set in the toggle so the
+  // panel switch and hardware Back exits are covered too.
+  private readonly mirrorKaraokeOpen = effect(() =>
+    this.vocalSep.setKaraokeOpen(this.karaokeFullscreen()),
+  );
   /** Dominant colors extracted from the current track's cover art. */
   readonly coverColors = signal<CoverPalette>(DEFAULT_PALETTE);
   /** The in-place lyrics panel child — its own `lyricsScrollRef` (an internal

@@ -37,6 +37,7 @@ import {
 import { SeekBarComponent } from '../seek-bar/seek-bar.component';
 import { TranslateService } from '../../services/translate.service';
 import { ListeningTrackerService } from '../../services/listening-tracker.service';
+import { VocalSeparationService } from '../../services/vocal-separation.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { PlayerTransportMiniComponent } from './player-transport-mini/player-transport-mini.component';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
@@ -192,6 +193,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private toast = inject(ToastService);
   private i18n = inject(TranslateService);
   private tracker = inject(ListeningTrackerService);
+  private vocalSep = inject(VocalSeparationService);
 
   private audioElA = viewChild<ElementRef<HTMLAudioElement>>('audioElA');
   private audioElB = viewChild<ElementRef<HTMLAudioElement>>('audioElB');
@@ -544,19 +546,23 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     // through a MediaElementAudioSourceNode silenced playback entirely on
     // Android, so vocal removal must stay server-side. Do not reintroduce a
     // client-side vocal filter.
+    // Keyed on "should the current track be served vocals-off", not on the
+    // mute flag itself (issue #603): the flag is intent, and the URL flips when
+    // the ML stem lands (or immediately, on a basic-only instance). Either
+    // transition is the same in-place src swap with the position restored.
     effect(() => {
-      const vocalsMuted = this.player.vocalsMuted();
+      const vocalsOff = this.vocalSep.currentServeVocalsOff();
       const track = this.player.currentTrack();
       const audio = this.audioEl()?.nativeElement;
       if (!track || !audio) return;
 
       // Skip the initial run (track load is handled by Effect 1).
       if (this.lastVocalsMuted === null) {
-        this.lastVocalsMuted = vocalsMuted;
+        this.lastVocalsMuted = vocalsOff;
         return;
       }
-      if (vocalsMuted === this.lastVocalsMuted) return;
-      this.lastVocalsMuted = vocalsMuted;
+      if (vocalsOff === this.lastVocalsMuted) return;
+      this.lastVocalsMuted = vocalsOff;
 
       // Stash the current position so onDuration restores it once the new
       // media's loadedmetadata fires (browser resets currentTime to 0 when
@@ -564,7 +570,13 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       if (audio.currentTime > 1) this.player.restoredTime = audio.currentTime;
       const wasPlaying = this.player.isPlaying();
       const token = this.auth.token();
-      this.assignSource(audio, this.server.streamUrl(track.id, token, { vocalsOff: vocalsMuted }));
+      // A different resource: fresh recovery allowance, and the spinner up
+      // front — the first encode of a stem is a couple of seconds, and the
+      // 250 ms visibility delay hides it when the entry is already cached.
+      this.recoveryAttempts = 0;
+      this.player.setBuffering(true);
+      this.player.setBufferedRanges([]);
+      this.assignSource(audio, this.server.streamUrl(track.id, token, { vocalsOff }));
       if (wasPlaying) {
         audio.play().catch((err) => {
           if (err.name === 'NotAllowedError') this.handlePlayRejection();
@@ -661,12 +673,15 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
    * Stream URL for a track load, carrying the karaoke mute. Every load path
    * (fresh track, gapless standby + swap, recovery reloads) goes through here
    * so the mute persists across tracks in the audio, not just in the signal
-   * (issue #889). `untracked` because the load effects must not re-run on a
-   * toggle — Effect 6b owns that transition.
+   * (issue #889). Whether THIS track is served vocals-off right now is the
+   * separation service's call (issue #603): the mute is intent, and a track
+   * whose ML stem is still preparing plays the original until it lands.
+   * `untracked` because the load effects must not re-run on a toggle —
+   * Effect 6b owns that transition.
    */
   private streamSrc(trackId: string, token: string | null = this.auth.token()): string {
     return this.server.streamUrl(trackId, token, {
-      vocalsOff: untracked(() => this.player.vocalsMuted()),
+      vocalsOff: untracked(() => this.vocalSep.shouldServeVocalsOff(trackId)),
     });
   }
 

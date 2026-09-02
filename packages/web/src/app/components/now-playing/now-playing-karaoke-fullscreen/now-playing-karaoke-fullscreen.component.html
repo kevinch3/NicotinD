@@ -77,8 +77,15 @@
       appTvNavItem
       (click)="vocalMuteToggle.emit()"
       class="w-10 h-10 flex items-center justify-center transition rounded-full hover:bg-white/10"
-      [class]="vocalsMuted() ? 'text-red-400' : 'text-white/60 hover:text-white'"
+      [class]="
+        vocalMode() === 'pending'
+          ? 'text-amber-300 animate-pulse'
+          : vocalsMuted()
+            ? 'text-red-400'
+            : 'text-white/60 hover:text-white'
+      "
       [attr.aria-label]="(vocalsMuted() ? 'nowPlaying.unmuteVocals' : 'nowPlaying.muteVocals') | t"
+      [attr.data-vocal-mode]="vocalMode()"
       data-testid="vocal-mute-toggle"
     >
       @if (vocalsMuted()) {
@@ -97,6 +104,31 @@
       }
     </button>
   </div>
+  @if (vocalMode() !== 'off') {
+    <p
+      class="text-center text-xs px-4 -mt-1"
+      [class]="vocalMode() === 'pending' ? 'text-amber-300' : 'text-white/50'"
+      [attr.data-eta]="vocalEtaSec()"
+      [attr.data-position]="vocalQueuePosition()"
+      data-testid="vocal-mute-status"
+    >
+      @switch (vocalMode()) {
+        @case ('pending') {
+          @if (vocalQueuePosition(); as position) {
+            {{ 'nowPlaying.vocalsQueued' | t: { position, eta: vocalEtaSec() ?? '…' } }}
+          } @else {
+            {{ 'nowPlaying.vocalsPreparing' | t: { eta: vocalEtaSec() ?? '…' } }}
+          }
+        }
+        @case ('ml') {
+          {{ 'nowPlaying.vocalModeMl' | t }}
+        }
+        @case ('basic') {
+          {{ 'nowPlaying.vocalModeBasic' | t }}
+        }
+      }
+    </p>
+  }
 
   <!-- Lyrics body -->
   <div

@@ -116,6 +116,13 @@ export interface ServiceReview {
       /** Reachable and reporting models loaded. */
       healthy: boolean;
     };
+    /** BS-RoFormer vocal-separation sidecar, GPU-only (issue #603). */
+    separator: {
+      /** NICOTIND_SEPARATOR_URL is set (the GPU overlay is in use). */
+      configured: boolean;
+      /** Reachable and reporting `ok` (cold counts as ok, like the analysis sidecar). */
+      healthy: boolean;
+    };
   };
   library: { scanning: boolean; indexedSongCount: number };
   updateCheck: UpdateCheckSnapshot | null;
@@ -163,6 +170,8 @@ export interface ReviewSubFns {
   scanStatus: () => Promise<{ scanning: boolean; count: number }>;
   /** Analysis-sidecar reachability. Default reads `deps.analysisClient`. */
   analysisStatus: () => Promise<{ configured: boolean; healthy: boolean }>;
+  /** Separator-sidecar reachability. Default reads `deps.separatorClient`. */
+  separatorStatus: () => Promise<{ configured: boolean; healthy: boolean }>;
   indexSongCount: () => number | Promise<number>;
   updateCheck: () => Promise<UpdateCheckSnapshot | null>;
   backupsList: () => BackupInfo[] | Promise<BackupInfo[]>;
@@ -197,6 +206,8 @@ export interface ReviewRoutesDeps {
   maintenance?: { getStatus: () => MaintenanceStatus } | null;
   /** Essentia sidecar client; null/absent when NICOTIND_ANALYSIS_URL is unset. */
   analysisClient?: { healthy: () => Promise<boolean> } | null;
+  /** Separator sidecar client; null/absent when NICOTIND_SEPARATOR_URL is unset. */
+  separatorClient?: { healthy: () => Promise<boolean> } | null;
   /** Collects the metrics slice. Default = `collectMetrics()`. */
   collectMetrics?: () => Promise<MetricsSnapshot>;
   /** Injected OS shim — defaults to live `node:os`. */
@@ -210,9 +221,10 @@ export interface ReviewRoutesDeps {
   now?: () => number;
 }
 
-/** Sidecar reachability. An unconfigured sidecar is not an error — it's the
- *  default deployment, so `configured: false` must never land in `errors[]`. */
-async function defaultAnalysisStatus(
+/** Sidecar reachability (analysis and separator alike). An unconfigured
+ *  sidecar is not an error — it's the default deployment, so
+ *  `configured: false` must never land in `errors[]`. */
+async function defaultSidecarStatus(
   client?: { healthy: () => Promise<boolean> } | null,
 ): Promise<{ configured: boolean; healthy: boolean }> {
   if (!client) return { configured: false, healthy: false };
@@ -503,6 +515,7 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       metrics,
       scan,
       analysis,
+      separator,
       updateCheck,
       backups,
       processing,
@@ -533,7 +546,13 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       analysis: safe(
         errors,
         'analysisStatus',
-        () => sub.analysisStatus?.() ?? defaultAnalysisStatus(deps.analysisClient),
+        () => sub.analysisStatus?.() ?? defaultSidecarStatus(deps.analysisClient),
+        { configured: false, healthy: false },
+      ),
+      separator: safe(
+        errors,
+        'separatorStatus',
+        () => sub.separatorStatus?.() ?? defaultSidecarStatus(deps.separatorClient),
         { configured: false, healthy: false },
       ),
       updateCheck: safe(
@@ -640,6 +659,7 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       load: { cpu: metrics.cpu, memory: metrics.memory, gpu: metrics.gpu },
       services: {
         analysis,
+        separator,
       },
       library: { scanning: scan.scanning, indexedSongCount },
       updateCheck,

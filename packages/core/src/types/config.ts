@@ -201,6 +201,15 @@ export const NicotinDConfigSchema = z.object({
     })
     .default({ url: '' }),
 
+  // Vocal-separation sidecar (packages/separator, issue #603). Set by the GPU
+  // compose overlay; empty = no separator, and the karaoke vocal mute keeps the
+  // basic center-cancel filter. The admin opt-in cannot lift an empty URL.
+  separator: z
+    .object({
+      url: z.string().url().or(z.literal('')).default(''),
+    })
+    .default({ url: '' }),
+
   jwt: z.object({
     secret: z.string().min(32, 'JWT secret must be at least 32 characters'),
     expiresIn: z.string().default('30d'),

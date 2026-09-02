@@ -5,6 +5,7 @@ import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { DEFAULT_PALETTE, type CoverPalette } from '../../../lib/cover-colors';
+import type { VocalMode } from '../../../services/vocal-separation.service';
 import type { WaveformData } from '../../../../types/core';
 
 @Component({
@@ -33,6 +34,10 @@ export class NowPlayingKaraokeFullscreenComponent {
     'karaoke-line-anim-a',
   );
   readonly vocalsMuted = input(false);
+  /** Which mute is (or will be) served — drives the caption and the pending pulse (issue #603). */
+  readonly vocalMode = input<VocalMode>('off');
+  readonly vocalEtaSec = input<number | null>(null);
+  readonly vocalQueuePosition = input<number | null>(null);
   readonly progress = input(0);
   readonly duration = input(0);
   readonly buffered = input<{ start: number; end: number }[]>([]);

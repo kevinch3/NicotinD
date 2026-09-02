@@ -350,6 +350,8 @@ Two things did *not* help, recorded so nobody retries them:
 - **`TF_GPU_ALLOCATOR=cuda_malloc_async` crashes this build** — see below.
 
 At 2.2 GB the sidecar leaves ~6 GB free, enough to co-host the ~3.0 GB BS-RoFormer separator of
+[vocal-separation.md](vocal-separation.md) (shipped, issue #603; measured together on kpc at ~5.2 GB
+during a separation, with the separator's worker stopped — 0 MiB — between karaoke sessions), i.e.
 [docs/vocal-isolation-spike.md](vocal-isolation-spike.md).
 
 ### Consequences for the existing controls

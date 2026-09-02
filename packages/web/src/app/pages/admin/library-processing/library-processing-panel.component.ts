@@ -51,6 +51,7 @@ export class LibraryProcessingPanelComponent implements OnInit, OnDestroy {
   protected readonly acqSvc = inject(AcquisitionSettingsService);
 
   readonly analysis = this.reviewSvc.analysis;
+  readonly separator = this.reviewSvc.separator;
   readonly reviewHeldCount = this.reviewSvc.reviewHeldCount;
   readonly reviewHeldOldestDays = this.reviewSvc.reviewHeldOldestDays;
 

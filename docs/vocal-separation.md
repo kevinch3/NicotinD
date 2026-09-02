@@ -1,10 +1,9 @@
 # Vocal separation (karaoke instrumental stems)
 
-**Status:** the sidecar image, its GPU compose overlay and CI/deploy wiring shipped first
-(issue #603, PR 3 of 4); the API + web half that consumes it is PR 4. Until then
-`NICOTIND_SEPARATOR_URL` is set by the overlay and ignored by the API, and the karaoke
-vocal mute keeps using the ffmpeg center-cancel filter (`?vocals=off`,
-`docs/design-patterns.md` "Vocal mute").
+**Status:** shipped in two PRs (issue #603): the sidecar image + GPU compose overlay + CI/deploy
+first, then the API + web half below. Opt-in per instance (Admin → Streaming & media); without
+the sidecar, or with the opt-in off, the karaoke vocal mute is the ffmpeg center-cancel
+"basic" filter (`?vocals=off`, `docs/design-patterns.md` "Vocal mute").
 
 Follows [vocal-isolation-spike.md](vocal-isolation-spike.md) (2026-08-20), which picked the
 model and measured it, and the four owner decisions of 2026-09-02 recorded on #603:
@@ -161,16 +160,94 @@ broke the overlap-add with a shape mismatch → `pad_to_multiple` / `fit_length`
 `tests/test_golden.py` prints the RTF for a synthetic mix; run it in the container with
 `SEPARATOR_MODELS_DIR=/models pytest tests/test_golden.py -s`.
 
-## API + web (PR 4 — the design, so the two halves meet)
+## API — the stem is a cache variant, and the stream route never waits
 
-Recorded here so the sidecar's contract is read against its consumer. `GET
-/stream/:id?vocals=off` never blocks on the GPU: it serves a `|stem` transcode-cache
-variant (an encode of the cached instrumental FLAC in `<dataDir>/stem-cache/`, keyed on the
-*original's* identity) when the FLAC is present, else the `|novox` basic filter, and says
-which in an `x-nicotind-vocals: ml | basic` header. `POST/GET /api/stream/:id/stem` is the
-idempotent prepare/status endpoint (`unavailable | queued | preparing | ready | failed`, with
-an ETA from `SEPARATION_RTF = 0.261`); the web starts it when the karaoke overlay opens and
-for the next queued track while muted, keeps the original mix playing until `ready`, then
-swaps `audio.src` at the same position. Opt-in is an admin toggle with the sidecar URL as
-the env floor (the `acquisition-toggle.ts` shape), surfaced on `GET /api/admin/review` as
-`services.separator: { configured, healthy }`.
+`GET /api/stream/:id?vocals=off` **never blocks on the GPU**. Readiness is a `stat`
+(`VocalSeparationService.readyStemPath`): when the instrumental FLAC is in
+`<dataDir>/stem-cache/` the route serves the transcode cache's **`|stem` variant** — an
+encode of that FLAC by the unchanged `transcodeToFile`, keyed on the *original's* identity
+(`transcodeCacheKey(..., 'stem')`, `inputPath` says what ffmpeg reads) so the source
+path/mtime/size still governs invalidation and the 55 s GPU pass is paid once per track,
+never per format/bitrate. Otherwise it serves the **`|novox` basic** center-cancel variant.
+The response says which in `x-nicotind-vocals: ml | basic` (for tests and devtools; the web
+learns the mode from the status endpoint). A failing stem encode falls back to basic *in the
+same request*, and its verdict is remembered against the **stem file**, never the original
+(`transcode-failures.ts` keys on whatever path it is given — so the track's plain and basic
+transcodes are untouched). No `mode=` query param: the client cannot know whether the FLAC
+survived a prune or the sidecar just went down, and an `<audio>` element cannot act on a 409.
+
+**Stem store** (`services/stem-store.ts`): the `waveform-store.ts` recipe — a
+content-addressed key (`stemCacheKey`: path + mtime + size + model id + `STEM_VERSION`, so a
+model swap is a miss, not a migration), an in-flight map, an atomic tmp+rename write behind
+the transcode cache's own `validateTranscodeOutput` (the FLAC's ffprobe duration vs the
+*original's* music-metadata duration, 1 s tolerance — a partial body from a dying sidecar can
+never sit at the final name), a 1 KiB floor on the hit, and an oldest-first prune over
+`STEM_CACHE_BUDGET_BYTES` (1 GiB ≈ 40 tracks; on-demand only, so growth tracks actual karaoke
+use). ~25 MB per 3.5-min track.
+
+**Prepare/status** (`routes/vocal-separation.ts`, mounted at `/api/stream` under the existing
+auth prefix; any authenticated user — karaoke already is a listener feature):
+
+```
+POST /api/stream/:id/stem   idempotent "ensure": enqueue if needed → StemStatus
+GET  /api/stream/:id/stem   status only, never enqueues            → StemStatus
+StemStatus = { state: 'idle' }
+           | { state: 'unavailable'; reason: 'not-configured'|'disabled'|'no-ffmpeg'|'unhealthy'|'busy' }
+           | { state: 'queued'; queuePosition; etaSec } | { state: 'preparing'; etaSec }
+           | { state: 'ready' } | { state: 'failed'; reason: 'rejected'|'transient'; retryAfterSec? }
+```
+
+**Service** (`services/vocal-separation.ts`, `VocalSeparationService`): one FIFO with one
+running job — the GPU is one resource and the sidecar serialises anyway — in memory on purpose
+(the `MaintenanceService` argument: the cache on disk is the durable part). A second `ensure`
+for the same track joins its job; beyond `STEM_QUEUE_MAX` (8) the answer is `busy`. The ETA
+(`estimateEtaSec`, pure) is the running job's remainder + everything ahead + this track, all
+at `SEPARATION_RTF = 0.261`, plus `SEPARATION_COLD_START_SEC` (5 s, measured) when nothing is
+running (the worker may be idle-released). The fetch timeout is `separateTimeoutMs`: ~3× the RTF + 60 s,
+floored at 2 min and capped at 15 min. Failures are remembered by kind, mirroring
+`transcode-failures.ts`: **rejected** (sidecar 422, or the FLAC failed the duration check)
+sticks until the file's identity changes; **transient** (503, timeout, transport) is kept
+for `STEM_TRANSIENT_FAILURE_TTL_MS` (60 s) so a dead sidecar is not re-hit on every 2 s
+poll, and the client poisons its cached health the same way `AudioFeaturesClient` does.
+
+**Opt-in** (`services/vocal-separation-toggle.ts`): the `acquisition-toggle.ts` shape with
+the opposite default — `resolveVocalSeparationEnabled(configured, stored) = configured &&
+(stored ?? false)`. `NICOTIND_SEPARATOR_URL` (`config.separator.url`) is the structural
+floor an admin cannot lift; the stored `vocal_separation_enabled` row defaults to off.
+`GET`/`PUT /api/admin/vocal-separation` → `{ enabled, configurable }` + an audit row;
+`GET /api/admin/review` gains `services.separator: { configured, healthy }` beside `analysis`.
+
+## Web — the mute is intent, readiness decides the URL
+
+`VocalSeparationService` (web) is the state machine between the mic toggle, the status
+endpoint and the player. `PlayerService.vocalsMuted` keeps meaning "the listener wants vocals
+off" (it persists across tracks, #889). Whether a track is *actually* served with
+`?vocals=off` right now is `shouldServeVocalsOff(id)`: muted **and** (its stem is `ready`, or
+that track cannot get one — `unavailable`/`failed`, or the instance is known to have no
+separator). Everything else while muted is **pending**: the original mix keeps playing (owner
+decision — never dead air, never a mid-song downgrade) until the stem lands. There is no
+separate pending flag: pending *is* "muted but not yet servable", so toggling twice cancels
+it and a track change while muted needs no special case.
+
+The player keys its Effect 6b (the in-place `src` swap with the position restored) on the
+service's `currentServeVocalsOff()` rather than on the mute flag, so the swap fires both on a
+toggle and when the stem lands; every load path (`streamSrc()`) asks the service per track.
+Triggers: the current track is prepared when the karaoke overlay opens (mirrored from
+`NowPlayingComponent.karaokeFullscreen`, so the panel-switch and hardware-Back exits are
+covered) or the mute is on; while muted the next queued track is prepared too, so the wait
+usually happens once per session. Polling is every `STEM_POLL_INTERVAL_MS` (2 s) while
+`queued|preparing` and the session is active (overlay open or muted); `unavailable`/transient
+tracks are re-asked no more often than every 30 s. The overlay's mic button carries
+`data-vocal-mode` (`off | pending | ml | basic`) and a caption (`vocal-mute-status`): the ETA
+and queue position while pending, "Instrumental (ML)" or "Basic (center-cancel)" once served;
+the `aria-label` stays "Unmute vocals" while pending because toggling again *is* the cancel.
+A failed separation degrades that track to basic with one toast. Admin: the opt-in row in
+**Streaming & media** (read-only with the reason when no sidecar URL is set) and a separator
+pill beside the analysis one in **Library processing**.
+
+## Verifying on the GPU host
+
+See the measurements table above and the #603 thread. The e2e stack has no separator, so the
+Playwright test covers the basic path (`vocal-mute-status` reads "Basic"); the ML states are
+unit-tested (`vocal-separation.service.spec.ts`, `vocal-separation.test.ts`,
+`streaming.test.ts` "ML stem vs the basic filter").
