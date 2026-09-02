@@ -170,3 +170,55 @@ describe('mutateSongMetadata — verifies the write actually persisted', () => {
     expect(result).toMatchObject({ ok: true, rescanned: false, verified: false });
   });
 });
+
+// Issue #865: `albumArtist` was written into the file tag by writeAudioTags
+// but was completely absent from SongMetadataSnapshot/readSnapshot/the
+// divergence check/pickApplied — so a request that failed to land on the row
+// (e.g. the scanner's VA/compilation branch silently dropping it) still came
+// back `ok:true, verified:true` with `applied.albumArtist` just echoing the
+// request, never the read-back DB value.
+describe('mutateSongMetadata — verifies albumArtist like every other field (#865)', () => {
+  it('fails with the actual value when albumArtist did not persist the rescan', async () => {
+    const result = await mutateSongMetadata(
+      db,
+      {
+        musicDir,
+        writeTags: async () => true,
+        // Stands in for the scanner silently declining to apply albumArtist
+        // for this file shape (e.g. a COMPILATION=1 tag) — the row's
+        // album_artist column never changes.
+        scanIncremental: async () => {},
+      },
+      'song-yt',
+      { title: 'Pegao', albumArtist: 'Sanampay' },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: 'Tag write did not persist',
+      requested: { title: 'Pegao', albumArtist: 'Sanampay' },
+      // title landed (default row value equals the request), only
+      // albumArtist diverges — the DB column defaults to '' on insert.
+      actual: { albumArtist: '' },
+    });
+  });
+
+  it('reports the read-back albumArtist in `applied`, not the request, once it lands', async () => {
+    const result = await mutateSongMetadata(
+      db,
+      {
+        musicDir,
+        writeTags: async () => true,
+        scanIncremental: async () => {
+          db.run('UPDATE library_songs SET album_artist = ? WHERE id = ?', ['Sanampay', 'song-yt']);
+        },
+      },
+      'song-yt',
+      { albumArtist: 'Sanampay' },
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      verified: true,
+      applied: { albumArtist: 'Sanampay' },
+    });
+  });
+});

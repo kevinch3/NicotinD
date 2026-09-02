@@ -476,6 +476,34 @@ The reorder splice moved into the shared pure `lib/move-in-list.ts`, now used by
 this and `PlayerService.moveInQueue` — a second drag-reorder surface is the point where
 two identical splice pairs start drifting.
 
+## A failed tag mirror is surfaced to the curator (issues #885, #856)
+
+Both `PUT /songs/:id/bpm` and `POST /songs/:id/genre` have always returned
+`tagWritten: boolean | null` (`true`/`false` = the write was attempted and succeeded or
+failed; `null` = never attempted — no `musicDir`, or the file is missing). The web app
+used to drop the field on the floor: `chooseBpm()` and `writeGenres()` (both in
+`track-info-sheet.component.ts`) adopted the new value and moved on, so a curator who
+picked a BPM octave or edited a genre chip had no way to learn the file's own tag
+mirror never actually landed.
+
+Both call sites now run their response through the shared private
+`warnIfTagMirrorFailed(tagWritten)`, which toasts (`ToastService`, `kind: 'error'`)
+exactly when `tagWritten === false` — never on `true`, and never on `null` (nothing
+attempted is nothing to act on). The wording is deliberately not "failed": the DB
+write (or, for a genre `mode: 'replace'` call, the song-scoped
+`library_genre_overrides` row — see [genre-model.md](genre-model.md) `#762`) already
+landed and remains the durability mechanism today, so the curation itself is not lost.
+What the toast says is narrower and true: the file's own copy did not update, so the
+change may not survive a future file replacement — for a `replace`-mode genre write
+specifically, that replacement also re-mints the song id the override is keyed on,
+which is the highest-stakes instance of this failure (the *re-pointing* of that
+orphaned override is a separate, not-yet-built fix — issue #856's other half).
+
+`applyGenre`'s response type on `LibraryApiService` was missing `tagWritten` entirely
+(so nothing could have read it even if a caller tried); `setSongBpm`'s already carried
+it. Both are typed with it now, so a future caller cannot silently drop it the way
+`applyGenre`'s did.
+
 ## Queue semantics — what a click replaces (issue #233)
 
 A track click used to call the bare `PlayerService.play(track)`, which sets `currentTrack` + `isPlaying` and **never touches `queue`**. So clicking one track left whatever was queued before in place, and `playNext()` pulled that unrelated queue as soon as the deliberately-clicked track ended. The fix is not "always clear the queue" — that would wipe the queue on every album-track click too. It's making the *gesture* decide, via three explicit entry points:

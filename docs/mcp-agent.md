@@ -388,6 +388,16 @@ rule the other curate tools established.
   did not perform. Anything automating retags — an agent, the `normalize-titles`
   bulk pass — depends on this to avoid reporting a clean run having changed
   nothing.
+  **`albumArtist` was missing from this check entirely (issue #865).** It is
+  written into the file tag (`writeAudioTags`) exactly like the other four
+  fields, but `SongMetadataSnapshot`/`readSnapshot`'s `SELECT`/the divergence
+  block/`pickApplied` only ever named title/artist/album/year — so
+  `applied.albumArtist` on a *successful* response was always the request
+  echoed straight through, unverified, and a call that changed nothing on a
+  file whose shape made the scanner decline the field (e.g. `COMPILATION=1`)
+  still came back `verified: true`. All four now cover `albumArtist` the same
+  way they cover every other field; there is no longer a fifth, silently
+  unchecked column.
 
 ### A missing argument is an error, not an empty result (issue #778)
 

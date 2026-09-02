@@ -16,6 +16,7 @@ import type {
 } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { TranslateService } from '../../services/translate.service';
+import { ToastService } from '../../services/toast.service';
 import { identifyFailureKey } from '../../lib/identify-failure';
 import { LikeService } from '../../services/like.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -46,6 +47,7 @@ export class TrackInfoSheetComponent implements OnInit {
   private i18n = inject(TranslateService);
   private server = inject(ServerConfigService);
   private router = inject(Router);
+  private toast = inject(ToastService);
   readonly likes = inject(LikeService);
 
   readonly songId = input.required<string>();
@@ -322,12 +324,29 @@ export class TrackInfoSheetComponent implements OnInit {
     const rounded = Math.round(value);
     this.applyingBpm.set(true);
     this.api.setSongBpm(this.songId(), rounded).subscribe({
-      next: () => {
+      next: (res) => {
         this.bpm.set(rounded);
         this.bpmSource.set('analyzed');
         this.applyingBpm.set(false);
+        this.warnIfTagMirrorFailed(res.tagWritten);
       },
       error: () => this.applyingBpm.set(false),
+    });
+  }
+
+  /**
+   * A `tagWritten:false` response means the DB write (the curation itself)
+   * landed but the file's own tag mirror did not — surfaced so the curator
+   * knows the change won't survive a future file replacement (issues
+   * #885/#856). `null` (never attempted — no musicDir, or the file is
+   * missing) is not warned on: there is nothing the curator can act on.
+   */
+  private warnIfTagMirrorFailed(tagWritten: boolean | null): void {
+    if (tagWritten !== false) return;
+    this.toast.show({
+      kind: 'error',
+      message:
+        'Saved to the library, but the file itself could not be updated — this change may not survive a future file replacement.',
     });
   }
 
@@ -366,6 +385,11 @@ export class TrackInfoSheetComponent implements OnInit {
         this.applyingGenre.set(false);
         this.newGenre.set('');
         this.addingGenre.set(false);
+        // 'replace' is the highest-stakes case: the DB override it just wrote
+        // is keyed on the CURRENT song id, so it is the only thing an
+        // eventual file-replace repoint can find — a failed tag mirror here
+        // is the scenario that matters most (issue #856's write-surfacing half).
+        this.warnIfTagMirrorFailed(res.tagWritten);
       },
       error: () => this.applyingGenre.set(false),
     });
