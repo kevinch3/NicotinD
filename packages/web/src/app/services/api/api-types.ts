@@ -788,6 +788,8 @@ export interface ServiceReview {
     };
     /** Essentia analysis sidecar — the largest compute consumer (issue #224). */
     analysis: { configured: boolean; healthy: boolean };
+    /** BS-RoFormer vocal-separation sidecar, GPU-only (issue #603). */
+    separator: { configured: boolean; healthy: boolean };
   };
   library: { scanning: boolean; indexedSongCount: number };
   updateCheck: UpdateCheck | null;
@@ -925,3 +927,18 @@ export interface LibraryFragmentReport {
   totals: { duplicateAlbums: number; hiddenByClassification: number; misSplitAlbums: number };
   ok: boolean;
 }
+
+/**
+ * Karaoke stem status from `POST/GET /api/stream/:id/stem` (issue #603).
+ * Mirrors `StemStatus` in packages/api/src/services/vocal-separation.ts.
+ */
+export type StemStatus =
+  | { state: 'idle' }
+  | {
+      state: 'unavailable';
+      reason: 'not-configured' | 'disabled' | 'no-ffmpeg' | 'unhealthy' | 'busy';
+    }
+  | { state: 'queued'; queuePosition: number; etaSec: number }
+  | { state: 'preparing'; etaSec: number }
+  | { state: 'ready' }
+  | { state: 'failed'; reason: 'rejected' | 'transient'; retryAfterSec?: number };

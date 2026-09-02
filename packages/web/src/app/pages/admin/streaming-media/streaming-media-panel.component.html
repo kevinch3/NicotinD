@@ -37,6 +37,34 @@
           />
         </label>
 
+        @if (vocalSep.state(); as v) {
+          <label
+            class="flex items-center justify-between gap-4"
+            appTvNavGroup
+            axis="horizontal"
+            data-testid="vocal-separation-row"
+          >
+            <span class="text-sm text-theme-primary"
+              >{{ 'admin.vocalSeparation' | t }}
+              <span class="block text-xs text-theme-muted">{{ 'admin.vocalSeparationHint' | t }}</span>
+              @if (!v.configurable) {
+                <span class="block text-xs text-status-warn" data-testid="vocal-separation-not-configured">
+                  {{ 'admin.vocalSeparationNotConfigured' | t }}
+                </span>
+              }
+            </span>
+            <input
+              type="checkbox"
+              appTvNavItem
+              [checked]="v.enabled"
+              [disabled]="vocalSep.saving() || !v.configurable"
+              (change)="vocalSep.set($any($event.target).checked)"
+              data-testid="vocal-separation-toggle"
+              class="w-4 h-4 rounded accent-emerald-500"
+            />
+          </label>
+        }
+
         @if (s.transcodeEnabled) {
           <label class="flex items-center justify-between gap-4">
             <span class="text-sm text-theme-primary">{{ 'admin.format' | t }}</span>

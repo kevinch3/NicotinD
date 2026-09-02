@@ -126,3 +126,51 @@ describe('NowPlayingKaraokeFullscreenComponent', () => {
     }
   });
 });
+
+describe('NowPlayingKaraokeFullscreenComponent — vocal mode (issue #603)', () => {
+  // The unit harness renders i18n KEYS (no catalogue is loaded), so labels are
+  // asserted by key; the numbers ride on data attributes.
+  function make(
+    mode: 'off' | 'pending' | 'ml' | 'basic',
+    muted: boolean,
+    eta: number | null = null,
+    position: number | null = null,
+  ) {
+    const fixture = TestBed.createComponent(NowPlayingKaraokeFullscreenComponent);
+    setInputValue(fixture.componentInstance.vocalMode, mode);
+    setInputValue(fixture.componentInstance.vocalsMuted, muted);
+    setInputValue(fixture.componentInstance.vocalEtaSec, eta);
+    setInputValue(fixture.componentInstance.vocalQueuePosition, position);
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+  const button = (el: HTMLElement) =>
+    el.querySelector('[data-testid="vocal-mute-toggle"]') as HTMLElement;
+  const status = (el: HTMLElement) => el.querySelector('[data-testid="vocal-mute-status"]');
+
+  it('shows no caption and the plain mute label when vocals are on', () => {
+    const el = make('off', false);
+    expect(status(el)).toBeNull();
+    expect(button(el).getAttribute('aria-label')).toBe('nowPlaying.muteVocals');
+    expect(button(el).getAttribute('data-vocal-mode')).toBe('off');
+  });
+
+  it('pending keeps the "unmute" label (toggling again cancels) and carries the ETA', () => {
+    const el = make('pending', true, 42);
+    expect(button(el).getAttribute('aria-label')).toBe('nowPlaying.unmuteVocals');
+    expect(button(el).getAttribute('data-vocal-mode')).toBe('pending');
+    expect(status(el)?.textContent).toContain('nowPlaying.vocalsPreparing');
+    expect(status(el)?.getAttribute('data-eta')).toBe('42');
+  });
+
+  it('a queued stem shows its position', () => {
+    const el = make('pending', true, 90, 2);
+    expect(status(el)?.textContent).toContain('nowPlaying.vocalsQueued');
+    expect(status(el)?.getAttribute('data-position')).toBe('2');
+  });
+
+  it('labels the served mode: ML instrumental vs basic center-cancel', () => {
+    expect(status(make('ml', true))?.textContent).toContain('nowPlaying.vocalModeMl');
+    expect(status(make('basic', true))?.textContent).toContain('nowPlaying.vocalModeBasic');
+  });
+});

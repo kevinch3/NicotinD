@@ -93,6 +93,10 @@ import { reconcileOnBoot as reconcileAcquisitionJobs } from './services/acquisit
 import { MaintenanceService } from './services/maintenance/maintenance.service.js';
 import { LibraryProcessingService } from './services/library-processing.service.js';
 import { AudioFeaturesClient } from './services/audio-features-client.js';
+import { SeparatorClient } from './services/separator-client.js';
+import { VocalSeparationToggle } from './services/vocal-separation-toggle.js';
+import { VocalSeparationService } from './services/vocal-separation.js';
+import { vocalSeparationRoutes } from './routes/vocal-separation.js';
 import { ProviderRegistry } from './services/provider-registry.js';
 import { LibrarySearchProvider } from './services/providers/library-provider.js';
 import { reservedDirsFor } from './services/library-paths.js';
@@ -347,6 +351,19 @@ export function createApp({
   const audioFeaturesClient = config.analysis.url
     ? new AudioFeaturesClient({ baseUrl: config.analysis.url })
     : null;
+
+  // Vocal-separation sidecar (issue #603): client + admin opt-in + the on-demand
+  // job runner. All null-tolerant — without a URL the karaoke mute keeps the
+  // basic filter and the stem endpoint answers `unavailable: not-configured`.
+  const separatorClient = config.separator.url
+    ? new SeparatorClient({ baseUrl: config.separator.url })
+    : null;
+  const vocalSeparationToggle = new VocalSeparationToggle(db, Boolean(config.separator.url));
+  const vocalSeparation = new VocalSeparationService({
+    client: separatorClient,
+    toggle: vocalSeparationToggle,
+    stemCacheDir: join(expandedDataDir, 'stem-cache'),
+  });
 
   // Windowed library-processing scheduler — runs enrichment tasks (BPM, genre,
   // key, energy, audio features, artist images) over the library, only inside
@@ -654,6 +671,7 @@ export function createApp({
     '/api/admin',
     adminRoutes({
       acquisition: acquisitionToggle,
+      vocalSeparation: vocalSeparationToggle,
       registration: registrationToggle,
       historyEnabled,
       musicDir: expandedMusicDir,
@@ -741,7 +759,14 @@ export function createApp({
   );
   app.route(
     '/api',
-    streamingRoutes(expandedMusicDir, db, expandedDataDir, config.lidarr?.url ?? null),
+    streamingRoutes(expandedMusicDir, db, expandedDataDir, config.lidarr?.url ?? null, {
+      stems: vocalSeparation,
+    }),
+  );
+  // Karaoke stem prepare/status (issue #603) — under the /api/stream/* auth prefix.
+  app.route(
+    '/api/stream',
+    vocalSeparationRoutes({ db, musicDir: expandedMusicDir, service: vocalSeparation }),
   );
   app.route(
     '/api/system',
@@ -785,6 +810,7 @@ export function createApp({
       processing: processingRef.current,
       maintenance,
       analysisClient: audioFeaturesClient,
+      separatorClient,
     }),
   );
   app.route('/api/users', usersRoutes(registry));

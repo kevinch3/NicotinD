@@ -198,6 +198,12 @@ So a 3.5-minute song costs **~14 minutes of CPU** and ~2.7 GB RAM. Consequences:
 
 ## 6. Architecture
 
+> **Shipped (2026-09, #603).** The design below is the spike's; what was built differs in one
+> decided way — **no progressive chunk serving**: the stream route is complete-then-serve by
+> contract (fixed `Content-Length`, ETag over size+mtime, iOS tail-probes), so the stem lands
+> whole and the web keeps the original mix playing until it does. The living description is
+> [vocal-separation.md](vocal-separation.md).
+
 Separation is **not** a streaming filter. Every model here needs the whole track (or
 21.8 s chunks with overlap), so `?vocals=off` stops being an ffmpeg `-af` and becomes a
 separated stem produced ahead of playback. The existing `novox` transcode-cache entry is

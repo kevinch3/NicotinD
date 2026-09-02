@@ -405,11 +405,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Now Playing component split + tabbed Queue/Lyrics panel**: the shell composes seven extracted
   sub-components with a `NowPlayingPanelTabsComponent` switcher; the resize handle is shell-owned
   above the tabs, and `lg:` is two columns. → [web-ui.md](docs/web-ui.md)
-- **Lyrics (on-demand, plugin-sourced, editable)**: `metadata` plugin kind + `lyrics` capability
-  (LRCLIB first), stored in `library_lyrics` + file tag; karaoke panel with synced highlighting,
-  fullscreen auto-follow and a server-side `?vocals=off` center-cancel mute (a canceller, not a
-  separator). → [design-patterns.md](docs/design-patterns.md),
-  [vocal-isolation-spike.md](docs/vocal-isolation-spike.md)
+- **Lyrics + karaoke**: `metadata` plugin kind + `lyrics` capability (LRCLIB) in `library_lyrics`
+  + file tag; karaoke panel with synced highlighting, fullscreen auto-follow, and a `?vocals=off`
+  mute that is basic center-cancel or the opt-in ML stem: `readyStemPath`,
+  `VocalSeparationService`, `shouldServeVocalsOff`.
+  → [design-patterns.md](docs/design-patterns.md), [vocal-separation.md](docs/vocal-separation.md)
 - **Now Playing waveform + karaoke VFX**: rendered from a precomputed artifact.
   → [audio-ml-enrichment.md](docs/audio-ml-enrichment.md)
 - **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a

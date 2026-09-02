@@ -41,6 +41,7 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     services: {
       slskd: { configured: false, healthy: false, connected: false },
       analysis: { configured: false, healthy: false },
+      separator: { configured: false, healthy: false },
     },
     library: { scanning: false, indexedSongCount: 0 },
     updateCheck: null,

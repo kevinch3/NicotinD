@@ -8,6 +8,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { getStreamingSettings } from '../services/streaming-settings.js';
 import { ffmpegAvailable, transcodeContentType } from '../services/transcode.js';
 import {
+  type TranscodeVariant,
   getTranscodedFile,
   pinTranscodeCacheFile,
   schedulePinRelease,
@@ -67,8 +68,12 @@ export function streamingRoutes(
   dataDir: string,
   /** Base URL of the configured Lidarr, so relative `/MediaCover/…` covers resolve. */
   lidarrBaseUrl?: string | null,
-  /** Test seam: replaces the ffmpeg PCM decoder behind `/peaks/:id`. */
-  opts: { waveformDecoder?: PcmDecoder } = {},
+  opts: {
+    /** Test seam: replaces the ffmpeg PCM decoder behind `/peaks/:id`. */
+    waveformDecoder?: PcmDecoder;
+    /** ML vocal separation (issue #603): "is a stem FLAC ready?" — sync, never waits. */
+    stems?: { readyStemPath(absPath: string): string | null } | null;
+  } = {},
 ) {
   const app = new Hono<AuthEnv>();
   const musicRoot = resolve(musicDir);
@@ -134,44 +139,71 @@ export function streamingRoutes(
         (settings.transcodeEnabled &&
           (settings.forceTranscode || (reqFormat && reqFormat !== 'raw') || reqBitRate != null)));
 
-    // A file that already produced an unusable transcode is served straight from
-    // the original — re-running the doomed ffmpeg pass on every play was the
-    // whole of issue #317. The key includes size+mtime, so a repaired
-    // re-download transcodes normally again with no manual eviction.
-    if (wantsTranscode && isKnownUntranscodable(abs)) {
-      log.debug({ abs }, 'skipping transcode: known-unusable output for this file');
-    } else if (wantsTranscode) {
+    if (wantsTranscode) {
       const format =
         reqFormat && reqFormat !== 'raw' && reqFormat !== 'original'
           ? (reqFormat as 'mp3' | 'opus' | 'aac')
           : settings.format;
       const kbps = reqBitRate && reqBitRate > 0 ? reqBitRate : settings.maxBitRate;
-      try {
-        // Transcode to a cached file (once) and serve THAT with range support, so
-        // transcoded streams are seekable. A sequential ffmpeg pipe (status 200,
-        // no content-length / accept-ranges) can't be seeked, which is why far
-        // seeks did nothing on iOS/Firefox when transcoding was on.
-        const cached = await getTranscodedFile(transcodeCacheDir, abs, format, kbps, {
-          vocalRemoval,
-        });
-        // Pin the cache file so a concurrent prune can't unlink it before Bun's
-        // response machinery has opened it. The body must stay a plain Blob:
-        // the previous implementation wrapped it in a ReadableStream to release
-        // the pin at stream end, and Bun serializes an unknown-length stream as
-        // `Transfer-Encoding: chunked`, silently dropping Content-Length — a
-        // chunked 206 is the exact response shape Firefox's and iOS Safari's
-        // media loaders stall on forever (the same failure nativeAppCors()
-        // documents), so every transcoded stream "loaded metadata but never
-        // finished loading". Once Bun has the file open, a POSIX unlink no
-        // longer affects the in-flight send, so the pin only needs to outlive
-        // the open — released on a grace timer, not at stream end.
-        schedulePinRelease(pinTranscodeCacheFile(cached));
-        return serveFileWithRange(cached, range, transcodeContentType(format), ifRange);
-      } catch (err) {
-        // Remember the verdict so the next play skips straight to the fallback.
-        rememberTranscodeFailure(abs, err);
-        log.error({ err, abs }, 'transcode failed; falling back to original');
-        // fall through to passthrough
+
+      // Which rendition(s) to try, best first. For a vocal mute (issue #603)
+      // that is the ML stem when its FLAC is on disk, then the basic
+      // center-cancel filter — decided here, server-side, because the client
+      // cannot know whether the stem survived a prune or the sidecar just went
+      // down, and an <audio> element cannot act on a 409. Readiness is a stat;
+      // this route never waits on the GPU. Each attempt carries its own
+      // negative-cache identity: a bad stem encode is remembered against the
+      // STEM file, never against the original (issue #317's cache is keyed on
+      // whatever path it is given).
+      const stemPath = vocalRemoval ? (opts.stems?.readyStemPath(abs) ?? null) : null;
+      const attempts: Array<{ variant: TranscodeVariant; inputPath?: string; identity: string }> =
+        [];
+      if (stemPath) attempts.push({ variant: 'stem', inputPath: stemPath, identity: stemPath });
+      attempts.push({ variant: vocalRemoval ? 'novox' : 'plain', identity: abs });
+
+      for (const attempt of attempts) {
+        // A file that already produced an unusable transcode is served straight
+        // from the next rendition (ultimately the original) — re-running the
+        // doomed ffmpeg pass on every play was the whole of issue #317. The key
+        // includes size+mtime, so a repaired re-download transcodes normally
+        // again with no manual eviction.
+        if (isKnownUntranscodable(attempt.identity)) {
+          log.debug({ abs, variant: attempt.variant }, 'skipping transcode: known-unusable output');
+          continue;
+        }
+        try {
+          // Transcode to a cached file (once) and serve THAT with range support, so
+          // transcoded streams are seekable. A sequential ffmpeg pipe (status 200,
+          // no content-length / accept-ranges) can't be seeked, which is why far
+          // seeks did nothing on iOS/Firefox when transcoding was on.
+          const cached = await getTranscodedFile(transcodeCacheDir, abs, format, kbps, {
+            variant: attempt.variant,
+            inputPath: attempt.inputPath,
+          });
+          // Pin the cache file so a concurrent prune can't unlink it before Bun's
+          // response machinery has opened it. The body must stay a plain Blob:
+          // the previous implementation wrapped it in a ReadableStream to release
+          // the pin at stream end, and Bun serializes an unknown-length stream as
+          // `Transfer-Encoding: chunked`, silently dropping Content-Length — a
+          // chunked 206 is the exact response shape Firefox's and iOS Safari's
+          // media loaders stall on forever (the same failure nativeAppCors()
+          // documents), so every transcoded stream "loaded metadata but never
+          // finished loading". Once Bun has the file open, a POSIX unlink no
+          // longer affects the in-flight send, so the pin only needs to outlive
+          // the open — released on a grace timer, not at stream end.
+          schedulePinRelease(pinTranscodeCacheFile(cached));
+          const res = serveFileWithRange(cached, range, transcodeContentType(format), ifRange);
+          // Tells tests and devtools which mute was served; the player learns the
+          // mode from the stem status endpoint, not from here.
+          if (vocalRemoval) {
+            res.headers.set('x-nicotind-vocals', attempt.variant === 'stem' ? 'ml' : 'basic');
+          }
+          return res;
+        } catch (err) {
+          // Remember the verdict so the next play skips straight to the fallback.
+          rememberTranscodeFailure(attempt.identity, err);
+          log.error({ err, abs, variant: attempt.variant }, 'transcode failed; falling back');
+        }
       }
     }
 
