@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.71](https://github.com/kevinch3/NicotinD/compare/v0.5.70...v0.5.71) (2026-09-02)
+
+### Features
+
+* **karaoke:** on-demand ML vocal separation behind an admin opt-in ([#899](https://github.com/kevinch3/NicotinD/issues/899)) ([7c1c237](https://github.com/kevinch3/NicotinD/commit/7c1c237c174eddcc96b4cc254235f2c50891c14c)), references [#603](https://github.com/kevinch3/NicotinD/issues/603) [#880](https://github.com/kevinch3/NicotinD/issues/880) [#603](https://github.com/kevinch3/NicotinD/issues/603) [#603](https://github.com/kevinch3/NicotinD/issues/603) [#896](https://github.com/kevinch3/NicotinD/issues/896) [#889](https://github.com/kevinch3/NicotinD/issues/889) [#891](https://github.com/kevinch3/NicotinD/issues/891) [#889](https://github.com/kevinch3/NicotinD/issues/889)
 ## [0.5.70](https://github.com/kevinch3/NicotinD/compare/v0.5.69...v0.5.70) (2026-09-02)
 
 ### Bug Fixes
