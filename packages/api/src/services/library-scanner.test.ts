@@ -639,6 +639,119 @@ describe('LibraryScanner.persist', () => {
     );
     expect(db.query('SELECT COUNT(*) AS c FROM library_songs').get()).toEqual({ c: 2 });
   });
+
+  // Issue #874: an incremental retag re-mints a song's album_id (the song id
+  // itself is path-derived and unchanged), but only the ALBUMS THIS BATCH
+  // TOUCHED get their aggregate refreshed — the album the song left behind was
+  // never revisited and lingered forever as an empty ghost row.
+  describe('an incremental retag orphans the vacated album (#874)', () => {
+    it('drops the vacated album once it has no songs left', () => {
+      const oldAlbumId = albumIdFor('A', 'Album');
+      scanner.persist(
+        buildLibrary([
+          track({
+            relPath: 'A/Album/01.mp3',
+            artist: 'A',
+            albumArtist: 'A',
+            album: 'Album',
+            title: 'T1',
+          }),
+        ]),
+        Date.now(),
+        true,
+      );
+      expect(db.query('SELECT id FROM library_albums WHERE id = ?').get(oldAlbumId)).toEqual({
+        id: oldAlbumId,
+      });
+
+      // Same file (same relPath => same song id), ALBUMARTIST retagged —
+      // this incremental batch only carries the destination album.
+      scanner.persist(
+        buildLibrary([
+          track({
+            relPath: 'A/Album/01.mp3',
+            artist: 'B',
+            albumArtist: 'B',
+            album: 'Album',
+            title: 'T1',
+          }),
+        ]),
+        Date.now() + 1,
+        false,
+      );
+
+      expect(db.query('SELECT * FROM library_albums WHERE id = ?').get(oldAlbumId)).toBeNull();
+      const newAlbumId = albumIdFor('B', 'Album');
+      expect(
+        db.query('SELECT song_count FROM library_albums WHERE id = ?').get(newAlbumId),
+      ).toEqual({ song_count: 1 });
+    });
+
+    it('refreshes the vacated album from its survivors instead of dropping it', () => {
+      const oldAlbumId = albumIdFor('A', 'Album');
+      scanner.persist(
+        buildLibrary([
+          track({
+            relPath: 'A/Album/01.mp3',
+            artist: 'A',
+            albumArtist: 'A',
+            album: 'Album',
+            title: 'T1',
+          }),
+          track({
+            relPath: 'A/Album/02.mp3',
+            artist: 'A',
+            albumArtist: 'A',
+            album: 'Album',
+            title: 'T2',
+          }),
+        ]),
+        Date.now(),
+        true,
+      );
+
+      // Only track 01 gets retagged onto a different album artist; track 02
+      // stays behind and must keep the old album alive with an honest count.
+      scanner.persist(
+        buildLibrary([
+          track({
+            relPath: 'A/Album/01.mp3',
+            artist: 'B',
+            albumArtist: 'B',
+            album: 'Album',
+            title: 'T1',
+          }),
+        ]),
+        Date.now() + 1,
+        false,
+      );
+
+      expect(
+        db.query('SELECT song_count FROM library_albums WHERE id = ?').get(oldAlbumId),
+      ).toEqual({ song_count: 1 });
+    });
+
+    it('does not touch an album this same batch also independently refreshed', () => {
+      // The moved-to album and the moved-from album collapse to the same
+      // group key here (a no-op "retag"): nothing should be pruned.
+      const built = buildLibrary([
+        track({
+          relPath: 'A/Album/01.mp3',
+          artist: 'A',
+          albumArtist: 'A',
+          album: 'Album',
+          title: 'T1',
+        }),
+      ]);
+      scanner.persist(built, Date.now(), true);
+      scanner.persist(built, Date.now() + 1, false);
+
+      const albumId = albumIdFor('A', 'Album');
+      expect(db.query('SELECT song_count FROM library_albums WHERE id = ?').get(albumId)).toEqual({
+        song_count: 1,
+      });
+    });
+  });
 });
 
 describe('buildLibrary — multi-artist splitting (conservative, confirmation-gated)', () => {

@@ -34,6 +34,7 @@ import {
 } from './genre-overrides.js';
 import { partitionByCache, loadScanCache, saveScanCache, type FileStat } from './scan-cache.js';
 import { repointPlaylistsBeforePrune } from './playlist-repoint.js';
+import { repointGenreOverridesBeforePrune } from './genre-override-repoint.js';
 import {
   splitGenres,
   buildKnownFromRaw,
@@ -1113,6 +1114,37 @@ export class LibraryScanner {
         position = excluded.position
     `);
 
+    // Incremental only (#874): a retag (e.g. ALBUMARTIST) re-mints a song's
+    // album_id while its own id (path-derived) stays put, moving it out from
+    // under its old album via the upsert below. The incremental branch only
+    // refreshes the albums THIS BATCH touched (built.albums), so the album a
+    // song left behind — if this batch didn't independently touch it too —
+    // would otherwise keep a stale song_count with zero real songs forever.
+    // Must run BEFORE the upsert changes album_id underneath these ids. A full
+    // scan needs none of this: its prune drops any album whose synced_at goes
+    // untouched, which a genuinely vacated album's is.
+    let priorAlbumIdsToCheck: string[] = [];
+    if (!prune && built.songs.length > 0) {
+      const placeholders = built.songs.map(() => '?').join(',');
+      const priorRows = this.db
+        .query<{ id: string; album_id: string }, string[]>(
+          `SELECT id, album_id FROM library_songs WHERE id IN (${placeholders})`,
+        )
+        .all(...built.songs.map((s) => s.id));
+      const nextAlbumIdBySongId = new Map(built.songs.map((s) => [s.id, s.albumId]));
+      const touchedAlbumIds = new Set(built.albums.map((a) => a.id));
+      const candidates = new Set<string>();
+      for (const row of priorRows) {
+        if (
+          row.album_id !== nextAlbumIdBySongId.get(row.id) &&
+          !touchedAlbumIds.has(row.album_id)
+        ) {
+          candidates.add(row.album_id);
+        }
+      }
+      priorAlbumIdsToCheck = [...candidates];
+    }
+
     this.db.transaction(() => {
       for (const a of built.albums) {
         albumStmt.run(
@@ -1207,6 +1239,13 @@ export class LibraryScanner {
       if (repointed.repointed > 0 || repointed.unmatched > 0) {
         log.info(repointed, 'playlist references carried across a song-id change');
       }
+      // Same hazard, one table over (#856): a curator's song-scope genre
+      // override is keyed on the same doomed id and must move before the
+      // delete or the decision — not just the tag mirror — is gone for good.
+      const genreOverridesRepointed = repointGenreOverridesBeforePrune(this.db, syncedAt);
+      if (genreOverridesRepointed.repointed > 0 || genreOverridesRepointed.unmatched > 0) {
+        log.info(genreOverridesRepointed, 'genre overrides carried across a song-id change');
+      }
       removedSongs = Number(
         this.db.run('DELETE FROM library_songs WHERE synced_at < ?', [syncedAt]).changes ?? 0,
       );
@@ -1228,6 +1267,10 @@ export class LibraryScanner {
       // Incremental: an album we just touched may have gained songs; recompute
       // its aggregate counts from all of its current songs so the card is right.
       for (const a of built.albums) refreshAlbumAggregate(this.db, a.id);
+      // #874: an album a retagged song just LEFT is otherwise never revisited —
+      // refresh it from its surviving songs, dropping it (and any artist it
+      // orphans) if none are left, exactly like a single-song delete does.
+      for (const albumId of priorAlbumIdsToCheck) pruneOrphanAlbum(this.db, albumId);
     }
 
     this.db.run(
