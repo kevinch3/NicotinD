@@ -355,16 +355,17 @@ jobs:
       # test where ffmpeg is absent would leave the feature a permanently silent
       # gate (the #457 shape). The transcode / vocal-mute branches become real
       # here as a by-product; they were written to pass either way.
-      # No `apt-get update` up front — the deps step above refreshed the lists
-      # seconds ago — and no recommends, which pulled 100 packages (VA/VDPAU
-      # drivers, SDL2, PulseAudio, pocketsphinx) that no decode path reaches.
-      # The `||` refresh keeps a stale list (issue #730) recoverable, not fatal.
+      # The update is NOT redundant any more: the deps step above now short-circuits
+      # without touching apt, so this is the job's only refresh and the image's
+      # shipped lists are stale — measured, installing without it 404s on
+      # libssh-gcrypt (the issue #730 mode) and costs 20s before failing over.
+      # `--no-install-recommends` drops ~100 packages (VA/VDPAU drivers, SDL2,
+      # PulseAudio, pocketsphinx) that no decode-to-Opus path reaches.
       - name: Install ffmpeg
         run: |
           set -euo pipefail
-          sudo apt-get install -y -qq --no-install-recommends ffmpeg \
-            || { sudo apt-get update -qq \
-                 && sudo apt-get install -y -qq --no-install-recommends ffmpeg; }
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg
 
       # E2E_SKIP_BUILD: `Build (web)` above already produced the dist from this
       # checkout, but ensureWebBuild() has no freshness check, so every run paid a
