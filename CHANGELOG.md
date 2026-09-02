@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.66](https://github.com/kevinch3/NicotinD/compare/v0.5.65...v0.5.66) (2026-09-02)
+
+### Bug Fixes
+
+* **streaming:** make the karaoke vocal mute mono-safe and clip-free ([#890](https://github.com/kevinch3/NicotinD/issues/890)) ([42fe1b7](https://github.com/kevinch3/NicotinD/commit/42fe1b70db93ad80cb1491167417eca9c322e379)), references [#602](https://github.com/kevinch3/NicotinD/issues/602) [#603](https://github.com/kevinch3/NicotinD/issues/603)
 ## [0.5.65](https://github.com/kevinch3/NicotinD/compare/v0.5.64...v0.5.65) (2026-09-02)
 
 ### Bug Fixes
