@@ -10,7 +10,7 @@ Admin-only, ephemeral visibility into which users are currently active on the ap
 | `amountOfDevices` | Unique physical devices with active sessions | `count(distinct deviceId)` for that user |
 | `amountOfSessions` | Active browser tabs or app instances | `count(sessions)` for that user |
 
-**Sessions != devices**: Multiple tabs on the same browser share one `deviceId` (the `nicotind_device_id` in `localStorage` is per-origin, reused across tabs). So 3 tabs on one laptop = 1 device, 3 sessions. A phone + a laptop = 2 devices.
+**Sessions != devices**: Multiple tabs on the same browser share one `deviceId` — presence reports the *profile* half of the playback device id (`profileIdOf`), which is the `nicotind_device_id` in `localStorage` and is reused across tabs. So 3 tabs on one laptop = 1 device, 3 sessions. A phone + a laptop = 2 devices. Remote playback deliberately counts the other way: there a device is the *output*, which is the tab (#882).
 
 ## Design decisions
 
@@ -131,7 +131,7 @@ Angular injectable service (owns lifecycle only — the actual HTTP call lives o
 
 - `initialize()` is called once from the root `App` constructor (same pattern as `RemotePlaybackService.initialize()`). It runs an `effect(() => …)` on `auth.token()`: while authenticated, fire an immediate heartbeat then start a 60s `setInterval`; when the token clears (logout / 401), the interval is cleared.
 - `deviceId` is read from `PlaybackWsService.getDeviceId()` (which persists `nicotind_device_id` in `localStorage`) — same device identity as the playback WS, which is correct (same physical device).
-- `tabId` is generated once per tab in `sessionStorage` under the key `nicotind_tab_id` via `crypto.randomUUID()` (with the same fallback as `PlaybackWsService`).
+- `tabId` is generated once per tab in `sessionStorage` under the key `nicotind_tab_id` via `crypto.randomUUID()`. It comes from the shared `resolveTabId` (`packages/web/src/app/lib/device-id.ts`) — the same helper the playback device id's tab half uses, so the heartbeat and the cast target can never name different tabs. It used to be a private copy in `PresenceService` reading that same key (#882).
 - Heartbeat errors are swallowed (best-effort); the auth interceptor already handles 401/403 logout.
 
 ### Types (`packages/web/src/app/services/api/api-types.ts`)

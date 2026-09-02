@@ -81,3 +81,57 @@ describe('DeviceSwitcherComponent', () => {
     expect(el.querySelector('[data-testid="device-switcher-panel"]')).toBeNull();
   });
 });
+
+describe('DeviceSwitcherComponent sibling tabs (#882)', () => {
+  const PROFILE = 'profile-x';
+  const MINE = `${PROFILE}:tab-1`;
+  const SIBLING = `${PROFILE}:tab-2`;
+  const STRANGER = 'profile-y:tab-1';
+
+  function setupTabs(activeDeviceId: string | null = null) {
+    const remoteStub = makeRemoteStub(
+      [
+        { id: MINE, name: 'Chrome on Linux', type: 'web', lastSeen: Date.now() },
+        { id: SIBLING, name: 'Chrome on Linux', type: 'web', lastSeen: Date.now() },
+        { id: STRANGER, name: 'Chrome on Linux', type: 'web', lastSeen: Date.now() },
+      ],
+      activeDeviceId,
+    );
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [DeviceSwitcherComponent],
+      providers: [
+        { provide: RemotePlaybackService, useValue: remoteStub },
+        {
+          provide: PlaybackWsService,
+          useValue: { getDeviceId: () => MINE, getDeviceName: () => 'Chrome on Linux' },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(DeviceSwitcherComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function siblingMark(fixture: ReturnType<typeof setupTabs>, deviceId: string): Element | null {
+    const el: HTMLElement = fixture.nativeElement;
+    const row = el.querySelector(`[data-device-id="${deviceId}"]`);
+    return row?.querySelector('[data-testid="device-sibling-tab"]') ?? null;
+  }
+
+  it('marks another tab of this browser instead of showing an identical row', () => {
+    const fixture = setupTabs();
+    expect(siblingMark(fixture, SIBLING)).not.toBeNull();
+  });
+
+  it('leaves a different browser with the same name unmarked', () => {
+    const fixture = setupTabs();
+    expect(siblingMark(fixture, STRANGER)).toBeNull();
+  });
+
+  it('still lists a sibling tab as a selectable target', () => {
+    const fixture = setupTabs();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector(`[data-device-id="${SIBLING}"]`)).not.toBeNull();
+  });
+});

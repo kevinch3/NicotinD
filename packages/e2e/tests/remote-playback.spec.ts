@@ -31,6 +31,8 @@ async function seedDevice(
     const marker = `e2e_seeded_${o.id}`;
     if (localStorage.getItem(marker)) return;
     localStorage.setItem(marker, '1');
+    // Since #882 the device id is `<profile>:<tab>` — this seeds the PROFILE
+    // half, so selectors match on the prefix, not the whole id.
     localStorage.setItem('nicotind_device_id', o.id);
     localStorage.setItem('nicotind_device_name', o.name);
     localStorage.setItem('nicotind_remote_enabled', String(o.remoteEnabled));
@@ -160,7 +162,7 @@ test.describe('remote playback', () => {
       // Cast.
       await openSwitcher(controller);
       const option = controller
-        .locator(`[data-testid="device-option"][data-device-id="${RECEIVER_ID}"]`)
+        .locator(`[data-testid="device-option"][data-device-id^="${RECEIVER_ID}:"]`)
         .first();
       await expect(option).toBeVisible({ timeout: 10_000 });
       await option.click();

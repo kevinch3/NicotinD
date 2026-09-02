@@ -46,6 +46,13 @@ export interface SharedHelper {
 export const SHARED_HELPERS: SharedHelper[] = [
   { name: 'expandHome', canonical: 'packages/core/src/utils/expand-home.ts' },
   { name: 'timeAgo', canonical: 'packages/web/src/app/lib/relative-time.ts' },
+  // "Which tab is this?" existed twice under one `nicotind_tab_id` key —
+  // PresenceService's private copy and, when the playback device id became
+  // per-tab (#882), a second read-or-mint of the same key. Two writers to one
+  // storage key is the drift: the heartbeat and the cast target would name
+  // different tabs. Registered so copy #3 fails CI.
+  { name: 'resolveTabId', canonical: 'packages/web/src/app/lib/device-id.ts' },
+  { name: 'profileIdOf', canonical: 'packages/web/src/app/lib/device-id.ts' },
   // The Storybook gates were two scripts sharing ~50 duplicated lines — the static
   // server, the story enumeration, the iframe URL — until they were merged into one
   // traversal. Registered at the moment of extraction, which is when a copy is most

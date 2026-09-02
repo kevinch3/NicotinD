@@ -13,7 +13,7 @@ A device must opt in before it can receive remote commands.
 3. Toggle **Allow remote control** on.
 4. Optionally rename the device (e.g. "Living Room TV", "Phone") so it's easy to identify.
 
-Each browser or tab generates a stable, unique device ID stored in `localStorage`. Reopening the same browser will reconnect under the same name.
+Each browser **tab** is a device: the `<audio>` element that produces sound lives in the tab, so the tab is the output. Reopening the same browser reconnects under the same name.
 
 ### Switching playback to another device
 
@@ -52,7 +52,7 @@ Client disconnects / tab closes
   → if it was the active device, server clears activeDeviceId
 ```
 
-Device IDs are generated once per browser profile via `crypto.randomUUID()` and persisted in `localStorage`. The device name is auto-detected from the User-Agent (`"Chrome on Windows"`, `"Safari on iPhone"`, …) — except on a TV UI, where the UA reads "Chrome on Android" and says nothing a cast selector needs, so the default is `"NicotinD TV"` (issue #393) — and can be overridden by the user.
+A device id is `<profileId>:<tabId>` (`resolveDeviceId`, `packages/web/src/app/lib/device-id.ts`). The profile half is minted once per browser via `crypto.randomUUID()` and persisted in `localStorage` — it survives logout and seeds the display name. The tab half lives in `sessionStorage`, so it survives a reload and an active cast is not dropped when the receiving tab refreshes, but a second tab gets its own id and is separately castable (issue #882). `profileIdOf` recovers the browser half, which is how the switcher marks a sibling tab rather than listing an anonymous twin, and how an id minted before #882 still resolves. The device name is auto-detected from the User-Agent (`"Chrome on Windows"`, `"Safari on iPhone"`, …) — except on a TV UI, where the UA reads "Chrome on Android" and says nothing a cast selector needs, so the default is `"NicotinD TV"` (issue #393) — and can be overridden by the user.
 
 A 30-second heartbeat keeps the connection alive through idle proxies. **Any frame from a
 registered connection is a liveness beat** (progress reports included), and a device that stopped
@@ -93,6 +93,13 @@ Two defects made "the TV disappeared from the device list" **permanent** rather 
 - **A pruned device could never re-register.** The client only sends `REGISTER` from `ws.onopen`,
   which never fires again while the socket stays `OPEN`. Any later frame from a connection whose
   device the sweeper pruned now rebuilds it from the registration kept alongside the connection.
+- **Two tabs of one browser were one device.** The id was minted per *profile*, so both tabs
+  registered it and both executed every `COMMAND` — a cast to "Chrome on Linux" made sound twice.
+  The id is per tab now (issue #882). "Duplicate tab" copies `sessionStorage`, so the copy would
+  boot holding its original's tab id; `guardTabId` (`lib/tab-id-guard.ts`) announces the id over a
+  `BroadcastChannel`, which never echoes to its sender — hearing a claim for the id you hold means
+  a twin exists, and the tab that hears "taken" is the newcomer, so the original keeps its id and
+  any cast pointed at it.
 - **A stale close evicted a live device.** The client reuses **one stable device id across
   reconnects**; after a Wi-Fi blip the dead socket's close can land *after* the fresh socket
   re-registered. `onClose` drops the device only if no other connection for that user still holds
@@ -231,7 +238,4 @@ press ▶
 - **State is ephemeral.** Server restart clears the active device and playback state. All devices reconnect automatically but no track is restored.
 - **Shared library only.** Remote playback works because all devices stream from the same Navidrome instance using their own JWT tokens. External users on different NicotinD instances cannot be targeted.
 - **One active device at a time.** Only one device receives COMMAND messages at a time. Switching to a new device pauses the previous one implicitly (the server clears `isPlaying` on active-device switch).
-- **Two tabs of one browser are one device.** The device id lives in `localStorage`, so two tabs
-  of the same profile register the same id and both execute the session's commands (two outputs).
-  A per-tab id would list them separately; not done yet.
 - **No queue sync.** The queue lives in each browser's player store. Only the currently playing track is sent via `SET_TRACK`. Advancing to the next track on the receiver plays from its local queue, which may be empty.
