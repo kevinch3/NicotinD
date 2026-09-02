@@ -600,10 +600,19 @@ export class LibraryApiService {
    */
   applyGenre(id: string, genre: string, mode?: 'append' | 'replace') {
     return this.http
-      .post<{ ok: boolean; genre: string; genres: string[] }>(
-        `/api/library/songs/${id}/genre`,
-        mode ? { genre, mode } : { genre },
-      )
+      .post<{
+        ok: boolean;
+        genre: string;
+        genres: string[];
+        /**
+         * Whether the file's own genre tag was updated: `true`, `false` (the
+         * write was attempted and failed — the DB override still landed and
+         * IS the durability mechanism, but the file's own copy did not, so a
+         * future file replacement loses the curation), or `null` (not
+         * attempted). See mutateSongGenre (issue #885/#856).
+         */
+        tagWritten: boolean | null;
+      }>(`/api/library/songs/${id}/genre`, mode ? { genre, mode } : { genre })
       .pipe(
         // The server refreshes library_genres counts synchronously
         // (setSongGenres/appendSongGenres), so the cached Genres tab is stale

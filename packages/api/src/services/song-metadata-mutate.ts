@@ -44,6 +44,7 @@ export interface SongMetadataMutateBody {
 export interface SongMetadataSnapshot {
   title: string;
   artist: string;
+  albumArtist: string | null;
   album: string | null;
   year: number | null;
 }
@@ -75,6 +76,7 @@ interface SongRow {
   path: string;
   title: string;
   artist: string;
+  albumArtist: string | null;
   album: string | null;
   year: number | null;
 }
@@ -92,7 +94,7 @@ export async function mutateSongMetadata(
 
   const song = db
     .query<SongRow, [string]>(
-      `SELECT s.path, s.title, s.artist, a.name AS album, s.year
+      `SELECT s.path, s.title, s.artist, s.album_artist AS albumArtist, a.name AS album, s.year
        FROM library_songs s LEFT JOIN library_albums a ON a.id = s.album_id
        WHERE s.id = ?`,
     )
@@ -109,7 +111,13 @@ export async function mutateSongMetadata(
   const ok = await (deps.writeTags ?? writeAudioTags)(abs, tags);
   if (!ok) return { ok: false, error: 'Failed to write tags', status: 500 };
 
-  const old = { title: song.title, artist: song.artist, album: song.album, year: song.year };
+  const old = {
+    title: song.title,
+    artist: song.artist,
+    albumArtist: song.albumArtist,
+    album: song.album,
+    year: song.year,
+  };
   if (!deps.scanIncremental) {
     // Nothing to read back through — report the request and say so, rather
     // than claiming a verification we did not perform.
@@ -128,6 +136,9 @@ export async function mutateSongMetadata(
   const diverged: Partial<SongMetadataSnapshot> = {};
   if (tags.title !== undefined && after.title !== tags.title) diverged.title = after.title;
   if (tags.artist !== undefined && after.artist !== tags.artist) diverged.artist = after.artist;
+  if (tags.albumArtist !== undefined && after.albumArtist !== tags.albumArtist) {
+    diverged.albumArtist = after.albumArtist;
+  }
   if (tags.album !== undefined && after.album !== tags.album) diverged.album = after.album;
   if (tags.year !== undefined && after.year !== tags.year) diverged.year = after.year;
 
@@ -155,7 +166,7 @@ function readSnapshot(db: Database, songId: string): SongMetadataSnapshot | null
   return (
     db
       .query<SongMetadataSnapshot, [string]>(
-        `SELECT s.title, s.artist, a.name AS album, s.year
+        `SELECT s.title, s.artist, s.album_artist AS albumArtist, a.name AS album, s.year
          FROM library_songs s LEFT JOIN library_albums a ON a.id = s.album_id
          WHERE s.id = ?`,
       )
@@ -168,6 +179,9 @@ function pickApplied(after: SongMetadataSnapshot, tags: AudioTags): Partial<Audi
   const out: Partial<AudioTags> = {};
   if (tags.title !== undefined) out.title = after.title;
   if (tags.artist !== undefined) out.artist = after.artist;
+  if (tags.albumArtist !== undefined && after.albumArtist !== null) {
+    out.albumArtist = after.albumArtist;
+  }
   if (tags.album !== undefined && after.album !== null) out.album = after.album;
   if (tags.year !== undefined && after.year !== null) out.year = after.year;
   return out;

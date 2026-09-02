@@ -141,7 +141,10 @@ but a large in-flight download batch would make the counts read high until the s
   The second half was the same defect class as #776: the tag write's boolean was discarded and its
   rejection swallowed, so `{ok: true}` came back either way. It now returns `tagWritten:
   true | false | null` (`null` = not attempted). The curation is durable regardless — the override,
-  not the tag, is the mechanism.
+  not the tag, is the mechanism. `tagWritten` reached both API callers (`POST /songs/:id/genre` and
+  the `set_song_genre` MCP tool) from day one, but the web UI dropped it on the floor until issues
+  #885/#856 wired a curator-facing warning — see
+  [web-ui.md](web-ui.md#a-failed-tag-mirror-is-surfaced-to-the-curator-issues-885-856).
 - **Junk vocab scored as identity** (#583). `Other` = `Other` matched at 1.0 in radio. `JUNK_GENRES`
   + `isRealGenre` now strip it before any comparison; an all-junk side reads as *absent*.
 - **An ASCII-only normaliser folded unrelated names together** (#720 cluster). Genre and artist

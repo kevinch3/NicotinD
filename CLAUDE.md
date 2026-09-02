@@ -304,6 +304,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   bulk backfill scripts, writing DB *and* file tag; BPM is sidecar-first; curator-gated AcoustID
   identify via `buildIdentifyApplyTags`. → [library-processing.md](docs/library-processing.md),
   [download-review.md](docs/download-review.md)
+- **A failed tag mirror is surfaced, not silent**: `chooseBpm`/`writeGenres` in the track-info sheet
+  check the route's own `tagWritten` and toast a warning on `false` — the DB write (or, for a genre
+  `mode: 'replace'`, the override) is durable either way, but the file's own copy is not, so it may
+  not survive a future file replacement. `warnIfTagMirrorFailed`.
+  → [web-ui.md](docs/web-ui.md)
 - **Standardized library metadata filters**: one shared `LibraryFilter` filters the library tabs and
   artist Songs tab server-side, with song properties matching via any-track `EXISTS` and state in URL
   query params. → [library-filters.md](docs/library-filters.md)

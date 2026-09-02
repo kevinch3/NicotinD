@@ -8,6 +8,7 @@ import { LibraryApiService } from '../../services/api/library-api.service';
 import { AuthService } from '../../services/auth.service';
 import { LikeService } from '../../services/like.service';
 import { TranslateService } from '../../services/translate.service';
+import { ToastService } from '../../services/toast.service';
 
 // Instantiated without detectChanges so ngOnInit (which reads required inputs +
 // fetches provenance) never runs; the analysis methods are exercised directly.
@@ -34,6 +35,7 @@ describe('TrackInfoSheetComponent (analysis)', () => {
   );
   const applyIdentify = vi.fn(() => of({ ok: true, rescanned: true }));
   const role = signal<string | null>('admin');
+  const toastShow = vi.fn();
 
   beforeEach(async () => {
     analyzeSong.mockClear();
@@ -55,6 +57,7 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     applyIdentify.mockClear();
     applyIdentify.mockReturnValue(of({ ok: true, rescanned: true }));
     role.set('admin');
+    toastShow.mockClear();
 
     await TestBed.configureTestingModule({
       imports: [TrackInfoSheetComponent],
@@ -81,6 +84,7 @@ describe('TrackInfoSheetComponent (analysis)', () => {
           useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) },
         },
         { provide: LikeService, useValue: { isLiked: () => false, toggle: vi.fn() } },
+        { provide: ToastService, useValue: { show: toastShow } },
       ],
     }).compileComponents();
   });
@@ -167,6 +171,31 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     c.chooseBpm(61);
     expect(c.bpm()).toBe(122);
     expect(c.applyingBpm()).toBe(false);
+  });
+
+  // Issue #885: the DB write landed (bpm is adopted either way) but the
+  // file's own tag mirror silently failed — surface it rather than letting a
+  // curator believe the change is fully durable.
+  it('chooseBpm() warns when the DB write lands but the file tag mirror fails', () => {
+    setSongBpm.mockReturnValueOnce(of({ ok: true, bpm: 61, tagWritten: false }));
+    const c = create();
+    c.analyze();
+    c.chooseBpm(61);
+    expect(c.bpm()).toBe(61);
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'error',
+        message: expect.stringContaining('may not survive a future file replacement'),
+      }),
+    );
+  });
+
+  it('chooseBpm() does not warn when the tag mirror wrote successfully', () => {
+    setSongBpm.mockReturnValueOnce(of({ ok: true, bpm: 61, tagWritten: true }));
+    const c = create();
+    c.analyze();
+    c.chooseBpm(61);
+    expect(toastShow).not.toHaveBeenCalled();
   });
 
   it('analyze() clears the spinner on error', () => {
@@ -424,11 +453,13 @@ describe('TrackInfoSheetComponent (genre chip editor, issue #684)', () => {
   const getSong = vi.fn(() =>
     of({ id: 'song-1', genres: ['House', 'Techno', 'Minimal'] } as never),
   );
+  const toastShow = vi.fn();
 
   beforeEach(async () => {
     applyGenre.mockReset();
     applyGenre.mockReturnValue(of({ ok: true, genre: 'House', genres: ['House'] }));
     role.set('admin');
+    toastShow.mockClear();
     await TestBed.configureTestingModule({
       imports: [TrackInfoSheetComponent],
       providers: [
@@ -453,6 +484,7 @@ describe('TrackInfoSheetComponent (genre chip editor, issue #684)', () => {
           useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) },
         },
         { provide: LikeService, useValue: { isLiked: () => false, toggle: vi.fn() } },
+        { provide: ToastService, useValue: { show: toastShow } },
       ],
     }).compileComponents();
   });
@@ -513,6 +545,46 @@ describe('TrackInfoSheetComponent (genre chip editor, issue #684)', () => {
     c.onGenreDragStart({ dataTransfer: null } as unknown as DragEvent, 1);
     c.onGenreDrop({ preventDefault: () => {} } as unknown as DragEvent, 1);
     expect(applyGenre).not.toHaveBeenCalled();
+  });
+
+  // Issues #856/#885: mode:'replace' is the highest-stakes tagWritten:false
+  // case — the song-scoped DB override just written is keyed on the CURRENT
+  // song id, which a future file replace re-mints and orphans, so the file's
+  // own tag is the only thing that can carry the curation across that. A
+  // silent `{ok:true, tagWritten:false}` here used to be indistinguishable
+  // from a fully-durable success.
+  it('removeGenre() (mode: replace) warns when the tag mirror fails to write', () => {
+    applyGenre.mockReturnValueOnce(
+      of({ ok: true, genre: 'House', genres: ['House', 'Minimal'], tagWritten: false }),
+    );
+    const c = create();
+    c.removeGenre(1);
+    expect(applyGenre).toHaveBeenCalledWith('song-1', 'House;Minimal', 'replace');
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'error',
+        message: expect.stringContaining('may not survive a future file replacement'),
+      }),
+    );
+  });
+
+  it('addGenre() (mode: append) does not warn when the tag mirror lands', () => {
+    applyGenre.mockReturnValueOnce(
+      of({ ok: true, genre: 'X', genres: ['House', 'Techno', 'Minimal', 'X'], tagWritten: true }),
+    );
+    const c = create();
+    c.newGenre.set('X');
+    c.addGenre();
+    expect(toastShow).not.toHaveBeenCalled();
+  });
+
+  it('does not warn when the tag mirror was never attempted (tagWritten: null)', () => {
+    applyGenre.mockReturnValueOnce(
+      of({ ok: true, genre: 'House', genres: ['House', 'Minimal'], tagWritten: null }),
+    );
+    const c = create();
+    c.removeGenre(1);
+    expect(toastShow).not.toHaveBeenCalled();
   });
 
   it('a failed write leaves the chips untouched and clears the spinner', () => {
