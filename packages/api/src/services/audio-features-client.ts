@@ -56,6 +56,13 @@ export class AudioFileRejectedError extends Error {
 export interface RhythmResult {
   bpm: number;
   confidence: number;
+  /**
+   * Alternative readings of the same signal, best first, `bpm` included —
+   * the extractor's own half/double and per-window estimates. A curator needs
+   * these because an octave error is a perceptual call no detector can settle
+   * (issue #876). Never empty: falls back to `[bpm]`.
+   */
+  candidates: number[];
 }
 
 /**
@@ -243,7 +250,7 @@ export class AudioFeaturesClient {
     } catch {
       return null;
     }
-    const b = body as { bpm?: unknown; confidence?: unknown };
+    const b = body as { bpm?: unknown; confidence?: unknown; candidates?: unknown };
     const bpm = typeof b?.bpm === 'number' && Number.isFinite(b.bpm) && b.bpm > 0 ? b.bpm : null;
     if (bpm === null) {
       log.warn({ relPath }, 'rhythm payload failed validation');
@@ -251,7 +258,12 @@ export class AudioFeaturesClient {
     }
     const confidence =
       typeof b.confidence === 'number' && Number.isFinite(b.confidence) ? b.confidence : 0;
-    return { bpm, confidence };
+    const candidates = Array.isArray(b.candidates)
+      ? b.candidates.filter(
+          (n): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0,
+        )
+      : [];
+    return { bpm, confidence, candidates: candidates.length > 0 ? candidates : [bpm] };
   }
 
   /**

@@ -240,7 +240,12 @@ def create_app(
             log.warning("rhythm analysis failed for %s: %s", body.relPath, err)
             raise HTTPException(status_code=422, detail="rhythm analysis failed") from err
 
-        return {"bpm": result.bpm, "confidence": result.confidence, "method": result.method}
+        return {
+            "bpm": result.bpm,
+            "confidence": result.confidence,
+            "method": result.method,
+            "candidates": result.candidates,
+        }
 
     @app.post("/descriptors")
     def descriptors_endpoint(body: AnalyzeRequest) -> dict[str, object]:

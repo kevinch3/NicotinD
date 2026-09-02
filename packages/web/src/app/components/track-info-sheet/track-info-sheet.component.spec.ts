@@ -14,7 +14,10 @@ import { TranslateService } from '../../services/translate.service';
 // The required `songId` signal input is stubbed on the instance because input
 // binding is unreliable under the optimized test build CI runs.
 describe('TrackInfoSheetComponent (analysis)', () => {
-  const analyzeSong = vi.fn(() => of({ bpm: 122, source: 'analyzed' as const }));
+  const analyzeSong = vi.fn(() =>
+    of({ bpm: 122, source: 'analyzed' as const, candidates: [122, 61] }),
+  );
+  const setSongBpm = vi.fn(() => of({ ok: true, bpm: 61, tagWritten: true }));
   const getGenreSuggestion = vi.fn(() =>
     of({
       current: 'IDM',
@@ -34,7 +37,11 @@ describe('TrackInfoSheetComponent (analysis)', () => {
 
   beforeEach(async () => {
     analyzeSong.mockClear();
-    analyzeSong.mockReturnValue(of({ bpm: 122, source: 'analyzed' as const }));
+    analyzeSong.mockReturnValue(
+      of({ bpm: 122, source: 'analyzed' as const, candidates: [122, 61] }),
+    );
+    setSongBpm.mockClear();
+    setSongBpm.mockReturnValue(of({ ok: true, bpm: 61, tagWritten: true }));
     getGenreSuggestion.mockClear();
     applyGenre.mockClear();
     applyGenre.mockReturnValue(of({ ok: true, genre: 'Electronic' }));
@@ -56,6 +63,7 @@ describe('TrackInfoSheetComponent (analysis)', () => {
           provide: LibraryApiService,
           useValue: {
             analyzeSong,
+            setSongBpm,
             getGenreSuggestion,
             applyGenre,
             getSong,
@@ -87,10 +95,78 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     const c = create();
     expect(c.bpm()).toBeNull();
     c.analyze();
-    expect(analyzeSong).toHaveBeenCalledWith('song-1');
+    // Nothing on screen yet, so this is a first analysis, not a re-analysis.
+    expect(analyzeSong).toHaveBeenCalledWith('song-1', false);
     expect(c.bpm()).toBe(122);
     expect(c.bpmSource()).toBe('analyzed');
     expect(c.analyzing()).toBe(false);
+  });
+
+  // Issue #876: the button read "Re-analyze" but the server short-circuited on
+  // the stored value, so a wrong BPM could never be dislodged.
+  it('analyze() forces a re-run once a value is already on screen', () => {
+    const c = create();
+    c.bpm.set(152);
+    c.analyze();
+    expect(analyzeSong).toHaveBeenCalledWith('song-1', true);
+  });
+
+  it('analyze() keeps the returned candidates', () => {
+    const c = create();
+    c.analyze();
+    expect(c.bpmCandidates()).toEqual([122, 61]);
+  });
+
+  it('offers only alternatives that differ from the current value', () => {
+    const c = create();
+    c.analyze();
+    // 122 is what is showing; re-offering it would be a no-op chip.
+    expect(c.bpmAlternatives()).toEqual([61]);
+  });
+
+  it('rounds each offered tempo so the chip label is what tapping it applies', () => {
+    analyzeSong.mockReturnValueOnce(
+      of({ bpm: 142, source: 'analyzed' as const, candidates: [141.9, 70.9] }),
+    );
+    const c = create();
+    c.analyze();
+    expect(c.bpmAlternatives()).toEqual([71]);
+  });
+
+  it('collapses candidates that round to the same tempo', () => {
+    analyzeSong.mockReturnValueOnce(
+      of({ bpm: 142, source: 'analyzed' as const, candidates: [141.9, 70.9, 71.2] }),
+    );
+    const c = create();
+    c.analyze();
+    expect(c.bpmAlternatives()).toEqual([71]);
+  });
+
+  it('offers no alternatives to a non-curator', () => {
+    const c = create();
+    c.analyze();
+    role.set('user');
+    expect(c.bpmAlternatives()).toEqual([]);
+  });
+
+  it('chooseBpm() applies the picked tempo and adopts it', () => {
+    const c = create();
+    c.analyze();
+    c.chooseBpm(61);
+    expect(setSongBpm).toHaveBeenCalledWith('song-1', 61);
+    expect(c.bpm()).toBe(61);
+    expect(c.applyingBpm()).toBe(false);
+    // The chosen value drops out of the offer list, and 122 becomes the choice.
+    expect(c.bpmAlternatives()).toEqual([122]);
+  });
+
+  it('chooseBpm() leaves the value alone when the write fails', () => {
+    setSongBpm.mockReturnValueOnce(throwError(() => new Error('boom')));
+    const c = create();
+    c.analyze();
+    c.chooseBpm(61);
+    expect(c.bpm()).toBe(122);
+    expect(c.applyingBpm()).toBe(false);
   });
 
   it('analyze() clears the spinner on error', () => {

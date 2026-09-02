@@ -257,6 +257,13 @@ function getDownloadingGroupKeys(db: Database): Set<string> {
  * instance so it's correct in production (one db) and never leaks across the
  * many throwaway databases a test suite spins up. */
 let albumKeyCache = new WeakMap<Database, { at: number; byGroupKey: Map<string, string[]> }>();
+// Bounds on a BPM a curator may apply by hand. Deliberately wider than the
+// sidecar's candidate window (40-220): that one filters machine guesses, this
+// one only has to reject nonsense, and a human tagging a drum & bass track at
+// its written 174 or a half-time 87 is making a real call either way.
+const MIN_APPLIABLE_BPM = 20;
+const MAX_APPLIABLE_BPM = 400;
+
 const ALBUM_KEY_TTL_MS = 4000;
 
 /** Test hook: clear the cached album map so a test can change state. */
@@ -2094,9 +2101,17 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // decodes + analyzes the audio, persists the result to library_songs.bpm AND
   // writes the tag back to the file so it survives rescans. 404 unknown song,
   // 503 when ffmpeg/analysis is unavailable.
+  //
+  // `{ force: true }` skips both short-circuits (stored value and file tag) and
+  // re-runs detection. Without it the drawer's "Re-analyze" button was a no-op,
+  // leaving a wrong BPM permanently unfixable (issue #876). The response always
+  // carries `candidates` — the alternative metrical levels the curator picks
+  // from, since half/double is a perceptual call detection cannot settle.
   app.post('/songs/:id/analyze', async (c) => {
     const id = c.req.param('id');
     const db = getDatabase();
+    const body = await c.req.json<{ force?: boolean }>().catch(() => ({}) as { force?: boolean });
+    const force = body.force === true;
     const song = db
       .query<{ path: string; bpm: number | null }, [string]>(
         `SELECT path, bpm FROM library_songs WHERE id = ?`,
@@ -2104,7 +2119,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .get(id);
     if (!song) return c.json({ error: 'Song not found' }, 404);
 
-    if (song.bpm) return c.json({ bpm: song.bpm, source: 'tag' as const });
+    if (song.bpm && !force) {
+      return c.json({ bpm: song.bpm, source: 'tag' as const, candidates: [song.bpm] });
+    }
     if (!musicDir) return c.json({ error: 'Music directory not configured' }, 503);
 
     const abs = resolveSongPath(expandDir(musicDir), song.path);
@@ -2112,17 +2129,26 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       return c.json({ error: 'Song file not found' }, 404);
     }
 
-    // The file's own BPM tag wins over re-analysis when present.
-    const tags = await readAudioTags(abs);
-    let bpm = tags.bpm ?? null;
+    // The file's own BPM tag wins over re-analysis when present — but not on a
+    // forced run, where re-reading the tag would hand back the very number the
+    // curator is trying to replace.
+    let bpm: number | null = null;
     let source: 'tag' | 'analyzed' = 'tag';
+    let candidates: number[] = [];
+    if (!force) {
+      const tags = await readAudioTags(abs);
+      bpm = tags.bpm ?? null;
+    }
     if (!bpm) {
       source = 'analyzed';
       // Sidecar first (Essentia): the local music-tempo fallback makes frequent
       // octave errors. A null/throwing sidecar falls through to the local path.
       if (audioFeaturesClient) {
         const r = await audioFeaturesClient.rhythm(song.path).catch(() => null);
-        if (r) bpm = Math.round(r.bpm);
+        if (r) {
+          bpm = Math.round(r.bpm);
+          if (r.candidates?.length) candidates = r.candidates;
+        }
       }
       if (!bpm) bpm = await analyzeBpm(abs);
       if (bpm) {
@@ -2133,7 +2159,41 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (!bpm) return c.json({ error: 'Could not determine BPM' }, 503);
 
     db.run('UPDATE library_songs SET bpm = ? WHERE id = ?', [bpm, id]);
-    return c.json({ bpm, source });
+    return c.json({ bpm, source, candidates: candidates.length > 0 ? candidates : [bpm] });
+  });
+
+  // Apply a curator-chosen BPM (curator). The counterpart to /analyze's
+  // candidate list: detection ranks the metrical levels, a human picks one.
+  // Writes the file tag too, so the choice survives the next rescan the same
+  // way an analyzed value does.
+  app.put('/songs/:id/bpm', async (c) => {
+    requireCurator(c);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const body = await c.req.json<{ bpm?: number }>().catch(() => ({}) as { bpm?: number });
+    const bpm = typeof body.bpm === 'number' ? Math.round(body.bpm) : Number.NaN;
+    if (!Number.isFinite(bpm) || bpm < MIN_APPLIABLE_BPM || bpm > MAX_APPLIABLE_BPM) {
+      return c.json({ error: 'BPM out of range' }, 400);
+    }
+    const song = db
+      .query<{ path: string }, [string]>(`SELECT path FROM library_songs WHERE id = ?`)
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+
+    let tagWritten = false;
+    if (musicDir) {
+      const abs = resolveSongPath(expandDir(musicDir), song.path);
+      if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
+        tagWritten = await writeAudioTags(abs, { bpm }).catch(() => false);
+      }
+    }
+    db.run('UPDATE library_songs SET bpm = ? WHERE id = ?', [bpm, id]);
+    recordAudit(db, c.get('user'), 'song.bpm', {
+      targetKind: 'song',
+      targetId: id,
+      detail: String(bpm),
+    });
+    return c.json({ ok: true, bpm, tagWritten });
   });
 
   // Genre verification against Lidarr/MusicBrainz. Read-only: returns the current

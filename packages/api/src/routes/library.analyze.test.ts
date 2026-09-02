@@ -75,7 +75,7 @@ describe('POST /songs/:id/analyze', () => {
     seedSong(testDb, { id: 'song-1', bpm: 128 });
     const res = await makeApp().request('/songs/song-1/analyze', { method: 'POST' });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ bpm: 128, source: 'tag' });
+    expect(await res.json()).toEqual({ bpm: 128, source: 'tag', candidates: [128] });
   });
 
   it('404s for an unknown song', async () => {
@@ -107,7 +107,8 @@ describe('POST /songs/:id/analyze', () => {
         { method: 'POST' },
       );
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ bpm: 142, source: 'analyzed' });
+      // The sidecar stub reports no candidates, so the route offers its own value.
+      expect(await res.json()).toEqual({ bpm: 142, source: 'analyzed', candidates: [142] });
       expect(calls).toEqual(['Aphex Twin/Drukqs/01 - Avril 14th.flac']);
       const row = testDb
         .query<{ bpm: number }, [string]>('SELECT bpm FROM library_songs WHERE id = ?')
@@ -116,6 +117,145 @@ describe('POST /songs/:id/analyze', () => {
     } finally {
       rmSync(musicDir, { recursive: true, force: true });
     }
+  });
+
+  // Issue #876: the drawer's button says "Re-analyze" once a value exists, but
+  // the stored-value short-circuit made every click a no-op — the user could
+  // never dislodge a wrong BPM (Bad Bunny "Un coco" stuck at 152).
+  it('re-runs detection instead of echoing the stored bpm when forced', async () => {
+    const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-analyze-'));
+    try {
+      mkdirSync(join(musicDir, 'Aphex Twin/Drukqs'), { recursive: true });
+      writeFileSync(join(musicDir, 'Aphex Twin/Drukqs/01 - Avril 14th.flac'), 'fake');
+      seedSong(testDb, { id: 'song-4', bpm: 152 });
+      const client = {
+        rhythm: async () => ({ bpm: 152.0, confidence: 3.1, candidates: [152, 76] }),
+      } as unknown as AudioFeaturesClient;
+      const res = await makeApp('admin', { musicDir, audioFeaturesClient: client }).request(
+        '/songs/song-4/analyze',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ force: true }),
+        },
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        bpm: 152,
+        source: 'analyzed',
+        candidates: [152, 76],
+      });
+    } finally {
+      rmSync(musicDir, { recursive: true, force: true });
+    }
+  });
+
+  it('still short-circuits on the stored bpm when not forced', async () => {
+    seedSong(testDb, { id: 'song-5', bpm: 152 });
+    const client = {
+      rhythm: async () => {
+        throw new Error('must not be called');
+      },
+    } as unknown as AudioFeaturesClient;
+    const res = await makeApp('admin', { audioFeaturesClient: client }).request(
+      '/songs/song-5/analyze',
+      { method: 'POST' },
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ bpm: 152, source: 'tag', candidates: [152] });
+  });
+
+  // The tag is the other half of the short-circuit: a forced re-analysis that
+  // read the file's own BPM frame back would return the same wrong number.
+  it('ignores the file tag bpm when forced', async () => {
+    const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-analyze-'));
+    try {
+      mkdirSync(join(musicDir, 'Aphex Twin/Drukqs'), { recursive: true });
+      writeFileSync(join(musicDir, 'Aphex Twin/Drukqs/01 - Avril 14th.flac'), 'fake');
+      seedSong(testDb, { id: 'song-6' });
+      const client = {
+        rhythm: async () => ({ bpm: 88.2, confidence: 3.1, candidates: [88.2, 176.4] }),
+      } as unknown as AudioFeaturesClient;
+      const app = makeApp('admin', { musicDir, audioFeaturesClient: client });
+      const res = await app.request('/songs/song-6/analyze', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ force: true }),
+      });
+      const body = (await res.json()) as { bpm: number; candidates: number[] };
+      expect(body.bpm).toBe(88);
+      expect(body.candidates).toEqual([88.2, 176.4]);
+    } finally {
+      rmSync(musicDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('PUT /songs/:id/bpm', () => {
+  beforeEach(() => {
+    testDb = new Database(':memory:');
+    applySchema(testDb);
+  });
+  afterEach(() => testDb.close());
+
+  it('persists a curator-chosen bpm to the database', async () => {
+    const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-analyze-'));
+    try {
+      mkdirSync(join(musicDir, 'Aphex Twin/Drukqs'), { recursive: true });
+      writeFileSync(join(musicDir, 'Aphex Twin/Drukqs/01 - Avril 14th.flac'), 'fake');
+      seedSong(testDb, { id: 'song-1', bpm: 152 });
+      const res = await makeApp('admin', { musicDir }).request('/songs/song-1/bpm', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ bpm: 76 }),
+      });
+      expect(res.status).toBe(200);
+      const row = testDb
+        .query<{ bpm: number }, [string]>('SELECT bpm FROM library_songs WHERE id = ?')
+        .get('song-1');
+      expect(row?.bpm).toBe(76);
+    } finally {
+      rmSync(musicDir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a non-curator', async () => {
+    seedSong(testDb, { id: 'song-1', bpm: 152 });
+    const res = await makeApp('user').request('/songs/song-1/bpm', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ bpm: 76 }),
+    });
+    expect(res.status).toBe(403);
+    const row = testDb
+      .query<{ bpm: number }, [string]>('SELECT bpm FROM library_songs WHERE id = ?')
+      .get('song-1');
+    expect(row?.bpm).toBe(152);
+  });
+
+  it('rejects an implausible bpm', async () => {
+    seedSong(testDb, { id: 'song-1', bpm: 152 });
+    for (const bpm of [0, -5, 4000, Number.NaN]) {
+      const res = await makeApp('admin').request('/songs/song-1/bpm', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ bpm }),
+      });
+      expect(res.status).toBe(400);
+    }
+    const row = testDb
+      .query<{ bpm: number }, [string]>('SELECT bpm FROM library_songs WHERE id = ?')
+      .get('song-1');
+    expect(row?.bpm).toBe(152);
+  });
+
+  it('404s for an unknown song', async () => {
+    const res = await makeApp('admin').request('/songs/nope/bpm', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ bpm: 76 }),
+    });
+    expect(res.status).toBe(404);
   });
 });
 

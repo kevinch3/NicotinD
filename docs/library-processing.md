@@ -75,7 +75,9 @@ Launch tasks:
   attempting the local fallback (same bytes would fail again); a transport
   error falls back. Runs a bounded worker pool (`settings.concurrency`).
   Writes `library_songs.bpm` and the file tag (analyzed values only). Repairing
-  historical octave errors: `scripts/analyze-bpm.ts --recheck` (below).
+  historical octave errors: `scripts/analyze-bpm.ts --recheck` (below); repairing
+  the ones that are a perceptual call rather than an error: the candidate chips
+  (below).
 - **genre** — `WHERE unresolvedGenreSql()`, available only with Lidarr. Uses
   `planGenreBackfill` so an artist is looked up **once** and fanned out to all their
   pending songs. Writes the **full Lidarr genre list** (best-first) by **appending**,
@@ -745,6 +747,42 @@ concurrently — multiple writer processes plus the app fight over the SQLite wr
 lock. Prefer the in-process processor (or admin **Run now**) over scripts:
 it shares the app's connection (no lock contention) and completes tag+DB per song so
 nothing reverts on the next full scan.
+
+### The curator picks the metrical level (`candidates`)
+
+`--recheck` repairs the *machine's* octave errors in bulk. It cannot repair the
+ones that are not errors at all. RhythmExtractor2013 locked 152 onto Bad Bunny's
+"Un coco" with high confidence; the track is felt at ~76. Both readings describe
+the same beat grid at different metrical levels, and which one is "the tempo" is
+a perceptual judgement, not a measurement. No confidence threshold separates them
+because the detector is not unsure — it is sure about a level the listener does
+not use.
+
+Two consequences shaped the design (issue #876):
+
+1. **Re-running detection cannot help.** RhythmExtractor2013 is deterministic, so
+   the drawer's "Re-analyze" button returning a different number is impossible by
+   construction. (It was worse than useless before: the route short-circuited on
+   the stored value, so the button was a no-op and a wrong BPM was permanently
+   stuck. `{ force: true }` on `POST /songs/:id/analyze` is the fix.)
+2. **The alternatives already existed and were discarded.** The extractor returns
+   a per-window `estimates` list alongside the winner; `rhythm.py` unpacked it
+   into `_estimates` and dropped it.
+
+So `POST /rhythm` now also returns `candidates` — `rank_bpm_candidates(primary,
+estimates)`, ordered: the detected value, then half and double, then genuinely
+distinct estimates. The octave pair leads because it is the failure the list
+exists to fix; the estimates trail because they cluster around the winner and
+mostly dedupe away. Dedupe tolerance, the plausible-tempo window and the list cap
+are the three dials, named as constants at the top of `rhythm.py`.
+
+The drawer renders the candidates as chips beside the BPM (curator-only, and
+never the value already showing). Tapping one calls the curator-gated
+`PUT /songs/:id/bpm`, which writes the DB *and* the file tag, so the human's
+choice survives a rescan exactly the way an analyzed value does. Its bounds
+(`MIN_APPLIABLE_BPM`/`MAX_APPLIABLE_BPM` in `routes/library.ts`) are deliberately
+wider than the candidate window: that one filters machine guesses, this one only
+has to reject nonsense.
 
 ### BPM octave-error repair (`--recheck`)
 

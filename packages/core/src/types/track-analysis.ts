@@ -4,6 +4,12 @@ export interface BpmAnalysisResult {
   bpm: number | null;
   /** Where the value came from: an existing tag, or fresh audio analysis. */
   source: 'tag' | 'analyzed';
+  /**
+   * Alternative readings of the same signal, best first, `bpm` included.
+   * Half/double tempo is a perceptual call no detector can settle, so the
+   * curator picks the level rather than the analyzer guessing again (#876).
+   */
+  candidates: number[];
 }
 
 /**

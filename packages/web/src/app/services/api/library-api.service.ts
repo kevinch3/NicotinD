@@ -570,9 +570,21 @@ export class LibraryApiService {
     return this.http.get<SongAcquisition | null>(`/api/library/songs/${id}/acquisition`);
   }
 
-  /** On-demand BPM analysis: returns a tag value or freshly analyzed tempo. */
-  analyzeSong(id: string) {
-    return this.http.post<BpmAnalysisResult>(`/api/library/songs/${id}/analyze`, {});
+  /**
+   * On-demand BPM analysis: returns a tag value or freshly analyzed tempo.
+   * `force` skips the stored-value and file-tag short-circuits so a re-analyze
+   * actually re-runs detection (#876).
+   */
+  analyzeSong(id: string, force = false) {
+    return this.http.post<BpmAnalysisResult>(`/api/library/songs/${id}/analyze`, { force });
+  }
+
+  /** Apply a curator-chosen BPM from the candidate list (DB + file tag). */
+  setSongBpm(id: string, bpm: number) {
+    return this.http.put<{ ok: boolean; bpm: number; tagWritten: boolean }>(
+      `/api/library/songs/${id}/bpm`,
+      { bpm },
+    );
   }
 
   /** Genre verification against Lidarr/MusicBrainz (read-only suggestion). */

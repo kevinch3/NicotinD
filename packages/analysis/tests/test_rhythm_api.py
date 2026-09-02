@@ -14,7 +14,9 @@ class FakeRhythmAnalyzer:
 
     def analyze(self, path: str) -> RhythmResult:
         self.analyzed.append(path)
-        return RhythmResult(bpm=141.9, confidence=2.92, method="multifeature")
+        return RhythmResult(
+            bpm=141.9, confidence=2.92, method="multifeature", candidates=[141.9, 71.0]
+        )
 
 
 def make_client(tmp_path: Path, rhythm: FakeRhythmAnalyzer | None) -> TestClient:
@@ -30,7 +32,12 @@ def test_rhythm_contract(tmp_path: Path) -> None:
     res = client.post("/rhythm", json={"relPath": "Artist/song.opus"})
     assert res.status_code == 200
     body = res.json()
-    assert body == {"bpm": 141.9, "confidence": 2.92, "method": "multifeature"}
+    assert body == {
+        "bpm": 141.9,
+        "confidence": 2.92,
+        "method": "multifeature",
+        "candidates": [141.9, 71.0],
+    }
     # The analyzer received the resolved absolute path inside the music dir.
     assert analyzer.analyzed == [str(tmp_path / "Artist" / "song.opus")]
 

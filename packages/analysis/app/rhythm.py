@@ -15,9 +15,10 @@ Deliberately independent of the TF model registry: tempo needs no models, so
 
 from __future__ import annotations
 
+import math
 import subprocess
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 # RhythmExtractor2013 is designed for 44.1 kHz input. A 90 s slice is plenty
@@ -26,12 +27,68 @@ from typing import Protocol
 SAMPLE_RATE = 44100
 ANALYZE_SECONDS = 90
 
+# --- Candidate-list dials -------------------------------------------------
+# Two readings closer together than this are the same tempo, not a second
+# opinion: RhythmExtractor2013's per-window estimates jitter by a BPM or two
+# around the winner, and showing 152 next to 153.5 is noise, not a choice.
+CANDIDATE_TOLERANCE_BPM = 3.0
+# Music lives inside this range. A "tempo" outside it is an octave artefact of
+# the beat tracker rather than something a listener would ever tap along to.
+MIN_PLAUSIBLE_BPM = 40.0
+MAX_PLAUSIBLE_BPM = 220.0
+# The list is a set of choices, not a search result. Past a handful it stops
+# being a decision and becomes a scroll.
+MAX_CANDIDATES = 5
+
+
+def rank_bpm_candidates(primary: float, estimates: list[float]) -> list[float]:
+    """Rank the tempos a curator could plausibly mean, best guess first.
+
+    Order is deliberate. The detector's own answer leads, because the curator
+    has to recognise what is stored before they can call it wrong. Half and
+    double come next: an octave error is the failure this list exists to fix,
+    and the extractor's `estimates` almost never contain the other level (they
+    are a per-window trace of one locked-on level, so they cluster around the
+    winner). Genuinely distinct estimates come last.
+
+    The primary is always kept, even when implausible - hiding it would leave a
+    wrong stored value with no visible explanation.
+    """
+    ordered: list[float] = [round(primary, 1)]
+
+    def offer(value: float, *, clamp: bool = True) -> None:
+        if not math.isfinite(value) or value <= 0:
+            return
+        if clamp and not (MIN_PLAUSIBLE_BPM <= value <= MAX_PLAUSIBLE_BPM):
+            return
+        value = round(value, 1)
+        if any(abs(value - kept) < CANDIDATE_TOLERANCE_BPM for kept in ordered):
+            return
+        ordered.append(value)
+
+    if math.isfinite(primary) and primary > 0:
+        offer(primary / 2)
+        offer(primary * 2)
+    for estimate in estimates:
+        if len(ordered) >= MAX_CANDIDATES:
+            break
+        offer(estimate)
+    return ordered[:MAX_CANDIDATES]
+
 
 @dataclass
 class RhythmResult:
     bpm: float
     confidence: float
     method: str
+    # Alternative readings of the same signal, best first, `bpm` included.
+    # Empty is never correct: a result always offers at least its own value,
+    # so the invariant is enforced here rather than at each construction site.
+    candidates: list[float] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.candidates:
+            self.candidates = [self.bpm]
 
 
 class RhythmAnalyzer(Protocol):
@@ -97,11 +154,12 @@ class EssentiaRhythmAnalyzer:
 
         audio = load_audio_44k(path)
         with self._lock:
-            bpm, _beats, confidence, _estimates, _intervals = es.RhythmExtractor2013(
+            bpm, _beats, confidence, estimates, _intervals = es.RhythmExtractor2013(
                 method="multifeature"
             )(audio)
         return RhythmResult(
             bpm=round(float(bpm), 1),
             confidence=round(float(confidence), 2),
             method="multifeature",
+            candidates=rank_bpm_candidates(float(bpm), [float(e) for e in estimates]),
         )
