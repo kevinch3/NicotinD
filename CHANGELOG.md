@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.69](https://github.com/kevinch3/NicotinD/compare/v0.5.68...v0.5.69) (2026-09-02)
+
+### Bug Fixes
+
+* **downloads:** gate the card's Review/Discard line on the inbox being reachable ([#900](https://github.com/kevinch3/NicotinD/issues/900)) ([be2e9b9](https://github.com/kevinch3/NicotinD/commit/be2e9b9d4863abf597ebdd86842fda6624f45b99)), closes [#894](https://github.com/kevinch3/NicotinD/issues/894), references [#687](https://github.com/kevinch3/NicotinD/issues/687)
 ## [0.5.68](https://github.com/kevinch3/NicotinD/compare/v0.5.67...v0.5.68) (2026-09-02)
 
 ### Features
