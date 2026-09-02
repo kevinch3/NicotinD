@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.65](https://github.com/kevinch3/NicotinD/compare/v0.5.64...v0.5.65) (2026-09-02)
+
+### Bug Fixes
+
+* **remote-playback:** a tab is a device, so one cast plays once ([#882](https://github.com/kevinch3/NicotinD/issues/882)) ([#892](https://github.com/kevinch3/NicotinD/issues/892)) ([4da2674](https://github.com/kevinch3/NicotinD/commit/4da2674f4c28d6cf5a2cb799ce761db2f1e707b0))
 ## [0.5.64](https://github.com/kevinch3/NicotinD/compare/v0.5.63...v0.5.64) (2026-09-02)
 
 ### Bug Fixes
