@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.64](https://github.com/kevinch3/NicotinD/compare/v0.5.63...v0.5.64) (2026-09-02)
+
+### Bug Fixes
+
+* **library:** missplit_album needs track-number corroboration ([#875](https://github.com/kevinch3/NicotinD/issues/875), [#881](https://github.com/kevinch3/NicotinD/issues/881)) ([#886](https://github.com/kevinch3/NicotinD/issues/886)) ([c68f268](https://github.com/kevinch3/NicotinD/commit/c68f268b2a07bc5d443542a2285971d5606a65ba))
+* **library:** repoint an orphaned album/genre override on id remint ([#888](https://github.com/kevinch3/NicotinD/issues/888)) ([3c7af83](https://github.com/kevinch3/NicotinD/commit/3c7af83f5822eaf26028cd4249660a8142690288)), references [#874](https://github.com/kevinch3/NicotinD/issues/874) [#856](https://github.com/kevinch3/NicotinD/issues/856) [#874](https://github.com/kevinch3/NicotinD/issues/874) [#856](https://github.com/kevinch3/NicotinD/issues/856)
+* **mcp:** verify albumArtist on write-back, and surface a failed tag mirror to the curator ([#887](https://github.com/kevinch3/NicotinD/issues/887)) ([f2fd49f](https://github.com/kevinch3/NicotinD/commit/f2fd49f6ce25f553deb7aba5f7f5c52095501ad0)), closes [#865](https://github.com/kevinch3/NicotinD/issues/865) [#885](https://github.com/kevinch3/NicotinD/issues/885), references [#865](https://github.com/kevinch3/NicotinD/issues/865) [#885](https://github.com/kevinch3/NicotinD/issues/885) [#856](https://github.com/kevinch3/NicotinD/issues/856) [#856](https://github.com/kevinch3/NicotinD/issues/856) [#856](https://github.com/kevinch3/NicotinD/issues/856)
 ## [0.5.63](https://github.com/kevinch3/NicotinD/compare/v0.5.62...v0.5.63) (2026-09-02)
 
 ### Bug Fixes
