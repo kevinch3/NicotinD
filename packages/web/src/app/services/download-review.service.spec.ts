@@ -122,3 +122,27 @@ describe('DownloadReviewService', () => {
     });
   });
 });
+
+// #894. Both the inbox component and the Downloads page need the same answer to
+// "is the inbox on screen" — the page uses it to decide whether a card may
+// offer Review/Discard at all. Computing it twice is how the two drift, so the
+// service owns it and both read this one signal.
+describe('DownloadReviewService — inboxVisible (#894)', () => {
+  it('is false for a non-curator even with a full queue', () => {
+    const { service } = setup({ canCurate: false });
+    service.queue.set([{ albumId: 'a' } as unknown as ReviewQueueAlbum]);
+    expect(service.inboxVisible()).toBe(false);
+  });
+
+  it('is false for a curator with nothing to decide', () => {
+    const { service } = setup({ canCurate: true });
+    service.queue.set([]);
+    expect(service.inboxVisible()).toBe(false);
+  });
+
+  it('is true only when a curator has something to decide', () => {
+    const { service } = setup({ canCurate: true });
+    service.queue.set([{ albumId: 'a' } as unknown as ReviewQueueAlbum]);
+    expect(service.inboxVisible()).toBe(true);
+  });
+});
