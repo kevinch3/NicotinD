@@ -83,6 +83,7 @@ export const GATE_JOBS = [
   'storybook',
   'e2e',
   'analysis',
+  'separator',
   'docker',
   'desktop-package',
 ] as const;

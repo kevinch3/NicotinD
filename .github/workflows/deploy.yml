@@ -641,6 +641,50 @@ jobs:
           cache-from: type=gha,scope=analysis-linux-amd64
           cache-to: type=gha,mode=max,scope=analysis-linux-amd64
 
+  # Publish the vocal-separation sidecar image (issue #603). GPU-only by
+  # contract, so the published image IS the GPU build: GPU=1 installs torch
+  # from the cu126 index (the legacy lane still carrying the P4000's sm_61),
+  # asserts that arch, and strict-loads the baked checkpoint at build time.
+  # amd64 only; same shape as docker-analysis.
+  docker-separator:
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/kevinch3/nicotind-separator
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}" # vX.Y.Z
+          major="${version%%.*}"       # vX
+          echo "tags=${IMAGE}:${version},${IMAGE}:${major},${IMAGE}:release" >> "$GITHUB_OUTPUT"
+
+      - name: Build + push
+        uses: docker/build-push-action@v7
+        with:
+          context: packages/separator
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            GPU=1
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha,scope=separator-linux-amd64
+          cache-to: type=gha,mode=max,scope=separator-linux-amd64
+
   # The YouTube PO-token provider, built from pinned upstream source so it ships
   # under our GHCR and our release cadence instead of a third-party image
   # (issue #238). Mirrors docker-analysis exactly — same tag scheme, same cache
@@ -700,8 +744,8 @@ jobs:
     # broke" — and on v0.1.329 a failed GHCR push produced a GREEN deploy that
     # silently redeployed the previous version. On a tag push the docker jobs
     # always run, so `skipped` there can only ever mean upstream failure.
-    needs: [docker-merge, docker-analysis, docker-pot-provider]
-    if: ${{ !cancelled() && (needs.docker-merge.result == 'success' || (github.event_name == 'workflow_dispatch' && needs.docker-merge.result == 'skipped')) && (needs.docker-analysis.result == 'success' || (github.event_name == 'workflow_dispatch' && needs.docker-analysis.result == 'skipped')) && (needs.docker-pot-provider.result == 'success' || (github.event_name == 'workflow_dispatch' && needs.docker-pot-provider.result == 'skipped')) }}
+    needs: [docker-merge, docker-analysis, docker-separator, docker-pot-provider]
+    if: ${{ !cancelled() && (needs.docker-merge.result == 'success' || (github.event_name == 'workflow_dispatch' && needs.docker-merge.result == 'skipped')) && (needs.docker-analysis.result == 'success' || (github.event_name == 'workflow_dispatch' && needs.docker-analysis.result == 'skipped')) && (needs.docker-separator.result == 'success' || (github.event_name == 'workflow_dispatch' && needs.docker-separator.result == 'skipped')) && (needs.docker-pot-provider.result == 'success' || (github.event_name == 'workflow_dispatch' && needs.docker-pot-provider.result == 'skipped')) }}
     steps:
       # Resolve exactly what the server should check out. On a tag push (the normal
       # release path) deploy that exact tag; on a manual workflow_dispatch deploy the

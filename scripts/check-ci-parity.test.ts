@@ -46,6 +46,10 @@ jobs:
     steps:
       - name: Python tests
         run: pytest -q
+  separator:
+    steps:
+      - name: Python tests
+        run: pytest -q
   docker:
     steps:
       - name: Build image
@@ -55,7 +59,7 @@ jobs:
       - name: Stage desktop resources
         run: bun run --filter @nicotind/desktop prepare-resources
   release:
-    needs: [ci, web-test, storybook, e2e, analysis, docker, desktop-package]
+    needs: [ci, web-test, storybook, e2e, analysis, separator, docker, desktop-package]
     steps:
       - name: Release
         run: bun run release
@@ -242,8 +246,8 @@ describe('releaseJobsNotGated', () => {
    */
   it('names a job that gates the release but nothing checks', () => {
     const added = WORKFLOW.replace(
-      'needs: [ci, web-test, storybook, e2e, analysis, docker, desktop-package]',
-      'needs: [ci, web-test, storybook, e2e, analysis, docker, desktop-package, smuggled]',
+      'needs: [ci, web-test, storybook, e2e, analysis, separator, docker, desktop-package]',
+      'needs: [ci, web-test, storybook, e2e, analysis, separator, docker, desktop-package, smuggled]',
     );
     expect(releaseJobsNotGated(added)).toEqual(['smuggled']);
   });
@@ -260,8 +264,8 @@ describe('gateJobsNotBlockingRelease', () => {
    */
   it('names the gate jobs a release would not wait for', () => {
     const dropped = WORKFLOW.replace(
-      'needs: [ci, web-test, storybook, e2e, analysis, docker, desktop-package]',
-      'needs: [ci, e2e, analysis, docker, desktop-package]',
+      'needs: [ci, web-test, storybook, e2e, analysis, separator, docker, desktop-package]',
+      'needs: [ci, e2e, analysis, separator, docker, desktop-package]',
     );
     expect(gateJobsNotBlockingRelease(dropped)).toEqual(['web-test', 'storybook']);
   });
