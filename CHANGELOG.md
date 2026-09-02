@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.68](https://github.com/kevinch3/NicotinD/compare/v0.5.67...v0.5.68) (2026-09-02)
+
+### Features
+
+* **separator:** vocal-separation sidecar image (BS-RoFormer), GPU compose overlay, CI/deploy ([58482dd](https://github.com/kevinch3/NicotinD/commit/58482dd282e7af605fe018f5850158a2fe8b8f96)), references [#603](https://github.com/kevinch3/NicotinD/issues/603) [#880](https://github.com/kevinch3/NicotinD/issues/880) [#603](https://github.com/kevinch3/NicotinD/issues/603)
 ## [0.5.67](https://github.com/kevinch3/NicotinD/compare/v0.5.66...v0.5.67) (2026-09-02)
 
 ### Bug Fixes
