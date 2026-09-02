@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type APIRequestContext } from '@playwright/test';
 import { rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,35 @@ const ADDON_ID = 'fixture-discard-addon';
 const ADDON_AUTH = { Authorization: `Bearer ${FIXTURE_ADDON_TOKEN}` };
 const LANDED_DIR = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/music/Rick Astley');
 
+/** The rickroll always lands at the same path, so its song id (sha1 of that path)
+ *  is stable and `landed_at` is never re-armed by a rescan (library-scanner.ts).
+ *  A row left landed by a crashed run — or by addon-hunt-download.spec.ts, which
+ *  writes this same path — makes this spec unwinnable, so it clears its own
+ *  precondition rather than inheriting one. */
+async function sweepRickAstley(
+  request: APIRequestContext,
+  headers: Record<string, string>,
+): Promise<void> {
+  const byName = await request.get('/api/library/artists/by-name', {
+    headers,
+    params: { name: 'Rick Astley' },
+  });
+  if (byName.ok()) {
+    const { id } = (await byName.json()) as { id: string };
+    const detail = await request.get(`/api/library/artists/${id}`, { headers });
+    if (detail.ok()) {
+      const artist = (await detail.json()) as {
+        albums: Array<{ id: string }>;
+        singlesAndEps: Array<{ id: string }>;
+      };
+      for (const album of [...artist.albums, ...artist.singlesAndEps]) {
+        await request.delete(`/api/library/albums/${album.id}`, { headers }).catch(() => {});
+      }
+    }
+  }
+  rmSync(LANDED_DIR, { recursive: true, force: true });
+}
+
 /**
  * #810: a download whose tracks are held for review is a decision point, not
  * an opaque "Processing" card. The rickroll lands quarantined behind the
@@ -23,6 +52,7 @@ const LANDED_DIR = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/mu
 test.describe('partial discard from the download card', () => {
   let addon: FixtureAddon;
   let auth: Record<string, string>;
+  let landedAlbumId = '';
 
   test.beforeAll(async ({ request }) => {
     addon = await startFixtureAddon({ id: ADDON_ID, payload: RICK_ASTLEY_PAYLOAD });
@@ -31,6 +61,7 @@ test.describe('partial discard from the download card', () => {
     });
     expect(login.ok()).toBeTruthy();
     auth = bearer(((await login.json()) as { token: string }).token);
+    await sweepRickAstley(request, auth);
 
     const registered = await request.post('/api/plugins/addons', {
       headers: auth,
@@ -60,6 +91,13 @@ test.describe('partial discard from the download card', () => {
       for (const j of jobs.filter((j) => j.method === ADDON_ID)) {
         await request.delete(`/api/downloads/jobs/${j.id}`, { headers: auth }).catch(() => {});
       }
+    }
+    // Before the rmSync: `rmSync` alone leaves the `library_songs` row landed,
+    // and a rescan never re-quarantines an already-landed song.
+    if (landedAlbumId) {
+      await request
+        .delete(`/api/library/albums/${landedAlbumId}`, { headers: auth })
+        .catch(() => {});
     }
     rmSync(LANDED_DIR, { recursive: true, force: true });
     await request.delete(`/api/plugins/addons/${ADDON_ID}`, { headers: auth });
@@ -91,10 +129,14 @@ test.describe('partial discard from the download card', () => {
           const jobs = (await res.json()) as Array<{
             id: string;
             method: string;
+            albumId?: string | null;
             quarantinedCount?: number;
           }>;
           const job = jobs.find((j) => j.method === ADDON_ID);
           jobId = job?.id ?? '';
+          // Recorded even while the poll is still failing: on the ~5% run where
+          // the track lands unreviewed this is the only handle afterAll has on it.
+          landedAlbumId = job?.albumId ?? landedAlbumId;
           return job?.quarantinedCount ?? 0;
         },
         { timeout: 30_000 },

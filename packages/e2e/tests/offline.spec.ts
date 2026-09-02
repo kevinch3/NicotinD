@@ -53,6 +53,23 @@ async function expectBootedShell(page: Page): Promise<void> {
   await expect(page.getByTestId('desktop-nav')).toBeAttached();
 }
 
+/**
+ * Wait until `ngsw-worker.js` is actually in control of the page (issue #878).
+ *
+ * `registrationStrategy: 'registerWhenStable:30000'` makes the moment control
+ * passes variable by construction, and control decides who answers a fetch.
+ * Uncontrolled, an offline lazy-route load still succeeds — CDP offline
+ * emulation does not block loopback. Controlled, ngsw answers instead, and it
+ * only fills its cache on its first *online* fetch after activating; take the
+ * network away before that and it can neither serve the chunk nor reach the
+ * network, so the router navigation never resolves and the URL never changes.
+ * Measured at 20x CPU throttling: the navigation hangs indefinitely without
+ * this wait and lands in ~350ms with it.
+ */
+async function expectServiceWorkerControl(page: Page): Promise<void> {
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+}
+
 test.describe('offline network detection', () => {
   test('shows the offline banner when connectivity drops and hides it on reconnect', async ({
     page,
@@ -179,13 +196,14 @@ test.describe('mosaic home offline', () => {
   });
 
   test('fills with the downloaded set and offers a way to the list', async ({ page, context }) => {
-    // Visit the destination once while online first. `/library` is a lazy
-    // route, and opening it offline is slow enough under load to dominate this
-    // spec's timing (issue #872); warming it keeps the assertion about the
-    // tile rather than about route-loading latency.
-    await page.goto('/library');
+    await page.goto('/');
     await expectBootedShell(page);
+    await expectServiceWorkerControl(page);
 
+    // One online load *through* the worker before the network goes. ngsw
+    // prefetches every `/*.js` (ngsw-config.json "app" group) on its first
+    // controlled fetch, and that cache is the only thing that can serve
+    // `/library`'s lazy chunk once offline.
     await page.goto('/');
     await expect(page.getByTestId('mosaic-home')).toBeVisible();
 
@@ -212,23 +230,11 @@ test.describe('mosaic home offline', () => {
     expect(await songs.count()).toBeGreaterThan(0);
 
     // That tile is the way to the downloads list, and navigates rather than plays.
-    //
-    // Generous timeout on purpose, and measured rather than guessed: offline,
-    // this navigation took just over 5s under full-suite load — past
-    // `toHaveURL`'s 5s default, which made it look like the click did nothing.
-    // The navigation is slow, not cancelled (issue #872).
-    //
-    // 20s itself proved not generous enough (issue #878): three clean full
-    // local runs — including a stash baseline on unmodified origin/master —
-    // all timed out here, while CI stayed green (6m30s, this spec included)
-    // and the spec alone was 6/6. That combination points at local CPU
-    // contention rather than a defect: a shared dev box under full-suite load
-    // can push this navigation well past 20s even though nothing regressed.
-    // Widened rather than replaced with a condition-wait, because the thing
-    // being waited on already *is* the real signal (the URL changing) — a
-    // slow machine needs a bigger number, not a different check.
+    // No timeout override: the earlier widening to 45s was dead config — it is
+    // above the 30s per-test budget, so it could never fire. What made this
+    // slow was never latency but the service-worker race above (#872, #878).
     await downloads.dispatchEvent('click');
-    await page.waitForURL(/\/library/, { timeout: 45_000 });
+    await page.waitForURL(/\/library/);
 
     // Leave the context as it was found. Playwright gives each test its own
     // context, so this is hygiene rather than a fix — but a spec that ends with

@@ -48,6 +48,28 @@ runs:
         Acquire::http::Timeout "20";
         Acquire::https::Timeout "20";
         APTCONF
+        # 4. Skip the install entirely when there is nothing to install. On
+        #    ubuntu-24.04 every library Playwright asks for is already on the
+        #    image (Google Chrome ships preinstalled and depends on the same
+        #    set); the transaction's only real work is ~21MB of CJK/Thai/Cyrillic
+        #    fonts, and this suite renders en + es. Measured 17-48s per job, in
+        #    three jobs. The probe is `ldd` over the cached browser rather than a
+        #    hardcoded "it's fine": a runner-image regression that drops a lib
+        #    still falls through to the apt path below. No cached browser yet
+        #    (cold Playwright cache) also falls through, which is the safe way
+        #    round. The apt hardening above still runs unconditionally — the
+        #    ffmpeg step in `e2e` inherits it.
+        for chrome in "$HOME"/.cache/ms-playwright/chromium*/chrome-linux*/chrome \
+                      "$HOME"/.cache/ms-playwright/chromium*/chrome-linux*/headless_shell; do
+          [ -x "$chrome" ] || continue
+          if ldd "$chrome" 2>/dev/null | grep -q 'not found'; then
+            echo "$chrome has unresolved libraries; installing OS deps"
+            break
+          fi
+          echo "Playwright's Chromium resolves every shared library already; skipping apt"
+          exit 0
+        done
+
         for attempt in 1 2 3; do
           if timeout --signal=KILL 150 ${{ inputs.install-command }}; then
             exit 0
