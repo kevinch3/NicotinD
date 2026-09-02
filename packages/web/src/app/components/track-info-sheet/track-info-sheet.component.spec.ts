@@ -124,6 +124,24 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     expect(c.bpmAlternatives()).toEqual([61]);
   });
 
+  it('rounds each offered tempo so the chip label is what tapping it applies', () => {
+    analyzeSong.mockReturnValueOnce(
+      of({ bpm: 142, source: 'analyzed' as const, candidates: [141.9, 70.9] }),
+    );
+    const c = create();
+    c.analyze();
+    expect(c.bpmAlternatives()).toEqual([71]);
+  });
+
+  it('collapses candidates that round to the same tempo', () => {
+    analyzeSong.mockReturnValueOnce(
+      of({ bpm: 142, source: 'analyzed' as const, candidates: [141.9, 70.9, 71.2] }),
+    );
+    const c = create();
+    c.analyze();
+    expect(c.bpmAlternatives()).toEqual([71]);
+  });
+
   it('offers no alternatives to a non-curator', () => {
     const c = create();
     c.analyze();

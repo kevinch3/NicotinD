@@ -89,11 +89,18 @@ export class TrackInfoSheetComponent implements OnInit {
   // number forever.
   readonly bpmCandidates = signal<number[]>([]);
   readonly applyingBpm = signal(false);
-  /** Candidates worth showing: curator-only, and never the value already set. */
+  /**
+   * Candidates worth showing: curator-only, never the value already set, and
+   * rounded here so the chip's label is exactly what tapping it applies (the
+   * sidecar reports one decimal, e.g. 70.9 -> 71).
+   */
   readonly bpmAlternatives = computed(() => {
     if (!this.canCurate()) return [];
     const current = this.bpm();
-    return this.bpmCandidates().filter((c) => Math.round(c) !== current);
+    const offered = this.bpmCandidates()
+      .map((c) => Math.round(c))
+      .filter((c) => c !== current);
+    return [...new Set(offered)];
   });
   readonly genreOverride = signal<string | null>(null);
   readonly genreSuggestion = signal<GenreSuggestion | null>(null);
