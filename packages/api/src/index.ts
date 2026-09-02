@@ -37,6 +37,8 @@ import { agentTokensRoutes } from './routes/agent-tokens.js';
 import { mcpRoutes } from './routes/mcp.js';
 import { remoteAccessRoutes } from './routes/remote-access.js';
 import { importRoutes } from './routes/import.js';
+import { importUploadRoutes } from './routes/import-upload.js';
+import { ImportUploadService } from './services/import-upload.service.js';
 import { LibraryImportService } from './services/library-import.service.js';
 import { reviewRoutes } from './routes/review.js';
 import { RemoteAccess } from './services/tailscale.js';
@@ -599,6 +601,10 @@ export function createApp({
   app.use('/api/system/*', auth);
   app.use('/api/settings/*', auth);
   app.use('/api/admin/*', auth);
+  // Browser-upload import lane. Authenticated like any other group; the role
+  // check is per-route (`requireAcquirer`), and it is deliberately NOT behind
+  // the acquisition kill-switch — see the mount site.
+  app.use('/api/import/*', auth);
   app.use('/api/presence/*', auth);
   app.use('/api/history/*', auth);
   app.use('/api/privacy/*', auth);
@@ -962,6 +968,22 @@ export function createApp({
     acquisitionEnabled: acquisitionOn,
   });
   app.route('/api/admin/import', importRoutes({ db, service: libraryImport }));
+
+  // The browser-upload lane (docs/import.md). Mounted at `/api/import`, NOT under
+  // `/api/admin` and deliberately NOT behind `requireAcquisitionEnabledMiddleware`:
+  // a streaming-only install has no acquisition stack and is the deployment most
+  // likely to need to fill its library from a folder. Per-route `requireAcquirer`
+  // is the auth decision (check:route-auth).
+  const importUploads = new ImportUploadService({
+    db,
+    dataDir: expandedDataDir,
+    musicDir: expandedMusicDir,
+  });
+  importUploads.sweepStale();
+  app.route(
+    '/api/import',
+    importUploadRoutes({ db, uploads: importUploads, imports: libraryImport }),
+  );
 
   // Serve web UI static files
   if (webDistPath) {

@@ -10,9 +10,26 @@ Surface: **internal / API-only**. `LibraryImportService`
 (`packages/api/src/services/library-import.service.ts`) + `routes/import.ts`, mounted at
 `/api/admin/import`. There is no web UI.
 
-## Why there is no web UI
+## Two lanes: an admin server path, and a browser upload
 
-The Admin "Import music" card (`ImportCardComponent`) was **removed**: import is an operator
+There are two doors into the same pipeline, and the difference between them is *who is importing*,
+not *how the bytes are ingested*:
+
+| | `/api/admin/import` (server path) | `/api/import` (browser upload) |
+| --- | --- | --- |
+| Source | a path the **server** can already read | bytes the **client** uploads |
+| Role | `requireAdmin` | `requireAcquirer` (anyone but a listener) |
+| Acquisition kill-switch | exempt | exempt |
+| Review hold | **bypassed** (see below) | **honoured** |
+| Scale ceiling | whole mounted disks | what a browser can upload |
+
+The server-path lane stays exactly as it was — it is still the only sane way to ingest a 500 GB
+mounted library. The upload lane exists because that lane is useless from a phone or any machine
+that is not the server.
+
+### Why the admin card was removed (and why the upload lane is not a revival of it)
+
+The Admin "Import music" card (`ImportCardComponent`) was **removed**: that import is an operator
 action — a one-off, server-side path walk over a directory the admin already had to arrange for the
 server to read (a Docker mount, a staging disk) — not something a user does from a phone. Keeping a
 whole card, a polling service, 13 test ids and 26 translated strings per language alive for it cost
@@ -191,11 +208,21 @@ folder's name (or the archive's stem — "Bootleg Rips 2019", not `/mnt/in/Bootl
 A single-album import clears it once the real album is known, so the card upgrades rather than
 staying pinned to the folder name.
 
-## Review-hold bypass (quarantine kept)
+## Review-hold: bypassed for a server path, honoured for an upload
 
 Imports go through the quarantine/enrichment gate like every download — that is the point of the
-feature. But a bulk import while `holdForReview` is armed would flood the review inbox with albums
-the admin just chose to import. So after organize and **before** the scan, when
+feature. The **review inbox** is the part that differs, and it differs by lane, because the bypass
+was always an argument about the actor rather than the mechanism.
+
+`ImportOrigin` (`'path' | 'staged-upload'`) carries that one distinction into `runChunk`:
+
+- **`'path'` — bypassed.** A bulk import while `holdForReview` is armed would flood the inbox with
+  albums the admin just chose to import, one by one.
+- **`'staged-upload'` — honoured.** "An admin bulk-importing their own curated library" does not
+  describe "any acquirer drags in an arbitrary folder". The upload lane obeys the same switch every
+  other ingest obeys, so a badly-tagged drop lands in the inbox instead of straight in the library.
+
+For the bypassed lane, after organize and **before** the scan, when
 `reviewHoldActive(db, holdForReview && acquisitionEnabled())`, the service writes
 `recordReviewDecision(albumId, 'approved', 'import:<adminId>')` for each destination album.
 Pre-approving *before* the scan mints the song rows keeps the `reviewed_at >= created` predicate
@@ -211,6 +238,41 @@ true with zero changes to the landing gate; a later real download into the same 
 | `GET /api/admin/import/jobs` · `GET /jobs/:id` | List / detail (detail includes per-directory states). |
 | `POST /jobs/:id/cancel` · `POST /jobs/:id/retry` · `DELETE /jobs/:id` | Cancel (audited) / resume / remove a finished job. |
 
+**Upload lane** (`/api/import`, `requireAcquirer`, outside the acquisition kill-switch):
+
+| Route | Purpose |
+| --- | --- |
+| `POST /api/import/uploads` `{files:[{path,size}]}` | Validate the manifest, preflight `dataDir`, reserve a session. 201 `{uploadId, skipped[]}`. 400 `UPLOAD_PATH_REJECTED` / `UPLOAD_EMPTY_MANIFEST`, 507 `UPLOAD_TOO_LARGE`. |
+| `PUT /api/import/uploads/:id/chunk?path=&offset=` | Raw body, ≤16 MiB, written at an absolute offset. 200 `{received}`. |
+| `GET /api/import/uploads/:id` | Per-file `{path,size,received}` + `chunkBytes`, for resume. 404 when unknown. |
+| `POST /api/import/uploads/:id/commit` | `submitStaged` the session dir. 202 `{jobId}`, 409 `IMPORT_RUNNING`. Audited (`library.import.upload`). |
+| `DELETE /api/import/uploads/:id` | Abort and delete the staged bytes. |
+
+### Why chunked, and why 16 MiB
+
+Bun's default request-body cap is 128 MB. A whole-file `PUT` would need
+`maxRequestBodySize` raised **globally**, widening the cap for every other route in the app to serve
+one lane. A 16 MiB chunk fits under the default, so nothing else moves — and resume falls out for
+free.
+
+Progress is read back off disk (`statSync` per manifest entry), never stored. A resume therefore
+survives a server restart, and there is no second ledger to drift from the bytes actually written.
+Chunks are written at an **absolute offset** rather than appended, so a client that re-sends its
+last chunk (which is what resuming does when it cannot know whether the chunk landed) rewrites the
+same bytes instead of duplicating them.
+
+### Why `submitStaged` exists
+
+`validateImportSource` refuses any source under `dataDir` (`INSIDE_DATA_DIR`) — correct for an admin
+typing a path, since importing the data dir into itself is never intended. Upload staging lives at
+`<dataDir>/staging/upload/<id>` by necessity, so the obvious "stage it, then call `submit()`" is
+refused by the service's own guard.
+
+`submitStaged` is therefore a second, narrower door: the path must resolve inside the upload staging
+root, be a real directory, and not be a symlink. The general guard is left untouched rather than
+loosened for every caller. It always runs in move mode, so `stageFile` renames (same device by
+construction) instead of writing a multi-GB drop to disk twice.
+
 Disk preflight: copy mode (or a cross-device move) requires the source's total bytes + a 500 MiB
 margin free on the music filesystem; a same-device move needs only the margin. An **archive** always
 counts as cross-device — extraction materializes new bytes regardless of where the file sits. The
@@ -218,9 +280,9 @@ preview always reports the numbers.
 
 ## Limits & non-goals (v1)
 
-- No web UI and no browser upload lane — the source must be a path the *server* can read
-  (Docker: mount it), driven through the admin API.
-- `.zip` only. `.rar`/`.7z`/`.tar.gz` are non-goals: the first two need a non-free binary, and a tar
+- The **admin** lane still takes only a server-readable path (Docker: mount it). The upload lane
+  covers the client-side case; neither uploads a whole mounted disk.
+- `.zip` only, both lanes (issue #893 tracks 7z). `.rar`/`.7z`/`.tar.gz` are non-goals for now: the first two need a non-free binary, and a tar
   stream has no central directory, so its uncompressed size — the number the disk preflight and the
   bomb guard both depend on — cannot be known without a full decompression pass.
 - No per-file preview listing; the dry run reports counts.

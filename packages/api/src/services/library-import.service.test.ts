@@ -598,3 +598,50 @@ describe('archive import', () => {
     }
   });
 });
+
+// The upload lane (docs/import.md): a session directory the *server* minted
+// under dataDir, ingested through the same pipeline as any other import.
+describe('submitStaged — the browser-upload entry point', () => {
+  function stage(rel: string, content = `audio:${rel}`): string {
+    const dir = join(dataDir, 'staging', 'upload', 'up-1');
+    const abs = join(dir, rel);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, content);
+    return dir;
+  }
+
+  // `validateImportSource` refuses anything under dataDir (INSIDE_DATA_DIR) —
+  // correct for an admin typing a path, wrong for a directory this server just
+  // created. `submitStaged` is the trusted door, so the guard stays untouched.
+  it('accepts a staging directory that submit() refuses outright', async () => {
+    const dir = stage('Album/one.mp3');
+    const { service } = makeService();
+
+    expect(() => service.submit(dir)).toThrow(ImportSourceInvalidError);
+
+    const id = service.submitStaged(dir, { startedBy: 'user-1' });
+    await waitForTerminal(service, id);
+    expect(getImportJob(db, id)?.state).toBe('done');
+  });
+
+  it('refuses a path outside the upload staging root', () => {
+    const { service } = makeService();
+    expect(() => service.submitStaged(sourceDir, {})).toThrow(ImportSourceInvalidError);
+  });
+
+  // #894-adjacent policy call: the bypass exists so an admin bulk-importing
+  // their own library doesn't flood the inbox. That reasoning does not transfer
+  // to "any acquirer drags in an arbitrary zip", so the upload lane honours the
+  // switch the rest of the app honours.
+  it('does NOT pre-approve past the review hold, unlike a server-path import', async () => {
+    setProcessingSettings(db, { holdForReview: true });
+    armReviewHold(db);
+    const dir = stage('Album/one.mp3');
+    const { service } = makeService();
+
+    const id = service.submitStaged(dir, { startedBy: 'user-1' });
+    await waitForTerminal(service, id);
+
+    expect(getReviewDecision(db, albumIdFor('Artist', 'Album'))).toBeNull();
+  });
+});
