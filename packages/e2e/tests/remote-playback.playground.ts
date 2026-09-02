@@ -30,6 +30,8 @@ async function seedDevice(
   opts: { id: string; name: string; remoteEnabled: boolean },
 ): Promise<void> {
   await context.addInitScript((o) => {
+    // Since #882 the device id is `<profile>:<tab>` — this seeds the PROFILE
+    // half, so selectors match on the prefix, not the whole id.
     localStorage.setItem('nicotind_device_id', o.id);
     localStorage.setItem('nicotind_device_name', o.name);
     localStorage.setItem('nicotind_remote_enabled', String(o.remoteEnabled));
@@ -129,7 +131,7 @@ test('remote-playback-device-control', async ({ page, obs, browser }) => {
     // app-now-playing and shares the service-level switcherOpen signal, so both
     // panels open together — every device row matches twice. Scope to .first().
     const targetOption = page
-      .locator(`[data-testid="device-option"][data-device-id="${TARGET_ID}"]`)
+      .locator(`[data-testid="device-option"][data-device-id^="${TARGET_ID}:"]`)
       .first();
     const discovered = await obs.time(
       'controller discovers target device',

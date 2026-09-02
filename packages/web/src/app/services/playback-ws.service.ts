@@ -8,6 +8,8 @@ import { Subject, Observable } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 import { ServerConfigService } from './server-config.service';
 import { isTvBuild, isTvUi, resolveTvDefaultedPreference } from '../lib/platform';
+import { deviceIdFor, profileIdOf, resolveDeviceId, TAB_ID_KEY } from '../lib/device-id';
+import { guardTabId, TAB_CHANNEL } from '../lib/tab-id-guard';
 
 interface WsMessage {
   type: string;
@@ -34,35 +36,32 @@ export class PlaybackWsService {
   private deviceName: string;
 
   constructor() {
-    this.deviceId = this.resolveDeviceId();
+    this.deviceId = resolveDeviceId(localStorage, sessionStorage);
     this.deviceName = this.resolveDeviceName();
+    this.guardTabIdentity();
+  }
+
+  /** "Duplicate tab" copies sessionStorage, so the copy boots holding this
+   *  tab's id. The newcomer re-mints and re-registers; the original keeps its
+   *  id and any cast pointed at it (issue #882). */
+  private guardTabIdentity(): void {
+    if (typeof BroadcastChannel !== 'function') return;
+    guardTabId({
+      channel: new BroadcastChannel(TAB_CHANNEL),
+      tabId: sessionStorage.getItem(TAB_ID_KEY) ?? '',
+      persist: (id) => sessionStorage.setItem(TAB_ID_KEY, id),
+      onRemint: (id) => {
+        this.deviceId = deviceIdFor(profileIdOf(this.deviceId), id);
+        if (!this.ws) return;
+        this.disconnect();
+        this.connect();
+      },
+    });
   }
 
   // ---------------------------------------------------------------------------
   // Device identity
   // ---------------------------------------------------------------------------
-
-  private resolveDeviceId(): string {
-    const stored = localStorage.getItem('nicotind_device_id');
-    if (stored) return stored;
-
-    let id: string;
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-      id = crypto.randomUUID();
-    } else {
-      id =
-        Array.from({ length: 16 }, () =>
-          Math.floor(Math.random() * 256)
-            .toString(16)
-            .padStart(2, '0'),
-        ).join('') +
-        '-' +
-        Date.now().toString(36);
-    }
-
-    localStorage.setItem('nicotind_device_id', id);
-    return id;
-  }
 
   private resolveDeviceName(): string {
     const stored = localStorage.getItem('nicotind_device_name');
