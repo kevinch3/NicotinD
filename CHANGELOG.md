@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.63](https://github.com/kevinch3/NicotinD/compare/v0.5.62...v0.5.63) (2026-09-02)
+
+### Bug Fixes
+
+* **e2e:** widen the offline mosaic navigation timeout for local CPU contention ([#883](https://github.com/kevinch3/NicotinD/issues/883)) ([d35fc62](https://github.com/kevinch3/NicotinD/commit/d35fc62d4fff9b6c9c82ce78abdf2a54308e61b4)), references [#878](https://github.com/kevinch3/NicotinD/issues/878)
+* **remote-playback:** attribute every frame to its connection; one audible device per session ([#877](https://github.com/kevinch3/NicotinD/issues/877)) ([#884](https://github.com/kevinch3/NicotinD/issues/884)) ([727c549](https://github.com/kevinch3/NicotinD/commit/727c549ed9f4f748c245be36ab80ef7df5d668f8)), references [#882](https://github.com/kevinch3/NicotinD/issues/882)
 ## [0.5.62](https://github.com/kevinch3/NicotinD/compare/v0.5.61...v0.5.62) (2026-09-02)
 
 ### Features
