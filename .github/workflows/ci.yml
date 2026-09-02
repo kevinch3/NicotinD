@@ -294,8 +294,19 @@ jobs:
       - name: Test (pytest)
         run: pytest packages/separator/tests -q
 
+  # Sharded across four runners. The suite is 172 tests over ~50 files against ONE
+  # server and ONE SQLite DB, so `workers: 1` inside a shard is still mandatory
+  # (docs/e2e.md) — but a shard is its own checkout, DB and server pair, so the
+  # files can be split. Playwright shards whole files in alphabetical blocks, which
+  # is why a spec that reads another spec's leftovers had to be fixed first.
   e2e:
     runs-on: ubuntu-latest
+    strategy:
+      # A failing shard must not cancel the others: knowing which three passed is
+      # what tells you whether a failure is local to one block or systemic.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
 
@@ -344,19 +355,34 @@ jobs:
       # test where ffmpeg is absent would leave the feature a permanently silent
       # gate (the #457 shape). The transcode / vocal-mute branches become real
       # here as a by-product; they were written to pass either way.
+      # No `apt-get update` up front — the deps step above refreshed the lists
+      # seconds ago — and no recommends, which pulled 100 packages (VA/VDPAU
+      # drivers, SDL2, PulseAudio, pocketsphinx) that no decode path reaches.
+      # The `||` refresh keeps a stale list (issue #730) recoverable, not fatal.
       - name: Install ffmpeg
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg \
+            || { sudo apt-get update -qq \
+                 && sudo apt-get install -y -qq --no-install-recommends ffmpeg; }
 
-      - name: Run e2e
-        run: bun run --filter @nicotind/e2e test
+      # E2E_SKIP_BUILD: `Build (web)` above already produced the dist from this
+      # checkout, but ensureWebBuild() has no freshness check, so every run paid a
+      # SECOND full Angular build — cold both times, since Angular disables its
+      # disk cache whenever CI is set.
+      - name: Run e2e (shard ${{ matrix.shard }}/4)
+        run: bun run --filter @nicotind/e2e test -- --shard=${{ matrix.shard }}/4
         env:
           CI: '1'
+          E2E_SKIP_BUILD: '1'
 
+      # Per-shard name: four shards uploading one artifact name collides and the
+      # upload fails, losing the report for the shard you actually need.
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shard }}
           path: packages/e2e/playwright-report/
           retention-days: 7
 

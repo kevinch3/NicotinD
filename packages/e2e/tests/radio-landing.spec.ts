@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { FIXTURE, openAlbumCard } from '../helpers';
+import { FIXTURE, bearer, openAlbumCard } from '../helpers';
 
 /**
  * The shelf-based landing, now at '/classic' — the mosaic home took route ''.
@@ -81,7 +81,27 @@ test.describe('radio landing', () => {
   // there (see radio-landing.component.spec.ts).
   test('vibe tiles are colored and 2x wide; genre tiles stay muted and narrow', async ({
     page,
+    request,
   }) => {
+    // The fixtures are silent FLACs with no genre tag, so the genre row exists
+    // only if this spec makes it (same curator override genre-radar.spec.ts
+    // uses, scoped to a different artist so neither spec moves the other's
+    // counts). Asserted by label, so it reads only what it wrote.
+    const GENRE = 'Shoegaze';
+    await page.goto('/classic');
+    const token = await page.evaluate(() => localStorage.getItem('nicotind_token'));
+    expect(token).toBeTruthy();
+    const artists = (await (
+      await request.get('/api/library/artists', { headers: bearer(token!) })
+    ).json()) as Array<{ id: string; name: string }>;
+    const artist = artists.find((a) => a.name === FIXTURE.single.artist);
+    expect(artist, 'fixture artist must exist').toBeTruthy();
+    const applied = await request.post(`/api/library/artists/${artist!.id}/genre`, {
+      headers: bearer(token!),
+      data: { genres: GENRE, note: 'e2e radio-landing fixture' },
+    });
+    expect(applied.ok()).toBe(true);
+
     await page.goto('/classic');
     const preset = page.getByTestId('radio-preset').first().locator('button');
     await expect(preset).toBeVisible();
@@ -89,8 +109,7 @@ test.describe('radio landing', () => {
     await expect(preset).toHaveClass(/text-white/);
     await expect(preset).toHaveClass(/w-40/);
 
-    // The fixture library always has at least one genre, so the row renders.
-    const genre = page.getByTestId('radio-genre').first().locator('button');
+    const genre = page.getByTestId('radio-genre').filter({ hasText: GENRE }).locator('button');
     await expect(genre).toBeVisible();
     await expect(genre).toHaveClass(/bg-theme-surface-2/);
     await expect(genre).not.toHaveClass(/bg-gradient-to-br/);

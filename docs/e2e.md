@@ -122,6 +122,32 @@ same PR that hit it.
   Block the SW for the test instead; it is a faithful stand-in, since against a
   genuinely dead server the SW's own network fetch fails too.
 
+- **Going offline is only offline if the service worker is ready for it — and
+  when it takes control is a race.** `context.setOffline(true)` does *not* stop
+  a loopback request: measured, a `fetch('/api/health', {cache:'no-store'})`
+  still returns 200 while "offline". So an offline lazy-route load succeeds for
+  the wrong reason as long as the page is uncontrolled. Once `ngsw-worker.js`
+  takes over it answers instead, and it only fills its cache on its first
+  *online* fetch after activating — drop the network before that and it can
+  neither serve the chunk nor reach the network, so the router navigation never
+  resolves, the URL never changes, and the spec burns its whole 30s budget.
+  `registerWhenStable:30000` (app.config.ts) makes the moment of control vary by
+  construction: locally control lands ~1.1s after boot, *after* the flip, so the
+  spec passed; on a slower CI runner it lands *before* it, so the spec failed
+  its first attempt in every single run (issue #878, `offline.spec.ts`). Wait on
+  `navigator.serviceWorker.controller` and then load once more while still
+  online — an event-driven precondition, not a bigger timeout. Reproduced
+  deterministically with `Emulation.setCPUThrottlingRate` at 10x and 20x: hangs
+  without the wait, ~350ms with it.
+
+- **A timeout above the per-test budget is dead config.** `playwright.config.ts`
+  sets no `timeout` in `defineConfig` (the `timeout: 60_000` there is the
+  `webServer` boot budget), so every test dies at Playwright's default 30s. Any
+  `{ timeout: 45_000 }` on an individual action therefore never fires — the test
+  is already gone. Widening past 30s reads like a fix and changes nothing; the
+  same `offline.spec.ts` carried one for two issues. Fix the race, don't raise
+  the number.
+
 - **An absence assertion passes vacuously on a page that has not rendered.**
   `expect(x).toHaveCount(0)` / `not.toBeVisible()` cannot distinguish "this
   element is correctly absent" from "nothing has rendered yet", so it is **not**
@@ -131,10 +157,12 @@ same PR that hit it.
   network while the SPA was still booting. That is *unrecoverable*, not merely
   early — once offline, the remaining lazy route chunks can never load, so the
   shell never mounts and the banner can never appear, which is exactly the
-  "element(s) not found" timeout that was reported. It only flaked in the full
-  suite because that is where boot is slow enough to lose the race. **Assert a
-  positive signal first** (`offline.spec.ts` uses `expectBootedShell`, waiting
-  on the shell's own `desktop-nav`), then assert absence. Note the first fix
+  "element(s) not found" timeout that was reported. (Whether an offline chunk
+  load fails at all depends on who answers the fetch — see the service-worker
+  entry above.) It only flaked in the full suite because that is where boot is
+  slow enough to lose the race. **Assert a positive signal first**
+  (`offline.spec.ts` uses `expectBootedShell`, waiting on the shell's own
+  `desktop-nav`), then assert absence. Note the first fix
   attempt — dispatching the DOM events explicitly — was correct but addressed a
   different, real problem, and the flake survived it; if a flake persists after
   a plausible fix, the plausible fix was not the whole cause.
@@ -263,14 +291,47 @@ Use read-only/login-style specs only — do not seed or destroy prod data.
 
 ## CI
 
-The `e2e` job in `.github/workflows/deploy.yml` installs deps + the Chromium
-browser, builds web (the Hono server serves `packages/web/dist`), runs the suite,
-and uploads the Playwright HTML report on failure. `release` depends on every gate job
-(`ci`, `web-test`, `storybook`, `e2e`, `analysis`, `docker`, `desktop-package`), so a red
-e2e run blocks the deploy. `e2e` is deliberately **not** in `check-ci-parity.ts`'s
-`GATE_JOBS`: `bun run e2e` is not part of `bun run verify` by design (CLAUDE.md quality
-gate 2), so it is gated in CI without being expected to run in the local one-command
-sweep.
+The `e2e` job in `.github/workflows/ci.yml` installs deps + the Chromium browser,
+builds web (the Hono server serves `packages/web/dist`), runs the suite, and uploads
+the Playwright HTML report on failure. `release` depends on every gate job (`ci`,
+`web-test`, `storybook`, `e2e`, `analysis`, `separator`, `docker`, `desktop-package`),
+so a red e2e run blocks the deploy. `e2e` **is** in `check-ci-parity.ts`'s `GATE_JOBS`
+— that list is now *every* job in `release.needs`, enforced both ways. What is exempt is
+the one command, not the job: `--filter @nicotind/e2e test` carries an `ALLOWLIST` entry
+with its reason, because CLAUDE.md quality gate 2 keeps `bun run e2e` out of
+`bun run verify` on purpose. The unit of the exemption is the thing that cannot run
+locally, not the job that happens to contain it.
+
+### The job is sharded four ways
+
+`e2e` is a `strategy.matrix` over `shard: [1, 2, 3, 4]`, each leg running
+`--shard=<n>/4`. Serial, the suite was 5m30 of test bodies on one runner and the
+workflow's critical path; sharded it is ~1m20 per leg.
+
+What makes this safe is that a shard is **not** a worker. Inside a shard,
+`fullyParallel: false` and `workers: 1` still hold, because the "What the e2e
+environment does NOT give you" list above is all still true — one server, one DB, every
+spec sees every other spec's leftovers. But a *shard* is a separate runner with its own
+checkout, its own `fixtures/music`, its own wiped `.tmp-data` and its own server pair,
+so the files can be split even though the tests within a file cannot.
+
+Playwright shards **whole files, in alphabetical blocks**, balancing on test count. Two
+consequences worth knowing before you add a spec:
+
+- **The split moves.** Adding tests reshuffles which files land in which shard, so a
+  spec that quietly reads another spec's leftovers fails *later*, on an unrelated PR.
+  That is the failure mode sharding trades for speed, and it is why the rule "a spec
+  must not assert on state it does not own" is now load-bearing rather than advisory.
+  `radio-landing.spec.ts` was the first casualty: it asserted the genre tiles render
+  because "the fixture library always has at least one genre", which was never true —
+  the fixtures carry no genre tag, and it only passed because an earlier spec wrote one.
+- **`auth.setup.ts` runs in every shard**, so the seeded admin, the scanned fixture
+  library and `.auth/admin.json` are the baseline a spec may assume. Nothing else is.
+
+`fail-fast: false` on the matrix is deliberate: knowing which of the other three shards
+passed is what separates "this block of specs is broken" from "the suite is broken".
+Each shard uploads its report under `playwright-report-shard-<n>` — one shared artifact
+name would collide and lose the report for the shard you actually need.
 
 **Playwright install is split into an apt half and a download half (issues #556,
 #561).** `playwright install --with-deps chromium` runs `apt-get` under the hood, and
