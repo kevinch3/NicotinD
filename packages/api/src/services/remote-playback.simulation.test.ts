@@ -441,3 +441,38 @@ describe('simulation: taking the session back', () => {
     expect(w.views()).toEqual(['A:C', 'B:C', 'C:C']);
   });
 });
+
+describe('simulation: two tabs of one browser profile (issue #882)', () => {
+  /** Model A: the id is minted per TAB, so a second tab of the same profile
+   *  registers a sibling id (`<profile>:<tab>`) over its own socket. */
+  function twoTabWorld() {
+    const w = world();
+    const a = w.device('A');
+    const tab1 = w.device('B:t1');
+    const tab2 = w.device('B:t2');
+    a.playLocally(T1);
+    a.cast('B:t1');
+    return { ...w, a, tab1, tab2 };
+  }
+
+  it('a cast to one tab plays there and leaves the sibling silent', () => {
+    const w = twoTabWorld();
+    expect(w.audible()).toEqual(['B:t1']);
+    expect(w.tab2.playing).toBe(false);
+    w.assertOneOutput();
+  });
+
+  it('closing the silent tab does not unregister the one holding the session', () => {
+    const w = twoTabWorld();
+    w.tab2.disconnect();
+    expect(w.listedOn(w.a)).toContain('B:t1');
+    expect(w.audible()).toEqual(['B:t1']);
+  });
+
+  it('each tab is separately castable', () => {
+    const w = twoTabWorld();
+    w.a.cast('B:t2');
+    expect(w.audible()).toEqual(['B:t2']);
+    w.assertOneOutput();
+  });
+});

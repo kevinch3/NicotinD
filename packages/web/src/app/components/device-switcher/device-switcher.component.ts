@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
+import { profileIdOf } from '../../lib/device-id';
 
 function deviceEmoji(name: string, type: string): string {
   if (type !== 'web') return '\uD83C\uDFB5';
@@ -29,7 +30,15 @@ export class DeviceSwitcherComponent {
   private myId = this.ws.getDeviceId();
 
   readonly myDevice = computed(() => this.remote.devices().find((d) => d.id === this.myId));
-  readonly otherDevices = computed(() => this.remote.devices().filter((d) => d.id !== this.myId));
+  // A second tab of this browser is a real, separately castable output, but it
+  // renders with the same UA-derived name — so the row is marked rather than
+  // left an anonymous twin (issue #882).
+  readonly otherDevices = computed(() =>
+    this.remote
+      .devices()
+      .filter((d) => d.id !== this.myId)
+      .map((d) => ({ ...d, sibling: profileIdOf(d.id) === profileIdOf(this.myId) })),
+  );
   readonly isRemoteActive = computed(() => {
     const active = this.remote.activeDeviceId();
     return active !== null && active !== this.myId;

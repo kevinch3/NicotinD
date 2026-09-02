@@ -53,6 +53,13 @@
                 >
                   <span class="text-base leading-none">{{ getDeviceEmoji(device.name, device.type) }}</span>
                   <span class="flex-1 text-left truncate">{{ device.name }}</span>
+                  @if (device.sibling) {
+                    <span
+                      data-testid="device-sibling-tab"
+                      class="flex-shrink-0 text-[10px] text-theme-muted"
+                      >another tab</span
+                    >
+                  }
                   @if (device.id === remote.activeDeviceId()) {
                     <span data-testid="device-now-playing" class="flex-shrink-0 text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded status-done">
                       NOW PLAYING

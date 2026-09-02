@@ -2,6 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { PlaybackWsService } from './playback-ws.service';
 import { ServerConfigService } from './server-config.service';
 import * as platform from '../lib/platform';
+import { profileIdOf, TAB_ID_KEY } from '../lib/device-id';
+import { TAB_CHANNEL } from '../lib/tab-id-guard';
 
 // The REGISTER frame's `remoteEnabled` field used to be computed by an
 // independent, ad-hoc copy of the TV-default logic that lived only in this
@@ -94,6 +96,35 @@ Object.defineProperty(globalThis, 'localStorage', {
   configurable: true,
 });
 
+/** `sessionStorage` is per-TAB: the two-tab tests swap it while leaving
+ *  `localStorage` (the shared profile) in place. */
+function freshSessionStorage() {
+  let store: Record<string, string> = {};
+  const stub = {
+    getItem: (key: string) => store[key] ?? null,
+    setItem: (key: string, value: string) => {
+      store[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      store = {};
+    },
+    get length() {
+      return Object.keys(store).length;
+    },
+    key: (i: number) => Object.keys(store)[i] ?? null,
+  };
+  Object.defineProperty(globalThis, 'sessionStorage', {
+    value: stub,
+    writable: true,
+    configurable: true,
+  });
+  return stub;
+}
+freshSessionStorage();
+
 describe('PlaybackWsService REGISTER payload', () => {
   let originalWebSocket: unknown;
 
@@ -174,6 +205,72 @@ describe('PlaybackWsService REGISTER payload', () => {
     storageStub.setItem('nicotind_remote_enabled', 'true');
     const payload = connectAndCaptureRegister();
     expect(payload['remoteEnabled']).toBe(true);
+  });
+});
+
+describe('PlaybackWsService device identity across tabs (#882)', () => {
+  let originalWebSocket: unknown;
+
+  beforeEach(() => {
+    storageStub.clear();
+    FakeWebSocket.instances = [];
+    originalWebSocket = globalThis.WebSocket;
+    (globalThis as { WebSocket: unknown }).WebSocket = FakeWebSocket;
+  });
+
+  afterEach(() => {
+    (globalThis as { WebSocket: unknown }).WebSocket = originalWebSocket;
+  });
+
+  /** One tab: a fresh sessionStorage, the SHARED localStorage, a new service. */
+  function openTab(): string {
+    freshSessionStorage();
+    storageStub.setItem('nicotind_token', 'test-token');
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [PlaybackWsService, ServerConfigService] });
+    const service = TestBed.inject(PlaybackWsService);
+    service.connect();
+    const socket = FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
+    socket.open();
+    const register = socket.sent.find(
+      (f): f is { type: string; payload: Record<string, unknown> } =>
+        (f as { type?: string }).type === 'REGISTER',
+    );
+    if (!register) throw new Error('REGISTER frame was not sent');
+    return register.payload['id'] as string;
+  }
+
+  it('two tabs of one browser register as two devices', () => {
+    expect(openTab()).not.toBe(openTab());
+  });
+
+  it('both tabs share the profile id, so the UI can tell siblings from strangers', () => {
+    expect(profileIdOf(openTab())).toBe(profileIdOf(openTab()));
+  });
+
+  it('a tab told its id is taken re-registers under a fresh one (duplicated tab)', async () => {
+    const first = openTab();
+    const twin = new BroadcastChannel(TAB_CHANNEL);
+    try {
+      // What a sibling holding this tab id replies to the newcomer's claim.
+      twin.postMessage({ kind: 'taken', tabId: sessionStorage.getItem(TAB_ID_KEY) });
+      await new Promise((r) => setTimeout(r, 0));
+
+      const socket = FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
+      socket.open();
+      const ids = socket
+        .frames('REGISTER')
+        .map((f) => (f as { payload: { id: string } }).payload.id);
+      expect(ids.at(-1)).not.toBe(first);
+      expect(profileIdOf(ids.at(-1)!)).toBe(profileIdOf(first));
+    } finally {
+      twin.close();
+    }
+  });
+
+  it('an id minted before #882 becomes the profile half, keeping the stored name', () => {
+    storageStub.setItem('nicotind_device_id', 'legacy-uuid');
+    expect(profileIdOf(openTab())).toBe('legacy-uuid');
   });
 });
 
