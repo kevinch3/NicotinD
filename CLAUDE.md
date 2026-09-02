@@ -197,10 +197,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Lossless → Opus standardization**: lossless downloads transcoded in place (default-on 192 kbps),
   codec-aware via `isLosslessFile`, gated on ffmpeg, surfaced read-only at
   `GET /api/settings/downloads`. → [download-pipeline.md](docs/download-pipeline.md)
-- **Reserved paths — staging lives inside `musicDir`, invisibly**: `library-paths.ts`
-  (`reservedDirsFor`, `isReservedTopLevel`, `isHiddenFile`, `isReservedPath`) is the one answer to
-  "is this library content?" — depth-scoped (root dot-dirs skipped, album titles never judged);
-  `check:library-walkers` keeps all 14 walkers honest.
+- **Reserved paths — staging lives inside `musicDir`, invisibly**: one `library-paths.ts`
+  (`reservedDirsFor`, `isReservedTopLevel`, `isHiddenFile`, `isReservedPath`) is the only answer to
+  "is this library content?"; the rule is depth-scoped (root dot-dirs skipped, album titles never
+  judged) and `check:library-walkers` keeps all 14 walkers honest.
   → [library-path-conventions.md](docs/library-path-conventions.md)
 - **Import music from a folder or archive (API-only)**: `LibraryImportService` runs a server folder or
   `.zip` through the same organize → scan → quarantine pipeline; `import-archive.ts` is a
@@ -270,8 +270,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   → [genre-model.md](docs/genre-model.md)
 - **Curator-correctable genres**: `library_genre_overrides` (scope artist/album/song) is the one genre
   write that can *replace* a primary, carrying an explicit `mode`; `status` is the review queue;
-  `backfillGenreOverrides`, `appendSongGenres`, `ArtistGenreModalComponent`; both modes write the
-  row so a curation outlives the next scan (`mutateSongGenre`).
+  `backfillGenreOverrides`, `appendSongGenres`, `ArtistGenreModalComponent`. Both modes write the
+  row, so a curation outlives the next scan (`mutateSongGenre`).
   → [library-scanner.md](docs/library-scanner.md)
 - **Genre radar**: `artistGenreDistribution` + `albumGenreDistribution` feed an inline-SVG radar and a
   read-only `GenreDistributionStripComponent`; pure `radar-geometry.ts` + `genre-projection.ts`;
@@ -365,7 +365,7 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 
 - **Native streaming + cover art**: `GET /api/stream/:id` (Range/206 + seekable transcode cache) and
   `GET /api/cover/:id`; `GET /api/cover/remote` proxies catalog covers through the same downscale
-  path (host-allowlisted, content-addressed); `nativeAppCors` is hand-rolled so its Vary append
+  path, host-allowlisted and content-addressed. `nativeAppCors` is hand-rolled so its Vary append
   cannot strip `Content-Length`. → [library-scanner.md](docs/library-scanner.md),
   [album-hunt.md](docs/album-hunt.md)
 - **RFC 9110-complete range handling**: `serveFileWithRange` serves suffix ranges (`bytes=-N` = the
@@ -405,16 +405,16 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Now Playing component split + tabbed Queue/Lyrics panel**: the shell composes seven extracted
   sub-components with a `NowPlayingPanelTabsComponent` switcher; the resize handle is shell-owned
   above the tabs, and `lg:` is two columns. → [web-ui.md](docs/web-ui.md)
-- **Lyrics + karaoke**: `metadata` plugin kind + `lyrics` capability (LRCLIB) in
-  `library_lyrics` + file tag; karaoke panel with synced highlighting, fullscreen auto-follow and the
-  `?vocals=off` mute — basic center-cancel, or the opt-in ML stem (`readyStemPath`,
-  `VocalSeparationService`, web `shouldServeVocalsOff`: the mute is intent, readiness decides the
-  URL). → [design-patterns.md](docs/design-patterns.md), [vocal-separation.md](docs/vocal-separation.md)
+- **Lyrics + karaoke**: `metadata` plugin kind + `lyrics` capability (LRCLIB) in `library_lyrics`
+  + file tag; karaoke panel with synced highlighting, fullscreen auto-follow, and a `?vocals=off`
+  mute that is basic center-cancel or the opt-in ML stem: `readyStemPath`,
+  `VocalSeparationService`, `shouldServeVocalsOff`.
+  → [design-patterns.md](docs/design-patterns.md), [vocal-separation.md](docs/vocal-separation.md)
 - **Now Playing waveform + karaoke VFX**: rendered from a precomputed artifact.
   → [audio-ml-enrichment.md](docs/audio-ml-enrichment.md)
 - **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a
-  weight-normalized blend of BPM, key, genre closeness, year, duration, artist diversity, perceptual
-  axes and embedding cosine. `buildSeedRadio`, `scoreSimilarity`, `explainSimilarity`,
+  weight-normalized blend of BPM, Camelot key, genre-set closeness, year, duration, artist diversity,
+  the perceptual axes and embedding cosine. `buildSeedRadio`, `scoreSimilarity`, `explainSimilarity`,
   `genreSetCloseness`, `MISSING_GENRE_FLOOR`, `recentPlayPenalty`, `lastPlayedByRecording`.
   → [radio.md](docs/radio.md)
 - **One recording is one thing**: two files of one track (album + compilation) are two
@@ -431,10 +431,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **One tile, two tones**: `VibeTileComponent` renders the classic landing's vibe row and genre row
   so they cannot drift — `tone`/`wide` carry the whole difference, and the vibe gradients are fixed
   pairs, never `--theme-*`. → [web-ui.md](docs/web-ui.md)
-- **Filter-seeded radio / stations**: the radio route also starts from a `LibraryFilter` with no
-  seed (`buildFilterRadio` + `songFilterWheres` + `stationCentroid`); a genre station is graded, not
-  tag-tested, by `stationAffinity` (`genreDepthScore` × `artistGenreShares`) — a demotion, never an
-  exclusion. → [radio.md](docs/radio.md),
+- **Filter-seeded radio / stations**: the same route starts a vibe with no seed song from a
+  `LibraryFilter` via `buildFilterRadio` + `songFilterWheres` + `stationCentroid`; a genre station is
+  graded not tag-tested by `stationAffinity` (`genreDepthScore` × `artistGenreShares`), a demotion
+  never an exclusion. → [radio.md](docs/radio.md),
   [radio-stations-2026-08.md](docs/measurements/radio-stations-2026-08.md)
 - **Radio calibration + diagnostics**: `RADIO_FORMULA_VERSION` stamps every poll so votes never pool
   across formulas; `dump-radio.ts` reports per-axis breakdowns and the served-window spread;
