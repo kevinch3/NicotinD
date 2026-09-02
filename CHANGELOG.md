@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.67](https://github.com/kevinch3/NicotinD/compare/v0.5.66...v0.5.67) (2026-09-02)
+
+### Bug Fixes
+
+* **player:** keep the karaoke vocal mute on when playback moves to the next track ([#891](https://github.com/kevinch3/NicotinD/issues/891)) ([bef8941](https://github.com/kevinch3/NicotinD/commit/bef894158f73ad1861cb5822fab412fe2ca0c689)), references [#602](https://github.com/kevinch3/NicotinD/issues/602) [#603](https://github.com/kevinch3/NicotinD/issues/603) [#889](https://github.com/kevinch3/NicotinD/issues/889)
 ## [0.5.66](https://github.com/kevinch3/NicotinD/compare/v0.5.65...v0.5.66) (2026-09-02)
 
 ### Bug Fixes
