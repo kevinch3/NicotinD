@@ -85,6 +85,7 @@ export * from '../../../core/src/types/origin';
 
 // Value re-export: role ladder helpers (pure, browser-safe) shared with the API.
 export * from '../../../core/src/roles';
+export * from '../../../core/src/remote-playback';
 
 // Value re-export: version comparison (pure) — shared with the server update-check
 // and the native APK self-update.

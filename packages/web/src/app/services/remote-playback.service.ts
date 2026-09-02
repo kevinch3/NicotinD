@@ -1,25 +1,36 @@
 /**
  * RemotePlaybackService
  *
- * Merges the Zustand remote-playback store and the RemotePlaybackProvider into
- * a single Angular service. Owns all remote-playback state (as signals) and
- * wires up WebSocket subscriptions + reactive effects in `initialize()`.
+ * Owns the remote-playback session state as signals and wires the WebSocket
+ * subscriptions + reactive effects in `initialize()`. Every protocol decision
+ * — who is the audio output, what a frame does to the player, what a local
+ * track change sends — lives in the pure `@nicotind/core` reducer; this
+ * service is the adapter that feeds it signals and applies its effects to
+ * `PlayerService`. The api-side multi-device simulation drives that same
+ * reducer against the real server, which is what keeps it honest (#877).
  *
  * Call `initialize()` once at app bootstrap (e.g. in AppComponent constructor).
  */
 import { Injectable, inject, signal, computed, effect, untracked, DestroyRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  castTo,
+  isAudioOutput,
+  onLocalTrackChanged,
+  reduceServerMessage,
+  type ClientMessage,
+  type PlayerEffect,
+  type RemoteClientContext,
+  type RemoteClientState,
+  type RemoteDevice,
+  type ServerMessage,
+} from '@nicotind/core';
 import { PlaybackWsService } from './playback-ws.service';
 import { PlayerService, Track } from './player.service';
 import { AuthService } from './auth.service';
 import { isTvBuild, resolveTvDefaultedPreference } from '../lib/platform';
 
-export interface RemoteDevice {
-  id: string;
-  name: string;
-  type: string;
-  lastSeen: number;
-}
+export type { RemoteDevice } from '@nicotind/core';
 
 @Injectable({ providedIn: 'root' })
 export class RemotePlaybackService {
@@ -59,17 +70,14 @@ export class RemotePlaybackService {
   readonly remoteDuration = signal(0);
 
   /** Whether this browser tab is the active audio output device */
-  readonly isActiveDevice = computed(() => {
-    const active = this.activeDeviceId();
-    const myId = this.ws.getDeviceId();
-    return !active || active === myId;
-  });
+  readonly isActiveDevice = computed(() =>
+    isAudioOutput(this.activeDeviceId(), this.ws.getDeviceId()),
+  );
 
   // ---------------------------------------------------------------------------
   // Internal bookkeeping
   // ---------------------------------------------------------------------------
 
-  private lateJoinApplied = false;
   private lastRemoteTrackId: string | null = null;
   private previousTrackId: string | null = null;
 
@@ -109,15 +117,104 @@ export class RemotePlaybackService {
     this.remoteDuration.set(duration);
   }
 
+  /** The user picked an output device in the switcher. */
   switchToDevice(id: string): void {
-    this.ws.setActiveDevice(id);
-    // Sync whatever track the controller is currently playing to the target device
-    const currentTrack = this.player.currentTrack();
-    if (currentTrack) {
-      this.ws.sendCommand('SET_TRACK', { track: currentTrack });
+    const r = castTo(this.snapshot(), this.context(), id, this.player.currentTrack());
+    this.post(r.messages);
+    this.commit(r.state);
+    this.apply(r.effects);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reducer plumbing
+  // ---------------------------------------------------------------------------
+
+  private snapshot(): RemoteClientState {
+    return {
+      activeDeviceId: this.activeDeviceId(),
+      devices: this.devices(),
+      remoteIsPlaying: this.remoteIsPlaying(),
+      remotePosition: this.remotePosition(),
+      remotePositionTs: this.remotePositionTs(),
+      remoteDuration: this.remoteDuration(),
+      lastRemoteTrackId: this.lastRemoteTrackId,
+    };
+  }
+
+  private context(): RemoteClientContext {
+    return {
+      myId: this.ws.getDeviceId(),
+      remoteEnabled: this.remoteEnabled(),
+      localTrackId: this.player.currentTrack()?.id ?? null,
+      now: Date.now(),
+    };
+  }
+
+  private commit(state: RemoteClientState): void {
+    this.activeDeviceId.set(state.activeDeviceId);
+    this.devices.set(state.devices);
+    this.remoteIsPlaying.set(state.remoteIsPlaying);
+    this.remotePosition.set(state.remotePosition);
+    this.remotePositionTs.set(state.remotePositionTs);
+    this.remoteDuration.set(state.remoteDuration);
+    this.lastRemoteTrackId = state.lastRemoteTrackId;
+  }
+
+  private apply(effects: PlayerEffect[]): void {
+    for (const e of effects) {
+      switch (e.kind) {
+        case 'play':
+          this.player.play(e.track as Track);
+          break;
+        case 'resume':
+          this.player.resume();
+          break;
+        case 'pause':
+        case 'yield':
+          this.player.pause();
+          break;
+        case 'seek':
+          this.player.seek(e.position);
+          break;
+        case 'next':
+          this.player.playNext();
+          break;
+        case 'prev':
+          this.player.playPrev();
+          break;
+        case 'show-track':
+          // Metadata only: no queue/history churn, no audio load.
+          this.player.setCurrentTrackMetadata(e.track as Track);
+          break;
+        case 'resume-local':
+          this.player.seek(e.position);
+          if (e.playing) this.player.resume();
+          else this.player.pause();
+          break;
+      }
     }
-    // Optimistically update
-    this.activeDeviceId.set(id);
+  }
+
+  private post(messages: ClientMessage[]): void {
+    for (const m of messages) {
+      switch (m.type) {
+        case 'SET_ACTIVE_DEVICE':
+          this.ws.setActiveDevice(m.payload.id);
+          break;
+        case 'COMMAND':
+          this.ws.sendCommand(m.payload.action, { track: m.payload.track });
+          break;
+        case 'STATE_UPDATE':
+          this.ws.sendStateUpdate(m.payload.state);
+          break;
+      }
+    }
+  }
+
+  private handle(msg: ServerMessage): void {
+    const r = reduceServerMessage(this.snapshot(), this.context(), msg);
+    this.commit(r.state);
+    this.apply(r.effects);
   }
 
   // ---------------------------------------------------------------------------
@@ -125,8 +222,6 @@ export class RemotePlaybackService {
   // ---------------------------------------------------------------------------
 
   initialize(): void {
-    const myId = this.ws.getDeviceId();
-
     // --- Auth token effect: connect WS when token exists, disconnect when null ---
     effect(() => {
       const token = this.auth.token();
@@ -153,8 +248,6 @@ export class RemotePlaybackService {
     // --- Track change forwarding ---
     effect(() => {
       const currentTrack = this.player.currentTrack();
-      const activeDeviceId = this.activeDeviceId();
-      const isActive = !activeDeviceId || activeDeviceId === myId;
       const trackId = currentTrack?.id ?? null;
 
       // Skip if no track or track hasn't actually changed
@@ -164,118 +257,18 @@ export class RemotePlaybackService {
       }
       this.previousTrackId = trackId;
 
-      // Scenario A: Controller picks a new song -> send SET_TRACK to the active device.
-      // Echo protection: skip if this track was just applied from an incoming COMMAND/STATE_SYNC.
-      if (!isActive) {
-        if (currentTrack.id !== this.lastRemoteTrackId) {
-          this.ws.sendCommand('SET_TRACK', { track: currentTrack });
-        }
-        return;
-      }
-
-      // Scenario B: Active device changes track locally -> push metadata to server
-      // so controllers see the new song info immediately.
-      this.ws.sendStateUpdate({
-        track: currentTrack,
-        trackId: currentTrack.id,
-        isPlaying: true,
-        position: 0,
-      });
+      const { messages } = untracked(() =>
+        onLocalTrackChanged(this.snapshot(), this.context(), currentTrack),
+      );
+      this.post(messages);
     });
 
-    // --- Subscribe to STATE_SYNC ---
-    this.ws
-      .messages<{
-        state: {
-          activeDeviceId?: string | null;
-          isPlaying?: boolean;
-          track?: Track | null;
-          position?: number;
-          duration?: number;
-        };
-        devices?: RemoteDevice[];
-      }>('STATE_SYNC')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((payload) => {
-        const { state, devices } = payload;
-
-        if (state?.activeDeviceId !== undefined) {
-          this.activeDeviceId.set(state.activeDeviceId ?? null);
-        }
-        if (devices) this.devices.set(devices);
-
-        // Keep the controller's UI in sync with the remote device's playing state
-        if (state?.isPlaying !== undefined) {
-          this.remoteIsPlaying.set(state.isPlaying);
-        }
-
-        // Sync remote progress for seek bar interpolation on controller.
-        // Prefer actual audio duration from PROGRESS_REPORT over track metadata.
-        if (state?.position !== undefined) {
-          const dur = state?.duration ?? state?.track?.duration ?? 0;
-          this.setRemoteProgress(state.position, dur);
-        }
-
-        const amActive = state?.activeDeviceId === myId;
-        const remoteEnabled = this.remoteEnabled();
-
-        // Late-join: if this device is already the active device when it first connects
-        // and the server has a track stored, load it now. Only runs ONCE.
-        if (amActive && state?.track && !this.lateJoinApplied) {
-          this.lateJoinApplied = true;
-          if (remoteEnabled) {
-            this.player.play(state.track);
-            if (state.isPlaying === false) this.player.pause();
-          }
-        }
-
-        // Controller: sync remote track metadata so the player bar shows current info.
-        // Uses setCurrentTrackMetadata to avoid clearing queue/history or loading audio.
-        // Only applies when a proper remote session exists and this device has opted in.
-        const hasActiveSession = typeof state?.activeDeviceId === 'string';
-        if (!amActive && hasActiveSession && remoteEnabled && state?.track) {
-          const localTrack = this.player.currentTrack();
-          if (state.track.id !== localTrack?.id) {
-            this.lastRemoteTrackId = state.track.id;
-            this.player.setCurrentTrackMetadata(state.track);
-          }
-        }
-      });
-
-    // --- Subscribe to DEVICES_SYNC ---
-    this.ws
-      .messages<{ devices: RemoteDevice[] }>('DEVICES_SYNC')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((payload) => {
-        this.devices.set(payload.devices);
-      });
-
-    // --- Subscribe to COMMAND ---
-    // Only executed on the active, opted-in device. PLAY/PAUSE/SEEK/SET_TRACK
-    // are all routed through COMMAND (not STATE_SYNC) to avoid echo loops.
-    this.ws
-      .messages<{ action: string; track?: Track; position?: number }>('COMMAND')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((payload) => {
-        // Re-check at call time to avoid race during device switch
-        const currentActiveId = this.activeDeviceId();
-        if (currentActiveId !== myId) return;
-        const remoteEnabled = this.remoteEnabled();
-        if (!remoteEnabled) return;
-
-        const { action } = payload;
-        if (action === 'PLAY') this.player.resume();
-        if (action === 'PAUSE') this.player.pause();
-        if (action === 'SEEK' && payload.position !== undefined) {
-          this.player.seek(payload.position);
-        }
-        if (action === 'SET_TRACK' && payload.track) {
-          this.lastRemoteTrackId = payload.track.id;
-          this.player.play(payload.track);
-        }
-        if (action === 'NEXT') this.player.playNext();
-        if (action === 'PREV') this.player.playPrev();
-      });
+    for (const type of ['STATE_SYNC', 'DEVICES_SYNC', 'COMMAND'] as const) {
+      this.ws
+        .messages<ServerMessage['payload']>(type)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe((payload) => this.handle({ type, payload } as ServerMessage));
+    }
   }
 
   reset(): void {
@@ -286,7 +279,6 @@ export class RemotePlaybackService {
     this.remotePositionTs.set(0);
     this.remoteDuration.set(0);
     this.disabledReason.set(null);
-    this.lateJoinApplied = false;
     this.lastRemoteTrackId = null;
     this.previousTrackId = null;
   }

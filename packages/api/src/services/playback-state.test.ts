@@ -5,7 +5,7 @@ describe('PlaybackStateManager', () => {
   let manager: PlaybackStateManager;
 
   beforeEach(() => {
-    manager = new PlaybackStateManager();
+    manager = new PlaybackStateManager({ activeGraceMs: 10 });
   });
 
   describe('getState', () => {
@@ -147,13 +147,37 @@ describe('PlaybackStateManager', () => {
       expect(handler).toHaveBeenCalled();
     });
 
-    it('resets activeDeviceId and isPlaying when active device disconnects', () => {
+    // Issue #877: a 1s reconnect blip must not end the cast, so losing the
+    // active device starts a grace instead of releasing the session outright.
+    it('keeps the active device through the grace, then resets activeDeviceId and isPlaying', async () => {
       manager.updateState({ activeDeviceId: 'd1', isPlaying: true });
       manager.registerDevice({ id: 'd1', name: 'Test', type: 'web' });
       manager.unregisterDevice('d1');
+      expect(manager.getState().activeDeviceId).toBe('d1');
+      expect(manager.getDevices().map((d) => d.id)).toEqual(['d1']);
+      await Bun.sleep(25);
       const state = manager.getState();
       expect(state.activeDeviceId).toBeNull();
       expect(state.isPlaying).toBe(false);
+      expect(manager.getDevices()).toHaveLength(0);
+    });
+
+    it('a re-register within the grace keeps the session', async () => {
+      manager.updateState({ activeDeviceId: 'd1', isPlaying: true });
+      manager.registerDevice({ id: 'd1', name: 'Test', type: 'web' });
+      manager.unregisterDevice('d1');
+      manager.registerDevice({ id: 'd1', name: 'Test', type: 'web' });
+      await Bun.sleep(25);
+      expect(manager.getState().activeDeviceId).toBe('d1');
+      expect(manager.getState().isPlaying).toBe(true);
+    });
+
+    it('a device that opts out of remote control releases the session at once', () => {
+      manager.updateState({ activeDeviceId: 'd1', isPlaying: true });
+      manager.registerDevice({ id: 'd1', name: 'Test', type: 'web' });
+      manager.updateDevice('d1', { remoteEnabled: false });
+      expect(manager.getState().activeDeviceId).toBeNull();
+      expect(manager.getState().isPlaying).toBe(false);
     });
 
     it('does not reset playback when non-active device disconnects', () => {
@@ -171,12 +195,14 @@ describe('PlaybackStateManager', () => {
       expect(manager.getDevices()).toHaveLength(0);
     });
 
-    it('emits state_update when resetting active device', () => {
+    it('emits state_update when the grace expires and the active device is released', async () => {
       manager.updateState({ activeDeviceId: 'd1', isPlaying: true });
       manager.registerDevice({ id: 'd1', name: 'Test', type: 'web' });
       const handler = mock(() => {});
       manager.on('state_update', handler);
       manager.unregisterDevice('d1');
+      expect(handler).not.toHaveBeenCalled();
+      await Bun.sleep(25);
       expect(handler).toHaveBeenCalled();
     });
   });
@@ -274,7 +300,7 @@ describe('PlaybackStateManager', () => {
       expect(remaining[0].id).toBe('d2');
     });
 
-    it('resets activeDeviceId when stale active device is cleaned up', () => {
+    it('resets activeDeviceId once a stale active device has been gone for the grace', async () => {
       manager.registerDevice({ id: 'd1', name: 'Active', type: 'web' });
       manager.updateState({ activeDeviceId: 'd1', isPlaying: true });
 
@@ -282,6 +308,8 @@ describe('PlaybackStateManager', () => {
       device.lastSeen = Date.now() - 100_000;
 
       manager.cleanupStaleDevices();
+      expect(manager.getState().activeDeviceId).toBe('d1');
+      await Bun.sleep(25);
       expect(manager.getState().activeDeviceId).toBeNull();
       expect(manager.getState().isPlaying).toBe(false);
     });

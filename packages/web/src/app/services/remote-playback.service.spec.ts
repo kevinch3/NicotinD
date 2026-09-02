@@ -3,7 +3,8 @@ import { RemotePlaybackService } from './remote-playback.service';
 import { PlaybackWsService } from './playback-ws.service';
 import { PlayerService } from './player.service';
 import { AuthService } from './auth.service';
-import { EMPTY } from 'rxjs';
+import { EMPTY, Subject } from 'rxjs';
+import { filter, map } from 'rxjs/operators';
 import * as platform from '../lib/platform';
 
 // `remoteEnabled`'s initial value is computed once, at class-field-initialization
@@ -194,5 +195,134 @@ describe('RemotePlaybackService TV default', () => {
     vi.mocked(platform.isTvBuild).mockReturnValue(false);
     const service = inject();
     expect(service.remoteEnabled()).toBe(true);
+  });
+});
+
+describe('RemotePlaybackService session behaviour (#877)', () => {
+  const t1 = { id: 't1', title: 'One', artist: 'A' };
+  const t2 = { id: 't2', title: 'Two', artist: 'A' };
+  const t3 = { id: 't3', title: 'Three', artist: 'A' };
+  let service: RemotePlaybackService;
+  let player: PlayerService;
+  let incoming: Subject<{ type: string; payload: unknown }>;
+  let ws: {
+    updateDevice: ReturnType<typeof vi.fn>;
+    connect: ReturnType<typeof vi.fn>;
+    disconnect: ReturnType<typeof vi.fn>;
+    getDeviceId: ReturnType<typeof vi.fn>;
+    setActiveDevice: ReturnType<typeof vi.fn>;
+    sendCommand: ReturnType<typeof vi.fn>;
+    sendStateUpdate: ReturnType<typeof vi.fn>;
+    clearPersistentFailure: ReturnType<typeof vi.fn>;
+    persistentFailure: () => string | null;
+    messages: (type: string) => unknown;
+  };
+
+  const emit = (type: string, payload: unknown) => {
+    incoming.next({ type, payload });
+    TestBed.flushEffects();
+  };
+  const sync = (state: Record<string, unknown>, devices?: unknown[]) =>
+    emit('STATE_SYNC', { state, ...(devices && { devices }) });
+
+  beforeEach(() => {
+    storageStub.clear();
+    storageStub.setItem('nicotind_remote_enabled', 'true');
+    incoming = new Subject();
+    ws = {
+      updateDevice: vi.fn(),
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      getDeviceId: vi.fn(() => 'me'),
+      setActiveDevice: vi.fn(),
+      sendCommand: vi.fn(),
+      sendStateUpdate: vi.fn(),
+      clearPersistentFailure: vi.fn(),
+      persistentFailure: () => null,
+      messages: (type: string) =>
+        incoming.pipe(
+          filter((m) => m.type === type),
+          map((m) => m.payload),
+        ),
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        RemotePlaybackService,
+        PlayerService,
+        AuthService,
+        { provide: PlaybackWsService, useValue: ws },
+      ],
+    });
+    service = TestBed.inject(RemotePlaybackService);
+    player = TestBed.inject(PlayerService);
+    TestBed.runInInjectionContext(() => service.initialize());
+    TestBed.flushEffects();
+  });
+
+  it('casting to another device pauses the local player, not just its element', () => {
+    player.play(t1);
+    TestBed.flushEffects();
+    service.switchToDevice('tv');
+    expect(player.isPlaying()).toBe(false);
+    expect(ws.setActiveDevice).toHaveBeenCalledWith('tv');
+    expect(ws.sendCommand).toHaveBeenCalledWith('SET_TRACK', { track: t1 });
+  });
+
+  it('the session ending never wakes the former controller', () => {
+    player.play(t1);
+    TestBed.flushEffects();
+    service.switchToDevice('tv');
+    sync({ activeDeviceId: 'tv', isPlaying: true, position: 5, track: t1 });
+    sync({ activeDeviceId: null, isPlaying: false, position: 0, track: t1 });
+    expect(service.activeDeviceId()).toBeNull();
+    expect(service.isActiveDevice()).toBe(true);
+    expect(player.isPlaying()).toBe(false);
+  });
+
+  it('a command executes only while this device is the output', () => {
+    sync({ activeDeviceId: 'me' });
+    emit('COMMAND', { action: 'SET_TRACK', track: t2 });
+    expect(player.currentTrack()?.id).toBe('t2');
+    expect(player.isPlaying()).toBe(true);
+
+    sync({ activeDeviceId: 'tv' });
+    expect(player.isPlaying()).toBe(false);
+    emit('COMMAND', { action: 'PLAY' });
+    expect(player.isPlaying()).toBe(false);
+  });
+
+  it('a reconnect snapshot re-syncs the output device to the server track', () => {
+    sync({ activeDeviceId: 'me' });
+    emit('COMMAND', { action: 'SET_TRACK', track: t1 });
+    sync({ activeDeviceId: 'me', track: t2, position: 30, isPlaying: true }, [
+      { id: 'me', name: 'Me', type: 'web', lastSeen: 0 },
+    ]);
+    expect(player.currentTrack()?.id).toBe('t2');
+    expect(player.seekTo()).toBe(30);
+    expect(player.isPlaying()).toBe(true);
+  });
+
+  it('the controller mirrors the remote track without playing it', () => {
+    sync({ activeDeviceId: 'tv', isPlaying: true, position: 3, track: t2 });
+    expect(player.currentTrack()?.id).toBe('t2');
+    expect(player.isPlaying()).toBe(false);
+    expect(service.remoteIsPlaying()).toBe(true);
+  });
+
+  it('a mirrored track is not echoed back; a locally chosen one is forwarded', () => {
+    sync({ activeDeviceId: 'tv', isPlaying: true, position: 3, track: t2 });
+    expect(ws.sendCommand).not.toHaveBeenCalledWith('SET_TRACK', { track: t2 });
+    player.play(t3);
+    TestBed.flushEffects();
+    expect(ws.sendCommand).toHaveBeenCalledWith('SET_TRACK', { track: t3 });
+  });
+
+  it('taking the session back resumes locally at the remote position', () => {
+    sync({ activeDeviceId: 'tv', isPlaying: true, position: 40, track: t1 });
+    service.switchToDevice('me');
+    expect(ws.setActiveDevice).toHaveBeenCalledWith('me');
+    expect(service.isActiveDevice()).toBe(true);
+    expect(player.isPlaying()).toBe(true);
+    expect(player.seekTo()).toBeGreaterThanOrEqual(40);
   });
 });

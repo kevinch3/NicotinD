@@ -14,6 +14,8 @@ interface WsMessage {
   payload: unknown;
 }
 
+const HEARTBEAT_INTERVAL_MS = 30_000;
+
 @Injectable({ providedIn: 'root' })
 export class PlaybackWsService {
   private server = inject(ServerConfigService);
@@ -21,8 +23,9 @@ export class PlaybackWsService {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectDelay = 1000;
-  private didOpenSuccessfully = false;
   private consecutiveFailures = 0;
+  /** Beats sent since the last HEARTBEAT_ACK — the half-open socket detector. */
+  private unansweredBeats = 0;
   readonly persistentFailure = signal<string | null>(null);
 
   private readonly messageSubject = new Subject<WsMessage>();
@@ -143,14 +146,24 @@ export class PlaybackWsService {
     const token = localStorage.getItem('nicotind_token');
     if (!token) return;
 
+    // CONNECTING counts as connected: the boot-time token refresh re-runs the
+    // connect effect within milliseconds of the first connect, and a second
+    // socket would register the same device twice (#877).
+    const state = this.ws?.readyState;
+    if (state === WebSocket.CONNECTING || state === WebSocket.OPEN) return;
+
     const url = this.server.wsUrl(`/api/ws/playback?token=${encodeURIComponent(token)}`);
+    const socket = new WebSocket(url);
+    this.ws = socket;
+    let opened = false;
 
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
-    this.didOpenSuccessfully = false;
-    this.ws = new WebSocket(url);
-
-    this.ws.onopen = () => {
-      this.didOpenSuccessfully = true;
+    // Every handler closes over ITS socket and checks it is still the live
+    // one: after `disconnect()` (or a superseded connect) the old socket's
+    // late `close` used to schedule a reconnect, count as a failure and clear
+    // the live socket's heartbeat (#877).
+    socket.onopen = () => {
+      if (socket !== this.ws) return;
+      opened = true;
       this.consecutiveFailures = 0;
       this.persistentFailure.set(null);
       this.reconnectDelay = 1000;
@@ -166,15 +179,14 @@ export class PlaybackWsService {
           ),
         },
       });
-      this.heartbeatTimer = setInterval(() => {
-        this.send({ type: 'HEARTBEAT', payload: {} });
-      }, 30_000);
+      this.startHeartbeat(socket);
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (typeof data === 'object' && data !== null && 'type' in data && 'payload' in data) {
+          if (data.type === 'HEARTBEAT_ACK') this.unansweredBeats = 0;
           this.messageSubject.next({ type: String(data.type), payload: data.payload });
         }
       } catch {
@@ -182,17 +194,16 @@ export class PlaybackWsService {
       }
     };
 
-    this.ws.onerror = () => {
+    socket.onerror = () => {
       // Force close so onclose fires and triggers reconnect
-      this.ws?.close();
+      socket.close();
     };
 
-    this.ws.onclose = () => {
-      if (this.heartbeatTimer) {
-        clearInterval(this.heartbeatTimer);
-        this.heartbeatTimer = null;
-      }
-      if (!this.didOpenSuccessfully) {
+    socket.onclose = () => {
+      if (socket !== this.ws) return;
+      this.ws = null;
+      this.stopHeartbeat();
+      if (!opened) {
         this.consecutiveFailures++;
         if (this.consecutiveFailures >= 5) {
           this.persistentFailure.set(
@@ -208,15 +219,40 @@ export class PlaybackWsService {
     };
   }
 
-  disconnect(): void {
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+  /** A beat every 30s, each answered by HEARTBEAT_ACK. A beat still
+   *  unanswered when the next one is due means the socket is half-open (a
+   *  proxy or Wi-Fi dropped the TCP path without telling us): close it so the
+   *  normal reconnect takes over, instead of reporting into the void until
+   *  TCP gives up minutes later (#877). */
+  private startHeartbeat(socket: WebSocket): void {
+    this.stopHeartbeat();
+    this.unansweredBeats = 0;
+    this.heartbeatTimer = setInterval(() => {
+      if (this.unansweredBeats > 0) {
+        this.unansweredBeats = 0;
+        socket.close();
+        return;
+      }
+      this.unansweredBeats++;
+      this.send({ type: 'HEARTBEAT', payload: {} });
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  private stopHeartbeat(): void {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
-    this.ws?.close();
+  }
+
+  disconnect(): void {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.stopHeartbeat();
+    // Detach before closing: the socket's own `close` handler then sees it is
+    // no longer the live socket and neither reconnects nor counts a failure.
+    const socket = this.ws;
     this.ws = null;
-    this.didOpenSuccessfully = false;
+    socket?.close();
     this.consecutiveFailures = 0;
     this.persistentFailure.set(null);
   }
@@ -254,6 +290,5 @@ export class PlaybackWsService {
   clearPersistentFailure(): void {
     this.persistentFailure.set(null);
     this.consecutiveFailures = 0;
-    this.didOpenSuccessfully = false;
   }
 }

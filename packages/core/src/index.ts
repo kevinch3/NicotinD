@@ -33,6 +33,10 @@ export * from './hunt-queries.js';
 // Pairing / TV sign-in code alphabet (shared by the API minter + web scanner)
 export * from './pairing-code.js';
 
+// Remote playback client decisions (pure) — shared by the web service and the
+// api-side multi-device simulation (#877).
+export * from './remote-playback.js';
+
 // MusicBrainz id shape (shared by the curator route + tag-sourced lookups)
 export * from './mbid.js';
 

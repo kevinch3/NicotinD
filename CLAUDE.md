@@ -435,8 +435,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `/poll/:token` wizard, previewed via short-lived read-only share JWTs, distilled by
   `export-radio-poll.ts`. → [radio-eval-polls.md](docs/radio-eval-polls.md)
 - **Remote playback (cast, Spotify-Connect-style)**: per-user `PlaybackStateManager` broadcasts state
-  and commands over `GET /api/ws/playback`; each tab is a device, and `heartbeat` re-registers a
-  pruned device. → [remote-playback.md](docs/remote-playback.md)
+  and commands over `GET /api/ws/playback` through `createPlaybackHub` (connections keyed by raw
+  socket, `activeGraceMs` on loss); the client's decisions are the pure core `reduceServerMessage` /
+  `castTo`, shared with the multi-device simulation. → [remote-playback.md](docs/remote-playback.md)
 - **Hardware cast (Chromecast + DLNA) — designed, NOT built**: no route, no table, no dependency. Read
   the doc as the proposal it is. → [cast-integration.md](docs/cast-integration.md)
 - **Auto-preserve queue (PWA lock-screen resilience)**: `AutoPreserveCoordinator` keeps the next-N
