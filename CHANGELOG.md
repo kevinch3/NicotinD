@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.70](https://github.com/kevinch3/NicotinD/compare/v0.5.69...v0.5.70) (2026-09-02)
+
+### Bug Fixes
+
+* **processing:** decide landing on live policy, not the batch's opening snapshot ([#902](https://github.com/kevinch3/NicotinD/issues/902)) ([7d2e637](https://github.com/kevinch3/NicotinD/commit/7d2e637ef5eb18219abbf47ea6ac0df0af35f3cb)), closes [#901](https://github.com/kevinch3/NicotinD/issues/901), references [#687](https://github.com/kevinch3/NicotinD/issues/687)
 ## [0.5.69](https://github.com/kevinch3/NicotinD/compare/v0.5.68...v0.5.69) (2026-09-02)
 
 ### Bug Fixes
