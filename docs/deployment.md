@@ -273,6 +273,21 @@ behaviour":
   a documented, commented-out override in `docker-compose.gpu.yml`; A/B it
   against a plain restart before trusting it in production.
 
+### The separator sidecar image
+
+`ghcr.io/kevinch3/nicotind-separator`, same tag semantics, published by the
+`docker-separator` job — the karaoke vocal-separation sidecar
+([vocal-separation.md](vocal-separation.md), issue #603). **GPU-only by contract**, so
+unlike the analysis image the published one *is* the GPU build (torch from the cu126
+index — the legacy lane that still ships Pascal `sm_60` kernels, which the cc 6.1 P4000 runs — plus a build-time
+strict load of the baked checkpoint), and it is **pulled, not built**, by the
+`docker-compose.gpu.yml` overlay, which is the only compose file that names it. A CPU
+deploy never pulls it: without CUDA it would only ever report `unavailable`, and the API
+keeps the basic center-cancel filter. Runtime knobs are commented in the overlay
+(`SEPARATOR_IDLE_RELEASE_SEC`, `SEPARATOR_MAX_TRACK_SEC`, `SEPARATOR_ALLOW_CPU`). Idle
+release here *stops the worker process*, so `nvidia-smi` shows 0 MiB for this container
+between karaoke sessions and ~3.0 GB during one.
+
 ### Acquisition runtime toggle (issue #235)
 
 `config.acquisitionEnabled` shipped **env-only**, read once at boot, so turning

@@ -1,4 +1,5 @@
-# Opt-in GPU overlay for the analysis sidecar.
+# Opt-in GPU overlay: the analysis sidecar on the GPU, plus the GPU-only
+# vocal-separation sidecar (issue #603).
 #
 # This file is NOT auto-merged by `docker compose` (only docker-compose.yml and
 # docker-compose.override.yml are). Enable it explicitly, either per-command:
@@ -24,7 +25,17 @@
 # inject the GPU — either legacy mode with `nvidia-persistenced` running, or the
 # recommended CDI mode. The published analysis image is CPU-only, so this overlay
 # also switches the service to build from source with `GPU=1`.
+#
+# The separator is different: it has no meaningful CPU variant (RTF 4.1x on CPU,
+# ~14 min per song), so the published image IS the GPU build and this overlay
+# pulls it. It lives only here, never in docker-compose.yml — a CPU deploy must
+# not pull a multi-GB torch image to run a permanently-`unavailable` container.
 services:
+  nicotind:
+    environment:
+      # Read by the API from the karaoke feature onward; harmless before that.
+      NICOTIND_SEPARATOR_URL: http://separator:8000
+
   analysis:
     build:
       context: packages/analysis
@@ -62,3 +73,35 @@ services:
     #   # (issue #641, docs/audio-descriptors.md). CPU budget, not GPU: ~5 s
     #   # per track at 180, ~3 s at 90. Non-positive/garbage → default 180.
     #   ANALYSIS_DESCRIPTOR_SECONDS: "180"
+
+  # Vocal-separation sidecar (packages/separator): BS-RoFormer instrumental
+  # stems, on demand, for the karaoke vocal mute. GPU-only by contract — reports
+  # `unavailable` without CUDA rather than taking the 14-minute CPU path. No
+  # `depends_on` in either direction: the API degrades to the basic center-cancel
+  # filter when this is down (docs/vocal-separation.md).
+  separator:
+    image: ghcr.io/kevinch3/nicotind-separator:${NICOTIND_VERSION:-release}
+    user: "1000:1000"
+    volumes:
+      - music:/data/music:ro
+    environment:
+      MUSIC_DIR: /data/music
+      # Seconds of no /separate calls before the worker process (model + CUDA
+      # context, ~3.0 GB VRAM) is stopped; the next call respawns it (~10 s cold
+      # start). 0 or negative disables release.
+      # SEPARATOR_IDLE_RELEASE_SEC: "900"
+      # Longest track the sidecar will separate; longer ones get a 422 before
+      # any GPU work. 900 s is ~4 min of GPU at the measured RTF.
+      # SEPARATOR_MAX_TRACK_SEC: "900"
+      # Never set in prod: allows the 14-minute CPU path for local smoke tests.
+      # SEPARATOR_ALLOW_CPU: "1"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - internal
+    restart: unless-stopped

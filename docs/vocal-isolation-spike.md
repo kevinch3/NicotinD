@@ -178,6 +178,12 @@ So a 3.5-minute song costs **~14 minutes of CPU** and ~2.7 GB RAM. Consequences:
 - **Pascal (cc 6.1) constrains the stack**: CUDA 13 / current torch builds drop `sm_61`, so
   this must be pinned to a cu121-era torch (2.4.1 here), exactly as the previous spike
   found. That pin is a deployment fact, not a preference.
+  _Corrected 2026-09-02:_ the drop is specific to PyTorch's **CUDA 12.8+** wheels (torch
+  2.8 onward); the **cu126** wheels stay as the legacy lane and carry Pascal `sm_60` kernels
+  through torch 2.13 (SASS is forward-compatible within a major, so the cc 6.1 card runs them —
+  there is no `sm_61` entry), and the prod driver (580) runs them. The shipped image pins
+  `torch==2.13.0+cu126` and asserts the arch at build — see
+  [vocal-separation.md](vocal-separation.md).
 - **The card had no room — now it does (issue #605, fixed).** Measured on `kpc`: the
   sidecar reported `{"loaded": false}` (idle release _had_ fired) while still holding
   **7,626 MiB of 8,192 MiB at 0 % utilisation**. Root-causing that turned out to be the
@@ -263,9 +269,10 @@ v2/bin/pip install bs-roformer==0.4.1
 
 Checkpoint + config:
 `huggingface_hub.hf_hub_download('anvuew/BS-RoFormer', 'bs_roformer_ft1_anvuew_sdr_12.55.ckpt')`
-and `config.yaml` from the same repo — note it needs `yaml.UnsafeLoader` (it uses
-`!!python/tuple`), and the `model` block must be filtered to the keys
-`BSRoformer.__init__` actually accepts.
+and `config.yaml` from the same repo — it uses `!!python/tuple`, which one constructor on
+`yaml.SafeLoader` covers (no `UnsafeLoader` needed), and the `model` block must be
+filtered to the keys `BSRoformer.__init__` actually accepts. Both live in
+`packages/separator/app/model_config.py` now.
 
 **The GPU measurement is done** (§5). It was run on `kpc` like this — note the card must
 be freed first, because the analysis sidecar pins it even when idle (#605):

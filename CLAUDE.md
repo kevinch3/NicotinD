@@ -140,9 +140,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Catalog (metadata-driven) search**: `CatalogService` returns artist/album cards from
   Lidarr/MusicBrainz scoped to the matched artist; a catalog miss opens the folder-first network lane,
   with full-discography load opt-in. → [album-hunt.md](docs/album-hunt.md)
-- **URL acquisition (yt-dlp / spotdl / archive)**: `POST /api/acquire` routes a URL to a
-  `resolve`-capable addon via `resolveAddonForUrl` — bundled (`LocalAddonTransport`) or external,
-  matched by `urlPatterns`. `resolveAcquireAs`, `findInFlightAddonUrlJob`, `applyAddonOutcome`,
+- **URL acquisition (yt-dlp / spotdl / archive)**: `POST /api/acquire` routes a URL via
+  `resolveAddonForUrl` to a `resolve`-capable addon, bundled (`LocalAddonTransport`) or external,
+  matched by `urlPatterns`; `resolveAcquireAs`, `findInFlightAddonUrlJob`, `applyAddonOutcome`,
   `sanitizeAddonError`.
   → [download-pipeline.md](docs/download-pipeline.md),
   [acquisition-addon-protocol.md](docs/acquisition-addon-protocol.md)
@@ -346,15 +346,18 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   (`landed_at IS NULL`, hidden from listings) until its required steps finish; a per-task `gates` flag
   intersected with availability is the required set. `graduatePending`, `scanIncremental`,
   `kickEager`, `albumLoadFailureFor`. → [library-processing.md](docs/library-processing.md)
-- **A pool that cannot advance**: an un-ledgered failure mode plus a fixed pool order
-  livelocks a `LIMIT`-bounded task on its own head; every un-ledgered path stamps
-  `noteAnalysisAttempt` and every song pool orders on `leastRecentlyAttemptedOrderSql`.
-  Tag-sourced ids are shape-checked with core `isMbidShape` before any batch call.
+- **A pool that cannot advance**: an un-ledgered failure plus a fixed pool order livelocks a
+  `LIMIT`-bounded task on its own head: every un-ledgered path stamps `noteAnalysisAttempt`,
+  every song pool orders on `leastRecentlyAttemptedOrderSql`, and tag-sourced ids pass core
+  `isMbidShape` before any batch call.
   → [library-processing.md](docs/library-processing.md), [popularity.md](docs/popularity.md)
 - **Perceptual audio features (no LLM)**: energy/loudness via ffmpeg ebur128; danceability, valence,
   mood, vocals, acousticness and cached embeddings from the Essentia sidecar; all written to file tags
   and COALESCE-preserved columns. `library_embeddings`, `embedding-store.ts`.
   → [audio-ml-enrichment.md](docs/audio-ml-enrichment.md), [radio.md](docs/radio.md)
+- **Vocal-separation sidecar (GPU-only)**: `packages/separator/` mirrors the analysis sidecar;
+  `SeparationWorker`, `chunk_windows`, `arch_supported`, `ensure_sdp_kernel_shim`.
+  → [vocal-separation.md](docs/vocal-separation.md)
 - **Audio descriptors — timbre / groove / spectral balance**: sidecar `/descriptors` + store, phase 1
   of the radio-axis work. → [audio-descriptors.md](docs/audio-descriptors.md)
 
@@ -488,19 +491,19 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `sanitizeReturnUrl` validates it; an already-logged-in share link resolves in-app without burning
   the public token. → [design-patterns.md](docs/design-patterns.md), [web-ui.md](docs/web-ui.md)
 - **Public-signup kill-switch**: default-closed `registrationEnabled`; `RegistrationToggle` +
-  `GET`/`PUT /api/admin/registration` back an Admin → User Management switch. Unlike acquisition,
-  `NICOTIND_REGISTRATION` pins by *presence* (`resolveRegistrationEnabled`), so setting it either way
-  renders the toggle read-only. `registrationBlocked` keeps the first-user bootstrap exempt.
+  `GET`/`PUT /api/admin/registration` back the Admin → User Management switch. Unlike acquisition,
+  `NICOTIND_REGISTRATION` pins by *presence* (`resolveRegistrationEnabled`): set either way, the
+  toggle is read-only. `registrationBlocked` exempts the first-user bootstrap.
   → [deployment.md](docs/deployment.md)
 - **Device pairing (QR link) + remote access**: a 5-minute single-use token rendered as a QR link plus
   a printed fallback code; `parseApproveCode` and core `pairing-code.ts` `isPairingCodeShape` keep the
   minter and validator from drifting; `paired_devices` rows are revocable at refresh. Tailscale Funnel
   publishes the loopback backend. → [device-pairing.md](docs/device-pairing.md)
-- **MCP agent access**: external agents curate via `/api/mcp`, a revocable `agent_tokens` bearer
-  capped at refiner (`AGENT_EFFECTIVE_ROLE`). `checkToolAccess` gates scope + destructive confirm;
-  `dispatchTool` audits writes. Shared mutation modules (`library-deletion.ts` …
+- **MCP agent access**: external agents curate via `/api/mcp` with a revocable `agent_tokens`
+  bearer capped at refiner (`AGENT_EFFECTIVE_ROLE`); `checkToolAccess` gates scope + destructive
+  confirm, `dispatchTool` audits writes; shared mutation modules (`library-deletion.ts` …
   `album-cover-mutate.ts`) back HTTP and MCP alike; `gatherCandidates` + `gatherSongCandidates`
-  power online lookup. → [mcp-agent.md](docs/mcp-agent.md)
+  do online lookup. → [mcp-agent.md](docs/mcp-agent.md)
 - **Curator origin + rare-genre tools**: `get_artist` returns origin *and* mbid (a wrong origin is
   usually an inherited wrong MBID); `set_artist_origin` writes the shared `mutateArtistOrigin`, and
   `get_rare_genres` (`rareGenres`) surfaces low-cardinality primary genres as mistag candidates.
@@ -512,9 +515,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **`identify_song` — identity from the audio**: `identifySongById` is fpcalc + AcoustID and nothing
   else, batchable where `lookup_song_metadata`'s fan-out is not; typed outcome, suggests only,
   carries no genre. → [mcp-agent.md](docs/mcp-agent.md)
-- **WebMCP alignment (proposed — not yet implemented)**: `MCP_TOOLS` is already the shape Chrome's
-  WebMCP registration takes; the plan promotes host exposure to a declared field and adds a flagged
-  browser host owning only session tools. Nothing destructive is ever browser-exposed, and client-side WebGPU/WebNN stays NO-GO.
+- **WebMCP alignment (proposed — not yet implemented)**: `MCP_TOOLS` already has the shape Chrome's
+  WebMCP registration takes; the plan declares host exposure per tool and adds a flagged browser
+  host for session tools only — nothing destructive, and client-side WebGPU/WebNN stays NO-GO.
   → [webmcp-alignment.md](docs/webmcp-alignment.md),
   [client-side-ml-feasibility.md](docs/client-side-ml-feasibility.md)
 - **Presence tracking + last connection (admin-only)**: in-memory `PresenceService` from 60s
@@ -568,10 +571,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   tools live in Admin, and each addon renders through the generic `PluginCardComponent` +
   `AddonStatusPanelComponent`. → [admin-settings-decoupling.md](docs/admin-settings-decoupling.md),
   [plugins.md](docs/plugins.md)
-- **Admin is one panel component per section**: `admin.component.html` is an ordered list of tags,
-  so reordering is a one-line move; each panel owns its own `<app-settings-group>` (the `groupId`
-  is a localStorage key *and* an e2e selector) and injects `ServiceReviewService` rather than
-  taking inputs. `AcquisitionSettingsService` carries the one cross-section signal.
+- **Admin is one panel component per section**: `admin.component.html` is an ordered list of tags
+  (reorder = one line); each panel owns its `<app-settings-group>` (`groupId` = localStorage key
+  *and* e2e selector) and injects `ServiceReviewService` rather than taking inputs;
+  `AcquisitionSettingsService` is the one cross-section signal.
   → [admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
 - **ServiceReview (one resource, one polling lifecycle)**: `GET /api/admin/review` replaces the Admin
   page's N loaders; `ServiceReviewService` owns one visibility-paused interval and every sub-section
