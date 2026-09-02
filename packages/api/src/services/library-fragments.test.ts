@@ -43,6 +43,21 @@ function addAlbum(
   );
 }
 
+/** Only needed by the `missplit_album` fixture below, which is track-number-corroborated. */
+function addSong(
+  db: Database,
+  id: string,
+  albumId: string,
+  artistId: string,
+  track: number | null = null,
+): void {
+  db.run(
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, track, path, synced_at)
+     VALUES (?, ?, 't', 'a', ?, ?, ?, 1)`,
+    [id, albumId, artistId, track, `/m/${id}.opus`],
+  );
+}
+
 describe('detectDuplicateAlbums', () => {
   let db: Database;
   beforeEach(() => {
@@ -414,7 +429,10 @@ describe('checkFragments', () => {
       songCount: 18,
       classification: 'single',
     });
-    // 3) mis-split — 4 one-track singles sharing a normalized title.
+    // 3) mis-split — 4 one-track singles sharing a normalized title, each keeping
+    //    its original release track number (the corroboration `checkMisSplitAlbums`
+    //    requires — issues #875/#881).
+    const tracks = [92, 97, 99, 101];
     for (let i = 0; i < 4; i++) {
       const aid = `m${i}`;
       addArtist(db, aid, `${100 + i}`);
@@ -426,6 +444,7 @@ describe('checkFragments', () => {
         songCount: 1,
         classification: 'single',
       });
+      addSong(db, `mals${i}`, `mal${i}`, aid, tracks[i]!);
     }
     const r = checkFragments(db);
     expect(r.ok).toBe(false);
