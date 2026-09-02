@@ -160,6 +160,25 @@
           </button>
         </div>
 
+        <!-- Octave alternatives (#876). A beat tracker has to pick a metrical
+             level and 152 vs 76 is a perceptual call, so the other readings are
+             offered rather than re-guessed. Tapping one applies it. -->
+        @if (bpmAlternatives().length > 0) {
+          <div class="flex gap-1.5 items-center flex-wrap pl-[4.5rem]" data-testid="bpm-candidates">
+            <span class="text-xs text-theme-muted">Or:</span>
+            @for (candidate of bpmAlternatives(); track candidate) {
+              <button
+                class="px-2 py-0.5 rounded-full bg-theme-surface-2 hover:bg-theme-hover text-xs disabled:opacity-50"
+                [disabled]="applyingBpm()"
+                (click)="chooseBpm(candidate)"
+                data-testid="bpm-candidate"
+              >
+                {{ candidate }}
+              </button>
+            }
+          </div>
+        }
+
         <!-- Genre: full set as chips, primary first/highlighted. For a curator
              the chips are also the editor (issue #684): X removes, drag
              reorders (position 0 is the primary), and "+ Add" appends. -->

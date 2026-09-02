@@ -83,6 +83,18 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly bpm = signal<number | null>(null);
   readonly bpmSource = signal<'tag' | 'analyzed' | null>(null);
   readonly analyzing = signal(false);
+  // Alternative metrical levels from the last analysis (#876). Half vs double
+  // tempo is a perceptual call, so the curator picks rather than the detector
+  // guessing again — a re-run of a deterministic extractor returns the same
+  // number forever.
+  readonly bpmCandidates = signal<number[]>([]);
+  readonly applyingBpm = signal(false);
+  /** Candidates worth showing: curator-only, and never the value already set. */
+  readonly bpmAlternatives = computed(() => {
+    if (!this.canCurate()) return [];
+    const current = this.bpm();
+    return this.bpmCandidates().filter((c) => Math.round(c) !== current);
+  });
   readonly genreOverride = signal<string | null>(null);
   readonly genreSuggestion = signal<GenreSuggestion | null>(null);
   readonly verifyingGenre = signal(false);
@@ -282,13 +294,33 @@ export class TrackInfoSheetComponent implements OnInit {
   analyze(): void {
     if (this.analyzing()) return;
     this.analyzing.set(true);
-    this.api.analyzeSong(this.songId()).subscribe({
+    // A value already on screen means the curator is asking for a *different*
+    // reading, so force past the stored/tag short-circuits. Without this the
+    // button was inert and a wrong BPM could never be dislodged (#876).
+    const force = this.bpm() !== null;
+    this.api.analyzeSong(this.songId(), force).subscribe({
       next: (r) => {
         this.bpm.set(r.bpm);
         this.bpmSource.set(r.source);
+        this.bpmCandidates.set(r.candidates ?? []);
         this.analyzing.set(false);
       },
       error: () => this.analyzing.set(false),
+    });
+  }
+
+  /** Apply one of the offered tempos; persists to the DB and the file tag. */
+  chooseBpm(value: number): void {
+    if (this.applyingBpm()) return;
+    const rounded = Math.round(value);
+    this.applyingBpm.set(true);
+    this.api.setSongBpm(this.songId(), rounded).subscribe({
+      next: () => {
+        this.bpm.set(rounded);
+        this.bpmSource.set('analyzed');
+        this.applyingBpm.set(false);
+      },
+      error: () => this.applyingBpm.set(false),
     });
   }
 

@@ -186,12 +186,17 @@ describe('AudioFeaturesClient.rhythm', () => {
     const c = clientWith((url, init) => {
       calledUrl = url;
       sentBody = String(init?.body);
-      return jsonResponse({ bpm: 142.0, confidence: 2.92, method: 'multifeature' });
+      return jsonResponse({
+        bpm: 142.0,
+        confidence: 2.92,
+        method: 'multifeature',
+        candidates: [142.0, 71.0],
+      });
     });
     const res = await c.rhythm('AC DC/song.opus');
     expect(calledUrl).toBe('http://analysis:8000/rhythm');
     expect(JSON.parse(sentBody)).toEqual({ relPath: 'AC DC/song.opus' });
-    expect(res).toEqual({ bpm: 142.0, confidence: 2.92 });
+    expect(res).toEqual({ bpm: 142.0, confidence: 2.92, candidates: [142.0, 71.0] });
   });
 
   it('throws AudioFileRejectedError on 422 (un-decodable file)', async () => {
@@ -217,6 +222,20 @@ describe('AudioFeaturesClient.rhythm', () => {
 
   it('defaults a missing confidence to 0', async () => {
     const c = clientWith(() => jsonResponse({ bpm: 120.4 }));
-    expect(await c.rhythm('x.opus')).toEqual({ bpm: 120.4, confidence: 0 });
+    expect(await c.rhythm('x.opus')).toEqual({ bpm: 120.4, confidence: 0, candidates: [120.4] });
+  });
+
+  // An older sidecar predates the candidate list, and a curator still has to be
+  // offered something — the detected value is always a valid choice.
+  it('falls back to the detected bpm when the sidecar sends no candidates', async () => {
+    const c = clientWith(() => jsonResponse({ bpm: 120.4, confidence: 3, candidates: [] }));
+    expect((await c.rhythm('x.opus'))?.candidates).toEqual([120.4]);
+  });
+
+  it('drops non-numeric and non-positive candidates', async () => {
+    const c = clientWith(() =>
+      jsonResponse({ bpm: 120.4, confidence: 3, candidates: [120.4, 'fast', 0, -60, 60.2] }),
+    );
+    expect((await c.rhythm('x.opus'))?.candidates).toEqual([120.4, 60.2]);
   });
 });

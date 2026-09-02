@@ -186,7 +186,7 @@ describe('bpm task', () => {
     let localCalls = 0;
     let wrote = 0;
     const c = ctx({
-      analyzeRhythm: async () => ({ bpm: 141.9, confidence: 2.92 }),
+      analyzeRhythm: async () => ({ bpm: 141.9, confidence: 2.92, candidates: [141.9, 71] }),
       analyzeBpm: async () => ((localCalls += 1), 73),
       writeTags: async () => ((wrote += 1), true),
     });
