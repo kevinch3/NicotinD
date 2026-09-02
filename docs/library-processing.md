@@ -429,6 +429,27 @@ memoized `anyQuarantined` fast path skips the query entirely when nothing is hel
   sets it because its silent-FLAC fixtures can't yield a confident BPM/key and would
   otherwise stay quarantined behind analysis that never completes.
 
+### Landing reads policy live, never the batch's snapshot
+
+`tick()` reads `ProcessingSettings` once and hands that object down through
+`processOneBatch`, which is right for the *work plan* — which tasks this batch runs, in
+what order — and wrong for the *landing decision*. `graduatePending` therefore takes no
+settings argument: it calls `getProcessingSettings(this.db)` itself, so every call site
+is correct by construction rather than by remembering.
+
+The bug this closes: a batch runs for as long as its analysis takes, and it ended by
+landing with the settings it had opened with. An admin who switched **hold for review**
+on while a batch was in flight had everything that scanned in during that batch land
+**unreviewed** — the setting appeared to take effect, and the next download quietly
+bypassed the inbox. In CI the same race showed up as a ~5% flake on
+`download-partial-discard.spec.ts`: the spec turns the hold on in `beforeAll`, and when
+that landed inside the 60 s scheduler tick's window the fixture track landed anyway, so
+`quarantinedCount` stayed 0 and the poll timed out.
+
+Same defect class as the #687 landing-gate strand and #894's Review/Discard gating: a
+predicate answering the question *as of an earlier moment* than the one being asked.
+"Is this allowed?" is always a question about now.
+
 ### `landAlbumNow` (instant landing on approve)
 
 `POST /api/review/albums/:id/approve` ([download-review.md](download-review.md))

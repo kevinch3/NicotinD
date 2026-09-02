@@ -319,6 +319,31 @@ describe('landing gate', () => {
     expect(isLanded('s1')).toBe(true);
   });
 
+  // The batch snapshot bug: `tick()` reads settings once (library-processing.service.ts)
+  // and a batch runs for as long as its analysis takes, so a hold switched on WHILE
+  // that batch is in flight used to be invisible to its own landing step — everything
+  // in the batch landed unreviewed. Same shape as #894/#687: a predicate answering the
+  // question as of an earlier moment than the one being asked. Surfaced as a ~5%
+  // per-run e2e flake on download-partial-discard.spec.ts.
+  it('a hold switched on mid-batch is honoured by that batch, not its opening snapshot', async () => {
+    armReviewHold(db);
+    seedSong('s1');
+    // The batch opens with review OFF — exactly the state the failing CI run was in.
+    setProcessingSettings(db, {
+      holdForReview: false,
+      gates: { bpm: true, key: true, energy: true, genre: true },
+    });
+    const svc = service(new Date('2024-01-01T12:00:00Z'), {
+      // Fires inside the batch, after its settings snapshot was taken.
+      onAnalyzeBpm: () => setProcessingSettings(db, { holdForReview: true }),
+    });
+    await svc.runNow();
+
+    // The gate steps are satisfied, so the ONLY thing that can hold s1 back is the
+    // review condition — which is exactly what the stale snapshot used to miss.
+    expect(isLanded('s1')).toBe(false);
+  });
+
   it('holdForReview lands an approved song', async () => {
     armReviewHold(db);
     seedSong('s1', '2024-01-01');

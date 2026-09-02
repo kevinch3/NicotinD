@@ -398,7 +398,7 @@ export class LibraryProcessingService extends EventEmitter {
       // No gates (or all satisfied) → just land what's ready and stop.
       const pending = gateTasks.reduce((sum, t) => sum + t.countPending(this.db), 0);
       if (pending === 0) {
-        this.graduatePending(settings);
+        this.graduatePending();
         break;
       }
       const batch = await this.processOneBatch(settings, first, gateTasks);
@@ -407,7 +407,7 @@ export class LibraryProcessingService extends EventEmitter {
       if (batch.applied === 0) {
         // No progress (every remaining gate file missing/unresolvable) — land
         // what we can (ledger/valve) and stop rather than spin.
-        this.graduatePending(settings);
+        this.graduatePending();
         break;
       }
     }
@@ -466,7 +466,7 @@ export class LibraryProcessingService extends EventEmitter {
       first = false;
       if (batch.applied === 0) break; // no progress — stop rather than spin
     }
-    this.graduatePending(settings);
+    this.graduatePending();
     this.flushFailures(runFailures);
     this.finishRun(getProcessingSettings(this.db));
     return hitDeadline;
@@ -658,7 +658,14 @@ export class LibraryProcessingService extends EventEmitter {
    * only touches `landed_at IS NULL` rows. When no task gates landing the WHERE
    * reduces to "landed_at IS NULL", so every quarantined song lands at once.
    */
-  private graduatePending(settings: ProcessingSettings): void {
+  private graduatePending(): void {
+    // Read live, never the caller's snapshot. A batch opens by reading settings
+    // once and can run for tens of seconds; landing is a POLICY question that
+    // must answer "may this song land *now*", not "when this batch started".
+    // An admin who switched hold-for-review on mid-batch had everything that
+    // scanned in during that batch land unreviewed (the #894/#687 shape: a
+    // predicate answering an easier question than the one asked).
+    const settings = getProcessingSettings(this.db);
     const required = this.requiredGateTasks(settings);
     const now = this.now().getTime();
     const cutoff = now - QUARANTINE_MAX_HOURS * 3_600_000;
@@ -774,7 +781,7 @@ export class LibraryProcessingService extends EventEmitter {
     // Land any quarantined song whose required gate steps are now satisfied (or
     // past the safety valve). Runs every batch so newly-downloaded music appears
     // as soon as its gates clear — during the daily window and during eager runs.
-    this.graduatePending(settings);
+    this.graduatePending();
 
     // Leave phase 'running' between batches; the run's terminal state is set once
     // by finishRun() so SSE clients see a single running→idle completion (not one
