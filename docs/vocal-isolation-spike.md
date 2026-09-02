@@ -151,6 +151,10 @@ plausible primary use case — plays nothing at all. This is independent of the 
 question and fixable today by summing to a mono-safe result instead of an anti-phase
 pair. **Filed separately; it should not wait on this spike.**
 
+**Fixed 2026-09-02 (#602):** both channels are now `0.5*(L−R)` — identical, so the mono sum is
+the side signal instead of zero; the `0.5` is measured (L−R peaked at +0.7 to +5.2 dBFS on 6 of 7
+random prod tracks, which the encoder clips). Pinned by `transcode.vocal-mute.test.ts`.
+
 ## 5. Runtime: the deployment constraint
 
 Dev laptop, CPU-only, 6 threads, `bs-roformer==0.4.1`, 21.8 s chunks (the config's

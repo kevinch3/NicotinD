@@ -63,14 +63,20 @@ export function transcodeContentType(format: TranscodeFmt): string {
 }
 
 /**
- * Karaoke / vocal-mute filter: center-channel cancellation. Each output channel
- * becomes the L−R difference, so anything mixed dead-center (typically the lead
- * vocal) cancels while stereo-panned instruments survive. Deterministic and
- * dependency-free — imperfect (reverb/backing vocals leak; a mono downmix
- * collapses toward silence) but this is the intended vocal-mute behaviour that
- * was never actually wired into the transcode args.
+ * Karaoke / vocal-mute filter: center-channel cancellation. Both output
+ * channels become the same (L−R)/2 difference, so anything mixed dead-center
+ * (typically the lead vocal) cancels while stereo-panned instruments survive.
+ * Deterministic and dependency-free — the "basic" mode that ML separation
+ * (issue #603) builds on; imperfect (reverb/backing vocals leak, and the kick
+ * and bass go with the vocal).
+ *
+ * why identical channels: the original `c0=c0-c1|c1=c1-c0` pair was perfectly
+ * anti-phase, so every mono downmix (phone speaker, single earbud, mono TV out)
+ * summed to digital silence (issue #602). why 0.5: L−R peaks above 0 dBFS on
+ * most real mixes (+0.7 to +5.2 dBFS on 6 of 7 prod tracks measured), which the
+ * encoder hard-clips; halving keeps every one of them under full scale.
  */
-const VOCAL_REMOVAL_FILTER = 'pan=stereo|c0=c0-c1|c1=c1-c0';
+const VOCAL_REMOVAL_FILTER = 'pan=stereo|c0=0.5*c0-0.5*c1|c1=0.5*c0-0.5*c1';
 
 /**
  * Transcode the whole file to `outPath` and return only once it's complete.
