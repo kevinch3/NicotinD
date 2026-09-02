@@ -136,9 +136,16 @@ describe('transcodeToFile', () => {
     await expect(p).resolves.toBeUndefined();
     const af = lastSpawnArgs!.indexOf('-af');
     expect(af).toBeGreaterThanOrEqual(0);
-    // Center cancellation: each output channel is the L/R difference, so anything
-    // panned dead-center (typically lead vocals) cancels out.
-    expect(lastSpawnArgs![af + 1]).toBe('pan=stereo|c0=c0-c1|c1=c1-c0');
+    // Center cancellation: each output channel is the same L/R difference, so
+    // anything panned dead-center (typically lead vocals) cancels out.
+    const filter = lastSpawnArgs![af + 1];
+    expect(filter).toBe('pan=stereo|c0=0.5*c0-0.5*c1|c1=0.5*c0-0.5*c1');
+    // Issue #602: the two channels must be IDENTICAL, not opposite. An
+    // anti-phase pair (c0=L−R, c1=R−L) sums to digital silence on any mono
+    // downmix — phone speakers, single earbuds, mono TV out.
+    const [, c0, c1] = /^pan=stereo\|c0=(.+)\|c1=(.+)$/.exec(filter) ?? [];
+    expect(c0).toBeDefined();
+    expect(c1).toBe(c0);
   });
 
   it('uses strict decoding flags so a damaged source fails fast (-xerror, +discardcorrupt)', async () => {
