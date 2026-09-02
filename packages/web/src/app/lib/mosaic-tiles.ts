@@ -1,6 +1,7 @@
 import type { LibraryFilter } from '@nicotind/core';
 import type { Track } from '../services/player.service';
 import type { ListeningStats, PlaylistSummary, RecentPlay, Song } from '../services/api/api-types';
+import type { PreservedTrackMeta } from './preserve-store';
 import { toTrack } from './track-utils';
 import { VIBE_PRESETS } from './vibe-presets';
 
@@ -15,13 +16,25 @@ import { VIBE_PRESETS } from './vibe-presets';
  * starts. See docs/web-ui.md.
  */
 
-export type MosaicTileKind = 'resume' | 'song' | 'playlist' | 'vibe' | 'genre';
+export type MosaicTileKind = 'resume' | 'song' | 'playlist' | 'vibe' | 'genre' | 'downloads';
 
-/** What tapping a tile does. Three shapes, all of them a radio start. */
+/**
+ * What tapping a tile does.
+ *
+ * The first three are the online surface, and all three are radio starts —
+ * the rule the whole mosaic is built on. The last two exist only offline,
+ * where **radio is not a thing that can happen**: every radio provider fetches
+ * its next tracks from the server. So offline a tile plays out of the
+ * downloaded set instead, and exactly one tile navigates to that set.
+ */
 export type MosaicAction =
   | { type: 'song'; track: Track }
   | { type: 'playlist'; playlistId: string }
-  | { type: 'filter'; filter: LibraryFilter };
+  | { type: 'filter'; filter: LibraryFilter }
+  /** Offline: play this track with the whole downloaded set as its queue. */
+  | { type: 'offline'; track: Track }
+  /** Offline: the one tile that navigates rather than plays. */
+  | { type: 'route'; path: string };
 
 export interface MosaicTile {
   /** Stable identity across reloads — also the dedupe key and the jitter seed. */
@@ -91,6 +104,13 @@ export const SCORE_WEIGHTS = {
   genreShare: 0.35,
   playlistBase: 0.45,
   playlistShare: 0.3,
+  /** Offline floor. Popularity and play stats both need the server. */
+  offlineBase: 0.4,
+  /** Most-recently downloaded reads largest — the only ranking left offline. */
+  offlineRecency: 0.3,
+  offlineJitter: 0.2,
+  /** The offline "Downloads" tile, prominent because it is the way out. */
+  downloads: 0.9,
 } as const;
 
 const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
@@ -337,6 +357,65 @@ export function assignSongsToSlots(
   const out = new Map<number, MosaicTile>();
   for (let k = 0; k < bySize.length && k < tiles.length; k++) out.set(bySize[k].id, tiles[k]);
   return out;
+}
+
+/**
+ * The mosaic with no network: the downloaded set, plus the one tile that
+ * navigates to it.
+ *
+ * Radio is deliberately absent. Every radio provider fetches its next tracks
+ * from the server, so offline the only honest verb is "play what is on this
+ * device" — `playWithContext` over the whole downloaded set, the same verb and
+ * context the Library's offline Songs tab uses.
+ *
+ * Covers are omitted rather than pointed at `/api/cover/:id`: that request
+ * cannot succeed offline, and a face with no `coverArt` already falls back to
+ * the deterministic placeholder gradient. Reading the cover blobs out of
+ * IndexedDB per tile would put object-URL lifetimes inside a recycling pool,
+ * which is where leaks live — a fallback surface is not worth that.
+ *
+ * Sizing has no popularity and no play stats to work with (both are server
+ * reads), so it ranks on what the device itself knows: how recently each track
+ * was downloaded, plus the usual stable jitter so the field stays varied.
+ */
+export function buildOfflineTiles(
+  tracks: readonly PreservedTrackMeta[],
+  downloadsPath: string,
+): MosaicTile[] {
+  if (tracks.length === 0) return [];
+
+  const byRecency = [...tracks].sort((a, b) => b.preservedAt - a.preservedAt);
+  const recency = new Map(
+    byRecency.map((t, i) => [t.id, tracks.length > 1 ? 1 - i / (tracks.length - 1) : 1]),
+  );
+
+  const k = SCORE_WEIGHTS;
+  const tiles: MosaicTile[] = tracks.map((t) => {
+    const key = `song:${t.id}`;
+    return {
+      key,
+      kind: 'song' as const,
+      title: t.title,
+      subtitle: t.artist,
+      score: clamp01(
+        k.offlineBase + k.offlineRecency * (recency.get(t.id) ?? 0) + k.offlineJitter * jitter(key),
+      ),
+      action: { type: 'offline' as const, track: toTrack(t) },
+    };
+  });
+
+  tiles.push({
+    key: 'downloads',
+    kind: 'downloads',
+    title: 'Downloads',
+    subtitle: `${tracks.length} on this device`,
+    score: k.downloads,
+    action: { type: 'route', path: downloadsPath },
+    gradient: 'from-slate-500 to-slate-700',
+    emoji: '⬇️',
+  });
+
+  return dedupeTiles(tiles);
 }
 
 /** Collapse tiles sharing a key, keeping the highest-scoring one. */

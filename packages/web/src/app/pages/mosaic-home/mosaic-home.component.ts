@@ -9,11 +9,15 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { Router } from '@angular/router';
 import { catchError, firstValueFrom, of } from 'rxjs';
 import type { LibraryFilter } from '@nicotind/core';
-import { PlayerService } from '../../services/player.service';
+import { PlayerService, type Track } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
+import { SetupService } from '../../services/setup.service';
+import { NetworkStatusService } from '../../services/network-status.service';
+import { PreserveService } from '../../services/preserve.service';
 import { TranslateService } from '../../services/translate.service';
 import { TrackInfoService } from '../../services/track-info.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -29,6 +33,7 @@ import { toTrack } from '../../lib/track-utils';
 import {
   assignSongsToSlots,
   buildMosaicTiles,
+  buildOfflineTiles,
   playWeights,
   tileSize,
   type MosaicTile,
@@ -55,6 +60,14 @@ const DISCOVERED_LIST_CAP = 400;
 
 /** A discovery cell's face while its batch is in flight. */
 const LOADING_FACE_HTML = '<div class="mosaic-face skeleton-block"></div>';
+
+/**
+ * Where the offline "Downloads" tile goes. `/library` force-selects its Songs
+ * tab while offline, and that tab lists exactly the device-downloaded set —
+ * so it *is* the downloads list here. `/get?tab=downloads` is the acquisition
+ * feed, which needs the server and is useless in this state.
+ */
+const DOWNLOADS_PATH = '/library';
 
 const escapeHtml = (s: string): string =>
   s.replace(
@@ -125,6 +138,10 @@ export class MosaicHomeComponent implements OnInit {
   private i18n = inject(TranslateService);
   private toast = inject(ToastService);
   private trackInfo = inject(TrackInfoService);
+  private setup = inject(SetupService);
+  private network = inject(NetworkStatusService);
+  private preserve = inject(PreserveService);
+  private router = inject(Router);
 
   private stageRef = viewChild<ElementRef<HTMLDivElement>>('stage');
 
@@ -135,6 +152,8 @@ export class MosaicHomeComponent implements OnInit {
   readonly isEmpty = computed(() => !this.loading() && this.tiles().length === 0);
   /** Tiles the discovery cells have surfaced, mirrored into the accessible list. */
   readonly discovered = signal<MosaicTile[]>([]);
+  /** Device offline OR the server unreachable — both make the sources unusable. */
+  readonly offline = computed(() => this.setup.isOffline());
 
   /** Vibe titles are i18n keys; everything else is already a display string. */
   label(tile: MosaicTile): string {
@@ -170,6 +189,11 @@ export class MosaicHomeComponent implements OnInit {
   // --- Long press ---
   private pressTimer = 0;
   private suppressTap = false;
+
+  // --- Connectivity ---
+  /** Guards against a slow load landing after a newer one replaced it. */
+  private loadToken = 0;
+  private lastConnectivity: string | null = null;
 
   readonly drag = createPointerDrag({
     onStart: (e) => {
@@ -213,6 +237,25 @@ export class MosaicHomeComponent implements OnInit {
     effect(() => {
       this.tiles();
       queueMicrotask(() => this.repack());
+    });
+
+    // Rebuild the mosaic when connectivity changes, in either direction: lose
+    // the network mid-session and the field becomes the downloaded set, regain
+    // it and the real sources come back.
+    //
+    // `reconnects` is tracked ALONGSIDE `isOffline` rather than instead of it,
+    // because signals coalesce: a fast offline→online pair flushes a single
+    // run carrying only the final value, so the edge is invisible to a diff of
+    // `isOffline` on its own (see network-status.service.ts).
+    effect(() => {
+      const key = `${this.setup.isOffline()}:${this.network.reconnects()}`;
+      if (this.lastConnectivity === null) {
+        this.lastConnectivity = key; // creation pass; ngOnInit owns the first load
+        return;
+      }
+      if (key === this.lastConnectivity) return;
+      this.lastConnectivity = key;
+      void this.load();
     });
 
     // The loop, and everything that starts or stops it.
@@ -279,10 +322,32 @@ export class MosaicHomeComponent implements OnInit {
   // -------------------------------------------------------------------------
 
   /**
+   * Build the field for whichever state we are in. The token guards the swap:
+   * an online load started before the network dropped must not land on top of
+   * the offline set that replaced it.
+   */
+  private async load(): Promise<void> {
+    const token = ++this.loadToken;
+    const next = this.setup.isOffline() ? await this.offlineTiles() : await this.onlineTiles();
+    if (token !== this.loadToken) return;
+    this.tiles.set(next);
+    this.loading.set(false);
+  }
+
+  /**
+   * The downloaded set, read straight out of IndexedDB — no token, no network,
+   * nothing that can fail because the server is gone.
+   */
+  private async offlineTiles(): Promise<MosaicTile[]> {
+    await this.preserve.refreshList();
+    return buildOfflineTiles(this.preserve.preservedTracks(), DOWNLOADS_PATH);
+  }
+
+  /**
    * Load every source. Each lane degrades independently — one failing endpoint
    * must cost its own tiles, not the whole mosaic.
    */
-  private async load(): Promise<void> {
+  private async onlineTiles(): Promise<MosaicTile[]> {
     const [recentPlays, tasteBreakers, playlistsRes, genres, stats] = await Promise.all([
       firstValueFrom(this.history.getRecentPlays(20).pipe(catchError(() => of([])))),
       firstValueFrom(this.api.getRandomSongs(24).pipe(catchError(() => of([])))),
@@ -302,18 +367,15 @@ export class MosaicHomeComponent implements OnInit {
     // The discovery cells score their batches with the same personal weights.
     this.weights = playWeights(stats);
 
-    this.tiles.set(
-      buildMosaicTiles({
-        resume: this.player.currentTrack(),
-        keepVibe,
-        tasteBreakers,
-        recentPlays,
-        playlists: playlistsRes.playlists.filter((p) => p.kind === 'curated').slice(0, 10),
-        genres: genres.slice(0, 8),
-        stats,
-      }),
-    );
-    this.loading.set(false);
+    return buildMosaicTiles({
+      resume: this.player.currentTrack(),
+      keepVibe,
+      tasteBreakers,
+      recentPlays,
+      playlists: playlistsRes.playlists.filter((p) => p.kind === 'curated').slice(0, 10),
+      genres: genres.slice(0, 8),
+      stats,
+    });
   }
 
   /**
@@ -353,6 +415,12 @@ export class MosaicHomeComponent implements OnInit {
   // -------------------------------------------------------------------------
 
   async start(tile: MosaicTile): Promise<void> {
+    // The one tile that navigates rather than plays, so it skips the playback
+    // busy-guard and never opens Now Playing.
+    if (tile.action.type === 'route') {
+      void this.router.navigateByUrl(tile.action.path);
+      return;
+    }
     if (this.starting()) return;
     this.starting.set(tile.key);
     try {
@@ -365,6 +433,9 @@ export class MosaicHomeComponent implements OnInit {
           break;
         case 'filter':
           await this.startFilterRadio(tile.action.filter);
+          break;
+        case 'offline':
+          this.playDownloaded(tile.action.track);
           break;
       }
       this.player.nowPlayingOpen.set(true);
@@ -385,6 +456,22 @@ export class MosaicHomeComponent implements OnInit {
       songs.map((s) => toTrack(s)),
       filter,
     );
+  }
+
+  /**
+   * Play a downloaded track with the whole downloaded set as its queue — the
+   * same verb and `saved-offline` context the Library's offline Songs tab
+   * uses, so playback continues through the rest of the device's music instead
+   * of stopping dead at one track.
+   */
+  private playDownloaded(track: Track): void {
+    const tracks = this.preserve.preservedTracks().map((t) => toTrack(t));
+    const index = tracks.findIndex((t) => t.id === track.id);
+    if (index < 0) {
+      this.player.playSingle(track);
+      return;
+    }
+    this.player.playWithContext(tracks, index, { type: 'saved-offline', name: 'Downloaded' });
   }
 
   private async startPlaylistRadio(playlistId: string): Promise<void> {
@@ -495,7 +582,7 @@ export class MosaicHomeComponent implements OnInit {
     const title = escapeHtml(this.label(t));
     const subtitle = escapeHtml(t.subtitle);
 
-    if (t.kind === 'vibe') {
+    if (t.kind === 'vibe' || t.kind === 'downloads') {
       return `<div class="mosaic-face bg-gradient-to-br ${t.gradient} text-white">
         <span style="font-size:${Math.round(s * 0.22)}px" aria-hidden="true">${t.emoji ?? ''}</span>
         <div><b style="font-size:${titleSize}px">${title}</b><span>${subtitle}</span></div>
@@ -552,6 +639,12 @@ export class MosaicHomeComponent implements OnInit {
 
   /** First sighting of a cell: reserve it, evict stale ones, start its fetch. */
   private enterCell(cell: string): CellState {
+    // Offline there is nothing to discover. Show the downloaded set everywhere
+    // rather than firing one request per sighted cell that can only fail.
+    if (this.setup.isOffline()) {
+      this.cells.set(cell, 'base');
+      return 'base';
+    }
     this.cells.set(cell, 'loading');
     this.evictStaleCells();
     void this.loadCell(cell);

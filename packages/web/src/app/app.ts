@@ -2,7 +2,6 @@ import { Component, inject, effect } from '@angular/core';
 import type { Subscription } from 'rxjs';
 import { Router, RouterOutlet } from '@angular/router';
 import { SetupService } from './services/setup.service';
-import { AuthService } from './services/auth.service';
 import { RemotePlaybackService } from './services/remote-playback.service';
 import { PresenceService } from './services/presence.service';
 import { KeyboardShortcutsService } from './services/keyboard-shortcuts.service';
@@ -20,7 +19,6 @@ import { DesktopTitleBarOverlayComponent } from './components/desktop-title-bar-
 })
 export class App {
   private setup = inject(SetupService);
-  private auth = inject(AuthService);
   private router = inject(Router);
   private remotePlayback = inject(RemotePlaybackService);
   private presence = inject(PresenceService);
@@ -50,13 +48,15 @@ export class App {
     // Google TV Play Next + Assistant voice playback (Android TV only).
     this.tvChannels.initialize();
 
-    // Redirect to setup if needed, or to the library (Songs → offline downloads)
-    // when offline (runs after APP_INITIALIZER completes).
+    // Redirect to setup if needed (runs after APP_INITIALIZER completes).
+    //
+    // Going offline used to navigate to /library, because home was a wall of
+    // dead server-backed shelves. The mosaic now fills with the device's
+    // downloaded tracks instead, so the redirect would only yank the listener
+    // off the page they were on the moment their train enters a tunnel.
     effect(() => {
       if (!this.setup.checked()) return;
-      if (this.setup.isOffline() && this.auth.token()) {
-        this.router.navigate(['/library']);
-      } else if (this.setup.status()?.needsSetup) {
+      if (this.setup.status()?.needsSetup) {
         this.router.navigate(['/setup']);
       }
     });
