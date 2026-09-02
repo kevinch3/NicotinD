@@ -250,17 +250,31 @@ describe('PlaybackWsService device identity across tabs (#882)', () => {
 
   it('a tab told its id is taken re-registers under a fresh one (duplicated tab)', async () => {
     const first = openTab();
+    const service = TestBed.inject(PlaybackWsService);
     const twin = new BroadcastChannel(TAB_CHANNEL);
     try {
       // What a sibling holding this tab id replies to the newcomer's claim.
-      twin.postMessage({ kind: 'taken', tabId: sessionStorage.getItem(TAB_ID_KEY) });
-      await new Promise((r) => setTimeout(r, 0));
+      const takenTabId = sessionStorage.getItem(TAB_ID_KEY);
+      twin.postMessage({ kind: 'taken', tabId: takenTabId });
+      // BroadcastChannel delivery is asynchronous and not ordered against a
+      // 0 ms timer (issue #897), so wait for the outcome: the guard persists
+      // the re-minted tab id synchronously inside its message handler.
+      const deadline = Date.now() + 2_000;
+      while (sessionStorage.getItem(TAB_ID_KEY) === takenTabId && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      expect(sessionStorage.getItem(TAB_ID_KEY)).not.toBe(takenTabId);
 
-      const socket = FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
-      socket.open();
-      const ids = socket
+      // The service reconnected on a fresh socket when it re-minted; read
+      // THAT socket off the instance rather than assuming it is the newest
+      // fake in the module-wide list (#897's other failure mode).
+      const socket = (service as unknown as { ws: FakeWebSocket | null }).ws;
+      expect(socket).not.toBeNull();
+      socket!.open();
+      const ids = socket!
         .frames('REGISTER')
         .map((f) => (f as { payload: { id: string } }).payload.id);
+      expect(ids.at(-1)).toBe(service.getDeviceId());
       expect(ids.at(-1)).not.toBe(first);
       expect(profileIdOf(ids.at(-1)!)).toBe(profileIdOf(first));
     } finally {
