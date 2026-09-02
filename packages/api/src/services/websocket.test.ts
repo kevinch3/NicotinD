@@ -1,7 +1,12 @@
 import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test';
 import type { WSContext } from 'hono/ws';
 
-// Mock playbackManager before importing websocket module
+import { createPlaybackHub } from './websocket.js';
+
+// The hub takes its manager source by injection (#877), so the handlers under
+// test get this mock without a module mock — which only applied when this file
+// happened to evaluate `websocket.ts` first, and silently tested the real
+// registry otherwise.
 const mockManager = {
   registerDevice: mock(() => {}),
   unregisterDevice: mock(() => {}),
@@ -25,17 +30,13 @@ const mockManager = {
   on: mock(() => {}),
 };
 
-mock.module('./playback-registry.js', () => ({
-  playbackRegistry: {
-    getOrCreate: () => mockManager,
-  },
-}));
+const hub = createPlaybackHub({
+  getOrCreate: () => mockManager as unknown as import('./playback-state.js').PlaybackStateManager,
+});
+const createWebSocketHandlers = hub.handlersFor;
 
-// Import after mock is set up
-const { createWebSocketHandlers } = await import('./websocket.js');
-
-// `connections` in websocket.ts is module-level, so a socket a test opens and
-// never closes stays there for every later test. That used to be invisible;
+// The hub's connection table is shared by every test in this file, so a socket a
+// test opens and never closes stays there for every later test. That used to be invisible;
 // now that onClose checks whether another connection still holds the device id
 // (issue #433), a leaked 'dev1' socket would suppress a real unregister. Track
 // every mock socket and close it in afterEach.

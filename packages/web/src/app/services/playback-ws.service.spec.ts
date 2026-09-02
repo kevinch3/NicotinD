@@ -22,10 +22,13 @@ vi.mock('../lib/platform', async (importOriginal) => {
 /** Minimal fake WebSocket that captures every sent frame and lets the test
  * trigger `onopen` manually, without touching the network. */
 class FakeWebSocket {
+  static CONNECTING = 0;
   static OPEN = 1;
+  static CLOSED = 3;
   static instances: FakeWebSocket[] = [];
-  readyState = FakeWebSocket.OPEN;
+  readyState = FakeWebSocket.CONNECTING;
   sent: unknown[] = [];
+  closed = false;
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
   onerror: (() => void) | null = null;
@@ -39,8 +42,29 @@ class FakeWebSocket {
     this.sent.push(JSON.parse(data));
   }
 
+  /** The browser fires `close` asynchronously, after the handshake — a stale
+   *  socket's close can land after a newer socket opened. Tests fire it. */
   close(): void {
+    this.closed = true;
+    this.readyState = FakeWebSocket.CLOSED;
+  }
+
+  open(): void {
+    this.readyState = FakeWebSocket.OPEN;
+    this.onopen?.();
+  }
+
+  emitClose(): void {
+    this.readyState = FakeWebSocket.CLOSED;
     this.onclose?.();
+  }
+
+  receive(frame: object): void {
+    this.onmessage?.({ data: JSON.stringify(frame) });
+  }
+
+  frames(type: string): unknown[] {
+    return this.sent.filter((f) => (f as { type?: string }).type === type);
   }
 }
 
@@ -94,7 +118,7 @@ describe('PlaybackWsService REGISTER payload', () => {
     const service = TestBed.inject(PlaybackWsService);
     service.connect();
     const socket = FakeWebSocket.instances[0];
-    socket.onopen?.();
+    socket.open();
     const registerFrame = socket.sent.find(
       (f): f is { type: string; payload: Record<string, unknown> } =>
         typeof f === 'object' && f !== null && (f as { type?: string }).type === 'REGISTER',
@@ -150,5 +174,95 @@ describe('PlaybackWsService REGISTER payload', () => {
     storageStub.setItem('nicotind_remote_enabled', 'true');
     const payload = connectAndCaptureRegister();
     expect(payload['remoteEnabled']).toBe(true);
+  });
+});
+
+describe('PlaybackWsService connection lifecycle (#877)', () => {
+  let originalWebSocket: unknown;
+  let service: PlaybackWsService;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    storageStub.clear();
+    storageStub.setItem('nicotind_token', 'test-token');
+    FakeWebSocket.instances = [];
+    originalWebSocket = globalThis.WebSocket;
+    (globalThis as { WebSocket: unknown }).WebSocket = FakeWebSocket;
+    TestBed.configureTestingModule({ providers: [PlaybackWsService, ServerConfigService] });
+    service = TestBed.inject(PlaybackWsService);
+  });
+
+  afterEach(() => {
+    (globalThis as { WebSocket: unknown }).WebSocket = originalWebSocket;
+    vi.useRealTimers();
+  });
+
+  it('connect() while a socket is still connecting does not open a second one', () => {
+    // The boot-time token refresh re-runs the connect effect within ms of the
+    // first connect; two sockets would register the same device twice.
+    service.connect();
+    service.connect();
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it('disconnect() does not schedule a reconnect', () => {
+    service.connect();
+    FakeWebSocket.instances[0].open();
+    service.disconnect();
+    FakeWebSocket.instances[0].emitClose();
+    vi.advanceTimersByTime(60_000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it('a deliberate disconnect is not a connection failure', () => {
+    for (let i = 0; i < 6; i++) {
+      service.connect();
+      const socket = FakeWebSocket.instances.at(-1)!;
+      socket.open();
+      service.disconnect();
+      socket.emitClose();
+    }
+    expect(service.persistentFailure()).toBeNull();
+  });
+
+  it("a stale socket's late close does not stop the live socket's heartbeat", () => {
+    service.connect();
+    const stale = FakeWebSocket.instances[0];
+    service.disconnect(); // never opened; its close lands later
+    service.connect();
+    const live = FakeWebSocket.instances[1];
+    live.open();
+    stale.emitClose();
+    vi.advanceTimersByTime(30_000);
+    expect(live.frames('HEARTBEAT')).toHaveLength(1);
+    expect(live.closed).toBe(false);
+  });
+
+  it('two unacknowledged heartbeats close the socket so it reconnects', () => {
+    // A half-open socket (proxy or Wi-Fi dropped the TCP path silently) never
+    // errors client-side; without an ack watchdog the receiver keeps reporting
+    // into the void until TCP gives up, minutes later.
+    service.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    vi.advanceTimersByTime(30_000);
+    expect(socket.closed).toBe(false);
+    vi.advanceTimersByTime(30_000);
+    expect(socket.closed).toBe(true);
+    socket.emitClose();
+    vi.advanceTimersByTime(1_000);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+  });
+
+  it('an acknowledged heartbeat keeps the socket open', () => {
+    service.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    for (let i = 0; i < 4; i++) {
+      vi.advanceTimersByTime(30_000);
+      socket.receive({ type: 'HEARTBEAT_ACK', payload: {} });
+    }
+    expect(socket.closed).toBe(false);
+    expect(socket.frames('HEARTBEAT')).toHaveLength(4);
   });
 });

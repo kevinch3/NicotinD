@@ -54,32 +54,60 @@ Client disconnects / tab closes
 
 Device IDs are generated once per browser profile via `crypto.randomUUID()` and persisted in `localStorage`. The device name is auto-detected from the User-Agent (`"Chrome on Windows"`, `"Safari on iPhone"`, …) — except on a TV UI, where the UA reads "Chrome on Android" and says nothing a cast selector needs, so the default is `"NicotinD TV"` (issue #393) — and can be overridden by the user.
 
-A 30-second heartbeat keeps the connection alive through idle proxies, and a 90-second
-`STALE_TIMEOUT` (three missed beats, swept every 30s) drops devices that stopped answering.
+A 30-second heartbeat keeps the connection alive through idle proxies. **Any frame from a
+registered connection is a liveness beat** (progress reports included), and a device that stopped
+answering for `STALE_TIMEOUT` (90 s, swept every 30 s) is pruned. The server answers every
+`HEARTBEAT` with `HEARTBEAT_ACK`.
+
+#### Connection identity — one raw socket, many `WSContext`s (issue #877)
+
+Hono's Bun adapter constructs a **new `WSContext` object for every event** (`open`, each
+`message`, `close`) around the same raw Bun socket. `websocket.ts` used to key its connection table
+by `WSContext`, so the key stored at `REGISTER` never matched a later event: `HEARTBEAT` never
+refreshed liveness (every device was pruned 90–120 s after registering — the "unlinks after 1–2
+minutes" report), `PROGRESS_REPORT` was dropped (the controller's seek bar and lyrics only ever
+interpolated from the cast moment, hence the drift), `UPDATE_DEVICE` was dropped (opting out never
+reached the server), and `onClose` never unregistered anything. The unit tests passed because they
+reused one mock object across calls; the #433 fixes below sat behind the same lookup and never ran
+in production.
+
+The table is now keyed by the **raw socket** (`ws.raw`), and the hub keeps the REGISTER-time
+context alongside, since its `send` closes over that raw socket for the socket's whole life.
+`remote-playback.multi-device.test.ts` drives the real handlers with a fresh context per event, the
+way the adapter does — that is the test that would have caught this.
+
+#### Losing the active device: grace, not an instant release
+
+When the active device's socket closes or it is pruned, the session is **not** released at once.
+The device stays listed and active for `activeGraceMs` (`PlaybackStateManager`, 15 s by default);
+a re-`REGISTER` within it keeps the cast and the snapshot reply re-syncs the receiver. Only if it
+stays gone is `activeDeviceId` cleared. A 1-second reconnect blip is therefore invisible to the
+controller instead of collapsing the session. A device that **opts out** while active
+(`UPDATE_DEVICE { remoteEnabled: false }`, or re-registering as not remote-enabled) is released
+immediately — a controller must never point at a device the list no longer has.
 
 #### Surviving a prune and a stale close (issue #433)
 
-Two defects made "the TV disappeared from the device list" **permanent** rather than transient, and
-both are worth keeping in mind when touching this file:
+Two defects made "the TV disappeared from the device list" **permanent** rather than transient:
 
-- **A pruned device could never re-register.** `heartbeat(id)` used to silently no-op for an unknown
-  id, and the client only sends `REGISTER` from `ws.onopen`. Once the sweeper pruned a device, its
-  socket was still `OPEN` — so `onopen` never fired again, `REGISTER` was never resent, and every
-  later heartbeat hit the no-op. Android WebView throttles background timers, so a TV behind a
-  screensaver misses three beats easily; that made a routine prune terminal. `heartbeat` now
-  **returns whether the device was known**, and `websocket.ts` re-registers from the registration it
-  keeps alongside the connection when the answer is false. Healing on the server side is deliberate:
-  it needs no protocol change and works with clients that predate the fix.
+- **A pruned device could never re-register.** The client only sends `REGISTER` from `ws.onopen`,
+  which never fires again while the socket stays `OPEN`. Any later frame from a connection whose
+  device the sweeper pruned now rebuilds it from the registration kept alongside the connection.
+- **A stale close evicted a live device.** The client reuses **one stable device id across
+  reconnects**; after a Wi-Fi blip the dead socket's close can land *after* the fresh socket
+  re-registered. `onClose` drops the device only if no other connection for that user still holds
+  the id.
 
-- **A stale close evicted a live device.** `connections` is keyed by `WSContext`, `devices` by device
-  id, and the client reuses **one stable device id across reconnects**. After a Wi-Fi blip the dead
-  socket's `onClose` could land *after* the fresh socket had already re-registered, and
-  `unregisterDevice(id)` would delete the id the live connection had just claimed. `onClose` now
-  drops the device only if no other connection for that user still holds the id.
+#### The client side of liveness (issue #877)
 
-Test note: `connections` is module-level, so a spec that opens a mock socket and never closes it
-leaks into every later test in the file. That was invisible before the ownership check and is now
-load-bearing — `websocket.test.ts` closes every socket it creates in `afterEach`.
+`PlaybackWsService` binds every handler to *its* socket and ignores events from a socket that is no
+longer the live one, so `disconnect()` neither schedules a reconnect nor counts as a failure, and
+`connect()` while a socket is still `CONNECTING` (the boot-time token refresh re-runs the connect
+effect within milliseconds) opens no second socket. A heartbeat still unanswered when the next one
+is due means the socket is half-open — a proxy or Wi-Fi dropped the TCP path silently — and the
+client closes it so the normal reconnect takes over, rather than reporting into the void until TCP
+gives up minutes later. The ack also keeps a *paused* receiver's socket from being silent
+upstream→client, which nginx's default 60 s `proxy_read_timeout` would otherwise close.
 
 ### State model
 
@@ -121,6 +149,7 @@ All frames are JSON: `{ type: string, payload: object }`.
 | `STATE_SYNC` | `{ state, devices? }` | Full state snapshot; sent on REGISTER and after any state change |
 | `DEVICES_SYNC` | `{ devices }` | Device list after a connect/disconnect |
 | `COMMAND` | `{ action, ...args }` | Relay of a command to all clients |
+| `HEARTBEAT_ACK` | `{}` | Reply to every `HEARTBEAT` (sent to that client only) |
 
 #### COMMAND actions
 
@@ -156,13 +185,30 @@ press ▶
 - **Commands drive execution, STATE_SYNC drives UI.** Device B executes `PLAY`/`PAUSE`/`SEEK`/`SET_TRACK` only when it receives a `COMMAND` message — not from STATE_SYNC. This avoids the echo loop that occurred when STATE_SYNC triggered a STATE_UPDATE reply that re-triggered another STATE_SYNC.
 - **STATE_UPDATE is quiet.** When a device sends `STATE_UPDATE`, the server stores it but does not re-broadcast (`updateStateQuiet`). This prevents Device B from echoing back state it received from the server.
 - **remoteIsPlaying tracks the server's believed state.** The controller reads `remoteIsPlaying` (updated from every STATE_SYNC) to decide whether pressing the button should send `PLAY` or `PAUSE`. Without this, the controller's stale local `isPlaying` caused it to always send the wrong command.
+- **Exactly one output, and a link dropping never wakes a speaker.** `castTo` *yields* the
+  controller's player (pauses it logically, not just the `<audio>` element), a device that stops
+  being the output yields the same way, and a session ending (`activeDeviceId → null`) pauses the
+  former controller explicitly — picking a track while remote re-arms `isPlaying`, so the yield at
+  cast time alone was not enough. `null` is "no session", never "me": a stale server track is not
+  loaded into a device that merely connected, and a `COMMAND` is ignored without a session.
+- **A snapshot reply reconciles the output device.** The `STATE_SYNC` sent in reply to `REGISTER`
+  (the one carrying `devices`) is the only `STATE_SYNC` that may load a track on the active device:
+  a receiver that reconnects while still active adopts the server's track and position, since a
+  `SET_TRACK` broadcast while it was offline reached nobody. Plain broadcasts still never execute.
+- **The decisions are pure and shared.** Everything above lives in `@nicotind/core`
+  `remote-playback.ts` (`reduceServerMessage`, `castTo`, `onLocalTrackChanged`, `isAudioOutput`);
+  `RemotePlaybackService` feeds it signals and applies its `PlayerEffect`s to `PlayerService`. The
+  api-side `remote-playback.simulation.test.ts` runs the same functions for N virtual devices
+  against the real server hub, checking one invariant: while a session exists, at most one device
+  is audible and it is the one the server calls active.
 
 ### Client-side code map
 
 | File | Role |
 |------|------|
-| `packages/web/src/app/services/playback-ws.service.ts` | Singleton WS service — connect/reconnect, device ID/name, `sendCommand`, `setActiveDevice` |
-| `packages/web/src/app/services/remote-playback.service.ts` | Angular service with signals — device list, `activeDeviceId`, `remoteIsPlaying`, `switchToDevice`, WS subscriptions |
+| `packages/core/src/remote-playback.ts` | The client's protocol decisions, pure: `reduceServerMessage`, `castTo`, `onLocalTrackChanged`, `isAudioOutput` |
+| `packages/web/src/app/services/playback-ws.service.ts` | Singleton WS service — connect/reconnect, per-socket handlers, heartbeat + ack watchdog, device ID/name, `sendCommand`, `setActiveDevice` |
+| `packages/web/src/app/services/remote-playback.service.ts` | Angular adapter with signals — feeds the reducer, applies `PlayerEffect`s to `PlayerService`, `switchToDevice` |
 | `packages/web/src/app/components/device-switcher/device-switcher.component.ts` | Popover UI for selecting the active output device |
 | `packages/web/src/app/pages/settings/settings.component.ts` | Remote Playback section — opt-in toggle and device rename |
 | `packages/web/src/app/components/player/player.component.ts` | Conditionally drives local audio or sends remote commands |
@@ -171,8 +217,11 @@ press ▶
 
 | File | Role |
 |------|------|
-| `packages/api/src/services/playback-state.ts` | In-memory state + device registry; `updateState` (broadcasts) vs `updateStateQuiet` (silent) |
-| `packages/api/src/services/websocket.ts` | Message handlers and broadcast listeners |
+| `packages/api/src/services/playback-state.ts` | In-memory state + device registry; `updateState` (broadcasts) vs `updateStateQuiet` (silent); `activeGraceMs` |
+| `packages/api/src/services/websocket.ts` | `createPlaybackHub` — connection table keyed by raw socket, message handlers, broadcast listeners |
+| `packages/api/src/services/remote-playback.multi-device.test.ts` | Server-side virtual devices: real hub + manager, a fresh `WSContext` per event |
+| `packages/api/src/services/remote-playback.simulation.test.ts` | Full simulation: N virtual devices running the core reducer against the real hub |
+| `packages/e2e/tests/remote-playback.spec.ts` | Two real browser contexts through the real adapter: cast, progress, opt-out, re-cast |
 | `packages/api/src/index.ts` | `GET /api/ws/playback` route registration |
 
 ---
@@ -182,4 +231,7 @@ press ▶
 - **State is ephemeral.** Server restart clears the active device and playback state. All devices reconnect automatically but no track is restored.
 - **Shared library only.** Remote playback works because all devices stream from the same Navidrome instance using their own JWT tokens. External users on different NicotinD instances cannot be targeted.
 - **One active device at a time.** Only one device receives COMMAND messages at a time. Switching to a new device pauses the previous one implicitly (the server clears `isPlaying` on active-device switch).
+- **Two tabs of one browser are one device.** The device id lives in `localStorage`, so two tabs
+  of the same profile register the same id and both execute the session's commands (two outputs).
+  A per-tab id would list them separately; not done yet.
 - **No queue sync.** The queue lives in each browser's player store. Only the currently playing track is sent via `SET_TRACK`. Advancing to the next track on the receiver plays from its local queue, which may be empty.
