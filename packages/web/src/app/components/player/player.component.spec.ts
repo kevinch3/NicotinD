@@ -866,6 +866,47 @@ describe('PlayerComponent', () => {
       playerService.restoredTime = null;
     });
 
+    it('keeps vocals=off when playback advances to the next track (#889)', () => {
+      vi.useFakeTimers();
+      playerService.currentTrack.set(TRACK);
+      fixture.detectChanges();
+      playerService.toggleVocalMute();
+      fixture.detectChanges();
+      expect(fakeAudio.src).toContain('vocals=off');
+
+      // The mute is still on; the next track must load muted too. Only the
+      // toggle effect used to append the flag, so the next song played with
+      // vocals while the mic button still said "Unmute vocals".
+      playerService.currentTrack.set(TRACK_2);
+      fixture.detectChanges();
+      // A second load inside the burst window is deferred by the settle gate.
+      vi.advanceTimersByTime(LOAD_SETTLE_MS + 10);
+      fixture.detectChanges();
+
+      expect(fakeAudio.src).toContain('/api/stream/t2');
+      expect(fakeAudio.src).toContain('vocals=off');
+      vi.useRealTimers();
+    });
+
+    it('loads the next track without the flag once the mute is off again', () => {
+      vi.useFakeTimers();
+      playerService.currentTrack.set(TRACK);
+      fixture.detectChanges();
+      playerService.toggleVocalMute();
+      fixture.detectChanges();
+      playerService.toggleVocalMute();
+      fixture.detectChanges();
+
+      playerService.currentTrack.set(TRACK_2);
+      fixture.detectChanges();
+      vi.advanceTimersByTime(LOAD_SETTLE_MS + 10);
+      fixture.detectChanges();
+
+      expect(fakeAudio.src).toContain('/api/stream/t2');
+      expect(fakeAudio.src).not.toContain('vocals=off');
+      vi.useRealTimers();
+    });
+
     it('stashes restoredTime before src change and plays when wasPlaying', () => {
       // Load a track first (Effect 1) without any vocal mute.
       playerService.currentTrack.set(TRACK);

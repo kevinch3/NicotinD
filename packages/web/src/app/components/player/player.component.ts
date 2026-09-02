@@ -386,7 +386,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               db.updateLastAccessed(track.id);
             } else {
               // Metadata exists but blob missing — fall back to stream
-              this.assignSource(audio, this.server.streamUrl(track.id, token));
+              this.assignSource(audio, this.streamSrc(track.id, token));
             }
             // Don't autoplay on a fresh track load: the user must have pressed
             // play (or have autoplay_on_load + restored session — which routes
@@ -400,7 +400,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
           // that never resolves (`onError` only clears buffering). Bail cleanly.
           this.stopForOffline(audio, track.title);
         } else {
-          this.assignSource(audio, this.server.streamUrl(track.id, token));
+          this.assignSource(audio, this.streamSrc(track.id, token));
           // See the preserve branch above for why play() is gated here.
           this.playIfIntended(audio);
         }
@@ -655,6 +655,19 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       // fresh user gesture and will succeed.
       this.player.pause();
     }
+  }
+
+  /**
+   * Stream URL for a track load, carrying the karaoke mute. Every load path
+   * (fresh track, gapless standby + swap, recovery reloads) goes through here
+   * so the mute persists across tracks in the audio, not just in the signal
+   * (issue #889). `untracked` because the load effects must not re-run on a
+   * toggle — Effect 6b owns that transition.
+   */
+  private streamSrc(trackId: string, token: string | null = this.auth.token()): string {
+    return this.server.streamUrl(trackId, token, {
+      vocalsOff: untracked(() => this.player.vocalsMuted()),
+    });
   }
 
   /**
@@ -926,7 +939,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               const standby = this.standbyNativeEl;
               if (standby) {
                 this.preloadedTrackId = nextTrack.id;
-                standby.src = this.server.streamUrl(nextTrack.id, this.auth.token());
+                standby.src = this.streamSrc(nextTrack.id);
                 standby.preload = 'auto';
                 // load() without play() — just buffer the initial bytes
                 standby.load();
@@ -1096,7 +1109,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
                   // stall on an unreachable stream.
                   this.stopForOffline(audio, nextTrack.title);
                 } else {
-                  this.assignSource(audio, this.server.streamUrl(nextTrack.id, token));
+                  this.assignSource(audio, this.streamSrc(nextTrack.id, token));
                   playNext();
                 }
               });
@@ -1105,7 +1118,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               // pointing <audio> at a stream that will only spin forever.
               this.stopForOffline(audio, nextTrack.title);
             } else {
-              this.assignSource(audio, this.server.streamUrl(nextTrack.id, token));
+              this.assignSource(audio, this.streamSrc(nextTrack.id, token));
               playNext();
             }
           }
@@ -1304,7 +1317,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     this.player.setBufferedRanges([]);
     const badUrl = this.lastManualObjectUrl;
     this.lastManualObjectUrl = null;
-    this.assignSource(audio, this.server.streamUrl(track.id, this.auth.token()));
+    this.assignSource(audio, this.streamSrc(track.id));
     if (badUrl) URL.revokeObjectURL(badUrl);
     this.playIfIntended(audio);
     return true;
@@ -1455,8 +1468,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       // `restoredTime` once the new load reports a sane duration, so the
       // listener lands where the stream died instead of back at 0.
       if (Number.isFinite(resumeAt) && resumeAt > 1) this.player.restoredTime = resumeAt;
-      const vocalsOff = untracked(() => this.player.vocalsMuted());
-      this.assignSource(audio, this.server.streamUrl(track.id, this.auth.token(), { vocalsOff }));
+      this.assignSource(audio, this.streamSrc(track.id));
       this.playIfIntended(audio);
     }, MEDIA_ERROR_RETRY_MS);
   }
