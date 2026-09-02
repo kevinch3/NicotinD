@@ -457,6 +457,7 @@
   "downloads.discardPartialFailed": "Could not discard these tracks",
   "downloads.heldForReview": "{count} held for review",
   "downloads.review": "Review",
+  "downloads.reviewUnavailable": "The review inbox isn't open right now.",
   "downloads.discardPartial": "Discard",
   "downloads.stage.done": "Done",
   "downloads.stage.error": "Error",

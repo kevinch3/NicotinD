@@ -515,9 +515,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **`identify_song` — identity from the audio**: `identifySongById` is fpcalc + AcoustID and nothing
   else, batchable where `lookup_song_metadata`'s fan-out is not; typed outcome, suggests only,
   carries no genre. → [mcp-agent.md](docs/mcp-agent.md)
-- **WebMCP alignment (proposed — not yet implemented)**: `MCP_TOOLS` already has Chrome's WebMCP
-  registration shape; the plan declares host exposure per tool and adds a flagged browser host for
-  session tools only — nothing destructive; client-side WebGPU/WebNN stays NO-GO.
+- **WebMCP alignment (proposed — not yet implemented)**: `MCP_TOOLS` already has the shape Chrome's
+  WebMCP registration takes; the plan declares host exposure per tool and adds a flagged browser
+  host for session tools only — nothing destructive, and client-side WebGPU/WebNN stays NO-GO.
   → [webmcp-alignment.md](docs/webmcp-alignment.md),
   [client-side-ml-feasibility.md](docs/client-side-ml-feasibility.md)
 - **Presence tracking + last connection (admin-only)**: in-memory `PresenceService` from 60s

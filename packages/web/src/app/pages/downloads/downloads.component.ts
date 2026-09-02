@@ -155,6 +155,10 @@ export class DownloadsComponent {
       this.transferService.acquisitionJobs(),
     ),
   );
+  /** Whether a card may offer "Review / Discard" at all (#894) — the same
+   *  signal the inbox renders on, so the jump always has a target. */
+  readonly reviewAvailable = this.review.inboxVisible;
+
   readonly activeFeedCount = computed(
     () => this.downloadFeed().filter((i) => i.stage !== 'done' && i.stage !== 'error').length,
   );
@@ -233,9 +237,19 @@ export class DownloadsComponent {
     );
   }
 
-  /** "Review" on a held partial: the inbox is on this same page — jump to it. */
+  /**
+   * "Review" on a held partial: the inbox is on this same page — jump to it.
+   * A missing target is reported rather than swallowed (#894): the old
+   * `querySelector(...)?.scrollIntoView()` made "the inbox isn't rendered"
+   * look exactly like a successful scroll, so the button silently did nothing.
+   */
   onItemReviewJump(): void {
-    document.querySelector('[data-testid="review-inbox"]')?.scrollIntoView({ behavior: 'smooth' });
+    const inbox = document.querySelector('[data-testid="review-inbox"]');
+    if (!inbox) {
+      this.toasts.show({ message: this.i18n.t('downloads.reviewUnavailable'), kind: 'error' });
+      return;
+    }
+    inbox.scrollIntoView({ behavior: 'smooth' });
   }
 
   private async discardPartial(jobId: string): Promise<void> {

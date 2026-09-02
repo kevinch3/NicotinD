@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ReviewApiService } from './api/review-api.service';
 import { AuthService } from './auth.service';
@@ -32,6 +32,15 @@ export class DownloadReviewService {
   readonly pending = signal(0);
   readonly queue = signal<ReviewQueueAlbum[]>([]);
   readonly loading = signal(false);
+
+  /**
+   * Whether the inbox is actually on screen (#894). The inbox component renders
+   * on it, and the Downloads page gates its cards' "Review / Discard" line on
+   * it — a card must not offer a jump to something that isn't there, nor the
+   * destructive Discard beside it. One signal because two copies of this
+   * predicate is how they drift apart.
+   */
+  readonly inboxVisible = computed(() => this.auth.canCurate() && this.queue().length > 0);
 
   private ownerCount = 0;
   private queueWatchers = 0;

@@ -96,6 +96,21 @@ export function isCancelPending(item: DownloadItem, requestInFlight: boolean): b
 }
 
 /**
+ * Whether the "Held for review — Review / Discard" line applies (#894).
+ *
+ * `quarantinedCount` alone is not the question. It counts tracks behind the
+ * *processing* quarantine gate (`landed_at IS NULL`), which runs on every
+ * install regardless of `holdForReview` — so gating on it rendered the line,
+ * and its destructive Discard button, during ordinary enrichment on installs
+ * with review switched off. `reviewAvailable` is the parent's answer to
+ * "is the inbox actually on this page", so Review has somewhere to go and
+ * Discard never appears without it.
+ */
+export function canShowReviewHold(item: DownloadItem, reviewAvailable: boolean): boolean {
+  return reviewAvailable && (item.quarantinedCount ?? 0) > 0;
+}
+
+/**
  * One row in the unified Downloads feed. Renders the four facets the user asked
  * for — how (method badge), what stage, when (started), where (storage path,
  * tucked behind a toggle) — plus, once complete, an "Open in Library" deep-link
@@ -127,6 +142,8 @@ export class DownloadItemComponent {
   readonly retrying = input(false);
   /** True while the parent's cancel request is in flight (#806). */
   readonly cancelling = input(false);
+  /** Whether the review inbox is rendered on this page, so Review can reach it (#894). */
+  readonly reviewAvailable = input(false);
 
   readonly retry = output<void>();
   readonly cancel = output<void>();
@@ -142,6 +159,8 @@ export class DownloadItemComponent {
   readonly failureLabel = failureClassLabel;
 
   readonly badge = computed(() => methodBadge(this.item().method));
+  /** Gates the whole "Held for review" line, Discard included (#894). */
+  readonly showReviewHold = computed(() => canShowReviewHold(this.item(), this.reviewAvailable()));
   /** Compact "· FLAC · 1411 kbps" / "· 320 kbps" chip text, '' when unknown. */
   readonly qualityLabel = computed(() => {
     const it = this.item();

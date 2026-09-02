@@ -108,7 +108,7 @@
           </div>
         </app-menu-panel>
       }
-      @if ((item().quarantinedCount ?? 0) > 0) {
+      @if (showReviewHold()) {
         <span class="flex items-center gap-2 text-xs" data-testid="download-held-review">
           <span class="text-theme-muted">{{ 'downloads.heldForReview' | t: { count: item().quarantinedCount ?? 0 } }}</span>
           <button

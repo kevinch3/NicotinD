@@ -457,6 +457,7 @@
   "downloads.discardPartialFailed": "No se pudieron descartar estas pistas",
   "downloads.heldForReview": "{count} en espera de revisión",
   "downloads.review": "Revisar",
+  "downloads.reviewUnavailable": "La bandeja de revisión no está abierta ahora mismo.",
   "downloads.discardPartial": "Descartar",
   "downloads.stage.done": "Listo",
   "downloads.stage.error": "Error",

@@ -80,7 +80,9 @@ export class ReviewInboxComponent implements OnDestroy {
   readonly fixRequested = output<ReviewQueueAlbum>();
 
   readonly queue = this.review.queue;
-  readonly visible = computed(() => this.auth.canCurate() && this.queue().length > 0);
+  /** Owned by the service (#894) so the Downloads page gates its cards on the
+   *  same answer this component renders on. */
+  readonly visible = this.review.inboxVisible;
 
   /** True while a bulk approve/discard sweep is in flight — disables both bulk buttons. */
   readonly bulkBusy = signal(false);
