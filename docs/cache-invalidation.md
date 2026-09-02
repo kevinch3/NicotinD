@@ -168,6 +168,39 @@ extra work. `UPDATE OR IGNORE` handles the case where the playlist already conta
 the survivor — `(playlist_id, song_id)` is unique, and a plain `UPDATE` would abort
 the entire scan.
 
+## Genre overrides survive a song-id change (scanner prune, issue #856)
+
+Same hazard as the playlist one above, one table over. `library_genre_overrides`
+(scope `song`) keys on `library_songs.id` = `sha1(path)`, so a file move re-mints
+the id, and the scanner's full-scan prune deleted the old row with **nothing**
+repointing the override first — no FK, no error, just a curator's decision quietly
+gone. Unlike a playlist entry this is not a display nicety: a `mode:'replace'` row
+is the durability mechanism itself (`song-genre-mutate.ts`: *"the tag mirror is a
+convenience for external players; the override is the durability mechanism"*), so
+losing the row silently re-arms the exact bad-retag scenario it was written to
+prevent.
+
+Measured on prod: **290 of 953 (30%) song-scope overrides orphaned**, 173 of them
+curator `mode:'replace'` decisions. Severity split by what happened to the file:
+where it only **moved**, the tag mirror usually still carries the value (no
+visible loss, only the *protection* against the next bad retag is gone); where it
+was **replaced** (a re-encode), the value itself is gone too — nothing left to
+repoint onto.
+
+`repointGenreOverridesBeforePrune` (`services/genre-override-repoint.ts`) runs
+**inside the prune, before the delete**, right alongside
+`repointPlaylistsBeforePrune` — same reason: `library_genre_overrides` stores only
+`key` (the song id), so once the row is gone there is nothing left to identify
+which song it was. Identity is the same `(title, artist, duration)` triple, held
+to the same **uniqueness** bar — a wrong re-point silently attaches one song's
+curated genre to a *different* song, worse than the dangling row it replaces, so
+ambiguity is left to dangle exactly as the playlist version does.
+`(scope, key)` is the table's primary key, so the repoint uses the same
+`UPDATE OR IGNORE` collapse for a survivor that already carries its own override.
+
+This fixes the **repoint**, not the write-surfacing gap the file-replaced case
+exposes — that is tracked as a separate piece of #856.
+
 ## Cover cache eviction (issue #311)
 
 `<dataDir>/cover-cache` had **no eviction at all**. The only removal was
