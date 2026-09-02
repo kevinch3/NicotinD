@@ -318,12 +318,42 @@ export function checkPollutedAlbums(db: Database): AuditFinding[] {
  * (`normalizeForGrouping`) — a real album fragmented one-track-per-single because
  * each track's tags differ (often a numeric per-track artist). One finding per
  * cluster, listing the shared title + member count.
+ *
+ * A shared *title* is not evidence of a shared *release* (issues #875, #881): all
+ * 4 clusters flagged on prod before this guard — "Closer" (Adriatique / Christian
+ * Löffler / The Chainsmokers), "Baila Conmigo" (Jennifer Lopez / Rafa Barrios /
+ * Tiësto), "20 Grandes Exitos", "Pensando en Tí" — were coincidental title
+ * collisions across genuinely unrelated artists' own singles, landed months
+ * apart. #881's own suggested fix — require the members to share/overlap an
+ * artist — is backwards: the two genuine prod clusters (the Piazzolla opera,
+ * "DUSK VA010") have a **different**, often numeric, per-track artist on every
+ * member BY CONSTRUCTION — that's exactly why they're mis-split in the first
+ * place, so an artist-agreement gate would take this rule to zero findings.
+ *
+ * What actually separates them is the members' original **track number**
+ * (`library_songs.track`, not carried on `AlbumRow` — one extra batched query,
+ * cheap because it only runs for candidate clusters already at ≥3 members): a
+ * real split release keeps each track's number from the original release (92,
+ * 97, 99 on "Latin Only"; 2, 3, 8 on "DUSK VA010"), while a single is tagged
+ * track 1 — or not tagged at all — essentially always, so a false-positive
+ * cluster's members carry the same (or absent) track number. Requiring the
+ * cluster's track numbers to be genuinely distinct — not all-identical/all-null
+ * — removes all 4 known false positives while keeping both known true positives.
+ * `library-audit.test.ts` asserts both directions so this doesn't regress.
  */
 export function checkMisSplitAlbums(db: Database): AuditFinding[] {
   // Hidden-agnostic (see checkPollutedAlbums): a watermark-named mis-split the
   // curator already hid is still a real-or-junk cluster the cleanup must reason about.
-  const out: AuditFinding[] = [];
-  const singles = loadAlbums(db).filter((a) => a.classification === 'single');
+  //
+  // `song_count <= 1` is required, not assumed: `classification === 'single'` is
+  // metadata-driven (`contradictsTrackCount`/`IMPLAUSIBLE_SHORT_RELEASE_TRACKS` in
+  // library-curator.ts lets it hold up to 9 songs), and the per-album track lookup
+  // below is a plain `Map` that keeps only the last SQL-returned row per album_id —
+  // safe only when each candidate has at most one `library_songs` row to contribute.
+  // Without this floor, a multi-song "single" cluster's Map-captured value becomes
+  // order-dependent rather than a real per-track-number signal, reintroducing the
+  // false-positive class this rule exists to close.
+  const singles = loadAlbums(db).filter((a) => a.classification === 'single' && a.song_count <= 1);
   const clusters = new Map<string, AlbumRow[]>();
   for (const s of singles) {
     const key = normalizeForGrouping(s.name);
@@ -332,8 +362,31 @@ export function checkMisSplitAlbums(db: Database): AuditFinding[] {
     if (arr) arr.push(s);
     else clusters.set(key, [s]);
   }
-  for (const [key, members] of clusters) {
-    if (members.length < 3) continue;
+  const candidates = [...clusters.entries()].filter(([, members]) => members.length >= 3);
+  if (candidates.length === 0) return [];
+
+  // Every candidate is a one-song single (enforced above), so one query
+  // covers every member across every candidate cluster at once.
+  const candidateIds = candidates.flatMap(([, members]) => members.map((m) => m.id));
+  const trackByAlbumId = new Map<string, number | null>(
+    db
+      .query<{ album_id: string; track: number | null }, string[]>(
+        `SELECT album_id, track FROM library_songs WHERE album_id IN (${candidateIds.map(() => '?').join(',')})`,
+      )
+      .all(...candidateIds)
+      .map((r) => [r.album_id, r.track]),
+  );
+
+  const out: AuditFinding[] = [];
+  for (const [key, members] of candidates) {
+    // A null track (untagged) carries the same "undifferentiated" signal as a
+    // shared track=1, so distinctness is judged over the non-null values only —
+    // a lone real value shared by every member (or absent everywhere) must not
+    // read as corroboration just because a null sorts differently from it.
+    const distinctTracks = new Set(
+      members.map((m) => trackByAlbumId.get(m.id)).filter((t): t is number => t != null),
+    );
+    if (distinctTracks.size < 2) continue; // all-identical/all-null: not corroborated as one release
     out.push({
       rule: 'missplit_album',
       severity: 'high',

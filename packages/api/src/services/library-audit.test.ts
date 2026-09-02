@@ -50,11 +50,18 @@ function addAlbum(
   );
 }
 
-function addSong(db: Database, id: string, albumId: string, artistId: string, title = 't'): void {
+function addSong(
+  db: Database,
+  id: string,
+  albumId: string,
+  artistId: string,
+  title = 't',
+  track: number | null = null,
+): void {
   db.run(
-    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
-     VALUES (?, ?, ?, 'a', ?, ?, 1)`,
-    [id, albumId, title, artistId, `/m/${id}.opus`],
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, track, path, synced_at)
+     VALUES (?, ?, ?, 'a', ?, ?, ?, 1)`,
+    [id, albumId, title, artistId, track, `/m/${id}.opus`],
   );
 }
 
@@ -256,8 +263,14 @@ describe('auditLibrary', () => {
     expect(auditLibrary(db).findings.map((f) => f.rule)).not.toContain('numeric_single');
   });
 
-  it('detects a mis-split album (>=3 singles sharing a title)', () => {
+  // Issues #875/#881: a real album fragmented one-track-per-single carries its
+  // ORIGINAL per-track number on each member (92/97/99 style on prod) — the
+  // numeric per-track artist alone isn't corroboration, the scattered track
+  // numbers are. See the `checkMisSplitAlbums` docblock for the false positives
+  // this distinguishes from.
+  it('detects a mis-split album (>=3 singles sharing a title, with distinct track numbers)', () => {
     addArtist(db, 'a', 'x', 3);
+    const tracks = [92, 97, 99, 101];
     for (let i = 0; i < 4; i++) {
       addArtist(db, `mart${i}`, `${100 + i}`, 1);
       addAlbum(db, {
@@ -268,11 +281,79 @@ describe('auditLibrary', () => {
         songCount: 1,
         classification: 'single',
       });
-      addSong(db, `ms${i}`, `mal${i}`, `mart${i}`);
+      addSong(db, `ms${i}`, `mal${i}`, `mart${i}`, 't', tracks[i]!);
     }
     const missplit = checkMisSplitAlbums(db);
     expect(missplit).toHaveLength(1);
     expect(missplit[0]!.message).toContain('4 one-track singles');
+  });
+
+  // Issue #875: prod false positives on this rule — "Closer" (Adriatique,
+  // Christian Löffler, The Chainsmokers), "Baila Conmigo" (Jennifer Lopez, Rafa
+  // Barrios, Tiësto) — are each three unrelated artists' own singles that
+  // happen to share a title, landed months apart. A single is tagged track=1
+  // (or untagged) essentially always, so every member of a coincidental-title
+  // cluster carries the SAME (or absent) track number — unlike a real split,
+  // whose members carry the release's original, scattered track numbers.
+  it('does not flag same-titled singles by different artists with no distinct track numbers (issue #875/#881 false positive)', () => {
+    addArtist(db, 'ar1', 'Adriatique', 1);
+    addArtist(db, 'ar2', 'Christian Löffler', 1);
+    addArtist(db, 'ar3', 'The Chainsmokers', 1);
+    addAlbum(db, { id: 'alc1', name: 'Closer', artist: 'Adriatique', artistId: 'ar1' });
+    addAlbum(db, { id: 'alc2', name: 'Closer', artist: 'Christian Löffler', artistId: 'ar2' });
+    addAlbum(db, { id: 'alc3', name: 'Closer', artist: 'The Chainsmokers', artistId: 'ar3' });
+    addSong(db, 'sc1', 'alc1', 'ar1', 'Closer', 1);
+    addSong(db, 'sc2', 'alc2', 'ar2', 'Closer', 1);
+    addSong(db, 'sc3', 'alc3', 'ar3', 'Closer'); // untagged — still the same non-distinct signal
+    expect(checkMisSplitAlbums(db)).toHaveLength(0);
+  });
+
+  // A `classification === 'single'` album is not guaranteed one song — metadata-
+  // driven classification (`contradictsTrackCount`, library-curator.ts) allows up
+  // to 9 — so the cluster-candidate filter must enforce `song_count <= 1` itself
+  // rather than assume it. Without that floor, the per-album track lookup (a
+  // plain `Map` keyed by album_id) silently keeps only the LAST `library_songs`
+  // row returned for a multi-song member, so which of its several track numbers
+  // "wins" is an artifact of insertion/row order rather than a real signal. Here
+  // each member's rows are inserted so the last-wins value differs member to
+  // member (1, 2, 1) even though every member shares the identical track set
+  // {1, 2} — exactly the false-positive class (coincidental title collision
+  // across unrelated artists' own singles) this rule exists to close.
+  it('does not flag same-titled MULTI-track singles by different artists (song_count > 1)', () => {
+    addArtist(db, 'ar1', 'Artist One', 1);
+    addArtist(db, 'ar2', 'Artist Two', 1);
+    addArtist(db, 'ar3', 'Artist Three', 1);
+    addAlbum(db, {
+      id: 'alr1',
+      name: 'Remix',
+      artist: 'Artist One',
+      artistId: 'ar1',
+      songCount: 2,
+    });
+    addAlbum(db, {
+      id: 'alr2',
+      name: 'Remix',
+      artist: 'Artist Two',
+      artistId: 'ar2',
+      songCount: 2,
+    });
+    addAlbum(db, {
+      id: 'alr3',
+      name: 'Remix',
+      artist: 'Artist Three',
+      artistId: 'ar3',
+      songCount: 2,
+    });
+    // Every member shares the identical {1, 2} track set, but the LAST song
+    // inserted per album alternates (1, 2, 1) — without the song_count<=1
+    // floor, the last-row-wins Map lookup reads that as genuinely distinct.
+    addSong(db, 'sr1a', 'alr1', 'ar1', 'Remix', 2);
+    addSong(db, 'sr1b', 'alr1', 'ar1', 'Remix', 1);
+    addSong(db, 'sr2a', 'alr2', 'ar2', 'Remix', 1);
+    addSong(db, 'sr2b', 'alr2', 'ar2', 'Remix', 2);
+    addSong(db, 'sr3a', 'alr3', 'ar3', 'Remix', 2);
+    addSong(db, 'sr3b', 'alr3', 'ar3', 'Remix', 1);
+    expect(checkMisSplitAlbums(db)).toHaveLength(0);
   });
 
   it('flags integrity drift: album_count + song_count mismatch', () => {
@@ -375,7 +456,10 @@ describe('auditLibrary', () => {
   });
 
   it('PROTECTS a real-named mis-split from deletion even when members trip a delete rule', () => {
-    // A real album fragmented into placeholder-artist singles sharing a real title.
+    // A real album fragmented into placeholder-artist singles sharing a real title,
+    // each keeping its original release track number (issues #875/#881 — the
+    // scattered track numbers are what corroborate this as one release).
+    const tracks = [2, 3, 8];
     for (let i = 0; i < 3; i++) {
       addArtist(db, `n${i}`, '<Desconocido>', 1);
       addAlbum(db, {
@@ -386,7 +470,7 @@ describe('auditLibrary', () => {
         songCount: 1,
         classification: 'single',
       });
-      addSong(db, `ms${i}`, `m${i}`, `n${i}`);
+      addSong(db, `ms${i}`, `m${i}`, `n${i}`, 't', tracks[i]!);
     }
     // Members trip placeholder_single, but the cluster has a real title → protected.
     const { targets, protectedMisSplit } = selectPollutionTargets(db, ['placeholder_single']);

@@ -58,9 +58,11 @@ and a message. The CLI groups by rule (worst first); `--rule=<id>` lists one.
   deletable** — the music is real. See *Why a name predicate cannot decide this* below.
 - `numeric_single` — a one-track album titled a bare number (`07`).
 - `placeholder_single` (medium) — a single whose identity is unknown/placeholder.
-- `missplit_album` — ≥3 one-track singles share an edition-stripped title: a real
-  album fragmented per-track (an opera tagged with numeric per-track artists), or a
-  real VA compilation. **These hold wanted music — re-merge, don't delete.**
+- `missplit_album` — ≥3 one-track singles share an edition-stripped title **and**
+  carry genuinely different track numbers: a real album fragmented per-track (an
+  opera tagged with numeric per-track artists), or a real VA compilation. **These
+  hold wanted music — re-merge, don't delete.** Corroborated — see *Per-rule
+  corroboration* below; a shared title alone does not flag.
 
 ### Render (low/medium; **visible albums only**)
 - `missing_year` (low) — no usable year.
@@ -149,6 +151,23 @@ irreversible — every deletion is appended to `<dataDir>/repair-pollution.log`.
     The latter answers *"is this usable as a Lidarr query key?"*, under which the real
     band `!!!` (chk chk chk) normalizes to `""` and reads as a placeholder. That is the
     wrong question to authorise destruction.
+  - `missplit_album` additionally requires the cluster's members to carry
+    genuinely **different track numbers** (`library_songs.track`), not just a
+    shared title (issues #875, #881). A shared title alone is coincidence: all 4
+    prod findings before this guard were unrelated artists' own singles sharing a
+    generic title — "Closer" (Adriatique / Christian Löffler / The Chainsmokers),
+    "Baila Conmigo", "20 Grandes Exitos", "Pensando en Tí" — landed months apart.
+    #881's own suggested fix (require the members to share/overlap an *artist*)
+    is backwards for this rule: the genuine clusters (the Piazzolla opera, "DUSK
+    VA010") have a **different**, often numeric, per-track artist on every member
+    by construction — that's exactly why they're mis-split — so an artist-
+    agreement gate would zero the rule out entirely. What separates them is that
+    a real split keeps each track's original number from the release (92/97/99
+    on "Latin Only", 2/3/8 on "DUSK VA010"), while a single is tagged track 1 —
+    or untagged — essentially always, so a false-positive cluster's members
+    share the same (or absent) track number. Requiring the cluster's non-null
+    track numbers to include at least two distinct values removes all 4 known
+    false positives while keeping both known true positives.
 
 - **Always protected**: `numeric_artist` and **real-named** `missplit_album` clusters
   (the Piazzolla opera, real VA comps). A mis-split whose shared title is *itself* a
