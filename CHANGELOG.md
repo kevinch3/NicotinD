@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.62](https://github.com/kevinch3/NicotinD/compare/v0.5.61...v0.5.62) (2026-09-02)
+
+### Features
+
+* **web:** the mosaic becomes your downloads when the network drops ([#873](https://github.com/kevinch3/NicotinD/issues/873)) ([ec88466](https://github.com/kevinch3/NicotinD/commit/ec884669c7ceb02d1d79280a64272205c6299ed3)), references [#872](https://github.com/kevinch3/NicotinD/issues/872) [837/#854](https://github.com/kevinch3/NicotinD/issues/854)
+
+### Bug Fixes
+
+* **analysis:** let a curator pick the metrical level a BPM is measured at ([#879](https://github.com/kevinch3/NicotinD/issues/879)) ([ac4317d](https://github.com/kevinch3/NicotinD/commit/ac4317d6f8b9c059de81ae2c5bc45cc591fd9e41)), closes [#876](https://github.com/kevinch3/NicotinD/issues/876)
 ## [0.5.61](https://github.com/kevinch3/NicotinD/compare/v0.5.60...v0.5.61) (2026-09-01)
 
 ### Bug Fixes
