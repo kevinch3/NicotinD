@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.74](https://github.com/kevinch3/NicotinD/compare/v0.5.73...v0.5.74) (2026-09-03)
+
+### Bug Fixes
+
+* **web:** one verb for adding, one honest noun for the feed ([#915](https://github.com/kevinch3/NicotinD/issues/915)) ([d9f0456](https://github.com/kevinch3/NicotinD/commit/d9f04560c2fdfcbd446b99db6aa8a9adfd5c5434)), closes [#664](https://github.com/kevinch3/NicotinD/issues/664) [668/#671](https://github.com/kevinch3/NicotinD/issues/671), references [#907](https://github.com/kevinch3/NicotinD/issues/907) [#664](https://github.com/kevinch3/NicotinD/issues/664)
 ## [0.5.73](https://github.com/kevinch3/NicotinD/compare/v0.5.72...v0.5.73) (2026-09-03)
 
 ### Features
