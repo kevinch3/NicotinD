@@ -16,8 +16,10 @@ import {
   constants,
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
   rmdirSync,
@@ -41,6 +43,7 @@ import type { CompletedDownloadFile } from './path-inference.js';
 import type { OrganizeResult } from './library-organizer.js';
 import { deriveAcquireAlbum } from './acquire-album.js';
 import { recordAcquisition } from './acquisition-store.js';
+import { isUnderMusicDir } from './song-path.js';
 import { getProcessingSettings } from './processing-settings.js';
 import { recordReviewDecision, reviewHoldActive } from './download-review-store.js';
 import {
@@ -160,6 +163,13 @@ export interface LibraryImportServiceOptions {
 export function importStagingDir(dataDir: string, jobId: string): string {
   return join(dataDir, 'staging', 'import', jobId);
 }
+
+/**
+ * Which door an import came through. Only the review-hold decision differs, but
+ * that difference is a policy call about *who* is importing, not a mechanism —
+ * see `runChunk`.
+ */
+export type ImportOrigin = 'path' | 'staged-upload';
 
 /**
  * How one scanned file gets from the source into staging. A folder source
@@ -309,6 +319,89 @@ export class LibraryImportService {
   }
 
   /**
+   * The browser-upload entry point (docs/import.md). Identical to `submit`
+   * except for where the source may live and what the review hold means.
+   *
+   * `validateImportSource` refuses anything under `dataDir` (`INSIDE_DATA_DIR`)
+   * — the right answer for an admin typing a path, since importing the data dir
+   * into itself is never intended. It is the wrong answer for a directory this
+   * server minted itself under `staging/upload/`, so this door does its own
+   * narrower check rather than loosening that guard for every caller.
+   *
+   * Always move mode: the staged upload is scratch, and consuming it means
+   * `stageFile` renames rather than copies (same device by construction), so a
+   * multi-GB drop is not written to disk twice.
+   */
+  submitStaged(rawDir: string, opts: { startedBy?: string | null } = {}): string {
+    const busy = this.db
+      .query<{ id: string }, []>(
+        `SELECT id FROM import_jobs WHERE state IN ('queued', 'running') LIMIT 1`,
+      )
+      .get();
+    if (busy) throw new ImportAlreadyRunningError();
+
+    const realPath = this.validateStagedDir(rawDir);
+    const scan = scanImportSource(realPath);
+    if (scan.truncated) throw new ImportTooLargeError();
+    if (scan.files === 0) throw new ImportEmptySourceError();
+    this.preflightDisk(scan, realPath, 'dir', true);
+
+    const id = crypto.randomUUID();
+    createImportJob(this.db, {
+      id,
+      sourcePath: realPath,
+      removeOriginals: true,
+      filesTotal: scan.files,
+      bytesTotal: scan.bytes,
+      startedBy: opts.startedBy ?? null,
+    });
+    upsertImportDirs(
+      this.db,
+      id,
+      scan.dirs.map((d) => ({ dir: d.dir, fileCount: d.files.length })),
+    );
+    void this.run(
+      id,
+      this.sourceFor(realPath, 'dir'),
+      realPath,
+      scan,
+      true,
+      opts.startedBy ?? null,
+      'staged-upload',
+    );
+    return id;
+  }
+
+  /**
+   * The staged-upload counterpart to `validateImportSource`: the path must
+   * resolve inside `<dataDir>/staging/upload/` and be a real directory, not a
+   * symlink pointing somewhere more interesting.
+   */
+  private validateStagedDir(rawDir: string): string {
+    let real: string;
+    try {
+      if (lstatSync(rawDir).isSymbolicLink()) throw new ImportSourceInvalidError('NOT_DIR');
+      real = realpathSync(rawDir);
+    } catch (err) {
+      if (err instanceof ImportSourceInvalidError) throw err;
+      throw new ImportSourceInvalidError('NOT_FOUND');
+    }
+    if (!statSync(real).isDirectory()) throw new ImportSourceInvalidError('NOT_DIR');
+    // Resolve the root the same way, but tolerate its absence: no session has
+    // been created yet on a fresh install, and "the root does not exist" means
+    // nothing can be under it — a refusal, not a crash.
+    const rootPath = join(this.options.dataDir, 'staging', 'upload');
+    let uploadRoot: string;
+    try {
+      uploadRoot = realpathSync(rootPath);
+    } catch {
+      throw new ImportSourceInvalidError('INSIDE_DATA_DIR');
+    }
+    if (!isUnderMusicDir(uploadRoot, real)) throw new ImportSourceInvalidError('INSIDE_DATA_DIR');
+    return real;
+  }
+
+  /**
    * Copy mode always needs the full source size free on the destination fs.
    * A move whose source, staging AND library all share one device just renames
    * bytes around — only the headroom margin applies there.
@@ -425,6 +518,7 @@ export class LibraryImportService {
     scan: ImportScanResult,
     removeOriginals: boolean,
     startedBy: string | null,
+    origin: ImportOrigin = 'path',
   ): Promise<void> {
     this.runningJobId = id;
     const stagingRoot = importStagingDir(this.options.dataDir, id);
@@ -462,6 +556,7 @@ export class LibraryImportService {
           await this.runChunk(id, source, stagingRoot, chunk, removeOriginals, startedBy, {
             summary,
             destAlbums,
+            origin,
           });
           for (const dir of chunk.dirs) markImportDir(this.db, id, dir.dir, 'done');
         } catch (err) {
@@ -582,7 +677,11 @@ export class LibraryImportService {
     chunk: ImportChunk,
     removeOriginals: boolean,
     startedBy: string | null,
-    acc: { summary: ImportJobSummary; destAlbums: Map<string, AcquireAlbumDestination> },
+    acc: {
+      summary: ImportJobSummary;
+      destAlbums: Map<string, AcquireAlbumDestination>;
+      origin: ImportOrigin;
+    },
   ): Promise<void> {
     updateImportJob(this.db, id, { stage: 'organizing', currentDir: chunk.dirs[0]?.dir ?? null });
     const staged: StagedFile[] = [];
@@ -652,7 +751,12 @@ export class LibraryImportService {
     // inbox. Pre-approving BEFORE the scan mints the rows keeps the
     // `reviewed_at >= created` predicate true; a later real download into the
     // same album still pends (its rows are created after this decision).
+    // A server-path import is an admin bulk-importing their own library, and
+    // flooding the inbox with it helps nobody — hence the bypass. A browser
+    // upload is a different actor: any acquirer can drop an arbitrary folder,
+    // so it honours `holdForReview` exactly like every other ingest does.
     if (
+      acc.origin === 'path' &&
       reviewHoldActive(
         this.db,
         getProcessingSettings(this.db).holdForReview && this.options.acquisitionEnabled(),
