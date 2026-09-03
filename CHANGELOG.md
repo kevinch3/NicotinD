@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.75](https://github.com/kevinch3/NicotinD/compare/v0.5.74...v0.5.75) (2026-09-03)
+
+### Bug Fixes
+
+* **library:** read the compilation flag back, so organizing stops remuxing every compilation ([#918](https://github.com/kevinch3/NicotinD/issues/918)) ([23695f8](https://github.com/kevinch3/NicotinD/commit/23695f860ba7624722444ae370aec64f8f47a3f0)), closes [#916](https://github.com/kevinch3/NicotinD/issues/916), references [#917](https://github.com/kevinch3/NicotinD/issues/917)
 ## [0.5.74](https://github.com/kevinch3/NicotinD/compare/v0.5.73...v0.5.74) (2026-09-03)
 
 ### Bug Fixes
