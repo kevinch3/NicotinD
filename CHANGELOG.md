@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.73](https://github.com/kevinch3/NicotinD/compare/v0.5.72...v0.5.73) (2026-09-03)
+
+### Features
+
+* **web:** drag a folder or zip onto Add to import it ([#912](https://github.com/kevinch3/NicotinD/issues/912)) ([98b33fd](https://github.com/kevinch3/NicotinD/commit/98b33fdde12fd5e3530e23513251212c7ff26881)), references [#907](https://github.com/kevinch3/NicotinD/issues/907) [#893](https://github.com/kevinch3/NicotinD/issues/893)
 ## [0.5.72](https://github.com/kevinch3/NicotinD/compare/v0.5.71...v0.5.72) (2026-09-03)
 
 ### Features
