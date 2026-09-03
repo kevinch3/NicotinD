@@ -7,11 +7,16 @@ on:
     branches: [master]
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # One group per master COMMIT, not per branch. Sharing one group meant
+  # GitHub's single pending slot silently evicted the middle commit of any
+  # three, so four master commits in five days ran no CI of their own — two of
+  # them `fix:` (issue #906). `cancel-in-progress: false` could not help: it
+  # governs the *running* member and has no say over the pending one.
+  group: ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   # The release job pushes a version-bump commit to master, which triggers a
-  # new run in this same group — cancelling THIS run (the one that just
-  # produced the release) out from under itself (issue #360). master pushes
-  # must never cancel each other; only superseded PR pushes should.
+  # new run — which must not cancel THIS run (the one that just produced the
+  # release) out from under itself (issue #360). master pushes must never
+  # cancel each other; only superseded PR pushes should.
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 env:
@@ -606,14 +611,14 @@ jobs:
             exit 0
           fi
           files="$(git diff --name-only "$base"...HEAD)"
-          if echo "$files" | grep -qE '^(packages/analysis/(Dockerfile|pyproject\.toml)|\.github/workflows/(ci|deploy)\.yml)$'; then
+          if echo "$files" | grep -qE '^(packages/analysis/(Dockerfile|\.dockerignore|pyproject\.toml)$|packages/analysis/app/|\.github/workflows/(ci|deploy)\.yml$)'; then
             echo "analysis=true" >> "$GITHUB_OUTPUT"
           else
             echo "analysis=false" >> "$GITHUB_OUTPUT"
           fi
           # Same rule for the separator image; the torch requirement files are
           # part of its pin surface.
-          if echo "$files" | grep -qE '^(packages/separator/(Dockerfile|pyproject\.toml|requirements-torch-.*\.txt)|\.github/workflows/(ci|deploy)\.yml)$'; then
+          if echo "$files" | grep -qE '^(packages/separator/(Dockerfile|\.dockerignore|pyproject\.toml|requirements-torch-.*\.txt)$|packages/separator/app/|\.github/workflows/(ci|deploy)\.yml$)'; then
             echo "separator=true" >> "$GITHUB_OUTPUT"
           else
             echo "separator=false" >> "$GITHUB_OUTPUT"
@@ -729,6 +734,16 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
+    # The per-commit group above deliberately lets two master merges run at
+    # once. Two `release` jobs tagging and pushing at once is a different
+    # matter, so this restores exactly the serialization the shared workflow
+    # group used to provide, and nothing else. Queue, never cancel: the job is
+    # already re-entrant (it releases the true remote tip via
+    # `reset --hard FETCH_HEAD`, guarded by release-needed.ts and pushed
+    # `--atomic`), so a superseded release is absorbed by the next one.
+    concurrency:
+      group: ci-release-master
+      cancel-in-progress: false
     needs: [ci, web-test, storybook, e2e, e2e-shard, analysis, separator, docker, desktop-package]
     if: "github.event_name == 'push' && github.ref == 'refs/heads/master' && !startsWith(github.event.head_commit.message, 'chore(release):')"
     permissions:

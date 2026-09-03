@@ -878,6 +878,25 @@ a cosmetic one. Fixed by scoping `cancel-in-progress` off for `master`:
 pushes to `master` run sequentially and can never cancel each other, while a
 PR branch keeps the original supersede-and-cancel behavior.
 
+**But not cancelling was only half of it (issue #906).** `cancel-in-progress: false`
+governs the *running* member of a group. It says nothing about the *pending* one, and
+GitHub keeps exactly one pending run per group — so a third master push evicted the
+second before it ever started. Four master commits in five days ran no CI of their own,
+two of them `fix:`. Nothing went unreleased (the `release` job deliberately releases the
+true remote tip, so an evicted commit is absorbed by the next run), but the evicted
+commit's *content* was never examined by a run that executed: the sidecar image filter
+diffs `github.event.before`, so the successor run diffed only its own commit. v0.5.71
+shipped a change to `ci.yml` — a path that filter itself calls image-affecting — with both
+image smoke builds reporting `skipped`.
+
+The fix is one group per master **commit**
+(`ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}`), which makes
+eviction structurally impossible rather than merely discouraged. That deliberately lets
+two master merges run at once; what must *not* run at once is `release`, so it carries its
+own constant job-level group (`ci-release-master`, queue-never-cancel) restoring exactly
+the serialization the shared workflow group used to provide, and nothing else. The trade
+is runner minutes during a merge burst. Pinned by `scripts/ci-concurrency.test.ts`.
+
 ### Two releases must never deploy to the host at once (issue #768)
 
 `ci.yml` above serializes *per branch*, which is the right key for a branch's

@@ -121,8 +121,10 @@ the `docker-separator` job in `deploy.yml` (a copy of `docker-analysis`: amd64 o
 `version`/`major`/`release` tags, GHA layer cache scoped `separator-linux-amd64`); the
 deploy job `needs:` it and its result is in the deploy `if:` like the other sidecars. CI's
 `separator` job runs ruff + pytest with the dev extras only (no torch); the image smoke
-build fires when `packages/separator/{Dockerfile,pyproject.toml,requirements-*.txt}` or the
-workflows change (the #880 filter, extended), with `GPU=1` so the cu126 install and the
+build fires when `packages/separator/{Dockerfile,.dockerignore,pyproject.toml,requirements-*.txt}`,
+`packages/separator/app/` or the workflows change (the #880 filter, fixed — `app/` was
+missing, so the build that *is* the contract test skipped exactly the source it tests),
+with `GPU=1` so the cu126 install and the
 Pascal guard are exercised before a tag ever reaches the deploy job.
 
 Runtime env: `SEPARATOR_IDLE_RELEASE_SEC` (900), `SEPARATOR_MAX_TRACK_SEC` (900),
