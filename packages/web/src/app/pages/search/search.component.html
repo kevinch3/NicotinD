@@ -230,7 +230,7 @@
                   (click)="cancelLinkJob()"
                   data-testid="link-intent-cancel"
                   class="shrink-0 text-zinc-600 hover:text-zinc-300 transition text-base leading-none"
-                  title="Cancel"
+                  [attr.title]="'downloads.cancel' | t"
                 >
                   ×
                 </button>
@@ -260,7 +260,7 @@
               (click)="dismissLinkIntent()"
               data-testid="link-intent-dismiss"
               class="shrink-0 text-zinc-600 hover:text-zinc-300 transition text-base leading-none"
-              title="Dismiss"
+              [attr.title]="'downloads.dismiss' | t"
             >
               ×
             </button>
@@ -328,7 +328,7 @@
                           <span
                             class="inline-block w-5 h-5 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin"
                           ></span>
-                          <span class="text-xs text-zinc-300">Preparing…</span>
+                          <span class="text-xs text-zinc-300">{{ 'acquire.preparing' | t }}</span>
                         </div>
                       }
                       <!-- Watchlist star — auto-acquire when a complete folder appears

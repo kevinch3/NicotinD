@@ -53,29 +53,29 @@ function setup(tab?: string, opts: { active?: number; jobs?: number } = {}) {
 
 describe('parseGetTab', () => {
   it('accepts the downloads tab', () => {
-    expect(parseGetTab('downloads')).toBe('downloads');
+    expect(parseGetTab('activity')).toBe('activity');
   });
 
   it('falls back to find for absent or unrecognized values', () => {
     // `?tab=` is user-editable, so anything unknown must not render a blank page.
-    expect(parseGetTab(null)).toBe('find');
-    expect(parseGetTab('')).toBe('find');
-    expect(parseGetTab('nonsense')).toBe('find');
-    expect(parseGetTab('DOWNLOADS')).toBe('find');
+    expect(parseGetTab(null)).toBe('add');
+    expect(parseGetTab('')).toBe('add');
+    expect(parseGetTab('nonsense')).toBe('add');
+    expect(parseGetTab('ACTIVITY')).toBe('add');
   });
 });
 
 describe('GetComponent', () => {
   it('defaults to the Find tab and mounts only that child', () => {
     const { fixture } = setup();
-    expect(fixture.componentInstance.tab()).toBe('find');
+    expect(fixture.componentInstance.tab()).toBe('add');
     expect(fixture.nativeElement.querySelector('#find-pane')).toBeTruthy();
     expect(fixture.nativeElement.querySelector('#dl-pane')).toBeNull();
   });
 
   it('opens straight onto Downloads when the URL says so (the /downloads redirect target)', () => {
-    const { fixture } = setup('downloads');
-    expect(fixture.componentInstance.tab()).toBe('downloads');
+    const { fixture } = setup('activity');
+    expect(fixture.componentInstance.tab()).toBe('activity');
     expect(fixture.nativeElement.querySelector('#dl-pane')).toBeTruthy();
     expect(fixture.nativeElement.querySelector('#find-pane')).toBeNull();
   });
@@ -85,7 +85,7 @@ describe('GetComponent', () => {
     // handler (that service is a stack spliced on destroy) and tear down its
     // polling. `[hidden]` would leak both.
     const { fixture } = setup();
-    fixture.componentInstance.setTab('downloads');
+    fixture.componentInstance.setTab('activity');
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('#find-pane')).toBeNull();
     expect(fixture.nativeElement.querySelector('#dl-pane')).toBeTruthy();
@@ -93,16 +93,16 @@ describe('GetComponent', () => {
 
   it('mirrors the tab into the URL so the view is linkable', () => {
     const { fixture, navigate } = setup();
-    fixture.componentInstance.setTab('downloads');
+    fixture.componentInstance.setTab('activity');
     expect(navigate).toHaveBeenCalledWith(
       [],
-      expect.objectContaining({ queryParams: { tab: 'downloads' }, queryParamsHandling: 'merge' }),
+      expect.objectContaining({ queryParams: { tab: 'activity' }, queryParamsHandling: 'merge' }),
     );
   });
 
   it('does not navigate when the active tab is re-selected', () => {
     const { fixture, navigate } = setup();
-    fixture.componentInstance.setTab('find');
+    fixture.componentInstance.setTab('add');
     expect(navigate).not.toHaveBeenCalled();
   });
 
@@ -120,5 +120,15 @@ describe('GetComponent', () => {
     expect(
       fixture.nativeElement.querySelector('[data-testid="get-tab-downloads-badge"]'),
     ).toBeNull();
+  });
+});
+
+// #664. The tabs were renamed (Find → Add, Downloads → Activity) but the old
+// `?tab=` values are in bookmarks, in shared links, and in the `/downloads` and
+// `/search` redirects. A renamed tab is not a reason to break a URL.
+describe('parseGetTab — legacy aliases', () => {
+  it('still accepts the pre-rename values', () => {
+    expect(parseGetTab('downloads')).toBe('activity');
+    expect(parseGetTab('find')).toBe('add');
   });
 });

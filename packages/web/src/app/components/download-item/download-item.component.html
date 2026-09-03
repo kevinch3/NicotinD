@@ -217,7 +217,7 @@
       [disabled]="retrying()"
       class="text-xs px-2 py-1 rounded-md bg-theme-surface-2 text-theme-secondary hover:text-theme-primary transition flex-shrink-0 disabled:opacity-50"
       data-testid="download-retry"
-      title="Retry"
+      [attr.title]="'downloads.retry' | t"
     >
       {{ retrying() ? 'Retrying...' : 'Retry' }}
     </button>
@@ -233,7 +233,7 @@
         (click)="cancel.emit()"
         class="p-1 text-theme-muted hover:text-status-error transition flex-shrink-0"
         data-testid="download-cancel"
-        title="Cancel"
+        [attr.title]="'downloads.cancel' | t"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -246,7 +246,7 @@
       (click)="remove.emit()"
       class="p-1 text-theme-muted hover:text-status-error transition flex-shrink-0"
       data-testid="download-remove"
-      title="Dismiss"
+      [attr.title]="'downloads.dismiss' | t"
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />

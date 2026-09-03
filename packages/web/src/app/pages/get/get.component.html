@@ -27,7 +27,7 @@
         [attr.aria-current]="tab() === t.value ? 'page' : null"
         (click)="setTab(t.value)">
         {{ t.label | t }}
-        @if (t.value === 'downloads' && activeCount() > 0) {
+        @if (t.value === 'activity' && activeCount() > 0) {
           <span
             class="ml-1.5 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-theme-accent text-[10px] font-bold text-theme-on-accent"
             data-testid="get-tab-downloads-badge">
@@ -71,7 +71,7 @@
   </div>
 }
 
-@if (tab() === 'find') {
+@if (tab() === 'add') {
   <app-search />
 } @else {
   <app-downloads />

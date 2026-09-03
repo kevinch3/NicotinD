@@ -61,7 +61,7 @@
             }
           }
           @if (directFiles().length === 0) {
-            <p class="text-xs text-theme-muted p-2">No files</p>
+            <p class="text-xs text-theme-muted p-2">{{ 'acquire.noFiles' | t }}</p>
           } @else {
             @for (file of directFiles(); track file.filename) {
               <div class="flex items-center justify-between text-[11px] text-theme-secondary hover:text-theme-primary px-2 py-1">
@@ -96,7 +96,7 @@
               }
             } @else {
               <div class="p-2 space-y-2">
-                <p class="text-[11px] text-theme-muted">Tree not loaded</p>
+                <p class="text-[11px] text-theme-muted">{{ 'acquire.treeNotLoaded' | t }}</p>
                 <button
                   (click)="loadBrowse()"
                   [disabled]="loading()"
@@ -111,7 +111,7 @@
             type="button"
             (pointerdown)="startTreeResize($event)"
             class="w-1.5 shrink-0 cursor-col-resize bg-theme-surface-2 hover:bg-theme-hover transition"
-            aria-label="Resize folder tree panel">
+            [attr.aria-label]="'acquire.resizeTree' | t">
           </button>
 
           <div class="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
@@ -128,7 +128,7 @@
             </div>
 
             @if (directFiles().length === 0) {
-              <p class="text-xs text-theme-muted p-2">No files</p>
+              <p class="text-xs text-theme-muted p-2">{{ 'acquire.noFiles' | t }}</p>
             } @else {
               @for (file of directFiles(); track file.filename) {
                 <div class="flex items-center justify-between text-[11px] text-theme-secondary hover:text-theme-primary px-1 py-0.5">
@@ -154,7 +154,7 @@
           type="button"
           (pointerdown)="startHeightResize($event)"
           class="h-2 w-full border-t border-theme bg-theme-surface-2 hover:bg-theme-hover cursor-row-resize flex items-center justify-center transition"
-          aria-label="Resize folder browser height">
+          [attr.aria-label]="'acquire.resizeBrowser' | t">
           <span class="h-px w-8 bg-theme-hover"></span>
         </button>
       </div>

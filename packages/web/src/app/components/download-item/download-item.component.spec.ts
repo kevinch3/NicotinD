@@ -223,7 +223,12 @@ describe('download-item "View N albums" menu — rendered rows', () => {
     // everything else (the real template, MenuPanelComponent, RouterLink)
     // untouched so the menu under test is exercised for real.
     TestBed.overrideComponent(DownloadItemComponent, {
-      set: { imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent] },
+      // TranslatePipe stays in every override: `set:` replaces the list
+      // wholesale, and the card's retry/cancel/dismiss titles go through `| t`
+      // since #664.
+      set: {
+        imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent, TranslatePipe],
+      },
     });
     const fixture = TestBed.createComponent(DownloadItemComponent);
     setInputValue(fixture.componentInstance.item, multiItem);
@@ -285,7 +290,12 @@ describe('download-item "Now: / Next:" — rendered', () => {
       providers: [provideRouter([])],
     });
     TestBed.overrideComponent(DownloadItemComponent, {
-      set: { imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent] },
+      // TranslatePipe stays in every override: `set:` replaces the list
+      // wholesale, and the card's retry/cancel/dismiss titles go through `| t`
+      // since #664.
+      set: {
+        imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent, TranslatePipe],
+      },
     });
     const fixture = TestBed.createComponent(DownloadItemComponent);
     setInputValue(fixture.componentInstance.item, nowNextItem);
@@ -377,7 +387,12 @@ describe('download-item failure breakdown', () => {
       providers: [provideRouter([])],
     });
     TestBed.overrideComponent(DownloadItemComponent, {
-      set: { imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent] },
+      // TranslatePipe stays in every override: `set:` replaces the list
+      // wholesale, and the card's retry/cancel/dismiss titles go through `| t`
+      // since #664.
+      set: {
+        imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent, TranslatePipe],
+      },
     });
     const fixture = TestBed.createComponent(DownloadItemComponent);
     setInputValue(fixture.componentInstance.item, one);

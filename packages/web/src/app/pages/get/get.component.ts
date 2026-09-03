@@ -19,16 +19,30 @@ import { filesFromDataTransfer, filesFromInput } from '../../lib/dropped-files';
 import { buildUploadManifest, type DroppedFile } from '../../lib/upload-plan';
 import { httpErrorMessage } from '../../lib/http-error';
 
-export type GetTab = 'find' | 'downloads';
+export type GetTab = 'add' | 'activity';
 
+/**
+ * One verb for putting music in — **add** — and one honest noun for the feed.
+ *
+ * The feed now carries peer downloads, link jobs *and* imports; calling it
+ * "Downloads" made the card that says 📁 Imported sit under a heading claiming
+ * it was downloaded (#664). The nav already said "Add"; the page did not.
+ */
 const TABS: ReadonlyArray<{ value: GetTab; label: string; testid: string }> = [
-  { value: 'find', label: 'get.tab.find', testid: 'get-tab-find' },
-  { value: 'downloads', label: 'get.tab.downloads', testid: 'get-tab-downloads' },
+  { value: 'add', label: 'get.tab.add', testid: 'get-tab-find' },
+  { value: 'activity', label: 'get.tab.activity', testid: 'get-tab-downloads' },
 ];
 
-/** `?tab=` is free-form user input; anything unrecognized means the default. */
+/**
+ * `?tab=` is free-form user input; anything unrecognized means the default.
+ *
+ * `find`/`downloads` stay accepted forever: `/downloads` and `/search` redirect
+ * here carrying them, they are in users' bookmarks and in shared links, and a
+ * renamed tab is not a reason to break a URL. The test ids keep their old names
+ * for the same reason — they are a selector contract, not prose.
+ */
 export function parseGetTab(raw: string | null): GetTab {
-  return raw === 'downloads' ? 'downloads' : 'find';
+  return raw === 'activity' || raw === 'downloads' ? 'activity' : 'add';
 }
 
 // ─── Component ──────────────────────────────────────────────────────
@@ -144,8 +158,8 @@ export class GetComponent {
     this.dropPercent.set(0);
     this.dropError.set(null);
     this.dropped.set(files);
-    // A drop while the Downloads tab is open should still be visible.
-    this.setTab('find');
+    // A drop while the Activity tab is open should still be visible.
+    this.setTab('add');
   }
 
   async startImport(): Promise<void> {
@@ -162,7 +176,7 @@ export class GetComponent {
       // the card retires rather than shadowing a Downloads row (#673's shape).
       this.dismissDrop();
       await this.transfers.kickPoll();
-      this.setTab('downloads');
+      this.setTab('activity');
     } catch (err) {
       this.dropState.set('error');
       this.dropError.set(

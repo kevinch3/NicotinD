@@ -10,33 +10,46 @@ import { test, expect } from '@playwright/test';
  * and "Saved Offline" browsing moved to that tab's offline variant.
  */
 test.describe('downloads', () => {
-  test('the legacy /downloads path redirects onto the Downloads tab', async ({ page }) => {
+  test('the legacy /downloads path redirects onto the Activity tab', async ({ page }) => {
     await page.goto('/downloads');
 
     await expect(page).toHaveURL(/\/get(\?|$)/);
-    await expect(page).toHaveURL(/tab=downloads/);
-    // Finished jobs persist as feed history since phase 3, so an empty-state
-    // text is run-order-dependent — the pane container is the stable anchor.
-    await expect(page.getByTestId('downloads-active')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Scan library' })).toBeVisible();
+    await expect(page).toHaveURL(/tab=activity/);
+    // Neither the empty-state text NOR `downloads-active` is a stable anchor:
+    // the feed section only renders when the feed is non-empty, so both depend
+    // on what earlier specs left behind. What is always true of this pane is
+    // that the Activity tab is current and the Add pane is gone.
+    await expect(page.getByTestId('get-tab-downloads')).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByTestId('search-input')).toHaveCount(0);
   });
 
   test('switching tabs swaps the pane and is linkable', async ({ page }) => {
     await page.goto('/get');
-    // Default tab is Find.
+    // Default tab is Add.
     await expect(page.getByTestId('search-input')).toBeVisible();
 
     await page.getByTestId('get-tab-downloads').click();
-    await expect(page.getByTestId('downloads-active')).toBeVisible();
     await expect(page.getByTestId('search-input')).toHaveCount(0);
-    await expect(page).toHaveURL(/tab=downloads/);
+    await expect(page).toHaveURL(/tab=activity/);
 
     // A reload of that URL comes straight back to the same pane.
     await page.reload();
-    await expect(page.getByTestId('downloads-active')).toBeVisible();
+    await expect(page.getByTestId('get-tab-downloads')).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByTestId('search-input')).toHaveCount(0);
 
     await page.getByTestId('get-tab-find').click();
     await expect(page.getByTestId('search-input')).toBeVisible();
-    await expect(page).toHaveURL(/tab=find/);
+    await expect(page).toHaveURL(/tab=add/);
+  });
+
+  // The tabs were renamed in #664, but `?tab=find|downloads` are in bookmarks
+  // and shared links. They still resolve — a renamed tab is not a reason to
+  // break a URL — even though the app now *emits* the new values.
+  test('the pre-rename ?tab= values still resolve', async ({ page }) => {
+    await page.goto('/get?tab=downloads');
+    await expect(page.getByTestId('get-tab-downloads')).toHaveAttribute('aria-current', 'page');
+
+    await page.goto('/get?tab=find');
+    await expect(page.getByTestId('search-input')).toBeVisible();
   });
 });
