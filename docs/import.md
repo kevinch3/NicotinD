@@ -27,6 +27,37 @@ The server-path lane stays exactly as it was — it is still the only sane way t
 mounted library. The upload lane exists because that lane is useless from a phone or any machine
 that is not the server.
 
+### The drop zone (web)
+
+`/get` is the whole drop target — aiming a dragged folder at a small rectangle is
+fiddly, and nothing else on that page could plausibly mean "a file was dropped".
+A drop is a **proposal, not a command**: the `ImportDropCardComponent` shows what
+was found (`N folders · M files · size`, plus what the allowlist ignored) and
+waits for *Add to library*. `import-browse` + a hidden `webkitdirectory` input
+covers browsers and keyboards that cannot drag.
+
+The card retires the moment the server accepts the commit. From there the work is
+an ordinary `acquisition_jobs` row and the Downloads feed owns it — a card that
+lingered alongside its own job row would be #673's twin-row shape by construction.
+
+Gated on **`canImport`** (`auth.service.ts`), which is `canAcquire`'s role bar
+*without* the kill-switch, mirroring the server's mount. `acquireGuard` gained
+`|| canImport()` and both navs filter on it, so a streaming-only install still
+reaches `/get` — it just renders the drop zone and not the acquire lanes.
+
+Progress is bytes-weighted and capped at 99 (`uploadPercent`): the commit is what
+completes an upload, and a bar at 100 before the server has taken the job claims
+more than is true. `chunkRanges` doubles as the resume plan — ranges stay aligned
+to chunk boundaries so only the first range after a resume is short.
+
+One allowlist, both sides: `isUploadableName` lives in `@nicotind/core` and is
+imported by the browser (to avoid spending bandwidth) and the server (because a
+client's word is not a permission). Two copies would drift into "the browser
+uploaded it and the server threw it away", which looks like data loss. The
+dot-prefix rule is load-bearing rather than hygiene — macOS AppleDouble sidecars
+are named `._Track.flac`, so an extension-only test uploads 4 KB resource forks
+as though they were songs.
+
 ### Why the admin card was removed (and why the upload lane is not a revival of it)
 
 The Admin "Import music" card (`ImportCardComponent`) was **removed**: that import is an operator

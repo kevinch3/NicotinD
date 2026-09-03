@@ -38,8 +38,14 @@ export const curatorGuard: CanActivateFn = () => {
 
 // Acquisition surfaces (e.g. /downloads) are hidden from listeners; bounce them
 // home so a bookmarked/deep-linked URL can't reach the acquisition UI.
+//
+// `canImport` is the second arm rather than a second guard: /get hosts both the
+// acquire lanes AND the import drop zone, and import outlives the acquisition
+// kill-switch. Guarding on `canAcquire` alone would bounce a user away from the
+// one lane still available to them on a streaming-only install. The lanes inside
+// the page gate themselves individually.
 export const acquireGuard: CanActivateFn = () => {
   const auth = inject(AuthService);
   const router = inject(Router);
-  return auth.canAcquire() || router.createUrlTree(['/']);
+  return auth.canAcquire() || auth.canImport() || router.createUrlTree(['/']);
 };

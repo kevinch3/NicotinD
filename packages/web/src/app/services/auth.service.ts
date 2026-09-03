@@ -61,6 +61,17 @@ export class AuthService {
   readonly canAcquire = computed(
     () => this.serverAcquisitionEnabled() && canAcquireRole(asRole(this.role())),
   );
+  /**
+   * Can add music from their own machine (the `/api/import` upload lane).
+   *
+   * Same role bar as `canAcquire` but **not** gated on the kill-switch, mirroring
+   * the server, which mounts `/api/import` outside `requireAcquisitionEnabled`.
+   * A streaming-only install has no acquisition stack and is precisely the
+   * deployment most likely to need to fill its library from a folder — gating
+   * import on the acquisition switch would stand down the one lane that still
+   * works there.
+   */
+  readonly canImport = computed(() => canAcquireRole(asRole(this.role())));
   /** Can curate the library (edit/merge/delete albums, metadata, identity). */
   readonly canCurate = computed(() => canCurateRole(asRole(this.role())));
   readonly welcomeDismissed = signal<boolean>(false);

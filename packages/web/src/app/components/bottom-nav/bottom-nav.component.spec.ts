@@ -18,6 +18,7 @@ function setup(
     active?: number;
     acquireJobs?: number;
     canAcquire?: boolean;
+    canImport?: boolean;
     pending?: number;
   } = {},
 ) {
@@ -25,6 +26,9 @@ function setup(
   const activeDownloadCount = signal(opts.active ?? 0);
   const activeJobs = signal(new Array(opts.acquireJobs ?? 0).fill({}));
   const canAcquire = signal(opts.canAcquire ?? true);
+  // Defaults to canAcquire because they agree for every role; they diverge only
+  // when the acquisition kill-switch is off, which the #907 test below drives.
+  const canImport = signal(opts.canImport ?? opts.canAcquire ?? true);
   const pending = signal(opts.pending ?? 0);
 
   TestBed.configureTestingModule({
@@ -36,7 +40,7 @@ function setup(
         { path: 'get', component: _Stub },
         { path: 'settings', component: _Stub },
       ]),
-      { provide: AuthService, useValue: { canAcquire } },
+      { provide: AuthService, useValue: { canAcquire, canImport } },
       { provide: SetupService, useValue: { isOffline } },
       { provide: TransferService, useValue: { activeDownloadCount } },
       { provide: DownloadReviewService, useValue: { pending } },
@@ -192,5 +196,24 @@ describe('BottomNavComponent', () => {
       const painted = styles.some((s) => s.includes('.is-active') && s.includes('--theme-accent'));
       expect(painted, 'is-active uses --theme-accent').toBe(true);
     });
+  });
+});
+
+// #907. The Add tab hosts the import drop zone as well as the acquire lanes,
+// and import deliberately outlives the acquisition kill-switch — the server
+// mounts `/api/import` outside it for the same reason. Gating the tab on
+// `canAcquire` would hide the one lane a streaming-only install can still use.
+describe('BottomNavComponent — Add tab with acquisition off', () => {
+  const hasGetTab = (f: { componentInstance: { tabs: () => { to: string }[] } }) =>
+    f.componentInstance.tabs().some((t) => t.to === '/get');
+
+  it('keeps the Add tab when the kill-switch is off but the user can import', () => {
+    const { fixture } = setup({ canAcquire: false, canImport: true });
+    expect(hasGetTab(fixture)).toBe(true);
+  });
+
+  it('still hides it from a listener, who can do neither', () => {
+    const { fixture } = setup({ canAcquire: false, canImport: false });
+    expect(hasGetTab(fixture)).toBe(false);
   });
 });
