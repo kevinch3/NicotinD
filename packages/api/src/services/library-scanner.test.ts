@@ -160,6 +160,62 @@ describe('buildLibrary (pure aggregation)', () => {
   });
 });
 
+/**
+ * Issue #747, end to end. Album identity deliberately collapses discs into one
+ * row, so `(disc, title)` is the only thing separating a title that legitimately
+ * repeats across discs. Before the fix the second file was dropped during
+ * selection and never became a `library_songs` row — no error, no report, and
+ * `library_albums.song_count` simply read low.
+ */
+describe('a title repeated across discs (issue #747)', () => {
+  const disc = (n: number, t: string, i: number) =>
+    track({
+      relPath: `El Salmon/CD${n}/${String(i).padStart(2, '0')} - ${t}.flac`,
+      suffix: 'flac',
+      artist: 'Andres Calamaro',
+      album: 'El Salmon',
+      title: t,
+      track: i,
+      disc: n,
+    });
+
+  it('keeps every file, so song_count matches what is on disk', () => {
+    const built = buildLibrary([
+      disc(1, 'Revolucion Turra', 1),
+      disc(1, 'Output', 2),
+      disc(2, 'Revolucion Turra', 1),
+      disc(2, 'All You Need Is Pop', 2),
+    ]);
+    expect(built.songs).toHaveLength(4);
+    expect(built.albums).toHaveLength(1);
+    expect(built.albums[0]!.songCount).toBe(4);
+  });
+
+  it('mints a distinct song id per disc, since the id is sha1(path)', () => {
+    const built = buildLibrary([disc(1, 'Revolucion Turra', 1), disc(2, 'Revolucion Turra', 1)]);
+    const ids = built.songs.map((s) => s.id);
+    expect(new Set(ids).size).toBe(2);
+    expect(built.songs.map((s) => s.disc).sort()).toEqual([1, 2]);
+  });
+
+  it('still collapses a format-duplicate inside one disc', () => {
+    // Disc must add a dimension to selection, never switch it off.
+    const built = buildLibrary([
+      disc(1, 'Revolucion Turra', 1),
+      track({
+        relPath: 'El Salmon/CD1/01 - Revolucion Turra.mp3',
+        artist: 'Andres Calamaro',
+        album: 'El Salmon',
+        title: 'Revolucion Turra',
+        track: 1,
+        disc: 1,
+      }),
+    ]);
+    expect(built.songs).toHaveLength(1);
+    expect(built.songs[0]!.suffix).toBe('flac');
+  });
+});
+
 describe('loose singles (un-bucketing)', () => {
   it('flags the synthetic Singles bucket and album-less tracks', () => {
     expect(isLooseSinglesBucket('Alfredo Casero/Singles', 'Singles')).toBe(true);

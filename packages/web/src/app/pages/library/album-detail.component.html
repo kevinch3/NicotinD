@@ -170,6 +170,13 @@
 
     <div appTvNavGroup axis="vertical">
       @for (song of detailControls.filtered(); track song.id) {
+        @if (discHeaders().get(song.id); as disc) {
+          <div
+            class="px-3 pt-5 pb-2 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+            data-testid="disc-header">
+            Disc {{ disc }}
+          </div>
+        }
         <app-track-row
           [track]="toTrackFromSong(song)"
           [indexLabel]="song.track ?? ''"

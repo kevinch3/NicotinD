@@ -60,6 +60,12 @@ export interface Song {
   albumArtist?: string;
   albumArtistId?: string;
   track?: number;
+  /**
+   * Disc number within the album. Absent means the album has one disc — album
+   * identity collapses discs, so this is what separates a repeated title
+   * (issue #747).
+   */
+  disc?: number;
   year?: number;
   /** Primary genre (first of `genres`) — kept for single-value consumers. */
   genre?: string;

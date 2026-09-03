@@ -47,6 +47,71 @@ describe('selectAlbumTracks — without a canonical list', () => {
   });
 });
 
+/**
+ * Issue #747. Within an album a track was identified by its normalized TITLE
+ * alone, while album identity correctly collapses every disc into one row. So a
+ * release that legitimately repeats a title across discs — an interlude, a
+ * reprise, "Intro" on both halves — collapsed two real files to one key and the
+ * loser was dropped at selection time. It never became a `library_songs` row at
+ * all, and no report surfaced it: `/api/library/untracked` is about
+ * `relative_path IS NULL` acquisitions, a different thing.
+ */
+describe('selectAlbumTracks — a title repeated across discs', () => {
+  const d = (
+    relPath: string,
+    title: string,
+    disc: number | null,
+    suffix = 'flac',
+  ): SelectableTrack => ({ relPath, title, suffix, bitRate: 900, disc });
+
+  it('keeps both files when one title appears on two discs', () => {
+    const kept = selectAlbumTracks([
+      d('CD1/01 - Intro.flac', 'Intro', 1),
+      d('CD2/01 - Intro.flac', 'Intro', 2),
+    ]);
+    expect(kept.map((k) => k.relPath).sort()).toEqual([
+      'CD1/01 - Intro.flac',
+      'CD2/01 - Intro.flac',
+    ]);
+  });
+
+  it('still collapses format-duplicates WITHIN one disc', () => {
+    // The whole point of selection: disc must add a dimension, not disable it.
+    const kept = selectAlbumTracks([
+      d('CD1/01 - Intro.mp3', 'Intro', 1, 'mp3'),
+      d('CD1/01 - Intro.flac', 'Intro', 1),
+    ]);
+    expect(kept.map((k) => k.relPath)).toEqual(['CD1/01 - Intro.flac']);
+  });
+
+  it('treats an untagged disc as disc 1, so a partly-tagged album still collapses', () => {
+    const kept = selectAlbumTracks([
+      d('01 - Intro.mp3', 'Intro', null, 'mp3'),
+      d('01 - Intro.flac', 'Intro', 1),
+    ]);
+    expect(kept.map((k) => k.relPath)).toEqual(['01 - Intro.flac']);
+  });
+
+  it('keeps both under a canonical tracklist that names the title twice', () => {
+    // Lidarr's canonical list is titles only, so both discs' "Intro" match the
+    // same entry; without a disc term `canon.find` returns the first for both.
+    const kept = selectAlbumTracks(
+      [d('CD1/01 - Intro.flac', 'Intro', 1), d('CD2/01 - Intro.flac', 'Intro', 2)],
+      ['Intro', 'Intro', 'Closer'],
+    );
+    expect(kept).toHaveLength(2);
+  });
+
+  it('still drops a foreign track on a multi-disc album', () => {
+    // Disc-awareness must not become a bypass for canonical admission.
+    const kept = selectAlbumTracks(
+      [d('CD1/01 - Intro.flac', 'Intro', 1), d('CD2/99 - Bonus Advert.flac', 'Bonus Advert', 2)],
+      ['Intro'],
+    );
+    expect(kept.map((k) => k.relPath)).toEqual(['CD1/01 - Intro.flac']);
+  });
+});
+
 describe('selectAlbumTracks — with a canonical Lidarr tracklist', () => {
   // The real "A propósito" case: a folder mixing flac + mp3 + m4a, with foreign
   // tracks (Pulpito / Parte 1 El Sultán / Parte 2 Jaula) that aren't in the album.

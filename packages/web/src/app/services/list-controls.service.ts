@@ -74,8 +74,22 @@ export class ListControlsService {
     sortOptions: SortOption[];
     defaultSort?: string;
     defaultDirection?: 'asc' | 'desc';
+    /**
+     * Per-field comparators for sort fields that are not one column — an
+     * album's "Track #" is really `(disc, track)` (issue #747). A field with no
+     * entry here keeps the generic single-key sort below.
+     */
+    comparators?: Record<string, (a: T, b: T) => number>;
   }): ListControls<T> {
-    const { pageKey, items, searchFields, sortOptions, defaultSort, defaultDirection } = config;
+    const {
+      pageKey,
+      items,
+      searchFields,
+      sortOptions,
+      defaultSort,
+      defaultDirection,
+      comparators,
+    } = config;
 
     // Initialize defaults if not already set (capture isNewPage before any updatePage call)
     const current = this.getPage(pageKey);
@@ -112,6 +126,11 @@ export class ListControlsService {
       const sf = sortField();
       if (sf) {
         const dir = sortDirection() === 'asc' ? 1 : -1;
+        const composite = comparators?.[sf];
+        if (composite) {
+          result.sort((a, b) => composite(a, b) * dir);
+          return result;
+        }
         result.sort((a, b) => {
           const aVal = (a as Record<string, unknown>)[sf];
           const bVal = (b as Record<string, unknown>)[sf];

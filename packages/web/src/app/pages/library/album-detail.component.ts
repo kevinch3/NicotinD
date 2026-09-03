@@ -14,6 +14,7 @@ import { TrackRowComponent } from '../../components/track-row/track-row.componen
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { toTrack } from '../../lib/track-utils';
+import { compareDiscThenTrack, discGroups } from '../../lib/disc-order';
 import { resolveArtistRoute, resolveAlbumRoute } from '../../lib/route-utils';
 import { albumLoadFailureFor, type AlbumLoadFailure } from '../../lib/album-load-state';
 import { createSelection } from '../../lib/selection';
@@ -113,6 +114,24 @@ export class AlbumDetailComponent implements OnInit {
     searchFields: ['title', 'artist'] as const,
     sortOptions: this.detailSortOptions,
     defaultSort: 'track',
+    // "Track #" is `(disc, track)` on a multi-disc release — album identity
+    // collapses discs, so `track` alone interleaves them (issue #747).
+    comparators: { track: compareDiscThenTrack },
+  });
+
+  /**
+   * Disc number to print above a row, keyed by song id. Empty for a single-disc
+   * album, and empty under any sort other than track order — headers mark disc
+   * boundaries, and under a title sort the discs interleave so there are none.
+   */
+  readonly discHeaders = computed<ReadonlyMap<string, number>>(() => {
+    if (this.detailControls.sortField() !== 'track') return new Map();
+    const headers = new Map<string, number>();
+    for (const group of discGroups(this.detailControls.filtered())) {
+      const first = group.songs[0];
+      if (first) headers.set(first.id, group.disc);
+    }
+    return headers;
   });
 
   // ─── Confirm dialog ───────────────────────────────────────────────

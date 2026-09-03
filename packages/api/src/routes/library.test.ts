@@ -2700,3 +2700,92 @@ describe('curator artist MBID override (issue #610)', () => {
     expect((await put('no-such-artist', { mbid: MERNES })).status).toBe(404);
   });
 });
+
+/**
+ * Issue #747. Album identity collapses discs into one row, so a two-disc album
+ * is one album whose songs carry `disc`. The album-detail route ordered on
+ * `s.track` alone and never selected `s.disc`, so all 67 multi-disc albums
+ * rendered interleaved — 1, 1, 2, 2, 3, 3 — with two rows both labelled "1" and
+ * nothing on the wire to tell them apart.
+ */
+describe('multi-disc album detail (issue #747)', () => {
+  const testDb = new Database(':memory:');
+  applySchema(testDb);
+
+  beforeEach(() => {
+    mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
+    testDb.run('DELETE FROM library_albums');
+    testDb.run('DELETE FROM library_songs');
+    __resetDownloadSuppressionCache();
+  });
+
+  afterEach(() => {
+    mock.module('../db.js', () => ({ getDatabase: () => sharedDb, applySchema }));
+  });
+
+  function app(): Hono<AuthEnv> {
+    const a = new Hono<AuthEnv>();
+    a.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    a.route('/', libraryRoutes());
+    return a;
+  }
+
+  function seed(id: string, title: string, disc: number | null, trackNo: number): void {
+    testDb.run(
+      `INSERT INTO library_songs
+         (id, album_id, title, artist, artist_id, duration, path, size, bit_rate,
+          suffix, content_type, created, track, disc, landed_at, synced_at)
+       VALUES (?, 'multi', ?, 'Andres Calamaro', 'art', 200, ?, 1, 320,
+               'flac', 'audio/flac', '2024-01-01', ?, ?, '2024-01-01', 1)`,
+      [id, title, `El Salmon/${id}.flac`, trackNo, disc],
+    );
+  }
+
+  function seedAlbum(): void {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, classification, synced_at)
+       VALUES ('multi', 'El Salmon', 'Andres Calamaro', 'art', 4, 800, 'album', 1)`,
+    );
+  }
+
+  it('orders by disc first, so the discs do not interleave', async () => {
+    seedAlbum();
+    // Inserted deliberately out of order.
+    seed('d2t1', 'Revolucion Turra', 2, 1);
+    seed('d1t2', 'Output', 1, 2);
+    seed('d1t1', 'Revolucion Turra', 1, 1);
+    seed('d2t2', 'All You Need Is Pop', 2, 2);
+
+    const res = await app().request('/albums/multi');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { song: Array<{ id: string; disc?: number }> };
+    expect(body.song.map((s) => s.id)).toEqual(['d1t1', 'd1t2', 'd2t1', 'd2t2']);
+  });
+
+  it('puts disc on the wire, so a client can label the rows', async () => {
+    seedAlbum();
+    seed('d1t1', 'Revolucion Turra', 1, 1);
+    seed('d2t1', 'Revolucion Turra', 2, 1);
+
+    const body = (await (await app().request('/albums/multi')).json()) as {
+      song: Array<{ id: string; disc?: number }>;
+    };
+    expect(body.song.map((s) => s.disc)).toEqual([1, 2]);
+  });
+
+  it('sorts an untagged disc as disc 1 rather than ahead of everything', async () => {
+    // NULL sorts first in SQLite, so an untagged track would otherwise jump the
+    // whole album — the same trap as the MCP route's `ORDER BY disc, track`.
+    seedAlbum();
+    seed('d2t1', 'Later', 2, 1);
+    seed('untagged', 'No Disc Tag', null, 5);
+
+    const body = (await (await app().request('/albums/multi')).json()) as {
+      song: Array<{ id: string }>;
+    };
+    expect(body.song.map((s) => s.id)).toEqual(['untagged', 'd2t1']);
+  });
+});

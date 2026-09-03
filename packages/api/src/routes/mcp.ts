@@ -338,7 +338,7 @@ export const MCP_TOOLS: McpTool[] = [
           [string]
         >(
           `SELECT id, title, artist, genre, track, disc, suffix, bit_rate
-           FROM library_songs WHERE album_id = ? ORDER BY disc, track`,
+           FROM library_songs WHERE album_id = ? ORDER BY COALESCE(disc, 1), track`,
         )
         .all(id);
       return JSON.stringify(

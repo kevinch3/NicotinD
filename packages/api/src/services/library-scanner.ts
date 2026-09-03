@@ -424,13 +424,29 @@ export function selectLibraryTracks(
 ): ScannedTrack[] {
   const byAlbum = new Map<
     string,
-    Array<{ track: ScannedTrack; relPath: string; title: string; suffix: string; bitRate: number }>
+    Array<{
+      track: ScannedTrack;
+      relPath: string;
+      title: string;
+      suffix: string;
+      bitRate: number;
+      disc: number | null;
+    }>
   >();
   for (const t of tracks) {
     const { albumArtist, album, title } = resolveTags(t, overrides);
     const albId = albumIdFor(albumArtist, album);
     const arr = byAlbum.get(albId) ?? [];
-    arr.push({ track: t, relPath: t.relPath, title, suffix: t.suffix, bitRate: t.bitRate });
+    // `disc` rides along because album identity collapses discs, so it is the
+    // only thing separating one album's repeated titles (issue #747).
+    arr.push({
+      track: t,
+      relPath: t.relPath,
+      title,
+      suffix: t.suffix,
+      bitRate: t.bitRate,
+      disc: t.disc ?? null,
+    });
     byAlbum.set(albId, arr);
   }
   const kept: ScannedTrack[] = [];
