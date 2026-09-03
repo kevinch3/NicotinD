@@ -38,6 +38,7 @@ import { mcpRoutes } from './routes/mcp.js';
 import { remoteAccessRoutes } from './routes/remote-access.js';
 import { importRoutes } from './routes/import.js';
 import { importUploadRoutes } from './routes/import-upload.js';
+import { shouldServeSpaIndex } from './services/spa-fallback.js';
 import { ImportUploadService } from './services/import-upload.service.js';
 import { LibraryImportService } from './services/library-import.service.js';
 import { reviewRoutes } from './routes/review.js';
@@ -992,12 +993,21 @@ export function createApp({
     // WhatsApp, …) render a rich preview — they don't run the SPA's JS. Must come
     // before the index.html catch-all below.
     app.get('/share/:token', shareMetaHandler({ db, jwtSecret: config.jwt.secret, webDistPath }));
-    app.get('*', (c, next) => {
+    app.get('*', async (c, next) => {
       const path = c.req.path;
       if (path === '/doc' || path === '/openapi.json' || path.startsWith('/api/')) {
         return next();
       }
-      return serveStatic({ root: webDistPath, path: '/index.html' })(c, next);
+      // A missing ASSET must 404, not receive the HTML shell with a 200 (#925).
+      // A client holding a pre-deploy build requests a chunk that no longer
+      // exists; answering with index.html makes the browser parse HTML as an ES
+      // module and report a module-loading error that points nowhere near the
+      // real cause. The 404 is what lets the client recognise a stale build and
+      // reload — see `isStaleChunkError` on the web side.
+      if (!shouldServeSpaIndex(path, c.req.header('accept'))) {
+        return c.notFound();
+      }
+      return await serveStatic({ root: webDistPath, path: '/index.html' })(c, next);
     });
   }
 

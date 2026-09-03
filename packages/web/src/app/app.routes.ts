@@ -1,3 +1,4 @@
+import { lazy } from './lib/stale-chunk';
 import { inject } from '@angular/core';
 import { RedirectFunction, Router, Routes } from '@angular/router';
 import { isTvBuild } from './lib/platform';
@@ -35,19 +36,22 @@ function redirectToInstall(): RedirectFunction {
 export const routes: Routes = [
   {
     path: 'server',
-    loadComponent: () =>
+    loadComponent: lazy(() =>
       import('./pages/server-config/server-config.component').then((m) => m.ServerConfigComponent),
+    ),
   },
   {
     path: 'login',
     canActivate: [serverGuard],
-    loadComponent: () => import('./pages/login/login.component').then((m) => m.LoginComponent),
+    loadComponent: lazy(() =>
+      import('./pages/login/login.component').then((m) => m.LoginComponent),
+    ),
   },
   {
     // Public pairing landing page — the QR's `/pair#t=…` link opens here when
     // scanned with a plain camera app; claims the token and signs the browser in.
     path: 'pair',
-    loadComponent: () => import('./pages/pair/pair.component').then((m) => m.PairComponent),
+    loadComponent: lazy(() => import('./pages/pair/pair.component').then((m) => m.PairComponent)),
   },
   {
     // Phone-side approval for a TV's sign-in code — the TV's QR encodes
@@ -56,25 +60,30 @@ export const routes: Routes = [
     // the fragment intact (sanitizeReturnUrl keeps in-app paths).
     path: 'approve',
     canActivate: [serverGuard, authGuard],
-    loadComponent: () =>
+    loadComponent: lazy(() =>
       import('./pages/approve-login/approve-login.component').then((m) => m.ApproveLoginComponent),
+    ),
   },
   {
     path: 'setup',
-    loadComponent: () => import('./pages/setup/setup.component').then((m) => m.SetupComponent),
+    loadComponent: lazy(() =>
+      import('./pages/setup/setup.component').then((m) => m.SetupComponent),
+    ),
   },
   {
     path: 'share/:token',
-    loadComponent: () =>
+    loadComponent: lazy(() =>
       import('./pages/share/share-view.component').then((m) => m.ShareViewComponent),
+    ),
   },
   {
     // Public radio-evaluation poll wizard (docs/radio-eval-polls.md): the poll
     // token is the credential, so no guards — like /share, an anonymous rater
     // must never be bounced through /login.
     path: 'poll/:token',
-    loadComponent: () =>
+    loadComponent: lazy(() =>
       import('./pages/poll/poll-view.component').then((m) => m.PollViewComponent),
+    ),
   },
   // The authenticated shell. TV gets its OWN tree (docs/tv-ux.md): a route that
   // does not exist cannot be reached by a stray routerLink and cannot accumulate
@@ -90,23 +99,26 @@ export const routes: Routes = [
   ...(isTvBuild() ? [tvShellRoute()] : []),
   {
     path: '',
-    loadComponent: () =>
+    loadComponent: lazy(() =>
       import('./components/layout/layout.component').then((m) => m.LayoutComponent),
+    ),
     canActivate: [serverGuard, authGuard],
     children: [
       {
         path: '',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/mosaic-home/mosaic-home.component').then((m) => m.MosaicHomeComponent),
+        ),
       },
       {
         // The shelf-based landing the mosaic replaced, kept reachable so the
         // two are comparable side by side and the swap is a one-line revert.
         path: 'classic',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/radio-landing/radio-landing.component').then(
             (m) => m.RadioLandingComponent,
           ),
+        ),
       },
       {
         // The merged acquisition workspace. "Acquire" (find new music) and
@@ -116,7 +128,7 @@ export const routes: Routes = [
         // while /acquire soft-gated itself with an in-template empty state.
         path: 'get',
         canActivate: [acquireGuard],
-        loadComponent: () => import('./pages/get/get.component').then((m) => m.GetComponent),
+        loadComponent: lazy(() => import('./pages/get/get.component').then((m) => m.GetComponent)),
       },
       // Preserve every existing /search, /acquire and /downloads link, bookmark
       // and e2e goto. A function redirect is required (not a string) because
@@ -127,65 +139,77 @@ export const routes: Routes = [
       { path: 'downloads', pathMatch: 'full', redirectTo: redirectToGetTab('activity') },
       {
         path: 'library',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/library/library.component').then((m) => m.LibraryComponent),
+        ),
       },
       {
         path: 'library/albums/:id',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/library/album-detail.component').then((m) => m.AlbumDetailComponent),
+        ),
       },
       {
         path: 'library/artists/:id',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/library/artist-detail.component').then((m) => m.ArtistDetailComponent),
+        ),
       },
       {
         path: 'library/genres/:slug',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/library/genre-detail.component').then((m) => m.GenreDetailComponent),
+        ),
       },
       {
         path: 'library/playlists/:id',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/library/playlist-detail.component').then(
             (m) => m.PlaylistDetailComponent,
           ),
+        ),
       },
       {
         path: 'settings',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/settings/settings.component').then((m) => m.SettingsComponent),
+        ),
       },
       {
         path: 'settings/devices',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/settings/devices/devices.component').then((m) => m.DevicesComponent),
+        ),
       },
       {
         path: 'settings/privacy',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/settings/privacy/privacy.component').then(
             (m) => m.PrivacySettingsComponent,
           ),
+        ),
       },
       {
         path: 'settings/agent-tokens',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/settings/agent-tokens/agent-tokens.component').then(
             (m) => m.AgentTokensComponent,
           ),
+        ),
         canActivate: [curatorGuard],
       },
       {
         path: 'settings/plugins',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/plugins/plugins.component').then((m) => m.PluginsComponent),
+        ),
         canActivate: [adminGuard],
       },
       {
         path: 'admin',
-        loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent),
+        loadComponent: lazy(() =>
+          import('./pages/admin/admin.component').then((m) => m.AdminComponent),
+        ),
         canActivate: [adminGuard],
       },
     ],
@@ -207,33 +231,40 @@ export const routes: Routes = [
 function tvShellRoute() {
   return {
     path: '',
-    loadComponent: () =>
+    loadComponent: lazy(() =>
       import('./components/tv-shell/tv-shell.component').then((m) => m.TvShellComponent),
+    ),
     canActivate: [serverGuard, authGuard],
     children: [
       {
         path: '',
-        loadComponent: () => import('./pages/tv/tv-home.component').then((m) => m.TvHomeComponent),
+        loadComponent: lazy(() =>
+          import('./pages/tv/tv-home.component').then((m) => m.TvHomeComponent),
+        ),
       },
       {
         path: 'library',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/tv/tv-browse.component').then((m) => m.TvBrowseComponent),
+        ),
       },
       {
         path: 'library/albums/:id',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/tv/tv-album.component').then((m) => m.TvAlbumComponent),
+        ),
       },
       {
         path: 'player',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/tv/tv-player.component').then((m) => m.TvPlayerComponent),
+        ),
       },
       {
         path: 'settings',
-        loadComponent: () =>
+        loadComponent: lazy(() =>
           import('./pages/tv/tv-settings.component').then((m) => m.TvSettingsComponent),
+        ),
       },
     ],
   };
