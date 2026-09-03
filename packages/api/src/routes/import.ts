@@ -110,8 +110,9 @@ export function importRoutes(deps: { db: Database; service: LibraryImportService
   return app;
 }
 
-/** Map the service's typed errors onto HTTP; unknown errors rethrow to the global handler. */
-function importErrorResponse(c: Context<AuthEnv>, err: unknown) {
+/** Map the service's typed errors onto HTTP; unknown errors rethrow to the global handler.
+ *  Exported so the upload lane (`import-upload.ts`) reuses one mapping table. */
+export function importErrorResponse(c: Context<AuthEnv>, err: unknown) {
   if (err instanceof ImportSourceInvalidError) {
     return c.json({ error: err.message, code: err.code }, 400);
   }

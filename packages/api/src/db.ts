@@ -651,6 +651,26 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
 
+  // Browser-upload sessions feeding the import lane (docs/import.md). The
+  // staged bytes under `<dataDir>/staging/upload/<id>/` are the real state —
+  // this row only carries the manifest (so a chunk can be checked against what
+  // was declared) and enough identity to sweep an abandoned session. Per-file
+  // progress is deliberately NOT stored: it is read back off disk, so a resume
+  // survives a restart that lost every in-memory tally.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS import_uploads (
+      id            TEXT PRIMARY KEY,
+      user_id       TEXT,
+      manifest_json TEXT NOT NULL,
+      total_bytes   INTEGER NOT NULL,
+      state         TEXT NOT NULL DEFAULT 'open',
+      job_id        TEXT,
+      created_at    INTEGER NOT NULL,
+      updated_at    INTEGER NOT NULL
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_import_uploads_state ON import_uploads(state)`);
+
   // Watchlist: albums the user asked to auto-acquire. A background poller
   // (WatchlistService) periodically hunts each `watching` row and, when a
   // confidently-complete folder is found, fires the normal album-hunt download

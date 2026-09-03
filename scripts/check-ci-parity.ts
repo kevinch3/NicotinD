@@ -81,7 +81,14 @@ export const GATE_JOBS = [
   'ci',
   'web-test',
   'storybook',
+  // Both halves of the sharded suite, on purpose (issue #908). `e2e` is the
+  // aggregator that exists only to publish the status-check context the branch
+  // ruleset requires by name — it runs no `bun` command, so checking it alone is
+  // vacuous. `e2e-shard` is where the real steps live, so it is the one that has
+  // to be compared against `verify`. Listing only `e2e` would leave this gate
+  // reporting success over a denominator it had silently shrunk.
   'e2e',
+  'e2e-shard',
   'analysis',
   'separator',
   'docker',

@@ -39,6 +39,11 @@ jobs:
       - name: Storybook gates (render smoke + axe)
         run: bun run gates:storybook
   e2e:
+    needs: [e2e-shard]
+    steps:
+      - name: Every shard passed
+        run: echo ok
+  e2e-shard:
     steps:
       - name: Run e2e
         run: bun run --filter @nicotind/e2e test
@@ -59,7 +64,7 @@ jobs:
       - name: Stage desktop resources
         run: bun run --filter @nicotind/desktop prepare-resources
   release:
-    needs: [ci, web-test, storybook, e2e, analysis, separator, docker, desktop-package]
+    needs: [ci, web-test, storybook, e2e, e2e-shard, analysis, separator, docker, desktop-package]
     steps:
       - name: Release
         run: bun run release
@@ -210,10 +215,10 @@ describe('missingChecks', () => {
     ]);
   });
 
-  it('gates `e2e` as a job but allowlists its one command, not the whole job', () => {
+  it('gates `e2e-shard` as a job but allowlists its one command, not the whole job', () => {
     // `bun run e2e` stays out of `verify` (quality gate 2) — but as a named
     // command with a reason, so anything ELSE added to that job is enforced.
-    expect(GATE_JOBS).toContain('e2e');
+    expect(GATE_JOBS).toContain('e2e-shard');
     const missed = GATE_JOBS.flatMap((job) => missingChecks(WORKFLOW, SCRIPTS, job));
     expect(missed.some((m) => m.command.includes('@nicotind/e2e test'))).toBe(false);
   });
@@ -246,8 +251,8 @@ describe('releaseJobsNotGated', () => {
    */
   it('names a job that gates the release but nothing checks', () => {
     const added = WORKFLOW.replace(
-      'needs: [ci, web-test, storybook, e2e, analysis, separator, docker, desktop-package]',
-      'needs: [ci, web-test, storybook, e2e, analysis, separator, docker, desktop-package, smuggled]',
+      'needs: [ci, web-test, storybook, e2e, e2e-shard, analysis, separator, docker, desktop-package]',
+      'needs: [ci, web-test, storybook, e2e, e2e-shard, analysis, separator, docker, desktop-package, smuggled]',
     );
     expect(releaseJobsNotGated(added)).toEqual(['smuggled']);
   });
@@ -264,8 +269,8 @@ describe('gateJobsNotBlockingRelease', () => {
    */
   it('names the gate jobs a release would not wait for', () => {
     const dropped = WORKFLOW.replace(
-      'needs: [ci, web-test, storybook, e2e, analysis, separator, docker, desktop-package]',
-      'needs: [ci, e2e, analysis, separator, docker, desktop-package]',
+      'needs: [ci, web-test, storybook, e2e, e2e-shard, analysis, separator, docker, desktop-package]',
+      'needs: [ci, e2e, e2e-shard, analysis, separator, docker, desktop-package]',
     );
     expect(gateJobsNotBlockingRelease(dropped)).toEqual(['web-test', 'storybook']);
   });

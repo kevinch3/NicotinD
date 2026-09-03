@@ -299,7 +299,7 @@ jobs:
   # (docs/e2e.md) — but a shard is its own checkout, DB and server pair, so the
   # files can be split. Playwright shards whole files in alphabetical blocks, which
   # is why a spec that reads another spec's leftovers had to be fixed first.
-  e2e:
+  e2e-shard:
     runs-on: ubuntu-latest
     strategy:
       # A failing shard must not cancel the others: knowing which three passed is
@@ -386,6 +386,33 @@ jobs:
           name: playwright-report-shard-${{ matrix.shard }}
           path: packages/e2e/playwright-report/
           retention-days: 7
+
+  # The one context named `e2e`, which the `Protect master` ruleset requires by
+  # name (issue #908). Sharding replaced that context with `e2e (1..4)`, so the
+  # required check stopped existing and every PR sat at BLOCKED with a fully
+  # green list. Aggregating here keeps the ruleset stable across future shard
+  # count changes; requiring `e2e (1)..(4)` instead would hardcode the count into
+  # branch protection and break again the moment it moves.
+  #
+  # `if: always()` is load-bearing. Without it this job is SKIPPED when a shard
+  # fails, the context never reports, and the failure mode is identical to the
+  # one it exists to fix — a required check that silently never arrives.
+  e2e:
+    needs: [e2e-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every shard passed
+        env:
+          # `result` on a matrix job is the rollup: 'success' only when every
+          # shard succeeded, otherwise failure/cancelled/skipped.
+          SHARDS: ${{ needs.e2e-shard.result }}
+        run: |
+          echo "e2e-shard rollup: $SHARDS"
+          if [ "$SHARDS" != "success" ]; then
+            echo "::error::e2e shards did not all pass (rollup: $SHARDS)"
+            exit 1
+          fi
 
   # Packaged-boot smoke test (Task 13): launches the real Electron app via
   # Playwright's `_electron` and asserts the window loads + the sidecar
@@ -702,7 +729,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [ci, web-test, storybook, e2e, analysis, separator, docker, desktop-package]
+    needs: [ci, web-test, storybook, e2e, e2e-shard, analysis, separator, docker, desktop-package]
     if: "github.event_name == 'push' && github.ref == 'refs/heads/master' && !startsWith(github.event.head_commit.message, 'chore(release):')"
     permissions:
       contents: write

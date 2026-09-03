@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.72](https://github.com/kevinch3/NicotinD/compare/v0.5.71...v0.5.72) (2026-09-03)
+
+### Features
+
+* **import:** accept music uploaded from the browser, chunked and resumable ([#907](https://github.com/kevinch3/NicotinD/issues/907)) ([fe26e44](https://github.com/kevinch3/NicotinD/commit/fe26e445482b7b294e663198dcf2bd9c5b92ce0d)), references [#893](https://github.com/kevinch3/NicotinD/issues/893)
 ## [0.5.71](https://github.com/kevinch3/NicotinD/compare/v0.5.70...v0.5.71) (2026-09-02)
 
 ### Features
