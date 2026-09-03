@@ -202,9 +202,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   "is this library content?"; the rule is depth-scoped (root dot-dirs skipped, album titles never
   judged) and `check:library-walkers` keeps all 14 walkers honest.
   → [library-path-conventions.md](docs/library-path-conventions.md)
-- **Import music from a folder or archive (API-only)**: `LibraryImportService` runs a server folder or
-  `.zip` through the same organize → scan → quarantine pipeline; `import-archive.ts` is a
-  dependency-free central-directory-first reader with `safeArchivePath`. → [import.md](docs/import.md)
+- **Import music — two lanes into one pipeline**: an admin server path and a browser upload
+  (`ImportUploadService`, chunked + resumable, `submitStaged`) both run through organize → scan →
+  quarantine; drop a folder on `/get`, gated by `canImport`. → [import.md](docs/import.md)
 - **Untracked downloads**: `relative_path IS NULL` rows backfilled by script, listed at
   `GET /api/library/untracked`. → [download-pipeline.md](docs/download-pipeline.md)
 - **Downloading albums suppressed from listing**: listings exclude albums with active `album_jobs` or
