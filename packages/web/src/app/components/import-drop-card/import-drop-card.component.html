@@ -1,0 +1,66 @@
+<section
+  class="rounded-xl border border-theme-border bg-theme-surface p-4 flex flex-col gap-3"
+  data-testid="import-drop-card">
+  <div class="flex items-start gap-3 min-w-0">
+    <span class="text-lg leading-none shrink-0" aria-hidden="true">📁</span>
+    <div class="min-w-0 flex-1">
+      <p class="text-sm text-theme-primary truncate min-w-0" data-testid="import-drop-title">
+        {{ 'import.dropTitle' | t: { albums: summary().albumCount } }}
+      </p>
+      <p class="text-xs text-theme-muted" data-testid="import-drop-summary">
+        {{ 'import.dropSummary' | t: { files: summary().fileCount, size: sizeLabel() } }}
+      </p>
+      @if (summary().skipped.length > 0) {
+        <p class="text-xs text-theme-muted mt-1" data-testid="import-drop-skipped">
+          {{ 'import.dropSkipped' | t: { count: summary().skipped.length } }}
+        </p>
+      }
+    </div>
+  </div>
+
+  @if (state() === 'uploading' || state() === 'committing') {
+    <div class="flex items-center gap-3">
+      <div class="h-1.5 flex-1 rounded-full bg-theme-surface-2 overflow-hidden">
+        <div
+          class="h-full bg-blue-500 transition-[width] duration-300"
+          [style.width.%]="state() === 'committing' ? 100 : percent()"
+          data-testid="import-drop-bar"></div>
+      </div>
+      <span class="text-xs text-theme-muted tabular-nums" data-testid="import-drop-percent">
+        {{ state() === 'committing' ? ('import.dropCommitting' | t) : percent() + '%' }}
+      </span>
+    </div>
+  }
+
+  @if (state() === 'error' && error()) {
+    <p class="text-xs text-status-error" data-testid="import-drop-error">{{ error() }}</p>
+  }
+
+  <div class="flex items-center gap-2">
+    @if (state() === 'manifest') {
+      <button
+        type="button"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-accent text-theme-on-accent"
+        data-testid="import-drop-start"
+        (click)="start.emit()">
+        {{ 'import.dropStart' | t }}
+      </button>
+    }
+    @if (state() === 'error') {
+      <button
+        type="button"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-accent text-theme-on-accent"
+        data-testid="import-drop-retry"
+        (click)="start.emit()">
+        {{ 'import.dropRetry' | t }}
+      </button>
+    }
+    <button
+      type="button"
+      class="px-3 py-1.5 rounded-lg text-xs text-theme-muted hover:text-theme-primary transition"
+      data-testid="import-drop-cancel"
+      (click)="cancel.emit()">
+      {{ (busy() ? 'import.dropCancelUpload' : 'import.dropDismiss') | t }}
+    </button>
+  </div>
+</section>

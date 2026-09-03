@@ -798,3 +798,51 @@ describe('network-lane percent + cancelRequested (#805/#806)', () => {
     expect(mergeAcquisitionJobs([], [acqJob()])[0]!.cancelRequested).toBeUndefined();
   });
 });
+
+// An import spends its whole life in `organizing` — it has no download phase —
+// so gating the bar on `stage === 'downloading'` meant an import card showed
+// counts and never a bar, looking stalled for the length of a 20k-file ingest.
+describe('mergeAcquisitionJobs — import progress (#907)', () => {
+  function importJob(over: Record<string, unknown> = {}) {
+    return {
+      id: 'imp-1',
+      kind: 'import',
+      method: 'import',
+      state: 'active',
+      stage: 'organizing',
+      displayTitle: 'My Rips',
+      artistName: null,
+      albumTitle: null,
+      sourceUrl: null,
+      playlistId: null,
+      lidarrAlbumId: null,
+      sourceRef: '/data/staging/upload/up-1',
+      error: null,
+      createdAt: 1,
+      updatedAt: 2,
+      albumId: null,
+      progress: { expected: 10, delivered: 4, unavailable: 0, failed: 0, canonical: null },
+      items: [],
+      sources: [],
+      destinationAlbums: [],
+      ...over,
+    } as unknown as Parameters<typeof mergeAcquisitionJobs>[1][number];
+  }
+
+  it('shows a bar while an import is organizing', () => {
+    const [row] = mergeAcquisitionJobs([], [importJob()]);
+    expect(row!.percent).toBe(40);
+  });
+
+  it('still shows no bar once the import is done', () => {
+    const [row] = mergeAcquisitionJobs([], [importJob({ stage: 'done', state: 'done' })]);
+    expect(row!.percent).toBeUndefined();
+  });
+
+  // A downloading job's contract is unchanged: `organizing` is a *download's*
+  // post-transfer phase, where a percentage would be misleading.
+  it('leaves a downloading job organizing without a bar, as before', () => {
+    const [row] = mergeAcquisitionJobs([], [importJob({ kind: 'album-hunt', method: 'slskd' })]);
+    expect(row!.percent).toBeUndefined();
+  });
+});

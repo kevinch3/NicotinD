@@ -19,12 +19,13 @@
  */
 import { Database } from 'bun:sqlite';
 import { createWriteStream, existsSync, mkdirSync, rmSync, statSync, statfsSync } from 'node:fs';
-import { dirname, extname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
-import { AUDIO_EXTENSIONS } from './plugins/acquire/process.js';
 import { ArchiveError, safeArchivePath } from './import-archive.js';
-import { createLogger } from '@nicotind/core';
+// One allowlist, three consumers (client filter, server enforcement, tests) —
+// two copies drift into "the browser uploaded it and the server threw it away".
+import { createLogger, isUploadableName } from '@nicotind/core';
 
 const log = createLogger('import-upload');
 
@@ -36,16 +37,6 @@ export const IMPORT_UPLOAD_DISK_MARGIN_BYTES = 500 * 1024 * 1024;
 
 /** Abandoned sessions are swept after this long without a write. */
 export const IMPORT_UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
-
-/**
- * Cover art rides along with the audio: the organizer and scanner both read it,
- * and it is small. Everything else a music folder accumulates (`.nfo`, `.m3u`,
- * scans, `__MACOSX` sidecars) is dropped client-side and refused here, so a
- * drag-and-drop of a messy folder does not spend the user's bandwidth on files
- * the library would ignore anyway.
- */
-const COVER_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
-const COVER_STEMS = new Set(['cover', 'folder', 'front', 'album', 'artwork']);
 
 export class UploadPathRejectedError extends Error {
   readonly code = 'UPLOAD_PATH_REJECTED' as const;
@@ -107,16 +98,6 @@ export interface ImportUploadServiceOptions {
 /** `<dataDir>/staging/upload/<uploadId>` — a sibling of the import staging root. */
 export function uploadStagingDir(dataDir: string, uploadId: string): string {
   return join(dataDir, 'staging', 'upload', uploadId);
-}
-
-/** Whether this manifest entry is worth spending upload bandwidth on. */
-export function isUploadableName(relPath: string): boolean {
-  const base = relPath.split('/').pop() ?? '';
-  if (base.startsWith('.')) return false;
-  const ext = extname(base).toLowerCase();
-  if (AUDIO_EXTENSIONS.has(ext)) return true;
-  if (!COVER_EXTENSIONS.has(ext)) return false;
-  return COVER_STEMS.has(base.slice(0, base.length - ext.length).toLowerCase());
 }
 
 export class ImportUploadService {

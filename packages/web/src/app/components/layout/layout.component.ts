@@ -165,7 +165,9 @@ export class LayoutComponent implements OnInit, OnDestroy {
 
   readonly navItems = computed<NavItem[]>(() => {
     // /get is the acquisition surface — hidden from listeners (declutter).
-    const base = this.auth.canAcquire() ? BASE_NAV : BASE_NAV.filter((n) => n.to !== '/get');
+    // See bottom-nav: import outlives the acquisition kill-switch, so the nav
+    // entry follows `canImport`.
+    const base = this.auth.canImport() ? BASE_NAV : BASE_NAV.filter((n) => n.to !== '/get');
     return this.auth.isAdmin() ? [...base, { to: '/admin', label: 'Admin' }] : base;
   });
 

@@ -352,7 +352,16 @@ export function mergeAcquisitionJobs(
       progress: { done: job.progress.delivered, total: job.progress.expected },
       // Only while downloading: the bar answers "how much is still moving", and
       // any later stage (organizing/scanning/processing) has nothing in flight.
-      percent: job.stage === 'downloading' ? jobPercent(job.progress) : undefined,
+      // `downloading` is where a *download* has a meaningful percentage. An
+      // import has no download phase at all — it lives in `organizing` for its
+      // whole life — so gating on `downloading` alone left every import card
+      // showing counts and never a bar, which reads as stalled across a long
+      // ingest. `organizing` stays bar-less for real downloads, where it is the
+      // brief post-transfer phase and a percentage would mislead.
+      percent:
+        job.stage === 'downloading' || (isImport && job.stage === 'organizing')
+          ? jobPercent(job.progress)
+          : undefined,
       cancelRequested: job.cancelRequested || undefined,
       quarantinedCount: job.quarantinedCount || undefined,
       // why: only a *shortfall* is news. A source that offered the whole

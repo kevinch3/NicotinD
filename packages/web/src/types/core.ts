@@ -23,6 +23,12 @@ export type {
 
 export type { ArchiveCandidate } from '../../../core/src/types/archive';
 
+// A *value*, not a type: the upload allowlist runs in the browser to filter a
+// drop before it costs bandwidth, and on the server to enforce it. Importing
+// the same function is what keeps the two from drifting into "uploaded, then
+// silently discarded". Free of node builtins on purpose so it is safe here.
+export { isUploadableName } from '../../../core/src/upload-allowlist';
+
 export type {
   AcquisitionCandidate,
   AcquisitionSourceId,

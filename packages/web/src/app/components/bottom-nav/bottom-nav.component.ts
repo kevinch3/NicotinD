@@ -59,7 +59,10 @@ export class BottomNavComponent {
 
   // /get is an acquisition surface — hidden from listeners (declutter).
   readonly tabs = computed(() =>
-    this.auth.canAcquire() ? TABS : TABS.filter((t) => t.to !== '/get'),
+    // `canImport`, not `canAcquire`: /get still has the import drop zone when
+    // the acquisition kill-switch is off, and a tab you cannot reach is worse
+    // than one whose contents are reduced.
+    this.auth.canImport() ? TABS : TABS.filter((t) => t.to !== '/get'),
   );
   // Same formula as the desktop nav badge: slskd transfers + in-flight URL
   // acquisitions + the download-inbox triage queue (issue #411, 0 for anyone

@@ -1,10 +1,23 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal, viewChild, type ElementRef } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { SearchComponent } from '../search/search.component';
 import { DownloadsComponent } from '../downloads/downloads.component';
 import { AcquireService } from '../../services/acquire.service';
 import { TransferService } from '../../services/transfer.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { AuthService } from '../../services/auth.service';
+import { ToastService } from '../../services/toast.service';
+import { TranslateService } from '../../services/translate.service';
+import {
+  ImportDropCardComponent,
+  albumCountOf,
+  type ImportDropState,
+  type ImportDropSummary,
+} from '../../components/import-drop-card/import-drop-card.component';
+import { ImportUploadService, NothingToUploadError } from '../../services/import-upload.service';
+import { filesFromDataTransfer, filesFromInput } from '../../lib/dropped-files';
+import { buildUploadManifest, type DroppedFile } from '../../lib/upload-plan';
+import { httpErrorMessage } from '../../lib/http-error';
 
 export type GetTab = 'find' | 'downloads';
 
@@ -34,7 +47,7 @@ export function parseGetTab(raw: string | null): GetTab {
 // because "show me my downloads" has to be linkable — /downloads redirects here.
 @Component({
   selector: 'app-get',
-  imports: [SearchComponent, DownloadsComponent, TranslatePipe],
+  imports: [SearchComponent, DownloadsComponent, TranslatePipe, ImportDropCardComponent],
   templateUrl: './get.component.html',
 })
 export class GetComponent {
@@ -42,6 +55,37 @@ export class GetComponent {
   private readonly router = inject(Router);
   private readonly transfers = inject(TransferService);
   private readonly acquire = inject(AcquireService);
+  private readonly auth = inject(AuthService);
+  private readonly uploads = inject(ImportUploadService);
+  private readonly toasts = inject(ToastService);
+  private readonly i18n = inject(TranslateService);
+
+  readonly folderInput = viewChild<ElementRef<HTMLInputElement>>('folderInput');
+
+  /** Import outlives the acquisition kill-switch, so this is `canImport`. */
+  readonly canImport = this.auth.canImport;
+
+  /** A drag is over the page. Coarse on purpose: the whole workspace is the
+   *  target, because aiming at a small rectangle with a folder is fiddly. */
+  readonly dragging = signal(false);
+  private dragDepth = 0;
+
+  readonly dropped = signal<DroppedFile[] | null>(null);
+  readonly dropState = signal<ImportDropState>('manifest');
+  readonly dropPercent = signal(0);
+  readonly dropError = signal<string | null>(null);
+
+  readonly dropSummary = computed<ImportDropSummary | null>(() => {
+    const files = this.dropped();
+    if (!files) return null;
+    const plan = buildUploadManifest(files);
+    return {
+      fileCount: plan.files.length,
+      albumCount: albumCountOf(plan.files.map((f) => f.path)),
+      totalBytes: plan.totalBytes,
+      skipped: plan.skipped,
+    };
+  });
 
   readonly tabs = TABS;
   readonly tab = signal<GetTab>(parseGetTab(this.route.snapshot.queryParamMap.get('tab')));
@@ -51,6 +95,90 @@ export class GetComponent {
   readonly activeCount = computed(
     () => this.transfers.activeDownloadCount() + this.acquire.activeJobs().length,
   );
+
+  // Drag events fire per element, so a naive enter/leave pair flickers as the
+  // pointer crosses children. Counting depth is the standard fix.
+  onDragEnter(e: DragEvent): void {
+    if (!this.canImport() || !e.dataTransfer?.types.includes('Files')) return;
+    this.dragDepth += 1;
+    this.dragging.set(true);
+  }
+
+  onDragLeave(): void {
+    this.dragDepth = Math.max(0, this.dragDepth - 1);
+    if (this.dragDepth === 0) this.dragging.set(false);
+  }
+
+  onDragOver(e: DragEvent): void {
+    if (!this.canImport() || !e.dataTransfer?.types.includes('Files')) return;
+    // Without preventDefault the browser navigates to the dropped file, which
+    // discards the SPA and everything in it.
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }
+
+  async onDrop(e: DragEvent): Promise<void> {
+    this.dragDepth = 0;
+    this.dragging.set(false);
+    if (!this.canImport() || !e.dataTransfer) return;
+    e.preventDefault();
+    this.stageFiles(await filesFromDataTransfer(e.dataTransfer));
+  }
+
+  pickFolder(): void {
+    this.folderInput()?.nativeElement.click();
+  }
+
+  onFolderPicked(e: Event): void {
+    const el = e.target as HTMLInputElement;
+    const files = el.files ? filesFromInput(el.files) : [];
+    // Clear so re-picking the same folder fires `change` again.
+    el.value = '';
+    this.stageFiles(files);
+  }
+
+  /** Show the manifest and wait — a drop is a proposal, not a command. */
+  private stageFiles(files: DroppedFile[]): void {
+    if (files.length === 0) return;
+    this.dropState.set('manifest');
+    this.dropPercent.set(0);
+    this.dropError.set(null);
+    this.dropped.set(files);
+    // A drop while the Downloads tab is open should still be visible.
+    this.setTab('find');
+  }
+
+  async startImport(): Promise<void> {
+    const files = this.dropped();
+    if (!files) return;
+    this.dropState.set('uploading');
+    this.dropError.set(null);
+    try {
+      await this.uploads.upload(files, {
+        onProgress: (p) => this.dropPercent.set(p),
+      });
+      this.dropState.set('committing');
+      // The job now owns this work — the feed is where it lives from here, so
+      // the card retires rather than shadowing a Downloads row (#673's shape).
+      this.dismissDrop();
+      await this.transfers.kickPoll();
+      this.setTab('downloads');
+    } catch (err) {
+      this.dropState.set('error');
+      this.dropError.set(
+        err instanceof NothingToUploadError
+          ? this.i18n.t('import.dropNothing')
+          : httpErrorMessage(err, this.i18n.t('import.dropFailed')),
+      );
+    }
+  }
+
+  dismissDrop(): void {
+    this.dropped.set(null);
+    this.dropState.set('manifest');
+    this.dropPercent.set(0);
+    this.dropError.set(null);
+  }
 
   setTab(tab: GetTab): void {
     if (this.tab() === tab) return;

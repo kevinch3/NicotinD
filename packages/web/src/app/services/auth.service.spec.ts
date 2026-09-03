@@ -191,3 +191,34 @@ describe('AuthService', () => {
     });
   });
 });
+
+// #907/PR2: importing is role-gated but NOT kill-switch-gated. A streaming-only
+// install (`NICOTIND_ACQUISITION=off`) has no acquisition stack and is exactly
+// the deployment most likely to need to fill its library from a folder — the
+// server mounts `/api/import` outside the kill-switch for the same reason.
+describe('AuthService — canImport (#907)', () => {
+  function auth(role: string, acquisitionEnabled: boolean) {
+    localStorage.setItem('nicotind_role', role);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({});
+    const svc = TestBed.inject(AuthService);
+    svc.serverAcquisitionEnabled.set(acquisitionEnabled);
+    return svc;
+  }
+
+  it('survives the acquisition kill-switch, unlike canAcquire', () => {
+    const svc = auth('user', false);
+    expect(svc.canAcquire()).toBe(false);
+    expect(svc.canImport()).toBe(true);
+  });
+
+  it('still refuses a listener', () => {
+    expect(auth('listener', true).canImport()).toBe(false);
+  });
+
+  it('allows every role that can acquire', () => {
+    for (const role of ['user', 'refiner', 'admin']) {
+      expect(auth(role, true).canImport()).toBe(true);
+    }
+  });
+});

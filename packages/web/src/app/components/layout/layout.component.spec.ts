@@ -291,6 +291,7 @@ describe('LayoutComponent — pull-to-refresh wiring on the REAL template', () =
       role: signal('user'),
       logout: () => {},
       canAcquire: () => true,
+      canImport: () => true,
       isAdmin: () => false,
       canCurate: () => false,
     };
