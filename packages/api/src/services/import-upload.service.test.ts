@@ -13,6 +13,7 @@ import {
   ImportUploadService,
   UploadPathRejectedError,
   UploadTooLargeError,
+  ChunkTooLargeError,
   IMPORT_UPLOAD_CHUNK_BYTES,
 } from './import-upload.service.js';
 
@@ -120,11 +121,15 @@ describe('writing chunks', () => {
     );
   });
 
+  // The in-memory input shape, kept because the signature still accepts it —
+  // but note this is NOT what the route passes. The streaming tests below are
+  // the ones that cover production; see #921 for why that distinction cost a
+  // release.
   it('refuses a chunk larger than the cap', async () => {
     const { uploadId } = svc.create('u1', [{ path: 'a/x.flac', size: 4 }]);
     await expect(
       svc.writeChunk(uploadId, 'a/x.flac', 0, new Uint8Array(IMPORT_UPLOAD_CHUNK_BYTES + 1)),
-    ).rejects.toThrow(UploadTooLargeError);
+    ).rejects.toThrow(ChunkTooLargeError);
   });
 });
 
@@ -158,5 +163,83 @@ describe('abort', () => {
     expect(svc.abort(uploadId)).toBe(true);
     expect(existsSync(dir)).toBe(false);
     expect(svc.state(uploadId)).toBeNull();
+  });
+});
+
+/**
+ * #921. The cap used to be written as `body instanceof Uint8Array && …`, but the
+ * route hands `writeChunk` a `ReadableStream` (`c.req.raw.body`), so the guard
+ * was unreachable on every real request while its test — which passed a
+ * `Uint8Array` — stayed green. These drive a stream, which is what production
+ * does, so they fail if the guard becomes unreachable again.
+ */
+function streamOf(...chunks: Uint8Array[]): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(c);
+      controller.close();
+    },
+  });
+}
+
+describe('chunk bounds, enforced on the streaming path (#921)', () => {
+  it('refuses a stream that exceeds the chunk cap', async () => {
+    const { uploadId } = svc.create('u1', [
+      { path: 'a/x.flac', size: IMPORT_UPLOAD_CHUNK_BYTES * 4 },
+    ]);
+    // Two chunks that only together exceed the cap: a guard that checks the
+    // first buffer's length rather than the running total would miss this.
+    const half = new Uint8Array(IMPORT_UPLOAD_CHUNK_BYTES);
+    await expect(
+      svc.writeChunk(uploadId, 'a/x.flac', 0, streamOf(half, new Uint8Array(1))),
+    ).rejects.toThrow(ChunkTooLargeError);
+  });
+
+  it('accepts a stream at exactly the cap', async () => {
+    const { uploadId } = svc.create('u1', [{ path: 'a/x.flac', size: IMPORT_UPLOAD_CHUNK_BYTES }]);
+    const received = await svc.writeChunk(
+      uploadId,
+      'a/x.flac',
+      0,
+      streamOf(new Uint8Array(IMPORT_UPLOAD_CHUNK_BYTES)),
+    );
+    expect(received).toBe(IMPORT_UPLOAD_CHUNK_BYTES);
+  });
+
+  // The manifest is a declaration of intent that the preflight already reserved
+  // disk for. Writing past it means the reservation was a lie.
+  it('refuses to write past the size the manifest declared', async () => {
+    const { uploadId } = svc.create('u1', [{ path: 'a/x.flac', size: 10 }]);
+    await expect(
+      svc.writeChunk(uploadId, 'a/x.flac', 0, streamOf(new Uint8Array(11))),
+    ).rejects.toThrow(ChunkTooLargeError);
+  });
+
+  it('refuses an offset already past the declared size', async () => {
+    const { uploadId } = svc.create('u1', [{ path: 'a/x.flac', size: 10 }]);
+    await expect(
+      svc.writeChunk(uploadId, 'a/x.flac', 10, streamOf(new Uint8Array([1]))),
+    ).rejects.toThrow(ChunkTooLargeError);
+  });
+
+  // A rejected chunk must not leave its partial bytes behind, or a resume
+  // reports a `received` that includes data the server refused.
+  it('leaves nothing behind when it rejects mid-stream', async () => {
+    const { uploadId } = svc.create('u1', [{ path: 'a/x.flac', size: 10 }]);
+    await svc.writeChunk(uploadId, 'a/x.flac', 0, streamOf(new Uint8Array([1, 2, 3])));
+    await expect(
+      svc.writeChunk(uploadId, 'a/x.flac', 3, streamOf(new Uint8Array(50))),
+    ).rejects.toThrow(ChunkTooLargeError);
+
+    expect(svc.state(uploadId)?.files[0]).toEqual({ path: 'a/x.flac', size: 10, received: 3 });
+  });
+
+  it('still writes a well-behaved stream through unchanged', async () => {
+    const { uploadId } = svc.create('u1', [{ path: 'a/x.flac', size: 6 }]);
+    await svc.writeChunk(uploadId, 'a/x.flac', 0, streamOf(new Uint8Array([1, 2, 3])));
+    await svc.writeChunk(uploadId, 'a/x.flac', 3, streamOf(new Uint8Array([4, 5, 6])));
+    expect([...readFileSync(join(svc.sessionDir(uploadId), 'a', 'x.flac'))]).toEqual([
+      1, 2, 3, 4, 5, 6,
+    ]);
   });
 });
