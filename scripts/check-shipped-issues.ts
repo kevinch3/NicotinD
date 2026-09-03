@@ -22,6 +22,15 @@
  */
 import { execFileSync } from 'node:child_process';
 
+/**
+ * Options for every `git` read here. The `maxBuffer` is load-bearing: whole
+ * history (`--all`) is already ~1.3 MB of commit messages and only grows, so
+ * `execFileSync`'s 1 MB default made the documented `--all` mode throw
+ * `ENOBUFS` instead of reporting. Capped rather than unbounded so a runaway
+ * `git` still fails loudly instead of eating the machine.
+ */
+export const GIT_EXEC_OPTIONS = { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 } as const;
+
 export interface IssueRef {
   number: number;
   /** True when a commit used a closing keyword rather than a bare reference. */
@@ -76,7 +85,7 @@ export function shippedCandidates(
 
 function gitCommits(sinceRef: string | null): Array<{ sha: string; message: string }> {
   const range = sinceRef ? `${sinceRef}..HEAD` : 'HEAD';
-  const out = execFileSync('git', ['log', range, '--format=%H%x1f%B%x1e'], { encoding: 'utf8' });
+  const out = execFileSync('git', ['log', range, '--format=%H%x1f%B%x1e'], GIT_EXEC_OPTIONS);
   return out
     .split('\x1e')
     .map((rec) => rec.trim())
@@ -89,9 +98,11 @@ function gitCommits(sinceRef: string | null): Array<{ sha: string; message: stri
 
 function lastReleaseTag(): string | null {
   try {
-    return execFileSync('git', ['describe', '--tags', '--abbrev=0', '--match', 'v*'], {
-      encoding: 'utf8',
-    }).trim();
+    return execFileSync(
+      'git',
+      ['describe', '--tags', '--abbrev=0', '--match', 'v*'],
+      GIT_EXEC_OPTIONS,
+    ).trim();
   } catch {
     return null;
   }
