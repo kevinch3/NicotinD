@@ -120,14 +120,26 @@ test.describe('genre modal bottom-chrome geometry', () => {
     await page.getByTestId('artist-genre-input').fill('Folclore');
     await expect(page.getByTestId('artist-genre-after')).toBeVisible();
 
-    const chromeTop = await page.evaluate(() => {
-      const tops = Array.from(document.querySelectorAll('[data-bottom-chrome]'))
-        .map((el) => el.getBoundingClientRect())
-        .filter((r) => r.height > 0 && r.top < window.innerHeight)
-        .map((r) => r.top);
-      return tops.length ? Math.min(...tops) : window.innerHeight;
+    // Identify the topmost chrome layer, do not just measure it. The tab bar
+    // carries `data-bottom-chrome` too and renders unconditionally at this
+    // viewport (`md:hidden` does not apply at 412px), so it alone puts
+    // chromeTop at ~859 < 915 — the old `toBeLessThan(PHONE.height)` guard was
+    // satisfied whether or not the mini-player survived the goto above, and
+    // could therefore never fail for the reason it names.
+    const chrome = await page.evaluate(() => {
+      const layers = Array.from(document.querySelectorAll('[data-bottom-chrome]'))
+        .map((el) => ({ el, rect: el.getBoundingClientRect() }))
+        .filter(({ rect }) => rect.height > 0 && rect.top < window.innerHeight);
+      if (layers.length === 0) return { top: window.innerHeight, topIsPlayer: false, layers: 0 };
+      const highest = layers.reduce((a, b) => (b.rect.top < a.rect.top ? b : a));
+      return {
+        top: highest.rect.top,
+        topIsPlayer: highest.el.querySelector('[data-testid="player-title"]') !== null,
+        layers: layers.length,
+      };
     });
-    expect(chromeTop, 'the mini-player chrome is present').toBeLessThan(PHONE.height);
+    expect(chrome.topIsPlayer, 'the mini-player is the topmost bottom chrome').toBe(true);
+    const chromeTop = chrome.top;
 
     const panel = page.getByTestId('artist-genre-panel');
     const panelBox = (await panel.boundingBox())!;
