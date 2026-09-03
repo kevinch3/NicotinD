@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.76](https://github.com/kevinch3/NicotinD/compare/v0.5.75...v0.5.76) (2026-09-03)
+
+### Bug Fixes
+
+* **library:** give a track positional identity, so a repeated title across discs is not dropped ([#924](https://github.com/kevinch3/NicotinD/issues/924)) ([76b03f8](https://github.com/kevinch3/NicotinD/commit/76b03f81759f8a2f0ee79573a331616664c73993)), references [#747](https://github.com/kevinch3/NicotinD/issues/747)
 ## [0.5.75](https://github.com/kevinch3/NicotinD/compare/v0.5.74...v0.5.75) (2026-09-03)
 
 ### Bug Fixes
