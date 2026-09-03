@@ -322,6 +322,56 @@ describe.if(ffmpegAvailable())('overwriting an existing tag (#760)', () => {
   });
 });
 
+/**
+ * `readAudioTags` reads `compilation` on the ID3 path (`TCMP`) but the
+ * Vorbis/m4a branch never returned the field, so it was permanently
+ * `undefined` for .flac/.ogg/.opus/.m4a.
+ *
+ * That asymmetry is load-bearing, not cosmetic. `library-organizer.ts` guards
+ * its tag rewrite with `if (folderTags.compilation && !currentRaw.compilation)`
+ * and documents the step as running "idempotently". With the read always
+ * `undefined`, the guard is permanently true, so every organize pass re-writes
+ * COMPILATION=1 — and on this family a tag write is a full ffmpeg remux of the
+ * user's audio file. Opus is what the library transcodes everything into.
+ */
+describe.if(ffmpegAvailable())('compilation flag round-trip (Vorbis/Opus)', () => {
+  const genOpus = (name: string): string => {
+    const out = join(dir, name);
+    const gen = spawnSync('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=440:sample_rate=48000',
+      '-t',
+      '1',
+      '-c:a',
+      'libopus',
+      out,
+    ]);
+    expect(gen.status).toBe(0);
+    return out;
+  };
+
+  it('reads back a compilation flag written to opus', async () => {
+    const opus = genOpus('comp.opus');
+    expect(await writeAudioTags(opus, { compilation: true })).toBe(true);
+    expect((await readAudioTags(opus)).compilation).toBe(true);
+  });
+
+  it('reports a non-compilation opus as not a compilation', async () => {
+    // The guard must distinguish "no flag" from "flag set"; if this returned
+    // `true` the organizer would stop tagging real compilations.
+    expect((await readAudioTags(genOpus('plain.opus'))).compilation).toBeFalsy();
+  });
+
+  // Deliberately no mp3 case here. node-id3 0.2.9 has no TCMP frame at all, so
+  // the ID3 branch's write is a silent no-op and its read can never be true —
+  // a separate defect that needs a dependency decision, not a code fix.
+});
+
 describe('featureTagsFromNative (pure)', () => {
   it('reads Vorbis comment frames case-insensitively', () => {
     const out = featureTagsFromNative({
