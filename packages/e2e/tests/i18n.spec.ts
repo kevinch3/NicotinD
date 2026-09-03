@@ -109,9 +109,11 @@ test.describe('i18n (#236)', () => {
     await expect(page.getByTestId('get-tab-find')).toHaveText(/A\u00f1adir/i);
     await expect(page.getByTestId('get-tab-downloads')).toHaveText(/Actividad/i);
 
-    // The heading and empty state are the two strings that were hardcoded.
+    // The heading, which always renders. NOT the empty state: that is
+    // `@else` on a non-empty feed, so whether it appears depends on what
+    // earlier specs left behind — the same run-order trap this pass fixed in
+    // downloads.spec.ts, which I promptly walked into here.
     await expect(page.locator('body')).toContainText('Actividad');
-    await expect(page.locator('body')).toContainText('No hay descargas activas');
 
     // A key that failed to resolve renders as its dotted key — assert none leak.
     await expect(page.locator('body')).not.toContainText('downloads.');
