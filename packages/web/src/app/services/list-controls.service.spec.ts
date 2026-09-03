@@ -207,3 +207,60 @@ describe('ListControlsService', () => {
     });
   });
 });
+
+/**
+ * Issue #747. Some fields are not one column. On a multi-disc album "Track #"
+ * means `(disc, track)`, and the generic single-key sort interleaves the discs.
+ * A page can hand `connect` a comparator for such a field instead of forking
+ * the service or relying on `Array.sort` stability to preserve a pre-sort.
+ */
+describe('ListControlsService — composite sort fields', () => {
+  interface Song {
+    id: string;
+    disc?: number;
+    track?: number;
+  }
+
+  const SONGS: Song[] = [
+    { id: 'd2t1', disc: 2, track: 1 },
+    { id: 'd1t2', disc: 1, track: 2 },
+    { id: 'd1t1', disc: 1, track: 1 },
+  ];
+
+  function connect(comparators?: Record<string, (a: Song, b: Song) => number>) {
+    const service = TestBed.inject(ListControlsService);
+    return service.connect<Song>({
+      pageKey: `disc-${Math.random()}`,
+      items: signal(SONGS),
+      searchFields: ['id'] as const,
+      sortOptions: [{ field: 'track', label: 'Track #' }],
+      defaultSort: 'track',
+      comparators,
+    });
+  }
+
+  beforeEach(() => TestBed.configureTestingModule({}));
+
+  it('uses a supplied comparator for that field', () => {
+    const byDiscThenTrack = (a: Song, b: Song) =>
+      (a.disc ?? 1) - (b.disc ?? 1) || (a.track ?? 0) - (b.track ?? 0);
+    const controls = connect({ track: byDiscThenTrack });
+    expect(controls.filtered().map((s) => s.id)).toEqual(['d1t1', 'd1t2', 'd2t1']);
+  });
+
+  it('still honours the sort direction', () => {
+    const byDiscThenTrack = (a: Song, b: Song) =>
+      (a.disc ?? 1) - (b.disc ?? 1) || (a.track ?? 0) - (b.track ?? 0);
+    const controls = connect({ track: byDiscThenTrack });
+    controls.toggleSortDirection();
+    expect(controls.filtered().map((s) => s.id)).toEqual(['d2t1', 'd1t2', 'd1t1']);
+  });
+
+  it('falls back to the generic single-key sort when no comparator is given', () => {
+    // Unchanged behaviour for every other page that calls connect() — and a
+    // compact demonstration of why the album page needs a comparator at all:
+    // keyed on `track` alone, disc 2's track 1 sorts ahead of disc 1's.
+    const controls = connect();
+    expect(controls.filtered().map((s) => s.id)).toEqual(['d2t1', 'd1t1', 'd1t2']);
+  });
+});

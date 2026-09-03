@@ -38,6 +38,8 @@ export interface SelectableTrack {
   title: string;
   suffix: string;
   bitRate: number;
+  /** Disc number from tags. Absent/null means "the only disc" (issue #747). */
+  disc?: number | null;
 }
 
 /**
@@ -73,14 +75,20 @@ export function selectAlbumTracks<T extends SelectableTrack>(
   const best = new Map<string, T>();
   for (const t of tracks) {
     const norm = normalizeTitle(t.title);
+    // A track's identity within an album is (disc, title), not title. Album
+    // identity deliberately collapses discs, so without this term a title that
+    // legitimately repeats across discs loses one real file (issue #747).
+    // Untagged means "the only disc", which keeps single-disc albums — every
+    // track keyed `1` — behaving exactly as before.
+    const disc = t.disc ?? 1;
 
     let key: string;
     if (useCanonical && !knownRelPaths?.has(t.relPath)) {
       const match = canon.find((c) => titlesOverlap(c, norm));
       if (!match) continue; // foreign track — not part of the canonical album
-      key = `c:${match}`;
+      key = `c:${disc}:${match}`;
     } else {
-      key = `t:${norm}`;
+      key = `t:${disc}:${norm}`;
     }
 
     const cur = best.get(key);

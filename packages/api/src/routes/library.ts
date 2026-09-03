@@ -493,6 +493,7 @@ interface SongRow {
   album_artist: string;
   album_artist_id: string;
   track: number | null;
+  disc: number | null;
   duration: number;
   year: number | null;
   genre: string | null;
@@ -536,7 +537,7 @@ const ALBUM_SELECT = `
 const SONG_SELECT = `
   SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
          s.title, s.artist, s.artist_id, s.album_artist, s.album_artist_id,
-         s.track, s.duration, s.year, s.genre,
+         s.track, s.disc, s.duration, s.year, s.genre,
          s.cover_art, s.path, s.size, s.bit_rate, s.sample_rate, s.bit_depth, s.channels,
          s.suffix, s.content_type,
          s.created, s.starred, s.bpm, s.key,
@@ -580,6 +581,7 @@ function rowToSong(r: SongRow): Song {
     albumArtist: r.album_artist || undefined,
     albumArtistId: r.album_artist_id || undefined,
     track: r.track ?? undefined,
+    disc: r.disc ?? undefined,
     year: r.year ?? undefined,
     genre: r.genre ?? undefined,
     coverArt: r.cover_art ?? r.album_cover_art ?? r.album_id,
@@ -1151,7 +1153,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const songRows = db
       .query<SongRow, [string]>(
         `${SONG_SELECT} WHERE s.album_id = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL
-         ORDER BY s.track ASC NULLS LAST, s.title COLLATE NOCASE ASC`,
+         ORDER BY COALESCE(s.disc, 1) ASC, s.track ASC NULLS LAST, s.title COLLATE NOCASE ASC`,
       )
       .all(id);
     const album = rowToAlbum(albumRow);

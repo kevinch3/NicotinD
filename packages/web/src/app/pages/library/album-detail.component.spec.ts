@@ -227,3 +227,61 @@ describe('AlbumDetailComponent — pull-to-refresh', () => {
     expect(getAlbumCalls).toEqual(['a1']);
   });
 });
+
+/**
+ * Issue #747. A two-disc album is ONE album row whose songs carry `disc`, so
+ * without a header the page shows two rows both labelled "1" with nothing to
+ * separate them.
+ */
+describe('AlbumDetailComponent — disc headers', () => {
+  const SONGS = [
+    { id: 'd1t1', title: 'Intro', artist: 'A', disc: 1, track: 1 },
+    { id: 'd1t2', title: 'Output', artist: 'A', disc: 1, track: 2 },
+    { id: 'd2t1', title: 'Intro', artist: 'A', disc: 2, track: 1 },
+  ];
+
+  function make(songs: unknown[], sortField = 'track') {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [AlbumDetailComponent],
+      providers: [
+        provideRouter([]),
+        {
+          provide: PullToRefreshService,
+          useValue: { register: () => {}, refreshing: signal(false), hasHandler: signal(true) },
+        },
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'a1' } } } },
+        { provide: LibraryApiService, useValue: { getAlbum: () => of({ song: songs }) } },
+        { provide: AuthService, useValue: { token: signal('tok'), role: () => 'admin' } },
+        { provide: PlayerService, useValue: { play: () => {} } },
+        { provide: PlaylistService, useValue: { openPicker: vi.fn() } },
+        {
+          provide: ListControlsService,
+          useValue: { connect: () => ({ filtered: () => songs, sortField: () => sortField }) },
+        },
+        { provide: HttpClient, useValue: {} },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    });
+    return TestBed.createComponent(AlbumDetailComponent).componentInstance;
+  }
+
+  it('marks the first row of each disc', () => {
+    const headers = make(SONGS).discHeaders();
+    expect([...headers.entries()]).toEqual([
+      ['d1t1', 1],
+      ['d2t1', 2],
+    ]);
+  });
+
+  it('renders no header on a single-disc album', () => {
+    // Every existing album is single-disc; a "Disc 1" label on all of them
+    // would be pure noise.
+    expect(make([SONGS[0], SONGS[1]]).discHeaders().size).toBe(0);
+  });
+
+  it('renders no header under a sort that interleaves the discs', () => {
+    // Headers mark disc BOUNDARIES. Sorted by title there are none to mark.
+    expect(make(SONGS, 'title').discHeaders().size).toBe(0);
+  });
+});
