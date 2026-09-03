@@ -96,6 +96,30 @@ test.describe('i18n (#236)', () => {
     await expect(page.locator('body')).not.toContainText('acquire.emptyTitle');
   });
 
+  // #664: every gap this issue caught was mid-flow — a stateful button, the
+  // Activity feed, the folder browser — while the existing coverage only ever
+  // loaded the *empty* search page. A spec that never leaves the idle state
+  // cannot see a string that only renders once something is happening.
+  test('translates the Activity tab and its empty state (#664)', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('nicotind-lang', 'es'));
+    await page.goto('/get?tab=activity');
+
+    // The tab strip itself: renamed in this pass, so a missed key here would be
+    // the most visible possible regression.
+    await expect(page.getByTestId('get-tab-find')).toHaveText(/A\u00f1adir/i);
+    await expect(page.getByTestId('get-tab-downloads')).toHaveText(/Actividad/i);
+
+    // The heading, which always renders. NOT the empty state: that is
+    // `@else` on a non-empty feed, so whether it appears depends on what
+    // earlier specs left behind — the same run-order trap this pass fixed in
+    // downloads.spec.ts, which I promptly walked into here.
+    await expect(page.locator('body')).toContainText('Actividad');
+
+    // A key that failed to resolve renders as its dotted key — assert none leak.
+    await expect(page.locator('body')).not.toContainText('downloads.');
+    await expect(page.locator('body')).not.toContainText('get.tab.');
+  });
+
   test('translates the home page vibe presets', async ({ page }) => {
     // The post-login home route, and the last of the always-on-screen surfaces.
     await page.addInitScript(() => localStorage.setItem('nicotind-lang', 'es'));

@@ -20,6 +20,7 @@ import { ReviewInboxComponent } from '../../components/review-inbox/review-inbox
 import { MetadataFixModalComponent } from '../../components/metadata-fix-modal/metadata-fix-modal.component';
 import { DownloadReviewService } from '../../services/download-review.service';
 import type { DiskUsage, ReviewQueueAlbum } from '../../services/api/api-types';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 const ACQUIRE_STATE_ORDER: Record<AcquireJob['state'], number> = {
   running: 0,
@@ -45,6 +46,7 @@ function sortAcquireJobs(jobs: AcquireJob[]): AcquireJob[] {
     DiskPillComponent,
     ReviewInboxComponent,
     MetadataFixModalComponent,
+    TranslatePipe,
   ],
   templateUrl: './downloads.component.html',
 })

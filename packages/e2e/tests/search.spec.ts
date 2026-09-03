@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Source-agnostic acquire UX. Finding music now lives on the **Find tab of the
+ * Source-agnostic acquire UX. Finding music now lives on the **Add tab of the
  * merged /get workspace** (Acquire + Downloads became one nav item, since
  * "ask for music" and "watch it arrive" are halves of one job): Soulseek is no
  * longer framed as "the network", the status line is source-neutral, raw peer
@@ -11,21 +11,21 @@ import { test, expect } from '@playwright/test';
  * empty so these are reachable.
  */
 test.describe('acquire', () => {
-  test('the legacy /search path redirects to the Find tab, preserving the query param', async ({
+  test('the legacy /search path redirects to the Add tab, preserving the query param', async ({
     page,
   }) => {
     await page.goto('/search?q=hello');
     await expect(page).toHaveURL(/\/get(\?|$)/);
-    await expect(page).toHaveURL(/tab=find/);
+    await expect(page).toHaveURL(/tab=add/);
     // The redirect preserves incoming params, so a shared /search?q=… link
     // still lands on the query it named.
     await expect(page).toHaveURL(/q=hello/);
     await expect(page.getByTestId('search-input')).toBeVisible();
   });
 
-  test('the legacy /acquire path redirects to the Find tab', async ({ page }) => {
+  test('the legacy /acquire path redirects to the Add tab', async ({ page }) => {
     await page.goto('/acquire');
-    await expect(page).toHaveURL(/tab=find/);
+    await expect(page).toHaveURL(/tab=add/);
     await expect(page.getByTestId('search-input')).toBeVisible();
   });
 

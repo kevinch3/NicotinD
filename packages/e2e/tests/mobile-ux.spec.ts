@@ -208,7 +208,7 @@ test.describe('mobile UX', () => {
     // Ambiguous by construction — it passed only because the suite happened to
     // arrive here with an empty feed, which is also the one state that cannot
     // overflow (the same trap the #616 comment above describes).
-    await expect(page.getByRole('heading', { level: 1, name: 'Downloads' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible();
     const overflow = await page.evaluate(() => {
       const el = document.scrollingElement ?? document.documentElement;
       return el.scrollWidth - el.clientWidth;

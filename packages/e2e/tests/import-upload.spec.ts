@@ -58,7 +58,7 @@ test.describe('import from a dropped folder', () => {
   });
 
   test('a picked folder previews, uploads, and lands as an import job', async ({ page }) => {
-    await page.goto('/get?tab=find');
+    await page.goto('/get?tab=add');
 
     // A `webkitdirectory` input takes the directory itself — which is exactly
     // what the picker hands it in a real browser.
@@ -84,7 +84,7 @@ test.describe('import from a dropped folder', () => {
   });
 
   test('refuses a selection with no music, without opening a session', async ({ page }) => {
-    await page.goto('/get?tab=find');
+    await page.goto('/get?tab=add');
     await page.getByTestId('import-folder-input').setInputFiles(join(scratch, 'Junk Only'));
 
     // Nothing uploadable: the card still previews so the user learns why, and

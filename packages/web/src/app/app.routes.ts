@@ -122,9 +122,9 @@ export const routes: Routes = [
       // and e2e goto. A function redirect is required (not a string) because
       // the target needs a `tab` param *added* while the incoming ones — e.g.
       // ?q=… — are carried through; a string redirectTo can only preserve.
-      { path: 'search', pathMatch: 'full', redirectTo: redirectToGetTab('find') },
-      { path: 'acquire', pathMatch: 'full', redirectTo: redirectToGetTab('find') },
-      { path: 'downloads', pathMatch: 'full', redirectTo: redirectToGetTab('downloads') },
+      { path: 'search', pathMatch: 'full', redirectTo: redirectToGetTab('add') },
+      { path: 'acquire', pathMatch: 'full', redirectTo: redirectToGetTab('add') },
+      { path: 'downloads', pathMatch: 'full', redirectTo: redirectToGetTab('activity') },
       {
         path: 'library',
         loadComponent: () =>

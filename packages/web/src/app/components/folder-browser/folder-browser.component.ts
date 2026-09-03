@@ -20,6 +20,7 @@ import { TranslateService } from '../../services/translate.service';
 import type { Translator } from '../../lib/relative-time';
 import { FolderTreeNodeComponent } from './folder-tree-node.component';
 import { createPointerDrag } from '../../lib/pointer-drag';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 function buildBreadcrumb(path: string): Array<{ label: string; path: string }> {
   const segs = path.split(/[\\/]/).filter(Boolean);
@@ -46,7 +47,7 @@ const MAX_TREE_WIDTH = 420;
 
 @Component({
   selector: 'app-folder-browser',
-  imports: [FolderTreeNodeComponent],
+  imports: [FolderTreeNodeComponent, TranslatePipe],
   templateUrl: './folder-browser.component.html',
 })
 export class FolderBrowserComponent {
