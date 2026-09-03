@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'bun:test';
-import { parseIssueRefs, shippedCandidates } from './check-shipped-issues.js';
+import { execFileSync } from 'node:child_process';
+import {
+  GIT_EXEC_OPTIONS,
+  parseIssueRefs,
+  shippedCandidates,
+} from './check-shipped-issues.js';
 
 /**
  * Issue #257. The distinction these tests pin is the whole point: `Closes #12`
@@ -84,5 +89,28 @@ describe('shippedCandidates', () => {
     ];
     const out = shippedCandidates(many, [{ sha: 'x', message: '(#30) (#10) (#20)' }]);
     expect(out.map((c) => c.number)).toEqual([10, 20, 30]);
+  });
+});
+
+/**
+ * `--all` is a documented mode of this script, and it threw `ENOBUFS` on this
+ * repo instead of reporting: whole-history `git log --format=%H%B` is ~1.3 MB,
+ * past `execFileSync`'s 1 MB default. The report that exists to keep the open
+ * list honest could not read the history it audits.
+ *
+ * The payload here is synthetic on purpose. Asserting against the repo's own
+ * history would pass vacuously under a shallow CI checkout — the false
+ * denominator this repo's gates are written to avoid.
+ */
+describe('GIT_EXEC_OPTIONS', () => {
+  const BYTES = 4 * 1024 * 1024;
+  const emit = ['-e', `process.stdout.write('x'.repeat(${BYTES}))`];
+
+  it('is the constraint: the execFileSync default cannot carry this much output', () => {
+    expect(() => execFileSync('bun', emit, { encoding: 'utf8' })).toThrow(/ENOBUFS/);
+  });
+
+  it('reads subprocess output past the 1 MB execFileSync default', () => {
+    expect(execFileSync('bun', emit, GIT_EXEC_OPTIONS)).toHaveLength(BYTES);
   });
 });
