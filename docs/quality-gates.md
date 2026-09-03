@@ -291,6 +291,18 @@ on the source changes that make up almost every PR. Measured cost with a warm GH
 cache is ~3 min, against an `e2e` job of ~5 min running in parallel, so the
 workflow's critical path does not move.
 
+The sidecar images kept a filter, because the separator's is a ~3 GB GPU build that
+should stay rare — and that filter repeated the same mistake in miniature (issue #880). It
+enumerated each image's build inputs by hand and omitted `app/`, the directory both
+Dockerfiles `COPY`. The separator's Dockerfile *executes* that source at build time (an
+arch guard and a strict checkpoint load), so an `app/**`-only edit skipped the very check
+that guards it — and then failed at tag time inside `docker-separator`, which the deploy
+job has in both its `needs:` and its `if:`, blocking the release *after* the version bump
+and tag are already pushed. A filter that lists build inputs by hand needs a test that
+runs it: `scripts/ci-concurrency.test.ts` extracts the patterns out of `ci.yml` and
+asserts their behaviour on real paths, because asserting the regex *text* only proves
+someone typed the path.
+
 The step waits on the image's **own `HEALTHCHECK`** rather than a hand-rolled
 poll, so it exercises the same mechanism compose and the deploy host rely on, and
 then asserts `/api/health` reports `package.json`'s version — health says
