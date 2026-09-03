@@ -25,6 +25,7 @@ import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import nodeId3 from 'node-id3';
+import { readAudioTags } from './audio-tags.js';
 import { LibraryOrganizer } from './library-organizer.js';
 import { ffmpegAvailable } from './transcode.js';
 
@@ -783,6 +784,63 @@ describe('LibraryOrganizer (real fs)', () => {
       expect(res.deletedRelPaths.length).toBe(1);
       expect(res.affectedAlbumDirs).toContain(albumDir);
     });
+  });
+
+  /**
+   * The tag-rewrite step documents itself as running "idempotently" so a
+   * repeated pass cleans junk without churn. On the Vorbis family it did the
+   * opposite: `readAudioTags` never returned `compilation`, so
+   * `!currentRaw.compilation` was permanently true and every pass re-wrote
+   * COMPILATION=1 — and a Vorbis tag write is a full ffmpeg remux of the
+   * user's audio file. `reorganize-library.ts --apply` walks the whole library
+   * this way.
+   */
+  describe('compilation tag rewrite is idempotent', () => {
+    it.skipIf(!ffmpegAvailable())(
+      'leaves an already-flagged compilation untouched on a second pass',
+      async () => {
+        const root = tmpRoot();
+        const staging = join(root, '_staging');
+        const album = 'Now Thats What I Call Music';
+        // Three distinct artists under one album is what makes the folder a
+        // compilation, so the organizer writes ALBUMARTIST + COMPILATION.
+        const artists = ['Sade', 'Massive Attack', 'Portishead'];
+        artists.forEach((artist, i) => {
+          seedFlac(staging, `VA - ${album}/0${i + 1} - ${artist} Song.flac`, {
+            artist,
+            album,
+            title: `${artist} Song`,
+            trackNumber: i + 1,
+          });
+        });
+
+        const org = makeOrg(root, staging);
+        const result = await org.organizeBatch(
+          artists.map((artist, i) => ({
+            username: 'u',
+            directory: `VA - ${album}`,
+            filename: `0${i + 1} - ${artist} Song.flac`,
+            directoryFileCount: artists.length,
+          })),
+        );
+
+        // Ask the organizer where it put them rather than restating its
+        // folder-naming rules here.
+        expect(result.moved).toBe(artists.length);
+        const placedDir = result.affectedAlbumDirs[0]!;
+        expect(placedDir).toContain('Various Artists');
+        const placed = readdirSync(placedDir).map((f) => join(placedDir, f));
+        expect(placed).toHaveLength(artists.length);
+        // Precondition: the first pass really did flag them, otherwise a
+        // second pass would be a no-op for an uninteresting reason.
+        expect((await readAudioTags(placed[0]!)).compilation).toBe(true);
+
+        const before = snapshotTree(placedDir);
+        for (const f of placed) await makeOrg(root).organizeFile(f);
+
+        expect(snapshotTree(placedDir)).toEqual(before);
+      },
+    );
   });
 
   describe('lossless → opus transcode hook', () => {

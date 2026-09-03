@@ -328,6 +328,10 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         year: c.year,
         key: pickString(c.key),
         genre: pickGenre(c.genre),
+        // Without this the organizer's `!currentRaw.compilation` guard is
+        // permanently true and it re-remuxes every compilation file on every
+        // pass. `compilation-tagger.ts` already reads it exactly this way.
+        compilation: (c as Record<string, unknown>).compilation === true,
         lyrics: readVorbisLyrics(c.lyrics),
         ...featureTagsFromNative(parsed.native, c.mood),
         acoustIdId: pickString(c.acoustid_id),
