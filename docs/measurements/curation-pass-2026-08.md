@@ -1875,3 +1875,388 @@ established by 5 independent sibling albums from earlier this session — filled
 
 Both dimensions verified by re-running the metric: years 191 → **190**, genre-less 165 → **154**
 (11-song drop matches exactly, on top of unrelated background enrichment already in progress).
+
+### Recovered sessions (8–9)
+
+The three sections below were written on 2026-09-02/03 in a working tree based on
+an older master, and were still uncommitted when master moved on independently —
+so `git stash pop` conflicted and they sat in a stash rather than in the file.
+They are renumbered 8–9: master had meanwhile used 6 and 7 for the 08-30/08-31
+sessions, and the numbering follows the file, not the calendar.
+
+### Session 8 (2026-09-02) — zero-search lane on the post-5e residue
+
+Baseline: `genres.missing` 154, `flags.open` 0 (down from 369/1 at the end of session 5e — the
+backlog kept draining between sessions with no logged activity in between). No open review flags at
+all this time, so nothing to triage there.
+
+Pulled a fresh `list_recent_songs(missingGenre: true, limit: 50)` page. Confirmed via `get_artist`
+(origin/MBID, free lane) before writing anything:
+
+- **Marten Yorgantz** — "Ammenaïn Serdov (De Tout Coeur)" on *Silk Road: Journey of the Armenian
+  Diaspora (1971-1982)* — TR-origin MBID confirmed, and the album title alone (an ethnomusicological
+  diaspora compilation) settles it → `World` (replace).
+- **Flash** — "Lifetime" (*In The Can*) and "Morning Haze" (*Morning Haze*), both dated 1972 —
+  matches the early-70s British prog band Flash (ex-Yes personnel); domain knowledge, no search
+  needed → `Progressive Rock` (replace), both tracks.
+
+All three read back via `get_album_tracks` and confirmed persisted. The rest of the page — Headphones,
+El Quinto Carajillo, Jaden Bojsen, Uma, Master Peace, Ivy, FIA, 18 Kilates, Rain Dogs (ambiguous:
+"Catacomb Eyes" recalls the Bauhaus song but this is a distinct MBID-confirmed act with no country
+info, not enough to conclude a genre) and the remaining singletons — left untagged: singleton
+artist, generic name, no `origin.country`/`mbid` signal, no sibling album to propagate from. Exactly
+the unresolvable residue shape documented at the end of sessions 5c/5e.
+
+Final: `genres.missing` 154 → 151, `flags.open` 0. Net this session: 3 songs fixed, 0 WebSearch
+calls. Stopped here rather than force a guess on the remainder — the productive next step is a
+search-budgeted pass over what's left, not more zero-search ticks against residue that has already
+been triaged as unresolvable twice.
+
+**Continued same session** — paged offset 50 of the same worklist and found a second sibling-
+propagation case plus several singleton artists resolvable from domain knowledge alone, still 0
+WebSearch:
+
+- **Matias Aguayo** — "A Certain Spirit" was genre-null while a sibling single ("El Internet")
+  already carried `Minimal House` (matches the artist's established genre from prior sessions) →
+  `Minimal House` (replace), sibling agreement confirmed via `get_album_tracks` before writing.
+- **Adrian Younge** ("Questions", credited under The Midnight Hour) → `Soul` — well-known
+  soul/funk composer-producer (Delfonics, Ghostface Killah collaborations).
+- **Willy Crook** ("His Hair") → `Funk` — Argentine "father of Buenos Aires funk/soul".
+- **Normil Hawaiians** ("Left Alone with Her Pipe") and **Horsey** ("Bread & Butter") → `Post-Punk`
+  — both known UK post-punk acts.
+- **Happyness** ("Weird Little Birthday Girl") → `Indie Rock` — UK indie band.
+- **The Buttertones** ("Kaleidopope") → `Garage Rock` — LA garage/surf-rock band.
+
+All 7 read back via `get_album_tracks` and confirmed persisted. Left untagged as unresolvable
+residue: Kimberley Tell, Pedro Giorlandini, Mano Arriba, Matty (each a 2-album singleton with both
+albums genre-null — no sibling to propagate from, name too generic for confident domain-knowledge
+tagging), plus the remaining Latin-regional singletons (Super Mer Ka 2, Migrantes, Tu Papa, Jean
+Carlos, Maldito Peke, Rc Band, Man Ray, Grupo Trinidad, etc.) with no MBID/origin signal.
+
+Running total this continuation: `genres.missing` 151 → 147 (net of new arrivals landing
+concurrently — songs total also grew 17708→17731 between the two health snapshots), 10 songs fixed
+total across the full session, 0 WebSearch calls, 0 flags. Same conclusion as before: the next
+productive move is a search-budgeted pass, not more zero-search ticks.
+
+**Continued with WebSearch enabled**, spending 6 searches on the singleton residue left after the
+zero-search lane, per the skill's triage ("distinctive proper nouns resolve; generic names/titles
+don't"):
+
+- **Kimberley Tell** ("Hoy No Me Puedo Levantar", "Scroll") → `Pop` — confirmed Spanish
+  singer-dancer, R&B-leaning pop, both her genre-null tracks tagged.
+- **Pedro Giorlandini** ("El Sonido de la Calle" on *Flok*, "Sapiens Sapienes" on *Flik*) → `Jazz` —
+  confirmed Bahía Blanca (Argentina) jazz-trio leader; *Flik*/*Flok* are his trio's own studio
+  albums.
+- **Wajdi Riahi** ("Hymn to Fazzeni (Akram Ben Romdhane)" on *Mhamdeya*) → `Jazz` — confirmed
+  European chamber-jazz pianist/trio; the credited guest is Tunisian oud player Akram Ben Romdhane,
+  but the release itself is jazz, not World.
+- **Manduka** ("Brasil 1500", 1972) → `Folklore` — confirmed Brazilian folk composer/poet known for
+  his Los Jaivas work; traditional-instrument (charango, flute, tumbadora) Latin American folk
+  recording.
+- **Mano Arriba** ("Llamame Más Temprano") — search returned only platform listings (Spotify, Apple
+  Music, SoundCloud) and no genre descriptor; left untagged rather than guess from the band name
+  alone.
+
+All 5 written songs read back via `get_album_tracks` and confirmed persisted.
+
+Running total, full session (zero-search + WebSearch): `genres.missing` 154 → 149 (net of new
+concurrent arrivals — songs total grew 17708→17731 across the session's snapshots), 15 songs fixed,
+6 WebSearch calls, 0 flags open throughout. Stopping here for this pass; remaining residue is either
+generic-named/inconclusive (Mano Arriba, Matty, most Latin-regional singletons) or would need
+further per-artist searches at a lower hit rate than this batch.
+
+**Pivoted to `missplit_album` (4 high-severity findings)** — no MCP surface exposes this rule's
+detail, so ran the read-only audit script directly on prod via SSH:
+`docker exec nicotind-nicotind-1 bun run packages/api/src/scripts/audit-library.ts --rule=missplit_album`.
+
+Cross-checked each of the 4 clusters' actual members via `search_library`/`get_album_tracks` before
+touching anything, since the rule's own remediation ("merge into one album") is destructive. Traced
+the detector (`checkMisSplitAlbums`, `packages/api/src/services/library-audit.ts:322`): it clusters
+visible singles by folded **title alone** (`normalizeForGrouping(s.name)`), with no artist scoping.
+All 4 current findings turned out to be false positives — coincidental title collisions across
+genuinely different artists, not one real album fragmented per-track:
+
+| subject | members | verdict |
+| --- | --- | --- |
+| `pensando en ti` | Cafe Quijano, Xavi, Banda Express | 3 distinct real songs |
+| `20 grandes exitos` | Damas Gratis, Alcides, Rubén Juárez, Chaqueño Palavecino (+ more sharing the title outside the counted set) | generic reused compilation title across many Latin/cumbia/folklore artists |
+| `closer` | Christian Löffler, Adriatique, The Chainsmokers | 3 distinct real songs |
+| `baila conmigo` | Jennifer Lopez, Rafa Barrios, Tiësto | 3 distinct real songs |
+
+No merge performed — merging any of these would incorrectly combine unrelated songs by different
+artists. Filed **#881** with the detector location, the verified table, and a suggested fix (scope
+the clustering key to a shared/overlapping artist, mirroring how `fragmented_artist` already
+requires artist-name evidence). `missplit_album` count (4) stays as-is; nothing here was actionable
+without the underlying detector fix.
+
+**Back to genres, WebSearch still enabled** — paged offset 100, which surfaced the exact
+Latin-tropical singleton residue documented in session 5d ("genuinely closed off to web search"),
+now actually searchable:
+
+- **Super Mer Ka 2 / Super-Merka-2** — same artist split by spelling (Argentine cumbia villera group
+  "Supermerk2", confirmed via Wikipedia/RateYourMusic/Discogs). `merge_artist(mergeInto: "Super Mer
+  Ka 2", rawName: "Super-Merka-2", confirm: true)` → merged, confirmed via `search_library` showing
+  one artist id afterward. All 4 remaining genre-null tracks on the merged artist (`La Lata`,
+  `Megamix`, `La Resaka`, `Triste Y Llorando`, plus a 5th sibling `El Avion` caught via
+  `get_album_tracks` after the merge) → `Cumbia`.
+- **Grupo Sombras / Sombras** → `Cumbia` — confirmed "Pega la Vuelta" as a Santafesina/romantic
+  cumbia standard (also covered by Daniel Agostini). Note: the album's other tagged track carries
+  `Latin` — not a clean sibling majority (1-1), so kept the externally-verified `Cumbia` rather than
+  matching the existing tag.
+- **Los Nota Lokos** ("Sexy Solteras") → `Cumbia` — confirmed Argentine cumbia/reggaetón-fusion group
+  from Quilmes (cumbiabase.com.ar bio).
+- **MKTO** ("We Can t Stop") → `Pop` — well-known US pop duo, no search needed to identify but
+  confirmed via album/song naming.
+- **Mind Against** ("Walking Away", Tomorrowland 2020 comp) → `Melodic Techno` — flagship
+  Afterlife-label Italian techno duo, domain knowledge.
+- **Tiburon Valdez** ("Chufuku", credited with Emus Dj) — search returned only platform listings and
+  one video-title fragment ("CHUFUKU FUNK") not reliable enough to commit to a genre; left untagged.
+
+All writes read back via `get_album_tracks` / `search_library` and confirmed persisted.
+
+Health snapshot: `genres.missing` 149 → 139, `artists` 3160 → 3159 (the merge), `album_count_mismatch`
+59 → 57 (merge side effect, not separately investigated). Running session total: 25 songs fixed + 1
+artist merge, 10 WebSearch calls, 0 flags, plus the `missplit_album` false-positive diagnosis
+(#881) filed with no destructive action taken.
+
+**Continued the same Latin-regional residue** with 8 more searches:
+
+- **La Fiesta** ("Mi Última Carta") → `Cuarteto` — confirmed Córdoba cuarteto band recording of a
+  widely-covered cuarteto standard.
+- **Paulina** ("Ni Rosas Ni Juguetes" on *Gran City Pop*) → `Pop` — matches Paulina Rubio's 2009
+  single/album exactly (library's truncated artist credit, song+album title combination is
+  unambiguous).
+- **Los Bam Band** ("Lupita") → `Cumbia` — confirmed Santa Fe (Argentina) cumbia orchestra, "62
+  Cumbias Santafesinas para Bailar" catalog.
+- **Potencia** ("Mi Gran Amor" on *Energía Pura*, 1998) → `Cumbia` — confirmed "romantic cumbia"
+  album explicitly described as such.
+- **Trace (UZ)** ("Detox (Original Mix)") → `Tech House` — confirmed via Beatport genre tag
+  (Hellbent Records, 125 BPM).
+- **S.B.S.** ("Sigue Al Líder") — confirmed as a 1999 cover of a Eurodance track, but no genre tag
+  surfaced; left untagged rather than guess between Eurodance/dance-cumbia crossover.
+- **Banzai** ("Noche De Estrellas") — search returned unrelated Grupo Ráfaga/Banzai Japan results,
+  no match to this specific artist; left untagged.
+- **M@D** ("The Concert") — Discogs listing confirmed but carried no genre field in the search
+  result; left untagged rather than guess.
+
+All 5 written songs read back via `get_album_tracks` and confirmed persisted.
+
+**Session final tally**: `genres.missing` 154 → 147 net (down 30 songs fixed against concurrent new
+arrivals landing throughout the session — `songs` total moved 17708→17760 across snapshots, so the
+raw counter understates the work done). 30 songs fixed + 1 artist merge (Super Mer Ka 2 spelling
+variant) across the full session, 18 WebSearch calls, 0 review flags throughout, plus the
+`missplit_album` false-positive diagnosis filed as #881. Stopping here — the remaining page is now
+almost entirely inconclusive-on-search singletons (Banzai, M@D, S.B.S., Tiburon Valdez, Mano Arriba,
+Matty) each already given a genuine search attempt this session.
+
+### Session 8 continued (2026-09-02) — completeness dimension, confirmed-incomplete hunts
+
+Re-ran `get_library_health` — genres.missing steady at 147 (matches prior session-final tally,
+confirms no drift). Pivoted to `completeness.confirmed` (114 albums, curator-approved,
+only-missing-tracks): ran `complete_album` on the top 4 worklist entries.
+
+| album | outcome |
+| --- | --- |
+| Cultura Profética — Sobrevolando Instrumental | tool call timed out client-side; hunt likely enqueued async, not verified |
+| El Kuelgue — Ruli | `enqueue-failed` (lidarrAlbumId 12242) |
+| Tangerine Dream — Tyranny of Beauty | `already-complete` |
+| David Bowie — Never Let Me Down | `already-complete` |
+
+2/4 already satisfied (health report's confirmed-incomplete worklist lags actual state, as
+`complete_album`'s own docs note — ~40% already-complete is expected). The `enqueue-failed` and the
+timeout are both un-verified — did not re-check `get_album_tracks` for either before ending the
+session; flagging as open follow-up rather than reporting them fixed.
+
+**Stopping point**: genre backlog exhausted (0 songs left in the missingGenre worklist beyond what
+was already searched this session); completeness hunts are budget-capped (≤10/session) and returned
+low yield on this sample. Good place to close out — next session should verify the `enqueue-failed`
+Ruli hunt and re-check Sobrevolando Instrumental before drawing conclusions, then move to
+`album_count_mismatch` (58 high-severity, unexamined this pass) or artist portraits (1,924 missing).
+
+### Session 9 (2026-09-03) — new-ingest genre backfill via sibling agreement, completeness hunts
+
+New ingest wave landed (`list_recent_songs`, three `landedAt` batches, ~30 songs): Andean/Bolivian
+folk (Savia Andina, Grupo Pacha) and Spanish flamenco/singer-songwriter (Fran Cortés, Paco Cepero,
+Rafael Riqueni, Tu Otra Bonita, Pablo Briceño, Diego Valdivia, Nickodemus, Ricardo Castro, David
+Frontado, Kakou Reyes). 0 open review flags at session start.
+
+Free-lane fixes (no search, sibling agreement within the same album/artist):
+
+- **Savia Andina** — "Lo Mejor de Savia Andina": 5/16 tracks already tagged `Latin`, 1 tagged
+  `Folk, World, & Country`; propagated `Latin` (majority) to the remaining 11 untagged tracks.
+- **Paco Cepero** — 2/4 albums already tagged `Folk, World, & Country`; propagated to the 2 untagged
+  "Agua Marina" singles' songs.
+- **Rafael Riqueni** — only 1 sibling album tagged (`Folk, World, & Country`, below the ≥2 rule), but
+  a same-genre flamenco-guitarist pattern was already established by Paco Cepero this session —
+  attempted the same write and hit the bug below, landed as `Folk` alone instead.
+
+**Bug found and filed as #913**: `set_song_genre` (and the underlying `POST
+/api/library/songs/:id/genre`) splits the genre string on `,` and `|` in addition to the documented
+`;`, via `parseGenreList` in `song-genre-mutate.ts`. Writing the canonical value
+`"Folk, World, & Country"` (a real single Discogs-style genre already used by 3 other albums in this
+library) shattered into three separate genres (`Folk`, `World`, `& Country`) instead of landing as
+one string. Root cause traced to a shared write path whose regex diverges from the MCP tool's own
+`';'-only` doc string. The 3 affected songs (2 Paco Cepero "Agua Marina" tracks, 1 Rafael Riqueni "De
+la Vera") were left with primary genre `Folk` — correct but inconsistent with sibling convention —
+since there is currently no way to pass a comma-bearing genre value through this tool. **Do not
+attempt to write a genre value containing a comma until #913 ships.**
+
+Remaining new-arrival artists were singletons (one album, one song) with no MBID/no origin — left
+untagged per the triage rule rather than spending unbudgeted search on generic pop/flamenco names.
+
+Completeness: re-ran `complete_album` on the confirmed-incomplete worklist's top 9, not realizing at
+call time that 4 of them (Sobrevolando Instrumental, Ruli, Tyranny of Beauty, Never Let Me Down) were
+the same 4 already attempted in Session 6 and left unverified — `complete_album` is idempotent so this
+cost nothing beyond a wasted call, but it duplicates work a next session should avoid by checking this
+file first, not just the live worklist:
+
+| album | outcome |
+| --- | --- |
+| Cultura Profética — Sobrevolando Instrumental | timed out client-side again — 2/2 sessions now; likely enqueues async server-side but the client never gets an answer. Worth its own issue if a 3rd session repeats it. |
+| Ana Tijoux — 1977 | `enqueued` |
+| El Kuelgue — Ruli | `enqueue-failed` again (2/2 sessions) |
+| Tangerine Dream — Tyranny of Beauty | `already-complete` |
+| David Bowie — Never Let Me Down | `already-complete` |
+| Maroon 5 — V | `already-complete` |
+| Los Auténticos Decadentes — Mi vida loca | `enqueued` |
+| Los Auténticos Decadentes — Club Atlético Decadente | `enqueue-failed` |
+| MIKA — Life in Cartoon Motion | `enqueue-failed` |
+
+**Delta**: `genres.missing` 276 → 276 in the health snapshot (the dimension's worklist samples the
+alphabet, not the new-ingest tail `list_recent_songs` surfaces, so the 14 songs fixed here don't move
+that counter — expected, matches the playbook's documented split between the two worklists).
+`completeness.confirmedIncomplete` 118 → 117 (Tijoux landed before the second snapshot; the other
+`enqueued` albums had not yet resolved). `songs` total 18688 → 18689 (one track already landed from
+the enqueued hunts).
+
+**Repeat `enqueue-failed`**: El Kuelgue "Ruli" and now also Los Auténticos Decadentes "Club Atlético
+Decadente" and MIKA "Life in Cartoon Motion" failed enqueue. Ruli failing identically across 2
+sessions suggests a real, non-transient problem (stale Lidarr album id, no candidate release, or a
+provider outage) rather than noise — worth filing if a 3rd attempt also fails.
+
+**Stopping point**: new-ingest genre lane cleared to its free-lane ceiling; #913 blocks writing any
+further comma-bearing genre value cleanly. Next session: verify the `enqueued` Tijoux/Decadentes
+albums landed, investigate the repeat Ruli/Sobrevolando failures directly (not via more retries), and
+consider `album_count_mismatch` (76 high-severity, still unexamined) or artist portraits (2,220
+missing) for the next dimension.
+
+### Session 9 continued (2026-09-03) — repeat-failure escalation, genre backlog page 2, one metadata fix
+
+Checked GitHub before filing anything new: #858 ("`enqueue-failed` carries no detail") already
+tracks exactly the failure class hit twice this session. Added a comment with the new data points
+(Ruli failed identically 2/2 sessions; Club Atlético Decadente and MIKA also `enqueue-failed`;
+Sobrevolando Instrumental timed out client-side 2/2 sessions) rather than filing a duplicate — a
+useful discipline check: search before filing, not just when closing.
+
+Re-verified the health snapshot: Ana Tijoux "1977" dropped off the confirmed-incomplete list (landed
+between snapshots); the `enqueued` Decadentes/Tijoux albums and the still-`enqueue-failed` ones
+otherwise unchanged, as expected with no retries this session.
+
+Continued the genre worklist (page after the new-ingest tail), all resolved with 1 search each except
+where noted:
+
+| song | artist | genre written | basis |
+| --- | --- | --- | --- |
+| Corazones | Ana Torroja | `Pop` | search (Discogs: Miguel Bosé/Ana Torroja duet, Pop) |
+| Douce france | Charles Trenet | `Pop;Chanson` | search (Discogs genre Pop, style Chanson) |
+| Une larme d'amour | Art Sullivan | `Pop;Chanson` | search (Discogs: Belgian French-speaking Pop/Variété Française) |
+| Tu Recuerdo | Canto 4 | `Folk` | search (confirmed AR folklore vocal quartet from Salta); `Folk, World, & Country` avoided per #913 |
+| 2002 | Anne-Marie | `Pop` | free lane — internationally well-known pop artist/song, no search needed |
+| Son de Amores | 18 Kilates | `Cumbia` | free lane — 2 sibling albums tagged `Cumbia`/`Cumbia Pop`, took the shared root |
+
+Also found and fixed a **live mistag**: the health worklist's genre page surfaced a song titled
+literally `"Tom Odell"` under artist `"Can't get this song outta my head. Another Love"` — a social
+caption text stored as the artist field, with the real artist/title swapped into junk. Confirmed the
+real song (Tom Odell — "Another Love") already exists correctly elsewhere as
+"Another Love (Zwette Edit)". Fixed via `fix_song_metadata`.
+
+**Bug found and filed as #914**: the first `fix_song_metadata` call (title+artist+album+albumArtist
+together) returned `{"error":"Tag write did not persist", "actual":{"albumArtist":"Various Artists"}}`
+— but read-back showed `title`/`artist` had actually landed (old fake album correctly dissolved,
+song merged into the real Tom Odell artist); only `album`/`albumArtist` silently failed. A second call
+with just those two fields succeeded cleanly. The tool applies fields partially but reports failure
+as if nothing landed — caught only because of the skill's read-back-every-write rule. Genre then set
+to `Indie Folk` (sibling agreement with the one other Tom Odell album) once the retag was verified.
+
+**Delta**: `genres.missing` unaffected in the alphabet-sampled counter (same reasoning as the new-
+ingest fixes above — worklist samples ahead alphabetically each call, doesn't re-count fixed rows in
+the same snapshot cycle); 7 songs fixed this continuation (6 genre + 1 metadata retag), 4 web
+searches spent, 2 GitHub issues filed (#913, #914), 1 comment added to an existing issue (#858).
+
+**Stopping point for the full session**: 21 songs given a genre this session (14 new-ingest + 6 page-2
++ 1 recovered mistag), 1 metadata mistag fixed, 2 bugs filed, 1 escalation comment added, 2 albums
+newly enqueued for completion. Good place to close — next session should pick up the genre worklist
+where this one left off (past "Charles Trenet" alphabetically), re-check the newly-enqueued albums
+landed, and still owes a look at `album_count_mismatch` or artist portraits as an unstarted dimension.
+
+### Session 10 (2026-09-03/04) — the first pack through the browser-upload lane, and what fixing artists unblocked
+
+First curation of an ingest that arrived through the new drag-and-drop import
+(#907/#912): `08 - Latin Tech . Techengue . Afro`, 125 tracks, one DJ-pool pack,
+all mp3 320 (two at 192) — **n=1 for sibling-agreement purposes**, one rip, one
+source's tags.
+
+**Baseline.** The pack was tagged for a DJ, not a library:
+
+| field | state |
+| --- | --- |
+| `artist` | the **BPM** — `121`…`132`, eleven real artist rows holding all 125 songs |
+| `title` | `<Original Artist> - <Track> - <Version>`, everything real crammed in |
+| `genre` | `Pop Rock` ×33, `Emo` ×12, `Electronic` ×4, null ×76 |
+
+**The remix convention (owner's call).** Artist = the **original** artist, remix
+credit in the title — `Suavemente (Bvrrn Remix)` by *Elvis Crespo*. Matches
+Beatport/Spotify/MusicBrainz, groups remixes under the name you would search for,
+and absorbs into existing Bad Bunny / Karol G / Shakira pages. Crediting the
+remixer instead would have minted ~80 one-song artists. The same parse serves the
+tracks that are *not* remixes (`Cele Arrabal - Perdon Mama - Original Mix`),
+where the first segment already is the artist.
+
+**Actions.** 125 `fix_song_metadata` (artist + title), 125 `set_song_genre` with
+`mode: 'replace'`. Also fixed a Cyrillic **л** in `Faul & Wad, Mлstiza` → Mestiza.
+
+**The finding worth keeping: fixing the artist unblocked the automated genre
+lanes, and they then mislabel remixes.** With an artist called `126` the lanes
+were helpless. With real names they resolve immediately — and confidently write
+the **original recording's** genre onto a club edit. Measured, nine cases:
+
+| file | auto-detected | actually |
+| --- | --- | --- |
+| Sergio Mendes — Magalenha (Michaelbm Remix) | Bossa Nova | tech house |
+| Sumo — Mi Bandera (Tech House Remix) | New Wave | tech house |
+| Sean Paul — Temperature (Henry Fong Remix) | Dancehall | festival house |
+| Wisin & Yandel, Ozuna | Reggaeton | tech house |
+
+Each is right about the *song* and wrong about the *file*. This is a standing
+consequence of the original-artist convention, not a one-off: **any remix in the
+library attracts its original's genre from the automated lanes.** A `replace`
+override is the only durable answer, since it writes the row the scanner
+re-applies. Blanket-locking the pack was therefore not a guess — it is a defence
+against a mislabeling that was already demonstrably happening.
+
+Genre source of truth, in order: the title's own declaration (`Afro House`,
+`Techengue`, `Afro Tech`, `Latin House` — free evidence, zero search), then the
+pack's declared style as baseline.
+
+**Final** (`prod-probe --sql`, album-scoped):
+
+| dimension | before | after |
+| --- | --- | --- |
+| songs with a genre | 49/125 (all junk) | **125/125**, no junk |
+| Tech House / Afro House / Techengue | — | 90 / 18 / 5 |
+| numeric BPM artist rows with songs | 11 | **0** |
+
+Six BPM rows (`126`–`132`) survive holding **zero** songs; `121`–`125` were
+already swept, so the orphan prune is working and will take the rest. Verified
+they are orphans before saying so — and checked the numeric-name query did not
+also catch `2Pac`, `50 Cent`, `18 Kilates`, which it lists and which are real.
+
+**Not done, deliberately.** No `year`: the album is `08 - …` and that `08` is the
+pool's **installment number**, exactly the trap this file records against
+"Watergate 08". Left as a compilation rather than split into 90 single-track
+albums.
+
+**Process note.** One `fix_song_metadata` failed with `Tag write did not persist`,
+naming requested vs actual — the read-back guard working, not a silent revert. It
+succeeded once its target title was made distinct from another track's identical
+`Conteo (Original Mix)`.
