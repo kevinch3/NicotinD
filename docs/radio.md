@@ -577,7 +577,10 @@ starting seed radio or turning radio off clears it.
 > into one tile field, and every tile — including a recently-played one — starts
 > a radio. Recently-played is the only source whose verb changed: it used
 > `playWithContext` on the classic landing, which kept the shelf as the queue.
-> The shelves themselves still render on `/classic`.
+> The mosaic also *draws* rather than fills: ten of the twenty recent plays and
+> ten of twenty keep-the-vibe variations, chosen at random per visit, with taste
+> breakers filling the rest (`LANE_MIX`, [web-ui.md](web-ui.md)); and it has no
+> Resume tile. The shelves themselves still render on `/classic`.
 
 The landing page's "Keep the vibe" shelf recommends **variations of the
 recently-played list**: tracks that would come up if a radio were started from

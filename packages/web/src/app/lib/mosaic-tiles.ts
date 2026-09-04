@@ -16,7 +16,7 @@ import { VIBE_PRESETS } from './vibe-presets';
  * starts. See docs/web-ui.md.
  */
 
-export type MosaicTileKind = 'resume' | 'song' | 'playlist' | 'vibe' | 'genre' | 'downloads';
+export type MosaicTileKind = 'song' | 'playlist' | 'vibe' | 'genre' | 'downloads';
 
 /**
  * What tapping a tile does.
@@ -53,11 +53,11 @@ export interface MosaicTile {
 }
 
 export interface MosaicSources {
-  resume: Track | null;
-  /** "Keep the vibe" — list-seeded radio over the recent plays. */
+  /** "Keep the vibe" — the list-seeded radio pool over the recent plays; `LANE_MIX` draws from it. */
   keepVibe: Song[];
-  /** "Taste breakers" — random library picks. */
+  /** "Taste breakers" — random library picks; they fill whatever the drawn lanes leave. */
   tasteBreakers: Song[];
+  /** The recent-plays pool, newest first; `LANE_MIX` draws from it. */
   recentPlays: RecentPlay[];
   /** Curated playlists only (the Tastemakers shelf's source). */
   playlists: PlaylistSummary[];
@@ -96,8 +96,6 @@ export const SCORE_WEIGHTS = {
   songPlaysWithoutPopularity: 0.45,
   /** Applied to the per-key hash when popularity is unknown. */
   songJitter: 0.2,
-  /** The resume tile is always the largest — it is the one-tap continue. */
-  resume: 1,
   /** Vibes have no comparable signal, so they sit at a fixed band. */
   vibe: 0.78,
   genreBase: 0.4,
@@ -112,6 +110,49 @@ export const SCORE_WEIGHTS = {
   /** The offline "Downloads" tile, prominent because it is the way out. */
   downloads: 0.9,
 } as const;
+
+/**
+ * The recipe: how the home cell's song slots are split between the three song
+ * lanes. The second hand-tuned block beside `SCORE_WEIGHTS`.
+ *
+ * The first cut filled every lane to the brim — twenty recent plays, ten
+ * keep-the-vibe variations, twenty-four random picks — which made more than
+ * half the song tiles "your last session", and made the wall the same on every
+ * visit, because history barely moves between two mornings. The remedy is a
+ * draw, not a smaller fetch: a lane still fetches its whole `pool`, and shows
+ * `tiles` of it chosen uniformly at random per visit. So each recent play has
+ * `tiles / pool` odds of being on the wall today, no two visits compose the
+ * same wall, and the plays that lost the draw still seed the vibe. Taste
+ * breakers fill the rest of `songSlots`, skipping anything either pool holds —
+ * a recent play that lost its draw must not walk back in as "random", or the
+ * caps would be a fiction — so a fresh install with no history still gets a
+ * full field of random picks.
+ */
+export const LANE_MIX = {
+  /** Song tiles the home cell holds, across the three song lanes. */
+  songSlots: 54,
+  /** Recently played: `tiles` of the newest `pool` plays. */
+  recent: { pool: 20, tiles: 10 },
+  /** Keep the vibe: `tiles` of `pool` variations, seeded by the whole recent pool. */
+  keepVibe: { pool: 20, tiles: 10 },
+} as const;
+
+/**
+ * `n` of `items`, drawn uniformly without replacement (a partial Fisher–Yates),
+ * in draw order. The rng is a parameter so a spec can seed it: the draw is
+ * *meant* to differ between visits, but a test must be able to say which ten
+ * it expects. `shuffleArray` in player.service takes no rng, which is why this
+ * is not it.
+ */
+export function drawFrom<T>(items: readonly T[], n: number, rng: () => number): T[] {
+  const pool = [...items];
+  const count = Math.max(0, Math.min(n, pool.length));
+  for (let i = 0; i < count; i++) {
+    const j = i + Math.min(pool.length - 1 - i, Math.floor(rng() * (pool.length - i)));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, count);
+}
 
 const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
 
@@ -246,48 +287,57 @@ const recentToTrack = (p: RecentPlay): Track =>
     duration: p.duration ?? undefined,
   });
 
+/** One recent play as a mosaic tile. */
+function recentToTile(p: RecentPlay, w: PlayWeights): MosaicTile {
+  const key = `song:${p.songId}`;
+  return {
+    key,
+    kind: 'song',
+    title: p.title ?? 'Unknown title',
+    subtitle: p.artist ?? 'Unknown artist',
+    // A recent play carries no popularity — the history row is a snapshot,
+    // not a library read — so it always takes the unknown-popularity branch.
+    score: scoreSong(key, p.songId, p.artist, undefined, w),
+    action: { type: 'song', track: recentToTrack(p) },
+    coverArt: p.coverArt ?? undefined,
+  };
+}
+
 /**
- * Flatten every source into one deduped tile list.
+ * Flatten every source into one deduped tile list, the song lanes drawn by
+ * `LANE_MIX`. `rng` is injectable so a spec can seed the draw; production
+ * takes the default.
  *
- * Dedupe is load-bearing, not defensive: the three song lanes genuinely
- * overlap — a track can be recently played AND a taste breaker AND a keep-the-
- * vibe pick — and packing the same song two or three times would show it as
- * separate tiles that all do the same thing. Highest score wins, so the resume
- * tile survives a collision with its own recent-play row.
+ * The breakers' `held` set is the lane-level dedupe, done up front: a song
+ * either pool holds is skipped rather than collapsed later, so the slot count
+ * comes out right. `dedupeTiles` at the end still guards the remainder — two
+ * lanes can in principle hand back one id, and packing it twice would show two
+ * tiles that do exactly the same thing.
  */
-export function buildMosaicTiles(sources: MosaicSources): MosaicTile[] {
+export function buildMosaicTiles(
+  sources: MosaicSources,
+  rng: () => number = Math.random,
+): MosaicTile[] {
   const w = playWeights(sources.stats);
   const tiles: MosaicTile[] = [];
 
-  if (sources.resume) {
-    const t = sources.resume;
-    tiles.push({
-      key: `song:${t.id}`,
-      kind: 'resume',
-      title: t.title,
-      subtitle: t.artist,
-      score: SCORE_WEIGHTS.resume,
-      action: { type: 'song', track: t },
-      coverArt: t.coverArt,
-    });
-  }
+  const recent = drawFrom(sources.recentPlays, LANE_MIX.recent.tiles, rng);
+  const keepVibe = drawFrom(sources.keepVibe, LANE_MIX.keepVibe.tiles, rng);
+  for (const p of recent) tiles.push(recentToTile(p, w));
+  for (const s of keepVibe) tiles.push(songToTile(s, w));
 
-  for (const s of sources.keepVibe) tiles.push(songToTile(s, w));
-  for (const s of sources.tasteBreakers) tiles.push(songToTile(s, w));
-
-  for (const p of sources.recentPlays) {
-    const key = `song:${p.songId}`;
-    tiles.push({
-      key,
-      kind: 'song',
-      title: p.title ?? 'Unknown title',
-      subtitle: p.artist ?? 'Unknown artist',
-      // A recent play carries no popularity — the history row is a snapshot,
-      // not a library read — so it always takes the unknown-popularity branch.
-      score: scoreSong(key, p.songId, p.artist, undefined, w),
-      action: { type: 'song', track: recentToTrack(p) },
-      coverArt: p.coverArt ?? undefined,
-    });
+  // Breakers fill what the two draws left, and never re-admit a song either
+  // *pool* holds: a recent play that lost its draw must not walk back in as
+  // "random", or `LANE_MIX`'s caps would be a fiction.
+  const held = new Set<string>(sources.recentPlays.map((p) => p.songId));
+  for (const s of sources.keepVibe) held.add(s.id);
+  let room = LANE_MIX.songSlots - recent.length - keepVibe.length;
+  for (const s of sources.tasteBreakers) {
+    if (room <= 0) break;
+    if (held.has(s.id)) continue;
+    held.add(s.id);
+    tiles.push(songToTile(s, w));
+    room--;
   }
 
   const maxPlaylistSongs = sources.playlists.reduce((m, p) => Math.max(m, p.songCount), 0);

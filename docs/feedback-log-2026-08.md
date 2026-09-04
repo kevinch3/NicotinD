@@ -25,6 +25,7 @@
 | 12  | ✅     | Medium   | Radio poll wizard   | No way to skip a track/scenario; wizard force-rates everything |
 | 13  | ✅     | Medium   | Radio poll wizard   | Scenario steps never state the premise ("No veo la categoría") |
 | 14  | ✅     | Low      | Radio poll wizard   | Previews play from the start only — no way to scrub to the chorus |
+| 15   | ◑      | Medium   | Mosaic home         | The same few artists recur on the landing, visit after visit |
 
 ---
 
@@ -69,6 +70,10 @@
 - **(Low) Poll previews play from the start only — a rater judging a pick hears 30 seconds of intro, never the chorus.** Asked for "as lightweight as possible". **✅ Fixed** (issue #803): the playing row grows a seek bar reusing the shared `SeekBarComponent` bound to the wizard's one `<audio>`; the stream route's existing Range/206 + seekable transcode cache makes the scrub free server-side.
 
 ---
+
+### 2026-09-04
+
+- **(Medium) The mosaic home keeps showing the same few artists — Axé Bahia, Calamaro — visit after visit.** _Use:_ daily landing on prod. _Root cause:_ four mechanisms compounding. `recentPlays` filled twenty tiles collapsed per *recording*, never per artist, and keep-the-vibe pooled on those same plays, so more than half the song tiles were the last session; `GET /api/library/random` is uniform over songs, so a big catalog lands in every random batch in proportion to its track count; `ownPlayShare` sizes any song by an all-time top artist near the maximum and `assignSongsToSlots` puts it in the biggest slot of every discovery cell; and the classic shelf's unheard-first demotion never made it into the mosaic. **◑ Partial**: `LANE_MIX` turns every lane into a draw — ten of twenty recent plays, ten of twenty keep-the-vibe picks, chosen at random per visit, breakers filling the rest — and the Resume tile is gone (the mini-player is the one-tap continue). Still open, and the reason one catalog can still recur: the song-uniform random draw and the all-time artist sizing → an artist-stratified `random` plus a per-artist cap. → `docs/web-ui.md`.
 
 ## Aggregated themes (window total)
 

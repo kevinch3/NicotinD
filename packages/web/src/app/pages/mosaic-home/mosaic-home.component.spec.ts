@@ -22,7 +22,7 @@ import type {
   Song,
 } from '../../services/api/api-types';
 import type { Track } from '../../services/player.service';
-import type { MosaicTile } from '../../lib/mosaic-tiles';
+import { LANE_MIX, type MosaicTile } from '../../lib/mosaic-tiles';
 import type { PackedTile, Packing } from '../../lib/mosaic-packing';
 
 const song = (over: Partial<Song> = {}): Song => ({
@@ -83,13 +83,12 @@ interface SetupOptions {
   genres?: Array<{ value: string; songCount: number; albumCount: number }>;
   filterRadio?: Song[];
   playlistSongs?: Song[];
-  currentTrack?: Track | null;
   filterRadioFails?: boolean;
 }
 
 function setup(opts: SetupOptions = {}) {
   const player = {
-    currentTrack: signal<Track | null>(opts.currentTrack ?? null),
+    currentTrack: signal<Track | null>(null),
     nowPlayingOpen: signal(false),
     startRadio: vi.fn(),
     startRadioWithFilter: vi.fn(),
@@ -250,16 +249,6 @@ describe('MosaicHomeComponent', () => {
       expect(playlistsApi.getPlaylist).toHaveBeenCalledWith('p7');
       expect(player.startRadioWithTracks).toHaveBeenCalled();
     });
-
-    it('the resume tile starts a radio from the last-played track', async () => {
-      const { component, player, fixture } = setup({
-        currentTrack: { id: 'last', title: 'Last', artist: 'A' },
-      });
-      await settle(fixture);
-      const tile = component.tiles().find((t) => t.kind === 'resume')!;
-      await component.start(tile);
-      expect(player.startRadio).toHaveBeenCalledWith(expect.objectContaining({ id: 'last' }));
-    });
   });
 
   it('surfaces an empty vibe as a notice, not an error', async () => {
@@ -295,11 +284,30 @@ describe('MosaicHomeComponent', () => {
   it('seeds keep-the-vibe from the recent plays, and skips the call without them', async () => {
     const withHistory = setup({ recentPlays: [recent({ songId: 'r1' })] });
     await settle(withHistory.fixture);
-    expect(withHistory.libraryApi.getListRadio).toHaveBeenCalledWith(['r1'], 10);
+    expect(withHistory.libraryApi.getListRadio).toHaveBeenCalledWith(
+      ['r1'],
+      LANE_MIX.keepVibe.pool,
+    );
 
     const without = setup({ recentPlays: [] });
     await settle(without.fixture);
     expect(without.libraryApi.getListRadio).not.toHaveBeenCalled();
+  });
+
+  it('fetches each lane at its LANE_MIX pool size, and a whole budget of breakers', async () => {
+    const { fixture, libraryApi, historyApi } = setup({ recentPlays: [recent({ songId: 'r1' })] });
+    await settle(fixture);
+    expect(historyApi.getRecentPlays).toHaveBeenCalledWith(LANE_MIX.recent.pool);
+    // The breakers fetch the whole song budget, not their usual share: with no
+    // history the other two lanes are empty and this one has to fill the field.
+    expect(libraryApi.getRandomSongs).toHaveBeenCalledWith(LANE_MIX.songSlots);
+  });
+
+  it('has no tile for the current track — the mini-player is the one-tap continue', async () => {
+    const { component, fixture, player } = setup({ tasteBreakers: [song({ id: 'b1' })] });
+    player.currentTrack.set({ id: 'now', title: 'Now', artist: 'A' });
+    await settle(fixture);
+    expect(component.tiles().find((t) => t.key === 'song:now')).toBeUndefined();
   });
 
   it('exposes every tile in a focusable list, since pooled tiles cannot hold focus order', async () => {
