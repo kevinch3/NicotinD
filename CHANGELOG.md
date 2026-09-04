@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.78](https://github.com/kevinch3/NicotinD/compare/v0.5.77...v0.5.78) (2026-09-04)
+
+### Bug Fixes
+
+* **import:** enforce the chunk bound on the path production actually takes ([#922](https://github.com/kevinch3/NicotinD/issues/922)) ([3dd5a55](https://github.com/kevinch3/NicotinD/commit/3dd5a55f434a650b94b564b993cfad373a83e3dd)), closes [#921](https://github.com/kevinch3/NicotinD/issues/921), references [#894](https://github.com/kevinch3/NicotinD/issues/894) [#878](https://github.com/kevinch3/NicotinD/issues/878)
 ## [0.5.77](https://github.com/kevinch3/NicotinD/compare/v0.5.76...v0.5.77) (2026-09-04)
 
 ### Bug Fixes
