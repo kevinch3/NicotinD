@@ -8,8 +8,10 @@ import {
   EXTERNAL_SYMBOLS,
   indexEntries,
   MAX_ENTRY_CHARS,
-  MAX_FILE_BYTES,
+  MAX_CLAUDE_MD_BYTES,
+  MAX_INDEX_BYTES,
   MIN_PLAUSIBLE_ENTRIES,
+  entryProse,
 } from './check-claude-md.js';
 import { execFileSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
@@ -103,9 +105,13 @@ describe('EXTERNAL_SYMBOLS', () => {
     }
   });
 
-  it('lists only symbols CLAUDE.md still names', () => {
+  it('lists only symbols the index still names', () => {
+    // #934 moved the entries to docs/index.md, so the corpus is both files —
+    // asserting against CLAUDE.md alone would fail every symbol that relocated.
+    const corpus =
+      claudeMd + readFileSync(resolve(REPO_ROOT, 'docs', 'index.md'), 'utf8');
     for (const [sym] of EXTERNAL_SYMBOLS) {
-      expect(claudeMd.includes(`\`${sym}\``), `CLAUDE.md no longer names ${sym}`).toBe(true);
+      expect(corpus.includes(`\`${sym}\``), `the index no longer names ${sym}`).toBe(true);
     }
   });
 
@@ -189,20 +195,59 @@ describe('indexEntries', () => {
 
 describe('the size budget', () => {
   const claudeMd = readFileSync(resolve(REPO_ROOT, 'CLAUDE.md'), 'utf8');
+  const indexMd = readFileSync(resolve(REPO_ROOT, 'docs', 'index.md'), 'utf8');
 
-  it('holds on the real CLAUDE.md, with headroom', () => {
-    const entries = indexEntries(claudeMd);
+  it('holds on the real files, with headroom', () => {
+    // The denominator is asserted against the file that actually holds the
+    // index. CLAUDE.md keeps a handful of Surfaces entries; if this pointed
+    // there it would pass vacuously on a file that is no longer an index.
+    const entries = indexEntries(indexMd);
     expect(entries.length).toBeGreaterThanOrEqual(MIN_PLAUSIBLE_ENTRIES);
-    for (const e of entries) {
+    for (const e of [...entries, ...indexEntries(claudeMd)]) {
       expect(e.chars, `L${e.line} ${e.name}`).toBeLessThanOrEqual(MAX_ENTRY_CHARS);
     }
-    expect(Buffer.byteLength(claudeMd, 'utf8')).toBeLessThanOrEqual(MAX_FILE_BYTES);
+    expect(Buffer.byteLength(claudeMd, 'utf8')).toBeLessThanOrEqual(MAX_CLAUDE_MD_BYTES);
+    expect(Buffer.byteLength(indexMd, 'utf8')).toBeLessThanOrEqual(MAX_INDEX_BYTES);
   });
 
-  it('is not set flush against the current file — a cap that fires on the next honest addition gets raised reflexively', () => {
-    const bytes = Buffer.byteLength(claudeMd, 'utf8');
-    expect(MAX_FILE_BYTES - bytes).toBeGreaterThan(5_000);
-    const max = Math.max(...indexEntries(claudeMd).map((e) => e.chars));
+  it('keeps CLAUDE.md far smaller than the index it points at — that is the whole point of #934', () => {
+    // If these ever converge, the index has drifted back into the file that is
+    // paid for on every request, and the relocation has quietly been undone.
+    expect(Buffer.byteLength(claudeMd, 'utf8')).toBeLessThan(
+      Buffer.byteLength(indexMd, 'utf8') / 2,
+    );
+  });
+
+  it('is not set flush against the current files — a cap that fires on the next honest addition gets raised reflexively', () => {
+    expect(MAX_CLAUDE_MD_BYTES - Buffer.byteLength(claudeMd, 'utf8')).toBeGreaterThan(5_000);
+    expect(MAX_INDEX_BYTES - Buffer.byteLength(indexMd, 'utf8')).toBeGreaterThan(5_000);
+    const max = Math.max(...indexEntries(indexMd).map((e) => e.chars));
     expect(MAX_ENTRY_CHARS - max).toBeGreaterThan(20);
+  });
+});
+
+describe('links after the #934 relocation', () => {
+  it('resolves a link against the linking file own directory, not the repo root', () => {
+    const root = mkdtempSync(join(tmpdir(), 'claude-md-'));
+    mkdirSync(join(root, 'docs'));
+    writeFileSync(join(root, 'docs', 'real.md'), '# real');
+
+    // How docs/index.md writes it: relative, no docs/ prefix.
+    expect(brokenDocLinks('[a](real.md)', root, 'docs')).toEqual([]);
+    expect(brokenDocLinks('[a](ghost.md)', root, 'docs')).toEqual(['ghost.md']);
+    // ...and the same target from CLAUDE.md, at the root.
+    expect(brokenDocLinks('[a](docs/real.md)', root)).toEqual([]);
+
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('does not charge a relative .md link to the entry budget either', () => {
+    // Regression: entryProse stripped only `docs/`-prefixed links, so the moment
+    // the index moved inside docs/ and started writing `[x.md](x.md)`, entries
+    // were charged for their own links again and the cap fired on a correct one.
+    const rooted = '- **X**: a thing. \u2192 [web-ui.md](docs/web-ui.md)';
+    const relative = '- **X**: a thing. \u2192 [web-ui.md](web-ui.md)';
+    expect(entryProse(relative)).toBe(entryProse(rooted));
+    expect(entryProse(relative)).toBe('- **X**: a thing.');
   });
 });

@@ -35,6 +35,13 @@ import { resolve, dirname, join } from 'node:path';
 
 const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const CLAUDE_MD = join(repoRoot, 'CLAUDE.md');
+/**
+ * The index itself, split out of CLAUDE.md by #934 so it is read on demand
+ * rather than paid for on every request. Both files are checked together: a
+ * symbol or link is a claim wherever it is written, and checking only one of
+ * them would recreate the blind spot this gate exists to close.
+ */
+const INDEX_MD = join(repoRoot, 'docs', 'index.md');
 
 /**
  * Identifiers CLAUDE.md names on purpose that are not repo symbols. Each entry
@@ -85,44 +92,39 @@ export const EXTERNAL_SYMBOLS = new Map<string, string>([
 /**
  * SIZE BUDGET.
  *
- * WHY: this file's own header calls it "an index, kept deliberately small
+ * WHY: CLAUDE.md's own header calls it "an index, kept deliberately small
  * because it loads into every request" — and nothing measured that, so it grew
- * to 186 KB / 2,038 lines, with a median index entry of ~1,340 characters and
- * the largest at 7,287. The symbol check above proved every *name* in it was
- * real while the file quietly became the detail store `docs/` already was: an
- * audit found 1,316 of its 1,350 backticked facts duplicated in docs/, and only
- * three rationale phrases that lived nowhere else.
+ * to 186 KB / 2,038 lines. A 2026-08 restructure cut it to 50 KB; by 2026-09 it
+ * was back at 59.5 KB, and a three-pass attempt to compress it further measured
+ * a floor: the best CORRECT result was -0.9%, while aggressive merging produced
+ * 48 invented claims. See docs/measurements/claude-md-compression-2026-09.md.
  *
- * That is this repo's recurring shape — a gate that answers truthfully about
- * the thing it happens to measure, and is silent about the thing that actually
- * broke (see docs/quality-gates.md, "every gate asserts its own denominator").
- * A prose rule cannot hold here: the cheapest place to record a hard-won
- * rationale is always the file that is guaranteed to be read, so the pressure
- * to inline "just one more paragraph" is constant and one-directional.
+ * So #934 relocated the index instead of compressing it. Nothing was deleted —
+ * the ~155 entries moved to docs/index.md, which is read when a mechanism needs
+ * locating rather than on every request. That splits the budget in two:
  *
- * The caps are set from the measured post-restructure file (139 entries, median
- * prose 234, max 371, 50 KB) with headroom, so they bind on *narrative regrowth*
- * rather than on ordinary editing: ~35 more entries fit under the byte budget,
- * and 440 characters of prose is comfortable for "what it is + the symbols you
- * would grep for" while no narrative fits in it. Deliberately NOT set just above
- * the current value — a gate that fires on the next honest addition gets raised
- * reflexively, and a threshold nobody believes is a threshold nobody enforces.
- * Neither cap is a law of nature: raising one is fine, but it should be a commit
- * that says why, which is exactly what an un-measured prose rule never forced.
+ *   MAX_CLAUDE_MD_BYTES  the per-request cost. This is the number that matters,
+ *                        and the one to defend: every byte is paid on every
+ *                        task, including the majority that never open the index.
+ *   MAX_INDEX_BYTES      the on-demand index. Generous, because its cost is paid
+ *                        only when read — but present, because "nobody pays for
+ *                        it" is exactly how the 186 KB happened the first time.
  *
- * Raised 60 KB → 65 KB on 2026-08-29, measured at 151 entries / 55.3 KB with
- * median prose 246 and max 387: the growth since the baseline is twelve new
- * index entries, not narrative regrowth, and the old cap fell inside the test's
- * 5 KB headroom floor. ~26 more entries fit again at the current average.
+ * Neither is a law of nature: raising one is fine, but it should be a commit
+ * that says why, which is what an un-measured prose rule never forced. A test
+ * asserts both keep >5,000 bytes of headroom, so a cap can never sit flush
+ * against the file it measures — a gate that fires on the next honest addition
+ * gets raised reflexively.
  */
 export const MAX_ENTRY_CHARS = 440;
-export const MAX_FILE_BYTES = 65_000;
+export const MAX_CLAUDE_MD_BYTES = 20_000;
+export const MAX_INDEX_BYTES = 60_000;
 
 /**
- * The gate's denominator. If entry parsing silently found nothing — a heading
- * convention changed, the bullets became a table — every size check below would
- * pass vacuously. Fewer entries than this means "I could not read this file",
- * not "this file is fine", so main() fails on it.
+ * The gate's denominator, and the part that matters most. It is asserted
+ * against docs/index.md, NOT CLAUDE.md: after #934 the index lives there, so
+ * pointing this at CLAUDE.md (which now parses ~5 Surfaces entries) would make
+ * it pass vacuously on a file that no longer holds an index.
  */
 export const MIN_PLAUSIBLE_ENTRIES = 60;
 
@@ -135,6 +137,11 @@ export interface IndexEntry {
 /**
  * Strip the trailing `→ [doc.md](docs/doc.md)` handoffs before measuring.
  *
+ * Matches ANY `.md` link, not just a `docs/`-prefixed one: after #934 the index
+ * lives inside docs/ and writes `[web-ui.md](web-ui.md)`. A `docs/`-only regex
+ * stopped stripping those, and the budget immediately began charging entries for
+ * their own links again — the exact failure the paragraph below describes.
+ *
  * WHY: a link costs ~55 characters, so charging them to the entry budget taxes
  * an entry for citing its sources — and an entry that legitimately spans two
  * docs gets ~110 characters less room to say anything than one that spans one.
@@ -145,7 +152,7 @@ export interface IndexEntry {
  */
 export function entryProse(text: string): string {
   return text
-    .replace(/\[[^\]]*\]\(docs\/[^)]*\)/g, '')
+    .replace(/\[[^\]]*\]\([^)]*\.md\)/g, '')
     .replace(/→\s*[,\s]*/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -246,18 +253,30 @@ function existsInRepo(ident: string): boolean {
   }
 }
 
-/** Every `docs/x.md` the index points at must exist — the index leans on them. */
-export function brokenDocLinks(md: string, root = repoRoot): string[] {
-  const links = [...md.matchAll(/\]\((docs\/[^)]+\.md)\)/g)].map((m) => m[1]);
-  return [...new Set(links)].filter((l) => !existsSync(join(root, l)));
+/**
+ * Every doc a file points at must exist.
+ *
+ * `base` is the linking file's own directory, because after #934 the two files
+ * write the same link differently: CLAUDE.md says `docs/web-ui.md`, and
+ * docs/index.md — living inside docs/ — says `web-ui.md`. Resolving both
+ * against the repo root would silently mark every relocated link broken.
+ */
+export function brokenDocLinks(md: string, root = repoRoot, base = '.'): string[] {
+  const links = [...md.matchAll(/\]\(([^)]+\.md)\)/g)].map((m) => m[1]);
+  return [...new Set(links)]
+    .filter((l) => !/^https?:/.test(l))
+    .filter((l) => !existsSync(join(root, base, l)));
 }
 
 function main(): void {
-  const md = readFileSync(CLAUDE_MD, 'utf8');
-  // Normalise the call form: `foo()` makes a claim about the symbol `foo`.
+  const claudeMd = readFileSync(CLAUDE_MD, 'utf8');
+  const indexMd = readFileSync(INDEX_MD, 'utf8');
+  // A symbol is a claim wherever it is written, so the two files are one corpus
+  // for the existence check — splitting the index must not split the gate.
+  const both = `${claudeMd}\n${indexMd}`;
   const idents = [
     ...new Set(
-      backtickedSpans(md)
+      backtickedSpans(both)
         .filter(isCheckableIdentifier)
         .map((s) => s.replace(/\(\)$/, '')),
     ),
@@ -266,33 +285,49 @@ function main(): void {
   const missing = idents.filter((i) => !external.has(i) && !existsInRepo(i));
   // Inverted: an "external" symbol that came home means the map is stale.
   const reHomed = [...external].filter((i) => existsInRepo(i));
-  // ...and one CLAUDE.md no longer names is dead weight. Checked both ways so
+  // ...and one neither file names any more is dead weight. Checked both ways so
   // the map tracks live claims instead of accumulating like an allowlist.
   const unusedExternal = [...external].filter((i) => !idents.includes(i));
-  const brokenLinks = brokenDocLinks(md);
+  // Each file's links resolve against its own directory (see brokenDocLinks).
+  const brokenLinks = [
+    ...brokenDocLinks(claudeMd, repoRoot).map((l) => `CLAUDE.md -> ${l}`),
+    ...brokenDocLinks(indexMd, repoRoot, 'docs').map((l) => `docs/index.md -> docs/${l}`),
+  ];
 
-  const entries = indexEntries(md);
-  const bytes = Buffer.byteLength(md, 'utf8');
-  const oversized = entries.filter((e) => e.chars > MAX_ENTRY_CHARS);
-  const unreadable = entries.length < MIN_PLAUSIBLE_ENTRIES;
-  const overBudget = bytes > MAX_FILE_BYTES;
+  const claudeEntries = indexEntries(claudeMd);
+  const indexEntriesList = indexEntries(indexMd);
+  const claudeBytes = Buffer.byteLength(claudeMd, 'utf8');
+  const indexBytes = Buffer.byteLength(indexMd, 'utf8');
+  // The per-entry cap applies wherever an entry is written; the denominator
+  // check applies only to the file that actually holds the index.
+  const oversized = [
+    ...claudeEntries.map((e) => ({ ...e, file: 'CLAUDE.md' })),
+    ...indexEntriesList.map((e) => ({ ...e, file: 'docs/index.md' })),
+  ].filter((e) => e.chars > MAX_ENTRY_CHARS);
+  const unreadable = indexEntriesList.length < MIN_PLAUSIBLE_ENTRIES;
+  const overBudget = claudeBytes > MAX_CLAUDE_MD_BYTES || indexBytes > MAX_INDEX_BYTES;
 
   if (process.argv.includes('--list')) {
     console.log(`Checked ${idents.length} identifiers:`);
-    for (const i of idents.sort()) console.log(`  ${existsInRepo(i) ? '✓' : '✗'} ${i}`);
+    for (const i of idents.sort()) console.log(`  ${existsInRepo(i) ? '\u2713' : '\u2717'} ${i}`);
     console.log('');
   }
 
   // Always report the size denominator, pass or fail: a budget nobody sees is a
   // budget nobody notices approaching.
-  const median = entries.length
-    ? [...entries].sort((a, b) => a.chars - b.chars)[Math.floor(entries.length / 2)].chars
+  const median = indexEntriesList.length
+    ? [...indexEntriesList].sort((a, b) => a.chars - b.chars)[
+        Math.floor(indexEntriesList.length / 2)
+      ].chars
     : 0;
+  const maxChars = indexEntriesList.reduce((m, e) => Math.max(m, e.chars), 0);
   const sizeLine =
-    `CLAUDE.md size: ${bytes.toLocaleString()} / ${MAX_FILE_BYTES.toLocaleString()} bytes ` +
-    `(${Math.round((bytes / MAX_FILE_BYTES) * 100)}% of budget), ` +
-    `${entries.length} index entries, median ${median} chars, ` +
-    `max ${entries.reduce((m, e) => Math.max(m, e.chars), 0)}/${MAX_ENTRY_CHARS}.`;
+    `CLAUDE.md (paid every request): ${claudeBytes.toLocaleString()} / ` +
+    `${MAX_CLAUDE_MD_BYTES.toLocaleString()} bytes ` +
+    `(${Math.round((claudeBytes / MAX_CLAUDE_MD_BYTES) * 100)}% of budget).\n` +
+    `docs/index.md (read on demand): ${indexBytes.toLocaleString()} / ` +
+    `${MAX_INDEX_BYTES.toLocaleString()} bytes, ${indexEntriesList.length} entries, ` +
+    `median ${median} chars, max ${maxChars}/${MAX_ENTRY_CHARS}.`;
 
   if (
     !missing.length &&
@@ -304,7 +339,7 @@ function main(): void {
     !overBudget
   ) {
     console.log(
-      `CLAUDE.md: ${idents.length} identifiers checked, all present ` +
+      `CLAUDE.md + docs/index.md: ${idents.length} identifiers checked, all present ` +
         `(${external.size} owned by the addon repo). No broken doc links.`,
     );
     console.log(sizeLine);
@@ -314,9 +349,9 @@ function main(): void {
 
   if (missing.length) {
     console.error(
-      `\nCLAUDE.md names ${missing.length} symbol(s) that exist nowhere in the repo:\n`,
+      `\nThe index names ${missing.length} symbol(s) that exist nowhere in the repo:\n`,
     );
-    for (const m of missing) console.error(`  ✗ ${m}`);
+    for (const m of missing) console.error(`  \u2717 ${m}`);
     console.error(
       '\nUsually a rename the index never followed. Fix the name, or add it to ALLOWLIST\n' +
         'in scripts/check-claude-md.ts with a reason if it is a deliberate non-code mention.',
@@ -327,7 +362,7 @@ function main(): void {
       `\n${reHomed.length} symbol(s) listed as living in another repo now exist here:\n`,
     );
     for (const r of reHomed)
-      console.error(`  ✗ ${r}  (EXTERNAL_SYMBOLS says: ${EXTERNAL_SYMBOLS.get(r)})`);
+      console.error(`  \u2717 ${r}  (EXTERNAL_SYMBOLS says: ${EXTERNAL_SYMBOLS.get(r)})`);
     console.error(
       '\nRemove them from EXTERNAL_SYMBOLS in scripts/check-claude-md.ts — the map\n' +
         'exists to point readers at another repo, and pointing away from code that\n' +
@@ -336,39 +371,46 @@ function main(): void {
   }
   if (unusedExternal.length) {
     console.error(
-      `\n${unusedExternal.length} EXTERNAL_SYMBOLS entr(y/ies) that CLAUDE.md no longer names:\n`,
+      `\n${unusedExternal.length} EXTERNAL_SYMBOLS entr(y/ies) the index no longer names:\n`,
     );
-    for (const u of unusedExternal) console.error(`  ✗ ${u}`);
+    for (const u of unusedExternal) console.error(`  \u2717 ${u}`);
     console.error('\nDrop them from the map — it should hold live claims, not history.');
   }
   if (brokenLinks.length) {
-    console.error(`\nCLAUDE.md links to ${brokenLinks.length} missing doc(s):\n`);
-    for (const l of brokenLinks) console.error(`  ✗ ${l}`);
+    console.error(`\nThe index links to ${brokenLinks.length} missing doc(s):\n`);
+    for (const l of brokenLinks) console.error(`  \u2717 ${l}`);
   }
   if (unreadable) {
     console.error(
-      `\nOnly ${entries.length} index entries parsed (expected at least ${MIN_PLAUSIBLE_ENTRIES}).\n\n` +
-        'This is the gate failing to READ the file, not the file being small. The entry\n' +
+      `\nOnly ${indexEntriesList.length} index entries parsed from docs/index.md ` +
+        `(expected at least ${MIN_PLAUSIBLE_ENTRIES}).\n\n` +
+        'This is the gate failing to READ the index, not the index being small. The entry\n' +
         'format changed out from under indexEntries(), so every size check below it just\n' +
         'passed on nothing. Fix the parser (or the format), never the threshold.',
     );
   }
   if (oversized.length) {
     console.error(`\n${oversized.length} index entr(y/ies) over ${MAX_ENTRY_CHARS} characters:\n`);
-    for (const e of oversized) console.error(`  ✗ ${e.chars}  L${e.line}  ${e.name}`);
+    for (const e of oversized) console.error(`  \u2717 ${e.chars}  ${e.file}:${e.line}  ${e.name}`);
     console.error(
       '\nAn entry says WHAT a thing is, names the symbols you would grep for, and links\n' +
-        'the doc. Rationale, incident history and measurements belong in that doc — this\n' +
-        'file is paid for on every request, and the doc is only read when relevant.',
+        'the doc. Rationale, incident history and measurements belong in that doc.',
     );
   }
   if (overBudget) {
-    console.error(
-      `\nCLAUDE.md is ${bytes.toLocaleString()} bytes, over the ${MAX_FILE_BYTES.toLocaleString()}-byte budget.\n\n` +
-        'Usually this is detail that has drifted back in from docs/. Move it out. If the\n' +
-        'index genuinely covers more ground now, raise MAX_FILE_BYTES in a commit that\n' +
-        'says why — the point of the budget is that growth is a decision, not a drift.',
-    );
+    if (claudeBytes > MAX_CLAUDE_MD_BYTES)
+      console.error(
+        `\nCLAUDE.md is ${claudeBytes.toLocaleString()} bytes, over its ` +
+          `${MAX_CLAUDE_MD_BYTES.toLocaleString()}-byte budget.\n\n` +
+          'This is the per-request cost, so it is the one to defend. Detail belongs in\n' +
+          'docs/index.md or the linked doc, not here.',
+      );
+    if (indexBytes > MAX_INDEX_BYTES)
+      console.error(
+        `\ndocs/index.md is ${indexBytes.toLocaleString()} bytes, over its ` +
+          `${MAX_INDEX_BYTES.toLocaleString()}-byte budget.\n\n` +
+          'Usually detail that has drifted back in from the linked docs. Move it out.',
+      );
   }
   process.exit(1);
 }

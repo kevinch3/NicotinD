@@ -2,7 +2,7 @@
 
 Per-track descriptors from the analysis sidecar's `POST /descriptors`, stored raw in
 `library_song_descriptors`, feeding three composite radio axes (phase 2, #642). This page is
-the detail behind the CLAUDE.md index line; the umbrella is #640, this phase is #641.
+the detail behind the `docs/index.md` index line; the umbrella is #640, this phase is #641.
 
 ## Why
 

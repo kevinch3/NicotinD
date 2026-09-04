@@ -450,7 +450,7 @@ new test above is auto-picked up by the existing globs. No workflow file edits n
 - `docs/design-patterns.md` — add OAuth entry
 - `docs/plugins.md` — document `auth` kind + `oauth` capability + provider plugins
 - `docs/mobile-app.md` / `docs/ios-app.md` — OAuth deep-link section
-- `CLAUDE.md` — update the OAuth plugin index bullet
+- `docs/index.md` — update the OAuth plugin index bullet
 
 ## File Inventory
 
