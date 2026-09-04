@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.79](https://github.com/kevinch3/NicotinD/compare/v0.5.78...v0.5.79) (2026-09-04)
+
+### Bug Fixes
+
+* **web:** 404 a missing asset instead of answering it with the HTML shell ([#926](https://github.com/kevinch3/NicotinD/issues/926)) ([cb6c20b](https://github.com/kevinch3/NicotinD/commit/cb6c20b77bf90b6c71c797ca93748c822c37c620)), closes [#925](https://github.com/kevinch3/NicotinD/issues/925), references [#894](https://github.com/kevinch3/NicotinD/issues/894) [#878](https://github.com/kevinch3/NicotinD/issues/878) [#908](https://github.com/kevinch3/NicotinD/issues/908)
 ## [0.5.78](https://github.com/kevinch3/NicotinD/compare/v0.5.77...v0.5.78) (2026-09-04)
 
 ### Bug Fixes
