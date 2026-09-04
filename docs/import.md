@@ -292,6 +292,47 @@ Chunks are written at an **absolute offset** rather than appended, so a client t
 last chunk (which is what resuming does when it cannot know whether the chunk landed) rewrites the
 same bytes instead of duplicating them.
 
+### A reverse proxy must be told about the chunk size
+
+**This broke production once (#921).** The public edge ran nginx with no
+`client_max_body_size`, so nginx's own default of **1m** applied — sixteen times
+smaller than the 16 MiB chunks this lane sends by design. Every chunk was
+rejected with a 413 *at the proxy*, before reaching the app at all, which is why
+the server logs showed nothing: the request never arrived. nginx's 413 page is
+HTML, so the client could not parse a `code` out of it and fell back to the
+generic "that upload didn't finish", telling the user nothing useful.
+
+Any proxy in front of NicotinD needs a body limit above `IMPORT_UPLOAD_CHUNK_BYTES`:
+
+```nginx
+# in the NicotinD server block
+client_max_body_size 20m;   # 16 MiB chunks + headroom
+```
+
+The app does not and cannot detect this — a request rejected upstream is
+indistinguishable from one never sent.
+
+### The chunk bound is enforced while streaming, not before it
+
+`writeChunk` takes `c.req.raw.body`, a `ReadableStream`. The original guard read
+`body instanceof Uint8Array && body.byteLength > cap`, which is **never true on
+the production path** — and its test passed a `Uint8Array`, so it stayed green
+while covering nothing (#921, the same unreachable-machinery shape as #894 and
+#878).
+
+The bound is now counted through a `Transform` on the running total, because a
+body arrives in arbitrarily-sized pieces and checking any single one lets N small
+ones through. Two limits collapse into one `cap = min(IMPORT_UPLOAD_CHUNK_BYTES,
+declared.size - offset)`: the first keeps a request small, the second keeps the
+file within what `create` preflighted disk for — writing past the declared size
+would make that reservation a lie. A rejected chunk is truncated back to its
+starting offset, so `state()` never reports bytes the server refused.
+
+`ChunkTooLargeError` → **413** is deliberately distinct from
+`UploadTooLargeError` → **507**: one means the client sent too much, the other
+means the host has no room, and answering "Insufficient Storage" for a healthy
+disk sends the next debugger to the wrong place.
+
 ### Why `submitStaged` exists
 
 `validateImportSource` refuses any source under `dataDir` (`INSIDE_DATA_DIR`) — correct for an admin

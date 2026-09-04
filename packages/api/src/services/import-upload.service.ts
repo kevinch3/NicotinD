@@ -18,10 +18,18 @@
  *   there is no second source of truth to drift from the bytes on disk.
  */
 import { Database } from 'bun:sqlite';
-import { createWriteStream, existsSync, mkdirSync, rmSync, statSync, statfsSync } from 'node:fs';
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+  statfsSync,
+  truncateSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { ArchiveError, safeArchivePath } from './import-archive.js';
 // One allowlist, three consumers (client filter, server enforcement, tests) —
 // two copies drift into "the browser uploaded it and the server threw it away".
@@ -49,6 +57,24 @@ export class UploadEmptyManifestError extends Error {
   readonly code = 'UPLOAD_EMPTY_MANIFEST' as const;
   constructor() {
     super('No uploadable audio files in this selection.');
+  }
+}
+
+/**
+ * A single chunk exceeded its bound — either the per-request cap or what the
+ * manifest declared for that file. Distinct from `UploadTooLargeError` because
+ * they are different failures with different fixes: this one means the client
+ * sent too much in one request (413), the other means the host has no room
+ * (507). Collapsing them returned "Insufficient Storage" for a disk that was
+ * fine, which is the kind of confidently-wrong answer that costs an hour.
+ */
+export class ChunkTooLargeError extends Error {
+  readonly code = 'UPLOAD_CHUNK_TOO_LARGE' as const;
+  constructor(
+    readonly receivedBytes: number,
+    readonly limitBytes: number,
+  ) {
+    super('That upload chunk was larger than allowed.');
   }
 }
 
@@ -98,6 +124,25 @@ export interface ImportUploadServiceOptions {
 /** `<dataDir>/staging/upload/<uploadId>` — a sibling of the import staging root. */
 export function uploadStagingDir(dataDir: string, uploadId: string): string {
   return join(dataDir, 'staging', 'upload', uploadId);
+}
+
+/**
+ * Refuse a stream past `cap` bytes, counting the running total rather than any
+ * single buffer — a body arrives in arbitrarily-sized pieces, so checking one
+ * chunk's length would let N small ones through.
+ */
+function capBytes(cap: number): Transform {
+  let seen = 0;
+  return new Transform({
+    transform(chunk: Buffer, _enc, cb) {
+      seen += chunk.byteLength;
+      if (seen > cap) {
+        cb(new ChunkTooLargeError(seen, cap));
+        return;
+      }
+      cb(null, chunk);
+    },
+  });
 }
 
 export class ImportUploadService {
@@ -165,21 +210,46 @@ export class ImportUploadService {
   ): Promise<number> {
     const manifest = this.manifest(uploadId);
     if (!manifest) throw new UploadPathRejectedError(relPath);
-    if (!manifest.some((f) => f.path === relPath)) throw new UploadPathRejectedError(relPath);
-    if (body instanceof Uint8Array && body.byteLength > IMPORT_UPLOAD_CHUNK_BYTES) {
-      throw new UploadTooLargeError(body.byteLength, IMPORT_UPLOAD_CHUNK_BYTES);
-    }
+    const declared = manifest.find((f) => f.path === relPath);
+    if (!declared) throw new UploadPathRejectedError(relPath);
+
+    // Two bounds collapse into one (#921). The chunk cap keeps a single request
+    // small; the manifest's declared size keeps the *file* within what `create`
+    // preflighted disk for — writing past it would make that reservation a lie.
+    // Whichever is tighter wins.
+    if (offset > declared.size) throw new ChunkTooLargeError(offset, declared.size);
+    const cap = Math.min(IMPORT_UPLOAD_CHUNK_BYTES, declared.size - offset);
 
     const dest = safeArchivePath(this.sessionDir(uploadId), relPath);
     mkdirSync(dirname(dest), { recursive: true });
-    const out = createWriteStream(dest, { flags: existsSync(dest) ? 'r+' : 'w', start: offset });
+    const existed = existsSync(dest);
+    const out = createWriteStream(dest, { flags: existed ? 'r+' : 'w', start: offset });
     const src =
       body instanceof Uint8Array
         ? Readable.from([Buffer.from(body)])
         : Readable.fromWeb(body as never);
-    await pipeline(src, out);
+
+    try {
+      await pipeline(src, capBytes(cap), out);
+    } catch (err) {
+      // A refused chunk must leave nothing behind, or `state()` reports a
+      // `received` that includes bytes the server rejected and the client
+      // resumes from a position that was never accepted.
+      this.truncateTo(dest, offset, existed);
+      throw err;
+    }
     this.touch(uploadId);
     return this.receivedBytes(dest);
+  }
+
+  /** Roll a failed write back to where the chunk started. */
+  private truncateTo(dest: string, offset: number, existed: boolean): void {
+    try {
+      if (!existed && offset === 0) rmSync(dest, { force: true });
+      else truncateSync(dest, offset);
+    } catch (err) {
+      log.warn({ dest, err }, 'Failed to roll back a rejected chunk');
+    }
   }
 
   /**

@@ -648,6 +648,26 @@ production deploy host) fails with denied/not-found; alternatively
 `org.opencontainers.image.source` label in the Dockerfile links the package to
 the repo automatically.
 
+## Behind a reverse proxy
+
+NicotinD is usually fronted by nginx/Caddy/Traefik. One setting is **not
+optional**:
+
+```nginx
+client_max_body_size 20m;   # browser-upload import sends 16 MiB chunks
+```
+
+The import lane (→ [import.md](import.md)) uploads in 16 MiB chunks, chosen to
+stay under Bun's 128 MB default body cap so the server never has to widen that
+cap for every route. nginx's own default is **1m**, so an unconfigured proxy
+rejects every chunk with a 413 *before* it reaches the app.
+
+That failure is deliberately hard to diagnose from inside NicotinD and worth
+recognising by shape (#921): the server logs show **nothing at all**, because the
+request never arrived, and the browser shows a generic error, because the proxy's
+413 page is HTML with no `code` field to translate. If an upload fails and the
+API log is silent, suspect the proxy before the app.
+
 ## Healthcheck
 
 `GET /api/health` → `{ ok: true, version: "X.Y.Z" }` — unauthenticated

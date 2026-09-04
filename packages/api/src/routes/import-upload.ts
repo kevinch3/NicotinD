@@ -19,6 +19,7 @@ import {
   IMPORT_UPLOAD_CHUNK_BYTES,
   UploadEmptyManifestError,
   UploadPathRejectedError,
+  ChunkTooLargeError,
   UploadTooLargeError,
   type ImportUploadService,
   type UploadManifestFile,
@@ -135,6 +136,20 @@ export function importUploadRoutes(deps: Deps) {
 function uploadErrorResponse(c: Context<AuthEnv>, err: unknown) {
   if (err instanceof UploadPathRejectedError || err instanceof UploadEmptyManifestError) {
     return c.json({ error: err.message, code: err.code }, 400);
+  }
+  // 413, not 507: the client sent too much in one request. The host's disk is
+  // not the problem, and saying "Insufficient Storage" would send whoever
+  // debugs this next to check free space.
+  if (err instanceof ChunkTooLargeError) {
+    return c.json(
+      {
+        error: err.message,
+        code: err.code,
+        receivedBytes: err.receivedBytes,
+        limitBytes: err.limitBytes,
+      },
+      413,
+    );
   }
   if (err instanceof UploadTooLargeError) {
     return c.json(

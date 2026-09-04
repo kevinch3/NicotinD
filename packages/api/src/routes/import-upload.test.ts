@@ -9,6 +9,7 @@ import {
   UploadEmptyManifestError,
   UploadPathRejectedError,
   UploadTooLargeError,
+  ChunkTooLargeError,
   type ImportUploadService,
 } from '../services/import-upload.service.js';
 import {
@@ -189,5 +190,29 @@ describe('import upload routes', () => {
     const app = makeApp(makeUploads(), makeImports());
     expect((await app.request('/uploads/up-1', { method: 'DELETE' })).status).toBe(200);
     expect((await app.request('/uploads/nope', { method: 'DELETE' })).status).toBe(404);
+  });
+});
+
+// #921. 413 not 507: "chunk too large" is a client problem, "insufficient
+// space" is a host problem, and returning the storage code for the former sends
+// whoever debugs it next to check free disk.
+describe('import upload routes — chunk bound (#921)', () => {
+  it('maps an over-cap chunk to 413, distinct from the 507 disk case', async () => {
+    const uploads = makeUploads({
+      writeChunk: () => {
+        throw new ChunkTooLargeError(999, 10);
+      },
+    });
+    const app = makeApp(uploads, makeImports());
+    const res = await app.request('/uploads/up-1/chunk?path=a%2Fx.flac&offset=0', {
+      method: 'PUT',
+      body: new Uint8Array([1]),
+    });
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({
+      code: 'UPLOAD_CHUNK_TOO_LARGE',
+      receivedBytes: 999,
+      limitBytes: 10,
+    });
   });
 });
