@@ -130,3 +130,58 @@ describe('authMiddleware — share JWT read-only guard', () => {
     expect(await res.json()).toEqual({ error: 'Share sessions are read-only' });
   });
 });
+
+/**
+ * The user-status lookup sits inside the same `try` as `jose.jwtVerify`, whose
+ * catch returns 401 "Invalid or expired token". So a database failure at that
+ * moment told the client its session had expired — and a client treats 401 as
+ * "you are signed out", with a message that is false: the token was fine.
+ * It also meant the failure never reached `errorHandler`, so it was invisible
+ * to Sentry.
+ *
+ * Scope is this one lookup. Hono does NOT propagate a downstream handler's
+ * throw back through `await next()` (verified against hono@4.13.3: the catch
+ * never fires, with or without an `onError`), so handler errors were never
+ * affected — see the correction on issue #927.
+ */
+describe('a database failure is not an auth failure (#927)', () => {
+  const SECRET = 'test-secret';
+  /** A DB with no `users` table, so the status lookup throws. */
+  const brokenDb = new Database(':memory:');
+
+  async function requestWithBrokenDb(): Promise<Response> {
+    mock.module('../db.js', () => ({ getDatabase: () => brokenDb, applySchema }));
+    try {
+      const app = new Hono<AuthEnv>();
+      app.onError((e, c) => c.json({ error: 'handled', message: String(e) }, 500));
+      app.use('/protected', authMiddleware(SECRET));
+      app.get('/protected', (c) => c.json({ ok: true }));
+      const token = await signJwt({ sub: 'user-123', username: 'testuser', role: 'user' }, SECRET);
+      return await app.request('/protected', { headers: { Authorization: `Bearer ${token}` } });
+    } finally {
+      // mock.module is process-global; restore or every later file sees brokenDb.
+      mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
+    }
+  }
+
+  it('does not report a broken database as an expired token', async () => {
+    const res = await requestWithBrokenDb();
+    expect(res.status).not.toBe(401);
+  });
+
+  it('surfaces it as a server error, so it can reach the error handler', async () => {
+    const res = await requestWithBrokenDb();
+    expect(res.status).toBeGreaterThanOrEqual(500);
+  });
+
+  it('still returns 401 for a genuinely bad token', async () => {
+    // The regression guard: separating the two must not stop rejecting real
+    // auth failures.
+    const app = new Hono<AuthEnv>();
+    app.use('/protected', authMiddleware(SECRET));
+    app.get('/protected', (c) => c.json({ ok: true }));
+    const res = await app.request('/protected', { headers: { Authorization: 'Bearer not-a-jwt' } });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'Invalid or expired token' });
+  });
+});

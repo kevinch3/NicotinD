@@ -139,35 +139,47 @@ test.describe('download review inbox', () => {
     cpSync(SRC, join(REVIEW_DIR, 'review-track.flac'));
     await scanAndWait(request, token);
 
-    // Exact, not toBeGreaterThan(0): a leftover pending row from another
-    // spec would make `.first()` below discard the wrong one and this test
-    // would then wait forever for a count that never reaches 0 (#854).
-    await expect
-      .poll(
-        async () =>
-          (
-            (await (await request.get('/api/review/count', { headers: bearer(token) })).json()) as {
-              pending: number;
-            }
-          ).pending,
-      )
-      .toBe(1);
+    // Synchronize on the album this test created, not on a library-global
+    // scalar. `/api/review/count` is COUNT(DISTINCT album_id) over the whole
+    // library and takes no album parameter, so "pending === 0" is unreachable
+    // while ANY other album is pending anywhere — and this test holds
+    // holdForReview ON library-wide for its duration, so it actively invites
+    // one. That is what produced #854's "Expected 0, Received 1".
+    const queue = async () =>
+      (
+        (await (await request.get('/api/review/queue', { headers: bearer(token) })).json()) as {
+          albums: Array<{ albumId: string }>;
+        }
+      ).albums;
+
+    // Stronger than the count it replaces: /count and /queue share one
+    // predicate behind one gate, so length === 1 implies pending === 1 AND
+    // additionally proves the row is renderable.
+    await expect.poll(async () => (await queue()).length).toBe(1);
+    const heldAlbumId = (await queue())[0]!.albumId;
 
     await page.goto('/downloads');
     await expect(page.getByTestId('review-inbox')).toBeVisible();
-    await page.getByTestId('review-discard').first().click();
-    await page.getByTestId('confirm-ok').click();
 
+    // Pin the click to that album. `.first()` depended on server ordering
+    // (loadQuarantineQueue orders by created DESC), so a foreign row could be
+    // discarded instead — and the global count would then never reach 0.
+    const heldRow = page.locator(`[data-testid="review-album"][data-album-id="${heldAlbumId}"]`);
+    await expect(heldRow).toBeVisible();
+    // Assert the discard actually reached the server. Without this, "a foreign
+    // album pinned the count" and "the click was swallowed" look identical.
+    const discarded = page.waitForResponse(
+      (r) => /\/api\/review\/albums\/.*\/discard$/.test(r.url()) && r.request().method() === 'POST',
+    );
+    await heldRow.getByTestId('review-discard').click();
+    await page.getByTestId('confirm-ok').click();
+    expect((await discarded).status()).toBeLessThan(400);
+
+    // The album under test is gone. Deliberately NOT "the library has zero
+    // pending albums" — this test never created those and cannot control them.
     await expect
-      .poll(
-        async () =>
-          (
-            (await (await request.get('/api/review/count', { headers: bearer(token) })).json()) as {
-              pending: number;
-            }
-          ).pending,
-      )
-      .toBe(0);
+      .poll(async () => (await queue()).map((a) => a.albumId))
+      .not.toContain(heldAlbumId);
 
     // The held file is gone from disk, and the discard is scoped to the held
     // album only — the original fixture single survives (verified empirically:
