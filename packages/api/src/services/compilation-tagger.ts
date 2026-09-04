@@ -394,7 +394,6 @@ export class CompilationTagger {
       performerInfo: tags.albumArtist,
     };
     if (tags.year !== undefined) update.year = String(tags.year);
-    if (tags.compilation) update.TCMP = '1';
 
     try {
       const ok = nodeId3.update(update, filepath);

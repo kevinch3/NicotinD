@@ -39,6 +39,13 @@ export interface AudioTags {
   instrumental?: number;
   /** Dominant mood label (TXXX/Vorbis `MOOD`), from MOOD_VOCAB. */
   mood?: string;
+  /**
+   * Vorbis/m4a only. node-id3 0.2.9 has no `TCMP` frame, so the ID3 path can
+   * neither write nor read this — it used to try, and the two dead halves
+   * cancelled out (the read returned false, which stopped the organizer ever
+   * asking for the write). Claiming support it does not have is worse than
+   * not claiming it (issue #917).
+   */
   compilation?: boolean;
   /** AcoustID track UUID. Doubles as a "we've already fingerprinted this" marker. */
   acoustIdId?: string;
@@ -296,7 +303,6 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         year: parseYear(d.year),
         key: pickString(d.initialKey),
         genre: pickString(d.genre),
-        compilation: d.TCMP === '1' || d.compilation === '1',
         lyrics: readId3Lyrics(d),
         energy: parseUnit(readUserText(d, FEATURE_TAG_KEYS.energy)),
         loudness: parseLufs(readUserText(d, FEATURE_TAG_KEYS.loudness)),
@@ -367,7 +373,6 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
   if (tags.key !== undefined) update.initialKey = tags.key;
   if (tags.lyrics !== undefined)
     update.unsynchronisedLyrics = { language: 'eng', text: tags.lyrics };
-  if (tags.compilation) update.TCMP = '1';
 
   const userText: NodeId3UserText[] = [];
   for (const [field, key] of numericFeatureEntries()) {
