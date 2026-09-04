@@ -41,8 +41,6 @@ const CLAUDE_MD = join(repoRoot, 'CLAUDE.md');
  * needs a reason — an allowlist nobody can audit is just a mute button.
  */
 const ALLOWLIST = new Map<string, string>([
-  // Features documented as explicitly proposed, not built.
-  ['oauth', 'the OAuth entry says "proposed — not yet implemented"'],
   // Config keys owned by other tools' schemas.
   ['dataGroups', 'ngsw-config.json key (Angular service worker schema)'],
   // Deliberate mentions of something that is NOT here — the sentence's point is
