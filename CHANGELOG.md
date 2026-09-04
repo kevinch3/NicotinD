@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.77](https://github.com/kevinch3/NicotinD/compare/v0.5.76...v0.5.77) (2026-09-04)
+
+### Bug Fixes
+
+* **api:** a database failure is not an expired session ([#931](https://github.com/kevinch3/NicotinD/issues/931)) ([65e92b8](https://github.com/kevinch3/NicotinD/commit/65e92b8326d31c6cab23c47f8d4c6612d5bc0969)), closes [#927](https://github.com/kevinch3/NicotinD/issues/927)
 ## [0.5.76](https://github.com/kevinch3/NicotinD/compare/v0.5.75...v0.5.76) (2026-09-03)
 
 ### Bug Fixes
