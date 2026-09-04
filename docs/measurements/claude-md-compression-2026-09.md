@@ -73,9 +73,16 @@ WebMCP, OAuth) folded into one `Proposed, NOT built` entry carrying all five of 
 entries around them, both verified against code: `origin` restored to the Smart-radio axis list, and
 the `GET /api/radio/next` antecedent made explicit in Filter-seeded radio.
 
-`MAX_FILE_BYTES` was **not** lowered — there is no reduction to lock in.
+`MAX_FILE_BYTES` was **not** lowered — there was no reduction to lock in. (#934 later replaced it
+with `MAX_CLAUDE_MD_BYTES` + `MAX_INDEX_BYTES` when the index was relocated.)
 
-## If the file must actually shrink
+## Outcome: relocated, not compressed (#934)
+
+Acted on. `CLAUDE.md` is now **12.4 KB**, with the ~155 entries in `docs/index.md`, read on demand.
+Nothing was deleted and no entry was reworded — which is exactly why it was safe, and why
+compression was not.
+
+## The reasoning that led there
 
 Compression is exhausted; only **relocation** remains. Move the index body to a `docs/` page read on
 demand, leaving CLAUDE.md as the header, Commands, Architecture and one line per doc (~12 KB). That

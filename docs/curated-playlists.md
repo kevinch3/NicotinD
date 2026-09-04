@@ -91,7 +91,7 @@ The library **Playlists** tab renders **one merged list** (`library.component`,
 server-side, with an inline **"Curated"** badge (`curated-badge-inline`) as the
 origin marker and Rename/Delete restricted to `kind='user'` rows. (An earlier
 revision of this doc described a separate "Made for you" tile grid — that split
-was superseded by the merged list; see the playlists-page entry in CLAUDE.md.)
+was superseded by the merged list; see the playlists-page entry in `docs/index.md`.)
 
 The landing page's **"Tastemakers" shelf** (`TastemakersComponent`,
 `data-testid="tastemakers"`) is the cover-tile surface for curated playlists:

@@ -105,11 +105,24 @@ carrying a second copy.
 
 ### The caps
 
-| Cap | Value | Set from |
-|---|---|---|
-| `MAX_ENTRY_CHARS` | 440 | measured max **prose** 371 after the restructure |
-| `MAX_FILE_BYTES` | 65,000 | measured 50 KB at the restructure (cap 60,000); raised 2026-08-29 at 55.3 KB / 151 entries — growth was new entries, not narrative |
-| `MIN_PLAUSIBLE_ENTRIES` | 60 | the gate's own denominator (160 parse today) |
+| Cap | Value | Applies to | Set from |
+|---|---|---|---|
+| `MAX_ENTRY_CHARS` | 440 | entries in **either** file | measured max **prose** 371 after the restructure |
+| `MAX_CLAUDE_MD_BYTES` | 20,000 | `CLAUDE.md` | the per-request cost. 12.4 KB after #934 relocated the index |
+| `MAX_INDEX_BYTES` | 60,000 | `docs/index.md` | 47.3 KB after the move; generous because the cost is paid on demand |
+| `MIN_PLAUSIBLE_ENTRIES` | 60 | `docs/index.md` **only** | the gate's own denominator (155 parse today) |
+
+`MIN_PLAUSIBLE_ENTRIES` is asserted against `docs/index.md`, not `CLAUDE.md`.
+Pointing it at CLAUDE.md after the relocation would make it pass vacuously:
+that file now parses a handful of Surfaces entries and is no longer an index.
+
+The two byte budgets are deliberately different sizes, and the split is the
+point of the gate rather than an accident of it. `CLAUDE.md` is paid on every
+request including the majority that never open the index, so it is the number to
+defend; `docs/index.md` is read only when a mechanism needs locating. A test
+asserts CLAUDE.md stays under **half** the index's size — if the two ever
+converge, the index has drifted back into the file that costs on every task and
+the relocation has quietly been undone.
 
 Entry length is measured with **whitespace collapsed**, so re-wrapping a line
 can never change the verdict — the budget is about how much a reader takes in,
@@ -127,6 +140,21 @@ Neither cap sits flush against the current file, and a test asserts that
 honest addition gets raised reflexively, and a threshold nobody believes is a
 threshold nobody enforces. Raising one is fine — it should just be a commit that
 says why, which is exactly what the un-measured prose rule never forced.
+
+### The relocation (#934)
+
+Compression could not deliver, so the index moved instead. `CLAUDE.md` went
+**59.5 KB → 12.4 KB** by relocating its ~155 entries to `docs/index.md`, which
+is read on demand. Nothing was deleted and no entry was reworded; the two files
+are checked as one corpus, because a symbol is a claim wherever it is written.
+
+Two things the move broke that the gate caught, both the same bug in different
+clothes — a `docs/`-prefixed pattern meeting links that no longer carry the
+prefix. `brokenDocLinks` now resolves each link against its own file's
+directory, and `entryProse` strips **any** `.md` link, not just a rooted one.
+The second was live for about a minute and immediately charged a correct entry
+515/440 characters for citing its own sources — the exact failure `entryProse`
+was written to prevent.
 
 ### The floor, measured
 
