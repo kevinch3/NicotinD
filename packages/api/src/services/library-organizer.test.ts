@@ -795,6 +795,57 @@ describe('LibraryOrganizer (real fs)', () => {
    * user's audio file. `reorganize-library.ts --apply` walks the whole library
    * this way.
    */
+  /**
+   * A CHARACTERIZATION guard, not a regression test — it passed before #917's
+   * cleanup and passes after, deliberately.
+   *
+   * mp3 never had the per-pass rewrite the Vorbis family had, and the reason is
+   * worth pinning: `deriveFolderTags` short-circuits for a single file and
+   * reads `compilation` straight off the tag rather than calling
+   * `classifyFolder`. On ID3 that read could never be true, so
+   * `folderTags.compilation` was false and the organizer never asked for the
+   * write. The two dead halves cancelled out.
+   *
+   * That makes this fragile in a specific way: anyone who later gives ID3 a
+   * working compilation read — by upgrading node-id3 or moving mp3 onto ffmpeg
+   * — re-enables the write side too, and the loop #916 fixed for Vorbis
+   * appears here. This test is what would catch that.
+   */
+  describe('an organized mp3 compilation is not rewritten on a second pass', () => {
+    it('leaves an already-organized mp3 compilation untouched on a second pass', async () => {
+      const root = tmpRoot();
+      const staging = join(root, '_staging');
+      const album = 'Mp3 Compilation';
+      const artists = ['Sade', 'Massive Attack', 'Portishead'];
+      artists.forEach((artist, i) => {
+        seed(staging, `VA - ${album}/0${i + 1} - ${artist} Song.mp3`, {
+          artist,
+          album,
+          title: `${artist} Song`,
+          trackNumber: i + 1,
+        });
+      });
+
+      const result = await makeOrg(root, staging).organizeBatch(
+        artists.map((artist, i) => ({
+          username: 'u',
+          directory: `VA - ${album}`,
+          filename: `0${i + 1} - ${artist} Song.mp3`,
+          directoryFileCount: artists.length,
+        })),
+      );
+      expect(result.moved).toBe(artists.length);
+      const placedDir = result.affectedAlbumDirs[0]!;
+      expect(placedDir).toContain('Various Artists');
+      const placed = readdirSync(placedDir).map((f) => join(placedDir, f));
+
+      const before = snapshotTree(placedDir);
+      for (const f of placed) await makeOrg(root).organizeFile(f);
+
+      expect(snapshotTree(placedDir)).toEqual(before);
+    });
+  });
+
   describe('compilation tag rewrite is idempotent', () => {
     it.skipIf(!ffmpegAvailable())(
       'leaves an already-flagged compilation untouched on a second pass',
