@@ -648,25 +648,25 @@ production deploy host) fails with denied/not-found; alternatively
 `org.opencontainers.image.source` label in the Dockerfile links the package to
 the repo automatically.
 
-## Behind a reverse proxy
+## A missing asset 404s; a stale build reloads itself
 
-NicotinD is usually fronted by nginx/Caddy/Traefik. One setting is **not
-optional**:
+The SPA catch-all serves `index.html` only for **navigation** requests
+(`shouldServeSpaIndex`). A request for a static asset that is not on disk gets a
+**404**, never the HTML shell with a 200.
 
-```nginx
-client_max_body_size 20m;   # browser-upload import sends 16 MiB chunks
-```
+That distinction is not cosmetic (#925). A tab left open across a deploy holds a
+build whose chunk hashes no longer exist. Answering its request for
+`chunk-XYZ.js` with `index.html` made the browser parse HTML as an ES module and
+report *"error loading dynamically imported module"* — an error naming the
+bundler, when the truth was that the build was stale. Every deploy created this
+for anyone mid-session, and the message pointed nowhere near the cause.
 
-The import lane (→ [import.md](import.md)) uploads in 16 MiB chunks, chosen to
-stay under Bun's 128 MB default body cap so the server never has to widen that
-cap for every route. nginx's own default is **1m**, so an unconfigured proxy
-rejects every chunk with a 413 *before* it reaches the app.
-
-That failure is deliberately hard to diagnose from inside NicotinD and worth
-recognising by shape (#921): the server logs show **nothing at all**, because the
-request never arrived, and the browser shows a generic error, because the proxy's
-413 page is HTML with no `code` field to translate. If an upload fails and the
-API log is silent, suspect the proxy before the app.
+With an honest 404 the client can recognise it: every lazy route is wrapped in
+`lazy()` (`lib/stale-chunk.ts`), which reloads **once** to pull the current
+build. The single-shot guard is the load-bearing part — if a chunk is genuinely
+missing rather than merely stale, an unguarded retry is an endless refresh loop,
+far worse than the dead button it replaced. The marker is cleared on successful
+bootstrap so a later deploy in the same session recovers too.
 
 ## Healthcheck
 

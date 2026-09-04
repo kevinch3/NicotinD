@@ -5,6 +5,7 @@ import { environment } from './environments/environment';
 import { loadSentry } from './app/observability/sentry';
 import { installStartupErrorCapture, captureError } from './app/observability/error-buffer';
 import { isNativeShell, applyTvBuildClass, isTvBuild } from './app/lib/platform';
+import { clearStaleChunkMarker } from './app/lib/stale-chunk';
 import { applyOverscan, loadOverscanPreset } from './app/lib/tv-overscan';
 import pkg from '../../../package.json';
 
@@ -32,6 +33,10 @@ bootstrapApplication(App, appConfig)
     // drop the pre-bootstrap listeners to avoid double-reporting, then load the
     // SDK off the critical path.
     stopStartupCapture();
+    // The app is running, so whatever build we are on is intact — release the
+    // one-shot stale-chunk reload guard so a *future* deploy can recover too
+    // (#925). Left set, the second stale chunk of a session would not reload.
+    clearStaleChunkMarker();
     startSentry();
   })
   .catch((err) => {
