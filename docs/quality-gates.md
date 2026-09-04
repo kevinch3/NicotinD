@@ -128,6 +128,12 @@ honest addition gets raised reflexively, and a threshold nobody believes is a
 threshold nobody enforces. Raising one is fine — it should just be a commit that
 says why, which is exactly what the un-measured prose rule never forced.
 
+### The floor, measured
+
+A 2026-09 attempt to cut the file further found it is already at its compression floor: three passes
+over the index produced a best correct result of -0.9%, and aggressive merging produced 48 invented
+claims. → [measurements/claude-md-compression-2026-09.md](measurements/claude-md-compression-2026-09.md)
+
 ### The denominator, again
 
 `MIN_PLAUSIBLE_ENTRIES` is the part that matters most. If the entry format
