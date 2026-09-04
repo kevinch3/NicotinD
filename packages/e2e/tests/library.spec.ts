@@ -189,7 +189,25 @@ test.describe('library', () => {
 
   test('a query matching nothing you own reports empty rather than failing', async ({ page }) => {
     await page.goto('/library');
+
+    // Wait on the search the page actually performs, not on slack. The find bar
+    // debounces 250 ms (FIND_DEBOUNCE_MS) and only then mounts its results
+    // subtree, so without a barrier the debounce, the navigation and the whole
+    // /api/search round trip had to fit inside Playwright's default 5 s expect
+    // timeout — the spec asserted a settled UI it never waited for (#767).
+    const searched = page.waitForResponse(
+      (r) => r.url().includes('/api/search') && r.request().method() === 'GET',
+      { timeout: 15_000 },
+    );
     await page.getByTestId('library-find').fill('zzz no such release zzz');
+    await searched;
+
+    // The debounce committed the query into the URL, so the find state is linkable.
+    await expect(page).toHaveURL(/find=zzz/);
+    // "rather than failing" is half this test's title and was never checked:
+    // an errored search used to fail here as "empty not visible", naming the
+    // wrong branch.
+    await expect(page.getByTestId('library-find-error')).toHaveCount(0);
     await expect(page.getByTestId('library-find-empty')).toBeVisible();
   });
 });
