@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  LANE_MIX,
   SCORE_WEIGHTS,
   assignSongsToSlots,
   buildMosaicTiles,
   buildOfflineTiles,
   dedupeTiles,
+  drawFrom,
   jitter,
   ownPlayShare,
   playWeights,
@@ -29,6 +31,17 @@ const song = (over: Partial<Song> = {}): Song => ({
   ...over,
 });
 
+const recent = (i: number, over: Partial<RecentPlay> = {}): RecentPlay => ({
+  songId: `r${i}`,
+  title: `Recent ${i}`,
+  artist: 'A',
+  album: null,
+  duration: null,
+  coverArt: null,
+  playedAt: i,
+  ...over,
+});
+
 const stats = (over: Partial<ListeningStats> = {}): ListeningStats => ({
   period: 'all',
   from: 0,
@@ -42,8 +55,19 @@ const stats = (over: Partial<ListeningStats> = {}): ListeningStats => ({
   ...over,
 });
 
+/** mulberry32: a seeded rng, so a draw is reproducible in a spec. */
+const seeded = (seed: number): (() => number) => {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
 const emptySources = (over: Partial<MosaicSources> = {}): MosaicSources => ({
-  resume: null,
   keepVibe: [],
   tasteBreakers: [],
   recentPlays: [],
@@ -207,7 +231,7 @@ describe('buildMosaicTiles', () => {
   it('gives every tile a radio-start action — the surface has one verb', () => {
     const tiles = buildMosaicTiles(
       emptySources({
-        resume: { id: 'r', title: 'Resume', artist: 'A' },
+        recentPlays: [recent(1)],
         tasteBreakers: [song({ id: 'tb' })],
         playlists: [
           {
@@ -238,25 +262,6 @@ describe('buildMosaicTiles', () => {
     expect(tiles.filter((t) => t.key === 'song:shared')).toHaveLength(1);
   });
 
-  it('lets the resume tile win a collision with its own recent-play row', () => {
-    const recent: RecentPlay = {
-      songId: 'x',
-      title: 'Track',
-      artist: 'A',
-      album: null,
-      duration: null,
-      coverArt: null,
-      playedAt: 1,
-    };
-    const tiles = buildMosaicTiles(
-      emptySources({ resume: { id: 'x', title: 'Track', artist: 'A' }, recentPlays: [recent] }),
-    );
-    const match = tiles.filter((t) => t.key === 'song:x');
-    expect(match).toHaveLength(1);
-    expect(match[0].kind).toBe('resume');
-    expect(match[0].score).toBe(SCORE_WEIGHTS.resume);
-  });
-
   it('carries popularity into the score when the API supplied it', () => {
     const hot = buildMosaicTiles(
       emptySources({ tasteBreakers: [song({ id: 'h', popularity: 1 })] }),
@@ -282,6 +287,124 @@ describe('buildMosaicTiles', () => {
     const rock = tiles.find((t) => t.key === 'genre:rock')!;
     // Jazz is tiny by count but heavily played, so it holds its own.
     expect(jazz.score).toBeCloseTo(rock.score);
+  });
+});
+
+describe('drawFrom', () => {
+  const items = ['a', 'b', 'c', 'd', 'e'];
+
+  it('draws n distinct items from the list', () => {
+    const out = drawFrom(items, 3, seeded(1));
+    expect(out).toHaveLength(3);
+    expect(new Set(out).size).toBe(3);
+    for (const x of out) expect(items).toContain(x);
+  });
+
+  it('returns the whole list, in some order, when asked for more than it holds', () => {
+    expect([...drawFrom(items, 9, seeded(2))].sort()).toEqual(items);
+  });
+
+  it('is reproducible for one seed and differs across seeds', () => {
+    expect(drawFrom(items, 3, seeded(7))).toEqual(drawFrom(items, 3, seeded(7)));
+    const draws = new Set([1, 2, 3, 4, 5, 6].map((s) => drawFrom(items, 3, seeded(s)).join()));
+    expect(draws.size).toBeGreaterThan(1);
+  });
+
+  it('leaves the input untouched', () => {
+    const copy = [...items];
+    drawFrom(items, 2, seeded(1));
+    expect(items).toEqual(copy);
+  });
+
+  it('survives an rng that returns exactly 1, and a zero or empty ask', () => {
+    expect(drawFrom(items, 2, () => 1)).toHaveLength(2);
+    expect(drawFrom(items, 0, seeded(1))).toEqual([]);
+    expect(drawFrom([], 3, seeded(1))).toEqual([]);
+  });
+});
+
+// The recipe. Every lane is a draw from a pool, and the breakers fill the rest,
+// so the wall is neither the last session nor the same twice.
+describe('buildMosaicTiles — the lane draw', () => {
+  const recents = (n: number): RecentPlay[] => Array.from({ length: n }, (_, i) => recent(i));
+  const pool = (prefix: string, n: number): Song[] =>
+    Array.from({ length: n }, (_, i) => song({ id: `${prefix}${i}` }));
+  const songKeys = (tiles: MosaicTile[]): string[] =>
+    tiles.filter((t) => t.kind === 'song').map((t) => t.key);
+
+  it('shows half of the recent pool — ten of twenty — drawn at random', () => {
+    expect(LANE_MIX.recent.tiles * 2).toBe(LANE_MIX.recent.pool);
+    const keys = songKeys(buildMosaicTiles(emptySources({ recentPlays: recents(20) }), seeded(1)));
+    expect(keys).toHaveLength(LANE_MIX.recent.tiles);
+    for (const k of keys) expect(k).toMatch(/^song:r\d+$/);
+  });
+
+  it('draws a different ten on another visit', () => {
+    const src = emptySources({ recentPlays: recents(20) });
+    const a = songKeys(buildMosaicTiles(src, seeded(1))).sort();
+    const b = songKeys(buildMosaicTiles(src, seeded(2))).sort();
+    expect(a).not.toEqual(b);
+  });
+
+  it('draws keep-the-vibe the same way', () => {
+    const keys = songKeys(buildMosaicTiles(emptySources({ keepVibe: pool('k', 20) }), seeded(3)));
+    expect(keys).toHaveLength(LANE_MIX.keepVibe.tiles);
+    for (const k of keys) expect(k).toMatch(/^song:k\d+$/);
+  });
+
+  it('shows a short pool whole, so a light history still surfaces', () => {
+    const keys = songKeys(buildMosaicTiles(emptySources({ recentPlays: recents(2) }), seeded(1)));
+    expect(keys.sort()).toEqual(['song:r0', 'song:r1']);
+  });
+
+  it('fills the rest of the song budget with taste breakers', () => {
+    const keys = songKeys(
+      buildMosaicTiles(
+        emptySources({
+          recentPlays: recents(20),
+          keepVibe: pool('k', 20),
+          tasteBreakers: pool('b', 80),
+        }),
+        seeded(4),
+      ),
+    );
+    expect(keys).toHaveLength(LANE_MIX.songSlots);
+    expect(keys.filter((k) => k.startsWith('song:b'))).toHaveLength(
+      LANE_MIX.songSlots - LANE_MIX.recent.tiles - LANE_MIX.keepVibe.tiles,
+    );
+  });
+
+  it('lets breakers take the whole budget on a fresh install with no history', () => {
+    const keys = songKeys(
+      buildMosaicTiles(emptySources({ tasteBreakers: pool('b', 80) }), seeded(5)),
+    );
+    expect(keys).toHaveLength(LANE_MIX.songSlots);
+  });
+
+  it('never lets a breaker re-admit a play that lost the draw — the cap means what it says', () => {
+    const plays = recents(20);
+    const asSongs = plays.map((p) => song({ id: p.songId }));
+    const keys = songKeys(
+      buildMosaicTiles(
+        emptySources({ recentPlays: plays, tasteBreakers: [...asSongs, ...pool('b', 60)] }),
+        seeded(6),
+      ),
+    );
+    expect(keys.filter((k) => k.startsWith('song:r'))).toHaveLength(LANE_MIX.recent.tiles);
+    expect(keys.filter((k) => k.startsWith('song:b'))).toHaveLength(
+      LANE_MIX.songSlots - LANE_MIX.recent.tiles,
+    );
+  });
+
+  it('skips a breaker the vibe pool already holds, drawn or not', () => {
+    const vibe = pool('k', 20);
+    const keys = songKeys(
+      buildMosaicTiles(
+        emptySources({ keepVibe: vibe, tasteBreakers: [...vibe, ...pool('b', 60)] }),
+        seeded(7),
+      ),
+    );
+    expect(keys.filter((k) => k.startsWith('song:k'))).toHaveLength(LANE_MIX.keepVibe.tiles);
   });
 });
 

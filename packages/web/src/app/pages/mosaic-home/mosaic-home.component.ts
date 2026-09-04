@@ -31,6 +31,7 @@ import { measureBottomChromeInset } from '../../lib/player-chrome';
 import { coverSizeBucket, coverUrl } from '../../lib/cover-url';
 import { toTrack } from '../../lib/track-utils';
 import {
+  LANE_MIX,
   assignSongsToSlots,
   buildMosaicTiles,
   buildOfflineTiles,
@@ -101,10 +102,13 @@ interface TileContent {
 /**
  * The landing: one infinite, pannable mosaic where **every tile starts a radio**.
  *
- * Composed from exactly the sources the classic landing uses (resume, keep the
- * vibe, taste breakers, recently played, curated playlists, vibe presets, top
- * genres) — but collapsed into one surface with one verb, so tapping a cover
- * always means the same thing. The classic landing lives on at /classic.
+ * Composed from the sources the classic landing uses (keep the vibe, taste
+ * breakers, recently played, curated playlists, vibe presets, top genres) —
+ * collapsed into one surface with one verb, so tapping a cover always means
+ * the same thing, and drawn by `LANE_MIX` rather than filled to the brim, so
+ * the wall is neither your last session nor the same on every visit. The
+ * classic landing's Resume card has no tile here: the mini-player already is
+ * the one-tap continue. The classic landing lives on at /classic.
  *
  * The plane is a packed square patch repeated on a torus, viewed through an
  * orthographic lens (lib/mosaic-lens.ts). The geometry repeats; the content
@@ -349,8 +353,12 @@ export class MosaicHomeComponent implements OnInit {
    */
   private async onlineTiles(): Promise<MosaicTile[]> {
     const [recentPlays, tasteBreakers, playlistsRes, genres, stats] = await Promise.all([
-      firstValueFrom(this.history.getRecentPlays(20).pipe(catchError(() => of([])))),
-      firstValueFrom(this.api.getRandomSongs(24).pipe(catchError(() => of([])))),
+      firstValueFrom(
+        this.history.getRecentPlays(LANE_MIX.recent.pool).pipe(catchError(() => of([]))),
+      ),
+      // The whole song budget, not just the breakers' share: with no history
+      // the other two lanes are empty and this one has to fill the field.
+      firstValueFrom(this.api.getRandomSongs(LANE_MIX.songSlots).pipe(catchError(() => of([])))),
       firstValueFrom(
         this.playlistsApi.getPlaylists().pipe(catchError(() => of({ playlists: [] }))),
       ),
@@ -359,16 +367,19 @@ export class MosaicHomeComponent implements OnInit {
     ]);
 
     // Keep-the-vibe is seeded by the recent plays, so it can only run second.
+    // The whole pool seeds it, not the ten that win the draw: the vibe is of
+    // what was listened to, and the seeds are excluded from the answer anyway.
     const seedIds = recentPlays.map((p) => p.songId);
     const keepVibe = seedIds.length
-      ? await firstValueFrom(this.api.getListRadio(seedIds, 10).pipe(catchError(() => of([]))))
+      ? await firstValueFrom(
+          this.api.getListRadio(seedIds, LANE_MIX.keepVibe.pool).pipe(catchError(() => of([]))),
+        )
       : [];
 
     // The discovery cells score their batches with the same personal weights.
     this.weights = playWeights(stats);
 
     return buildMosaicTiles({
-      resume: this.player.currentTrack(),
       keepVibe,
       tasteBreakers,
       recentPlays,

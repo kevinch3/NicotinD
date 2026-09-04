@@ -431,7 +431,7 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Mosaic home — one surface, one verb**: the `''` route is an infinite pannable tile field over
   every landing source where every tile starts a radio; pure `mosaic-tiles`/`mosaic-packing`/
   `mosaic-lens` under a pooled rAF shell. `patchSide`, `cellCount`, `visiblePlacements`,
-  `SCORE_WEIGHTS`. The shelf landing lives on at `/classic`. → [web-ui.md](docs/web-ui.md)
+  `SCORE_WEIGHTS`, `LANE_MIX`. The shelf landing lives on at `/classic`. → [web-ui.md](docs/web-ui.md)
 - **One tile, two tones**: `VibeTileComponent` renders the classic landing's vibe row and genre row
   so they cannot drift — `tone`/`wide` carry the whole difference, and the vibe gradients are fixed
   pairs, never `--theme-*`. → [web-ui.md](docs/web-ui.md)
