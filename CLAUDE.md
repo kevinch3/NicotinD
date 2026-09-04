@@ -109,6 +109,14 @@ NicotinD (Hono API :8484)  — native library scanner + streaming, all in-proces
 
 The index proper. Each line: what it is, what to grep for, where the detail lives.
 
+- **Proposed, NOT built** — read each as the pitch it is; no route, no table, no dependency ships for
+  any of them: peer share, serving a library over `/addon/v1` to another instance
+  → [peer-share.md](docs/peer-share.md); hardware cast, Chromecast + DLNA
+  → [cast-integration.md](docs/cast-integration.md); OAuth as an `auth` plugin kind
+  → [oauth-auth.md](docs/oauth-auth.md); WebMCP host exposure, client-side WebGPU/WebNN a NO-GO
+  → [webmcp-alignment.md](docs/webmcp-alignment.md),
+  [client-side-ml-feasibility.md](docs/client-side-ml-feasibility.md)
+
 ### Acquisition & downloads
 
 - **Source-agnostic acquisition (the north star)**: every acquirable result from any source maps to
@@ -122,10 +130,6 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   default-off; in-process plugins are spotify/lrclib/discogs/acoustid, built in
   `registerBuiltinPlugins`. `ADDON_CATALOG` + `promotePendingAddons` back one-click install.
   → [plugins.md](docs/plugins.md)
-- **Peer Share (proposed — not yet implemented)**: a NicotinD instance would serve its own library
-  over `/addon/v1` so another instance registers it like any addon — peer results blend via
-  `AddonSearchProvider`, land through `AddonJobPoller`, and every job item is fileReady at creation.
-  Read the doc as the pitch it is. → [peer-share.md](docs/peer-share.md)
 - **Album hunt** — *addon-owned*: `AlbumHunterService`, `huntBase`, `searchAndScore`,
   `isBloatedFolder`, `FallbackHost`, `isStalled`, `stallThresholdMs` and `TransferPoller` live in the
   `kevinch3/nicotind-slskd-addon` repo, not here. Core keeps `buildSkewedQueries`/`buildTrackQueries`.
@@ -223,8 +227,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 ### Library & metadata
 
 - **Native library scanner**: `LibraryScanner` walks the music dir, reads tags → `library_*` tables
-  with deterministic SHA1 ids; `resolveTags` applies overrides before minting ids. Incremental
-  `scan_cache` + `mapPool`, `applyPerformancePragmas`, `albumIdsByGroupKey`.
+  with deterministic SHA1 ids; `resolveTags` applies overrides before minting the artist/album ids.
+  Incremental `scan_cache` + `mapPool`, `applyPerformancePragmas`, `albumIdsByGroupKey`.
   → [library-scanner.md](docs/library-scanner.md)
 - **A canonical tracklist governs admission, not retention**: the pinned `album_jobs` tracklist
   filters which *new* files an album admits; a file in `knownRelPaths` is never dropped as foreign.
@@ -413,10 +417,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Now Playing waveform + karaoke VFX**: rendered from a precomputed artifact.
   → [audio-ml-enrichment.md](docs/audio-ml-enrichment.md)
 - **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a
-  weight-normalized blend of BPM, Camelot key, genre-set closeness, year, duration, artist diversity,
-  the perceptual axes and embedding cosine. `buildSeedRadio`, `scoreSimilarity`, `explainSimilarity`,
-  `genreSetCloseness`, `MISSING_GENRE_FLOOR`, `recentPlayPenalty`, `lastPlayedByRecording`.
-  → [radio.md](docs/radio.md)
+  weight-normalized blend of BPM, Camelot key, genre-set closeness, artist origin, year, duration,
+  artist diversity, the perceptual axes and embedding cosine. `buildSeedRadio`, `scoreSimilarity`,
+  `explainSimilarity`, `genreSetCloseness`, `MISSING_GENRE_FLOOR`, `recentPlayPenalty`,
+  `lastPlayedByRecording`. → [radio.md](docs/radio.md)
 - **One recording is one thing**: two files of one track (album + compilation) are two
   `library_songs` rows, so radio served it twice as often; `recordingKey` collapses them in the
   served window, the pool exclusion and the recency demotion. → [radio.md](docs/radio.md)
@@ -431,10 +435,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **One tile, two tones**: `VibeTileComponent` renders the classic landing's vibe row and genre row
   so they cannot drift — `tone`/`wide` carry the whole difference, and the vibe gradients are fixed
   pairs, never `--theme-*`. → [web-ui.md](docs/web-ui.md)
-- **Filter-seeded radio / stations**: the same route starts a vibe with no seed song from a
-  `LibraryFilter` via `buildFilterRadio` + `songFilterWheres` + `stationCentroid`; a genre station is
-  graded not tag-tested by `stationAffinity` (`genreDepthScore` × `artistGenreShares`), a demotion
-  never an exclusion. → [radio.md](docs/radio.md),
+- **Filter-seeded radio / stations**: the same `GET /api/radio/next` route starts a vibe with no
+  seed song from a `LibraryFilter` via `buildFilterRadio` + `songFilterWheres` + `stationCentroid`;
+  a genre station is graded not tag-tested by `stationAffinity` (`genreDepthScore` ×
+  `artistGenreShares`), a demotion never an exclusion. → [radio.md](docs/radio.md),
   [radio-stations-2026-08.md](docs/measurements/radio-stations-2026-08.md)
 - **Radio calibration + diagnostics**: `RADIO_FORMULA_VERSION` stamps every poll so votes never pool
   across formulas; `dump-radio.ts` reports per-axis breakdowns and the served-window spread;
@@ -446,8 +450,6 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   and commands over `GET /api/ws/playback` through `createPlaybackHub` (connections keyed by raw
   socket, `activeGraceMs` on loss); the client's decisions are the pure core `reduceServerMessage` /
   `castTo`, shared with the multi-device simulation. → [remote-playback.md](docs/remote-playback.md)
-- **Hardware cast (Chromecast + DLNA) — designed, NOT built**: no route, no table, no dependency. Read
-  the doc as the proposal it is. → [cast-integration.md](docs/cast-integration.md)
 - **Auto-preserve queue (PWA lock-screen resilience)**: `AutoPreserveCoordinator` keeps the next-N
   queued tracks as IndexedDB blobs so playback survives the locked-screen network throttle;
   `evictAutoLRU` never evicts user-saved tracks. → [web-ui.md](docs/web-ui.md)
@@ -515,11 +517,6 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **`identify_song` — identity from the audio**: `identifySongById` is fpcalc + AcoustID and nothing
   else, batchable where `lookup_song_metadata`'s fan-out is not; typed outcome, suggests only,
   carries no genre. → [mcp-agent.md](docs/mcp-agent.md)
-- **WebMCP alignment (proposed — not yet implemented)**: `MCP_TOOLS` already has the shape Chrome's
-  WebMCP registration takes; the plan declares host exposure per tool and adds a flagged browser
-  host for session tools only — nothing destructive, and client-side WebGPU/WebNN stays NO-GO.
-  → [webmcp-alignment.md](docs/webmcp-alignment.md),
-  [client-side-ml-feasibility.md](docs/client-side-ml-feasibility.md)
 - **Presence tracking + last connection (admin-only)**: in-memory `PresenceService` from 60s
   heartbeats merged into `GET /api/admin/users` and ordered by `compareUsersByActivity`; the derived
   `last_seen_at` is persisted by `touchLastSeen` because an in-memory map reports "never" after every
@@ -530,8 +527,6 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Admin audit log**: `audit_log` + `recordAudit` called explicitly at destructive mutation sites,
   never as blanket middleware; entries carry `targetKind`/`targetId`/`detail`, and ledger failures
   never break the audited action. → [roles.md](docs/roles.md)
-- **OAuth authentication (proposed — not yet implemented)**: Google + Microsoft as `auth` kind plugins
-  with an `oauth` capability. → [oauth-auth.md](docs/oauth-auth.md)
 - **Onboarding**: setup wizard for self-hosters (music dir, quality, Lidarr) plus a first-login welcome
   banner for admin-provisioned users. → [onboarding.md](docs/onboarding.md)
 

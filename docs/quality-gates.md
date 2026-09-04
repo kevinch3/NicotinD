@@ -109,7 +109,7 @@ carrying a second copy.
 |---|---|---|
 | `MAX_ENTRY_CHARS` | 440 | measured max **prose** 371 after the restructure |
 | `MAX_FILE_BYTES` | 65,000 | measured 50 KB at the restructure (cap 60,000); raised 2026-08-29 at 55.3 KB / 151 entries — growth was new entries, not narrative |
-| `MIN_PLAUSIBLE_ENTRIES` | 60 | the gate's own denominator (139 parse today) |
+| `MIN_PLAUSIBLE_ENTRIES` | 60 | the gate's own denominator (160 parse today) |
 
 Entry length is measured with **whitespace collapsed**, so re-wrapping a line
 can never change the verdict — the budget is about how much a reader takes in,
@@ -127,6 +127,12 @@ Neither cap sits flush against the current file, and a test asserts that
 honest addition gets raised reflexively, and a threshold nobody believes is a
 threshold nobody enforces. Raising one is fine — it should just be a commit that
 says why, which is exactly what the un-measured prose rule never forced.
+
+### The floor, measured
+
+A 2026-09 attempt to cut the file further found it is already at its compression floor: three passes
+over the index produced a best correct result of -0.9%, and aggressive merging produced 48 invented
+claims. → [measurements/claude-md-compression-2026-09.md](measurements/claude-md-compression-2026-09.md)
 
 ### The denominator, again
 
