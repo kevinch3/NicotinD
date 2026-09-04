@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.80](https://github.com/kevinch3/NicotinD/compare/v0.5.79...v0.5.80) (2026-09-04)
+
+### Features
+
+* **web:** draw the mosaic's lanes at random and drop the current-track tile ([#935](https://github.com/kevinch3/NicotinD/issues/935)) ([22c6063](https://github.com/kevinch3/NicotinD/commit/22c6063e3722d6f33c0d5da6afbd86c8e00499d8))
 ## [0.5.79](https://github.com/kevinch3/NicotinD/compare/v0.5.78...v0.5.79) (2026-09-04)
 
 ### Bug Fixes
