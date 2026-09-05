@@ -323,16 +323,17 @@ describe.if(ffmpegAvailable())('overwriting an existing tag (#760)', () => {
 });
 
 /**
- * `readAudioTags` reads `compilation` on the ID3 path (`TCMP`) but the
- * Vorbis/m4a branch never returned the field, so it was permanently
- * `undefined` for .flac/.ogg/.opus/.m4a.
+ * `compilation` is a Vorbis/m4a-only field: the ID3 path deliberately does not
+ * claim it, because node-id3 0.2.9 has no `TCMP` frame and both dead halves
+ * were removed rather than pretended (issue #917).
  *
- * That asymmetry is load-bearing, not cosmetic. `library-organizer.ts` guards
+ * This round-trip is load-bearing, not cosmetic. `library-organizer.ts` guards
  * its tag rewrite with `if (folderTags.compilation && !currentRaw.compilation)`
- * and documents the step as running "idempotently". With the read always
- * `undefined`, the guard is permanently true, so every organize pass re-writes
- * COMPILATION=1 — and on this family a tag write is a full ffmpeg remux of the
- * user's audio file. Opus is what the library transcodes everything into.
+ * and documents the step as running "idempotently". While this branch returned
+ * no `compilation` at all the guard was permanently true, so every organize
+ * pass re-wrote COMPILATION=1 — and on this family a tag write is a full ffmpeg
+ * remux of the user's audio file (issue #916). Opus is what the library
+ * transcodes everything into.
  */
 describe.if(ffmpegAvailable())('compilation flag round-trip (Vorbis/Opus)', () => {
   const genOpus = (name: string): string => {
@@ -367,9 +368,8 @@ describe.if(ffmpegAvailable())('compilation flag round-trip (Vorbis/Opus)', () =
     expect((await readAudioTags(genOpus('plain.opus'))).compilation).toBeFalsy();
   });
 
-  // Deliberately no mp3 case here. node-id3 0.2.9 has no TCMP frame at all, so
-  // the ID3 branch's write is a silent no-op and its read can never be true —
-  // a separate defect that needs a dependency decision, not a code fix.
+  // Deliberately no mp3 case here: ID3 compilation support was removed in #932
+  // (issue #917), not left broken. `library-organizer.test.ts` covers the mp3 side.
 });
 
 describe('featureTagsFromNative (pure)', () => {

@@ -435,11 +435,14 @@ export const MCP_TOOLS: McpTool[] = [
       return JSON.stringify({ ok: true, origin: result.origin, previous: result.previous });
     },
   },
+  // Separators mirror the scanner's own (`SEPARATORS`, genre-split.ts), so a
+  // curated genre stays a value a rescan can reproduce (issues #194, #913).
   {
     name: 'set_song_genre',
     description:
-      "Set a song's genre(s) (safe curation). Pass one genre or a ';'-separated list, primary first. " +
-      "mode 'append' (default) adds to the song's existing genres; 'replace' makes these the primary set " +
+      "Set a song's genre(s) (safe curation). Pass one genre, or a list separated by ';', ',' or " +
+      "'|', primary first — a genre name cannot itself contain one of those. mode 'append' " +
+      "(default) adds to the song's existing genres; 'replace' makes these the primary set " +
       'and keeps it that way across rescans. Audit-logged.',
     access: 'curate',
     inputSchema: {
@@ -448,7 +451,7 @@ export const MCP_TOOLS: McpTool[] = [
         songId: { type: 'string' },
         genre: {
           type: 'string',
-          description: "One genre, or a ';'-separated list with the primary genre first.",
+          description: "One genre, or a list separated by ';', ',' or '|', primary genre first.",
         },
         mode: {
           type: 'string',

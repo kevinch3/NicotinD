@@ -51,7 +51,13 @@ export type SongGenreMutateResult =
     }
   | { ok: false; error: string; status: 400 | 404 };
 
-/** Split a caller-supplied genre string into the stored list shape. */
+/**
+ * Split a caller-supplied genre string into the stored list shape. The separator
+ * set is the scanner's own (`SEPARATORS`, genre-split.ts) so a curated genre stays
+ * a value a rescan can reproduce — `append` mirrors the merged set back into the
+ * file tag, so narrowing this to ';' would only move the shatter to the next scan
+ * and leave an `& Country` fragment behind (issues #194, #913).
+ */
 export function parseGenreList(raw: string | undefined): string[] {
   return (raw ?? '')
     .split(/[;,|]/)

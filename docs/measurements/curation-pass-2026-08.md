@@ -2098,8 +2098,16 @@ library) shattered into three separate genres (`Folk`, `World`, `& Country`) ins
 one string. Root cause traced to a shared write path whose regex diverges from the MCP tool's own
 `';'-only` doc string. The 3 affected songs (2 Paco Cepero "Agua Marina" tracks, 1 Rafael Riqueni "De
 la Vera") were left with primary genre `Folk` — correct but inconsistent with sibling convention —
-since there is currently no way to pass a comma-bearing genre value through this tool. **Do not
-attempt to write a genre value containing a comma until #913 ships.**
+since there is currently no way to pass a comma-bearing genre value through this tool.
+
+**Ruled 2026-09-05, closing #913 as working-as-designed — the splitter was right and this entry's
+premise was wrong.** `parseGenreList` mirrors the scanner's own separator set on purpose, so a
+curator cannot mint a genre the next rescan would itself shatter; narrowing it to `;` would only
+move the shatter to scan time and leave the `& Country` fragment behind anyway. The doc strings
+promising `';'-only` were the defect, and they now state the real contract. `Folk, World, & Country`
+is **not** canon in this library either — it is unmapped Discogs residue, tracked as #941. So the
+three songs left on `Folk` are correct as they stand, and the standing instruction above is
+withdrawn: a genre name simply cannot contain `;`, `,` or `|`.
 
 Remaining new-arrival artists were singletons (one album, one song) with no MBID/no origin — left
 untagged per the triage rule rather than spending unbudgeted search on generic pop/flamenco names.
@@ -2134,8 +2142,9 @@ Decadente" and MIKA "Life in Cartoon Motion" failed enqueue. Ruli failing identi
 sessions suggests a real, non-transient problem (stale Lidarr album id, no candidate release, or a
 provider outage) rather than noise — worth filing if a 3rd attempt also fails.
 
-**Stopping point**: new-ingest genre lane cleared to its free-lane ceiling; #913 blocks writing any
-further comma-bearing genre value cleanly. Next session: verify the `enqueued` Tijoux/Decadentes
+**Stopping point**: new-ingest genre lane cleared to its free-lane ceiling. (#913 was read at the
+time as blocking comma-bearing genre values; it was closed working-as-designed — see the ruling
+above. A genre name cannot contain `;`, `,` or `|`.) Next session: verify the `enqueued` Tijoux/Decadentes
 albums landed, investigate the repeat Ruli/Sobrevolando failures directly (not via more retries), and
 consider `album_count_mismatch` (76 high-severity, still unexamined) or artist portraits (2,220
 missing) for the next dimension.

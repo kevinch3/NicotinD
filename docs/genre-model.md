@@ -39,6 +39,21 @@ file tags → splitGenres → library_genre_aliases → applyGenreOverride → s
 Overrides live in a side table rather than a column because `persist` **deletes and rebuilds every
 rescanned song's join rows from the file tags** — a column would be destroyed on the next scan.
 
+### A genre name cannot contain `;`, `,` or `|`
+
+`parseGenreList` (`song-genre-mutate.ts`) — behind `POST /api/library/songs/:id/genre` and the MCP
+`set_song_genre` tool — splits caller input on the same hard separators `splitGenres` does. That is
+deliberate, not drift: `append` mirrors the merged set back into the file tag, so a name the scanner
+would shatter must not be writable through the API either. Issue #913 read the split as a bug and
+proposed narrowing it to `;`; that would only move the shatter to the next rescan and leave an
+`& Country` fragment in the known-genre vocabulary. The way a separator-bearing external name enters
+is by being **canonicalized before ingest**: `mapDiscogsGenres` (`discogs-genre-vocab.ts`, #194)
+turns Discogs' `Folk, World, & Country` into `Folk` / `World` / `Country`.
+
+Two write paths do not yet hold the invariant: the `genre-audio` task writes the sidecar's Discogs
+labels without `mapDiscogsGenres` (#941), and `POST /api/library/artists/:id/genre` parses caller
+input with `splitStored`, the `;`-only *storage* decoder (#942).
+
 ### Both stores preserve what a rescan cannot resolve
 
 A file tag that is missing, junk, or dropped by the alias table states **no genre**. It is not an

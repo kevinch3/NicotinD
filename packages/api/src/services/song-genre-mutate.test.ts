@@ -59,6 +59,13 @@ describe('parseGenreList', () => {
     ]);
   });
 
+  // Issue #913 filed the comma split as a bug. Pinned as intended: Discogs'
+  // comma-bearing top-level names are canonicalized by `mapDiscogsGenres`
+  // before ingest, so this value is not one the library ever stores whole.
+  it('shatters a comma-bearing Discogs top-level name, by design', () => {
+    expect(parseGenreList('Folk, World, & Country')).toEqual(['Folk', 'World', '& Country']);
+  });
+
   it('is empty for nothing usable', () => {
     expect(parseGenreList(undefined)).toEqual([]);
     expect(parseGenreList('  ;; , ')).toEqual([]);
