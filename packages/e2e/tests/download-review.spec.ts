@@ -68,6 +68,14 @@ test.describe('download review inbox', () => {
 
     await page.goto('/downloads');
     await expect(page.getByTestId('review-inbox')).toBeVisible();
+
+    // #746: approving must not mean trusting a bare count — the card names the
+    // tracks it is asking about.
+    const tracklist = page.getByTestId('review-tracklist').first();
+    await expect(tracklist).toBeVisible();
+    await tracklist.click();
+    await expect(page.getByTestId('review-tracklist-row').first()).toBeVisible();
+
     await page.getByTestId('review-approve').first().click();
     await expect
       .poll(

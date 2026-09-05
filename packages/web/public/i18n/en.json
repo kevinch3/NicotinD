@@ -746,6 +746,7 @@
   "review.tracks": "{count} tracks",
   "review.tracksPartial": "Saved {updated}, failed {failed}",
   "review.tracksSaved": "Tracks retagged — rescanning",
+  "review.viewTracklist": "View tracklist",
   "settings.account": "Account",
   "settings.adminPanel": "Admin panel →",
   "settings.agentTokens": "Agent tokens →",
