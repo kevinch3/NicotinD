@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type APIRequestContext } from '@playwright/test';
 import { cpSync, existsSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +23,27 @@ const REVIEW_DIR = join(MUSIC, 'E2E_Review_Copy');
 // runs with workers: 1, so no other spec observes the gap).
 const SINGLE_DIR = dirname(SRC);
 const BACKUP_DIR = join(MUSIC, '..', 'e2e-single-backup');
+
+/**
+ * The review queue as the server offers it — library-global, like
+ * `/api/review/count`, so synchronize on the album under test rather than on
+ * either scalar (#854, docs/e2e.md).
+ */
+const reviewQueue = async (request: APIRequestContext, token: string) =>
+  (
+    (await (await request.get('/api/review/queue', { headers: bearer(token) })).json()) as {
+      albums: Array<{ albumId: string; albumArtist: string; albumTitle: string }>;
+    }
+  ).albums;
+
+/** The row these tests create: the copy carries the fixture single's tags, so
+ *  it quarantines under that album's identity (`albumIdFor(artist, album)`).
+ *  Matched on both fields — artist alone still picks by queue order if the
+ *  artist ever holds a second album. */
+const heldAlbum = async (request: APIRequestContext, token: string) =>
+  (await reviewQueue(request, token)).find(
+    (a) => a.albumArtist === FIXTURE.single.artist && a.albumTitle === FIXTURE.single.title,
+  ) ?? null;
 
 test.describe('download review inbox', () => {
   test.afterEach(async ({ request }) => {
@@ -54,39 +75,39 @@ test.describe('download review inbox', () => {
     // from the library while pending.
     await scanAndWait(request, token);
 
-    // pending: count > 0
     await expect
-      .poll(
-        async () =>
-          (
-            (await (await request.get('/api/review/count', { headers: bearer(token) })).json()) as {
-              pending: number;
-            }
-          ).pending,
-      )
-      .toBeGreaterThan(0);
+      .poll(async () => (await heldAlbum(request, token))?.albumId ?? null)
+      .not.toBeNull();
+    const heldAlbumId = (await heldAlbum(request, token))!.albumId;
 
     await page.goto('/downloads');
     await expect(page.getByTestId('review-inbox')).toBeVisible();
 
+    // Pin every interaction to that album, not to queue order (docs/e2e.md).
+    const heldRow = page.locator(`[data-testid="review-album"][data-album-id="${heldAlbumId}"]`);
+    await expect(heldRow).toBeVisible();
+
     // #746: approving must not mean trusting a bare count — the card names the
     // tracks it is asking about.
-    const tracklist = page.getByTestId('review-tracklist').first();
+    const tracklist = heldRow.getByTestId('review-tracklist');
     await expect(tracklist).toBeVisible();
     await tracklist.click();
-    await expect(page.getByTestId('review-tracklist-row').first()).toBeVisible();
+    await expect(heldRow.getByTestId('review-tracklist-row').first()).toBeVisible();
 
-    await page.getByTestId('review-approve').first().click();
+    // Assert the approve actually reached the server, so "a foreign album
+    // pinned the queue" and "the click was swallowed" stay distinguishable.
+    const approved = page.waitForResponse(
+      (r) => /\/api\/review\/albums\/.*\/approve$/.test(r.url()) && r.request().method() === 'POST',
+    );
+    await heldRow.getByTestId('review-approve').click();
+    expect((await approved).status()).toBeLessThan(400);
+
+    // The album under test left the queue. Deliberately NOT "the library has
+    // zero pending albums" — this test never created those and cannot control
+    // them.
     await expect
-      .poll(
-        async () =>
-          (
-            (await (await request.get('/api/review/count', { headers: bearer(token) })).json()) as {
-              pending: number;
-            }
-          ).pending,
-      )
-      .toBe(0);
+      .poll(async () => (await reviewQueue(request, token)).map((a) => a.albumId))
+      .not.toContain(heldAlbumId);
   });
 
   // #808: "Approve all" is one bulk request now — the count drops immediately
@@ -120,6 +141,9 @@ test.describe('download review inbox', () => {
     // The inbox empties without any reload — the optimistic drop + the bulk
     // response, not a 30 s poll, own the count.
     await expect(page.getByTestId('review-inbox')).toHaveCount(0, { timeout: 15_000 });
+    // The one place a library-global `pending === 0` is honest: Approve all
+    // sweeps the whole queue by design — including any foreign row, which
+    // later specs inherit as approved.
     await expect
       .poll(
         async () =>
@@ -147,31 +171,16 @@ test.describe('download review inbox', () => {
     cpSync(SRC, join(REVIEW_DIR, 'review-track.flac'));
     await scanAndWait(request, token);
 
-    // Synchronize on the album this test created, not on a library-global
-    // scalar. `/api/review/count` is COUNT(DISTINCT album_id) over the whole
-    // library and takes no album parameter, so "pending === 0" is unreachable
-    // while ANY other album is pending anywhere — and this test holds
-    // holdForReview ON library-wide for its duration, so it actively invites
-    // one. That is what produced #854's "Expected 0, Received 1".
-    const queue = async () =>
-      (
-        (await (await request.get('/api/review/queue', { headers: bearer(token) })).json()) as {
-          albums: Array<{ albumId: string }>;
-        }
-      ).albums;
-
-    // Stronger than the count it replaces: /count and /queue share one
-    // predicate behind one gate, so length === 1 implies pending === 1 AND
-    // additionally proves the row is renderable.
-    await expect.poll(async () => (await queue()).length).toBe(1);
-    const heldAlbumId = (await queue())[0]!.albumId;
+    // Identity, not `queue()[0]` — the queue is library-wide (docs/e2e.md).
+    await expect
+      .poll(async () => (await heldAlbum(request, token))?.albumId ?? null)
+      .not.toBeNull();
+    const heldAlbumId = (await heldAlbum(request, token))!.albumId;
 
     await page.goto('/downloads');
     await expect(page.getByTestId('review-inbox')).toBeVisible();
 
-    // Pin the click to that album. `.first()` depended on server ordering
-    // (loadQuarantineQueue orders by created DESC), so a foreign row could be
-    // discarded instead — and the global count would then never reach 0.
+    // Pin the click to that album, not to queue order (docs/e2e.md).
     const heldRow = page.locator(`[data-testid="review-album"][data-album-id="${heldAlbumId}"]`);
     await expect(heldRow).toBeVisible();
     // Assert the discard actually reached the server. Without this, "a foreign
@@ -186,7 +195,7 @@ test.describe('download review inbox', () => {
     // The album under test is gone. Deliberately NOT "the library has zero
     // pending albums" — this test never created those and cannot control them.
     await expect
-      .poll(async () => (await queue()).map((a) => a.albumId))
+      .poll(async () => (await reviewQueue(request, token)).map((a) => a.albumId))
       .not.toContain(heldAlbumId);
 
     // The held file is gone from disk, and the discard is scoped to the held

@@ -108,6 +108,25 @@ same PR that hit it.
   content assertions to fixtures the spec created or the shared `FIXTURE`
   constants.
 
+- **`/api/review/count` and `/api/review/queue` are library-global.** Neither takes
+  an album parameter, while both hold-for-review specs turn `holdForReview` on
+  *library-wide* — so one foreign quarantined album anywhere makes `pending === 0`
+  unreachable and pins the poll at 1. That is issue #854's "Expected 0, Received 1".
+  Synchronize on the album under test (match `albumArtist` **and** `albumTitle` off
+  `FIXTURE`), never on the global scalar, and never take `queue()[0]` — the queue is
+  `created DESC`, so index 0 is whoever landed last.
+
+- **A barrier on a shared endpoint must say *whose* response it is waiting for.**
+  `waitForResponse` resolves on the first URL match, so when a page-level loader and
+  a modal fetch the same route, the naive barrier armed just before the click is
+  satisfied by the *page's* request while the modal's is still in flight — a barrier
+  that waits for something that already happened. The artist page and its genre-fix
+  modal both `GET /artists/:id/genre-distribution` (issue #905). Let the page's copy
+  land first, then arm the modal's; where two one-shot loads gate one assertion,
+  await them with `Promise.all` so a timeout on the first does not leave the second
+  rejecting unawaited. Keep each barrier's timeout **under** the 30 s per-test
+  budget or it can never fire and name itself.
+
 - **`page.route` does not intercept service-worker-initiated requests, so an
   abort silently stops working once the SW takes control.** The app registers
   `ngsw-worker.js`, and after boot it controls the page's fetches. A spec that
