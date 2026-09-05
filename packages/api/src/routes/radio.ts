@@ -22,6 +22,28 @@ import { recordingKey } from '../services/recording-identity.js';
 import { songFilterWheres } from '../services/library-filter-sql.js';
 import { seedCentroid, type OrderableRow } from '../services/playlist-recipe.js';
 import { isRealGenre } from '../services/genre-split.js';
+import { loadDescriptors, type DescriptorFeatures } from '../services/descriptor-store.js';
+import { descriptorBlocks, meanBlock, type DescriptorBlocks } from '../services/descriptor-axes.js';
+
+/**
+ * Descriptor blocks for one song (formula v5, issue #642), attached the way
+ * embeddings are — after the pool is built, never through `RADIO_SONG_SELECT`
+ * / `toOrderable`: the side table is what spares every new axis the 13-step
+ * column checklist. A song with no row gets no blocks and skips the axes.
+ */
+function blocksFor(descriptors: Map<string, DescriptorFeatures>, id: string): DescriptorBlocks {
+  const f = descriptors.get(id);
+  return f ? descriptorBlocks(f) : {};
+}
+
+/** The station/list "seed" for the descriptor axes: the centroid of the members that carry blocks. */
+function centroidBlocks(members: readonly DescriptorBlocks[]): DescriptorBlocks {
+  return {
+    timbre: meanBlock(members.map((m) => m.timbre)),
+    groove: meanBlock(members.map((m) => m.groove)),
+    bands: meanBlock(members.map((m) => m.bands)),
+  };
+}
 
 /**
  * Pool floor: tracks under this length are never radio candidates - intros,
@@ -479,12 +501,15 @@ export function buildSeedRadio(
     ? loadEmbeddings(db, [seedRow.id, ...candidates.map((r) => r.id)], model)
     : new Map<string, Float32Array>();
   seed.embedding = embeddings.get(seedRow.id);
+  const descriptors = loadDescriptors(db, [seedRow.id, ...candidates.map((r) => r.id)]);
+  Object.assign(seed, blocksFor(descriptors, seedRow.id));
 
   const pool: RadioCandidate[] = attachRecency(
     db,
     candidates.map((r) => ({
       ...toFeatures(r),
       embedding: embeddings.get(r.id),
+      ...blocksFor(descriptors, r.id),
       _row: r,
     })),
     opts.userId,
@@ -571,12 +596,15 @@ export function buildListRadio(
   const model = dominantEmbeddingModel(db, seedIds);
   const embeddings = loadEmbeddings(db, [...seedIds, ...candidates.map((r) => r.id)], model);
   seed.embedding = meanEmbedding(seedIds.map((id) => embeddings.get(id))) ?? undefined;
+  const descriptors = loadDescriptors(db, [...seedIds, ...candidates.map((r) => r.id)]);
+  Object.assign(seed, centroidBlocks(seedIds.map((id) => blocksFor(descriptors, id))));
 
   const pool: RadioCandidate[] = attachRecency(
     db,
     candidates.map((r) => ({
       ...toFeatures(r),
       embedding: embeddings.get(r.id),
+      ...blocksFor(descriptors, r.id),
       _row: r,
     })),
     opts.userId,
@@ -722,6 +750,18 @@ export function buildFilterRadio(
         pool.map((c) => ({ affinity: c.stationAffinity ?? 0.5, embedding: c.embedding })),
       ) ?? undefined;
   }
+
+  // Descriptor blocks (formula v5): attached per member, and the station's
+  // descriptor "seed" is the plain centroid of the members that carry them.
+  // Not affinity-weighted like the embedding anchor — that weighting was
+  // measured inert for embeddings (docs/measurements/radio-stations-2026-08.md),
+  // so it is not assumed to help here.
+  const descriptors = loadDescriptors(
+    db,
+    poolRows.map((r) => r.id),
+  );
+  for (const c of pool) Object.assign(c, blocksFor(descriptors, c._row.id));
+  Object.assign(seed, centroidBlocks(pool.map((c) => blocksFor(descriptors, c._row.id))));
 
   const ranked = rankCandidates(seed, pool, { count, maxPerArtist: 2, weights: opts.weights });
   return { seed, pool, ranked };

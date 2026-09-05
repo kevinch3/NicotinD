@@ -853,6 +853,29 @@ used — the version is the human/grouping label, not the ground truth.
   worst seed scenario's seed still carries the junk genre "Music" on prod, so
   the two identity axes were blind — no weight change fixes a mistag.
 
+- **v8** (2026-09-05, issue #642): three composite descriptor axes — timbre
+  (21 z-scored MFCC/spectral values, cosine, weight 6), groove (8 z-scored
+  beat/onset statistics, cosine, weight 5) and spectral balance (6 band shares,
+  `1 - L1/2`, weight 3). The blend had no axis for what the drums do or where
+  the spectral energy sits, so two tracks at the same bpm tied there.
+  `descriptorBlocks` splits a `library_song_descriptors` row into the three
+  blocks by name; `blockCosineCloseness` and `spectralBalanceCloseness` score
+  them; `DESCRIPTOR_NORM` holds the z-score constants, measured from this
+  library by `measure-descriptor-stats.ts` rather than assumed. A candidate
+  with no descriptors skips all three axes, as every un-analysed candidate
+  always has.
+
+  **The weights are priors, not measurements.** No poll has graded them: the
+  v1–v7 snapshots carry no descriptor blocks, so none of the accumulated votes
+  can grade v8, and `evaluatePollAgreement` will report nothing for it until a
+  v8 poll is run. That is the next step, and 6/5/3 should be treated as a
+  starting point rather than a result.
+
+  This work branched as **v5** and the comment in `radio.service.ts` said so;
+  v5, v6 and v7 all shipped underneath it while it sat unrebased. A formula
+  that adds three axes must not pool its votes with any of them, so it takes
+  the next free number instead of the one it reserved.
+
 Measure any weight idea against the accumulated votes before shipping it:
 
 ```bash
