@@ -179,6 +179,11 @@ and `recordAudit` stay caller-side, matching `deleteOne` / `mutateArtistIdentity
 clobbers a set a human curated; `replace` writes the durable song-scoped
 override.
 
+The `genre` argument is split on `;`, `,` and `|` — the scanner's own separators,
+so a curated genre is always a value a rescan can reproduce, and a genre name
+therefore cannot contain one of them. The tool description promised `;`-only
+until issue #913 corrected it. → [genre-model.md](genre-model.md)
+
 Extracting it surfaced **issue #681**: the artist-scoped genre route has always
 called `recordAudit(…, 'artist.genre', …)` and the song-scoped one called nothing
 at all, so every per-song genre edit a curator made through the web UI was

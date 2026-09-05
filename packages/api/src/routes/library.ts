@@ -2219,7 +2219,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json(result);
   });
 
-  // Apply a genre (or ';'-separated genre LIST, primary first) to a song
+  // Apply a genre (or a LIST separated by ';', ',' or '|', primary first) to a song
   // (admin): writes the full set to the file tag + library_song_genres, mirrors
   // the primary into library_songs, and refreshes library_genres counts so
   // search/grouping reflect it immediately.
