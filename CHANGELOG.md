@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.81](https://github.com/kevinch3/NicotinD/compare/v0.5.80...v0.5.81) (2026-09-05)
+
+### Features
+
+* **radio:** score timbre, groove and spectral balance as formula v8 ([#937](https://github.com/kevinch3/NicotinD/issues/937)) ([a177d38](https://github.com/kevinch3/NicotinD/commit/a177d38235c3ee5e608e5b5111ba696c5ffa45c0)), closes [#642](https://github.com/kevinch3/NicotinD/issues/642), references [#640](https://github.com/kevinch3/NicotinD/issues/640) [#641](https://github.com/kevinch3/NicotinD/issues/641)
+* **web:** show which tracks landed and which failed, not just how many ([#938](https://github.com/kevinch3/NicotinD/issues/938)) ([f61fb30](https://github.com/kevinch3/NicotinD/commit/f61fb3081adf1cd5b9b2a61f4c29fb72a69495d8)), closes [#746](https://github.com/kevinch3/NicotinD/issues/746), references [#745](https://github.com/kevinch3/NicotinD/issues/745) [#752](https://github.com/kevinch3/NicotinD/issues/752)
 ## [0.5.80](https://github.com/kevinch3/NicotinD/compare/v0.5.79...v0.5.80) (2026-09-04)
 
 ### Features
