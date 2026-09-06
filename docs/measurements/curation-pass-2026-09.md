@@ -796,3 +796,38 @@ root cause, plus what is ruled out: not reserved-path staging, not Unicode norma
 files stayed orphaned), and **not format-specific** — orphan rate is opus 3.24%, m4a 3.10%,
 mp3 1.30%. That last one corrects an impression: the first two listings I read were
 opus-heavy and I nearly wrote it up as an opus problem. It is not.
+
+### Twelfth stretch — titleMismatch is a deluxe-edition artefact; 8 name fixes landed
+
+Worked `titleMismatch` (41), the last unexamined completeness dimension. Its worst entry —
+Motörhead *Another Perfect Day*, expected 34 / on disk 35 / **unmatched 27** — is not a defect:
+the local copy is the **40th Anniversary deluxe edition** (base album as "40th Anniversary
+Master", B-sides, demos, and a complete Hull City Hall 1983 live set). Lidarr's tracklist is
+the standard edition, so 27 titles have nothing to match against. Same predicate shape as
+#947 and #954: the count is not a workload.
+
+Two genuine defects fell out of reading it, though:
+
+**A duplicate at track 30** — `Shine (Live at Hull City Hall / June 22nd, 1983)` and
+`Shine (Live at Hull City Hall, 22/6/1983)`, same track number, differing only in punctuation
+and genre tag. That is the on-disk-35-vs-expected-34 discrepancy, and it belongs to #951.
+
+**A trailing space in the album name**, `"Another Perfect Day "`. Probing for that shape found
+it is systematic: **13 album names, 2 artist names and 63 song titles** carry leading, trailing
+or doubled whitespace.
+
+**Landed 8 album-name fixes** with `fix_album_metadata` — `"Another Perfect Day "` (35 songs),
+`"Low "` -> `Low` (David Bowie, 17), `"La negra tiene tumbao  (Mp3)"` -> `La negra tiene tumbao`
+(Celia Cruz, 7), `"Spiritual Milk "`, `"Can't Shake It Loose "`, `"Open Our Eyes "`,
+`"Me Vas a extrañar (en vivo)  Feat…"`, and `"Don Omar ❌  Tego Calderon | Bandolero"` ->
+`Bandolero`. Verified: **13 -> 5**, and the 5 survivors are deliberate skips (one placeholder
+name, four YouTube video titles belonging to the watermark family).
+
+**Filed [#956](https://github.com/kevinch3/NicotinD/issues/956)** for the one surface where the
+same fix is unreachable. `merge_artist` cannot correct a whitespace-only display name: it
+trims `rawName` before the equality check, so the call fails with *"mergeInto must be a
+different artist name"* — and the failure echoes `rawName` back **already trimmed**, which is
+the tell. No spelling of the request can express it. The catalogue is not split
+(`normalizeArtistForGrouping` folds the whitespace), so this is cosmetic — but the album-side
+equivalent was fixable and artists are unreachable for an incidental reason. The `rename`
+decision in `artist-identity-mutate.ts:66` already does exactly this; MCP just never exposes it.
