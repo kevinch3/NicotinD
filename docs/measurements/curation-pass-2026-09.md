@@ -1037,3 +1037,40 @@ tracks corroborate it") held up again here — it correctly rejected all 69 coin
 prefixes and accepted the three real ones. What failed last time was a whitespace assumption
 inside the query, and I had recorded the rule as validated on the strength of that query. A
 probe's boundary conditions deserve the same scrutiny as its logic.
+
+### Nineteenth stretch — sanity checks: truncated years, and genre bloat
+
+Ran three sanity probes that no rule covers.
+
+**Truncated years — 4 albums, 3 fixed.** Not *missing* years but *mangled* ones, digits lost:
+`year=20` (Gotye, *Making Mirrors* -> **2011**), `year=200` (The Chemical Brothers,
+*We Are The Night* -> **2007**), `year=706` (Black Eyed Peas, *Monkey Business* -> **2005**).
+69 songs corrected. Left `year=199` on Raffaella Carrà's *Raffaella / Forte, Forte, Forte /
+Liebelei* — it is a three-album compilation and `199` could be a truncated 199x reissue or a
+mangled 1976; guessing a decade is exactly what the playbook says to replace with a search.
+
+Worth noting these are invisible to `missing_year`, which tests `year IS NULL OR year <= 1`.
+A year of 706 is present and positive, so it passes — the rule asks "is a year set?", not "is
+this a year?".
+
+**Durations**: 0 songs at or under 2s, 16 over an hour. The long ones are genuine livestream
+recordings (`Live at Sidney Myer Music Bowl`, 8.6 h). No defect.
+
+**Genre bloat — filed [#960](https://github.com/kevinch3/NicotinD/issues/960).** Mean genres
+per song is **2.65**, but **1,036 songs carry more than 8**, 51 carry more than 20, and the
+worst carries 33. Skrillex's *Rumble* is a dubstep track tagged `Screamo`, `Rock` and
+`Country`; Beyoncé's *Halo* is tagged `Country` and `House`.
+
+The harm is provable rather than aesthetic, and it is an interaction between two correct
+things. `expandGenreWhere` (`curated-playlists.ts:234`) deliberately matches the **full**
+genre set — its comment says matching `s.genre` alone "would silently drop secondary-genre
+matches", which is right for a 2-3 genre song. For the 1,036-song tail it inverts: a 25-genre
+song satisfies nearly every genre filter, so it surfaces in a Country station, a House station
+and a Rock station alike. And because heavily-tagged songs are usually *popular* songs, the
+tail is over-represented in selection rather than randomly spread.
+
+Recommended fix is to bound the **matching** set rather than the stored one — have
+`GENRE_SET_EXPR` consider the first N positions (N=5 covers 94.6% of songs entirely), keeping
+every genre for display. Explicitly did **not** mass-edit the 1,036 songs: truncating stored
+sets by hand would discard real information and could not be reviewed; the defect is in how
+the set is used, not in the data.
