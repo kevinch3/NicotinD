@@ -1169,3 +1169,42 @@ failure. Inventing a title would be worse than leaving it. And *Mi tierra* track
 flag #21.
 
 Verified **7 -> 5**, where all five survivors are decisions rather than remaining work.
+
+### Twenty-third stretch — an invisible split, and the #787 guard proving itself
+
+Generalised the La Portuaria finding: checked all **620** `library_metadata_overrides` against
+their songs' tags. 97 disagree on artist and **87 point at an album that no longer exists**
+(dead overrides, cruft). But most of the 97 are not defects — `Astor Piazzolla` vs
+`Astor Piazzolla & Horacio Ferrer` (Ferrer wrote the libretto), `Ratones Paranoicos, Andrés
+Calamaro` — album artist and song artist *should* differ on a featured track.
+
+Refining to the real class — the same artist under two spellings **inside one album** —
+surfaced accent and casing splits (`Fito Paez`/`Fito Páez`, `ABBA`/`Abba`,
+`Deadmau5`/`deadmau5`, `Rafaga`/`Ráfaga`) and one that stopped the pass:
+
+```
+"The Don" — Donny Benét
+     "Donny Benét"×7   vs   "Donny Benét"×1
+```
+
+Visually identical. It is a **Unicode normalisation split**: 7 songs stored NFD, 1 NFC. A
+column-wide check found 16 song artists, 4 titles and 3 artist rows not in NFC — Rosalía was
+split 8 NFD / 4 NFC the same way.
+
+**Checked the obvious fear before writing it up, and it does not happen**:
+`normalizeArtistForGrouping` folds the two forms, so Donny Benét's 8 songs sit under one
+artist row and Rosalía's 59 under one. Not a catalogue split — a latent hazard for anything
+comparing strings *exactly*, which is invisible in every log and UI. macOS normalises to NFD,
+which explains a single album split between forms rather than a whole artist.
+
+**Normalised all 20 rows** (verified: songs 16 -> 0, titles 4 -> 0, album names 2 -> 0) and
+**filed [#961](https://github.com/kevinch3/NicotinD/issues/961)** for the mechanism — one
+`.normalize('NFC')` at the scanner's tag-read boundary, plus a check, since hand-fixing rows
+does nothing about the next Mac-sourced ingest.
+
+**The #787 guard has shipped, and it caught me.** Sending `Anyma &amp; Rebūke` was rejected
+with *"contains the HTML entity `&amp;`. Send the bare character."* That is precisely the
+mistake that previously created a literal `Wisin &amp; Yandel` row. The curation skill and
+docs still describe this guard as *proposed* — it exists, it works, and per the skill's own
+maintenance rule ("closing an issue means pruning this file in the same pass") that line is
+now due for an update rather than being carried as live advice.
