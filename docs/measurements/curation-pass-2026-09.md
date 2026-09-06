@@ -1408,3 +1408,41 @@ reggaeton artists) is now `Various Artists` / `compilation`. The 46 credits on t
 compilations stand — those albums are correctly attributed to Luny Tunes, and **no MCP tool can
 remove a single credit** from `library_song_artists`, so a curation session can find all 56 and
 repair none.
+
+### Twenty-ninth stretch — the check generalised, and a correction to my own issue
+
+Ran the discriminator proposed in #963 across the library: artists with >=3 credits whose
+credited songs **never name them** in their own artist string. **One hit, and it is a false
+positive** — `Pete Tong, The Heritage Orchestra & Jules Buckley` vs
+`Pete Tong, Jules Buckley & The Heritage Orchestra`: the same three acts in a different order,
+which a substring test cannot see. So IPAUTA was singular rather than the first of a class.
+
+**But IPAUTA should have appeared in that run, and did not** — which is the useful part.
+Checking instead of accepting the empty result:
+
+```
+IPAUTA artist row: GONE
+songs still under an IPAUTA/ folder path: 46
+IPAUTA-folder songs with NO credits: 0 / 46
+```
+
+Correcting the single `IPAUTA`/`IPAUTA` album row cascaded: the rescan removed the **whole**
+artist row and all 56 credits, not the 10 I targeted. **Posted a correction to
+[#963](https://github.com/kevinch3/NicotinD/issues/963)** — its body claims the 46 were
+untouched and that a curation session "can identify all 56 and repair none", and both are now
+wrong. An album-level correction *can* clear credits; it just cannot do so selectively.
+
+**A separate question surfaced by the new state, flagged not filed.** The 46 songs are now
+credited to **Luny Tunes** — the compilation's real producer, a clear improvement on a download
+site — but their own artist strings are absent from the credit list:
+
+```
+"Métele sazón"   tag "Tego Calderón"   credits: "Luny Tunes"
+"Aventura"       tag "Wisin & Yandel"  credits: "Luny Tunes"
+```
+
+On a compilation, `library_song_artists` holds the *album* artist and not the *track* artist,
+so a search for Daddy Yankee will not surface his track on *Más Flow*. Whether that is
+intended is a design question, so it went as a comment on #963 rather than a second issue —
+filing a defect against behaviour that may be deliberate is how false worklists start, which
+is the same mistake #947 and #954 encode.
