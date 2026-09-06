@@ -831,3 +831,38 @@ the tell. No spelling of the request can express it. The catalogue is not split
 (`normalizeArtistForGrouping` folds the whitespace), so this is cosmetic — but the album-side
 equivalent was fixable and artists are unreachable for an incidental reason. The `rename`
 decision in `artist-identity-mutate.ts:66` already does exactly this; MCP just never exposes it.
+
+### Thirteenth stretch — 63 song titles normalised
+
+Worked the lane the previous stretch surfaced but did not finish: **63 song titles carrying
+leading, trailing or doubled whitespace**, fixed with `fix_song_metadata` (title only; the
+tool never moves or renames the file, so ids, likes, playlists and history stay pointed at
+the same song).
+
+This is functional, not cosmetic. Exact-title comparison is what
+`completeness`/`titleMismatch` and the duplicate fold both rely on — the Motörhead album's
+"on disk 35 vs expected 34" was partly this class of noise. A trailing space makes a title
+unequal to itself.
+
+Biggest clusters: Pink Floyd *The Wall* ×13, Madonna *Confessions* ×11, Buena Vista Social
+Club alternate takes ×8, Chayanne ×5, Don Omar ×3, Tash Sultana ×3, Funkadelic ×2, Billie
+Eilish ×2. Two got more than a trim, where the surrounding evidence was already settled this
+pass: `Don Omar ❌  Tego Calderon | Bandolero` -> `Bandolero` (matching the album row fixed in
+the previous stretch), and ` OUT NOW` -> `OUT NOW`.
+
+**Verified by read-back rather than by the tool's own field** — `fix_song_metadata` returned
+`verified: true` on all 63, and per #865 that is not proof:
+
+| | before | after |
+| --- | --- | --- |
+| `library_songs.title` | 63 | **0** |
+| `library_albums.name` | 5 | **1** |
+| `library_artists.name` | 2 | 2 |
+
+The album count fell further than the 8 rows written in the previous stretch, because album
+names are **derived from the songs' tags** — normalising the titles cleaned four album names
+for free (the three Tash Sultana video titles and the MTV Unplugged one). Worth knowing for
+sequencing: fix song titles first, and some album-name defects resolve themselves.
+
+The single remaining album name (`E D I T A R  Singles`) is a placeholder, and the two artist
+names are the ones blocked by **#956**.
