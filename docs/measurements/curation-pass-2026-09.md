@@ -1446,3 +1446,35 @@ so a search for Daddy Yankee will not surface his track on *Más Flow*. Whether 
 intended is a design question, so it went as a comment on #963 rather than a second issue —
 filing a defect against behaviour that may be deliberate is how false worklists start, which
 is the same mistake #947 and #954 encode.
+
+### Thirtieth stretch — answering my own open question, and withdrawing it
+
+Last stretch I flagged that *Más Flow* songs are credited to `Luny Tunes` rather than their own
+track artists, and wondered aloud whether a Daddy Yankee search would miss his track. Rather
+than leave that sitting in a tracker, I answered it.
+
+**It is deliberate**, documented at the write site (`library-scanner.ts:618`):
+
+> `library_song_artists` means *confirmed performers*, so it must never be the door a compound
+> sneaks an artist row in through. `splitCredits` is confirmation-gated… an unsplit credit that
+> is not already the owner falls back to the owner. Nothing is lost: the verbatim credit still
+> lives in `library_songs.artist`.
+
+The rationale is #817 — linking an unconfirmed compound mints phantom artist tiles, up to 13
+for *Unshakable* alone.
+
+**And the mitigation is real.** Instead of more code archaeology I tested the behaviour:
+searching `Daddy Yankee` returns `Cojela Que Va Sin Jockey`. Search reads the verbatim artist
+string, so the credit table falling back to the owner costs nothing where it would have
+mattered.
+
+**Withdrew the concern on #963** rather than leaving an unfounded worry on the issue. Worth
+naming the pattern, because it is the third time this pass: a shape that looks wrong from the
+data alone (`orphan_artist`'s 485, the dangling `artist_id`s, this) turns out to be deliberate,
+and the deciding evidence was a comment written next to the code or a two-minute behavioural
+test — never the data. **Reading the row and reading the intent are different acts, and only
+one of them can tell you a thing is broken.**
+
+The cheap habit that keeps paying: when a query suggests a defect, spend one call testing the
+*behaviour* before writing anything down. It settled this in a single `search_library` call
+after several greps had not.
