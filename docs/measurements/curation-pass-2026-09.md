@@ -522,3 +522,61 @@ correct fingerprint cluster. So: **`recordingId` equality between two files is r
 artist/title AcoustID attaches to that recording is a weaker, separate claim.** Irrelevant
 to dedupe, critical to anything that pipes `identify_song` into `fix_song_metadata` —
 auto-applying here would have retagged Lenny Kravitz as Metro Station.
+
+### Sixth stretch — years and truncated-name fragments, 18 writes
+
+Deliberately picked a lane that **lands changes** rather than findings.
+
+**`missing_year` 191 -> 184.** Most of the worklist is the trap the playbook names: a
+one-song "album" named after a *compilation* the track appeared on (`Now 4`,
+`The Fast And The Furious OST`, `XTC Trax 6`, `The Non-Stop Party Album 2`). Dating those
+from the title dates the compilation, not the recording, so they were skipped. Checked
+`get_album_tracks` on every candidate first and wrote only where the track genuinely
+belongs to that release:
+
+| album | year | corroborating track |
+| --- | --- | --- |
+| Soda Stereo — SEP7IMO DIA | 2017 | *Un millón de años luz* (trk 13) |
+| Ricky Martin — Música + alma + sexo | 2011 | *Más* |
+| Paulina Rubio — Gran City Pop | 2009 | *Causa Y Efecto* |
+| Paulina Rubio — Border Girl | 2002 | *Si Tú Te Vas* (the Spanish *Don't Say Goodbye*) |
+| Wisin & Yandel — Líderes | 2012 | *Algo Me Gusta De Ti* |
+| Luis Miguel — El concierto | 1995 | *Será Que No Me Amas* |
+| "Paulina" — Gran City Pop | 2009 | *Ni Rosas Ni Juguetes* |
+
+Skipped **Thalía — "Greatest Hits"**: a generic title reused across labels and years, so a
+confident-sounding guess is exactly what the playbook says to replace with a search.
+
+**A third fragment shape, found from the years lane rather than an audit rule.** "Paulina"
+(2 songs) is a *truncation* of "Paulina Rubio", and both its tracks are confirmed Gran City
+Pop songs — one already sitting in Paulina Rubio's own album row. `fragmented_artist` cannot
+see this: it looks for comma-extended names, and a truncation extends nothing.
+
+**Probing that shape**: artist rows that are a strict prefix of another artist row. Like the
+concatenation probe, dominated by legitimate names — `X & Y` collaborations, jazz
+`X Trio`/`Quartet`/`Quintet`, tango `X y su Orquesta`. But three real classes fell out, and
+**10 more artist rows merged**:
+
+- **Tango orchestra variants** (3): `Juan D'Arienzo and his Orchestra`, `Francisco Lomuto y
+  su Orquesta Típica`, `Ricardo Tanturi y su Orquesta Típica Los Indios`. Not a judgement
+  call — `library_artist_aliases` already holds **12** owner-made rows of exactly this shape
+  (Di Sarli ×3, Canaro ×2, Fresedo ×2, Pugliese, Biagi, D'Agostino, Donato ×2, Gobbi,
+  Demare). These were simply the unfolded remainder of an established ruling.
+- **"Artist - Track" listing lines** (2): `Pappo's Blues - Tumba (Cementerio)`,
+  `Fatoumata Diawara - Wililé` — same class as the `djset_artist` rows merged earlier.
+- **YouTube video titles as artists** (5): `Tash Sultana Live`, `Tash Sultana x PlayStation`,
+  `Tash Sultana - Mystik (Live on The Sound` (truncated mid-parenthesis),
+  `Tash Sultana - LIVE Stream at Sidney Myer Music Bowl`,
+  `Tash Sultana - Live Stream Performance`. Same source family as the 5 Tash Sultana
+  watermark albums still awaiting deletion.
+
+**Verified**: all 11 merged-away rows confirmed absent, artists 3543 -> 3530,
+`missing_year` 184, Tash Sultana consolidated to one row.
+
+**Pattern worth naming.** Three separate fragment shapes have now been found — comma
+extension (`fragmented_artist` catches it), no-separator concatenation, and truncation —
+and the last two were each found by a *different* lane, not by the audit. The generalisable
+discriminator across all three is not string similarity but **"does the candidate's other
+half already exist as an artist row, and do the tracks corroborate it"**. String-shape
+detectors alone measured ~2.5% precision on the concatenation probe and are similarly noisy
+here; the shared-context test is what separates a fragment from a real distinct act.
