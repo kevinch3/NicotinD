@@ -1644,3 +1644,30 @@ is the compound-splitting judgement (#817's family), not the visibility rule. I 
 such instead of counting it as evidence for the inversion, because folding two different
 defects into one number is how a count stops being a workload — the same failure #947, #952
 and #954 all encode.
+
+### Thirty-fifth stretch — auditing this pass's own damage, and retiring a stale caution
+
+#874 closed with a workaround still carried in the curation notes: *"a bulk MCP retag needs a
+full library sync after it, or it leaves orphan album rows."* This pass was an unintentionally
+good stress test — roughly **180 metadata writes and 45 `merge_artist` calls**, many re-minting
+an `album_id` (every artist rename re-buckets; several album renames returned a new id
+outright, e.g. `"La negra tiene tumbao  (Mp3)"` -> `La negra tiene tumbao`) — and **no manual
+sync was run at any point.**
+
+| | |
+| --- | --- |
+| album rows with zero songs | **0** (of 6,924) |
+| artist rows with no songs, no credits and no albums | **0** |
+
+The incremental retag path cleans up after itself, including under repeated id re-minting.
+**Posted to [#874](https://github.com/kevinch3/NicotinD/issues/874)** and retired the
+workaround from the notes, per the skill's own rule that closing an issue means pruning its
+line in the same pass — a workaround kept past its fix teaches distrust of a surface that no
+longer lies.
+
+Two things worth separating in how this was done. First, it is a **self-audit**: the question
+was not "is the codebase healthy" but "did my own 225 writes leave wreckage", and asking it
+that way is what made the zero meaningful. Second, the same shape paid out earlier this pass —
+checking whether my merges were stranding artist rows is what surfaced #954, because the answer
+was *no, but the rule that reports them is 100% wrong*. **Auditing your own changes tends to
+find defects in the thing that measures them.**
