@@ -904,3 +904,37 @@ The proposed `watermark_title` rule must **not** join `DELETABLE_RULES` — a wa
 on real audio is a retag, never a delete (#705's "junk metadata is not junk audio", sharper
 here). The Tash Sultana clips are the contrast case: junk *content*, already covered by
 `watermark_album`, where deleting is right and retagging is pointless.
+
+### Fifteenth stretch — feature credits in the artist field, and two false credits
+
+Probed for feature credits inside artist names. **Zero at the artist-row level** — `splitArtists`
+already folds them — but **11 distinct song-level `library_songs.artist` strings** carried one,
+4 of them malformed (`ft.` with no space), all Gwen Stefani, splitting one album across five
+artist strings.
+
+Applied the rule established in the Natiruts case: *fold to the base artist when the credit
+survives in the title; keep the compound when it does not.* Here the titles carried nothing,
+so the credit had to be moved into the title rather than dropped.
+
+**Corroborating each against the track found two false credits** — which is the entire reason
+the standing rule exists:
+
+| song | tagged | verdict |
+| --- | --- | --- |
+| Rich Girl | ft. Eve | correct |
+| Yummy | ft. Pharrell | correct |
+| Now That You Got It | ft.Damien Marley | correct, but misspelled (*Damian*) and the title was truncated mid-word (`(Radio Ed`) |
+| **Early Winter** | ft.Akon | **false** — a solo track, co-written with Tim Rice-Oxley |
+| **Can I Have It Like That** | ft.Akon | **false** — the recording is *Pharrell* ft. Gwen Stefani |
+
+Written: three credits moved into the title with the artist normalised to `Gwen Stefani`
+(fixing the *Damian* spelling and the truncated title in the same call), and two false Akon
+credits removed. Verified **11 -> 7**; the seven survivors are well-formed `feat. X` compounds
+on real collaborations and are deliberately left.
+
+**Raised flag #20** rather than guessing on *Can I Have It Like That*. Removing the false Akon
+credit was unambiguous, but the recording properly belongs to Pharrell's *In My Mind* (2005) —
+re-attributing it would move the track out of the Gwen Stefani compilation it sits in. That is
+a collection-shape decision, not a metadata fix, so it goes to a human. The distinction is
+worth keeping: *"this credit is wrong"* and *"this song is filed under the wrong artist"* are
+different claims, and only the first was provable from the track.
