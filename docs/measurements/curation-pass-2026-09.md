@@ -1704,3 +1704,49 @@ produced more than three times as many genre decisions as Discogs has.**
 Posted to [#191](https://github.com/kevinch3/NicotinD/issues/191). Nothing reopened — the
 integration works and the residual gap is 104 songs of 19,217. The placeholder report is the
 only loose end, and it is loose in docs rather than in code.
+
+## Session close-out — 2026-09-06, 36 stretches
+
+Final `get_library_health` re-run, compared against the baseline taken at the start.
+
+| dimension | baseline | final | note |
+| --- | --- | --- | --- |
+| artists | 3,560 | **3,523** | −37; ~45 rows merged away, rest is churn |
+| albums | 6,933 | 6,924 | |
+| songs | 19,080 | 19,217 | **not growth** — rescan re-mints ids (`sha1(path)`) |
+| audit high | 143 | **86** | almost entirely `album_count_mismatch` 134 → 77 |
+| audit medium | 4,780 | 4,752 | ~99% is noise (#952, #954) |
+| genres missing | 190 | **170** | denominator also moved 18,987 → 19,217 |
+| years missing | 191 | **184** | |
+| covers missing | 4,276 | 4,266 | ~2,859 of these already render (#952) |
+| hidden albums | 6 | **5** | *Coolio.com* restored |
+| open review flags | 0 | **3** | #19 b2b credit, #20 Pharrell attribution, #21 Glenn Miller |
+
+**What I will not claim.** The headline `audit high` drop is `album_count_mismatch` settling on
+its own — the playbook says so explicitly (#774) and it would be dishonest to bank it. Nor is
+the genre delta cleanly mine: the denominator grew by 230 in the same window. The numbers I
+*can* stand behind are the ones re-measured against their own rule inside each stretch:
+
+| class | before | after |
+| --- | --- | --- |
+| `fragmented_artist` | 6 | **2** (both deliberate keeps) |
+| artist spelling clusters, library-wide | 42 | **0** |
+| whitespace in titles / album names | 63 / 13 | **0 / 1** |
+| watermark titles | 15 | **5** (the 5 are promo clips) |
+| "Various Artists" misattribution | 30 | **15** (15 left deliberately) |
+| `djset_artist` | 2 | **1** (flagged) |
+| non-NFC text rows | 20 | **0** |
+| orphan album rows after 225 writes | — | **0** |
+
+**Writes: ~327.** Genres 32, song metadata ~110, album metadata 30, artist merges ~45, covers
+30, classifications 7, flags 3.
+
+**Issues filed: 16** — #946, #947, #949–#963. Four are predicate defects of one shape (a rule
+answering a cheaper question than its name claims): #947, #952, #954, and the `titleMismatch`
+finding. Two are capability gaps (#949, #956). One is a real data leak (#725's 13.19 GB).
+
+**Pending items closed or corrected: 6** — #851 and #720 re-measured and confirmed, #874's
+workaround retired, #687 confirmed, #191 answered retrospectively, #864 scoped down.
+
+**Still requiring a human**: the 5 watermark deletes (blocked by the session's permission
+classifier), 3 open flags, 16 genre-alias rows (#949), and the 13.19 GB in `.downloads/`.
