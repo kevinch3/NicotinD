@@ -866,3 +866,41 @@ sequencing: fix song titles first, and some album-name defects resolve themselve
 
 The single remaining album name (`E D I T A R  Singles`) is a placeholder, and the two artist
 names are the ones blocked by **#956**.
+
+### Fourteenth stretch — title pollution, 15 fixes, filed #957
+
+Probed song titles for source watermarks, YouTube suffixes and "Artist - Title" prefixes —
+a class no audit rule covers.
+
+**Watermarks in titles (10 fixed).** Eight Gwen Stefani tracks on *The Singles Collection*
+carried `www.GrWarez.com`, and two techno tracks carried `djsoundtop.com` — two unrelated
+sources, so not a one-off rip. Retagged with `fix_song_metadata`; **15 -> 5**, and the five
+survivors are the Tash Sultana promo clips whose titles *are* the watermark.
+
+**Junk suffixes (5 fixed).** `Chuck E's In Love With Lyrics`, `Jurabas tu │ Video Lyric Banana
+Mascheroni`, `I Will Find The Hood (Full Song)`, `Willow Tree (…) Visualizer`, and
+`Hot Child In The City by Nick Gilder with lyrics` — the last got its artist fixed too
+(`HouseandCuddyforever` -> `Nick Gilder`), because **the title itself declared it**. That is
+the playbook's "check the track title for a self-declared answer before searching" rule paying
+out on artist rather than genre: zero searches spent.
+
+**Deliberately left alone**, because a pattern match is not a defect: `Candombe |` /
+`Candombe ||` (Las Pastillas del Abuelo — Roman numerals, not pipes), `BM | DJ TAO Turreo
+Sessions #17` and `Lágrimas | CROSSOVER #4` (real release-title formats for those series),
+`YOLO (feat. Aria Lyric)` and `Solari Yacumenza (feat. Cuareim 1080)` (real credits that only
+matched a "lyric"/"1080" probe), and `Bhavi - BZRP Music Sessions #1` (the real title format,
+not an "Artist - Title" artefact). 26 pipe matches, 4 lyric matches and 4 self-prefixed titles
+were surfaced; only the ones with actual pollution were touched.
+
+**Filed [#957](https://github.com/kevinch3/NicotinD/issues/957).** `looksLikeSourceWatermark`
+runs over artist names (`library-audit.ts:171,184`) and album names (`:273,566`), but over
+titles **only** at `:517` inside `albumHasRealTrackTitles` — which asks the *inverse* question
+("does this album hold a real title, so do not delete it") and is a deletability guard, not a
+finding. So a watermark in a title on a clean album is structurally invisible: *The Singles
+Collection* and *Gwen Stefani* are both fine, only the titles were polluted, and the album
+even scores well on the guard because the other nine tracks are clean.
+
+The proposed `watermark_title` rule must **not** join `DELETABLE_RULES` — a watermarked title
+on real audio is a retag, never a delete (#705's "junk metadata is not junk audio", sharper
+here). The Tash Sultana clips are the contrast case: junk *content*, already covered by
+`watermark_album`, where deleting is right and retagging is pointless.
