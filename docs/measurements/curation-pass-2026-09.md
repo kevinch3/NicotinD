@@ -2079,3 +2079,65 @@ has its cover.
 Prod context for the remainder: 654 orphan album-artwork rows, 4,269 of 6,921 albums with
 no art. Those 654 are **not** generally recoverable — this method needs the old name
 reconstructed, which only worked here because the edit was a known fixed suffix.
+
+### Stretch 16 — one junk song title opened two detector gaps (#966, #967)
+
+Started from the `genres.missing` worklist, which listed a song titled *"pre-sale tickets
+for 3 very special shows I'm playing later this year are onsale now"* credited to an artist
+named **`Australia`**. That is an Instagram caption split into artist + title. Pulling on it
+produced two issues and three repairs, none of them about genre.
+
+**#966 — no audit rule looks at duration.** `duration` appears **zero times** across all 18
+rules in `library-audit.ts`. Every rule asks about the *text* of a name; none asks whether
+there is enough audio present to be music. Measured predicate:
+
+```sql
+duration < 45 AND track IS NULL
+AND (SELECT COUNT(*) FROM library_songs x WHERE x.album_id = s.album_id) = 1
+```
+
+**139 rows, no false positive I could find** — I checked every non-Tash-Sultana row by hand.
+`jawed — "Me at the zoo"` (the first video ever uploaded to YouTube) is in there. The
+`track IS NULL` clause is what makes it safe: 118 sub-45s tracks *do* carry a track number
+and are real interludes — Pink Floyd segues, Calle 13 skits — and that one condition is the
+whole difference between a precise rule and one that deletes *Speak to Me*.
+
+The cost is not 139 junk songs, it is that each mints an artist and an album: Tash Sultana
+holds **311 songs across 304 albums**, and 11 ghost artist rows exist purely as caption
+fragments (`Australia`, `NEW YORK`, `MILK & HONEY`, `the journey behind the music`, …).
+`watermark_album` catches 5 of the 139 — the ones whose title happens to be a URL.
+
+**#967 — hidden state survives the rename that fixes it.** Found by causing it. Three DJ
+Kairuz files had artist, title and album all scrambled; `identify_song` returned `no-match`
+on all three (expected for DJ bootlegs, and a real answer, not a failure). The swap was
+still readable structurally — the *constant* across the three files was the artist and the
+*varying* field was the title — so two were repaired confidently and the third flagged
+(#22), since its constant part carries an extra `DERKOMMISSAR` token that makes the title
+genuinely ambiguous.
+
+Naming the consolidated album `Servicio ARG` hid it — that string is the **first entry in
+`WATERMARK_KEYWORDS`**, so the curator was right and I was wrong about it being a series
+name. But renaming it to `Singles` did **not** unhide it. Proved it was not the rule:
+
+```
+predicates on the stored row, run in-container against the real functions:
+  looksLikeSourceWatermark(artist) : false
+  looksLikeSourceWatermark(name)   : false
+  isNumericLikeName(artist)        : false
+  song_count 3, release_meta null, manual_override 0
+```
+
+Those inputs must yield `ep`/visible. Confirmed against the whole table: of 6 hidden
+albums, 5 were justified by a predicate and 1 — mine — was hidden only because it *used to
+be*. Hiding is supposed to be derived state that `reclassify` re-applies, which is what
+makes it safe; the rename path breaks that contract, and renaming is the main way anyone
+fixes an album hidden for a bad name. Distinct from #962: that is *the rule matches too
+much*, this is *the outcome outlives its cause*.
+
+**Writes this stretch**: 3 songs retagged (artist/title swap), 3 ghost albums collapsed into
+one `DJ Kairuz — Singles`, ghost artist `Australia` merged into Tash Sultana, 1 album
+unhidden via `set_album_classification` (sticks, `manual_override = 1`), flag #22 opened.
+Verified by read-back throughout — `verified: true` was true about the *song* and silent
+about the album, which is how the album-artist half of the repair was caught mid-flight.
+
+Hidden albums back to 5, all justified.
