@@ -1252,3 +1252,37 @@ A frequency-based auto-fix would have entrenched `Axé Bahía` and `Matias Aguay
 This is the part of the class that is *not* mechanical and should stay with a human or an
 agent that can reason about the language — worth remembering if any of this is ever automated
 under the Phase 1 heading.
+
+### Twenty-fifth stretch — the spelling class, library-wide: 42 clusters -> 10
+
+The previous stretch cleared spelling splits **within one album**. Generalising the same fold
+across the whole library found the real size of the class: **42 clusters covering 888 songs**,
+most of which never co-occur on an album and so were invisible to the narrower probe.
+
+Fixed 39 variants in ~39 `merge_artist` calls — one per variant, not per song, which is only
+affordable because of last stretch's finding that a merge rewrites `library_songs.artist`.
+Verified **42 -> 10**, covering 214 songs.
+
+Canonical choices again required judgement rather than frequency. Accented forms restored
+(`Raffaella Carrà`, `Serú Girán`, `Thalía`, `Tego Calderón`, `Antonio Ríos`, `Arcángel`,
+`Maná`, `Márama`, `Édith Piaf`, `La Factoría`, `Café Quijano`, `Ángela Leiva`, `Tambó Tambó`,
+`Orquesta Típica Victor`); deliberate stylings kept where they are the artist's own
+(`KAROL G`, `MIKA`, `ARTBAT`, `HUGEL`, `GIT`, `ZAZ`, `RÜFÜS DU SOL`), and shouty rips
+normalised where they are not (`TASH SULTANA` ×21 -> `Tash Sultana`, `EROS RAMAZZOTTI`,
+`NATHY PELUSO`, `MARC ANTHONY`, `RICARDO ARJONA`, `BANDANA`).
+
+**Deliberately left, with reasons** — the ten survivors are decisions, not leftovers:
+
+- `Tru La La` ×37 vs `Tru la lá` ×7 — the band writes itself *Trulalá*; neither stored form is
+  clearly right and picking one would encode a guess.
+- `ADRIANNA`/`Adrianna` and `Spirit`/`SPIRIT` — one song each side, no evidence either way.
+- `MTV Unplugged 'Dream My Life Away` — a junk artist row, not a spelling question.
+- `Nicole Moudaber ` — **blocked by #956**, the whitespace-only rename the tool cannot express.
+
+**A conflict worth recording**: `Angela Leiva` survived two merge attempts into `Ángela Leiva`.
+The alias table already holds an older `source='user'` row mapping
+`angela leiva official -> Angela Leiva` — the *unaccented* form — so a previous decision pins
+the wrong canonical and re-asserts it. Aliases are documented as never overwritten once
+`source='user'`, which is the right rule and also why a wrong one is sticky. That is a second
+concrete argument for #949's proposal to make the alias table writable and reviewable from
+curation, rather than only appendable through merges.
