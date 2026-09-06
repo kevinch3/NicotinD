@@ -1286,3 +1286,31 @@ the wrong canonical and re-asserts it. Aliases are documented as never overwritt
 `source='user'`, which is the right rule and also why a wrong one is sticky. That is a second
 concrete argument for #949's proposal to make the alias table writable and reviewable from
 curation, rather than only appendable through merges.
+
+### Twenty-sixth stretch — a clean negative, and six classifications
+
+**Album names have no spelling-split class.** Applied the same fold that found 42 artist
+clusters to album names grouped per artist: **0 clusters**. Album grouping already folds the
+variants that artist grouping did not, so the defect is specific to the artist axis. A quick
+negative worth recording so nobody re-runs it.
+
+**Classified 6 albums as `compilation`.** These are producer compilations and DJ mixes filed
+as `album` under the curator's name — `Más Flow` and `Más Flow 2` (Luny Tunes, 20 and 23
+tracks by as many artists), `Green Velvet at Factory Town Miami 2026 (DJ Mix)` (30/28),
+`Get Physical Presents: Body Language Vol. 17` (13/13), Pete Tong's `Chilled Classics`
+(17/14), and Osvaldo Pugliese's `El rodeo (1943-1945)` (a dated historical gathering, and
+previously mis-classified `ep`). `set_album_classification` also sets the manual-override
+flag, so the automatic curator will leave these alone across rescans.
+
+**Three deliberately left as `album`**, because "many distinct song artists" does not mean
+compilation:
+
+- **CamelPhat — *Dark Matter*** (23 songs / 18 artists) is their own 2020 studio album; the
+  artist count is *featured vocalists*, one per track. Reclassifying it would be wrong.
+- **Damian Lazarus — *Magickal*** and **Green Velvet — *Unshakable*** (13/13) could be either
+  a curated mix or an album with heavy features, and nothing in the data distinguishes them.
+
+That is the same shape as the "Various Artists" judgement two stretches ago: the numeric
+signal is identical across the cases that should be changed and the cases that should not, and
+only knowing what the release *is* separates them. Worth stating plainly for the Phase 1
+design — this dimension looks like a rule and is not one.
