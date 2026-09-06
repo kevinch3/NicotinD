@@ -713,3 +713,46 @@ and no folder image (verified on disk, 2 -> 31). The value is precise and worth 
 it protects those albums' art from being lost if they are ever transcoded, and saves an ID3
 parse per cover request. It does **not** change what a user sees today, and does not move
 `albumCovers.missing`.
+
+### Tenth stretch — auditing my own merges, and the medium tier collapses
+
+Started by checking whether this pass's `merge_artist` calls were stranding artist rows.
+**They were not**: `orphan_artist` went **496 -> 485** across 13 merges, so merging removes
+rows rather than orphaning them.
+
+But the names in that worklist were wrong for cruft — "DJ Koze", "Javiera Mena",
+"Der Dritte Raum" are real artists, and the rule's message is *"should be pruned"*. Counted
+`library_song_artists` rows for all 485:
+
+| | artists |
+| --- | --- |
+| reported orphaned, "should be pruned" | **485** |
+| credited on >=1 song via `library_song_artists` | **485** |
+| genuinely referenced nowhere | **0** |
+
+**Zion has 20 song credits.** `checkArtistIntegrity` (`library-audit.ts:70`) decides
+orphanhood from `library_albums.artist_id` and `library_songs.artist_id` — primary
+attribution only — and **the string `library_song_artists` appears nowhere in
+`library-audit.ts`**. Every featured or secondary artist therefore looks orphaned.
+
+**Filed [#954](https://github.com/kevinch3/NicotinD/issues/954).** Adding the join table to
+the predicate takes the rule from 485 findings to **0** on current data. The message also
+deserves softening: "should be pruned" is an *instruction*, and acting on it would delete 485
+legitimately-credited artists and break attribution on 500+ credits. Nothing automated does
+so (`orphan_artist` is not in `DELETABLE_RULES`) — the exposure is a human or an agent
+following the text.
+
+**Taken with #952, the audit's whole medium tier is noise.** Medium is 4,762 findings, and it
+is exactly four rules:
+
+| rule | count | status |
+| --- | --- | --- |
+| `missing_artwork` | ~4,276 | ~3x overstated (#952) |
+| `orphan_artist` | 485 | **100% false positive** (#954) |
+| `fragmented_artist` | 2 | real (both deliberate keeps) |
+| `djset_artist` | 1 | real (flagged, #19) |
+
+So **over 99% of medium findings are noise**, which explains why the tier has never been
+actionable in any pass. Three of this session's issues (#947 `missplit_album` 0/3, #952, #954)
+are the same defect shape: a predicate that answers a cheaper question than its name claims,
+and a count that is therefore not a workload.
