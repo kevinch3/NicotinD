@@ -1208,3 +1208,47 @@ mistake that previously created a literal `Wisin &amp; Yandel` row. The curation
 docs still describe this guard as *proposed* — it exists, it works, and per the skill's own
 maintenance rule ("closing an issue means pruning this file in the same pass") that line is
 now due for an update rather than being carried as live advice.
+
+### Twenty-fourth stretch — the spelling-split class, cleared to zero
+
+Two things, one of which changed the cost of the work by an order of magnitude.
+
+**Pruned the skill's stale #787 line.** Verified first: issue closed 2026-08-29, guard live at
+`routes/mcp.ts:1252`. The skill still said *"a server-side guard is proposed in #787; until it
+ships this is entirely on you"* — advice that had been wrong for over a week and, worse, told a
+curator the failure mode was a silent bad row when it is now a rejected call. Rewritten to say
+the guard ships, rejects, and that typing bare characters remains the habit because the guard
+covers name/title arguments and not every argument. 8-line diff, per the skill's own
+maintenance rule.
+
+**Then the spelling splits — and a discovery that reframed them.** 164 songs sat under
+non-canonical spellings across 14 variants, which looked like 164 `fix_song_metadata` calls.
+Before committing to that, I tested whether an artist alias rewrites the *song* string, using
+my own earlier merge as the probe:
+
+```
+songs still literally tagged "The Rolling Stone": NONE
+row "The Rolling Stones"  <-  song artist "The Rolling Stones" ×266
+```
+
+**`merge_artist` rewrites `library_songs.artist`, not just the bucketing.** So a spelling fix
+costs **one call per variant, not one per song**. The whole class — ~250 songs — closed in 28
+calls. Verified: albums holding one artist under two spellings **0**.
+
+**The judgement that mattered: majority is not canonical.** Choosing the more common spelling
+would have been wrong in seven cases, because the *minority* was correct:
+
+| kept | discarded (more common) |
+| --- | --- |
+| `Axé Bahia` | `Axé Bahía` ×13 — *Bahia* takes no accent in Portuguese |
+| `Jarabe de Palo` | `Jarabe De Palo` ×10 |
+| `Vilma Palma e Vampiros` | `Vilma Palma E Vampiros` ×13 |
+| `Matías Aguayo` | `Matias Aguayo` ×8 |
+| `Ángela Leiva` | `Angela Leiva` ×5 |
+| `El Símbolo` | `El Simbolo` ×7 |
+| `Las Pastillas del Abuelo` | `Las Pastillas Del Abuelo` — (here the majority was right) |
+
+A frequency-based auto-fix would have entrenched `Axé Bahía` and `Matias Aguayo` permanently.
+This is the part of the class that is *not* mechanical and should stay with a human or an
+agent that can reason about the language — worth remembering if any of this is ever automated
+under the Phase 1 heading.
