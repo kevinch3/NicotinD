@@ -378,3 +378,50 @@ release is unconfirmed and I did not invent one. Left for a pass with better evi
 
 **Verified deltas this stretch:** `fragmented_artist` 6 -> 2, `djset_artist` 2 -> 1, open
 flags 0 -> 1. Each re-measured by re-running its own rule, not counted from my own tally.
+
+### Third stretch — rare-genre cleanup, 21 songs
+
+`get_rare_genres({maxCount: 2})`, then a direct `library_song_genres` probe per candidate
+**before** any write — because a bare single-genre `replace` overwrites the song's whole
+set. That check earned its keep immediately: `CancióN MelóDica` sat on **7 songs and only
+one at position 0**; the other six carried it at position 2, 3 or 5 alongside real primary
+genres. Six bare replaces would have deleted, among others, Mina's eight-genre set.
+
+Fixed, all folded into spellings the library **already** had rather than minting new rare
+ones (counts re-read from the DB after):
+
+| was | became | effect |
+| --- | --- | --- |
+| `CancióN MelóDica` ×7 | `Canción Melódica` | 7 -> 0, full ordered list preserved per song |
+| `Electronic - {Synthwave,Techno,Trance,Tech Trance}` | prefix stripped | 4 CamelPhat songs onto existing genres |
+| `Chill Out` + `Chillout` | `Chillout` | 1+1 -> 2 |
+| `Forró UniversitáRio` | `Forró Universitário` | with `Forró` kept at position 1 |
+| `Alternativo & Rock Latino`, `Latino Rock (Argentina)`, 3 Babasónicos song-titles-as-genres | `Alternative Rock;Rock Argentino` / `Rock Argentino` | `Rock Argentino` 43 -> 48 |
+| `FAVORITAS`, `Education`, `Eighty` | `Salsa` / `Dance-pop` / `Pop` | playlist name, podcast category and junk removed |
+
+**A hypothesis I filed nothing on, because it was wrong.** `CancióN MelóDica` and
+`Nueva CancióN` look exactly like a title-caser splitting words on an ASCII-only boundary
+(`canción` -> `CancióN`: the character *after* the accented letter is uppercased), and the
+repo has an accent-defect history (#720) that made that story attractive. There is no such
+code path — `genre-split.ts`'s `norm` only trims and collapses whitespace, and nothing in
+`packages/api` or `packages/core` title-cases a genre. The malformed casing arrives in the
+**source tags**. Checking before filing is the whole point; the issue I would have written
+would have sent someone hunting a function that does not exist.
+
+**Filed [#949](https://github.com/kevinch3/NicotinD/issues/949)** instead, for the real
+gap. Three values are artist-scoped and alias-shaped, not song-shaped:
+
+| raw value | rows | position | carrier |
+| --- | --- | --- | --- |
+| `Nueva CancióN` | 44 | **all at position 3** | Mercedes Sosa |
+| `Rock - Alternative Rock` | 8 | 0 | Red Hot Chili Peppers |
+| `Pop RockLatin AlternativeLatin RockLatin Pop` | 15 | 0 | Jarabe de Palo |
+
+`library_genre_aliases` is exactly the store for these (66 rows already, including a
+seeded twin of the Jarabe de Palo concatenation), but **no MCP tool writes it**, so from a
+refiner session a 44-row artist-wide mistag costs 44 song overrides *and still breaks on
+the next Mercedes Sosa arrival*. Left unwritten rather than papered over with 44 overrides.
+
+Worth recording separately: **`get_rare_genres` counts the primary genre only**, so
+`Nueva CancióN` — 44 rows, none primary — is invisible to that worklist entirely. The
+largest instance of this whole class only surfaced from a direct probe.
