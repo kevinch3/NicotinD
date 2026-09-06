@@ -1750,3 +1750,40 @@ workaround retired, #687 confirmed, #191 answered retrospectively, #864 scoped d
 
 **Still requiring a human**: the 5 watermark deletes (blocked by the session's permission
 classifier), 3 open flags, 16 genre-alias rows (#949), and the 13.19 GB in `.downloads/`.
+
+### Thirty-seventh stretch — correcting my own #725 claim
+
+Went back to verify a number I had already posted, rather than let it stand. I claimed **14 of
+36 staging folders have no library album**, using a `LIKE` match of the folder *name* against
+`library_albums.name`. Download-tool folder names are not album titles
+(`Stromae - Album - 2013 - Racine carree`, `(2018) Natiruts - I Love`), so the instrument was
+wrong.
+
+Re-tested by sampling each folder's actual **track titles** and looking for those in
+`library_songs`:
+
+| verdict | folders |
+| --- | --- |
+| already in the library | **7** — Turf *Para Mi Para Vos* 6/6 sampled titles, Lou Bega 6/6, Natiruts *I Love* 6/6, *I Love [2018]* 5/6, *Some Girls (deluxe)* 5/6, Stromae 3/6, one Tom Jones fragment 1/2 |
+| genuinely absent | **7** — `[2002] Qu4tro` (12 files), `A-Tom-ic Jones` (10), and five 1-2 file fragments |
+
+**About half of what I called missing is already present**, so those staging copies are
+redundant rather than lost. **Posted the correction to
+[#725](https://github.com/kevinch3/NicotinD/issues/725)** and said plainly that the first
+version was noisier than the evidence supported.
+
+What survives the correction, unchanged: 13.19 GB still in `.downloads/`, still accumulated
+inside one week; the six folders holding **more** tracks than the library (`Highway to Hell`
+10 staged / 1 in library, `T.N.T.` 18/5, `Absolution` 25/11) — those were verified by *count*,
+not by name, so the correction does not touch them; and its invisibility to every audit rule.
+
+What changes: this is now mostly **disk waste and duplicate acquisition**, not data loss. The
+A-Tom-ic Jones case — four staging folders for one release, none of it landing — is the
+clearest remaining sign of a retry loop rather than a single strand.
+
+The lesson is narrow and worth keeping: **a folder name is not a title, and matching on it is
+not evidence.** The correct instrument was there the whole time — sample the content and look
+*that* up — and it cost one query. I had already applied exactly this reasoning to
+`missplit_album` in #947, where the rule matches album *names* and the fix is to match on what
+the album actually contains. Filing that issue did not stop me making the same mistake nine
+stretches later.
