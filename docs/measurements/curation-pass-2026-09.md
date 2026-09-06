@@ -1787,3 +1787,43 @@ not evidence.** The correct instrument was there the whole time — sample the c
 `missplit_album` in #947, where the rule matches album *names* and the fix is to match on what
 the album actually contains. Filing that issue did not stop me making the same mistake nine
 stretches later.
+
+### Thirty-eighth stretch — narrowing a false class, and finding a file that cannot be written
+
+Probed title-shape defects. Two clean negatives — **0** titles with a baked-in track number,
+**0** channel artifacts (`- Topic`, `[Official…]`). Two apparent findings that were not:
+**259 all-caps titles** are mostly deliberate styling (Bad Bunny, KAROL G, Rosalía's *MOTOMAMI*,
+Moderat, Die Antwoord), and **240 titles matching their album name** are just title tracks.
+
+Narrowing worked in two steps, and the first step was still too coarse. *"Artist has both caps
+and mixed-case titles"* gave 57 artists — still mostly legitimate, because artists vary styling
+**per album**. *"A minority of titles inside one album are caps"* gave **11**, of which **9 are
+real** (`NI BIEN NI MAL`, `CANCELLED!`, `GOLDWING`, `CMND/CTRL`, Calamaro's initialisms
+`H.M.Q.D.E.P.`) and **2 were defects** — Raffaella Carrà titles that had absorbed her own
+(misspelled) artist name. A third turned up in the same query, having become its own
+single-song album.
+
+`identify_song` returned `source-error / "The operation timed out"` on all three, twice. Per the
+playbook a timeout is plausibly transient, unlike #786's deterministic HTTP 400 — and this host
+has been network-flaky all session — so I retried once and stopped rather than looping.
+Proceeded without it, because the edit did **not** require identifying the song: removing an
+artist token that duplicates the already-known artist is not a claim about what the recording
+is.
+
+Two applied (`Qué dolor`, `Raffaella`). **The third failed, deterministically:**
+
+```
+{"error":"Tag write did not persist",
+ "requested":{"title":"Fiesta"}, "actual":{"title":"FIESTA RAFAELLA CARRA"}}
+```
+
+**Filed [#964](https://github.com/kevinch3/NicotinD/issues/964)** after ruling out the obvious
+causes: mode 644, uid 1000, `W_OK` yes, process uid 1000, directory 775 — and a **sibling file
+in the same album folder, same format, same permissions, accepted its write in the same batch**.
+So it is the file, not the path, mount, format, or tagger.
+
+**The half worth celebrating**: this is #760's failure mode — a write that reverts — and the
+tool *caught it*. It read back, refused to claim success, and returned both the requested and
+actual values. The curation docs still frame read-back as something the caller must do
+defensively; on this call the tool did it. That is a guard shipping and working on a real case,
+found only because it fired.
