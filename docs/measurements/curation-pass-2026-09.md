@@ -972,3 +972,34 @@ duration heuristic: album, slot and title all agree, and many are byte-identical
 `Pescado Rabioso / Pescado 2` has ten pairs at identical bitrate *and* identical duration.
 One SQL query, no fingerprint needed; reserve `recordingId` confirmation for the cross-album
 candidates where album context genuinely does not settle it.
+
+### Seventeenth stretch — artist origin coverage, and a fragment my own probe had missed
+
+Opened `set_artist_origin`'s lane: **2,559 of 3,530 artists have a country**, 1,158 are
+checked-but-null, and `library_artist_origins` holds **187 orphan rows** for artists removed by
+merges (cruft; pruning is admin-only).
+
+The origin backlog itself proved less interesting than two names inside it.
+
+**`The Rolling Stone` (10 songs) is a singular/plural typo of `The Rolling Stones` (256).** All
+ten are *Voodoo Lounge* tracks. Merged; 256 -> **266**.
+
+This one is worth recording as a miss: the truncated-name probe two stretches ago should have
+caught it and did not, because it required `b.name.startsWith(a.name + ' ')` — a **space** after
+the prefix. `Stones` is `Stone` + `s`, so it fell straight through. The generalised
+discriminator I wrote up then ("does the candidate's other half already exist as an artist
+row") was right; my *implementation* of it quietly excluded the single-character case. A probe
+is only as good as its boundary conditions, and this one had an off-by-one in its whitespace
+assumption.
+
+**`GIGI D'AGOSTINO` has no lowercase twin** — so not a fragment, just an all-caps tag artifact
+(he does not stylise that way, unlike ROSALÍA or NICKI NICOLE, which are left alone). Renamed;
+the call returned **`kind: "renamed"`**, which usefully sharpens #956: the rename path works
+for case, and it is *specifically* whitespace-only renames that are unreachable, not renames in
+general.
+
+**Ten vinyl-side prefixes cleaned.** Those Stones tracks were titled `TrackA2 You Got Me
+Rocking`, `TrackB1 The Worst`, `TrackE6 Out Of Tears (Bob Clearmoutain Edit)` — side/position
+codes from a vinyl rip baked into the title. Stripped all ten, and corrected
+`Clearmoutain` -> **Clearmountain** (Bob Clearmountain, the mixing engineer) in the same call.
+Verified 10 -> 0.
