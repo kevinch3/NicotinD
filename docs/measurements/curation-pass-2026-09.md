@@ -1364,3 +1364,47 @@ Worth noting how it was found: no worklist surfaces this. `hidden` is excluded f
 health dimension by construction, so a false positive here removes music from the library with
 nothing reporting it. I found it by listing hidden rows directly, which is a thing to do
 deliberately rather than a thing any tool suggests.
+
+### Twenty-eighth stretch — correcting my own query found a 56-song defect
+
+Chased the "invisible by construction" angle that found *Coolio.com*. Two clean negatives
+first, both worth recording so they are not re-run:
+
+- **0 songs have `landed_at IS NULL`.** I had assumed the genre metric's
+  `landed_at IS NOT NULL` denominator was hiding ~197 songs. It is not; the denominator
+  excludes nothing.
+- **139 songs have a dangling `library_songs.artist_id`, and it is not a bug.** All 139 are
+  multi-artist compounds (`Skrillex, Fred again.., Flowdan`, and nine more using `;`, ` con `,
+  ` Y `, ` x ` that my first filter missed). Every one has correct `library_song_artists`
+  credits. `artist_id` is minted from the compound string, which has no row — dangling by
+  construction. The app handles it: only one query joins that column and it correctly uses
+  `LEFT JOIN` (`genre-distribution.ts:209`); the other four join the *join tables*, whose FKs
+  are valid. No issue filed.
+
+**But my own probe did not handle it**, and that is the finding. The artist-origin ranking two
+stretches ago inner-joined `library_songs.artist_id`, so it silently dropped every
+compound-credited song. Re-running it credit-aware via `library_song_artists` changed the
+answer:
+
+```
+credit-aware:   IPAUTA 56 | Gigi D'Agostino 55 | Pappo's Blues 51 | Tru La La 45 | Ed Sheeran 36 | The Black Eyed Peas 29
+old (inner):    Gigi D'Agostino 55 | Pappo's Blues 48 | Tru La La 45 | Ed Sheeran 36 | ...
+```
+
+**IPAUTA — 56 songs — was absent from the old ranking entirely.** It is a Latin download-site
+brand, credited on 56 songs whose own artist strings are already correct (Tego Calderón,
+Daddy Yankee, Don Omar, Wisin & Yandel). Source: the files sit under an artist folder literally
+named `IPAUTA/`, so the site is credited *on top of* the real artist — which is exactly why
+nothing looked wrong. Every song displays its true artist while the site quietly accumulates 56.
+
+**Filed [#963](https://github.com/kevinch3/NicotinD/issues/963).** `watermark_artist` reports 0
+because `looksLikeSourceWatermark` keys on URL shapes and `IPAUTA` is a bare token; `orphan_artist`
+cannot see it because it has real credits. Nothing compares a credit against the song's *own*
+artist string, which is where the contradiction lives — 56 of 56 disagree. That check needs no
+watermark vocabulary and so generalises to the next brand without a list update.
+
+**Fixed the one unambiguous row**: the `IPAUTA` / `IPAUTA` album (10 songs by various real
+reggaeton artists) is now `Various Artists` / `compilation`. The 46 credits on the two *Más Flow*
+compilations stand — those albums are correctly attributed to Luny Tunes, and **no MCP tool can
+remove a single credit** from `library_song_artists`, so a curation session can find all 56 and
+repair none.
