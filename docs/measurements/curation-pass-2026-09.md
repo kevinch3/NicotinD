@@ -1003,3 +1003,37 @@ Rocking`, `TrackB1 The Worst`, `TrackE6 Out Of Tears (Bob Clearmoutain Edit)` �
 codes from a vinyl rip baked into the title. Stripped all ten, and corrected
 `Clearmoutain` -> **Clearmountain** (Bob Clearmountain, the mixing engineer) in the same call.
 Verified 10 -> 0.
+
+### Eighteenth stretch — re-running the probe that had a hole in it
+
+Re-ran the artist-prefix probe without the trailing-space requirement that hid
+`The Rolling Stone`. 69 non-space prefix pairs, and the noise is exactly what the earlier
+concatenation probe predicted: `Angel` prefixes `Angela Leiva`, `Angelo Badalamenti`,
+`Angelito Martinez`, `Angels Of Light`; `Marsh` prefixes `Marshmello` and `Marshall Jefferson`;
+`Robin S` (a real house artist) prefixes `Robin Schulz`. Coincidental prefixes, not fragments.
+
+**A correction to my own first read.** The comma-suffixed hits looked like a large new class,
+and a `;` separator looked like a whole shape nothing handled. Measuring it: only **3 artist
+rows** contain `;` against **87 songs** whose artist string does. `splitArtists` handles
+semicolons correctly — 84 of 87 songs bucket under the right artist. Three slipped through, not
+a class.
+
+Applied the fold rule to those three, and it separated them cleanly:
+
+| row | title | decision |
+| --- | --- | --- |
+| `Maluma;Leslie Grace` | *Tengo un Amor* **(feat. Leslie Grace)** | merge -> `Maluma` — title keeps the credit |
+| `Maluma;El Micha` | *Solos* **(feat. El Micha)** | merge -> `Maluma` — same |
+| `Flor De Toloache; John Legend; Cultura Profetica` | *Quisiera* | **keep** — title carries nothing, and the base row has 0 songs, so folding would erase two credits and gain nothing |
+
+Also fixed a song whose artist tag was its own name repeated six times
+(`Vilma Palma E Vampiros;Vilma Palma E Vampiros;…`). It was already bucketed correctly under
+`Vilma Palma e Vampiros`, so nothing was fragmented — but `library_songs.artist` is what
+renders per song, so the string itself was user-visible. Verified 3 -> 1 rows.
+
+**The lesson from the miss is about probe boundaries, not about the rule.** The generalised
+discriminator ("does the candidate's other half already exist as an artist row, and do the
+tracks corroborate it") held up again here — it correctly rejected all 69 coincidental
+prefixes and accepted the three real ones. What failed last time was a whitespace assumption
+inside the query, and I had recorded the rule as validated on the strength of that query. A
+probe's boundary conditions deserve the same scrutiny as its logic.
