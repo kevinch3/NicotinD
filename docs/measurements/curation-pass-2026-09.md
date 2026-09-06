@@ -1898,3 +1898,50 @@ and `CA7RIEL` is the artist's own styling. Two canonical titles were themselves 
 (`J Balvin … Vol. 62/66`, `Daddy Yankee … Vol. 0/66`), which is the clearest argument against
 trusting that field wholesale: **an authoritative source is authoritative about identity, not
 about formatting.**
+
+### Forty-first stretch — a probe that was too aggressive, and what it still bought
+
+Categorised the 399 `canonical_title` differences to find more junk sub-patterns like `/66`:
+
+| relationship | albums |
+| --- | --- |
+| stored name **extends** canonical (editions — keep ours) | 183 |
+| canonical **extends** stored | 113 |
+| neither is a prefix of the other | **68** |
+| case-only | 1 |
+
+**The 68 "neither" cases include bad Lidarr matches**, which matters because this table is
+authoritative over classification: `In Rainbows` (Radiohead) has canonical **`Live in Rainbows`**
+— a different release; `Superchatarraespéshal` (Gillespi) maps to `Es`. So
+`library_release_meta` sometimes points at the wrong release, and adopting `canonical_title`
+wholesale would import those errors.
+
+One row suggested a fixable class — `Rodrigo - El potro` -> `El potro`, the artist name
+prefixed into the album name. **Probing it library-wide produced mostly false positives, some
+of them destructive:**
+
+```
+Aquarium                                  -> "rium"                      (the artist is Aqua)
+Michael Jackson's Vision                  -> "'s Vision"
+Buena Vista Social Club (25th Anniversary…) -> "(25th Anniversary Edition)"
+Chet Baker & Strings                      -> "& Strings"
+Eiffel 65 (2004 Special Edition)          -> "(2004 Special Edition)"
+```
+
+Two failure modes: **self-titled albums with an edition suffix** (where the artist name *is*
+the album name), and artist names that merely happen to prefix a longer word. A bulk apply here
+would have mangled 25+ albums.
+
+Also caught by reading rather than matching: `Shakira no Rio - As melhores` and
+`Divididos en Vélez - Agradecer y seguir` are Portuguese/Spanish for *"Shakira in Rio"* and
+*"Divididos at Vélez"* — the artist name is **part of the title**, not a prefix.
+
+**Applied 4**, each with an explicit separator *and* a standalone remainder:
+`El polaco - Vuelve te lo pido` -> `Vuelve te lo pido` (167 songs),
+`Enrique Iglesias: Greatest Hits` -> `Greatest Hits`,
+`Ricky Martin MTV Unplugged` -> `MTV Unplugged`, `Nek Hits Live` -> `Hits Live`.
+
+The stretch is worth recording mainly as a negative: **the `/66` class was mechanical because
+the junk was a fixed literal suffix; "artist name prefix" looks like the same shape and is not,
+because the artist name is sometimes the content.** Same probe skeleton, opposite safety —
+which is why the first one ran to 56 writes and this one stopped at 4.
