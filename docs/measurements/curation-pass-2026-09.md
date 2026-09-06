@@ -629,3 +629,48 @@ Written (14, all `mode: 'replace'`, all verified to carry nothing but the junk v
 
 Remaining residue is what the playbook predicts: mostly singleton artists with no tagged
 sibling to propagate from, which is why the free lane yields 14 and then stops.
+
+### Eighth stretch — album covers, and a number that was wrong
+
+**The network lane is a dead end for this catalogue.** Looked up 4 real albums
+(Los Enanitos Verdes *Obras Cumbres*, Los Chalchaleros *Una leyenda*, Savia Andina
+*Lo Mejor de…*, Sanampay *En Esta Hora…*) at the concurrency limit the tool itself
+specifies. **0 of 4 yielded a usable cover**, and the failure is structural rather than
+bad luck: every score-100 *identity* match came back with `coverUrl: null`, while the
+candidates that *do* carry images are different releases (*Big Bang*, *Néctar*, a different
+Chalchaleros volume series). Applying by score would systematically put wrong covers on
+albums. Cover Art Archive coverage for long-tail Latin American folklore is simply thin.
+
+**Then the local lane, and a wrong conclusion caught by reading the code.**
+`set_album_cover(albumId, songId)` materialises a track's embedded picture as `cover.jpg`.
+It works — verified on disk, 14 albums. Sampling 120 reported-missing albums showed **68.3%**
+carry embedded art (mp3 **82/87 = 94%**, opus **0/28**, m4a 0/4, ogg 0/1), which projects to
+~2,900 albums "recoverable with zero network".
+
+That framing was wrong, and the correction is the finding. `extractCover`
+(`streaming.ts:603`) is `folderCover() ?? extractEmbeddedPicture()` — **the embedded art was
+already being served.** Those albums were never missing art to a user; they were missing a
+`library_artwork` *row*.
+
+**Filed [#952](https://github.com/kevinch3/NicotinD/issues/952).** `missingAlbumArtSql` is
+`NOT EXISTS (library_artwork row)`, but the serving path is a three-tier fallback, so:
+
+| | albums |
+| --- | --- |
+| reported "missing artwork" (largest number in the health report) | **4,271** |
+| already render via the embedded fallback | **~2,859** |
+| genuinely render nothing | **~1,412** |
+
+The headline is ~3x the user-visible problem, and its remediation hint recommends a bulk
+network fetch for art the library already holds locally. Same family as #612's false
+denominators: honest about its SQL, dishonest about its name.
+
+**Secondary finding worth chasing separately:** opus is **0/28** for embedded art against
+mp3's 94%, and opus is 1,196 of the 4,271 — i.e. most of the genuinely-unrenderable set.
+That is a pipeline property, not chance: whatever produces opus here drops cover art the mp3
+path keeps. Fixing it at the source would remove the majority of the real backlog.
+
+**What the 14 writes actually bought**: one folder read instead of an ID3 parse per cover
+request, and art that survives a later transcode. A caching and durability win, not a
+visible one — and it does not move `albumCovers.missing`, since it writes no
+`library_artwork` row. Recorded rather than quietly counted as 14 covers fixed.
