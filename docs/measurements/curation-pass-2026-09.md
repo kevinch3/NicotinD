@@ -1827,3 +1827,42 @@ tool *caught it*. It read back, refused to claim success, and returned both the 
 actual values. The curation docs still frame read-back as something the caller must do
 defensively; on this call the tool did it. That is a guard shipping and working on a real case,
 found only because it fired.
+
+### Thirty-ninth stretch — disproving my own hypothesis about #964
+
+Answered the question I had left open in #964 — *one file or a class?* — without attempting
+speculative writes across the library, by comparing tag **structure** instead.
+
+There is a structural difference, and it is not the cause:
+
+```
+FAILS : ID3v2.3.0 flags=0x00 tagSize=860 first frame TALB   ID3v1 trailer: YES
+WORKS : ID3v2.3.0 flags=0x00 tagSize=832 first frame TALB   ID3v1 trailer: no
+```
+
+The tempting story — "the ID3v1 trailer confuses the writer" — is wrong. **5,037 of 12,305
+library mp3s (40.9%) carry an ID3v1 trailer**, and ~110 successful tag writes this session
+landed across that population. Having one is normal.
+
+**The detail that turned out to matter**: the failing file's ID3v1 title is already `"Fiesta"`
+— exactly the value the write is trying to set — while ID3v2 holds `FIESTA RAFAELLA CARRA`.
+
+```
+ID3v1 : "Fiesta"                  ID3v2 : "FIESTA RAFAELLA CARRA"   <- what the library reads
+```
+
+So the correct value already exists in the file, in the tag nobody reads. That eliminates any
+theory where the read-back inspects the wrong tag (the reported `actual` matches v2 exactly)
+and narrows the failure precisely to **the ID3v2 write path on this one file**.
+
+**A second lead, also closed.** With 5,037 files carrying two tag versions, I checked whether
+v1 ever holds a *better* title than the library shows. It does not: of 4,449 comparable files,
+**245 (5.5%) disagree, and v2 is the better value every time** — v1 carries track-number
+prefixes (`14 - Bandida`) and 30-character truncations (`05 - El cantante (feat. Voltio`). The
+scanner reading v2 is right; there is no cleanup here, and recording that stops the 5.5% being
+mistaken for a defect later.
+
+Posted both to [#964](https://github.com/kevinch3/NicotinD/issues/964). The cause is still open
+— but a plausible-sounding explanation is now eliminated with a measurement rather than left
+for the next person to chase. **Disproving your own hypothesis is worth as much as confirming
+it, and costs one query either way.**
