@@ -756,3 +756,43 @@ So **over 99% of medium findings are noise**, which explains why the tier has ne
 actionable in any pass. Three of this session's issues (#947 `missplit_album` 0/3, #952, #954)
 are the same defect shape: a predicate that answers a cheaper question than its name claims,
 and a count that is therefore not a workload.
+
+### Eleventh stretch — running the audit with no filter, and finding a hidden dimension
+
+Stopped working rules piecemeal and ran `audit-library.ts` with no `--rule`. That surfaced a
+rule ten stretches of health-driven work had never seen: **`orphan_file`, 393 findings** —
+audio on disk with no `library_songs` row. It is a **disk** rule, and `get_library_health`
+is DB-only, so it appears in no health report, no MCP tool and no curation worklist. That is
+the reporting gap, and it is why this was invisible: *a dimension the curator's tool cannot
+show is a dimension that never gets worked.*
+
+Reproduced independently — walking `musicDir` with the shared `isReservedPath` /
+`reservedDirsFor` predicate and diffing against `library_songs.path` gives exactly **393**.
+(Without the predicate it is 699; the difference is `.downloads/` staging. Worth recording
+because the naive number is the one you get if you forget the shared helper — the thing
+`check:library-walkers` exists to prevent.)
+
+**Two populations, only one alarming:**
+
+| | files | folders |
+| --- | --- | --- |
+| partially-scanned folders (duplicate-shaped) | 348 | 96 |
+| folders where **every** file is orphaned | 45 | 13 |
+
+The 348 are #951 seen from the disk side — `LCD Soundsystem/Singles` has `01 - Losing My
+Edge.opus` in the DB and `10 - Losing My Edge.opus` orphaned beside it.
+
+Of the 13 fully-invisible folders I **checked each rather than assuming**, and most are
+redundant: La Renga (1998) is covered by `1998 - La Renga {526034-2}`, VA *Surface Sounds* by
+`Kaleo/Surface Sounds`, Eros Ramazzotti *9 (Remastered)* by the mp3s in `2003 9`.
+
+**One is real: `Juanes/Un Día Normal (20th Anniversary Remastered)`, 10 tracks.** Zero title
+matches anywhere in `library_songs`, and Juanes has no *Un Día Normal* album in the DB at
+all. Ten owned tracks that cannot be played.
+
+**Filed [#955](https://github.com/kevinch3/NicotinD/issues/955)** with the observation and no
+root cause, plus what is ruled out: not reserved-path staging, not Unicode normalisation (all
+19,184 DB paths are NFC), not a missed scan (several full rescans ran this session and the
+files stayed orphaned), and **not format-specific** — orphan rate is opus 3.24%, m4a 3.10%,
+mp3 1.30%. That last one corrects an impression: the first two listings I read were
+opus-heavy and I nearly wrote it up as an opus problem. It is not.
