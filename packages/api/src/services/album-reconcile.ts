@@ -13,6 +13,8 @@ export interface ReconcileFile {
   title: string;
   suffix: string;
   bitRate: number;
+  /** Disc number from tags. Absent/null means "the only disc" (issue #747). */
+  disc?: number | null;
 }
 
 export interface ReconcileResult {
@@ -22,10 +24,11 @@ export interface ReconcileResult {
 
 /**
  * Pure keeper-selection for one album folder. Uses the SAME identity + quality
- * ranking as the library scanner (`selectAlbumTracks`): canonical-title match
- * (dropping foreign rips) when `canonicalTitles` is given, else normalized title,
- * FLAC > lossy > bitrate, ties on smallest name. Returns which files to keep vs
- * delete. No IO — directly unit-testable.
+ * ranking as the library scanner (`selectAlbumTracks`): identity is `(disc,
+ * title)` — canonical-title match (dropping foreign rips) when `canonicalTitles`
+ * is given, else normalized title — then FLAC > lossy > bitrate, ties on
+ * smallest name. Returns which files to keep vs delete. No IO — directly
+ * unit-testable.
  */
 export function chooseFolderKeepers(
   files: ReconcileFile[],
@@ -38,6 +41,8 @@ export function chooseFolderKeepers(
     title: x.title,
     suffix: x.suffix,
     bitRate: x.bitRate,
+    // This pass DELETES, so a title repeated across discs must not collide (issue #747).
+    disc: x.disc ?? null,
   }));
   const kept = new Set(selectAlbumTracks(selectable, canonicalTitles).map((t) => t.name));
   const keptNames: string[] = [];
@@ -46,7 +51,7 @@ export function chooseFolderKeepers(
   return { keptNames, deletedNames };
 }
 
-/** Read a folder's audio files into ReconcileFile[] (title via tag, fallback filename stem). */
+/** Read a folder's audio files into ReconcileFile[] (title + disc via tag, fallback filename stem). */
 export async function readFolderTracks(dir: string): Promise<ReconcileFile[]> {
   let entries: string[];
   try {
@@ -67,14 +72,18 @@ export async function readFolderTracks(dir: string): Promise<ReconcileFile[]> {
     }
     let title = name.slice(0, name.length - ext.length);
     let bitRate = 0;
+    let disc: number | null = null;
     try {
       const meta = mm ? await mm.parseFile(abs, { duration: false, skipCovers: true }) : undefined;
       if (meta?.common?.title) title = meta.common.title;
       if (meta?.format?.bitrate) bitRate = Math.round(meta.format.bitrate / 1000);
+      // Nullish, not truthy: the scanner keeps a `TPOS: 0`, so a truthy guard
+      // here would disagree with it about the identity of the same file.
+      disc = meta?.common?.disk?.no ?? null;
     } catch {
       // unreadable — fall back to filename stem + 0 bitrate
     }
-    out.push({ name, title, suffix: ext.slice(1), bitRate });
+    out.push({ name, title, suffix: ext.slice(1), bitRate, disc });
   }
   return out;
 }

@@ -104,9 +104,11 @@ version is smaller and reuses more:
   `filesMissingOnDisk` → enqueue → `AlbumFallbackService.recordJob`), and `albumAlreadyComplete`
   was already shared in `services/library-completeness.ts`.
 - **Shared core lives in `services/album-acquire.ts`** (`acquireAlbum(deps, input)` → an
-  `AcquireOutcome` enum). It was extracted out of `WatchlistService.tryAcquire`, which now calls
-  it and maps the outcome to its row state (`enqueued|already-complete|in-flight` → acquired;
-  `enqueue-failed` → failed; `no-candidate|slskd-unavailable` → touch/retry). The watchlist tests
+  `AcquireResult`: the `AcquireOutcome` token plus, on a failure, the `detail` it was derived
+  from — see [mcp-agent.md](mcp-agent.md), issue #858). It was extracted out of
+  `WatchlistService.tryAcquire`, which now calls it and maps the outcome to its row state
+  (`enqueued|already-complete|in-flight` → acquired; `enqueue-failed` → failed, storing the
+  `detail` as `last_error`; `no-candidate|slskd-unavailable` → touch/retry). The watchlist tests
   stayed green, proving the extraction was behavior-preserving.
 - **`AutoAcquireService`** (`services/auto-acquire.service.ts`) is therefore just the interval
   poller: each sweep pulls `lidarr.album.wantedMissing(1, maxPerSweep)` and feeds each record to
@@ -115,6 +117,6 @@ version is smaller and reuses more:
   `/api/discography/jobs` view already surfaces what the loop queued.
 - **Config** landed under `downloads.autoAcquire{Enabled,IntervalMs,MaxPerSweep}` (default off),
   env `NICOTIND_AUTO_ACQUIRE_ENABLED`; `minMatchPct` reuses `watchlist.minMatchPct`.
-- **Tests:** `album-acquire.test.ts` (every outcome), `auto-acquire.service.test.ts` (sweep
+- **Tests:** `album-acquire.addon.test.ts` (every outcome), `auto-acquire.service.test.ts` (sweep
   enqueues once, respects `maxPerSweep`, gated on acquisition, skips artistless records),
   `lidarr-client/src/api/album.test.ts` (request shape). All under existing CI globs.

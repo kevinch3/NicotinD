@@ -233,7 +233,14 @@ describe.if(ffmpegAvailable())('genre round-trips through readAudioTags (#791)',
  * on a library that transcodes lossless to Opus by default.
  */
 describe.if(ffmpegAvailable())('overwriting an existing tag (#760)', () => {
-  /** A one-second file of `ext`, already carrying TITLE/ARTIST/ALBUM. */
+  /**
+   * A one-second file of `ext`, already carrying TITLE/ARTIST/ALBUM/album artist.
+   *
+   * The album artist is generated under ffmpeg's generic `album_artist` key, not
+   * the Vorbis `ALBUMARTIST` — the ipod muxer only knows the generic one, so the
+   * Vorbis spelling would leave the `.m4a` fixture tagless and the assertion
+   * vacuous on the container where the write never worked at all (issue #914).
+   */
   function tagged(ext: string, name: string): string {
     const codec = { opus: 'libopus', ogg: 'libvorbis', flac: 'flac', m4a: 'aac' }[ext]!;
     const path = join(dir, `${name}.${ext}`);
@@ -256,6 +263,8 @@ describe.if(ffmpegAvailable())('overwriting an existing tag (#760)', () => {
       'ARTIST=OLD ARTIST',
       '-metadata',
       'ALBUM=OLD ALBUM',
+      '-metadata',
+      'album_artist=OLD ALBUM ARTIST',
       path,
     ]);
     expect(gen.status).toBe(0);
@@ -263,19 +272,27 @@ describe.if(ffmpegAvailable())('overwriting an existing tag (#760)', () => {
   }
 
   for (const ext of ['opus', 'ogg', 'flac', 'm4a']) {
-    it(`replaces an existing title/artist/album on .${ext}`, async () => {
+    it(`replaces an existing title/artist/album/album artist on .${ext}`, async () => {
       const path = tagged(ext, `retag-${ext}`);
       expect(
         await writeAudioTags(path, {
           title: 'NEW TITLE',
           artist: 'NEW ARTIST',
           album: 'NEW ALBUM',
+          albumArtist: 'NEW ALBUM ARTIST',
         }),
       ).toBe(true);
       const tags = await readAudioTags(path);
       expect(tags.title).toBe('NEW TITLE');
       expect(tags.artist).toBe('NEW ARTIST');
       expect(tags.album).toBe('NEW ALBUM');
+      expect(tags.albumArtist).toBe('NEW ALBUM ARTIST');
+
+      // Retagging a retag: a key written under a name ffmpeg does not recognise
+      // lands *beside* its own old value instead of replacing it, and the pair
+      // then concatenates on the next pass (issue #914).
+      expect(await writeAudioTags(path, { albumArtist: 'NEWER ALBUM ARTIST' })).toBe(true);
+      expect((await readAudioTags(path)).albumArtist).toBe('NEWER ALBUM ARTIST');
     });
   }
 

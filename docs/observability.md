@@ -62,6 +62,40 @@ surfaces** and inert when unconfigured.
   collapses into a single grouped issue instead of one event per file. No-op when
   Sentry is unconfigured. → [library-processing.md](library-processing.md).
 
+## Metadata-provider health (Lidarr + MusicBrainz)
+
+Sentry sees only unknown 500s, so a metadata-provider outage was invisible to every
+operator surface: both client seams log the failure exactly once and ~20 downstream
+call sites then degrade it to `[]`/`null` (issue #670). `packages/core/src/provider-health.ts`
+counts what those seams see.
+
+- `recordProviderCall(provider, outcome)` is called from the two — and only two — places
+  every outbound call passes through: `LidarrClient.request()`
+  (`packages/lidarr-client/src/client.ts`, 13 methods behind it) and
+  `MusicBrainzClient.fetch()` (`packages/api/src/services/musicbrainz-client.ts`, whose
+  `FetchOutcome` already discriminated transient-vs-confirmed for the cache). The counters
+  are **module-level, not per-instance**: `MusicBrainzClient` is constructed in eight
+  places while the runtime Lidarr is a single instance, so per-instance counters would
+  report whichever one the route happened to hold.
+- **A MusicBrainz 404 counts as `ok`.** It is MusicBrainz answering authoritatively that
+  the MBID does not exist — the provider working. Counting it as a failure would make the
+  success rate track library *coverage* instead of provider health.
+- Storage is a fixed ring of one-minute buckets over `PROVIDER_HEALTH_WINDOW_MS` (15 min),
+  never an event list, so a provider failing thousands of times an hour costs the same
+  memory as an idle one. `providerHealthSnapshot()` sums the buckets inside the window into
+  `{ok, failed, timedOut, successRate, lastFailureAt, lastFailureKind, lastFailureStatus,
+  windowMs}` per provider.
+- `lastFailure*` is deliberately **not** windowed: "when did it last break" is a different
+  question from the rate, and outlives it.
+- `successRate` reads 1 for a window with no calls, which is why the Admin chip checks
+  `ok + failed` first and shows a grey "Idle" rather than a reassuring 100 %. Nothing is
+  polled or probed — the numbers are a by-product of calls the app was already making, so
+  an idle window means "no data", not "healthy".
+- Surfaced as the `providers` slice of `GET /api/admin/review`, rendered by
+  `system-health-panel` as one row per provider (`data-testid="provider-health"`). The
+  web mirror of the field is optional, because the native shells point at a
+  user-configured server that can be older than the app.
+
 ## Config
 
 | Var | Default | Effect |
@@ -78,4 +112,10 @@ Web DSN is build-time (`environment.prod.ts`); there is no runtime web-DSN chann
   `captureProcessingFailure` grouping/extra) +
   `packages/api/src/middleware/error-handler.test.ts` (captures 500s, skips 4xx/503).
 - Web: `app/observability/sentry.spec.ts` (init on/off + prod config).
+- Provider health: `packages/core/src/provider-health.test.ts` (window rollup, rate
+  arithmetic, last-failure fields, boundedness), the "provider-health counters" blocks in
+  `packages/lidarr-client/src/client.test.ts` and
+  `packages/api/src/services/musicbrainz-client.test.ts` (per-class recording, and the 404
+  that must not count as an outage), and "metadata-provider health (#670)" in
+  `packages/api/src/routes/review.test.ts` (own field + degraded path).
 - CI: API via `ci.yml:52`, web via `ci.yml:58`.

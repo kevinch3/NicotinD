@@ -96,7 +96,7 @@ export class AutoAcquireService {
         const artistName = album.artist?.artistName;
         if (!artistName || !album.title) continue;
         try {
-          const outcome = await acquireAlbum(
+          const { outcome, detail } = await acquireAlbum(
             { db: this.db, lidarr: this.lidarr, getAddon: this.getAddon },
             {
               lidarrAlbumId: album.id,
@@ -107,7 +107,7 @@ export class AutoAcquireService {
             },
           );
           log.debug(
-            { albumId: album.id, album: album.title, outcome },
+            { albumId: album.id, album: album.title, outcome, detail },
             'Auto-acquire sweep result',
           );
         } catch (err) {

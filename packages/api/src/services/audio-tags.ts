@@ -412,7 +412,11 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   if (!muxer) return Promise.resolve(false);
   const metaArgs: string[] = [];
   if (tags.album !== undefined) metaArgs.push('-metadata', `ALBUM=${tags.album}`);
-  if (tags.albumArtist !== undefined) metaArgs.push('-metadata', `ALBUMARTIST=${tags.albumArtist}`);
+  // ffmpeg's generic key, not the Vorbis `ALBUMARTIST`: the only name here that
+  // differs by more than case, so the Vorbis spelling landed beside the old
+  // value instead of replacing it (#914). The muxer still emits ALBUMARTIST.
+  if (tags.albumArtist !== undefined)
+    metaArgs.push('-metadata', `album_artist=${tags.albumArtist}`);
   if (tags.artist !== undefined) metaArgs.push('-metadata', `ARTIST=${tags.artist}`);
   if (tags.title !== undefined) metaArgs.push('-metadata', `TITLE=${tags.title}`);
   if (tags.trackNumber !== undefined) metaArgs.push('-metadata', `TRACK=${tags.trackNumber}`);

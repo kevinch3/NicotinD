@@ -1,15 +1,22 @@
 // packages/api/src/services/album-reconcile.test.ts
 import { describe, it, expect, afterAll } from 'bun:test';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, copyFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chooseFolderKeepers, readFolderTracks, type ReconcileFile } from './album-reconcile.js';
 
-const f = (name: string, title: string, suffix: string, bitRate: number): ReconcileFile => ({
+const f = (
+  name: string,
+  title: string,
+  suffix: string,
+  bitRate: number,
+  disc: number | null = null,
+): ReconcileFile => ({
   name,
   title,
   suffix,
   bitRate,
+  disc,
 });
 
 describe('chooseFolderKeepers', () => {
@@ -46,6 +53,38 @@ describe('chooseFolderKeepers', () => {
     const { keptNames } = chooseFolderKeepers(files);
     expect(keptNames).toEqual(['a.mp3']);
   });
+
+  // This pass deletes files, so a title repeated across discs must survive it (issue #747).
+  it('keeps both discs when a title repeats across them', () => {
+    const files = [
+      f('01 - Intro.flac', 'Intro', 'flac', 900, 1),
+      f('01 - Intro (2).flac', 'Intro', 'flac', 900, 2),
+    ];
+    const { deletedNames, keptNames } = chooseFolderKeepers(files);
+    expect(deletedNames).toEqual([]);
+    expect(keptNames).toEqual(['01 - Intro.flac', '01 - Intro (2).flac']);
+  });
+
+  it('keeps both discs under a canonical tracklist too (a titles-only list matches both)', () => {
+    const files = [
+      f('01 - Intro.flac', 'Intro', 'flac', 900, 1),
+      f('01 - Intro (2).flac', 'Intro', 'flac', 900, 2),
+    ];
+    const { deletedNames } = chooseFolderKeepers(files, ['Intro', 'Womanizer']);
+    expect(deletedNames).toEqual([]);
+  });
+
+  it('still collapses format-duplicates within one disc', () => {
+    const files = [f('a.flac', 'Intro', 'flac', 900, 2), f('b.mp3', 'Intro', 'mp3', 320, 2)];
+    const { deletedNames } = chooseFolderKeepers(files);
+    expect(deletedNames).toEqual(['b.mp3']);
+  });
+
+  it('treats an untagged disc as the only disc, so it collapses against a tagged disc 1', () => {
+    const files = [f('a.flac', 'Intro', 'flac', 900), f('b.mp3', 'Intro', 'mp3', 320, 1)];
+    const { deletedNames } = chooseFolderKeepers(files);
+    expect(deletedNames).toEqual(['b.mp3']);
+  });
 });
 
 describe('readFolderTracks', () => {
@@ -77,5 +116,38 @@ describe('readFolderTracks', () => {
 
   it('returns [] for a missing directory', async () => {
     expect(await readFolderTracks(join(tmp, 'nonexistent'))).toEqual([]);
+  });
+});
+
+// A disc field the reader never populates is the shape of issue #747, so this
+// runs the real tag parse over a real MP3 rather than trusting the type.
+describe('readFolderTracks disc tag', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'recon-disc-'));
+  const fixture = join(import.meta.dir, '../../test-fixtures/silence.mp3');
+
+  afterAll(() => {
+    try {
+      rmSync(tmp, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  });
+
+  it('reads the disc off a tagged file, leaves an untagged one null, and keeps both discs', async () => {
+    const { default: nodeId3 } = (await import('node-id3')) as unknown as {
+      default: { update: (t: object, f: string) => boolean };
+    };
+    for (const name of ['d1.mp3', 'd2.mp3', 'plain.mp3']) copyFileSync(fixture, join(tmp, name));
+    nodeId3.update({ title: 'Intro', partOfSet: '1/2' }, join(tmp, 'd1.mp3'));
+    nodeId3.update({ title: 'Intro', partOfSet: '2/2' }, join(tmp, 'd2.mp3'));
+    nodeId3.update({ title: 'Intro' }, join(tmp, 'plain.mp3'));
+
+    const tracks = await readFolderTracks(tmp);
+    expect(tracks.find((t) => t.name === 'd1.mp3')?.disc).toBe(1);
+    expect(tracks.find((t) => t.name === 'd2.mp3')?.disc).toBe(2);
+    expect(tracks.find((t) => t.name === 'plain.mp3')?.disc).toBeNull();
+
+    // Only the untagged twin of disc 1 collapses; disc 2's copy survives.
+    expect(chooseFolderKeepers(tracks).deletedNames).toEqual(['plain.mp3']);
   });
 });

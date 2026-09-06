@@ -668,6 +668,13 @@ missing rather than merely stale, an unguarded retry is an endless refresh loop,
 far worse than the dead button it replaced. The marker is cleared on successful
 bootstrap so a later deploy in the same session recovers too.
 
+**It declines while offline** (#872): an offline import failure raises the same
+error as a stale build, but a reload cannot fix it and lands on the browser's
+offline page instead, since `index.html` is in the same prefetch group as the
+chunk. The offline check runs *before* the marker, so the one reload is still
+available to a genuine stale build later in the same session.
+→ [web-ui.md](web-ui.md)
+
 ## Healthcheck
 
 `GET /api/health` → `{ ok: true, version: "X.Y.Z" }` — unauthenticated

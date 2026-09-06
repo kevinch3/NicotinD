@@ -41,6 +41,9 @@ export * from './remote-playback.js';
 // MusicBrainz id shape (shared by the curator route + tag-sourced lookups)
 export * from './mbid.js';
 
+// Metadata-provider call counters (shared by the lidarr/musicbrainz seams + ServiceReview)
+export * from './provider-health.js';
+
 // Plugin SDK (capability contracts + manifest)
 export * from './plugin/index.js';
 

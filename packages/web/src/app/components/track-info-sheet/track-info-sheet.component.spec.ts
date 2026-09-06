@@ -595,3 +595,244 @@ describe('TrackInfoSheetComponent (genre chip editor, issue #684)', () => {
     expect(c.genreList()).toEqual(['House', 'Techno', 'Minimal']);
   });
 });
+
+// Issue #724: #722 shipped the retag backend (PATCH /songs/:id/metadata plus the
+// song-scoped candidate gatherer) and the MCP tool, but the drawer had no
+// title/artist/album field at all — a curator could only retag through an agent
+// or a CLI script.
+describe('TrackInfoSheetComponent (retag form, issue #724)', () => {
+  const role = signal<string | null>('admin');
+  const fixSongMetadata = vi.fn();
+  const getSongMetadataCandidates = vi.fn();
+  const getSong = vi.fn();
+  const toastShow = vi.fn();
+
+  const STORED = {
+    id: 'song-1',
+    title: 'Cariñito [Official Video]',
+    artist: 'Los Hijos del Sol',
+    albumArtist: 'Los Hijos del Sol',
+    album: 'Fake YouTube Album',
+    year: 2019,
+  };
+
+  beforeEach(async () => {
+    role.set('admin');
+    toastShow.mockClear();
+    getSong.mockReset();
+    getSong.mockReturnValue(of(STORED as never));
+    fixSongMetadata.mockReset();
+    fixSongMetadata.mockReturnValue(
+      of({ ok: true, applied: { title: 'Cariñito' }, rescanned: true, verified: true }),
+    );
+    getSongMetadataCandidates.mockReset();
+    getSongMetadataCandidates.mockReturnValue(
+      of({
+        song: {
+          id: 'song-1',
+          title: STORED.title,
+          artist: STORED.artist,
+          album: STORED.album,
+          albumId: 'al-1',
+        },
+        query: 'Los Hijos del Sol Cariñito',
+        suggested: { title: 'Cariñito', album: 'Fake YouTube Album', removed: ['Official Video'] },
+        candidates: [],
+        sources: [{ id: 'lidarr', ok: false }],
+        identifyAvailable: false,
+      }),
+    );
+
+    await TestBed.configureTestingModule({
+      imports: [TrackInfoSheetComponent],
+      providers: [
+        {
+          provide: LibraryApiService,
+          useValue: {
+            analyzeSong: vi.fn(() => of({ bpm: 120, source: 'analyzed' as const })),
+            getGenreSuggestion: vi.fn(() => of(null)),
+            applyGenre: vi.fn(() => of({ ok: true, genre: 'X' })),
+            getSong,
+            getSongProvenance: vi.fn(() => of([])),
+            getSongAcquisition: vi.fn(() => of(null)),
+            getLyrics: vi.fn(() => of(null)),
+            getIdentifyAvailable: vi.fn(() => of({ available: false })),
+            identifyLibrarySong: vi.fn(() => of({ result: null, outcome: { kind: 'no-match' } })),
+            applyIdentify: vi.fn(() => of({ ok: true, rescanned: true })),
+            getSongMetadataCandidates,
+            fixSongMetadata,
+          },
+        },
+        { provide: TranslateService, useValue: { t: (k: string) => k } },
+        {
+          provide: AuthService,
+          useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) },
+        },
+        { provide: LikeService, useValue: { isLiked: () => false, toggle: vi.fn() } },
+        { provide: ToastService, useValue: { show: toastShow } },
+      ],
+    }).compileComponents();
+  });
+
+  function create() {
+    const c = TestBed.createComponent(TrackInfoSheetComponent).componentInstance;
+    (c as unknown as { songId: () => string }).songId = () => 'song-1';
+    c.ngOnInit();
+    return c;
+  }
+
+  it('startEditTags() prefills every field from the stored row', () => {
+    const c = create();
+    c.startEditTags();
+    expect(c.editingTags()).toBe(true);
+    expect(c.tagDraft()).toEqual({
+      title: 'Cariñito [Official Video]',
+      artist: 'Los Hijos del Sol',
+      albumArtist: 'Los Hijos del Sol',
+      album: 'Fake YouTube Album',
+      year: '2019',
+    });
+    expect(c.hasTagChanges()).toBe(false);
+  });
+
+  it('sends only the fields the curator actually changed', () => {
+    const c = create();
+    c.startEditTags();
+    c.setTagField('title', 'Cariñito');
+    expect(c.hasTagChanges()).toBe(true);
+    c.saveTags();
+    expect(fixSongMetadata).toHaveBeenCalledWith('song-1', { title: 'Cariñito' });
+  });
+
+  it('ignores whitespace-only edits and a re-typed identical value', () => {
+    const c = create();
+    c.startEditTags();
+    c.setTagField('title', '  Cariñito [Official Video]  ');
+    c.setTagField('album', '   ');
+    expect(c.tagChanges()).toEqual({});
+    c.saveTags();
+    expect(fixSongMetadata).not.toHaveBeenCalled();
+  });
+
+  it('sends a changed year as a number', () => {
+    const c = create();
+    c.startEditTags();
+    c.setTagField('year', '1978');
+    expect(c.tagChanges()).toEqual({ year: 1978 });
+  });
+
+  it('a successful save closes the form and refetches the song', () => {
+    const c = create();
+    c.startEditTags();
+    c.setTagField('title', 'Cariñito');
+    // Only now does the row carry the new title — refetching before the save
+    // would prefill the form with it and make the edit a no-op.
+    getSong.mockReturnValue(of({ ...STORED, title: 'Cariñito' } as never));
+    c.saveTags();
+    expect(c.savingTags()).toBe(false);
+    expect(c.editingTags()).toBe(false);
+    expect(c.effectiveSong()?.title).toBe('Cariñito');
+  });
+
+  // Issue #776: `verified:false` means the tag reached the file but nothing read
+  // it back, so the library still shows the old value — a silent success here
+  // is exactly what the backend went to trouble to stop reporting.
+  it('warns when the write could not be verified against the row', () => {
+    fixSongMetadata.mockReturnValueOnce(
+      of({ ok: true, applied: { title: 'Cariñito' }, rescanned: false, verified: false }),
+    );
+    const c = create();
+    c.startEditTags();
+    c.setTagField('title', 'Cariñito');
+    c.saveTags();
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'error', message: 'trackInfo.tagsUnverified' }),
+    );
+  });
+
+  it('does not warn when the write was verified', () => {
+    const c = create();
+    c.startEditTags();
+    c.setTagField('title', 'Cariñito');
+    c.saveTags();
+    expect(toastShow).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the rejection reason and the row/request divergence', () => {
+    fixSongMetadata.mockReturnValueOnce(
+      throwError(() => ({
+        error: {
+          error: 'Tag write did not persist',
+          requested: { title: 'Cariñito' },
+          actual: { title: 'Cariñito [Official Video]' },
+        },
+      })),
+    );
+    const c = create();
+    c.startEditTags();
+    c.setTagField('title', 'Cariñito');
+    c.saveTags();
+    expect(c.savingTags()).toBe(false);
+    // The form stays open on failure — the curator's edit is not thrown away.
+    expect(c.editingTags()).toBe(true);
+    expect(c.tagError()).toEqual({
+      reason: 'Tag write did not persist',
+      diverged: ['title: Cariñito [Official Video]'],
+    });
+  });
+
+  it('falls back to a generic reason when the error carries no body', () => {
+    fixSongMetadata.mockReturnValueOnce(throwError(() => new Error('boom')));
+    const c = create();
+    c.startEditTags();
+    c.setTagField('title', 'Cariñito');
+    c.saveTags();
+    expect(c.tagError()).toEqual({ reason: 'errors.generic', diverged: [] });
+  });
+
+  it('findTagMatches() stores the gathered candidates and the cleaner suggestion', () => {
+    const c = create();
+    c.startEditTags();
+    c.findTagMatches();
+    expect(getSongMetadataCandidates).toHaveBeenCalledWith('song-1');
+    expect(c.tagCandidates()?.suggested?.title).toBe('Cariñito');
+    expect(c.loadingTagCandidates()).toBe(false);
+  });
+
+  it('useCleanedTitle() adopts the stripped title without touching the rest', () => {
+    const c = create();
+    c.startEditTags();
+    c.findTagMatches();
+    c.useCleanedTitle();
+    expect(c.tagDraft().title).toBe('Cariñito');
+    expect(c.tagDraft().artist).toBe('Los Hijos del Sol');
+    expect(c.tagChanges()).toEqual({ title: 'Cariñito' });
+  });
+
+  it('useTagCandidate() fills the release fields, leaving the title alone', () => {
+    const c = create();
+    c.startEditTags();
+    c.useTagCandidate({
+      releaseGroupId: 'rg-1',
+      artist: 'Los Hijos del Sol',
+      title: 'Sonido Amazónico',
+      year: 1978,
+      releaseType: 'album',
+      coverUrl: null,
+      score: 91,
+    });
+    expect(c.tagDraft().album).toBe('Sonido Amazónico');
+    expect(c.tagDraft().year).toBe('1978');
+    expect(c.tagDraft().title).toBe('Cariñito [Official Video]');
+    expect(c.tagChanges()).toEqual({ album: 'Sonido Amazónico', year: 1978 });
+  });
+
+  it('cancelEditTags() closes the form and drops the error', () => {
+    const c = create();
+    c.startEditTags();
+    c.tagError.set({ reason: 'x', diverged: [] });
+    c.cancelEditTags();
+    expect(c.editingTags()).toBe(false);
+    expect(c.tagError()).toBeNull();
+  });
+});

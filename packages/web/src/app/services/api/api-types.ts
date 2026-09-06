@@ -26,6 +26,46 @@ export interface IdentifyApplyFields {
   releaseId?: string;
 }
 
+/** Body of PATCH /songs/:id/metadata — add/replace only, never a clear. */
+export interface SongMetadataFields {
+  title?: string;
+  artist?: string;
+  albumArtist?: string;
+  album?: string;
+  year?: number;
+}
+
+/** Response of GET /songs/:id/metadata-candidates (song-scoped gatherer, #722). */
+export interface SongMetadataCandidates {
+  song: { id: string; title: string; artist: string; album: string | null; albumId: string };
+  query: string;
+  /** The display-title cleaner's opinion; null when nothing needed stripping. */
+  suggested: { title: string; album: string | null; removed: string[] } | null;
+  candidates: import('../../../types/core').MetadataCandidate[];
+  sources: Array<{ id: string; ok: boolean }>;
+  identifyAvailable: boolean;
+}
+
+/** Response of PATCH /songs/:id/metadata. `applied` is read back, not echoed. */
+export interface SongMetadataResult {
+  ok: boolean;
+  applied: SongMetadataFields;
+  rescanned: boolean;
+  /** Whether every requested field was confirmed present on the row afterwards. */
+  verified: boolean;
+}
+
+/**
+ * Error body of the same route. A failed verification carries what the row
+ * actually holds so the divergence can be shown rather than a bare "failed"
+ * (issue #776).
+ */
+export interface SongMetadataErrorBody {
+  error: string;
+  requested?: SongMetadataFields;
+  actual?: Partial<Record<keyof SongMetadataFields, string | number | null>>;
+}
+
 export interface ArtistCredit {
   id: string;
   name: string;
@@ -767,6 +807,32 @@ export interface MaintenanceStatus {
   startedBy: string | null;
 }
 
+/** Why a metadata-provider call failed. Only `http` carries a status. */
+export type ProviderFailureKind = 'timeout' | 'http' | 'network';
+
+/**
+ * Mirror of the API's `ProviderHealth` (issue #670) — one metadata provider's
+ * call outcomes over a rolling window, so an outage the library code swallows
+ * into `[]` still reaches the operator.
+ */
+export interface ProviderHealth {
+  /** Calls the provider answered — a MusicBrainz 404 is an answer, not a fault. */
+  ok: number;
+  failed: number;
+  timedOut: number;
+  /** 0-1; an idle window reads as 1, so check `ok + failed` before trusting it. */
+  successRate: number;
+  lastFailureAt: number | null;
+  lastFailureKind: ProviderFailureKind | null;
+  lastFailureStatus: number | null;
+  windowMs: number;
+}
+
+export interface ProviderHealthSnapshot {
+  lidarr: ProviderHealth;
+  musicbrainz: ProviderHealth;
+}
+
 export interface ServiceReview {
   collectedAt: number;
   version: string;
@@ -791,6 +857,12 @@ export interface ServiceReview {
     /** BS-RoFormer vocal-separation sidecar, GPU-only (issue #603). */
     separator: { configured: boolean; healthy: boolean };
   };
+  /**
+   * Lidarr + MusicBrainz call outcomes (issue #670). Optional because the
+   * native shells point at a user-configured server (`ServerConfigService`)
+   * that can be older than the app — the panel hides the rows instead.
+   */
+  providers?: ProviderHealthSnapshot;
   library: { scanning: boolean; indexedSongCount: number };
   updateCheck: UpdateCheck | null;
   /** Full backup list (newest first) — drives the Admin backups table. */

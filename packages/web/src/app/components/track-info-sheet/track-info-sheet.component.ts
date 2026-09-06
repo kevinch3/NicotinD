@@ -5,6 +5,7 @@ import type {
   AcquisitionMethod,
   GenreSuggestion,
   LyricsDto,
+  MetadataCandidate,
   SongAcquisition,
 } from '@nicotind/core';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -13,6 +14,9 @@ import type {
   Song,
   ArtistIdentityResult,
   IdentifySuggestion,
+  SongMetadataCandidates,
+  SongMetadataErrorBody,
+  SongMetadataFields,
 } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { TranslateService } from '../../services/translate.service';
@@ -26,6 +30,7 @@ import { moveInList } from '../../lib/move-in-list';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { TrackStatsBarsComponent } from '../track-stats-bars/track-stats-bars.component';
 import { ArtistIdentityModalComponent } from '../artist-identity-modal/artist-identity-modal.component';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 const ACTION_LABELS: Record<string, string> = {
   duplicate_removed: 'Duplicate removed',
@@ -35,10 +40,27 @@ const ACTION_LABELS: Record<string, string> = {
   album_renamed: 'Album name normalized',
 };
 
+/** The retag form's fields, all held as strings (year included, it is an input). */
+interface TagDraft {
+  title: string;
+  artist: string;
+  albumArtist: string;
+  album: string;
+  year: string;
+}
+
+type TagTextField = Exclude<keyof TagDraft, 'year'>;
+
 @Component({
   selector: 'app-track-info-sheet',
   standalone: true,
-  imports: [CommonModule, CoverArtComponent, TrackStatsBarsComponent, ArtistIdentityModalComponent],
+  imports: [
+    CommonModule,
+    CoverArtComponent,
+    TrackStatsBarsComponent,
+    ArtistIdentityModalComponent,
+    TranslatePipe,
+  ],
   templateUrl: './track-info-sheet.component.html',
 })
 export class TrackInfoSheetComponent implements OnInit {
@@ -121,6 +143,57 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly identifyFailure = signal<{ kind: string; detail?: string } | null>(null);
   readonly applyingIdentify = signal(false);
   readonly identifyApplied = signal(false);
+
+  // Curator retag of the song's own title/artist/album (issue #724) — the web
+  // half of #722's backend. A tag write + rescan, never a file move.
+  readonly editingTags = signal(false);
+  readonly savingTags = signal(false);
+  readonly tagDraft = signal<TagDraft>({
+    title: '',
+    artist: '',
+    albumArtist: '',
+    album: '',
+    year: '',
+  });
+  readonly tagError = signal<{ reason: string; diverged: string[] } | null>(null);
+  readonly tagCandidates = signal<SongMetadataCandidates | null>(null);
+  readonly loadingTagCandidates = signal(false);
+  /** Text fields, rendered as one loop so the form stays a table of labels. */
+  readonly tagFields: ReadonlyArray<{ key: TagTextField; labelKey: string }> = [
+    { key: 'title', labelKey: 'trackInfo.tagTitle' },
+    { key: 'artist', labelKey: 'trackInfo.tagArtist' },
+    { key: 'albumArtist', labelKey: 'trackInfo.tagAlbumArtist' },
+    { key: 'album', labelKey: 'trackInfo.tagAlbum' },
+  ];
+
+  /**
+   * Only the fields the curator actually changed. The route writes every field
+   * present in the body, so sending an untouched one is a needless tag rewrite
+   * (and a needless re-mint of the name-derived album id).
+   */
+  readonly tagChanges = computed<SongMetadataFields>(() => {
+    const current = this.currentTags();
+    const draft = this.tagDraft();
+    const body: SongMetadataFields = {};
+    for (const { key } of this.tagFields) {
+      const next = draft[key].trim();
+      if (next && next !== current[key]) body[key] = next;
+    }
+    const year = draft.year.trim();
+    if (year && year !== current.year && Number.isInteger(Number(year))) body.year = Number(year);
+    return body;
+  });
+
+  readonly hasTagChanges = computed(() => Object.keys(this.tagChanges()).length > 0);
+
+  /** Read-only rows for the collapsed state — the header omits year/albumArtist. */
+  readonly tagSummary = computed(() => {
+    const current = this.currentTags();
+    return [
+      ...this.tagFields.map((f) => ({ labelKey: f.labelKey, value: current[f.key] })),
+      { labelKey: 'trackInfo.tagYear', value: current.year },
+    ];
+  });
 
   // Curation actions (artist-identity fix, apply genre, edit lyrics) — refiner+admin.
   readonly canCurate = computed(() => this.auth.canCurate());
@@ -495,6 +568,109 @@ export class TrackInfoSheetComponent implements OnInit {
         },
         error: () => this.applyingIdentify.set(false),
       });
+  }
+
+  // ── Curator retag (issue #724) ────────────────────────────────────────────
+
+  /** What the row currently holds; falls back to the caller's display inputs. */
+  private currentTags(): TagDraft {
+    const s = this.effectiveSong();
+    return {
+      title: s?.title ?? this.displayTitle(),
+      artist: s?.artist ?? this.displayArtist(),
+      albumArtist: s?.albumArtist ?? '',
+      album: s?.album ?? this.displayAlbum(),
+      year: s?.year ? String(s.year) : '',
+    };
+  }
+
+  startEditTags(): void {
+    this.tagDraft.set(this.currentTags());
+    this.tagError.set(null);
+    this.editingTags.set(true);
+  }
+
+  cancelEditTags(): void {
+    this.editingTags.set(false);
+    this.tagError.set(null);
+  }
+
+  setTagField(field: keyof TagDraft, value: string): void {
+    this.tagDraft.update((d) => ({ ...d, [field]: value }));
+  }
+
+  /** Look up candidate releases + the cleaner's opinion for this track. */
+  findTagMatches(): void {
+    if (this.loadingTagCandidates()) return;
+    this.loadingTagCandidates.set(true);
+    this.api.getSongMetadataCandidates(this.songId()).subscribe({
+      next: (r) => {
+        this.tagCandidates.set(r);
+        this.loadingTagCandidates.set(false);
+      },
+      error: () => this.loadingTagCandidates.set(false),
+    });
+  }
+
+  /** Adopt `cleanDisplayTitle`'s stripped title (and album, when it changed). */
+  useCleanedTitle(): void {
+    const suggested = this.tagCandidates()?.suggested;
+    if (!suggested) return;
+    this.tagDraft.update((d) => ({
+      ...d,
+      title: suggested.title,
+      album: suggested.album ?? d.album,
+    }));
+  }
+
+  /** Fill the release fields from a candidate; the curator still saves. */
+  useTagCandidate(candidate: MetadataCandidate): void {
+    this.tagDraft.update((d) => ({
+      ...d,
+      album: candidate.title,
+      albumArtist: candidate.artist,
+      year: candidate.year !== null ? String(candidate.year) : d.year,
+    }));
+  }
+
+  saveTags(): void {
+    const body = this.tagChanges();
+    if (this.savingTags() || Object.keys(body).length === 0) return;
+    this.savingTags.set(true);
+    this.tagError.set(null);
+    this.api.fixSongMetadata(this.songId(), body).subscribe({
+      next: (res) => {
+        this.savingTags.set(false);
+        this.editingTags.set(false);
+        this.tagCandidates.set(null);
+        // `verified:false` means the tags reached the file but nothing read
+        // them back, so the library still shows the old values (issue #776).
+        if (!res.verified) {
+          this.toast.show({ kind: 'error', message: this.i18n.t('trackInfo.tagsUnverified') });
+        }
+        this.api.getSong(this.songId()).subscribe({
+          next: (song) => this.loadedSong.set(song),
+          error: () => {},
+        });
+      },
+      error: (err: unknown) => {
+        this.savingTags.set(false);
+        this.tagError.set(this.tagErrorFrom(err));
+      },
+    });
+  }
+
+  /**
+   * A rejected write carries what the row actually holds (issue #776) — show
+   * the divergence rather than only "could not save".
+   */
+  private tagErrorFrom(err: unknown): { reason: string; diverged: string[] } {
+    const body = (err as { error?: SongMetadataErrorBody | null } | null)?.error;
+    const actual = body?.actual ?? {};
+    return {
+      reason: typeof body?.error === 'string' ? body.error : this.i18n.t('errors.generic'),
+      diverged: Object.entries(actual).map(([field, value]) => `${field}: ${value ?? '—'}`),
+    };
   }
 
   methodLabel(method: AcquisitionMethod): string {

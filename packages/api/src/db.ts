@@ -1122,6 +1122,11 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // direct navigation/search. Recomputed on every scan, so it self-corrects
   // when the split authority changes.
   addColumnIfMissing(db, 'library_artists', 'split_compound', 'INTEGER NOT NULL DEFAULT 0');
+  // The other half of the same story (#864), also scanner-owned: the id of the base
+  // artist row that already represents this compound's music — its name extends the
+  // base's and the base owns an album with the same title key. NULL when nothing
+  // represents it. Recomputed over the whole table on every scan.
+  addColumnIfMissing(db, 'library_artists', 'fragment_of', 'TEXT');
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_library_artists_name ON library_artists(name COLLATE NOCASE)`,
   );

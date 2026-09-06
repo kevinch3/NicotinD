@@ -171,6 +171,34 @@ export function segmentConcatenatedArtist(
   return segments && segments.length >= 2 ? segments : null;
 }
 
+/**
+ * Segment every delimiter candidate, all-or-nothing: a candidate contributes its
+ * confirmed segments, or itself when it is a confirmed artist, and one candidate
+ * that is neither abandons the whole split. Same discipline as
+ * {@link segmentConcatenatedArtist}, applied one level lower (issue #860).
+ */
+function segmentEachCandidate(
+  candidates: string[],
+  resolveConfirmed: (s: string) => string | null,
+  canonicalWhole: ReadonlySet<string>,
+): string[] | null {
+  const out: string[] = [];
+  for (const c of candidates) {
+    // A candidate the curator (or Lidarr/MB) calls one act is never carved up —
+    // the same escape hatch the whole primary gets, one level down (#860).
+    if (canonicalWhole.has(normalize(c))) {
+      out.push(c);
+      continue;
+    }
+    // Segmentation first: a mash is `isAtomicArtist`, so it confirms itself.
+    const segments = segmentConcatenatedArtist(c, resolveConfirmed);
+    const parts = segments ?? (resolveConfirmed(c) ? [c] : null);
+    if (!parts) return null;
+    out.push(...parts);
+  }
+  return out.length > 1 ? out : null;
+}
+
 export function splitArtists(raw: string, known: KnownArtistSets = {}): ArtistCredit[] {
   const confirmedArtists = known.confirmedArtists ?? EMPTY;
   const canonicalWhole = known.canonicalWhole ?? EMPTY;
@@ -192,10 +220,12 @@ export function splitArtists(raw: string, known: KnownArtistSets = {}): ArtistCr
     } else {
       // No delimiter split. Last resort (issue #212): a delimiter-less mash of
       // confirmed artists ("2 MinutosTruenoDie Toten Hosen"). Same all-confirmed
-      // gate, so a real single artist is never carved up.
-      primaryNames = segmentConcatenatedArtist(primary, (s) =>
-        confirmedArtists.has(normalize(s)) ? s : null,
-      ) ?? [primary];
+      // gate, so a real single artist is never carved up. Tried per candidate
+      // first (issue #860) — a mash joined to a third artist by a real delimiter
+      // ("J. BalvinDua LipaBad Bunny & Tainy") has no legal cut set as a whole.
+      const resolve = (s: string): string | null => (confirmedArtists.has(normalize(s)) ? s : null);
+      primaryNames = segmentEachCandidate(candidates, resolve, canonicalWhole) ??
+        segmentConcatenatedArtist(primary, resolve) ?? [primary];
     }
   }
 

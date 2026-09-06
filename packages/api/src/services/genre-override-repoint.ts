@@ -30,14 +30,75 @@ export interface GenreOverrideRepointResult {
   unmatched: number;
 }
 
+/** The identity of a song about to be deleted — all the match needs. */
+export interface DoomedSong {
+  id: string;
+  title: string;
+  artist: string;
+  duration: number;
+}
+
 /**
- * Re-point song-scope genre override rows whose song is about to be pruned
- * onto the surviving row for the same recording.
+ * Re-point one doomed song's override onto the surviving row for the same
+ * recording. `syncedAt` scopes "surviving" to the rows the caller's scan just
+ * persisted.
  *
  * Identity is `(title, artist, duration)`, and the match must be **unique** —
  * same contract as the playlist repoint. A wrong re-point silently attaches
  * one song's curated genre to a *different* song, which is worse than the
  * dangling row it replaces, so ambiguity is left to dangle.
+ *
+ * The per-song shape is what both delete sites share (#856): the full-scan
+ * prune below, and the incremental `pruneAlbumOrphans`, which decides doom by
+ * file existence rather than `synced_at` and therefore cannot use the
+ * whole-library query — it runs at the download seam and deletes the row long
+ * before any full scan could see it.
+ */
+export function repointGenreOverrideForSong(
+  db: Database,
+  song: DoomedSong,
+  syncedAt: number,
+): GenreOverrideRepointResult {
+  const overridden = db
+    .query<{ one: number }, [string]>(
+      `SELECT 1 AS one FROM library_genre_overrides WHERE scope = 'song' AND key = ?`,
+    )
+    .get(song.id);
+  if (!overridden) return { repointed: 0, unmatched: 0 };
+
+  const survivors = db
+    .query<{ id: string }, [number, string, string, string, number]>(
+      // `id <> ?` because a caller that dooms by file existence can hand us a
+      // row carrying this very syncedAt — it must never survive onto itself.
+      `SELECT id FROM library_songs
+        WHERE synced_at >= ? AND id <> ? AND title = ? AND artist = ? AND duration = ?
+        LIMIT 2`,
+    )
+    .all(syncedAt, song.id, song.title, song.artist, song.duration);
+
+  if (survivors.length !== 1) return { repointed: 0, unmatched: 1 };
+
+  // OR IGNORE: the survivor may already carry its own song-scope override,
+  // and (scope, key) is a primary key — a plain UPDATE would abort the
+  // whole scan. Keeping the survivor's own curation is the right outcome.
+  const moved = db.run(
+    `UPDATE OR IGNORE library_genre_overrides SET key = ? WHERE scope = 'song' AND key = ?`,
+    [survivors[0].id, song.id],
+  );
+  const repointed = Number(moved.changes ?? 0);
+  // Ignored means the survivor already had its own row, so the doomed one is
+  // dead weight — and `library_genre_overrides` is curator data, deliberately
+  // outside ORPHAN_TABLES, so nothing would ever sweep it. Same drop the
+  // transcode path makes (#856).
+  if (repointed === 0) {
+    db.run(`DELETE FROM library_genre_overrides WHERE scope = 'song' AND key = ?`, [song.id]);
+  }
+  return { repointed, unmatched: 0 };
+}
+
+/**
+ * Re-point song-scope genre override rows whose song is about to be pruned
+ * onto the surviving row for the same recording.
  *
  * Call inside the prune transaction, before `DELETE FROM library_songs`,
  * alongside `repointPlaylistsBeforePrune`.
@@ -47,7 +108,7 @@ export function repointGenreOverridesBeforePrune(
   syncedAt: number,
 ): GenreOverrideRepointResult {
   const doomed = db
-    .query<{ id: string; title: string; artist: string; duration: number }, [number]>(
+    .query<DoomedSong, [number]>(
       // Only songs a song-scope override actually references — the rest can
       // be pruned without any of this work.
       `SELECT s.id, s.title, s.artist, s.duration
@@ -63,28 +124,9 @@ export function repointGenreOverridesBeforePrune(
   const result: GenreOverrideRepointResult = { repointed: 0, unmatched: 0 };
 
   for (const song of doomed) {
-    const survivors = db
-      .query<{ id: string }, [number, string, string, number]>(
-        `SELECT id FROM library_songs
-          WHERE synced_at >= ? AND title = ? AND artist = ? AND duration = ?
-          LIMIT 2`,
-      )
-      .all(syncedAt, song.title, song.artist, song.duration);
-
-    if (survivors.length !== 1) {
-      result.unmatched++;
-      continue;
-    }
-
-    // OR IGNORE: the survivor may already carry its own song-scope override,
-    // and (scope, key) is a primary key — a plain UPDATE would abort the
-    // whole scan. Keeping the survivor's own row and dropping the doomed one
-    // is the right outcome either way.
-    const moved = db.run(
-      `UPDATE OR IGNORE library_genre_overrides SET key = ? WHERE scope = 'song' AND key = ?`,
-      [survivors[0].id, song.id],
-    );
-    result.repointed += Number(moved.changes ?? 0);
+    const one = repointGenreOverrideForSong(db, song, syncedAt);
+    result.repointed += one.repointed;
+    result.unmatched += one.unmatched;
   }
 
   return result;

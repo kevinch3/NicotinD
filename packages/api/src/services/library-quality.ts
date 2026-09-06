@@ -217,3 +217,62 @@ export function findArtistFragmentClusters(
     (c) => !clusters.some((other) => other !== c && other.fragments.includes(c.base)),
   );
 }
+
+/** An artist row plus the albums it is attached to, keyed for identity matching. */
+export type ArtistAlbumScope = {
+  id: string;
+  /** Name as stored, e.g. "Eelke Kleijn, Ost". */
+  name: string;
+  /** Normalized title keys of the albums this row is the album artist of. */
+  owns: readonly string[];
+  /** Normalized title keys of every album this row appears on (owned + per-track credits). */
+  appearsOn: readonly string[];
+};
+
+/**
+ * Issue #864, the visibility half. `split_compound` hides a compound the splitter
+ * **resolved** — its member tiles represent it. The other direction had no rule at
+ * all: a compound the splitter could *not* resolve renders its own tile beside the
+ * base row that already represents the same music.
+ *
+ * The owner's ruling is a signal, not a size threshold: hide `F` only when the base
+ * `B` it extends **owns the same album**. A threshold would sit inside the measured
+ * 4→14 cluster gap and would hide genuine two-way collaborations.
+ *
+ * "The same album" is the same album *title key*, never the same album row: album
+ * identity embeds the artist (`albumGroupKey`), so a compound album artist always
+ * mints its own album row — under the row reading the predicate could never fire on
+ * the shredded shape it exists for. `F` is matched through its per-track credits as
+ * well, because a credit-only fragment owns no album at all.
+ *
+ * Keys are pre-normalized by the caller (`normalizeForGrouping`) so this stays pure.
+ * Known blind spot: a base that owns no album cannot represent anything, so a
+ * shredding whose base is credit-only stays visible.
+ */
+export function findRepresentedFragments(
+  artists: readonly ArtistAlbumScope[],
+): Array<{ fragmentId: string; baseId: string }> {
+  const rows = artists.map((a) => ({ a, key: fold(a.name).trim() }));
+  const compounds = rows.filter((r) => r.key.includes(', '));
+  const out: Array<{ fragmentId: string; baseId: string }> = [];
+  for (const frag of compounds) {
+    const albums = new Set(frag.a.appearsOn);
+    if (albums.size === 0) continue;
+    let best: { key: string; id: string } | null = null;
+    for (const base of rows) {
+      if (base.key === frag.key) continue;
+      if (!frag.key.startsWith(`${base.key}, `)) continue;
+      if (!base.a.owns.some((k) => albums.has(k))) continue;
+      // Root of the chain, ties broken on id, so the stored value is stable.
+      if (
+        !best ||
+        base.key.length < best.key.length ||
+        (base.key.length === best.key.length && base.a.id < best.id)
+      ) {
+        best = { key: base.key, id: base.a.id };
+      }
+    }
+    if (best) out.push({ fragmentId: frag.a.id, baseId: best.id });
+  }
+  return out;
+}

@@ -817,7 +817,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'complete_album',
     description:
-      "Hunt and download ONLY the missing tracks of an incomplete album (from the health report's confirmed-incomplete worklist, or a curator-confirmed suspected gap). Idempotent: an already-complete album returns outcome 'already-complete' as a notice, an in-flight hunt returns 'in-flight' — never a duplicate download. Requires confirm: true — that IS the per-album curator approval, because this tool spends bandwidth and disk and contacts peers. Refused entirely when the server's acquisition kill-switch is off. Audit-logged.",
+      "Hunt and download ONLY the missing tracks of an incomplete album (from the health report's confirmed-incomplete worklist, or a curator-confirmed suspected gap). Idempotent: an already-complete album returns outcome 'already-complete' as a notice, an in-flight hunt returns 'in-flight' — never a duplicate download. A failing outcome ('enqueue-failed', 'slskd-unavailable') carries `detail` — the acquisition addon's own error text, which is what separates a deterministic rejection (retrying will fail again) from an outage (retry later). Requires confirm: true — that IS the per-album curator approval, because this tool spends bandwidth and disk and contacts peers. Refused entirely when the server's acquisition kill-switch is off. Audit-logged.",
     access: 'curate',
     destructive: true,
     inputSchema: {
@@ -893,7 +893,7 @@ export const MCP_TOOLS: McpTool[] = [
         });
       }
 
-      const outcome = await acquireAlbum(
+      const { outcome, detail } = await acquireAlbum(
         { db, lidarr, getAddon: acquisition.getAddon },
         {
           lidarrAlbumId,
@@ -907,9 +907,11 @@ export const MCP_TOOLS: McpTool[] = [
       recordAudit(db, { sub: identity.userId, username: actor }, 'album.acquire', {
         targetKind: 'album',
         targetId: albumId || `${artist} — ${album}`,
-        detail: `outcome=${outcome} lidarrAlbumId=${lidarrAlbumId} (via MCP agent)`,
+        detail: `outcome=${outcome} lidarrAlbumId=${lidarrAlbumId}${
+          detail ? ` detail=${detail}` : ''
+        } (via MCP agent)`,
       });
-      return JSON.stringify({ ok: true, outcome, lidarrAlbumId });
+      return JSON.stringify({ ok: true, outcome, detail, lidarrAlbumId });
     },
   },
   {

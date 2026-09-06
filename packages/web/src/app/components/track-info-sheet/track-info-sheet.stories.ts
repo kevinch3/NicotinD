@@ -5,8 +5,9 @@ import { demoSong } from '../../../stories/support/fixtures';
 import type { Song } from '../../services/api/api-types';
 
 /**
- * The per-track detail drawer: identity, technical facts, the analysis values
- * (BPM / key / perceptual axes), provenance, lyrics, and the curator actions.
+ * The per-track detail drawer: identity, technical facts, the curator tag
+ * editor, the analysis values (BPM / key / perceptual axes), provenance,
+ * lyrics, and the rest of the curator actions.
  *
  * The analysis fields are all **optional** on `Song` — absent means "not
  * analysed yet", not zero. That distinction is the point of the two states

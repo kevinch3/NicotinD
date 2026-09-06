@@ -254,10 +254,14 @@ Worth recording, because four separate things had to line up:
 1. **No name validation on the scan path.** `resolveTags` takes the tag as-is;
    `sanitizeArtistTag` is organizer-only, and `normalizeArtistForGrouping` preserves
    punctuation by design, so `Sanampay, A. BORDA` and `Sanampay` are different ids.
-2. **`split_compound` inverts visibility.** `splitArtists` is all-or-nothing; an
+2. **`split_compound` was incomplete, not inverted.** `splitArtists` is all-or-nothing; an
    *unresolved* compound yields one primary, so `split_compound = 0` and the grid
-   renders it — while a resolved one is hidden. The rows most likely to be junk are
-   exactly the ones that show.
+   renders it — while a resolved one is hidden. Hiding on a *successful* split is right
+   (the member tiles represent the row); what was missing was the other direction — a
+   hide condition for a compound the splitter could **not** resolve whose base row
+   already represents its music. That is `fragment_of`, shipped for the grid only
+   → [library-scanner.md](library-scanner.md); this rule stays advisory, and still
+   reports the fragments the visibility signal cannot reach.
 3. **No detector iterated `library_artists` for fragmentation.** `checkFragments` and
    `checkMisSplitAlbums` both key on album *title*; `checkPollutedArtists` was a
    keyword/number/DJ-set list.

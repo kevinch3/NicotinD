@@ -14,6 +14,7 @@ import { applySchema } from '../db.js';
 import { transcodeLibraryToOpus } from './library-transcode.js';
 import { songId } from './library-scanner.js';
 import { ffmpegAvailable } from './transcode.js';
+import { upsertGenreOverride } from './genre-overrides.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -74,6 +75,27 @@ function seedSongRow(db: Database, rel: string, extra: { starred?: string; hidde
   );
   return id;
 }
+
+function overrideSong(db: Database, key: string, genres: string[]): void {
+  upsertGenreOverride(db, {
+    scope: 'song',
+    key,
+    genres,
+    source: 'user',
+    mbid: null,
+    confidence: null,
+    status: 'applied',
+    note: null,
+    mode: 'replace',
+  });
+}
+
+const songOverrides = (db: Database) =>
+  db
+    .query<{ key: string; genres: string }, []>(
+      `SELECT key, genres FROM library_genre_overrides WHERE scope = 'song'`,
+    )
+    .all();
 
 describe('transcodeLibraryToOpus', () => {
   it('dry run reports candidates without touching disk or db', async () => {
@@ -184,6 +206,53 @@ describe('transcodeLibraryToOpus', () => {
       expect(acqs).toHaveLength(1);
       expect(acqs[0]?.relative_path).toBe(newRel);
       expect(acqs[0]?.source_ref).toBe('opus-peer');
+    },
+  );
+
+  it.skipIf(!ffmpegAvailable())(
+    // #856: a lossless→Opus re-encode re-mints the song id, and this was the one
+    // curated table the identity migration never carried across.
+    'migrates a curator song-scope genre override onto the new id',
+    async () => {
+      const music = tmpMusic();
+      const db = new Database(':memory:');
+      applySchema(db);
+
+      const rel = 'Aphex Twin/Drukqs/01 - Avril 14th.flac';
+      makeFlac(music, rel, 'Avril 14th');
+      const oldId = seedSongRow(db, rel);
+      overrideSong(db, oldId, ['Ambient']);
+
+      const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96 });
+      expect(r.converted).toBe(1);
+      expect(r.failed).toBe(0);
+
+      const newId = songId('Aphex Twin/Drukqs/01 - Avril 14th.opus');
+      expect(songOverrides(db)).toEqual([{ key: newId, genres: 'Ambient' }]);
+    },
+  );
+
+  it.skipIf(!ffmpegAvailable())(
+    'drops the stale override when the opus row already carries its own',
+    async () => {
+      const music = tmpMusic();
+      const db = new Database(':memory:');
+      applySchema(db);
+
+      const rel = 'Aphex Twin/Drukqs/01 - Avril 14th.flac';
+      makeFlac(music, rel, 'Avril 14th');
+      const oldId = seedSongRow(db, rel);
+      const newId = songId('Aphex Twin/Drukqs/01 - Avril 14th.opus');
+      // (scope, key) is the primary key — a plain UPDATE would abort the pass.
+      overrideSong(db, newId, ['Techno']);
+      overrideSong(db, oldId, ['Ambient']);
+
+      const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96 });
+      expect(r.converted).toBe(1);
+      expect(r.failed).toBe(0);
+
+      // The opus row's own decision wins; the dead lossless row is not left behind.
+      expect(songOverrides(db)).toEqual([{ key: newId, genres: 'Techno' }]);
     },
   );
 

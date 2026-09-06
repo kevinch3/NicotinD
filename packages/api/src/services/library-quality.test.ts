@@ -6,6 +6,7 @@ import {
   looksLikeVenueCredit,
   djSetArtistName,
   findArtistFragmentClusters,
+  findRepresentedFragments,
 } from './library-quality.js';
 
 describe('looksLikeSourceWatermark', () => {
@@ -201,5 +202,79 @@ describe('findArtistFragmentClusters', () => {
     expect(findArtistFragmentClusters(['Sanampay', 'Sanampay Trio', 'Sanampayasos'], 2)).toEqual(
       [],
     );
+  });
+});
+
+describe('findRepresentedFragments', () => {
+  const artist = (id: string, name: string, owns: string[] = [], appearsOn: string[] = owns) => ({
+    id,
+    name,
+    owns,
+    appearsOn,
+  });
+
+  it('hides a fragment whose base owns an album with the same title key', () => {
+    // Album identity embeds the artist, so the compound minted its own row for
+    // the same release — different album id, identical title key.
+    const hidden = findRepresentedFragments([
+      artist('base', 'Eelke Kleijn', ['moments of clarity']),
+      artist('frag', 'Eelke Kleijn, Ost', ['moments of clarity']),
+    ]);
+    expect(hidden).toEqual([{ fragmentId: 'frag', baseId: 'base' }]);
+  });
+
+  it('spares a collaboration on a release the base does not own', () => {
+    expect(
+      findRepresentedFragments([
+        artist('base', 'Los Angeles Azules', ['de plaza en plaza']),
+        artist('frag', 'Los Angeles Azules, Belinda, Lalo Ebratt', ['amor a primera vista']),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('matches the base accent- and case-insensitively', () => {
+    expect(
+      findRepresentedFragments([
+        artist('base', 'Tego Calderón', ['el abayarde']),
+        artist('frag', 'TEGO CALDERON, Eliel', ['el abayarde']),
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it('reaches a credit-only fragment through the albums its songs sit on', () => {
+    // album_count = 0: the row exists only via library_song_artists.
+    expect(
+      findRepresentedFragments([
+        artist('base', 'Charlotte de Witte', ['formula ep']),
+        artist('frag', 'Charlotte de Witte, XSALT', [], ['formula ep']),
+      ]),
+    ).toEqual([{ fragmentId: 'frag', baseId: 'base' }]);
+  });
+
+  it('cannot fire when the base owns no album — the known blind spot', () => {
+    expect(
+      findRepresentedFragments([
+        artist('base', 'Sentimental Animals', [], ['love vibration remix']),
+        artist('frag', 'Sentimental Animals, Nicki B', ['love vibration ep']),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('needs the "<base>, " credit shape, not a shared word prefix', () => {
+    expect(
+      findRepresentedFragments([
+        artist('base', 'Sanampay', ['en esta hora']),
+        artist('frag', 'Sanampay Trio', ['en esta hora']),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('points a chained fragment at the root base, not the intermediate one', () => {
+    const hidden = findRepresentedFragments([
+      artist('a', 'A', ['x']),
+      artist('ab', 'A, B', ['x']),
+      artist('abc', 'A, B, C', ['x']),
+    ]);
+    expect(hidden.find((f) => f.fragmentId === 'abc')?.baseId).toBe('a');
   });
 });

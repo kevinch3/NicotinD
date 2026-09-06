@@ -9,6 +9,10 @@
  * subtlety is doing that exactly once: if the chunk is genuinely missing rather
  * than merely stale, a reload finds it missing again, and an unguarded retry is
  * an unbounded refresh loop that looks far worse than the original dead button.
+ *
+ * An offline import failure looks identical to a stale one and is not a stale
+ * build at all — see docs/web-ui.md "A stale chunk reloads; an offline one
+ * does not" (#872).
  */
 
 /** Marks that we already spent our one reload, so a broken build cannot loop. */
@@ -41,7 +45,13 @@ export function isStaleChunkError(err: unknown): boolean {
 export function recoverStaleChunk(
   reload: () => void,
   store: Storage | undefined = globalThis.sessionStorage,
+  online: boolean = globalThis.navigator?.onLine ?? true,
 ): boolean {
+  // why: offline is a reason the import failed that a reload cannot fix, and
+  // index.html sits in the same prefetch group as the chunk — if that is
+  // uncached the reload lands on the browser's offline page (#872). Checked
+  // before the marker so a later online stale build still gets its one reload.
+  if (!online) return false;
   try {
     if (store?.getItem(STALE_CHUNK_MARKER)) return false;
     store?.setItem(STALE_CHUNK_MARKER, '1');

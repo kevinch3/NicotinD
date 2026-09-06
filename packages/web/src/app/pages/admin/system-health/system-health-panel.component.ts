@@ -1,4 +1,4 @@
-import { Component, OnDestroy, effect, inject, signal } from '@angular/core';
+import { Component, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { SettingsGroupComponent } from '../../../components/settings-group/settings-group.component';
 import { MetricPillComponent } from '../../../components/metric-pill/metric-pill.component';
@@ -9,10 +9,12 @@ import { AuthService } from '../../../services/auth.service';
 import { ServerConfigService } from '../../../services/server-config.service';
 import { SystemApiService } from '../../../services/api/system-api.service';
 import { ServiceReviewService } from '../../../services/service-review.service';
+import type { ProviderHealth } from '../../../services/api/api-types';
 
 /**
- * Admin card for host/service health: the CPU/memory/GPU metric pills, library
- * state, the server update check, and the live log stream.
+ * Admin card for host/service health: the CPU/memory/GPU metric pills, the
+ * metadata-provider rates, library state, the server update check, and the live
+ * log stream.
  *
  * The metrics come off the shared `ServiceReview` snapshot; the log stream is
  * this panel's own `EventSource`, reconnected whenever the selected service
@@ -43,6 +45,16 @@ export class SystemHealthPanelComponent implements OnDestroy {
   readonly libraryState = this.reviewSvc.libraryState;
   readonly updateCheck = this.reviewSvc.updateCheck;
 
+  /** Metadata-provider rows (issue #670); empty on a server without the slice. */
+  readonly providerRows = computed(() => {
+    const p = this.reviewSvc.review()?.providers;
+    if (!p) return [];
+    return [
+      { id: 'lidarr', labelKey: 'admin.providerLidarr', health: p.lidarr },
+      { id: 'musicbrainz', labelKey: 'admin.providerMusicbrainz', health: p.musicbrainz },
+    ];
+  });
+
   readonly checkingUpdate = signal(false);
   readonly selectedService = signal<'nicotind'>('nicotind');
   readonly logLines = signal<string[]>([]);
@@ -65,6 +77,34 @@ export class SystemHealthPanelComponent implements OnDestroy {
   selectLogService(svc: 'nicotind'): void {
     this.selectedService.set(svc);
     this.logLines.set([]);
+  }
+
+  callCount(h: ProviderHealth): number {
+    return h.ok + h.failed;
+  }
+
+  /** Floored, so 99.6 % never renders as a reassuring 100 %. */
+  successPct(h: ProviderHealth): number {
+    return Math.floor(h.successRate * 100);
+  }
+
+  windowMinutes(h: ProviderHealth): number {
+    return Math.round(h.windowMs / 60_000);
+  }
+
+  /** A window with no calls is unknown, not healthy — hence the grey tier. */
+  providerChipClass(h: ProviderHealth): string {
+    if (this.callCount(h) === 0) return 'bg-theme-surface-2 text-theme-muted';
+    if (h.failed === 0) return 'bg-emerald-500/15 text-emerald-500';
+    return h.successRate >= 0.9
+      ? 'bg-status-warn/15 text-status-warn'
+      : 'bg-status-error/15 text-status-error';
+  }
+
+  failureKindKey(h: ProviderHealth): string {
+    if (h.lastFailureKind === 'timeout') return 'admin.providerKindTimeout';
+    if (h.lastFailureKind === 'http') return 'admin.providerKindHttp';
+    return 'admin.providerKindNetwork';
   }
 
   public connectLogStream(): void {

@@ -174,7 +174,7 @@ export class WatchlistService {
       // Delegate the acquire to the shared core (the same primitives the
       // interactive hunt and the Lidarr auto-acquire loop use), then map its
       // outcome to this row's state transitions.
-      const outcome = await acquireAlbum(
+      const result = await acquireAlbum(
         { db: this.db, lidarr: this.lidarr, getAddon: this.getAddon },
         {
           lidarrAlbumId: albumId,
@@ -185,14 +185,14 @@ export class WatchlistService {
         },
       );
 
-      switch (outcome) {
+      switch (result.outcome) {
         case 'enqueued':
         case 'already-complete':
         case 'in-flight':
           this.markAcquired(row.id);
           break;
         case 'enqueue-failed':
-          this.fail(row.id, 'Enqueue failed');
+          this.fail(row.id, result.detail ?? 'Enqueue failed');
           break;
         case 'no-candidate':
         case 'slskd-unavailable':

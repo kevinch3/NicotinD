@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'bun:test';
+import { beforeEach, describe, expect, it } from 'bun:test';
+import { providerHealthSnapshot, resetProviderHealth } from '@nicotind/core';
 import {
   LidarrClient,
   LidarrTimeoutError,
@@ -132,5 +133,59 @@ describe('per-method tiers', () => {
     const seen = spyBudgets(c);
     await new ArtistApi(c).add({ id: 1 } as never, 1, '/music', 1);
     expect(seen).toEqual([TIMEOUT_PROVISION_MS]);
+  });
+});
+
+/**
+ * Issue #670. Every outcome was observed once, as a log line, and then swallowed
+ * into `[]`/`null` by ~20 call sites — so `GET /api/admin/review` could not tell
+ * a metadata outage from a quiet library. `request()` is the one seam that sees
+ * all of them, so it is the one place that can count them.
+ */
+describe('provider-health counters', () => {
+  beforeEach(() => resetProviderHealth());
+
+  function clientWith(fetchFn: typeof fetch): LidarrClient {
+    return new LidarrClient({ baseUrl: 'http://lidarr:8686', apiKey: 'k', fetchFn });
+  }
+
+  it('counts a success', async () => {
+    const { fetchFn } = recordingFetch();
+    await clientWith(fetchFn).request('/api/v1/artist');
+    expect(providerHealthSnapshot().lidarr).toMatchObject({ ok: 1, failed: 0 });
+  });
+
+  it('records a timeout as a timeout, with no status', async () => {
+    await expect(clientWith(hangingFetch).request('/api/v1/artist', {}, 10)).rejects.toThrow();
+    const h = providerHealthSnapshot().lidarr;
+    expect(h).toMatchObject({ ok: 0, failed: 1, timedOut: 1, lastFailureKind: 'timeout' });
+    expect(h.lastFailureStatus).toBeNull();
+  });
+
+  it('records a non-ok response as an http failure carrying the status', async () => {
+    const failing = (async () => new Response('nope', { status: 500 })) as unknown as typeof fetch;
+    await expect(clientWith(failing).request('/api/v1/artist')).rejects.toThrow();
+    expect(providerHealthSnapshot().lidarr).toMatchObject({
+      failed: 1,
+      timedOut: 0,
+      lastFailureKind: 'http',
+      lastFailureStatus: 500,
+    });
+  });
+
+  it('records a dropped connection as a network failure, not a timeout', async () => {
+    const dead = (() => Promise.reject(new Error('ECONNREFUSED'))) as unknown as typeof fetch;
+    await expect(clientWith(dead).request('/api/v1/artist')).rejects.toThrow(/ECONNREFUSED/);
+    expect(providerHealthSnapshot().lidarr).toMatchObject({
+      failed: 1,
+      timedOut: 0,
+      lastFailureKind: 'network',
+    });
+  });
+
+  it('leaves MusicBrainz alone', async () => {
+    const { fetchFn } = recordingFetch();
+    await clientWith(fetchFn).request('/api/v1/artist');
+    expect(providerHealthSnapshot().musicbrainz).toMatchObject({ ok: 0, failed: 0 });
   });
 });

@@ -1,6 +1,14 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { provideRouter } from '@angular/router';
+import {
+  NavigationCancel,
+  NavigationEnd,
+  NavigationError,
+  NavigationStart,
+  Router,
+  provideRouter,
+} from '@angular/router';
+import { Subject } from 'rxjs';
 import { vi } from 'vitest';
 import { LayoutComponent, headerDisplayClass } from './layout.component';
 import { AuthService } from '../../services/auth.service';
@@ -491,5 +499,59 @@ describe('headerDisplayClass — the top bar yields to the mosaic on phones', ()
     for (const url of ['/library', '/classic', '/get?tab=find', '/settings']) {
       expect(headerDisplayClass(url)).toBe('flex');
     }
+  });
+});
+
+// A lazy chunk that is slow — or, offline, never arrives — used to look exactly
+// like a dead tap (#872). The bar is delayed so a warm route never flashes it.
+describe('LayoutComponent — route-load progress bar', () => {
+  function emit(fixture: ReturnType<typeof setup>['fixture'], event: unknown): void {
+    const router = TestBed.inject(Router);
+    (router.events as unknown as Subject<unknown>).next(event);
+    fixture.detectChanges();
+  }
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('stays hidden for a navigation that resolves inside the delay', () => {
+    const { fixture } = setup();
+    const c = fixture.componentInstance;
+
+    emit(fixture, new NavigationStart(1, '/library'));
+    vi.advanceTimersByTime(249);
+    expect(c.navigatingVisible()).toBe(false);
+
+    emit(fixture, new NavigationEnd(1, '/library', '/library'));
+    vi.advanceTimersByTime(1_000);
+    // The pending timer must not raise the bar after the navigation finished.
+    expect(c.navigatingVisible()).toBe(false);
+  });
+
+  it('shows once a navigation outlives the delay', () => {
+    const { fixture } = setup();
+    const c = fixture.componentInstance;
+
+    emit(fixture, new NavigationStart(1, '/library'));
+    expect(c.navigating()).toBe(true);
+    vi.advanceTimersByTime(250);
+    expect(c.navigatingVisible()).toBe(true);
+  });
+
+  it.each([
+    ['NavigationEnd', () => new NavigationEnd(1, '/library', '/library')],
+    ['NavigationCancel', () => new NavigationCancel(1, '/library', '')],
+    ['NavigationError', () => new NavigationError(1, '/library', new Error('chunk failed'))],
+  ])('%s clears the bar — an offline chunk failure must not leave it spinning', (_n, make) => {
+    const { fixture } = setup();
+    const c = fixture.componentInstance;
+
+    emit(fixture, new NavigationStart(1, '/library'));
+    vi.advanceTimersByTime(250);
+    expect(c.navigatingVisible()).toBe(true);
+
+    emit(fixture, make());
+    expect(c.navigatingVisible()).toBe(false);
+    expect(c.navigating()).toBe(false);
   });
 });

@@ -2,7 +2,16 @@ import { Component, inject, computed, signal, OnInit, OnDestroy } from '@angular
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { APP_VERSION } from '../../app.config';
-import { NavigationEnd, Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import {
+  NavigationCancel,
+  NavigationEnd,
+  NavigationError,
+  NavigationStart,
+  Router,
+  RouterOutlet,
+  RouterLink,
+  RouterLinkActive,
+} from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, shuffleArray } from '../../services/player.service';
@@ -52,6 +61,10 @@ const BASE_NAV: NavItem[] = [
 // downloaded set when the network is gone (docs/web-ui.md "Mosaic home").
 // Everything else surfaces its own offline state under the app-shell banner.
 const ONLINE_ONLY_ROUTES = new Set<string>([]);
+
+/** How long a route load may take before it earns a progress bar — the same
+ *  no-flash rule as the player's `bufferingVisible` (docs/web-ui.md). */
+const NAV_VISIBLE_DELAY_MS = 250;
 
 /** Shared header layout — same pixels everywhere so the brand/title row
  *  doesn't shift between platform states (only the chrome integration
@@ -114,10 +127,42 @@ export class LayoutComponent implements OnInit, OnDestroy {
   /** Current route URL as a signal, for route-dependent chrome (headerClass). */
   private readonly currentUrl = signal(this.router.url);
 
+  /**
+   * A route load is in flight; `navigatingVisible` is the render-safe view that
+   * only turns on after the delay. A lazy chunk that is slow — or, offline,
+   * never arrives at all — used to look exactly like a dead tap (#872).
+   */
+  readonly navigating = signal(false);
+  readonly navigatingVisible = signal(false);
+  private navigatingTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor() {
     this.router.events.pipe(takeUntilDestroyed()).subscribe((e) => {
       if (e instanceof NavigationEnd) this.currentUrl.set(e.urlAfterRedirects);
+      if (e instanceof NavigationStart) this.setNavigating(true);
+      else if (
+        e instanceof NavigationEnd ||
+        e instanceof NavigationCancel ||
+        e instanceof NavigationError
+      )
+        this.setNavigating(false);
     });
+  }
+
+  private setNavigating(value: boolean): void {
+    this.navigating.set(value);
+    if (this.navigatingTimer !== null) {
+      clearTimeout(this.navigatingTimer);
+      this.navigatingTimer = null;
+    }
+    if (!value) {
+      this.navigatingVisible.set(false);
+      return;
+    }
+    this.navigatingTimer = setTimeout(() => {
+      this.navigatingTimer = null;
+      if (this.navigating()) this.navigatingVisible.set(true);
+    }, NAV_VISIBLE_DELAY_MS);
   }
 
   /** Touch pull-to-refresh — the one gesture host for every route; pages
@@ -276,6 +321,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.setNavigating(false);
     this.transfers.stopPolling();
     this.desktopChrome.shellHeaderActive.set(false);
     this.reviewDispose?.();

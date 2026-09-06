@@ -169,11 +169,11 @@ extra work. `UPDATE OR IGNORE` handles the case where the playlist already conta
 the survivor — `(playlist_id, song_id)` is unique, and a plain `UPDATE` would abort
 the entire scan.
 
-## Genre overrides survive a song-id change (scanner prune, issue #856)
+## Genre overrides survive a song-id change (every delete site, issue #856)
 
 Same hazard as the playlist one above, one table over. `library_genre_overrides`
 (scope `song`) keys on `library_songs.id` = `sha1(path)`, so a file move re-mints
-the id, and the scanner's full-scan prune deleted the old row with **nothing**
+the id, and the code that deleted the old row did so with **nothing**
 repointing the override first — no FK, no error, just a curator's decision quietly
 gone. Unlike a playlist entry this is not a display nicety: a `mode:'replace'` row
 is the durability mechanism itself (`song-genre-mutate.ts`: *"the tag mirror is a
@@ -199,8 +199,34 @@ ambiguity is left to dangle exactly as the playlist version does.
 `(scope, key)` is the table's primary key, so the repoint uses the same
 `UPDATE OR IGNORE` collapse for a survivor that already carries its own override.
 
-This fixes the **repoint**, not the write-surfacing gap the file-replaced case
-exposes — that is tracked as a separate piece of #856.
+**The full-scan prune was not the only place a song id dies, and it is not even
+the one that runs.** Two more sites re-mint or drop an id, and covering only the
+full scan left the fix unreachable in normal operation:
+
+| site                                            | when it runs                          | how it repoints                                                      |
+| ----------------------------------------------- | ------------------------------------- | -------------------------------------------------------------------- |
+| `scanFull`'s prune                              | a full library walk                   | `repointGenreOverridesBeforePrune`                                    |
+| `pruneAlbumOrphans` (`reconcileAlbums`)         | after every organized download batch  | `repointGenreOverrideForSong` per doomed row                          |
+| `transcodeLibraryToOpus`                        | the lossless→Opus maintenance task    | direct `UPDATE OR IGNORE` — it knows old *and* new id exactly         |
+
+`pruneAlbumOrphans` is the load-bearing one: it is the download seam, it deletes
+the doomed row the moment the file is gone, and it dooms a row by **file
+existence** rather than by `synced_at` — so it cannot use the whole-library
+doomed-set query and instead calls the extracted per-song core
+`repointGenreOverrideForSong`, which is also why that helper excludes the doomed
+row from its own survivor set. The transcode path needs no matching at all: it
+holds both ids, so it re-points directly and deletes the stale row when the opus
+id already carries its own override.
+
+What none of this recovers is a row whose song is **already** gone — the override
+carries only a dead `sha1`, and `song-genre-mutate.ts` writes it with `note: null`,
+so there is no title/artist/duration to re-match against. A deliberate song or
+album delete also still leaves the row behind (`library-deletion.ts` does not
+touch this table, and `ORPHAN_TABLES` deliberately excludes it), so the prod
+orphan **count** is monotonically non-decreasing and cannot be the close criterion
+for this class of bug — the code paths are. The file-*replaced* loss mode is a
+different problem entirely, answered by surfacing a failed tag-mirror write
+(`warnIfTagMirrorFailed`) rather than by any repoint.
 
 ## Cover cache eviction (issue #311)
 

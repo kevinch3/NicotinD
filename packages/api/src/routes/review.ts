@@ -13,7 +13,13 @@
  * endpoints — ServiceReview is the snapshot companion.
  */
 import { Hono } from 'hono';
-import type { ProcessingStatus } from '@nicotind/core';
+import {
+  PROVIDER_HEALTH_WINDOW_MS,
+  providerHealthSnapshot,
+  type ProcessingStatus,
+  type ProviderHealth,
+  type ProviderHealthSnapshot,
+} from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import {
   collectMetrics,
@@ -124,6 +130,13 @@ export interface ServiceReview {
       healthy: boolean;
     };
   };
+  /**
+   * Lidarr + MusicBrainz call outcomes over a rolling window (issue #670).
+   * Distinct from `services`, which is "sidecars this deployment runs": these
+   * are the metadata providers, whose failures reach ~20 call sites as `[]` and
+   * so leave no other operator-visible trace.
+   */
+  providers: ProviderHealthSnapshot;
   library: { scanning: boolean; indexedSongCount: number };
   updateCheck: UpdateCheckSnapshot | null;
   /** Full list of backups on disk (newest first) — drives the Admin's table. */
@@ -172,6 +185,8 @@ export interface ReviewSubFns {
   analysisStatus: () => Promise<{ configured: boolean; healthy: boolean }>;
   /** Separator-sidecar reachability. Default reads `deps.separatorClient`. */
   separatorStatus: () => Promise<{ configured: boolean; healthy: boolean }>;
+  /** Metadata-provider counters. Default reads the process-global recorder. */
+  providerHealth: () => ProviderHealthSnapshot;
   indexSongCount: () => number | Promise<number>;
   updateCheck: () => Promise<UpdateCheckSnapshot | null>;
   backupsList: () => BackupInfo[] | Promise<BackupInfo[]>;
@@ -229,6 +244,21 @@ async function defaultSidecarStatus(
 ): Promise<{ configured: boolean; healthy: boolean }> {
   if (!client) return { configured: false, healthy: false };
   return { configured: true, healthy: await client.healthy() };
+}
+
+/** Degraded shape for the provider slice — an idle window, not an outage. */
+function zeroProviderHealth(): ProviderHealthSnapshot {
+  const zero: ProviderHealth = {
+    ok: 0,
+    failed: 0,
+    timedOut: 0,
+    successRate: 1,
+    lastFailureAt: null,
+    lastFailureKind: null,
+    lastFailureStatus: null,
+    windowMs: PROVIDER_HEALTH_WINDOW_MS,
+  };
+  return { lidarr: { ...zero }, musicbrainz: { ...zero } };
 }
 
 const DEFAULT_AUDIT_TAIL_LIMIT = 20;
@@ -516,6 +546,7 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       scan,
       analysis,
       separator,
+      providers,
       updateCheck,
       backups,
       processing,
@@ -554,6 +585,12 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
         'separatorStatus',
         () => sub.separatorStatus?.() ?? defaultSidecarStatus(deps.separatorClient),
         { configured: false, healthy: false },
+      ),
+      providers: safe(
+        errors,
+        'providerHealth',
+        () => sub.providerHealth?.() ?? providerHealthSnapshot(),
+        zeroProviderHealth(),
       ),
       updateCheck: safe(
         errors,
@@ -661,6 +698,7 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
         analysis,
         separator,
       },
+      providers,
       library: { scanning: scan.scanning, indexedSongCount },
       updateCheck,
       backups,

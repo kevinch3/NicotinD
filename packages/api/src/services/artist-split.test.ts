@@ -179,6 +179,42 @@ describe('splitArtists', () => {
       const result = splitArtists('Die Toten Hosen', confirmed('die', 'toten', 'hosen'));
       expect(primaries(result)).toEqual(['Die Toten Hosen']);
     });
+
+    it('segments a mash that a real delimiter joins to a third artist (issue #860)', () => {
+      // The prod case: the " & " split leaves "J. BalvinDua LipaBad Bunny" as one
+      // candidate, so segmenting only the whole string finds no legal cut set.
+      const result = splitArtists(
+        'J. BalvinDua LipaBad Bunny & Tainy',
+        confirmed('j. balvin', 'dua lipa', 'bad bunny', 'tainy'),
+      );
+      expect(primaries(result)).toEqual(['J. Balvin', 'Dua Lipa', 'Bad Bunny', 'Tainy']);
+    });
+
+    it('keeps the whole string when one delimiter candidate neither segments nor is confirmed', () => {
+      const result = splitArtists(
+        'J. BalvinDua LipaBad Bunny & Tainy',
+        confirmed('j. balvin', 'dua lipa', 'bad bunny'), // "Tainy" not confirmed
+      );
+      expect(primaries(result)).toEqual(['J. BalvinDua LipaBad Bunny & Tainy']);
+    });
+
+    it('a candidate marked canonical survives per-candidate segmentation (issue #860)', () => {
+      // The curator escape hatch has to reach the new path too: "ME" and "DUZA"
+      // being confirmed artists must not shred a MEDUZA credit joined by a comma.
+      const result = splitArtists('Bad Bunny, MEDUZA', {
+        confirmedArtists: new Set(['bad bunny', 'me', 'duza']),
+        canonicalWhole: new Set(['meduza']),
+      });
+      expect(primaries(result)).toEqual(['Bad Bunny', 'MEDUZA']);
+    });
+
+    it('keeps the whole string when the mash candidate cannot be covered', () => {
+      const result = splitArtists(
+        'MetallicaMysteryBand, Trueno',
+        confirmed('metallica', 'trueno'), // "MysteryBand" not confirmed
+      );
+      expect(primaries(result)).toEqual(['MetallicaMysteryBand, Trueno']);
+    });
   });
 
   describe('canonicalWhole protection — duos/bands kept whole even if all parts confirmed', () => {

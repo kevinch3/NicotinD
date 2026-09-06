@@ -866,6 +866,36 @@ describe('SearchComponent — results cap', () => {
     component.resultsExpanded.set(true);
     expect(component.visibleBlendedResults().length).toBe(12);
   });
+
+  // Asserts the rendered chips, not just the computed: binding the `@for` back
+  // to the uncapped `catalog()!.artists` passes a signal-only test.
+  it('caps the catalog artist row and expands on demand (#669)', () => {
+    const { component, fixture } = setup();
+    component.catalog.set({
+      artists: Array.from({ length: 9 }, (_, i) => ({ mbid: `a${i}`, name: `Artist ${i}` })),
+      albums: [],
+    });
+
+    expect(component.visibleArtists().length).toBe(5); // ARTISTS_CAP
+    expect(component.hiddenArtistCount()).toBe(4);
+
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelectorAll('[data-testid="catalog-artist"]').length).toBe(5);
+    const showAll = el.querySelector<HTMLButtonElement>(
+      '[data-testid="catalog-artists-show-all"]',
+    )!;
+    expect(showAll).toBeTruthy();
+
+    showAll.click();
+    fixture.detectChanges();
+
+    expect(component.artistsExpanded()).toBe(true);
+    expect(component.visibleArtists().length).toBe(9);
+    expect(component.hiddenArtistCount()).toBe(4);
+    expect(el.querySelectorAll('[data-testid="catalog-artist"]').length).toBe(9);
+    expect(el.querySelector('[data-testid="catalog-artists-show-all"]')).toBeNull();
+  });
 });
 
 describe('SearchComponent — pull-to-refresh', () => {

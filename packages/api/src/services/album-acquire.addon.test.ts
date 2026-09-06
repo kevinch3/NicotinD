@@ -73,8 +73,8 @@ describe('acquireAlbum via a remote addon', () => {
   });
 
   it('hunts + creates the addon job and records the mapped feed row', async () => {
-    const outcome = await acquireAlbum(h.deps, INPUT);
-    expect(outcome).toBe('enqueued');
+    const result = await acquireAlbum(h.deps, INPUT);
+    expect(result).toEqual({ outcome: 'enqueued' });
     expect(h.jobRequests).toHaveLength(1);
     expect(h.jobRequests[0]).toMatchObject({
       intent: 'album',
@@ -100,13 +100,25 @@ describe('acquireAlbum via a remote addon', () => {
     expect(kv?.value).toBe(job.source_ref.length ? kv!.value : '');
   });
 
-  it('maps the addon 409 to in-flight', async () => {
+  it('maps the addon 409 to in-flight, with no detail', async () => {
     h = makeDeps({
       createJob: async () => {
         throw new AddonRequestError('conflict', 409);
       },
     });
-    expect(await acquireAlbum(h.deps, INPUT)).toBe('in-flight');
+    expect(await acquireAlbum(h.deps, INPUT)).toEqual({ outcome: 'in-flight' });
+  });
+
+  it('carries why the enqueue failed (issue #858)', async () => {
+    h = makeDeps({
+      createJob: async () => {
+        throw new AddonRequestError('addon responded 400 for POST /addon/v1/jobs', 400);
+      },
+    });
+    expect(await acquireAlbum(h.deps, INPUT)).toEqual({
+      outcome: 'enqueue-failed',
+      detail: 'addon responded 400 for POST /addon/v1/jobs',
+    });
   });
 
   it('returns no-candidate below the threshold', async () => {
@@ -117,7 +129,7 @@ describe('acquireAlbum via a remote addon', () => {
         skewNeeded: false,
       }),
     });
-    expect(await acquireAlbum(h.deps, INPUT)).toBe('no-candidate');
+    expect(await acquireAlbum(h.deps, INPUT)).toEqual({ outcome: 'no-candidate' });
     expect(h.jobRequests).toHaveLength(0);
   });
 
@@ -128,22 +140,25 @@ describe('acquireAlbum via a remote addon', () => {
        VALUES (?, 'Album', 'Artist', ?, 2, 0, '2024-01-01', 0)`,
       [albumId, artistIdFor('Artist')],
     );
-    expect(await acquireAlbum(h.deps, INPUT)).toBe('already-complete');
+    expect(await acquireAlbum(h.deps, INPUT)).toEqual({ outcome: 'already-complete' });
     expect(h.jobRequests).toHaveLength(0);
   });
 
   it('returns slskd-unavailable when no addon is enabled (phase 3: addon-only)', async () => {
     expect(
       await acquireAlbum({ db: h.db, lidarr: h.deps.lidarr, getAddon: () => null }, INPUT),
-    ).toBe('slskd-unavailable');
+    ).toEqual({ outcome: 'slskd-unavailable', detail: 'No acquisition addon is enabled' });
   });
 
-  it('returns slskd-unavailable when the addon search fails', async () => {
+  it('returns slskd-unavailable when the addon search fails, and says so', async () => {
     h = makeDeps({
       albumsSearch: async () => {
-        throw new AddonRequestError('down');
+        throw new AddonRequestError('addon unreachable at http://addon:9999: timed out');
       },
     });
-    expect(await acquireAlbum(h.deps, INPUT)).toBe('slskd-unavailable');
+    expect(await acquireAlbum(h.deps, INPUT)).toEqual({
+      outcome: 'slskd-unavailable',
+      detail: 'addon unreachable at http://addon:9999: timed out',
+    });
   });
 });

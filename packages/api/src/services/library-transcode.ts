@@ -59,8 +59,9 @@ interface SongRow {
  * `songId` and `acquisitions` key. Album-keyed data (artwork, release-meta,
  * classification) is keyed on the tag-derived `albumId` and survives; song-keyed
  * data does not, so per file we **migrate identity**: carry `starred`/`hidden`
- * onto the new song row, re-point `playlist_songs.song_id` and
- * `acquisitions.relative_path`, and drop the stale lossless row. `scanPaths`
+ * onto the new song row, re-point `playlist_songs.song_id`,
+ * `library_genre_overrides` (scope `song`) and `acquisitions.relative_path`,
+ * and drop the stale lossless row. `scanPaths`
  * inserts the new opus row and recomputes the album aggregate after the old row
  * is gone, so counts stay correct.
  */
@@ -166,6 +167,18 @@ export async function transcodeLibraryToOpus(
           newId,
           row.id,
         ]);
+        // A curator's song-scope genre override is keyed on the song id too, and
+        // was the one carried-forward table this pass skipped (#856).
+        const overrideMoved = db.run(
+          `UPDATE OR IGNORE library_genre_overrides SET key = ? WHERE scope = 'song' AND key = ?`,
+          [newId, row.id],
+        );
+        // 0 changes means either no override existed or (scope, key) already had
+        // one for the opus row and the UPDATE was ignored; the stale row is dead
+        // either way, so drop it rather than leave an orphan behind.
+        if (Number(overrideMoved.changes ?? 0) === 0) {
+          db.run(`DELETE FROM library_genre_overrides WHERE scope = 'song' AND key = ?`, [row.id]);
+        }
         // The lossless file may have a pre-existing opus duplicate whose provenance
         // row already sits at `newRel` (the relative_path PK). A plain UPDATE would
         // collide (SQLITE_CONSTRAINT_PRIMARYKEY) and abort the whole migration, so

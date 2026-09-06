@@ -400,13 +400,27 @@
             {{ 'acquire.artists' | t }}
           </h2>
           <div class="flex flex-wrap gap-2" appTvNavGroup axis="horizontal">
-            @for (artist of catalog()!.artists; track artist.mbid) {
+            @for (artist of visibleArtists(); track artist.mbid) {
               <button
                 appTvNavItem
                 (click)="activateArtist(artist)"
+                data-testid="catalog-artist"
+                [attr.aria-label]="'acquire.artistChipAction' | t: { artist: artist.name }"
+                [title]="'acquire.artistChipAction' | t: { artist: artist.name }"
                 class="px-3 py-1.5 rounded-full text-sm border border-theme text-theme-secondary hover:border-theme-accent hover:text-theme-primary transition"
               >
                 {{ artist.name }}
+                <span aria-hidden="true" class="ml-1 text-theme-muted">&rarr;</span>
+              </button>
+            }
+            @if (hiddenArtistCount() > 0 && !artistsExpanded()) {
+              <button
+                appTvNavItem
+                (click)="artistsExpanded.set(true)"
+                data-testid="catalog-artists-show-all"
+                class="px-3 py-1.5 rounded-full text-sm text-[var(--theme-accent)] hover:underline"
+              >
+                {{ 'acquire.artistsShowAll' | t: { count: hiddenArtistCount() } }}
               </button>
             }
           </div>

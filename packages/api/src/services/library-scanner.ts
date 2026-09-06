@@ -5,7 +5,11 @@ import { join, relative, sep, extname } from 'node:path';
 import { readdir, stat } from 'node:fs/promises';
 import { AUDIO_EXTENSIONS, createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
-import { albumGroupKey, normalizeArtistForGrouping } from './album-grouping.js';
+import {
+  albumGroupKey,
+  normalizeArtistForGrouping,
+  normalizeForGrouping,
+} from './album-grouping.js';
 import { jobCanonicalTracklists } from './acquisition-job-store.js';
 import { isVariousArtists } from './compilation-tagger.js';
 import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-inference.js';
@@ -26,6 +30,7 @@ import {
   type SplitAuthority,
 } from './artist-identity-store.js';
 import { pruneOrphanAlbum, refreshAlbumAggregate } from './library-aggregates.js';
+import { findRepresentedFragments, type ArtistAlbumScope } from './library-quality.js';
 import {
   applyGenreOverride,
   emptyOverrideIndex,
@@ -34,7 +39,11 @@ import {
 } from './genre-overrides.js';
 import { partitionByCache, loadScanCache, saveScanCache, type FileStat } from './scan-cache.js';
 import { repointPlaylistsBeforePrune } from './playlist-repoint.js';
-import { repointGenreOverridesBeforePrune } from './genre-override-repoint.js';
+import {
+  repointGenreOverrideForSong,
+  repointGenreOverridesBeforePrune,
+  type GenreOverrideRepointResult,
+} from './genre-override-repoint.js';
 import {
   splitGenres,
   buildKnownFromRaw,
@@ -1289,6 +1298,8 @@ export class LibraryScanner {
       for (const albumId of priorAlbumIdsToCheck) pruneOrphanAlbum(this.db, albumId);
     }
 
+    this.refreshFragmentFlags();
+
     this.db.run(
       `INSERT INTO library_sync_state (key, value, updated_at)
        VALUES ('last_full_sync_at', ?, ?)
@@ -1305,6 +1316,69 @@ export class LibraryScanner {
       removedAlbums,
       removedSongs,
     };
+  }
+
+  /**
+   * Recompute `library_artists.fragment_of` over the WHOLE table (issue #864):
+   * a compound the splitter could not resolve, whose base row owns an album with
+   * the same title key, is already represented and the grid drops its tile.
+   *
+   * Relational, so it cannot be a per-batch `buildLibrary` value the way
+   * `split_compound` is: an incremental scan sees only the touched tracks and
+   * would clear the flag for every fragment whose base is not in the batch.
+   * → [library-scanner.md](../../../../docs/library-scanner.md)
+   */
+  private refreshFragmentFlags(): void {
+    const rows = this.db
+      .query<{ id: string; name: string; fragment_of: string | null }, []>(
+        'SELECT id, name, fragment_of FROM library_artists',
+      )
+      .all();
+    if (rows.length === 0) return;
+
+    const owns = new Map<string, string[]>();
+    const appearsOn = new Map<string, string[]>();
+    const add = (m: Map<string, string[]>, id: string, name: string) => {
+      const cur = m.get(id);
+      if (cur) cur.push(normalizeForGrouping(name));
+      else m.set(id, [normalizeForGrouping(name)]);
+    };
+    for (const r of this.db
+      .query<{ artist_id: string; name: string }, []>('SELECT artist_id, name FROM library_albums')
+      .all()) {
+      add(owns, r.artist_id, r.name);
+      add(appearsOn, r.artist_id, r.name);
+    }
+    // Only a compound can be a fragment, so the per-track credit join — the one
+    // read here that scales with the song count — is scoped to compound names.
+    for (const r of this.db
+      .query<{ artist_id: string; name: string }, []>(
+        `SELECT sa.artist_id AS artist_id, al.name AS name
+         FROM library_song_artists sa
+         JOIN library_artists ar ON ar.id = sa.artist_id AND ar.name LIKE '%, %'
+         JOIN library_songs s ON s.id = sa.song_id
+         JOIN library_albums al ON al.id = s.album_id`,
+      )
+      .all()) {
+      add(appearsOn, r.artist_id, r.name);
+    }
+
+    const scopes: ArtistAlbumScope[] = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      owns: owns.get(r.id) ?? [],
+      appearsOn: appearsOn.get(r.id) ?? [],
+    }));
+    const next = new Map(
+      findRepresentedFragments(scopes).map((f) => [f.fragmentId, f.baseId] as const),
+    );
+    const stmt = this.db.prepare('UPDATE library_artists SET fragment_of = ? WHERE id = ?');
+    this.db.transaction(() => {
+      for (const r of rows) {
+        const want = next.get(r.id) ?? null;
+        if (want !== r.fragment_of) stmt.run(want, r.id);
+      }
+    })();
   }
 
   /**
@@ -1336,22 +1410,33 @@ export class LibraryScanner {
         this.knownRelPaths(),
       );
       this.persist(built, syncedAt, false);
-      this.pruneAlbumOrphans(built.albums.map((a) => a.id));
+      this.pruneAlbumOrphans(
+        built.albums.map((a) => a.id),
+        syncedAt,
+      );
     }
     log.info({ dirs: dirs.length, files: abs.length }, 'Album-scoped reconcile complete');
   }
 
   /** Delete library_songs rows for the given albums whose file is gone from disk. */
-  private pruneAlbumOrphans(albumIds: string[]): void {
+  private pruneAlbumOrphans(albumIds: string[], syncedAt: number): void {
+    const carried: GenreOverrideRepointResult = { repointed: 0, unmatched: 0 };
     for (const albumId of [...new Set(albumIds)]) {
       const rows = this.db
-        .query<{ id: string; path: string; artist_id: string | null }, [string]>(
-          'SELECT id, path, artist_id FROM library_songs WHERE album_id = ?',
-        )
+        .query<
+          { id: string; path: string; title: string; artist: string; duration: number },
+          [string]
+        >('SELECT id, path, title, artist, duration FROM library_songs WHERE album_id = ?')
         .all(albumId);
       let removed = 0;
       for (const r of rows) {
         if (r.path && existsSync(join(this.musicDir, r.path))) continue;
+        // Same hazard as the full-scan prune, and this is the path that
+        // actually runs at the download seam (#856) — it deletes the doomed row
+        // immediately, so a later scanFull repoint can never see it.
+        const moved = repointGenreOverrideForSong(this.db, r, syncedAt);
+        carried.repointed += moved.repointed;
+        carried.unmatched += moved.unmatched;
         this.db.run('DELETE FROM library_songs WHERE id = ?', [r.id]);
         this.db.run('DELETE FROM library_song_artists WHERE song_id = ?', [r.id]);
         this.db.run('DELETE FROM library_song_genres WHERE song_id = ?', [r.id]);
@@ -1360,6 +1445,9 @@ export class LibraryScanner {
       // Recompute the album aggregate from its surviving songs, dropping the
       // album (and any artist it orphans) when nothing is left.
       if (removed > 0) pruneOrphanAlbum(this.db, albumId);
+    }
+    if (carried.repointed > 0 || carried.unmatched > 0) {
+      log.info(carried, 'genre overrides carried across a song-id change');
     }
   }
 }
