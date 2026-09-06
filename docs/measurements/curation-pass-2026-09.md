@@ -337,3 +337,44 @@ own rule.
 **Filed:** [#946](https://github.com/kevinch3/NicotinD/issues/946) — an artist *split*
 records no members in `audit_log`, so 36 of 45 identity actions (80%) have no
 recoverable outcome. Measured from the prod ledger, not inferred.
+
+### Same day, second stretch — the rest of the HIGH audit rules
+
+Now reachable via `audit-library.ts --rule=<id>` in the prod container (see above).
+
+**`djset_artist` 2 -> 1.** Both rows are DJ-set listing lines used as artist names. The
+audit suggested merging `Pan-Pot playing "Enrico Sangiuliano - Restlessness"` into
+`Pan-Pot`, which I initially doubted — the *played* track is Sangiuliano's, so crediting
+Pan-Pot looked like the wrong call. `identify_song` settled it: **`no-match`**. A studio
+recording would have matched (measured 21/22 in this library), so the file is Pan-Pot's
+own live set, and Pan-Pot is genuinely the performing artist. Merged.
+
+The sibling row is a **b2b credit naming two acts** (`Secret CInema B2B Egbert …`), which
+has no single canonical target — the exact case the skill reserves `flag_for_review` for.
+**Flag #19 raised**, carrying the `no-match` evidence so a later pass cannot "helpfully"
+retag it as Enrico Sangiuliano. Note three consecutive `no-match` results here against a
+1-in-22 base rate: for live-set rips, `no-match` is the *expected* answer, not a failure.
+
+**`missplit_album` 3 -> 3, all false positives -> filed
+[#947](https://github.com/kevinch3/NicotinD/issues/947).** The rule clusters one-track
+singles on `normalizeForGrouping(album.name)` with **no artist in the key**
+(`library-audit.ts:359`), and its anti-false-positive guard (≥2 distinct track numbers)
+does not discriminate — unrelated singles by different artists produce distinct track
+numbers too. Every current finding is a generic title shared across artists: `granada`
+(Uma / Agustín Lara / Paco de Lucía, three covers of one famous song), `pensando en ti`
+(Xavi / Cafe quijano / Banda Express — whose song is actually *El Tren*), `20 grandes
+exitos` (Alcides / Rúben Juárez / Chaqueño Palavecino, while Damas Gratis separately owns
+a real complete 20-track album of that name). **Precision 0/3.** Nothing curated here;
+the fix is in the predicate, not the data.
+
+**`watermark_album` (5) and `numeric_single` (1) — left, deliberately.** The five Tash
+Sultana rows are promo-clip audio (15–47 s opus, titles that are literally tour captions,
+all in `Various Artists/Unknown/`) and are `DELETABLE_RULES` members, but `delete_song` is
+blocked by this session's permission classifier, so they stay. The numeric single is
+`Various Artists/2025/Strum.opus` — 341 s, artist `Chris Liebing, Speedy J, Collabs 3000`,
+which is a credit list whose canonical act is **Collabs 3000** (Liebing + Speedy J). Its
+album "2025" is a folder artifact, but `identify_song` returned `no-match`, so the real
+release is unconfirmed and I did not invent one. Left for a pass with better evidence.
+
+**Verified deltas this stretch:** `fragmented_artist` 6 -> 2, `djset_artist` 2 -> 1, open
+flags 0 -> 1. Each re-measured by re-running its own rule, not counted from my own tally.
