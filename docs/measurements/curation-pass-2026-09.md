@@ -1671,3 +1671,36 @@ that way is what made the zero meaningful. Second, the same shape paid out earli
 checking whether my merges were stranding artist rows is what surfaced #954, because the answer
 was *no, but the rule that reports them is 100% wrong*. **Auditing your own changes tends to
 find defects in the thing that measures them.**
+
+### Thirty-sixth stretch — answering a spike that was never run
+
+My notes carried *"Discogs genre #194 blocked on the #191 spike, which was never actually run
+(report is a placeholder)"*. Two things were wrong with that. **#194, #193, #191 and #211 are
+all closed** — the work shipped without the spike. And the spike's question is now answerable
+from production data, because the lane it was meant to gate has been running for weeks.
+
+Tried the intended route first and stopped: the spike needs `DISCOGS_KEY`/`DISCOGS_SECRET`, the
+container has neither, and its live run is documented as manual. Inventing a credential is not
+a curation action, so I measured the shipped result instead.
+
+**Contribution by lane** (`library_genre_overrides`, applied):
+
+| source | scope | rows |
+| --- | --- | --- |
+| `user` (curator) | song | **1,027** |
+| `essentia` | song | **431** |
+| `discogs` | album | **316** |
+
+**Unresolved** (`library_song_analysis_failures`): `genre` (Lidarr) 3,053 · `genre-audio` 2,471
+(742 terminal) · `genre-discogs` **1,596**. Coverage today: **19,113 / 19,217 songs (99.5%)**.
+
+**Refused to turn that into a hit rate**, and said so in the comment: 316 is *album*-scope
+overrides and 1,596 is *song*-level failure rows. Dividing them gives a confident-looking 17%
+that means nothing, because each album override covers however many tracks that album holds —
+and the fan-out is precisely what the spike was supposed to measure. What survives without it:
+**Discogs is the smallest of the three automated lanes by override count, and the curator has
+produced more than three times as many genre decisions as Discogs has.**
+
+Posted to [#191](https://github.com/kevinch3/NicotinD/issues/191). Nothing reopened — the
+integration works and the residual gap is 104 songs of 19,217. The placeholder report is the
+only loose end, and it is loose in docs rather than in code.
