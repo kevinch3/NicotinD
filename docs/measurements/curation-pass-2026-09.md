@@ -477,3 +477,48 @@ resolves cleanly, so no audit rule fires. The table is documented as rescan-surv
 Also on prod, harmless but evidential: `"zion &amp;amp; lennox" -> "Zion & Lennox"` — a
 **double-escaped** entity fossilised into an alias key, showing the #787 hazard can reach
 durable storage rather than just a single bad write.
+
+### Fifth stretch — song-level duplication, measured
+
+Started from the accent/case title twins visible in Natiruts' listing
+(`A justiça falha` / `A Justiça Falha`). Folded `artist + title` (NFD accent strip, case
+fold, punctuation collapse) across all 19,184 songs:
+
+- **1,075** fold-identical clusters, **1,173** excess files — about **6% of the library**
+- **759** two-file clusters agreeing within 2 s of duration
+
+**Candidates, not confirmed duplicates**, and the distinction is the point of this entry.
+
+**Hypothesis tested and rejected: transcode leftovers.** If `transcode-library` had left its
+sources behind, pairs would share an album and skew `mp3+opus`. They do neither — only
+**55 of 759** share an `album_id`, and `mp3+mp3` (268) outnumbers `mp3+opus` (223). The
+paths give the real cause: the same release acquired twice under variant naming
+(`La Konga/` vs `La K'onga/`, `Los Pericos/` vs `Pericos/`, `2003 9` vs
+`9 (Remastered 192 khz)`). `library_artist_aliases` already holds `pericos -> Los Pericos`,
+so the alias layer folds these in the **UI** while both files stay on disk — the dedupe
+happened in presentation, never in storage.
+
+**Fingerprinted a sample, n=3.** All three pairs returned the same `acoustId` **and** the
+same `recordingId`. Two of them (`Losing My Edge`: *Singles* vs *Live At MSG*;
+`We Found Love`: *Talk That Talk* vs *777 Documentary*) sit in folders named for a live
+album and a documentary and are nonetheless the studio recording — folder context was
+actively misleading and only the fingerprint settled it. n=3 licenses nothing about 1,173;
+it only shows the strongest tier is not obviously wrong.
+
+**Why this stayed invisible**: #660 fixed recording identity at *serve* time (0.00% dup
+share, 0 recordings served from >1 file), closing the audible symptom. The storage cost was
+never measured and no worklist would show it. There is no song-level duplicate rule at all —
+the 16 audit rules are album- and artist-level, and `fragments.duplicateAlbums` reads 0.
+
+**Filed [#951](https://github.com/kevinch3/NicotinD/issues/951)** proposing a
+`duplicate_recording` rule that shortlists on the fold + duration window but **confirms by
+`recordingId` before reporting** — the same discipline #947 shows is missing from
+`missplit_album`.
+
+**A distinction worth keeping.** Both Lenny Kravitz files fingerprinted to *"Metro Station —
+Now That We're Done"* and both Rihanna files to *"Rain Paris"*. Two independently-sourced
+rips are not wrong the same way, so that is upstream label metadata sitting on an otherwise
+correct fingerprint cluster. So: **`recordingId` equality between two files is reliable; the
+artist/title AcoustID attaches to that recording is a weaker, separate claim.** Irrelevant
+to dedupe, critical to anything that pipes `identify_song` into `fix_song_metadata` —
+auto-applying here would have retagged Lenny Kravitz as Metro Station.
