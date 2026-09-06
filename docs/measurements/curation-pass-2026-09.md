@@ -1945,3 +1945,44 @@ The stretch is worth recording mainly as a negative: **the `/66` class was mecha
 the junk was a fixed literal suffix; "artist name prefix" looks like the same shape and is not,
 because the artist name is sometimes the content.** Same probe skeleton, opposite safety —
 which is why the first one ran to 56 writes and this one stopped at 4.
+
+### Forty-second stretch — canonical titles are unreliable, and the code already knows
+
+Examined the `canonIsSuperset` bucket (113) expecting truncated titles worth completing. It is
+the opposite — Lidarr matching a **variant** release to our base one:
+
+```
+"Red" (16 songs)       ->  "Red (Taylor's Version)"          a different release
+"Clube Da Esquina"     ->  "Clube da Esquina 2"              the sequel
+"Breathe"              ->  "Breathe (Eric Prydz Remix)"      a remix
+"You Can't Hurry Love" ->  "… (live on the Ed Sullivan Show, 1966)"
+```
+
+**Leading-article cases: 0.** So of all 399 canonical-title differences, essentially **none is
+an improvement opportunity**: 183 are editions where our name is better, 113 point at a variant,
+68 are outright mismatches, 1 is case-only. `canonical_title` is not a naming source here.
+
+**Then the part that mattered.** `canonical_title` is not dead data — `repair-album-folders.ts`
+feeds it to `planTrackKeepers`, which decides which files to **keep and which to delete**. A
+canonical list belonging to the wrong release could, in principle, drop real music.
+
+It cannot, and the guard is explicit:
+
+```ts
+// Keep the chosen per-track files AND every file that matched NO canonical
+// track — an unmatched file is an unknown/bonus track, never a redundant
+// version, so we must not silently delete it.
+const keep = files.filter((f) => claimed.has(f) || !matched.has(f));
+```
+
+A file matching **no** canonical track is always kept. So a wrong-release match degrades to a
+**no-op** rather than a deletion: `Clube da Esquina 2`'s tracklist matches almost nothing in
+`Clube Da Esquina`, so everything is unmatched and everything is kept. The script is also
+dry-run unless `--apply`. **No issue filed.**
+
+That is the fourth time this pass a shape that looked dangerous from the data alone turned out
+to be deliberate and guarded — after `orphan_artist`'s 485, the 139 dangling `artist_id`s, and
+the compilation credit fallback. The pattern is consistent enough to state as a rule:
+**in this codebase, when data looks unsafe, read the comment next to the code that consumes it
+before writing anything down.** Every one of those four was settled by a comment the author had
+already written, not by more querying.
