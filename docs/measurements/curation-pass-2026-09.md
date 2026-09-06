@@ -1074,3 +1074,37 @@ Recommended fix is to bound the **matching** set rather than the stored one — 
 every genre for display. Explicitly did **not** mass-edit the 1,036 songs: truncating stored
 sets by hand would discard real information and could not be reviewed; the defect is in how
 the set is used, not in the data.
+
+### Twentieth stretch — albums filed under the wrong artist entirely
+
+Probed classification and compilation coherence. The big find: **30 albums filed under
+"Various Artists" whose songs are all by one real artist.** Not a tag nuance — the album lands
+in the VA bucket instead of the artist's discography, so *Mezzanine* was not under Massive
+Attack and *Hot Shot* was not under Shaggy.
+
+**Re-attributed 15 with `fix_album_metadata`, moving 104 songs:** Julieta Venegas *MTV
+Unplugged* (12), Shaggy *Hot Shot* (15), Massive Attack *Mezzanine* (10), Pharrell Williams
+*G I R L* (11), SOFI TUKKER *Treehouse* (9), Nonpalidece *Hecho en Jamaica* (9), Gramatik
+*Epigram* (8), Lucio Demare *Al Pasar* (8), David Guetta, Calvin Harris ×2, María Becerra,
+RÜFÜS DU SOL, Rodolfo Biagi, Los Ángeles Azules. Verified **30 -> 15**.
+
+**The 15 left are deliberate.** "All songs share one artist" does not prove the *release* is
+that artist's: `Latin Ska Force` holds 17 Los De Abajo tracks but is plausibly a compilation of
+which we only own their contributions, and `Serie 78 RPM: Orquestas De Antaño`,
+`Messirve Mix 9` and `The Best of the Black President` (2 Fela tracks) have the same shape.
+Re-filing those would assert a release identity the data does not support — the counts are
+identical to the 15 I *did* fix, and only the album's own name separates them.
+
+**A second class, left for a decision: the inverse.** 10 albums are filed under a single artist
+while holding many different ones — `Más Flow` (20 songs / 20 artists, Luny Tunes),
+`Green Velvet at Factory Town Miami 2026 (DJ Mix)` (30/28), `Body Language Vol. 17 by
+WhoMadeWho` (13/13). These are producer compilations and DJ mixes, where crediting the
+curator is arguably right and `classification: 'compilation'` is the more accurate fix than
+re-attribution. One in that list looks like a genuine defect rather than a DJ mix — Gloria
+Estefan's *Mi tierra* (12 songs / 12 distinct artists) is a real single-artist album from 1993,
+so its per-song artist tags are wrong. Worth its own look.
+
+**Also noted, not acted on:** three albums classified `single` while holding 7-9 songs
+(Cassian *Laps*, Lady Gaga *Alejandro* and *Paparazzi*). These are single-plus-remixes
+releases, so `single` is arguably defensible and `ep` arguably better; not worth a write
+without a convention decision.
