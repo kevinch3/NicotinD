@@ -1108,3 +1108,34 @@ so its per-song artist tags are wrong. Worth its own look.
 (Cassian *Laps*, Lady Gaga *Alejandro* and *Paparazzi*). These are single-plus-remixes
 releases, so `single` is arguably defensible and `ep` arguably better; not worth a write
 without a convention decision.
+
+### Twenty-first stretch — an entire album recovered by fingerprint
+
+Followed last stretch's lead: **Gloria Estefan's *Mi tierra*** showed 12 songs / 12 distinct
+artists. It was not a tagging nuance — the rip was **completely untagged**: titles `Track 1`
+… `Track 12`, artists `01 Unknown Artist` … `12 Unknown Artist`. Only the album row carried
+identity, presumably from the folder name. This is precisely `identify_song`'s documented
+case, so all twelve were fingerprinted.
+
+**Eleven came back as genuine *Mi tierra* recordings by Gloria Estefan**, scores 0.97-0.99 —
+*Con los años que me quedan*, *Mi tierra*, *Mi buen amor*, *Tus ojos*, *No hay mal que por
+bien no venga*, *¡Sí señor!*, *Volverás*, *Montuno*, *Hablemos el mismo idioma*, *Hablas de
+mí*, *Tradición*. All applied; the album is now fully identified where it was previously
+unsearchable and unplayable by name.
+
+**The twelfth is flagged (#21), not guessed.** Track 3 returned **Glenn Miller — "Don't Sit
+Under the Apple Tree"** at 0.98. By elimination the slot should be *Ayer*. Two readings, and
+nothing available separates them: the rip may genuinely contain a stray Glenn Miller track, or
+this AcoustID cluster may carry a wrong label — a failure seen **earlier this same pass**,
+when two independent Lenny Kravitz files both returned "Metro Station". Retagging a Gloria
+Estefan album track as Glenn Miller on a label I cannot verify would be worse than leaving it.
+Playing it settles the question in thirty seconds, which is a human's job, not a fingerprint's.
+
+**Generalised the class rather than stopping at one album.** Probing every multi-song album
+for junk titles (`Track N`, `Pista N`, bare numbers) or placeholder artists (`Unknown Artist`,
+`artist`, `<desconocido>`) found only **1 more fully-affected album and 7 partial** — so
+*Mi tierra* was the bulk of it and this is now nearly closed. The remaining one, `Bandana`,
+turned out not to be junk-titled at all: real lowercase titles with the artist tag literally
+set to `artist`, from an `artist/Bandana/` folder. Fixed both (`Adónde vas`,
+`Vivir intentando`). Those two also appear under `Bandana/Singles/` in the orphan-file list,
+so they are probable duplicates — that question belongs to #951, not here.
