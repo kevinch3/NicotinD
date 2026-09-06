@@ -1986,3 +1986,42 @@ the compilation credit fallback. The pattern is consistent enough to state as a 
 **in this codebase, when data looks unsafe, read the comment next to the code that consumes it
 before writing anything down.** Every one of those four was settled by a comment the author had
 already written, not by more querying.
+
+### Forty-third stretch — an empty lane, then a structural gap in the pruner
+
+**Album-to-song genre propagation: no lane.** Only **1** genre-less song has an album carrying a
+usable genre, and it fails the playbook's own test — a 2-song album where a *single* tagged
+sibling set the album genre to `Chanson Française`, for a track called "FLY" by "Void". "A lone
+sibling propagates one mistag." Skipped. The emptiness makes sense in hindsight:
+`library_albums.genre` is derived from its songs, so it cannot know something they do not.
+
+**Then a real finding, from reading two more untouched tables.** `library_artist_meta` has 217
+orphan rows and `library_artwork` has 742. Checking whether the pruner covers them:
+`ORPHAN_TABLES` is **song-keyed only** — every entry declares a `songIdColumn` checked against
+`library_songs`. Album- and artist-keyed side tables have **no sweep at all**:
+
+| table | keyed on | orphans |
+| --- | --- | --- |
+| `library_artwork` (album) | album id | **654** |
+| `library_artist_meta` | artist_id | 217 |
+| `library_artist_origins` | artist_id | 187 |
+| `library_release_meta` | album_id | 113 |
+| `library_artwork` (artist) | artist id | 88 |
+| | | **1,259** |
+
+**Filed [#965](https://github.com/kevinch3/NicotinD/issues/965)** — and the reason it is more
+than tidiness took a moment to see. Album and artist ids are **name-derived**. `library_artwork`
+is keyed on that id and outlives the album. So: rename an album (a routine curation action —
+`fix_album_metadata`'s own docs warn the id changes), the old artwork row is orphaned, and if
+that exact artist+title ever exists again the new album mints the **same id** and silently
+inherits the stale cover. No error, no log line. The same applies to `library_release_meta`,
+which is authoritative over classification.
+
+**This pass is the stress case for it**: ~50 album renames and ~45 artist merges, each
+re-minting ids. So I generated some of those 654 orphans myself, which is how the question
+arose at all.
+
+Deliberately excluded `library_song_analysis_failures` from the finding — it shows 4,705
+orphans but **is** in the pruner and carries an `orphaned_at` column, so that is a retention
+window, not a leak. Counting it would have inflated the number fivefold and made the issue
+wrong.
