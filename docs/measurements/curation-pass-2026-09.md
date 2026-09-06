@@ -1514,3 +1514,42 @@ possibly-deliberate behaviour is the mistake #947 and #954 encode.
 A note on the earlier decode lead: four rows carry `ffmpeg PCM decode exited with code 183`,
 which looked like corrupt audio. They join to **no song** — they are orphaned rows for files
 already removed. Chasing them as "unplayable files" would have been chasing history.
+
+### Thirty-second stretch — #720's accent fold, re-measured and closed
+
+Second pending acceptance measurement cleared. #720 ("fold accents instead of deleting them,
+across every matcher") merged 2026-08-25 with its prod re-measure outstanding.
+
+**Structural:**
+
+| | |
+| --- | --- |
+| artist rows differing only by accent/case that did **not** fold | **0** |
+| album rows under one artist, same test | **0** |
+| artists whose name contains a non-ASCII character | **219 / 3,523** (6.2%) |
+
+The denominator is the point: with 219 accented artist names present, zero is a result rather
+than a vacuous pass. Recording it because #612 is this repo's standing lesson about gates that
+report a false denominator — a fold test over an all-ASCII library would pass while proving
+nothing.
+
+**Behavioural**, which the schema query cannot answer:
+
+```
+search "Americo"  ->  artist "Américo", album "A morir", song "Te Vas"
+search "rosalia"  ->  artist "Rosalía"  AND  "C. Tangana, ROSALÍA"
+```
+
+Unaccented lower-case input reaches accented upper-case data, including inside a compound
+credit — the exact user-facing behaviour the ASCII-strip bug broke (#706, #707, #662, #719).
+**Posted to [#720](https://github.com/kevinch3/NicotinD/pull/720)**; nothing to reopen.
+
+Two things the same query surfaced that are *not* regressions of this change: `C. Tangana,
+ROSALÍA` correctly remains distinct from `Rosalía` (a collaboration, not an accent variant —
+folding it would erase C. Tangana), and a duplicate cluster around
+`A NINGÚN HOMBRE (Cap.11: Poder)` that belongs to #951.
+
+Both close-outs this stretch and last followed the same shape, worth naming: **a "pending
+re-measure" is usually one query and one behavioural probe away, and the reason it stays
+pending is that nobody is looking at that table.** Two sat open for a week and eleven days
+respectively; both were confirmations, not surprises — but neither was known until measured.
