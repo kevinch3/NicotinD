@@ -580,3 +580,52 @@ discriminator across all three is not string similarity but **"does the candidat
 half already exist as an artist row, and do the tracks corroborate it"**. String-shape
 detectors alone measured ~2.5% precision on the concatenation probe and are similarly noisy
 here; the shared-context test is what separates a fragment from a real distinct act.
+
+### Seventh stretch — genre propagation, 14 writes, zero searches
+
+Worked the genre residue by the playbook's free lane only: propagate from an artist's own
+tagged siblings, never a search.
+
+**A metric I misread, and the correction is the useful part.** A direct probe found **108**
+songs with no `library_song_genres` row while `get_library_health` reported **184**, and my
+first instinct was that the metric was wrong. It is not — `unresolvedGenreSql`
+(`genre-split.ts:195`) counts junk *values* as unresolved too, via the `JUNK_GENRES` set
+added by #694 because YouTube's category names (`music`, `entertainment`) made 485 songs
+"look genre-resolved and be invisible to both genre tasks forever". So:
+
+```
+184 = 108 with no genre row  +  76 carrying a junk primary genre
+```
+
+All 76 carried the same value: **`"Music"`**. My narrower probe had hidden an entire lane —
+the health number was right and my query was the incomplete one.
+
+**Propagation, with the independence test doing real work.** For each unresolved song,
+collected same-artist siblings holding a non-junk primary genre, required **>=2 agreeing**
+and required the siblings to span more than one album or more than one format.
+
+That last condition rejected a candidate that would otherwise have looked strong: Telzen's
+*G Power - Franca mix* had four agreeing `Electronic` siblings, but all four sit in **one
+album in one format** — and the untagged song is in a *different* album (`35f38732` vs
+`2d3915c5`). That is the playbook's n=1-not-n=4 case exactly: one source's blanket tag, and
+not even the same source as the song being tagged. Skipped.
+
+Written (14, all `mode: 'replace'`, all verified to carry nothing but the junk value first):
+
+| artist | songs | genre | sibling evidence |
+| --- | --- | --- | --- |
+| Tash Sultana | 1 | `Singer-Songwriter` | 289 siblings, 282 albums, 64 formats |
+| Viejas Locas | 5 | `Rock` | `Rock:28` across 3 albums / 4 formats |
+| Ratones Paranoicos | 2 | `Rock` | `Rock:51` across 3 albums / 20 formats |
+| Callejeros | 1 | `Latin Rock` | unanimous across 3 albums |
+| Juana la Loca | 1 | `Punk Rock;Rock` | `Punk Rock:22 Rock:11`, 3 albums / 3 formats |
+| Jean Carlos | 1 | `Latin` | `Latin:11` across 5 albums |
+| La Barra | 1 | `Latin` | unanimous across 3 albums |
+| Migrantes | 1 | `Cumbia` | unanimous across 4 albums |
+| La Repandilla | 1 | `Latin;Cumbia` | `Latin:4` majority, `Cumbia:1` attested |
+
+**Verified**: health-definition missing **184 -> 170**, junk `Music` **76 -> 66**, no-genre-row
+**108 -> 104**. The deltas match the 14 writes exactly, with no rescan churn to discount.
+
+Remaining residue is what the playbook predicts: mostly singleton artists with no tagged
+sibling to propagate from, which is why the free lane yields 14 and then stops.
