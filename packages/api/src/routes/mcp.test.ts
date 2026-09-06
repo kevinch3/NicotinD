@@ -11,7 +11,7 @@ import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import { LibraryCurator } from '../services/library-curator.js';
 import { artistIdFor } from '../services/library-scanner.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
-import type { AddonClient } from '../services/addons/client.js';
+import { AddonRequestError, type AddonClient } from '../services/addons/client.js';
 import {
   dispatchTool,
   checkToolAccess,
@@ -1233,6 +1233,26 @@ describe('complete_album (issue #735)', () => {
     expect(audit[0]!.detail).toContain('outcome=enqueued');
     expect(audit[0]!.detail).toContain('lidarrAlbumId=42');
     expect(audit[0]!.detail).toContain('(via MCP agent)');
+  });
+
+  it('surfaces why the enqueue failed, in the result and the audit (issue #858)', async () => {
+    seedOwned(['Mustapha']);
+    addJob(42);
+    const client = {
+      baseUrl: 'http://addon:9999',
+      albumsSearch: async () => ({ candidates: [CANDIDATE], queries: [], skewNeeded: false }),
+      createJob: async () => {
+        throw new AddonRequestError('addon responded 400 for POST /addon/v1/jobs', 400);
+      },
+    } as unknown as AddonClient;
+    const ctx = acquireCtx({ getAddon: () => new RemoteAddonPlugin(MANIFEST, client) });
+    const res = await dispatchTool(ctx, 'complete_album', { albumId: 'al-jazz', confirm: true });
+    expect(JSON.parse(res.content[0]!.text)).toMatchObject({
+      ok: true,
+      outcome: 'enqueue-failed',
+      detail: 'addon responded 400 for POST /addon/v1/jobs',
+    });
+    expect(audits()[0]!.detail).toContain('detail=addon responded 400 for POST /addon/v1/jobs');
   });
 
   it('falls back to a normalize-matched Lidarr lookup hit', async () => {

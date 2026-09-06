@@ -411,7 +411,7 @@ export class CompilationTagger {
       '-metadata',
       `ALBUM=${tags.album}`,
       '-metadata',
-      `ALBUMARTIST=${tags.albumArtist}`,
+      `album_artist=${tags.albumArtist}`, // ffmpeg's generic key, per issue #914
     ];
     if (tags.compilation) metaArgs.push('-metadata', 'COMPILATION=1');
     if (tags.year !== undefined) metaArgs.push('-metadata', `DATE=${tags.year}`);

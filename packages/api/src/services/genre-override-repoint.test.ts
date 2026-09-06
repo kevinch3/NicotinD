@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { upsertGenreOverride, type GenreOverrideRow } from './genre-overrides.js';
-import { repointGenreOverridesBeforePrune } from './genre-override-repoint.js';
+import {
+  repointGenreOverrideForSong,
+  repointGenreOverridesBeforePrune,
+} from './genre-override-repoint.js';
 
 let db: Database;
 const OLD = 1;
@@ -33,6 +36,16 @@ function seedSongOverride(songId: string, p: Partial<GenreOverrideRow> = {}) {
     ...p,
   });
 }
+
+/** Stored form is a ';'-joined ordered list (genre-overrides.ts `splitStored`). */
+const genresFor = (songId: string) =>
+  db
+    .query<{ genres: string }, [string]>(
+      `SELECT genres FROM library_genre_overrides WHERE scope = 'song' AND key = ?`,
+    )
+    .get(songId)
+    ?.genres.split(';')
+    .filter(Boolean) ?? null;
 
 const overrideKeyFor = (songId: string) =>
   db
@@ -113,9 +126,12 @@ describe('repointGenreOverridesBeforePrune', () => {
     seedSongOverride('old', { genres: ['House'] });
 
     expect(() => repointGenreOverridesBeforePrune(db, NEW)).not.toThrow();
-    // The survivor's own override wins; the doomed one is left for the prune.
+    // The survivor's own curation wins, and the doomed row is dropped rather
+    // than left behind: `library_genre_overrides` is curator data and sits
+    // outside ORPHAN_TABLES by design, so nothing would ever sweep it (#856).
     expect(overrideKeyFor('new')).toBe('new');
-    expect(overrideKeyFor('old')).toBe('old');
+    expect(overrideKeyFor('old')).toBeNull();
+    expect(genresFor('new')).toEqual(['Techno']);
   });
 
   it('preserves the curator mode across the repoint', () => {
@@ -154,5 +170,36 @@ describe('repointGenreOverridesBeforePrune', () => {
       .query<{ key: string }, []>(`SELECT key FROM library_genre_overrides WHERE scope = 'artist'`)
       .get();
     expect(artistRow).toEqual({ key: 'old' });
+  });
+});
+
+/**
+ * The per-song core the whole-library function above delegates to, and the one
+ * shape the incremental `pruneAlbumOrphans` can use: it dooms a row by file
+ * existence, not by `synced_at`, so it has no doomed-set query to share (#856).
+ */
+describe('repointGenreOverrideForSong', () => {
+  const song = (id: string) => ({ id, title: 'Yo Puedo', artist: 'Decadentes', duration: 210 });
+
+  it('never treats the doomed row as its own survivor, even at the same synced_at', () => {
+    // The incremental caller passes rows it just re-persisted alongside the
+    // doomed one, so `synced_at >= syncedAt` alone does not exclude it.
+    seedSong('old', { title: 'Yo Puedo', artist: 'Decadentes', dur: 210, synced: NEW });
+    seedSongOverride('old');
+
+    expect(repointGenreOverrideForSong(db, song('old'), NEW)).toEqual({
+      repointed: 0,
+      unmatched: 1,
+    });
+    expect(overrideKeyFor('old')).toBe('old');
+  });
+
+  it('does no work for a song with no override', () => {
+    seedSong('old', { title: 'Yo Puedo', artist: 'Decadentes', dur: 210, synced: OLD });
+    seedSong('new', { title: 'Yo Puedo', artist: 'Decadentes', dur: 210, synced: NEW });
+    expect(repointGenreOverrideForSong(db, song('old'), NEW)).toEqual({
+      repointed: 0,
+      unmatched: 0,
+    });
   });
 });

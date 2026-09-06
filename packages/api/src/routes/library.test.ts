@@ -1295,6 +1295,22 @@ describe('singles & EPs presentation', () => {
     expect(names).not.toContain('Charly García y Luis Alberto Spinetta');
   });
 
+  it('GET /artists hides a fragment its base row already represents (#864)', async () => {
+    testDb.run(`DELETE FROM library_artists`);
+    testDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('base', 'Eelke Kleijn', 2, 1)`,
+    );
+    testDb.run(
+      `INSERT INTO library_artists (id, name, album_count, split_compound, fragment_of, synced_at)
+       VALUES ('frag', 'Eelke Kleijn, Ost', 1, 0, 'base', 1)`,
+    );
+
+    const body = (await (await makeApp().request('/artists')).json()) as Array<{ name: string }>;
+    const names = body.map((a) => a.name);
+    expect(names).toContain('Eelke Kleijn');
+    expect(names).not.toContain('Eelke Kleijn, Ost');
+  });
+
   it('GET /artists/:id splits albums from singlesAndEps', async () => {
     testDb.run(
       `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('art', 'Alfredo Casero', 3, 1)`,

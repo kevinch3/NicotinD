@@ -1,4 +1,4 @@
-import { createLogger, type Logger } from '@nicotind/core';
+import { createLogger, recordProviderCall, type Logger } from '@nicotind/core';
 
 export interface LidarrClientOptions {
   baseUrl: string;
@@ -67,6 +67,9 @@ export class LidarrClient {
   }
 
   /**
+   * Also the one place a Lidarr outcome is counted (`recordProviderCall`, issue
+   * #670) — downstream this is a `[]` at 21 call sites, so nowhere else can.
+   *
    * @param timeoutMs defaults to the local-query budget; callers hitting a
    *   metadata-proxy or provisioning endpoint pass their own.
    */
@@ -95,17 +98,21 @@ export class LidarrClient {
       // survives.
       if (err instanceof Error && err.name === 'TimeoutError') {
         this.log.warn({ url, timeoutMs }, 'Lidarr request timed out');
+        recordProviderCall('lidarr', { ok: false, kind: 'timeout' });
         throw new LidarrTimeoutError(`Lidarr request timed out after ${timeoutMs}ms: ${path}`);
       }
+      recordProviderCall('lidarr', { ok: false, kind: 'network' });
       throw err;
     }
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       this.log.warn({ url, status: res.status, body }, 'Lidarr request failed');
+      recordProviderCall('lidarr', { ok: false, kind: 'http', status: res.status });
       throw new Error(`Lidarr request failed: ${res.status} ${path}`);
     }
 
+    recordProviderCall('lidarr', { ok: true });
     return res.json() as Promise<T>;
   }
 

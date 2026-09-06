@@ -1333,3 +1333,73 @@ describe('buildLibrary — a known file survives a canonical tracklist it no lon
     expect(built.songs.map((s) => s.title)).toEqual(['Es Por Ti']);
   });
 });
+
+describe('LibraryScanner.persist — fragment_of (issue #864)', () => {
+  let db: Database;
+  let scanner: LibraryScanner;
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    applySchema(db);
+    scanner = new LibraryScanner('/music', db);
+  });
+
+  const BASE = track({
+    relPath: 'Luciano Pavarotti/The Best/01.mp3',
+    artist: 'Luciano Pavarotti',
+    albumArtist: 'Luciano Pavarotti',
+    album: 'The Best',
+    title: 'Nessun Dorma',
+  });
+  // "Herbert von Karajan" is in no confirmed-artist set, so the splitter keeps the
+  // compound whole — split_compound stays 0 and the row used to render its own tile.
+  const FRAGMENT = track({
+    relPath: 'Luciano Pavarotti, Herbert von Karajan/The Best/01.mp3',
+    artist: 'Luciano Pavarotti, Herbert von Karajan',
+    albumArtist: 'Luciano Pavarotti, Herbert von Karajan',
+    album: 'The Best',
+    title: 'Ave Maria',
+  });
+  const COMPOUND = 'Luciano Pavarotti, Herbert von Karajan';
+
+  const artistRow = (name: string) =>
+    db
+      .query<{ split_compound: number; fragment_of: string | null }, [string]>(
+        'SELECT split_compound, fragment_of FROM library_artists WHERE id = ?',
+      )
+      .get(artistIdFor(name));
+
+  it('flags an unresolvable compound whose base owns an album with the same title', () => {
+    scanner.persist(buildLibrary([BASE, FRAGMENT]), Date.now(), true);
+    expect(artistRow(COMPOUND)?.split_compound).toBe(0);
+    expect(artistRow(COMPOUND)?.fragment_of).toBe(artistIdFor('Luciano Pavarotti'));
+    expect(artistRow('Luciano Pavarotti')?.fragment_of).toBeNull();
+  });
+
+  it('leaves a collaboration on a release of its own visible', () => {
+    scanner.persist(
+      buildLibrary([
+        BASE,
+        track({
+          relPath: 'Luciano Pavarotti, Herbert von Karajan/Duetti/01.mp3',
+          artist: COMPOUND,
+          albumArtist: COMPOUND,
+          album: 'Duetti',
+          title: 'Ave Maria',
+        }),
+      ]),
+      Date.now(),
+      true,
+    );
+    expect(artistRow(COMPOUND)?.fragment_of).toBeNull();
+  });
+
+  it('survives an incremental batch the base is not in', () => {
+    // The whole point of recomputing over the table in persist: a per-batch value
+    // written through artistStmt would clear the flag here, since this batch has
+    // no base row to match against.
+    scanner.persist(buildLibrary([BASE, FRAGMENT]), Date.now(), true);
+    scanner.persist(buildLibrary([FRAGMENT]), Date.now() + 1, false);
+    expect(artistRow(COMPOUND)?.fragment_of).toBe(artistIdFor('Luciano Pavarotti'));
+  });
+});

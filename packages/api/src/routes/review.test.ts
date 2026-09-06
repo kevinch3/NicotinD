@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, mock } from 'bun:test';
 import { Hono } from 'hono';
-import type { JwtPayload } from '@nicotind/core';
+import type { JwtPayload, ProviderHealth } from '@nicotind/core';
 import { reviewRoutes, type ServiceReview } from './review.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { MetricsSnapshot } from '../services/system-metrics.js';
@@ -447,5 +447,57 @@ describe('GET /api/admin/review — every slice lands in its own field (#274)', 
     expect(body.downloadReviews).toEqual({ pending: 7, oldestCreated: '2026-08-01T00:00:00.000Z' });
     expect(body.auditTail[0]).toMatchObject({ id: 'audit-sentinel' });
     expect(body.backups[0]).toMatchObject({ name: 'backup-sentinel' });
+  });
+});
+
+/**
+ * Issue #670. A Lidarr/MusicBrainz outage was invisible to every operator
+ * surface: the client seams log once, then ~20 call sites degrade the failure to
+ * `[]`/`null`. The slice is asserted with distinct per-provider sentinels for the
+ * same reason as the #274 test above — `lidarr` and `musicbrainz` share a type.
+ */
+describe('GET /api/admin/review — metadata-provider health (#670)', () => {
+  const health = (over: Partial<ProviderHealth> = {}): ProviderHealth => ({
+    ok: 0,
+    failed: 0,
+    timedOut: 0,
+    successRate: 1,
+    lastFailureAt: null,
+    lastFailureKind: null,
+    lastFailureStatus: null,
+    windowMs: 900_000,
+    ...over,
+  });
+
+  it('carries each provider into its own field', async () => {
+    const subFns = {
+      collectMetrics: mock(async () => emptyMetrics),
+      providerHealth: mock(() => ({
+        lidarr: health({ ok: 9, failed: 1, successRate: 0.9, lastFailureKind: 'timeout' }),
+        musicbrainz: health({ ok: 4, failed: 6, successRate: 0.4, lastFailureStatus: 503 }),
+      })),
+    } as never;
+
+    const res = await makeApp(subFns).request('/');
+    const body = (await res.json()) as ServiceReview;
+
+    expect(body.providers.lidarr).toMatchObject({ ok: 9, failed: 1, lastFailureKind: 'timeout' });
+    expect(body.providers.musicbrainz).toMatchObject({ ok: 4, failed: 6, lastFailureStatus: 503 });
+  });
+
+  it('degrades to an idle window rather than dropping the snapshot', async () => {
+    const subFns = {
+      collectMetrics: mock(async () => emptyMetrics),
+      providerHealth: mock(() => {
+        throw new Error('counter exploded');
+      }),
+    } as never;
+
+    const res = await makeApp(subFns).request('/');
+    const body = (await res.json()) as ServiceReview;
+
+    expect(res.status).toBe(200);
+    expect(body.providers.lidarr).toMatchObject({ ok: 0, failed: 0, successRate: 1 });
+    expect(body.errors.join(' ')).toMatch(/providerHealth/);
   });
 });

@@ -710,10 +710,12 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .query<ArtistRow, (string | number)[]>(
         // split_compound = 0: a compound that split ("Charly García y Luis
         // Alberto Spinetta") is represented by its member tiles, not its own —
-        // the row stays reachable via direct links/search.
+        // the row stays reachable via direct links/search. fragment_of IS NULL is
+        // the other direction (#864): a compound that did NOT split, whose base
+        // row already represents the same album.
         `SELECT id, name, album_count, cover_art, starred
          FROM library_artists
-         WHERE hidden = 0 AND split_compound = 0 AND name != 'Various Artists' COLLATE NOCASE${filterClause}${quarantineClause}
+         WHERE hidden = 0 AND split_compound = 0 AND fragment_of IS NULL AND name != 'Various Artists' COLLATE NOCASE${filterClause}${quarantineClause}
          ORDER BY name COLLATE NOCASE ASC`,
       )
       .all(...frag.params);
@@ -2636,9 +2638,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const db = getDatabase();
     const rows = db
       .query<SongRow, [number]>(
+        // `a` is SONG_SELECT's own join; a second one on the same PK cost ~35% here (#822).
         `${SONG_SELECT}
-         LEFT JOIN library_albums alb ON alb.id = s.album_id
-         WHERE s.hidden = 0 AND s.landed_at IS NOT NULL AND (alb.hidden IS NULL OR alb.hidden = 0)
+         WHERE s.hidden = 0 AND s.landed_at IS NOT NULL AND (a.hidden IS NULL OR a.hidden = 0)
          ORDER BY RANDOM() LIMIT ?`,
       )
       .all(size);

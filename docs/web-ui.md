@@ -84,6 +84,7 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
 - **One-tap smart hunt**: the album-hunt modal (`album-hunt-modal.component`) defaults to the best candidate without a manual pick — `bestCandidate` = top of the server-ranked `filteredCandidates`, `effectiveCandidate` = the user's explicit row selection *or* the best. The footer (with a match%/slots/size confidence chip) downloads `effectiveCandidate` on a single tap; the per-row list remains for power users. The auto-pick row shows a "★ Best match (auto)" hint.
 - **PWA share-target → URL acquire**: `manifest.webmanifest` declares a GET `share_target` (`action: "/search"` — Search moved off `/` when the radio landing became the home route, so the share intent points at `/search`; params `title/text/url`). Sharing a link from a phone lands on the search route; `SearchComponent.ngOnInit` pulls the URL via the pure `extractSharedUrl` helper (`lib/share-url.ts`, scans `url`→`text`→`title`) and auto-starts a yt-dlp/spotdl acquisition, then strips the query params so a refresh doesn't resubmit.
 - **Watchlist star**: catalog album cards in search show a star overlay wired to the web `WatchlistService` (`isWatched`/`toggle`); a filled amber star means the backend watchlist poller will auto-acquire it.
+- **Catalog artist row — ranked, capped, and legible as an action (issue #669)**: `CatalogService.search` now sorts the deduped artists with the shared `rankBy` comparator (`packages/api/src/services/search-tokens.ts`) instead of handing back Lidarr's raw `artist.lookup` order — this was the one search surface in the repo that skipped it, so "One direction" led with *Uncharted Shores*. Ranking happens **after** the normalized-name dedupe, so the kept casing variant is still the first one upstream returned, and **only when some artist folds exactly to the query**. That guard is not cosmetic: the same `CatalogService` instance is shared with `SingleEnrichmentService`, which searches `"<artist> <album>"` at ingest and then picks the artist portrait with an order-sensitive substring `find`. Such a query can never rank an artist exactly, so `rankBy`'s alphabetical tiebreak would be the only surviving term — it hoists "Zara" above "Zara Larsson" and `setArtwork` upserts the wrong (possibly curated) portrait. No exact hit means nothing to promote, so upstream relevance stands. Pinned by both order tests in `catalog-search.service.test.ts`. The **cap stays client-side** (`ARTISTS_CAP = 5` + `artistsExpanded` / `visibleArtists` / `hiddenArtistCount`, the same head + "show all" idiom as the blended results list, reset in `resetResultSurfaces`): a server-side `.slice()` could drop the scoped artist out of `catalog.artists`, which `scopedArtistMbid()` searches to decide whether the "Load discography" CTA renders at all. Each chip carries a trailing `→` and an `acquire.artistChipAction` title/aria-label ("Show {artist}'s albums") because the click is an **action**, not a filter — it navigates to the local artist page when we already own them, and otherwise loads their Lidarr discography, *which adds the artist to Lidarr*. `data-testid`s: `catalog-artist` / `catalog-artists-show-all`.
 - **Library Albums controls (consolidated)**: the Albums view is one control row — `[search] [Sort ▾] [Filters ▾(n)]` — replacing the previous four stacked rows (6 list-type chips + a client sort dropdown + 11 track-count chips). **Sort** is the *server* ordering (`albumListType` → `getAlbums(type,…)`, drives the fetch + pagination): Newest / Most Played / Recently Played / A–Z / Random. The old client-side toolbar sort was **removed** because `ListControlsService` defaults `sortField` to the first option and would re-sort each loaded page by name — silently overriding the server order; `gridControls` is now `sortOptions: []` (search-only, preserves order). **Filters** is a `<details>` disclosure (active-count badge) holding **Starred only** (a filter, though the server models it as the `type='starred'` slot — `albumSort`+`starredOnly` resolve to one effective type via `lib/library-filters.ts`), **Min tracks** (a `<select>` replacing the 11 chips, client-side over loaded pages), and **Show hidden** (admin). Resolution logic (`effectiveAlbumListType`/`splitAlbumListType`/`parseMinTracks`/`activeFilterCount`) is DI-free and unit-tested. `data-testid`s: `library-search`/`library-sort`/`library-filters`/`library-filter-{starred,mintracks,hidden,count}`.
 - **Library "Songs" tab (`pages/library/library-songs.component.ts`)**: a first-class flat listing of the whole library — the promoted home of what used to be the Downloads "Recently Added" tab. **Online** it reads `GET /api/library/songs` (offset-paginated via a `#songsSentinel` IntersectionObserver), defaults to newest-first (`sort=newest|title|album`), reuses the page's shared `LibraryFilter` (bubbled up through `(filterChange)` so the parent mirrors it to the URL; the local `activeFilter` mirror avoids a one-change-stale fetch since the input propagates a tick later), renders `TrackRowComponent` + the full `SongMenuService.build(song,{removable:true})` menu (queue / play-next / **radio** / go-to-artist+album / add-to-playlist / save-offline / song-info / admin-delete), and offers `createSelection()` + `SelectionBarComponent` multi-select (play / queue / add-to-playlist / save-offline / admin-delete). A leading **server-side text search input** (`data-testid="library-songs-search"`) sends a transient `q` query param alongside sort/filter — the server runs a case-insensitive LIKE against song title, song artist, and album name (`%`/`_`/`\` are escaped so a literal `%` in a query is a literal match, not a wildcard). The input is debounced ~250 ms via `setTimeout` (one refetch per typing burst) and clears pagination on each change. `q` is intentionally **not** part of `LibraryFilter` — it's transient text, not URL-mirrored structured metadata — so it lives only in the component. **Offline** (`[offline]="setup.isOffline()"`) it *replaces* its list + server filters with the on-device `PreserveService.preservedTracks` through a client-side `ListControlsService` search/sort, surfaces the offline storage bar + Clear all, and trims the per-row menu to backend-free actions (queue / play-next / remove-from-device). The parent `LibraryComponent` forces `libraryMode='songs'` and hides the other (server-backed) tabs via `visibleModes()` when `SetupService.isOffline()`, and the Library route is now reachable offline (removed from `ONLINE_ONLY_ROUTES` / bottom-nav `onlineOnly`; the app-level offline redirect now targets `/library`). The `offline` input is now **live**: `SetupService.isOffline()` reacts to real connectivity (see §Offline / network detection), so the component swaps between the server listing and preserved tracks **mid-session** — a `lastOffline`-guarded effect re-loads the right source when the flag flips (the initial load stays in `ngOnInit`), rather than being frozen at boot.
 - **Render-windowing for large lists (`lib/render-window.ts`)**: the app is zoneless, so on big views DOM node *volume* — not change detection — is the bottleneck. `createRenderWindow(source, pageSize)` exposes a `visible()` slice + `hasMore()` over a full reactive list; the component mounts only `visible()` and grows it via an `IntersectionObserver` on a `#sentinel` (`data-testid=genre-songs-sentinel` / `library-tab-sentinel`). Applied to the genre-detail songs list (was rendering up to 5000 rows) and the library **Artists / Singles / Compilations** tabs (one shared `#tabSentinel` + `growActiveTab()`, since the tabs are mutually exclusive). The *full* filtered list is kept, so play-all / select-all / search / sort still operate over everything — only the mounted node count is capped. Prefer this over server-pagination when the whole list is needed for bulk actions.
@@ -510,6 +511,44 @@ orphaned override is a separate, not-yet-built fix — issue #856's other half).
 it. Both are typed with it now, so a future caller cannot silently drop it the way
 `applyGenre`'s did.
 
+## Retagging a track from the drawer (issue #724)
+
+Issue #722 shipped the whole retag mechanism — `PATCH /api/library/songs/:id/metadata`
+(curator-gated, delegating to the tested `mutateSongMetadata`), the song-scoped
+`GET /api/library/songs/:id/metadata-candidates` gatherer, and the MCP
+`fix_song_metadata` tool — and no web affordance at all. So the one role the ladder
+promises curation to could rename a polluted YouTube-sourced track only through an MCP
+agent or `normalize-titles.ts`; from the app, not at all.
+
+The drawer's `@if (canCurate())` **Tags** section closes that. Collapsed it is a
+read-only summary (title / artist / album artist / album / year — the header carries
+only the first and second); **Edit tags** opens the same rows as inputs,
+prefilled from `effectiveSong()` so an edit is a correction rather than a blank slate.
+
+Two things are deliberate about what it sends and what it says:
+
+- **Only what changed.** `tagChanges()` diffs the draft against the current row and
+  sends nothing else. The route writes every field present in the body, and each write
+  re-mints the name-derived album id — an untouched field re-sent is a needless tag
+  rewrite. An empty or whitespace-only field is dropped, matching the route's own
+  add/replace-never-clear guard (`buildIdentifyApplyTags`).
+- **A write that could not be confirmed is said out loud.** `verified: false` means the
+  tags reached the file but nothing read them back, so the library still shows the old
+  values; it toasts, in the same shape as `warnIfTagMirrorFailed`. A rejection carries
+  `requested` vs what the row `actual`ly holds (issue #776) and the form renders that
+  divergence instead of a bare "could not save" — and stays open, so the edit is not
+  thrown away.
+
+**Find matches** is one call feeding two halves: the offline `suggested` title from
+`cleanDisplayTitle` (a one-tap chip) and the online candidate releases, each a tappable
+row that fills album / album artist / year. Both only *fill the draft* — the curator
+still saves. The route's `q` and `fingerprint` options are not surfaced: nothing drives
+a query override yet, and the drawer's own Identify button already owns fingerprinting,
+which costs a 20 s AcoustID round-trip.
+
+Client: `LibraryApiService.getSongMetadataCandidates` / `fixSongMetadata` (which
+invalidates the cached library reads, since a retag re-buckets artists and albums).
+
 ## Queue semantics — what a click replaces (issue #233)
 
 A track click used to call the bare `PlayerService.play(track)`, which sets `currentTrack` + `isPlaying` and **never touches `queue`**. So clicking one track left whatever was queued before in place, and `playNext()` pulled that unrelated queue as soon as the deliberately-clicked track ended. The fix is not "always clear the queue" — that would wipe the queue on every album-track click too. It's making the *gesture* decide, via three explicit entry points:
@@ -526,6 +565,62 @@ A row click in a list is always `playWithContext` — the list becomes the queue
 `startRadio(track)` clears the queue too: radio replenishes from the current track, so a leftover queue played out in full before the radio the user asked for ever started. `toggleRadio`'s eager fill covers the now-empty queue. `startRadioWithFilter` already set its own queue and is unchanged.
 
 Guarded by `player.service.spec.ts` (`playSingle` / `playWithContext` / `jumpToQueueIndex` / `startRadio` describe blocks).
+
+## A stale chunk reloads; an offline one does not (issue #872)
+
+Two things go wrong when a lazy route chunk fails to arrive, and until #872 the
+app answered both the same way.
+
+**A stale chunk reloads.** A tab left open across a deploy asks for a hash that
+no longer exists; `lazy()` (`lib/stale-chunk.ts`) reloads once to pull the
+current build. That path is unchanged — see
+[deployment.md](deployment.md) "A missing asset 404s; a stale build reloads
+itself" for why the honest 404 is what makes it recognisable.
+
+**An offline chunk must not.** `isStaleChunkError` matches the browser's wording
+for a failed dynamic import, and an *offline* import throws that same wording —
+so it answers "did the import fail?" while being read as "is the build stale?".
+The window is real, not theoretical: `ngsw-worker`'s `install` only calls
+`skipWaiting()`, and `activate` claims clients without `waitUntil`-ing the
+prefetch it kicks off — so the worker takes control of the page with an empty
+cache. Take the network away inside that window and it can neither serve the
+chunk nor fetch it: `Driver.safeFetch` synthesises a `504 Gateway Timeout`
+rather than rejecting, and a module `import()` of a 504 rejects with exactly the
+stale-chunk wording.
+Reloading there is strictly worse than the dead tap it replaced: `index.html`
+sits in the *same* prefetch asset group as the chunk, so if the chunk was
+uncached the shell almost certainly is too, and the reload lands on the
+browser's offline error page — a running app destroyed by its own recovery.
+
+So `recoverStaleChunk(reload, store, online)` declines while offline. The
+connectivity check runs **before** the `sessionStorage` marker, so the offline
+decline does not spend the one-reload budget the same tab will want when it is
+back online and hits a genuinely stale build. `online` is a parameter defaulting
+to `navigator.onLine` rather than an injected `NetworkStatusService`, to keep
+`lazy()` a pure route-config helper — the router *does* invoke a loader inside
+`runInInjectionContext`, so injecting would be legal; it is a scope choice, not
+a constraint. The service worker is disabled in native shells
+(`serviceWorkerEnabled = !devMode && !nativeShell`), so the unreliable
+Android-WebView `navigator.onLine` never reaches this path. The gap that leaves
+is wifi-with-no-internet, where `navigator.onLine` stays `true` and the reload
+still fires — one wasted reload, marker spent, no loop. Pinned by
+`stale-chunk.spec.ts`.
+
+**A route load in flight now says so.** There was no navigation state anywhere —
+`NavigationStart` had zero subscribers and both router outlets were bare — so a
+slow (or never-arriving) chunk looked identical to a tap that did nothing.
+`LayoutComponent` folds `NavigationStart` / `NavigationEnd` / `NavigationCancel`
+/ `NavigationError` into a `navigating` signal with a delayed
+`navigatingVisible` (250 ms, the same no-flash rule as `bufferingVisible`
+below), rendered as a thin accent bar at the top of `<main>`
+(`data-testid="route-progress"`). It is decorative (`aria-hidden`) — the page it
+announces is the announcement — and it is deliberately not translated, since it
+carries no text. `NavigationSkipped` needs no handling: the router emits it
+*instead of* `NavigationStart`, never after one.
+
+**Known gap:** the bar lives in `layout.component.html`, so it only covers
+in-shell routes. `/login`, `/pair` and `/server` render through `app.ts`'s bare
+`<router-outlet />` and still show nothing while their chunk loads.
 
 ## Playback loading feedback (HDD-aware loaders)
 
@@ -1129,7 +1224,7 @@ Applied honestly, that leaves a lot of spinners in place. The ones deliberately
 | `song-picker` "Searching…" | Debounced typeahead — a skeleton would strobe on every keystroke. |
 | `playlist-detail` proposals | That section legitimately renders *nothing* when there are no proposals; a skeleton would promise content that often isn't coming. |
 | `radio-landing` vibe presets | Per-button in-progress. Its genre chips have no loading state and keep none: `@if (genres().length > 0)` means absent-not-empty, and there is no `currentTrack`-style proxy to tell "will be non-empty" from "will stay empty". |
-| `track-row`, `player-*`, `now-playing-*`, `layout` | Buffering and pull-to-refresh — these encode *state* in their motion. |
+| `track-row`, `player-*`, `now-playing-*`, `layout` | Buffering, pull-to-refresh and the route-load bar — these encode *state* in their motion. |
 | `library.component.html` `.animate-loading-bar` | Already not a spinner, and it reads "fetching more". |
 
 `pages/page-shell.spec.ts` guards the migrated set against regrowth and carries

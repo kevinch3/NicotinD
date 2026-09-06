@@ -13,6 +13,63 @@
   </div>
 
 
+  <!-- Metadata providers (issue #670): a Lidarr/MusicBrainz outage is swallowed
+       to `[]` at ~20 call sites, so this rate is the only place it shows. -->
+  @if (providerRows().length) {
+    <div class="mb-8" data-testid="provider-health">
+      <span class="text-xs font-semibold uppercase tracking-wider text-theme-muted">{{
+        'admin.metadataProviders' | t
+      }}</span>
+      <div class="mt-3 space-y-2">
+        @for (row of providerRows(); track row.id) {
+          <div
+            class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
+            [attr.data-testid]="'provider-health-' + row.id"
+          >
+            <span class="min-w-0 text-sm text-theme-primary"
+              >{{ row.labelKey | t }}
+              <span class="block text-xs text-theme-muted">
+                @if (callCount(row.health) === 0) {
+                  {{ 'admin.providerNoCalls' | t: { minutes: windowMinutes(row.health) } }}
+                } @else {
+                  {{
+                    'admin.providerCalls'
+                      | t
+                        : {
+                            ok: row.health.ok,
+                            failed: row.health.failed,
+                            minutes: windowMinutes(row.health),
+                          }
+                  }}
+                  @if (row.health.timedOut > 0) {
+                    {{ 'admin.providerTimeouts' | t: { timedOut: row.health.timedOut } }}
+                  }
+                  @if (row.health.failed > 0) {
+                    {{ 'admin.providerLastFailure' | t }} {{ failureKindKey(row.health) | t }}
+                    @if (row.health.lastFailureStatus !== null) {
+                      {{ row.health.lastFailureStatus }}
+                    }
+                  }
+                }
+              </span>
+            </span>
+            <span
+              class="text-xs px-2 py-0.5 rounded-full"
+              [class]="providerChipClass(row.health)"
+              [attr.data-testid]="'provider-health-chip-' + row.id"
+            >
+              @if (callCount(row.health) === 0) {
+                {{ 'admin.providerIdle' | t }}
+              } @else {
+                {{ successPct(row.health) }}%
+              }
+            </span>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
   <!-- Server version + update check (cached daily GitHub poll, drained
            from ServiceReview; "Check now" forces a fresh poll). -->
   @if (updateCheck(); as uc) {

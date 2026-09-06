@@ -19,6 +19,7 @@ import { serializeLibraryFilter, isEmptyLibraryFilter } from '@nicotind/core';
 import type { Album, AlbumDetail, Song, ProvenanceRecord, ArtistIdentityResult } from './api-types';
 import type { LibraryFragmentReport, MissplitPreview } from './api-types';
 import type { IdentifyApplyFields, IdentifySuggestion } from './api-types';
+import type { SongMetadataCandidates, SongMetadataFields, SongMetadataResult } from './api-types';
 import type { MaintenanceStatus } from './api-types';
 import type { WaveformData } from '../../../types/core';
 
@@ -662,6 +663,29 @@ export class LibraryApiService {
         // listings — the same #210/#237 staleness shape applyGenre guards.
         tap(() => this.invalidateLibraryReads()),
       );
+  }
+
+  /**
+   * Candidate releases for one song plus the title cleaner's opinion (curator).
+   * The route's `q` and `fingerprint` options are deliberately not surfaced:
+   * nothing drives them yet, and the drawer's Identify button already owns
+   * fingerprinting (which costs a 20s AcoustID round-trip).
+   */
+  getSongMetadataCandidates(id: string) {
+    return this.http.get<SongMetadataCandidates>(`/api/library/songs/${id}/metadata-candidates`);
+  }
+
+  /**
+   * Retag one song's own metadata (curator). A tag write + incremental rescan,
+   * never a file move — so the path-derived song id survives (issue #722).
+   */
+  fixSongMetadata(id: string, body: SongMetadataFields) {
+    return this.http.patch<SongMetadataResult>(`/api/library/songs/${id}/metadata`, body).pipe(
+      // A retag re-mints the name-derived album/artist ids, so the cached
+      // Artists/Albums listings are stale — the same #210/#237 shape applyGenre
+      // and applyIdentify guard.
+      tap(() => this.invalidateLibraryReads()),
+    );
   }
 
   /** Stored lyrics for a song; null when none have been fetched yet. */

@@ -314,6 +314,23 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly loadingDiscography = signal(false);
   readonly retryingCatalog = signal(false);
 
+  // Lidarr's `artist.lookup` is uncapped, so a common query returns a long wall
+  // of near-namesakes. The server now ranks them exact-first (#669); cap the row
+  // here — the same "head + show all" idiom as the blended list — rather than
+  // server-side, since `scopedArtistMbid` searches the *whole* list to decide
+  // whether the "Load discography" CTA can appear at all.
+  private static readonly ARTISTS_CAP = 5;
+  readonly artistsExpanded = signal(false);
+  readonly catalogArtists = computed(() => this.catalog()?.artists ?? []);
+  readonly visibleArtists = computed(() =>
+    this.artistsExpanded()
+      ? this.catalogArtists()
+      : this.catalogArtists().slice(0, SearchComponent.ARTISTS_CAP),
+  );
+  readonly hiddenArtistCount = computed(() =>
+    Math.max(0, this.catalogArtists().length - SearchComponent.ARTISTS_CAP),
+  );
+
   readonly flatNetwork = computed(() => flattenAndFilter(this.search.network()));
   readonly hasNetwork = computed(() => this.flatNetwork().length > 0);
   readonly highlightTerms = computed(() => getHighlightTerms(this.search.query()));
@@ -1012,6 +1029,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.catalog.set(null);
     this.catalogUnavailable.set(false);
     this.resultsExpanded.set(false);
+    this.artistsExpanded.set(false);
   }
 
   private async executeSearch(opts?: { forceDirectOpen?: boolean }): Promise<void> {

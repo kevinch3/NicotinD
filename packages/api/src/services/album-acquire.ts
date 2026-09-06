@@ -7,7 +7,7 @@ import { artistIdFor } from './library-scanner.js';
 import { createJob } from './acquisition-job-store.js';
 import type { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { AddonRequestError } from './addons/client.js';
-import { mapAddonJob } from './addons/job-poller.js';
+import { mapAddonJob, sanitizeAddonError } from './addons/job-poller.js';
 
 const log = createLogger('album-acquire');
 
@@ -25,6 +25,21 @@ export type AcquireOutcome =
   | 'slskd-unavailable'
   /** A candidate was chosen but the enqueue call failed. */
   | 'enqueue-failed';
+
+/**
+ * The outcome plus, on a failure, the cause it was derived from. A bare token
+ * cannot separate "no addon enabled" from "the addon 400'd", so the failing
+ * paths carry the sanitized error text (docs/mcp-agent.md).
+ */
+export interface AcquireResult {
+  outcome: AcquireOutcome;
+  detail?: string;
+}
+
+/** The addon's own error text, reduced to the line a person should read. */
+function causeOf(err: unknown): string {
+  return sanitizeAddonError(err instanceof Error ? err.message : String(err));
+}
 
 export interface AcquireAlbumDeps {
   db: Database;
@@ -58,15 +73,16 @@ export interface AcquireAlbumInput {
  * enqueues only the tracks not already on disk, and records an album job so the
  * cross-peer fallback can recover any tracks the chosen peer fails to deliver.
  *
- * Pure of any caller-specific bookkeeping: it returns an outcome and lets the
- * caller persist state (the watchlist maps it to row transitions; the auto-acquire
- * loop just logs it). Idempotent across calls via the `already-complete`/`in-flight`
- * guards, so a repeated sweep never double-downloads.
+ * Pure of any caller-specific bookkeeping: it returns an outcome (plus, on a
+ * failure, why) and lets the caller persist state (the watchlist maps it to row
+ * transitions; the auto-acquire loop just logs it). Idempotent across calls via
+ * the `already-complete`/`in-flight` guards, so a repeated sweep never
+ * double-downloads.
  */
 export async function acquireAlbum(
   deps: AcquireAlbumDeps,
   input: AcquireAlbumInput,
-): Promise<AcquireOutcome> {
+): Promise<AcquireResult> {
   const { db, lidarr } = deps;
   const { lidarrAlbumId, artistName, albumTitle } = input;
 
@@ -74,11 +90,13 @@ export async function acquireAlbum(
 
   // Already on disk (any edition) → done, no download.
   if (albumAlreadyComplete(db, artistName, albumTitle, tracks.length || 1)) {
-    return 'already-complete';
+    return { outcome: 'already-complete' };
   }
 
   const addon = deps.getAddon();
-  if (!addon) return 'slskd-unavailable';
+  if (!addon) {
+    return { outcome: 'slskd-unavailable', detail: 'No acquisition addon is enabled' };
+  }
   return acquireViaAddon(deps, input, addon, tracks);
 }
 
@@ -94,7 +112,7 @@ async function acquireViaAddon(
   input: AcquireAlbumInput,
   addon: RemoteAddonPlugin,
   tracks: LidarrTrack[],
-): Promise<AcquireOutcome> {
+): Promise<AcquireResult> {
   const { db } = deps;
   const { lidarrAlbumId, artistName, albumTitle, minMatchPct, artistMbid } = input;
   const addonId = addon.manifest.id;
@@ -110,15 +128,15 @@ async function acquireViaAddon(
     best = res.candidates.find((c) => c.matchPct >= minMatchPct);
   } catch (err) {
     log.warn({ lidarrAlbumId, addonId, err }, 'Addon album search failed');
-    return 'slskd-unavailable';
+    return { outcome: 'slskd-unavailable', detail: causeOf(err) };
   }
-  if (!best) return 'no-candidate';
+  if (!best) return { outcome: 'no-candidate' };
 
   // Library knowledge stays core-side: the addon acquires only the tracks not
   // already on disk (the same complete-only discipline as the direct path).
   const onDisk = onDiskTitles(db, artistName, albumTitle);
   const wanted = titles.filter((t) => !onDisk.some((d) => titlesOverlap(d, normalizeTitle(t))));
-  if (wanted.length === 0) return 'already-complete';
+  if (wanted.length === 0) return { outcome: 'already-complete' };
 
   try {
     recordAcquiredArtistIdentity(db, {
@@ -144,9 +162,9 @@ async function acquireViaAddon(
       `acquire:${lidarrAlbumId}`,
     );
   } catch (err) {
-    if (err instanceof AddonRequestError && err.status === 409) return 'in-flight';
+    if (err instanceof AddonRequestError && err.status === 409) return { outcome: 'in-flight' };
     log.warn({ lidarrAlbumId, addonId, err }, 'Addon job creation failed');
-    return 'enqueue-failed';
+    return { outcome: 'enqueue-failed', detail: causeOf(err) };
   }
 
   // The unified feed row carries the hunt metadata; the poller mirrors the
@@ -172,5 +190,5 @@ async function acquireViaAddon(
     { lidarrAlbumId, album: albumTitle, addonId, matchPct: best.matchPct },
     'Auto-acquired album via addon',
   );
-  return 'enqueued';
+  return { outcome: 'enqueued' };
 }

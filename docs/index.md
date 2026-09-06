@@ -213,6 +213,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `mode: 'replace'`, the override) is durable either way, but the file's own copy is not, so it may
   not survive a future file replacement. `warnIfTagMirrorFailed`.
   → [web-ui.md](web-ui.md)
+- **Curator retag from the track drawer**: an `@if (canCurate())` Tags section over #722's
+  `PATCH /songs/:id/metadata` — prefilled fields, `tagChanges` sends only what moved, one lookup
+  offers the cleaned title and candidate releases, and an unverified or diverged write is shown, not
+  swallowed. `fixSongMetadata`, `getSongMetadataCandidates`. → [web-ui.md](web-ui.md)
 - **Standardized library metadata filters**: one shared `LibraryFilter` filters the library tabs and
   artist Songs tab server-side, with song properties matching via any-track `EXISTS` and state in URL
   query params. → [library-filters.md](library-filters.md)
@@ -586,6 +590,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Observability (Sentry, opt-in)**: empty DSN = off; the web SDK loads lazily behind a synchronous
   `error-buffer.ts` + `BufferingErrorHandler` that replays startup errors on connect; the API reports
   only unknown 500s plus aggregated `captureProcessingFailure` events.
+  → [observability.md](observability.md)
+- **Metadata-provider health**: `recordProviderCall` at the two client seams feeds a bounded
+  15-minute ring (`providerHealthSnapshot`, `PROVIDER_HEALTH_WINDOW_MS`) surfaced as ServiceReview's
+  `providers` slice; a MusicBrainz 404 counts as ok, because it is the provider answering.
   → [observability.md](observability.md)
 - **Server update check + version history**: daily cached GitHub-releases poll, marker-guarded and
   scheduled from `main.ts` (never the processor tick, so unit tests cannot hit the network);

@@ -734,7 +734,8 @@ being replaced** — which is every retag, by definition.
 In an Ogg container the Vorbis comments *are* stream metadata, while ffmpeg's `-metadata` writes
 *global*. The muxer merges global into the comment header only where the stream has no value for
 that key, and `-c copy` brings the old comment along — so the old value wins. `.flac` and `.m4a`
-read global metadata and were never affected.
+read global metadata and were not affected *by this defect* (album artist was, for a different
+reason — see below).
 
 The blast radius was the whole tag-writing surface — ~19 call sites including BPM, key, energy and
 genre analysis, lyrics, the organizer's ingest tagging, identify-apply and MCP `fix_song_metadata` —
@@ -749,6 +750,39 @@ cannot appear. The test was true and irrelevant: a fixture that excludes the def
 across all four containers, and one reproduces prod's actual file (`CD A 2000.opus`, whose scrambled
 title matched its filename — so when the write vanished, the scanner's filename fallback refilled
 the same wrong value and the revert read as a scanner bug).
+
+## A tag key ffmpeg does not recognise lands *beside* the old value (issue #914)
+
+#760 fixed the metadata **scope**; #914 is the one key whose **name** ffmpeg rewrites. Every key
+`writeFfmpegTags` emits equals ffmpeg's own generic name up to case — `ALBUM`, `ARTIST`, `TITLE`,
+`TRACK`, `DATE`, `GENRE` — so `av_dict_set` replaces the value `-map_metadata 0` carried in. Album
+artist is the sole exception: ffmpeg's generic name is `album_artist`, with an underscore, while the
+*Vorbis* name is `ALBUMARTIST`. Writing the Vorbis spelling creates a **second** dict entry rather
+than replacing the first, so the muxer emits two `ALBUMARTIST` comments and the reader takes
+whichever it meets first.
+
+It also accumulates. A write over an already-doubled file folds the pair into one
+`ALBUMARTIST=NEW;OLD` comment and adds a fresh one beside it, so a third pass reads back
+`"NEW;OLD"`. That concatenated name then defeats `isVariousArtists` (`VA_PATTERNS` is anchored) and
+feeds `albumIdFor`, minting a split album — the bug manufactures the fragmentation class that
+`applyMissplitMerge` exists to clean up, while that same tool no-ops for the same reason.
+
+On `.m4a` the write **never** landed at all, tagged or not: the ipod muxer only knows
+`album_artist`. `.mp3` is unaffected — the ID3 path writes `TPE2` through node-id3.
+
+The fix is the generic key. On-disk output is unchanged for external tools: the muxer's own
+conversion table still emits `ALBUMARTIST` on ogg/opus/flac and `aART` on m4a. Files the bug already
+doubled collapse back to a single correct comment on the next write — but nothing rewrites them on
+its own, so a prod row that already reads a stale or concatenated album artist needs the affected
+`fix_song_metadata` / missplit-merge call re-run.
+
+**Why it survived the #760 regression block.** That block asserted title, artist and album across
+all four containers — the three keys whose name ffmpeg happens to accept — and generated its fixture
+with no album artist at all. The same "the fixture excludes the defect" failure the section above
+already names, one field over. The fixture now carries `album_artist=` (the generic key: the Vorbis
+spelling writes nothing on `.m4a`, which would make the assertion vacuous on the one container where
+the write was never landing), and each container retags twice, since a single retag reads back
+correctly on Ogg while leaving the second comment on disk.
 
 ## One-time prod backfill
 

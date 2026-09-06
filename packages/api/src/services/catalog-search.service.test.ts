@@ -406,6 +406,44 @@ describe('CatalogService.search', () => {
     const result = await new CatalogService(lidarr).search('zara');
     expect(result.artists.map((a) => a.name)).toEqual(['Zara', 'Zara Larsson']);
   });
+
+  it('ranks the exact artist match first instead of raw lookup order (#669)', async () => {
+    const lidarr = {
+      artist: {
+        lookup: mock(async () => [
+          makeArtist({ id: 1, artistName: 'Uncharted Shores' }),
+          makeArtist({ id: 2, artistName: 'One Thousand Directions' }),
+          makeArtist({ id: 3, artistName: 'One Direction' }),
+        ]),
+      },
+      album: { lookup: mock(async () => []) },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).search('One direction');
+    expect(result.artists.map((a) => a.name)).toEqual([
+      'One Direction',
+      'One Thousand Directions',
+      'Uncharted Shores',
+    ]);
+  });
+
+  it('leaves lookup order alone when no artist matches the query exactly (#669)', async () => {
+    // SingleEnrichmentService shares this instance and searches "<artist> <album>",
+    // then picks the artist portrait with an order-sensitive substring find — so a
+    // reorder here writes the wrong `library_artwork` row at ingest.
+    const lidarr = {
+      artist: {
+        lookup: mock(async () => [
+          makeArtist({ id: 1, artistName: 'Zara Larsson' }),
+          makeArtist({ id: 2, artistName: 'Zara' }),
+        ]),
+      },
+      album: { lookup: mock(async () => []) },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).search('Zara Larsson Venus');
+    expect(result.artists.map((a) => a.name)).toEqual(['Zara Larsson', 'Zara']);
+  });
 });
 
 describe('CatalogService.loadDiscography', () => {

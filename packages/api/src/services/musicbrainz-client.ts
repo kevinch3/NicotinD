@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { createLogger, normalizeMbCountry } from '@nicotind/core';
+import { createLogger, normalizeMbCountry, recordProviderCall } from '@nicotind/core';
 import type { MbGenre } from './genre-resolve.js';
 
 const log = createLogger('musicbrainz-client');
@@ -536,6 +536,7 @@ export class MusicBrainzClient {
       });
       if (res.status === 503) {
         log.warn({ url }, 'MusicBrainz 503 — backing off 5s');
+        recordProviderCall('musicbrainz', { ok: false, kind: 'http', status: 503 });
         await this.sleep(5000);
         return { ok: false, confirmed: false };
       }
@@ -543,16 +544,22 @@ export class MusicBrainzClient {
       // Worth remembering. Anything else in the error range is theirs, not ours.
       if (res.status === 404) {
         log.debug({ url }, 'MusicBrainz 404 — confirmed miss');
+        // A confirmed miss is the provider working. Counting it as a failure
+        // would make the health rate track library coverage instead (#670).
+        recordProviderCall('musicbrainz', { ok: true });
         return { ok: false, confirmed: true };
       }
       if (!res.ok) {
         log.debug({ url, status: res.status }, 'MusicBrainz error');
+        recordProviderCall('musicbrainz', { ok: false, kind: 'http', status: res.status });
         return { ok: false, confirmed: false };
       }
+      recordProviderCall('musicbrainz', { ok: true });
       return { ok: true, data: (await res.json()) as T };
     } catch (err) {
       const timedOut = err instanceof Error && err.name === 'TimeoutError';
       log.warn({ url, err, timedOut }, 'MusicBrainz fetch failed');
+      recordProviderCall('musicbrainz', { ok: false, kind: timedOut ? 'timeout' : 'network' });
       return { ok: false, confirmed: false };
     }
   }

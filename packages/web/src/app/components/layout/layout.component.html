@@ -97,6 +97,16 @@
             </div>
           </div>
         }
+        <!-- Route load in flight. A lazy chunk that is slow — or, offline, never
+             arrives — otherwise looks like a dead tap (#872). Decorative: the
+             page it announces is the announcement. -->
+        @if (navigatingVisible()) {
+          <div
+            data-testid="route-progress"
+            aria-hidden="true"
+            class="pointer-events-none absolute inset-x-0 top-0 z-30 h-0.5 bg-theme-accent animate-pulse"
+          ></div>
+        }
         <router-outlet />
       </main>
 

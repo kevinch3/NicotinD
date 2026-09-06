@@ -3,8 +3,9 @@ import type { CatalogSearchResult } from '../services/api/api-types';
 /**
  * The raw-network ("Advanced") lane should open when the guided path has no
  * actionable album cards — either no catalog hit at all, or an artist matched
- * but their discography wasn't available (§A6). Artist pills alone aren't
- * actionable (they just re-search), so they don't keep the lane closed.
+ * but their discography wasn't available (§A6). An artist pill is an action
+ * (open the local artist, else load their discography) but not an album card,
+ * so pills alone don't keep the lane closed.
  */
 export function shouldOpenDirectSearch(catalog: CatalogSearchResult | null): boolean {
   return (catalog?.albums.length ?? 0) === 0;

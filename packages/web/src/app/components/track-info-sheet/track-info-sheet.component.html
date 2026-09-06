@@ -102,6 +102,143 @@
       </section>
     }
 
+    <!-- Curator retag of the song's own tags (issue #724): the web half of the
+         #722 backend. A tag write + rescan — the file is never moved. -->
+    @if (canCurate()) {
+      <section class="mb-5" data-testid="tags-section">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-xs text-theme-muted uppercase tracking-wider">
+            {{ 'trackInfo.tagsHeading' | t }}
+          </p>
+          @if (!editingTags()) {
+            <button
+              class="px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs"
+              (click)="startEditTags()"
+              data-testid="edit-tags-button"
+            >
+              {{ 'trackInfo.editTags' | t }}
+            </button>
+          }
+        </div>
+
+        @if (editingTags()) {
+          <div class="space-y-2">
+            @for (field of tagFields; track field.key) {
+              <label class="flex gap-2 items-center text-sm">
+                <span class="text-theme-muted w-20 flex-shrink-0">{{ field.labelKey | t }}</span>
+                <input
+                  class="flex-1 min-w-0 rounded bg-theme-surface-2 px-2 py-1 text-sm text-theme-primary outline-none focus:ring-1 focus:ring-theme-accent"
+                  [value]="tagDraft()[field.key]"
+                  [disabled]="savingTags()"
+                  (input)="setTagField(field.key, $any($event.target).value)"
+                  [attr.data-testid]="'tag-input-' + field.key"
+                />
+              </label>
+            }
+            <label class="flex gap-2 items-center text-sm">
+              <span class="text-theme-muted w-20 flex-shrink-0">{{ 'trackInfo.tagYear' | t }}</span>
+              <input
+                type="number"
+                class="w-24 rounded bg-theme-surface-2 px-2 py-1 text-sm text-theme-primary outline-none focus:ring-1 focus:ring-theme-accent"
+                [value]="tagDraft().year"
+                [disabled]="savingTags()"
+                (input)="setTagField('year', $any($event.target).value)"
+                data-testid="tag-input-year"
+              />
+            </label>
+
+            <!-- One lookup feeds both halves: the title cleaner's offline
+                 opinion and the candidate releases from the online sources. -->
+            <div class="flex gap-2 items-center flex-wrap">
+              <button
+                class="px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs disabled:opacity-50"
+                [disabled]="loadingTagCandidates()"
+                (click)="findTagMatches()"
+                data-testid="find-tag-matches-button"
+              >
+                {{
+                  loadingTagCandidates()
+                    ? ('trackInfo.tagsSearching' | t)
+                    : ('trackInfo.findMatches' | t)
+                }}
+              </button>
+              @if (tagCandidates()?.suggested; as suggested) {
+                <button
+                  class="px-2 py-0.5 rounded-full bg-theme-accent/15 text-theme-accent-text text-xs hover:opacity-90"
+                  (click)="useCleanedTitle()"
+                  data-testid="use-cleaned-title-button"
+                >
+                  {{ 'trackInfo.useCleanedTitle' | t: { title: suggested.title } }}
+                </button>
+              }
+            </div>
+
+            @if (tagCandidates(); as found) {
+              @if (found.candidates.length > 0) {
+                <ul class="space-y-1" data-testid="tag-candidates">
+                  @for (candidate of found.candidates; track $index) {
+                    <li>
+                      <button
+                        type="button"
+                        class="w-full text-left px-2 py-1 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs"
+                        (click)="useTagCandidate(candidate)"
+                        data-testid="tag-candidate-row"
+                      >
+                        {{ candidate.artist }} — {{ candidate.title }}
+                        @if (candidate.year) {
+                          <span class="text-theme-muted">({{ candidate.year }})</span>
+                        }
+                      </button>
+                    </li>
+                  }
+                </ul>
+              } @else {
+                <p class="text-xs text-theme-muted" data-testid="tag-candidates-empty">
+                  {{ 'trackInfo.noMatches' | t }}
+                </p>
+              }
+            }
+
+            <div class="flex gap-2 items-center">
+              <button
+                class="px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs disabled:opacity-50"
+                [disabled]="savingTags() || !hasTagChanges()"
+                (click)="saveTags()"
+                data-testid="save-tags-button"
+              >
+                {{ savingTags() ? ('trackInfo.tagsSaving' | t) : ('trackInfo.saveTags' | t) }}
+              </button>
+              <button
+                class="px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs"
+                (click)="cancelEditTags()"
+                data-testid="cancel-tags-button"
+              >
+                {{ 'common.cancel' | t }}
+              </button>
+            </div>
+            <p class="text-xs text-theme-muted">{{ 'trackInfo.tagsHint' | t }}</p>
+            @if (tagError(); as e) {
+              <div class="text-xs text-status-error" data-testid="tags-error">
+                <p>{{ 'trackInfo.tagsSaveFailed' | t }} — {{ e.reason }}</p>
+                @for (line of e.diverged; track line) {
+                  <p class="text-theme-muted">{{ 'trackInfo.tagsActual' | t }} {{ line }}</p>
+                }
+              </div>
+            }
+          </div>
+        } @else {
+          <div class="space-y-1 text-sm text-theme-secondary" data-testid="tags-summary">
+            @for (row of tagSummary(); track row.labelKey) {
+              <div class="flex gap-2">
+                <span class="text-theme-muted w-20 flex-shrink-0">{{ row.labelKey | t }}</span>
+                <span class="truncate">{{ row.value || '—' }}</span>
+              </div>
+            }
+          </div>
+        }
+      </section>
+    }
+
     <!-- Acquisition provenance (how/where-from/when) -->
     <section class="mb-5" data-testid="acquisition-section">
       <p class="text-xs text-theme-muted uppercase tracking-wider mb-2">Acquisition</p>

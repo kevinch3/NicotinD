@@ -146,7 +146,7 @@ The hook fires in `LibraryOrganizer.placeFile()` **after the move and before the
 1. reads the old `library_songs` row (`id`, `path`, `starred`, `hidden`);
 2. transcodes on disk (FLAC → opus, original removed);
 3. **deletes the stale lossless row first**, then `scanPaths([newRel])` inserts the new opus row and recomputes the album aggregate counting only it;
-4. carries `starred`/`hidden` onto the new id and re-points `playlist_songs.song_id` + `acquisitions.relative_path` (no FK on `song_id`).
+4. carries `starred`/`hidden` onto the new id and re-points `playlist_songs.song_id`, `acquisitions.relative_path` and `library_genre_overrides` (scope `song`) — none of which has an FK on `song_id`, so each has to be named here to be carried (#856).
 
 Returns `{ candidates, converted, skipped, failed, bytesReclaimed }`.
 

@@ -3,7 +3,7 @@ import type { Lidarr, LidarrAlbum, LidarrArtist } from '@nicotind/lidarr-client'
 import { createLogger, NicotinDError } from '@nicotind/core';
 import { addArtistFromLookup } from './lidarr-provision.js';
 import { normalizeTitle } from '@nicotind/core';
-import { tokenize, matchesAllTokens } from './search-tokens.js';
+import { tokenize, matchesAllTokens, rankBy, fold } from './search-tokens.js';
 import { proxiedCoverUrl } from './remote-cover.js';
 
 const log = createLogger('catalog');
@@ -98,6 +98,19 @@ export class CatalogService {
       if (!key || seenArtist.has(key)) continue;
       seenArtist.add(key);
       artists.push(a);
+    }
+    // Rank (after the dedupe) with the comparator every other search lane uses,
+    // so the exact hit leads instead of raw MusicBrainz relevance order — which
+    // put "Uncharted Shores" above "One Direction". Only when the query *is* an
+    // artist name, though: `search()` is shared with SingleEnrichmentService,
+    // whose "<artist> <album>" query can rank nothing exactly, so `rankBy`'s
+    // alphabetical tiebreak would be the only thing left and it hoists the
+    // shorter namesake ("Zara" over "Zara Larsson") into a portrait write.
+    // Issue #669.
+    const queryTokens = tokenize(query);
+    const foldedQuery = queryTokens.join(' ');
+    if (artists.some((a) => fold(a.name) === foldedQuery)) {
+      artists.sort(rankBy(queryTokens, (a) => a.name));
     }
 
     // Scope the album cards to the matched artist(s) when their *own* releases

@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { LibraryScanner } from './library-scanner.js';
+import { upsertGenreOverride } from './genre-overrides.js';
 
 let musicDir: string;
 let db: Database;
@@ -166,5 +167,86 @@ describe('reconcileAlbums — a pinned canonical tracklist cannot veto a curator
       .query<{ title: string }, [string]>('SELECT title FROM library_songs WHERE id = ?')
       .get(song!.id);
     expect(after?.title).toBe(scannedTitle);
+  });
+});
+
+// Issue #856: `library_genre_overrides` (scope='song') is keyed on the song id
+// = sha1(path), and #888 only taught the FULL-scan prune to repoint it. The
+// incremental reconcile is the path that actually runs — it is the download
+// seam — and it deleted the doomed row on the spot, so the full scan's repoint
+// could never see it. A curator's `mode:'replace'` decision is the durability
+// mechanism itself, not a mirror of the tag.
+describe('reconcileAlbums — a curator genre override survives the incremental prune', () => {
+  const songOverrideKeys = () =>
+    db
+      .query<{ key: string }, []>(
+        `SELECT key FROM library_genre_overrides WHERE scope = 'song' ORDER BY key`,
+      )
+      .all()
+      .map((r) => r.key);
+
+  const overrideSong = (key: string) =>
+    upsertGenreOverride(db, {
+      scope: 'song',
+      key,
+      genres: ['Folclore'],
+      source: 'user',
+      mbid: null,
+      confidence: null,
+      status: 'applied',
+      note: null,
+      mode: 'replace',
+    });
+
+  it('carries the override onto the re-minted id when the file is renamed', async () => {
+    const albumDir = join(musicDir, 'Larralde', 'Herencia');
+    mkdirSync(albumDir, { recursive: true });
+    writeFileSync(join(albumDir, '01 - Chacarera.mp3'), Buffer.alloc(0));
+
+    const scanner = new LibraryScanner(musicDir, db);
+    await scanner.reconcileAlbums([albumDir]);
+    const oldId = db.query<{ id: string }, []>('SELECT id FROM library_songs').get()!.id;
+    overrideSong(oldId);
+
+    // Same recording, new path → new sha1 id. This is what the organizer's
+    // consolidation does to an already-curated file.
+    renameSync(join(albumDir, '01 - Chacarera.mp3'), join(albumDir, '02 - Chacarera.mp3'));
+    await scanner.reconcileAlbums([albumDir]);
+
+    const newId = db.query<{ id: string }, []>('SELECT id FROM library_songs').get()!.id;
+    expect(newId).not.toBe(oldId);
+    expect(songOverrideKeys()).toEqual([newId]);
+  });
+
+  it('leaves the override to dangle when two survivors match — ambiguity must not guess', async () => {
+    // Two albums reconciled together, each holding an identically-named track.
+    const dirs = ['One', 'Two'].map((n) => join(musicDir, 'V', n));
+    for (const d of dirs) {
+      mkdirSync(d, { recursive: true });
+      writeFileSync(join(d, '01 - Intro.mp3'), Buffer.alloc(0));
+    }
+
+    const scanner = new LibraryScanner(musicDir, db);
+    await scanner.reconcileAlbums(dirs);
+
+    // A doomed row in the first album whose (title, artist, duration) matches
+    // BOTH live rows — the scanner's own values, so the match is real.
+    const albumId = db
+      .query<{ album_id: string }, [string]>('SELECT album_id FROM library_songs WHERE path = ?')
+      .get('V/One/01 - Intro.mp3')!.album_id;
+    db.run(
+      `INSERT INTO library_songs
+         (id, album_id, title, artist, artist_id, duration, path, synced_at)
+       VALUES ('doomed', ?, 'Intro', 'Unknown Artist', 'x', 0, 'V/One/02 - Intro.mp3', 1)`,
+      [albumId],
+    );
+    overrideSong('doomed');
+
+    await scanner.reconcileAlbums(dirs);
+
+    // A wrong re-point would attach one song's curated genre to a different
+    // song, which is worse than the dangling row it replaces.
+    expect(db.query('SELECT id FROM library_songs WHERE id = ?').get('doomed')).toBeNull();
+    expect(songOverrideKeys()).toEqual(['doomed']);
   });
 });

@@ -306,9 +306,26 @@ The hunt itself is `acquireAlbum` — the watchlist/auto-acquire shared core —
 every idempotence guard rides along: `already-complete` comes back as a notice
 (never an error), an addon-side 409 maps to `in-flight`, and only the tracks not
 already on disk are enqueued. Every call that reaches the hunt is audited as
-`album.acquire` with `outcome=<x> lidarrAlbumId=<n>`. The runbook budget
-(≤10 hunts per session) lives in docs/curation-playbook.md, not in code —
-it bounds curator attention, and idempotence makes re-runs free.
+`album.acquire` with `outcome=<x> lidarrAlbumId=<n>`, plus ` detail=<why>` when
+there is one. The runbook budget (≤10 hunts per session) lives in
+docs/curation-playbook.md, not in code — it bounds curator attention, and
+idempotence makes re-runs free.
+
+**A failing outcome says why (issue #858).** `acquireAlbum` returns
+`{ outcome, detail? }`, not a bare token, so the error it catches reaches the
+caller instead of dying in a server log an MCP-only session cannot read. The
+`detail` is the addon's own message through `sanitizeAddonError` — the same
+"a person must be able to read why it broke" treatment the Downloads cards get,
+and the same reason `identify_song` carries one. It is what separates a
+deterministic rejection (`addon responded 400 for POST /addon/v1/jobs` — retrying
+will fail again) from an outage (`addon unreachable at …` — retry later), a
+distinction three repeat-failing albums could not be triaged without. The token
+alone was worst on `slskd-unavailable`, which is returned for *three* conditions:
+no addon enabled (`detail: 'No acquisition addon is enabled'`), the addon
+unreachable, and the search throwing. The `detail` is omitted, not empty, on the
+outcomes that already say everything (`enqueued`, `already-complete`,
+`in-flight`, `no-candidate`). The watchlist stores the same string as a row's
+`last_error` in place of the old constant `'Enqueue failed'`.
 
 ### Destructive writes: the extraction that unblocked each one
 

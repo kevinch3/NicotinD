@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { providerHealthSnapshot, resetProviderHealth } from '@nicotind/core';
 import { CACHE_TTL_MS, MusicBrainzClient } from './musicbrainz-client.js';
 
 let dir: string;
@@ -467,5 +468,64 @@ describe('legacy cache migration', () => {
     const client = testClient();
     expect((await client.searchArtist('Daft Punk'))?.id).toBe('mbid-1');
     expect(networkCalls, 'a legacy hit must still serve from cache').toBe(0);
+  });
+});
+
+/**
+ * Issue #670. `fetch<T>` already discriminated transient-vs-confirmed for the
+ * cache; the same seam now feeds the operator's provider-health slice. The
+ * load-bearing case is the 404: MusicBrainz answering "no such MBID" is the
+ * provider working, so counting it as a failure would make the health rate
+ * track library coverage instead of the provider.
+ */
+describe('provider-health counters (#670)', () => {
+  beforeEach(() => resetProviderHealth());
+
+  function respondWith(status: number, body: unknown = {}): void {
+    globalThis.fetch = (async () => {
+      networkCalls += 1;
+      return new Response(JSON.stringify(body), { status });
+    }) as unknown as typeof fetch;
+  }
+
+  it('counts a 200 as ok', async () => {
+    respondWith(200, { artists: [{ id: 'mbid-9', name: 'Someone', score: 100 }] });
+    await testClient().searchArtist('Someone');
+    expect(providerHealthSnapshot().musicbrainz).toMatchObject({ ok: 1, failed: 0 });
+  });
+
+  it('counts a 503 as an http failure carrying the status', async () => {
+    respondWith(503);
+    await testClient().searchArtist('Someone');
+    expect(providerHealthSnapshot().musicbrainz).toMatchObject({
+      ok: 0,
+      failed: 1,
+      lastFailureKind: 'http',
+      lastFailureStatus: 503,
+    });
+  });
+
+  it('does NOT count a 404 as an outage — that is MusicBrainz answering', async () => {
+    respondWith(404);
+    await testClient().getReleaseGroup('rg-gone');
+    expect(providerHealthSnapshot().musicbrainz).toMatchObject({ ok: 1, failed: 0 });
+  });
+
+  it('counts a dropped connection as a network failure', async () => {
+    globalThis.fetch = (() => {
+      throw new Error('ECONNRESET');
+    }) as unknown as typeof fetch;
+    await testClient().searchArtist('Someone');
+    expect(providerHealthSnapshot().musicbrainz).toMatchObject({
+      failed: 1,
+      timedOut: 0,
+      lastFailureKind: 'network',
+    });
+  });
+
+  it('leaves Lidarr alone', async () => {
+    respondWith(503);
+    await testClient().searchArtist('Someone');
+    expect(providerHealthSnapshot().lidarr).toMatchObject({ ok: 0, failed: 0 });
   });
 });

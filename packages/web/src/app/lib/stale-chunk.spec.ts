@@ -38,7 +38,31 @@ describe('recoverStaleChunk', () => {
   it('reloads once so the browser fetches the current build', () => {
     const reload = vi.fn();
     const store = fakeStorage();
-    expect(recoverStaleChunk(reload, store)).toBe(true);
+    expect(recoverStaleChunk(reload, store, true)).toBe(true);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * An offline dynamic import throws the same wording as a stale one, so
+   * `isStaleChunkError` cannot tell them apart. Reloading a device with no
+   * network destroys a running app: index.html sits in the same prefetch group
+   * as the chunk, so if the chunk was uncached it is too (#872).
+   */
+  it('declines while offline, where a reload cannot fetch anything back', () => {
+    const reload = vi.fn();
+    const store = fakeStorage();
+    expect(recoverStaleChunk(reload, store, false)).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  // The offline decline must not spend the one-reload budget: the same tab
+  // going online later still deserves its recovery from a genuinely stale build.
+  it('does not burn the marker on the offline decline', () => {
+    const store = fakeStorage();
+    expect(recoverStaleChunk(vi.fn(), store, false)).toBe(false);
+    expect(store.getItem(STALE_CHUNK_MARKER)).toBeNull();
+    const reload = vi.fn();
+    expect(recoverStaleChunk(reload, store, true)).toBe(true);
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
