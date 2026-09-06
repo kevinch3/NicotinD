@@ -1866,3 +1866,35 @@ Posted both to [#964](https://github.com/kevinch3/NicotinD/issues/964). The caus
 — but a plausible-sounding explanation is now eliminated with a measurement rather than left
 for the next person to chase. **Disproving your own hypothesis is worth as much as confirming
 it, and costs one query either way.**
+
+### Fortieth stretch — `library_release_meta`, and 95 rows fixed in 56 calls
+
+Opened `library_release_meta` (2,568 rows), a table no pass had read. It is authoritative over
+the curator's own classification heuristic, so wrong data here is user-visible.
+
+**The `album_type` disagreements are the guard working, not failing.** Nine albums have a meta
+type contradicting their stored classification — and every one is the metadata claiming
+**`single`** for a 12-20 track album: *Future Nostalgia* (18), *Waterloo* (20), *She Wolf* (18),
+*The Bends* (12). That is precisely the case `library-curator.ts` documents for #315: *"Dua Lipa
+has both an album and a single called 'Future Nostalgia', so the catalog lookup can attach the
+single's type to the album's folder."* The stored classification is `album` in all nine — the
+track-count guard is overriding bad metadata on the literal example from its own comment. A
+disagreement count here is a health signal, not a defect.
+
+**`canonical_title` differs from the stored name on 399 albums**, and mostly our name is
+*better* — `(extended versions)`, `[Extended Version]`, `(twenty years edition)` are editions
+worth keeping. Applying Lidarr's canonical wholesale would discard real information. But one
+sub-pattern is pure junk: a **`/66` suffix** on Bizarrap's *Bzrp Music Sessions* — a
+"volume N of 66" artifact baked into the title.
+
+**39 album names and 56 song titles carried it.** Rather than 95 writes, I tested the
+sequencing rule found earlier (album names derive from song tags): one `fix_song_metadata`
+setting **both `title` and `album`** dropped the counts 39→38 and 56→55 in a single call. So the
+whole class closed in **56 calls, not 95**. Verified **0 / 0**.
+
+I stripped the suffix myself rather than adopting Lidarr's canonical string, because its
+casing is not always right — it renders `CA7RIEL` as `Ca7riel` and `Arcángel` as `Arcangel`,
+and `CA7RIEL` is the artist's own styling. Two canonical titles were themselves polluted
+(`J Balvin … Vol. 62/66`, `Daddy Yankee … Vol. 0/66`), which is the clearest argument against
+trusting that field wholesale: **an authoritative source is authoritative about identity, not
+about formatting.**
