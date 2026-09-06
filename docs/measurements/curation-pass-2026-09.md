@@ -425,3 +425,55 @@ the next Mercedes Sosa arrival*. Left unwritten rather than papered over with 44
 Worth recording separately: **`get_rare_genres` counts the primary genre only**, so
 `Nueva CancióN` — 44 rows, none primary — is invisible to that worklist entirely. The
 largest instance of this whole class only surfaced from a direct probe.
+
+### Fourth stretch — structural probes, one merge, two issues
+
+Probed `library_song_genres` for two structural shapes rather than working a tool worklist,
+because the previous stretch showed the tool worklist cannot see this class.
+
+**The two genre families are now closed sets**: `X - Y` prefix (9 values / 40 songs, all at
+position 0) and no-separator concatenation (7 values / 73 songs). With `Nueva CancióN`,
+that is **16 alias rows covering 113 song-genre rows**. Posted the full inventory as a
+comment on [#949](https://github.com/kevinch3/NicotinD/issues/949) with per-value carrier,
+position and proposed canonical. Deliberately **not** fixed as 113 song overrides: the
+string is wrong wherever it appears, so a song-scoped override is the wrong granularity
+and would still break on the next Alex Gaudino or ABBA arrival.
+
+Note on the prefix family: the faithful expansion keeps **both** sides
+(`Electronic - House` -> `House;Electronic`), matching how the table already handles
+`"LatinPopLatin Pop" -> "Latin;Pop;Latin Pop"`. Dropping the prefix would discard a real
+genre.
+
+**A concatenated-artist detector, and why it should not be built.** `NatirutsThiaguinho`
+suggested a class that `fragmented_artist` structurally cannot see (it looks for
+comma-extended names). Probing every artist matching `*[a-z][A-Z]*` returned 40 rows of
+which **39 are legitimate** — WhoMadeWho, Mac DeMarco, CamelPhat, OneRepublic, GloRilla,
+DaBaby, and the entire `Mc*` family (McRae, McGriff, McLean, McGraw, McEntire). Exactly one
+was a true concatenation, and the discriminator that found it was not the casing run but
+**"the head matches an existing artist row exactly"**. A casing-run detector would be ~2.5%
+precision; the comma-based rule is not missing a wave.
+
+Renamed it to `Natiruts, Thiaguinho` (song: *Serei Luz*) rather than merging into
+`Natiruts`, which preserves Thiaguinho's credit.
+
+**A rule this made explicit.** The alias table already held
+`"natirutsgilberto gil" -> "Natiruts"` from an earlier pass, and it first looked like that
+pass had destroyed a credit. It had not: both Gilberto Gil songs carry the feature **in the
+title** (`Verde do Mar de Angola (feat. Gilberto Gil)`). *Serei Luz* does not. So the rule
+is: **fold a concatenated collaboration to the base artist when the title already carries
+the feature; keep the compound when it does not** — otherwise the credit exists nowhere.
+Both prior and current decisions are correct under it.
+
+**Filed [#950](https://github.com/kevinch3/NicotinD/issues/950).** Auditing every
+`source='user'` alias surfaced two keyed on generic placeholders rather than
+artist-specific strings: `[traditional] -> Luciano Pavarotti` (collateral from the
+Pavarotti identity work) and `me -> &ME` (because `normalizeArtistForGrouping("&ME")` is
+`me`). **Latent, not active — 0 songs match either today, verified before filing.** But
+`[Traditional]` is a routine placeholder on folk and classical rips, and this library
+ingests both, so any such arrival would be filed under Pavarotti silently: the artist
+resolves cleanly, so no audit rule fires. The table is documented as rescan-surviving and
+`source='user'` rows are never overwritten, so it does not self-correct.
+
+Also on prod, harmless but evidential: `"zion &amp;amp; lennox" -> "Zion & Lennox"` — a
+**double-escaped** entity fossilised into an alias key, showing the #787 hazard can reach
+durable storage rather than just a single bad write.
