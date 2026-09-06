@@ -2025,3 +2025,57 @@ Deliberately excluded `library_song_analysis_failures` from the finding — it s
 orphans but **is** in the pruner and carries an `orphaned_at` column, so that is a retention
 window, not a leak. Counting it would have inflated the number fivefold and made the issue
 wrong.
+
+### Stretch 15 — recovering 28 covers I destroyed, and finding the real defect under #965
+
+Followed #965 from a tidiness observation to an actual loss, and the loss turned out to be
+**self-inflicted**. Earlier this pass I stripped a `/66` watermark from 59 Bzrp album names
+by rewriting song tags. Album ids are name-derived, so every one of those renames re-minted
+an id — and `library_artwork` is keyed on that id:
+
+```
+Bzrp albums: 59   still have artwork: 12   LOST but recoverable: 28
+```
+
+28 albums silently went blank. Nothing errored; `ok: true` on every call; the albums still
+play. Recovery was possible only because the orphaned rows still held valid Cover Art
+Archive URLs and because I knew the exact string I had removed — recomputing
+`albumIdFor(artist, name + '/66')` retrieved each old row, and `set_album_cover` wrote it
+back. Verified by re-running the probe, not by the write returning ok:
+
+```
+Bzrp albums: 59   still have artwork: 40   LOST but recoverable: 0
+```
+
+The other 19 never had a cover to begin with.
+
+**The measurement that changed the diagnosis.** Having a recovery method, I asked whether
+this had happened before, using `library_metadata_overrides`' own `raw_album_id` →
+`corrected_album_id` map as ground truth for every rename the library has recorded:
+
+| | count |
+| --- | --- |
+| override rows representing a real id change | 215 |
+| ...whose **old** id holds an artwork row | **0** |
+| ...whose **new** id holds an artwork row | 114 |
+
+Zero out of 215. So the two rename paths do not behave the same:
+
+- `fix_album_metadata` writes the override row *before* artwork is fetched, so art is keyed
+  on the corrected id from the start. Safe by construction.
+- `fix_song_metadata({album})` — the documented way to fix an album whose name comes from
+  its tags — writes no override, the scanner re-mints the id at scan time, and nothing
+  carries the artwork across.
+
+That reframes #965. What I filed was "side tables have no orphan sweep," which is real but
+is disk tidiness plus a rare stale-inheritance hazard needing the old name to return. What
+is actually true is **one supported rename path loses user-visible data and the other does
+not**, and it fires on every tag-driven rename — 28 times in one afternoon. Posted the
+correction to #965 rather than leaving the weaker framing standing.
+
+The regression test writes itself: rename an album via song tags, rescan, assert it still
+has its cover.
+
+Prod context for the remainder: 654 orphan album-artwork rows, 4,269 of 6,921 albums with
+no art. Those 654 are **not** generally recoverable — this method needs the old name
+reconstructed, which only worked here because the edit was a known fixed suffix.
