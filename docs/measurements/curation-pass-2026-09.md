@@ -1553,3 +1553,53 @@ Both close-outs this stretch and last followed the same shape, worth naming: **a
 re-measure" is usually one query and one behavioural probe away, and the reason it stays
 pending is that nobody is looking at that table.** Two sat open for a week and eleven days
 respectively; both were confirmations, not surprises — but neither was known until measured.
+
+### Thirty-third stretch — 13.19 GB stranded in staging, accumulated this week
+
+Continued the pending-re-measure sweep and hit something bigger than a confirmation.
+
+**#687** — songs with `landed_at NULL`: **0 / 19,217**. Landing gate holds. Closed.
+
+**#827** — and here my own note was wrong. "0 FLAC on disk" is true of the *organised library*
+(0 DB rows with a lossless suffix, `losslessSongs: 0`) but **not of the disk**: 302 lossless
+files, **12.88 GB**, all under `.downloads/`. Those two statements are different and my memory
+had collapsed them.
+
+Walking staging properly:
+
+| | |
+| --- | --- |
+| audio files in `.downloads/` | **343** |
+| total | **13.19 GB** |
+| folders | 36 — **22** match a library album, **14** have none |
+
+**It is not idle staging: the library is visibly short the same tracks.** Six matched folders
+hold more than the library does —
+
+```
+Highway to Hell — AC/DC     staged 10   library  1
+T.N.T. — AC/DC              staged 18   library  5
+Absolution — Muse           staged 25   library 11
+Sheer Heart Attack — Queen  staged 18   library 12
+```
+
+So albums are reported incomplete while the missing tracks sit on disk. That links this to
+`completeness.confirmedIncomplete` (113): some fraction of that worklist is not "we lack these
+tracks" but "we have them and never filed them" — and a `complete_album` hunt against one would
+re-download audio already present.
+
+**Dated it, because "closed issue" and "13 GB" should not sit together on an assumption.**
+Newest mtime per folder spans **2026-08-30 to 2026-09-06** — the last week, nothing older. So
+this is current, not pre-closure residue. Two folders are from today and may be legitimately in
+flight (both Gramatik, library counts already match); the other **34 are 3-7 days old**, past any
+plausible in-flight window.
+
+**Posted both measurements to [#725](https://github.com/kevinch3/NicotinD/issues/725)** — which
+is **closed** — and deliberately did not reopen it: the fix there may be correct and this may
+come from a sibling path (#710/#711/#714 are the same cluster). Flagging beats assuming.
+
+**Why nobody has seen it**: `.downloads/` is correctly excluded by `isReservedPath`, so it
+appears in **no** audit rule, health dimension or worklist — `orphan_file`'s 393 deliberately
+excludes it. Right for scanning, but it means the leak's size is invisible from every surface a
+curator or operator would look at. I found it only by walking the directory while re-measuring
+something else.
