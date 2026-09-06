@@ -1603,3 +1603,44 @@ appears in **no** audit rule, health dimension or worklist — `orphan_file`'s 3
 excludes it. Right for scanning, but it means the leak's size is invisible from every surface a
 curator or operator would look at. I found it only by walking the directory while re-measuring
 something else.
+
+### Thirty-fourth stretch — measuring an open claim, and finding it smaller than stated
+
+#864 is open and its title carries two claims; I measured the second — *"the grid's
+`split_compound` visibility is inverted"*.
+
+```
+split_compound = 0 : 3,390 visible
+split_compound = 1 :   133 hidden
+```
+
+The deciding question is not how many are hidden but whether a hidden compound's **members
+exist as their own artist rows** — if they do, the act stays browsable and the hide costs
+nothing.
+
+| of the 133 hidden | |
+| --- | --- |
+| every member exists as its own row | **122 (92%)** |
+| only some members exist | 3 |
+| **no** member exists | **1** |
+
+The single total-loss case is malformed rather than a real act
+(`"Der Dritte Raum / Der Dritte Raum, Acid Pauli / Acid Pauli"`, 1 credit).
+
+**So on current data the behaviour is mostly correct, not inverted** — 122 of 133 hides are
+safe and only 4 are lossy at all. Posted to
+[#864](https://github.com/kevinch3/NicotinD/issues/864) as a scope/severity datapoint rather
+than as a refutation: the issue's other half (a wrong artist *name* has no detector) is
+untouched by this, and I said so explicitly rather than letting one measurement read as a
+verdict on both.
+
+The visible side passes the cases that would hurt most: `Tyler, The Creator` and
+`Medeski, Martin & Wood` are single acts whose names contain a separator, correctly not split.
+
+**One thing in the hidden set is a different problem wearing the same clothes.**
+`Chet Baker & Strings` (15 credits) and `Slim Gaillard And Slam Stewart` are **release
+billings**, not collaborations — splitting the first implies an artist called "Strings". That
+is the compound-splitting judgement (#817's family), not the visibility rule. I flagged it as
+such instead of counting it as evidence for the inversion, because folding two different
+defects into one number is how a count stops being a workload — the same failure #947, #952
+and #954 all encode.
