@@ -1139,3 +1139,33 @@ turned out not to be junk-titled at all: real lowercase titles with the artist t
 set to `artist`, from an `artist/Bandana/` folder. Fixed both (`Adónde vas`,
 `Vivir intentando`). Those two also appear under `Bandana/Singles/` in the orphan-file list,
 so they are probable duplicates — that question belongs to #951, not here.
+
+### Twenty-second stretch — junk tags inside good albums, and a heuristic that overreached
+
+Worked the 7 *partially* junk-tagged albums the previous probe surfaced. 12 writes, and the
+triage mattered more than the volume.
+
+**My own `^\d{1,2}$` "junk title" heuristic produced three false positives.** Taylor Swift's
+**"22"** (*Red*), Shakira's **"23"** and Doja Cat's **"97"** (*Scarlet*) are *real song titles*.
+A bare-number title is not junk — which is the same trap `numeric_single`/`isNumericLikeName`
+already exist to navigate in the codebase, and I walked into it while writing a fresh probe.
+All three left untouched.
+
+**Fixed — La Portuaria, *10000 km*, 11 songs.** Real titles, artist tag `<Desconocido>`.
+Notable because this exact mis-tag is the **worked example in `db.ts`'s own schema comment**
+for `library_metadata_overrides` ("a mis-tagged artist `<Desconocido>` → `La Portuaria`"). The
+override had corrected the *album row*; the eleven *song* rows still carried `<Desconocido>`.
+A durable album-scope override does not rewrite song tags, so the two stores disagreed
+indefinitely — worth knowing when judging whether a past fix "landed".
+
+**Fixed — Limp Bizkit, *Gold Cobra* track 11.** Titled just `10`; fingerprinting returned
+**"90.2.10"** at 0.99, confirming a truncation rather than a numeric title. This is the case
+that justifies not dismissing bare numbers wholesale either — three were real, one was not,
+and only the fingerprint separated them.
+
+**Left deliberately:** Falsa Cubana's `Pista 4` returned **`no-match`** — genuinely unknown to
+AcoustID, which the playbook says is a real answer for long-tail regional catalogue, not a
+failure. Inventing a title would be worse than leaving it. And *Mi tierra* track 3 remains on
+flag #21.
+
+Verified **7 -> 5**, where all five survivors are decisions rather than remaining work.
