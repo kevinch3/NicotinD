@@ -674,3 +674,42 @@ path keeps. Fixing it at the source would remove the majority of the real backlo
 request, and art that survives a later transcode. A caching and durability win, not a
 visible one — and it does not move `albumCovers.missing`, since it writes no
 `library_artwork` row. Recorded rather than quietly counted as 14 covers fixed.
+
+### Ninth stretch — the art loss, measured across the whole population
+
+Chased #952's secondary lead. Scanning **every** file rather than a sample removes any
+doubt about the shape:
+
+| format | files with embedded art | sampled |
+| --- | --- | --- |
+| **opus** | **0** | 1,500 |
+| **m4a** | **0** | 219 |
+| mp3 | 349 (87.3%) | 400 |
+
+**Zero of 1,719 non-mp3 files carry a picture.** Not a rate — an absolute. Only files that
+*arrived* as mp3 have art; every path that produces a file loses it. That also corrects the
+previous entry's framing: this is not an opus problem, it is a "everything except mp3"
+problem, and m4a never goes through the transcode at all.
+
+**Mechanism for the transcode path** — `transcodeToOpus`
+(`post-download-transcode.ts:129`) passes `-vn`, with no explanatory comment. An embedded
+cover is an attached *video* stream in ffmpeg, so `-vn` discards it, and `-map_metadata 0`
+carries tags only.
+
+**Filed [#953](https://github.com/kevinch3/NicotinD/issues/953)**, including the trap: simply
+deleting `-vn` does not fix it. ffmpeg's Ogg muxer cannot write an attached picture stream —
+Opus carries art as a base64 `METADATA_BLOCK_PICTURE` comment instead — so removing the flag
+changes nothing at best, and at worst fails the strict run into the lenient fallback.
+
+The proposal is to write `cover.jpg` at the point art would otherwise be lost, rather than
+plumbing per-format tag support: one write per album instead of per track, format-independent,
+covers the m4a and yt-dlp cases too, and it feeds **tier 1** of the serving fallback — the tier
+doing nothing today (2 of 4,271 albums had a folder image before this pass).
+`set_album_cover(albumId, songId)` already implements that materialisation, so the primitive
+exists and only needs calling at the right moment.
+
+**Landed as a down payment: 30 folder covers** on the largest mp3 albums that had embedded art
+and no folder image (verified on disk, 2 -> 31). The value is precise and worth not overstating:
+it protects those albums' art from being lost if they are ever transcoded, and saves an ID3
+parse per cover request. It does **not** change what a user sees today, and does not move
+`albumCovers.missing`.
