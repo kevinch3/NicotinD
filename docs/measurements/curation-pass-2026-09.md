@@ -268,3 +268,72 @@ verified via `get_library_health`. Residue still open: Nickodemus, Ricardo Castr
 ("Tico Tico"), Lin Cortés, LUIS LARR, Rocío Soto, Fémina, David Frontado, Pablo Briceño,
 Tu Otra Bonita, ROMANOS, emoemy — mostly singletons where a search either wasn't run yet
 or came back genuinely inconclusive.
+
+## Continued (2026-09-06) — artist fragmentation pass
+
+Worklist: `audit-library.ts --rule=fragmented_artist`, which reported **6 clusters**.
+The rule reports at ≥2 rows deliberately, so each was corroborated against its own
+*track* before any merge — three turned out to be real collaborations.
+
+**Merged (7 rows away, 5 clusters):**
+
+- **Kelsea Ballerini** ×3 — `Ashley Gorley, Hillary Lindsey, Jesse Frasure, Steph Jones`
+  / `Brett McLaughlin, David Hodges` / `Trevor Rosen, Shane McAnally`. Every name is a
+  Nashville songwriter and all three tracks (`hole in the bottle`, `Miss Me More`,
+  `I Hate Love Songs`) are her own solo singles — the songwriting credit landed in the
+  artist tag.
+- **Tego Calderón** ×2 — `Tego Calderon, Eliel Lind, Tegui Calderon, Eddie Avila` is a
+  producer/composer list containing *Tego's own legal name*, which settles it. `Tego
+  Calderón, Maestro` held **tracks 14 and 17** of *El Abayarde* (2003) while the real
+  album row held only track 5 — complementary numbering, same 128kbps mp3 rip, so a
+  fragment rather than a separate release.
+- **Eelke Kleijn** ×2 — `Eelke Kleijn, Ost`'s only song carries a plain `Eelke Kleijn`
+  *song* artist tag (the compound was album-artist only). `Eelke Kleijn, Nick
+  Hogendoorn` was corroborated by fingerprint, not by assumption: see below.
+- **Sentimental Animals** ×1 — `Sentimental Animals, Nicki B`, same proof shape as
+  `Eelke Kleijn, Ost` (song artist already plain).
+
+**Left alone — real collaborations, not fragments:**
+
+- **Los Ángeles Azules** — `Otra Noche` (Nicki Nicole) and `Amor a Primera Vista`
+  (Belinda, Lalo Ebratt) are genuine credited features. Merging would have destroyed
+  real data.
+- **Cele Arrabal** — `, Tatto` / `, Valentina Olguin` carry the compound on the *song*
+  artist tag and read as featured vocalists in the RKT scene. Not merged, not flagged:
+  "I am not certain" is not a curator decision worth queueing.
+- `Sentimental Animals, JKriv, Dicky Trisco` — a real remix credit on the *Love Vibration
+  EP*. It still exists; the cluster only left the report because the rule needs ≥2 rows.
+
+**A dedupe proved by fingerprint.** Two `Compact` files, `Eelke Kleijn & Nick Hogendoorn`
+(mp3 320, `Eelke Kleijn/Untold Stories/`) and `Eelke Kleijn, Nick Hogendoorn` (opus 209,
+`Eelke Kleijn, Nick Hogendoorn/Untold Stories/`), returned the **same `acoustId` and the
+same `recordingId`** (`b128205c-207e-4b28-b33a-a491cddee58e`) — proof of one recording,
+not a duration guess. AcoustID credits that recording to `Eelke Kleijn` alone, which is
+what justified the merge independently of my own reading of the name. The redundant opus
+copy (`9e50199e…`) is **still on disk** — the delete was blocked by the session's
+permission classifier, not declined on the merits. It remains the one open item here.
+
+**Genres:** Chris Stapleton ×4 (`Tennessee Whiskey`, `Millionaire`, `Starting Over`,
+`You Should Probably Leave`) → `Country`, `mode: 'replace'`, zero searches — one
+artist-level judgment over a cluster of four loose singles. Verified by read-back.
+
+### Deltas, and why most of them are not results
+
+| metric | before | after | honest reading |
+| --- | --- | --- | --- |
+| `fragmented_artist` | 6 | **2** | real, and the 2 survivors are the deliberate keeps |
+| artist rows | 3560 | 3543 | 7 merged by hand; the rest is rescan churn |
+| `genres.missing` | 190 | 184 | only **4** are mine; the denominator moved too |
+| `album_count_mismatch` | 134 | 79 | **not mine** — post-delete churn settling (#774) |
+| songs | 19080 | 19184 | **not an ingest** — see below |
+
+`list_recent_songs` came back with one *identical* `landedAt` across a page of
+long-owned catalogue (Bowie, RHCP, Pescado Rabioso). Song ids are `sha1(path)`, so the
+full rescan each `merge_artist` kicks re-mints rows and the whole library reads as "just
+landed". Reading that row count as +104 arrivals would have been the trap the skill
+warns about; the only dimension safe to claim here is the one measured by re-running its
+own rule.
+
+**Filed:** [#946](https://github.com/kevinch3/NicotinD/issues/946) — an artist *split*
+records no members in `audit_log`, so 36 of 45 identity actions (80%) have no
+recoverable outcome. Measured from the prod ledger, not inferred.
