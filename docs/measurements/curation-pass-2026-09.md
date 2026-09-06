@@ -1314,3 +1314,53 @@ That is the same shape as the "Various Artists" judgement two stretches ago: the
 signal is identical across the cases that should be changed and the cases that should not, and
 only knowing what the release *is* separates them. Worth stating plainly for the Phase 1
 design — this dimension looks like a rule and is not one.
+
+### Twenty-seventh stretch — 9 real tracks were invisible
+
+Listed the 6 `hidden` albums, a state I had never inspected. Five are correct — Tash Sultana
+promo clips of 15-47 s whose titles *are* the watermark. The sixth was not:
+
+```
+"2001 - Coolio.com" — Coolio (2001), 9 songs
+   "Right Now" 241s   "The Hustler" 213s   "The Partay" 216s   "Dead Man Walking" 202s
+```
+
+***Coolio.com* is Coolio's actual 2001 album.** Full-length tracks with real titles, hidden
+from the UI because the title contains a domain.
+
+Traced it rather than assuming a past curator mistake — `manual_override` was 0, which ruled
+that out immediately, since `set_album_classification` sets that flag. The cause is
+`library-curator.ts:193`:
+
+```ts
+if (looksLikeSourceWatermark(row.artist) ||
+    looksLikeSourceWatermark(row.name) ||     // <- "2001 - Coolio.com"
+    isNumericLikeName(row.artist)) {
+  return { classification: 'unknown', hidden: true };
+}
+```
+
+**Filed [#962](https://github.com/kevinch3/NicotinD/issues/962)**, with two findings beyond
+the bad match:
+
+1. **It short-circuits the authoritative-metadata check.** The very next block is commented
+   *"a known catalog release is never hidden"* — and is unreachable for this album, because
+   the watermark test returns first.
+2. **The hide path lacks the guard the delete path has.** `albumHasRealTrackTitles`
+   (`library-audit.ts:511`) protects an album from *deletion* when any track has a real title
+   — #705's "junk metadata is not junk audio". The curator's *hide* decision has no
+   equivalent. The codebase already contains the right idea and applies it to only one of the
+   two destructive-ish paths.
+
+That guard is also exactly what separates the two cases here: applied to the hide decision it
+keeps all five Tash Sultana clips hidden (their track titles *are* the watermark) and stops
+hiding *Coolio.com*. One predicate, already written, in the wrong place.
+
+**Restored it** via `set_album_classification` (which sets `manual_override = 1`, so the next
+reclassify will not re-hide it — the state was re-asserting itself on every pass, not a stale
+one-off). Verified: hidden **6 albums / 14 songs -> 5 / 5**.
+
+Worth noting how it was found: no worklist surfaces this. `hidden` is excluded from every
+health dimension by construction, so a false positive here removes music from the library with
+nothing reporting it. I found it by listing hidden rows directly, which is a thing to do
+deliberately rather than a thing any tool suggests.
