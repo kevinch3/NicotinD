@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.82](https://github.com/kevinch3/NicotinD/compare/v0.5.81...v0.5.82) (2026-09-06)
+
+### Features
+
+* clear the mechanical backlog — nine fixes and two operator surfaces ([#948](https://github.com/kevinch3/NicotinD/issues/948)) ([6749b2b](https://github.com/kevinch3/NicotinD/commit/6749b2b7cc48550be4ad7c960c2a3609888725da)), closes [#914](https://github.com/kevinch3/NicotinD/issues/914) [#856](https://github.com/kevinch3/NicotinD/issues/856) [#858](https://github.com/kevinch3/NicotinD/issues/858) [#872](https://github.com/kevinch3/NicotinD/issues/872) [#822](https://github.com/kevinch3/NicotinD/issues/822) [#669](https://github.com/kevinch3/NicotinD/issues/669) [#670](https://github.com/kevinch3/NicotinD/issues/670) [#724](https://github.com/kevinch3/NicotinD/issues/724), references [#943](https://github.com/kevinch3/NicotinD/issues/943) [#944](https://github.com/kevinch3/NicotinD/issues/944) [#914](https://github.com/kevinch3/NicotinD/issues/914) [#856](https://github.com/kevinch3/NicotinD/issues/856) [#858](https://github.com/kevinch3/NicotinD/issues/858) [#747](https://github.com/kevinch3/NicotinD/issues/747) [#872](https://github.com/kevinch3/NicotinD/issues/872) [#822](https://github.com/kevinch3/NicotinD/issues/822) [#669](https://github.com/kevinch3/NicotinD/issues/669) [#860](https://github.com/kevinch3/NicotinD/issues/860) [#670](https://github.com/kevinch3/NicotinD/issues/670) [#724](https://github.com/kevinch3/NicotinD/issues/724) [#722](https://github.com/kevinch3/NicotinD/issues/722) [#747](https://github.com/kevinch3/NicotinD/issues/747) [#860](https://github.com/kevinch3/NicotinD/issues/860) [#864](https://github.com/kevinch3/NicotinD/issues/864)
 ## [0.5.81](https://github.com/kevinch3/NicotinD/compare/v0.5.80...v0.5.81) (2026-09-05)
 
 ### Features
