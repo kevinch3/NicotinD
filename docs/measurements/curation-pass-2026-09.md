@@ -1478,3 +1478,39 @@ one of them can tell you a thing is broken.**
 The cheap habit that keeps paying: when a query suggests a defect, spend one call testing the
 *behaviour* before writing anything down. It settled this in a single `search_library` call
 after several greps had not.
+
+### Thirty-first stretch — closing a pending acceptance measurement
+
+Opened `library_song_analysis_failures`, a table no curation pass had looked at: **27,146
+rows**. Almost all of it is expected residue — `no recording MBID` 18,536, `Lidarr has no
+genre` 3,053, `no discogs match` 1,595, and a long tail of `genre confidence 0.1x below
+threshold`. Those are the capped automated lanes the playbook already describes, not work.
+
+Two things in it were worth the read.
+
+**#851's prod re-measure, which my notes still had as outstanding.** The issue closed
+2026-08-31 with the backfill and re-measure pending. Measured now:
+
+| | |
+| --- | --- |
+| `last_error = 'invalid recording MBID'` | **24** |
+| `terminal = 1` | **24 / 24** |
+| `fail_count` | **1** on every row |
+
+That is exactly the post-fix shape. Each poison-pill track failed **once**, was ledgered
+terminal, and is no longer retried — so it cannot re-enter the created-DESC pool and livelock
+it, which was the whole defect. The affected set is broader than the issue's 25-track batch but
+identical in shape: whole albums carrying a bad `MUSICBRAINZ_TRACKID` — Los Tres ×10, La Oreja
+de Van Gogh ×13 (*El planeta imaginario*), C. Tangana ×1, Kylie Minogue ×1.
+**Posted to [#851](https://github.com/kevinch3/NicotinD/issues/851)**; nothing needs reopening.
+Those 24 will never get popularity data until the tag is fixed in the files, and
+`fix_song_metadata` has no `MUSICBRAINZ_TRACKID` surface, so it is unreachable from curation.
+
+**4,705 of 27,146 rows (17%) reference a song that no longer exists.** The table has an
+`orphaned_at` column so the state is tracked, but nothing prunes them. Left as an observation
+on the issue rather than a new filing — it may be intended retention, and filing against
+possibly-deliberate behaviour is the mistake #947 and #954 encode.
+
+A note on the earlier decode lead: four rows carry `ffmpeg PCM decode exited with code 183`,
+which looked like corrupt audio. They join to **no song** — they are orphaned rows for files
+already removed. Chasing them as "unplayable files" would have been chasing history.
