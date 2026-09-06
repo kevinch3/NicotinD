@@ -938,3 +938,37 @@ re-attributing it would move the track out of the Gwen Stefani compilation it si
 a collection-shape decision, not a metadata fix, so it goes to a human. The distinction is
 worth keeping: *"this credit is wrong"* and *"this song is filed under the wrong artist"* are
 different claims, and only the first was provable from the track.
+
+### Sixteenth stretch — track numbering, and a hypothesis that failed usefully
+
+Probed duplicated `(disc, track)` slots expecting a precise duplicate signal — the Motörhead
+`Shine` pair had surfaced that way. **The hypothesis was wrong**, and the first result said so:
+14 *different* Beatles songs all tagged track 63, and El Polaco's tracks colliding at 1/3, 1/4,
+1/6. A shared slot is mostly a **numbering** defect, not a duplication one.
+
+Splitting the 429 duplicated slots by whether the titles match turns one bad signal into two
+good ones:
+
+| titles in the slot | meaning | count |
+| --- | --- | --- |
+| different | broken track numbering | **298** |
+| same (folded) | true duplicate | **131** (131 files, 52 albums) |
+
+So a slot collision alone is only ~30% duplicate — a rule built on it without the title
+comparison would fail exactly the way `missplit_album` does (#947).
+
+**Filed [#959](https://github.com/kevinch3/NicotinD/issues/959)** for the numbering half:
+**101 albums** with colliding slots and **490 songs across 77 albums** with no track number at
+all. *With the Beatles* has all 14 tracks numbered 63, so the album has no running order;
+*El polaco - Vuelve te lo pido* is 167 songs in one album row with ~10 per slot, almost
+certainly several releases bundled with per-disc numbering lost. Two structural reasons this
+never surfaced: **no audit rule covers track numbering**, and **`fix_song_metadata` accepts no
+`track` or `disc` field**, so a curation session can identify every case and repair none. The
+issue asks for both.
+
+**Posted the 131 same-slot duplicates to [#951](https://github.com/kevinch3/NicotinD/issues/951)
+as its high-confidence first tier.** They are stronger evidence than that issue's own fold +
+duration heuristic: album, slot and title all agree, and many are byte-identical —
+`Pescado Rabioso / Pescado 2` has ten pairs at identical bitrate *and* identical duration.
+One SQL query, no fingerprint needed; reserve `recordingId` confirmation for the cross-album
+candidates where album context genuinely does not settle it.
