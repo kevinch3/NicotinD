@@ -28,6 +28,7 @@ import { adminRoutes } from './routes/admin.js';
 import { presenceRoutes } from './routes/presence.js';
 import { historyRoutes } from './routes/history.js';
 import { privacyRoutes } from './routes/privacy.js';
+import { recommendationRoutes } from './routes/recommendations.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { radioPollAdminRoutes, radioPollPublicRoutes } from './routes/radio-polls.js';
@@ -604,6 +605,7 @@ export function createApp({
   app.use('/api/import/*', auth);
   app.use('/api/presence/*', auth);
   app.use('/api/history/*', auth);
+  app.use('/api/recommendations/*', auth);
   app.use('/api/privacy/*', auth);
   // Radio + catalog were mounted without auth (issue #461). Radio returns real
   // library rows; catalog drives outbound Lidarr/MusicBrainz lookups and its
@@ -712,6 +714,7 @@ export function createApp({
   app.route('/api/presence', presenceRoutes());
   app.route('/api/history', historyRoutes(historyEnabled));
   app.route('/api/privacy', privacyRoutes(historyEnabled));
+  app.route('/api/recommendations', recommendationRoutes());
   // Partial-track discard (#810) deletes files, so it carries the same
   // debounced share-rescan the review inbox's discard uses.
   app.route(

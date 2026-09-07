@@ -10,6 +10,7 @@ import { TransferService } from './transfer.service';
 import { TrackInfoService } from './track-info.service';
 import { ConfirmService } from './confirm.service';
 import { LikeService } from './like.service';
+import { RecommendationExclusionsService } from './recommendation-exclusions.service';
 import { asRole, canCurate as canCurateRole, type Role } from '../../types/core';
 import type { BaseSong } from '../lib/track-utils';
 
@@ -20,7 +21,7 @@ const song = (over: Partial<BaseSong> = {}): BaseSong => ({
   ...over,
 });
 
-function setup(role: Role = 'user') {
+function setup(role: Role = 'user', excluded = false) {
   const router = { navigate: vi.fn() };
   const auth = { role: () => role, canCurate: () => canCurateRole(asRole(role)) };
   // Some tests call setup() twice within one `it` (comparing user vs admin) —
@@ -46,6 +47,10 @@ function setup(role: Role = 'user') {
       { provide: TrackInfoService, useValue: { open: vi.fn() } },
       { provide: ConfirmService, useValue: { ask: vi.fn(async () => true) } },
       { provide: LikeService, useValue: { isLiked: () => false, toggle: vi.fn() } },
+      {
+        provide: RecommendationExclusionsService,
+        useValue: { isExcluded: () => excluded, exclude: vi.fn(), restore: vi.fn() },
+      },
     ],
   });
   return { svc: TestBed.inject(SongMenuService), router, auth };
@@ -67,6 +72,7 @@ describe('SongMenuService.build', () => {
       'Add to playlist',
       'Save offline',
       'Song info',
+      "Don't recommend this",
     ]);
   });
 
@@ -141,5 +147,26 @@ describe('SongMenuService.build', () => {
       extraActions: [{ label: 'X', action: () => {} }],
     });
     expect(out.slice(-2)).toEqual(['Remove from playlist', 'X']);
+  });
+});
+
+describe("SongMenuService.build — Don't recommend this", () => {
+  it('offers the veto after Song info and flips to Recommend again once excluded', () => {
+    expect(labels(song(), setup().svc)).toContain("Don't recommend this");
+    const out = labels(song(), setup('user', true).svc);
+    expect(out).toContain('Recommend again');
+    expect(out).not.toContain("Don't recommend this");
+  });
+
+  it('wires the two actions to the exclusions service', () => {
+    const { svc } = setup();
+    const svcMock = TestBed.inject(RecommendationExclusionsService) as unknown as {
+      exclude: ReturnType<typeof vi.fn>;
+    };
+    svc
+      .build(song())
+      .find((a) => a.label === "Don't recommend this")!
+      .action();
+    expect(svcMock.exclude).toHaveBeenCalledWith('s1');
   });
 });

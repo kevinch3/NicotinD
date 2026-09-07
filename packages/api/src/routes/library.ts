@@ -30,6 +30,7 @@ import type { PluginRegistry } from '../services/plugins/registry.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
 import { rankCandidates, DEFAULT_WEIGHTS, type SongFeatures } from '../services/radio.service.js';
 import { feedEligibilitySql, type ReadinessTier } from '../services/recommendation/eligibility.js';
+import { excludedSongIds } from '../services/recommendation/feedback-store.js';
 import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.js';
 import { loadDescriptors } from '../services/descriptor-store.js';
 import { descriptorBlocks } from '../services/descriptor-axes.js';
@@ -2375,9 +2376,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
     const seed: SongFeatures = songRowFeatures(source);
 
-    // Build candidate pool: same-artist + same-genre songs
+    // Build candidate pool: same-artist + same-genre songs. The listener's own
+    // rejections are pre-seeded as "seen" so they never enter the pool.
     const candidateRows: SongRow[] = [];
-    const seen = new Set<string>([id]);
+    const listener = c.get('user')?.sub;
+    const seen = new Set<string>([id, ...(listener ? excludedSongIds(db, listener) : [])]);
     const add = (rows: SongRow[]): void => {
       for (const row of rows) {
         if (!seen.has(row.id)) {
@@ -2514,12 +2517,21 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
            ORDER BY RANDOM() LIMIT ?`,
         )
         .all(n);
+    // The listener's rejections are filtered after the draw: over-fetch by the
+    // set's size so a heavy excluder still gets a full batch.
+    const listener = c.get('user')?.sub;
+    const rejected = listener ? excludedSongIds(db, listener) : new Set<string>();
+    const fetchN = Math.min(size + rejected.size, 200);
+    const keep = (r: SongRow): boolean => !rejected.has(r.id);
     // Vetted tracks first; only a library that cannot fill the request from
     // them (fresh install, mid-backfill) tops up with un-analysed rows.
-    let rows = drawAt(1, size);
+    let rows = drawAt(1, fetchN).filter(keep).slice(0, size);
     if (rows.length < size) {
       const seen = new Set(rows.map((r) => r.id));
-      rows = [...rows, ...drawAt(2, size).filter((r) => !seen.has(r.id))].slice(0, size);
+      rows = [...rows, ...drawAt(2, fetchN).filter((r) => keep(r) && !seen.has(r.id))].slice(
+        0,
+        size,
+      );
     }
     const songs = rows.map(rowToSong);
     attachSongArtists(db, songs);

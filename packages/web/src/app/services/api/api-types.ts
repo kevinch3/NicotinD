@@ -895,6 +895,30 @@ export interface RecentPlay {
   playedAt: number;
 }
 
+/** A recommendation-feedback vote (see docs/radio.md "Per-user exclusions"). */
+export type FeedbackKind = 'exclude' | 'restore' | 'too_similar' | 'balanced' | 'too_different';
+
+/** One song the feeds currently hold out for the caller, and why. */
+export interface ExcludedSong {
+  songId: string;
+  reason: 'explicit' | 'skips';
+  /** When the exclusion took effect: the explicit vote, or the last skip. */
+  since: number;
+  /** Skip count behind a derived exclusion. */
+  skips?: number;
+  /** The song's identity for rendering; null when it has since left the library. */
+  song: {
+    id: string;
+    title: string;
+    artist: string;
+    artistId?: string;
+    albumId?: string;
+    album?: string;
+    coverArt?: string;
+    duration?: number;
+  } | null;
+}
+
 /** Which level disabled listening-history collection (issue #454). */
 export type HistoryBlocker = 'env' | 'instance' | 'user' | null;
 

@@ -166,6 +166,9 @@ export function pruneExpiredHistory(db: Database, now: number = Date.now()): num
 const USER_TABLES: Array<{ table: string; column: string; redact?: string[] }> = [
   { table: 'user_settings', column: 'user_id' },
   { table: 'play_events', column: 'user_id' },
+  // Recommendation feedback is a preference, not history: exported here, but
+  // `deleteUserHistory` leaves it — the excluded list has its own undo.
+  { table: 'recommendation_feedback', column: 'user_id' },
   { table: 'playlists', column: 'user_id' },
   { table: 'paired_devices', column: 'user_id' },
   { table: 'pairing_tokens', column: 'user_id' },

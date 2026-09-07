@@ -67,6 +67,12 @@ projected by an explicit `SELECT` into a hardcoded `UserDataExport['user']` shap
 **operational metadata, not listening history**, so the history consent chain above does not gate
 it: it records that an account connected, never what it played. It is removed with the user row.
 
+`recommendation_feedback` (the listener's "don't recommend this" votes and the radio chip's variety
+votes, [radio.md](radio.md) "Per-user exclusions") is in `USER_TABLES` and exported. It is a
+**preference, not a log**: erasure below leaves it alone, and Settings → Recommendations is its own
+undo. Explicit votes are stored regardless of the history consent chain — the listener asked for
+them by name — while the *derived* skip exclusions read `play_events` and therefore vanish with it.
+
 `redact` names columns whose *value* is a secret (today: `agent_tokens.token_hash`). The export
 shows that a credential exists — it is the user's data — without handing over the credential. The
 list is explicit rather than name-pattern-matched, so a rename breaks a test instead of quietly
@@ -78,7 +84,8 @@ starting to leak.
 count. It deliberately does **not** flip the consent flag — "forget what I listened to" is not the
 same ask as "stop recording".
 
-**Scoped to the listening log, deliberately.** It does not touch the account, playlists or likes:
+**Scoped to the listening log, deliberately.** It does not touch the account, playlists, likes or
+recommendation feedback:
 "stop remembering what I listened to" is the realistic ask, `play_events` is regenerable by
 listening, and nothing else references it. Account deletion stays with the admin route.
 

@@ -190,6 +190,14 @@ export const routes: Routes = [
         ),
       },
       {
+        path: 'settings/recommendations',
+        loadComponent: lazy(() =>
+          import('./pages/settings/recommendations/recommendations.component').then(
+            (m) => m.RecommendationsSettingsComponent,
+          ),
+        ),
+      },
+      {
         path: 'settings/agent-tokens',
         loadComponent: lazy(() =>
           import('./pages/settings/agent-tokens/agent-tokens.component').then(
