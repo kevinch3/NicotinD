@@ -52,11 +52,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `/api/acquire`; the external spotdl addon resolves the download.
   → [spotify-fallback.md](spotify-fallback.md)
 - **A link that names one release names its album**: `albumTitleForUrlJob` + the poller's
-  `fillAlbumTitleFromLink` promote an addon display title to filing metadata for a non-playlist
-  album URL; `isUnknownLike` rejects placeholders. → [download-pipeline.md](download-pipeline.md)
+  `fillAlbumTitleFromLink` promote a display title to filing metadata for a non-playlist album URL;
+  `isUnknownLike` rejects placeholders. → [download-pipeline.md](download-pipeline.md)
 - **Identity resolved beside the transfer**: `AcquireMetadataPrefetch` + `lookupRelease` +
   `spotifyResourceFromUrl` name a URL job and fix its size at submit; `hasCommittedTotal` keeps an
-  un-committed denominator off the card. → [download-pipeline.md](download-pipeline.md)
+  uncommitted denominator off the card. → [download-pipeline.md](download-pipeline.md)
 - **Playlist-from-acquisition**: a URL job classified as a playlist auto-generates a native playlist
   from landed tracks in download order — addon-native (the live path, issue #587):
   `materializeAddonPlaylist`; legacy in-process fallback: `classifyAcquireUrl`,
@@ -496,14 +496,14 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 ### Web UI patterns
 
 - **A vertical scroller constrains both axes**: `overflow-y-auto` alone computes `overflow-x` to
-  `auto`, so a sheet scrolls sideways and `truncate` never applies; pinned across Now Playing by
+  `auto`, so a sheet scrolls sideways and `truncate` never applies; pinned by
   `now-playing-scroll-axes.spec.ts`. → [web-ui.md](web-ui.md)
 - **Now Playing names its session**: `nowPlayingHeading` resolves radio/album/playlist to a header
-  label, radio winning over the context it extended; the resize notch clears 44px and `coverCollapsed`
-  drops the cover padding at a zero floor. → [web-ui.md](web-ui.md)
-- **Mono waveform on the seek line**: `monoEnvelopePath` folds the min/max envelope by magnitude and
-  closes it along the baseline for a vertical gradient; `LongPress` lets hold-shuffle start a radio
-  without the release also toggling shuffle. → [web-ui.md](web-ui.md)
+  label, radio winning over the context it extended; `coverCollapsed` drops the cover padding at the
+  notch's zero floor. → [web-ui.md](web-ui.md)
+- **Mono waveform on the seek line**: `monoEnvelopePath` folds the envelope by magnitude and closes
+  it along the baseline for a gradient fill; `LongPress` makes hold-shuffle start a radio without
+  the release toggling shuffle. → [web-ui.md](web-ui.md)
 
 - **Unified song listings**: one `TrackRowComponent` + one root `SongMenuService.build(song, ctx)`
   builds every `⋯` menu; every album/artist name is an `EntityLinkComponent` link (span on TV for
