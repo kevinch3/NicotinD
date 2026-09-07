@@ -619,6 +619,18 @@ export interface ScoredSong<T> {
   score: number;
 }
 
+/**
+ * A reserved share of the served window: `share` of `count` slots go to the
+ * best-scoring candidates matching `predicate` before the general walk fills
+ * the rest. The "different" strategy uses it for out-of-genre rows — a quota
+ * makes the widening deterministic where a sampler would only make it likely.
+ */
+export interface RankQuota<T> {
+  predicate: (song: T) => boolean;
+  /** 0..1 of `count`, rounded to whole slots. */
+  share: number;
+}
+
 export function rankCandidates<T extends SongFeatures>(
   seed: SongFeatures,
   candidates: T[],
@@ -626,6 +638,7 @@ export function rankCandidates<T extends SongFeatures>(
     weights?: ScoringWeights;
     maxPerArtist?: number;
     count?: number;
+    quota?: RankQuota<T>;
   } = {},
 ): ScoredSong<T>[] {
   const weights = opts.weights ?? DEFAULT_WEIGHTS;
@@ -642,20 +655,38 @@ export function rankCandidates<T extends SongFeatures>(
   const result: ScoredSong<T>[] = [];
   const artistCounts = new Map<string, number>();
   const takenRecordings = new Set<string>();
+  const picked = new Set<ScoredSong<T>>();
 
-  for (const entry of scored) {
-    if (result.length >= count) break;
-    // One recording, one slot. Checked BEFORE the artist counter so a dropped
-    // copy doesn't consume a slot its own twin already holds (issue #660).
-    const rec = entry.song.recordingKey;
-    if (rec && (rec === seed.recordingKey || takenRecordings.has(rec))) continue;
-    const aid = entry.song.artistId;
-    const cur = artistCounts.get(aid) ?? 0;
-    if (cur >= maxPerArtist) continue;
-    if (rec) takenRecordings.add(rec);
-    artistCounts.set(aid, cur + 1);
-    result.push(entry);
+  const walk = (pool: ScoredSong<T>[], limit: number): void => {
+    for (const entry of pool) {
+      if (result.length >= limit) break;
+      if (picked.has(entry)) continue;
+      // One recording, one slot. Checked BEFORE the artist counter so a dropped
+      // copy doesn't consume a slot its own twin already holds (issue #660).
+      const rec = entry.song.recordingKey;
+      if (rec && (rec === seed.recordingKey || takenRecordings.has(rec))) continue;
+      const aid = entry.song.artistId;
+      const cur = artistCounts.get(aid) ?? 0;
+      if (cur >= maxPerArtist) continue;
+      if (rec) takenRecordings.add(rec);
+      artistCounts.set(aid, cur + 1);
+      picked.add(entry);
+      result.push(entry);
+    }
+  };
+
+  // Reserved slots first, from the quota's own best rows; then everyone
+  // (quota rows included — a great out-of-genre track may still outrank).
+  const reserved = opts.quota ? Math.round(count * opts.quota.share) : 0;
+  if (opts.quota && reserved > 0) {
+    walk(
+      scored.filter((e) => opts.quota!.predicate(e.song)),
+      Math.min(reserved, count),
+    );
   }
+  walk(scored, count);
 
+  // The window stays score-ordered whatever the fill order was.
+  result.sort((a, b) => b.score - a.score);
   return result;
 }

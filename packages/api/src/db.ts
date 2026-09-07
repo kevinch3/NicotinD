@@ -209,6 +209,8 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
 
   // Add welcome_dismissed column to existing user_settings table
   addColumnIfMissing(db, 'user_settings', 'welcome_dismissed', 'INTEGER NOT NULL DEFAULT 0');
+  // The listener's default radio strategy (docs/radio.md "Strategies"); NULL = balanced.
+  addColumnIfMissing(db, 'user_settings', 'radio_strategy', 'TEXT');
 
   // Add autoplay_on_load column to existing user_settings table (opt-in
   // resume-on-page-load; default off — see PlayerService.maybeResumeAutoplay).

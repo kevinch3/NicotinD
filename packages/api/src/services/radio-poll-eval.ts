@@ -75,6 +75,8 @@ export interface PollAgreement {
   /** Scale the votes were cast under — pairs from different scales are
    *  different objects and are never pooled (issue #800, same rule as #583). */
   voteScale: 'binary' | 'stars5';
+  /** Strategy the poll was generated under; grouped like the two above. */
+  strategy: string;
   scenarioCount: number;
   /** Candidates with a non-null consensus (binary) or ≥1 rating (stars5). */
   gradedCandidates: number;
@@ -142,6 +144,7 @@ export function evaluatePollAgreement(
     name: dataset.name,
     formulaVersion: dataset.formulaVersion,
     voteScale,
+    strategy: dataset.strategy ?? 'balanced',
     scenarioCount: dataset.scenarios.length,
     gradedCandidates: graded,
     tally,

@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { NowPlayingTransportComponent } from './now-playing-transport.component';
 import { PlayerService } from '../../../services/player.service';
 import { setInputValue } from '../../../../testing/signal-input';
+import { RecommendationsApiService } from '../../../services/api/recommendations-api.service';
 
 describe('NowPlayingTransportComponent', () => {
   let toggleShuffle: ReturnType<typeof vi.fn>;
@@ -16,10 +17,18 @@ describe('NowPlayingTransportComponent', () => {
             shuffle: () => false,
             repeat: () => 'off',
             radio: () => false,
+            radioFilter: () => null,
+            radioStrategy: () => 'balanced',
+            currentTrack: () => null,
             toggleShuffle,
             cycleRepeat: vi.fn(),
             toggleRadio: vi.fn(),
+            setRadioStrategy: vi.fn(),
           },
+        },
+        {
+          provide: RecommendationsApiService,
+          useValue: { feedback: vi.fn(), setPreferences: vi.fn() },
         },
       ],
     });

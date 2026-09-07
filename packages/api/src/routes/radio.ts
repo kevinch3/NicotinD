@@ -5,6 +5,7 @@ import { getDatabase } from '../db.js';
 import {
   rankCandidates,
   recentPlayFactor,
+  type RankQuota,
   RECENT_PLAY_WINDOW_MS,
   type ScoredSong,
   type ScoringWeights,
@@ -26,6 +27,13 @@ import { loadDescriptors, type DescriptorFeatures } from '../services/descriptor
 import { descriptorBlocks, meanBlock, type DescriptorBlocks } from '../services/descriptor-axes.js';
 import { feedEligibilitySql, type ReadinessTier } from '../services/recommendation/eligibility.js';
 import { excludedSongIds } from '../services/recommendation/feedback-store.js';
+import {
+  STRATEGIES,
+  UnknownStrategyError,
+  resolveStrategy,
+  resolveWeights,
+  type RecommendationStrategy,
+} from '../services/recommendation/strategies.js';
 
 /**
  * Descriptor blocks for one song (formula v5, issue #642), attached the way
@@ -298,8 +306,8 @@ interface PoolSeed {
 /** Upper bound on the client-sent `exclude` list — see the route's parse. */
 const MAX_EXCLUDE_IDS = 200;
 
-/** A pool smaller than this is starved: random backfill runs, then tier 2. */
-export const POOL_FLOOR = 50;
+/** A pool smaller than this is starved: random backfill runs, then tier 2. Per strategy (`poolMix.backfillBelow`); this is the balanced value. */
+export const POOL_FLOOR = STRATEGIES.balanced.poolMix.backfillBelow;
 
 /** The recording keys of rows already in hand (the seed, or the seed list). */
 function keysOfRows(rows: readonly RadioSongRow[]): Set<string> {
@@ -361,8 +369,10 @@ function collectPoolRows(
   feat: PoolSeed,
   excludeIds: ReadonlySet<string>,
   excludeKeys: ReadonlySet<string> = new Set(),
+  strategy: RecommendationStrategy = STRATEGIES.balanced,
 ): RadioSongRow[] {
   const durGate = minCandidateDurationSec();
+  const mix = strategy.poolMix;
   const candidates: RadioSongRow[] = [];
   const seen = new Set<string>(excludeIds);
   const addRows = (rows: RadioSongRow[]): void => {
@@ -388,15 +398,16 @@ function collectPoolRows(
     // Junk genres ("Other", ...) are matching noise, not identity - a junk seed
     // genre would drag every same-junk row into the pool (issue #583).
     const seedGenres = feat.genres;
-    if (seedGenres.length > 0) {
-      const marks = seedGenres.map(() => '?').join(', ');
+    const marks = seedGenres.map(() => '?').join(', ');
+    const genreMatch = `(s.genre IN (${marks}) OR EXISTS (
+               SELECT 1 FROM library_song_genres g WHERE g.song_id = s.id AND g.genre IN (${marks})
+             ))`;
+    if (seedGenres.length > 0 && mix.anyGenre > 0) {
       addRows(
         db
           .query<RadioSongRow, string[]>(
             `${RADIO_SONG_SELECT}
-             WHERE (s.genre IN (${marks}) OR EXISTS (
-               SELECT 1 FROM library_song_genres g WHERE g.song_id = s.id AND g.genre IN (${marks})
-             )) AND ${eligible} ORDER BY RANDOM() LIMIT 150`,
+             WHERE ${genreMatch} AND ${eligible} ORDER BY RANDOM() LIMIT ${mix.anyGenre}`,
           )
           .all(...seedGenres, ...seedGenres),
       );
@@ -406,26 +417,26 @@ function collectPoolRows(
     // "Deep House" also pulls "House"/"Tech House"), so lexical genre closeness
     // has variants to score instead of only exact-string matches.
     const genreToken = feat.genreToken;
-    if (genreToken) {
+    if (genreToken && mix.genreToken > 0) {
       addRows(
         db
           .query<RadioSongRow, [string]>(
             `${RADIO_SONG_SELECT} WHERE LOWER(s.genre) LIKE '%' || ? || '%' AND ${eligible}
-             ORDER BY RANDOM() LIMIT 100`,
+             ORDER BY RANDOM() LIMIT ${mix.genreToken}`,
           )
           .all(genreToken),
       );
     }
 
     // Pool 2: similar BPM range across genres (± 15%), up to 100
-    if (feat.bpm) {
+    if (feat.bpm && mix.bpm > 0) {
       const bpmLow = Math.round(feat.bpm * 0.85);
       const bpmHigh = Math.round(feat.bpm * 1.15);
       addRows(
         db
           .query<RadioSongRow, [number, number]>(
             `${RADIO_SONG_SELECT} WHERE s.bpm BETWEEN ? AND ? AND ${eligible}
-             ORDER BY RANDOM() LIMIT 100`,
+             ORDER BY RANDOM() LIMIT ${mix.bpm}`,
           )
           .all(bpmLow, bpmHigh),
       );
@@ -433,23 +444,37 @@ function collectPoolRows(
 
     // Pool 3: energy-adjacent across genres (±0.15), up to 100 — keeps the
     // set's momentum coherent once the library carries energy values.
-    if (feat.energy !== undefined) {
+    if (feat.energy !== undefined && mix.energy > 0) {
       addRows(
         db
           .query<RadioSongRow, [number, number]>(
             `${RADIO_SONG_SELECT} WHERE s.energy BETWEEN ? AND ? AND ${eligible}
-             ORDER BY RANDOM() LIMIT 100`,
+             ORDER BY RANDOM() LIMIT ${mix.energy}`,
           )
           .all(Math.max(0, feat.energy - 0.15), Math.min(1, feat.energy + 0.15)),
       );
     }
 
+    // Pool 4: shares NO genre with the seed — the "different" strategy's
+    // widening lever, fed to rankCandidates' out-of-genre quota. Off (0) for
+    // the other strategies, so their pools are untouched.
+    if (seedGenres.length > 0 && mix.outOfGenre > 0) {
+      addRows(
+        db
+          .query<RadioSongRow, string[]>(
+            `${RADIO_SONG_SELECT}
+             WHERE NOT ${genreMatch} AND ${eligible} ORDER BY RANDOM() LIMIT ${mix.outOfGenre}`,
+          )
+          .all(...seedGenres, ...seedGenres),
+      );
+    }
+
     // Pool 5: random backfill if we still don't have enough candidates
-    if (candidates.length < POOL_FLOOR) {
+    if (candidates.length < mix.backfillBelow && mix.backfill > 0) {
       addRows(
         db
           .query<RadioSongRow, []>(
-            `${RADIO_SONG_SELECT} WHERE ${eligible} ORDER BY RANDOM() LIMIT 100`,
+            `${RADIO_SONG_SELECT} WHERE ${eligible} ORDER BY RANDOM() LIMIT ${mix.backfill}`,
           )
           .all(),
       );
@@ -461,10 +486,26 @@ function collectPoolRows(
   // rows, and then through the same genre/bpm/energy passes rather than a
   // blind seat. That replaced the old "pool 4", which reserved 30 seats for
   // un-analysed tracks no matter how many vetted candidates existed.
-  runPasses(1);
-  if (candidates.length < POOL_FLOOR) runPasses(2);
+  runPasses(strategy.readinessTier);
+  if (strategy.readinessTier === 1 && candidates.length < mix.backfillBelow) runPasses(2);
 
   return candidates;
+}
+
+/**
+ * The out-of-genre quota for a strategy, or undefined when it has none or the
+ * seed carries no real genre to be "out of".
+ */
+function outOfGenreQuota(
+  strategy: RecommendationStrategy,
+  seedGenres: readonly string[],
+): RankQuota<RadioCandidate> | undefined {
+  if (strategy.outOfGenreQuota <= 0 || seedGenres.length === 0) return undefined;
+  const set = new Set(seedGenres);
+  return {
+    share: strategy.outOfGenreQuota,
+    predicate: (c) => !(c.genres ?? (c.genre ? [c.genre] : [])).some((g) => set.has(g)),
+  };
 }
 
 /**
@@ -480,6 +521,8 @@ export function buildSeedRadio(
     count?: number;
     excludeIds?: Set<string>;
     weights?: ScoringWeights;
+    /** Named recipe (pool mix, weight overrides, caps); `weights` still wins when given. */
+    strategy?: RecommendationStrategy;
     /** Whose listening history demotes recently-played candidates. */
     userId?: string;
     now?: number;
@@ -493,17 +536,20 @@ export function buildSeedRadio(
   const excludeKeys = keysOfIds(db, opts.excludeIds ?? new Set());
   for (const k of keysOfRows([seedRow])) excludeKeys.add(k);
 
+  const strategy = opts.strategy ?? STRATEGIES.balanced;
   const seed = toFeatures(seedRow);
+  const seedGenres = (seed.genres ?? (seed.genre ? [seed.genre] : [])).filter(isRealGenre);
   const candidates = collectPoolRows(
     db,
     {
-      genres: (seed.genres ?? (seed.genre ? [seed.genre] : [])).filter(isRealGenre),
+      genres: seedGenres,
       genreToken: seed.genre && isRealGenre(seed.genre) ? longestGenreToken(seed.genre) : null,
       bpm: seed.bpm,
       energy: seed.energy,
     },
     excludeIds,
     excludeKeys,
+    strategy,
   );
 
   // Attach cached embeddings (seed + pool) so the scorer can add the cosine
@@ -527,7 +573,12 @@ export function buildSeedRadio(
     opts.userId,
     opts.now,
   );
-  const ranked = rankCandidates(seed, pool, { count, maxPerArtist: 2, weights: opts.weights });
+  const ranked = rankCandidates(seed, pool, {
+    count,
+    maxPerArtist: strategy.maxPerArtist,
+    weights: opts.weights ?? resolveWeights(strategy),
+    quota: outOfGenreQuota(strategy, seedGenres),
+  });
   return { seed, pool, ranked };
 }
 
@@ -567,6 +618,8 @@ export function buildListRadio(
     count?: number;
     excludeIds?: Set<string>;
     weights?: ScoringWeights;
+    /** Named recipe (pool mix, weight overrides, caps); `weights` still wins when given. */
+    strategy?: RecommendationStrategy;
     /** Whose listening history demotes recently-played candidates. */
     userId?: string;
     now?: number;
@@ -587,6 +640,7 @@ export function buildListRadio(
   // closeness axis — the centroid's modal primary alone would collapse a
   // mixed-but-coherent list onto one tag (the umbrella-tag lesson from
   // filter radio's centroid, docs/radio.md "Stations").
+  const strategy = opts.strategy ?? STRATEGIES.balanced;
   const genreUnion = [...new Set(seedRows.flatMap((r) => genresOf(r) ?? []).filter(isRealGenre))];
   if (genreUnion.length) seed.genres = genreUnion;
 
@@ -600,6 +654,7 @@ export function buildListRadio(
     },
     excludeIds,
     excludeKeys,
+    strategy,
   );
 
   // Audio axis: anchor on the seeds' mean vector under the seed set's dominant
@@ -622,7 +677,12 @@ export function buildListRadio(
     opts.userId,
     opts.now,
   );
-  const ranked = rankCandidates(seed, pool, { count, maxPerArtist: 2, weights: opts.weights });
+  const ranked = rankCandidates(seed, pool, {
+    count,
+    maxPerArtist: strategy.maxPerArtist,
+    weights: opts.weights ?? resolveWeights(strategy),
+    quota: outOfGenreQuota(strategy, genreUnion),
+  });
   return { seed, pool, ranked };
 }
 
@@ -666,12 +726,15 @@ export function buildFilterRadio(
     count?: number;
     excludeIds?: Set<string>;
     weights?: ScoringWeights;
+    /** Named recipe (pool mix, weight overrides, caps); `weights` still wins when given. */
+    strategy?: RecommendationStrategy;
     /** Whose listening history demotes recently-played candidates. */
     userId?: string;
     now?: number;
   } = {},
 ): RadioResult {
   const count = opts.count ?? 10;
+  const strategy = opts.strategy ?? STRATEGIES.balanced;
   const excludeIds = new Set(opts.excludeIds ?? []);
   const durGate = minCandidateDurationSec();
   const { wheres, params } = songFilterWheres(filter, 's');
@@ -782,7 +845,13 @@ export function buildFilterRadio(
   for (const c of pool) Object.assign(c, blocksFor(descriptors, c._row.id));
   Object.assign(seed, centroidBlocks(pool.map((c) => blocksFor(descriptors, c._row.id))));
 
-  const ranked = rankCandidates(seed, pool, { count, maxPerArtist: 2, weights: opts.weights });
+  // A station's pool IS the filter, so only the strategy's weights and artist
+  // cap apply here; the pool mix and out-of-genre quota are seed-lane levers.
+  const ranked = rankCandidates(seed, pool, {
+    count,
+    maxPerArtist: strategy.maxPerArtist,
+    weights: opts.weights ?? resolveWeights(strategy),
+  });
   return { seed, pool, ranked };
 }
 
@@ -813,6 +882,14 @@ export function radioRoutes() {
     // so 200 is far above any real caller.
     const excludeIds = new Set(excludeRaw.split(',').filter(Boolean).slice(0, MAX_EXCLUDE_IDS));
 
+    let strategy: RecommendationStrategy;
+    try {
+      strategy = resolveStrategy(c.req.query('strategy'));
+    } catch (err) {
+      if (err instanceof UnknownStrategyError) return c.json({ error: err.message }, 400);
+      throw err;
+    }
+
     const db = getDatabase();
     // The listener's own rejections ride the same exclusion layer as their
     // queue: fed in here, before the generators widen the set to every copy of
@@ -835,7 +912,9 @@ export function radioRoutes() {
       // Unknown ids are skipped, not fatal — the shelf's list can outlive a
       // deleted song. Only an entirely-unresolvable list is an error.
       if (seedRows.length === 0) return c.json({ error: 'No seed songs found' }, 404);
-      return c.json(radioSongs(buildListRadio(db, seedRows, { count, excludeIds, userId })));
+      return c.json(
+        radioSongs(buildListRadio(db, seedRows, { count, excludeIds, userId, strategy })),
+      );
     }
 
     // No seed song → filter-seeded radio (a mood/genre/bpm vibe). `genre` is a
@@ -848,7 +927,9 @@ export function radioRoutes() {
       if (Object.keys(filter).length === 0) {
         return c.json({ error: '"seedId" or a filter is required' }, 400);
       }
-      return c.json(radioSongs(buildFilterRadio(db, filter, { count, excludeIds, userId })));
+      return c.json(
+        radioSongs(buildFilterRadio(db, filter, { count, excludeIds, userId, strategy })),
+      );
     }
 
     const seedRow = db
@@ -856,7 +937,7 @@ export function radioRoutes() {
       .get(seedId);
     if (!seedRow) return c.json({ error: 'Seed song not found' }, 404);
 
-    return c.json(radioSongs(buildSeedRadio(db, seedRow, { count, excludeIds, userId })));
+    return c.json(radioSongs(buildSeedRadio(db, seedRow, { count, excludeIds, userId, strategy })));
   });
 
   return app;

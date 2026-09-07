@@ -3,6 +3,7 @@ import { PlayerService } from '../../../services/player.service';
 import { isTvUi } from '../../../lib/platform';
 import { SeekBarComponent } from '../../seek-bar/seek-bar.component';
 import { NowPlayingWaveformComponent } from '../now-playing-waveform/now-playing-waveform.component';
+import { RadioChipComponent } from '../radio-chip/radio-chip.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
@@ -13,6 +14,7 @@ import type { WaveformData } from '../../../../types/core';
   imports: [
     SeekBarComponent,
     NowPlayingWaveformComponent,
+    RadioChipComponent,
     TranslatePipe,
     TvNavGroupDirective,
     TvNavItemDirective,

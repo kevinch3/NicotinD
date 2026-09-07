@@ -14,6 +14,7 @@ import type {
   LibraryFilter,
   ArtistInfoResponse,
   IdentifyOutcome,
+  StrategyId,
 } from '@nicotind/core';
 import { serializeLibraryFilter, isEmptyLibraryFilter } from '@nicotind/core';
 import type { Album, AlbumDetail, Song, ProvenanceRecord, ArtistIdentityResult } from './api-types';
@@ -33,6 +34,14 @@ type QueryParams = Record<string, string | number | boolean | string[]>;
 const AUTO_FETCH_TIMEOUT_MS = 30_000;
 
 /** Merge the standardized filter's query params into a request's params. */
+/** Adds the named strategy only when the caller has one to name. */
+function withStrategy(
+  params: Record<string, string | number>,
+  strategy: StrategyId | undefined,
+): Record<string, string | number> {
+  return strategy ? { ...params, strategy } : params;
+}
+
 function withFilter(params: QueryParams, filter?: LibraryFilter): QueryParams {
   return filter ? { ...params, ...serializeLibraryFilter(filter) } : params;
 }
@@ -516,24 +525,24 @@ export class LibraryApiService {
     });
   }
 
-  getRadioNext(seedId: string, exclude: string[], count = 10) {
+  getRadioNext(seedId: string, exclude: string[], count = 10, strategy?: StrategyId) {
     return this.http.get<Song[]>('/api/radio/next', {
-      params: { seedId, exclude: exclude.join(','), count },
+      params: withStrategy({ seedId, exclude: exclude.join(','), count }, strategy),
     });
   }
 
   /** List-seeded radio ("keep the vibe"): one generation scored against the
    *  centroid of a whole song list — one request, not one radio per seed. */
-  getListRadio(seedIds: string[], count = 10) {
+  getListRadio(seedIds: string[], count = 10, strategy?: StrategyId) {
     return this.http.get<Song[]>('/api/radio/next', {
-      params: { seedIds: seedIds.join(','), count },
+      params: withStrategy({ seedIds: seedIds.join(','), count }, strategy),
     });
   }
 
   /** Filter-seeded radio (no seed song): start a "vibe" from a LibraryFilter. */
-  getFilterRadio(filter: LibraryFilter, exclude: string[], count = 20) {
+  getFilterRadio(filter: LibraryFilter, exclude: string[], count = 20, strategy?: StrategyId) {
     return this.http.get<Song[]>('/api/radio/next', {
-      params: withFilter({ exclude: exclude.join(','), count }, filter),
+      params: withFilter(withStrategy({ exclude: exclude.join(','), count }, strategy), filter),
     });
   }
 

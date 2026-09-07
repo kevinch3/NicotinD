@@ -90,12 +90,13 @@ follow-up work, not part of the gate fix.
 | `GET`    | `/api/stream/:id`                        | Stream audio (Range/206 + seekable transcode cache)         |
 | `GET`    | `/api/cover/:id`                         | Album/artist cover art (override → canonical → folder → embedded) |
 | `GET`    | `/api/peaks/:id`                         | Waveform artifact (peaks + band timeline) for Now Playing, on-demand + cached (#643) |
-| `GET`    | `/api/radio/next`                        | Smart radio — next track by metadata similarity             |
+| `GET`    | `/api/radio/next`                        | Smart radio — next track by metadata similarity (`?strategy=similar\|balanced\|different`) |
 | `GET`    | `/api/history/stats`                     | Listening stats (top songs/artists/albums/genres)           |
 | `POST`   | `/api/history/plays`                     | Idempotent batch play-event ingest                          |
 | `POST`   | `/api/recommendations/feedback`          | One vote: exclude / restore / variety (caller-scoped)       |
 | `GET`    | `/api/recommendations/excluded`          | Songs the feeds hold out for the caller, with reason        |
 | `DELETE` | `/api/recommendations/excluded/:songId`  | Recommend again (writes a restore)                          |
+| `PUT`    | `/api/recommendations/preferences`       | Remember the variety position (`radioStrategy`)             |
 | `GET`    | `/api/playlists`                         | List user's playlists (+ curated for all users)             |
 | `POST`   | `/api/playlists`                         | Create playlist                                             |
 | `GET`    | `/api/playlists/:id`                     | Get playlist (songs)                                        |

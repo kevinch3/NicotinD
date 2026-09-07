@@ -84,6 +84,9 @@ export type {
 // Value re-export (not just types): library-filter is a pure, browser-safe
 // module (model + serialization + Camelot/mood vocab) shared with the API.
 export * from '../../../core/src/types/library-filter';
+// Named recommendation strategies + the variety control's vocabulary — pure,
+// browser-safe; the chip and the player both need the value exports.
+export * from '../../../core/src/types/radio-strategy';
 
 // Value re-export: origin vocabulary (ISO codes, cultural regions, closeness,
 // flag emoji) — pure and browser-safe like library-filter above.

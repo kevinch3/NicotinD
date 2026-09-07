@@ -269,3 +269,27 @@ export function activeLibraryFilterCount(f: LibraryFilter): number {
 export function isEmptyLibraryFilter(f: LibraryFilter): boolean {
   return activeLibraryFilterCount(f) === 0;
 }
+
+/**
+ * A terse, human label for a filter ("Electronic · happy · 120+ bpm"). Shared by
+ * the radio chip (what station is playing) and the poll wizard (what a rater is
+ * grading); a JSON blob in either place tells the person nothing.
+ */
+export function describeLibraryFilter(filter: LibraryFilter): string {
+  const parts: string[] = [];
+  if (filter.genres?.length) parts.push(filter.genres.join(' / '));
+  if (filter.moods?.length) parts.push(filter.moods.join(' / '));
+  for (const [axis, buckets] of Object.entries(filter.buckets ?? {})) {
+    if (buckets?.length) parts.push(`${buckets.join('/')} ${axis}`);
+  }
+  if (filter.bpmMin !== undefined && filter.bpmMax !== undefined) {
+    parts.push(`${filter.bpmMin}-${filter.bpmMax} bpm`);
+  } else if (filter.bpmMin !== undefined) parts.push(`${filter.bpmMin}+ bpm`);
+  else if (filter.bpmMax !== undefined) parts.push(`under ${filter.bpmMax} bpm`);
+  if (filter.yearMin !== undefined && filter.yearMax !== undefined) {
+    parts.push(`${filter.yearMin}-${filter.yearMax}`);
+  }
+  if (filter.keys?.length) parts.push(`key ${filter.keys.join('/')}`);
+  if (filter.starred) parts.push('starred');
+  return parts.length ? parts.join(' · ') : 'Everything';
+}

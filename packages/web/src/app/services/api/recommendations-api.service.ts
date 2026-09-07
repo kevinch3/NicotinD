@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import type { Observable } from 'rxjs';
+import type { StrategyId } from '@nicotind/core';
 import type { ExcludedSong, FeedbackKind } from './api-types';
 
 /**
@@ -26,6 +27,13 @@ export class RecommendationsApiService {
 
   getExcluded(): Observable<{ excluded: ExcludedSong[] }> {
     return this.http.get<{ excluded: ExcludedSong[] }>('/api/recommendations/excluded');
+  }
+
+  /** Remember the variety position as this user's default for new radios. */
+  setPreferences(radioStrategy: StrategyId): Observable<{ radioStrategy: StrategyId }> {
+    return this.http.put<{ radioStrategy: StrategyId }>('/api/recommendations/preferences', {
+      radioStrategy,
+    });
   }
 
   restore(songId: string): Observable<{ ok: boolean }> {

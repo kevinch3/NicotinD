@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Database } from 'bun:sqlite';
+import { describeLibraryFilter, isStrategyId } from '@nicotind/core';
 import type {
   LibraryFilter,
   RadioPollScenarioSnapshot,
@@ -15,6 +16,7 @@ import {
   type RadioSongRow,
 } from '../routes/radio.js';
 import { feedEligibilitySql } from './recommendation/eligibility.js';
+import { resolveStrategy, type RecommendationStrategy } from './recommendation/strategies.js';
 import {
   DEFAULT_WEIGHTS,
   explainSimilarity,
@@ -42,8 +44,11 @@ export interface GeneratedScenario {
  * axes / non-finite values — a silent no-op would invalidate the measurement
  * (same stance as dump-radio's `parseWeightOverrides`).
  */
-export function mergePollWeights(overrides: Record<string, number> | undefined): ScoringWeights {
-  const merged: ScoringWeights = { ...DEFAULT_WEIGHTS };
+export function mergePollWeights(
+  overrides: Record<string, number> | undefined,
+  base: ScoringWeights = DEFAULT_WEIGHTS,
+): ScoringWeights {
+  const merged: ScoringWeights = { ...base };
   for (const [axis, value] of Object.entries(overrides ?? {})) {
     if (!(axis in DEFAULT_WEIGHTS)) {
       throw new RadioPollGenerationError(
@@ -98,6 +103,8 @@ export function normalizePollSettings(settings: RadioPollSettings): RadioPollSet
     // Server-authoritative like formulaVersion: every new poll is stars5
     // (issue #800 — binary consensus measurably starved the eval of pairs).
     voteScale: 'stars5',
+    // Unknown → dropped (= balanced); the admin route 400s before reaching here.
+    strategy: isStrategyId(settings.strategy) ? settings.strategy : undefined,
   };
 }
 
@@ -107,22 +114,7 @@ export function normalizePollSettings(settings: RadioPollSettings): RadioPollSet
  * and a JSON blob there tells a rater nothing about what they are grading.
  */
 export function describeFilter(filter: LibraryFilter): string {
-  const parts: string[] = [];
-  if (filter.genres?.length) parts.push(filter.genres.join(' / '));
-  if (filter.moods?.length) parts.push(filter.moods.join(' / '));
-  for (const [axis, buckets] of Object.entries(filter.buckets ?? {})) {
-    if (buckets?.length) parts.push(`${buckets.join('/')} ${axis}`);
-  }
-  if (filter.bpmMin !== undefined && filter.bpmMax !== undefined) {
-    parts.push(`${filter.bpmMin}-${filter.bpmMax} bpm`);
-  } else if (filter.bpmMin !== undefined) parts.push(`${filter.bpmMin}+ bpm`);
-  else if (filter.bpmMax !== undefined) parts.push(`under ${filter.bpmMax} bpm`);
-  if (filter.yearMin !== undefined && filter.yearMax !== undefined) {
-    parts.push(`${filter.yearMin}-${filter.yearMax}`);
-  }
-  if (filter.keys?.length) parts.push(`key ${filter.keys.join('/')}`);
-  if (filter.starred) parts.push('starred');
-  return parts.length ? parts.join(' · ') : 'Everything';
+  return describeLibraryFilter(filter);
 }
 
 /** dump-radio's auto-seed pick: a random landed, visible song, preferring one
@@ -151,13 +143,15 @@ function seedScenario(
   position: number,
   nextUpCount: number,
   weights: ScoringWeights,
+  strategy: RecommendationStrategy,
 ): GeneratedScenario | null {
-  const result = buildSeedRadio(db, seedRow, { count: nextUpCount, weights });
+  const result = buildSeedRadio(db, seedRow, { count: nextUpCount, weights, strategy });
   if (!result.seed || result.ranked.length === 0) return null;
   const snapshot: RadioPollScenarioSnapshot = {
     kind: 'seed',
     seed: { song: rowToSong(seedRow), features: stripFeatures(toFeatures(seedRow)) },
     weights: { ...weights },
+    strategy: strategy.id,
     candidates: result.ranked.map((e, i) => ({
       song: rowToSong(e.song._row),
       features: stripFeatures(toFeatures(e.song._row)),
@@ -188,8 +182,9 @@ function filterScenario(
   position: number,
   nextUpCount: number,
   weights: ScoringWeights,
+  strategy: RecommendationStrategy,
 ): GeneratedScenario | null {
-  const result = buildFilterRadio(db, filter, { count: nextUpCount, weights });
+  const result = buildFilterRadio(db, filter, { count: nextUpCount, weights, strategy });
   if (!result.seed || result.ranked.length === 0) return null;
   const seed = result.seed;
   const snapshot: RadioPollScenarioSnapshot = {
@@ -198,6 +193,7 @@ function filterScenario(
     centroid: stripFeatures(seed),
     filter,
     weights: { ...weights },
+    strategy: strategy.id,
     candidates: result.ranked.map((e, i) => ({
       song: rowToSong(e.song._row),
       // From the row, like seedScenario — spreading the candidate itself would
@@ -233,6 +229,7 @@ export function generatePollScenarios(
 ): GeneratedScenario[] {
   const scenarios: GeneratedScenario[] = [];
   const usedSeedIds = new Set<string>();
+  const strategy = resolveStrategy(settings.strategy);
 
   const pinned = (settings.pinnedSeedIds ?? []).slice(0, settings.scenarioCount);
   for (const seedId of pinned) {
@@ -245,7 +242,14 @@ export function generatePollScenarios(
       throw new RadioPollGenerationError(`pinned seed song not found or not playable: ${seedId}`);
     }
     usedSeedIds.add(row.id);
-    const scenario = seedScenario(db, row, scenarios.length, settings.nextUpCount, weights);
+    const scenario = seedScenario(
+      db,
+      row,
+      scenarios.length,
+      settings.nextUpCount,
+      weights,
+      strategy,
+    );
     if (scenario) scenarios.push(scenario);
   }
 
@@ -253,7 +257,14 @@ export function generatePollScenarios(
   // outrank the random auto seeds for the remaining slots.
   for (const filter of settings.filters ?? []) {
     if (scenarios.length >= settings.scenarioCount) break;
-    const scenario = filterScenario(db, filter, scenarios.length, settings.nextUpCount, weights);
+    const scenario = filterScenario(
+      db,
+      filter,
+      scenarios.length,
+      settings.nextUpCount,
+      weights,
+      strategy,
+    );
     if (scenario) scenarios.push(scenario);
   }
 
@@ -261,7 +272,14 @@ export function generatePollScenarios(
     const row = pickAutoSeed(db, usedSeedIds);
     if (!row) break; // library exhausted
     usedSeedIds.add(row.id);
-    const scenario = seedScenario(db, row, scenarios.length, settings.nextUpCount, weights);
+    const scenario = seedScenario(
+      db,
+      row,
+      scenarios.length,
+      settings.nextUpCount,
+      weights,
+      strategy,
+    );
     if (scenario) scenarios.push(scenario);
   }
 

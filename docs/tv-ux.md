@@ -121,6 +121,10 @@ guessing from focus position — so `KeyboardShortcutsService` binds arrow-seek 
 Because the Player has no nav group spanning its full width, ▲ ▼ there move between the transport
 row and the queue affordance via ordinary spatial navigation.
 
+The radio chip below the transport is two direct items of the Player's root group (the toggle,
+then the options chevron), so ▼ from play/pause still lands on `now-playing-radio`; its expanded
+variety panel is a horizontal group of three radios. See [radio.md](radio.md) "Variety chip".
+
 ## The screens
 
 ### Home (`/`)

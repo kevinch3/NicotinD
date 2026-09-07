@@ -1,4 +1,5 @@
 import type { LibraryFilter } from './library-filter.js';
+import type { StrategyId } from './radio-strategy.js';
 import type { Song } from './navidrome.js';
 
 /**
@@ -57,6 +58,8 @@ export interface RadioPollSettings {
   weights?: Record<string, number>;
   /** Vote scale, stamped server-side at creation; absent = 'binary' (legacy). */
   voteScale?: RadioPollVoteScale;
+  /** Named recommendation strategy the scenarios were generated under; absent = balanced. */
+  strategy?: StrategyId;
 }
 
 /** Structural copy of the API's `AxisContribution`. */
@@ -138,6 +141,10 @@ export interface RadioPollScenarioSnapshot {
   filter?: LibraryFilter;
   /** The full weight set the ranking actually used. */
   weights: Record<string, number>;
+  /** Strategy the pool and caps came from; absent on pre-strategy scenarios = balanced.
+   *  Its own field, not folded into the formula version: a strategy is a weight
+   *  set + a pool, never a new scoring function. */
+  strategy?: StrategyId;
   candidates: RadioPollCandidateSnapshot[];
 }
 

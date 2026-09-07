@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, getTestBed } from '@angular/core/testing';
 import { effect } from '@angular/core';
 import { PlayerService, type Track, type PlayContext } from './player.service';
 import { vi } from 'vitest';
@@ -678,7 +678,7 @@ describe('PlayerService', () => {
     it('startRadioWithFilter plays first, queues rest, and remembers the filter', () => {
       service.startRadioWithFilter([track1, track2, track3], { moods: ['happy'] });
       expect(service.currentTrack()).toEqual(track1);
-      expect(service.queue()).toEqual([track2, track3]);
+      expect(service.queue()).toEqual([track2, track3].map((q) => ({ ...q, queuedBy: 'radio' })));
       expect(service.radio()).toBe(true);
       expect(service.radioFilter()).toEqual({ moods: ['happy'] });
     });
@@ -707,7 +707,7 @@ describe('PlayerService', () => {
     it('startRadioWithTracks plays first, queues rest, radio on, with no filter or context', () => {
       service.startRadioWithTracks([track1, track2, track3]);
       expect(service.currentTrack()).toEqual(track1);
-      expect(service.queue()).toEqual([track2, track3]);
+      expect(service.queue()).toEqual([track2, track3].map((q) => ({ ...q, queuedBy: 'radio' })));
       expect(service.radio()).toBe(true);
       expect(service.radioFilter()).toBeNull();
       expect(service.context()).toBeNull();
@@ -741,5 +741,60 @@ describe('PlayerService', () => {
       service.restoreState();
       expect(service.radioFilter()).toEqual({ bpmMin: 120 });
     });
+  });
+});
+
+describe('radio strategy (variety position)', () => {
+  const t = (id: string, queuedBy?: 'radio' | 'user'): Track => ({
+    id,
+    title: id,
+    artist: 'A',
+    ...(queuedBy ? { queuedBy } : {}),
+  });
+
+  it('defaults to balanced and survives a persist/restore round-trip', () => {
+    const service = TestBed.inject(PlayerService);
+    expect(service.radioStrategy()).toBe('balanced');
+    service.play(t('cur'));
+    service.setRadioStrategy('different');
+    TestBed.flushEffects();
+    const raw = JSON.parse(localStorage.getItem('nicotind_player_state') ?? '{}') as {
+      radioStrategy?: string;
+    };
+    expect(raw.radioStrategy).toBe('different');
+    getTestBed().resetTestingModule();
+    const fresh = TestBed.inject(PlayerService);
+    fresh.restoreState();
+    expect(fresh.radioStrategy()).toBe('different');
+  });
+
+  it('a change with radio on drops only the radio-appended tail and refetches', async () => {
+    const service = TestBed.inject(PlayerService);
+    const provider = vi.fn(async () => [t('r3')]);
+    service.setRadioProvider(provider);
+    service.play(t('cur'));
+    service.queue.set([t('mine', 'user'), t('r1', 'radio'), t('r2', 'radio')]);
+    service.radio.set(true);
+    service.setRadioStrategy('similar');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(provider).toHaveBeenCalledWith(expect.objectContaining({ strategy: 'similar' }));
+    const ids = service.queue().map((q) => q.id);
+    expect(ids).toContain('mine');
+    expect(ids).not.toContain('r1');
+    expect(ids).not.toContain('r2');
+    expect(ids).toContain('r3');
+    expect(service.queue().find((q) => q.id === 'r3')?.queuedBy).toBe('radio');
+  });
+
+  it('a change with radio off only remembers the position', () => {
+    const service = TestBed.inject(PlayerService);
+    const provider = vi.fn(async () => []);
+    service.setRadioProvider(provider);
+    service.play(t('cur'));
+    service.queue.set([t('r1', 'radio')]);
+    service.setRadioStrategy('different');
+    expect(service.queue().map((q) => q.id)).toEqual(['r1']);
+    expect(provider).not.toHaveBeenCalled();
   });
 });

@@ -1,11 +1,13 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { PublicPollVoteBody, RadioPollSettings, RadioPollSummary } from '@nicotind/core';
+import { isStrategyId } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/current-user.js';
 import { getDatabase } from '../db.js';
 import { recordAudit } from '../services/audit-log.js';
 import { RADIO_FORMULA_VERSION } from '../services/radio.service.js';
+import { resolveStrategy, resolveWeights } from '../services/recommendation/strategies.js';
 import {
   RadioPollGenerationError,
   generatePollScenarios,
@@ -61,14 +63,26 @@ export function radioPollAdminRoutes(deps: { version?: string } = {}) {
 
     const db = getDatabase();
     try {
+      if (body.strategy !== undefined && !isStrategyId(body.strategy)) {
+        return c.json(
+          { error: 'strategy must be a known strategy', code: 'VALIDATION_ERROR' },
+          400,
+        );
+      }
       const settings = normalizePollSettings({
         scenarioCount: body.scenarioCount ?? 5,
         nextUpCount: body.nextUpCount ?? 5,
         pinnedSeedIds: body.pinnedSeedIds,
         filters: body.filters,
         weights: body.weights,
+        strategy: body.strategy,
       });
-      const weights = mergePollWeights(settings.weights);
+      // Overrides land on the strategy's weights, so the snapshot's `weights`
+      // stays "the full set the ranking actually used".
+      const weights = mergePollWeights(
+        settings.weights,
+        resolveWeights(resolveStrategy(settings.strategy)),
+      );
       const scenarios = generatePollScenarios(db, settings, weights);
       const expiresInHours = Number(body.expiresInHours);
       const expiresAt =
