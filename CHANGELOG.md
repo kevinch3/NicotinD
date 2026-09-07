@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.10](https://github.com/kevinch3/NicotinD/compare/v0.6.9...v0.6.10) (2026-09-07)
+
+### Features
+
+* **curation:** let listeners report what is wrong with a track ([#1004](https://github.com/kevinch3/NicotinD/issues/1004)) ([5c00878](https://github.com/kevinch3/NicotinD/commit/5c0087804774b2524dfb0e793d4beef2d2d31e1b)), closes [#987](https://github.com/kevinch3/NicotinD/issues/987), references [#682](https://github.com/kevinch3/NicotinD/issues/682) [#996](https://github.com/kevinch3/NicotinD/issues/996)
+* **web:** fold the waveform to a mono half on the seek line, and hold shuffle for a radio ([#1005](https://github.com/kevinch3/NicotinD/issues/1005)) ([40b47de](https://github.com/kevinch3/NicotinD/commit/40b47deee22ffe5d0546b9f8cd322f3876eebc91)), closes [#994](https://github.com/kevinch3/NicotinD/issues/994) [#995](https://github.com/kevinch3/NicotinD/issues/995), references [#994](https://github.com/kevinch3/NicotinD/issues/994) [#995](https://github.com/kevinch3/NicotinD/issues/995)
 ## [0.6.9](https://github.com/kevinch3/NicotinD/compare/v0.6.8...v0.6.9) (2026-09-07)
 
 ### Features
