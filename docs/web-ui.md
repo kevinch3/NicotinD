@@ -451,6 +451,72 @@ Deliberately out of scope: **playlists** (the local lane returns `{artists, albu
 
 Offline the bar is hidden (`findAvailable()`), since the local lane is unreachable and the page falls back to on-device preserved tracks.
 
+## One album grid per artist tab (the discography is not a second list)
+
+The artist page used to render the same albums **twice**: the tab grid showed the
+library, then a separate "Full Discography" section repeated every release from
+MusicBrainz with its own covers, status badges and `Complete Album` / `Find Album`
+buttons. For Pink Floyd that was ~18 local tiles followed by 17 near-identical ones,
+and answering "do I have all of this album?" meant reading a cover twice and
+cross-referencing two grids.
+
+Now each tab renders **one** ordered set of tiles, newest first, with the gaps in
+place. `buildArtistAlbumTiles` (`lib/artist-album-tiles.ts`) is the pure join;
+`AlbumTileComponent` renders one tile in one of three states:
+
+| State | Looks like | Offers |
+| --- | --- | --- |
+| `owned` | exactly what it always did | nothing — the grid stays quiet where there is nothing to do |
+| `partial` | a normal, clickable, playable tile with a `4/7 tracks` subtitle | `Complete album` |
+| `missing` | dimmed, dashed border, **does not navigate** | `Get album` |
+
+A partial album is deliberately **not** dimmed. You own those four tracks and they
+play; dimming it would say otherwise. The action buttons are gated on
+`auth.canAcquire()` — before this, a listener was shown a button whose route
+answers 403.
+
+**The join key is the server's `localAlbumId`.** `DiscographyService` already matches
+each release to a local album with `normalizeForGrouping`, and threads the result
+onto the wire; the web reads it and never re-derives it. That is a rule, not a
+convenience: `check:shared-helpers` registers the `normalizeTitle`/`fold` family
+precisely because three separate ASCII-only copies shipped as three separate bugs
+(#662, #706, #715). **The visible consequence is that when the server's match misses,
+one album renders twice — once owned, once missing.** That is today's behaviour made
+visible rather than a new defect (the two grids simply kept it far apart), and a spec
+pins it so it cannot be mistaken for an accident. The real fix is the single
+album-identity resolver deferred in [album-hunt.md](album-hunt.md).
+
+**The missing tail is filtered, the library never is.** A release we do *not* own
+whose `secondaryTypes` include Live / Compilation / Remix / Demo / Soundtrack /
+Mixtape / DJ-mix, or whose `albumType` is not Album/EP/Single, sits behind a
+`Show all N more releases` toggle — otherwise a prolific artist's grid becomes 60+
+tiles of broadcasts and reissues. An album **already in the library always renders**,
+whatever Lidarr calls it: nothing you own can be filtered out of view.
+
+Two smaller rules worth knowing:
+
+- **An owned tile stays in the tab its *local* row is in.** The caller passes
+  `albums()` or `singlesAndEps()`, so Lidarr calling something an EP never moves a
+  tile out from under the user. A release whose match lives in the other tab is
+  skipped rather than drawn as missing — otherwise you would get a "you don't have
+  this" tile for an album you own.
+- **`visibleTabs()` counts merged tiles, not local rows.** Counting local rows hid
+  the Albums tab for an artist whose every album is missing — exactly the case the
+  acquire buttons exist for.
+
+The discography arrives seconds after the local albums (it can provision the artist
+in Lidarr). Local tiles render immediately and missing ones slot in; while it loads
+the tab bar carries a one-line `Checking full discography…` rather than a skeleton
+grid, because eight placeholder tiles next to real content read as content.
+
+**Testing note.** `AlbumTileComponent` takes `input<AlbumTile>(EMPTY_TILE)`, not
+`input.required()`. The JIT vitest harness does not register signal inputs on a
+*nested* component, so a required input throws NG0950 during the **host's** change
+detection and takes the host's whole spec down — see `src/testing/signal-input.ts`.
+For the same reason `artist-detail.component.spec.ts` asserts the merged grid at the
+model level and leaves the tile's DOM to `album-tile.component.spec.ts`, where the
+tile is the root component.
+
 ## Genre chips are the editor (issue #684)
 
 The track-info sheet has always *rendered* a song's full genre set as chips, primary

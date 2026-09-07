@@ -151,107 +151,120 @@
             }}
           </button>
         }
+
+        <!-- What the discography knows, where the tabs are — the old section header. -->
+        @if (discography(); as disc) {
+          <span class="ml-auto text-xs text-theme-muted" data-testid="discography-summary">
+            {{ disc.albums.length }} releases · {{ countByStatus(disc.albums, 'present') }} complete
+            · {{ countByStatus(disc.albums, 'partial') }} partial ·
+            {{ countByStatus(disc.albums, 'missing') }} missing · via MusicBrainz
+          </span>
+        } @else if (discographyLoading()) {
+          <!-- A line, not a skeleton grid: the local albums are already rendered
+               below, and eight placeholder tiles would read as real content. -->
+          <span class="ml-auto text-xs text-theme-muted">Checking full discography…</span>
+        }
       </div>
 
       @switch (activeTab()) {
         @case ('albums') {
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid" #albumsGrid="appTvNavGroup">
-            @for (row of chunk(albums(), albumsGrid.gridColumns()); track $index) {
+            @for (row of chunk(visibleAlbumTiles(), albumsGrid.gridColumns()); track $index) {
               <div role="row" style="display: contents">
-                @for (album of row; track album.id) {
-                  <a
-                    [routerLink]="getAlbumLink(album.id)"
-                    appTvNavItem
-                    class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block"
-                  >
-                    <app-cover-art
-                      [src]="
-                        album.coverArt
-                          ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token()
-                          : undefined
-                      "
-                      [artist]="artist()!.name"
-                      [album]="album.name"
-                      [fill]="true"
-                      rounded="rounded"
-                      className="mb-2"
-                    />
-                    <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
-                    <p class="text-xs text-theme-muted">{{ album.year ?? '' }}</p>
-                  </a>
+                @for (tile of row; track tile.key) {
+                  <app-album-tile
+                    [tile]="tile"
+                    [artistName]="artist()!.name"
+                    [token]="auth.token()"
+                    [busy]="isTileHunting(tile)"
+                    [canAcquire]="auth.canAcquire()"
+                    (acquire)="huntTile(tile)"
+                  />
                 }
               </div>
             } @empty {
               <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
             }
           </div>
+
+          @if (hiddenReleaseCount() > 0) {
+            <div class="mt-4 text-center">
+              <button
+                type="button"
+                data-testid="toggle-all-releases"
+                (click)="showAllReleases.set(!showAllReleases())"
+                class="px-3 py-1.5 text-xs rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition"
+              >
+                {{ showAllReleases() ? 'Show fewer releases' : 'Show all ' + hiddenReleaseCount() + ' more releases' }}
+              </button>
+            </div>
+          }
         }
         @case ('singles') {
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid" #singlesGrid="appTvNavGroup">
-            @for (row of chunk(singlesAndEps(), singlesGrid.gridColumns()); track $index) {
+            @for (row of chunk(visibleSingleTiles(), singlesGrid.gridColumns()); track $index) {
               <div role="row" style="display: contents">
-                @for (album of row; track album.id) {
-                  <a
-                    [routerLink]="getAlbumLink(album.id)"
-                    appTvNavItem
-                    class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block"
-                  >
-                    <app-cover-art
-                      [src]="
-                        album.coverArt
-                          ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token()
-                          : undefined
-                      "
-                      [artist]="artist()!.name"
-                      [album]="album.name"
-                      [fill]="true"
-                      rounded="rounded"
-                      className="mb-2"
-                    />
-                    <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
-                    <p class="text-xs text-theme-muted">
-                      {{ album.classification === 'ep' ? 'EP' : 'Single'
-                      }}{{ album.year ? ' · ' + album.year : '' }}
-                    </p>
-                  </a>
+                @for (tile of row; track tile.key) {
+                  <app-album-tile
+                    [tile]="tile"
+                    [artistName]="artist()!.name"
+                    [token]="auth.token()"
+                    [busy]="isTileHunting(tile)"
+                    [canAcquire]="auth.canAcquire()"
+                    (acquire)="huntTile(tile)"
+                  />
                 }
               </div>
             } @empty {
               <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
             }
           </div>
+
+          @if (hiddenReleaseCount() > 0) {
+            <div class="mt-4 text-center">
+              <button
+                type="button"
+                data-testid="toggle-all-releases"
+                (click)="showAllReleases.set(!showAllReleases())"
+                class="px-3 py-1.5 text-xs rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition"
+              >
+                {{ showAllReleases() ? 'Show fewer releases' : 'Show all ' + hiddenReleaseCount() + ' more releases' }}
+              </button>
+            </div>
+          }
         }
         @case ('appears-on') {
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid" #appearsOnGrid="appTvNavGroup">
-            @for (row of chunk(appearsOn(), appearsOnGrid.gridColumns()); track $index) {
+            @for (row of chunk(appearsOnTiles(), appearsOnGrid.gridColumns()); track $index) {
               <div role="row" style="display: contents">
-                @for (album of row; track album.id) {
-                  <a
-                    [routerLink]="getAlbumLink(album.id)"
-                    appTvNavItem
-                    class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block"
-                  >
-                    <app-cover-art
-                      [src]="
-                        album.coverArt
-                          ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token()
-                          : undefined
-                      "
-                      [artist]="'Various Artists'"
-                      [album]="album.name"
-                      [fill]="true"
-                      rounded="rounded"
-                      className="mb-2"
-                    />
-                    <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
-                    <p class="text-xs text-theme-muted">{{ album.year ?? '' }}</p>
-                  </a>
+                @for (tile of row; track tile.key) {
+                  <app-album-tile
+                    [tile]="tile"
+                    [artistName]="'Various Artists'"
+                    [token]="auth.token()"
+                    [busy]="isTileHunting(tile)"
+                    [canAcquire]="auth.canAcquire()"
+                    (acquire)="huntTile(tile)"
+                  />
                 }
               </div>
             } @empty {
               <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
             }
           </div>
+
+          @if (hiddenReleaseCount() > 0) {
+            <div class="mt-4 text-center">
+              <button
+                type="button"
+                data-testid="toggle-all-releases"
+                (click)="showAllReleases.set(!showAllReleases())"
+                class="px-3 py-1.5 text-xs rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition"
+              >
+                {{ showAllReleases() ? 'Show fewer releases' : 'Show all ' + hiddenReleaseCount() + ' more releases' }}
+              </button>
+            </div>
+          }
         }
         @case ('songs') {
           <!-- Sort + filter controls -->
@@ -336,105 +349,6 @@
       }
     }
 
-    <!-- Discography section (requires Lidarr) -->
-    @if (discographyLoading()) {
-      <!-- Opt-in load with its own explanatory line, kept because the user
-           pressed a button and the fetch also provisions the artist in Lidarr.
-           The grid below is the same 5-col scale as the default album-tile. -->
-      <div class="mt-10">
-        <p class="text-theme-muted text-sm mb-3">Loading full discography…</p>
-        <app-skeleton variant="album-tile" [count]="8" />
-      </div>
-    }
-
-    @if (discography(); as disc) {
-      <div class="mt-10">
-        <div class="flex items-center gap-3 mb-4">
-          <h2 class="text-base font-semibold text-theme-primary">Full Discography</h2>
-          <span class="text-xs text-theme-muted">via MusicBrainz</span>
-          <span class="ml-auto text-xs text-theme-muted">
-            {{ disc.albums.length }} releases · {{ countByStatus(disc.albums, 'present') }} complete
-            · {{ countByStatus(disc.albums, 'partial') }} partial ·
-            {{ countByStatus(disc.albums, 'missing') }} missing
-          </span>
-        </div>
-
-        @for (group of discographyGroups(); track group.label) {
-          <div class="mb-6">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-theme-muted mb-3">
-              {{ group.label }} <span class="text-theme-muted/60">({{ group.albums.length }})</span>
-            </h3>
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              @for (album of group.albums; track album.lidarrId) {
-                <div
-                  class="relative flex flex-col p-3 rounded-lg bg-theme-surface/30 border border-transparent"
-                  [class.border-theme-surface-2]="album.status !== 'present'"
-                >
-                  <!-- Status badge -->
-                  <div
-                    class="absolute top-2 right-2 text-xs font-bold leading-none drop-shadow"
-                    [class]="statusClass(album.status)"
-                  >
-                    {{ statusIcon(album.status) }}
-                  </div>
-
-                  <!-- Cover art (Lidarr/MusicBrainz) with gradient placeholder -->
-                  <app-cover-art
-                    [src]="album.coverArtUrl"
-                    [artist]="artist()!.name"
-                    [album]="album.title"
-                    [fill]="true"
-                    className="mb-2"
-                  />
-
-                  <p class="text-sm text-theme-primary truncate font-medium">{{ album.title }}</p>
-                  <p class="text-xs text-theme-muted mt-0.5">
-                    {{ album.releaseDate?.slice(0, 4) ?? '' }}
-                  </p>
-
-                  @if (album.status !== 'missing') {
-                    <p class="text-xs text-theme-muted mt-1">
-                      {{ album.localTrackCount }}/{{ album.totalTracks }} tracks
-                    </p>
-                  }
-
-                  <!-- Hunt button for missing / partial -->
-                  @if (album.status !== 'present') {
-                    <button
-                      (click)="openHunt(album)"
-                      [disabled]="autoHunt.isHunting(album.lidarrId)"
-                      class="mt-2 w-full px-2 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                    >
-                      @if (autoHunt.isHunting(album.lidarrId)) {
-                        <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24">
-                          <circle
-                            class="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            stroke-width="4"
-                            fill="none"
-                          />
-                          <path
-                            class="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                          />
-                        </svg>
-                        <span>Finding…</span>
-                      } @else {
-                        {{ album.status === 'partial' ? 'Complete Album' : 'Find Album' }}
-                      }
-                    </button>
-                  }
-                </div>
-              }
-            </div>
-          </div>
-        }
-      </div>
-    }
   }
 </div>
 

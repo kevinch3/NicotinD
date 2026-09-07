@@ -1,0 +1,114 @@
+@if (tile().status === 'missing') {
+  <!-- Not in the library: nowhere to navigate to, so the tile is inert and the
+       button is the cell's one nav item. Dimmed so a full grid reads at a glance. -->
+  <div
+    data-testid="album-tile"
+    [attr.data-status]="tile().status"
+    class="p-3 rounded-lg bg-theme-surface/10 border border-dashed border-theme-surface-2 flex flex-col"
+  >
+    <div class="opacity-50">
+      <app-cover-art
+        [src]="coverSrc()"
+        [artist]="artistName()"
+        [album]="tile().title"
+        [fill]="true"
+        rounded="rounded"
+        className="mb-2"
+      />
+    </div>
+    <!-- The dimming lives on the artwork above. Text stays at full muted: an
+         opacity step here drops the subtitle below the contrast floor (caught by
+         a11y:storybook:strict), and "not in your library" is a state, not a
+         reason to make words hard to read. -->
+    <p class="text-sm text-theme-muted truncate">{{ tile().title }}</p>
+    <p class="text-xs text-theme-muted">{{ subtitle() }}</p>
+
+    @if (showAction()) {
+      <button
+        appTvNavItem
+        type="button"
+        data-testid="album-tile-action"
+        (click)="acquire.emit()"
+        [disabled]="busy()"
+        class="mt-2 w-full px-2 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+      >
+        @if (busy()) {
+          <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24">
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+              fill="none"
+            />
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+          <span>Finding…</span>
+        } @else {
+          {{ actionLabel() }}
+        }
+      </button>
+    }
+  </div>
+} @else {
+  <!-- Owned, whole or partial. A partial album is still yours and still plays, so
+       it navigates and looks like any other tile — the count carries the gap. -->
+  <a
+    [routerLink]="route()"
+    appTvNavItem
+    data-testid="album-tile"
+    [attr.data-status]="tile().status"
+    class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block"
+  >
+    <app-cover-art
+      [src]="coverSrc()"
+      [artist]="artistName()"
+      [album]="tile().title"
+      [fill]="true"
+      rounded="rounded"
+      className="mb-2"
+    />
+    <p class="text-sm text-theme-primary truncate">{{ tile().title }}</p>
+    <p class="text-xs" [class]="tile().status === 'partial' ? 'text-status-warn' : 'text-theme-muted'">
+      {{ subtitle() }}
+    </p>
+
+    @if (showAction()) {
+      <button
+        type="button"
+        data-testid="album-tile-action"
+        (click)="$event.preventDefault(); $event.stopPropagation(); acquire.emit()"
+        [disabled]="busy()"
+        class="mt-2 w-full px-2 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+      >
+        @if (busy()) {
+          <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24">
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+              fill="none"
+            />
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+          <span>Finding…</span>
+        } @else {
+          {{ actionLabel() }}
+        }
+      </button>
+    }
+  </a>
+}

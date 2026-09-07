@@ -10,7 +10,7 @@ import {
   OnInit,
   OnDestroy,
 } from '@angular/core';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
@@ -33,6 +33,7 @@ import { SongMenuService } from '../../services/song-menu.service';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { ArtistImageMenuComponent } from '../../components/artist-image-menu/artist-image-menu.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
+import { AlbumTileComponent } from '../../components/album-tile/album-tile.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
@@ -57,14 +58,17 @@ import {
 import { createSelection } from '../../lib/selection';
 import { albumRef, toTrack } from '../../lib/track-utils';
 import { appendUnique } from '../../lib/append-unique';
-import { resolveAlbumRoute } from '../../lib/route-utils';
+import {
+  buildArtistAlbumTiles,
+  partitionTiles,
+  type AlbumTile,
+} from '../../lib/artist-album-tiles';
 import { NavigationService } from '../../services/navigation.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
-import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 
 export type ArtistTab = 'albums' | 'singles' | 'appears-on' | 'songs';
 export type SongSort = 'newest' | 'title' | 'album';
@@ -77,9 +81,9 @@ const SONGS_PAGE_SIZE = 60;
     SkeletonComponent,
     TranslatePipe,
     ArtistImageMenuComponent,
-    RouterLink,
     AlbumHuntModalComponent,
     CoverArtComponent,
+    AlbumTileComponent,
     IconComponent,
     TrackRowComponent,
     SelectionBarComponent,
@@ -91,7 +95,6 @@ const SONGS_PAGE_SIZE = 60;
     ArtistOriginComponent,
     GenreDistributionStripComponent,
     TvNavGroupDirective,
-    TvNavItemDirective,
   ],
   templateUrl: './artist-detail.component.html',
 })
@@ -226,8 +229,10 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   // the default-tab pick stay in sync.
   readonly visibleTabs = computed<ArtistTab[]>(() => {
     const tabs: ArtistTab[] = [];
-    if (this.albums().length > 0) tabs.push('albums');
-    if (this.singlesAndEps().length > 0) tabs.push('singles');
+    // Counts MERGED tiles: an artist whose every album is missing still has an
+    // Albums tab, which is exactly the case the acquire buttons exist for.
+    if (this.albumTiles().length > 0) tabs.push('albums');
+    if (this.singleTiles().length > 0) tabs.push('singles');
     if (this.appearsOn().length > 0) tabs.push('appears-on');
     tabs.push('songs');
     return tabs;
@@ -443,31 +448,50 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   readonly discographyLoading = signal(false);
   readonly huntingAlbum = signal<DiscographyAlbum | null>(null);
 
-  // Group the flat discography by release type for the template's sectioned grid.
-  // Order: Albums → EPs → Singles → everything else; chronological within a group.
-  private readonly typeOrder = ['Album', 'EP', 'Single'];
-  readonly discographyGroups = computed<{ label: string; albums: DiscographyAlbum[] }[]>(() => {
-    const disc = this.discography();
-    if (!disc) return [];
-    const buckets = new Map<string, DiscographyAlbum[]>();
-    for (const album of disc.albums) {
-      const key = album.albumType || 'Other';
-      const bucket = buckets.get(key) ?? buckets.set(key, []).get(key)!;
-      bucket.push(album);
-    }
-    const rank = (type: string): number => {
-      const i = this.typeOrder.indexOf(type);
-      return i === -1 ? this.typeOrder.length : i;
-    };
-    return [...buckets.entries()]
-      .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
-      .map(([label, albums]) => ({
-        label,
-        albums: [...albums].sort((x, y) =>
-          (x.releaseDate ?? '').localeCompare(y.releaseDate ?? ''),
-        ),
-      }));
+  // ─── Merged album grid (library + discography, one set of tiles) ──────────
+  // The page used to render these as two grids: the library's albums, then the
+  // full discography repeating the same covers with its own status badges. The
+  // join is the server's own `localAlbumId` — see lib/artist-album-tiles.ts for
+  // why the web must not re-derive it.
+  private readonly discographyAlbums = computed(() => this.discography()?.albums ?? []);
+
+  readonly albumTiles = computed(() =>
+    buildArtistAlbumTiles(this.albums(), this.discographyAlbums(), { tab: 'albums' }),
+  );
+  readonly singleTiles = computed(() =>
+    buildArtistAlbumTiles(this.singlesAndEps(), this.discographyAlbums(), { tab: 'singles' }),
+  );
+
+  /** Releases we do not own that are not primary studio records — collapsed by default. */
+  readonly showAllReleases = signal(false);
+
+  readonly visibleAlbumTiles = computed(() => this.visibleTiles(this.albumTiles()));
+  readonly visibleSingleTiles = computed(() => this.visibleTiles(this.singleTiles()));
+
+  private visibleTiles(tiles: AlbumTile[]): AlbumTile[] {
+    const { primary, secondary } = partitionTiles(tiles);
+    return this.showAllReleases() ? [...primary, ...secondary] : primary;
+  }
+
+  /** How many tiles the toggle would reveal on the tab being looked at. */
+  readonly hiddenReleaseCount = computed(() => {
+    const tiles = this.activeTab() === 'singles' ? this.singleTiles() : this.albumTiles();
+    return partitionTiles(tiles).secondary.length;
   });
+
+  /** "Appears on" is a local-only surface — a compilation is not this artist's release. */
+  readonly appearsOnTiles = computed(() =>
+    buildArtistAlbumTiles(this.appearsOn(), [], { tab: 'albums' }),
+  );
+
+  /** A tile's hunt needs the discography row behind it; a plain local album has none. */
+  huntTile(tile: AlbumTile): void {
+    if (tile.source) this.openHunt(tile.source);
+  }
+
+  isTileHunting(tile: AlbumTile): boolean {
+    return tile.source ? this.autoHunt.isHunting(tile.source.lidarrId) : false;
+  }
 
   // Lazy-load the next song page when the sentinel scrolls into view, but only
   // while the Songs tab is active (mirrors the library grid's observer).
@@ -507,6 +531,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.singlesAndEps.set([]);
     this.appearsOn.set([]);
     this.discography.set(null);
+    this.showAllReleases.set(false);
     this.identityOpen.set(false);
     this.genreOpen.set(false);
     this.imageVersion.set(0);
@@ -595,18 +620,6 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.huntingAlbum.set(null);
   }
 
-  statusIcon(status: 'present' | 'partial' | 'missing'): string {
-    if (status === 'present') return '✓';
-    if (status === 'partial') return '◑';
-    return '○';
-  }
-
-  statusClass(status: 'present' | 'partial' | 'missing'): string {
-    if (status === 'present') return 'text-status-done';
-    if (status === 'partial') return 'text-status-warn';
-    return 'text-zinc-500';
-  }
-
   countByStatus(albums: DiscographyAlbum[], status: 'present' | 'partial' | 'missing'): number {
     return albums.filter((a) => a.status === status).length;
   }
@@ -627,10 +640,6 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     } finally {
       this.playingAll.set(false);
     }
-  }
-
-  getAlbumLink(id: string) {
-    return resolveAlbumRoute(id);
   }
 
   // ─── Share (issue #229): mint a share link + copy it, mirroring album-detail ─

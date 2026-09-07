@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { provideRouter, Router, ActivatedRoute, convertToParamMap } from '@angular/router';
-import { of, BehaviorSubject } from 'rxjs';
+import { of, BehaviorSubject, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { ArtistDetailComponent } from './artist-detail.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -72,7 +72,11 @@ function song(id: string) {
   };
 }
 
-function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedCount: 0 }))) {
+function setup(
+  role = 'admin',
+  deleteSongs = vi.fn(() => of({ ok: true, deletedCount: 0 })),
+  canAcquire = true,
+) {
   const playWithContextCalls: unknown[][] = [];
   const addToQueueCalls: unknown[] = [];
   const getAlbumCalls: string[] = [];
@@ -164,6 +168,8 @@ function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedC
           token: signal('tok'),
           role: signal(role),
           canCurate: () => canCurateRole(asRole(role)),
+          // The merged album grid gates its acquire buttons on this.
+          canAcquire: () => canAcquire,
         },
       },
       {
@@ -637,3 +643,184 @@ describe('ArtistDetailComponent — TV D-pad nav (issue android-tv phase3)', () 
 async function fixture_stable() {
   await Promise.resolve();
 }
+
+// ─── Merged album grid (library + discography in one set of tiles) ───────────
+// The page used to render the library's albums and then repeat the same records
+// in a separate "Full Discography" section. These cover the join.
+
+const release = (over: Record<string, unknown>) => ({
+  foreignAlbumId: 'mb',
+  albumType: 'Album',
+  secondaryTypes: [] as string[],
+  totalTracks: 10,
+  localTrackCount: 0,
+  status: 'missing' as const,
+  tracks: [] as unknown[],
+  ...over,
+});
+
+function setupMerged(albums: unknown[], discographyFails = false) {
+  TestBed.resetTestingModule();
+  TestBed.configureTestingModule({
+    imports: [ArtistDetailComponent],
+    providers: [
+      provideRouter([]),
+      {
+        provide: PullToRefreshService,
+        useValue: { register: () => {}, refreshing: signal(false), hasHandler: signal(true) },
+      },
+      {
+        provide: ActivatedRoute,
+        useValue: {
+          paramMap: of(convertToParamMap({ id: 'ar1' })),
+          snapshot: {
+            paramMap: { get: () => 'ar1' },
+            queryParamMap: { get: () => null, getAll: () => [], keys: [] as string[] },
+          },
+        },
+      },
+      {
+        provide: DownloadsApiService,
+        useValue: {
+          getArtistDiscography: () =>
+            discographyFails
+              ? throwError(() => new Error('Lidarr not configured'))
+              : of({ artistId: 'ar1', lidarrId: 1, mbid: 'm', albums }),
+        },
+      },
+      {
+        provide: LibraryApiService,
+        useValue: {
+          artistImageSources: () => of({ sources: [] }),
+          getArtist: () => of({ artist: ARTIST, albums: ALBUMS, singlesAndEps: [] }),
+          getArtistAppearsOn: () => of([]),
+          getArtistSongs: () => of({ songs: [], total: 0 }),
+          artistGenreDistribution: () => of({ slices: [], trackCount: 0, genreCount: 0 }),
+          invalidateLibraryReads: () => {},
+        },
+      },
+      {
+        provide: AuthService,
+        useValue: {
+          token: signal('tok'),
+          role: signal('admin'),
+          canCurate: () => true,
+          canAcquire: () => true,
+        },
+      },
+      { provide: PlayerService, useValue: { playWithContext: () => {}, addToQueue: () => {} } },
+      { provide: TransferService, useValue: { deletedSongIds: signal(new Set<string>()) } },
+    ],
+    schemas: [NO_ERRORS_SCHEMA],
+  });
+  const fixture = TestBed.createComponent(ArtistDetailComponent);
+  fixture.detectChanges();
+  return fixture;
+}
+
+const titles = (tiles: { title: string }[]) => tiles.map((t) => t.title);
+
+describe('ArtistDetailComponent — merged album grid', () => {
+  it('shows one tile per album, not one per source', async () => {
+    // a1 matches a release; a2 does not. Three inputs, three tiles — the old page
+    // would have drawn five (two library tiles + three discography tiles).
+    const fixture = setupMerged([
+      release({ lidarrId: 1, title: 'Natiruts', status: 'present', localAlbumId: 'a1' }),
+      release({ lidarrId: 2, title: 'Raçá', releaseDate: '2010-01-01' }),
+    ]);
+    await fixture_stable();
+    fixture.detectChanges();
+
+    const tiles = fixture.componentInstance.albumTiles();
+    expect(tiles).toHaveLength(3);
+    expect(titles(tiles).sort()).toEqual(['Acústico', 'Natiruts', 'Raçá']);
+    expect(tiles.find((t) => t.title === 'Natiruts')!.status).toBe('owned');
+    expect(tiles.find((t) => t.title === 'Raçá')!.status).toBe('missing');
+  });
+
+  it('hands a missing album to the grid with the discography row its hunt needs', async () => {
+    // The tile's own rendering is asserted in album-tile.component.spec.ts, where it
+    // is the ROOT component. This harness does not register signal inputs on a nested
+    // component (src/testing/signal-input.ts), so every <app-album-tile> here renders
+    // its defaults — a DOM assertion through one would pass vacuously.
+    const fixture = setupMerged([release({ lidarrId: 2, title: 'Raçá' })]);
+    await fixture_stable();
+    fixture.detectChanges();
+
+    const missing = fixture.componentInstance.visibleAlbumTiles().find((t) => t.title === 'Raçá')!;
+
+    expect(missing.status).toBe('missing');
+    expect(missing.localAlbumId).toBeUndefined();
+    // Without a source the tile's button would be inert.
+    expect(missing.source?.lidarrId).toBe(2);
+  });
+
+  it('routes a tile press to the hunt for that release, and only for a release', async () => {
+    const fixture = setupMerged([
+      release({ lidarrId: 2, title: 'Raçá' }),
+      release({ lidarrId: 1, title: 'Natiruts', status: 'present', localAlbumId: 'a1' }),
+    ]);
+    await fixture_stable();
+    const c = fixture.componentInstance;
+    const hunted: number[] = [];
+    c.openHunt = ((album: { lidarrId: number }) => hunted.push(album.lidarrId)) as never;
+
+    const tiles = c.albumTiles();
+    c.huntTile(tiles.find((t) => t.title === 'Raçá')!);
+    expect(hunted).toEqual([2]);
+
+    // A complete album carries no source, so pressing it can never start a hunt.
+    c.huntTile(tiles.find((t) => t.title === 'Natiruts')!);
+    expect(hunted).toEqual([2]);
+  });
+
+  it('collapses unowned live albums until the toggle is pressed', async () => {
+    const fixture = setupMerged([
+      release({ lidarrId: 2, title: 'Raçá' }),
+      release({ lidarrId: 3, title: 'Ao Vivo', secondaryTypes: ['Live'] }),
+    ]);
+    await fixture_stable();
+    fixture.detectChanges();
+    const c = fixture.componentInstance;
+
+    expect(titles(c.visibleAlbumTiles())).not.toContain('Ao Vivo');
+    expect(c.hiddenReleaseCount()).toBe(1);
+
+    c.showAllReleases.set(true);
+    expect(titles(c.visibleAlbumTiles())).toContain('Ao Vivo');
+  });
+
+  it('still renders every local album when the discography fails to load', async () => {
+    // Lidarr unconfigured, artist unmatched, or the acquirer gate refused — the
+    // grid must degrade to exactly what it showed before the merge, not to empty.
+    const fixture = setupMerged([], true);
+    await fixture_stable();
+    fixture.detectChanges();
+
+    expect(titles(fixture.componentInstance.albumTiles()).sort()).toEqual(['Acústico', 'Natiruts']);
+    expect(fixture.componentInstance.visibleTabs()).toContain('albums');
+    // Every tile is a plain owned album: nothing carries a hunt source, so the
+    // grid offers no action even though the user could acquire.
+    expect(fixture.componentInstance.albumTiles().every((t) => !t.source)).toBe(true);
+  });
+
+  it('keeps an Albums tab for an artist whose every album is missing', async () => {
+    // visibleTabs used to count local rows only, which hid the tab holding the
+    // acquire buttons in exactly the case they exist for.
+    const fixture = setupMerged([release({ lidarrId: 9, title: 'Unowned' })]);
+    await fixture_stable();
+    fixture.componentInstance.albums.set([]);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.visibleTabs()).toContain('albums');
+  });
+
+  it('no longer renders a separate Full Discography section', async () => {
+    const fixture = setupMerged([release({ lidarrId: 1, title: 'Natiruts', localAlbumId: 'a1' })]);
+    await fixture_stable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).not.toContain('Full Discography');
+    expect(fixture.nativeElement.querySelector('[data-testid="discography-summary"]')).toBeTruthy();
+  });
+});
