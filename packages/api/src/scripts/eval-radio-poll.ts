@@ -83,7 +83,7 @@ function main(): void {
 
   const byFormula = new Map<string, Array<{ poll: RadioPollRow; ds: RadioPollExportDataset }>>();
   for (const [poll, ds] of datasets) {
-    const key = `${ds.formulaVersion} · ${ds.voteScale}`;
+    const key = `${ds.formulaVersion} · ${ds.voteScale} · ${ds.strategy ?? 'balanced'}`;
     const group = byFormula.get(key) ?? [];
     group.push({ poll, ds });
     byFormula.set(key, group);

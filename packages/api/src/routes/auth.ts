@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { asRole, hashPassword, verifyPassword } from '@nicotind/core';
+import { DEFAULT_STRATEGY, isStrategyId, type StrategyId } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { authMiddleware, signJwt } from '../middleware/auth.js';
 import type { AuthEnv } from '../middleware/auth.js';
@@ -386,8 +387,8 @@ export function authRoutes(
       const user = c.get('user');
       const db = getDatabase();
       const settings = db
-        .query<{ welcome_dismissed: number }, [string]>(
-          'SELECT COALESCE(welcome_dismissed, 0) as welcome_dismissed FROM user_settings WHERE user_id = ?',
+        .query<{ welcome_dismissed: number; radio_strategy: string | null }, [string]>(
+          'SELECT COALESCE(welcome_dismissed, 0) as welcome_dismissed, radio_strategy FROM user_settings WHERE user_id = ?',
         )
         .get(user.sub);
       return c.json(
@@ -397,12 +398,18 @@ export function authRoutes(
           role: user.role ?? 'user',
           welcomeDismissed: (settings?.welcome_dismissed ?? 0) === 1,
           acquisitionEnabled: acquisitionOn(),
+          // The remembered variety position (docs/radio.md "Strategies");
+          // anything unknown or unset reads as the default.
+          radioStrategy: isStrategyId(settings?.radio_strategy)
+            ? settings!.radio_strategy
+            : DEFAULT_STRATEGY,
         } as {
           id: string;
           username: string;
           role: string;
           welcomeDismissed: boolean;
           acquisitionEnabled: boolean;
+          radioStrategy: StrategyId;
         },
         200,
       );

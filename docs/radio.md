@@ -649,6 +649,85 @@ recently-played shelf would (no history, endpoint down, empty generation).
 Tapping a tile calls `startRadio(track)` on the recommendation, so the vibe
 continues past the tapped track.
 
+## Strategies (named recipes)
+
+`services/recommendation/strategies.ts` is a registry of **named recipes** for
+one radio generation: weight overrides onto `DEFAULT_WEIGHTS`, the per-artist
+cap, the pool mix (each pass's `LIMIT`, the backfill trigger) and an
+out-of-genre quota. The client asks for one by name (`?strategy=` on
+`/api/radio/next`, 400 on an unknown id), `dump-radio --strategy` renders one,
+and a poll stamps the one it generated under onto every scenario snapshot
+(`RadioPollScenarioSnapshot.strategy`) so `evaluatePollAgreement` groups by
+`(formula_version, voteScale, strategy)` — a different pool is a different
+object and is never pooled with another. `RADIO_FORMULA_VERSION` is untouched:
+a strategy is a weight set plus a pool, never a new scoring function.
+
+| id         | weights (vs default)                                   | cap | pool mix (any-genre / token / bpm / energy / out-of-genre / backfill) | quota |
+| ---------- | ------------------------------------------------------ | --- | ---------------------------------------------------------------------- | ----- |
+| `balanced` | none                                                   | 2   | 150 / 100 / 100 / 100 / 0 / 100 below 50                               | 0     |
+| `similar`  | genre +6, embedding ×1.5, timbre ×1.5, bpm +2          | 3   | 250 / 50 / 100 / 100 / 0 / none                                        | 0     |
+| `different`| genre 8, origin 4, embedding ×0.5, artistPenalty ×1.5  | 1   | 80 / 50 / 100 / 100 / 120 / 100 below 50                               | 0.3   |
+
+`balanced` is pinned by test to the literals the pool used before strategies
+existed, so nothing measured so far moved. The numbers for the other two are
+**starting points, unmeasured** — the way to measure them is one dump line.
+
+**Why pool composition and a quota, not a rank-window sampler.** On prod the
+random pool draw already moves 6–9 of the served 10 while a weight A/B moves
+0–3 (#598, "Measuring a station"). "Too different" served by sampling lower
+ranks would be *worse* tracks from the *same genre pool* — more of the same,
+only less fitting. `different` therefore adds a pool pass that shares **no**
+genre with the seed (`NOT (genre match)`, `poolMix.outOfGenre`) and
+`rankCandidates` reserves `outOfGenreQuota` of the window for the best of those
+rows before the general walk fills the rest (`RankQuota`). The effect is
+guaranteed rather than probable, and `dump-radio` prints it:
+
+```
+- strategy: **different**
+- served window: 6/10 share a seed genre · 10 distinct artists · mean embedding cosine 0.71
+```
+
+If that first number does not move between `--strategy balanced` and
+`--strategy different` on your library, the strategy is a label, not a lever.
+Stations (filter radio) take only a strategy's weights and artist cap: their
+pool *is* the filter, so the pool mix and quota are seed-lane levers.
+
+`similar` is the mirror: a bigger same-genre pool, no random backfill, heavier
+identity axes, a third slot per artist. Its `backfillBelow` (30) is also the
+tier-2 readiness trigger — see "Feed eligibility".
+
+## Variety chip
+
+The radio pill in Now Playing (`components/now-playing/radio-chip/`) grew a
+suffix. The main button keeps the `now-playing-radio` toggle contract; the
+chevron (`radio-chip-expand`) opens a panel that names what the radio is
+playing from — "Based on *title*" for a seed, "Station: *label*" via the shared
+`describeLibraryFilter` for a vibe — and a three-position control
+(`radio-variety`, `role="radiogroup"`, positions
+`radio-variety-too-similar|balanced|too-different`, ArrowLeft/Right move it).
+
+The labels are **complaints** and the strategies are **remedies**: "too similar"
+asks for `different`, "too different" asks for `similar`. That inversion lives
+in exactly one tested core function, `strategyForVariety`, so it cannot ship
+inverted. A move does three things:
+
+1. **Steers now.** `PlayerService.setRadioStrategy` drops the radio-appended
+   tail of the queue — tracks carry `queuedBy: 'radio'`; anything the listener
+   queued is never touched — and refetches immediately with the new strategy.
+2. **Logs a vote.** `POST /api/recommendations/feedback` with kind
+   `too_similar` / `balanced` / `too_different` against the playing track and a
+   context (`strategyFrom`, `strategyTo`, seed or filter). Votes never exclude;
+   they are the raw material for a later per-user taste profile.
+3. **Remembers.** `PUT /api/recommendations/preferences` stores the strategy on
+   `user_settings.radio_strategy`; `GET /api/auth/me` returns it and the app
+   applies it on session refresh, ahead of the device's own persisted position
+   (`nicotind_player_state.radioStrategy`).
+
+On TV the chip's two buttons are direct items of the Now Playing root nav group
+(ArrowDown from play/pause still lands on `now-playing-radio` first) and the
+panel is its own horizontal group; the mini player and the TV player carry no
+chip.
+
 ## Per-user exclusions ("Don't recommend this")
 
 A listener can hold a song out of every feed without touching the library:
@@ -1050,6 +1129,8 @@ collapse, which it needed most (see "Same recording, multiple files").
 | `packages/api/src/services/genre-distribution.ts`                     | `artistGenreShares` — batched "how much of this artist is this genre", the artist half of station affinity (shares the radar's definition)                                                                                                                     |
 | `packages/api/src/services/embedding-store.ts`                        | `loadEmbeddings` / `embeddingModelFor` / `dominantEmbeddingModel` — pooled read of cached Essentia vectors (the last picks a station's vector space, which has no seed song to pin)                                                                            |
 | `packages/api/src/routes/radio.ts`                                    | `/api/radio/next` route (seed **and** filter paths); exports the shared generators `buildSeedRadio` / `buildFilterRadio` / `radioSongs` (pool build + rank, optional `weights` override for the dump), `toOrderable` (via `songFilterWheres` + `seedCentroid`), `stationCentroid` (the station's target, over the whole eligible set) |
+| `packages/api/src/services/recommendation/strategies.ts`              | **Strategies**: `STRATEGIES` / `resolveStrategy` / `resolveWeights` / `PoolMix` — the named recipes (weights, cap, pool mix, out-of-genre quota); `balanced` pinned to the pre-strategy pool; `UnknownStrategyError` → route 400                                                       |
+| `packages/web/src/app/components/now-playing/radio-chip/`             | **Variety chip**: the radio pill + suffix panel (`radio-chip-expand`, `radio-variety-*`); steers `PlayerService.setRadioStrategy`, logs the vote, saves the default                                                                                                  |
 | `packages/api/src/services/recommendation/feedback-store.ts`          | **Per-user exclusions**: `recordFeedback`, `excludedSongs` / `excludedSongIds`, `SKIP_RULE` — explicit votes plus the derived early-skip rule, applied by radio / random / similar as `excludeIds`                                                                          |
 | `packages/api/src/services/recommendation/eligibility.ts`             | **Feed eligibility**: `feedEligibilitySql` / `feedEligibilityWheres` / `isFeedEligible` — the one "may this song be recommended" predicate (hidden song or album, landed, duration floor, readiness tiers), enforced by `check:feed-eligibility`                                              |
 | `packages/api/src/services/genre-split.ts`                            | `segmentConcatenatedGenre` — splits mashed genre tags feeding the genre axis (see [library-scanner.md](library-scanner.md))                                                                                                                                    |

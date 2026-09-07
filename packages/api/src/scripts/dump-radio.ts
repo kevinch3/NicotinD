@@ -15,7 +15,8 @@
  *        --json (emit JSON alongside the markdown path), filter flags:
  *        --genre <g> (repeatable), --bpm-min/--bpm-max, --year-min/--year-max,
  *        --key <code>, --mood <m>, --dur-min/--dur-max, --starred,
- *        --weights genre=14,embedding=8 (A/B a candidate DEFAULT_WEIGHTS change).
+ *        --weights genre=14,embedding=8 (A/B a candidate DEFAULT_WEIGHTS change),
+ *        --strategy similar|balanced|different (a named recipe; --weights still wins).
  *
  * WHY this exists: seed radios are genre-coherent but filter ("vibe") radios pull
  * cross-genre tracks (José Larralde Folk → Katy Perry Pop). The per-axis breakdown
@@ -33,6 +34,7 @@ import { Database } from 'bun:sqlite';
 import { parseLibraryFilter, type LibraryFilter } from '@nicotind/core';
 import { expandHome } from '@nicotind/core';
 import {
+  cosineSim,
   explainSimilarity,
   genreSetCloseness,
   MISSING_GENRE_FLOOR,
@@ -43,6 +45,11 @@ import {
 } from '../services/radio.service.js';
 import { isRealGenre } from '../services/genre-split.js';
 import { feedEligibilitySql } from '../services/recommendation/eligibility.js';
+import {
+  resolveStrategy,
+  resolveWeights,
+  type RecommendationStrategy,
+} from '../services/recommendation/strategies.js';
 import { artistGenreShares } from '../services/genre-distribution.js';
 import { DEPTH_CREDIT, matchedGenrePosition } from '../services/station-affinity.js';
 import {
@@ -520,6 +527,36 @@ function renderDiagnosis(
   return lines;
 }
 
+/**
+ * One line that says whether a strategy did what its name promises: how much
+ * of the served window shares a genre with the seed, how many distinct artists
+ * it holds, and the mean embedding cosine to the seed. `--strategy different`
+ * should move the first number down and the second up; if it does not, the
+ * strategy is a label, not a lever.
+ */
+export function renderServedWindow(
+  seed: SongFeatures | null,
+  ranked: ReadonlyArray<{ song: RadioCandidate; score: number }>,
+): string[] {
+  if (!seed || ranked.length === 0) return [];
+  const seedGenres = new Set((seed.genres ?? (seed.genre ? [seed.genre] : [])).filter(isRealGenre));
+  const inGenre = ranked.filter((e) =>
+    (e.song.genres ?? (e.song.genre ? [e.song.genre] : [])).some((g) => seedGenres.has(g)),
+  ).length;
+  const artists = new Set(ranked.map((e) => e.song.artistId)).size;
+  const cosines = ranked
+    .map((e) =>
+      seed.embedding && e.song.embedding ? cosineSim(seed.embedding, e.song.embedding) : null,
+    )
+    .filter((v): v is number => v !== null);
+  const meanCos = cosines.length
+    ? (cosines.reduce((a, b) => a + b, 0) / cosines.length).toFixed(3)
+    : 'n/a';
+  return [
+    `- served window: ${inGenre}/${ranked.length} share a seed genre · ${artists} distinct artists · mean embedding cosine ${meanCos}`,
+  ];
+}
+
 function renderDump(
   db: Database,
   kind: 'seed' | 'filter',
@@ -527,12 +564,15 @@ function renderDump(
   filter: LibraryFilter | null,
   result: RadioResult,
   weights: ScoringWeights,
+  strategy: RecommendationStrategy,
 ): string {
   const { seed, pool, ranked } = result;
   const lines: string[] = [];
   lines.push(`# Radio diagnostic dump`);
   lines.push('');
   lines.push(`- kind: **${kind} radio**`);
+  lines.push(`- strategy: **${strategy.id}**`);
+  lines.push(...renderServedWindow(seed, ranked));
   lines.push(`- seed: ${seedLabel(seedRow, seed)}`);
   if (filter) lines.push(`- filter: \`${JSON.stringify(filter)}\``);
   lines.push(`- generated: ${new Date().toISOString()}`);
@@ -660,7 +700,8 @@ function main(): void {
   db.run('PRAGMA busy_timeout = 5000');
 
   const count = Math.min(Math.max(Number(firstArg(args, 'count') ?? 12), 1), 50);
-  const weights = parseWeightOverrides(firstArg(args, 'weights'));
+  const strategy = resolveStrategy(firstArg(args, 'strategy'));
+  const weights = parseWeightOverrides(firstArg(args, 'weights'), resolveWeights(strategy));
   let kind: 'seed' | 'filter';
   let seedRow: RadioSongRow | null = null;
   let filter: LibraryFilter | null = null;
@@ -684,7 +725,7 @@ function main(): void {
         process.exit(1);
       }
       kind = 'seed';
-      result = buildSeedRadio(db, seedRow, { count, weights });
+      result = buildSeedRadio(db, seedRow, { count, weights, strategy });
     } else if (seedId) {
       seedRow = db.query<RadioSongRow, [string]>(`${RADIO_SONG_SELECT} WHERE s.id = ?`).get(seedId);
       if (!seedRow) {
@@ -692,7 +733,7 @@ function main(): void {
         process.exit(1);
       }
       kind = 'seed';
-      result = buildSeedRadio(db, seedRow, { count, weights });
+      result = buildSeedRadio(db, seedRow, { count, weights, strategy });
     } else if (artist) {
       // Pick a landed track for the artist, preferring one that HAS a genre so
       // the seed represents the artist's tagging (else the whole run is genre-blind).
@@ -707,7 +748,7 @@ function main(): void {
         process.exit(1);
       }
       kind = 'seed';
-      result = buildSeedRadio(db, seedRow, { count, weights });
+      result = buildSeedRadio(db, seedRow, { count, weights, strategy });
     } else {
       filter = filterFromArgs(args);
       if (Object.keys(filter).length === 0) {
@@ -717,10 +758,10 @@ function main(): void {
         process.exit(1);
       }
       kind = 'filter';
-      result = buildFilterRadio(db, filter, { count, weights });
+      result = buildFilterRadio(db, filter, { count, weights, strategy });
     }
 
-    const markdown = renderDump(db, kind, seedRow, filter, result, weights);
+    const markdown = renderDump(db, kind, seedRow, filter, result, weights, strategy);
     const outPath = firstArg(args, 'out') ?? join(dataDir, `radio-dump-${Date.now()}.md`);
     writeFileSync(outPath, markdown + '\n');
     if (args['json'] === true) {

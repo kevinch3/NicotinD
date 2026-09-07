@@ -378,3 +378,29 @@ describe('describeFilter', () => {
     expect(describeFilter({})).toBe('Everything');
   });
 });
+
+describe('generatePollScenarios — strategy stamping', () => {
+  it('stamps the strategy onto every scenario snapshot, defaulting to balanced', () => {
+    for (let i = 0; i < 8; i++) {
+      seedSong({ id: `s${i}`, title: `Song ${i}`, artist: `Artist ${i}`, genre: 'Rock', bpm: 120 });
+    }
+    const settings = normalizePollSettings({ scenarioCount: 2, nextUpCount: 3 });
+    for (const sc of generatePollScenarios(db, settings, mergePollWeights(undefined))) {
+      expect(sc.snapshot.strategy).toBe('balanced');
+    }
+    const different = normalizePollSettings({
+      scenarioCount: 2,
+      nextUpCount: 3,
+      strategy: 'different',
+    });
+    expect(different.strategy).toBe('different');
+    for (const sc of generatePollScenarios(db, different, mergePollWeights(undefined))) {
+      expect(sc.snapshot.strategy).toBe('different');
+    }
+    // An unknown id is dropped by normalisation rather than stored.
+    expect(
+      normalizePollSettings({ scenarioCount: 1, nextUpCount: 1, strategy: 'random' as never })
+        .strategy,
+    ).toBeUndefined();
+  });
+});

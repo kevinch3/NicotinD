@@ -26,6 +26,10 @@ export interface RadioPollExportDataset {
   /** Vote scale the poll collected under (issue #800). Same never-pool rule as
    *  `formulaVersion`; older dataset files on disk lack the field = binary. */
   voteScale: RadioPollVoteScale;
+  /** Strategy the scenarios were generated under; older dataset files on disk
+   *  lack the field = balanced. Same never-pool rule as `formulaVersion`: a
+   *  different pool is a different object. */
+  strategy?: string;
   settings: RadioPollSettings;
   raterCount: number;
   voteCount: number;
@@ -123,6 +127,7 @@ export function pollExportDataset(db: Database, poll: RadioPollRow): RadioPollEx
     engineVersion: poll.engine_version,
     formulaVersion: poll.formula_version ?? '1',
     voteScale: scale,
+    strategy: results.settings.strategy ?? 'balanced',
     settings: results.settings,
     raterCount: results.poll.raterCount,
     voteCount: results.poll.voteCount,

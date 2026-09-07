@@ -24,6 +24,7 @@ export * from './types/waveform.js';
 export * from './types/library-filter.js';
 export * from './types/origin.js';
 export * from './types/radio-poll.js';
+export * from './types/radio-strategy.js';
 
 // Role ladder (capability helpers shared by API guards + web gating)
 export * from './roles.js';

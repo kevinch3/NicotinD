@@ -299,7 +299,9 @@ export class LayoutComponent implements OnInit, OnDestroy {
       // Filter "vibe" radio: keep pulling in-filter tracks so the mood holds.
       const filter = this.player.radioFilter();
       if (filter) {
-        const songs = await firstValueFrom(this.api.getFilterRadio(filter, exclude, 10));
+        const songs = await firstValueFrom(
+          this.api.getFilterRadio(filter, exclude, 10, seed.strategy),
+        );
         if (songs.length) return songs.map((s) => toTrack(s));
         // Filter exhausted → fall through to seed/shuffle so playback continues.
       }
@@ -308,7 +310,9 @@ export class LayoutComponent implements OnInit, OnDestroy {
         const songs = await firstValueFrom(this.api.getAllSongs(200, 0, { sort: 'newest' }));
         return shuffleArray(songs.map((s) => toTrack(s)));
       }
-      const songs = await firstValueFrom(this.api.getRadioNext(seed.currentTrack.id, exclude, 10));
+      const songs = await firstValueFrom(
+        this.api.getRadioNext(seed.currentTrack.id, exclude, 10, seed.strategy),
+      );
       return songs.map((s) => toTrack(s));
     });
   }

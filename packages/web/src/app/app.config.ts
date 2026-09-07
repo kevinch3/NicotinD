@@ -34,7 +34,11 @@ export const APP_VERSION = new InjectionToken<string>('APP_VERSION');
  * boot connectivity check (online boot), or on the first return to online after
  * an offline launch (see the initializer below).
  */
-export function refreshSession(api: AuthApiService, auth: AuthService): void {
+export function refreshSession(
+  api: AuthApiService,
+  auth: AuthService,
+  player?: PlayerService,
+): void {
   api
     .refreshToken()
     .pipe(
@@ -52,6 +56,8 @@ export function refreshSession(api: AuthApiService, auth: AuthService): void {
         // Deployment-wide acquisition kill-switch (#235): default to enabled
         // when an older server omits the field.
         auth.serverAcquisitionEnabled.set(profile.acquisitionEnabled ?? true);
+        // The per-user variety position wins over the device's remembered one.
+        if (player && profile.radioStrategy) player.radioStrategy.set(profile.radioStrategy);
       },
       error: () => {},
     });
@@ -104,7 +110,7 @@ export const appConfig: ApplicationConfig = {
       return setup.check().then(() => {
         if (!auth.isAuthenticated()) return;
         if (!setup.isOffline()) {
-          refreshSession(api, auth);
+          refreshSession(api, auth, player);
           return;
         }
         // Offline launch with a stored session: refresh it automatically the
@@ -114,7 +120,7 @@ export const appConfig: ApplicationConfig = {
           () => {
             if (setup.isOffline()) return;
             ref.destroy();
-            if (auth.isAuthenticated()) refreshSession(api, auth);
+            if (auth.isAuthenticated()) refreshSession(api, auth, player);
           },
           { injector },
         );

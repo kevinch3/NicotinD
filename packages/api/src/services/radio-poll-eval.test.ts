@@ -128,6 +128,7 @@ describe('evaluatePollAgreement (issue #583)', () => {
       name: 'n',
       formulaVersion: '1',
       voteScale: 'binary',
+      strategy: 'balanced',
       scenarioCount: 1,
       gradedCandidates: 2,
       tally: { wins, ties: 0, pairs },

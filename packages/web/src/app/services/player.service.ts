@@ -1,5 +1,10 @@
 import { Injectable, signal, computed, effect, untracked } from '@angular/core';
-import type { LibraryFilter } from '@nicotind/core';
+import {
+  DEFAULT_STRATEGY,
+  isStrategyId,
+  type LibraryFilter,
+  type StrategyId,
+} from '@nicotind/core';
 import type { BufferedRange } from '../lib/buffered-ranges';
 import { moveInList } from '../lib/move-in-list';
 
@@ -17,6 +22,9 @@ export interface Track {
   genre?: string;
   bpm?: number;
   key?: string;
+  /** Who put it in the queue. Radio-appended tracks are the ones a strategy
+   *  change may throw away; a track the listener queued is never touched. */
+  queuedBy?: 'radio' | 'user';
 }
 
 export interface PlayContext {
@@ -56,11 +64,18 @@ export function shuffleArray<T>(arr: T[]): T[] {
   return result;
 }
 
+/** Mark a track as radio-appended (see `Track.queuedBy`). */
+function radioQueued(t: Track): Track {
+  return { ...t, queuedBy: 'radio' };
+}
+
 // Fetches more tracks to keep the queue alive when Radio is on. Registered by a
 // component with library access (PlayerService stays dependency-free).
 export type RadioProvider = (seed: {
   currentTrack: Track | null;
   context: PlayContext | null;
+  /** The listener's current variety position, as a named strategy. */
+  strategy: StrategyId;
 }) => Promise<Track[]>;
 
 // Replenish the queue once it drops to this many remaining tracks.
@@ -89,6 +104,10 @@ export class PlayerService {
   // pulling in-vibe tracks (via the radio provider) instead of re-seeding off
   // the current song. Null for seed radio / radio off. Persisted with `radio`.
   readonly radioFilter = signal<LibraryFilter | null>(null);
+  // The variety position (docs/radio.md "Strategies"): which named recipe the
+  // radio provider asks for. Remembered here across sessions and, per user, on
+  // the server; the chip in Now Playing is its control.
+  readonly radioStrategy = signal<StrategyId>(DEFAULT_STRATEGY);
   readonly context = signal<PlayContext | null>(null);
   readonly nowPlayingOpen = signal(false);
   readonly currentTime = signal(0);
@@ -134,6 +153,7 @@ export class PlayerService {
         repeat: this.repeat(),
         radio: this.radio(),
         radioFilter: this.radioFilter(),
+        radioStrategy: this.radioStrategy(),
         context: this.context(),
         currentTime: untracked(() => this.currentTime()),
         wasPlaying: this.isPlaying(),
@@ -170,6 +190,7 @@ export class PlayerService {
           repeat: this.repeat(),
           radio: this.radio(),
           radioFilter: this.radioFilter(),
+          radioStrategy: this.radioStrategy(),
           context: this.context(),
           currentTime: this.currentTime(),
           wasPlaying: this.isPlaying(),
@@ -207,6 +228,7 @@ export class PlayerService {
       if (state['radio'] != null) this.radio.set(Boolean(state['radio']));
       const rf = state['radioFilter'];
       this.radioFilter.set(rf && typeof rf === 'object' ? (rf as LibraryFilter) : null);
+      if (isStrategyId(state['radioStrategy'])) this.radioStrategy.set(state['radioStrategy']);
       if (isPlayContext(state['context'])) this.context.set(state['context']);
       if (typeof state['currentTime'] === 'number' && state['currentTime'] > 1) {
         this.restoredTime = state['currentTime'];
@@ -275,7 +297,7 @@ export class PlayerService {
     this.radioFilter.set(filter);
     this.context.set(null);
     this.play(first);
-    this.queue.set(rest);
+    this.queue.set(rest.map(radioQueued));
     // Set directly (not toggleRadio) — we already loaded a queue, so an eager
     // replenish would be wasteful; the drain effect handles later top-ups.
     this.radio.set(true);
@@ -290,7 +312,7 @@ export class PlayerService {
     this.radioFilter.set(null);
     this.context.set(null);
     this.play(first);
-    this.queue.set(rest);
+    this.queue.set(rest.map(radioQueued));
     // Direct set, not toggleRadio — the queue is already loaded (see above).
     this.radio.set(true);
   }
@@ -426,6 +448,19 @@ export class PlayerService {
     else this.radioFilter.set(null); // turning radio off ends the filter "vibe"
   }
 
+  /**
+   * Move the variety position. Steers now: the radio-appended tail of the queue
+   * (never a track the listener queued) is replaced from the new strategy on
+   * the next fetch, which fires immediately when radio is on.
+   */
+  setRadioStrategy(strategy: StrategyId): void {
+    if (this.radioStrategy() === strategy) return;
+    this.radioStrategy.set(strategy);
+    if (!this.radio()) return;
+    this.queue.update((q) => q.filter((t) => t.queuedBy !== 'radio'));
+    untracked(() => void this.replenishRadio());
+  }
+
   toggleVocalMute(): void {
     this.vocalsMuted.update((v) => !v);
   }
@@ -439,6 +474,7 @@ export class PlayerService {
       const more = await this.radioProvider({
         currentTrack: this.currentTrack(),
         context: this.context(),
+        strategy: this.radioStrategy(),
       });
       const seen = new Set<string>([
         this.currentTrack()?.id ?? '',
@@ -447,7 +483,7 @@ export class PlayerService {
           .slice(-20)
           .map((t) => t.id),
       ]);
-      const fresh = more.filter((t) => t.id && !seen.has(t.id));
+      const fresh = more.filter((t) => t.id && !seen.has(t.id)).map(radioQueued);
       if (fresh.length) this.queue.update((q) => [...q, ...fresh]);
     } catch {
       // Non-fatal — radio simply doesn't extend this time.

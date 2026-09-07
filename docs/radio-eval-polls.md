@@ -119,6 +119,17 @@ candidate count), and a distinct-rater cap per poll (`MAX_RATERS_PER_POLL`
 1000, new raters 409 past it; existing raters can always update). Expiry is
 optional (`expiresInHours`, capped at 90 days).
 
+## Strategies are their own axis
+
+A poll is generated under one named strategy (`RadioPollSettings.strategy`,
+default `balanced`, 400 on an unknown id) and every scenario snapshot carries
+it (`snapshot.strategy`). `eval-radio-poll` groups by
+`formula_version · voteScale · strategy`: a strategy changes the pool the
+raters saw, so its votes are a different population — the same never-pool rule
+as the formula version. Weight overrides on a poll land on top of the
+strategy's weights, so `snapshot.weights` stays "the full set the ranking
+actually used". See [radio.md](radio.md) "Strategies".
+
 ## Export & digestion
 
 `bun run packages/api/src/scripts/export-radio-poll.ts [--poll <id|token>]

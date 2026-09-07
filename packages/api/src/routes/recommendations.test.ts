@@ -128,6 +128,27 @@ describe('recommendation feedback routes', () => {
     expect(after.excluded).toHaveLength(0);
   });
 
+  it('PUT /preferences remembers a known strategy and rejects an unknown one', async () => {
+    const bad = await app.request('/recommendations/preferences', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ radioStrategy: 'random' }),
+    });
+    expect(bad.status).toBe(400);
+    const ok = await app.request('/recommendations/preferences', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ radioStrategy: 'different' }),
+    });
+    expect(ok.status).toBe(200);
+    const row = testDb
+      .query<{ radio_strategy: string }, []>(
+        `SELECT radio_strategy FROM user_settings WHERE user_id = 'u1'`,
+      )
+      .get();
+    expect(row?.radio_strategy).toBe('different');
+  });
+
   it('is scoped to the caller', async () => {
     await post(app, { songId: 's1', kind: 'exclude' });
     const other = (await (await appFor('u2').request('/recommendations/excluded')).json()) as {

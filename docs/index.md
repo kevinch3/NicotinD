@@ -312,6 +312,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 
 ### Playback, radio & streaming
 
+- **Recommendation strategies**: named recipes (weights, artist cap, pool mix, out-of-genre quota)
+  chosen by `?strategy=`, stamped on poll scenarios, rendered by `dump-radio --strategy`; the Now
+  Playing radio chip's three-position variety control maps complaints to remedies in one core
+  function. `STRATEGIES`, `resolveStrategy`, `strategyForVariety`, `radio-variety`. → [radio.md](radio.md)
 - **Per-user exclusions**: "Don't recommend this" holds a song out of every feed for one listener
   without touching the library; explicit votes and a derived early-skip rule (`SKIP_RULE`) feed the
   `excludeIds` layer at request time, twin recordings included. `recordFeedback`, `excludedSongIds`,

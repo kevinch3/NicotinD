@@ -930,6 +930,76 @@ describe('radio /next — genre stations', () => {
  * lookup actually reaches ranking, and that an unidentified caller is
  * unaffected.
  */
+describe('radio /next — strategies', () => {
+  beforeEach(() => {
+    testDb = createTestDb();
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A',
+      albumId: 'al',
+      album: 'Al',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    // Ten in-genre neighbours and ten out-of-genre strangers, all analysed.
+    for (let i = 0; i < 10; i++) {
+      seedSong(testDb, {
+        id: `rock-${i}`,
+        title: `Rock ${i}`,
+        artist: `RA${i}`,
+        artistId: `ra${i}`,
+        albumId: `ral${i}`,
+        album: `RAl${i}`,
+        genre: 'Rock',
+        bpm: 118 + i,
+      });
+      seedSong(testDb, {
+        id: `jazz-${i}`,
+        title: `Jazz ${i}`,
+        artist: `JA${i}`,
+        artistId: `ja${i}`,
+        albumId: `jal${i}`,
+        album: `JAl${i}`,
+        genre: 'Jazz',
+        bpm: 90 + i,
+      });
+    }
+    testDb.run(`UPDATE library_songs SET energy = 0.5`);
+  });
+
+  const served = async (strategy?: string) => {
+    const app = new Hono();
+    app.route('/radio', radioRoutes());
+    const q = strategy ? `&strategy=${strategy}` : '';
+    const res = await app.request(`/radio/next?seedId=seed&count=10${q}`);
+    expect(res.status).toBe(200);
+    return ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+  };
+
+  it('400s an unknown strategy rather than guessing', async () => {
+    const app = new Hono();
+    app.route('/radio', radioRoutes());
+    const res = await app.request('/radio/next?seedId=seed&strategy=random');
+    expect(res.status).toBe(400);
+  });
+
+  it('"different" reserves a share of the window for out-of-genre tracks', async () => {
+    const ids = await served('different');
+    expect(ids.length).toBe(10);
+    const strangers = ids.filter((id) => id.startsWith('jazz-')).length;
+    expect(strangers).toBeGreaterThanOrEqual(3);
+  });
+
+  it('"similar" and the default keep the window in genre when the pool allows', async () => {
+    for (const s of [undefined, 'similar', 'balanced']) {
+      const ids = await served(s);
+      expect(ids.length).toBe(10);
+      expect(ids.every((id) => id.startsWith('rock-'))).toBe(true);
+    }
+  });
+});
+
 describe('radio /next — per-listener exclusions', () => {
   function appAs(userId: string): Hono {
     const a = new Hono();

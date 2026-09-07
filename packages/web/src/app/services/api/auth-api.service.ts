@@ -1,3 +1,4 @@
+import type { StrategyId } from '@nicotind/core';
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import type { AuthResult } from './api-types';
@@ -7,6 +8,8 @@ export interface UserProfile {
   username: string;
   role: string;
   welcomeDismissed: boolean;
+  /** The remembered variety position (docs/radio.md "Strategies"); older servers omit it. */
+  radioStrategy?: StrategyId;
   /** Admin dev-mode: capture generated results as gradeable feedback. */
   /**
    * Deployment-wide acquisition kill-switch (#235). false = the whole

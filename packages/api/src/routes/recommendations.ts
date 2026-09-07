@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
+import { isStrategyId } from '@nicotind/core';
 import {
   FEEDBACK_KINDS,
   excludedSongs,
@@ -108,6 +109,26 @@ export function recommendationRoutes() {
     const db = getDatabase();
     recordFeedback(db, { userId: user.sub, songId, kind: 'restore' });
     return c.json({ ok: true });
+  });
+
+  // PUT /preferences — the remembered variety position. One row per user in
+  // user_settings (created on first write, like welcome_dismissed).
+  app.put('/preferences', async (c) => {
+    const user = c.get('user');
+    const body = (await c.req.json().catch(() => ({}))) as { radioStrategy?: unknown };
+    if (!isStrategyId(body.radioStrategy)) {
+      return c.json(
+        { error: 'radioStrategy must be a known strategy', code: 'VALIDATION_ERROR' },
+        400,
+      );
+    }
+    const db = getDatabase();
+    db.run(
+      `INSERT INTO user_settings (user_id, radio_strategy) VALUES (?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET radio_strategy = excluded.radio_strategy`,
+      [user.sub, body.radioStrategy],
+    );
+    return c.json({ radioStrategy: body.radioStrategy });
   });
 
   return app;
