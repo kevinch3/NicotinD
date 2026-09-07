@@ -21,6 +21,19 @@ defend.
 line in `docs/index.md` only if the *name* or the *location* changed.
 → [quality-gates.md](docs/quality-gates.md)
 
+## Every Task Gets Its Own Worktree
+
+**Never work in the shared main checkout.** Branch a worktree from `origin/master` first, then run
+`scripts/link-worktree.sh` — a fresh worktree has no `node_modules`, and a wholesale symlink of one
+resolves the relative `@nicotind/*` links back to the main checkout, so the worktree compiles against
+another commit's `core`. That failure is silent in the direction that matters: a file that cannot
+link takes its whole test file out of the run while the summary still says "pass".
+
+Sessions run in parallel and share this checkout. Two of them in one tree means one silently commits
+the other's uncommitted work, or clobbers it. Before planning, sweep for stranded work
+(`git worktree list`, then `git status` in each); before pushing, re-check `gh pr view --json state`,
+because a merged PR's branch is dead and a push to it triggers nothing.
+
 ## Quality Gates
 
 Three gates, all mandatory before a task is done.
