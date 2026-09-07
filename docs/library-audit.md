@@ -159,6 +159,43 @@ numbers land on them, so the total is inventory and the multi-track half is the 
 Dating a single-track row from its album title is actively wrong — the row is named after the
 *release the track came out of*, so it would assign 2012 to a 2010 "Firework".
 
+### Folder art is only the album's when the folder is the album's (issue #978)
+
+`extractCover`'s first tier reads `cover.jpg` from `dirname(track)`. That is right only when the
+directory *is* one album's folder, and the scanner has always known some directories are not:
+`isLooseSinglesBucket` recognises a **shared bucket** — a `<Artist>/Singles/` leaf, or an
+`Unknown Album` — and splits every track in one into its own single-album. The two sides never
+agreed on what a directory is, and the readers lost.
+
+On prod one `cover.jpg` a download dropped into `Various Artists/Unknown/` — 1,269 files, 1,247
+distinct single-albums, artists with nothing in common — became the served cover of **1,229
+albums**. Nothing wrote it through the app: `library_artwork` showed no duplication, `audit_log`
+recorded no folder-cover write ever, and the organizer skips non-audio files. It arrived with the
+download, which is why the fix has to be reader-side: an external addon will drop another one.
+
+`folderArtBelongsToAlbum(db, relPath)` is the shared answer, and it asks twice because neither
+question subsumes the other. **The name** (`isSinglesBucketDir`, the directory half of
+`isLooseSinglesBucket` split out for readers) catches a `Singles/` folder that holds one track
+today and five unrelated ones after the next download — a count cannot see that yet. **The
+contents** — more than one album with tracks directly in the directory — catch a bucket nobody
+named, which is what `Various Artists/Unknown/` is. A directory with no scanned rows is treated as
+an album folder: an un-scanned file is not evidence of a bucket.
+
+The count is a range scan over `idx_library_songs_path` (`path >= 'dir/' AND path < 'dir0'`) rather
+than `LIKE 'dir/%'`, which SQLite cannot answer from that index and which would need wildcard
+escaping — `100% Hits/` and `100X Hits/` are one LIKE pattern and two byte ranges.
+
+Both readers ask it. `extractCover` takes the scope as a **required** parameter rather than an
+optional one, so a third caller has to answer the question rather than inherit the old assumption.
+The health report asks it too: it was calling 644 bucketed opus albums renderable on the strength
+of that same stray image, which is the tiers defect above recurring one level down — a metric
+agreeing with a predicate instead of with the app.
+
+What the fix restores is asymmetric, and worth stating plainly: of the 1,247 albums in the bucket,
+598 are mp3 with embedded art and get their **right** cover back, while 644 are opus with none
+(#953's `-vn`) and get an honest placeholder instead of a wrong picture.
+
+
 ### Disk (from `library-disk-audit.ts`)
 - `missing_file` (high) — a `library_songs.path` with no file on disk (stale row).
 - `orphan_file` (medium) — an audio file on disk with no DB row. **Expected in part**:

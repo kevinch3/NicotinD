@@ -6,6 +6,7 @@ import { unjustifiedHiddenAlbums } from './library-curator.js';
 import { checkFragments } from './library-fragments.js';
 import { artistImageCoverage, type ArtistImageCoverage } from './artist-image-fill.js';
 import { missingAlbumArtSql } from './artwork-store.js';
+import { folderArtBelongsToAlbum } from './album-folder.js';
 import { findFolderCoverName } from './cover-sources.js';
 import { losslessSuffixSql } from './library-track-select.js';
 import { unresolvedGenreSql } from './genre-split.js';
@@ -260,6 +261,14 @@ function artworkTiers(
   const probed = new Map<string, boolean>();
   let unrenderable = 0;
   for (const c of candidates) {
+    // Folder art only counts as this album's art when the directory is its
+    // folder and not a shared bucket — the same question the cover route asks
+    // before serving it (#978). Without this the report calls 644 bucketed
+    // albums renderable while the app shows them a placeholder.
+    if (!folderArtBelongsToAlbum(db, c.path)) {
+      unrenderable++;
+      continue;
+    }
     const dir = dirname(join(musicDir, c.path));
     let covered = probed.get(dir);
     if (covered === undefined) probed.set(dir, (covered = findFolderCoverName(dir) != null));

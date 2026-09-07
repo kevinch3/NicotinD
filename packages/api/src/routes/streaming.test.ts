@@ -274,6 +274,42 @@ describe('streaming routes', () => {
     // … but the artist id does not.
     expect((await app.request('/cover/lone-art')).status).toBe(404);
   });
+
+  it('does not paint every album in a shared bucket with one stray folder cover (#978)', async () => {
+    // `Various Artists/Unknown/` is a loose-singles bucket: the scanner splits
+    // every track in it into its own single-album (isLooseSinglesBucket). A
+    // cover.jpg a download drops there is nobody's album art — on prod one
+    // became the face of 1,229 unrelated albums.
+    const bucket = join(musicDir, 'Various Artists', 'Unknown');
+    mkdirSync(bucket, { recursive: true });
+    writeFileSync(join(bucket, 'a.mp3'), AUDIO_BYTES);
+    writeFileSync(join(bucket, 'b.mp3'), AUDIO_BYTES);
+    writeFileSync(join(bucket, 'cover.jpg'), JPEG_BYTES);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+       VALUES ('bkt-a', 'bkt-alb-a', 'A', 'Artist A', 'bkt-art-a', 0, 'Various Artists/Unknown/a.mp3', 10, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1),
+              ('bkt-b', 'bkt-alb-b', 'B', 'Artist B', 'bkt-art-b', 0, 'Various Artists/Unknown/b.mp3', 10, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1)`,
+    );
+
+    expect((await app.request('/cover/bkt-alb-a')).status).toBe(404);
+    expect((await app.request('/cover/bkt-alb-b')).status).toBe(404);
+  });
+
+  it('does not serve folder art from a Singles bucket holding a single album', async () => {
+    // A `<Artist>/Singles/` folder is a bucket by construction: it holds one
+    // loose track today and five unrelated ones after the next download. The
+    // album-count check cannot see that yet — the name check is what does.
+    const singles = join(musicDir, 'SoloArtist', 'Singles');
+    mkdirSync(singles, { recursive: true });
+    writeFileSync(join(singles, 'only.mp3'), AUDIO_BYTES);
+    writeFileSync(join(singles, 'cover.jpg'), JPEG_BYTES);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+       VALUES ('sng-1', 'sng-alb', 'Only', 'Solo', 'sng-art', 0, 'SoloArtist/Singles/only.mp3', 10, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1)`,
+    );
+
+    expect((await app.request('/cover/sng-alb')).status).toBe(404);
+  });
 });
 
 describe('streaming routes — range parsing (RFC 9110)', () => {

@@ -327,8 +327,19 @@ function contentTypeFor(suffix: string): string {
  */
 export function isLooseSinglesBucket(dir: string, album: string): boolean {
   if (album === UNKNOWN_ALBUM) return true;
+  return isSinglesBucketDir(dir) || album.trim().toLowerCase() === 'singles';
+}
+
+/**
+ * The directory half of `isLooseSinglesBucket`, without the album name — a
+ * `<Artist>/Singles/` folder is a bucket by construction, whatever the tracks
+ * in it are currently called. Readers need this half on its own: by the time a
+ * bucket track is in the database its album name is its own *title* (rewritten
+ * above), so the name conditions can no longer identify where it lives.
+ */
+export function isSinglesBucketDir(dir: string): boolean {
   const leaf = dir.split(/[\\/]+/).pop() ?? '';
-  return leaf.trim().toLowerCase() === 'singles' || album.trim().toLowerCase() === 'singles';
+  return leaf.trim().toLowerCase() === 'singles';
 }
 
 /**
