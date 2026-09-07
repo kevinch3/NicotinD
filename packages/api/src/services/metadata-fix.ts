@@ -11,6 +11,7 @@ import { setOverride, findByCorrectedId } from './metadata-override-store.js';
 import { pruneOrphanArtist, refreshAlbumAggregate } from './library-aggregates.js';
 import { isPlaceholderArtist } from './artwork-backfill.js';
 import { clearCoverNegativeCache } from '../routes/streaming.js';
+import { reclassifyAlbum } from './library-curator.js';
 
 const log = createLogger('metadata-fix');
 
@@ -215,6 +216,10 @@ export function applyMetadataFix(
 
     // Recompute the (possibly merged) album's aggregates from its songs.
     refreshAlbumAggregate(db, newAlbumId);
+    // …and re-derive the classifier's verdict, which the id move above carried
+    // over verbatim. `hidden` is derived state, and its inputs are the very
+    // strings this call just changed (issue #967).
+    reclassifyAlbum(db, newAlbumId);
 
     // Upsert the corrected artist (cover_art = artistId convention), refresh its
     // album_count, and prune the artist the album moved away from.

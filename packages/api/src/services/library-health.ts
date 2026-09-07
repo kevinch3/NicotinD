@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { auditLibrary, type AuditSeverity } from './library-audit.js';
+import { unjustifiedHiddenAlbums } from './library-curator.js';
 import { checkFragments } from './library-fragments.js';
 import { artistImageCoverage, type ArtistImageCoverage } from './artist-image-fill.js';
 import { missingAlbumArtSql } from './artwork-store.js';
@@ -116,7 +117,13 @@ export interface LibraryHealthReport {
       remediation: string;
     };
     albumCovers: {
-      metric: { visible: number; missing: number };
+      /**
+       * `missing` counts album rows with no canonical artwork row. 81% of visible
+       * albums are single-track rows and 93% of this number lands on them, so the
+       * split is reported rather than left implicit: `multiTrack` is the part that
+       * behaves like a work queue, and the rest is inventory (#969).
+       */
+      metric: { visible: number; missing: number; missingMultiTrack: number };
       worklist: (AlbumRef & { songCount: number })[];
       remediation: string;
     };
@@ -127,12 +134,20 @@ export interface LibraryHealthReport {
       remediation: string;
     };
     years: {
-      metric: { visibleAlbums: number; missing: number };
+      /** Split for the same reason as `albumCovers.missing` — 95% of it is
+       *  single-track rows with no year anywhere to derive one from (#969). */
+      metric: { visibleAlbums: number; missing: number; missingMultiTrack: number };
       worklist: (AlbumRef & { songCount: number })[];
       remediation: string;
     };
     classification: {
-      metric: { visibleUnknown: number; oversized: number; hidden: number };
+      metric: {
+        visibleUnknown: number;
+        oversized: number;
+        hidden: number;
+        /** Hidden with no rule justifying it — always a bug (#967). */
+        hiddenUnjustified: number;
+      };
       worklist: (AlbumRef & { classification: string; songCount: number; reason: string })[];
       remediation: string;
     };
@@ -251,6 +266,7 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
 
   const audit = auditLibrary(db);
   const fragments = checkFragments(db);
+  const unjustified = unjustifiedHiddenAlbums(db);
 
   const albumCoverWorklist = db
     .query<{ id: string; name: string; artist: string; song_count: number }, [number]>(
@@ -391,6 +407,10 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
         metric: {
           visible: count(db, 'library_albums WHERE hidden = 0'),
           missing: count(db, `library_albums WHERE hidden = 0 AND ${missingAlbumArtSql()}`),
+          missingMultiTrack: count(
+            db,
+            `library_albums WHERE hidden = 0 AND song_count > 1 AND ${missingAlbumArtSql()}`,
+          ),
         },
         worklist: albumCoverWorklist.map((r) => ({
           albumId: r.id,
@@ -418,6 +438,10 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
         metric: {
           visibleAlbums: count(db, 'library_albums WHERE hidden = 0'),
           missing: count(db, 'library_albums WHERE hidden = 0 AND (year IS NULL OR year <= 1)'),
+          missingMultiTrack: count(
+            db,
+            'library_albums WHERE hidden = 0 AND song_count > 1 AND (year IS NULL OR year <= 1)',
+          ),
         },
         worklist: yearWorklist.map((r) => ({
           albumId: r.id,
@@ -436,6 +460,7 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
           oversized: fragments.hiddenByClassification.filter((h) => h.reason === 'oversized')
             .length,
           hidden: fragments.hiddenByClassification.filter((h) => h.reason === 'hidden').length,
+          hiddenUnjustified: unjustified.length,
         },
         worklist: db
           .query<
@@ -460,7 +485,19 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
             classification: r.classification,
             songCount: r.song_count,
             reason: 'unknown',
-          })),
+          }))
+          // Wrongly-hidden rows lead the worklist: a visible `unknown` is untidy,
+          // an unjustifiably hidden album is music the user cannot reach (#967).
+          .concat(
+            unjustified.slice(0, sample).map((r) => ({
+              albumId: r.id,
+              name: r.name,
+              artist: r.artist,
+              classification: 'unknown',
+              songCount: r.songCount,
+              reason: 'hidden-unjustified',
+            })),
+          ),
         remediation: 'set_album_classification / POST /api/library/albums/:id/reclassify',
       },
       formatCohesion: {

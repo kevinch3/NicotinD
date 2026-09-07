@@ -35,7 +35,12 @@ and a message. The CLI groups by rule (worst first); `--rule=<id>` lists one.
 - `album_count_mismatch` — `library_artists.album_count` ≠ actual album count.
 - `album_song_count_mismatch` — `library_albums.song_count` ≠ actual song count.
 - `dangling_album_artist` / `dangling_song_album` — a row references a missing parent.
-- `orphan_artist` (medium) — an artist with zero albums and zero songs (should be pruned).
+- `orphan_artist` (medium) — an artist row reachable from nowhere: no album, no
+  `library_songs.artist_id`, **and no `library_song_artists` credit**. The credit table was
+  added to the predicate in issue #954; without it the rule read only the *primary*
+  attribution, so every featured/guest artist looked orphaned — 485 findings on prod, 485 of
+  them false, and the message said "should be pruned", which is an instruction a human or an
+  agent may act on. It now states the fact instead of directing a deletion.
 
 ### Pollution (high; detection is **hidden-agnostic** — junk is junk even if the curator hid it)
 - `watermark_artist` — artist name is a DJ-pool/VA-source watermark (`ftpdjemilio.com`,
@@ -58,11 +63,37 @@ and a message. The CLI groups by rule (worst first); `--rule=<id>` lists one.
   deletable** — the music is real. See *Why a name predicate cannot decide this* below.
 - `numeric_single` — a one-track album titled a bare number (`07`).
 - `placeholder_single` (medium) — a single whose identity is unknown/placeholder.
-- `missplit_album` — ≥3 one-track singles share an edition-stripped title **and**
-  carry genuinely different track numbers: a real album fragmented per-track (an
-  opera tagged with numeric per-track artists), or a real VA compilation. **These
-  hold wanted music — re-merge, don't delete.** Corroborated — see *Per-rule
-  corroboration* below; a shared title alone does not flag.
+- `missplit_album` — ≥3 one-track singles share an edition-stripped title, carry
+  genuinely different track numbers, **and** corroborate as one release: a real album
+  fragmented per-track (an opera tagged with numeric per-track artists), or a real VA
+  compilation. **These hold wanted music — re-merge, don't delete.** Corroborated — see
+  *Per-rule corroboration* below; a shared title alone does not flag.
+- `watermark_title` (medium) — a **song title** carries a source watermark on an album
+  and artist that are both clean (issue #957): ten *Gwen Stefani* tracks stored as
+  `Rich Girl www.GrWarez.com`. `looksLikeSourceWatermark` gated the artist and album rules
+  and ran over titles only *inverted*, as the deletability guard, so nothing ever reported a
+  title. **Never deletable** — the audio is fine, its name is not; retag with
+  `fix_song_metadata`.
+- `clip_not_song` (medium) — a track under 45 s with **no track number** and no siblings on
+  its album (issue #966): a social-media clip indexed as a song, minting its own album row
+  and often its own artist. The only rule that looks at `duration`; every other rule asks
+  about text, which is why 139 caption fragments cleared all of them. `track IS NULL` is the
+  load-bearing condition — 118 sub-45 s tracks on prod *do* carry one (album interludes,
+  Pink Floyd segues, Calle 13 skits) and a rule without it reports *Speak to Me*.
+  **Advisory, never deletable**: the audio really is junk, but 139 rows is an owner's call.
+- `track_collision` (medium) — an album with a `(disc, track)` slot holding several
+  **different** songs (issue #959): all 14 tracks of *With the Beatles* are numbered 63, so
+  the album has no running order. Same-title collisions are excluded and belong to duplicate
+  detection (#951) — measured 298 numbering vs 131 duplicate on prod, and the two want
+  opposite remediations, so the titles decide which rule owns the row.
+- `untracked_album` (low) — a multi-track album with songs carrying no track number at all.
+- `brand_artist` (medium) — an artist credited on ≥5 songs and named in **none** of their own
+  artist tags (issue #963): `IPAUTA`, a download site whose folder name became a co-credit on
+  56 songs whose real artists were already correct. "The strings differ" cannot be the
+  predicate — that is the normal state of a *featured* artist — so provenance decides: a
+  genuine credit is derived by splitting the song's artist string and is therefore a
+  substring of it, while a folder-derived owner is a substring of none. Folded in JS, never in
+  SQL, because `lower`/`LIKE` are ASCII-only (#720).
 
 ### Render (low/medium; **visible albums only**)
 - `missing_year` (low) — no usable year.
@@ -74,6 +105,12 @@ and a message. The CLI groups by rule (worst first); `--rule=<id>` lists one.
   rule structurally never fired (~0 findings against 2,691 actually-coverless prod albums). The
   count jumping after the fix is the fix; severity stays `medium` so `report.ok` is unaffected.
 - `visible_unknown` (medium) — a visible album stuck at `classification='unknown'`.
+
+Both render rules are reported by the health report with a `missingMultiTrack` count beside
+the total (issue #969). 81% of visible albums are single-track rows and 93–95% of these two
+numbers land on them, so the total is inventory and the multi-track half is the work queue.
+Dating a single-track row from its album title is actively wrong — the row is named after the
+*release the track came out of*, so it would assign 2012 to a 2010 "Firework".
 
 ### Disk (from `library-disk-audit.ts`)
 - `missing_file` (high) — a `library_songs.path` with no file on disk (stale row).
@@ -99,6 +136,39 @@ bun run packages/api/src/scripts/repair-pollution.ts --rules=watermark_artist,wa
 
 Env: `NICOTIND_DATA_DIR`, `NICOTIND_MUSIC_DIR`, `NICOTIND_CONFIG` (same as the other
 maintenance scripts).
+
+### Hiding is derived state, and it is guarded like deleting (issues #962, #967)
+
+`LibraryCurator.reclassify` re-applies `classification`/`hidden` on every pass for any row with
+`manual_override = 0`. That is what makes auto-hiding safe: it is a *derived* verdict, not a stored
+one, so fixing the metadata fixes the visibility. Two defects broke that contract in opposite
+directions, and both are fixed here.
+
+**The rule matched something it should not (#962).** The hide path tested
+`looksLikeSourceWatermark` on the album name with no corroboration, while the *delete* path has
+required `albumHasRealTrackTitles` since #705 — junk metadata is not junk audio. So Coolio's real
+2001 album *Coolio.com* (9 full-length tracks) was invisible in the UI, and the watermark test also
+short-circuited the "a known catalog release is never hidden" block immediately below it. Both paths
+now share one predicate, `isRealTrackTitle` (`library-quality.ts`), and the guard is exactly what
+separates the two prod populations: the five Tash Sultana rows that *should* stay hidden carry the
+watermark as their track titles too.
+
+Hiding is less destructive than deleting, but it is not harmless — the music leaves the user's view
+and nothing reports it — so it earns the same guard.
+
+**The outcome outlived the condition (#967).** Album ids are name-derived, so a rename mints a new
+row and `metadata-fix.ts` copies the curation columns across. For `starred` and `manual_override`
+that is right. For `hidden` it never is: the classifier's inputs are the name and the artist, which
+are precisely what the rename changed. An album hidden for a watermarked name stayed hidden after
+being renamed to a clean one, with `manual_override = 0` and no rule justifying it — and renaming is
+the *main* way anyone fixes an album hidden for a bad name. `applyMetadataFix` now calls
+`reclassifyAlbum` after the id move; `manual_override = 1` rows are still left alone.
+
+`unjustifiedHiddenAlbums` asserts the invariant that follows — a `hidden = 1` /
+`manual_override = 0` row whose predicates are all false is always a bug — and the health report's
+`classification` dimension carries it as `hiddenUnjustified` plus a worklist. That count was a bare
+number before, so a wrongly-hidden album was indistinguishable from a correct one without running
+the predicates by hand, which is how #967 was found.
 
 ### Cleanup safety model
 `repair-pollution.ts` **deletes files on disk and their canonical rows**, then prunes

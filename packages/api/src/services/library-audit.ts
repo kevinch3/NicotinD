@@ -2,7 +2,7 @@ import type { Database } from 'bun:sqlite';
 import { isUnknownLike } from './audio-tags.js';
 import { isPlaceholderArtistStrict } from './artwork-backfill.js';
 import { missingAlbumArtSql } from './artwork-store.js';
-import { normalizeForGrouping } from './album-grouping.js';
+import { normalizeForGrouping, normalizeArtistForGrouping } from './album-grouping.js';
 import {
   looksLikeSourceWatermark,
   isNumericLikeName,
@@ -10,6 +10,7 @@ import {
   looksLikeVenueCredit,
   djSetArtistName,
   findArtistFragmentClusters,
+  isRealTrackTitle,
 } from './library-quality.js';
 
 /**
@@ -82,12 +83,22 @@ export function checkArtistIntegrity(db: Database): AuditFinding[] {
       db
         .query<{ c: number }, [string]>('SELECT COUNT(*) c FROM library_songs WHERE artist_id = ?')
         .get(a.id)?.c ?? 0;
-    if (albums === 0 && songs === 0) {
+    // `artist_id` is the PRIMARY credit only. A featured/guest artist owns no
+    // album row and no `library_songs.artist_id`, and is reachable solely through
+    // `library_song_artists` — so a rule that never reads that table calls every
+    // one of them prunable. On prod this was 485 findings, all false (issue #954).
+    const credits =
+      db
+        .query<{ c: number }, [string]>(
+          'SELECT COUNT(*) c FROM library_song_artists WHERE artist_id = ?',
+        )
+        .get(a.id)?.c ?? 0;
+    if (albums === 0 && songs === 0 && credits === 0) {
       out.push({
         rule: 'orphan_artist',
         severity: 'medium',
         subject: a.id,
-        message: `Artist "${a.name}" has no albums and no songs (should be pruned)`,
+        message: `Artist "${a.name}" has no releases, songs or credits`,
       });
       continue;
     }
@@ -341,6 +352,43 @@ export function checkPollutedAlbums(db: Database): AuditFinding[] {
  * — removes all 4 known false positives while keeping both known true positives.
  * `library-audit.test.ts` asserts both directions so this doesn't regress.
  */
+interface CandidateSong {
+  track: number | null;
+  artist: string;
+  path: string;
+}
+
+/** Directory holding the file, '' when the path has none. */
+function parentDir(path: string | undefined): string {
+  if (!path) return '';
+  const i = path.lastIndexOf('/');
+  return i <= 0 ? '' : path.slice(0, i);
+}
+
+/**
+ * Does a same-titled cluster describe ONE release, or several unrelated singles?
+ *
+ * "The members' artists differ" cannot answer this, which is what made #947's
+ * own proposed fix wrong: a mis-split is *defined* by a per-track artist tag, so
+ * both classes differ. Corroboration has to come from evidence a coincidence
+ * cannot produce:
+ *
+ *   A. every artist tag is junk — a bare track number in the artist field is the
+ *      corruption signature itself ("María de Buenos Aires" as 100/101/102/103);
+ *   B. every file sits in ONE directory — a release fragmented per-track is still
+ *      one folder on disk, while three artists' own singles never are.
+ *
+ * Either is decisive; neither alone covers both known true positives, so the rule
+ * takes their union. #947's three prod false positives ("Granada", "Pensando en
+ * Ti", "20 Grandes Exitos") satisfy neither: real artist names, separate folders.
+ */
+function isOneRelease(rows: (CandidateSong | undefined)[]): boolean {
+  if (rows.some((r) => r == null)) return false;
+  if (rows.every((r) => isNumericLikeName(r!.artist))) return true;
+  const dirs = new Set(rows.map((r) => parentDir(r!.path)));
+  return dirs.size === 1 && !dirs.has('');
+}
+
 export function checkMisSplitAlbums(db: Database): AuditFinding[] {
   // Hidden-agnostic (see checkPollutedAlbums): a watermark-named mis-split the
   // curator already hid is still a real-or-junk cluster the cleanup must reason about.
@@ -368,13 +416,13 @@ export function checkMisSplitAlbums(db: Database): AuditFinding[] {
   // Every candidate is a one-song single (enforced above), so one query
   // covers every member across every candidate cluster at once.
   const candidateIds = candidates.flatMap(([, members]) => members.map((m) => m.id));
-  const trackByAlbumId = new Map<string, number | null>(
+  const songByAlbumId = new Map<string, CandidateSong>(
     db
-      .query<{ album_id: string; track: number | null }, string[]>(
-        `SELECT album_id, track FROM library_songs WHERE album_id IN (${candidateIds.map(() => '?').join(',')})`,
+      .query<{ album_id: string; track: number | null; artist: string; path: string }, string[]>(
+        `SELECT album_id, track, artist, path FROM library_songs WHERE album_id IN (${candidateIds.map(() => '?').join(',')})`,
       )
       .all(...candidateIds)
-      .map((r) => [r.album_id, r.track]),
+      .map((r) => [r.album_id, { track: r.track, artist: r.artist, path: r.path }]),
   );
 
   const out: AuditFinding[] = [];
@@ -383,15 +431,236 @@ export function checkMisSplitAlbums(db: Database): AuditFinding[] {
     // shared track=1, so distinctness is judged over the non-null values only —
     // a lone real value shared by every member (or absent everywhere) must not
     // read as corroboration just because a null sorts differently from it.
-    const distinctTracks = new Set(
-      members.map((m) => trackByAlbumId.get(m.id)).filter((t): t is number => t != null),
-    );
+    const rows = members.map((m) => songByAlbumId.get(m.id));
+    const distinctTracks = new Set(rows.map((r) => r?.track).filter((t): t is number => t != null));
     if (distinctTracks.size < 2) continue; // all-identical/all-null: not corroborated as one release
+    if (!isOneRelease(rows)) continue;
     out.push({
       rule: 'missplit_album',
       severity: 'high',
       subject: key,
       message: `"${members[0]!.name}" is split into ${members.length} one-track singles (mis-tagged album)`,
+    });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Content rules — what is in the row, not what the row is called
+// ---------------------------------------------------------------------------
+
+/**
+ * Song titles carrying a source watermark (issue #957).
+ *
+ * `looksLikeSourceWatermark` already gates the artist and album rules, and
+ * `albumHasRealTrackTitles` already runs it over titles — but only inverted, as
+ * a *deletability guard* ("does at least one track look real, so don't delete").
+ * Nothing ever reported the titles themselves, so a watermark stamped on ten
+ * tracks of an otherwise clean album by a clean artist was invisible to every
+ * rule: `The Singles Collection` / `Gwen Stefani` are both legitimate, and only
+ * the titles said `www.GrWarez.com`.
+ *
+ * Song-scoped and MEDIUM: the remediation is a retag of the title
+ * (`fix_song_metadata`), never a delete — the audio is fine, its name is not.
+ */
+export function checkWatermarkedTitles(db: Database): AuditFinding[] {
+  return db
+    .query<{ id: string; title: string; artist: string }, []>(
+      'SELECT id, title, artist FROM library_songs WHERE title IS NOT NULL',
+    )
+    .all()
+    .filter((s) => looksLikeSourceWatermark(s.title))
+    .map((s) => ({
+      rule: 'watermark_title',
+      severity: 'medium' as const,
+      subject: s.id,
+      message: `Song title "${s.title}" (${s.artist}) carries a source watermark — retag the title`,
+    }));
+}
+
+/** A track shorter than this, with no track number and no siblings, is a clip. */
+const CLIP_MAX_SECONDS = 45;
+
+/**
+ * Social-media clips indexed as songs (issue #966).
+ *
+ * No other rule looks at *duration* — every one of them asks about text — so a
+ * 24-second Instagram caption split into artist + title clears all of them: the
+ * name is not URL-shaped (`watermark_album`), not numeric (`numeric_single`),
+ * not empty (`placeholder_single`), and the artist has a real credited song
+ * (`orphan_artist`). Measured on prod: 139 rows, no false positive found.
+ *
+ * Each condition earns its place, and `track IS NULL` is the load-bearing one —
+ * 118 sub-45s tracks DO carry a track number (album interludes, Pink Floyd
+ * segues, Calle 13 skits) and a rule without it would report *Speak to Me*.
+ *
+ * MEDIUM and deliberately **not** a `DeletableRule`: this is #705 territory in
+ * reverse — the audio really is junk, but 139 rows is an owner's call, and the
+ * rule's job is to make them visible rather than to act.
+ */
+export function checkClipsIndexedAsSongs(db: Database): AuditFinding[] {
+  return db
+    .query<{ id: string; title: string; artist: string; duration: number }, [number]>(
+      `SELECT s.id, s.title, s.artist, s.duration
+         FROM library_songs s
+        WHERE s.duration > 0
+          AND s.duration < ?
+          AND s.track IS NULL
+          AND (SELECT COUNT(*) FROM library_songs x WHERE x.album_id = s.album_id) = 1`,
+    )
+    .all(CLIP_MAX_SECONDS)
+    .map((s) => ({
+      rule: 'clip_not_song',
+      severity: 'medium' as const,
+      subject: s.id,
+      message:
+        `"${s.title}" (${s.artist}) is ${Math.round(s.duration)}s with no track number and no ` +
+        `siblings — a clip indexed as a song, minting its own album and artist`,
+    }));
+}
+
+/**
+ * Track numbering (issue #959). Two findings, and the discriminator between
+ * them is the one that keeps this from being a duplicate-file rule wearing a
+ * numbering rule's name.
+ *
+ * A shared `(disc, track)` slot has two unrelated causes, measured 298 / 131 on
+ * prod: several DIFFERENT songs in one slot is broken numbering (all 14 tracks
+ * of *With the Beatles* are track 63); the SAME title twice in one slot is a
+ * duplicate file. Reporting the union would be ~70% precise in both directions
+ * and would recommend the wrong remediation half the time — a retag versus a
+ * delete. So the titles decide, and only the numbering half is reported here;
+ * the duplicate half belongs to #951's rule, which needs fingerprint
+ * confirmation this one deliberately does not attempt.
+ *
+ * `untracked_album` is LOW: a multi-track album with unnumbered songs plays in
+ * an arbitrary order, but nothing is wrong with the audio or the identity.
+ */
+export function checkTrackNumbering(db: Database): AuditFinding[] {
+  const out: AuditFinding[] = [];
+  const collisions = db
+    .query<
+      {
+        album_id: string;
+        name: string;
+        artist: string;
+        disc: number | null;
+        track: number;
+        titles: string;
+      },
+      []
+    >(
+      `SELECT s.album_id, al.name, al.artist, s.disc, s.track,
+              GROUP_CONCAT(s.title, ' | ') AS titles
+         FROM library_songs s
+         JOIN library_albums al ON al.id = s.album_id
+        WHERE s.track IS NOT NULL
+        GROUP BY s.album_id, COALESCE(s.disc, 1), s.track
+       HAVING COUNT(*) > 1`,
+    )
+    .all();
+
+  const byAlbum = new Map<string, { name: string; artist: string; slots: number }>();
+  for (const c of collisions) {
+    // Same slot + same title (folded) is a duplicate FILE, not a numbering
+    // defect — route it away rather than reporting the wrong remediation.
+    const distinct = new Set(c.titles.split(' | ').map((t) => normalizeForGrouping(t)));
+    if (distinct.size < 2) continue;
+    const prev = byAlbum.get(c.album_id);
+    if (prev) prev.slots++;
+    else byAlbum.set(c.album_id, { name: c.name, artist: c.artist, slots: 1 });
+  }
+  for (const [albumId, a] of byAlbum) {
+    out.push({
+      rule: 'track_collision',
+      severity: 'medium',
+      subject: albumId,
+      message:
+        `Album "${a.name}" (${a.artist}) has ${a.slots} track slot(s) holding different songs — ` +
+        `its running order is arbitrary`,
+    });
+  }
+
+  for (const a of db
+    .query<{ id: string; name: string; artist: string; untracked: number }, []>(
+      `SELECT al.id, al.name, al.artist,
+              SUM(CASE WHEN s.track IS NULL THEN 1 ELSE 0 END) AS untracked
+         FROM library_albums al
+         JOIN library_songs s ON s.album_id = al.id
+        WHERE al.song_count > 1
+        GROUP BY al.id
+       HAVING untracked > 0`,
+    )
+    .all()) {
+    out.push({
+      rule: 'untracked_album',
+      severity: 'low',
+      subject: a.id,
+      message: `Album "${a.name}" (${a.artist}) has ${a.untracked} song(s) with no track number`,
+    });
+  }
+  return out;
+}
+
+/** Credits below this are too few to tell a source brand from a one-off credit. */
+const BRAND_ARTIST_MIN_CREDITS = 5;
+
+/**
+ * A download-site brand credited as an artist (issue #963).
+ *
+ * `IPAUTA/Mas Flow/01 - Intro.mp3` makes IPAUTA the folder owner, and the owner
+ * fallback in the scanner's credit derivation then credits it on every track
+ * beneath it — 56 songs whose own artist strings ("Tego Calderón", "Daddy
+ * Yankee") are already correct. Nothing looked broken, which is why it survived:
+ * every song displays its real artist and the brand quietly accumulates.
+ *
+ * No existing rule can reach it. `watermark_artist` keys on URL shapes and
+ * `IPAUTA` is a bare token; `orphan_artist` sees real credits (correctly, after
+ * #954). The contradiction is only visible by comparing the credit against the
+ * song's OWN artist string, which no rule did.
+ *
+ * The predicate has to be narrower than "the strings differ", because that is
+ * the normal state of a **featured** artist — Nathy Peluso credited on a track
+ * whose artist string is "Bizarrap" is correct, not a brand. What separates them
+ * is provenance: a genuine credit is derived by splitting the song's artist
+ * string, so its name is a substring of that string. A folder-derived owner's is
+ * not, on any of its songs. That is decisive in both directions — 56 of 56 for
+ * IPAUTA, 0 for a real guest — and needs no watermark vocabulary, so it
+ * generalises to the next site brand without a list update.
+ */
+export function checkBrandArtists(db: Database): AuditFinding[] {
+  const rows = db
+    .query<{ id: string; name: string; song_artist: string }, []>(
+      `SELECT a.id, a.name, s.artist AS song_artist
+         FROM library_artists a
+         JOIN library_song_artists sa ON sa.artist_id = a.id
+         JOIN library_songs s ON s.id = sa.song_id
+        WHERE a.name <> ''`,
+    )
+    .all();
+
+  // Folded in JS, never in SQL: SQLite's `lower`/`LIKE` are ASCII-only, so a
+  // credit for "Tego Calderón" against a tag reading "Tego Calderon" would read
+  // as a non-match and mint a false brand. That is the #720 defect class.
+  const seen = new Map<string, { name: string; credits: number; matching: number }>();
+  for (const r of rows) {
+    let e = seen.get(r.id);
+    if (!e) seen.set(r.id, (e = { name: r.name, credits: 0, matching: 0 }));
+    e.credits++;
+    const needle = normalizeArtistForGrouping(r.name);
+    if (needle && normalizeArtistForGrouping(r.song_artist ?? '').includes(needle)) e.matching++;
+  }
+
+  const out: AuditFinding[] = [];
+  for (const [id, a] of seen) {
+    if (a.credits < BRAND_ARTIST_MIN_CREDITS || a.matching > 0) continue;
+    out.push({
+      rule: 'brand_artist',
+      severity: 'medium',
+      subject: id,
+      message:
+        `Artist "${a.name}" is credited on ${a.credits} songs and named in none of their own ` +
+        `artist tags — a folder/source brand credited as a performer, not a musician`,
     });
   }
   return out;
@@ -512,10 +781,7 @@ function albumHasRealTrackTitles(db: Database, albumId: string): boolean {
   const rows = db
     .query<{ title: string | null }, [string]>('SELECT title FROM library_songs WHERE album_id = ?')
     .all(albumId);
-  return rows.some(({ title }) => {
-    if (!title || !title.trim()) return false;
-    return !looksLikeSourceWatermark(title) && !isNumericLikeName(title);
-  });
+  return rows.some(({ title }) => isRealTrackTitle(title));
 }
 
 /**
@@ -620,6 +886,10 @@ export function auditLibrary(db: Database, extraFindings: AuditFinding[] = []): 
     ...checkFragmentedArtists(db),
     ...checkPollutedAlbums(db),
     ...checkMisSplitAlbums(db),
+    ...checkWatermarkedTitles(db),
+    ...checkClipsIndexedAsSongs(db),
+    ...checkTrackNumbering(db),
+    ...checkBrandArtists(db),
     ...checkRenderGaps(db),
     ...extraFindings,
   ];

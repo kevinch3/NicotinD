@@ -156,6 +156,21 @@ export function isNumericLikeName(name: string | undefined | null): boolean {
   return false;
 }
 
+/**
+ * True when a track title names a piece of music rather than the source that
+ * shipped it — a non-empty title that is neither a watermark nor a bare number.
+ *
+ * Shared because two different decisions turn on it and must not drift apart:
+ * the auditor's deletion guard (#705 — junk metadata is not junk audio) and the
+ * curator's hide decision (#962). Hiding is less destructive than deleting, but
+ * it still removes real music from the user's view with nothing reporting it,
+ * so it earns the same guard.
+ */
+export function isRealTrackTitle(title: string | undefined | null): boolean {
+  if (!title || !title.trim()) return false;
+  return !looksLikeSourceWatermark(title) && !isNumericLikeName(title);
+}
+
 /** One base artist and the `"<base>, …"` rows that extend it. */
 export type ArtistFragmentCluster = {
   /** The base row's name as stored, e.g. "Sanampay". */

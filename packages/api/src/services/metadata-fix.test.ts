@@ -248,3 +248,35 @@ describe('applyMetadataFix', () => {
     expect(getOverride(db, albumId)).toEqual({ artist: 'La Portuaria', album: 'Selva' });
   });
 });
+
+describe('applyMetadataFix — hidden is re-derived, not carried (issue #967)', () => {
+  function hiddenOf(id: string): { hidden: number; classification: string } {
+    return db
+      .query<{ hidden: number; classification: string }, [string]>(
+        'SELECT hidden, classification FROM library_albums WHERE id = ?',
+      )
+      .get(id)!;
+  }
+
+  // The exact round trip that failed on prod. Renaming an album INTO a watermark
+  // name must hide it, and renaming it back OUT must make it visible again —
+  // otherwise the main way anyone fixes a wrongly-hidden album silently fails.
+  it('hides on a rename into a watermark name and unhides on the rename out', () => {
+    const { albumId } = seedAlbum({ artist: 'DJ Kairuz', album: 'Mix' });
+    // The song's title is the watermark too, so the #962 guard does not save it.
+    db.run("UPDATE library_songs SET title = 'Servicio ARG' WHERE album_id = ?", [albumId]);
+
+    const hidden = applyMetadataFix(db, albumId, { album: 'Servicio ARG' })!;
+    expect(hiddenOf(hidden.albumId)).toEqual({ hidden: 1, classification: 'unknown' });
+
+    const visible = applyMetadataFix(db, hidden.albumId, { album: 'Singles' })!;
+    expect(hiddenOf(visible.albumId).hidden).toBe(0);
+  });
+
+  it('leaves a manual_override row alone', () => {
+    const { albumId } = seedAlbum({ artist: 'A', album: 'B' });
+    db.run('UPDATE library_albums SET hidden = 1, manual_override = 1 WHERE id = ?', [albumId]);
+    const r = applyMetadataFix(db, albumId, { album: 'C' })!;
+    expect(hiddenOf(r.albumId).hidden).toBe(1);
+  });
+});

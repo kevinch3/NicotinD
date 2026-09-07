@@ -116,7 +116,9 @@ describe('libraryHealth — album covers', () => {
     addAlbum({ id: 'al-hidden', name: 'Hidden', songCount: 9, hidden: 1 });
     addCover('al-covered');
     const d = libraryHealth(db).dimensions.albumCovers;
-    expect(d.metric).toEqual({ visible: 3, missing: 2 });
+    // `al-big` (10 songs) and `al-small` (2) are both multi-track, so the two
+    // counts agree here; the #969 split only diverges on single-track rows.
+    expect(d.metric).toEqual({ visible: 3, missing: 2, missingMultiTrack: 2 });
     expect(d.worklist.map((w) => w.albumId)).toEqual(['al-big', 'al-small']);
   });
 
@@ -142,12 +144,15 @@ describe('libraryHealth — genres, years, classification', () => {
     expect(d.worklist.map((w) => w.songId).sort()).toEqual(['s-junk', 's-null']);
   });
 
-  it('counts visible albums missing a usable year', () => {
-    addArtist('ar1', 'A', 2);
-    addAlbum({ id: 'al1', name: 'N1', year: null });
+  it('counts visible albums missing a usable year, split by track count (issue #969)', () => {
+    addArtist('ar1', 'A', 3);
+    addAlbum({ id: 'al1', name: 'N1', year: null, songCount: 8 });
     addAlbum({ id: 'al2', name: 'N2', year: 1999 });
+    // A single-track row is 95% of this number on prod and has no year anywhere
+    // to derive one from, so it counts in `missing` but not in the work queue.
+    addAlbum({ id: 'al3', name: 'N3', year: null, songCount: 1 });
     const d = libraryHealth(db).dimensions.years;
-    expect(d.metric).toEqual({ visibleAlbums: 2, missing: 1 });
+    expect(d.metric).toEqual({ visibleAlbums: 3, missing: 2, missingMultiTrack: 1 });
     expect(d.worklist[0]!.albumId).toBe('al1');
   });
 
