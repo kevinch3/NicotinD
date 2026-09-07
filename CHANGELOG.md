@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.87](https://github.com/kevinch3/NicotinD/compare/v0.5.86...v0.5.87) (2026-09-07)
+
+### Bug Fixes
+
+* **artwork:** a stray cover in a shared bucket is not 1,229 albums' art ([#978](https://github.com/kevinch3/NicotinD/issues/978)) ([#979](https://github.com/kevinch3/NicotinD/issues/979)) ([f74a83e](https://github.com/kevinch3/NicotinD/commit/f74a83ea58708e8553aa5d409a403f295b024a1e))
 ## [0.5.86](https://github.com/kevinch3/NicotinD/compare/v0.5.85...v0.5.86) (2026-09-07)
 
 ### Bug Fixes
