@@ -268,6 +268,18 @@ The fresh-search fallback (`album-fallback.service.ts` `searchBestForTrack`) pre
 
 ---
 
+## The artist page has one grid, not two
+
+The artist page no longer carries a separate "Full Discography" section. Its tabs render one merged
+set of tiles (library + discography, joined on `localAlbumId`), and the hunt entry point is the
+tile's own `Complete album` / `Get album` button — still `openHunt` → `AutoHuntService.hunt`, so the
+enqueue path below is unchanged. The buttons are now gated on `canAcquire()`; a listener used to be
+shown a button whose route answers 403. → [web-ui.md](web-ui.md)
+
+Note this makes item 2 below **user-visible**: when the discography diff's `normalizeForGrouping`
+match misses, the same album now renders twice in one grid (once owned, once missing) instead of
+once in each of two distant grids.
+
 ## Deferred: unify the hunt engines
 
 The fixes above are targeted; the underlying structure still has avoidable duplication worth folding

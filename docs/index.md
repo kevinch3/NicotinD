@@ -495,6 +495,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   → [song-actions.md](song-actions.md)
 - **Unified search**: `GET /api/search?q=` blends local library and parallel network results into one
   source-agnostic list. → [source-agnostic-acquisition.md](source-agnostic-acquisition.md)
+- **One album grid per artist tab**: library albums and the MusicBrainz discography merge into a
+  single ordered set of tiles — owned, partial (`Complete album`) or missing (`Get album`) — joined
+  on the server's `localAlbumId`; the unowned non-studio tail collapses behind a toggle.
+  `buildArtistAlbumTiles`, `partitionTiles`, `AlbumTileComponent`. → [web-ui.md](web-ui.md)
 - **Library cross-type find bar**: one box above the Library tabs searching everything you own at once
   (`LibraryFindComponent`); a non-empty query *replaces* the tab content rather than filtering the
   active tab, debounced into `?find=` so it is linkable. → [web-ui.md](web-ui.md)
