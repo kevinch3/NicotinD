@@ -36,6 +36,34 @@ describe('classifyAcquireUrl', () => {
         kind: 'unknown',
       });
     });
+    // Spotify's localized share links carry a leading `intl-<lang>` segment
+    // (issue #997). Every real album link in prod was `intl-es`, so reading
+    // segments[0] classified all of them as `unknown`.
+    it('skips a locale prefix on album links', () => {
+      expect(
+        classifyAcquireUrl('https://open.spotify.com/intl-es/album/5aqBD2HHSWt6VpSjSZfiMw'),
+      ).toEqual({
+        source: 'spotify',
+        kind: 'album',
+      });
+    });
+    it('skips a locale prefix on playlist and track links', () => {
+      expect(classifyAcquireUrl('https://open.spotify.com/intl-pt/playlist/abc123')).toEqual({
+        source: 'spotify',
+        kind: 'playlist',
+      });
+      expect(classifyAcquireUrl('https://open.spotify.com/intl-de/track/abc123')).toEqual({
+        source: 'spotify',
+        kind: 'track',
+      });
+    });
+    it('does not treat a non-locale first segment as a prefix', () => {
+      expect(classifyAcquireUrl('https://open.spotify.com/international/album/x')).toEqual({
+        source: 'spotify',
+        kind: 'unknown',
+      });
+    });
+
     it('normalises www.spotify.com and spotify.com hosts', () => {
       expect(classifyAcquireUrl('https://www.spotify.com/playlist/x')).toEqual({
         source: 'spotify',

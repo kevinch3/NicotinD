@@ -389,6 +389,33 @@ is its reference implementation, setting it from the item identifier at `createJ
 to the real item title once the background resolve lands. Core degrades through the rungs above for
 addons that don't send it.
 
+#### The one case where the display title *is* the album (issue #997)
+
+The separation above is right, and it has exactly one narrow exception: **a non-playlist album link
+names one release**, so whatever the addon called that job is that album's name. `albumTitleForUrlJob`
+(`@nicotind/core`) encodes it, and the poller applies it in `fillAlbumTitleFromLink` — at the job
+row, not in the organizer, so every downstream reader (the Downloads card, `jobMeta()`, album
+destinations) sees a job that knows its own album. It never overwrites an `album_title` an addon
+actually reported, refuses anything `isUnknownLike`, and is gated on `classifyAcquireUrl(...).kind
+=== 'album'` plus `is_playlist = 0`.
+
+Why it was needed: spotdl reports `title` but never `album`, so `album_title` was NULL on **all five**
+prod Spotify album acquires. `applyJobCanonicalName` is guarded on `albumTitle != null`, so it never
+stamped the ALBUM tag; spotdl's own files carried the literal placeholder `ALBUM=Unknown`; the
+organizer filed them under `<Artist>/Unknown/`; and `resolveTags` then hit the loose-single rule above
+and rewrote each track's album to its own **title**. One 13-track release became twelve albums —
+while the files' own tags said `track=N/13` throughout.
+
+The self-titled case is why the tag write, not the folder, is the load-bearing half:
+`inferFolderAlbum` deliberately refuses a folder whose name equals the artist, so
+`Gondwana/Gondwana/` alone would still have scanned as loose singles. `placeFile`'s tag-rewrite step
+replaces the `Unknown` placeholder on disk, which is what makes the rescan idempotent.
+
+`classifyAcquireUrl` had to learn Spotify's locale prefix for any of this to fire:
+`open.spotify.com/intl-es/album/<id>` put the type in the *second* segment, so all five links
+classified as `unknown`. The latent half was worse than the reported one — an `intl-*` **playlist**
+link would silently skip playlist generation, which keys on the same `kind`.
+
 #### What the addon split dropped (and where it is being put back)
 
 Both external downloader addons spawn their tool with `stdio: 'ignore'` and then

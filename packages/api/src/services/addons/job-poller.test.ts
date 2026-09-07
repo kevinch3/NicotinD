@@ -704,6 +704,79 @@ describe('AddonJobPoller', () => {
     });
   });
 
+  /**
+   * Issue #997. The real job: a `intl-es/album/` link, 13 tracks, spotdl
+   * reporting `title` but never `album`. With `album_title` null the organizer
+   * declines to stamp the ALBUM tag, the files land in `<Artist>/Unknown/`, and
+   * the scanner's loose-single rule turns each track into its own album.
+   */
+  describe('album link names the album (issue #997)', () => {
+    const seedUrlJob = (sourceUrl: string, isPlaylist: boolean): string => {
+      const coreJobId = createJob(h.db, {
+        kind: 'url',
+        method: 'fixture-addon',
+        sourceUrl,
+        isPlaylist,
+        stage: 'queued',
+      });
+      mapAddonJob(h.db, 'fixture-addon', 'aj-1', coreJobId);
+      return coreJobId;
+    };
+    const albumTitleOf = (id: string): string | null =>
+      h.db
+        .query<{ album_title: string | null }, [string]>(
+          `SELECT album_title FROM acquisition_jobs WHERE id = ?`,
+        )
+        .get(id)!.album_title;
+
+    it('adopts the addon title as filing metadata for a locale-prefixed album link', async () => {
+      let localJobs: AddonJob[] = [];
+      h = harness(() => localJobs);
+      await h.registry.enable('fixture-addon', 'admin');
+      const coreJobId = seedUrlJob(
+        'https://open.spotify.com/intl-es/album/5aqBD2HHSWt6VpSjSZfiMw',
+        false,
+      );
+      localJobs = [makeJob({ intent: 'url', artist: null, album: null, title: 'Gondwana' })];
+
+      await h.poller.tick();
+      await h.poller.idle();
+
+      expect(albumTitleOf(coreJobId)).toBe('Gondwana');
+    });
+
+    it('leaves a playlist alone, so a playlist name never becomes an album', async () => {
+      let localJobs: AddonJob[] = [];
+      h = harness(() => localJobs);
+      await h.registry.enable('fixture-addon', 'admin');
+      const coreJobId = seedUrlJob(
+        'https://open.spotify.com/playlist/37i9dQZF1DWVYs6zNzJ0ci',
+        true,
+      );
+      localJobs = [
+        makeJob({ intent: 'url', artist: null, album: null, title: 'Reggae en Espanol' }),
+      ];
+
+      await h.poller.tick();
+      await h.poller.idle();
+
+      expect(albumTitleOf(coreJobId)).toBeNull();
+    });
+
+    it('never overrides an album the addon actually reported', async () => {
+      let localJobs: AddonJob[] = [];
+      h = harness(() => localJobs);
+      await h.registry.enable('fixture-addon', 'admin');
+      const coreJobId = seedUrlJob('https://open.spotify.com/intl-es/album/abc', false);
+      localJobs = [makeJob({ intent: 'url', album: 'Real Album Name', title: 'Card Title' })];
+
+      await h.poller.tick();
+      await h.poller.idle();
+
+      expect(albumTitleOf(coreJobId)).toBe('Real Album Name');
+    });
+  });
+
   describe('playlist-from-acquisition on the addon lane (issue #587)', () => {
     it('generates a native playlist once a playlist job lands its tracks', async () => {
       let localJobs: AddonJob[] = [];

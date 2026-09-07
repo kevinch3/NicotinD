@@ -5,7 +5,12 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { AddonContractError, AddonRequestError } from './client.js';
 import { MAX_ADDON_FILE_BYTES, safeIncomingPath } from './ingest-path.js';
-import { createLogger, type AddonJob, type AddonJobItem } from '@nicotind/core';
+import {
+  createLogger,
+  albumTitleForUrlJob,
+  type AddonJob,
+  type AddonJobItem,
+} from '@nicotind/core';
 import type { PluginRegistry } from '../plugins/registry.js';
 import type { CompletedDownloadFile } from '../path-inference.js';
 import { RemoteAddonPlugin } from './remote-addon-plugin.js';
@@ -499,6 +504,48 @@ export class AddonJobPoller {
         [clampAddonText(job.title), now, coreJobId],
       );
     }
+    this.fillAlbumTitleFromLink(coreJobId, now);
+  }
+
+  /**
+   * The one case where the display title *is* filing metadata: a non-playlist
+   * album link names exactly one release, so a job under it that still has no
+   * `album_title` can adopt the name the addon gave it. Without this the tags
+   * never get stamped and one release lands as N single-track albums (#997).
+   *
+   * Run here rather than in the organizer so every downstream reader — the
+   * Downloads card, `jobMeta`, album destinations — sees a job that knows its
+   * own album, instead of only the folder path benefiting.
+   */
+  private fillAlbumTitleFromLink(coreJobId: string, now: number): void {
+    const row = this.deps.db
+      .query<
+        {
+          source_url: string | null;
+          display_title: string | null;
+          album_title: string | null;
+          is_playlist: number;
+        },
+        [string]
+      >(
+        `SELECT source_url, display_title, album_title, is_playlist
+           FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(coreJobId);
+    if (!row) return;
+    const album = albumTitleForUrlJob({
+      sourceUrl: row.source_url,
+      displayTitle: row.display_title,
+      albumTitle: row.album_title,
+      isPlaylist: row.is_playlist === 1,
+    });
+    if (album == null) return;
+    this.deps.db.run(`UPDATE acquisition_jobs SET album_title = ?, updated_at = ? WHERE id = ?`, [
+      album,
+      now,
+      coreJobId,
+    ]);
+    log.info({ coreJobId, album }, 'adopted the album link name as filing metadata');
   }
 
   /**

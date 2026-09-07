@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { cleanFolderName, isGenericFolderName } from '@nicotind/core';
+import { cleanFolderName, isGenericFolderName, isUnknownLike } from '@nicotind/core';
 import { looksLikeFilenameTag } from './path-sanitize.js';
 
 export interface CompletedDownloadFile {
@@ -29,22 +29,6 @@ function splitPathSegments(input: string): string[] {
 
 function cleanToken(input: string): string {
   return input.replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function isUnknownLike(value: string | undefined): boolean {
-  if (!value) return true;
-  const normalized = value
-    .toLowerCase()
-    .replace(/[\[\](){}]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return (
-    normalized === '' ||
-    normalized === 'unknown' ||
-    normalized === 'unknown artist' ||
-    normalized === 'unknown album' ||
-    normalized === 'unknown title'
-  );
 }
 
 export function hasUsableValue(value: string | undefined): value is string {

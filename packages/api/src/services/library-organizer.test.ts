@@ -263,6 +263,73 @@ describe('LibraryOrganizer (real fs)', () => {
     expect(existsSync(join(root, 'Queen', 'Hot Space (Deluxe Remastered Version)'))).toBe(false);
   });
 
+  /**
+   * Issue #997. spotdl wrote `ALBUM=Unknown` on all 13 files of a self-titled
+   * release, so the tag is a placeholder and the folder name (`Gondwana`) is
+   * one `inferFolderAlbum` refuses to use — it equals the artist. The job's
+   * album title is therefore the only thing that can save it, and it has to
+   * reach the *tag*, not just the destination path: a file that moves into the
+   * right folder while still carrying `ALBUM=Unknown` is read back by the
+   * scanner as a loose single and becomes its own album.
+   */
+  it('stamps the job album over an Unknown placeholder, self-titled included', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    for (const [n, title] of [
+      [1, 'Reggae Is Coming'],
+      [2, 'Chainga Langa'],
+    ] as const) {
+      seed(staging, `Gondwana/0${n} - ${title}.mp3`, {
+        artist: 'Gondwana',
+        album: 'Unknown',
+        title,
+        trackNumber: n,
+      });
+    }
+    const org = new LibraryOrganizer({
+      transcodeLossless: { enabled: false, bitRate: 192 },
+      musicDir: root,
+      stagingDir: staging,
+      jobLookup: () => null,
+    });
+    const jobMeta = {
+      jobId: 'j997',
+      kind: 'url' as const,
+      artistName: null,
+      albumTitle: 'Gondwana',
+      lidarrAlbumId: null,
+      genres: null,
+      year: null,
+      canonicalTracks: null,
+    };
+    const result = await org.organizeBatch([
+      {
+        username: 'spotdl-addon',
+        directory: 'Gondwana',
+        filename: '01 - Reggae Is Coming.mp3',
+        directoryFileCount: 2,
+        jobMeta,
+      },
+      {
+        username: 'spotdl-addon',
+        directory: 'Gondwana',
+        filename: '02 - Chainga Langa.mp3',
+        directoryFileCount: 2,
+        jobMeta,
+      },
+    ]);
+
+    expect(result.moved).toBe(2);
+    const landed = join(root, 'Gondwana', 'Gondwana');
+    expect(existsSync(landed)).toBe(true);
+    expect(existsSync(join(root, 'Gondwana', 'Unknown'))).toBe(false);
+    // The load-bearing half: the placeholder is gone from the tag itself, so a
+    // rescan reads one album instead of two singles.
+    for (const f of readdirSync(landed)) {
+      expect((await readAudioTags(join(landed, f))).album).toBe('Gondwana');
+    }
+  });
+
   it('consolidates two editions of one album (in a single batch) into one folder + dedupes', async () => {
     const root = tmpRoot();
     const staging = join(root, '_staging');
