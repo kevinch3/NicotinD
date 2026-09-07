@@ -1319,9 +1319,12 @@ describe('buildLibrary — a known file survives a canonical tracklist it no lon
     suffix: 'opus',
   });
 
-  it('drops it when the library does not already hold it (ingest is unchanged)', () => {
+  it('keeps it even when the library does not already hold it (#968)', () => {
+    // Was `toHaveLength(0)`. Dropping on ingest is what made the loss permanent:
+    // the file never enters library_songs, so knownRelPaths never covers it and
+    // every later scan drops it again.
     const built = buildLibrary([retagged], CANONICAL);
-    expect(built.songs).toHaveLength(0);
+    expect(built.songs.map((s) => s.title)).toEqual(['Es Por Ti']);
   });
 
   it('keeps it, with the corrected title, when the library already holds the file', () => {

@@ -36,10 +36,23 @@ describe('chooseFolderKeepers', () => {
     expect(keptNames).toEqual(['b.mp3']);
   });
 
-  it('drops foreign rips when canonical titles are provided', () => {
+  it('never deletes the last copy of a track the canonical list omits (#968)', () => {
+    // This pass unlinks files from disk. A pinned tracklist describing another
+    // edition therefore did not merely hide music, it destroyed it — so the
+    // "never deletes the last copy" invariant below must hold with a canonical
+    // list exactly as it does without one.
     const files = [f('01 Circus.mp3', 'Circus', 'mp3', 320), f('bonus.mp3', 'DJ Drop', 'mp3', 320)];
     const { deletedNames } = chooseFolderKeepers(files, ['Circus', 'Womanizer']);
-    expect(deletedNames).toEqual(['bonus.mp3']);
+    expect(deletedNames).toEqual([]);
+  });
+
+  it('still deletes a redundant copy when the canonical list names the track', () => {
+    const files = [
+      f('01 Circus.mp3', 'Circus', 'mp3', 320),
+      f('02 Circus.mp3', 'Circus', 'mp3', 128),
+    ];
+    const { deletedNames } = chooseFolderKeepers(files, ['Circus', 'Womanizer']);
+    expect(deletedNames).toEqual(['02 Circus.mp3']);
   });
 
   it('never deletes the last copy of a distinct track', () => {
