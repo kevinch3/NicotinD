@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.83](https://github.com/kevinch3/NicotinD/compare/v0.5.82...v0.5.83) (2026-09-07)
+
+### Bug Fixes
+
+* **audit:** make each rule answer the question its name asks ([#970](https://github.com/kevinch3/NicotinD/issues/970)) ([4ba2b42](https://github.com/kevinch3/NicotinD/commit/4ba2b42fd9a95c44c7a436c1adac70db59a71501)), closes [#947](https://github.com/kevinch3/NicotinD/issues/947) [#954](https://github.com/kevinch3/NicotinD/issues/954) [#957](https://github.com/kevinch3/NicotinD/issues/957) [#959](https://github.com/kevinch3/NicotinD/issues/959) [#962](https://github.com/kevinch3/NicotinD/issues/962) [#963](https://github.com/kevinch3/NicotinD/issues/963) [#966](https://github.com/kevinch3/NicotinD/issues/966) [#967](https://github.com/kevinch3/NicotinD/issues/967) [#969](https://github.com/kevinch3/NicotinD/issues/969), references [#947](https://github.com/kevinch3/NicotinD/issues/947) [#954](https://github.com/kevinch3/NicotinD/issues/954) [#947](https://github.com/kevinch3/NicotinD/issues/947) [#954](https://github.com/kevinch3/NicotinD/issues/954) [#947](https://github.com/kevinch3/NicotinD/issues/947) [#957](https://github.com/kevinch3/NicotinD/issues/957) [#966](https://github.com/kevinch3/NicotinD/issues/966) [#959](https://github.com/kevinch3/NicotinD/issues/959) [#963](https://github.com/kevinch3/NicotinD/issues/963) [#705](https://github.com/kevinch3/NicotinD/issues/705) [#962](https://github.com/kevinch3/NicotinD/issues/962) [#967](https://github.com/kevinch3/NicotinD/issues/967) [#969](https://github.com/kevinch3/NicotinD/issues/969)
 ## [0.5.82](https://github.com/kevinch3/NicotinD/compare/v0.5.81...v0.5.82) (2026-09-06)
 
 ### Features
