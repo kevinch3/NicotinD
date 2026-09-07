@@ -23,7 +23,7 @@ async function openNowPlaying(page: Page): Promise<void> {
   await page.getByTestId('play-album').click();
   await expect(page.getByTestId('player-title')).toBeVisible();
   await page.getByTestId('player-title').click();
-  await expect(page.getByText('Now Playing')).toBeVisible();
+  await expect(page.getByTestId('now-playing-heading')).toBeVisible();
 }
 
 test.describe('Now Playing on a TV viewport (tv-build)', () => {

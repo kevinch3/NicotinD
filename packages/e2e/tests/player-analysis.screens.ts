@@ -51,7 +51,7 @@ test('player & analysis — mobile screens', async ({ page, obs }) => {
 
   // 3) Expand into Now Playing.
   await page.getByTestId('player-title').click();
-  await expect(page.getByText('Now Playing')).toBeVisible();
+  await expect(page.getByTestId('now-playing-heading')).toBeVisible();
   await shot(page, FLOW, 2, 'now playing', { settleMs: 600 });
 
   // 4) Shuffle on (testid is new — best-effort on older deploys).

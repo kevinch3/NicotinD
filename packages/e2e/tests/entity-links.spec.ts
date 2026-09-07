@@ -54,7 +54,7 @@ test.describe('entity links', () => {
       await page.getByTestId('play-album').click();
       await expect(page.getByTestId('player-title')).toBeVisible();
       await page.getByTestId('player-title').click();
-      await expect(page.getByText('Now Playing')).toBeVisible();
+      await expect(page.getByTestId('now-playing-heading')).toBeVisible();
 
       const queueRow = page.getByTestId('queue-row').first();
       await expect(queueRow).toBeVisible();

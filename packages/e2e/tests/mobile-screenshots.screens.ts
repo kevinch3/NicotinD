@@ -31,7 +31,7 @@ test('capture mobile screens', async ({ page }) => {
 
   // Expand to Now Playing by tapping the mini bar's track-info area.
   await page.getByTestId('player-title').click();
-  await expect(page.getByText('Now Playing')).toBeVisible();
+  await expect(page.getByTestId('now-playing-heading')).toBeVisible();
   await page.waitForTimeout(600); // slide-up transition
   await page.screenshot({ path: `${OUT}/04-player-now-playing.png`, fullPage: false });
 
