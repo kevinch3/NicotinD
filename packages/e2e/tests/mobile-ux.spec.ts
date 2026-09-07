@@ -21,7 +21,7 @@ async function openNowPlaying(page: Page): Promise<void> {
   await page.getByTestId('play-album').click();
   await expect(page.getByTestId('player-title')).toBeVisible();
   await page.getByTestId('player-title').click();
-  await expect(page.getByText('Now Playing')).toBeVisible();
+  await expect(page.getByTestId('now-playing-heading')).toBeVisible();
 }
 
 /**
@@ -45,7 +45,7 @@ async function openNowPlayingArtless(page: Page): Promise<void> {
   await row.getByTestId('track-row-title').click();
   await expect(page.getByTestId('player-title')).toBeVisible();
   await page.getByTestId('player-title').click();
-  await expect(page.getByText('Now Playing')).toBeVisible();
+  await expect(page.getByTestId('now-playing-heading')).toBeVisible();
 }
 
 test.describe('mobile UX', () => {
@@ -187,7 +187,7 @@ test.describe('mobile UX', () => {
     await page.mouse.move(box.x + box.width / 2, box.y - 90, { steps: 6 });
     await page.mouse.up();
 
-    await expect(page.getByText('Now Playing')).toBeVisible();
+    await expect(page.getByTestId('now-playing-heading')).toBeVisible();
   });
 
   // Downloads rows must stay inside the viewport — overflowing content (long

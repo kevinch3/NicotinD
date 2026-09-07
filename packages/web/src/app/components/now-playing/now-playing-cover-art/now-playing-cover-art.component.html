@@ -1,7 +1,14 @@
 @if (player.currentTrack(); as track) {
   <!-- Cover art — app-cover-art degrades a missing/404 cover to the on-theme
        gradient tile (like the grid/mini-player) instead of a broken-image glyph. -->
-  <div class="flex-shrink-0 flex justify-center px-4 py-4 md:px-8">
+  <!-- The padding is conditional: a fully-collapsed cover (#993) that kept its
+       32px of vertical padding would leave an empty band where the artwork was,
+       giving back part of the space the drag just reclaimed. -->
+  <div
+    class="flex-shrink-0 flex justify-center md:px-8"
+    [class.px-4]="!coverCollapsed()"
+    [class.py-4]="!coverCollapsed()"
+  >
     <!-- The stored queue-resize shrink (coverMaxPx) is mobile-only: at lg the
          side-panel layout has no vertical resize, so lg:max-w-80 wins over the
          var-driven cap via the responsive cascade — an inline style.max-width

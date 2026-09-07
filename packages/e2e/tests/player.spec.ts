@@ -201,7 +201,7 @@ test.describe('player controls', () => {
   }) => {
     await startAlbum(page);
     await page.getByTestId('player-title').click();
-    await expect(page.getByText('Now Playing')).toBeVisible();
+    await expect(page.getByTestId('now-playing-heading')).toBeVisible();
     await expect(page.getByTestId('now-playing-queue')).toBeVisible();
 
     await page.getByTestId('now-playing-tab-lyrics').click();
@@ -220,7 +220,7 @@ test.describe('player controls', () => {
     // count without scrolling/trimming a long, viewport-clipped queue list.
     await startAlbum(page);
     await page.getByTestId('player-title').click();
-    await expect(page.getByText('Now Playing')).toBeVisible();
+    await expect(page.getByTestId('now-playing-heading')).toBeVisible();
 
     await page.getByTestId('queue-clear').click();
     // Close the sheet (back chevron in the drag-handle header, which
@@ -237,7 +237,7 @@ test.describe('player controls', () => {
     }
 
     await page.getByTestId('player-title').click();
-    await expect(page.getByText('Now Playing')).toBeVisible();
+    await expect(page.getByTestId('now-playing-heading')).toBeVisible();
     await expect(page.getByTestId('now-playing-tab-queue')).toContainText('2');
   });
 
@@ -252,7 +252,7 @@ test.describe('player controls', () => {
 
     // Open the Now Playing sheet so the karaoke overlay can be reached.
     await page.getByTestId('player-title').click();
-    await expect(page.getByText('Now Playing')).toBeVisible();
+    await expect(page.getByTestId('now-playing-heading')).toBeVisible();
 
     // Seek to ~8s into the 30s fixture track. The toggle reloads the src, so
     // this is the position `restoredTime` must carry across; we just need a

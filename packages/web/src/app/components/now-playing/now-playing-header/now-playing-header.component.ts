@@ -1,6 +1,7 @@
-import { Component, inject, output } from '@angular/core';
+import { Component, computed, inject, output } from '@angular/core';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { PlayerService } from '../../../services/player.service';
+import { nowPlayingHeading } from '../../../lib/now-playing-heading';
 import { RemotePlaybackService } from '../../../services/remote-playback.service';
 import { DeviceSwitcherComponent } from '../../device-switcher/device-switcher.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
@@ -17,6 +18,20 @@ import { TranslatePipe } from '../../../pipes/translate.pipe';
 export class NowPlayingHeaderComponent {
   readonly player = inject(PlayerService);
   readonly remote = inject(RemotePlaybackService);
+
+  /**
+   * What this session actually is — a radio, an album, a playlist — rather than
+   * the constant "NOW PLAYING" it used to read (#996). Radio wins over the
+   * context it extended, because the radio is what chooses the next track.
+   */
+  readonly heading = computed(() =>
+    nowPlayingHeading({
+      radio: this.player.radio(),
+      radioFilter: this.player.radioFilter(),
+      context: this.player.context(),
+      trackTitle: this.player.currentTrack()?.title ?? null,
+    }),
+  );
 
   readonly dragPointerDown = output<PointerEvent>();
 }

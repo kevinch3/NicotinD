@@ -1557,6 +1557,32 @@ looked correct in the markup — they simply never got the chance to apply.
 `now-playing-scroll-axes.spec.ts` pins the rule across every Now Playing template rather than the
 one line that was wrong, and asserts it found the templates first, because a vacuous pass is the
 failure mode of a test shaped like that.
+## The Now Playing header names the session, and radio wins
+
+The header read a constant `NOW PLAYING`, so a radio, an album and an ad-hoc queue were
+indistinguishable at the top of the sheet (#996). The signal was already present —
+`player.context()` carries `{ type, name }`, and the queue panel one component over had always
+read it.
+
+`nowPlayingHeading` (`lib/now-playing-heading.ts`, pure) resolves it to an i18n key plus params.
+The rule that matters is **radio wins over the context it extended**: a playlist that quietly
+became a radio still read as the playlist, so the thing choosing the next track was not the thing
+named at the top. When the radio is on the heading says *radio* and names what it is about — its
+station filter (`describeLibraryFilter`, reused rather than restated), else the album/playlist it
+grew out of, else the track it seeded from. An ad-hoc queue is genuinely undetermined and falls
+through to the plain title rather than inventing a label.
+
+## The queue-resize notch is a drag target, so it clears 44px
+
+A drag is the least forgiving interaction there is, and the notch offered ~20px of target around a
+4px pill (#993). It is now `py-5` — 44px — padded symmetrically, since an asymmetric pair is what
+made it read as belonging to the panel tabs below rather than as its own affordance.
+
+The cover floor went from 120px to **0**. A floor of 120 handed most of the reclaimed space straight
+back on exactly the device the drag exists for, and made the gesture feel broken rather than
+bounded: the handle kept moving after the cover had stopped shrinking. `coverCollapsed` drops the
+wrapper's `px-4 py-4` when it reaches zero — otherwise 32px of empty box outlives the artwork it
+was padding, giving back part of what the drag just won.
 
 
 ## Bundle size budget (issue #256)

@@ -28,7 +28,7 @@ test.describe('radio variety chip', () => {
     await firstRow.getByTestId('track-row-menu-toggle').click();
     await page.getByTestId('track-action-Start radio').click();
     await page.getByTestId('player-title').click();
-    await expect(page.getByText('Now Playing')).toBeVisible();
+    await expect(page.getByTestId('now-playing-heading')).toBeVisible();
 
     const radio = page.getByTestId('now-playing-radio');
     await expect(radio).toHaveAttribute('aria-pressed', 'true');
