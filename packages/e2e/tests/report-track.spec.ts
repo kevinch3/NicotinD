@@ -12,7 +12,7 @@ test.describe('report a track', () => {
     await openAlbumCard(page, FIXTURE.album.title);
     await page.getByTestId('track-row').first().getByTestId('track-row-title').click();
     await page.getByTestId('player-title').click();
-    await expect(page.getByTestId('now-playing-heading')).toBeVisible();
+    await expect(page.getByTestId('now-playing-body')).toBeVisible();
 
     // The context menu hangs off the Now Playing title.
     await page.getByTestId('now-playing-title').click({ button: 'right' });
