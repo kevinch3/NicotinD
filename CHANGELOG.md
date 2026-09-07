@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.0](https://github.com/kevinch3/NicotinD/compare/v0.5.88...v0.6.0) (2026-09-07)
+
+### ⚠ BREAKING CHANGES
+
+* **library:** ProcessingSettings loses `gates` and `holdForReview`
+  (stale blobs are read and dropped), ProcessingStatus loses `quarantined`
+  and `gateable`, PipelineStage loses `processing`, the job feed loses
+  `quarantinedCount`, and /api/review/* plus /api/admin/processing/queue are
+  removed.
+
+  * test(e2e): cancel a still-downloading partial before discarding it
+
+  With every item landed the job is done and has nothing to cancel; the spec
+  now keeps a second track in flight so the card is cancellable, and accepts
+
+### Features
+
+* **library:** land scanned tracks immediately and remove the review hold ([#981](https://github.com/kevinch3/NicotinD/issues/981)) ([#983](https://github.com/kevinch3/NicotinD/issues/983)) ([1c4328b](https://github.com/kevinch3/NicotinD/commit/1c4328bed2ddc2a19d143ea89b8211c0a4b8abe5)), references [#810](https://github.com/kevinch3/NicotinD/issues/810) [#810](https://github.com/kevinch3/NicotinD/issues/810)
 ## [0.5.88](https://github.com/kevinch3/NicotinD/compare/v0.5.87...v0.5.88) (2026-09-07)
 
 ### Features
