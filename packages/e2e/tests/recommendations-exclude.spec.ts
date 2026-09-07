@@ -41,8 +41,10 @@ test.describe('per-user recommendation exclusions', () => {
 
     // Settings lists it, and the row's remove control is the undo.
     await page.goto('/settings/recommendations');
-    const toggles = page.getByTestId('settings-group-toggle');
-    if ((await toggles.count()) > 0) await toggles.first().click();
+    const toggle = page.getByTestId('settings-group-toggle').first();
+    await expect(toggle).toBeVisible();
+    if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     const row = page.locator(
       `[data-testid="recommendations-excluded-row"][data-song-id="${rejected}"]`,
     );

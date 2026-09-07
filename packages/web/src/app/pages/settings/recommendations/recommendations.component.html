@@ -4,7 +4,11 @@
   }}</a>
   <h1 class="page-title mt-2 mb-6">{{ 'recommendations.title' | t }}</h1>
 
-  <app-settings-group groupId="recommendations-excluded" [title]="'recommendations.excludedTitle' | t">
+  <app-settings-group
+    groupId="recommendations-excluded"
+    [title]="'recommendations.excludedTitle' | t"
+    [defaultOpen]="true"
+  >
     <p class="text-sm text-theme-secondary mb-4">{{ 'recommendations.hint' | t }}</p>
     @if (exclusions.loaded() && exclusions.excluded().length === 0) {
       <p class="text-sm text-theme-muted" data-testid="recommendations-empty">
