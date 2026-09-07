@@ -67,9 +67,7 @@ Modeled on `library_artist_meta`:
 
 ## Enrichment (`artist-origin` task)
 
-Per-artist like `artist-info`, default-on, never a landing gate (artist-scoped
-tasks have no `satisfiedColumnSql`, so the gate machinery structurally can't
-strand a download). One cached MB request per artist under the client's
+Per-artist like `artist-info`, default-on. One cached MB request per artist under the client's
 existing 1 req/s limiter (`getArtistOrigin`: `country` field first, else a
 country-typed `area`'s ISO code; new `origin` variant in the disk-cache
 union).

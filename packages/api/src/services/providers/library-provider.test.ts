@@ -89,16 +89,6 @@ describe('LibrarySearchProvider album matching (tokenized + accent-insensitive)'
     const { results } = await new LibrarySearchProvider(db).search('Tangana Rosalía');
     expect(results!.albums).toHaveLength(0);
   });
-
-  it('excludes albums with any un-landed (quarantined) song', async () => {
-    seedAlbum('al1', 'Ídolo', 'C. Tangana');
-    db.run(
-      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, hidden, landed_at, synced_at)
-       VALUES ('s1', 'al1', 'Track', 'C. Tangana', 'art', 60, 'p/s1.mp3', 0, NULL, 1)`,
-    );
-    const { results } = await new LibrarySearchProvider(db).search('Ídolo');
-    expect(results!.albums).toHaveLength(0);
-  });
 });
 
 describe('LibrarySearchProvider artist matching', () => {

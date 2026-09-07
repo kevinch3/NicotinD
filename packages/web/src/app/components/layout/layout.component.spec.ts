@@ -15,7 +15,6 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
-import { DownloadReviewService } from '../../services/download-review.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { LikeService } from '../../services/like.service';
 import { SetupService } from '../../services/setup.service';
@@ -137,7 +136,6 @@ describe('LayoutComponent — desktop downloads badge', () => {
       activeJobs: signal<unknown[]>([{}, {}, {}]),
       refresh: async () => {},
     };
-    const reviewStub = { pending: signal(1), start: () => () => {} };
 
     TestBed.configureTestingModule({
       imports: [LayoutComponent],
@@ -155,7 +153,6 @@ describe('LayoutComponent — desktop downloads badge', () => {
         },
         { provide: TransferService, useValue: transfersStub },
         { provide: AcquireService, useValue: acquireStub },
-        { provide: DownloadReviewService, useValue: reviewStub },
         { provide: APP_VERSION, useValue: '0.0.0-test' },
       ],
       schemas: [NO_ERRORS_SCHEMA],
@@ -167,11 +164,10 @@ describe('LayoutComponent — desktop downloads badge', () => {
     const fixture = TestBed.createComponent(LayoutComponent);
     fixture.detectChanges();
 
-    expect(fixture.componentInstance.downloadCount()).toBe(6);
+    expect(fixture.componentInstance.downloadCount()).toBe(5);
 
     transfersStub.activeDownloadCount.set(0);
     acquireStub.activeJobs.set([]);
-    reviewStub.pending.set(0);
     expect(fixture.componentInstance.downloadCount()).toBe(0);
   });
 });

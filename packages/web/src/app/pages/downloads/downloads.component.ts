@@ -16,10 +16,7 @@ import {
 } from '../../lib/download-groups';
 import { DownloadItemComponent } from '../../components/download-item/download-item.component';
 import { DiskPillComponent } from '../../components/disk-pill/disk-pill.component';
-import { ReviewInboxComponent } from '../../components/review-inbox/review-inbox.component';
-import { MetadataFixModalComponent } from '../../components/metadata-fix-modal/metadata-fix-modal.component';
-import { DownloadReviewService } from '../../services/download-review.service';
-import type { DiskUsage, ReviewQueueAlbum } from '../../services/api/api-types';
+import type { DiskUsage } from '../../services/api/api-types';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
 const ACQUIRE_STATE_ORDER: Record<AcquireJob['state'], number> = {
@@ -40,14 +37,7 @@ function sortAcquireJobs(jobs: AcquireJob[]): AcquireJob[] {
 
 @Component({
   selector: 'app-downloads',
-  imports: [
-    ConfirmDialogComponent,
-    DownloadItemComponent,
-    DiskPillComponent,
-    ReviewInboxComponent,
-    MetadataFixModalComponent,
-    TranslatePipe,
-  ],
+  imports: [ConfirmDialogComponent, DownloadItemComponent, DiskPillComponent, TranslatePipe],
   templateUrl: './downloads.component.html',
 })
 export class DownloadsComponent {
@@ -55,7 +45,6 @@ export class DownloadsComponent {
   private systemApi = inject(SystemApiService);
   private transferService = inject(TransferService);
   private readonly p2r = inject(PullToRefreshService);
-  private readonly review = inject(DownloadReviewService);
   private readonly toasts = inject(ToastService);
   private readonly i18n = inject(TranslateService);
 
@@ -65,29 +54,6 @@ export class DownloadsComponent {
    *  `cancelRequested` marker, which survives reloads. */
   readonly cancelling = signal(new Set<string>());
   readonly scanning = signal(false);
-
-  // Download inbox triage (issue #411): the review-inbox's "Fix metadata"
-  // action opens the fix modal in review mode against this album.
-  readonly fixAlbum = signal<ReviewQueueAlbum | null>(null);
-
-  onFixRequested(album: ReviewQueueAlbum): void {
-    this.fixAlbum.set(album);
-  }
-
-  /** A retag re-mints the album id, so the fixed album reappears as a new
-   *  pending entry — refresh the queue and close so it doesn't show a now-stale
-   *  albumId in place. */
-  async onTracksSaved(): Promise<void> {
-    this.fixAlbum.set(null);
-    await this.review.refresh();
-  }
-
-  /** A plain metadata apply (artist/album/cover/year) can also re-point the
-   *  album; refresh the queue so it reflects the corrected entry too. */
-  async onFixApplied(_result: { albumId: string }): Promise<void> {
-    this.fixAlbum.set(null);
-    await this.review.refresh();
-  }
 
   // Storage pill for the header — best-effort; hidden if the disk read fails.
   readonly diskUsage = signal<DiskUsage | null>(null);
@@ -149,7 +115,7 @@ export class DownloadsComponent {
 
   // Unified Active-tab feed: slskd groups + acquire jobs as one sorted list,
   // then the unified acquisition jobs folded in (post-download stages:
-  // organizing → scanning → processing → done, honest-partial unavailable
+  // organizing → scanning → done, honest-partial unavailable
   // counts, and job rows whose transfers vanished from slskd).
   readonly downloadFeed = computed(() =>
     mergeAcquisitionJobs(
@@ -157,10 +123,6 @@ export class DownloadsComponent {
       this.transferService.acquisitionJobs(),
     ),
   );
-  /** Whether a card may offer "Review / Discard" at all (#894) — the same
-   *  signal the inbox renders on, so the jump always has a target. */
-  readonly reviewAvailable = this.review.inboxVisible;
-
   readonly activeFeedCount = computed(
     () => this.downloadFeed().filter((i) => i.stage !== 'done' && i.stage !== 'error').length,
   );
@@ -209,8 +171,8 @@ export class DownloadsComponent {
       const jobId = item.jobId;
       const landed = item.progress?.done ?? 0;
       // Nothing landed yet → cancel stays one friction-free click. With tracks
-      // already on disk, cancelling is also the moment to decide their fate
-      // (#810) — default keep: they go to review, discard is the opt-in.
+      // already in the library, cancelling is also the moment to decide their
+      // fate (#810) — default keep, discard is the opt-in.
       if (landed === 0) {
         void this.cancelJob(jobId, item.key);
         return;
@@ -229,36 +191,20 @@ export class DownloadsComponent {
     }
   }
 
-  /** Card action on a held partial (#810): throw this job's landed tracks away. */
+  /** Card action on a cancelled partial (#810): throw this job's landed tracks away. */
   onItemDiscardPartial(item: DownloadItem): void {
     if (!item.jobId) return;
     const jobId = item.jobId;
     this.askConfirm(
-      this.i18n.t('downloads.discardPartialConfirm', { count: item.quarantinedCount ?? 0 }),
+      this.i18n.t('downloads.discardPartialConfirm', { count: item.progress?.done ?? 0 }),
       () => this.discardPartial(jobId),
     );
-  }
-
-  /**
-   * "Review" on a held partial: the inbox is on this same page — jump to it.
-   * A missing target is reported rather than swallowed (#894): the old
-   * `querySelector(...)?.scrollIntoView()` made "the inbox isn't rendered"
-   * look exactly like a successful scroll, so the button silently did nothing.
-   */
-  onItemReviewJump(): void {
-    const inbox = document.querySelector('[data-testid="review-inbox"]');
-    if (!inbox) {
-      this.toasts.show({ message: this.i18n.t('downloads.reviewUnavailable'), kind: 'error' });
-      return;
-    }
-    inbox.scrollIntoView({ behavior: 'smooth' });
   }
 
   private async discardPartial(jobId: string): Promise<void> {
     try {
       await firstValueFrom(this.api.discardPartial(jobId));
       this.transferService.markLibraryDirty();
-      await this.review.refresh();
     } catch (err) {
       this.toasts.show({
         message: httpErrorMessage(err, this.i18n.t('downloads.discardPartialFailed')),

@@ -19,10 +19,8 @@ import { basename, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { applySchema } from '../db.js';
 import type { CompletedDownloadFile } from './path-inference.js';
-import type { OrganizeResult } from './library-organizer.js';
-import { setProcessingSettings } from './processing-settings.js';
-import { armReviewHold, getReviewDecision } from './download-review-store.js';
 import { albumIdFor } from './library-scanner.js';
+import type { OrganizeResult } from './library-organizer.js';
 import {
   ImportAlreadyRunningError,
   ImportEmptySourceError,
@@ -112,7 +110,6 @@ function fakeOrganize(behavior: (file: CompletedDownloadFile) => FileBehavior = 
 interface ServiceOverrides {
   organize?: (files: CompletedDownloadFile[]) => Promise<OrganizeResult>;
   scan?: (relPaths: string[]) => Promise<void>;
-  acquisitionEnabled?: () => boolean;
   statfs?: (path: string) => { bsize: number; blocks: number; bavail: number };
 }
 
@@ -128,7 +125,6 @@ function makeService(overrides: ServiceOverrides = {}) {
       (async (relPaths) => {
         scanned.push(relPaths);
       }),
-    acquisitionEnabled: overrides.acquisitionEnabled ?? (() => true),
     statfs: overrides.statfs ?? (() => ({ bsize: 4096, blocks: 1e9, bavail: 1e9 })),
   });
   return { service, scanned };
@@ -329,30 +325,6 @@ describe('cancel + retry', () => {
     const retryCalls = fake.calls.slice(1);
     expect(retryCalls).toHaveLength(1);
     expect(retryCalls[0]!.every((f) => f.directory === 'B')).toBe(true);
-  });
-});
-
-describe('review-hold pre-approval', () => {
-  it('pre-approves destination albums while the hold is armed and acquisition is on', async () => {
-    setProcessingSettings(db, { holdForReview: true });
-    armReviewHold(db);
-    const { service } = makeService();
-    seed('Album/one.mp3');
-    const id = service.submit(sourceDir, { startedBy: 'admin-1' });
-    await waitForTerminal(service, id);
-    const decision = getReviewDecision(db, albumIdFor('Artist', 'Album'));
-    expect(decision?.state).toBe('approved');
-    expect(decision?.reviewedBy).toBe('import:admin-1');
-  });
-
-  it('writes no decision when acquisition is off (hold is inert, issue #416)', async () => {
-    setProcessingSettings(db, { holdForReview: true });
-    armReviewHold(db);
-    const { service } = makeService({ acquisitionEnabled: () => false });
-    seed('Album/one.mp3');
-    const id = service.submit(sourceDir);
-    await waitForTerminal(service, id);
-    expect(getReviewDecision(db, albumIdFor('Artist', 'Album'))).toBeNull();
   });
 });
 
@@ -627,21 +599,5 @@ describe('submitStaged — the browser-upload entry point', () => {
   it('refuses a path outside the upload staging root', () => {
     const { service } = makeService();
     expect(() => service.submitStaged(sourceDir, {})).toThrow(ImportSourceInvalidError);
-  });
-
-  // #894-adjacent policy call: the bypass exists so an admin bulk-importing
-  // their own library doesn't flood the inbox. That reasoning does not transfer
-  // to "any acquirer drags in an arbitrary zip", so the upload lane honours the
-  // switch the rest of the app honours.
-  it('does NOT pre-approve past the review hold, unlike a server-path import', async () => {
-    setProcessingSettings(db, { holdForReview: true });
-    armReviewHold(db);
-    const dir = stage('Album/one.mp3');
-    const { service } = makeService();
-
-    const id = service.submitStaged(dir, { startedBy: 'user-1' });
-    await waitForTerminal(service, id);
-
-    expect(getReviewDecision(db, albumIdFor('Artist', 'Album'))).toBeNull();
   });
 });

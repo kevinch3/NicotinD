@@ -41,31 +41,14 @@ export interface ProcessingSettings {
   /** Per-task enable flags. A task only runs when enabled here AND available. */
   tasks: Record<ProcessingTaskId, boolean>;
   /**
-   * Per-task "must complete before the song is added to the library" flags. A
-   * gated task holds a freshly-downloaded song in quarantine (present in the DB
-   * but hidden from every listing) until it produces its value, exhausts its
-   * failure ledger, or the safety-valve age elapses. A task only *gates* landing
-   * when it is gated here AND enabled AND available — so an off/unavailable task
-   * (e.g. the sidecar on a fresh install) can never strand a download. Sparse:
-   * absent id ⇒ not a gate. Kept separate from `tasks` so an admin can run a task
-   * in the background without it blocking landing, and vice-versa.
-   */
-  gates: Partial<Record<ProcessingTaskId, boolean>>;
-  /**
    * Temporary halt of automatic background enrichment. Unlike `enabled: false`
-   * (a persistent off switch), `paused` is a runtime throttle: fresh downloads
-   * still clear their landing gate (so nothing is stranded in quarantine), but
-   * no background enrichment runs. An explicit admin "Run now" still overrides
-   * it. It is also the manual way to stand down while another tenant needs the
-   * GPU, since the automatic courtesy yield was removed.
+   * (a persistent off switch), `paused` is a runtime throttle: no background
+   * enrichment runs, but an explicit admin "Run now" still overrides it. It is
+   * also the manual way to stand down while another tenant needs the GPU,
+   * since the automatic courtesy yield was removed. Landing is instant, so
+   * neither flag can strand a fresh download.
    */
   paused: boolean;
-  /**
-   * Hold quarantined downloads until a curator explicitly approves them
-   * (download inbox, #411). Independent of enrichment gates: applies even when
-   * the landing gate task list is empty or NICOTIND_DISABLE_LANDING_GATE is set.
-   */
-  holdForReview: boolean;
 }
 
 /** Coarse phase of the processor at a point in time. */
@@ -95,18 +78,7 @@ export interface ProcessingStatus {
   taskPending: Record<ProcessingTaskId, number>;
   /** Per-task availability: `true` if runnable, else a human reason it can't run. */
   availability: Record<ProcessingTaskId, true | string>;
-  /**
-   * Ids an admin may require before a download lands. Declared by the task
-   * itself (`EnrichmentTask.gateable`), not inferred — so the panel can hide a
-   * control it would otherwise offer inertly, or worse, offer for a task that
-   * must never hold a download hostage (#691). Absent on a status blob written
-   * before this field existed; treat that as "no information", not "none".
-   */
-  gateable?: ProcessingTaskId[];
   /** Distinct files excluded from processing after repeated hard decode failures
    *  (corrupt/unreadable); auto-cleared when the file is repaired (size change). */
   skipped: number;
-  /** Songs currently quarantined — scanned into the DB but withheld from every
-   *  library listing until their required processing (gate) steps complete. */
-  quarantined: number;
 }

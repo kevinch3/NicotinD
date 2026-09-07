@@ -10,7 +10,6 @@ import { TransferService } from '../../services/transfer.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { ToastService } from '../../services/toast.service';
 import type { AcquireJob } from '@nicotind/core';
-import { DownloadReviewService } from '../../services/download-review.service';
 
 function setup(opts: { acquireJobs?: AcquireJob[]; api?: Record<string, unknown> } = {}) {
   let scanned = false;
@@ -262,7 +261,7 @@ describe('DownloadsComponent — cancel guard (#806)', () => {
     transferService.acquisitionJobs.set([]);
     vi.spyOn(component, 'downloadFeed').mockReturnValue([
       networkRow(),
-      networkRow({ key: 'job:j2', jobId: 'j2', stage: 'processing', canCancel: false }),
+      networkRow({ key: 'job:j2', jobId: 'j2', stage: 'scanning', canCancel: false }),
       networkRow({ key: 'job:j3', jobId: 'j3', cancelRequested: true }),
     ] as never);
 
@@ -292,8 +291,6 @@ describe('DownloadsComponent — partial discard (#810)', () => {
     const cancelJob = vi.fn().mockReturnValue(of({ ok: true }));
     const discardPartial = vi.fn().mockReturnValue(of({ ok: true, deletedCount: 3 }));
     const { component } = setup({ api: { cancelJob, discardPartial } });
-    const review = TestBed.inject(DownloadReviewService);
-    vi.spyOn(review, 'refresh').mockResolvedValue(undefined);
 
     component.onItemCancel(partialRow());
     // Nothing fired yet — the dialog owns the decision.
@@ -333,48 +330,18 @@ describe('DownloadsComponent — partial discard (#810)', () => {
     expect(cancelJob).toHaveBeenCalledWith('j1');
   });
 
-  it('the card discard action confirms then deletes the held partial', async () => {
+  it('the card discard action confirms then deletes the landed partial', async () => {
     const discardPartial = vi.fn().mockReturnValue(of({ ok: true, deletedCount: 2 }));
     const { component, transferService } = setup({ api: { discardPartial } });
-    const review = TestBed.inject(DownloadReviewService);
-    vi.spyOn(review, 'refresh').mockResolvedValue(undefined);
 
-    component.onItemDiscardPartial(partialRow({ stage: 'processing', quarantinedCount: 2 }));
+    component.onItemDiscardPartial(
+      partialRow({ stage: 'done', cancelRequested: true, canCancel: false }),
+    );
     expect(discardPartial).not.toHaveBeenCalled();
     component.onConfirm();
     for (let i = 0; i < 8; i++) await Promise.resolve();
 
     expect(discardPartial).toHaveBeenCalledWith('j1');
     expect(transferService.markLibraryDirty).toHaveBeenCalled();
-  });
-});
-
-// #894. The jump was `document.querySelector(...)?.scrollIntoView()`, so when
-// the inbox is not rendered the optional chain made a missing target
-// indistinguishable from a successful scroll — the button did nothing, silently,
-// which is exactly what the user reported.
-describe('DownloadsComponent — review jump (#894)', () => {
-  it('reports that the inbox is unreachable instead of silently doing nothing', () => {
-    const { component, toastShow } = setup();
-    expect(document.querySelector('[data-testid="review-inbox"]')).toBeNull();
-
-    component.onItemReviewJump();
-
-    expect(toastShow).toHaveBeenCalled();
-    expect(toastShow.mock.calls[0]![0]).toMatchObject({ kind: 'error' });
-  });
-
-  it('scrolls to the inbox when it is on the page', () => {
-    const { component, toastShow } = setup();
-    const inbox = document.createElement('div');
-    inbox.setAttribute('data-testid', 'review-inbox');
-    inbox.scrollIntoView = vi.fn();
-    document.body.appendChild(inbox);
-
-    component.onItemReviewJump();
-
-    expect(inbox.scrollIntoView).toHaveBeenCalled();
-    expect(toastShow).not.toHaveBeenCalled();
-    inbox.remove();
   });
 });

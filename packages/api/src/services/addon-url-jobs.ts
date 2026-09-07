@@ -38,7 +38,6 @@ export function acquireStageFor(stage: string | null): AcquireJob['stage'] {
     'downloading',
     'organizing',
     'scanning',
-    'processing',
     'done',
     'error',
   ];

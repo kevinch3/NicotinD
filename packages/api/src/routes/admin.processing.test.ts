@@ -148,7 +148,18 @@ describe('admin /processing', () => {
     expect((await app.request('/processing/stop', { method: 'POST' })).status).toBe(200);
   });
 
-  it('persists the per-task landing gates via PUT', async () => {
+  // Every deployed blob still carries the retired `gates` / `holdForReview`
+  // keys from the landing gate. GET must read it without error and not echo them.
+  it('reads a stored blob carrying stale gates/holdForReview keys and omits them from GET', async () => {
+    testDb.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('processing', ?)`, [
+      JSON.stringify({
+        enabled: true,
+        paused: false,
+        tasks: { bpm: false },
+        gates: { bpm: true, key: true },
+        holdForReview: true,
+      }),
+    ]);
     const app = authed(
       new Hono<AuthEnv>().route(
         '/',
@@ -156,31 +167,12 @@ describe('admin /processing', () => {
       ),
       'admin',
     );
-    const res = await app.request('/processing', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ gates: { bpm: false } }),
-    });
+    const res = await app.request('/processing');
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { settings: { gates: Record<string, boolean> } };
-    expect(body.settings.gates.bpm).toBe(false);
-    expect(body.settings.gates.key).toBe(true); // other default gate untouched
-  });
-
-  it('rejects a malformed gates map', async () => {
-    const app = authed(
-      new Hono<AuthEnv>().route(
-        '/',
-        adminRoutes({ musicDir: '/music', processing: makeService() }),
-      ),
-      'admin',
-    );
-    const res = await app.request('/processing', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ gates: { bpm: 'yes' } }),
-    });
-    expect(res.status).toBe(400);
+    const body = (await res.json()) as { settings: Record<string, unknown> };
+    expect(body.settings['gates']).toBeUndefined();
+    expect(body.settings['holdForReview']).toBeUndefined();
+    expect((body.settings['tasks'] as Record<string, boolean>)['bpm']).toBe(false);
   });
 
   it('rejects a non-boolean paused', async () => {
@@ -197,105 +189,5 @@ describe('admin /processing', () => {
       body: JSON.stringify({ paused: 'yes' }),
     });
     expect(res.status).toBe(400);
-  });
-
-  it('PUT accepts holdForReview boolean', async () => {
-    const app = authed(
-      new Hono<AuthEnv>().route(
-        '/',
-        adminRoutes({ musicDir: '/music', processing: makeService() }),
-      ),
-      'admin',
-    );
-    const res = await app.request('/processing', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ holdForReview: true }),
-    });
-    expect(res.status).toBe(200);
-    expect(
-      ((await res.json()) as { settings: { holdForReview: boolean } }).settings.holdForReview,
-    ).toBe(true);
-  });
-
-  // Issue #416: with acquisition off the review inbox is unreachable, so
-  // enabling the hold is denied with an explanation (the landing gate also
-  // ignores it — this is the braces to that belt).
-  it('PUT denies enabling holdForReview while acquisition is off', async () => {
-    const acquisition = { enabled: () => false } as never;
-    const app = authed(
-      new Hono<AuthEnv>().route(
-        '/',
-        adminRoutes({ musicDir: '/music', processing: makeService(), acquisition }),
-      ),
-      'admin',
-    );
-    const res = await app.request('/processing', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ holdForReview: true }),
-    });
-    expect(res.status).toBe(400);
-    expect(((await res.json()) as { error: string }).error).toContain('acquisition');
-  });
-
-  it('PUT still allows turning holdForReview off while acquisition is off', async () => {
-    const acquisition = { enabled: () => false } as never;
-    const app = authed(
-      new Hono<AuthEnv>().route(
-        '/',
-        adminRoutes({ musicDir: '/music', processing: makeService(), acquisition }),
-      ),
-      'admin',
-    );
-    const res = await app.request('/processing', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ holdForReview: false }),
-    });
-    expect(res.status).toBe(200);
-  });
-
-  it('PUT rejects non-boolean holdForReview', async () => {
-    const app = authed(
-      new Hono<AuthEnv>().route(
-        '/',
-        adminRoutes({ musicDir: '/music', processing: makeService() }),
-      ),
-      'admin',
-    );
-    const res = await app.request('/processing', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ holdForReview: 'yes' }),
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it('returns the quarantine queue grouped by album', async () => {
-    testDb.run(
-      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
-       VALUES ('al', 'Album', 'Artist', 'art', 1, 0, 1)`,
-    );
-    // A quarantined song (landed_at NULL) with bpm done, others pending.
-    testDb.run(
-      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, bpm, synced_at)
-       VALUES ('s1', 'al', 'T', 'Artist', 'art', 0, 's1.opus', 10, '2024-01-01', 120, 1)`,
-    );
-    const app = authed(
-      new Hono<AuthEnv>().route(
-        '/',
-        adminRoutes({ musicDir: '/music', processing: makeService() }),
-      ),
-      'admin',
-    );
-    const res = await app.request('/processing/queue');
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      albums: { albumId: string; songs: { steps: Record<string, string> }[] }[];
-    };
-    expect(body.albums).toHaveLength(1);
-    expect(body.albums[0].songs[0].steps.bpm).toBe('done');
-    expect(body.albums[0].songs[0].steps.key).toBe('pending');
   });
 });

@@ -77,20 +77,6 @@ describe('artistGenreDistribution', () => {
     for (const s of dist.slices) expect(s.weight).toBeLessThanOrEqual(1);
   });
 
-  it('excludes quarantined tracks that have not landed', () => {
-    const d = db();
-    song(d, 's1', ['Cumbia']);
-    d.run(
-      `INSERT INTO library_songs (id, title, artist, artist_id, album_id, path, landed_at, synced_at)
-       VALUES ('s2', 's2', 'Test', 'a1', 'al1', '/m/s2.flac', NULL, 1)`,
-    );
-    d.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES ('s2', 'Rock', 0)`);
-
-    const dist = artistGenreDistribution(d, 'a1');
-    expect(dist.trackCount).toBe(1);
-    expect(dist.slices.map((s) => s.genre)).toEqual(['Cumbia']);
-  });
-
   it('folds everything past the axis cap into a single "Other"', () => {
     const d = db();
     for (let i = 0; i < MAX_AXES + 3; i++) {

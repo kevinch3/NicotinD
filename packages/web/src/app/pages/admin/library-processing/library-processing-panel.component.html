@@ -43,43 +43,6 @@
           />
         </label>
 
-        <label class="flex items-center justify-between gap-4">
-          <span>
-            <span class="text-sm text-theme-primary block">{{ 'admin.holdForReview' | t }}</span>
-            <span class="text-xs text-theme-muted">{{ 'admin.holdForReviewHint' | t }}</span>
-            @if (acqSvc.off()) {
-              <span class="text-xs text-amber-500 block" data-testid="hold-needs-acquisition">
-                {{ 'admin.holdForReviewNeedsAcquisition' | t }}
-              </span>
-            }
-          </span>
-          <input type="checkbox" [checked]="p.holdForReview"
-            [disabled]="processingSaving() || acqSvc.off()"
-            data-testid="processing-hold-for-review"
-            (change)="saveProcessing({ holdForReview: $any($event.target).checked })"
-            class="w-4 h-4 rounded accent-emerald-500" />
-        </label>
-
-        <!-- Admin strand warning (issue #417): items wait indefinitely by
-                 design, so surface how many are held + how long the oldest
-                 has waited — hidden entirely at zero (nothing armed/off). -->
-        @if (reviewHeldCount() > 0) {
-          @let oldestDays = reviewHeldOldestDays();
-          <div class="flex flex-col gap-1" data-testid="review-held-panel">
-            <p class="text-xs text-theme-secondary">
-              {{
-                (reviewHeldCount() === 1 ? 'admin.reviewHeldSingular' : 'admin.reviewHeldPlural')
-                  | t: { count: reviewHeldCount() }
-              }}
-              @if (oldestDays !== null) {
-                <span class="text-theme-muted">{{
-                  'admin.reviewHeldHint' | t: { days: oldestDays }
-                }}</span>
-              }
-            </p>
-          </div>
-        }
-
         @if (analysis(); as a) {
           <div
             class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
@@ -157,14 +120,7 @@
           </div>
         }
 
-        <!-- grid, not vertical: each row lays its run + gate checkbox out
-             side-by-side (`flex`) while DOM order is run₁,gate₁,run₂,… — on
-             the vertical axis ArrowDown from a run box landed on the SAME
-             row's gate box (visually to its right) and Left/Right did
-             nothing. `inferColumnsPerRow` reads the two same-`offsetTop`
-             checkboxes as 2 columns, so Left/Right moves within a row and
-             Up/Down across rows, matching the visual layout. -->
-        <div class="space-y-2" appTvNavGroup axis="grid">
+        <div class="space-y-2" appTvNavGroup axis="vertical">
           <div class="flex items-center justify-between gap-4 pb-1 border-b border-theme" role="row">
             <span class="text-xs uppercase tracking-wider text-theme-muted">{{
               'admin.step' | t
@@ -173,9 +129,6 @@
               class="flex items-center gap-6 text-xs uppercase tracking-wider text-theme-muted"
             >
               <span class="w-10 text-center">{{ 'admin.run' | t }}</span>
-              <span class="w-10 text-center" [title]="i18n.t('admin.gateTooltip')">{{
-                'admin.gate' | t
-              }}</span>
             </div>
           </div>
           @for (t of processingTaskDefs; track t.id) {
@@ -197,26 +150,9 @@
                   [title]="i18n.t('admin.runTaskTooltip')"
                   class="w-4 h-4 mx-3 rounded accent-emerald-500"
                 />
-                @if (taskGateable(t.id)) {
-                  <input
-                    type="checkbox"
-                    appTvNavItem
-                    [checked]="taskGated(t.id)"
-                    [disabled]="processingSaving() || !!taskUnavailable(t.id) || !p.tasks[t.id]"
-                    [attr.data-testid]="'processing-gate-' + t.id"
-                    (change)="toggleProcessingGate(t.id)"
-                    [title]="i18n.t('admin.gateTaskTooltip')"
-                    class="w-4 h-4 mx-3 rounded accent-amber-500"
-                  />
-                } @else {
-                  <span class="w-4 h-4 mx-3" aria-hidden="true"></span>
-                }
               </div>
             </div>
           }
-          <p class="text-xs text-theme-muted pt-1">
-            {{ 'admin.gatedStepsHint' | t }}
-          </p>
         </div>
 
         @if (processingStatusReadonly(); as st) {

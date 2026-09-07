@@ -367,7 +367,7 @@ describe('TransferService libraryDirty flagging', () => {
 // noteAlbumsLanded/newlyLandedAlbumIds (issue #708): deliberately narrower
 // than libraryDirty — it only ever holds ids a caller can point to, so a
 // listener can react without a blanket "something changed, reload
-// everything" reset. See ReviewInboxComponent, which is the only caller.
+// everything" reset.
 describe('TransferService.noteAlbumsLanded', () => {
   let service: TransferService;
 
@@ -412,9 +412,7 @@ describe('jobKeepsFastCadence (#806)', () => {
     }
   });
 
-  it('processing and terminal stages drop to the slow tier', () => {
-    // `processing` can honestly last hours behind the review hold — deliberate.
-    expect(jobKeepsFastCadence(makeJobView('processing'))).toBe(false);
+  it('terminal stages drop to the slow tier', () => {
     expect(jobKeepsFastCadence(makeJobView('done'))).toBe(false);
     expect(jobKeepsFastCadence({ ...makeJobView('error'), state: 'failed' })).toBe(false);
   });

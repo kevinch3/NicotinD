@@ -2113,11 +2113,6 @@ describe('descriptors task', () => {
       .get(id);
   }
 
-  it('is never a landing gate', () => {
-    // A 5 s/track CPU pass must not strand a fresh download (docs/audio-descriptors.md).
-    expect(descriptors.satisfiedColumnSql).toBeUndefined();
-  });
-
   it('reports why it is unavailable', () => {
     expect(descriptors.available(ctx({ analyzeDescriptors: null }))).toBe(
       'analysis sidecar not configured',

@@ -109,14 +109,14 @@ succeeded:
 
 ## Partial completion (a job never waits for unobtainable tracks)
 
-Individual songs are never held back (the quarantine gate lands each track on
-its own). The job's own lifecycle closes when **every item is terminal**:
-`scanned`-and-landed, `failed` (transfer error), or `unavailable` (the
+Individual songs are never held back (each track lands the moment it is
+scanned). The job's own lifecycle closes when **every item is terminal**:
+`scanned`, `failed` (transfer error), or `unavailable` (the
 fallback gave up — `markMissingItemsUnavailable`). A job with some
 `unavailable` items finishes as an honest partial ("11 of 13 · 2 unavailable"),
 not an eternal spinner and not an error. `recomputeStage` derives
-state/stage purely from item states (+ `library_songs.landed_at` for scanned
-items) — idempotent under any watcher/scan/graduate interleaving.
+state/stage purely from item states — idempotent under any watcher/scan
+interleaving.
 
 **Safety valves in `reconcileOnBoot`** (run at boot *and* on every retry sweep,
 in this order):
@@ -198,9 +198,6 @@ handles any other missing track.
 - **Fallback exhaustion**: `AlbumFallbackService.setState('exhausted')` marks
   the owning job's still-missing items `unavailable` and recomputes — the
   honest-partial close. `setState('done')` recomputes too.
-- **Landing**: `graduatePending` (library-processing) calls
-  `recomputeActiveJobStages` after every landing pass, closing jobs waiting in
-  `processing`.
 - **AcquireWatcher (URL)**: `submit` mirrors the job into `acquisition_jobs`
   (same uuid, kind `url`); `updateState`/`setStage` dual-write
   (queued/running → `active`); the boot orphan-fail updates the mirror rows in
@@ -274,12 +271,10 @@ rows it exists to catch.
   already does for URL-acquisition jobs' `AcquireJob.tracks`.
 - Core type `AcquisitionJobView` (+ `AcquisitionJobKind`) in
   `packages/core/src/types/acquire.ts`, re-exported through the web shim.
-  `PipelineStage` gained **`processing`** (scanned but quarantined behind
-  enrichment gates) — badge + stepper updated in `lib/pipeline-stage.ts`.
 - Web: `TransferService.acquisitionJobs` polls the feed;
   `mergeAcquisitionJobs` (`lib/download-groups.ts`) folds jobs into the Active
   feed — a slskd row whose transfers finished adopts the job's post-download
-  stage (organizing → scanning → processing → done) and its unavailable count
+  stage (organizing → scanning → done) and its unavailable count
   ("11 of 13 · 2 unavailable" via the `download-unavailable` chip); active
   jobs whose transfers vanished from slskd render as their own rows; URL jobs
   are skipped (the AcquireJob lane already shows them).

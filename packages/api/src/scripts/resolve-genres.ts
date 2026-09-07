@@ -80,7 +80,7 @@ function artistsNeedingGenre(db: Database, limit: number): ArtistRow[] {
       `SELECT a.id, a.name
          FROM library_artists a
          JOIN library_songs s ON s.album_artist_id = a.id OR s.artist_id = a.id
-        WHERE s.landed_at IS NOT NULL AND (s.genre IS NULL OR s.genre = '')
+        WHERE (s.genre IS NULL OR s.genre = '')
         GROUP BY a.id
         ORDER BY COUNT(*) DESC
         LIMIT ?`,

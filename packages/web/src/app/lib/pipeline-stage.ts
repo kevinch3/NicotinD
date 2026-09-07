@@ -23,7 +23,6 @@ const BADGES: Record<PipelineStage, StageBadge> = {
   downloading: { key: 'downloads.stage.downloading', label: 'Downloading', tone: 'active' },
   organizing: { key: 'downloads.stage.organizing', label: 'Organizing', tone: 'active' },
   scanning: { key: 'downloads.stage.scanning', label: 'Scanning', tone: 'active' },
-  processing: { key: 'downloads.stage.processing', label: 'Processing', tone: 'active' },
   done: { key: 'downloads.stage.done', label: 'Done', tone: 'done' },
   error: { key: 'downloads.stage.error', label: 'Error', tone: 'error' },
 };
@@ -39,7 +38,6 @@ export const STAGE_STEPS: readonly PipelineStage[] = [
   'downloading',
   'organizing',
   'scanning',
-  'processing',
   'done',
 ];
 

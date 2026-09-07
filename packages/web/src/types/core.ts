@@ -114,7 +114,7 @@ export * from '../../../addon-sdk/src/hunt-queries';
 // (issue #434), so the two can't drift.
 export * from '../../../core/src/pairing-code';
 
-/** AcoustID fingerprint-identify result shape (issue #411 download-review). */
+/** AcoustID fingerprint-identify result shape (issue #411). */
 export type { IdentifyResult } from '../../../core/src/plugin/capabilities';
 /** Why an identify attempt produced no match (issue #414) — re-exported from
  *  the same source rather than re-declared, so the taxonomy can't drift. */

@@ -18,7 +18,6 @@ import { setupRoutes } from './routes/setup.js';
 import { searchRoutes } from './routes/search.js';
 import { downloadRoutes } from './routes/downloads.js';
 import { libraryRoutes } from './routes/library.js';
-import { downloadReviewRoutes } from './routes/download-review.js';
 import { ShareRescanScheduler } from './services/share-rescan-scheduler.js';
 import { streamingRoutes } from './routes/streaming.js';
 import { healthRoutes } from './routes/health.js';
@@ -186,10 +185,10 @@ export function createApp({
       // for songs that predate the `acquisitions` table. Runs once (guarded by a
       // library_sync_state marker); cheap no-op on subsequent boots.
       backfillAcquisitions(db);
-      // Eagerly process any quarantined backlog from this scan (a fresh install,
+      // Nudge enrichment for anything this scan brought in (a fresh install,
       // or downloads that arrived while the server was down) instead of waiting
-      // for the first in-window tick, so freshly-scanned music lands promptly.
-      void processingRef.current?.kickEager();
+      // for the next tick.
+      void processingRef.current?.enrichNewSongsNow();
     } catch (err) {
       syncLog.error({ err }, 'Library scan/curate cycle failed');
     }
@@ -206,12 +205,11 @@ export function createApp({
         await scanner.reconcileAlbums(albumDirs);
       }
       curator.reclassifyAll();
-      // Freshly-scanned songs land quarantined (landed_at NULL). Kick an eager,
-      // out-of-window processing pass so their required gate steps run now and the
-      // download becomes visible as soon as it's ready — rather than waiting for
-      // the next daily window. Fire-and-forget: a no-op if a run is already in
-      // flight (that run graduates the new song), and never blocks the scan seam.
-      void processingRef.current?.kickEager();
+      // A scanned song is library-visible at once; this nudges enrichment (and
+      // the new-album cover fill) for it now rather than at the next tick.
+      // Fire-and-forget: a no-op if a run is already in flight, and never blocks
+      // the scan seam.
+      void processingRef.current?.enrichNewSongsNow();
     } catch (err) {
       syncLog.error({ err }, 'Incremental reconcile/curate failed');
     }
@@ -371,14 +369,12 @@ export function createApp({
   // Windowed library-processing scheduler — runs enrichment tasks (BPM, genre,
   // key, energy, audio features, artist images) over the library, only inside
   // the configured daily window.
-  // Acquisition-toggle ref for the landing gate (issue #416): the toggle is
-  // constructed after this service; before it exists, report "enabled" so the
-  // hold-for-review gate errs toward holding (never toward a surprise landing).
+  // Acquisition-toggle ref: the toggle is constructed after the services that
+  // read it; before it exists, report "enabled".
   const acquisitionOnRef: { enabled: (() => boolean) | null } = { enabled: null };
   processingRef.current = new LibraryProcessingService({
     db,
     lidarr,
-    acquisitionEnabled: () => acquisitionOnRef.enabled?.() ?? true,
     musicDir: expandedMusicDir,
     dataDir: expandedDataDir,
     lookupArtistImageSpotify: (name) =>
@@ -747,23 +743,6 @@ export function createApp({
         artistImagePluginRef.lookup?.(artist) ?? Promise.resolve(null),
     }),
   );
-  // Download inbox triage (issue #411): the quarantine-hold review queue.
-  // Own ShareRescanScheduler instance, mirroring libraryRoutes' — a deleted
-  // file's slskd share entry needs the same debounced rescan on discard.
-  const reviewShareRescan = new ShareRescanScheduler(notifyAddonLibraryChanged);
-  app.route(
-    '/api/review',
-    downloadReviewRoutes({
-      musicDir: config.musicDir,
-      shareRescan: reviewShareRescan,
-      kickEager: () => processingRef.current?.kickEager() ?? Promise.resolve(),
-      landAlbumNow: (albumId) =>
-        processingRef.current?.landAlbumNow(albumId) ??
-        Promise.resolve({ landed: false, timedOut: false, pendingSongCount: 0, pendingTasks: [] }),
-      plugins,
-      scanIncremental,
-    }),
-  );
   app.route(
     '/api',
     streamingRoutes(expandedMusicDir, db, expandedDataDir, config.lidarr?.url ?? null, {
@@ -966,7 +945,6 @@ export function createApp({
     musicDir: expandedMusicDir,
     organizeBatch: (files) => sharedOrganizer.organizeBatch(files),
     scanIncremental,
-    acquisitionEnabled: acquisitionOn,
   });
   app.route('/api/admin/import', importRoutes({ db, service: libraryImport }));
 

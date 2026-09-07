@@ -62,9 +62,7 @@ function genreDistribution(
 ): GenreDistribution {
   const trackCount =
     db
-      .query<{ n: number }, string[]>(
-        `SELECT COUNT(*) AS n FROM library_songs WHERE ${scopeWhere} AND landed_at IS NOT NULL`,
-      )
+      .query<{ n: number }, string[]>(`SELECT COUNT(*) AS n FROM library_songs WHERE ${scopeWhere}`)
       .get(...scopeParams)?.n ?? 0;
 
   if (trackCount === 0) return { trackCount: 0, genreCount: 0, slices: [] };
@@ -74,7 +72,7 @@ function genreDistribution(
       `SELECT sg.genre AS genre, COUNT(DISTINCT s.id) AS count
          FROM library_song_genres sg
          JOIN library_songs s ON s.id = sg.song_id
-        WHERE ${scopeWhereAliased} AND s.landed_at IS NOT NULL
+        WHERE ${scopeWhereAliased}
         GROUP BY sg.genre
         ORDER BY count DESC, sg.genre ASC`,
     )
@@ -150,7 +148,7 @@ export function artistGenreShares(
                 COUNT(*) AS total,
                 SUM(CASE WHEN ${matched} THEN 1 ELSE 0 END) AS hits
            FROM library_songs s
-          WHERE s.artist_id IN (${idMarks}) AND s.landed_at IS NOT NULL
+          WHERE s.artist_id IN (${idMarks})
           GROUP BY s.artist_id`,
       )
       .all(...genres, ...genres, ...chunk);

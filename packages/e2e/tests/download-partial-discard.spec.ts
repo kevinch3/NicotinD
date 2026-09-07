@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { rmSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ADMIN, bearer } from '../helpers';
@@ -14,10 +14,18 @@ const ADDON_ID = 'fixture-discard-addon';
 const ADDON_AUTH = { Authorization: `Bearer ${FIXTURE_ADDON_TOKEN}` };
 const LANDED_DIR = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/music/Rick Astley');
 
+/** Audio files under the rickroll's landed folder — the discard's on-disk effect.
+ *  The organizer may rename the file, so count formats rather than one path. */
+function landedAudioFiles(): number {
+  if (!existsSync(LANDED_DIR)) return 0;
+  return readdirSync(LANDED_DIR, { recursive: true, encoding: 'utf8' }).filter((f) =>
+    /\.(flac|opus|mp3|m4a|ogg)$/i.test(f),
+  ).length;
+}
+
 /** The rickroll always lands at the same path, so its song id (sha1 of that path)
- *  is stable and `landed_at` is never re-armed by a rescan (library-scanner.ts).
- *  A row left landed by a crashed run — or by addon-hunt-download.spec.ts, which
- *  writes this same path — makes this spec unwinnable, so it clears its own
+ *  is stable. A row left behind by a crashed run — or by addon-hunt-download.spec.ts,
+ *  which writes this same path — makes this spec unwinnable, so it clears its own
  *  precondition rather than inheriting one. */
 async function sweepRickAstley(
   request: APIRequestContext,
@@ -44,10 +52,11 @@ async function sweepRickAstley(
 }
 
 /**
- * #810: a download whose tracks are held for review is a decision point, not
- * an opaque "Processing" card. The rickroll lands quarantined behind the
- * review hold; the card shows "held for review" with Review/Discard, and
- * Discard (confirmed) deletes exactly what this job landed.
+ * #810: a cancelled download that already landed tracks is a decision point, not
+ * an opaque card. One item of the job is delivered and lands (instantly — there is
+ * no gate), the job is then cancelled while still active, and the card offers
+ * Discard; confirming it deletes exactly what this job landed through
+ * `POST /api/downloads/jobs/:id/discard-partial` — album row and file both gone.
  */
 test.describe('partial discard from the download card', () => {
   let addon: FixtureAddon;
@@ -73,18 +82,9 @@ test.describe('partial discard from the download card', () => {
       data: { consent: true },
     });
     expect(enabled.ok()).toBeTruthy();
-
-    const hold = await request.put('/api/admin/processing', {
-      headers: auth,
-      data: { holdForReview: true },
-    });
-    expect(hold.ok()).toBeTruthy();
   });
 
   test.afterAll(async ({ request }) => {
-    await request
-      .put('/api/admin/processing', { headers: auth, data: { holdForReview: false } })
-      .catch(() => {});
     const res = await request.get('/api/downloads/jobs', { headers: auth });
     if (res.ok()) {
       const jobs = (await res.json()) as Array<{ id: string; method: string }>;
@@ -92,8 +92,8 @@ test.describe('partial discard from the download card', () => {
         await request.delete(`/api/downloads/jobs/${j.id}`, { headers: auth }).catch(() => {});
       }
     }
-    // Before the rmSync: `rmSync` alone leaves the `library_songs` row landed,
-    // and a rescan never re-quarantines an already-landed song.
+    // Before the rmSync: `rmSync` alone would leave a `library_songs` row behind
+    // if the discard under test did not run.
     if (landedAlbumId) {
       await request
         .delete(`/api/library/albums/${landedAlbumId}`, { headers: auth })
@@ -104,7 +104,7 @@ test.describe('partial discard from the download card', () => {
     await addon.close();
   });
 
-  test('a held partial shows Review/Discard on the card, and Discard removes it', async ({
+  test('a cancelled partial offers Discard on the card, and Discard removes what it landed', async ({
     page,
     request,
   }) => {
@@ -113,68 +113,89 @@ test.describe('partial discard from the download card', () => {
       data: { intent: 'album', artist: 'Rick Astley', album: 'Whenever You Need Somebody' },
     });
     expect(created.status()).toBe(201);
-    addon.completeJobs();
 
-    // Ingested but held: the job carries a quarantined track and the review
-    // inbox counts it. Capture this job's own id — the hunt-download spec's
-    // done job points at the same landed song (same path → same sha1 id), so
-    // both cards can honestly carry the held line, and only a locator scoped
-    // to the job *this* spec created is safe to discard.
+    // Deliver the one item while the job itself stays active — the shape of a
+    // multi-track download that has landed some tracks and is still fetching the
+    // rest. (`completeJobs()` would also close the job, leaving nothing to cancel.)
+    const fixtureJob = addon.jobs[addon.jobs.length - 1]!;
+    const now = Date.now();
+    for (const item of fixtureJob.items) {
+      item.state = 'completed';
+      item.fileReady = true;
+      item.updatedAt = now;
+    }
+    // A second track that never arrives keeps the job in `downloading`, which
+    // is what makes it cancellable: with every item landed the job is simply
+    // done, and a done job has nothing to cancel.
+    fixtureJob.items.push({
+      ...fixtureJob.items[0]!,
+      itemId: 't:second-track',
+      title: 'Together Forever',
+      filename: 'Music\\Rick Astley\\Whenever You Need Somebody\\02 Together Forever.flac',
+      state: 'downloading',
+      fileReady: false,
+      updatedAt: now,
+    });
+    fixtureJob.updatedAt = now;
+
+    // The track is ingested and lands at once. Capture this job's own id — the
+    // hunt-download spec's done job points at the same landed song (same path →
+    // same sha1 id), so only a locator scoped to the job *this* spec created is
+    // safe to discard.
     let jobId = '';
     await expect
       .poll(
         async () => {
           const res = await request.get('/api/downloads/jobs', { headers: auth });
-          if (!res.ok()) return 0;
+          if (!res.ok()) return '';
           const jobs = (await res.json()) as Array<{
             id: string;
             method: string;
             albumId?: string | null;
-            quarantinedCount?: number;
           }>;
           const job = jobs.find((j) => j.method === ADDON_ID);
           jobId = job?.id ?? '';
-          // Recorded even while the poll is still failing: on the ~5% run where
-          // the track lands unreviewed this is the only handle afterAll has on it.
           landedAlbumId = job?.albumId ?? landedAlbumId;
-          return job?.quarantinedCount ?? 0;
+          return landedAlbumId;
         },
         { timeout: 30_000 },
       )
-      .toBe(1);
+      .not.toBe('');
     expect(jobId).not.toBe('');
+    await expect
+      .poll(
+        async () =>
+          (await request.get(`/api/library/albums/${landedAlbumId}`, { headers: auth })).status(),
+        { timeout: 30_000 },
+      )
+      .toBe(200);
+    expect(landedAudioFiles()).toBeGreaterThan(0);
 
+    // Cancel from the card while the job is still active: the fixture addon
+    // applies the cancel immediately, so the job closes with one landed track.
     await page.goto('/downloads');
     const card = page.locator(`[data-job-id="${jobId}"]`);
-    const held = card.getByTestId('download-held-review');
-    await expect(held).toBeVisible({ timeout: 15_000 });
+    await card.getByTestId('download-cancel').click();
+    // With a track already landed, cancel asks what to do with it (#810).
+    // Keep it: the point here is the card's own Discard afterwards.
+    await page.getByTestId('confirm-ok').click();
+    await expect.poll(() => addon.cancelRequests.length).toBe(1);
 
-    await card.getByTestId('download-discard-partial').click();
+    // The cancelled partial names itself: Discard is offered, and confirming it
+    // deletes the landed track (never the destination album by name).
+    const discard = card.getByTestId('download-discard-partial');
+    await expect(discard).toBeVisible({ timeout: 20_000 });
+    await discard.click();
     await page.getByTestId('confirm-ok').click();
 
-    // The held track is gone from the review queue and from the feed row.
     await expect
       .poll(
-        async () => {
-          const res = await request.get('/api/review/count', { headers: auth });
-          return res.ok() ? ((await res.json()) as { pending: number }).pending : -1;
-        },
+        async () =>
+          (await request.get(`/api/library/albums/${landedAlbumId}`, { headers: auth })).status(),
         { timeout: 20_000 },
       )
-      .toBe(0);
-    await expect
-      .poll(
-        async () => {
-          const res = await request.get('/api/downloads/jobs', { headers: auth });
-          if (!res.ok()) return -1;
-          const jobs = (await res.json()) as Array<{
-            method: string;
-            quarantinedCount?: number;
-          }>;
-          return jobs.find((j) => j.method === ADDON_ID)?.quarantinedCount ?? 0;
-        },
-        { timeout: 20_000 },
-      )
-      .toBe(0);
+      .toBe(404);
+    await expect.poll(() => landedAudioFiles()).toBe(0);
+    landedAlbumId = '';
   });
 });

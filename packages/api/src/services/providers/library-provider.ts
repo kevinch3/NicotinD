@@ -22,8 +22,8 @@ import { tokenize, matchesAllTokens, rankBy } from '../search-tokens.js';
  *      resolve to the right release — important for an accent-heavy (Spanish)
  *      library.
  * Matching runs in JS over the visible rows (the library is small enough that
- * an unfiltered scan is a few ms); SQLite still does the cheap `hidden` /
- * `landed_at` gating so only real, in-library rows are considered.
+ * an unfiltered scan is a few ms); SQLite still does the cheap `hidden`
+ * gating so only real, in-library rows are considered.
  */
 export class LibrarySearchProvider implements ISearchProvider {
   readonly name = 'library';
@@ -39,14 +39,7 @@ export class LibrarySearchProvider implements ISearchProvider {
 
     const artists = this.db
       .query<{ id: string; name: string; album_count: number }, []>(
-        // Only surface artists with at least one landed (non-quarantined) song —
-        // an artist whose tracks are all still processing isn't in the library yet.
-        `SELECT id, name, album_count FROM library_artists
-         WHERE hidden = 0
-           AND EXISTS (SELECT 1 FROM library_songs s
-             WHERE (s.artist_id = library_artists.id
-               OR s.id IN (SELECT song_id FROM library_song_artists WHERE artist_id = library_artists.id))
-             AND s.landed_at IS NOT NULL)`,
+        `SELECT id, name, album_count FROM library_artists WHERE hidden = 0`,
       )
       .all()
       .filter((r) => matchesAllTokens(r.name, tokens))
@@ -67,19 +60,13 @@ export class LibrarySearchProvider implements ISearchProvider {
         },
         []
       >(
-        // Every visible album with something to play — including the EPs/singles/
-        // compilations the default Albums grid omits (the search page has its
-        // own section rendering, so classification != 'album' is fine).
-        // Only an album with *nothing* landed is excluded; a partly-landed one is
-        // searchable, matching the listings after #693. Token matching runs over
-        // "name + artist" in JS below.
+        // Every visible album — including the EPs/singles/compilations the
+        // default Albums grid omits (the search page has its own section
+        // rendering, so classification != 'album' is fine). Token matching runs
+        // over "name + artist" in JS below.
         `SELECT id, name, artist, year, cover_art, song_count, classification
          FROM library_albums
-         WHERE hidden = 0
-           AND id NOT IN (
-             SELECT album_id FROM library_songs
-              GROUP BY album_id HAVING SUM(landed_at IS NOT NULL) = 0
-           )`,
+         WHERE hidden = 0`,
       )
       .all()
       .filter((r) => matchesAllTokens(`${r.name} ${r.artist}`, tokens))
@@ -112,7 +99,7 @@ export class LibrarySearchProvider implements ISearchProvider {
         `SELECT s.id, s.title, s.artist, s.artist_id, a.name AS album, s.duration, s.bit_rate, s.cover_art
          FROM library_songs s
          LEFT JOIN library_albums a ON a.id = s.album_id
-         WHERE s.hidden = 0 AND s.landed_at IS NOT NULL`,
+         WHERE s.hidden = 0`,
       )
       .all()
       // Match over title + artist + album so a search for an album title also

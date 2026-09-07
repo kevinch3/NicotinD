@@ -231,7 +231,7 @@ function itemStates(id: string): string[] {
   return (getJob(db, id)?.items ?? []).map((i) => i.state);
 }
 
-/** Insert a landed (or quarantined) library song so scanned items can resolve. */
+/** Insert a library song so scanned items can resolve; `landed=false` leaves landed_at NULL. */
 function seedSong(songId: string, path: string, landed: boolean): void {
   db.run(
     `INSERT OR IGNORE INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
@@ -733,7 +733,7 @@ describe('repointItem', () => {
 });
 
 describe('recomputeStage', () => {
-  it('walks downloading → organizing → scanning → processing → done', () => {
+  it('walks downloading → organizing → scanning → done (scanned items settle at once)', () => {
     const id = seedJob();
     expect(recomputeStage(db, id)).toBe('downloading');
 
@@ -745,8 +745,8 @@ describe('recomputeStage', () => {
     markItemOrganized(db, transferKeyFor('peer1', 'a\\02 Slip Away.flac'), 'p/02.opus');
     expect(recomputeStage(db, id)).toBe('scanning');
 
-    seedSong('s1', 'p/01.opus', false);
-    seedSong('s2', 'p/02.opus', false);
+    seedSong('s1', 'p/01.opus', true);
+    seedSong('s2', 'p/02.opus', true);
     markItemsScanned(
       db,
       new Map([
@@ -754,9 +754,7 @@ describe('recomputeStage', () => {
         ['p/02.opus', 's2'],
       ]),
     );
-    expect(recomputeStage(db, id)).toBe('processing');
-
-    db.run(`UPDATE library_songs SET landed_at = 2`);
+    // Landing is instant: no `processing` stage sits between scanned and done.
     expect(recomputeStage(db, id)).toBe('done');
     expect(getJob(db, id)?.state).toBe('done');
   });

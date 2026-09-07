@@ -107,8 +107,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   judged) and `check:library-walkers` keeps all 14 walkers honest.
   → [library-path-conventions.md](library-path-conventions.md)
 - **Import music — two lanes into one pipeline**: an admin server path and a browser upload
-  (`ImportUploadService`, chunked + resumable, `submitStaged`) both run through organize → scan →
-  quarantine; drop a folder on `/get`, gated by `canImport`. → [import.md](import.md)
+  (`ImportUploadService`, chunked + resumable, `submitStaged`) both run through organize → scan;
+  drop a folder on `/get`, gated by `canImport`. → [import.md](import.md)
 - **Untracked downloads**: `relative_path IS NULL` rows backfilled by script, listed at
   `GET /api/library/untracked`. → [download-pipeline.md](download-pipeline.md)
 - **Downloading albums suppressed from listing**: listings exclude albums with active `album_jobs` or
@@ -118,9 +118,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   prune; every delete route debounce-schedules a `ShareRescanScheduler` pass. A single-song delete
   refreshes its album through the shared `refreshAlbumAggregate` / `pruneOrphanAlbum`.
   → [download-pipeline.md](download-pipeline.md)
-- **Download inbox triage (hold-for-review)**: opt-in `holdForReview` holds quarantined downloads for
-  curator approval; `download_reviews` decisions, multi-source candidates, AcoustID identify with
-  typed failures. → [download-review.md](download-review.md)
+- **Fingerprint identify + metadata candidates**: `gatherCandidates` merges Lidarr/MusicBrainz/
+  Discogs/tag guesses; `identifyTrackDetailed` returns a typed `IdentifyOutcome` (`undecodable`
+  carries fpcalc's stderr). → [acoustid-identify.md](acoustid-identify.md)
 - **Release-type model (singles & EPs)**: every album carries a `classification`, set metadata-first
   with a track-count heuristic fallback. → [download-pipeline.md](download-pipeline.md)
 
@@ -238,7 +238,7 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **On-demand track analysis (BPM + genre)**: per-track analyze/verify in the track-info drawer plus
   bulk backfill scripts, writing DB *and* file tag; BPM is sidecar-first; curator-gated AcoustID
   identify via `buildIdentifyApplyTags`. → [library-processing.md](library-processing.md),
-  [download-review.md](download-review.md)
+  [acoustid-identify.md](acoustid-identify.md)
 - **A failed tag mirror is surfaced, not silent**: `chooseBpm`/`writeGenres` in the track-info sheet
   check the route's own `tagWritten` and toast a warning on `false` — the DB write (or, for a genre
   `mode: 'replace'`, the override) is durable either way, but the file's own copy is not, so it may
@@ -276,18 +276,18 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   tasks (the `ProcessingTaskId` union derives from it); `applySchema` sweeps ledger rows for anything
   absent from it and the settings blob is filtered the same way.
   → [library-processing.md](library-processing.md)
-- **Processing pause**: a `paused` flag is the runtime halt distinct from `enabled: false` (still
-  clears quarantine), and the manual way to stand down for another GPU tenant. The failure tally's
+- **Processing pause**: a `paused` flag is the runtime halt distinct from `enabled: false` (landing
+  is unaffected), and the manual way to stand down for another GPU tenant. The failure tally's
   session boundary is one continuous drain (`drained`), not a time window.
   → [library-processing.md](library-processing.md)
 - **Analysis sidecar GPU behaviour**: `RegistryHolder` + `IdleReleaseGuard` drop the warm registry
   after an idle timeout and reload lazily; `peek()` reads without touching the guard and `can_serve()`
   backs `/health`; `musicnn_batch_size` bounds the one predictor that dominated VRAM.
   → [audio-ml-enrichment.md](audio-ml-enrichment.md)
-- **Process-before-landing (quarantine gate)**: a fresh download is scanned but held
-  (`landed_at IS NULL`, hidden from listings) until its required steps finish; a per-task `gates` flag
-  intersected with availability is the required set. `graduatePending`, `scanIncremental`,
-  `kickEager`, `albumLoadFailureFor`. → [library-processing.md](library-processing.md)
+- **Instant landing**: a scanned song is visible at once; `landed_at` is stamped by the scanner on
+  INSERT (first seen, preserved on rescan) and serves only as the new-album watermark and recency key;
+  `enrichNewSongsNow` nudges enrichment after each scan, `landing_backfill_v2` stamps pre-gate NULLs.
+  → [library-processing.md](library-processing.md)
 - **A pool that cannot advance**: an un-ledgered failure plus a fixed pool order livelocks a
   `LIMIT`-bounded task on its own head: every un-ledgered path stamps `noteAnalysisAttempt`,
   every song pool orders on `leastRecentlyAttemptedOrderSql`, and tag-sourced ids pass core

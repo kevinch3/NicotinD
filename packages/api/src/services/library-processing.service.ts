@@ -26,10 +26,8 @@ import {
 } from './enrichment/tasks.js';
 import type { AudioFeaturesClient } from './audio-features-client.js';
 import { captureProcessingFailure, type ProcessingFailureReport } from '../observability/sentry.js';
-import { countSkippedFiles, permanentlyFailedClause } from './enrichment/analysis-failures.js';
-import { recomputeActiveJobStages } from './acquisition-job-store.js';
+import { countSkippedFiles } from './enrichment/analysis-failures.js';
 import { maybeRunDailyCoverCachePrune } from './cover-cache-prune.js';
-import { maybeArmReviewHold, reviewHoldActive } from './download-review-store.js';
 import { optimizeAlbum } from './metadata-optimize.js';
 
 /**
@@ -48,26 +46,6 @@ const log = createLogger('library-processing');
 const STATUS_KEY = 'processing_status';
 const MAX_SNIPPETS = 12;
 
-/**
- * Safety valve: a quarantined song lands after this many hours even if a required
- * step never completed. Covers the deliberately un-ledgered failure modes (a
- * sidecar 404/503 mount mismatch, an env-level decode outage) that would otherwise
- * hold a download invisible forever. The 3-attempt failure ledger still graduates
- * genuinely-broken files sooner; this only backstops the stuck-environment case.
- */
-const QUARANTINE_MAX_HOURS = 24;
-
-/**
- * Ops/test escape hatch. When `NICOTIND_DISABLE_LANDING_GATE` is truthy the
- * process-before-landing gate is bypassed entirely: the required-gate set is
- * always empty, so `graduatePending` lands every quarantined song at once (the
- * pre-feature behaviour). Used by the e2e harness so its silent-FLAC fixtures
- * aren't held behind analysis that can't confidently complete.
- */
-const LANDING_GATE_DISABLED =
-  process.env.NICOTIND_DISABLE_LANDING_GATE === '1' ||
-  process.env.NICOTIND_DISABLE_LANDING_GATE === 'true';
-
 /** Per-task failure tally accumulated over a run (task → count + one sample). */
 type RunFailures = Map<ProcessingTaskId, { failed: number; sample: string | null }>;
 
@@ -75,26 +53,6 @@ type RunFailures = Map<ProcessingTaskId, { failed: number; sample: string | null
 interface BatchOutcome {
   applied: number;
   byTask: RunFailures;
-}
-
-/** Result of {@link LibraryProcessingService.landAlbumNow}. */
-export interface LandAlbumResult {
-  /** True iff every song in this album now has `landed_at` set. */
-  landed: boolean;
-  /** True iff `landed` is false because the deadline elapsed, not because
-   *  nothing was left to do (e.g. a new download wave raced the approval —
-   *  see `pendingTasks` to tell these apart). */
-  timedOut: boolean;
-  /** Songs of this album still not landed. */
-  pendingSongCount: number;
-  /** Gate tasks with outstanding work for this album, when `landed` is false.
-   *  Empty while `pendingSongCount > 0` means gate tasks aren't the blocker
-   *  (most likely the review-approval AND-condition in `graduatePending`). */
-  pendingTasks: ProcessingTaskId[];
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Fold `src` into `dst`, summing counts and keeping the first sample per task. */
@@ -125,11 +83,6 @@ export interface LibraryProcessingDeps {
   lookupGenreForRelease?: ((query: GenreQuery) => Promise<GenreResult | null>) | null;
   /** Analysis-sidecar client for the audio-features task, or null when unconfigured. */
   audioFeaturesClient?: AudioFeaturesClient | null;
-  /** Live acquisition kill-switch state (issue #235). With acquisition off the
-   *  Downloads page — and the review inbox on it — is hidden, so the
-   *  hold-for-review landing gate must not hold (issue #416): a manual file
-   *  drop would strand quarantined with no reachable inbox. Defaults to on. */
-  acquisitionEnabled?: () => boolean;
   /** Poll interval. Defaults to 60s. */
   intervalMs?: number;
   /** Injectable clock (daily-backup, orphan-prune and history guards). */
@@ -149,13 +102,6 @@ export interface LibraryProcessingDeps {
   /** Failure sink for a run's aggregated errors. Defaults to the Sentry reporter
    *  (a no-op when Sentry is unconfigured); injectable so tests can assert on it. */
   reportFailure?: (report: ProcessingFailureReport) => void;
-  /** Deadline for `landAlbumNow` (curator-approve instant landing). Defaults to
-   *  8s — a test seam, not a setting: long enough that the common case (gate
-   *  tasks already finished in the background by review time) always fits,
-   *  short enough to keep the approve request bounded. */
-  landAlbumTimeoutMs?: number;
-  /** Poll interval while `landAlbumNow` waits for the shared `busy` lock. */
-  landAlbumPollMs?: number;
 }
 
 /**
@@ -182,7 +128,6 @@ export class LibraryProcessingService extends EventEmitter {
   private readonly lookupGenreForRelease:
     ((query: GenreQuery) => Promise<GenreResult | null>) | null;
   private readonly audioFeaturesClient: AudioFeaturesClient | null;
-  private readonly acquisitionEnabled: () => boolean;
   private readonly logPath: string;
   private readonly intervalMs: number;
   private readonly now: () => Date;
@@ -190,8 +135,6 @@ export class LibraryProcessingService extends EventEmitter {
   private readonly contextFactory: (settings: ProcessingSettings) => EnrichmentContext;
   private readonly logToFile: boolean;
   private readonly reportFailure: (report: ProcessingFailureReport) => void;
-  private readonly landAlbumTimeoutMs: number;
-  private readonly landAlbumPollMs: number;
 
   private timer: ReturnType<typeof setInterval> | null = null;
   private busy = false;
@@ -223,7 +166,6 @@ export class LibraryProcessingService extends EventEmitter {
     this.lookupArtistImageDiscogs = deps.lookupArtistImageDiscogs ?? null;
     this.lookupArtistInfo = deps.lookupArtistInfo ?? null;
     this.lookupGenreForRelease = deps.lookupGenreForRelease ?? null;
-    this.acquisitionEnabled = deps.acquisitionEnabled ?? (() => true);
     this.audioFeaturesClient = deps.audioFeaturesClient ?? null;
     this.logPath = join(deps.dataDir, 'library-processing.log');
     this.intervalMs = deps.intervalMs ?? 60_000;
@@ -246,8 +188,6 @@ export class LibraryProcessingService extends EventEmitter {
         }));
     this.logToFile = deps.logToFile ?? true;
     this.reportFailure = deps.reportFailure ?? captureProcessingFailure;
-    this.landAlbumTimeoutMs = deps.landAlbumTimeoutMs ?? 8_000;
-    this.landAlbumPollMs = deps.landAlbumPollMs ?? 100;
     this.status = this.loadStatus();
   }
 
@@ -308,30 +248,13 @@ export class LibraryProcessingService extends EventEmitter {
     // stranded download must not depend on enrichment being enabled.
     reapIdleItems(this.db, this.now().getTime());
     const settings = getProcessingSettings(this.db);
-    // Disabled (issue #807): background enrichment is off, but quarantine must
-    // still clear — same stance as the paused branch below and the scan-seam
-    // kickEager, neither of which checks `enabled`. Without this, a job whose
-    // songs scanned while nothing else triggers a scan reads "Processing"
-    // forever (a cancelled partial was the reported case).
     if (!settings.enabled) {
-      if (this.hasQuarantined()) {
-        await this.guarded(async () => {
-          await this.kickEagerInner();
-        });
-      }
       this.publish(settings, 'disabled');
       return;
     }
     // Paused (issue #224): a runtime throttle distinct from `enabled: false`.
-    // Skip all window/background enrichment, but STILL clear quarantine so a
-    // fresh download isn't stranded invisible while the admin has paused the
-    // heavy background work. An explicit `runNow()` overrides pause.
+    // Skip all background enrichment; an explicit `runNow()` overrides pause.
     if (settings.paused) {
-      if (this.hasQuarantined()) {
-        await this.guarded(async () => {
-          await this.kickEagerInner();
-        });
-      }
       this.publish(settings, 'paused');
       return;
     }
@@ -372,139 +295,26 @@ export class LibraryProcessingService extends EventEmitter {
   }
 
   /**
-   * Eager, out-of-window pass triggered right after a download is scanned in:
-   * drains ONLY the required gate tasks (so a fresh song's blocking steps finish
-   * and it lands quickly) then graduates. Non-gate background enrichment
-   * (artist-image, and audio-features when it isn't a gate) stays deferred to the
-   * daily window, which still governs bulk backfill of the pre-existing library.
-   * Guarded by the same `busy` lock as tick/runNow — a no-op if a run is already
-   * underway (that run's own graduatePending lands the new song). When nothing
-   * gates landing the required set is empty, so it graduates the song outright.
-   * Best-effort: fired fire-and-forget from the scan seam, never throws upward.
+   * Post-scan enrichment nudge, fired fire-and-forget from the scan seam. A
+   * scanned song is library-visible at once (landing is instant), so nothing
+   * here gates visibility; it exists so a fresh download gets its first batch
+   * of enrichment — and its album a cover (issue #694) — now rather than at the
+   * next tick. Honours `enabled`/`paused` for the enrichment batch (the tick's
+   * policy), but always runs the cover fill: that is what a new album needs to
+   * look right, and it is bounded per run. Guarded by the same `busy` lock as
+   * tick/runNow — a no-op if a run is already underway. Never throws upward.
    */
-  async kickEager(): Promise<void> {
+  async enrichNewSongsNow(): Promise<void> {
     if (this.busy) return;
-    await this.guarded(() => this.kickEagerInner());
-  }
-
-  /** The eager drain loop, assuming the caller already holds the `busy` guard. */
-  private async kickEagerInner(): Promise<void> {
-    const runFailures: RunFailures = new Map();
-    let first = true;
-    for (;;) {
-      if (this.stopRequested) break;
-      const settings = getProcessingSettings(this.db);
-      const gateTasks = this.requiredGateTasks(settings);
-      // No gates (or all satisfied) → just land what's ready and stop.
-      const pending = gateTasks.reduce((sum, t) => sum + t.countPending(this.db), 0);
-      if (pending === 0) {
-        this.graduatePending();
-        break;
-      }
-      const batch = await this.processOneBatch(settings, first, gateTasks);
-      mergeFailures(runFailures, batch.byTask);
-      first = false;
-      if (batch.applied === 0) {
-        // No progress (every remaining gate file missing/unresolvable) — land
-        // what we can (ledger/valve) and stop rather than spin.
-        this.graduatePending();
-        break;
-      }
-    }
-    this.flushFailures(runFailures);
-    // The eager path is the one a fresh download actually takes, so this is where
-    // a just-landed album picks up its cover (issue #694).
-    await this.fillNewAlbumMetadata(getProcessingSettings(this.db));
-    this.finishRun(getProcessingSettings(this.db));
-  }
-
-  /**
-   * Curator-triggered eager landing for one just-approved album (issue #708).
-   * Unlike `kickEager`, never silently no-ops on a busy lock: it waits
-   * (bounded) for any in-flight tick/runNow/kickEager to finish, then drains
-   * ONLY this album's pending gate-task rows — not the library-wide queue —
-   * before calling the unchanged `graduatePending()`. Bounded by
-   * `landAlbumTimeoutMs`; on timeout returns an honest `landed: false`
-   * instead of hanging or claiming success the DB doesn't back yet. The
-   * background tick/kickEager still owns landing it eventually if this call
-   * times out.
-   */
-  async landAlbumNow(albumId: string): Promise<LandAlbumResult> {
-    const deadline = this.now().getTime() + this.landAlbumTimeoutMs;
-    // Single-threaded JS: no `await` between this check and guarded()'s own
-    // check-then-set, so there is no race to close with a second lock.
-    while (this.busy) {
-      if (this.now().getTime() >= deadline) return this.landAlbumSnapshot(albumId, true);
-      await sleep(this.landAlbumPollMs);
-    }
-    let hitDeadline = false;
     await this.guarded(async () => {
-      hitDeadline = await this.landAlbumInner(albumId, deadline);
-    });
-    return this.landAlbumSnapshot(albumId, hitDeadline);
-  }
-
-  /** Returns true iff the drain stopped because `deadline` was reached with
-   *  possibly-unfinished work — as opposed to fully draining or making no
-   *  progress, which end the loop too but aren't a timeout. */
-  private async landAlbumInner(albumId: string, deadline: number): Promise<boolean> {
-    const runFailures: RunFailures = new Map();
-    let first = true;
-    let settings = getProcessingSettings(this.db);
-    let hitDeadline = false;
-    for (;;) {
-      if (this.stopRequested) break;
-      if (this.now().getTime() >= deadline) {
-        hitDeadline = true;
-        break;
+      const settings = getProcessingSettings(this.db);
+      if (settings.enabled && !settings.paused) {
+        const batch = await this.processOneBatch(settings);
+        this.flushFailures(batch.byTask);
       }
-      settings = getProcessingSettings(this.db);
-      const gateTasks = this.requiredGateTasks(settings);
-      if (this.albumPendingGateTasks(albumId, gateTasks).length === 0) break;
-      const batch = await this.processOneBatch(settings, first, gateTasks, albumId);
-      mergeFailures(runFailures, batch.byTask);
-      first = false;
-      if (batch.applied === 0) break; // no progress — stop rather than spin
-    }
-    this.graduatePending();
-    this.flushFailures(runFailures);
-    this.finishRun(getProcessingSettings(this.db));
-    return hitDeadline;
-  }
-
-  /** Gate-task ids with at least one still-quarantined song in `albumId` that
-   *  hasn't satisfied its `satisfiedColumnSql` and isn't permanently-failed. */
-  private albumPendingGateTasks(albumId: string, gateTasks: EnrichmentTask[]): ProcessingTaskId[] {
-    return gateTasks
-      .filter((t) => t.satisfiedColumnSql)
-      .filter((t) => this.countPendingForAlbum(t, albumId) > 0)
-      .map((t) => t.id);
-  }
-
-  private countPendingForAlbum(t: EnrichmentTask, albumId: string): number {
-    if (!t.satisfiedColumnSql) return t.countPending(this.db);
-    const row = this.db
-      .query<{ n: number }, [string]>(
-        `SELECT COUNT(*) AS n FROM library_songs
-           WHERE album_id = ? AND landed_at IS NULL AND NOT (${t.satisfiedColumnSql})
-             AND NOT (${permanentlyFailedClause(t.id)})`,
-      )
-      .get(albumId);
-    return row?.n ?? 0;
-  }
-
-  private landAlbumSnapshot(albumId: string, timedOut: boolean): LandAlbumResult {
-    const row = this.db
-      .query<{ n: number }, [string]>(
-        `SELECT COUNT(*) AS n FROM library_songs WHERE album_id = ? AND landed_at IS NULL`,
-      )
-      .get(albumId);
-    const pendingSongCount = row?.n ?? 0;
-    const landed = pendingSongCount === 0;
-    const pendingTasks = landed
-      ? []
-      : this.albumPendingGateTasks(albumId, this.requiredGateTasks(getProcessingSettings(this.db)));
-    return { landed, timedOut: timedOut && !landed, pendingSongCount, pendingTasks };
+      await this.fillNewAlbumMetadata(getProcessingSettings(this.db));
+      this.finishRun(getProcessingSettings(this.db));
+    });
   }
 
   // --- internals -----------------------------------------------------------
@@ -528,38 +338,6 @@ export class LibraryProcessingService extends EventEmitter {
   private runnableTasks(settings: ProcessingSettings): EnrichmentTask[] {
     const ctx = this.contextFactory(settings);
     return ENRICHMENT_TASKS.filter((t) => settings.tasks[t.id] && t.available(ctx) === true);
-  }
-
-  /**
-   * Tasks that must complete before a quarantined song may be added to the
-   * library: **declared `gateable`** AND gated in settings AND enabled AND
-   * available right now AND able to express a per-song "done" predicate. The
-   * availability intersection is the fresh-install / sidecar-off guarantee — a
-   * gated-but-unavailable task (sidecar down, ffmpeg missing, no Lidarr) is
-   * silently excluded so it can never strand a download. An empty result means
-   * nothing gates landing (today's behaviour).
-   *
-   * `gateable` is checked first and is the load-bearing one (#691): eligibility
-   * used to be implied by owning a `satisfiedColumnSql`, which enrolled tasks that
-   * only needed that predicate for filtering. A stored `gates` blob from before
-   * this change can still name such a task; it is now inert rather than able to
-   * hold a download hostage, so no migration is needed.
-   */
-  private requiredGateTasks(settings: ProcessingSettings): EnrichmentTask[] {
-    // Ops/test escape hatch: with the landing gate disabled, nothing is required,
-    // so every song lands immediately (the pre-feature behaviour). The e2e harness
-    // sets this so its silent-audio fixtures — which can't yield a confident BPM —
-    // aren't quarantined behind analysis that will never complete.
-    if (LANDING_GATE_DISABLED) return [];
-    const ctx = this.contextFactory(settings);
-    return ENRICHMENT_TASKS.filter(
-      (t) =>
-        t.gateable === true &&
-        settings.gates[t.id] &&
-        settings.tasks[t.id] &&
-        t.available(ctx) === true &&
-        t.satisfiedColumnSql,
-    );
   }
 
   /**
@@ -632,102 +410,14 @@ export class LibraryProcessingService extends EventEmitter {
     }
   }
 
-  /** Count of songs currently quarantined (scanned but not yet landed). */
-  private countQuarantined(): number {
-    const row = this.db
-      .query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM library_songs WHERE landed_at IS NULL`)
-      .get();
-    return Number(row?.n ?? 0);
-  }
-
-  /** True when at least one song is waiting on its required gate steps. */
-  private hasQuarantined(): boolean {
-    return (
-      this.db
-        .query<{ n: number }, []>(
-          `SELECT EXISTS(SELECT 1 FROM library_songs WHERE landed_at IS NULL) AS n`,
-        )
-        .get()?.n === 1
-    );
-  }
-
-  /**
-   * Land every quarantined song whose required gate steps are all satisfied (each
-   * required task has produced its value OR is permanently failed for the file),
-   * plus any song past the {@link QUARANTINE_MAX_HOURS} safety valve. Idempotent —
-   * only touches `landed_at IS NULL` rows. When no task gates landing the WHERE
-   * reduces to "landed_at IS NULL", so every quarantined song lands at once.
-   */
-  private graduatePending(): void {
-    // Read live, never the caller's snapshot. A batch opens by reading settings
-    // once and can run for tens of seconds; landing is a POLICY question that
-    // must answer "may this song land *now*", not "when this batch started".
-    // An admin who switched hold-for-review on mid-batch had everything that
-    // scanned in during that batch land unreviewed (the #894/#687 shape: a
-    // predicate answering an easier question than the one asked).
-    const settings = getProcessingSettings(this.db);
-    const required = this.requiredGateTasks(settings);
-    const now = this.now().getTime();
-    const cutoff = now - QUARANTINE_MAX_HOURS * 3_600_000;
-    // Hold-for-review (#411): a human decision, deliberately outside the 24h valve
-    // and unaffected by LANDING_GATE_DISABLED — those exist for enrichment tooling,
-    // not for skipping review. reviewed_at >= created so a later wave / re-download
-    // of the same album pends again instead of riding an old approval. Gated on
-    // reviewHoldActive (#417), not the bare setting: a fresh-DB bootstrap scan
-    // stays unarmed (see db.ts / download-review-store.ts) so the *entire*
-    // existing library doesn't flood the review inbox the first time the toggle
-    // is on — only downloads that land after the marker arms actually hold.
-    // holdForReview && acquisitionEnabled (issue #416): see the dep's doc — an
-    // unreachable inbox must never hold a landing.
-    const reviewCond = reviewHoldActive(
-      this.db,
-      settings.holdForReview && this.acquisitionEnabled(),
-    )
-      ? `EXISTS (SELECT 1 FROM download_reviews r
-           WHERE r.album_id = library_songs.album_id AND r.state = 'approved'
-             AND (library_songs.created IS NULL OR r.reviewed_at >= library_songs.created))`
-      : null;
-    // Each required step is satisfied when it has a value OR the file has
-    // permanently failed that step (corrupt/unanalyzable — must still land).
-    const stepConds = required.map(
-      (t) => `(${t.satisfiedColumnSql} OR ${permanentlyFailedClause(t.id)})`,
-    );
-    if (stepConds.length === 0) {
-      // Nothing gates landing → every quarantined song lands now (unless held for review).
-      const where = reviewCond ? `landed_at IS NULL AND ${reviewCond}` : `landed_at IS NULL`;
-      this.db.run(`UPDATE library_songs SET landed_at = ? WHERE ${where}`, [now]);
-      recomputeActiveJobStages(this.db);
-      maybeArmReviewHold(this.db);
-      return;
-    }
-    // `created` is an ISO-8601 string; compare against the cutoff as an ISO string
-    // so a genuinely-stuck song (un-ledgered environmental failure) still lands.
-    const valve = `(created IS NOT NULL AND created <= ?)`;
-    const stepsOrValve = `((${stepConds.join(' AND ')}) OR ${valve})`;
-    const gate = reviewCond ? `${stepsOrValve} AND ${reviewCond}` : stepsOrValve;
-    this.db.run(`UPDATE library_songs SET landed_at = ? WHERE landed_at IS NULL AND ${gate}`, [
-      now,
-      new Date(cutoff).toISOString(),
-    ]);
-    // Landing may have completed an acquisition job waiting in `processing`.
-    recomputeActiveJobStages(this.db);
-    maybeArmReviewHold(this.db);
-  }
-
-  /** One bounded batch across each runnable task (or the given subset). When
-   *  `albumId` is given (landAlbumNow), each task's pending set — and its
-   *  `run()` call — is scoped to that album alone, not the library-wide queue. */
+  /** One bounded batch across each runnable task. */
   private async processOneBatch(
     settings: ProcessingSettings,
     fresh = false,
-    tasksOverride?: EnrichmentTask[],
-    albumId?: string,
   ): Promise<BatchOutcome> {
     const ctx = this.contextFactory(settings);
-    const tasks = tasksOverride ?? this.runnableTasks(settings);
-    const total = albumId
-      ? tasks.reduce((sum, t) => sum + this.countPendingForAlbum(t, albumId), 0)
-      : tasks.reduce((sum, t) => sum + t.countPending(this.db), 0);
+    const tasks = this.runnableTasks(settings);
+    const total = tasks.reduce((sum, t) => sum + t.countPending(this.db), 0);
 
     // A "run" spans one continuous drain: consecutive batches with work pending
     // continue the tally; the first batch after the queue ran dry (or after
@@ -759,7 +449,7 @@ export class LibraryProcessingService extends EventEmitter {
     for (const task of tasks) {
       if (this.stopRequested) break;
       this.status = { ...this.status, currentTask: task.id };
-      const result = await task.run(this.db, ctx, this.batchSize, albumId);
+      const result = await task.run(this.db, ctx, this.batchSize);
       appliedTotal += result.applied;
       if (result.failed > 0) {
         mergeFailures(
@@ -777,11 +467,6 @@ export class LibraryProcessingService extends EventEmitter {
       for (const label of result.labels) this.writeLog(task.id, label);
       this.emitStatus(settings);
     }
-
-    // Land any quarantined song whose required gate steps are now satisfied (or
-    // past the safety valve). Runs every batch so newly-downloaded music appears
-    // as soon as its gates clear — during the daily window and during eager runs.
-    this.graduatePending();
 
     // Leave phase 'running' between batches; the run's terminal state is set once
     // by finishRun() so SSE clients see a single running→idle completion (not one
@@ -828,9 +513,7 @@ export class LibraryProcessingService extends EventEmitter {
       phase,
       taskPending,
       availability,
-      gateable: ENRICHMENT_TASKS.filter((t) => t.gateable === true).map((t) => t.id),
       skipped: countSkippedFiles(this.db),
-      quarantined: this.countQuarantined(),
       updatedAt: this.status.updatedAt,
     };
   }
@@ -918,7 +601,6 @@ export class LibraryProcessingService extends EventEmitter {
         'artist-origin': 'unknown',
       },
       skipped: 0,
-      quarantined: 0,
     };
     const row = this.db
       .query<{ value: string }, [string]>('SELECT value FROM app_settings WHERE key = ?')

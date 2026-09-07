@@ -140,7 +140,6 @@ invalidation wiring at every mutation site. That trade is deliberate and documen
 | ---------------------------------------- | -------------------------------- | ------------------------------------------------- |
 | `albumIdsByGroupKey` (`routes/library.ts`) | `WeakMap<Database>`, 4 s        | a rename is a few seconds late; only consulted while a download is active, and downloading albums are excluded regardless |
 | `transferKeysCache`                       | module-global, 4 s               | ditto; also caches the slskd-unreachable miss so a dead sidecar isn't retried per request |
-| `quarantineCache`                         | `WeakMap<Database>`, 4 s         | a just-landed song appears ≤4 s late              |
 | `noArtCache` (`routes/streaming.ts`)      | id → expiry, 10 min              | **explicitly evicted** — see above                |
 | `scan-cache` (`scan_cache` table)         | path + size + mtime              | content-addressed: a retag changes mtime → miss. Override tables are applied by `buildLibrary` *after* the raw tags, so an override needs no cache bust |
 | `library_song_analysis_failures`          | `file_size` at last failure      | content-addressed: a re-download changes the size → the skip resets |

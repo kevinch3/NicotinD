@@ -426,7 +426,7 @@ export function selectResidualCohort(db: Database, limit: number): CohortCase[] 
       `SELECT al.name AS album, al.artist AS artist
          FROM library_albums al
          JOIN library_songs s ON s.album_id = al.id
-        WHERE s.landed_at IS NOT NULL AND (s.genre IS NULL OR s.genre = '')
+        WHERE (s.genre IS NULL OR s.genre = '')
         GROUP BY al.id
         ORDER BY COUNT(*) DESC, al.name
         LIMIT ?`,
