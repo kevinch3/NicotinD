@@ -193,6 +193,31 @@ rows, so the largest instance of this class was invisible to the worklist a cura
 surfaced only from a direct `library_song_genres` probe. Do not read a clean rare-genre list as
 "there are no bad genre strings".
 
+### `fix_song_metadata` gained `track` and `disc` (issue #959)
+
+The audit can now report a broken running order (`track_collision`, `untracked_album`), and this is
+what repairs it. 101 prod albums have several *different* songs sharing one `(disc, track)` slot —
+all 14 tracks of *With the Beatles* are numbered 63 — and 490 songs on multi-track albums carry no
+number at all; a curation session could identify every case and fix none, because the two fields
+were simply missing from the accepted set. The mechanism already existed: this retags in place and
+never moves a file.
+
+The read-back verification covers them like every other field, so a write that does not persist is
+reported rather than claimed.
+
+### `merge_artist` can fix a whitespace-only display name (issue #956)
+
+`merge_artist({ mergeInto: "Nicole Moudaber", rawName: "Nicole Moudaber " })` used to fail with
+*"mergeInto must be a different artist name"* — and the failure **echoed the already-trimmed
+rawName**, which is the tell: the input was normalised before the equality check, so the two names
+were byte-identical by the time they were compared and no spelling of the request could succeed.
+"Different from the target" is now judged against the **stored** name. It reports
+`kind: "renamed"`, the same as the case/accent fixes it already handled — a trailing space is no
+different in kind from `Héroes Del Silencio` vs `Héroes del Silencio`.
+
+`normalizeArtistForGrouping` folds the whitespace, so the catalogue was never split; the damage was
+that the album rows disagreed with each other about their own artist's name.
+
 ### `set_song_genre` (issue #677) — and the audit gap it exposed (#681)
 
 Genre is the property a curating agent most often needs to *write*, and until

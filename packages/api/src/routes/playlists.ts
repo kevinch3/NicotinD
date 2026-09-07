@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { PlaylistService } from '../services/playlist.service.js';
+import { clampQueryInt } from './query-params.js';
 
 /**
  * Native per-user playlists. Every handler scopes to the authenticated user
@@ -21,7 +22,7 @@ export function playlistRoutes() {
   // Cheap token-overlap suggestions for what to add next (see
   // PlaylistService.proposals for the empty-vs-non-empty token-source rule).
   app.get('/:id/proposals', (c) => {
-    const limit = Math.min(Number(c.req.query('limit') ?? 20), 50);
+    const limit = clampQueryInt(c, 'limit', { fallback: 20, max: 50 });
     const proposals = svc().proposals(c.var.user.sub, c.req.param('id'), limit);
     return proposals ? c.json(proposals) : c.json({ error: 'Not found' }, 404);
   });

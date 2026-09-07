@@ -38,6 +38,17 @@ export interface SongMetadataMutateBody {
   albumArtist?: string;
   album?: string;
   year?: number;
+  /**
+   * Track and disc number (issue #959). 101 prod albums have several DIFFERENT
+   * songs sharing one `(disc, track)` slot — all 14 tracks of *With the
+   * Beatles* are numbered 63, so the album has no running order — and 490 songs
+   * on multi-track albums carry no number at all. A curation session could
+   * identify every one of them and repair none, because these two fields were
+   * simply missing from the accepted set. The mechanism already existed: this
+   * retags in place and never moves a file.
+   */
+  track?: number;
+  disc?: number;
 }
 
 /** The subset of a song row a mutation can be verified against. */
@@ -47,6 +58,8 @@ export interface SongMetadataSnapshot {
   albumArtist: string | null;
   album: string | null;
   year: number | null;
+  track: number | null;
+  disc: number | null;
 }
 
 export type SongMetadataMutateResult =
@@ -79,6 +92,8 @@ interface SongRow {
   albumArtist: string | null;
   album: string | null;
   year: number | null;
+  track: number | null;
+  disc: number | null;
 }
 
 export async function mutateSongMetadata(
@@ -89,12 +104,17 @@ export async function mutateSongMetadata(
 ): Promise<SongMetadataMutateResult> {
   // Same guard as identify/apply: add/replace only, never clear a tag —
   // empty/placeholder strings and out-of-range years are dropped, not written.
-  const tags = buildIdentifyApplyTags(body);
+  const tags = buildIdentifyApplyTags({
+    ...body,
+    trackNumber: body.track,
+    discNumber: body.disc,
+  });
   if (!tags) return { ok: false, error: 'No applicable fields', status: 400 };
 
   const song = db
     .query<SongRow, [string]>(
-      `SELECT s.path, s.title, s.artist, s.album_artist AS albumArtist, a.name AS album, s.year
+      `SELECT s.path, s.title, s.artist, s.album_artist AS albumArtist, a.name AS album, s.year,
+              s.track, s.disc
        FROM library_songs s LEFT JOIN library_albums a ON a.id = s.album_id
        WHERE s.id = ?`,
     )
@@ -117,6 +137,8 @@ export async function mutateSongMetadata(
     albumArtist: song.albumArtist,
     album: song.album,
     year: song.year,
+    track: song.track,
+    disc: song.disc,
   };
   if (!deps.scanIncremental) {
     // Nothing to read back through — report the request and say so, rather
@@ -141,6 +163,10 @@ export async function mutateSongMetadata(
   }
   if (tags.album !== undefined && after.album !== tags.album) diverged.album = after.album;
   if (tags.year !== undefined && after.year !== tags.year) diverged.year = after.year;
+  if (tags.trackNumber !== undefined && after.track !== tags.trackNumber) {
+    diverged.track = after.track;
+  }
+  if (tags.discNumber !== undefined && after.disc !== tags.discNumber) diverged.disc = after.disc;
 
   if (Object.keys(diverged).length > 0) {
     return {
@@ -166,7 +192,8 @@ function readSnapshot(db: Database, songId: string): SongMetadataSnapshot | null
   return (
     db
       .query<SongMetadataSnapshot, [string]>(
-        `SELECT s.title, s.artist, s.album_artist AS albumArtist, a.name AS album, s.year
+        `SELECT s.title, s.artist, s.album_artist AS albumArtist, a.name AS album, s.year,
+                s.track, s.disc
          FROM library_songs s LEFT JOIN library_albums a ON a.id = s.album_id
          WHERE s.id = ?`,
       )
@@ -184,5 +211,7 @@ function pickApplied(after: SongMetadataSnapshot, tags: AudioTags): Partial<Audi
   }
   if (tags.album !== undefined && after.album !== null) out.album = after.album;
   if (tags.year !== undefined && after.year !== null) out.year = after.year;
+  if (tags.trackNumber !== undefined && after.track !== null) out.trackNumber = after.track;
+  if (tags.discNumber !== undefined && after.disc !== null) out.discNumber = after.disc;
   return out;
 }

@@ -623,7 +623,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'fix_song_metadata',
     description:
-      "Fix a song's own metadata (title, artist, albumArtist, album, year) — the apply half of " +
+      "Fix a song's own metadata (title, artist, albumArtist, album, year, track, disc) — the apply half of " +
       '`lookup_song_metadata`. Retags the file in place and rescans it; NEVER moves or renames the ' +
       'file, so playlists, likes and history keep pointing at the song. Fixing `album` (or just the ' +
       'title) on a loose YouTube single dissolves its fake single-track album into the real one. ' +
@@ -638,6 +638,12 @@ export const MCP_TOOLS: McpTool[] = [
         albumArtist: { type: 'string' },
         album: { type: 'string' },
         year: { type: 'number' },
+        track: {
+          type: 'number',
+          description:
+            "Track number within its disc. Use for an album whose slots collide (several DIFFERENT songs sharing one number) or whose songs carry none — the running order is otherwise arbitrary. Report them with the audit's `track_collision` / `untracked_album` rules.",
+        },
+        disc: { type: 'number', description: 'Disc number. Absent/1 means the only disc.' },
       },
       required: ['songId'],
     },
@@ -649,6 +655,8 @@ export const MCP_TOOLS: McpTool[] = [
         albumArtist: args.albumArtist === undefined ? undefined : str(args.albumArtist),
         album: args.album === undefined ? undefined : str(args.album),
         year: typeof args.year === 'number' ? args.year : undefined,
+        track: typeof args.track === 'number' ? args.track : undefined,
+        disc: typeof args.disc === 'number' ? args.disc : undefined,
       };
       const result = await mutateSongMetadata(db, metadata, songId, body);
       if (!result.ok) {

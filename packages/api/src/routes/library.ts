@@ -107,6 +107,7 @@ import {
   type IdentifyApplyBody,
   type IdentifySongRefusal,
 } from '../services/identify.js';
+import { clampQueryInt } from './query-params.js';
 
 const log = createLogger('library');
 
@@ -974,7 +975,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // potentially-large track list loads on demand, not with the album shell.
   app.get('/artists/:id/songs', (c) => {
     const id = c.req.param('id');
-    const size = Math.min(Number(c.req.query('size') ?? 60), 200);
+    const size = clampQueryInt(c, 'size', { fallback: 60, max: 200 });
     const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
     const sort = c.req.query('sort') ?? 'newest';
     const db = getDatabase();
@@ -1026,7 +1027,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // but inverts the grid filter: only single + ep releases.
   app.get('/singles', async (c) => {
     const type = c.req.query('type') ?? 'newest';
-    const size = Math.min(Number(c.req.query('size') ?? 60), 500);
+    const size = clampQueryInt(c, 'size', { fallback: 60, max: 500 });
     const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
     const order = albumOrderBy(type);
     const db = getDatabase();
@@ -1059,7 +1060,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   app.get('/albums', async (c) => {
     const type = c.req.query('type') ?? 'newest';
-    const size = Math.min(Number(c.req.query('size') ?? 20), 500);
+    const size = clampQueryInt(c, 'size', { fallback: 20, max: 500 });
     const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
     const includeHidden = c.req.query('includeHidden') === 'true';
     const classification = c.req.query('classification');
@@ -1109,7 +1110,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   app.get('/compilations', async (c) => {
     const type = c.req.query('type') ?? 'newest';
-    const size = Math.min(Number(c.req.query('size') ?? 20), 500);
+    const size = clampQueryInt(c, 'size', { fallback: 20, max: 500 });
     const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
     const db = getDatabase();
     const order = albumOrderBy(type);
@@ -1250,7 +1251,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   app.get('/untracked', (c) => {
     requireAdmin(c);
     const db = getDatabase();
-    const limit = Math.min(Number(c.req.query('limit') ?? 200) || 200, 1000);
+    const limit = clampQueryInt(c, 'limit', { fallback: 200, max: 1000 });
     const total = (
       db
         .query('SELECT COUNT(*) AS c FROM completed_downloads WHERE relative_path IS NULL')
@@ -1784,11 +1785,19 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     recordAudit(db, c.get('user'), 'artist.identity', {
       targetKind: 'artist',
       targetId: body?.rawName?.trim() ?? '',
+      // A split is the destructive shape — it rewrites identity/alias rows and
+      // kicks a full rescan — and it was the only one recording no outcome, so
+      // 36 of 45 identity actions (80%) had nothing recoverable in the log. The
+      // alias table holds current STATE, not the decision, so "what did this
+      // split produce, and was it right?" was unanswerable from stored data
+      // (#946). Same arrow convention as the two branches that already do this.
       detail: body?.rename
         ? `rename → ${body.rename.trim()}`
         : body?.mergeInto
           ? `merge → ${body.mergeInto.trim()}`
-          : (body?.decision ?? ''),
+          : body?.decision === 'split'
+            ? `split → ${(body.members ?? []).map((m) => m.trim()).join(', ')}`
+            : (body?.decision ?? ''),
     });
     return c.json({
       ok: true,
@@ -2016,7 +2025,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // literal "autocomplete" segment isn't ever shadowed by the param route.
   app.get('/songs/autocomplete', (c) => {
     const q = String(c.req.query('q') ?? '').trim();
-    const limit = Math.min(Number(c.req.query('limit') ?? 8), 25);
+    const limit = clampQueryInt(c, 'limit', { fallback: 8, max: 25 });
     if (!q) return c.json([]);
     const tokens = tokenize(q);
     if (!tokens.length) return c.json([]);
@@ -2511,7 +2520,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   app.get('/songs/:id/similar', async (c) => {
     const id = c.req.param('id');
-    const size = Math.min(Number(c.req.query('size') ?? 20), 50);
+    const size = clampQueryInt(c, 'size', { fallback: 20, max: 50 });
     const db = getDatabase();
 
     const source = db.query<SongRow, [string]>(`${SONG_SELECT} WHERE s.id = ?`).get(id);
@@ -2614,7 +2623,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const genre = c.req.query('genre') ?? '';
     // Cap is high enough to enumerate a full genre for the offline "Download"
     // flow; the client-side storage budget is the real limiter.
-    const count = Math.min(Number(c.req.query('count') ?? 100), 10000);
+    const count = clampQueryInt(c, 'count', { fallback: 100, max: 10000 });
     if (!genre) return c.json([]);
     const db = getDatabase();
     // Match the FULL genre set, not just the mirrored primary — the facet count
@@ -2642,7 +2651,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   });
 
   app.get('/random', (c) => {
-    const size = Math.min(Number(c.req.query('size') ?? 10), 200);
+    const size = clampQueryInt(c, 'size', { fallback: 10, max: 200 });
     const db = getDatabase();
     const rows = db
       .query<SongRow, [number]>(
@@ -2661,7 +2670,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // /artists/:id/songs (same LibraryFilter grammar + sort whitelist) but without
   // the artist predicate, so it filters/sorts/paginates the entire landed library.
   app.get('/songs', (c) => {
-    const size = Math.min(Number(c.req.query('size') ?? 60), 200);
+    const size = clampQueryInt(c, 'size', { fallback: 60, max: 200 });
     const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
     const sort = c.req.query('sort') ?? 'newest';
     const q = String(c.req.query('q') ?? '').trim();
@@ -2716,7 +2725,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   // Recently added — uses completed_downloads history to surface user's most-recent imports.
   app.get('/recent-songs', (c) => {
-    const size = Math.min(Number(c.req.query('size') ?? 50), 200);
+    const size = clampQueryInt(c, 'size', { fallback: 50, max: 200 });
     const db = getDatabase();
     const rows = db
       .query<SongRow, [number]>(
