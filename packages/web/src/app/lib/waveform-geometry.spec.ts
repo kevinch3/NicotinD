@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bandLevelsAt, envelopePath, resamplePeaks } from './waveform-geometry';
+import { bandLevelsAt, envelopePath, resamplePeaks, monoEnvelopePath } from './waveform-geometry';
 
 describe('resamplePeaks', () => {
   it('merges pairs into fewer columns keeping min of mins and max of maxes', () => {
@@ -66,5 +66,41 @@ describe('bandLevelsAt', () => {
     expect(bandLevelsAt(bands, 4, -5)).toEqual([0, 0, 0, 0, 0, 0]);
     expect(bandLevelsAt(bands, 4, 99)).toEqual([0, 1, 0, 0, 0, 0]);
     expect(bandLevelsAt([], 4, 1)).toEqual([0, 0, 0, 0, 0, 0]);
+  });
+});
+
+/**
+ * Issue #994: fold the symmetric envelope to a mono half standing on the seek
+ * line. The bottom lobe was mirroring the top and carrying no information.
+ */
+describe('monoEnvelopePath', () => {
+  it('stands on the baseline and closes along it, so a gradient can fill it', () => {
+    const d = monoEnvelopePath([-1, 1], 10, 20, 1);
+    expect(d).toContain('L10,20');
+    expect(d).toContain('L0,20');
+    expect(d.endsWith('Z')).toBe(true);
+  });
+
+  it('folds min/max by magnitude, not by mean — a one-sided transient survives', () => {
+    // A peak that exists only downward must reach the same height as one that
+    // exists only upward; a mean would halve both.
+    const down = monoEnvelopePath([-1, 0], 4, 20, 1);
+    const up = monoEnvelopePath([0, 1], 4, 20, 1);
+    expect(down).toBe(up);
+    // Full-scale reaches the top of the box.
+    expect(up).toContain(',0');
+  });
+
+  it('draws a hairline for silence rather than vanishing', () => {
+    const d = monoEnvelopePath([0, 0], 4, 20, 1);
+    expect(d).toContain('19.5'); // height - MIN_HALF_PX
+  });
+
+  it('clamps beyond full scale instead of drawing outside the box', () => {
+    expect(monoEnvelopePath([-3, 3], 4, 20, 1)).toContain(',0');
+  });
+
+  it('returns empty for no peaks', () => {
+    expect(monoEnvelopePath([], 10, 20)).toBe('');
   });
 });

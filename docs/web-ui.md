@@ -1583,6 +1583,34 @@ back on exactly the device the drag exists for, and made the gesture feel broken
 bounded: the handle kept moving after the cover had stopped shrinking. `coverCollapsed` drops the
 wrapper's `px-4 py-4` when it reaches zero — otherwise 32px of empty box outlives the artwork it
 was padding, giving back part of what the drag just won.
+## The waveform is mono, standing on the seek line
+
+The symmetric min/max envelope spent half its pixels mirroring the other half — a waveform is
+near-symmetric by construction, so the bottom lobe carried almost nothing the top did not.
+`monoEnvelopePath` folds it (issue #994), which doubles the vertical resolution of the informative
+half at the same strip height and puts the amplitude's base exactly on the seek line, so the graph
+reads as growing out of the progress bar rather than floating either side of it.
+
+The fold is `max(|min|, |max|)` per column, **not** a mean: a transient is a peak in one direction
+only, and averaging would halve exactly the feature the strip exists to show — the same reason
+`resamplePeaks` keeps min-of-mins and max-of-maxes upstream. The path closes along the baseline so it
+can take a vertical gradient fill (transparent at the base, opaque at the peaks); a stroked polyline
+could not.
+
+## Hold shuffle for a radio
+
+Shuffle and radio are the same intent at two strengths — "surprise me from this queue" and "surprise
+me from the library" — so they share one control rather than adding a second button to a transport
+row with no room for one (issue #995).
+
+`LongPress` exists for the part that is not the timer: a pointer-up after a hold still produces a
+`click`, so without suppression a hold would toggle shuffle on its way to starting the radio. `end()`
+reports whether the hold fired, and clears the flag there rather than on the next `start()` —
+otherwise a hold followed by a genuine tap would swallow the tap too. Its timer functions are
+injected, so the timing is unit-tested without fake timers or a DOM.
+
+A hidden gesture is a gesture nobody finds, so the hold is named in both the tooltip and the
+aria-label rather than left to be discovered.
 
 
 ## Bundle size budget (issue #256)

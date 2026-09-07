@@ -26,11 +26,26 @@
       [style.clip-path]="clip()"
     />
   </g>
+  <!-- Transparent at the base, opaque at the peaks (#994). The gradient is
+       `objectBoundingBox` so it spans the strip regardless of viewBox units,
+       and `currentColor` keeps both stops on the theme colour each layer
+       already sets — one gradient serves the muted and the accent layer. -->
+  <defs>
+    <linearGradient id="wf-fade" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="currentColor" stop-opacity="0" />
+      <stop offset="100%" stop-color="currentColor" stop-opacity="1" />
+    </linearGradient>
+  </defs>
   <g class="waveform-layer waveform-layer-envelope">
-    <path [attr.d]="path() || null" class="fill-current text-theme-muted opacity-35" />
     <path
       [attr.d]="path() || null"
-      class="fill-current text-theme-accent"
+      class="text-theme-muted opacity-35"
+      fill="url(#wf-fade)"
+    />
+    <path
+      [attr.d]="path() || null"
+      class="text-theme-accent"
+      fill="url(#wf-fade)"
       [style.clip-path]="clip()"
     />
   </g>
