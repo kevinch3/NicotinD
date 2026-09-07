@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.85](https://github.com/kevinch3/NicotinD/compare/v0.5.84...v0.5.85) (2026-09-07)
+
+### Bug Fixes
+
+* **genre:** canonicalize at every door, bound what matching sees ([#973](https://github.com/kevinch3/NicotinD/issues/973)) ([1b718e8](https://github.com/kevinch3/NicotinD/commit/1b718e80d5bec5e10c12855a289175f253ba54f9)), closes [#941](https://github.com/kevinch3/NicotinD/issues/941) [#942](https://github.com/kevinch3/NicotinD/issues/942) [#949](https://github.com/kevinch3/NicotinD/issues/949) [#950](https://github.com/kevinch3/NicotinD/issues/950) [#960](https://github.com/kevinch3/NicotinD/issues/960), references [#941](https://github.com/kevinch3/NicotinD/issues/941) [#194](https://github.com/kevinch3/NicotinD/issues/194) [#942](https://github.com/kevinch3/NicotinD/issues/942) [#949](https://github.com/kevinch3/NicotinD/issues/949) [#960](https://github.com/kevinch3/NicotinD/issues/960) [#950](https://github.com/kevinch3/NicotinD/issues/950)
 ## [0.5.84](https://github.com/kevinch3/NicotinD/compare/v0.5.83...v0.5.84) (2026-09-07)
 
 ### Bug Fixes
