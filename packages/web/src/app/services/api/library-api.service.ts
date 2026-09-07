@@ -17,7 +17,14 @@ import type {
   StrategyId,
 } from '@nicotind/core';
 import { serializeLibraryFilter, isEmptyLibraryFilter } from '@nicotind/core';
-import type { Album, AlbumDetail, Song, ProvenanceRecord, ArtistIdentityResult } from './api-types';
+import type {
+  Album,
+  AlbumDetail,
+  Song,
+  ProvenanceRecord,
+  ArtistIdentityResult,
+  AutoFetchImageResult,
+} from './api-types';
 import type { LibraryFragmentReport, MissplitPreview } from './api-types';
 import type { IdentifyApplyFields, IdentifySuggestion } from './api-types';
 import type { SongMetadataCandidates, SongMetadataFields, SongMetadataResult } from './api-types';
@@ -177,7 +184,7 @@ export class LibraryApiService {
    * override", so it can't thrash or clobber a curator upload.
    */
   autoFetchArtistImage(id: string) {
-    return this.http.post<{ filled: boolean }>(`/api/library/artists/${id}/auto-fetch-image`, {});
+    return this.http.post<AutoFetchImageResult>(`/api/library/artists/${id}/auto-fetch-image`, {});
   }
   /**
    * Which artist-image sources could serve a portrait right now (issue #422) —

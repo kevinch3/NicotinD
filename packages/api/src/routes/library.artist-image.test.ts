@@ -234,13 +234,25 @@ describe('POST /artists/:id/auto-fetch-image (#250)', () => {
       { method: 'POST' },
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ filled: true });
+    expect(await res.json()).toEqual({ filled: true, source: 'Aphex Twin → spotify' });
     expect(
       testDb.query(`SELECT cover_url FROM library_artwork WHERE id = 'artist-1'`).get(),
     ).toEqual({ cover_url: 'https://cdn/aphex.jpg' });
   });
 
-  it('is a one-shot: does not re-query once a portrait exists', async () => {
+  /**
+   * This used to short-circuit on an existing portrait, which made the menu
+   * item silently no-op on exactly the artists a user asks it about — the ones
+   * whose photo they want *replaced* (#988).
+   *
+   * The guard was written for an auto-trigger (the shape `/auto-fetch-info`
+   * has, fired on first visit from `artist-info.component`). No such trigger
+   * was ever wired for images: the route's only caller is the explicit
+   * "Fetch automatically" menu item, and the honest reading of that click is
+   * "get me a new one". Fill-if-empty still governs the bulk backfill, which
+   * has its own predicate (`NEEDS_PORTRAIT_SQL`).
+   */
+  it('replaces an existing portrait — the click means "get me a new one"', async () => {
     testDb.run(
       `INSERT INTO library_artwork (id, kind, cover_url, updated_at)
        VALUES ('artist-1', 'artist', 'https://cdn/existing.jpg', 1)`,
@@ -251,15 +263,14 @@ describe('POST /artists/:id/auto-fetch-image (#250)', () => {
       method: 'POST',
     });
 
-    expect(await res.json()).toEqual({ filled: false });
-    expect(lookup).not.toHaveBeenCalled();
-    // The existing portrait is untouched.
+    expect(await res.json()).toMatchObject({ filled: true });
+    expect(lookup).toHaveBeenCalled();
     expect(
       testDb.query(`SELECT cover_url FROM library_artwork WHERE id = 'artist-1'`).get(),
-    ).toEqual({ cover_url: 'https://cdn/existing.jpg' });
+    ).toEqual({ cover_url: 'https://cdn/other.jpg' });
   });
 
-  it('never overwrites a curator override', async () => {
+  it('never overwrites a curator override, and says which case that is', async () => {
     testDb.run(`UPDATE library_artists SET manual_override = 1 WHERE id = 'artist-1'`);
     const lookup = mock(async () => 'https://cdn/auto.jpg');
 
@@ -269,26 +280,33 @@ describe('POST /artists/:id/auto-fetch-image (#250)', () => {
           method: 'POST',
         })
       ).json(),
-    ).toEqual({ filled: false });
+    ).toEqual({ filled: false, reason: 'manual-override' });
     expect(lookup).not.toHaveBeenCalled();
   });
 
-  it('degrades silently when no provider can resolve one (an auto-trigger must not toast)', async () => {
+  /**
+   * The five outcomes used to be one `{ filled: false }`, so the client could
+   * not tell "nobody had a photo" from "the lookup broke" from "this artist is
+   * locked" — which is why it could not report any of them (#988).
+   */
+  it('distinguishes "no provider had one" from every other refusal', async () => {
     const res = await appWithLookup(async () => null).request(
       '/artists/artist-1/auto-fetch-image',
       { method: 'POST' },
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ filled: false });
+    expect(await res.json()).toEqual({ filled: false, reason: 'no-candidate' });
   });
 
-  it('returns filled:false for an unknown artist rather than 404ing the auto-trigger', async () => {
+  it('reports an unknown artist as such, on 200 so the reason survives', async () => {
     const res = await appWithLookup(async () => 'https://cdn/x.jpg').request(
       '/artists/nope/auto-fetch-image',
       { method: 'POST' },
     );
+    // Not a 404: HttpClient throws on error statuses, which would discard the
+    // reason the client needs in order to say anything useful.
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ filled: false });
+    expect(await res.json()).toEqual({ filled: false, reason: 'not-found' });
   });
 });
 

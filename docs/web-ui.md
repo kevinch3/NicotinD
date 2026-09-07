@@ -1541,6 +1541,23 @@ is a latent landmine under any shared-worker config. Re-evaluate behind
 
 ## Service worker fire-and-forget
 
+## A vertical scroller must constrain its other axis
+
+`overflow-y-auto` on its own opts an element into **horizontal** scrolling too: when one axis is
+`auto`/`scroll` and the other is `visible`, the visible one computes to `auto`. Any single pixel of
+intrinsic overflow then becomes a sideways scrollbar instead of being clipped — and, inside a
+full-screen sheet, drags the whole sheet with it.
+
+That is what issue #992 was. The Now Playing queue panel set `overflow-y-auto` alone while the
+lyrics and karaoke panels next to it already paired the axes, so the queue was the only one of the
+four that could scroll sideways. The row titles had `truncate` and `min-w-0` the whole time and
+looked correct in the markup — they simply never got the chance to apply.
+
+`now-playing-scroll-axes.spec.ts` pins the rule across every Now Playing template rather than the
+one line that was wrong, and asserts it found the templates first, because a vacuous pass is the
+failure mode of a test shaped like that.
+
+
 ## Bundle size budget (issue #256)
 
 `packages/web/angular.json` carried the **untouched Angular CLI scaffold defaults**

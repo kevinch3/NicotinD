@@ -492,6 +492,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 
 ### Web UI patterns
 
+- **A vertical scroller constrains both axes**: `overflow-y-auto` alone computes `overflow-x` to
+  `auto`, so a sheet scrolls sideways and `truncate` never applies; pinned across Now Playing by
+  `now-playing-scroll-axes.spec.ts`. → [web-ui.md](web-ui.md)
+
 - **Unified song listings**: one `TrackRowComponent` + one root `SongMenuService.build(song, ctx)`
   builds every `⋯` menu; every album/artist name is an `EntityLinkComponent` link (span on TV for
   artists); Remove routes through `ConfirmService` → `deleteSongs` → `deletedSongIds()`;
