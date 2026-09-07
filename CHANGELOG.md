@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.84](https://github.com/kevinch3/NicotinD/compare/v0.5.83...v0.5.84) (2026-09-07)
+
+### Bug Fixes
+
+* **artwork:** stop losing covers, count them honestly, sweep stale rows ([#971](https://github.com/kevinch3/NicotinD/issues/971)) ([be2a101](https://github.com/kevinch3/NicotinD/commit/be2a101cd8086053c33502fe2456a6be5f2c2984)), closes [#952](https://github.com/kevinch3/NicotinD/issues/952) [#953](https://github.com/kevinch3/NicotinD/issues/953) [#965](https://github.com/kevinch3/NicotinD/issues/965), references [#952](https://github.com/kevinch3/NicotinD/issues/952) [#953](https://github.com/kevinch3/NicotinD/issues/953) [#965](https://github.com/kevinch3/NicotinD/issues/965)
 ## [0.5.83](https://github.com/kevinch3/NicotinD/compare/v0.5.82...v0.5.83) (2026-09-07)
 
 ### Bug Fixes
