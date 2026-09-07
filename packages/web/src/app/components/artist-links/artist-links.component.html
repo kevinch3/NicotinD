@@ -1,10 +1,6 @@
 @for (seg of segments(); track $index) {
   @if (seg.type === 'link') {
-    <a
-      [routerLink]="['/library', 'artists', seg.id]"
-      class="hover:underline cursor-pointer"
-      (click)="$event.stopPropagation(); linkFollowed.emit()"
-    >{{ seg.text }}</a>
+    <app-entity-link kind="artist" [id]="seg.id" [name]="seg.text" (followed)="linkFollowed.emit()" />
   } @else {
     <span>{{ seg.text }}</span>
   }

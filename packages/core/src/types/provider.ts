@@ -8,6 +8,7 @@ export interface SearchProviderResult {
     id: string;
     name: string;
     artist: string;
+    artistId?: string;
     year?: number;
     coverArt?: string;
     artists?: ArtistCredit[];
@@ -18,6 +19,7 @@ export interface SearchProviderResult {
     artist: string;
     artistId?: string;
     album: string;
+    albumId?: string;
     duration?: number;
     bitRate?: number;
     coverArt?: string;

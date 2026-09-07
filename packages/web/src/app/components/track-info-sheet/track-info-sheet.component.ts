@@ -28,6 +28,8 @@ import { methodBadge } from '../../lib/acquisition-method';
 import { parseLrc } from '../../lib/lrc-parser';
 import { moveInList } from '../../lib/move-in-list';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
+import { ArtistLinksComponent } from '../artist-links/artist-links.component';
+import { EntityLinkComponent } from '../entity-link/entity-link.component';
 import { TrackStatsBarsComponent } from '../track-stats-bars/track-stats-bars.component';
 import { ArtistIdentityModalComponent } from '../artist-identity-modal/artist-identity-modal.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -57,6 +59,8 @@ type TagTextField = Exclude<keyof TagDraft, 'year'>;
   imports: [
     CommonModule,
     CoverArtComponent,
+    ArtistLinksComponent,
+    EntityLinkComponent,
     TrackStatsBarsComponent,
     ArtistIdentityModalComponent,
     TranslatePipe,

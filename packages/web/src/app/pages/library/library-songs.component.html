@@ -73,7 +73,8 @@
           <app-track-row
             [track]="metaToTrack(t)"
             [indexLabel]="i + 1"
-            [subtitle]="t.album || t.artist"
+            [album]="albumRef(t)"
+            [subtitle]="t.artist"
             [duration]="t.duration"
             [offline]="true"
             [showLike]="false"
@@ -158,7 +159,8 @@
         <app-track-row
           [track]="toTrack(song)"
           [indexLabel]="i + 1"
-          [subtitle]="songSubtitle(song)"
+          [album]="albumRef(song)"
+          [subtitle]="song.artists?.length ? undefined : song.artist"
           [artists]="song.artists"
           [duration]="song.duration"
           [offline]="preserve.isPreserved(song.id)"

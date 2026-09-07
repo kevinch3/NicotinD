@@ -80,7 +80,8 @@
             <app-track-row
               [track]="toTrack(song)"
               [indexLabel]="i + 1"
-              [subtitle]="song.album || song.artist"
+              [album]="albumRef(song)"
+              [subtitle]="song.artists?.length ? undefined : song.artist"
               [artists]="song.artists"
               [duration]="song.duration"
               [actions]="songMenu.build(song, { removable: true })"

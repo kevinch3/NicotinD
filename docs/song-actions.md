@@ -14,7 +14,10 @@ its menu from the same `SongMenuService`.
 Order: Like/Unlike → Add to queue → Play next → Start radio → Go to artist* → Go to album* →
 Add to playlist → Save offline → Song info → Don't recommend this / Recommend again.
 (*artist/album links appear only when the song carries `artistId`/`albumId` and
-the context doesn't hide them.)
+the context doesn't hide them. Since every rendered album and artist **name** is
+itself a link — `EntityLinkComponent`, see [web-ui.md](web-ui.md) "Track rows" —
+these menu items are the fallback for surfaces where the name is not shown or is
+not a link: TV artist names, offline rows without an id.)
 
 - **Like / Unlike** (issue #225) leads the menu — a primary gesture. The label
   reflects `LikeService.isLiked(song.id)`; the action calls `LikeService.toggle()`.

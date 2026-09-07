@@ -77,6 +77,14 @@
         <span class="cursor-pointer hover:underline" (click)="navigateToArtistClicked.emit()">{{ track.artist }}</span>
       }
     </p>
+    <!-- Not on TV: an extra nav item here would shift the root group's pinned
+         ArrowUp order (now-playing-tv.spec.ts); TV reaches the album via the
+         track row instead. -->
+    @if (!isTv && track.album) {
+      <p class="text-xs text-theme-muted truncate mt-0.5" data-testid="now-playing-album">
+        <app-entity-link kind="album" [id]="track.albumId" [name]="track.album" (followed)="navigateToAlbumClicked.emit()" />
+      </p>
+    }
     @if (formatQuality(track.bitRate); as quality) {
       @if (quality) {
         <p data-testid="now-playing-quality" class="text-xs text-theme-muted mt-1">{{ quality }}</p>

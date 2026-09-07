@@ -53,7 +53,10 @@ export interface RecentPlay {
   /** Live library title where the song still exists, else the event snapshot. */
   title: string | null;
   artist: string | null;
+  /** Live ids so a shelf tile's names can link to their pages. */
+  artistId: string | null;
   album: string | null;
+  albumId: string | null;
   duration: number | null;
   /** Live cover-art id (`library_songs.cover_art`) for `/api/cover/:id`. */
   coverArt: string | null;
@@ -186,6 +189,7 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
         artist: string | null;
         artist_id: string;
         album: string | null;
+        album_id: string | null;
         duration: number | null;
         cover_art: string | null;
         played_at: number;
@@ -197,6 +201,7 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
               COALESCE(s.artist, p.artist)       AS artist,
               s.artist_id                        AS artist_id,
               COALESCE(al.name, p.album)         AS album,
+              s.album_id                         AS album_id,
               s.duration                         AS duration,
               s.cover_art                        AS cover_art,
               MAX(p.at)                          AS played_at
@@ -224,7 +229,9 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
       songId: r.song_id,
       title: r.title,
       artist: r.artist,
+      artistId: r.artist_id ?? null,
       album: r.album,
+      albumId: r.album_id ?? null,
       duration: r.duration,
       coverArt: r.cover_art,
       playedAt: r.played_at,

@@ -32,7 +32,10 @@
           [class.border-t-2]="dropTargetIndex() === $index && dropTargetIndex() !== dragSourceIndex()"
           [class.border-theme-accent]="dropTargetIndex() === $index && dropTargetIndex() !== dragSourceIndex()"
         >
-          <button appTvNavItem (click)="jumpToTrack($index)" class="flex-1 flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-theme-surface transition text-left">
+          <!-- Laid out like a track row: the title is the jump button and the
+               artist/album line beneath it carries entity links — an anchor may
+               not sit inside a button, so the row itself is the layout element. -->
+          <div data-testid="queue-row" class="flex-1 flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-theme-surface transition min-w-0">
             <span class="text-xs text-theme-muted w-4 flex-shrink-0 cursor-grab">≡</span>
             <span class="text-xs text-theme-muted w-6 text-right">{{ $index + 1 }}</span>
             <app-cover-art
@@ -43,10 +46,14 @@
               rounded="rounded"
             />
             <div class="min-w-0 flex-1">
-              <p class="text-sm text-theme-primary truncate">{{ queueTrack.title }}</p>
-              <p class="text-xs text-theme-muted truncate">{{ queueTrack.artist }}</p>
+              <button type="button" appTvNavItem data-testid="queue-row-title" (click)="jumpToTrack($index)" class="w-full text-left">
+                <p class="text-sm text-theme-primary truncate">{{ queueTrack.title }}</p>
+              </button>
+              <p class="text-xs text-theme-muted truncate">
+                <app-artist-links [artists]="queueTrack.artists" [fallbackArtist]="queueTrack.artist" [fallbackArtistId]="queueTrack.artistId" (linkFollowed)="linkFollowed.emit()" />@if (queueTrack.album) {<span> · </span><app-entity-link kind="album" [id]="queueTrack.albumId" [name]="queueTrack.album" (followed)="linkFollowed.emit()" />}
+              </p>
             </div>
-          </button>
+          </div>
           <button
             type="button"
             appTvNavItem

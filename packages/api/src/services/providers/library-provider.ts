@@ -53,6 +53,7 @@ export class LibrarySearchProvider implements ISearchProvider {
           id: string;
           name: string;
           artist: string;
+          artist_id: string | null;
           year: number | null;
           cover_art: string | null;
           song_count: number;
@@ -64,7 +65,7 @@ export class LibrarySearchProvider implements ISearchProvider {
         // default Albums grid omits (the search page has its own section
         // rendering, so classification != 'album' is fine). Token matching runs
         // over "name + artist" in JS below.
-        `SELECT id, name, artist, year, cover_art, song_count, classification
+        `SELECT id, name, artist, artist_id, year, cover_art, song_count, classification
          FROM library_albums
          WHERE hidden = 0`,
       )
@@ -76,6 +77,7 @@ export class LibrarySearchProvider implements ISearchProvider {
         id: r.id,
         name: r.name,
         artist: r.artist,
+        artistId: r.artist_id ?? undefined,
         year: r.year ?? undefined,
         coverArt: r.cover_art ?? undefined,
         songCount: r.song_count,
@@ -89,6 +91,7 @@ export class LibrarySearchProvider implements ISearchProvider {
           title: string;
           artist: string;
           artist_id: string;
+          album_id: string | null;
           album: string | null;
           duration: number;
           bit_rate: number | null;
@@ -96,7 +99,7 @@ export class LibrarySearchProvider implements ISearchProvider {
         },
         []
       >(
-        `SELECT s.id, s.title, s.artist, s.artist_id, a.name AS album, s.duration, s.bit_rate, s.cover_art
+        `SELECT s.id, s.title, s.artist, s.artist_id, s.album_id, a.name AS album, s.duration, s.bit_rate, s.cover_art
          FROM library_songs s
          LEFT JOIN library_albums a ON a.id = s.album_id
          WHERE s.hidden = 0`,
@@ -113,6 +116,7 @@ export class LibrarySearchProvider implements ISearchProvider {
         artist: r.artist,
         artistId: r.artist_id,
         album: r.album ?? '',
+        albumId: r.album_id ?? undefined,
         duration: r.duration,
         bitRate: r.bit_rate ?? undefined,
         coverArt: r.cover_art ?? undefined,

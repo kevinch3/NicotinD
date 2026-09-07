@@ -9,6 +9,9 @@ import { AuthService } from '../../services/auth.service';
 import { LikeService } from '../../services/like.service';
 import { TranslateService } from '../../services/translate.service';
 import { ToastService } from '../../services/toast.service';
+import { ServerConfigService } from '../../services/server-config.service';
+import { provideRouter } from '@angular/router';
+import { setInputValue } from '../../../testing/signal-input';
 
 // Instantiated without detectChanges so ngOnInit (which reads required inputs +
 // fetches provenance) never runs; the analysis methods are exercised directly.
@@ -834,5 +837,75 @@ describe('TrackInfoSheetComponent (retag form, issue #724)', () => {
     c.cancelEditTags();
     expect(c.editingTags()).toBe(false);
     expect(c.tagError()).toBeNull();
+  });
+});
+
+/**
+ * Rendered header: the artist and album names are entity links. The JIT harness
+ * lands neither the nested components' inputs nor their outputs
+ * (src/testing/signal-input.ts), so the href lives in entity-link.component.spec.ts
+ * and close-on-follow in e2e; here the header's composition is what is pinned.
+ */
+describe('TrackInfoSheetComponent (identity header links)', () => {
+  const song = {
+    id: 'song-1',
+    title: 'Título',
+    artist: 'Artista',
+    artistId: 'ar1',
+    album: 'Disco',
+    albumId: 'al1',
+    path: 'p',
+    bitRate: 320,
+    size: 1,
+    created: '2024-01-01',
+  } as never;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [TrackInfoSheetComponent],
+      providers: [
+        provideRouter([]),
+        {
+          provide: LibraryApiService,
+          useValue: {
+            getSong: vi.fn(() => of(song)),
+            getSongProvenance: vi.fn(() => of([])),
+            getSongAcquisition: vi.fn(() => of(null)),
+            getLyrics: vi.fn(() => of(null)),
+            getIdentifyAvailable: vi.fn(() => of({ available: false })),
+          },
+        },
+        { provide: TranslateService, useValue: { t: (k: string) => k } },
+        { provide: ServerConfigService, useValue: { apiUrl: (u: string) => u } },
+        {
+          provide: AuthService,
+          useValue: {
+            role: signal('listener'),
+            canCurate: computed(() => false),
+            token: () => 't',
+          },
+        },
+        { provide: LikeService, useValue: { isLiked: () => false, toggle: vi.fn() } },
+        { provide: ToastService, useValue: { show: vi.fn() } },
+      ],
+    }).compileComponents();
+  });
+
+  function render() {
+    const fixture = TestBed.createComponent(TrackInfoSheetComponent);
+    setInputValue(fixture.componentInstance.songId, 'song-1');
+    setInputValue(fixture.componentInstance.song, song);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('renders the artist through app-artist-links and the album through app-entity-link', () => {
+    const fixture = render();
+    const header: HTMLElement = fixture.nativeElement.querySelector(
+      '[data-testid="track-info-identity"]',
+    );
+    expect(header.querySelector('app-artist-links')).not.toBeNull();
+    expect(header.querySelector('app-entity-link')).not.toBeNull();
+    expect(header.textContent).toContain('Título');
   });
 });

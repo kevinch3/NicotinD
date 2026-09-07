@@ -1,5 +1,11 @@
 import { vi } from 'vitest';
-import { toTrack, offlineTrackAction, addToPlaylistAction, type BaseSong } from './track-utils';
+import {
+  toTrack,
+  offlineTrackAction,
+  addToPlaylistAction,
+  albumRef,
+  type BaseSong,
+} from './track-utils';
 import type { PreserveService } from '../services/preserve.service';
 import type { PlaylistService } from '../services/playlist.service';
 import type { Track } from '../services/player.service';
@@ -101,6 +107,28 @@ describe('trackUtils', () => {
     it('carries albumId through', () => {
       const track = toTrack({ id: 's1', title: 'T', artist: 'A', albumId: 'alb1' });
       expect(track.albumId).toBe('alb1');
+    });
+  });
+
+  describe('albumRef', () => {
+    it('links the album when the id is known', () => {
+      expect(albumRef({ album: 'Discovery', albumId: 'al1' })).toEqual({
+        id: 'al1',
+        name: 'Discovery',
+      });
+    });
+
+    it('keeps a plain name when only the name is known (offline metadata)', () => {
+      expect(albumRef({ album: 'Discovery' })).toEqual({ id: undefined, name: 'Discovery' });
+      expect(albumRef({ album: 'Discovery', albumId: '' })).toEqual({
+        id: undefined,
+        name: 'Discovery',
+      });
+    });
+
+    it('is undefined when the song has no album at all', () => {
+      expect(albumRef({})).toBeUndefined();
+      expect(albumRef({ album: '' })).toBeUndefined();
     });
   });
 

@@ -47,6 +47,7 @@ class TrackRowStub {
   readonly track = input<unknown>();
   readonly indexLabel = input<unknown>();
   readonly subtitle = input<unknown>();
+  readonly album = input<unknown>();
   readonly artists = input<unknown>();
   readonly duration = input<unknown>();
   readonly actions = input<unknown>();

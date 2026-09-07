@@ -42,6 +42,14 @@ describe('LibrarySearchProvider song search', () => {
     expect(results!.songs.length).toBe(40);
   });
 
+  it('carries albumId on song hits and artistId on album hits (so their names can link)', async () => {
+    seedSong('s1', 'Con Ritmo');
+    seedAlbum('al1', 'Con Ritmo Album', 'Alfredo Casero');
+    const { results } = await new LibrarySearchProvider(db).search('con ritmo');
+    expect(results!.songs[0]?.albumId).toBe('alb');
+    expect(results!.albums.find((a) => a.id === 'al1')?.artistId).toBe('art');
+  });
+
   it('carries artistId on song hits (so the player can link to the artist page)', async () => {
     seedSong('s1', 'Mi Canción');
     const { results } = await new LibrarySearchProvider(db).search('canción');

@@ -7,6 +7,7 @@ import { vi } from 'vitest';
 import { AlbumDetailComponent } from './album-detail.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import type { AlbumDetail } from '../../services/api/api-types';
+import type { Track } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
@@ -125,6 +126,40 @@ describe('AlbumDetailComponent — bulk delete', () => {
     await component.confirmCallback()!();
 
     expect(component.deleteError()).toContain('1 of 2');
+  });
+});
+
+describe('AlbumDetailComponent — toTrackFromSong stamps the page album onto the queue track', () => {
+  it('carries the album id and artist id so the queue and Now Playing can link them', () => {
+    const { component } = setup();
+    component.selectedAlbum.set(ALBUM);
+    const track = component.toTrackFromSong({ id: 's1', title: 'One', artist: 'Natiruts' });
+    expect(track.album).toBe('Natiruts');
+    expect(track.albumId).toBe('a1');
+    expect(track.artistId).toBe('ar1');
+  });
+
+  it('prefers the song’s own ids when it has them', () => {
+    const { component } = setup();
+    component.selectedAlbum.set(ALBUM);
+    const track = component.toTrackFromSong({
+      id: 's1',
+      title: 'One',
+      artist: 'Guest',
+      artistId: 'ar-guest',
+      albumId: 'a-other',
+    });
+    expect(track.albumId).toBe('a-other');
+    expect(track.artistId).toBe('ar-guest');
+  });
+
+  it('the album Play button queues tracks that carry the album id (the e2e queue-link contract)', () => {
+    const { component, playWithContext } = setup();
+    component.selectedAlbum.set(ALBUM);
+    component.playAlbum();
+    const [tracks] = playWithContext.mock.calls[0] as [Track[]];
+    expect(tracks.map((t) => t.albumId)).toEqual(['a1', 'a1', 'a1']);
+    expect(tracks[0]!.album).toBe('Natiruts');
   });
 });
 

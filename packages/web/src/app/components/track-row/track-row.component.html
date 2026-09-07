@@ -45,12 +45,14 @@
         <button type="button" appTvNavItem data-testid="track-row-title" (click)="play.emit()" class="w-full text-left">
           <p class="text-sm truncate" [class.text-theme-accent-text]="isCurrent()" [class.text-theme-primary]="!isCurrent()">{{ track().title }}</p>
         </button>
-        @if (artists()?.length) {
-          <p class="text-xs text-theme-muted truncate">
-            <app-artist-links [artists]="artists()" />@if (subtitle()) {<span> · {{ subtitle() }}</span>}
+        <!-- Second line reads "Artist · Album · subtitle": credits and the album
+             are entity links (docs/web-ui.md "Track rows"); subtitle is plain text. -->
+        @if (artists()?.length || album()?.name || subtitle()) {
+          <p class="text-xs text-theme-muted truncate" data-testid="track-row-subtitle">
+            @if (artists()?.length) {<app-artist-links [artists]="artists()" />}
+            @if (album()?.name) {@if (artists()?.length) {<span> · </span>}<app-entity-link kind="album" [id]="album()?.id" [name]="album()!.name" />}
+            @if (subtitle()) {@if (artists()?.length || album()?.name) {<span> · </span>}<span>{{ subtitle() }}</span>}
           </p>
-        } @else if (subtitle()) {
-          <p class="text-xs text-theme-muted truncate">{{ subtitle() }}</p>
         }
       </div>
       @if (showLike()) {

@@ -672,6 +672,12 @@ export class NowPlayingComponent {
     void this.router.navigate(target);
   }
 
+  /** An entity link (album, queue-row artist/album) navigates itself via
+   *  routerLink; the sheet only has to get out of the way. */
+  closeForNavigation(): void {
+    this.player.setNowPlayingOpen(false);
+  }
+
   onTitleContextMenu(event: MouseEvent): void {
     this.contextMenu.set({ x: event.clientX, y: event.clientY });
   }

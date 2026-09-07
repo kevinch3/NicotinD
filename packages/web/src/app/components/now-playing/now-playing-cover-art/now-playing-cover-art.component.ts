@@ -4,6 +4,7 @@ import { AuthService } from '../../../services/auth.service';
 import { LikeService } from '../../../services/like.service';
 import { CoverArtComponent } from '../../cover-art/cover-art.component';
 import { ArtistLinksComponent } from '../../artist-links/artist-links.component';
+import { EntityLinkComponent } from '../../entity-link/entity-link.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { formatQuality } from '../../../lib/download-status';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
@@ -11,7 +12,13 @@ import { isTvUi } from '../../../lib/platform';
 
 @Component({
   selector: 'app-now-playing-cover-art',
-  imports: [CoverArtComponent, ArtistLinksComponent, TranslatePipe, TvNavItemDirective],
+  imports: [
+    CoverArtComponent,
+    ArtistLinksComponent,
+    EntityLinkComponent,
+    TranslatePipe,
+    TvNavItemDirective,
+  ],
   // `display: contents` so the host doesn't break the sheet's flex column —
   // the shell's flex container needs to see this component's own top-level
   // element as the flex item, and `contents` makes the host transparent.
@@ -37,6 +44,8 @@ export class NowPlayingCoverArtComponent {
   readonly openTrackInfo = output<string>();
   readonly titleContextMenu = output<MouseEvent>();
   readonly navigateToArtistClicked = output<void>();
+  /** The album link under the artist line was followed — the sheet should close. */
+  readonly navigateToAlbumClicked = output<void>();
 
   formatQuality(bitrateKbps?: number | null): string {
     return formatQuality(bitrateKbps, null);

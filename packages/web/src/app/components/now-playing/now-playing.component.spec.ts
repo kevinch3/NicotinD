@@ -866,4 +866,13 @@ describe('NowPlayingComponent — TV backdrop bleed (issue #439)', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.tvBackdropUrl()).toBeNull();
   });
+
+  describe('entity links inside the sheet', () => {
+    it('closeForNavigation collapses the sheet and leaves routing to the link itself', () => {
+      const { fixture, playerStub } = setup();
+      const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
+      fixture.componentInstance.closeForNavigation();
+      expect(setOpen).toHaveBeenCalledWith(false);
+    });
+  });
 });

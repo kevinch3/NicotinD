@@ -5,15 +5,24 @@ import { PlayerService } from '../../../services/player.service';
 import { AuthService } from '../../../services/auth.service';
 import { LikeService } from '../../../services/like.service';
 import { setInputValue } from '../../../../testing/signal-input';
+import { provideRouter } from '@angular/router';
 
 describe('NowPlayingCoverArtComponent', () => {
-  const track = { id: 't1', title: 'Song', artist: 'Artist', bitRate: 320 };
+  const track = {
+    id: 't1',
+    title: 'Song',
+    artist: 'Artist',
+    album: 'Album',
+    albumId: 'al1',
+    bitRate: 320,
+  };
   let likes: { isLiked: ReturnType<typeof vi.fn>; toggle: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     likes = { isLiked: vi.fn().mockReturnValue(false), toggle: vi.fn() };
     TestBed.configureTestingModule({
       providers: [
+        provideRouter([]),
         { provide: PlayerService, useValue: { currentTrack: () => track } },
         { provide: AuthService, useValue: { token: () => 'tok' } },
         { provide: LikeService, useValue: likes },
@@ -66,6 +75,30 @@ describe('NowPlayingCoverArtComponent', () => {
       const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
       fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('[data-testid="now-playing-like"]')).toBeNull();
+    } finally {
+      document.documentElement.classList.remove('tv-build');
+    }
+  });
+
+  it('renders the album under the artist line as an entity link', () => {
+    // The nested component's inputs and outputs do not land in the JIT harness
+    // (src/testing/signal-input.ts), so the href and the close-on-follow are
+    // exercised end to end in e2e/tests/entity-links.spec.ts.
+    const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
+    fixture.detectChanges();
+    const line: HTMLElement = fixture.nativeElement.querySelector(
+      '[data-testid="now-playing-album"]',
+    );
+    expect(line).not.toBeNull();
+    expect(line.querySelector('app-entity-link')).not.toBeNull();
+  });
+
+  it('omits the album line on TV (the root nav group order is pinned)', () => {
+    document.documentElement.classList.add('tv-build');
+    try {
+      const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('[data-testid="now-playing-album"]')).toBeNull();
     } finally {
       document.documentElement.classList.remove('tv-build');
     }

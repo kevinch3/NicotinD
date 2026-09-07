@@ -94,6 +94,24 @@ test.describe('TV D-pad find-a-song flow', () => {
     await expect(page.getByTestId('now-playing-next-up')).toContainText('Five Easy Pieces');
   });
 
+  test('a track row’s album link is D-pad reachable: ArrowRight from the title lands on it', async ({
+    page,
+  }) => {
+    // Songs-tab rows carry an album entity link (album-detail rows do not — a
+    // single-album context). Artist names render as spans on TV (no artist
+    // route), so the album link is the title's immediate right-hand neighbour.
+    await page.goto('/library');
+    await page.getByRole('button', { name: 'Songs', exact: true }).click();
+    const row = page.getByTestId('library-songs-list').getByTestId('track-row').first();
+    await expect(row.getByTestId('entity-link-album')).toBeVisible();
+    await expect(row.getByTestId('entity-link-artist')).toHaveCount(0);
+    await row.getByTestId('track-row-title').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(row.getByTestId('entity-link-album')).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect(row.getByTestId('track-like')).toBeFocused();
+  });
+
   /**
    * Issue #432 — the mini-player grab notch was bound only to `(pointerdown)`,
    * so a remote (key events only) could neither focus nor activate it and
