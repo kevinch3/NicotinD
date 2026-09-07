@@ -148,7 +148,9 @@ function runRecipe(recipe, rows, weekSeed): string[] {
 - `weekSeed = ISO-week number` (e.g. `floor(epochDays/7)`), so the set rotates
   weekly and is reproducible.
 - The candidate rows come from one query per recipe: `SELECT … FROM library_songs s
-  WHERE s.hidden=0 AND (<recipe.where>)`.
+  WHERE <feed eligibility> AND (<recipe.where>)` — the shared predicate from
+  [radio.md](radio.md) "Feed eligibility", drawn at tier 1 (analysed tracks) and
+  widened to tier 2 only when that falls short of `targetSize`.
 
 Keep `runRecipe`/`orderTracks` **DI-free and unit-tested** — they're the core logic.
 

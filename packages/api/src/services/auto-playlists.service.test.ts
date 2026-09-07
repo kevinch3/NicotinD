@@ -65,6 +65,58 @@ function seed(): void {
   for (let i = 0; i < 30; i++) insertSong(`s${i}`, { bpm: 128 + (i % 10) });
 }
 
+describe('candidatesFor (feed eligibility)', () => {
+  const recipe = {
+    slug: 'test-tier',
+    name: 'Test Tier',
+    description: '',
+    palette: { from: '#000000', to: '#ffffff' },
+    where: '1=1',
+    targetSize: 2,
+    maxPerArtist: 2,
+  } as const;
+
+  it('draws only analysed songs while they can reach the target size', () => {
+    seed();
+    db.run('DELETE FROM library_songs');
+    insertSong('v1');
+    insertSong('v2');
+    insertSong('raw');
+    db.run(`UPDATE library_songs SET energy = 0.5 WHERE id IN ('v1', 'v2')`);
+    expect(
+      candidatesFor(db, recipe)
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(['v1', 'v2']);
+  });
+
+  it('widens to un-analysed songs when the analysed set falls short of the target', () => {
+    seed();
+    db.run('DELETE FROM library_songs');
+    insertSong('v1');
+    insertSong('raw');
+    db.run(`UPDATE library_songs SET energy = 0.5 WHERE id = 'v1'`);
+    expect(
+      candidatesFor(db, recipe)
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(['raw', 'v1']);
+  });
+
+  it('never draws a hidden song or a song of a hidden album', () => {
+    seed();
+    db.run('DELETE FROM library_songs');
+    insertSong('v1');
+    insertSong('hidden-song', { hidden: 1 });
+    insertSong('buried', { album_id: 'hidden-alb' });
+    db.run(
+      `INSERT OR IGNORE INTO library_albums (id, name, artist, artist_id, song_count, duration, created, synced_at, hidden)
+       VALUES ('hidden-alb', 'H', 'A', 'A', 1, 0, '2024-01-01', 0, 1)`,
+    );
+    expect(candidatesFor(db, recipe).map((r) => r.id)).toEqual(['v1']);
+  });
+});
+
 describe('candidatesFor (origin countries)', () => {
   it('restricts a countries recipe to credited-artist origins via the shared filter SQL', () => {
     seed();

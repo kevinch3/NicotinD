@@ -563,6 +563,49 @@ Applying the rules above:
   assembled across lines is only caught by the unclassified branch. A real
   parser is the upgrade if this ever cries wolf.
 
+## `check:feed-eligibility` — one answer to "may this song be recommended"
+
+Every recommendation feed used to decide on its own which songs it could
+propose: radio's five pool passes, `/api/library/random`, `/songs/:id/similar`,
+the weekly recipe shelves and the poll generator each carried their own
+`s.hidden = 0 AND s.landed_at IS NOT NULL`. Five copies of a predicate drift,
+and this one had: radio checked the **song's** hidden flag and never the
+**album's**, so an album a curator hid vanished from every listing and kept
+playing on radio. `check:shared-helpers` could not see it — nothing was
+re-declared, the question was simply answered five different ways.
+
+`services/recommendation/eligibility.ts` is now the one answer
+(`feedEligibilitySql`, `isFeedEligible`; see [radio.md](radio.md) "Feed
+eligibility"), and this gate asserts that every feed asks it.
+
+What counts as a feed is the part worth getting right, because a listing must
+**not** use the predicate: the Songs tab shows what the library has, and hiding
+an un-analysed song there would make a fresh download look lost. The separating
+signal is sampling — `ORDER BY RANDOM()` proposes, a listing pages — plus a short
+`FEED_MODULES` list of files whose whole purpose is recommendation
+(`routes/radio.ts`, the poll generator, the recipe shelves,
+`services/recommendation/`), inside which every song select is a feed.
+
+Applying the rules above:
+
+- **Denominator printed:** *"119 library_songs selects examined, 17 classified
+  as feeds"*. A run that classifies zero feeds fails — the gate would be
+  measuring nothing.
+- **Fails on what it cannot vouch for:** a feed literal that does not
+  interpolate the helper is a bypass, whatever its WHERE says. Two lookups
+  inside `routes/radio.ts` carry reasoned `ALLOWED` entries (the seed by id is
+  what the listener is already playing; the recording-key lookup removes songs
+  rather than proposing one), and an allowlist entry that stops matching fails
+  the gate so it cannot outlive its reason.
+- **Judges the query, not the constant:** `RADIO_SONG_SELECT` and friends are
+  `SELECT … FROM` prefixes with correlated subselects of their own; `topLevel`
+  hollows the parentheses out before looking for a WHERE, so the prefix is a
+  fragment and the predicate is checked where the prefix is used.
+- **Known limit:** template literals are found by a small scanner, not a TS
+  parser (rule 4). SQL assembled from plain strings is invisible to it; every
+  feed in the repo is a template literal today, and `classify` is unit-tested
+  against the verbatim shipped fragments.
+
 ## `check:audit` — a supply-chain gate that measures what ships
 
 There was no dependency scanning at all. The obvious fix — append

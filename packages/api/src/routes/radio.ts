@@ -24,6 +24,7 @@ import { seedCentroid, type OrderableRow } from '../services/playlist-recipe.js'
 import { isRealGenre } from '../services/genre-split.js';
 import { loadDescriptors, type DescriptorFeatures } from '../services/descriptor-store.js';
 import { descriptorBlocks, meanBlock, type DescriptorBlocks } from '../services/descriptor-axes.js';
+import { feedEligibilitySql, type ReadinessTier } from '../services/recommendation/eligibility.js';
 
 /**
  * Descriptor blocks for one song (formula v5, issue #642), attached the way
@@ -249,13 +250,16 @@ export function stationCentroid(
   db: ReturnType<typeof getDatabase>,
   filter: LibraryFilter,
   durGate: number,
+  tier: ReadinessTier = 1,
 ): SongFeatures | null {
   const { wheres, params } = songFilterWheres(filter, 's');
   const filterSql = wheres.length ? `${wheres.join(' AND ')} AND ` : '';
+  // Same tier the pool was drawn at: a station whose vetted set is empty but
+  // whose tier-2 set is not must average the rows it will actually serve.
+  const eligible = feedEligibilitySql({ alias: 's', tier, minDurationSec: durGate });
   const rows = db
     .query<RadioSongRow, (string | number)[]>(
-      `${STATION_CENTROID_SELECT} WHERE ${filterSql} s.hidden = 0 AND s.landed_at IS NOT NULL
-       AND s.duration >= ${durGate}`,
+      `${STATION_CENTROID_SELECT} WHERE ${filterSql} ${eligible}`,
     )
     .all(...params);
   return seedCentroid(rows.map(toOrderable));
@@ -293,6 +297,9 @@ interface PoolSeed {
 
 /** Upper bound on the client-sent `exclude` list — see the route's parse. */
 const MAX_EXCLUDE_IDS = 200;
+
+/** A pool smaller than this is starved: random backfill runs, then tier 2. */
+export const POOL_FLOOR = 50;
 
 /** The recording keys of rows already in hand (the seed, or the seed list). */
 function keysOfRows(rows: readonly RadioSongRow[]): Set<string> {
@@ -367,90 +374,95 @@ function collectPoolRows(
     }
   };
 
-  // Pool 1: shares ANY genre with the seed's full set (up to 150) — the
-  // join-table EXISTS means a track whose 3rd genre matches the seed's 2nd
-  // is pooled just like a primary-genre match.
-  // Junk genres ("Other", ...) are matching noise, not identity - a junk seed
-  // genre would drag every same-junk row into the pool (issue #583).
-  const seedGenres = feat.genres;
-  if (seedGenres.length > 0) {
-    const marks = seedGenres.map(() => '?').join(', ');
-    addRows(
-      db
-        .query<RadioSongRow, string[]>(
-          `${RADIO_SONG_SELECT}
-           WHERE (s.genre IN (${marks}) OR EXISTS (
-             SELECT 1 FROM library_song_genres g WHERE g.song_id = s.id AND g.genre IN (${marks})
-           )) AND s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate} ORDER BY RANDOM() LIMIT 150`,
-        )
-        .all(...seedGenres, ...seedGenres),
-    );
-  }
+  const runPasses = (tier: ReadinessTier): void => {
+    const eligible = feedEligibilitySql({
+      alias: 's',
+      albumAlias: 'a',
+      tier,
+      minDurationSec: durGate,
+    });
 
-  // Pool 1b: genre-variant match via the seed's longest token (e.g. seed
-  // "Deep House" also pulls "House"/"Tech House"), so lexical genre closeness
-  // has variants to score instead of only exact-string matches.
-  const genreToken = feat.genreToken;
-  if (genreToken) {
-    addRows(
-      db
-        .query<RadioSongRow, [string]>(
-          `${RADIO_SONG_SELECT} WHERE LOWER(s.genre) LIKE '%' || ? || '%' AND s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate}
-           ORDER BY RANDOM() LIMIT 100`,
-        )
-        .all(genreToken),
-    );
-  }
+    // Pool 1: shares ANY genre with the seed's full set (up to 150) — the
+    // join-table EXISTS means a track whose 3rd genre matches the seed's 2nd
+    // is pooled just like a primary-genre match.
+    // Junk genres ("Other", ...) are matching noise, not identity - a junk seed
+    // genre would drag every same-junk row into the pool (issue #583).
+    const seedGenres = feat.genres;
+    if (seedGenres.length > 0) {
+      const marks = seedGenres.map(() => '?').join(', ');
+      addRows(
+        db
+          .query<RadioSongRow, string[]>(
+            `${RADIO_SONG_SELECT}
+             WHERE (s.genre IN (${marks}) OR EXISTS (
+               SELECT 1 FROM library_song_genres g WHERE g.song_id = s.id AND g.genre IN (${marks})
+             )) AND ${eligible} ORDER BY RANDOM() LIMIT 150`,
+          )
+          .all(...seedGenres, ...seedGenres),
+      );
+    }
 
-  // Pool 2: similar BPM range across genres (± 15%), up to 100
-  if (feat.bpm) {
-    const bpmLow = Math.round(feat.bpm * 0.85);
-    const bpmHigh = Math.round(feat.bpm * 1.15);
-    addRows(
-      db
-        .query<RadioSongRow, [number, number]>(
-          `${RADIO_SONG_SELECT} WHERE s.bpm BETWEEN ? AND ? AND s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate}
-           ORDER BY RANDOM() LIMIT 100`,
-        )
-        .all(bpmLow, bpmHigh),
-    );
-  }
+    // Pool 1b: genre-variant match via the seed's longest token (e.g. seed
+    // "Deep House" also pulls "House"/"Tech House"), so lexical genre closeness
+    // has variants to score instead of only exact-string matches.
+    const genreToken = feat.genreToken;
+    if (genreToken) {
+      addRows(
+        db
+          .query<RadioSongRow, [string]>(
+            `${RADIO_SONG_SELECT} WHERE LOWER(s.genre) LIKE '%' || ? || '%' AND ${eligible}
+             ORDER BY RANDOM() LIMIT 100`,
+          )
+          .all(genreToken),
+      );
+    }
 
-  // Pool 3: energy-adjacent across genres (±0.15), up to 100 — keeps the
-  // set's momentum coherent once the library carries energy values.
-  if (feat.energy !== undefined) {
-    addRows(
-      db
-        .query<RadioSongRow, [number, number]>(
-          `${RADIO_SONG_SELECT} WHERE s.energy BETWEEN ? AND ? AND s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate}
-           ORDER BY RANDOM() LIMIT 100`,
-        )
-        .all(Math.max(0, feat.energy - 0.15), Math.min(1, feat.energy + 0.15)),
-    );
-  }
+    // Pool 2: similar BPM range across genres (± 15%), up to 100
+    if (feat.bpm) {
+      const bpmLow = Math.round(feat.bpm * 0.85);
+      const bpmHigh = Math.round(feat.bpm * 1.15);
+      addRows(
+        db
+          .query<RadioSongRow, [number, number]>(
+            `${RADIO_SONG_SELECT} WHERE s.bpm BETWEEN ? AND ? AND ${eligible}
+             ORDER BY RANDOM() LIMIT 100`,
+          )
+          .all(bpmLow, bpmHigh),
+      );
+    }
 
-  // Pool 4: un-analyzed tracks (no bpm/energy) get a guaranteed seat so a
-  // mid-backfill library stays discoverable and radio doesn't tunnel on the
-  // already-analyzed slice.
-  addRows(
-    db
-      .query<RadioSongRow, []>(
-        `${RADIO_SONG_SELECT} WHERE (s.bpm IS NULL OR s.energy IS NULL) AND s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate}
-         ORDER BY RANDOM() LIMIT 30`,
-      )
-      .all(),
-  );
+    // Pool 3: energy-adjacent across genres (±0.15), up to 100 — keeps the
+    // set's momentum coherent once the library carries energy values.
+    if (feat.energy !== undefined) {
+      addRows(
+        db
+          .query<RadioSongRow, [number, number]>(
+            `${RADIO_SONG_SELECT} WHERE s.energy BETWEEN ? AND ? AND ${eligible}
+             ORDER BY RANDOM() LIMIT 100`,
+          )
+          .all(Math.max(0, feat.energy - 0.15), Math.min(1, feat.energy + 0.15)),
+      );
+    }
 
-  // Pool 5: random backfill if we still don't have enough candidates
-  if (candidates.length < 50) {
-    addRows(
-      db
-        .query<RadioSongRow, []>(
-          `${RADIO_SONG_SELECT} WHERE s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate} ORDER BY RANDOM() LIMIT 100`,
-        )
-        .all(),
-    );
-  }
+    // Pool 5: random backfill if we still don't have enough candidates
+    if (candidates.length < POOL_FLOOR) {
+      addRows(
+        db
+          .query<RadioSongRow, []>(
+            `${RADIO_SONG_SELECT} WHERE ${eligible} ORDER BY RANDOM() LIMIT 100`,
+          )
+          .all(),
+      );
+    }
+  };
+
+  // Vetted (analysed) tracks first. Only a library that cannot fill the pool
+  // from them — a fresh install, a mid-backfill — reaches for un-analysed
+  // rows, and then through the same genre/bpm/energy passes rather than a
+  // blind seat. That replaced the old "pool 4", which reserved 30 seats for
+  // un-analysed tracks no matter how many vetted candidates existed.
+  runPasses(1);
+  if (candidates.length < POOL_FLOOR) runPasses(2);
 
   return candidates;
 }
@@ -664,19 +676,26 @@ export function buildFilterRadio(
   const durGate = minCandidateDurationSec();
   const { wheres, params } = songFilterWheres(filter, 's');
   const filterSql = wheres.length ? `${wheres.join(' AND ')} AND ` : '';
-  const rows = db
-    .query<RadioSongRow, (string | number)[]>(
-      `${RADIO_SONG_SELECT} WHERE ${filterSql} s.hidden = 0 AND s.landed_at IS NOT NULL AND s.duration >= ${durGate}
-       ORDER BY RANDOM() LIMIT 300`,
-    )
-    .all(...params);
-
   // Stations have no seed song, so the only recordings to keep out are the
   // caller's — its current track, queue and recent history (#660).
   const excludeKeys = keysOfIds(db, excludeIds);
-  const poolRows = rows.filter(
-    (r) => !excludeIds.has(r.id) && !isExcludedRecording(r, excludeKeys),
-  );
+  const drawAt = (tier: ReadinessTier): RadioSongRow[] =>
+    db
+      .query<RadioSongRow, (string | number)[]>(
+        `${RADIO_SONG_SELECT} WHERE ${filterSql} ${feedEligibilitySql({ alias: 's', albumAlias: 'a', tier, minDurationSec: durGate })}
+         ORDER BY RANDOM() LIMIT 300`,
+      )
+      .all(...params)
+      .filter((r) => !excludeIds.has(r.id) && !isExcludedRecording(r, excludeKeys));
+  // Vetted tracks first; a station too thin to fill the request from them
+  // widens to un-analysed rows (see collectPoolRows for the same rule).
+  let tier: ReadinessTier = 1;
+  let poolRows = drawAt(1);
+  if (poolRows.length < count) {
+    tier = 2;
+    const seen = new Set(poolRows.map((r) => r.id));
+    poolRows = [...poolRows, ...drawAt(2).filter((r) => !seen.has(r.id))];
+  }
 
   // The station's genres, junk dropped ("Other" is a tagger's shrug, not a
   // station). Empty for a pure mood/bpm vibe, which keeps the plain genre axis.
@@ -716,7 +735,7 @@ export function buildFilterRadio(
   // draw nor the caller's exclusions may move it (#598). Biasing it by what the
   // listener recently played would drift the whole target rather than demote
   // individual repeats.
-  const seed = stationCentroid(db, filter, durGate);
+  const seed = stationCentroid(db, filter, durGate, tier);
   if (!seed) return { seed: null, pool, ranked: [] };
 
   // The listener asked for these genres; the centroid's modal primary is a

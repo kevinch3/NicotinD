@@ -29,6 +29,7 @@ import { resolveMbidViaLidarr } from '../services/enrichment/tasks.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
 import { rankCandidates, DEFAULT_WEIGHTS, type SongFeatures } from '../services/radio.service.js';
+import { feedEligibilitySql, type ReadinessTier } from '../services/recommendation/eligibility.js';
 import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.js';
 import { loadDescriptors } from '../services/descriptor-store.js';
 import { descriptorBlocks } from '../services/descriptor-axes.js';
@@ -2531,39 +2532,44 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     // Build candidate pool: same-artist + same-genre songs
     const candidateRows: SongRow[] = [];
     const seen = new Set<string>([id]);
-
-    const artistSongs = db
-      .query<SongRow, [string]>(
-        `${SONG_SELECT} WHERE s.artist_id = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL`,
-      )
-      .all(source.artist_id);
-    for (const row of artistSongs) {
-      if (!seen.has(row.id)) {
-        seen.add(row.id);
-        candidateRows.push(row);
-      }
-    }
-
-    // Pool on ANY shared genre (full set), not just the primary column.
-    const seedGenres = loadGenreSets(db, [id]).get(id) ?? (source.genre ? [source.genre] : []);
-    seed.genres = seedGenres.length > 0 ? seedGenres : undefined;
-    if (seedGenres.length > 0) {
-      const marks = seedGenres.map(() => '?').join(', ');
-      const genreRows = db
-        .query<SongRow, string[]>(
-          `${SONG_SELECT} WHERE (s.genre IN (${marks}) OR EXISTS (
-             SELECT 1 FROM library_song_genres g WHERE g.song_id = s.id AND g.genre IN (${marks})
-           )) AND s.artist_id != ? AND s.hidden = 0 AND s.landed_at IS NOT NULL
-           ORDER BY RANDOM() LIMIT 200`,
-        )
-        .all(...seedGenres, ...seedGenres, source.artist_id);
-      for (const row of genreRows) {
+    const add = (rows: SongRow[]): void => {
+      for (const row of rows) {
         if (!seen.has(row.id)) {
           seen.add(row.id);
           candidateRows.push(row);
         }
       }
-    }
+    };
+
+    // Pool on ANY shared genre (full set), not just the primary column.
+    const seedGenres = loadGenreSets(db, [id]).get(id) ?? (source.genre ? [source.genre] : []);
+    seed.genres = seedGenres.length > 0 ? seedGenres : undefined;
+
+    const poolAt = (tier: ReadinessTier): void => {
+      const eligible = feedEligibilitySql({ alias: 's', albumAlias: 'a', tier });
+      add(
+        db
+          .query<SongRow, [string]>(`${SONG_SELECT} WHERE s.artist_id = ? AND ${eligible}`)
+          .all(source.artist_id),
+      );
+      if (seedGenres.length > 0) {
+        const marks = seedGenres.map(() => '?').join(', ');
+        add(
+          db
+            .query<SongRow, string[]>(
+              `${SONG_SELECT} WHERE (s.genre IN (${marks}) OR EXISTS (
+                 SELECT 1 FROM library_song_genres g WHERE g.song_id = s.id AND g.genre IN (${marks})
+               )) AND s.artist_id != ? AND ${eligible}
+               ORDER BY RANDOM() LIMIT 200`,
+            )
+            .all(...seedGenres, ...seedGenres, source.artist_id),
+        );
+      }
+    };
+    // Vetted candidates first; widen to un-analysed rows only when they cannot
+    // fill the request (same rule as radio's pool).
+    poolAt(1);
+    if (candidateRows.length < size) poolAt(2);
 
     // Attach cached embeddings so the scorer's cosine axis engages when present
     // (no-op when the seed has no embedding — comparison needs both sides).
@@ -2653,14 +2659,22 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   app.get('/random', (c) => {
     const size = clampQueryInt(c, 'size', { fallback: 10, max: 200 });
     const db = getDatabase();
-    const rows = db
-      .query<SongRow, [number]>(
-        // `a` is SONG_SELECT's own join; a second one on the same PK cost ~35% here (#822).
-        `${SONG_SELECT}
-         WHERE s.hidden = 0 AND s.landed_at IS NOT NULL AND (a.hidden IS NULL OR a.hidden = 0)
-         ORDER BY RANDOM() LIMIT ?`,
-      )
-      .all(size);
+    // `a` is SONG_SELECT's own join; a second one on the same PK cost ~35% here (#822).
+    const drawAt = (tier: ReadinessTier, n: number): SongRow[] =>
+      db
+        .query<SongRow, [number]>(
+          `${SONG_SELECT}
+           WHERE ${feedEligibilitySql({ alias: 's', albumAlias: 'a', tier })}
+           ORDER BY RANDOM() LIMIT ?`,
+        )
+        .all(n);
+    // Vetted tracks first; only a library that cannot fill the request from
+    // them (fresh install, mid-backfill) tops up with un-analysed rows.
+    let rows = drawAt(1, size);
+    if (rows.length < size) {
+      const seen = new Set(rows.map((r) => r.id));
+      rows = [...rows, ...drawAt(2, size).filter((r) => !seen.has(r.id))].slice(0, size);
+    }
     const songs = rows.map(rowToSong);
     attachSongArtists(db, songs);
     return c.json(songs);

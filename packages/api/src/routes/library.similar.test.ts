@@ -208,3 +208,46 @@ describe('GET /songs/:id/similar', () => {
     });
   });
 });
+
+describe('GET /songs/:id/similar — feed eligibility', () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    testDb = new Database(':memory:');
+    applySchema(testDb);
+    app = new Hono();
+    app.route('/library', libraryRoutes());
+    seedAlbum(testDb, {
+      id: 'alb',
+      name: 'Alb',
+      artist: 'A',
+      artistId: 'a',
+      songCount: 3,
+      created: '2024-01-01',
+    });
+    for (const id of ['seed', 'vetted', 'raw']) {
+      seedSong(testDb, {
+        id,
+        title: id,
+        artist: 'A',
+        artistId: 'a',
+        albumId: 'alb',
+        genre: 'Rock',
+        path: `/m/${id}.flac`,
+      });
+    }
+    testDb.run(`UPDATE library_songs SET bpm = 120, energy = 0.5 WHERE id IN ('seed', 'vetted')`);
+  });
+
+  it('offers only vetted candidates while they can fill the request', async () => {
+    const res = await app.request('/library/songs/seed/similar?size=1');
+    const ids = ((await res.json()) as SimilarSong[]).map((s) => s.id);
+    expect(ids).toEqual(['vetted']);
+  });
+
+  it('widens to un-analysed candidates when the vetted pool is too small', async () => {
+    const res = await app.request('/library/songs/seed/similar?size=5');
+    const ids = ((await res.json()) as SimilarSong[]).map((s) => s.id).sort();
+    expect(ids).toEqual(['raw', 'vetted']);
+  });
+});
