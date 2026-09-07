@@ -1258,6 +1258,33 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_curation_flags_open
        ON curation_flags(target_kind, target_id) WHERE resolved_at IS NULL`,
   );
+  // Who raised it (issue #987). Listener reports share the curator's queue —
+  // one worklist, not two — but a curator must be able to see at a glance
+  // whether a row is an operator's own finding or a report from someone
+  // listening, because the two carry different confidence. Defaulting to
+  // 'curator' keeps every pre-existing row correct.
+  addColumnIfMissing(db, 'curation_flags', 'source', "TEXT NOT NULL DEFAULT 'curator'");
+  // How many distinct listeners have reported this target. The open-flag index
+  // means repeat reports fold into one row, so without a tally the difference
+  // between one person's gripe and twelve people's is invisible.
+  addColumnIfMissing(db, 'curation_flags', 'report_count', 'INTEGER NOT NULL DEFAULT 1');
+
+  // One row per (target, reporter) — issue #987. This *is* the rate limit, and a
+  // structural one beats a time window: the abuse worth stopping is one person
+  // inflating a tally, not someone reporting two different tracks quickly. It
+  // also makes `report_count` mean what it says (distinct people, not clicks)
+  // and keeps each reporter's own reason, which a single merged string loses.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS curation_flag_reports (
+      target_kind TEXT NOT NULL CHECK (target_kind IN ('artist','album','song')),
+      target_id   TEXT NOT NULL,
+      user_id     TEXT NOT NULL,
+      reason      TEXT NOT NULL,
+      note        TEXT,
+      at          INTEGER NOT NULL,
+      PRIMARY KEY (target_kind, target_id, user_id)
+    )
+  `);
 
   // On-demand lyrics, keyed on the scanner's path-derived songId. Lyrics are
   // fetched from a lyrics-capable plugin (LRCLIB, …), persisted here, and may be

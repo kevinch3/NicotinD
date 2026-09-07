@@ -35,6 +35,7 @@
     <div class="flex items-center justify-center gap-2 min-w-0">
       <h2
         class="text-xl font-semibold text-theme-primary truncate select-none"
+        data-testid="now-playing-title"
         (contextmenu)="titleContextMenu.emit($event); $event.preventDefault()"
       >
         {{ track.title }}

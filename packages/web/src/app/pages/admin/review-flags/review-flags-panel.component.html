@@ -45,7 +45,24 @@
                   {{ f.targetId }}
                 </td>
                 <td class="px-4 py-2.5 text-theme-secondary">{{ f.reason }}</td>
-                <td class="px-4 py-2.5 text-theme-muted">{{ f.createdBy }}</td>
+                <td class="px-4 py-2.5 text-theme-muted">
+                  {{ f.createdBy }}
+                  <!-- A listener report and an operator's own finding carry
+                       different confidence, and the tally is the whole signal
+                       when several people independently agree (#987). -->
+                  @if (f.source === 'listener') {
+                    <span
+                      class="ml-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide bg-theme-surface-2"
+                      data-testid="flag-source-listener"
+                      >listener</span
+                    >
+                  }
+                  @if ((f.reportCount ?? 1) > 1) {
+                    <span class="ml-1 text-xs" data-testid="flag-report-count"
+                      >×{{ f.reportCount }}</span
+                    >
+                  }
+                </td>
                 <td class="px-4 py-2.5 text-right">
                   <button
                     type="button"

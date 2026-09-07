@@ -8,6 +8,7 @@ export * from './audio-extensions.js';
 export * from './upload-allowlist.js';
 export * from './types/acquisition-candidate.js';
 export * from './types/classify-acquire-url.js';
+export * from './types/track-report.js';
 export * from './types/acquire-as.js';
 export * from './types/archive.js';
 export * from './types/config.js';
