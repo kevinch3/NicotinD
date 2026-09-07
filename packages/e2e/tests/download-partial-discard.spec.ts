@@ -124,6 +124,18 @@ test.describe('partial discard from the download card', () => {
       item.fileReady = true;
       item.updatedAt = now;
     }
+    // A second track that never arrives keeps the job in `downloading`, which
+    // is what makes it cancellable: with every item landed the job is simply
+    // done, and a done job has nothing to cancel.
+    fixtureJob.items.push({
+      ...fixtureJob.items[0]!,
+      itemId: 't:second-track',
+      title: 'Together Forever',
+      filename: 'Music\\Rick Astley\\Whenever You Need Somebody\\02 Together Forever.flac',
+      state: 'downloading',
+      fileReady: false,
+      updatedAt: now,
+    });
     fixtureJob.updatedAt = now;
 
     // The track is ingested and lands at once. Capture this job's own id — the
@@ -164,6 +176,9 @@ test.describe('partial discard from the download card', () => {
     await page.goto('/downloads');
     const card = page.locator(`[data-job-id="${jobId}"]`);
     await card.getByTestId('download-cancel').click();
+    // With a track already landed, cancel asks what to do with it (#810).
+    // Keep it: the point here is the card's own Discard afterwards.
+    await page.getByTestId('confirm-ok').click();
     await expect.poll(() => addon.cancelRequests.length).toBe(1);
 
     // The cancelled partial names itself: Discard is offered, and confirming it
