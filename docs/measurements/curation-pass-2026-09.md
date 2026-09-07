@@ -2141,3 +2141,57 @@ Verified by read-back throughout — `verified: true` was true about the *song* 
 about the album, which is how the album-artist half of the repair was caught mid-flight.
 
 Hidden albums back to 5, all justified.
+
+### Stretch 17 — the unfiltered audit found real music missing from the app (#968)
+
+Started from the **unfiltered** `audit-library.ts` rather than `get_library_health`, per #955's
+lesson that disk rules never surface in the health report. `orphan_file` had grown 393 → 545
+since the last session, which was the thread worth pulling.
+
+Checking each orphaned `scan_cache` path against the filesystem:
+
+```
+scan_cache orphaned rows      : 7019
+  file STILL on disk          : 496   <-- wrongly orphaned
+  file genuinely gone         : 6523
+  496 of 496 have NO library_songs row
+```
+
+The 6,523 are the retention window working. The 496 are real, wanted music the app cannot
+see — and not long-tail junk: Radiohead *Pablo Honey* (29 files), Fred again *Actual Life*
+(30), Chet Baker Sings (17), Black Eyed Peas *Monkey Business* (11), RHCP *Freaky Styley*
+(11). Confirmed from the album side, not the file side: `Juanes — Un Día Normal` has **0
+library rows** against 10 files on disk; `LCD Soundsystem — Singles` 0 against 8.
+
+**It is a nightly job, not curation.** All 172 of today's wrongly-orphaned files were
+orphaned inside a single minute, 00:06 UTC; the day's first curation write was 00:37. 157 on
+08-30 and 150 on 09-01 fit the same shape — roughly 150–170 files per firing, recurring, with
+nothing surfacing it.
+
+**Two hypotheses of mine were wrong, and both are recorded because the wrongness is the
+useful part.**
+
+*NFC/NFD.* The first orphan paths I read were `Un Día Normal`, `Rosalía`, `Soñe`, `Taylor's`
+— overwhelmingly accented, and #961 was fresh. It looked like an encoding mismatch making
+`existsSync` miss real files. Measured: only **2** orphan paths are not NFC, and non-ASCII
+share among the wrongly-orphaned (33%) sits near the library baseline (26%). I was pattern-
+matching on the head of a Latin-heavy list. A 26% base rate makes almost any sample look
+accented.
+
+*That I had caused it.* `totals.songs` fell 19,217 → 19,069 between two health calls 23
+minutes apart, spanning a `last_full_sync_at` that my own `fix_song_metadata` had triggered,
+while `orphan_file` grew by ~152 — close enough to −148 to look causal. The minute-level
+timestamps disproved it: the orphaning was at 00:06, my first write at 00:37. Two numbers
+moving by similar amounts in the same window were coincidence, and only the finer-grained
+data settled it.
+
+The −148 remains **unexplained** — not scan_cache orphaning (0 in that window), not row
+dedupe (19,069 rows over 19,069 distinct paths, no path held twice). Filed as an open
+observation inside #968 rather than given a cause it has not earned.
+
+Also commented on #955: the dimension the health report cannot see is the one currently
+losing ~170 files a night, which raises its priority — surfacing `orphan_file` is what would
+have caught #968 the night it started instead of a week later by hand.
+
+No writes this stretch. Recovery is a maintenance operation outside a refiner session, and
+the cause should be understood before the symptom is cleared.
