@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
@@ -59,23 +62,27 @@ function addSong(o: {
   disc?: number | null;
   genre?: string | null;
   landedAt?: number | null;
+  hasEmbeddedArt?: number | null;
+  path?: string;
 }): void {
   db.run(
     `INSERT INTO library_songs
-      (id, album_id, title, artist, artist_id, path, suffix, bit_rate, track, disc, genre, landed_at, synced_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      (id, album_id, title, artist, artist_id, path, suffix, bit_rate, track, disc, genre,
+       has_embedded_art, landed_at, synced_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
     [
       o.id,
       o.albumId,
       o.title ?? 't',
       o.artist ?? 'a',
       o.artistId ?? 'ar1',
-      `/m/${o.id}.${o.suffix ?? 'opus'}`,
+      o.path ?? `/m/${o.id}.${o.suffix ?? 'opus'}`,
       o.suffix ?? 'opus',
       ('bitRate' in o ? o.bitRate : 192) ?? null,
       o.track ?? null,
       o.disc ?? null,
       ('genre' in o ? o.genre : 'Rock') ?? null,
+      ('hasEmbeddedArt' in o ? o.hasEmbeddedArt : null) ?? null,
       ('landedAt' in o ? o.landedAt : 1) ?? null,
     ],
   );
@@ -116,9 +123,16 @@ describe('libraryHealth — album covers', () => {
     addAlbum({ id: 'al-hidden', name: 'Hidden', songCount: 9, hidden: 1 });
     addCover('al-covered');
     const d = libraryHealth(db).dimensions.albumCovers;
-    // `al-big` (10 songs) and `al-small` (2) are both multi-track, so the two
-    // counts agree here; the #969 split only diverges on single-track rows.
-    expect(d.metric).toEqual({ visible: 3, missing: 2, missingMultiTrack: 2 });
+    // `al-big` (10 songs) and `al-small` (2) are both multi-track, so those two
+    // counts agree here. The fixture has no song rows, so no album reaches the
+    // embedded tier, and `unrenderable` is unmeasured without a musicDir.
+    expect(d.metric).toEqual({
+      visible: 3,
+      missing: 2,
+      missingMultiTrack: 2,
+      noEmbeddedArt: 0,
+      unrenderable: null,
+    });
     expect(d.worklist.map((w) => w.albumId)).toEqual(['al-big', 'al-small']);
   });
 
@@ -407,5 +421,55 @@ describe('libraryHealth — lyrics & flags', () => {
     const r = libraryHealth(db);
     expect(r.dimensions.lyrics.metric).toEqual({ songs: 2, withLyrics: 1 });
     expect(r.dimensions.flags.metric).toEqual({ open: 1, oldestAt: 111 });
+  });
+});
+
+/**
+ * Issue #952: `missingAlbumArtSql` answers "no canonical override", but the name,
+ * the worklist framing and the remediation hint all said "no artwork" — while an
+ * album with embedded art in its files renders perfectly. On prod that made the
+ * single largest number in the report ~3x the user-visible problem.
+ */
+describe('libraryHealth — artwork tiers (issue #952)', () => {
+  it('separates "no canonical row" from "no embedded art either"', () => {
+    addArtist('ar1', 'A', 3);
+    addAlbum({ id: 'al-embedded', name: 'Embedded', songCount: 2 });
+    addSong({ id: 's1', albumId: 'al-embedded', hasEmbeddedArt: 1 });
+    addSong({ id: 's2', albumId: 'al-embedded', hasEmbeddedArt: 0 });
+    addAlbum({ id: 'al-bare', name: 'Bare', songCount: 1 });
+    addSong({ id: 's3', albumId: 'al-bare', hasEmbeddedArt: 0 });
+    addAlbum({ id: 'al-covered', name: 'Covered', songCount: 1 });
+    addSong({ id: 's4', albumId: 'al-covered', hasEmbeddedArt: 0 });
+    addCover('al-covered');
+
+    const m = libraryHealth(db).dimensions.albumCovers.metric;
+    // Two albums lack a canonical row; only one of them also renders nothing.
+    expect(m.missing).toBe(2);
+    expect(m.noEmbeddedArt).toBe(1);
+  });
+
+  it('reports unrenderable as null rather than guessing when no musicDir is given', () => {
+    addArtist('ar1', 'A', 1);
+    addAlbum({ id: 'al1', name: 'N' });
+    addSong({ id: 's1', albumId: 'al1', hasEmbeddedArt: 0 });
+    expect(libraryHealth(db).dimensions.albumCovers.metric.unrenderable).toBeNull();
+  });
+
+  it('clears an album from unrenderable when its folder carries a cover', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'health-art-'));
+    mkdirSync(join(dir, 'A', 'Covered'), { recursive: true });
+    mkdirSync(join(dir, 'A', 'Bare'), { recursive: true });
+    writeFileSync(join(dir, 'A', 'Covered', 'cover.jpg'), 'x');
+
+    addArtist('ar1', 'A', 2);
+    addAlbum({ id: 'al-folder', name: 'Covered' });
+    addSong({ id: 's1', albumId: 'al-folder', hasEmbeddedArt: 0, path: 'A/Covered/01.opus' });
+    addAlbum({ id: 'al-bare', name: 'Bare' });
+    addSong({ id: 's2', albumId: 'al-bare', hasEmbeddedArt: 0, path: 'A/Bare/01.opus' });
+
+    const m = libraryHealth(db, { musicDir: dir }).dimensions.albumCovers.metric;
+    expect(m.noEmbeddedArt).toBe(2);
+    expect(m.unrenderable).toBe(1);
+    rmSync(dir, { recursive: true, force: true });
   });
 });

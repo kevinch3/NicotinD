@@ -46,6 +46,7 @@ import {
   looksLikeVenueCredit,
 } from './library-quality.js';
 import { cleanDisplayTitle } from './title-clean.js';
+import { preserveFolderCover } from './cover-sources.js';
 
 const log = createLogger('library-organizer');
 
@@ -742,6 +743,13 @@ export class LibraryOrganizer {
         return 'failed';
       }
       this.logMove(file.srcPath, destPath);
+
+      // Materialise the arriving file's embedded cover as the album's folder
+      // image. Only mp3s reliably carry one (issue #953: 0 of 1,719 non-mp3
+      // files in the library have art), and the tier-1 folder image is what
+      // survives a later transcode — so this is where a cover stops being
+      // per-file and starts being the album's. No-op when the folder has one.
+      await preserveFolderCover(destPath);
 
       // Standardize lossless on Opus before the scan sees the file, so the song's
       // stable id (derived from its final path) is computed once and storage is

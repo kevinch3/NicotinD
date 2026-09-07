@@ -206,8 +206,17 @@ export const MCP_TOOLS: McpTool[] = [
         sample: { type: 'number', description: 'Worklist size per dimension (1–50, default 10).' },
       },
     },
-    handler: ({ db }, args) =>
-      JSON.stringify(libraryHealth(db, { sampleSize: clampLimit(args.sample, 10, 50) }), null, 2),
+    handler: ({ db, metadata }, args) =>
+      JSON.stringify(
+        libraryHealth(db, {
+          sampleSize: clampLimit(args.sample, 10, 50),
+          // Lets the artwork dimension probe the folder tier, so `unrenderable`
+          // is a number rather than "not measured" (#952).
+          ...(metadata.musicDir ? { musicDir: metadata.musicDir } : {}),
+        }),
+        null,
+        2,
+      ),
   },
   {
     name: 'list_recent_songs',

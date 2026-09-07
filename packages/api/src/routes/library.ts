@@ -1956,7 +1956,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     requireCurator(c);
     const sample = Number(c.req.query('sample'));
     return c.json(
-      libraryHealth(getDatabase(), Number.isFinite(sample) ? { sampleSize: sample } : {}),
+      libraryHealth(getDatabase(), {
+        ...(Number.isFinite(sample) ? { sampleSize: sample } : {}),
+        ...(musicDir ? { musicDir: expandDir(musicDir) } : {}),
+      }),
     );
   });
 

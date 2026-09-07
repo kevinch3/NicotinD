@@ -106,6 +106,53 @@ and a message. The CLI groups by rule (worst first); `--rule=<id>` lists one.
   count jumping after the fix is the fix; severity stays `medium` so `report.ok` is unaffected.
 - `visible_unknown` (medium) — a visible album stuck at `classification='unknown'`.
 
+### `missing_artwork` measures a row, not a picture (issues #952, #953)
+
+`missingAlbumArtSql` answers *"has no canonical `library_artwork` row"* — exactly the set
+`backfillArtwork` acts on, and correct for that job. But the rule's **name**, its worklist framing
+and its remediation hint ("maintenance artwork-backfill (bulk)") all describe *"has no artwork"*,
+and the serving path does not need a canonical row: `extractCover` is a three-tier fallback —
+folder image, then embedded picture. An album with neither a row nor a folder image but embedded
+art in its files renders perfectly and was still counted as missing.
+
+Measured on prod (120 albums sampled, then applied to the real format distribution of all 4,271):
+
+| | albums |
+| --- | ---: |
+| reported "missing artwork" | **4,271** |
+| already render via the embedded fallback | ~2,859 |
+| genuinely render nothing | **~1,412** |
+
+**The headline number was ~3x the user-visible problem** — and it is the largest number in the
+report, so it dominated any read of what is wrong with this library. The health report now carries
+the tiers separately: `missing` (no canonical row), `noEmbeddedArt` (…and no track has an attached
+picture), `unrenderable` (…and no folder image either). `unrenderable` is `null`, never a number,
+when no `musicDir` was supplied — a tier that was not checked must not be reported as absent.
+
+Recording the embedded tier needs the scanner: `library_songs.has_embedded_art` is filled from the
+tag read on a scan-cache **miss** (so an unchanged file never re-parses), and the scan-cache version
+marker was bumped to `3`, forcing one full re-parse. Without that flush a pre-existing file would
+carry no answer forever and the new metric would launch on a partial denominator — the exact failure
+it exists to fix.
+
+**Secondary finding, and the bigger one (#953): zero of 1,719 non-mp3 files carry art**, against
+~87% of mp3s. That is not a rate, it is an absolute — every path that *produces* a file drops the
+cover. `transcodeToOpus` does it with `-vn` (an attached picture is a video stream, and
+`-map_metadata` does not bring it back), and m4a never goes through the transcode at all, so at
+least one download path drops it too.
+
+Simply removing `-vn` does **not** fix it: ffmpeg's Ogg muxer cannot write an attached picture
+stream, and Opus carries art as a base64 `METADATA_BLOCK_PICTURE` comment instead — the flag would
+at best change nothing and at worst fail the strict run, which then falls through to the lenient
+one. So `preserveFolderCover` writes the album's `cover.jpg` instead, before the transcode discards
+anything and again as the organizer lands any format. One write per album rather than per track,
+format-independent, and it feeds the tier `extractCover` checks **first** — a tier that was holding
+art for 2 of 4,271 albums.
+
+Fixing the producing paths stops the backlog growing; it does not recover the historical opus
+albums, whose sources are gone after #827. Those still need a fetch, but closing the leak first is
+what stops the backfill being re-run forever.
+
 Both render rules are reported by the health report with a `missingMultiTrack` count beside
 the total (issue #969). 81% of visible albums are single-track rows and 93–95% of these two
 numbers land on them, so the total is inventory and the multi-track half is the work queue.

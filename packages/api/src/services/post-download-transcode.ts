@@ -6,6 +6,7 @@ import { isLossless } from './library-track-select.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
 import { ffmpegAvailable, transcodeOutputIsAcceptable } from './transcode.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
+import { preserveFolderCover } from './cover-sources.js';
 
 const log = createLogger('post-download-transcode');
 
@@ -120,6 +121,11 @@ export function sweepStaleTranscodeTemps(musicDir: string, graceMs = 10 * 60_000
 }
 
 export async function transcodeToOpus(absPath: string, bitRate = 128): Promise<string> {
+  // Materialise the cover BEFORE encoding: `-vn` below discards the attached
+  // picture stream and nothing downstream can recover it (issue #953 — 0 of
+  // 1,719 non-mp3 files in the library carry art). The source is lossless and
+  // reliably has one; a no-op when the folder already has an image.
+  await preserveFolderCover(absPath);
   const ext = extname(absPath);
   const base = ext ? absPath.slice(0, -ext.length) : absPath;
   const destPath = `${base}.opus`;
