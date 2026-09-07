@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  pickDisplayName,
   albumGroupKey,
   normalizeArtistForGrouping,
   normalizeForGrouping,
@@ -137,5 +138,57 @@ describe('normalizeForGrouping — non-Latin scripts', () => {
     expect(normalizeForGrouping('¡Bang! ¡Bang!... Estás liquidado')).toBe(
       'bang bang estas liquidado',
     );
+  });
+});
+
+/**
+ * Issue #958. Every candidate folds to one `artistId`, so this only picks the
+ * string a user READS — which disagreed across 178 albums / 54 artists on prod.
+ * Each case below is a real row from that measurement.
+ */
+describe('pickDisplayName', () => {
+  it('is stable: the same spellings in any order give the same answer', () => {
+    const spellings = ['Cafe quijano', 'Café Quijano', 'Café Quijano', 'CAFÉ QUIJANO'];
+    const answer = pickDisplayName(spellings);
+    expect(pickDisplayName([...spellings].reverse())).toBe(answer);
+    expect(pickDisplayName([spellings[2]!, spellings[0]!, spellings[3]!, spellings[1]!])).toBe(
+      answer,
+    );
+  });
+
+  it("takes the majority spelling of the artist's own files", () => {
+    // 126 of 126 Cultura Profética song tags are accented; the tile was named
+    // from a split credit off "Flor De Toloache; John Legend; Cultura Profetica".
+    expect(pickDisplayName([...Array(126).fill('Cultura Profética'), 'Cultura Profetica'])).toBe(
+      'Cultura Profética',
+    );
+    // One loose single, scanned four hours after the full scan, renamed a
+    // 23-track album. Frequency alone settles this one.
+    expect(pickDisplayName([...Array(22).fill("Gigi D'Agostino"), "GIGI D'AGOSTINO"])).toBe(
+      "Gigi D'Agostino",
+    );
+  });
+
+  it('prefers the accented spelling when both are equally common', () => {
+    // `Rafaga` cannot be recovered from `Ráfaga`; the reverse is free.
+    expect(pickDisplayName(['Rafaga', 'Ráfaga'])).toBe('Ráfaga');
+    expect(pickDisplayName(['Mana', 'Maná'])).toBe('Maná');
+  });
+
+  it('demotes ALL CAPS on a tie, but never over frequency', () => {
+    expect(pickDisplayName(['TASH SULTANA', 'Tash Sultana'])).toBe('Tash Sultana');
+    // ARTBAT really is all-caps — 6 of 6 of its own tags — so frequency wins.
+    expect(pickDisplayName([...Array(6).fill('ARTBAT'), 'Artbat'])).toBe('ARTBAT');
+  });
+
+  it('does not penalise a deliberate all-lowercase styling', () => {
+    // Only upper case is treated as a tagger artifact, so this falls to the
+    // lexicographic tiebreak rather than being demoted.
+    expect(pickDisplayName(['deadmau5', 'Deadmau5'])).toBe('deadmau5');
+  });
+
+  it('ignores blank and whitespace-only candidates', () => {
+    expect(pickDisplayName(['  ', 'Zhamira', '   '])).toBe('Zhamira');
+    expect(pickDisplayName(['Nicole Moudaber ', 'Nicole Moudaber'])).toBe('Nicole Moudaber');
   });
 });

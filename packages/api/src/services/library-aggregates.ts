@@ -1,4 +1,5 @@
 import type { Database } from 'bun:sqlite';
+import { pickDisplayName } from './album-grouping.js';
 
 /**
  * Clean up an artist's aggregate rows after a release moved away from it (a
@@ -42,6 +43,43 @@ export function refreshAlbumAggregate(db: Database, albumId: string): void {
      WHERE id = ?`,
     [albumId, albumId, albumId],
   );
+}
+
+/**
+ * Re-derive the album's DISPLAYED artist spelling from the songs it currently
+ * holds (issue #958).
+ *
+ * **This half is load-bearing, not a tidy-up.** `scanPaths` builds from only the
+ * touched files, so a reduction computed inside `buildLibrary` alone is a
+ * reduction over the *batch*, not the album — and a one-track incremental would
+ * still write a one-sample answer. That is exactly how one loose single, scanned
+ * four hours after the full scan, renamed a 23-track album from
+ * `Gigi D'Agostino` to `GIGI D'AGOSTINO`.
+ *
+ * `artist_id` is never touched: every candidate folds to the same id, so this
+ * only chooses which of them is shown.
+ *
+ * Deliberately NOT called from `refreshAlbumAggregate`, although #958 proposed
+ * exactly that. `applyMetadataFix` calls the aggregate refresh too, and it
+ * updates `library_songs.artist` **without** touching `album_artist` — so the
+ * recompute read a stale `album_artist` and silently reverted a curator's
+ * explicit rename. An e2e caught it. A derived value must never overwrite a
+ * deliberate correction, so this stays on the scan path, where the input really
+ * is the files' own tags.
+ */
+export function refreshAlbumArtistDisplay(db: Database, albumId: string): void {
+  const spellings = db
+    .query<{ album_artist: string | null; artist: string | null }, [string]>(
+      'SELECT album_artist, artist FROM library_songs WHERE album_id = ?',
+    )
+    .all(albumId)
+    .map((r) => (r.album_artist?.trim() ? r.album_artist : r.artist))
+    .filter((v): v is string => !!v && v.trim().length > 0);
+  if (spellings.length === 0) return;
+  db.run('UPDATE library_albums SET artist = ? WHERE id = ?', [
+    pickDisplayName(spellings),
+    albumId,
+  ]);
 }
 
 /**

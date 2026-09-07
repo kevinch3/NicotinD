@@ -77,6 +77,76 @@ English word as the key for a real artist.
 `upsertArtistAlias` now refuses a placeholder-shaped `alias_norm` and returns `false`. It is a
 write-time guard only; the two existing rows need a delete.
 
+## Text and identity are decided once, not by walk order (issues #958, #961, #968)
+
+Three defects with one shape: the scanner treated *whichever file it happened to reach first* as
+authoritative, and `readdir` imposes no order.
+
+**The album's displayed artist was a first-seen pick (#958).** The accumulator seeded
+`artist: albumArtist` and the merge branch for every later track deliberately did not touch it,
+while every sibling field was reduced — `name` across all tracks, `genre` by `mostCommonGenre` under
+a comment saying it replaced "whichever genre the first-processed track happened to carry first"
+(#222). The artist column was left behind by that same fix. Measured on prod: **178 albums across 54
+artists** display a different spelling from the artist row they point at, so the Albums grid and the
+page that card opens disagree; 16 artist tiles drop an accent their own tags carry, and
+`Cultura Profetica` is displayed while **126 of 126** of its song tags are accented.
+
+It was *unstable*, not merely arbitrary: `persist` clobbers unconditionally and `scanPaths` builds
+from only the passed paths, so one loose single scanned four hours after a full scan renamed a
+23-track album to `GIGI D'AGOSTINO`.
+
+`pickDisplayName` (`album-grouping.ts`, beside the fold its candidates share) reduces them: most
+common, then more diacritics, then not-ALL-CAPS, then `localeCompare` with an **explicit** locale —
+code-point order is an encoding artifact and an implicit locale would make the answer depend on the
+host, reintroducing the instability. `artistId` never changes; every candidate folds to the same id
+by construction (measured 0/294 divergence), so this is purely which spelling is shown.
+`ensureArtist` also ranks an album-primary credit above a split off a compound string, which is what
+mis-named Cultura Profética.
+
+**The second half is load-bearing.** `refreshAlbumArtistDisplay` recomputes the spelling from the
+album's *current* songs, on the scanner's incremental path. `scanPaths` passes only the touched
+files, so a reduction inside `buildLibrary` alone is a reduction over the batch — a one-track
+incremental would still write a one-sample answer and the Gigi D'Agostino flip would survive the
+fix. A unit test asserts exactly that by removing the call.
+
+**It hangs off the scan path, not off `refreshAlbumAggregate`** — which is where #958's own text
+proposed putting it, and that is wrong. `applyMetadataFix` calls the aggregate refresh too, and it
+updates `library_songs.artist` while deliberately never touching `album_artist` (the scanner is that
+column's sole writer), so the recompute read the *stale* spelling and silently reverted a curator's
+explicit rename. An e2e caught it. **A derived value must never overwrite a deliberate correction**,
+so the recompute belongs only where the input really is the files' own tags.
+
+The unit regression for that has a detail worth keeping: the fixture must set `album_artist`. Without
+it the reduction falls back to `library_songs.artist` — which the fix *does* update — and the test
+passes with the defect present.
+
+**Tag text was stored exactly as read (#961).** macOS decomposes, so *The Don* entered the library
+as 7 NFD rows and 1 NFC — identical on screen, unequal in SQL. Catalogues are **not** fragmented
+(`normalizeArtistForGrouping` folds both forms), which is why it stayed invisible; what it breaks is
+every *exact* comparison, where the difference cannot be seen in a log, a query result or the UI:
+`completeness`/`titleMismatch` counts an NFD title as unmatched, and any `GROUP BY artist` splits one
+artist into two rows that print the same. `nfc()` normalises at `parseTrack`, the single boundary
+where tag text enters, so nothing downstream has to think about it.
+
+**A partial walk pruned everything it did not reach (#968).** `walk` caught a `readdir` failure,
+logged a warning and returned `[]` — indistinguishable from an empty directory — and the full scan's
+prune is `DELETE FROM library_songs WHERE synced_at < ?`. So one unreadable directory silently
+deleted every row beneath it: **496 files on disk with no library row**, whole albums (Radiohead
+*Pablo Honey*, Fred again *Actual Life*, Juanes *Un Día Normal*) unreachable from the app, and
+~150–170 more per firing of the automated pass.
+
+Orphaning is destructive to visibility, so it now requires positive evidence a file is gone: the
+walk records the directories it could not read, and `scanFull` skips the prune when that list is
+non-empty. `recoverPresentOrphanedCacheRows` additionally clears `orphaned_at` on any `scan_cache`
+row whose file the walk just found — that state is always a bug, and recovery is free because the
+row already holds its `track_json`. The count is written to `library_sync_state` and surfaced as the
+health report's `disk` dimension, because a disk rule that only `audit-library.ts` reports is a
+dimension no curation pass ever works (#955).
+
+**This clears the symptom and measures it; it does not claim the cause.** The unreadable-directory
+path is a proven mechanism for the shape, not proof it produced these particular 496 rows — #968
+stays open for that.
+
 **Compilations in the UI**: The main `/albums` grid excludes compilations (`classification = 'album'` only). Compilations have a dedicated `GET /api/library/compilations` endpoint and a "Compilations" tab in the library view. "Various Artists" is hidden from the `/artists` list. Artist pages show an "Appears On" tab listing compilation albums where the artist has tracks (`GET /api/library/artists/:id/appears-on`).
 
 ## Search matching (tokenized + diacritic-insensitive)

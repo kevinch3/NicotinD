@@ -280,3 +280,30 @@ describe('applyMetadataFix — hidden is re-derived, not carried (issue #967)', 
     expect(hiddenOf(r.albumId).hidden).toBe(1);
   });
 });
+
+/**
+ * A derived value must never overwrite a deliberate correction.
+ *
+ * #958 makes the album's DISPLAYED artist a reduction over its songs' spellings,
+ * and #958's own text proposed hanging that off `refreshAlbumAggregate` — which
+ * `applyMetadataFix` also calls. But this path updates `library_songs.artist`
+ * and deliberately does not touch `album_artist` (the scanner is its sole
+ * writer), so the recompute read the STALE spelling and silently reverted the
+ * curator's rename. An e2e caught it; this pins it at the unit level.
+ */
+describe('applyMetadataFix — a rename is not undone by a derived recompute', () => {
+  it('keeps the corrected artist on the album row', () => {
+    const { albumId } = seedAlbum({ artist: 'Old Spelling', album: 'Selva' });
+    // The scanner is the sole writer of `album_artist` and fills it on every
+    // scan; `applyMetadataFix` never touches it. Without this line the fixture
+    // falls back to `library_songs.artist` — which the fix DOES update — and the
+    // test passes even with the defect present, which is how it reached CI.
+    db.run("UPDATE library_songs SET album_artist = 'Old Spelling' WHERE album_id = ?", [albumId]);
+    const r = applyMetadataFix(db, albumId, { artist: 'New Artist' })!;
+    expect(
+      db
+        .query<{ artist: string }, [string]>('SELECT artist FROM library_albums WHERE id = ?')
+        .get(r.albumId)?.artist,
+    ).toBe('New Artist');
+  });
+});

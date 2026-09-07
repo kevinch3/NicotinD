@@ -9,6 +9,7 @@ import {
   albumGroupKey,
   normalizeArtistForGrouping,
   normalizeForGrouping,
+  pickDisplayName,
 } from './album-grouping.js';
 import { jobCanonicalTracklists } from './acquisition-job-store.js';
 import { isVariousArtists } from './compilation-tagger.js';
@@ -29,7 +30,11 @@ import {
   emptyAuthority,
   type SplitAuthority,
 } from './artist-identity-store.js';
-import { pruneOrphanAlbum, refreshAlbumAggregate } from './library-aggregates.js';
+import {
+  pruneOrphanAlbum,
+  refreshAlbumAggregate,
+  refreshAlbumArtistDisplay,
+} from './library-aggregates.js';
 import { findRepresentedFragments, type ArtistAlbumScope } from './library-quality.js';
 import {
   applyGenreOverride,
@@ -260,6 +265,28 @@ export function mostCommonGenre(genres: (string | null | undefined)[]): string |
     }
   }
   return best;
+}
+
+/**
+ * Normalise tag text to NFC at the scanner's read boundary (issue #961).
+ *
+ * macOS decomposes filenames and tags, so an album ripped there arrives as NFD
+ * while the same album ripped elsewhere arrives composed. Both render
+ * identically and neither is equal to the other in SQL: prod held Donny Benét's
+ * *The Don* as 7 NFD rows and 1 NFC, and Rosalía as 8 against 4.
+ *
+ * Catalogues are **not** fragmented by this — `normalizeArtistForGrouping` folds
+ * the two forms, so all 8 songs sit under one artist row, and that is why the
+ * defect stayed invisible. What it breaks is every EXACT comparison, where the
+ * difference cannot be seen in a log, a query result or the UI:
+ * `completeness`/`titleMismatch` counts an NFD title as unmatched, and any
+ * `GROUP BY artist` splits one artist into two rows that print the same.
+ *
+ * NFC is the target because it is the Unicode-recommended interchange form and
+ * already dominates here — 16 of 19,184 song artists were decomposed.
+ */
+export function nfc(v: string | undefined): string | undefined {
+  return v == null ? v : v.normalize('NFC');
 }
 
 function sha1(input: string): string {
@@ -549,7 +576,9 @@ export function buildLibrary(
     string,
     {
       id: string;
-      artist: string;
+      /** Every album-artist spelling seen, reduced by `pickDisplayName` (#958).
+       *  Its sibling `names` has always been reduced; `artist` was not. */
+      artists: string[];
       artistId: string;
       names: string[];
       songCount: number;
@@ -664,6 +693,12 @@ export function buildLibrary(
 
     const acc = albumAcc.get(albId);
     if (acc) {
+      // Collected, not pinned: `artist` used to be seeded from the first-walked
+      // track and never revisited, while every sibling field was reconciled
+      // (issue #958). `readdir` imposes no order, so the displayed spelling was
+      // arbitrary — and unstable, because a one-file incremental scan re-elected
+      // it from that batch alone.
+      acc.artists.push(albumArtist);
       acc.names.push(album);
       acc.songCount += 1;
       acc.duration += t.duration;
@@ -674,7 +709,7 @@ export function buildLibrary(
     } else {
       albumAcc.set(albId, {
         id: albId,
-        artist: albumArtist,
+        artists: [albumArtist],
         artistId: albumArtistId,
         names: [album],
         songCount: 1,
@@ -692,20 +727,41 @@ export function buildLibrary(
   const albums: AlbumRow[] = [];
   const artistAcc = new Map<
     string,
-    { id: string; name: string; albums: Set<string>; coverArt: string | null }
+    {
+      id: string;
+      /** Every spelling seen at this rank, resolved by `pickDisplayName`. */
+      names: string[];
+      /** Highest provenance rank contributing to `names` (higher wins). */
+      rank: number;
+      albums: Set<string>;
+      coverArt: string | null;
+    }
   >();
 
-  function ensureArtist(artistId: string, name: string, albumId?: string) {
+  /**
+   * `name` used to be written only when the row was CREATED, so a collaboration
+   * credit walked early could name an artist for the whole library (#958).
+   * Spellings are collected instead, and a higher-ranked provenance discards the
+   * lower-ranked ones outright rather than voting against them.
+   */
+  function ensureArtist(artistId: string, name: string, albumId?: string, rank = 0) {
     const ar = artistAcc.get(artistId);
-    if (ar) {
-      if (albumId) ar.albums.add(albumId);
-    } else {
+    if (!ar) {
       artistAcc.set(artistId, {
         id: artistId,
-        name,
+        names: [name],
+        rank,
         albums: albumId ? new Set([albumId]) : new Set(),
         coverArt: artistId,
       });
+      return;
+    }
+    if (albumId) ar.albums.add(albumId);
+    if (rank > ar.rank) {
+      ar.rank = rank;
+      ar.names = [name];
+    } else if (rank === ar.rank) {
+      ar.names.push(name);
     }
   }
 
@@ -714,7 +770,10 @@ export function buildLibrary(
     albums.push({
       id: a.id,
       name,
-      artist: a.artist,
+      // `artistId` is unaffected: every candidate mints the same id by
+      // construction (`normalizeArtistForGrouping` folds case and accents), so
+      // this is purely which spelling is DISPLAYED. Measured 0/294 id divergence.
+      artist: pickDisplayName(a.artists),
       artistId: a.artistId,
       coverArt: a.coverArt,
       songCount: a.songCount,
@@ -727,8 +786,12 @@ export function buildLibrary(
       created: new Date(a.createdMs).toISOString(),
     });
 
-    // Primary album artist (backward-compat single column)
-    ensureArtist(a.artistId, a.artist, a.id);
+    // Primary album artist (backward-compat single column). Rank 1: an
+    // album-primary credit outranks a split credit off a compound string, which
+    // is what mis-named Cultura Profética — 126 of its 126 song tags are
+    // accented, and the row was named from a split of
+    // "Flor De Toloache; John Legend; Cultura Profetica".
+    ensureArtist(a.artistId, pickDisplayName(a.artists), a.id, 1);
 
     // Multi-artist join rows for this album
     for (let i = 0; i < a.splitCredits.length; i++) {
@@ -757,15 +820,18 @@ export function buildLibrary(
     }
   }
 
-  const artists: ArtistRow[] = [...artistAcc.values()].map((a) => ({
-    id: a.id,
-    name: a.name,
-    albumCount: a.albums.size,
-    coverArt: a.coverArt,
-    // A compound that splits keeps its row (songs/albums key its id) but is
-    // flagged so the grid shows only the member artists as tiles.
-    splitCompound: splitCredits(a.name).filter((c) => c.role === 'primary').length > 1,
-  }));
+  const artists: ArtistRow[] = [...artistAcc.values()].map((a) => {
+    const name = pickDisplayName(a.names);
+    return {
+      id: a.id,
+      name,
+      albumCount: a.albums.size,
+      coverArt: a.coverArt,
+      // A compound that splits keeps its row (songs/albums key its id) but is
+      // flagged so the grid shows only the member artists as tiles.
+      splitCompound: splitCredits(name).filter((c) => c.role === 'primary').length > 1,
+    };
+  });
 
   // Genre aggregate over the FULL set (a song counts under every genre it
   // has), accumulated in the track loop above.
@@ -819,6 +885,7 @@ export class LibraryScanner {
   async scanFull(): Promise<ScanResult> {
     const startedAt = Date.now();
     const files = await this.walk(this.musicDir, true);
+    const incomplete = this.unreadableDirs.slice();
     const tracks = await this.readTracks(files);
     const built = buildLibrary(
       tracks,
@@ -829,8 +896,17 @@ export class LibraryScanner {
       loadGenreOverrides(this.db),
       this.knownRelPaths(),
     );
-    const result = this.persist(built, startedAt, true);
-    log.info({ ...result }, 'Full scan complete');
+    if (incomplete.length > 0) {
+      log.warn(
+        { unreadableDirs: incomplete.slice(0, 10), count: incomplete.length },
+        'walk incomplete — skipping the prune so unreached files are not deleted (#968)',
+      );
+    }
+    const result = this.persist(built, startedAt, incomplete.length === 0);
+    const recovered = this.recoverPresentOrphanedCacheRows(files);
+    if (recovered > 0)
+      log.info({ recovered }, 'cleared orphaned_at on scan-cache rows still on disk');
+    log.info({ ...result, walkIncomplete: incomplete.length > 0 }, 'Full scan complete');
     return result;
   }
 
@@ -894,13 +970,69 @@ export class LibraryScanner {
     log.info({ files: tracks.length, albums: built.albums.length }, 'Incremental scan complete');
   }
 
+  /**
+   * Directories whose `readdir` failed during the CURRENT walk. Reset per walk.
+   *
+   * A swallowed `readdir` error used to be indistinguishable from an empty
+   * directory, and the full scan's prune deletes every row whose `synced_at` is
+   * stale — so one unreadable directory silently deleted every song beneath it
+   * (issue #968: 496 files on disk with no library row, whole albums gone, and
+   * ~150-170 more per firing of the automated pass). Orphaning is destructive to
+   * visibility, so it must rest on positive evidence a file is gone; a walk that
+   * did not complete has no such evidence for the paths it never reached.
+   */
+  private unreadableDirs: string[] = [];
+
+  /**
+   * Clear `orphaned_at` on every `scan_cache` row whose file the walk just
+   * found (issue #968).
+   *
+   * `orphaned_at` on this table means "the song row is gone, stage the cached
+   * tags for deletion". A row whose FILE is still on disk is therefore always a
+   * bug: the tags are about to be discarded for a file we will have to re-parse.
+   * Recovery is free — the row already holds its `track_json` — and the count is
+   * the invariant worth watching, so it is recorded for the health report
+   * rather than only logged (issue #955: a disk dimension invisible to the tool
+   * a curator uses is a dimension that never gets worked).
+   *
+   * The underlying cause of the marking is NOT claimed here. This clears the
+   * symptom and measures it; #968 stays open for the cause.
+   */
+  private recoverPresentOrphanedCacheRows(walkedAbsPaths: string[]): number {
+    const present = new Set(walkedAbsPaths.map((p) => relative(this.musicDir, p)));
+    if (present.size === 0) return 0;
+    const stamped = this.db
+      .query<{ path: string }, []>('SELECT path FROM scan_cache WHERE orphaned_at IS NOT NULL')
+      .all()
+      .filter((r) => present.has(r.path));
+    const recordCount = (n: number): void => {
+      this.db.run(
+        `INSERT INTO library_sync_state (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+        ['scan_cache_wrongly_orphaned', String(n), Date.now()],
+      );
+    };
+    if (stamped.length === 0) {
+      recordCount(0);
+      return 0;
+    }
+    const clear = this.db.prepare('UPDATE scan_cache SET orphaned_at = NULL WHERE path = ?');
+    this.db.transaction(() => {
+      for (const r of stamped) clear.run(r.path);
+    })();
+    recordCount(stamped.length);
+    return stamped.length;
+  }
+
   private async walk(dir: string, isRoot: boolean): Promise<string[]> {
     const out: string[] = [];
+    if (isRoot) this.unreadableDirs = [];
     let entries;
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch (err) {
       log.warn({ err, dir }, 'walk: readdir failed');
+      this.unreadableDirs.push(dir);
       return out;
     }
     for (const entry of entries) {
@@ -1016,15 +1148,17 @@ export class LibraryScanner {
         format?.numberOfChannels && format.numberOfChannels > 0
           ? format.numberOfChannels
           : undefined,
-      title: common?.title,
-      artist: common?.artist,
-      albumArtist: common?.albumartist,
-      album: common?.album,
+      // Every tag string is NFC-normalised HERE, at the one boundary where text
+      // enters the library, so nothing downstream has to think about it (#961).
+      title: nfc(common?.title),
+      artist: nfc(common?.artist),
+      albumArtist: nfc(common?.albumartist),
+      album: nfc(common?.album),
       track: common?.track?.no ?? undefined,
       disc: common?.disk?.no ?? undefined,
       year: common?.year ?? undefined,
       // FULL frame array — buildLibrary's splitGenres derives the set/primary.
-      genre: common?.genre?.length ? common.genre : undefined,
+      genre: common?.genre?.length ? common.genre.map((g) => nfc(g) ?? g) : undefined,
       bpm: typeof common?.bpm === 'number' && common.bpm > 0 ? Math.round(common.bpm) : undefined,
       key: typeof common?.key === 'string' && common.key.trim() ? common.key.trim() : undefined,
       // Perceptual features live in custom Vorbis/TXXX frames — parse them from
@@ -1313,7 +1447,14 @@ export class LibraryScanner {
     } else {
       // Incremental: an album we just touched may have gained songs; recompute
       // its aggregate counts from all of its current songs so the card is right.
-      for (const a of built.albums) refreshAlbumAggregate(this.db, a.id);
+      for (const a of built.albums) {
+        refreshAlbumAggregate(this.db, a.id);
+        // Re-derive the DISPLAYED artist from every song, not just this batch:
+        // `scanPaths` passes only the touched files, so the reduction inside
+        // `buildLibrary` is a reduction over the batch and a one-track
+        // incremental would still write a one-sample answer (issue #958).
+        refreshAlbumArtistDisplay(this.db, a.id);
+      }
       // #874: an album a retagged song just LEFT is otherwise never revisited —
       // refresh it from its surviving songs, dropping it (and any artist it
       // orphans) if none are left, exactly like a single-song delete does.
