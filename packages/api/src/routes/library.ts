@@ -1468,6 +1468,21 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json({ sources });
   });
 
+  /**
+   * "Fetch automatically" for one artist's portrait.
+   *
+   * Two things were wrong here and they compounded (#988). It **short-circuited
+   * on an existing portrait**, so the menu item silently no-opped on exactly the
+   * artists a user asks it about — the ones whose photo they want *replaced*.
+   * That guard belonged to the bulk backfill (`NEEDS_PORTRAIT_SQL`), which is
+   * fill-if-empty by design; this route is user-initiated and its only caller is
+   * that menu item, so the honest reading of the click is "get me a new one".
+   *
+   * And it collapsed five distinct outcomes into one `{ filled: false }`, so the
+   * client could not tell "no provider had a photo" from "Discogs timed out"
+   * from "this artist is curator-locked" — which is why nothing could toast.
+   * `reason` names them; `filled: true` carries the provider that answered.
+   */
   app.post('/artists/:id/auto-fetch-image', async (c) => {
     const id = c.req.param('id');
     const db = getDatabase();
@@ -1476,18 +1491,18 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         `SELECT id, name, manual_override FROM library_artists WHERE id = ?`,
       )
       .get(id);
-    if (!artist || artist.manual_override) return c.json({ filled: false });
-
-    const hasPortrait = db
-      .query<{ id: string }, [string]>(
-        `SELECT id FROM library_artwork WHERE id = ? AND kind = 'artist'`,
-      )
-      .get(id);
-    if (hasPortrait) return c.json({ filled: false });
-    if (!coverCacheDir) return c.json({ filled: false });
+    // 200, not 404: the client distinguishes outcomes by `reason`, and an
+    // error status would make HttpClient throw — losing the very distinction
+    // this route was changed to provide.
+    if (!artist) return c.json({ filled: false, reason: 'not-found' as const });
+    // A curator-set portrait is a decision, not a gap — the one case where
+    // declining is right, and now the one case that says so.
+    if (artist.manual_override)
+      return c.json({ filled: false, reason: 'manual-override' as const });
+    if (!coverCacheDir) return c.json({ filled: false, reason: 'no-cache-dir' as const });
 
     try {
-      const { applied } = await fillArtistImages(
+      const { applied, labels } = await fillArtistImages(
         db,
         {
           lidarr,
@@ -1500,9 +1515,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       // A bulk fill changes what the Artists grid renders, but a single
       // portrait is cover-id-stable (#237 audit) — the grid re-reads
       // /api/cover/<id>, whose negative cache fillArtistImages already evicted.
-      return c.json({ filled: applied > 0 });
-    } catch {
-      return c.json({ filled: false });
+      if (applied > 0) return c.json({ filled: true as const, source: labels[0] ?? null });
+      return c.json({ filled: false, reason: 'no-candidate' as const });
+    } catch (err) {
+      log.warn({ err, artistId: id }, 'artist portrait auto-fetch failed');
+      return c.json({ filled: false, reason: 'error' as const });
     }
   });
 

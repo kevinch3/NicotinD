@@ -987,3 +987,15 @@ export type StemStatus =
   | { state: 'preparing'; etaSec: number }
   | { state: 'ready' }
   | { state: 'failed'; reason: 'rejected' | 'transient'; retryAfterSec?: number };
+
+/**
+ * Why "Fetch automatically" did or did not replace an artist portrait. One
+ * boolean used to stand for five outcomes, so the UI could not tell a
+ * curator-locked artist from a Discogs timeout and reported neither (#988).
+ */
+export type AutoFetchImageResult =
+  | { filled: true; source: string | null }
+  | {
+      filled: false;
+      reason: 'not-found' | 'manual-override' | 'no-cache-dir' | 'no-candidate' | 'error';
+    };

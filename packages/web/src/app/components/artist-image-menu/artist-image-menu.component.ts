@@ -16,6 +16,8 @@ import { AuthService } from '../../services/auth.service';
 import { BackButtonService } from '../../services/native/back-button.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ArtistImageSourcesService } from '../../services/artist-image-sources.service';
+import { ToastService } from '../../services/toast.service';
+import { autoFetchToast, NoChangeError } from './auto-fetch-toast';
 import type { Album } from '../../services/api/api-types';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
@@ -45,6 +47,7 @@ export class ArtistImageMenuComponent {
   readonly auth = inject(AuthService);
   /** Live artist-image source availability — gates "Fetch automatically" (issue #422). */
   readonly imageSources = inject(ArtistImageSourcesService);
+  private readonly toast = inject(ToastService);
 
   readonly artistId = input.required<string>();
   /** Albums offered for "choose from album". Empty → fetched lazily on open. */
@@ -139,11 +142,23 @@ export class ArtistImageMenuComponent {
     );
   }
 
-  /** Resolve a portrait from the provider chain (lidarr → spotify → discogs). */
+  /**
+   * Resolve a portrait from the provider chain (lidarr → spotify → discogs).
+   *
+   * The result is *read*, not discarded: this action can legitimately do
+   * nothing (no provider has a photo, the artist is curator-locked) and used to
+   * be indistinguishable from success, so the menu closed and the tile kept its
+   * old image with no explanation either way (#988).
+   */
   async autoFetch(): Promise<void> {
     if (this.imageSources.autoFetchUnavailable()) return;
     this.closeMenu();
-    await this.run(() => firstValueFrom(this.api.autoFetchArtistImage(this.artistId())));
+    await this.run(async () => {
+      const result = await firstValueFrom(this.api.autoFetchArtistImage(this.artistId()));
+      this.toast.show(autoFetchToast(result));
+      // Only a real replacement should make callers re-read the cover.
+      if (!result.filled) throw new NoChangeError();
+    });
   }
 
   async reset(): Promise<void> {
@@ -151,15 +166,24 @@ export class ArtistImageMenuComponent {
     await this.run(() => firstValueFrom(this.api.resetArtistImage(this.artistId())));
   }
 
-  /** Shared busy-guard + change notification for every action. */
+  /**
+   * Shared busy-guard + change notification for every action.
+   *
+   * A thrown `NoChangeError` means the action ran and correctly changed
+   * nothing — it must not emit `changed`, and it must not toast a failure over
+   * the explanation the action already gave. Anything else is a real error and
+   * now says so, where it used to be swallowed in silence (#988).
+   */
   private async run(action: () => Promise<unknown>): Promise<void> {
     if (this.busy()) return;
     this.busy.set(true);
     try {
       await action();
       this.changed.emit();
-    } catch {
-      /* best-effort; the tile simply keeps its prior image */
+    } catch (err) {
+      if (!(err instanceof NoChangeError)) {
+        this.toast.show({ message: "Couldn't update the artist image", kind: 'error' });
+      }
     } finally {
       this.busy.set(false);
     }
