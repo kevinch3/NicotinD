@@ -5,6 +5,7 @@ import { setArtwork, deleteArtwork, purgeDiskArtCache } from './artwork-store.js
 import { extractEmbeddedPicture, writeFolderCover, type EmbeddedPicture } from './cover-sources.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from './song-path.js';
 import { clearCoverNegativeCache } from '../routes/streaming.js';
+import { libraryEvents } from './library-events.js';
 
 /**
  * Album-cover mutation shared by `POST /api/library/albums/:id/cover` and the
@@ -50,6 +51,7 @@ export async function applyAlbumCover(
   if (coverUrl) {
     setArtwork(db, albumId, 'album', coverUrl, deps.coverCacheDir);
     clearCoverNegativeCache(albumId); // in case this id was 404-cached as artless
+    libraryEvents.emit({ type: 'artwork.changed', albumId, coverArt: null, version: Date.now() });
     return { ok: true, mode: 'canonical-url' };
   }
 
@@ -75,6 +77,7 @@ export async function applyAlbumCover(
     deleteArtwork(db, albumId, deps.coverCacheDir); // clear canonical → folder art wins
     if (deps.coverCacheDir) purgeDiskArtCache(deps.coverCacheDir, albumId);
     clearCoverNegativeCache(albumId);
+    libraryEvents.emit({ type: 'artwork.changed', albumId, coverArt: null, version: Date.now() });
     return { ok: true, mode: 'folder-cover' };
   }
 

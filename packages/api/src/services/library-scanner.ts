@@ -57,6 +57,7 @@ import {
   emptyGenreContext,
   type GenreContext,
 } from './genre-split.js';
+import { libraryEvents } from './library-events.js';
 
 const log = createLogger('library-scanner');
 
@@ -1351,6 +1352,19 @@ export class LibraryScanner {
           syncedAt,
         );
       }
+      // Which of these songs are NEW rows: an open client learns about them
+      // over /api/library/events (songs.landed). Computed before the upsert;
+      // a rescan of existing rows announces nothing.
+      const existingIds = new Set<string>();
+      for (let i = 0; i < built.songs.length; i += 400) {
+        const chunk = built.songs.slice(i, i + 400).map((x) => x.id);
+        const marks = chunk.map(() => '?').join(',');
+        for (const r of this.db
+          .query<{ id: string }, string[]>(`SELECT id FROM library_songs WHERE id IN (${marks})`)
+          .all(...chunk)) {
+          existingIds.add(r.id);
+        }
+      }
       for (const s of built.songs) {
         songStmt.run(
           s.id,
@@ -1388,6 +1402,14 @@ export class LibraryScanner {
           syncedAt,
           syncedAt,
         );
+      }
+      const landed = built.songs.filter((x) => !existingIds.has(x.id));
+      if (landed.length > 0) {
+        libraryEvents.emit({
+          type: 'songs.landed',
+          songIds: landed.map((x) => x.id),
+          albumIds: [...new Set(landed.map((x) => x.albumId))],
+        });
       }
       for (const a of built.artists) {
         artistStmt.run(a.id, a.name, a.albumCount, a.coverArt, a.splitCompound ? 1 : 0, syncedAt);
@@ -1438,9 +1460,21 @@ export class LibraryScanner {
       if (genreOverridesRepointed.repointed > 0 || genreOverridesRepointed.unmatched > 0) {
         log.info(genreOverridesRepointed, 'genre overrides carried across a song-id change');
       }
+      const doomed = this.db
+        .query<{ id: string; album_id: string }, [number]>(
+          'SELECT id, album_id FROM library_songs WHERE synced_at < ?',
+        )
+        .all(syncedAt);
       removedSongs = Number(
         this.db.run('DELETE FROM library_songs WHERE synced_at < ?', [syncedAt]).changes ?? 0,
       );
+      if (doomed.length > 0) {
+        libraryEvents.emit({
+          type: 'songs.deleted',
+          songIds: doomed.map((r) => r.id),
+          albumIds: [...new Set(doomed.map((r) => r.album_id))],
+        });
+      }
       removedAlbums = Number(
         this.db.run('DELETE FROM library_albums WHERE synced_at < ?', [syncedAt]).changes ?? 0,
       );
@@ -1614,6 +1648,7 @@ export class LibraryScanner {
         this.db.run('DELETE FROM library_songs WHERE id = ?', [r.id]);
         this.db.run('DELETE FROM library_song_artists WHERE song_id = ?', [r.id]);
         this.db.run('DELETE FROM library_song_genres WHERE song_id = ?', [r.id]);
+        libraryEvents.emit({ type: 'songs.deleted', songIds: [r.id], albumIds: [albumId] });
         removed++;
       }
       // Recompute the album aggregate from its surviving songs, dropping the

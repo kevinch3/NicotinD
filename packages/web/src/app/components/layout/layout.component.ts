@@ -18,6 +18,7 @@ import { PlayerService, shuffleArray } from '../../services/player.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { LikeService } from '../../services/like.service';
 import { RecommendationExclusionsService } from '../../services/recommendation-exclusions.service';
+import { LibraryEventsService } from '../../services/library-events.service';
 import { toTrack } from '../../lib/track-utils';
 import { mainBottomPadClass } from '../../lib/player-chrome';
 import { SetupService } from '../../services/setup.service';
@@ -118,6 +119,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private api = inject(LibraryApiService);
   private likes = inject(LikeService);
   private readonly exclusions = inject(RecommendationExclusionsService);
+  private readonly libraryEvents = inject(LibraryEventsService);
 
   private desktopChrome = inject(DesktopChromeService);
   private readonly p2r = inject(PullToRefreshService);
@@ -272,6 +274,9 @@ export class LayoutComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    // Live library changes (landed, deleted, changed, artwork, jobs) — one
+    // stream per visible tab; the pollers below slow down while it is up.
+    this.libraryEvents.start();
     this.transfers.startPolling();
     // Tell the desktop-chrome overlay the shell header (which doubles as
     // the frameless window's drag/controls bar) is now on screen.
@@ -318,6 +323,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.libraryEvents.stop();
     this.setNavigating(false);
     this.transfers.stopPolling();
     this.desktopChrome.shellHeaderActive.set(false);

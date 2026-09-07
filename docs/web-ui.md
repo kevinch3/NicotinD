@@ -400,7 +400,8 @@ Every recurring client poll goes through one helper, `createVisibilityPoller` (`
 
 | service | visible | hidden |
 | --- | --- | --- |
-| `TransferService` | 3 s while a job is in a live stage (resolving/queued/downloading/organizing/scanning — `jobKeepsFastCadence`, #806), 30 s idle | **paused** |
+| `TransferService` | 3 s while a job is in a live stage (resolving/queued/downloading/organizing/scanning — `jobKeepsFastCadence`, #806), 30 s idle; **10 s / 120 s while the library events stream is connected** (the stream carries the transitions, the poll is the safety net) | **paused** |
+| `LibraryEventsService` (not a poller: one SSE stream, `/api/library/events`) | open while visible | closes 30 s after hiding, reopens from the last seq — [cache-invalidation.md](cache-invalidation.md) "Live invalidation" |
 | `AcquireService` | 2 s (and it self-stops when no job is active) | **60 s** |
 | `ServiceReviewService` | 5 s | paused |
 | `DownloadReviewService` | 30 s | paused |

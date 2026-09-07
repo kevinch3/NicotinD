@@ -21,6 +21,7 @@ import {
 } from './genre-overrides.js';
 import { writeAudioTags } from './audio-tags.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from './song-path.js';
+import { libraryEvents } from './library-events.js';
 
 export interface SongGenreMutateDeps {
   musicDir?: string;
@@ -148,6 +149,10 @@ export async function mutateSongGenre(
       }).catch(() => false);
     }
   }
+  const owner = db
+    .query<{ album_id: string }, [string]>('SELECT album_id FROM library_songs WHERE id = ?')
+    .get(songId);
+  if (owner) libraryEvents.emit({ type: 'album.changed', albumId: owner.album_id });
   return { ok: true, genres: merged, tagWritten };
 }
 

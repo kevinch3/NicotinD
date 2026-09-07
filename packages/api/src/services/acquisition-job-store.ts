@@ -4,6 +4,7 @@ import { fold } from '@nicotind/core';
 import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { albumIdFor } from './library-scanner.js';
 import { jobDestinationAlbums } from './job-destinations.js';
+import { libraryEvents } from './library-events.js';
 
 /**
  * Unified acquisition job store (`acquisition_jobs` + `acquisition_job_items`).
@@ -860,6 +861,7 @@ export function recomputeStage(db: Database, jobId: string): string | null {
       jobId,
     ]);
   }
+  if (stage !== job.stage) libraryEvents.emit({ type: 'job.changed', jobId });
   return stage;
 }
 

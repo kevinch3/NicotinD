@@ -17,6 +17,7 @@ import { pruneOrphanArtist, pruneOrphanAlbum } from './library-aggregates.js';
 import { refreshGenreCounts } from './genre-split.js';
 import type { ShareRescanScheduler } from './share-rescan-scheduler.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from './song-path.js';
+import { libraryEvents } from './library-events.js';
 
 const log = createLogger('library-deletion');
 
@@ -309,6 +310,11 @@ export async function deleteOne(
           try {
             db.run('DELETE FROM completed_downloads WHERE navidrome_id = ?', [id]);
             db.run('DELETE FROM library_songs WHERE id = ?', [id]);
+            libraryEvents.emit({
+              type: 'songs.deleted',
+              songIds: [id],
+              albumIds: albumId ? [albumId] : [],
+            });
             if (albumId) pruneOrphanAlbum(db, albumId);
             refreshGenreCounts(db, songGenres);
           } catch (err) {
@@ -335,6 +341,11 @@ export async function deleteOne(
         relPath,
       ]);
       db.run('DELETE FROM library_songs WHERE id = ?', [id]);
+      libraryEvents.emit({
+        type: 'songs.deleted',
+        songIds: [id],
+        albumIds: albumId ? [albumId] : [],
+      });
       if (albumId) pruneOrphanAlbum(db, albumId);
       refreshGenreCounts(db, songGenres);
       log.info({ relPath }, 'Removed song from completion history + canonical DB');

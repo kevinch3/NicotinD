@@ -24,6 +24,7 @@ import type { AudioTags } from './audio-tags.js';
 import { writeAudioTags } from './audio-tags.js';
 import { buildIdentifyApplyTags } from './identify.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from './song-path.js';
+import { libraryEvents } from './library-events.js';
 
 export interface SongMetadataMutateDeps {
   musicDir?: string;
@@ -130,6 +131,12 @@ export async function mutateSongMetadata(
 
   const ok = await (deps.writeTags ?? writeAudioTags)(abs, tags);
   if (!ok) return { ok: false, error: 'Failed to write tags', status: 500 };
+  {
+    const owner = db
+      .query<{ album_id: string }, [string]>('SELECT album_id FROM library_songs WHERE id = ?')
+      .get(songId);
+    if (owner) libraryEvents.emit({ type: 'album.changed', albumId: owner.album_id });
+  }
 
   const old = {
     title: song.title,

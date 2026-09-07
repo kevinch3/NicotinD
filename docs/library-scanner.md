@@ -79,6 +79,14 @@ English word as the key for a real artist.
 `upsertArtistAlias` now refuses a placeholder-shaped `alias_norm` and returns `false`. It is a
 write-time guard only; the two existing rows need a delete.
 
+## The scanner announces what changed
+
+`persist()` computes which of the built songs are new rows before the upsert and emits one
+`songs.landed` (ids + album ids) for them; a rescan of existing rows announces nothing. The full
+scan's prune and the incremental album-orphan prune emit `songs.deleted` for the rows they drop.
+That is how an open client learns a download arrived or a file vanished without polling — see
+[cache-invalidation.md](cache-invalidation.md) "Live invalidation".
+
 ## Text and identity are decided once, not by walk order (issues #958, #961, #968)
 
 Three defects with one shape: the scanner treated *whichever file it happened to reach first* as

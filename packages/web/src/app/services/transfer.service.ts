@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, inject, signal, computed, effect } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { SystemApiService } from './api/system-api.service';
@@ -7,6 +7,7 @@ import type { AcquireJob, AcquisitionJobView } from '@nicotind/core';
 import type { TransferEntry } from '../lib/transfer-types';
 import { detectNewCompletion } from '../lib/transfer-utils';
 import { createVisibilityPoller, type VisibilityPoller } from '../lib/visibility-poller';
+import { LibraryEventsService } from './library-events.service';
 
 export type { TransferEntry } from '../lib/transfer-types';
 
@@ -77,13 +78,43 @@ export class TransferService {
   // Paused while the tab is hidden (#717) — this poller feeds only derived
   // state (header badge, nav count, the libraryDirty flag), all of which the
   // catch-up poll on resume recomputes.
+  private readonly events = inject(LibraryEventsService);
+  // With the events stream connected the feed's transitions arrive as pushes
+  // and this poll is only a safety net, so it slows down by 4×; without it the
+  // pre-stream cadences stand (docs/web-ui.md "Polling stands down").
   private poller: VisibilityPoller = createVisibilityPoller({
     poll: () => this.poll(),
-    delayMs: () => (this.hasActive ? 3_000 : 30_000),
+    delayMs: () =>
+      this.events.connected()
+        ? this.hasActive
+          ? 10_000
+          : 120_000
+        : this.hasActive
+          ? 3_000
+          : 30_000,
   });
   private scanPollTimer: ReturnType<typeof setTimeout> | null = null;
   private prevAcquireStates = new Map<string, AcquireJob['state']>();
   private hasPolled = false;
+
+  constructor() {
+    // Pushed library changes feed the same signals the poller used to derive:
+    // a landed album lights the Library's "new album" banner, a deleted song
+    // leaves every open list, a job transition re-polls the feed at once.
+    effect(() => {
+      const landed = this.events.landedAlbumIds();
+      if (landed.size === 0) return;
+      this.noteAlbumsLanded([...landed]);
+      this.libraryApi.invalidateLibraryReads();
+      this.events.consumeLanded(landed);
+    });
+    effect(() => {
+      const deleted = this.events.deletedSongIds();
+      if (deleted.size === 0) return;
+      this.deletedSongIds.update((s) => new Set([...s, ...deleted]));
+    });
+    this.events.jobsChanged$.subscribe(() => void this.kickPoll());
+  }
 
   clearLibraryDirty(): void {
     this.libraryDirty.set(false);

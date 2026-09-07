@@ -562,6 +562,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 
 ### Data integrity, caching & migrations
 
+- **Library events channel**: every library mutation announces itself from its service on one bus
+  (coalesced, seq-stamped, replayable) and `GET /api/library/events` streams it; an open tab
+  refreshes lists, covers and the album page without reload, and its pollers slow 4× while
+  connected. `libraryEvents`, `LibraryEventsService`, `libraryEventRoutes`.
+  → [cache-invalidation.md](cache-invalidation.md)
 - **Additive schema migrations**: `applySchema` runs every boot and must be idempotent;
   `addColumnIfMissing` checks `PRAGMA table_info` so "already there" is a condition and a real
   migration bug throws loudly. Additive columns only; no down-migration path by design.

@@ -83,6 +83,7 @@ follow-up work, not part of the gate fix.
 | `POST`   | `/api/library/songs/:id/identify`        | Fingerprint-identify a song via AcoustID (curator)          |
 | `POST`   | `/api/library/songs/:id/identify/apply`  | Write the approved identify tags + rescan (curator)         |
 | `GET`    | `/api/library/songs/:id/lyrics`          | Plain + synced lyrics                                       |
+| `GET`    | `/api/library/events`                    | Server-sent library events (landed/deleted/changed/artwork/job), `Last-Event-ID` replay |
 | `POST`   | `/api/library/songs/:id/lyrics/fetch`    | Fetch lyrics from enabled plugins                           |
 | `PUT`    | `/api/library/songs/:id/lyrics`          | Save custom lyrics (admin)                                  |
 | `DELETE` | `/api/library/albums/:id`                | Delete album (folder-first)                                 |

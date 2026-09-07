@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, effect, OnInit } from '@angular/core';
 import { Router, ActivatedRoute, RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -8,6 +8,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { TransferService } from '../../services/transfer.service';
+import { LibraryEventsService } from '../../services/library-events.service';
 import { SongMenuService } from '../../services/song-menu.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
@@ -175,7 +176,11 @@ export class AlbumDetailComponent implements OnInit {
     } catch (err) {
       // Never swallow: a server error and a genuinely missing album used to
       // render the same flat "Album not found." (see AlbumLoadFailure).
-      this.loadFailure.set(albumLoadFailureFor(err));
+      const failure = albumLoadFailureFor(err);
+      this.loadFailure.set(failure);
+      // A live reload can find the album gone (its last song deleted elsewhere).
+      // Stale rows must not outlive the album; a transient error keeps them.
+      if (failure === 'missing') this.selectedAlbum.set(null);
     } finally {
       this.loadingAlbum.set(false);
     }
@@ -344,7 +349,26 @@ export class AlbumDetailComponent implements OnInit {
   // ─── Fix metadata (admin) ─────────────────────────────────────────
   readonly showMetadataFix = signal(false);
   /** Bumped after a fix so the cover URL busts its cache. */
-  readonly coverBust = signal(0);
+  private readonly events = inject(LibraryEventsService);
+  private readonly localCoverBust = signal(0);
+  /** Cache-bust for the cover URL: the newest of a local re-set and a pushed
+   *  `artwork.changed` version, so a cover replaced anywhere shows here at once. */
+  readonly coverBust = computed(() =>
+    Math.max(
+      this.localCoverBust(),
+      this.events.artworkVersions().get(this.selectedAlbum()?.id ?? '') ?? 0,
+    ),
+  );
+  private lastSeenChange = 0;
+  private readonly liveReload = effect(() => {
+    const id = this.selectedAlbum()?.id;
+    if (!id) return;
+    const seq = this.events.changedAlbums().get(id) ?? 0;
+    if (seq > this.lastSeenChange) {
+      this.lastSeenChange = seq;
+      void this.loadAlbum(id);
+    }
+  });
 
   openMetadataFix(): void {
     if (this.selectedAlbum()) this.showMetadataFix.set(true);
@@ -366,7 +390,7 @@ export class AlbumDetailComponent implements OnInit {
     try {
       const detail = await firstValueFrom(this.api.getAlbum(result.albumId));
       this.selectedAlbum.set(detail);
-      this.coverBust.update((v) => v + 1);
+      this.localCoverBust.update((v) => v + 1);
     } catch {
       /* ignore */
     }
@@ -388,7 +412,7 @@ export class AlbumDetailComponent implements OnInit {
     } catch {
       /* ignore */
     }
-    this.coverBust.update((v) => v + 1);
+    this.localCoverBust.update((v) => v + 1);
   }
 
   getArtistLink(id: string | undefined): string[] {
