@@ -6,6 +6,7 @@ import { methodBadge } from '../../lib/acquisition-method';
 import { resolveAlbumRoute, resolvePlaylistRoute } from '../../lib/route-utils';
 import { currentAndNextTracks, trackBreakdown } from '../../lib/track-status';
 import { formatQuality } from '../../lib/download-status';
+import { formatBytes } from '../../lib/disk-usage';
 import { PipelineStageBadgeComponent } from '../pipeline-stage-badge/pipeline-stage-badge.component';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 import { timeAgo } from '../../lib/relative-time';
@@ -23,7 +24,36 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
  * - Title: a flex item, which defaults to `min-width: auto`, so `truncate` is
  *   inert without `min-w-0`. That missing class is what let a long URL overflow.
  */
+export type DownloadTrack = NonNullable<DownloadItem['tracks']>[number];
+
+/**
+ * What actually landed for one track — "FLAC · 960k · 8 MB". Every field was
+ * already recorded per item and none of it reached the drilldown, which could
+ * say a track was `done` and nothing else (issue #991). Pure and exported
+ * because the JIT vitest harness cannot construct the component (its
+ * `input.required()` needs an injection context).
+ */
+export function trackDetail(track: DownloadTrack): string {
+  const parts: string[] = [];
+  if (track.audioFormat) parts.push(track.audioFormat.toUpperCase());
+  if (track.bitRate) parts.push(`${track.bitRate}k`);
+  if (track.sizeBytes) parts.push(formatBytes(track.sizeBytes));
+  return parts.join(' · ');
+}
+
 export const DOWNLOAD_ITEM_HOST_CLASS = 'block min-w-0';
+
+/**
+ * The card row itself. `items-start` is load-bearing, not cosmetic: the
+ * progress block and the action buttons are *siblings* of the column that
+ * holds the expandable tracklist, so under `items-center` opening the
+ * `<details>` grew the card and dragged them to its new vertical middle —
+ * the progress bar reading as if it belonged to the middle of the track list
+ * (issue #991). Top alignment keeps them on the header row, which is the row
+ * they describe.
+ */
+export const DOWNLOAD_ITEM_CARD_CLASS =
+  'flex items-start gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/50 border border-theme min-w-0 overflow-hidden';
 export const DOWNLOAD_ITEM_TITLE_CLASS = 'text-sm text-theme-primary truncate min-w-0';
 
 /**
@@ -138,6 +168,7 @@ export function failureClassLabel(klass: FailureClass): string {
 })
 export class DownloadItemComponent {
   readonly hostClass = DOWNLOAD_ITEM_HOST_CLASS;
+  readonly cardClass = DOWNLOAD_ITEM_CARD_CLASS;
   readonly titleClass = DOWNLOAD_ITEM_TITLE_CLASS;
 
   readonly item = input.required<DownloadItem>();
@@ -190,6 +221,22 @@ export class DownloadItemComponent {
     return item.stage !== 'resolving';
   });
   /** Whether to show the "View N albums" menu on this row. */
+  /**
+   * A denominator the source has not committed to is not a total — it is a
+   * running tally of arrivals, and printing it makes progress run backwards as
+   * it climbs (#990). `undefined` means "committed", so every lane that never
+   * had this problem renders exactly as before.
+   */
+  readonly showTotal = computed(() => this.item().totalCommitted !== false);
+
+  /** Percent is only honest against a committed denominator. */
+  readonly showPercentBar = computed(() => this.item().percent !== undefined && this.showTotal());
+
+  /** ...and when it is not, the bar says "moving" without claiming how far. */
+  readonly showIndeterminateBar = computed(
+    () => this.item().percent !== undefined && !this.showTotal(),
+  );
+
   readonly showAlbumsMenu = computed(() => hasMultipleDestinationAlbums(this.item()));
 
   /** Whether the row shows the "Cancelling…" chip instead of the X (#806). */
@@ -210,6 +257,16 @@ export class DownloadItemComponent {
    * whose per-track outcome the user cannot otherwise discover (#746).
    */
   readonly showTracks = computed(() => (this.breakdown()?.total ?? 0) > 0);
+
+  /**
+   * The peer column is redundant on a single-source job — "1 download is 1
+   * addon" — but a slskd hunt genuinely spans several peers (a fallback wave,
+   * a multi-disc release), and there the column is the only place that shows
+   * which track came from where. So it is shown exactly when it is news.
+   */
+  readonly showTrackPeer = computed(() => (this.item().sources?.length ?? 0) > 1);
+
+  readonly trackDetail = trackDetail;
 
   startedAgo(): string {
     const at = this.item().startedAt;

@@ -67,6 +67,7 @@ import { archiveToCandidate, spotifyToCandidate } from '@nicotind/core';
 import { watchlistRoutes } from './routes/watchlist.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { acquireRoutes } from './routes/acquire.js';
+import { AcquireMetadataPrefetch } from './services/acquire-metadata-prefetch.js';
 import { pluginRoutes } from './routes/plugins.js';
 import { radioRoutes } from './routes/radio.js';
 import { PluginRegistry } from './services/plugins/registry.js';
@@ -940,7 +941,8 @@ export function createApp({
     scanIncremental,
     enrichSingles,
   });
-  app.route('/api/acquire', acquireRoutes(acquireWatcher, plugins, db));
+  const acquirePrefetch = new AcquireMetadataPrefetch(db, spotifySearch);
+  app.route('/api/acquire', acquireRoutes(acquireWatcher, plugins, db, acquirePrefetch));
 
   // Admin folder import (docs/import.md): the fourth caller of the shared
   // organize → scan seam. Mounted under /api/admin so the blanket auth applies;

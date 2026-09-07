@@ -54,6 +54,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **A link that names one release names its album**: `albumTitleForUrlJob` + the poller's
   `fillAlbumTitleFromLink` promote an addon display title to filing metadata for a non-playlist
   album URL; `isUnknownLike` rejects placeholders. → [download-pipeline.md](download-pipeline.md)
+- **Identity resolved beside the transfer**: `AcquireMetadataPrefetch` + `lookupRelease` +
+  `spotifyResourceFromUrl` name a URL job and fix its size at submit; `hasCommittedTotal` keeps an
+  un-committed denominator off the card. → [download-pipeline.md](download-pipeline.md)
 - **Playlist-from-acquisition**: a URL job classified as a playlist auto-generates a native playlist
   from landed tracks in download order — addon-native (the live path, issue #587):
   `materializeAddonPlaylist`; legacy in-process fallback: `classifyAcquireUrl`,

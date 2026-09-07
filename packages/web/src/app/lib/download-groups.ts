@@ -77,6 +77,10 @@ export interface DownloadItem {
     username?: string | null;
     /** Source filename — the only identity an untitled item has (#746). */
     filename?: string | null;
+    /** What actually landed, per track — quality and size (issue #991). */
+    bitRate?: number | null;
+    audioFormat?: string | null;
+    sizeBytes?: number | null;
   }[];
   /** Completed / total tracks (or playlist items). `total` is what the source itemized. */
   progress?: { done: number; total: number };
@@ -89,6 +93,15 @@ export interface DownloadItem {
   canonicalTotal?: number;
   /** Tracks the release has that this source never offered — renders "· K not offered". */
   notOffered?: number;
+  /**
+   * Whether the denominator is a fact about the release or just a tally of what
+   * has arrived. `progress.total` is `COUNT(*)` over the mirrored item rows, so
+   * on a source that discovers its tracklist as it downloads it *climbs* —
+   * "12 of 20" became "12 of 26" and progress ran backwards (issue #990). When
+   * this is false the card shows the count alone rather than a denominator it
+   * will have to take back.
+   */
+  totalCommitted?: boolean;
   /** 0–100 progress for the in-flight bar, when a percentage is meaningful. */
   percent?: number;
   error?: string;
@@ -132,7 +145,12 @@ export function jobPercent(progress: AcquisitionJobView['progress']): number | u
     const pct = Math.round((progress.bytesTransferred / progress.bytesTotal) * 100);
     return Math.min(99, Math.max(0, pct));
   }
-  if (progress.expected > 0) return Math.round((progress.delivered / progress.expected) * 100);
+  // The release's committed size wins over the arrival tally. `expected` is
+  // COUNT(*) over the items mirrored so far, so dividing by it made the bar
+  // retreat every time the source enumerated more of its own tracklist —
+  // "12 of 20" → "12 of 26" and the fill went backwards (issue #990).
+  const denominator = Math.max(progress.expected, progress.canonical ?? 0);
+  if (denominator > 0) return Math.round((progress.delivered / denominator) * 100);
   return undefined;
 }
 
@@ -175,6 +193,27 @@ export function renderDownloadTitle(title: DownloadTitle, method: AcquisitionMet
     default:
       return `${label} download`;
   }
+}
+
+/**
+ * Does this job's denominator mean anything yet?
+ *
+ * A canonical tracklist is a *commitment* — the release's own size, fixed
+ * before the first byte. Without one, `progress.expected` is only `COUNT(*)`
+ * over the items mirrored so far, which is a fact about arrivals, not about the
+ * release. A URL job whose source enumerates lazily (a YouTube playlist) grows
+ * it mid-flight, so the card must not print it as a total.
+ *
+ * `import` jobs are exempt: their `files_total` is counted off disk up front.
+ * `network` (slskd) jobs are too — a peer's folder listing is enumerated at
+ * enqueue, so the count is complete before anything transfers.
+ */
+export function hasCommittedTotal(job: {
+  kind: string;
+  progress: { canonical: number | null };
+}): boolean {
+  if (job.kind !== 'url') return true;
+  return job.progress.canonical !== null;
 }
 
 /**
@@ -363,6 +402,7 @@ export function mergeAcquisitionJobs(
           ? jobPercent(job.progress)
           : undefined,
       cancelRequested: job.cancelRequested || undefined,
+      totalCommitted: hasCommittedTotal(job),
       // why: only a *shortfall* is news. A source that offered the whole
       // tracklist (or more — a folder with bonus tracks) leaves these unset so
       // the ordinary card is untouched.

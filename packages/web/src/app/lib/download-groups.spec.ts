@@ -7,6 +7,7 @@ import {
   methodForBackend,
   buildDownloadFeed,
   mergeAcquisitionJobs,
+  hasCommittedTotal,
   type DownloadItem,
 } from './download-groups';
 
@@ -844,5 +845,44 @@ describe('mergeAcquisitionJobs — import progress (#907)', () => {
   it('leaves a downloading job organizing without a bar, as before', () => {
     const [row] = mergeAcquisitionJobs([], [importJob({ kind: 'album-hunt', method: 'slskd' })]);
     expect(row!.percent).toBeUndefined();
+  });
+});
+
+/**
+ * Issue #990. `progress.expected` is COUNT(*) over the mirrored item rows, so a
+ * source that enumerates lazily grows its own denominator: "12 of 20" became
+ * "12 of 26" and the bar retreated. A total is only a total once something
+ * committed to it.
+ */
+describe('hasCommittedTotal', () => {
+  it('trusts a URL job only once a canonical tracklist exists', () => {
+    expect(hasCommittedTotal({ kind: 'url', progress: { canonical: 13 } })).toBe(true);
+    expect(hasCommittedTotal({ kind: 'url', progress: { canonical: null } })).toBe(false);
+  });
+
+  it('trusts lanes that enumerate up front', () => {
+    // A peer's folder listing is complete at enqueue; an import counts files off
+    // disk before it starts. Neither can grow mid-flight.
+    expect(hasCommittedTotal({ kind: 'network', progress: { canonical: null } })).toBe(true);
+    expect(hasCommittedTotal({ kind: 'import', progress: { canonical: null } })).toBe(true);
+  });
+
+  it('never lets the computed percent retreat once a total is committed', () => {
+    // The acceptance case: two progress reports with differing item counts.
+    // The committed size is the denominator in both, so the fill cannot move
+    // backwards just because the source enumerated more of its own tracklist.
+    const p = (expected: number) =>
+      jobPercent({
+        delivered: 12,
+        expected,
+        canonical: 26,
+        unavailable: 0,
+        failed: 0,
+        bytesTransferred: null,
+        bytesTotal: null,
+      });
+    expect(p(20)).toBe(46);
+    expect(p(26)).toBe(46);
+    expect(p(26)!).toBeGreaterThanOrEqual(p(20)!);
   });
 });
