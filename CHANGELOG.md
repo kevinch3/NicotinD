@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.86](https://github.com/kevinch3/NicotinD/compare/v0.5.85...v0.5.86) (2026-09-07)
+
+### Bug Fixes
+
+* **api:** clamp query integers, and close three curation dead-ends ([#975](https://github.com/kevinch3/NicotinD/issues/975)) ([d0ad02c](https://github.com/kevinch3/NicotinD/commit/d0ad02ccf5542c4b272b1ec4479d79bb06d1734d)), closes [#959](https://github.com/kevinch3/NicotinD/issues/959) [#945](https://github.com/kevinch3/NicotinD/issues/945) [#946](https://github.com/kevinch3/NicotinD/issues/946) [#956](https://github.com/kevinch3/NicotinD/issues/956), references [#945](https://github.com/kevinch3/NicotinD/issues/945) [#946](https://github.com/kevinch3/NicotinD/issues/946) [#956](https://github.com/kevinch3/NicotinD/issues/956) [#970](https://github.com/kevinch3/NicotinD/issues/970)
+* **scanner:** stop letting walk order decide names, and stop it deleting rows ([#972](https://github.com/kevinch3/NicotinD/issues/972)) ([6e390a5](https://github.com/kevinch3/NicotinD/commit/6e390a5de3c83140ec0ffc0580ee1aeee3504e19)), closes [#955](https://github.com/kevinch3/NicotinD/issues/955) [#958](https://github.com/kevinch3/NicotinD/issues/958) [#961](https://github.com/kevinch3/NicotinD/issues/961), references [#958](https://github.com/kevinch3/NicotinD/issues/958) [#222](https://github.com/kevinch3/NicotinD/issues/222) [#961](https://github.com/kevinch3/NicotinD/issues/961) [#968](https://github.com/kevinch3/NicotinD/issues/968) [#955](https://github.com/kevinch3/NicotinD/issues/955)
 ## [0.5.85](https://github.com/kevinch3/NicotinD/compare/v0.5.84...v0.5.85) (2026-09-07)
 
 ### Bug Fixes
