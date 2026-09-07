@@ -3,8 +3,8 @@
 An admin points NicotinD at a server-side **folder or `.zip` archive** of music files and they are
 brought into the library through **the same pipeline a download takes** — tag sanitize, canonical
 `<Artist>/<Album>` organization, cross-edition consolidation, duplicate prevention, lossless→Opus
-standardization, acquisition provenance, incremental scan, and the quarantine/enrichment gate.
-Once landed, imported music is indistinguishable from acquired music.
+standardization, acquisition provenance, incremental scan, then background enrichment.
+Once scanned, imported music is indistinguishable from acquired music.
 
 Surface: **internal / API-only**. `LibraryImportService`
 (`packages/api/src/services/library-import.service.ts`) + `routes/import.ts`, mounted at
@@ -168,7 +168,7 @@ acquisition stack). Import is therefore:
 
 It still reuses the whole ingest machinery: the service is the **fourth caller** of the shared
 `CompletedDownloadFile[]` → `sharedOrganizer.organizeBatch()` → `scanIncremental()` seam (after
-`AcquireWatcher.ingest`, `AddonJobPoller.ingestReadyItems`, and the download-review retag).
+`AcquireWatcher.ingest`, `AddonJobPoller.ingestReadyItems`, and the per-song tag write).
 
 ## Why staging-copy is mandatory (even in move mode)
 
@@ -239,26 +239,13 @@ folder's name (or the archive's stem — "Bootleg Rips 2019", not `/mnt/in/Bootl
 A single-album import clears it once the real album is known, so the card upgrades rather than
 staying pinned to the folder name.
 
-## Review-hold: bypassed for a server path, honoured for an upload
+## `ImportOrigin` — the lane travels with the chunk
 
-Imports go through the quarantine/enrichment gate like every download — that is the point of the
-feature. The **review inbox** is the part that differs, and it differs by lane, because the bypass
-was always an argument about the actor rather than the mechanism.
-
-`ImportOrigin` (`'path' | 'staged-upload'`) carries that one distinction into `runChunk`:
-
-- **`'path'` — bypassed.** A bulk import while `holdForReview` is armed would flood the inbox with
-  albums the admin just chose to import, one by one.
-- **`'staged-upload'` — honoured.** "An admin bulk-importing their own curated library" does not
-  describe "any acquirer drags in an arbitrary folder". The upload lane obeys the same switch every
-  other ingest obeys, so a badly-tagged drop lands in the inbox instead of straight in the library.
-
-For the bypassed lane, after organize and **before** the scan, when
-`reviewHoldActive(db, holdForReview && acquisitionEnabled())`, the service writes
-`recordReviewDecision(albumId, 'approved', 'import:<adminId>')` for each destination album.
-Pre-approving *before* the scan mints the song rows keeps the `reviewed_at >= created` predicate
-true with zero changes to the landing gate; a later real download into the same album still pends
-(its rows are created after this decision).
+`ImportOrigin` (`'path' | 'staged-upload'`) rides into `runChunk` so the service can tell an
+admin's bulk server-path import from an acquirer's browser drop. Nothing branches on it today
+(the review hold that used to be bypassed for `'path'` went with instant landing), but the
+distinction is about the *actor*, not the mechanism, and any future lane-specific rule belongs
+here rather than in a second entry point.
 
 ## API
 

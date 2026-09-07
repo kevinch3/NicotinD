@@ -188,17 +188,6 @@ describe('MCP endpoint (issue #232)', () => {
     expect(parsed.songs.map((s) => s.id)).toEqual(['new', 'old']);
   });
 
-  it('list_recent_songs excludes quarantined (landed_at IS NULL) songs', async () => {
-    seedSong('landed', 'Landed', undefined, undefined, { landedAt: 100 });
-    seedSong('quarantined', 'Quarantined', undefined, undefined, { landedAt: null });
-    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
-    const body = (await (
-      await rpc(token, 'tools/call', { name: 'list_recent_songs', arguments: {} })
-    ).json()) as { result: { content: Array<{ text: string }> } };
-    const parsed = JSON.parse(body.result.content[0]!.text) as { songs: Array<{ id: string }> };
-    expect(parsed.songs.map((s) => s.id)).toEqual(['landed']);
-  });
-
   it('list_recent_songs missingGenre filters to genre-less songs only', async () => {
     seedSong('has-genre', 'Has Genre', undefined, undefined, { landedAt: 100, genre: 'Techno' });
     seedSong('no-genre', 'No Genre', undefined, undefined, { landedAt: 200, genre: null });

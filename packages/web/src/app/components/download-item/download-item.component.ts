@@ -96,18 +96,20 @@ export function isCancelPending(item: DownloadItem, requestInFlight: boolean): b
 }
 
 /**
- * Whether the "Held for review — Review / Discard" line applies (#894).
- *
- * `quarantinedCount` alone is not the question. It counts tracks behind the
- * *processing* quarantine gate (`landed_at IS NULL`), which runs on every
- * install regardless of `holdForReview` — so gating on it rendered the line,
- * and its destructive Discard button, during ordinary enrichment on installs
- * with review switched off. `reviewAvailable` is the parent's answer to
- * "is the inbox actually on this page", so Review has somewhere to go and
- * Discard never appears without it.
+ * Whether the "N tracks landed — Discard" line applies (#810). Tracks land in
+ * the library the moment they are scanned, so a cancelled job that already
+ * delivered some is a decision point: keep the partial album, or throw those
+ * tracks away. The line is offered once the cancel has been carried out (the
+ * job is no longer cancellable) and only while something actually landed.
  */
-export function canShowReviewHold(item: DownloadItem, reviewAvailable: boolean): boolean {
-  return reviewAvailable && (item.quarantinedCount ?? 0) > 0;
+export function canShowPartialDiscard(item: DownloadItem): boolean {
+  return (
+    item.kind === 'network' &&
+    !!item.jobId &&
+    !!item.cancelRequested &&
+    !item.canCancel &&
+    (item.progress?.done ?? 0) > 0
+  );
 }
 
 /**
@@ -142,16 +144,12 @@ export class DownloadItemComponent {
   readonly retrying = input(false);
   /** True while the parent's cancel request is in flight (#806). */
   readonly cancelling = input(false);
-  /** Whether the review inbox is rendered on this page, so Review can reach it (#894). */
-  readonly reviewAvailable = input(false);
 
   readonly retry = output<void>();
   readonly cancel = output<void>();
   readonly remove = output<void>();
-  /** Discard the held partial tracks this job landed (#810). */
+  /** Discard the partial tracks this cancelled job landed (#810). */
   readonly discardPartial = output<void>();
-  /** Jump to the review inbox on the same page (#810). */
-  readonly reviewJump = output<void>();
 
   readonly showPath = signal(false);
 
@@ -159,8 +157,8 @@ export class DownloadItemComponent {
   readonly failureLabel = failureClassLabel;
 
   readonly badge = computed(() => methodBadge(this.item().method));
-  /** Gates the whole "Held for review" line, Discard included (#894). */
-  readonly showReviewHold = computed(() => canShowReviewHold(this.item(), this.reviewAvailable()));
+  /** Gates the "N tracks landed — Discard" line on a cancelled partial (#810). */
+  readonly showPartialDiscard = computed(() => canShowPartialDiscard(this.item()));
   /** Compact "· FLAC · 1411 kbps" / "· 320 kbps" chip text, '' when unknown. */
   readonly qualityLabel = computed(() => {
     const it = this.item();

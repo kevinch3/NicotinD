@@ -352,7 +352,7 @@ export interface DeleteSongsResult {
 }
 
 /**
- * Delete a specific set of songs (quarantined or landed) via `deleteOne` —
+ * Delete a specific set of songs via `deleteOne` —
  * album-survival-safe by construction: `pruneOrphanAlbum` inside each call only
  * drops an album that ended up empty, so a `complete_album` partial can be
  * discarded without touching the album it was completing (#810).

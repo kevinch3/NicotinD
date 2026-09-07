@@ -9,7 +9,7 @@ import {
   hasMultipleDestinationAlbums,
   canShowNowNext,
   isCancelPending,
-  canShowReviewHold,
+  canShowPartialDiscard,
   DownloadItemComponent,
 } from './download-item.component';
 import { resolveAlbumRoute, resolvePlaylistRoute } from '../../lib/route-utils';
@@ -193,7 +193,6 @@ describe('download-item "Now: / Next:" gating', () => {
     expect(canShowNowNext(item({ kind: 'acquire', stage: 'queued' }))).toBe(false);
     expect(canShowNowNext(item({ kind: 'acquire', stage: 'organizing' }))).toBe(false);
     expect(canShowNowNext(item({ kind: 'acquire', stage: 'scanning' }))).toBe(false);
-    expect(canShowNowNext(item({ kind: 'acquire', stage: 'processing' }))).toBe(false);
   });
 
   // Finding 2: slskd hunts download several tracks in parallel, so the "last
@@ -438,25 +437,35 @@ describe('download-item cancel-pending gating (#806)', () => {
   });
 });
 
-// #894. `quarantinedCount` counts tracks behind the *processing* quarantine
-// gate (`landed_at IS NULL`) — a mechanism that runs on every install. The
-// "Held for review — Review / Discard" line it used to gate assumes the
-// *review* hold, which is a different thing entirely. The consequence was not a
-// cosmetic mismatch: Review scrolled to an element that isn't in the DOM when
-// the inbox is hidden (a silent no-op), while Discard beside it really did
-// throw the job's landed tracks away.
-describe('download-item review-hold gating (#894)', () => {
-  it('is suppressed when the review inbox is not reachable, however many are quarantined', () => {
-    expect(canShowReviewHold(item({ quarantinedCount: 3 }), false)).toBe(false);
+// #810. Tracks land the moment they are scanned, so a cancelled job that had
+// already delivered some leaves a partial album behind. The card offers to
+// discard it — but only once the cancel is carried out (the job is no longer
+// cancellable), and never on a job that delivered nothing: a destructive
+// button with nothing to destroy is how the old "Held for review" line got
+// rendered during ordinary enrichment (#894).
+describe('download-item partial-discard gating (#810)', () => {
+  const cancelled = { cancelRequested: true, canCancel: false, progress: { done: 3, total: 9 } };
+
+  it('is shown on a carried-out cancel that left tracks behind', () => {
+    expect(canShowPartialDiscard(item({ jobId: 'j1', ...cancelled }))).toBe(true);
   });
 
-  it('is shown only when the inbox is reachable AND something is held', () => {
-    expect(canShowReviewHold(item({ quarantinedCount: 3 }), true)).toBe(true);
-    expect(canShowReviewHold(item({ quarantinedCount: 0 }), true)).toBe(false);
-    expect(canShowReviewHold(item({}), true)).toBe(false);
+  it('is suppressed while the cancel is still in flight', () => {
+    expect(canShowPartialDiscard(item({ jobId: 'j1', ...cancelled, canCancel: true }))).toBe(false);
   });
 
-  function setup(one: DownloadItem, reviewAvailable: boolean) {
+  it('is suppressed when nothing landed, on an uncancelled job, and off the network lane', () => {
+    expect(
+      canShowPartialDiscard(item({ jobId: 'j1', ...cancelled, progress: { done: 0, total: 9 } })),
+    ).toBe(false);
+    expect(canShowPartialDiscard(item({ jobId: 'j1', progress: { done: 3, total: 9 } }))).toBe(
+      false,
+    );
+    expect(canShowPartialDiscard(item({ kind: 'acquire', jobId: 'j1', ...cancelled }))).toBe(false);
+    expect(canShowPartialDiscard(item({ ...cancelled }))).toBe(false);
+  });
+
+  function setup(one: DownloadItem) {
     TestBed.configureTestingModule({
       imports: [DownloadItemComponent],
       providers: [provideRouter([])],
@@ -470,26 +479,21 @@ describe('download-item review-hold gating (#894)', () => {
     });
     const fixture = TestBed.createComponent(DownloadItemComponent);
     setInputValue(fixture.componentInstance.item, one);
-    setInputValue(fixture.componentInstance.reviewAvailable, reviewAvailable);
     fixture.detectChanges();
     return fixture;
   }
 
-  // The destructive half is the one that matters: a Discard button must never
-  // render on a card whose Review twin cannot work.
-  it('renders neither Review nor Discard while the inbox is unreachable', () => {
-    const fixture = setup(item({ stage: 'processing', quarantinedCount: 4 }), false);
-    expect(fixture.nativeElement.querySelector('[data-testid="download-held-review"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="download-review-jump"]')).toBeNull();
+  it('renders no Discard on a job that is still cancelling', () => {
+    const fixture = setup(item({ jobId: 'j1', ...cancelled, canCancel: true }));
     expect(
       fixture.nativeElement.querySelector('[data-testid="download-discard-partial"]'),
     ).toBeNull();
   });
 
-  it('renders both once the inbox is reachable', () => {
-    const fixture = setup(item({ stage: 'processing', quarantinedCount: 4 }), true);
+  it('renders the landed count and Discard once the cancel is carried out', () => {
+    const fixture = setup(item({ jobId: 'j1', ...cancelled }));
     expect(
-      fixture.nativeElement.querySelector('[data-testid="download-review-jump"]'),
+      fixture.nativeElement.querySelector('[data-testid="download-partial-landed"]'),
     ).not.toBeNull();
     expect(
       fixture.nativeElement.querySelector('[data-testid="download-discard-partial"]'),

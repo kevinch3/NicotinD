@@ -47,8 +47,6 @@ actually behave in radio scoring rather than a weighting the engine doesn't beli
 position-weighted variant is a real option, but it should follow a decision about scoring, not
 precede it.
 
-Quarantined tracks (`landed_at IS NULL`) are excluded — they aren't in the library yet.
-
 ## Pieces
 
 | Piece | What it owns |
@@ -79,7 +77,7 @@ exists to validate. Light/dark come free from the theme system's CSS variables.
 
 ## Tests
 
-`genre-distribution.test.ts` (weighting, extras counted, quarantine exclusion, the fold and its cap),
+`genre-distribution.test.ts` (weighting, extras counted, the fold and its cap),
 `radar-geometry.spec.ts` (angles, linear radius, clamping, anchors, truncation),
 `genre-radar.component.spec.ts` (table sort doesn't rotate the polygon, hidden count, percent
 formatting), and `e2e/tests/genre-radar.spec.ts` for the DOM — the web JIT vitest harness can't drive

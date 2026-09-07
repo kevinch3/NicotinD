@@ -60,8 +60,7 @@ are stored but never scored — not a bug this change fixes, but worth knowing.
   axis), `file_size` (#258 content check), `orphaned_at` (#259 prune marker). **Raw values**, so
   the z-score constants phase 2 needs (`DESCRIPTOR_NORM`) can be re-derived from the store without re-analysing 15k
   files.
-- **Never a landing gate, never tag-mirrored.** ~5 s of CPU per track must not strand a fresh
-  download, and 40 regenerable floats belong in the store, not the file.
+- **Never tag-mirrored.** 40 regenerable floats belong in the store, not the file.
 - **Pure Python for the statistics.** CI installs only the `[dev]` extra; numpy is behind
   `[models]`. `beat_stats.py` and `bands.py` are stdlib-only so they import (and test) everywhere;
   the real analyzer imports numpy lazily like `models.py`.

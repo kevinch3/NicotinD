@@ -824,20 +824,9 @@ export function recomputeStage(db: Database, jobId: string): string | null {
     stage = 'error';
     state = 'failed';
   } else {
-    const pendingLanding = db
-      .query<{ c: number }, [string]>(
-        `SELECT COUNT(*) c FROM acquisition_job_items i
-         JOIN library_songs s ON s.id = i.song_id
-         WHERE i.job_id = ? AND i.state = 'scanned' AND s.landed_at IS NULL`,
-      )
-      .get(jobId);
-    if ((pendingLanding?.c ?? 0) > 0) {
-      stage = 'processing';
-      state = 'active';
-    } else {
-      stage = 'done';
-      state = 'done';
-    }
+    // Landing is instant: a scanned item is in the library, so the job is done.
+    stage = 'done';
+    state = 'done';
   }
   // A job that delivered every item has nothing left to report: a reason
   // recorded while it looked doomed (the orphan guess, an addon's last word)
@@ -903,8 +892,8 @@ export function requestJobCancel(db: Database, jobId: string, now = Date.now()):
 }
 
 /**
- * What a job's partial discard would remove (#810): songs its items landed
- * (quarantined or already graduated), plus organized-but-unscanned files that
+ * What a job's partial discard would remove (#810): songs its items landed,
+ * plus organized-but-unscanned files that
  * have no canonical row yet. Job-scoped by construction — never the whole
  * destination album, which a `complete_album` job only added tracks to.
  */
@@ -962,9 +951,7 @@ export function cancelUnownedJob(db: Database, jobId: string): void {
 }
 
 /**
- * Re-derive every active job's stage. Called after landing passes
- * (`graduatePending`) so jobs waiting in `processing` close the moment their
- * songs land. Bounded: active jobs are few.
+ * Re-derive every active job's stage. Bounded: active jobs are few.
  */
 export function recomputeActiveJobStages(db: Database): void {
   const rows = db
@@ -1105,8 +1092,6 @@ export interface AcquisitionJobFeedItem {
   progress: AcquisitionJobView['progress'];
   /** Mirrors `AcquisitionJobView.cancelRequested` — see the core doc (#806). */
   cancelRequested: boolean;
-  /** Mirrors `AcquisitionJobView.quarantinedCount` — see the core doc (#810). */
-  quarantinedCount: number;
   /**
    * Dominant enqueue-time bitrate + codec across the job's items (mode wins;
    * ties broken by max kbps), upgraded post-scan via the items' matching
@@ -1382,18 +1367,6 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
       )
       .all(row.id);
     const bytes = byteProgress(jobByteAgg(db, row.id));
-    // How many of this job's landed tracks still sit behind the quarantine
-    // gate (#810) — what the card's "Held for review" line counts. One indexed
-    // join per feed row, zero when nothing is held.
-    const quarantined =
-      db
-        .query<{ n: number }, [string]>(
-          `SELECT COUNT(DISTINCT s.id) n
-           FROM acquisition_job_items i
-           JOIN library_songs s ON s.id = i.song_id
-           WHERE i.job_id = ? AND s.landed_at IS NULL AND s.hidden = 0`,
-        )
-        .get(row.id)?.n ?? 0;
     const quality = rollupJobQuality(db, row.id);
     // Peer breakdown for the card's "Sources (N)" disclosure. One hunt can pull
     // from several peers (a fallback wave, a multi-disc release); the data was
@@ -1437,7 +1410,6 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
         bytesTotal: bytes?.bytesTotal ?? null,
       },
       cancelRequested: row.cancel_requested_at != null,
-      quarantinedCount: quarantined,
       ...(quality ? { bitRate: quality.bitRate, audioFormat: quality.audioFormat } : {}),
       sources,
       destinationAlbums: jobDestinationAlbums(db, row.id),

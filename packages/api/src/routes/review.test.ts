@@ -132,7 +132,6 @@ describe('GET /api/admin/review', () => {
         failed: 0,
         total: 0,
         skipped: 0,
-        quarantined: 0,
         taskPending: {
           bpm: 0,
           genre: 0,
@@ -175,7 +174,6 @@ describe('GET /api/admin/review', () => {
       orphanRows: mock(() => []),
       playEvents: mock(() => 0),
       artistImages: mock(() => ({ visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 })),
-      downloadReviews: mock(() => ({ pending: 0, oldestCreated: null })),
       reviewFlags: mock(() => []),
       auditTail: mock(() => []),
       incompleteJobs: mock(() => []),
@@ -337,7 +335,6 @@ describe('GET /api/admin/review', () => {
       orphanRows: mock(() => []),
       playEvents: mock(() => 0),
       artistImages: mock(() => ({ visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 })),
-      downloadReviews: mock(() => ({ pending: 0, oldestCreated: null })),
       reviewFlags: mock(() => []),
       auditTail: mock(() => []),
       incompleteJobs: mock(() => []),
@@ -427,7 +424,6 @@ describe('GET /api/admin/review — every slice lands in its own field (#274)', 
       orphanRows: mock(() => [{ table: 'orphan-sentinel', rows: 1, orphans: 1 }]),
       playEvents: mock(() => 7),
       artistImages: mock(() => ({ visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 })),
-      downloadReviews: mock(() => ({ pending: 7, oldestCreated: '2026-08-01T00:00:00.000Z' })),
       reviewFlags: mock(() => []),
       auditTail: mock(() => [{ id: 'audit-sentinel' }]),
       backupsList: mock(async () => [{ name: 'backup-sentinel' }]),
@@ -444,7 +440,6 @@ describe('GET /api/admin/review — every slice lands in its own field (#274)', 
     // A same-typed number next to incompleteJobsCount/untrackedCount — exactly
     // the swap `allNamed` exists to prevent (#274), so assert it lands.
     expect(body.playEvents).toBe(7);
-    expect(body.downloadReviews).toEqual({ pending: 7, oldestCreated: '2026-08-01T00:00:00.000Z' });
     expect(body.auditTail[0]).toMatchObject({ id: 'audit-sentinel' });
     expect(body.backups[0]).toMatchObject({ name: 'backup-sentinel' });
   });

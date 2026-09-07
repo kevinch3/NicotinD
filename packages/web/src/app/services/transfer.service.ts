@@ -14,8 +14,7 @@ export type { TransferEntry } from '../lib/transfer-types';
  * Stages that keep the fast 3 s poll cadence (#806). Not just `downloading`:
  * the moment a cancel or completion moved a job to organizing/scanning the
  * poll used to drop to 30 s — exactly when the user is watching for the
- * change. `processing` stays on the slow tier on purpose: behind the review
- * hold it can honestly last hours (docs/web-ui.md cadence table).
+ * change (docs/web-ui.md cadence table).
  */
 const FAST_POLL_STAGES: ReadonlySet<string> = new Set([
   'resolving',
@@ -92,9 +91,9 @@ export class TransferService {
 
   // Flag the library as changed AND drop cached whole-library reads (artists /
   // genres), so the refresh that the dirty flag triggers actually re-fetches
-  // instead of replaying a now-stale cached list. Public: the download-review
-  // inbox (issue #411) calls this directly after an approve/discard, since
-  // those mutate the library outside the poller's own completion detection.
+  // instead of replaying a now-stale cached list. Public: the Downloads page
+  // calls this directly after a partial discard (#810), since that mutates the
+  // library outside the poller's own completion detection.
   markLibraryDirty(): void {
     this.libraryDirty.set(true);
     this.libraryApi.invalidateLibraryReads();

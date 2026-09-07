@@ -146,13 +146,12 @@ describe('libraryHealth — album covers', () => {
 });
 
 describe('libraryHealth — genres, years, classification', () => {
-  it('counts landed songs with an unresolved genre; quarantined songs excluded', () => {
+  it('counts songs with an unresolved genre', () => {
     addArtist('ar1', 'A', 1);
-    addAlbum({ id: 'al1', name: 'N', songCount: 4 });
+    addAlbum({ id: 'al1', name: 'N', songCount: 3 });
     addSong({ id: 's-ok', albumId: 'al1', genre: 'Rock' });
     addSong({ id: 's-null', albumId: 'al1', genre: null });
     addSong({ id: 's-junk', albumId: 'al1', genre: 'Music' }); // YouTube category name = unresolved
-    addSong({ id: 's-quarantined', albumId: 'al1', genre: null, landedAt: null });
     const d = libraryHealth(db).dimensions.genres;
     expect(d.metric).toEqual({ songs: 3, missing: 2 });
     expect(d.worklist.map((w) => w.songId).sort()).toEqual(['s-junk', 's-null']);

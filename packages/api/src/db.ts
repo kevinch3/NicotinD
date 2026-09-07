@@ -2,7 +2,6 @@ import { Database } from 'bun:sqlite';
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { createLogger, PROCESSING_TASK_IDS } from '@nicotind/core';
-import { armReviewHold, reviewHoldArmed } from './services/download-review-store.js';
 import { repairGenreMirrorDrift } from './services/genre-split.js';
 import {
   hasSomethingToLose,
@@ -997,14 +996,12 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // canonical artwork row" (what `missingAlbumArtSql` measures) from "this album
   // renders nothing" — which were the same number, ~3x apart, until issue #952.
   addColumnIfMissing(db, 'library_songs', 'has_embedded_art', 'INTEGER');
-  // "Landed" timestamp (epoch ms) — NULL means the song is *quarantined*: it has
-  // been scanned into the DB (so the windowed enrichment tasks can operate on it)
-  // but is hidden from every library listing until its required processing steps
-  // finish. The library-processing service is the ONLY writer that sets a
-  // timestamp here (see graduatePending); the scanner deliberately never touches
-  // this column on insert or rescan, so a fresh scan mints NULL (quarantined) and
-  // a rescan of an already-landed song preserves its value. A one-time backfill
-  // below lands every pre-existing row so upgrades never retroactively hide music.
+  // "Landed" timestamp (epoch ms): when the song was FIRST scanned into the
+  // library. Landing is instant — a scanned song is visible at once — so the
+  // scanner stamps this on INSERT and leaves it alone on rescan. It is the
+  // fillNewAlbumMetadata watermark and the recent-songs ordering key. The
+  // `landing_backfill_v2` block below stamps any row a pre-instant-landing
+  // build left NULL, so no listing ever needs to filter on it.
   addColumnIfMissing(db, 'library_songs', 'landed_at', 'INTEGER');
   // Album-level artist (e.g. "Various Artists" on compilations) vs track-level
   // artist. Existing rows backfill from the current artist column.
@@ -1022,9 +1019,8 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_path ON library_songs(path)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_genre ON library_songs(genre)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_hidden ON library_songs(hidden)`);
-  // Landing-gate listing suppression filters on `landed_at IS NULL`; index it so
-  // the "any song quarantined?" fast-path check and the per-album exclusion stay
-  // cheap even with a large library.
+  // `landed_at` is the recent-songs ORDER BY key and the new-album watermark;
+  // index it so both stay cheap on a large library.
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_landed ON library_songs(landed_at)`);
 
   // Cached audio embeddings from the analysis sidecar. The embedding is the
@@ -1233,25 +1229,14 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     `CREATE INDEX IF NOT EXISTS idx_metadata_overrides_corrected ON library_metadata_overrides(corrected_album_id)`,
   );
 
-  // Download inbox triage (#411): records curator approve/discard decisions for
-  // quarantined albums. Pending is DERIVED (quarantined songs + no covering row),
-  // never stored, so this table cannot drift from scanner state. reviewed_at is
-  // ISO-8601 so it compares lexicographically with library_songs.created — a song
-  // scanned after the decision re-pends its album (re-download after discard).
-  db.run(`
-    CREATE TABLE IF NOT EXISTS download_reviews (
-      album_id    TEXT PRIMARY KEY,
-      state       TEXT NOT NULL CHECK (state IN ('approved','discarded')),
-      reviewed_by TEXT,
-      reviewed_at TEXT NOT NULL
-    )
-  `);
+  // The download inbox (#411, "hold for review") is gone with instant landing:
+  // drop its decision table wherever an older build created it.
+  db.run(`DROP TABLE IF EXISTS download_reviews`);
 
   // Curation review queue (#682): a durable "this needs a human decision" note a
   // curator or an MCP agent can leave on a library row it deliberately did NOT
-  // act on. Distinct from download_reviews, which gates a download BEFORE it
-  // lands and whose pending set is derived; this is post-landing, about identity
-  // and metadata ambiguity, and these rows are the record itself.
+  // act on. Post-landing, about identity and metadata ambiguity; these rows are
+  // the record itself.
   db.run(`
     CREATE TABLE IF NOT EXISTS curation_flags (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1744,11 +1729,9 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
        ON play_events (song_id, user_id) WHERE counted = 1`,
   );
 
-  // One-time landing backfill. The landed_at column defaults to NULL (quarantined)
-  // for every row, so an upgrade of an existing library would otherwise hide the
-  // entire catalogue behind the new processing gate. Land every pre-existing song
-  // exactly once, marker-gated on library_sync_state so it never re-runs: a second
-  // run after new quarantined downloads existed would wrongly land them mid-flight.
+  // One-time landing backfill (v1, historical). The landed_at column used to
+  // default to NULL (quarantined) and this landed every pre-existing song once
+  // when the gate first shipped. Kept so the marker semantics stay stable.
   // Runs here (end of applySchema) because library_sync_state is created above.
   const landingBackfillDone = db
     .query<{ value: string }, [string]>(`SELECT value FROM library_sync_state WHERE key = ?`)
@@ -1763,6 +1746,27 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
       );
     })();
   }
+
+  // Instant landing (v2). The enrichment landing gate is gone and the scanner
+  // now stamps landed_at on INSERT, but a database written by a gated build can
+  // still hold NULL rows (songs quarantined at upgrade time). Stamp them once so
+  // `landed_at` means "first scanned" for every row. Marker-gated so a later
+  // boot does not re-touch anything; the retired hold-for-review marker is
+  // swept alongside.
+  const instantLandingDone = db
+    .query<{ value: string }, [string]>(`SELECT value FROM library_sync_state WHERE key = ?`)
+    .get('landing_backfill_v2');
+  if (!instantLandingDone) {
+    const now = Date.now();
+    db.transaction(() => {
+      db.run(`UPDATE library_songs SET landed_at = ? WHERE landed_at IS NULL`, [now]);
+      db.run(
+        `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '1', ?)`,
+        ['landing_backfill_v2', now],
+      );
+    })();
+  }
+  db.run(`DELETE FROM library_sync_state WHERE key = 'review_hold_armed_v1'`);
 
   // One-time genre mirror/set reconvergence (issue #770). `library_songs.genre`
   // was COALESCE-preserved on a tag-less rescan while `library_song_genres` was
@@ -1799,24 +1803,6 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   );
   if (retired.changes > 0) {
     log.info({ rows: retired.changes }, 'swept analysis-failure rows for retired tasks');
-  }
-
-  // Hold-for-review bootstrap exemption (issue #417): arm the one-way
-  // `review_hold_armed_v1` marker here (weaker condition than the runtime
-  // `maybeArmReviewHold` — any landed song, quarantine need not be empty) so
-  // an *upgrade* of an established library is armed immediately, including
-  // one with a pending review inbox at deploy time — nothing lands unreviewed
-  // just because the marker hadn't existed yet before this migration shipped.
-  // A genuinely fresh database (no landed song at all) stays unarmed;
-  // `maybeArmReviewHold` (called from `graduatePending`) arms it at runtime
-  // once the scanner's first bootstrap drain fully lands, so an initial
-  // library import carrying `holdForReview: true` isn't flooded into the
-  // inbox.
-  if (!reviewHoldArmed(db)) {
-    const anyLanded = db
-      .query<{ 1: number }, []>(`SELECT 1 FROM library_songs WHERE landed_at IS NOT NULL LIMIT 1`)
-      .get();
-    if (anyLanded) armReviewHold(db);
   }
 
   // One-time scan-cache flushes. A cached row is replayed instead of re-parsed,

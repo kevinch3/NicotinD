@@ -193,9 +193,8 @@ tables deliberately have no FK cascade ([cache-invalidation.md](cache-invalidati
 song's `library_song_genres` rows outlive it until the orphan sweep — counting them unjoined would
 report the pre-delete number and defeat the point of calling it from a delete at all.
 
-It also counts *every* scanned song, including `hidden` and quarantined (`landed_at IS NULL`) ones,
-which the listings exclude. Prod currently has zero of both, so this is latent rather than active —
-but a large in-flight download batch would make the counts read high until the songs land.
+It also counts *every* scanned song, including `hidden` ones, which the listings exclude. Prod
+currently has zero, so this is latent rather than active.
 
 ## Failure modes this model has actually produced
 

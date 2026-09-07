@@ -282,8 +282,7 @@ describe('AddonJobPoller', () => {
      * #744. `maybeReleaseAddonJob` deletes the addon-side job once the addon is
      * terminal and every file is fetched, and records that in `released:<id>`.
      * The core row can still be `active` at that moment — items organized but
-     * not yet scanned, and under `holdForReview` waiting on a curator for as
-     * long as the human takes. The reconcile then re-checks it, gets a 404 *we*
+     * not yet scanned. The reconcile then re-checks it, gets a 404 *we*
      * caused, and used to declare the addon had restarted.
      *
      * Measured on prod 2026-08-26: a 5-CD album whose 98 files had all landed

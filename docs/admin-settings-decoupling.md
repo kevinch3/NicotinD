@@ -122,7 +122,7 @@ Small, independent improvements this refactor sets up — none required for it t
    this repo's JIT vitest harness (`testing/signal-input.ts`). `AdminComponent` keeps exactly one
    job: owning that poll's lifecycle. The one piece of state two sections share — the acquisition
    kill-switch, written by Acquisition & Automation and read by Library Processing for the
-   hold-for-review warning (#416) — moved to a root `AcquisitionSettingsService` for the same
+   (since removed) hold-for-review warning (#416) — moved to a root `AcquisitionSettingsService` for the same
    reason.
 
    The default order is **User Management first, then Library Processing**, ahead of System Health.

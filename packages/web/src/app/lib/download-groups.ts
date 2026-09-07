@@ -118,12 +118,6 @@ export interface DownloadItem {
    * control, surviving reloads (unlike the request-in-flight `cancelling` set).
    */
   cancelRequested?: boolean;
-  /**
-   * Landed tracks of this job still held behind the quarantine gate (#810) —
-   * drives the "Held for review — Review / Discard" line, so a cancelled
-   * partial is a decision point rather than an opaque "Processing".
-   */
-  quarantinedCount?: number;
 }
 
 /**
@@ -281,12 +275,11 @@ const STAGE_ORDER: Record<PipelineStage, number> = {
   downloading: 0,
   organizing: 1,
   scanning: 2,
-  processing: 3,
   // `resolving` sorts beside `queued`: both mean "accepted, nothing moving".
-  resolving: 4,
-  queued: 5,
-  error: 6,
-  done: 7,
+  resolving: 3,
+  queued: 4,
+  error: 5,
+  done: 6,
 };
 
 /**
@@ -358,7 +351,7 @@ export function mergeAcquisitionJobs(
       tracks: job.items,
       progress: { done: job.progress.delivered, total: job.progress.expected },
       // Only while downloading: the bar answers "how much is still moving", and
-      // any later stage (organizing/scanning/processing) has nothing in flight.
+      // any later stage (organizing/scanning) has nothing in flight.
       // `downloading` is where a *download* has a meaningful percentage. An
       // import has no download phase at all — it lives in `organizing` for its
       // whole life — so gating on `downloading` alone left every import card
@@ -370,7 +363,6 @@ export function mergeAcquisitionJobs(
           ? jobPercent(job.progress)
           : undefined,
       cancelRequested: job.cancelRequested || undefined,
-      quarantinedCount: job.quarantinedCount || undefined,
       // why: only a *shortfall* is news. A source that offered the whole
       // tracklist (or more — a folder with bonus tracks) leaves these unset so
       // the ordinary card is untouched.

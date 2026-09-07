@@ -2,17 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { albumLoadFailureFor } from './album-load-state';
 
 // The album page used to `catch { /* ignore */ }` and render one flat
-// "Album not found." for every failure. A just-downloaded album is quarantined
-// (landed_at IS NULL) for minutes-to-hours, and the Downloads card's
-// "Open in Library" link appears during exactly that window — so the most
-// common failure was reported as the one thing it definitely wasn't.
+// "Album not found." for every failure — a server error or a lost connection
+// was reported as the one thing it definitely wasn't.
 describe('albumLoadFailureFor', () => {
-  it('reports a quarantined album as still processing, not missing', () => {
-    expect(albumLoadFailureFor({ status: 404, error: { code: 'ALBUM_PROCESSING' } })).toBe(
-      'processing',
-    );
-  });
-
   it('reports a genuinely absent album as missing', () => {
     expect(albumLoadFailureFor({ status: 404, error: { code: 'ALBUM_NOT_FOUND' } })).toBe(
       'missing',

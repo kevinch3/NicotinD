@@ -206,7 +206,6 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
         WHERE p.user_id = ?
           AND p.counted = 1
           AND s.hidden = 0
-          AND s.landed_at IS NOT NULL
           AND (al.hidden IS NULL OR al.hidden = 0)
         GROUP BY p.song_id
         ORDER BY played_at DESC

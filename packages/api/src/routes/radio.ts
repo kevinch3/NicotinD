@@ -50,8 +50,7 @@ function centroidBlocks(members: readonly DescriptorBlocks[]): DescriptorBlocks 
  * Pool floor: tracks under this length are never radio candidates - intros,
  * skits, "Commercial Break" teasers and (issue #583) 46 s language lessons
  * reached real queues, and duration closeness alone can't keep them out.
- * Env-overridable the same way as the e2e landing-gate bypass, because the
- * committed silent-FLAC e2e fixtures are ~30 s.
+ * Env-overridable because the committed silent-FLAC e2e fixtures are ~30 s.
  */
 export function minCandidateDurationSec(): number {
   const v = Number(process.env.NICOTIND_RADIO_MIN_DURATION);

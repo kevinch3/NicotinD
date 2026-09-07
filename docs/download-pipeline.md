@@ -1,38 +1,25 @@
 # Download Pipeline
 
-## Process-before-landing (quarantine gate)
+## Scan-then-enrich (instant landing)
 
-A completed download is scanned into `library_songs` but does **not** appear in the
-library until its **required processing steps** finish. New rows land quarantined
-(`landed_at IS NULL`) and are hidden from every listing; the windowed processor
-graduates them (sets `landed_at`) once their gate steps are done — see the **Landing
-gate** section of [library-processing.md](library-processing.md) for the graduation
-predicate, the per-task `gates` flag, the availability guarantee, and the 24h safety
-valve. `scanIncremental` fires an eager `kickEager()` right after organize+scan so
-gate steps run immediately (out of window) and the download surfaces as soon as it's
-ready. The periodic tick clears quarantine even when processing is disabled or paused
-(issue #807), so a job stuck at stage `processing` self-heals within ~60 s — with the
-review hold armed, the honest residual is the curator's pending decision, not a hang.
+A completed download is organized, scanned into `library_songs` and **visible at once**.
+The scanner stamps `landed_at` on INSERT (first seen; a rescan preserves it), so the
+column is a timestamp for every row and no listing filters on it — it is the
+`fillNewAlbumMetadata` watermark and the `/recent-songs` ordering key, nothing more.
+Enrichment runs *after* the fact: `scanIncremental` fires `enrichNewSongsNow()` right
+after organize+scan so the new songs' analysis tasks start immediately (out of window),
+and the 60 s scheduler tick covers anything that missed the kick. Full mechanics in
+[library-processing.md](library-processing.md) "Landing is instant".
 
-**Listing coverage** — quarantine is enforced at query time, mirroring the
-`downloadingExclusion` pattern (`routes/library.ts`):
+Surfaces that *need* analysis do not wait on landing — they hold un-analysed tracks out
+themselves: radio and recommendation feeds go through the shared eligibility predicate
+([radio.md](radio.md) "Feed eligibility"), so a track with no BPM/genre yet is simply not
+served there while it is already browsable, searchable and playable from its album.
 
-- `quarantineExclusion(db)` (cached ~4s, fast-path empty when nothing is quarantined)
-  excludes any album with an un-landed track from `/albums`, `/compilations`,
-  `/singles`, `/artists/:id` albums, `/artists/:id/appears-on`; `/albums/:id` 404s
-  while quarantined.
-- `landed_at IS NOT NULL` filters the song/artist surfaces: `/artists` (grid),
-  `/artists/:id/songs`, `/songs` (whole-library flat listing → the Library "Songs" tab),
-  `/genres/songs`, `/random`, `/recent-songs`, `/songs/:id/similar`,
-  local search (`library-provider.ts`), radio candidate pools (`routes/radio.ts`),
-  and the playlist generator + automated-playlist recipes.
-- Per-download step visibility: `GET /api/admin/processing/queue` returns quarantined
-  songs grouped by album with per-step badges (downloaded ✓ · bpm ✓ · key ⏳ · mood …),
-  rendered under the Admin → Library processing panel.
-
-An opt-in `holdForReview` setting adds a curator-approval gate **in front of**
-landing (a human decision, not another enrichment step) — see
-[docs/download-review.md](download-review.md).
+The previous design (a quarantine gate that hid a download until its required steps
+finished, with a 24 h valve and an opt-in curator hold) went because the wait was the
+common path, not the edge case: on prod 7,195 of 14,974 songs sat hidden for more than a
+day.
 
 ## Release-type model — albums, EPs & singles (Spotify-style)
 
@@ -625,16 +612,15 @@ cadence) while staying infinitely re-clickable. The durable marker inverts that:
 - The feed ships `cancelRequested`; the card renders a **"Cancelling…" chip** in place of the ✕
   (instant via the component's `cancelling` request-set, durable across reloads via the marker),
   and "Cancel all" targets only `canCancel && !cancelRequested` rows instead of re-firing at
-  `processing` jobs that have nothing left to cancel. The client keeps the fast 3 s poll through
+  post-download jobs that have nothing left to cancel. The client keeps the fast 3 s poll through
   every live stage (`jobKeepsFastCadence`) instead of dropping to 30 s the moment the stage moves.
 
 #### A cancelled partial is a decision point, not an opaque card (#810)
 
-Cancelling a download that already landed tracks used to strand them: with the review hold armed
-they sat behind a pulsing "Processing" with no explanation, the card's Remove deleted only the feed
-row, and a plain acquirer had no legal path to remove the files at all (review discard is
-curator-gated while cancel is acquirer-gated). Now the decision has two entry points sharing one
-job-scoped primitive:
+Cancelling a download that already landed tracks used to strand them: the card's Remove deleted
+only the feed row, and a plain acquirer had no legal path to remove the files at all (library
+delete is curator-gated while cancel is acquirer-gated). Now the decision has two entry points
+sharing one job-scoped primitive:
 
 - **`POST /jobs/:id/discard-partial`** deletes exactly what this job landed —
   `jobPartialContents` (scanned `song_id`s + organized-but-unscanned `relative_path`s) through the
@@ -645,12 +631,11 @@ job-scoped primitive:
   checks it, so a fileReady item mid-flight on the poller cannot land afterwards and resurrect the
   album.
 - **Cancel-time**: when the card shows anything landed, cancel becomes a confirm with an opt-in
-  "also discard the N downloaded tracks" checkbox (default off — keep goes to review); a
-  nothing-landed cancel stays a friction-free single click.
-- **On the card**: the feed ships `quarantinedCount` (this job's tracks still behind the gate) and
-  the card renders "N held for review — Review / Discard" (`download-held-review`,
-  `download-review-jump`, `download-discard-partial`), so the held state names itself instead of
-  hiding inside "Processing".
+  "also discard the N downloaded tracks" checkbox (default off — keep leaves them in the library);
+  a nothing-landed cancel stays a friction-free single click.
+- **On the card**: a cancelled job with landed tracks carries a Discard action
+  (`download-discard-partial`) beside its landed count, so the partial names itself instead of
+  reading as a finished job.
 
 #### The denominator is the release, not the source's offering (#745)
 
@@ -693,10 +678,6 @@ Two deliberate choices:
   "Now:", where the last-downloading title is arbitrary across parallel peers; a full list has no
   such ambiguity, and slskd album hunts are exactly the jobs whose per-track outcome is otherwise
   undiscoverable.
-
-The review inbox gets the same treatment: its card said `98 pistas` and nothing more, so approving
-meant trusting a number. `review-tracklist` discloses the quarantined titles (already in the DTO,
-rendered nowhere), keeping a track with no number rather than dropping it.
 
 #### "Now: / Next:" track display
 
@@ -949,8 +930,7 @@ failing a healthy row. The marker existed from the start and was written-but-nev
 (the 24h idle valve remains the backstop for one that genuinely stalls).
 
 The core row is still `active` at release time more often than it looks: items are `organized` but
-not yet `scanned`, and under `holdForReview` the row waits on a curator for as long as the human
-takes — which widens the window from seconds to hours. Measured on prod 2026-08-26: a 5-CD, 103-track
+not yet `scanned`. Measured on prod 2026-08-26: a 5-CD, 103-track
 album whose 98 files had all landed *and scanned* was shown as `Error · 98 of 100 · 2 unavailable`,
 blaming a restart of an addon that had `RestartCount=0` and seven days of uptime.
 
