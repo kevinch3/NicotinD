@@ -42,6 +42,8 @@ export class ReviewFlagsPanelComponent {
     reason: string;
     createdBy: string;
     createdAt: number;
+    source?: string;
+    reportCount?: number;
   }> {
     const done = this.resolved();
     return this.flags().filter((f) => !done.has(f.id));

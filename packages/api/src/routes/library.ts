@@ -1,7 +1,14 @@
 import { Hono } from 'hono';
 import { basename, dirname, join, relative } from 'node:path';
 import { existsSync } from 'node:fs';
-import { createLogger, isMbidShape } from '@nicotind/core';
+import {
+  createLogger,
+  isMbidShape,
+  isTasteOnly,
+  isTrackReportReason,
+  trackReportReasonText,
+  TRACK_REPORT_REASONS,
+} from '@nicotind/core';
 import type { Song, Album, Artist } from '@nicotind/core';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
@@ -59,6 +66,7 @@ import {
   createCurationFlag,
   isFlagTargetKind,
   resolveCurationFlag,
+  recordListenerReport,
 } from '../services/curation-flags.js';
 import { recordAudit } from '../services/audit-log.js';
 import { loadGenreSets, setSongGenres } from '../services/genre-split.js';
@@ -1939,6 +1947,68 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (!exists) return c.json({ error: 'Song not found' }, 404);
     new PlaylistService(db).likeSong(c.var.user.sub, id);
     return c.json({ liked: true });
+  });
+
+  /**
+   * A listener reports what is wrong with a track (issue #987).
+   *
+   * Deliberately **not** curator-gated: the person best placed to notice that a
+   * track is mistagged, misnamed or misplaced is the one listening to it, and
+   * before this that observation had nowhere to go — curation reached the
+   * backlog only through operator-side MCP tools and audit predicates.
+   *
+   * `not_for_me` is the one reason that must not land here. Nothing is wrong
+   * with the track; the listener simply does not want it, which is a fact about
+   * them. It is answered `{ routed: 'taste' }` so the client can send it to
+   * `POST /api/recommendations/feedback` instead, where that signal is already
+   * modelled and actually used.
+   */
+  app.post('/songs/:id/report', async (c) => {
+    const db = getDatabase();
+    const id = c.req.param('id');
+    const exists = db
+      .query<{ id: string }, [string]>('SELECT id FROM library_songs WHERE id = ?')
+      .get(id);
+    if (!exists) return c.json({ error: 'Song not found', code: 'NOT_FOUND' }, 404);
+
+    const body = await c.req
+      .json<{ reason?: unknown; note?: unknown }>()
+      .catch(() => ({}) as { reason?: unknown; note?: unknown });
+    if (!isTrackReportReason(body.reason)) {
+      return c.json(
+        {
+          error: `reason must be one of ${TRACK_REPORT_REASONS.join(', ')}`,
+          code: 'VALIDATION_ERROR',
+        },
+        400,
+      );
+    }
+    if (isTasteOnly(body.reason)) return c.json({ routed: 'taste' as const, flagged: false });
+
+    const note = typeof body.note === 'string' ? body.note.slice(0, 500) : null;
+    const user = c.get('user');
+    const result = recordListenerReport(db, {
+      targetKind: 'song',
+      targetId: id,
+      reason: trackReportReasonText(body.reason, note),
+      reasonId: body.reason,
+      note,
+      userId: user?.sub ?? 'unknown',
+    });
+    recordAudit(db, user, 'curation.flag', {
+      targetKind: 'song',
+      targetId: id,
+      detail: `reported: ${body.reason}`,
+    });
+    return c.json({
+      routed: 'curation' as const,
+      flagged: true,
+      flagId: result.flag.id,
+      created: result.created,
+      reportCount: result.flag.reportCount,
+      /** False when this person had already reported this track. */
+      counted: result.counted,
+    });
   });
 
   app.delete('/songs/:id/like', (c) => {

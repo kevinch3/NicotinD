@@ -46,7 +46,12 @@
         [trackId]="track.id"
         (close)="contextMenu.set(null)"
         (openInfo)="onOpenTrackInfo($event)"
+        (openReport)="reportTrackId.set($event)"
       />
+    }
+
+    @if (reportTrackId(); as id) {
+      <app-report-track-dialog [trackId]="id" (closed)="reportTrackId.set(null)" />
     }
 
     <!-- Two-column at lg: cover/transport centered left, queue/lyrics a fixed

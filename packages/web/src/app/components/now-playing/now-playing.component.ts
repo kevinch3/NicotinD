@@ -12,6 +12,7 @@ import { NowPlayingQueuePanelComponent } from './now-playing-queue-panel/now-pla
 import { NowPlayingLyricsPanelComponent } from './now-playing-lyrics-panel/now-playing-lyrics-panel.component';
 import { NowPlayingKaraokeFullscreenComponent } from './now-playing-karaoke-fullscreen/now-playing-karaoke-fullscreen.component';
 import { TrackContextMenuComponent } from '../track-context-menu/track-context-menu.component';
+import { ReportTrackDialogComponent } from '../report-track-dialog/report-track-dialog.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TrackInfoService } from '../../services/track-info.service';
 import { VocalSeparationService } from '../../services/vocal-separation.service';
@@ -47,6 +48,7 @@ import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container'
     NowPlayingLyricsPanelComponent,
     NowPlayingKaraokeFullscreenComponent,
     TrackContextMenuComponent,
+    ReportTrackDialogComponent,
     TranslatePipe,
     TvNavGroupDirective,
     TvNavItemDirective,
@@ -70,6 +72,8 @@ export class NowPlayingComponent {
 
   // Context menu state
   readonly contextMenu = signal<{ x: number; y: number } | null>(null);
+  /** The track whose report dialog is open (#987), or null. */
+  readonly reportTrackId = signal<string | null>(null);
 
   /** TV queue overlay opened from the Next-up chip (issue #399). */
   readonly tvQueueOpen = signal(false);

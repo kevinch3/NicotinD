@@ -132,3 +132,16 @@ export * from '../../../addon-sdk/src/addon-capability-risk';
 // #517, pure + browser-safe) — the Extensions marketplace renders install cards
 // and the paste-able snippet from the same source the API route serves.
 export * from '../../../core/src/addon-catalog';
+
+// Track reports (issue #987). The reason list and the taste-only rule are
+// *values*, not just types: the dialog renders the same closed set the route
+// validates against, and both sides decide "does this become a curation flag?"
+// with the same function — which is what stops the two drifting into a UI that
+// offers a reason the server rejects. Free of node builtins on purpose.
+export {
+  TRACK_REPORT_REASONS,
+  isTasteOnly,
+  isTrackReportReason,
+  trackReportReasonText,
+} from '../../../core/src/types/track-report';
+export type { TrackReportReason } from '../../../core/src/types/track-report';

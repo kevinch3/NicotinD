@@ -1,0 +1,55 @@
+<div class="fixed inset-0 z-[90] bg-black/50" (click)="closed.emit()"></div>
+<div
+  class="fixed z-[95] inset-x-4 top-1/2 -translate-y-1/2 mx-auto max-w-sm rounded-xl bg-theme-surface border border-theme shadow-xl p-4"
+  role="dialog"
+  aria-modal="true"
+  data-testid="report-track-dialog"
+>
+  <p class="text-sm font-semibold text-theme-primary mb-3">{{ 'report.title' | t }}</p>
+
+  <div class="flex flex-col gap-1 mb-3">
+    @for (reason of REASONS; track reason) {
+      <button
+        type="button"
+        (click)="select(reason)"
+        [attr.data-testid]="'report-reason-' + reason"
+        [attr.aria-pressed]="selected() === reason"
+        class="text-left px-3 py-2 rounded-lg text-sm transition"
+        [class]="
+          selected() === reason
+            ? 'bg-theme-surface-2 text-theme-primary'
+            : 'text-theme-secondary hover:bg-theme-surface-2'
+        "
+      >
+        {{ labelKey(reason) | t }}
+      </button>
+    }
+  </div>
+
+  <textarea
+    class="w-full rounded-lg bg-theme-surface-2 border border-theme px-3 py-2 text-sm text-theme-primary mb-3"
+    rows="2"
+    [attr.placeholder]="'report.notePlaceholder' | t"
+    data-testid="report-note"
+    (input)="onNote($any($event.target).value)"
+  ></textarea>
+
+  <div class="flex justify-end gap-2">
+    <button
+      type="button"
+      (click)="closed.emit()"
+      class="px-3 py-1.5 rounded-lg text-sm text-theme-secondary hover:bg-theme-surface-2 transition"
+    >
+      {{ 'report.cancel' | t }}
+    </button>
+    <button
+      type="button"
+      (click)="submit()"
+      [disabled]="!selected() || busy()"
+      data-testid="report-submit"
+      class="px-3 py-1.5 rounded-lg text-sm font-semibold bg-theme-accent text-on-accent disabled:opacity-50 transition"
+    >
+      {{ 'report.submit' | t }}
+    </button>
+  </div>
+</div>

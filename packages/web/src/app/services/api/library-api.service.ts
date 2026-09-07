@@ -1,3 +1,4 @@
+import type { TrackReportReason } from '@nicotind/core';
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { type Observable, of, map, catchError, tap, timeout } from 'rxjs';
@@ -183,6 +184,19 @@ export class LibraryApiService {
    * Silent one-shot: gated server-side on "no portrait and not a manual
    * override", so it can't thrash or clobber a curator upload.
    */
+  /**
+   * A listener's report about a track (issue #987). `not_for_me` is answered
+   * `{ routed: 'taste' }` and files nothing — see the route's own note.
+   */
+  reportTrack(id: string, reason: TrackReportReason, note?: string) {
+    return this.http.post<{
+      routed: 'curation' | 'taste';
+      flagged: boolean;
+      reportCount: number;
+      counted: boolean;
+    }>(`/api/library/songs/${id}/report`, { reason, note: note || undefined });
+  }
+
   autoFetchArtistImage(id: string) {
     return this.http.post<AutoFetchImageResult>(`/api/library/artists/${id}/auto-fetch-image`, {});
   }

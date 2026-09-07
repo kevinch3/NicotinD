@@ -9,6 +9,11 @@
         <button (click)="showTrackInfo()" class="w-full text-left px-4 py-2 text-sm text-theme-secondary hover:bg-theme-hover transition">
           Track info
         </button>
+        <!-- Beside "Track info" on purpose: the listener noticing something is
+             wrong is usually the one who just opened the track's details. -->
+        <button (click)="reportTrack()" data-testid="track-menu-report" class="w-full text-left px-4 py-2 text-sm text-theme-secondary hover:bg-theme-hover transition">
+          {{ 'report.menuItem' | t }}
+        </button>
       }
     </div>
   

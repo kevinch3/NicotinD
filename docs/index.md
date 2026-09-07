@@ -487,6 +487,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Curation review queue**: a durable "needs a human decision" flag a curator or MCP agent raises
   instead of guessing; `curation_flags`, `createCurationFlag`, `flag_for_review`, one open flag per
   target. → [mcp-agent.md](mcp-agent.md)
+- **Listener track reports**: listeners file into that same queue; `TRACK_REPORT_REASONS`,
+  `recordListenerReport`, `curation_flag_reports` (per-reporter rate limit), `isTasteOnly`.
+  → [mcp-agent.md](mcp-agent.md)
 - **Admin audit log**: `audit_log` + `recordAudit` called explicitly at destructive mutation sites,
   never as blanket middleware; entries carry `targetKind`/`targetId`/`detail`, and ledger failures
   never break the audited action. → [roles.md](roles.md)

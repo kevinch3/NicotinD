@@ -1,11 +1,13 @@
 import { Component, input, output, inject, computed } from '@angular/core';
 import { Router } from '@angular/router';
 import { clampMenuPosition } from '../../lib/menu-position';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 @Component({
   selector: 'app-track-context-menu',
   templateUrl: './track-context-menu.component.html',
   standalone: true,
+  imports: [TranslatePipe],
 })
 export class TrackContextMenuComponent {
   private router = inject(Router);
@@ -15,6 +17,7 @@ export class TrackContextMenuComponent {
   readonly trackId = input<string | undefined>(undefined);
   readonly close = output<void>();
   readonly openInfo = output<string>();
+  readonly openReport = output<string>();
 
   // Keep the menu inside the viewport — a raw tap near the right/bottom edge
   // otherwise overflows off-screen on mobile (§G6).
@@ -34,6 +37,12 @@ export class TrackContextMenuComponent {
   showTrackInfo(): void {
     const id = this.trackId();
     if (id) this.openInfo.emit(id);
+    this.close.emit();
+  }
+
+  reportTrack(): void {
+    const id = this.trackId();
+    if (id) this.openReport.emit(id);
     this.close.emit();
   }
 }

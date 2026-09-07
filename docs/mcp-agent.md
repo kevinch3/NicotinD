@@ -270,6 +270,36 @@ open flag per target**, so an agent re-running its sweep updates the reason
 instead of minting a row per pass — the failure mode that would otherwise turn a
 queue into a feed.
 
+### Listeners write to the same queue (issue #987)
+
+`POST /api/library/songs/:id/report` lets **anyone listening** file into this queue, from the Now
+Playing context menu. It is deliberately not curator-gated: the person best placed to notice that a
+track is mistagged, misnamed or misplaced is the one hearing it, and before this that observation
+had nowhere to go — curation reached the backlog only through the MCP tools above and the audit
+predicates.
+
+One queue, not two: a defect is a defect whoever noticed it, and a second worklist is how a backlog
+goes unread. `source` (`curator` | `listener`) says which, because the two carry different
+confidence, and `report_count` says how many people independently agree.
+
+It cannot go through `createCurationFlag`, though. That function overwrites the reason of any open
+flag on the target — right for an agent re-running its own sweep, wrong twice here: a listener would
+silently rewrite a **curator's** carefully worded flag, and the tenth reporter would erase the first
+nine rather than corroborate them. `recordListenerReport` instead leaves a curator's wording
+untouched (only the tally moves) and appends a listener reason only when nobody has given it yet.
+
+`curation_flag_reports` holds one row per (target, reporter) and **is** the rate limit. A structural
+limit beats a time window here: the abuse worth stopping is one person inflating a tally, not
+somebody reporting two tracks quickly. It also makes `report_count` mean distinct people rather than
+clicks, and keeps each reporter's own reason and note, which the merged flag string loses.
+
+The reason list (`TRACK_REPORT_REASONS`) is closed and shared with the client through the web's core
+shim, so the dialog cannot offer a reason the route rejects. **`not_for_me` never becomes a flag**:
+nothing is wrong with the track, the listener simply does not want it, and filing that would fill
+the worklist with items no curator could ever action. The route answers `{ routed: 'taste' }` and
+the client sends it to `POST /api/recommendations/feedback` (kind `exclude`), where the signal is
+already modelled and actually used.
+
 Listing rides the shared `ServiceReview` snapshot (`reviewFlags`) rather than
 adding a poller, per the one-resource rule, and surfaces as the Admin
 **Needs review** card with a Resolve button. Curators can also raise and clear
