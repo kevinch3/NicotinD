@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.5](https://github.com/kevinch3/NicotinD/compare/v0.6.4...v0.6.5) (2026-09-07)
+
+### Bug Fixes
+
+* **acquisition:** a link that names one release must name its album ([#999](https://github.com/kevinch3/NicotinD/issues/999)) ([5d67f98](https://github.com/kevinch3/NicotinD/commit/5d67f98107f878afd4ccddf959840bc077bffc0f)), closes [#997](https://github.com/kevinch3/NicotinD/issues/997)
 ## [0.6.4](https://github.com/kevinch3/NicotinD/compare/v0.6.3...v0.6.4) (2026-09-07)
 
 ### Features
