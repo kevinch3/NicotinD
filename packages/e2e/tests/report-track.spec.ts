@@ -7,6 +7,22 @@ import { FIXTURE, openAlbumCard } from '../helpers';
  * mistagged is the one listening to it, and that observation had nowhere to go.
  */
 test.describe('report a track', () => {
+  /**
+   * The Admin card ships collapsed, and a collapsed section renders no rows —
+   * so asserting "no listener flag" against a closed card passes whatever the
+   * truth is. Expanding first is what makes both assertions mean anything.
+   */
+  async function openNeedsReview(page: import('@playwright/test').Page) {
+    await page.goto('/admin');
+    const toggle = page
+      .getByTestId('settings-group-toggle')
+      .filter({ hasText: 'Needs review' })
+      .first();
+    await expect(toggle).toBeVisible();
+    if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  }
+
   async function openReportDialog(page: import('@playwright/test').Page) {
     await page.goto('/library');
     await openAlbumCard(page, FIXTURE.album.title);
@@ -28,9 +44,8 @@ test.describe('report a track', () => {
     await page.getByTestId('report-submit').click();
     await expect(page.getByTestId('report-track-dialog')).toBeHidden();
 
-    await page.goto('/admin');
-    const row = page.getByText('mistagged: the year is wrong');
-    await expect(row).toBeVisible();
+    await openNeedsReview(page);
+    await expect(page.getByText('mistagged: the year is wrong')).toBeVisible();
     await expect(page.getByTestId('flag-source-listener').first()).toBeVisible();
   });
 
@@ -39,6 +54,9 @@ test.describe('report a track', () => {
    * track, so a flag would put an item on the worklist no curator can action.
    */
   test('"I don’t like it" files no curation flag', async ({ page }) => {
+    await openNeedsReview(page);
+    const before = await page.getByTestId('flag-source-listener').count();
+
     await openReportDialog(page);
 
     const feedback = page.waitForResponse(
@@ -48,7 +66,9 @@ test.describe('report a track', () => {
     await page.getByTestId('report-submit').click();
     await feedback;
 
-    await page.goto('/admin');
-    await expect(page.getByTestId('flag-source-listener')).toHaveCount(0);
+    // Scoped to a delta, not an absolute count: the specs share one server, so
+    // a flag another test filed would otherwise read as this one's.
+    await openNeedsReview(page);
+    await expect(page.getByTestId('flag-source-listener')).toHaveCount(before);
   });
 });
