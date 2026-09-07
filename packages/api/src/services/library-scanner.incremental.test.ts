@@ -68,11 +68,15 @@ describe('scanFull incremental cache', () => {
 });
 
 describe('canonical track selection from acquisition jobs', () => {
-  it('drops a foreign rip using the canonical tracklist recorded on a unified acquisition job', async () => {
+  it('applies the canonical tracklist recorded on a unified acquisition job', async () => {
+    // The tracklist no longer deletes what it does not name (#968), so the
+    // observable proving it reached the scanner is that two differently-spelled
+    // files of ONE canonical track collapse to a single row — without the list
+    // they would key by their own titles and both survive.
     const albumDir = join(musicDir, 'Artist', 'Album');
     mkdirSync(albumDir, { recursive: true });
     writeFileSync(join(albumDir, '01 Real Song.mp3'), Buffer.alloc(8));
-    writeFileSync(join(albumDir, '99 Foreign Bonus Cut.mp3'), Buffer.alloc(8));
+    writeFileSync(join(albumDir, '02 Real Song (Live).mp3'), Buffer.alloc(8));
     // No album_jobs row — only the unified job carries the canonical tracklist
     // (a track-search acquisition, for example). The untagged fixture files
     // scan under the inferred "Unknown Artist", so the job is keyed the same

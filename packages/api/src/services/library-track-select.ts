@@ -48,15 +48,22 @@ export interface SelectableTrack {
  *
  * - **With a canonical (Lidarr) tracklist** — each file is keyed to the canonical
  *   track it matches (diacritic-insensitive, fuzzy via `titlesOverlap`), so the
- *   same song ripped at different track numbers/formats collapses to one entry,
- *   and any file matching **no** canonical track is **dropped** (foreign /
- *   mislabeled rips that a bad Soulseek folder mixed in — "as Lidarr proposes").
- *   The tracklist decides what to **admit**, never what to **retain**: a file
- *   `knownRelPaths` says the library already holds is keyed by title like the
- *   no-canonical case, so it is never dropped as foreign. Without that, a
- *   curator's title correction removed canonical words, fell under the 0.7
- *   `titlesOverlap` threshold and was discarded from the scan — so the edit
- *   never reached persist and the DB silently kept the old title (issue #776).
+ *   same song ripped at different track numbers/formats collapses to one entry.
+ *   A file matching **no** canonical track keys by its own title and is **kept**:
+ *   the tracklist ranks duplicate files of a track, it never deletes the only
+ *   copy of one (issue #968). It used to drop them as foreign, which deleted
+ *   real music whenever the pinned list described a different edition than the
+ *   files that landed — a remaster, a regional release, or a title differing
+ *   only in punctuation. That cost 121 unreachable tracks on prod, and the
+ *   drop was a ratchet: `knownRelPaths` is read from `library_songs`, so a
+ *   dropped file never becomes known and is re-dropped by every later scan.
+ *   The cost of retention is that a genuinely foreign rip in a mixed folder now
+ *   surfaces in the album — curation's job, not the scanner's, because the two
+ *   are indistinguishable by title (on prod, 133 of 134 such files carried the
+ *   album's own artist tag).
+ * - `knownRelPaths` (files the library already holds) additionally bypasses
+ *   canonical keying entirely, so a curator's title correction is never re-keyed
+ *   to the canonical wording it deliberately moved away from (issue #776).
  * - **Without one** — files are keyed by normalized title, so format-duplicates
  *   of the same song still collapse to the best copy, but nothing is dropped as
  *   "foreign" (we have no authority on what belongs).
@@ -82,14 +89,17 @@ export function selectAlbumTracks<T extends SelectableTrack>(
     // track keyed `1` — behaving exactly as before.
     const disc = t.disc ?? 1;
 
-    let key: string;
-    if (useCanonical && !knownRelPaths?.has(t.relPath)) {
-      const match = canon.find((c) => titlesOverlap(c, norm));
-      if (!match) continue; // foreign track — not part of the canonical album
-      key = `c:${disc}:${match}`;
-    } else {
-      key = `t:${disc}:${norm}`;
-    }
+    // One keyspace on purpose: a file keyed by the canonical track it matched and
+    // a file keyed by its own identical title are the same track, so they collapse
+    // to the best copy instead of both surviving as separate rows.
+    // A file the tracklist does not name keys by its own title rather than being
+    // dropped — the list ranks duplicate files of a track, it never deletes the
+    // only copy of one (#968).
+    const key = `${disc}:${
+      useCanonical && !knownRelPaths?.has(t.relPath)
+        ? (canon.find((c) => titlesOverlap(c, norm)) ?? norm)
+        : norm
+    }`;
 
     const cur = best.get(key);
     if (!cur) {

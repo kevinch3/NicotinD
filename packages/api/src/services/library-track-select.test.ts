@@ -102,13 +102,16 @@ describe('selectAlbumTracks — a title repeated across discs', () => {
     expect(kept).toHaveLength(2);
   });
 
-  it('still drops a foreign track on a multi-disc album', () => {
-    // Disc-awareness must not become a bypass for canonical admission.
+  it('keeps an unnamed multi-disc track in its own disc slot (#968)', () => {
+    // Disc-awareness must not collapse a track the tracklist does not name into
+    // another disc's entry — it keys by (disc, its own title) and survives.
     const kept = selectAlbumTracks(
       [d('CD1/01 - Intro.flac', 'Intro', 1), d('CD2/99 - Bonus Advert.flac', 'Bonus Advert', 2)],
       ['Intro'],
     );
-    expect(kept.map((k) => k.relPath)).toEqual(['CD1/01 - Intro.flac']);
+    expect(kept.map((k) => k.relPath).sort()).toEqual(
+      ['CD1/01 - Intro.flac', 'CD2/99 - Bonus Advert.flac'].sort(),
+    );
   });
 });
 
@@ -141,26 +144,25 @@ describe('selectAlbumTracks — with a canonical Lidarr tracklist', () => {
     t('10 - Parte 2 Jaula.m4a', 'Parte 2: Jaula', 'm4a'), // foreign
   ];
 
-  it('drops foreign tracks and keeps one best copy per canonical track', () => {
-    const kept = selectAlbumTracks(files, canonical)
-      .map((k) => k.relPath)
-      .sort();
-    expect(kept).toEqual(
-      [
-        '01 - Flora y Fauno.flac', // flac beats mp3
-        '03 - Tormento.m4a',
-        '04 - Deshoras.mp3',
-        '05 - Ideas.mp3',
-        '07 - Muñeco de Haiti.flac', // flac beats the accented m4a dup
-      ].sort(),
-    );
+  it('keeps one best copy per canonical track', () => {
+    const kept = selectAlbumTracks(files, canonical).map((k) => k.relPath);
+    expect(kept).toContain('01 - Flora y Fauno.flac'); // flac beats mp3
+    expect(kept).not.toContain('01 - Flora y Fauno.mp3');
+    expect(kept).toContain('07 - Muñeco de Haiti.flac'); // flac beats the accented m4a dup
+    expect(kept).not.toContain('08 - Muñeco de Haití.m4a');
   });
 
-  it('excludes every foreign file (Pulpito / El Sultán / Jaula)', () => {
+  it('retains the unnamed files rather than deleting them (#968)', () => {
+    // Deliberate trade-off, chosen 2026-09-07 after prod measurement: the
+    // tracklist no longer deletes a file it does not name, so a genuinely
+    // foreign rip in a mixed folder now shows up in the album. That is the
+    // price of never losing a real track to a tracklist pinned from a
+    // different edition — which cost 121 unreachable tracks on prod, against
+    // 1 dropped file whose artist tag actually disagreed with the album.
     const kept = selectAlbumTracks(files, canonical).map((k) => k.relPath);
-    expect(kept).not.toContain('05 - Pulpito.m4a');
-    expect(kept).not.toContain('09 - Parte 1 El Sultán.m4a');
-    expect(kept).not.toContain('10 - Parte 2 Jaula.m4a');
+    expect(kept).toContain('05 - Pulpito.m4a');
+    expect(kept).toContain('09 - Parte 1 El Sultán.m4a');
+    expect(kept).toContain('10 - Parte 2 Jaula.m4a');
   });
 
   it('matches diacritic variants (Haiti / Haití) as the same canonical track', () => {
@@ -205,12 +207,15 @@ describe('selectAlbumTracks — canonical governs admission, not retention', () 
     'Un Día Normal (Remastered 2022)',
   ];
 
-  it('drops a retagged file that is NOT already in the library (unchanged ingest behaviour)', () => {
-    const kept = selectAlbumTracks(
-      [t('02 - Es Por Ti.opus', 'Es Por Ti', 'opus', 200)],
-      JUANES_CANONICAL,
-    );
-    expect(kept).toEqual([]);
+  it('keeps a retagged file that is NOT yet in the library (#968 reversed this)', () => {
+    // This assertion used to expect [] — "unchanged ingest behaviour". That was
+    // the ratchet: the file is dropped, so it never becomes known, so it is
+    // dropped again on every later scan. On prod it emptied Juanes' Un Día
+    // Normal to 0 rows against 10 files on disk.
+    const file = t('02 - Es Por Ti.opus', 'Es Por Ti', 'opus', 200);
+    expect(selectAlbumTracks([file], JUANES_CANONICAL).map((k) => k.relPath)).toEqual([
+      file.relPath,
+    ]);
   });
 
   it('keeps a retagged file the library already holds, so the edit reaches persist', () => {
@@ -219,11 +224,15 @@ describe('selectAlbumTracks — canonical governs admission, not retention', () 
     expect(kept.map((k) => k.title)).toEqual(['Es Por Ti']);
   });
 
-  it('still drops a genuinely foreign rip that the library does not hold', () => {
+  it('keeps a foreign rip alongside the known track instead of deleting it (#968)', () => {
+    // The tracklist can no longer delete the only copy of anything, so a rip
+    // the library does not hold is retained. Curation removes it; a scan must
+    // not, because the scan cannot tell it apart from a real bonus track —
+    // measured on prod, 133 of 134 such drops carried the album's own artist.
     const known = t('01 - A Dios Le Pido.opus', 'A Dios Le Pido', 'opus', 200);
     const foreign = t('99 - Some Other Band - Filler.mp3', 'Some Other Band Filler', 'mp3', 320);
     const kept = selectAlbumTracks([known, foreign], JUANES_CANONICAL, new Set([known.relPath]));
-    expect(kept.map((k) => k.relPath)).toEqual([known.relPath]);
+    expect(kept.map((k) => k.relPath).sort()).toEqual([known.relPath, foreign.relPath].sort());
   });
 
   it('still collapses format-duplicates of a known retagged track to the best copy', () => {
@@ -235,5 +244,76 @@ describe('selectAlbumTracks — canonical governs admission, not retention', () 
       new Set([flac.relPath, opus.relPath]),
     );
     expect(kept.map((k) => k.suffix)).toEqual(['flac']);
+  });
+});
+
+// Issue #968: a pinned canonical tracklist routinely describes a DIFFERENT
+// edition than the files that landed — Lidarr's Taylor Swift "1989" is the
+// Chinese release ("Style 型"), Juanes' is the 2022 remaster, Rosalía's differs
+// from the file only in punctuation ("Cap.5:" vs "Cap. 5 -"). Every one of
+// those files matched no canonical title and was dropped as foreign, and
+// because `knownRelPaths` is read from library_songs the drop is a ratchet: a
+// dropped file is never "known" again, so every later scan re-drops it.
+// Measured on prod 2026-09-07: 121 tracks unreachable, and of the files being
+// dropped 133 carried the album's own artist against 1 that did not.
+// The tracklist ranks duplicate files of a track; it never deletes the only copy.
+describe('selectAlbumTracks — a canonical list never deletes the only copy (#968)', () => {
+  const REMASTER_CANONICAL = [
+    'A Dios Le Pido (Remastered 2022)',
+    'Es Por Tí (Remastered 2022)',
+    'Un Día Normal (Remastered 2022)',
+  ];
+
+  it('keeps a track the canonical list does not name when nothing else covers it', () => {
+    const only = t('03 - Un Día Normal.opus', 'Un Día Normal', 'opus', 200);
+    expect(selectAlbumTracks([only], REMASTER_CANONICAL).map((k) => k.relPath)).toEqual([
+      only.relPath,
+    ]);
+  });
+
+  it('does not empty an album whose canonical list is a different edition', () => {
+    // The real prod shape: 10 of 10 files matched nothing, 0 library rows.
+    const files = [
+      t('03 - Un Día Normal.opus', 'Un Día Normal', 'opus', 200),
+      t('06 - Luna.opus', 'Luna', 'opus', 200),
+      t('08 - Mala Gente.opus', 'Mala Gente', 'opus', 200),
+    ];
+    expect(selectAlbumTracks(files, REMASTER_CANONICAL)).toHaveLength(3);
+  });
+
+  it('keeps a near-miss that differs from the canonical title only in punctuation', () => {
+    const rosalia = t('05 - Reniego.opus', 'Reniego (Cap. 5 - Lamento)', 'opus', 200);
+    const kept = selectAlbumTracks(
+      [rosalia],
+      ['RENIEGO (Cap.5: Lamento)', 'MALAMENTE (Cap.1: Augurio)'],
+    );
+    expect(kept.map((k) => k.relPath)).toEqual([rosalia.relPath]);
+  });
+
+  it('still collapses duplicate copies of one unnamed track to the best file', () => {
+    // Retention must not become a duplicate factory: the floor keeps the track,
+    // not every file of it.
+    const opus = t('12 - Bonus.opus', 'Playground (Studio Outtake)', 'opus', 200);
+    const flac = t('12 - Bonus.flac', 'Playground (Studio Outtake)', 'flac', 900);
+    const kept = selectAlbumTracks([opus, flac], REMASTER_CANONICAL);
+    expect(kept.map((k) => k.suffix)).toEqual(['flac']);
+  });
+
+  it('collapses a canonical-matched file and an unmatched copy of the same track', () => {
+    // One keyspace: a file keyed by its canonical match and a file keyed by its
+    // own identical title are the same track, so they must not both survive.
+    const matched = t(
+      '01 - A Dios Le Pido (Remastered 2022).mp3',
+      'A Dios Le Pido (Remastered 2022)',
+      'mp3',
+      320,
+    );
+    const plain = t(
+      '01 - A Dios Le Pido (Remastered 2022).opus',
+      'A Dios Le Pido (Remastered 2022)',
+      'opus',
+      200,
+    );
+    expect(selectAlbumTracks([matched, plain], REMASTER_CANONICAL)).toHaveLength(1);
   });
 });
