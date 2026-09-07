@@ -21,6 +21,7 @@ import {
 } from './playlist-recipe.js';
 import { expandGenreWhere } from './curated-playlists.js';
 import { songFilterWheres } from './library-filter-sql.js';
+import { feedEligibilitySql, type ReadinessTier } from './recommendation/eligibility.js';
 import { createLogger } from '@nicotind/core';
 
 const log = createLogger('auto-playlists');
@@ -137,17 +138,25 @@ export function candidatesFor(db: Database, recipe: PlaylistRecipe): OrderableRo
     ? songFilterWheres({ countries: recipe.countries }, 's')
     : { wheres: [], params: [] };
   const extraSql = extra.wheres.length ? ` AND ${extra.wheres.join(' AND ')}` : '';
-  const rows = db
-    .query<RecipeRow, Array<string | number>>(
-      `SELECT s.id AS id, s.artist AS artist, s.artist_id AS artistId,
-              s.bpm AS bpm, s.key AS key, s.year AS year, s.duration AS duration,
-              s.energy AS energy, s.valence AS valence, s.danceability AS danceability,
-              s.instrumental AS instrumental, s.acousticness AS acousticness,
-              s.created AS created
-         FROM library_songs s
-        WHERE s.hidden = 0 AND s.landed_at IS NOT NULL AND (${expandGenreWhere(recipe.where)})${extraSql}`,
-    )
-    .all(...extra.params);
+  const rowsAt = (tier: ReadinessTier): RecipeRow[] =>
+    db
+      .query<RecipeRow, Array<string | number>>(
+        `SELECT s.id AS id, s.artist AS artist, s.artist_id AS artistId,
+                s.bpm AS bpm, s.key AS key, s.year AS year, s.duration AS duration,
+                s.energy AS energy, s.valence AS valence, s.danceability AS danceability,
+                s.instrumental AS instrumental, s.acousticness AS acousticness,
+                s.created AS created
+           FROM library_songs s
+          WHERE ${feedEligibilitySql({ alias: 's', tier })} AND (${expandGenreWhere(recipe.where)})${extraSql}`,
+      )
+      .all(...extra.params);
+  // Vetted tracks first; a recipe that cannot reach its target from them
+  // widens to un-analysed rows rather than shipping a short shelf.
+  let rows = rowsAt(1);
+  if (rows.length < recipe.targetSize) {
+    const seen = new Set(rows.map((r) => r.id));
+    rows = [...rows, ...rowsAt(2).filter((r) => !seen.has(r.id))];
+  }
   return rows.map(toOrderable);
 }
 

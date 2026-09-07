@@ -14,11 +14,12 @@ link when someone asks "why did it play that?"; the formula itself is versioned
 
 **1. Gather candidates.** From your own library only, radio collects a few
 hundred candidates that plausibly fit the current song: tracks sharing a genre
-with it, tracks in a similar tempo range, tracks with similar energy, a small
-guaranteed seat for not-yet-analyzed tracks, and a random top-up. Tracks
-shorter than 60 seconds never enter (intros, skits, ads), junk genre tags
-("Other", "Unknown") don't count as genres, and hidden/quarantined tracks are
-never considered.
+with it, tracks in a similar tempo range, tracks with similar energy, and a
+random top-up. Tracks shorter than 60 seconds never enter (intros, skits, ads),
+junk genre tags ("Other", "Unknown") don't count as genres, and a track that is
+hidden, whose album is hidden, or that has not been analysed yet is never
+considered — unless the library has too few analysed tracks to fill the pool,
+in which case not-yet-analysed ones are admitted so radio keeps playing.
 
 **2. Score each candidate 0–1 against the current song.** Each criterion below
 produces a closeness between 0 and 1; the final score is the weighted average
@@ -227,18 +228,51 @@ The `/api/radio/next` endpoint builds a diverse pool in several passes:
 2. Similar BPM range ±15% across all genres (up to 100 random)
 3. Energy-adjacent ±0.15 across all genres (up to 100 random; only when the
    seed carries an energy value)
-4. **Un-analyzed tracks** — `bpm IS NULL OR energy IS NULL` (up to 30), a
-   guaranteed seat so a mid-backfill library stays discoverable and Radio doesn't
-   tunnel on the already-analyzed slice
-5. Random backfill if the pool is still small
+5. Random backfill if the pool is still below `POOL_FLOOR` (50)
 
-Every pass shares two gates: only landed, non-hidden tracks; and **duration ≥
-60 s** (`minCandidateDurationSec`, env `NICOTIND_RADIO_MIN_DURATION` overrides
-— the e2e suite sets `0` because its silent fixtures are ~30 s). Sub-minute
-files are intros/skits/ads/language lessons, not songs (issue #583: prod had
-193 landed sub-60 s tracks, and two 46 s lessons ranked top-2 in a real poll
-scenario); demoting them by duration _closeness_ alone measurably wasn't
-enough, so they never become candidates at all.
+Every pass shares the **feed eligibility** predicate (below) with the duration
+floor switched on: **duration ≥ 60 s** (`minCandidateDurationSec`, env
+`NICOTIND_RADIO_MIN_DURATION` overrides — the e2e suite sets `0` because its
+silent fixtures are ~30 s). Sub-minute files are intros/skits/ads/language
+lessons, not songs (issue #583: prod had 193 landed sub-60 s tracks, and two
+46 s lessons ranked top-2 in a real poll scenario); demoting them by duration
+_closeness_ alone measurably wasn't enough, so they never become candidates at
+all.
+
+The passes run at readiness **tier 1** (analysed tracks only). If the pool is
+still below `POOL_FLOOR` afterwards they run again at **tier 2**, which admits
+un-analysed tracks through the same genre/bpm/energy passes. That replaced the
+old "pool 4", which reserved 30 seats for `bpm IS NULL OR energy IS NULL` rows
+no matter how many analysed candidates existed: it kept a mid-backfill library
+discoverable, but it also put every freshly downloaded, un-vetted track straight
+into radio. The fallback keeps the first property and drops the second.
+
+### Feed eligibility
+
+`services/recommendation/eligibility.ts` is the one definition of "may this
+song be *recommended*", shared by radio (all three lanes and `stationCentroid`),
+`/api/library/random` (mosaic tiles, taste breakers), `/songs/:id/similar`, the
+weekly recipe shelves and the poll generator's seed picks. `feedEligibilitySql`
+returns a WHERE fragment; `isFeedEligible` is its TypeScript twin for rows
+already in memory. `check:feed-eligibility` fails CI for a feed query that
+bypasses it ([quality-gates.md](quality-gates.md)).
+
+Two layers, deliberately asymmetric:
+
+- **Hard, never relaxed:** `hidden = 0` on the song **and** on its album (radio
+  used to check only the song, so an album a curator hid kept playing), landed,
+  and the duration floor when the caller asks for one.
+- **Readiness:** tier 1 requires bpm and energy to be present — or permanently
+  failed via the analysis ledger, so a corrupt file is not excluded forever;
+  tier 2 waives it. Every caller draws at tier 1 and falls back to tier 2 only
+  when tier 1 cannot fill its request (`count` for radio, `size` for random and
+  similar, `targetSize` for a recipe). A library with enough vetted tracks never
+  recommends an unvetted one; a fresh install still plays.
+
+Listings are **not** feeds and must not use the predicate: the Songs tab, an
+album page and search show what the library has, and hiding an un-analysed song
+there would make a fresh download look lost. Playlist "add next" proposals and
+the recently-added shelf stay listings for the same reason.
 
 Cached embeddings for the seed + whole pool are then loaded in one query
 (`loadEmbeddings`, keyed on the seed's model) and attached before ranking; a
@@ -502,7 +536,7 @@ query params (the shared `serializeLibraryFilter` grammar — `mood`, `genre`
 2. Builds the candidate pool as **exactly the set of songs matching the filter**
    — `songFilterWheres(filter, 's')` (from `library-filter-sql.ts`, the same SQL
    builder the library list routes use) spliced into `RADIO_SONG_SELECT`, landed +
-   non-hidden, `RANDOM() LIMIT 300`. Unlike seed radio there is **no** cross-genre
+   eligible (tier 1, then tier 2 if fewer than `count` rows), `RANDOM() LIMIT 300`. Unlike seed radio there is **no** cross-genre
    widening: the vibe stays inside the filter.
 3. Grades every candidate's **station affinity** (above) when the filter names
    genres — one batched `artistGenreShares` query for the whole pool, never one
@@ -977,6 +1011,7 @@ collapse, which it needed most (see "Same recording, multiple files").
 | `packages/api/src/services/genre-distribution.ts`                     | `artistGenreShares` — batched "how much of this artist is this genre", the artist half of station affinity (shares the radar's definition)                                                                                                                     |
 | `packages/api/src/services/embedding-store.ts`                        | `loadEmbeddings` / `embeddingModelFor` / `dominantEmbeddingModel` — pooled read of cached Essentia vectors (the last picks a station's vector space, which has no seed song to pin)                                                                            |
 | `packages/api/src/routes/radio.ts`                                    | `/api/radio/next` route (seed **and** filter paths); exports the shared generators `buildSeedRadio` / `buildFilterRadio` / `radioSongs` (pool build + rank, optional `weights` override for the dump), `toOrderable` (via `songFilterWheres` + `seedCentroid`), `stationCentroid` (the station's target, over the whole eligible set) |
+| `packages/api/src/services/recommendation/eligibility.ts`             | **Feed eligibility**: `feedEligibilitySql` / `feedEligibilityWheres` / `isFeedEligible` — the one "may this song be recommended" predicate (hidden song or album, landed, duration floor, readiness tiers), enforced by `check:feed-eligibility`                                              |
 | `packages/api/src/services/genre-split.ts`                            | `segmentConcatenatedGenre` — splits mashed genre tags feeding the genre axis (see [library-scanner.md](library-scanner.md))                                                                                                                                    |
 | `packages/api/src/scripts/dump-radio.ts`                              | Developer diagnostic dump (read-only) — see "Diagnostic dump" above; `looksConcatenatedGenre` flags un-split genre tags, `parseWeightOverrides` backs `--weights`                                                                                              |
 | `packages/api/src/routes/radio.test.ts`                               | Route tests (incl. filter-radio cases)                                                                                                                                                                                                                         |

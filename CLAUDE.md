@@ -84,7 +84,8 @@ table cannot classify) · `check:route-auth` (an `/api` group mounted with no au
 advisory that both ships and matches the resolved version) · `check:shared-helpers` (a shared helper
 re-implemented locally) · `check:library-walkers` (a `musicDir` walker that skips the reserved-path
 predicate) · `check:search-matching` (a name search done in raw SQL, bypassing the shared
-folded matcher) · `check:json` (duplicate keys) · `check:shipped-issues` (report, not a gate)
+folded matcher) · `check:feed-eligibility` (a recommendation feed selecting songs without the
+shared eligibility predicate) · `check:json` (duplicate keys) · `check:shipped-issues` (report, not a gate)
 · `check:isolated-specs` (slow, not a gate). → [quality-gates.md](docs/quality-gates.md)
 
 **Diagnostics**: `bun run packages/api/src/scripts/prod-probe.ts --orphans --jobs` (read-only prod/dev

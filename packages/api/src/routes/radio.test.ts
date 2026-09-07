@@ -275,7 +275,7 @@ describe('radio /next', () => {
     expect(songs.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('surfaces un-analyzed (bpm-less) tracks via the dedicated pool', async () => {
+  it('reaches for un-analysed tracks only when the vetted pool is starved (tier 2)', async () => {
     seedSong(testDb, {
       id: 'seed',
       title: 'Seed',
@@ -285,7 +285,8 @@ describe('radio /next', () => {
       genre: 'Rock',
       bpm: 120,
     });
-    // No genre and no bpm: only reachable through the un-analyzed pool pass.
+    // No bpm and no energy: unvetted. With nothing else in the library the pool
+    // is starved, so tier 2 admits it rather than serving nothing.
     seedSong(testDb, {
       id: 'raw',
       title: 'Raw',
@@ -298,6 +299,84 @@ describe('radio /next', () => {
     const res = await app.request('/radio/next?seedId=seed');
     const ids = (await res.json()).map((s: { id: string }) => s.id);
     expect(ids).toContain('raw');
+  });
+
+  it('never serves an un-analysed track while enough vetted candidates exist', async () => {
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A',
+      albumId: 'alb1',
+      album: 'Alb 1',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    for (let i = 0; i < 60; i++) {
+      seedSong(testDb, {
+        id: `vetted-${i}`,
+        title: `Vetted ${i}`,
+        artist: `Artist ${i}`,
+        artistId: `artist-${i}`,
+        albumId: `valb-${i}`,
+        album: `VAlb ${i}`,
+        genre: 'Rock',
+        bpm: 118 + (i % 5),
+      });
+      testDb.run(`UPDATE library_songs SET energy = 0.5 WHERE id = ?`, [`vetted-${i}`]);
+    }
+    testDb.run(`UPDATE library_songs SET energy = 0.5 WHERE id = 'seed'`);
+    seedSong(testDb, {
+      id: 'raw',
+      title: 'Raw',
+      artist: 'Z',
+      artistId: 'Z',
+      albumId: 'zalb',
+      album: 'ZAlb',
+      genre: 'Rock',
+    });
+
+    const res = await app.request('/radio/next?seedId=seed&count=50');
+    const ids = (await res.json()).map((s: { id: string }) => s.id);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids).not.toContain('raw');
+  });
+
+  it('never serves a song whose album a curator hid, even when the song row is visible', async () => {
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A',
+      albumId: 'alb1',
+      album: 'Alb 1',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'buried',
+      title: 'Buried',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'hidden-alb',
+      album: 'Hidden',
+      genre: 'Rock',
+      bpm: 121,
+    });
+    testDb.run(`UPDATE library_albums SET hidden = 1 WHERE id = 'hidden-alb'`);
+    seedSong(testDb, {
+      id: 'fine',
+      title: 'Fine',
+      artist: 'C',
+      artistId: 'C',
+      albumId: 'alb3',
+      album: 'Alb 3',
+      genre: 'Rock',
+      bpm: 122,
+    });
+
+    const res = await app.request('/radio/next?seedId=seed');
+    const ids = (await res.json()).map((s: { id: string }) => s.id);
+    expect(ids).toContain('fine');
+    expect(ids).not.toContain('buried');
   });
 
   it('matches genre variants (Deep House ↔ House) and ranks them above disjoint genres', async () => {

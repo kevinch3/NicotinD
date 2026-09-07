@@ -14,6 +14,7 @@ import {
   toFeatures,
   type RadioSongRow,
 } from '../routes/radio.js';
+import { feedEligibilitySql } from './recommendation/eligibility.js';
 import {
   DEFAULT_WEIGHTS,
   explainSimilarity,
@@ -129,15 +130,19 @@ export function describeFilter(filter: LibraryFilter): string {
 function pickAutoSeed(db: Database, excludeIds: Set<string>): RadioSongRow | null {
   const marks = [...excludeIds].map(() => '?').join(', ');
   const where = excludeIds.size ? `AND s.id NOT IN (${marks})` : '';
-  return (
-    db
+  // A vetted seed scores every axis; only a library with none falls back to
+  // an un-analysed one (same tier rule as the radio pool it will be run through).
+  for (const tier of [1, 2] as const) {
+    const row = db
       .query<RadioSongRow, string[]>(
         `${RADIO_SONG_SELECT}
-         WHERE s.hidden = 0 AND s.landed_at IS NOT NULL ${where}
+         WHERE ${feedEligibilitySql({ alias: 's', albumAlias: 'a', tier })} ${where}
          ORDER BY (s.genre IS NULL), RANDOM() LIMIT 1`,
       )
-      .get(...excludeIds) ?? null
-  );
+      .get(...excludeIds);
+    if (row) return row;
+  }
+  return null;
 }
 
 function seedScenario(
@@ -233,7 +238,7 @@ export function generatePollScenarios(
   for (const seedId of pinned) {
     const row = db
       .query<RadioSongRow, [string]>(
-        `${RADIO_SONG_SELECT} WHERE s.id = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL`,
+        `${RADIO_SONG_SELECT} WHERE s.id = ? AND ${feedEligibilitySql({ alias: 's', albumAlias: 'a', tier: 2 })}`,
       )
       .get(seedId);
     if (!row) {

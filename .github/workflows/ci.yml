@@ -134,6 +134,12 @@ jobs:
       - name: Check every name search goes through the shared folded matcher
         run: bun run check:search-matching
 
+      # Every feed used to hand-roll `hidden = 0 AND landed_at IS NOT NULL`, and
+      # radio forgot the album's hidden flag. "May this song be recommended" now
+      # has one definition; this fails a feed that answers it its own way.
+      - name: Check every recommendation feed uses the shared eligibility predicate
+        run: bun run check:feed-eligibility
+
       # A check this job runs that no local command reaches is invisible until
       # push — how the web-spec typecheck drifted. This asserts `bun run verify`
       # still covers every step below.

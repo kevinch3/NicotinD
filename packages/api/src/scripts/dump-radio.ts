@@ -42,6 +42,7 @@ import {
   type SongFeatures,
 } from '../services/radio.service.js';
 import { isRealGenre } from '../services/genre-split.js';
+import { feedEligibilitySql } from '../services/recommendation/eligibility.js';
 import { artistGenreShares } from '../services/genre-distribution.js';
 import { DEPTH_CREDIT, matchedGenrePosition } from '../services/station-affinity.js';
 import {
@@ -674,7 +675,7 @@ function main(): void {
       // the run isn't genre-blind), to spot-check coherence across the library.
       seedRow = db
         .query<RadioSongRow, []>(
-          `${RADIO_SONG_SELECT} WHERE s.hidden = 0 AND s.landed_at IS NOT NULL
+          `${RADIO_SONG_SELECT} WHERE ${feedEligibilitySql({ alias: 's', albumAlias: 'a', tier: 2 })}
            ORDER BY (s.genre IS NULL), RANDOM() LIMIT 1`,
         )
         .get();
@@ -697,7 +698,7 @@ function main(): void {
       // the seed represents the artist's tagging (else the whole run is genre-blind).
       seedRow = db
         .query<RadioSongRow, [string]>(
-          `${RADIO_SONG_SELECT} WHERE LOWER(s.artist) = LOWER(?) AND s.hidden = 0 AND s.landed_at IS NOT NULL
+          `${RADIO_SONG_SELECT} WHERE LOWER(s.artist) = LOWER(?) AND ${feedEligibilitySql({ alias: 's', albumAlias: 'a', tier: 2 })}
            ORDER BY (s.genre IS NULL), RANDOM() LIMIT 1`,
         )
         .get(artist);

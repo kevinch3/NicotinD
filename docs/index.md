@@ -312,6 +312,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 
 ### Playback, radio & streaming
 
+- **Feed eligibility**: one predicate decides whether a song may be *recommended* (hidden song or
+  album, landed, duration floor, analysed-or-permanently-failed at tier 1 with a tier-2 fallback when
+  a feed starves); every feed uses it and `check:feed-eligibility` fails a feed that does not.
+  `feedEligibilitySql`, `isFeedEligible`, `POOL_FLOOR`. → [radio.md](radio.md)
 - **Native streaming + cover art**: `GET /api/stream/:id` (Range/206 + seekable transcode cache) and
   `GET /api/cover/:id`; `GET /api/cover/remote` proxies catalog covers through the same downscale
   path, host-allowlisted and content-addressed. `nativeAppCors` is hand-rolled so its Vary append
