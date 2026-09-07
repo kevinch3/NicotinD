@@ -57,11 +57,25 @@ function addSong(
   artistId: string,
   title = 't',
   track: number | null = null,
+  o: { path?: string; artist?: string } = {},
 ): void {
   db.run(
     `INSERT INTO library_songs (id, album_id, title, artist, artist_id, track, path, synced_at)
-     VALUES (?, ?, ?, 'a', ?, ?, ?, 1)`,
-    [id, albumId, title, artistId, track, `/m/${id}.opus`],
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+    [id, albumId, title, o.artist ?? 'a', artistId, track, o.path ?? `/m/${id}.opus`],
+  );
+}
+
+function addCredit(
+  db: Database,
+  songId: string,
+  artistId: string,
+  role = 'primary',
+  position = 0,
+): void {
+  db.run(
+    `INSERT INTO library_song_artists (song_id, artist_id, role, position) VALUES (?, ?, ?, ?)`,
+    [songId, artistId, role, position],
   );
 }
 
@@ -281,11 +295,70 @@ describe('auditLibrary', () => {
         songCount: 1,
         classification: 'single',
       });
-      addSong(db, `ms${i}`, `mal${i}`, `mart${i}`, 't', tracks[i]!);
+      // The organizer files by artist, so a numeric per-track artist tag scatters
+      // one release across a folder PER TRACK — rule B cannot see this cluster.
+      addSong(db, `ms${i}`, `mal${i}`, `mart${i}`, 't', tracks[i]!, {
+        artist: `${100 + i}`,
+        path: `/m/${100 + i}/Maria de Buenos Aires/${tracks[i]}.mp3`,
+      });
     }
     const missplit = checkMisSplitAlbums(db);
     expect(missplit).toHaveLength(1);
     expect(missplit[0]!.message).toContain('4 one-track singles');
+  });
+
+  // Issue #947: prod precision was 0/3. "Granada" is Agustin Lara's song covered
+  // by Uma and Paco de Lucia — three real artists, three unrelated singles, and
+  // their track numbers (1/7/8) are distinct, so #875's corroboration passes.
+  it('does not cluster a famous song covered by three different artists (issue #947)', () => {
+    const covers: [string, string, number][] = [
+      ['uma', 'Uma', 1],
+      ['lara', 'Agustin Lara', 7],
+      ['paco', 'Paco de Lucia', 8],
+    ];
+    covers.forEach(([id, name, track], i) => {
+      addArtist(db, id, name, 1);
+      addAlbum(db, {
+        id: `gal${i}`,
+        name: 'Granada',
+        artist: name,
+        artistId: id,
+        songCount: 1,
+        classification: 'single',
+      });
+      addSong(db, `gs${i}`, `gal${i}`, id, 'Granada', track, {
+        artist: name,
+        path: `/m/${name}/Granada/${track}.mp3`,
+      });
+    });
+    expect(checkMisSplitAlbums(db)).toEqual([]);
+  });
+
+  // The other half of #947's discriminator: real-looking artist tags do NOT
+  // clear a cluster when the files are one folder. A split release whose tracks
+  // each took a different credit still lives in a single directory.
+  it('still flags a shared-folder cluster whose per-track artists look real (issue #947)', () => {
+    const members: [string, string, number][] = [
+      ['va1', 'Astor Piazzolla', 2],
+      ['va2', 'Amelita Baltar', 5],
+      ['va3', 'Horacio Ferrer', 9],
+    ];
+    members.forEach(([id, name, track], i) => {
+      addArtist(db, id, name, 1);
+      addAlbum(db, {
+        id: `fal${i}`,
+        name: 'Balada Para Un Loco',
+        artist: name,
+        artistId: id,
+        songCount: 1,
+        classification: 'single',
+      });
+      addSong(db, `fs${i}`, `fal${i}`, id, 't', track, {
+        artist: name,
+        path: `/m/Piazzolla/Balada Para Un Loco/${track}.mp3`,
+      });
+    });
+    expect(checkMisSplitAlbums(db)).toHaveLength(1);
   });
 
   // Issue #875: prod false positives on this rule — "Closer" (Adriatique,
@@ -393,6 +466,18 @@ describe('auditLibrary', () => {
   it('flags an orphan artist with no releases', () => {
     addArtist(db, 'orphan', 'Ghost', 0);
     expect(auditLibrary(db).findings.map((f) => f.rule)).toContain('orphan_artist');
+  });
+
+  it('does not call a featured artist an orphan: the credit is in library_song_artists (issue #954)', () => {
+    seedClean(db);
+    // A guest vocalist owns no album row and no `library_songs.artist_id`; the
+    // only trace of them is the credit table. 485 of 485 prod findings were this.
+    addArtist(db, 'feat', 'Nathy Peluso', 0);
+    addCredit(db, 's1', 'feat', 'featured', 1);
+    const orphans = auditLibrary(db)
+      .findings.filter((f) => f.rule === 'orphan_artist')
+      .map((f) => f.subject);
+    expect(orphans).not.toContain('feat');
   });
 
   it('selectPollutionTargets expands a watermark artist to all its albums', () => {

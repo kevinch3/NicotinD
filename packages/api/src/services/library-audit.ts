@@ -82,12 +82,22 @@ export function checkArtistIntegrity(db: Database): AuditFinding[] {
       db
         .query<{ c: number }, [string]>('SELECT COUNT(*) c FROM library_songs WHERE artist_id = ?')
         .get(a.id)?.c ?? 0;
-    if (albums === 0 && songs === 0) {
+    // `artist_id` is the PRIMARY credit only. A featured/guest artist owns no
+    // album row and no `library_songs.artist_id`, and is reachable solely through
+    // `library_song_artists` — so a rule that never reads that table calls every
+    // one of them prunable. On prod this was 485 findings, all false (issue #954).
+    const credits =
+      db
+        .query<{ c: number }, [string]>(
+          'SELECT COUNT(*) c FROM library_song_artists WHERE artist_id = ?',
+        )
+        .get(a.id)?.c ?? 0;
+    if (albums === 0 && songs === 0 && credits === 0) {
       out.push({
         rule: 'orphan_artist',
         severity: 'medium',
         subject: a.id,
-        message: `Artist "${a.name}" has no albums and no songs (should be pruned)`,
+        message: `Artist "${a.name}" has no releases, songs or credits`,
       });
       continue;
     }
@@ -341,6 +351,43 @@ export function checkPollutedAlbums(db: Database): AuditFinding[] {
  * — removes all 4 known false positives while keeping both known true positives.
  * `library-audit.test.ts` asserts both directions so this doesn't regress.
  */
+interface CandidateSong {
+  track: number | null;
+  artist: string;
+  path: string;
+}
+
+/** Directory holding the file, '' when the path has none. */
+function parentDir(path: string | undefined): string {
+  if (!path) return '';
+  const i = path.lastIndexOf('/');
+  return i <= 0 ? '' : path.slice(0, i);
+}
+
+/**
+ * Does a same-titled cluster describe ONE release, or several unrelated singles?
+ *
+ * "The members' artists differ" cannot answer this, which is what made #947's
+ * own proposed fix wrong: a mis-split is *defined* by a per-track artist tag, so
+ * both classes differ. Corroboration has to come from evidence a coincidence
+ * cannot produce:
+ *
+ *   A. every artist tag is junk — a bare track number in the artist field is the
+ *      corruption signature itself ("María de Buenos Aires" as 100/101/102/103);
+ *   B. every file sits in ONE directory — a release fragmented per-track is still
+ *      one folder on disk, while three artists' own singles never are.
+ *
+ * Either is decisive; neither alone covers both known true positives, so the rule
+ * takes their union. #947's three prod false positives ("Granada", "Pensando en
+ * Ti", "20 Grandes Exitos") satisfy neither: real artist names, separate folders.
+ */
+function isOneRelease(rows: (CandidateSong | undefined)[]): boolean {
+  if (rows.some((r) => r == null)) return false;
+  if (rows.every((r) => isNumericLikeName(r!.artist))) return true;
+  const dirs = new Set(rows.map((r) => parentDir(r!.path)));
+  return dirs.size === 1 && !dirs.has('');
+}
+
 export function checkMisSplitAlbums(db: Database): AuditFinding[] {
   // Hidden-agnostic (see checkPollutedAlbums): a watermark-named mis-split the
   // curator already hid is still a real-or-junk cluster the cleanup must reason about.
@@ -368,13 +415,13 @@ export function checkMisSplitAlbums(db: Database): AuditFinding[] {
   // Every candidate is a one-song single (enforced above), so one query
   // covers every member across every candidate cluster at once.
   const candidateIds = candidates.flatMap(([, members]) => members.map((m) => m.id));
-  const trackByAlbumId = new Map<string, number | null>(
+  const songByAlbumId = new Map<string, CandidateSong>(
     db
-      .query<{ album_id: string; track: number | null }, string[]>(
-        `SELECT album_id, track FROM library_songs WHERE album_id IN (${candidateIds.map(() => '?').join(',')})`,
+      .query<{ album_id: string; track: number | null; artist: string; path: string }, string[]>(
+        `SELECT album_id, track, artist, path FROM library_songs WHERE album_id IN (${candidateIds.map(() => '?').join(',')})`,
       )
       .all(...candidateIds)
-      .map((r) => [r.album_id, r.track]),
+      .map((r) => [r.album_id, { track: r.track, artist: r.artist, path: r.path }]),
   );
 
   const out: AuditFinding[] = [];
@@ -383,10 +430,10 @@ export function checkMisSplitAlbums(db: Database): AuditFinding[] {
     // shared track=1, so distinctness is judged over the non-null values only —
     // a lone real value shared by every member (or absent everywhere) must not
     // read as corroboration just because a null sorts differently from it.
-    const distinctTracks = new Set(
-      members.map((m) => trackByAlbumId.get(m.id)).filter((t): t is number => t != null),
-    );
+    const rows = members.map((m) => songByAlbumId.get(m.id));
+    const distinctTracks = new Set(rows.map((r) => r?.track).filter((t): t is number => t != null));
     if (distinctTracks.size < 2) continue; // all-identical/all-null: not corroborated as one release
+    if (!isOneRelease(rows)) continue;
     out.push({
       rule: 'missplit_album',
       severity: 'high',
