@@ -2240,3 +2240,42 @@ album**, and every album-scoped rule then fires on it permanently.
 
 The honest outcome of this stretch is a rule that should be re-scoped, not 173 years written.
 A count that cannot be driven to zero is inventory, not a worklist.
+
+### Stretch 19 — 11 writes, and two rules ruled permanently-clean
+
+Went looking for a write lane after two investigation-only stretches, and found one.
+
+**`fragmented_artist` (2) — both false positives, ruled permanently.** Corroborated against
+the tracks, not the names: `Los Ángeles Azules, Belinda, Lalo Ebratt` is *"Amor A Primera
+Vista"* and `Los Ángeles Azules, NICKI NICOLE` is *"Otra Noche"* — both real released
+collaborations, and that artist's whole late catalogue is guest features. `Cele Arrabal,
+Tatto` / `Cele Arrabal, Valentina Olguin` have the same shape, one distinct track per
+partner. Merging would erase the featured credits. Posted to #864 as the standing answer so
+no future pass re-litigates them.
+
+**`get_rare_genres` — nothing left to fold.** Every 1-song genre is a legitimate long-tail
+value (Bhangra, Mariachi, Death Metal, Choro). The 21 folds in the earlier session cleared
+the near-duplicates; what remains is real diversity, not noise.
+
+**`numeric_single` (1) — fixed.** `Various Artists — 2025` was a year-named download folder
+holding one real track, *"Strum"* by Chris Liebing / Speedy J / Collabs 3000. Retitled to
+`Collabs 3000 — Strum`. It came back `classification: 'compilation'`, carried over from the
+Various Artists row — **a second live instance of #967**, and a useful one: the first case
+showed `hidden` surviving a rename, this shows the whole classifier verdict does. That
+variant is quieter (the album is visible but mis-typed, and `classification` drives the
+Albums grid filter). Corrected via `set_album_classification`; commented on #967.
+
+**10 genre writes, zero searches.** Only 8 untagged songs had a genre-bearing sibling, and
+Telzen's 4 `Electronic` siblings are all mp3 128k from one rip — **n=1, not n=4**, the Green
+Velvet trap. So sibling count alone did not justify any of them. What did: artist identity
+independently corroborating the sibling value, which is a genuine second source rather than
+propagating one tag. Applied where both agreed — Telzen and Rick Silva → `Electronic`, Los
+Caligaris and Perras on the beach → `Rock`, Grupo Trinidad → `Cumbia`, Sabroso / Tu Papa ×2 /
+DJ Kairuz ×2 → `Latin`.
+
+Verified all 10 across three layers, not on the return value: song row, `library_song_genres`,
+and a durable `library_genre_overrides` row (`mode: replace`, `status: applied`) — the store
+the scanner re-applies at scan time. Untagged songs **104 → 94**.
+
+Note the health report says `genres.missing` 170 while the table holds 104 untagged; the
+metric counts junk values too, not just absent rows.
