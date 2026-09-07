@@ -1,3 +1,4 @@
+import { dirname, join } from 'node:path';
 import type { Database } from 'bun:sqlite';
 import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { auditLibrary, type AuditSeverity } from './library-audit.js';
@@ -5,6 +6,7 @@ import { unjustifiedHiddenAlbums } from './library-curator.js';
 import { checkFragments } from './library-fragments.js';
 import { artistImageCoverage, type ArtistImageCoverage } from './artist-image-fill.js';
 import { missingAlbumArtSql } from './artwork-store.js';
+import { findFolderCoverName } from './cover-sources.js';
 import { losslessSuffixSql } from './library-track-select.js';
 import { unresolvedGenreSql } from './genre-split.js';
 import { countOpenCurationFlags } from './curation-flags.js';
@@ -27,6 +29,13 @@ import { albumAlreadyComplete, matchingLocalAlbums, onDiskTitles } from './libra
 export interface LibraryHealthOptions {
   /** Per-dimension worklist cap. Default 10, clamped 1–50. */
   sampleSize?: number;
+  /**
+   * Absolute music dir. Only the artwork dimension uses it, to probe the folder
+   * tier for the shortlist of albums that have neither a canonical row nor
+   * embedded art. Omitted ⇒ `unrenderable` is reported as `null` ("not
+   * measured"), never as a number that silently ignores a tier.
+   */
+  musicDir?: string;
 }
 
 // Calibrated on prod 2026-08-26 (16,386 songs): 128/96 floors flag 15 albums,
@@ -118,12 +127,30 @@ export interface LibraryHealthReport {
     };
     albumCovers: {
       /**
-       * `missing` counts album rows with no canonical artwork row. 81% of visible
-       * albums are single-track rows and 93% of this number lands on them, so the
-       * split is reported rather than left implicit: `multiTrack` is the part that
-       * behaves like a work queue, and the rest is inventory (#969).
+       * Four different questions, which were one number until issues #952/#969.
+       *
+       *  - `missing`       — no canonical `library_artwork` row. What
+       *                      `backfillArtwork` acts on. 4,271 on prod.
+       *  - `noEmbeddedArt` — …and no track carries an attached picture either.
+       *                      ~2,859 of the 4,271 render fine through the
+       *                      embedded fallback, so this is ~3x smaller.
+       *  - `unrenderable`  — …and no folder image. The number a curator should
+       *                      act on and the only one worth a network backfill.
+       *                      `null` when no `musicDir` was supplied, because a
+       *                      folder tier that was not checked must not be
+       *                      reported as absent.
+       *  - `missingMultiTrack` — the part of `missing` that behaves like a work
+       *                      queue. 81% of visible albums are single-track rows
+       *                      and 93% of `missing` lands on them, so the rest is
+       *                      inventory rather than a backlog (#969).
        */
-      metric: { visible: number; missing: number; missingMultiTrack: number };
+      metric: {
+        visible: number;
+        missing: number;
+        missingMultiTrack: number;
+        noEmbeddedArt: number;
+        unrenderable: number | null;
+      };
       worklist: (AlbumRef & { songCount: number })[];
       remediation: string;
     };
@@ -171,6 +198,57 @@ export interface LibraryHealthReport {
     lyrics: { metric: { songs: number; withLyrics: number } };
     flags: { metric: { open: number; oldestAt: number | null }; remediation: string };
   };
+}
+
+/**
+ * The three artwork tiers, in the order `extractCover` consults them.
+ *
+ * `missingAlbumArtSql` answers "no canonical override", which is what
+ * `backfillArtwork` acts on — but the name, the worklist framing and the
+ * remediation hint all said "no artwork", and an album with embedded art in its
+ * files renders perfectly while counting as missing. On prod that made the
+ * single largest number in the report ~3x the user-visible problem (#952).
+ *
+ * The folder tier needs disk, so it is probed only for the shortlist that has
+ * already failed the first two — bounded (~1,412 on prod), one `readdir` per
+ * album directory, and skipped entirely when no `musicDir` is supplied.
+ */
+function artworkTiers(
+  db: Database,
+  musicDir?: string,
+): {
+  missing: number;
+  missingMultiTrack: number;
+  noEmbeddedArt: number;
+  unrenderable: number | null;
+} {
+  const missing = count(db, `library_albums WHERE hidden = 0 AND ${missingAlbumArtSql()}`);
+  const missingMultiTrack = count(
+    db,
+    `library_albums WHERE hidden = 0 AND song_count > 1 AND ${missingAlbumArtSql()}`,
+  );
+  const candidates = db
+    .query<{ id: string; path: string }, []>(
+      `SELECT a.id, MIN(s.path) AS path
+         FROM library_albums a
+         JOIN library_songs s ON s.album_id = a.id
+        WHERE a.hidden = 0 AND ${missingAlbumArtSql('a')}
+        GROUP BY a.id
+       HAVING SUM(CASE WHEN s.has_embedded_art = 1 THEN 1 ELSE 0 END) = 0`,
+    )
+    .all();
+  if (!musicDir) {
+    return { missing, missingMultiTrack, noEmbeddedArt: candidates.length, unrenderable: null };
+  }
+  const probed = new Map<string, boolean>();
+  let unrenderable = 0;
+  for (const c of candidates) {
+    const dir = dirname(join(musicDir, c.path));
+    let covered = probed.get(dir);
+    if (covered === undefined) probed.set(dir, (covered = findFolderCoverName(dir) != null));
+    if (!covered) unrenderable++;
+  }
+  return { missing, missingMultiTrack, noEmbeddedArt: candidates.length, unrenderable };
 }
 
 function count(db: Database, sql: string): number {
@@ -275,6 +353,8 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
        ORDER BY song_count DESC, id LIMIT ?`,
     )
     .all(sample);
+
+  const artwork = artworkTiers(db, opts.musicDir);
 
   const genreWhere = `library_songs WHERE landed_at IS NOT NULL AND ${unresolvedGenreSql()}`;
   const genreWorklist = db
@@ -406,11 +486,10 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
       albumCovers: {
         metric: {
           visible: count(db, 'library_albums WHERE hidden = 0'),
-          missing: count(db, `library_albums WHERE hidden = 0 AND ${missingAlbumArtSql()}`),
-          missingMultiTrack: count(
-            db,
-            `library_albums WHERE hidden = 0 AND song_count > 1 AND ${missingAlbumArtSql()}`,
-          ),
+          missing: artwork.missing,
+          missingMultiTrack: artwork.missingMultiTrack,
+          noEmbeddedArt: artwork.noEmbeddedArt,
+          unrenderable: artwork.unrenderable,
         },
         worklist: albumCoverWorklist.map((r) => ({
           albumId: r.id,

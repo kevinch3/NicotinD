@@ -992,6 +992,11 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   addColumnIfMissing(db, 'library_songs', 'sample_rate', 'INTEGER');
   addColumnIfMissing(db, 'library_songs', 'bit_depth', 'INTEGER');
   addColumnIfMissing(db, 'library_songs', 'channels', 'INTEGER');
+  // Whether the FILE carries an attached picture. Cheap to record during the tag
+  // read the scanner already does, and the only way to tell "this album has no
+  // canonical artwork row" (what `missingAlbumArtSql` measures) from "this album
+  // renders nothing" — which were the same number, ~3x apart, until issue #952.
+  addColumnIfMissing(db, 'library_songs', 'has_embedded_art', 'INTEGER');
   // "Landed" timestamp (epoch ms) — NULL means the song is *quarantined*: it has
   // been scanned into the DB (so the windowed enrichment tasks can operate on it)
   // but is hidden from every library listing until its required processing steps
@@ -1532,6 +1537,17 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
 
+  // Album-/artist-keyed side tables joined the orphan sweep in issue #965; each
+  // needs the same mark-then-sweep marker the song-keyed tables carry, so a row
+  // gets the 30-day grace instead of vanishing the moment its parent moves.
+  // Album and artist ids are NAME-derived, so an orphan here is not disk waste:
+  // if that exact name is ever minted again the new row inherits the old cover
+  // (or the old, authoritative `album_type`) with no error and no log line.
+  addColumnIfMissing(db, 'library_artwork', 'orphaned_at', 'INTEGER');
+  addColumnIfMissing(db, 'library_release_meta', 'orphaned_at', 'INTEGER');
+  addColumnIfMissing(db, 'library_artist_origins', 'orphaned_at', 'INTEGER');
+  addColumnIfMissing(db, 'library_artist_meta', 'orphaned_at', 'INTEGER');
+
   // Audit trail written by normalize-library.ts and future automation.
   // navidrome_id is null until NavidromeSyncer backfills it via path join.
   db.run(`
@@ -1803,20 +1819,26 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     if (anyLanded) armReviewHold(db);
   }
 
-  // One-time scan-cache flush for multi-genre. Pre-multi-genre cache rows kept
-  // only the FIRST genre frame (ScannedTrack.genre = common.genre[0]), so a
-  // file tagged with several genre frames can't recover its extras from cache.
-  // Version-marker-gated: absent marker ⇒ flush once (next scan re-parses all
+  // One-time scan-cache flushes. A cached row is replayed instead of re-parsed,
+  // so a field the parser did not used to record can never appear for a file
+  // that has not changed — the flush is what gives the new field a COMPLETE
+  // denominator instead of a silently partial one.
+  //
+  //   v2 — multi-genre: pre-v2 rows kept only the FIRST genre frame.
+  //   v3 — `has_embedded_art` (#952): pre-v3 rows were parsed with
+  //        `skipCovers: true`, so they carry no answer about attached art.
+  //
+  // Version-marker-gated: a stale marker ⇒ flush once (next scan re-parses all
   // files), then never again.
   const scanCacheVersion = db
     .query<{ value: string }, [string]>(`SELECT value FROM library_sync_state WHERE key = ?`)
     .get('scan_cache_version');
-  if (scanCacheVersion?.value !== '2') {
+  if (scanCacheVersion?.value !== '3') {
     const now = Date.now();
     db.transaction(() => {
       db.run(`DELETE FROM scan_cache`);
       db.run(
-        `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '2', ?)`,
+        `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '3', ?)`,
         ['scan_cache_version', now],
       );
     })();

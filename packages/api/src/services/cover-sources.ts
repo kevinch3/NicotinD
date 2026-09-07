@@ -11,8 +11,8 @@
  * `writeFolderCover`) is thin and injected in tests so unit specs use real temp
  * dirs + a stub extractor instead of mocking node builtins.
  */
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { getMusicMetadata, type MusicMetadataApi } from './music-metadata-loader.js';
 
 export interface EmbeddedPicture {
@@ -118,4 +118,63 @@ export function writeFolderCover(albumDir: string, pic: EmbeddedPicture): string
   const name = coverFileName(pic.contentType);
   writeFileSync(join(albumDir, name), pic.data);
   return name;
+}
+
+/**
+ * Basenames and extensions the cover route treats as an album's folder image.
+ * Shared so the write side (`preserveFolderCover`) and the read side
+ * (`folderCover` in routes/streaming.ts) cannot disagree about what counts as
+ * "this album already has a cover on disk".
+ */
+export const COVER_FILE_NAMES = ['cover', 'folder', 'front', 'album', 'albumart'];
+export const COVER_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
+
+/** The folder image already present in `dir`, or null. Sync; never throws. */
+export function findFolderCoverName(dir: string): string | null {
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return null;
+  }
+  const lower = new Map(entries.map((e) => [e.toLowerCase(), e]));
+  for (const base of COVER_FILE_NAMES) {
+    for (const ext of COVER_EXTS) {
+      const match = lower.get(base + ext);
+      if (match) return match;
+    }
+  }
+  return null;
+}
+
+/**
+ * Materialise a file's embedded cover as the album folder's image, unless one is
+ * already there. Best-effort: any failure is swallowed, because this runs beside
+ * operations (a transcode, an organize) whose success must not depend on art.
+ *
+ * Why the folder and not the tag (issue #953): **zero of 1,719 non-mp3 files in
+ * the library carry embedded art**, against ~87% of mp3s. `transcodeToOpus`
+ * drops it with `-vn` (an attached cover is a video stream) and `-map_metadata`
+ * does not bring it back — but simply removing `-vn` would not work either,
+ * since ffmpeg's Ogg muxer cannot write an attached picture stream at all; Opus
+ * carries art as a base64 `METADATA_BLOCK_PICTURE` comment instead. Writing the
+ * folder image sidesteps that entirely: it is one write per album rather than
+ * per track, it is format-independent so it also covers the m4a and yt-dlp
+ * paths, and it feeds the tier `extractCover` checks **first**.
+ *
+ * Returns the basename written, or null when nothing was written.
+ */
+export async function preserveFolderCover(
+  absPath: string,
+  extract: (p: string) => Promise<EmbeddedPicture | null> = extractEmbeddedPicture,
+): Promise<string | null> {
+  try {
+    const dir = dirname(absPath);
+    if (findFolderCoverName(dir)) return null;
+    const pic = await extract(absPath);
+    if (!pic || pic.data.length === 0) return null;
+    return writeFolderCover(dir, pic);
+  } catch {
+    return null;
+  }
 }

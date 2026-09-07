@@ -71,6 +71,38 @@ the design and the class comes back.
   network-sourced and user-editable — precisely the curator data the design protects — and 35 rows
   don't justify trading that away.
 
+  **The song-keyed shape was itself a false denominator (issue #965).** Every entry declared a
+  `songIdColumn` checked against `library_songs`, so "song-keyed" was the only relationship the
+  table could express — and album- and artist-keyed side tables therefore had **no sweep at all**.
+  Prod, 2026-09-06:
+
+  | table                            | keyed on  | orphan rows |
+  | -------------------------------- | --------- | ----------: |
+  | `library_artwork` (kind='album')  | album id  |     **654** |
+  | `library_artist_meta`            | artist_id |         217 |
+  | `library_artist_origins`         | artist_id |         187 |
+  | `library_release_meta`           | album_id  |         113 |
+  | `library_artwork` (kind='artist') | artist id |          88 |
+  |                                  |           |   **1,259** |
+
+  This is **not** disk waste, which is what makes it worth fixing. Album and artist ids are
+  **name-derived**, not surrogate, and `library_artwork` is keyed on that id, so an orphan row
+  outlives its album and waits. Rename an album — an ordinary curation action; `fix_album_metadata`
+  says so in its own docs — and if that exact artist+title ever exists again (a re-download, a
+  rename back, a correction landing on the old spelling) the new album mints the *same* id and
+  silently inherits the old cover. No error, no log line. One curation pass renamed ~50 albums and
+  merged ~45 artists, each re-minting ids. `library_release_meta` is worse in kind: it is
+  authoritative over classification, so a resurrected id inherits a stale `album_type` and
+  `canonical_title` from a different release.
+
+  An entry now declares its `parent` (`{ table, column }`, defaulting to `library_songs.id`), an
+  optional `where` — `library_artwork` needs two entries, because `kind='album'` and
+  `kind='artist'` reference *different* parent tables and one blanket sweep over the table would
+  orphan every artist portrait — and `measureOnly`, which `library_artist_meta` takes: it holds
+  user-editable bios behind `manual_override`, the same standing as `library_lyrics`, but 217
+  unreachable rows of 3,740 is a signal about renames worth *counting* even when nothing should be
+  deleted.
+
   **Zero orphans is not the same as complete.** The `orphans` column counts rows pointing at a
   *dead* song. It says nothing about songs missing their rows: 580 songs carried a primary in
   `library_songs.genre` with no `library_song_genres` rows at all (#770), invisible to every

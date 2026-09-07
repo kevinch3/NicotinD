@@ -356,3 +356,92 @@ describe('acquisitions orphan pruning (path-keyed, #319)', () => {
     expect(row).toEqual({ table: 'acquisitions', rows: 2, orphans: 1 });
   });
 });
+
+/**
+ * Issue #965: the entry shape could only express "keyed on library_songs", so
+ * album- and artist-keyed side tables had no sweep at all — 1,259 orphan rows on
+ * prod. Because those ids are NAME-derived, an orphan row is a correctness
+ * hazard, not disk waste: the same name minted again inherits the stale row.
+ */
+describe('album- and artist-keyed side tables (issue #965)', () => {
+  function seedArtwork(id: string, kind: 'album' | 'artist'): void {
+    db.run(`INSERT INTO library_artwork (id, kind, cover_url, updated_at) VALUES (?, ?, 'u', 1)`, [
+      id,
+      kind,
+    ]);
+  }
+
+  it('marks an album artwork row whose album is gone, and sweeps it after the grace', () => {
+    seedSong('s1');
+    seedArtwork('al', 'album');
+    seedArtwork('gone-album', 'album');
+    const now = Date.now();
+
+    expect(pruneOrphanRows(db, { now }).marked).toBe(1);
+    // The live album's row is untouched.
+    expect(db.query("SELECT orphaned_at FROM library_artwork WHERE id = 'al'").get()).toEqual({
+      orphaned_at: null,
+    });
+
+    pruneOrphanRows(db, { now: now + DEFAULT_ORPHAN_GRACE_MS + DAY });
+    expect(db.query("SELECT id FROM library_artwork WHERE id = 'gone-album'").get()).toBeNull();
+  });
+
+  it('checks each library_artwork kind against its OWN parent table', () => {
+    seedSong('s1');
+    db.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('art', 'Artist', 1, 1)`,
+    );
+    // `art` is a live ARTIST and no album at all. One `id NOT IN library_albums`
+    // sweep over the whole table — the shape before #965 — would orphan it.
+    seedArtwork('art', 'artist');
+    seedArtwork('al', 'album');
+    seedArtwork('gone-album', 'album');
+
+    pruneOrphanRows(db, { now: Date.now() });
+    expect(
+      db
+        .query<{ id: string }, []>(
+          'SELECT id FROM library_artwork WHERE orphaned_at IS NOT NULL ORDER BY id',
+        )
+        .all(),
+    ).toEqual([{ id: 'gone-album' }]);
+  });
+
+  it('unmarks when a renamed-back album mints the same id again', () => {
+    seedSong('s1');
+    // A live sibling keeps the orphan ratio under SANITY_MAX_ORPHAN_RATIO — a
+    // table that is >50% orphaned is treated as mid-rebuild and skipped.
+    seedArtwork('al', 'album');
+    seedArtwork('resurrected', 'album');
+    const now = Date.now();
+    expect(pruneOrphanRows(db, { now }).marked).toBe(1);
+
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('resurrected', 'B', 'A', 'art', 1, 0, 1)`,
+    );
+    expect(pruneOrphanRows(db, { now: now + DAY }).unmarked).toBe(1);
+  });
+
+  it('counts but never deletes library_artist_meta — it holds curator bios', () => {
+    seedSong('s1');
+    db.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('art', 'Artist', 1, 1)`,
+    );
+    db.run(
+      `INSERT INTO library_artist_meta (artist_id, bio, urls, fetched_at, source)
+       VALUES ('art', 'b', '[]', 1, 'user')`,
+    );
+    db.run(
+      `INSERT INTO library_artist_meta (artist_id, bio, urls, fetched_at, source)
+       VALUES ('gone-artist', 'b', '[]', 1, 'user')`,
+    );
+    const now = Date.now();
+    pruneOrphanRows(db, { now: now + DEFAULT_ORPHAN_GRACE_MS + DAY });
+    expect(
+      db.query("SELECT artist_id FROM library_artist_meta WHERE artist_id = 'gone-artist'").get(),
+    ).not.toBeNull();
+    expect(countOrphanRows(db).find((c) => c.table === 'library_artist_meta')?.orphans).toBe(1);
+  });
+});

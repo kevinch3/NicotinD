@@ -5,10 +5,12 @@
  * node builtins are mocked (mock.module leaks across files — see project memory).
  */
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  findFolderCoverName,
+  preserveFolderCover,
   dedupeCoverUrls,
   hashBytes,
   selectDistinctEmbeddedCovers,
@@ -132,5 +134,51 @@ describe('writeFolderCover', () => {
     expect(writeFolderCover(dir, { data: new Uint8Array([1]), contentType: 'image/webp' })).toBe(
       'cover.webp',
     );
+  });
+});
+
+/**
+ * Issue #953: zero of 1,719 non-mp3 files in the library carry embedded art,
+ * against ~87% of mp3s — every path that PRODUCES a file drops it. Writing the
+ * folder image is the format-independent fix, and it feeds the tier
+ * `extractCover` checks first (which before this held art for 2 of 4,271 albums).
+ */
+describe('preserveFolderCover', () => {
+  const pic = { data: new Uint8Array([1, 2, 3]), contentType: 'image/jpeg' };
+
+  it('materialises the embedded cover as the album folder image', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cover-preserve-'));
+    const written = await preserveFolderCover(join(dir, '01.flac'), async () => pic);
+    expect(written).toBe('cover.jpg');
+    expect(readFileSync(join(dir, 'cover.jpg'))).toEqual(Buffer.from([1, 2, 3]));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('never overwrites a cover the folder already has', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cover-preserve-'));
+    writeFileSync(join(dir, 'folder.png'), 'existing');
+    expect(await preserveFolderCover(join(dir, '01.flac'), async () => pic)).toBeNull();
+    expect(readFileSync(join(dir, 'folder.png'), 'utf-8')).toBe('existing');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('is a no-op when the source carries no art, and never throws', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cover-preserve-'));
+    expect(await preserveFolderCover(join(dir, '01.opus'), async () => null)).toBeNull();
+    // A transcode must not fail because art could not be read.
+    expect(
+      await preserveFolderCover(join(dir, '01.opus'), async () => {
+        throw new Error('unreadable');
+      }),
+    ).toBeNull();
+    expect(readdirSync(dir)).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('recognises every basename and extension the cover route serves', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cover-preserve-'));
+    writeFileSync(join(dir, 'AlbumArt.WEBP'), 'x');
+    expect(findFolderCoverName(dir)).toBe('AlbumArt.WEBP');
+    rmSync(dir, { recursive: true, force: true });
   });
 });

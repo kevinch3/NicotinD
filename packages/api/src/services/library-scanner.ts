@@ -116,6 +116,14 @@ export interface ScannedTrack {
   bitDepth?: number;
   /** Channel count (1 = mono, 2 = stereo, …). Absent when unknown. */
   channels?: number;
+  /**
+   * Whether the file carries an attached picture (issue #952). Recorded here so
+   * the health report can separate "no canonical artwork row" from "renders
+   * nothing" — 94% of mp3s carry one and 0 of 1,719 non-mp3 files do, so the two
+   * numbers differ by ~3x. Absent on a parse failure, and on a `scan_cache` row
+   * written before the v3 flush.
+   */
+  hasEmbeddedArt?: boolean;
   title?: string;
   artist?: string;
   albumArtist?: string;
@@ -171,6 +179,8 @@ export interface SongRow {
   channels: number | null;
   suffix: string;
   contentType: string;
+  /** 1/0 when the file was parsed, null when it was not (issue #952). */
+  hasEmbeddedArt: number | null;
   created: string;
 }
 
@@ -621,6 +631,7 @@ export function buildLibrary(
       channels: t.channels ?? null,
       suffix: t.suffix,
       contentType: t.contentType,
+      hasEmbeddedArt: t.hasEmbeddedArt == null ? null : t.hasEmbeddedArt ? 1 : 0,
       created,
     });
 
@@ -975,7 +986,11 @@ export class LibraryScanner {
     const mm = await getMusicMetadata();
     let meta;
     try {
-      meta = mm ? await mm.parseFile(abs, { duration: true, skipCovers: true }) : undefined;
+      // `skipCovers: false` so `common.picture` is populated. This runs on a
+      // scan-cache MISS only — an unchanged file replays its stored tags and
+      // never reaches here — so the cost is one decode per new or edited file,
+      // not per scan.
+      meta = mm ? await mm.parseFile(abs, { duration: true, skipCovers: false }) : undefined;
     } catch (err) {
       log.debug({ err, abs }, 'readTrack: parseFile failed; indexing with path inference only');
       meta = undefined;
@@ -996,6 +1011,7 @@ export class LibraryScanner {
         format?.sampleRate && format.sampleRate > 0 ? Math.round(format.sampleRate) : undefined,
       bitDepth:
         format?.bitsPerSample && format.bitsPerSample > 0 ? format.bitsPerSample : undefined,
+      hasEmbeddedArt: meta ? (common?.picture?.length ?? 0) > 0 : undefined,
       channels:
         format?.numberOfChannels && format.numberOfChannels > 0
           ? format.numberOfChannels
@@ -1047,8 +1063,8 @@ export class LibraryScanner {
         year, genre, bpm, key,
         energy, loudness, danceability, valence, acousticness, instrumental, mood,
         cover_art, path, size, bit_rate, sample_rate, bit_depth, channels, suffix, content_type,
-        created, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        has_embedded_art, created, synced_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         album_id = excluded.album_id,
         title = excluded.title,
@@ -1091,6 +1107,11 @@ export class LibraryScanner {
         channels = excluded.channels,
         suffix = excluded.suffix,
         content_type = excluded.content_type,
+        -- COALESCE, unlike its file-derived neighbours above: a cache row written
+        -- before the v3 flush replays with NULL here, and overwriting a known
+        -- answer with "unknown" would put the #952 metric back on a partial
+        -- denominator — the exact failure it exists to fix.
+        has_embedded_art = COALESCE(excluded.has_embedded_art, library_songs.has_embedded_art),
         created = excluded.created,
         synced_at = excluded.synced_at
         -- landed_at is deliberately absent from BOTH the INSERT column list and
@@ -1218,6 +1239,7 @@ export class LibraryScanner {
           s.channels,
           s.suffix,
           s.contentType,
+          s.hasEmbeddedArt,
           s.created,
           syncedAt,
         );

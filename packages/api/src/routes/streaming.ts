@@ -13,7 +13,7 @@ import {
   pinTranscodeCacheFile,
   schedulePinRelease,
 } from '../services/transcode-cache.js';
-import { extractEmbeddedPicture } from '../services/cover-sources.js';
+import { COVER_EXTS, COVER_FILE_NAMES, extractEmbeddedPicture } from '../services/cover-sources.js';
 import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js';
 import { bucketCoverSize, resizeCover } from '../services/cover-thumbnail.js';
 import { readArtistImageOverride } from '../services/artist-image-override.js';
@@ -35,9 +35,6 @@ const WAVEFORM_CACHE_CONTROL = 'public, max-age=86400';
 export function _resetWaveformNegativeCacheForTests(): void {
   noWaveformCache.clear();
 }
-
-const COVER_FILE_NAMES = ['cover', 'folder', 'front', 'album', 'albumart'];
-const COVER_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
 
 // id → expiry epoch ms. Short-circuits extractCover() disk IO for artless albums.
 // Keyed by album/artist/song id; cleared automatically when TTL expires.

@@ -18,17 +18,25 @@ import { Database } from 'bun:sqlite';
 import { expandHome } from '@nicotind/core';
 import { libraryHealth } from '../services/library-health.js';
 
-function loadDataDir(): string {
-  let fileConfig: Record<string, unknown> = {};
+function loadConfig(): Record<string, unknown> {
   const configPath = resolve(process.env.NICOTIND_CONFIG ?? 'config/default.yml');
   try {
-    fileConfig = (parse(readFileSync(configPath, 'utf-8')) ?? {}) as Record<string, unknown>;
+    return (parse(readFileSync(configPath, 'utf-8')) ?? {}) as Record<string, unknown>;
   } catch {
-    /* no config file */
+    return {};
   }
+}
+
+function loadDataDir(fileConfig: Record<string, unknown>): string {
   return expandHome(
     process.env.NICOTIND_DATA_DIR ?? (fileConfig.dataDir as string | undefined) ?? '~/.nicotind',
   );
+}
+
+/** Optional: without it the artwork dimension cannot probe the folder tier. */
+function loadMusicDir(fileConfig: Record<string, unknown>): string | undefined {
+  const raw = process.env.NICOTIND_MUSIC_DIR ?? (fileConfig.musicDir as string | undefined);
+  return raw ? expandHome(raw) : undefined;
 }
 
 function main(): void {
@@ -37,13 +45,18 @@ function main(): void {
   const sampleArg = args.find((a) => a.startsWith('--sample='))?.slice('--sample='.length);
   const sampleSize = sampleArg ? Number(sampleArg) : undefined;
 
-  const dbPath = join(loadDataDir(), 'nicotind.db');
+  const fileConfig = loadConfig();
+  const dbPath = join(loadDataDir(fileConfig), 'nicotind.db');
   if (!existsSync(dbPath)) {
     console.error(`Database not found at ${dbPath}. Run nicotind at least once first.`);
     process.exit(2);
   }
   const db = new Database(dbPath, { readonly: true });
-  const report = libraryHealth(db, Number.isFinite(sampleSize) ? { sampleSize } : {});
+  const musicDir = loadMusicDir(fileConfig);
+  const report = libraryHealth(db, {
+    ...(Number.isFinite(sampleSize) ? { sampleSize } : {}),
+    ...(musicDir ? { musicDir } : {}),
+  });
 
   if (json) {
     console.log(JSON.stringify(report, null, 2));

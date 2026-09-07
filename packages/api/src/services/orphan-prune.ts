@@ -38,20 +38,48 @@ const log = createLogger('orphan-prune');
  */
 export interface OrphanTable {
   table: string;
-  /** Column holding the key that ties this row to its owning song. */
-  songIdColumn: string;
+  /** Column holding the key that ties this row to its parent row. */
+  idColumn: string;
   /**
-   * Which `library_songs` column `songIdColumn` references. Most side tables
-   * key on the deterministic song `id`; the scan cache keys on `path` because
-   * it exists to answer "have I already parsed this file?" before any id has
-   * been minted. Defaults to `id`.
+   * The parent table + column `idColumn` references. Defaults to
+   * `library_songs.id`.
+   *
+   * The shape used to be `references: 'id' | 'path'` — a `library_songs` column
+   * name — which quietly made "song-keyed" the only expressible relationship.
+   * Album- and artist-keyed side tables therefore had no sweep at all, and on
+   * prod carried 1,259 orphan rows (issue #965). The scan cache keys on `path`
+   * because it answers "have I already parsed this file?" before any id exists.
    */
-  references?: 'id' | 'path';
+  parent?: { table: string; column: string };
+  /** Extra predicate restricting which rows of `table` this entry owns. */
+  where?: string;
+  /**
+   * Count orphans but never delete them — for tables holding human-authored
+   * data, the same reason `library_lyrics` is absent entirely.
+   */
+  measureOnly?: boolean;
 }
 
-/** The `library_songs` column an orphan check compares against. */
-function referencedColumn(t: OrphanTable): string {
-  return t.references ?? 'id';
+const SONGS_PARENT = { table: 'library_songs', column: 'id' } as const;
+const ARTIST_ALBUMS_PARENT = { table: 'library_albums', column: 'id' } as const;
+
+/** `NOT IN (SELECT …)` fragment locating this entry's orphans. */
+function orphanPredicate(t: OrphanTable): string {
+  const p = t.parent ?? SONGS_PARENT;
+  const base = `${t.idColumn} NOT IN (SELECT ${p.column} FROM ${p.table})`;
+  return t.where ? `(${base}) AND (${t.where})` : base;
+}
+
+/** The inverse — rows whose parent is present again. */
+function presentPredicate(t: OrphanTable): string {
+  const p = t.parent ?? SONGS_PARENT;
+  const base = `${t.idColumn} IN (SELECT ${p.column} FROM ${p.table})`;
+  return t.where ? `(${base}) AND (${t.where})` : base;
+}
+
+/** Rows this entry owns at all (its denominator for the sanity ratio). */
+function scopePredicate(t: OrphanTable): string {
+  return t.where ?? '1=1';
 }
 
 /**
@@ -66,19 +94,19 @@ function referencedColumn(t: OrphanTable): string {
 export const ORPHAN_TABLES: OrphanTable[] = [
   // ~46% of the whole prod database is embedding blobs; this is the one that
   // carries real bytes, and the sidecar can recompute it for free.
-  { table: 'library_embeddings', songIdColumn: 'song_id' },
+  { table: 'library_embeddings', idColumn: 'song_id' },
   // Timbre/groove/band descriptors from the same sidecar — ~2 KB of JSON per
   // song, recomputed in ~5 s. Regenerable, so it belongs with the embeddings.
-  { table: 'library_song_descriptors', songIdColumn: 'song_id' },
+  { table: 'library_song_descriptors', idColumn: 'song_id' },
   // A pure ledger of analysis attempts — meaningless without its song.
-  { table: 'library_song_analysis_failures', songIdColumn: 'song_id' },
+  { table: 'library_song_analysis_failures', idColumn: 'song_id' },
   // Raw tag JSON keyed on path+size+mtime, purely to skip re-parsing an
   // unchanged file. An entry whose path is gone can never be hit again — the
   // lookup is by path — so this is the one table where an orphan is provably
   // unreachable rather than merely unused (issue #313). Prod: 2,969 orphans of
   // 17,549 (17 %, 1.16 MB of tag JSON). The only existing DELETE is a full wipe
   // on a schema-version bump, so orphans otherwise accumulate until that fires.
-  { table: 'scan_cache', songIdColumn: 'path', references: 'path' },
+  { table: 'scan_cache', idColumn: 'path', parent: { table: 'library_songs', column: 'path' } },
   // Download provenance (method/source/time) keyed on the song's path. When the
   // file is gone the row is unreachable — provenance is surfaced *per track* and
   // there is no track. Prod: 4,586 orphans of 15,470 (30 %). Pruning is a product
@@ -87,7 +115,54 @@ export const ORPHAN_TABLES: OrphanTable[] = [
   // the only surviving provenance for a still-live song (its file merely changed
   // extension) — so only genuinely-deleted rows ever reach the sweep. Path-keyed
   // like `scan_cache`, so an orphan here is likewise provably unreachable.
-  { table: 'acquisitions', songIdColumn: 'relative_path', references: 'path' },
+  {
+    table: 'acquisitions',
+    idColumn: 'relative_path',
+    parent: { table: 'library_songs', column: 'path' },
+  },
+
+  // --- Album- and artist-keyed side tables (issue #965) -------------------
+  //
+  // These had no sweep at all, and the cost is not disk: album and artist ids
+  // are **name-derived**, not surrogate, so an orphan row is a live landmine.
+  // Rename an album, its `library_artwork` row is orphaned and stays; if that
+  // exact artist+title ever exists again — a re-download, a rename back, a
+  // correction landing on the old spelling — the new album mints the SAME id
+  // and silently inherits the old cover. No error, no log line. One curation
+  // pass renamed ~50 albums and merged ~45 artists, each re-minting ids.
+  //
+  // `library_release_meta` is worse in kind: it is authoritative over
+  // classification, so a resurrected id inherits a stale `album_type` and
+  // `canonical_title` from a different release.
+  {
+    table: 'library_artwork',
+    idColumn: 'id',
+    parent: { table: 'library_albums', column: 'id' },
+    where: "kind = 'album'",
+  },
+  {
+    table: 'library_artwork',
+    idColumn: 'id',
+    parent: { table: 'library_artists', column: 'id' },
+    where: "kind = 'artist'",
+  },
+  { table: 'library_release_meta', idColumn: 'album_id', parent: ARTIST_ALBUMS_PARENT },
+  {
+    table: 'library_artist_origins',
+    idColumn: 'artist_id',
+    parent: { table: 'library_artists', column: 'id' },
+  },
+  // Measure-only: holds user-editable bios behind `manual_override`, i.e. the
+  // curator data the no-cascade design exists to protect. Same standing as
+  // `library_lyrics`, which is left out of the table entirely — but this one is
+  // worth *counting*, because 217 of 3,740 rows being unreachable is a signal
+  // about renames even when nothing should be deleted.
+  {
+    table: 'library_artist_meta',
+    idColumn: 'artist_id',
+    parent: { table: 'library_artists', column: 'id' },
+    measureOnly: true,
+  },
 ];
 
 /** Default grace period: an orphan must persist this long before deletion. */
@@ -114,18 +189,22 @@ export interface OrphanCount {
 export function countOrphanRows(db: Database): OrphanCount[] {
   const out: OrphanCount[] = [];
   for (const entry of ORPHAN_TABLES) {
-    const { table, songIdColumn } = entry;
-    const ref = referencedColumn(entry);
+    const { table } = entry;
     try {
       const rows = Number(
-        (db.query<{ c: number }, []>(`SELECT COUNT(*) c FROM ${table}`).get() ?? { c: 0 }).c,
+        (
+          db
+            .query<{ c: number }, []>(
+              `SELECT COUNT(*) c FROM ${table} WHERE ${scopePredicate(entry)}`,
+            )
+            .get() ?? { c: 0 }
+        ).c,
       );
       const orphans = Number(
         (
           db
             .query<{ c: number }, []>(
-              `SELECT COUNT(*) c FROM ${table}
-               WHERE ${songIdColumn} NOT IN (SELECT ${ref} FROM library_songs)`,
+              `SELECT COUNT(*) c FROM ${table} WHERE ${orphanPredicate(entry)}`,
             )
             .get() ?? { c: 0 }
         ).c,
@@ -178,15 +257,23 @@ export function pruneOrphanRows(
     return result; // schema-less DB (minimal test harness) — nothing to do.
   }
   // An empty library is either a fresh install or a broken one; neither is a
-  // reason to delete every cached embedding we have.
+  // reason to delete every cached embedding we have. `library_songs` stands in
+  // for every parent: the scanner rebuilds albums and artists from songs, so a
+  // library with songs has the other two.
   if (songCount === 0) return result;
 
   for (const entry of ORPHAN_TABLES) {
-    const { table, songIdColumn } = entry;
-    const ref = referencedColumn(entry);
+    const { table } = entry;
+    if (entry.measureOnly) continue;
     try {
       const rows = Number(
-        (db.query<{ c: number }, []>(`SELECT COUNT(*) c FROM ${table}`).get() ?? { c: 0 }).c,
+        (
+          db
+            .query<{ c: number }, []>(
+              `SELECT COUNT(*) c FROM ${table} WHERE ${scopePredicate(entry)}`,
+            )
+            .get() ?? { c: 0 }
+        ).c,
       );
       if (rows === 0) continue;
 
@@ -194,8 +281,7 @@ export function pruneOrphanRows(
         (
           db
             .query<{ c: number }, []>(
-              `SELECT COUNT(*) c FROM ${table}
-               WHERE ${songIdColumn} NOT IN (SELECT ${ref} FROM library_songs)`,
+              `SELECT COUNT(*) c FROM ${table} WHERE ${orphanPredicate(entry)}`,
             )
             .get() ?? { c: 0 }
         ).c,
@@ -212,8 +298,7 @@ export function pruneOrphanRows(
         result.marked += Number(
           db.run(
             `UPDATE ${table} SET orphaned_at = ?
-             WHERE orphaned_at IS NULL
-               AND ${songIdColumn} NOT IN (SELECT ${ref} FROM library_songs)`,
+             WHERE orphaned_at IS NULL AND ${orphanPredicate(entry)}`,
             [now],
           ).changes ?? 0,
         );
@@ -221,14 +306,15 @@ export function pruneOrphanRows(
         result.unmarked += Number(
           db.run(
             `UPDATE ${table} SET orphaned_at = NULL
-             WHERE orphaned_at IS NOT NULL
-               AND ${songIdColumn} IN (SELECT ${ref} FROM library_songs)`,
+             WHERE orphaned_at IS NOT NULL AND ${presentPredicate(entry)}`,
           ).changes ?? 0,
         );
         result.deleted += Number(
-          db.run(`DELETE FROM ${table} WHERE orphaned_at IS NOT NULL AND orphaned_at < ?`, [
-            now - graceMs,
-          ]).changes ?? 0,
+          db.run(
+            `DELETE FROM ${table}
+             WHERE orphaned_at IS NOT NULL AND orphaned_at < ? AND ${scopePredicate(entry)}`,
+            [now - graceMs],
+          ).changes ?? 0,
         );
       });
       tx();
