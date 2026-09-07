@@ -52,7 +52,15 @@ test.describe('per-user recommendation exclusions', () => {
     await row.getByTitle('Remove').click();
     await expect(row).toHaveCount(0);
 
-    const excluded = await request.get('/api/recommendations/excluded', { headers: auth });
-    expect(((await excluded.json()) as { excluded: unknown[] }).excluded).toHaveLength(0);
+    // The row leaves optimistically; the restore lands a moment later. Other
+    // specs' early skips (shared user) may legitimately hold *other* songs out,
+    // so only this song's absence is asserted.
+    await expect
+      .poll(async () => {
+        const res = await request.get('/api/recommendations/excluded', { headers: auth });
+        const { excluded } = (await res.json()) as { excluded: Array<{ songId: string }> };
+        return excluded.some((e) => e.songId === rejected);
+      })
+      .toBe(false);
   });
 });
