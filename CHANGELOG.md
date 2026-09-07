@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.9](https://github.com/kevinch3/NicotinD/compare/v0.6.8...v0.6.9) (2026-09-07)
+
+### Features
+
+* **web:** name what is playing, and let the resize notch actually reach zero ([#1003](https://github.com/kevinch3/NicotinD/issues/1003)) ([40cf286](https://github.com/kevinch3/NicotinD/commit/40cf286b1d81da4810b886a2a6bf90c20b3ba272)), closes [#993](https://github.com/kevinch3/NicotinD/issues/993) [#996](https://github.com/kevinch3/NicotinD/issues/996), references [#996](https://github.com/kevinch3/NicotinD/issues/996) [#993](https://github.com/kevinch3/NicotinD/issues/993) [#996](https://github.com/kevinch3/NicotinD/issues/996)
 ## [0.6.8](https://github.com/kevinch3/NicotinD/compare/v0.6.7...v0.6.8) (2026-09-07)
 
 ### Bug Fixes
