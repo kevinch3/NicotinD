@@ -74,9 +74,14 @@ single-genre `replace`.
 
 HTML entities arrive **literally** — there is no unescaping. Writing `&amp;` created two
 real artist rows named `Wisin &amp; Yandel`; writing `&lt;` created an album literally
-named `while(1&lt;2)`. Type `&`, `<`, `>`. Re-read any argument containing one before
-sending. Unlike a wrong key, this one *lands* — undoing it costs a merge or a retag. (A
-server-side guard is proposed in #787; until it ships this is entirely on you.)
+named `while(1&lt;2)`. Type `&`, `<`, `>`.
+
+The #787 guard **shipped** (`routes/mcp.ts`, closed 2026-08-29): a string argument carrying
+a literal entity is now **rejected** with a message naming the entity and the bare character
+to send instead. So this no longer lands silently — it costs a retry, not a merge. Measured
+2026-09-06: it caught a real `Anyma &amp; Rebūke` write mid-pass. Keep typing bare
+characters anyway; the guard covers name/title arguments, and the habit is what stops the
+one it does not cover.
 
 ## Verify every write by reading back
 
