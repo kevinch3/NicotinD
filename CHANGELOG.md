@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.2](https://github.com/kevinch3/NicotinD/compare/v0.6.1...v0.6.2) (2026-09-07)
+
+### Features
+
+* **radio:** named recommendation strategies with a variety control in the player ([#985](https://github.com/kevinch3/NicotinD/issues/985)) ([e9a7d9e](https://github.com/kevinch3/NicotinD/commit/e9a7d9ef5b5be9d4de78c0b43ec692e7bf874c45))
 ## [0.6.1](https://github.com/kevinch3/NicotinD/compare/v0.6.0...v0.6.1) (2026-09-07)
 
 ### Features
