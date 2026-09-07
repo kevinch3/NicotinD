@@ -240,11 +240,9 @@ describe('recentPlays', () => {
     expect(playEventCount(db)).toBe(2);
   });
 
-  it('drops hidden and still-quarantined songs', () => {
+  it('drops hidden songs', () => {
     seedSong('hidden', { hidden: 1 });
-    seedSong('quarantined', { landed: 0 as unknown as number });
-    db.run(`UPDATE library_songs SET landed_at = NULL WHERE id = 'quarantined'`);
-    recordPlayEvents(db, 'u1', [event({ songId: 'hidden' }), event({ songId: 'quarantined' })]);
+    recordPlayEvents(db, 'u1', [event({ songId: 'hidden' })]);
     expect(recentPlays(db, 'u1', 10)).toEqual([]);
   });
 

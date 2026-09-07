@@ -5,7 +5,7 @@
  * useless from a phone, and it is why import has been API-only. This service is
  * the missing half: it accepts a manifest, takes the bytes in bounded chunks,
  * and lands them in a staging directory that `LibraryImportService.submitStaged`
- * then ingests through the normal organize → scan → quarantine pipeline.
+ * then ingests through the normal organize → scan pipeline.
  *
  * Two deliberate choices:
  *

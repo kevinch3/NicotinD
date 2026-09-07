@@ -173,9 +173,8 @@ export class AlbumDetailComponent implements OnInit {
       this.selectedAlbum.set(detail);
       this.loadFailure.set(null);
     } catch (err) {
-      // Never swallow: a quarantined album, a server error and a genuinely
-      // missing one all used to render the same flat "Album not found.", which
-      // is wrong for the two most common cases (see AlbumLoadFailure).
+      // Never swallow: a server error and a genuinely missing album used to
+      // render the same flat "Album not found." (see AlbumLoadFailure).
       this.loadFailure.set(albumLoadFailureFor(err));
     } finally {
       this.loadingAlbum.set(false);
@@ -183,7 +182,7 @@ export class AlbumDetailComponent implements OnInit {
     this.loadGenreDistribution(albumId);
   }
 
-  /** Re-attempt the load after a transient failure (or while still processing). */
+  /** Re-attempt the load after a transient failure. */
   async retryLoad(): Promise<void> {
     const albumId = this.route.snapshot.paramMap.get('id');
     if (!albumId) return;

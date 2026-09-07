@@ -1211,7 +1211,7 @@ describe('GET /genres/songs (facet count and listing agree)', () => {
     expect(body.map((s) => s.id)).toEqual(['gs-primary', 'gs-secondary']);
   });
 
-  it('still excludes hidden and un-landed songs', async () => {
+  it('still excludes hidden songs', async () => {
     const res = await app.request('/genres/songs?genre=Gabber');
     const body = (await res.json()) as Array<{ id: string }>;
     expect(body.map((s) => s.id)).not.toContain('gs-hidden');
@@ -1223,7 +1223,7 @@ describe('GET /genres/songs (facet count and listing agree)', () => {
       .query<{ c: number }, [string]>(
         `SELECT COUNT(*) c FROM library_song_genres g
          JOIN library_songs s ON s.id = g.song_id
-         WHERE g.genre = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL`,
+         WHERE g.genre = ? AND s.hidden = 0`,
       )
       .get('Gabber')!.c;
     const res = await app.request('/genres/songs?genre=Gabber');
@@ -1505,7 +1505,7 @@ describe('GET /songs/autocomplete', () => {
 
   function seedSong(
     id: string,
-    opts: { title: string; artist: string; albumId?: string; hidden?: number; landed?: boolean },
+    opts: { title: string; artist: string; albumId?: string; hidden?: number },
   ): void {
     testDb.run(
       `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, hidden, landed_at, synced_at)
@@ -1517,7 +1517,7 @@ describe('GET /songs/autocomplete', () => {
         opts.artist,
         `Artist/Album/${id}.mp3`,
         opts.hidden ?? 0,
-        opts.landed === false ? null : 1,
+        1,
       ],
     );
   }
@@ -1575,10 +1575,9 @@ describe('GET /songs/autocomplete', () => {
     expect(body.map((s) => s.id)).toEqual(['exact-match']);
   });
 
-  it('excludes hidden and quarantined (un-landed) songs', async () => {
+  it('excludes hidden songs', async () => {
     seedAlbum('alb', 'Album');
     seedSong('hidden', { title: 'Rock Anthem', artist: 'A', hidden: 1 });
-    seedSong('quarantined', { title: 'Rock Anthem', artist: 'A', landed: false });
     seedSong('visible', { title: 'Rock Anthem', artist: 'A' });
 
     const body = (await (await makeApp().request('/songs/autocomplete?q=rock')).json()) as Array<{
@@ -1597,9 +1596,8 @@ describe('library metadata filters', () => {
     testDb.run('DELETE FROM library_albums');
     testDb.run('DELETE FROM library_artists');
     testDb.run('DELETE FROM library_song_artists');
-    // The download/quarantine suppression caches are keyed by db instance and
-    // outlive a single test; clear them so a prior test's "nothing quarantined"
-    // snapshot can't leak into one that seeds quarantined rows.
+    // The download-suppression cache is keyed by db instance and outlives a
+    // single test; clear it so a prior test's snapshot can't leak into this one.
     __resetDownloadSuppressionCache();
     mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
   });
@@ -1772,142 +1770,6 @@ describe('library metadata filters', () => {
     seedSong('s1', { albumId: 'a1' });
 
     expect(await ids('/albums?bpmMin=abc&mood=confused&energy=extreme')).toEqual(['a1']);
-  });
-
-  describe('landing-gate quarantine suppression', () => {
-    /** Seed a quarantined song (landed_at NULL) directly, bypassing seedSong. */
-    function seedQuarantined(id: string, albumId: string, artistId = 'art'): void {
-      testDb.run(
-        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, created, hidden, synced_at)
-         VALUES (?, ?, ?, 'A', ?, 0, ?, '2024-01-01', 0, 1)`,
-        [id, albumId, `Song ${id}`, artistId, `A/Al/${id}.mp3`],
-      );
-    }
-
-    // Issue #693: a partly-landed album used to vanish entirely while its landed
-    // tracks still showed in the artist Songs tab — so a downloaded album read as
-    // a pile of orphan singles, which is the report that opened #687. It is now
-    // shown and *marked* instead; only an album with nothing landed stays hidden,
-    // because there is genuinely nothing to display.
-    it('shows a partly-landed album, marked as processing', async () => {
-      seedAlbum('a-live');
-      seedAlbum('a-part');
-      seedSong('landed', { albumId: 'a-live' });
-      seedSong('landed2', { albumId: 'a-part' }); // one landed…
-      seedQuarantined('pending', 'a-part'); // …one still processing
-      __resetDownloadSuppressionCache();
-
-      expect((await ids('/albums')).sort()).toEqual(['a-live', 'a-part']);
-
-      const body = (await (await makeApp().request('/albums')).json()) as Array<{
-        id: string;
-        processingTracks?: number;
-      }>;
-      const byId = Object.fromEntries(body.map((a) => [a.id, a]));
-      expect(byId['a-part'].processingTracks).toBe(1);
-      expect(byId['a-live'].processingTracks ?? 0).toBe(0);
-    });
-
-    it('still hides an album with nothing landed at all', async () => {
-      seedAlbum('a-none');
-      seedQuarantined('p1', 'a-none');
-      seedQuarantined('p2', 'a-none');
-      __resetDownloadSuppressionCache();
-
-      expect(await ids('/albums')).toEqual([]);
-    });
-
-    it('drops the processing mark once the last song lands', async () => {
-      seedAlbum('a1');
-      seedSong('s-done', { albumId: 'a1' });
-      seedQuarantined('s-pending', 'a1');
-      __resetDownloadSuppressionCache();
-      expect(await ids('/albums')).toEqual(['a1']);
-
-      // Graduate the pending track.
-      testDb.run(`UPDATE library_songs SET landed_at = 1 WHERE id = 's-pending'`);
-      __resetDownloadSuppressionCache();
-
-      const body = (await (await makeApp().request('/albums')).json()) as Array<{
-        id: string;
-        processingTracks?: number;
-      }>;
-      expect(body[0].processingTracks ?? 0).toBe(0);
-    });
-
-    it('serves a partly-landed album on direct fetch, with its landed songs', async () => {
-      seedAlbum('a1');
-      seedSong('s-done', { albumId: 'a1' });
-      seedQuarantined('s-pending', 'a1');
-      __resetDownloadSuppressionCache();
-
-      const res = await makeApp().request('/albums/a1');
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as {
-        processingTracks?: number;
-        song: Array<{ id: string }>;
-      };
-      expect(body.processingTracks).toBe(1);
-      expect(body.song.map((s) => s.id)).toEqual(['s-done']);
-    });
-
-    it('hides a quarantined-only album from /singles and /compilations', async () => {
-      seedAlbum('sng', { classification: 'single' });
-      seedAlbum('cmp', { classification: 'compilation' });
-      seedQuarantined('s1', 'sng');
-      seedQuarantined('c1', 'cmp');
-      __resetDownloadSuppressionCache();
-
-      expect(await ids('/singles')).toEqual([]);
-      expect(await ids('/compilations')).toEqual([]);
-    });
-
-    it('omits quarantined songs from the artist Songs tab', async () => {
-      seedAlbum('alb');
-      seedSong('landed', { albumId: 'alb' });
-      seedQuarantined('pending', 'alb');
-
-      expect(await ids('/artists/art/songs')).toEqual(['landed']);
-    });
-
-    it('404s a quarantined album on direct fetch', async () => {
-      seedAlbum('a1');
-      seedQuarantined('s1', 'a1');
-      __resetDownloadSuppressionCache();
-      const res = await makeApp().request('/albums/a1');
-      expect(res.status).toBe(404);
-    });
-
-    // The Downloads card's "Open in Library" link appears the moment a download
-    // finishes — which is exactly when the album is still quarantined. Both the
-    // quarantine hold and a genuinely absent album answered a bare
-    // "Album not found", so the UI told the user their brand-new album did not
-    // exist. The two must be tellable apart by `code` (the #337 convention).
-    it('distinguishes a quarantined album from a genuinely missing one by code', async () => {
-      seedAlbum('a1');
-      seedQuarantined('s1', 'a1');
-      __resetDownloadSuppressionCache();
-
-      const quarantined = await makeApp().request('/albums/a1');
-      expect(quarantined.status).toBe(404);
-      expect(await quarantined.json()).toMatchObject({ code: 'ALBUM_PROCESSING' });
-
-      const missing = await makeApp().request('/albums/does-not-exist');
-      expect(missing.status).toBe(404);
-      expect(await missing.json()).toMatchObject({ code: 'ALBUM_NOT_FOUND' });
-    });
-
-    it('hides an artist whose only songs are all quarantined', async () => {
-      seedArtist('ghost');
-      seedArtist('real');
-      seedAlbum('a-ghost');
-      seedAlbum('a-real');
-      seedQuarantined('g1', 'a-ghost', 'ghost');
-      seedSong('r1', { albumId: 'a-real', artistId: 'real' });
-      __resetDownloadSuppressionCache();
-
-      expect(await ids('/artists')).toEqual(['real']);
-    });
   });
 });
 

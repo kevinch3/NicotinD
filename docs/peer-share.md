@@ -13,8 +13,8 @@
 Server B registers Server A exactly the way it registers the slskd addon today: a
 URL and a token, pasted into Extensions (or scanned from a QR). From that moment A's
 music shows up in B's blended search with a source chip like any other lane; **Get**
-pulls the original file over HTTP, and B's organizer, scanner, dedupe guards and
-quarantine treat it like any other download. A friend's server is just another place
+pulls the original file over HTTP, and B's organizer, scanner and dedupe guards
+treat it like any other download. A friend's server is just another place
 music comes from — the source-agnostic north star, applied to peers.
 
 The headline use case is the legally clean one: **your own second server** (home +
@@ -31,7 +31,6 @@ The consuming half is already shipped and prod-tested by three external addons
 | Peer results in blended search                   | `AddonSearchProvider` → `ProviderRegistry`, zero route changes            |
 | Pull files, organize, scan, tag provenance       | `AddonJobPoller` → organize → scan pipeline, provenance per addon id      |
 | Don't re-download what you own                   | `albumAlreadyComplete`, FLAC>MP3 dedupe, edition collapsing, 409 guards   |
-| Review before it lands                           | `holdForReview` download inbox triage                                     |
 | Kill-switch & consent posture                    | `acquisitionEnabled` env floor, default-off consent-gated plugin cards    |
 | Version safety between servers                   | `protocolVersion` same-major check at registration                        |
 
@@ -100,7 +99,7 @@ blocker.
    directory; own-second-server as the headline; per-region `ADDON_CATALOG` lists
    let the capability exist only where it should.
 3. **Library pollution (med)** — organize→scan re-mints everything; dedupe guards
-   catch owned music; `holdForReview` can be the peer lane's default; provenance
+   catch owned music; a curation flag can mark a peer pull for review; provenance
    rows say which friend every track came from.
 4. **Leeching / bandwidth (med)** — per-token quotas + concurrent-transfer caps;
    serve originals only, never spend transcode CPU on peers.
@@ -119,7 +118,7 @@ blocker.
   register → search → Get → scan → provenance · QR registration reuse + docs.
 - **Phase 2 — trust & scope hardening** (≈ 3–4 PRs): quotas, rate limits, transfer
   caps · shelf-scoped tokens (share a collection, not the hard drive) ·
-  hold-for-review as the peer default · preview streaming.
+  a curation flag on every peer pull · preview streaming.
 - **Phase 3 — ecosystem** (own specs, own repos, each optional): Subsonic bridge
   addon · curation bundle · watchlist gossip (auto-hunt asks friends first — the
   cheapest, highest-quality source; slots into the watchlist poller as another

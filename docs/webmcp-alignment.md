@@ -146,7 +146,7 @@ and accent-folds server-side; a browser copy is a second matcher that will drift
   markup only. Our `data-testid` discipline already gives every e2e-targeted element a stable
   semantic anchor — same discipline, a new consumer.
 - **Curation queues are the better agent story than direct mutation.** Genre overrides carry a
-  `status` review queue; the download inbox is hold-for-review; fragmentation defects carry
+  `status` review queue; curation flags are a durable "decide this" note; fragmentation defects carry
   their remediation; `resolve-artist-identity.ts` is propose → review → `--apply`. That is the
   human-gated pattern four times over. An agent that *proposes into those queues* needs **no
   new trust model** — a curator approves exactly as today.

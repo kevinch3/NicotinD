@@ -5,7 +5,6 @@ import { BottomNavComponent } from './bottom-nav.component';
 import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
-import { DownloadReviewService } from '../../services/download-review.service';
 import { AcquireService } from '../../services/acquire.service';
 import BASE_CATALOG from '../../../../public/i18n/en.json';
 
@@ -19,7 +18,6 @@ function setup(
     acquireJobs?: number;
     canAcquire?: boolean;
     canImport?: boolean;
-    pending?: number;
   } = {},
 ) {
   const isOffline = signal(opts.offline ?? false);
@@ -29,7 +27,6 @@ function setup(
   // Defaults to canAcquire because they agree for every role; they diverge only
   // when the acquisition kill-switch is off, which the #907 test below drives.
   const canImport = signal(opts.canImport ?? opts.canAcquire ?? true);
-  const pending = signal(opts.pending ?? 0);
 
   TestBed.configureTestingModule({
     imports: [BottomNavComponent],
@@ -43,7 +40,6 @@ function setup(
       { provide: AuthService, useValue: { canAcquire, canImport } },
       { provide: SetupService, useValue: { isOffline } },
       { provide: TransferService, useValue: { activeDownloadCount } },
-      { provide: DownloadReviewService, useValue: { pending } },
       { provide: AcquireService, useValue: { activeJobs } },
     ],
   });
@@ -51,7 +47,7 @@ function setup(
   const fixture = TestBed.createComponent(BottomNavComponent);
   const router = TestBed.inject(Router);
   fixture.detectChanges();
-  return { fixture, isOffline, activeDownloadCount, activeJobs, pending, router };
+  return { fixture, isOffline, activeDownloadCount, activeJobs, router };
 }
 
 function linkFor(
@@ -122,13 +118,6 @@ describe('BottomNavComponent', () => {
     fixture.detectChanges();
     const badge = fixture.nativeElement.querySelector('nav a span') as HTMLElement;
     expect(badge?.textContent?.trim()).toBe('4');
-  });
-
-  it('folds the download-review pending count into the Add badge (issue #411)', () => {
-    const { fixture } = setup({ active: 1, pending: 2 });
-    expect(fixture.componentInstance.activeDownloads()).toBe(3);
-    const badge = fixture.nativeElement.querySelector('nav a span') as HTMLElement;
-    expect(badge?.textContent?.trim()).toBe('3');
   });
 
   it('counts in-flight URL acquisitions too, matching the desktop nav badge', () => {

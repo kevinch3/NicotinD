@@ -22,10 +22,8 @@ import { AuthService } from '../../app/services/auth.service';
 import { TranslateService } from '../../app/services/translate.service';
 import { TransferService } from '../../app/services/transfer.service';
 import { AcquireService } from '../../app/services/acquire.service';
-import { DownloadReviewService } from '../../app/services/download-review.service';
 import type { AcquireJob } from '../../app/services/acquire.service';
 import type { AcquisitionJobView } from '../../types/core';
-import type { ReviewQueueAlbum } from '../../app/services/api/api-types';
 import { ArtistImageSourcesService } from '../../app/services/artist-image-sources.service';
 import { getStoryLang } from './story-lang';
 import { PlayerService } from '../../app/services/player.service';
@@ -51,15 +49,6 @@ export interface StoryState {
    */
   downloadingTransfers?: number;
   activeAcquireJobs?: number;
-  pendingReviews?: number;
-  /**
-   * Albums awaiting a curator decision. Seeded directly on the service: the
-   * component's constructor calls `review.start()`, whose refresh 404s against
-   * the fixture transport and — by design — "keeps the last-known queue rather
-   * than flashing to empty". So the seed survives through the component's real
-   * lifecycle rather than around it.
-   */
-  reviewQueue?: ReviewQueueAlbum[];
   /**
    * Which providers can resolve an artist portrait (issue #422). `null` is the
    * pre-load optimistic state, `[]` means no source is configured — which is
@@ -156,16 +145,8 @@ export function storyProviders(state: StoryState = {}): Array<Provider | Environ
           Array.from({ length: state.activeAcquireJobs }, (_, i) => runningAcquireJob(`acq-${i}`)),
         );
       }
-      if (state.pendingReviews !== undefined) {
-        inject(DownloadReviewService).pending.set(state.pendingReviews);
-      }
       if (state.artistImageSources !== undefined) {
         inject(ArtistImageSourcesService).sources.set(state.artistImageSources);
-      }
-      if (state.reviewQueue !== undefined) {
-        const review = inject(DownloadReviewService);
-        review.queue.set(state.reviewQueue);
-        review.pending.set(state.reviewQueue.length);
       }
       // Load the REAL catalogs, not a stub: Storybook serves `public/` via
       // `staticDirs`, so `/i18n/en.json` and `/i18n/es.json` are the same files

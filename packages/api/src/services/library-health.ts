@@ -397,7 +397,7 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
 
   const artwork = artworkTiers(db, opts.musicDir);
 
-  const genreWhere = `library_songs WHERE landed_at IS NOT NULL AND ${unresolvedGenreSql()}`;
+  const genreWhere = `library_songs WHERE ${unresolvedGenreSql()}`;
   const genreWorklist = db
     .query<{ id: string; title: string; artist: string }, [number]>(
       `SELECT id, title, artist FROM ${genreWhere} ORDER BY artist, title LIMIT ?`,
@@ -547,7 +547,7 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
       },
       genres: {
         metric: {
-          songs: count(db, 'library_songs WHERE landed_at IS NOT NULL'),
+          songs: count(db, 'library_songs'),
           missing: count(db, genreWhere),
         },
         worklist: genreWorklist.map((r) => ({ songId: r.id, title: r.title, artist: r.artist })),
@@ -673,7 +673,7 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
       },
       lyrics: {
         metric: {
-          songs: count(db, 'library_songs WHERE landed_at IS NOT NULL'),
+          songs: count(db, 'library_songs'),
           withLyrics: count(db, 'library_lyrics'),
         },
       },

@@ -9,10 +9,7 @@
  * A flag is the third option, and it is deliberately inert — flagging changes
  * no library data, it only records that a decision is owed.
  *
- * The counterpart for *pre-landing* downloads is `download_reviews`
- * (docs/download-review.md), whose pending set is derived from scanner state.
- * This one is post-landing and its rows are the record itself, so it is a
- * separate table rather than a widening of that one.
+ * Rows are the record itself: nothing is derived from scanner state.
  */
 import type { Database } from 'bun:sqlite';
 

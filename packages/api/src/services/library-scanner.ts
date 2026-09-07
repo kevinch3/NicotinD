@@ -1208,8 +1208,8 @@ export class LibraryScanner {
         year, genre, bpm, key,
         energy, loudness, danceability, valence, acousticness, instrumental, mood,
         cover_art, path, size, bit_rate, sample_rate, bit_depth, channels, suffix, content_type,
-        has_embedded_art, created, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        has_embedded_art, created, synced_at, landed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         album_id = excluded.album_id,
         title = excluded.title,
@@ -1259,11 +1259,10 @@ export class LibraryScanner {
         has_embedded_art = COALESCE(excluded.has_embedded_art, library_songs.has_embedded_art),
         created = excluded.created,
         synced_at = excluded.synced_at
-        -- landed_at is deliberately absent from BOTH the INSERT column list and
-        -- this UPDATE SET: a fresh insert defaults it to NULL (quarantined until
-        -- required processing steps finish) and a rescan of an already-landed song
-        -- preserves its timestamp. The library-processing service (graduatePending)
-        -- is the sole writer that sets a landed timestamp — do not add it here.
+        -- landed_at is stamped on INSERT (landing is instant: a scanned song is
+        -- library-visible at once) and deliberately absent from this UPDATE SET,
+        -- so the column records the FIRST scan and a rescan preserves it. It is
+        -- the fillNewAlbumMetadata watermark and the recent-songs ORDER BY key.
     `);
     const artistStmt = this.db.prepare(`
       INSERT INTO library_artists (id, name, album_count, cover_art, split_compound, synced_at)
@@ -1386,6 +1385,7 @@ export class LibraryScanner {
           s.contentType,
           s.hasEmbeddedArt,
           s.created,
+          syncedAt,
           syncedAt,
         );
       }

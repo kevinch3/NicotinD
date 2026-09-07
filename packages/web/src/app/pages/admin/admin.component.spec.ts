@@ -93,7 +93,6 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     orphanRows: [],
     playEvents: 0,
     artistImages: { visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 },
-    downloadReviews: { pending: 0, oldestCreated: null },
     auditTail: [],
     reviewFlags: [],
     incompleteJobs: [],
@@ -140,13 +139,6 @@ function makeSvc(over: Partial<ServiceReview> = {}) {
         : 1) as ServiceReviewService['artistImageCoverageRatio'],
     incompleteJobs: (() => r.incompleteJobs) as ServiceReviewService['incompleteJobs'],
     untracked: (() => r.untracked) as ServiceReviewService['untracked'],
-    reviewHeldCount: (() => r.downloadReviews.pending) as ServiceReviewService['reviewHeldCount'],
-    reviewHeldOldestDays: (() => {
-      const oldest = r.downloadReviews.oldestCreated;
-      return oldest === null
-        ? null
-        : Math.max(0, Math.floor((Date.now() - Date.parse(oldest)) / 86_400_000));
-    }) as ServiceReviewService['reviewHeldOldestDays'],
   };
   return svc;
 }
@@ -212,16 +204,13 @@ function makeAdminMocks(review: Partial<ServiceReview> = {}) {
       'artist-origin': true,
     },
     skipped: 0,
-    quarantined: 0,
   };
   const getProcessing = vi.fn(() =>
     of({
       settings: {
         enabled: true,
         paused: false,
-        holdForReview: false,
         tasks: { bpm: true, genre: true, key: false, energy: false, 'audio-features': false },
-        gates: {},
       } as ProcessingSettings,
       status: procStatus,
     }),
@@ -291,8 +280,6 @@ describe('AdminComponent (snapshot-driven via ServiceReview)', () => {
     expect(el.querySelector('[data-testid="duplicates-panel"]')).toBeTruthy();
     // Nothing orphaned in the default fixture — the panel stays out of the way.
     expect(el.querySelector('[data-testid="orphan-rows-panel"]')).toBeFalsy();
-    // Nothing held for review in the default fixture — hidden entirely.
-    expect(el.querySelector('[data-testid="review-held-panel"]')).toBeFalsy();
     f.destroy();
   });
 });
@@ -573,157 +560,6 @@ describe('AdminComponent (acquisition kill-switch, #235)', () => {
   });
 });
 
-/** Task 13 (download inbox triage, issue #411): the hold-for-review toggle
- *  gates new downloads in a quarantine state until a curator approves them. */
-describe('AdminComponent (hold-for-review toggle, #411)', () => {
-  beforeEach(async () => {
-    const mocks = makeAdminMocks();
-    const saveProcessing = vi.fn((p: unknown) => of(p as object));
-    await TestBed.configureTestingModule({
-      imports: [AdminComponent],
-      providers: [
-        { provide: DownloadsApiService, useValue: {} },
-        {
-          provide: SystemApiService,
-          useValue: {
-            getUsers: vi.fn(() => of([])),
-            getStreamingSettings: mocks.getStreaming,
-            saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
-            getProcessing: mocks.getProcessing,
-            getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
-            getVocalSeparation: vi.fn(() => of({ enabled: false, configurable: true })),
-            setVocalSeparation: vi.fn((enabled: boolean) => of({ enabled, configurable: true })),
-            setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
-            saveProcessing,
-          },
-        },
-        {
-          provide: LibraryApiService,
-          useValue: {
-            resyncLibrary: vi.fn(() => of({ ok: true })),
-            getFragments: vi.fn(() =>
-              of({
-                duplicateAlbums: [],
-                hiddenByClassification: [],
-                misSplitAlbums: [],
-                totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 },
-                ok: true,
-              } as LibraryFragmentReport),
-            ),
-          },
-        },
-        { provide: ServiceReviewService, useValue: mocks.reviewService },
-        { provide: AuthService, useValue: { token: () => null } },
-      ],
-    }).compileComponents();
-  });
-
-  it('renders the holdForReview toggle and verifies i18n keys', async () => {
-    const f = TestBed.createComponent(AdminComponent);
-    f.detectChanges();
-    await f.whenStable();
-    f.detectChanges();
-    expandAllGroups(f);
-    const el = f.nativeElement as HTMLElement;
-    const toggle = el.querySelector(
-      '[data-testid="processing-hold-for-review"]',
-    ) as HTMLInputElement;
-    expect(toggle).toBeTruthy();
-    expect(toggle.type).toBe('checkbox');
-    // Verify i18n keys are present in the catalog
-    expect(BASE_CATALOG).toHaveProperty(['admin.holdForReview']);
-    expect(BASE_CATALOG).toHaveProperty(['admin.holdForReviewHint']);
-    f.destroy();
-  });
-
-  it('calls saveProcessing when holdForReview checkbox is toggled', async () => {
-    const f = TestBed.createComponent(AdminComponent);
-    f.detectChanges();
-    await f.whenStable();
-    f.detectChanges();
-    expandAllGroups(f);
-    const el = f.nativeElement as HTMLElement;
-    const toggle = el.querySelector(
-      '[data-testid="processing-hold-for-review"]',
-    ) as HTMLInputElement;
-    expect(toggle).toBeTruthy();
-
-    toggle.checked = true;
-    toggle.dispatchEvent(new Event('change'));
-    expect(TestBed.inject(SystemApiService).saveProcessing).toHaveBeenCalledWith({
-      holdForReview: true,
-    });
-    f.destroy();
-  });
-});
-
-/** Issue #417: an admin strand warning for downloads held in review — hidden
- *  entirely at zero (off/unarmed/steady-state), rendered with count + oldest
- *  waiting time when nonzero. */
-describe('AdminComponent (download-review admin warning, #417)', () => {
-  it('renders the held count + oldest-waiting hint immediately after the toggle', async () => {
-    const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000).toISOString();
-    const mocks = makeAdminMocks({
-      downloadReviews: { pending: 2, oldestCreated: threeDaysAgo },
-    });
-    await TestBed.configureTestingModule({
-      imports: [AdminComponent],
-      providers: [
-        { provide: DownloadsApiService, useValue: {} },
-        {
-          provide: SystemApiService,
-          useValue: {
-            getUsers: vi.fn(() => of([])),
-            getStreamingSettings: mocks.getStreaming,
-            saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
-            getProcessing: mocks.getProcessing,
-            getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
-            getVocalSeparation: vi.fn(() => of({ enabled: false, configurable: true })),
-            setVocalSeparation: vi.fn((enabled: boolean) => of({ enabled, configurable: true })),
-            setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
-            saveProcessing: vi.fn((p: unknown) => of(p as object)),
-          },
-        },
-        {
-          provide: LibraryApiService,
-          useValue: {
-            resyncLibrary: vi.fn(() => of({ ok: true })),
-            getFragments: vi.fn(() =>
-              of({
-                duplicateAlbums: [],
-                hiddenByClassification: [],
-                misSplitAlbums: [],
-                totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 },
-                ok: true,
-              } as LibraryFragmentReport),
-            ),
-          },
-        },
-        { provide: ServiceReviewService, useValue: mocks.reviewService },
-        { provide: AuthService, useValue: { token: () => null } },
-      ],
-    }).compileComponents();
-
-    const f = TestBed.createComponent(AdminComponent);
-    f.detectChanges();
-    await f.whenStable();
-    f.detectChanges();
-    expandAllGroups(f);
-    const el = f.nativeElement as HTMLElement;
-
-    const panel = el.querySelector('[data-testid="review-held-panel"]');
-    expect(panel).toBeTruthy();
-    // Raw i18n key in this harness (no real catalog loaded) — same convention
-    // as the orphan-rows-panel test above.
-    expect(panel?.textContent).toContain('admin.reviewHeldPlural');
-    expect(panel?.textContent).toContain('admin.reviewHeldHint');
-    expect(BASE_CATALOG).toHaveProperty(['admin.reviewHeldPlural']);
-    expect(BASE_CATALOG).toHaveProperty(['admin.reviewHeldSingular']);
-    expect(BASE_CATALOG).toHaveProperty(['admin.reviewHeldHint']);
-    f.destroy();
-  });
-});
-
 describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => {
   beforeEach(async () => {
     const mocks = makeAdminMocks();
@@ -928,14 +764,11 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
   });
 
   /**
-   * The run + gate checkboxes of one task sit side-by-side in a `flex` row
-   * while DOM order is run₁, gate₁, run₂, gate₂, … — so on the `vertical` axis
-   * this group used to send ArrowDown from a run box to the SAME row's gate box
-   * (visually to its right) and do nothing at all on Left/Right. The `grid`
-   * axis matches the real layout: `inferColumnsPerRow` sees the two
-   * same-`offsetTop` checkboxes as 2 columns.
+   * One run checkbox per task, in one shared vertical group — DOM order is the
+   * visual order, so ArrowDown walks task to task. (The former gate column,
+   * which needed a `grid` axis, went with the landing gate.)
    */
-  it('renders each processing task row as two appTvNavItem checkboxes inside one grid group', async () => {
+  it('renders each processing task row as an appTvNavItem checkbox inside one vertical group', async () => {
     const { fixture } = setup();
     fixture.detectChanges();
     await fixture.whenStable();
@@ -944,26 +777,15 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     const el: HTMLElement = fixture.nativeElement;
     const runCheckbox = el.querySelector('[data-testid^="processing-task-"]');
     expect(runCheckbox?.hasAttribute('appTvNavItem')).toBe(true);
-    const gateCheckbox = el.querySelector('[data-testid^="processing-gate-"]');
-    expect(gateCheckbox?.hasAttribute('appTvNavItem')).toBe(true);
-
-    // Both checkboxes for every row live inside ONE shared group, not a nested
-    // per-row group.
-    const gridGroup = runCheckbox?.closest('[appTvNavGroup][axis="grid"]');
-    expect(gridGroup).not.toBeNull();
-    expect(gateCheckbox?.closest('[appTvNavGroup][axis="grid"]')).toBe(gridGroup);
-    const groupsInside = gridGroup?.querySelectorAll('[appTvNavGroup]');
+    const group = runCheckbox?.closest('[appTvNavGroup][axis="vertical"]');
+    expect(group).not.toBeNull();
+    // Every task's checkbox lives inside that ONE group, not a nested per-row group.
+    const groupsInside = group?.querySelectorAll('[appTvNavGroup]');
     expect(groupsInside?.length ?? 0).toBe(0);
     fixture.destroy();
   });
 
-  /**
-   * Behavioural proof of the grid axis above (and that the group registers its
-   * items at all). jsdom computes no layout, so `offsetTop` is stubbed to put
-   * each task's two checkboxes on their own row — the shape
-   * `inferColumnsPerRow` reads as 2 columns in the browser.
-   */
-  it('ArrowRight crosses a processing row (run → gate) and ArrowDown jumps to the next task', async () => {
+  it('ArrowDown moves from one processing task to the next', async () => {
     const { fixture } = setup();
     fixture.detectChanges();
     await fixture.whenStable();
@@ -974,31 +796,13 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
       .querySelector('[data-testid^="processing-task-"]')!
       .closest('[appTvNavGroup]')!;
     const boxes: HTMLInputElement[] = Array.from(group.querySelectorAll('input[appTvNavItem]'));
-    // At least two task rows are needed for the ArrowDown half of this test.
-    expect(boxes.length).toBeGreaterThanOrEqual(4);
-    boxes.forEach((box, i) => {
-      Object.defineProperty(box, 'offsetTop', {
-        value: Math.floor(i / 2) * 100,
-        configurable: true,
-      });
-      // A gate box is disabled while its task is off, and a disabled input
-      // cannot take focus — irrelevant to what this test measures (the group's
-      // nav geometry), so un-disable them rather than depend on which tasks the
-      // fixture happens to enable.
-      box.disabled = false;
-    });
-
-    boxes[0]!.focus();
-    boxes[0]!.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }),
-    );
-    expect(document.activeElement).toBe(boxes[1]); // same row's gate box
+    expect(boxes.length).toBeGreaterThanOrEqual(2);
 
     boxes[0]!.focus();
     boxes[0]!.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
     );
-    expect(document.activeElement).toBe(boxes[2]); // next task's run box
+    expect(document.activeElement).toBe(boxes[1]); // next task's run box
     fixture.destroy();
   });
 
@@ -1142,16 +946,15 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
   });
 
   it('every pre-existing panel testid still resolves inside its group', async () => {
-    // `orphan-rows-panel`, `artist-images-panel`, and `review-held-panel` are
-    // all conditionally hidden at the healthy-steady-state zero (issues #259 /
-    // #250 gap 3 / #417), so the default fixture used elsewhere in this file
+    // `orphan-rows-panel` and `artist-images-panel` are both conditionally
+    // hidden at the healthy-steady-state zero (issues #259 / #250 gap 3), so
+    // the default fixture used elsewhere in this file
     // wouldn't render them — supply non-zero values so every testid in this
     // list is actually present to find, matching the other describe blocks'
     // own overrides for these panels.
     const fixture = await createAndSettle({
       orphanRows: [{ table: 'library_embeddings', rows: 100, orphans: 5 }],
       artistImages: { visible: 10, withPortrait: 7, missing: 3, manualOverride: 0 },
-      downloadReviews: { pending: 2, oldestCreated: '2026-08-01T00:00:00.000Z' },
     });
     expandAllGroups(fixture);
     const el: HTMLElement = fixture.nativeElement;
@@ -1167,7 +970,6 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
       'auto-playlists-panel',
       'orphan-rows-panel',
       'artist-images-panel',
-      'review-held-panel',
       'library-fragments',
     ]) {
       expect(

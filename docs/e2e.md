@@ -93,8 +93,8 @@ same PR that hit it.
   missing or half-written album. This was issue #655 — "a full run fails one test,
   a different one each time, and every one passes in isolation": the victim is
   simply whoever was running when the scan landed, which is why the failures
-  clustered in specs sorting after `download-review.spec.ts` (the spec that fired
-  three unawaited scans). **Use `scanAndWait(request, token)` from `helpers.ts`,
+  clustered in specs sorting after the since-deleted `download-review.spec.ts` (the
+  spec that fired three unawaited scans). **Use `scanAndWait(request, token)` from `helpers.ts`,
   never a bare post.** Leaving a scan in flight is the e2e equivalent of a dangling
   promise. `waitForLibrary` is not a substitute — it only proves *an* album exists,
   not that the scanner has stopped writing.
@@ -108,13 +108,13 @@ same PR that hit it.
   content assertions to fixtures the spec created or the shared `FIXTURE`
   constants.
 
-- **`/api/review/count` and `/api/review/queue` are library-global.** Neither takes
-  an album parameter, while both hold-for-review specs turn `holdForReview` on
-  *library-wide* — so one foreign quarantined album anywhere makes `pending === 0`
-  unreachable and pins the poll at 1. That is issue #854's "Expected 0, Received 1".
-  Synchronize on the album under test (match `albumArtist` **and** `albumTitle` off
-  `FIXTURE`), never on the global scalar, and never take `queue()[0]` — the queue is
-  `created DESC`, so index 0 is whoever landed last.
+- **A library-global counter is not a barrier for one album.** A spec that polls a
+  whole-library scalar (a pending count, a job count) to zero depends on every other
+  spec's leftovers — one foreign row anywhere pins the poll (issue #854's "Expected 0,
+  Received 1", against the since-removed review inbox). Synchronize on the row under test
+  (match `albumArtist` **and** `albumTitle` off `FIXTURE`, or the job id the spec created),
+  never on a global scalar, and never take `list()[0]` of a shared feed — index 0 is
+  whoever landed last.
 
 - **A barrier on a shared endpoint must say *whose* response it is waiting for.**
   `waitForResponse` resolves on the first URL match, so when a page-level loader and

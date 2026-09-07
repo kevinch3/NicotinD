@@ -19,7 +19,7 @@ fails when an `/api` route group is mounted with no auth decision — see
 The first version matched `app.route('(/api/...)'` with a regex, which requires
 the path literal on the **same line** as the call. Prettier wraps long calls, so
 **11 of 35 mounts were invisible** — `/api/auth`, `/api/setup`, `/api/admin`,
-`/api/mcp`, `/api/library`, `/api/review`, `/api/system`, `/api/devices`,
+`/api/mcp`, `/api/library`, `/api/system`, `/api/devices`,
 `/api/admin/review`, `/api/discography` and the bare `/api` — and the gate
 printed `Route auth: 24 /api groups` and exited 0. Whether a route was audited
 depended on how long its arguments happened to be. The routes were in fact

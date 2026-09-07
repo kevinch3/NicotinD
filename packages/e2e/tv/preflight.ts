@@ -98,7 +98,6 @@ async function startServer(): Promise<() => void> {
       NICOTIND_LIDARR_URL: 'http://127.0.0.1:1',
       NICOTIND_DATA_DIR: tvDataDir,
       NICOTIND_MUSIC_DIR: tvMusicDir,
-      NICOTIND_DISABLE_LANDING_GATE: '1',
     },
   });
 

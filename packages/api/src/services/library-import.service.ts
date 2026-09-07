@@ -44,8 +44,6 @@ import type { OrganizeResult } from './library-organizer.js';
 import { deriveAcquireAlbum } from './acquire-album.js';
 import { recordAcquisition } from './acquisition-store.js';
 import { isUnderMusicDir } from './song-path.js';
-import { getProcessingSettings } from './processing-settings.js';
-import { recordReviewDecision, reviewHoldActive } from './download-review-store.js';
 import {
   IMPORT_MAX_DEPTH,
   IMPORT_MAX_FILES,
@@ -154,8 +152,6 @@ export interface LibraryImportServiceOptions {
   /** The shared organizer's batch entry; mutates file.relativePath in place. */
   organizeBatch: (files: CompletedDownloadFile[]) => Promise<OrganizeResult>;
   scanIncremental: (relPaths: string[]) => Promise<void>;
-  /** Live acquisition toggle — gates only the review-hold pre-approval. */
-  acquisitionEnabled: () => boolean;
   /** Injected for tests; defaults to node:fs statfsSync. */
   statfs?: StatfsFn;
 }
@@ -165,16 +161,15 @@ export function importStagingDir(dataDir: string, jobId: string): string {
 }
 
 /**
- * Which door an import came through. Only the review-hold decision differs, but
- * that difference is a policy call about *who* is importing, not a mechanism —
- * see `runChunk`.
+ * Which door an import came through. The pipeline is identical for both; the
+ * origin is recorded so provenance and the UI can tell them apart.
  */
 export type ImportOrigin = 'path' | 'staged-upload';
 
 /**
  * How one scanned file gets from the source into staging. A folder source
  * copies/renames it; an archive source decompresses it. Everything downstream
- * of staging — chunking, organize, provenance, scan, review pre-approval — is
+ * of staging — chunking, organize, provenance, scan — is
  * identical, which is exactly why archive support is a staging-time concern and
  * not a separate extract-then-import phase (that would double peak disk and
  * re-walk a tree the central directory already enumerated).
@@ -320,7 +315,7 @@ export class LibraryImportService {
 
   /**
    * The browser-upload entry point (docs/import.md). Identical to `submit`
-   * except for where the source may live and what the review hold means.
+   * except for where the source may live.
    *
    * `validateImportSource` refuses anything under `dataDir` (`INSIDE_DATA_DIR`)
    * — the right answer for an admin typing a path, since importing the data dir
@@ -669,7 +664,7 @@ export class LibraryImportService {
     }
   }
 
-  /** Stage → organize → provenance → review pre-approval → scan → move-mode deletion. */
+  /** Stage → organize → provenance → scan → move-mode deletion. */
   private async runChunk(
     id: string,
     source: ImportSource,
@@ -738,35 +733,10 @@ export class LibraryImportService {
     acc.summary.unsorted += result.unsorted;
     acc.summary.failed += result.failed;
 
-    const chunkAlbums = new Map<string, AcquireAlbumDestination>();
     for (const relPath of relPaths) {
       const album = deriveAcquireAlbum(dirname(relPath));
-      if (album) {
-        chunkAlbums.set(album.albumId, album);
-        acc.destAlbums.set(album.albumId, album);
-      }
+      if (album) acc.destAlbums.set(album.albumId, album);
     }
-    // Review-inbox bypass: imports keep the quarantine/enrichment gate, but an
-    // admin bulk-importing their own library must not flood the hold-for-review
-    // inbox. Pre-approving BEFORE the scan mints the rows keeps the
-    // `reviewed_at >= created` predicate true; a later real download into the
-    // same album still pends (its rows are created after this decision).
-    // A server-path import is an admin bulk-importing their own library, and
-    // flooding the inbox with it helps nobody — hence the bypass. A browser
-    // upload is a different actor: any acquirer can drop an arbitrary folder,
-    // so it honours `holdForReview` exactly like every other ingest does.
-    if (
-      acc.origin === 'path' &&
-      reviewHoldActive(
-        this.db,
-        getProcessingSettings(this.db).holdForReview && this.options.acquisitionEnabled(),
-      )
-    ) {
-      for (const album of chunkAlbums.values()) {
-        recordReviewDecision(this.db, album.albumId, 'approved', `import:${startedBy ?? 'admin'}`);
-      }
-    }
-
     if (relPaths.length > 0) {
       updateImportJob(this.db, id, { stage: 'scanning' });
       await this.options.scanIncremental(relPaths);

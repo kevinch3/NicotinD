@@ -39,8 +39,6 @@ import {
 import { artistImageCoverage, type ArtistImageCoverage } from '../services/artist-image-fill.js';
 import { countOrphanRows, type OrphanCount } from '../services/orphan-prune.js';
 import { playEventCount } from '../services/play-history.js';
-import { getProcessingSettings } from '../services/processing-settings.js';
-import { pendingReviewStats, type PendingReviewStats } from '../services/download-review-store.js';
 import { listOpenCurationFlags, type CurationFlag } from '../services/curation-flags.js';
 
 export type UpdateCheckSnapshot = {
@@ -60,7 +58,6 @@ export type ProcessingSummary = Pick<
   | 'failed'
   | 'total'
   | 'skipped'
-  | 'quarantined'
   | 'taskPending'
   | 'availability'
   | 'startedAt'
@@ -162,12 +159,6 @@ export interface ServiceReview {
   playEvents: number;
   /** Artist-portrait coverage for the Admin overview (issue #250). */
   artistImages: ArtistImageCoverage;
-  /**
-   * Pending hold-for-review count + oldest-waiting timestamp (issue #417) —
-   * gated internally on `reviewHoldActive`, so this number always equals what
-   * the Downloads inbox itself shows (off/unarmed → zeros).
-   */
-  downloadReviews: PendingReviewStats;
   auditTail: AuditEntry[];
   /** Open human-review flags (issue #682), oldest first — the curation queue. */
   reviewFlags: CurationFlag[];
@@ -197,7 +188,6 @@ export interface ReviewSubFns {
   orphanRows: () => OrphanCount[];
   playEvents: () => number;
   artistImages: () => ArtistImageCoverage;
-  downloadReviews: () => PendingReviewStats;
   auditTail: (limit: number) => AuditEntry[];
   reviewFlags: () => CurationFlag[];
   incompleteJobs: () => IncompleteAlbumJob[];
@@ -400,7 +390,6 @@ function defaultProcessing(
       failed: s.failed,
       total: s.total,
       skipped: s.skipped,
-      quarantined: s.quarantined,
       taskPending: s.taskPending,
       availability: s.availability,
       startedAt: s.startedAt,
@@ -556,7 +545,6 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       orphanRows,
       playEvents,
       artistImages,
-      downloadReviews,
       audit,
       flags,
       incompleteList,
@@ -646,14 +634,6 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
         () => sub.artistImages?.() ?? artistImageCoverage(getDatabase()),
         { visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 } as ArtistImageCoverage,
       ),
-      downloadReviews: safe(
-        errors,
-        'downloadReviews',
-        () =>
-          sub.downloadReviews?.() ??
-          pendingReviewStats(getDatabase(), getProcessingSettings(getDatabase()).holdForReview),
-        { pending: 0, oldestCreated: null } as PendingReviewStats,
-      ),
       audit: safe(
         errors,
         'auditTail',
@@ -710,7 +690,6 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       orphanRows,
       playEvents,
       artistImages,
-      downloadReviews,
       auditTail: audit,
       reviewFlags: flags,
       incompleteJobs: incompleteList,

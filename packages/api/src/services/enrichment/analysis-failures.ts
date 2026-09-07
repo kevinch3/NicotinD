@@ -189,10 +189,10 @@ export function leastRecentlyAttemptedOrderSql(
  * The positive complement of {@link notPermanentlyFailedClause}: a correlated
  * `EXISTS (...)` fragment (leading ` AND ` intentionally omitted so callers can
  * compose it into an `OR`) that is true when `task` has hit the attempt cap for a
- * still-unchanged file. Used by the landing-gate graduation predicate to express
- * "this required step succeeded, OR it's permanently failed for this file" — so a
- * corrupt file the enrichment can never analyze still eventually lands. Same
- * no-bind-param, inline-constant contract as `notPermanentlyFailedClause`.
+ * still-unchanged file. Used by the feed readiness predicate to express "this
+ * step succeeded, OR it's permanently failed for this file" — so a corrupt file
+ * the enrichment can never analyze is still recommendable. Same no-bind-param,
+ * inline-constant contract as `notPermanentlyFailedClause`.
  */
 export function permanentlyFailedClause(task: ProcessingTaskId, s = 'library_songs'): string {
   return (

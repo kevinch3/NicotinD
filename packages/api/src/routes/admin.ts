@@ -36,7 +36,6 @@ import {
   listVersionHistory,
 } from '../services/update-check.js';
 import { setProcessingSettings } from '../services/processing-settings.js';
-import { loadQuarantineQueue } from '../services/song-steps.js';
 import { presenceService } from '../services/presence.js';
 import type { LibraryProcessingService } from '../services/library-processing.service.js';
 import type { MaintenanceService } from '../services/maintenance/maintenance.service.js';
@@ -563,7 +562,7 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     return c.json(svc.getState());
   });
 
-  // Update settings (enable, pause, per-task flags, landing gates, hold-for-review).
+  // Update settings (enable, pause, per-task flags).
   app.put('/processing', async (c) => {
     const svc = requireProcessing();
     if (!svc) return c.json({ error: 'Library processing not available' }, 503);
@@ -571,45 +570,8 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (body.paused !== undefined && typeof body.paused !== 'boolean') {
       return c.json({ error: 'paused must be a boolean' }, 400);
     }
-    if (body.holdForReview !== undefined && typeof body.holdForReview !== 'boolean') {
-      return c.json({ error: 'holdForReview must be a boolean' }, 400);
-    }
-    // Issue #416: with acquisition off the Downloads page (and the review inbox
-    // on it) is hidden, but a manual file drop still scans — enabling the hold
-    // would strand those files quarantined with no reachable inbox. The landing
-    // gate also ignores the flag while acquisition is off (belt), but denying
-    // the enable (braces) tells the admin *why* instead of silently no-opping.
-    if (body.holdForReview === true && deps.acquisition && !deps.acquisition.enabled()) {
-      return c.json(
-        {
-          error:
-            'Hold for review requires acquisition to be enabled — with acquisition off the ' +
-            'Downloads page (and its review inbox) is hidden, so held files would be unreachable',
-        },
-        400,
-      );
-    }
-    // gates is a sparse per-task boolean map ("require before landing"); reject a
-    // malformed value so a bad client can't poison the persisted JSON blob.
-    if (body.gates !== undefined) {
-      const ok =
-        body.gates !== null &&
-        typeof body.gates === 'object' &&
-        !Array.isArray(body.gates) &&
-        Object.values(body.gates).every((v) => typeof v === 'boolean');
-      if (!ok) return c.json({ error: 'gates must be a map of task→boolean' }, 400);
-    }
     const settings = setProcessingSettings(getDatabase(), body);
     return c.json({ settings, status: svc.getState().status });
-  });
-
-  // Quarantine queue: songs scanned but not yet added to the library (their
-  // required processing steps haven't finished), grouped by album with per-step
-  // badges — the "control which steps a download has been through" surface.
-  app.get('/processing/queue', (c) => {
-    const svc = requireProcessing();
-    if (!svc) return c.json({ error: 'Library processing not available' }, 503);
-    return c.json({ albums: loadQuarantineQueue(getDatabase()) });
   });
 
   // --- Maintenance passes (issue #622) --------------------------------------

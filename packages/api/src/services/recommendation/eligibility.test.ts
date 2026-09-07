@@ -15,7 +15,6 @@ interface Row {
   albumId?: string;
   hidden?: number;
   albumHidden?: number;
-  landed?: boolean;
   duration?: number;
   bpm?: number | null;
   energy?: number | null;
@@ -39,7 +38,7 @@ function seed(d: Database, r: Row): void {
       `/m/${r.id}.mp3`,
       r.bpm === undefined ? 120 : r.bpm,
       r.energy === undefined ? 0.5 : r.energy,
-      r.landed === false ? null : 1,
+      1,
       r.hidden ?? 0,
     ],
   );
@@ -53,12 +52,11 @@ function ids(d: Database, sql: string): string[] {
 }
 
 describe('feedEligibilityWheres — the hard layer', () => {
-  it('drops hidden songs, songs of hidden albums, and un-landed songs at every tier', () => {
+  it('drops hidden songs and songs of hidden albums at every tier', () => {
     const d = db();
     seed(d, { id: 'ok' });
     seed(d, { id: 'hidden-song', hidden: 1 });
     seed(d, { id: 'hidden-album', albumHidden: 1 });
-    seed(d, { id: 'unlanded', landed: false });
     for (const tier of [1, 2] as const) {
       expect(ids(d, feedEligibilitySql({ tier }))).toEqual(['ok']);
     }
@@ -124,7 +122,6 @@ describe('isFeedEligible — parity with the SQL', () => {
     [{ hidden: 0, bpm: 120, energy: 0.5 }, 1, true],
     [{ hidden: 1, bpm: 120, energy: 0.5 }, 1, false],
     [{ hidden: 0, albumHidden: 1, bpm: 120, energy: 0.5 }, 2, false],
-    [{ hidden: 0, landedAt: null, bpm: 120, energy: 0.5 }, 2, false],
     [{ hidden: 0, bpm: null, energy: 0.5 }, 1, false],
     [{ hidden: 0, bpm: null, energy: 0.5 }, 2, true],
     [{ hidden: 0, bpm: null, energy: null, bpmFailed: true, energyFailed: true }, 1, true],

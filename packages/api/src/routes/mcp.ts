@@ -187,7 +187,7 @@ export const MCP_TOOLS: McpTool[] = [
         .slice(0, limit);
       const songs = db
         .query<{ id: string; title: string; artist: string }, []>(
-          'SELECT id, title, artist FROM library_songs WHERE landed_at IS NOT NULL',
+          'SELECT id, title, artist FROM library_songs',
         )
         .all()
         .filter((r) => matchesAllTokens(`${r.title} ${r.artist}`, tokens))
@@ -236,9 +236,7 @@ export const MCP_TOOLS: McpTool[] = [
       const limit = clampLimit(args.limit, 25, 100);
       const offset = Math.max(0, Math.floor(typeof args.offset === 'number' ? args.offset : 0));
       const missingGenre = args.missingGenre === true;
-      const where = missingGenre
-        ? "s.landed_at IS NOT NULL AND (s.genre IS NULL OR s.genre = '')"
-        : 's.landed_at IS NOT NULL';
+      const where = missingGenre ? "(s.genre IS NULL OR s.genre = '')" : '1 = 1';
       const songs = db
         .query<
           {

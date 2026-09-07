@@ -12,7 +12,7 @@
  * Two layers, deliberately asymmetric:
  *
  * - **Hard** — never relaxes: the song is not hidden, its album is not hidden,
- *   it has landed, and (when the caller asks) it clears the duration floor.
+ *   and (when the caller asks) it clears the duration floor.
  *   Radio pools used to check `s.hidden` and forget `library_albums.hidden`;
  *   an album a curator hid kept playing on radio. The helper checks both.
  * - **Readiness** — tier 1 requires the analysis that makes a track scoreable
@@ -65,7 +65,6 @@ export function feedEligibilityWheres(opts: FeedEligibilityOpts): FilterSqlFragm
       ? `(${opts.albumAlias}.hidden IS NULL OR ${opts.albumAlias}.hidden = 0)`
       : `NOT EXISTS (SELECT 1 FROM library_albums fe_alb WHERE fe_alb.id = ${s}.album_id AND fe_alb.hidden = 1)`,
   );
-  wheres.push(`${s}.landed_at IS NOT NULL`);
   if (opts.minDurationSec !== undefined) wheres.push(`${s}.duration >= ${opts.minDurationSec}`);
   if (opts.tier === 1) wheres.push(readinessAnalysedSql(s));
   return { wheres, params: [] };
@@ -79,7 +78,6 @@ export function feedEligibilitySql(opts: FeedEligibilityOpts): string {
 export interface FeedEligibilityRow {
   hidden: number | boolean;
   albumHidden?: number | boolean | null;
-  landedAt?: number | null;
   duration?: number | null;
   bpm?: number | null;
   energy?: number | null;
@@ -95,7 +93,6 @@ export function isFeedEligible(
 ): boolean {
   if (row.hidden) return false;
   if (row.albumHidden) return false;
-  if (row.landedAt === null) return false;
   if (opts.minDurationSec !== undefined && (row.duration ?? 0) < opts.minDurationSec) return false;
   if (opts.tier === 1) {
     const bpmReady = row.bpm != null || row.bpmFailed === true;
