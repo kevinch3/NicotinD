@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.88](https://github.com/kevinch3/NicotinD/compare/v0.5.87...v0.5.88) (2026-09-07)
+
+### Features
+
+* **radio:** gate every recommendation feed on one eligibility predicate ([#980](https://github.com/kevinch3/NicotinD/issues/980)) ([f302ff8](https://github.com/kevinch3/NicotinD/commit/f302ff81b0eb0cac3bbb3e4ce4d47a3b6fb60bbf))
+
+### Bug Fixes
+
+* **scanner:** stop a canonical tracklist deleting the only copy of a track ([#976](https://github.com/kevinch3/NicotinD/issues/976)) ([d8dc1a8](https://github.com/kevinch3/NicotinD/commit/d8dc1a8b80fd44f6a27e6cd809deb4663f92cd87)), closes [#968](https://github.com/kevinch3/NicotinD/issues/968), references [#951](https://github.com/kevinch3/NicotinD/issues/951)
 ## [0.5.87](https://github.com/kevinch3/NicotinD/compare/v0.5.86...v0.5.87) (2026-09-07)
 
 ### Bug Fixes
