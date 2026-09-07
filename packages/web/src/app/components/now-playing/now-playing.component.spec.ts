@@ -23,6 +23,7 @@ function makePlayerStub() {
     shuffle: signal(false),
     repeat: signal('off'),
     radio: signal(false),
+    radioFilter: signal(null),
     toggleRadio: () => {},
     queue: signal<
       { id: string; title: string; artist: string; coverArt?: string | null; album?: string }[]
@@ -516,12 +517,27 @@ describe('NowPlayingComponent', () => {
       expect(component.queueExtraHeightPx()).toBe(100);
       expect(component.coverMaxPx()).toBe(220);
 
-      // Drag far past the max — clamps to COVER_MAX - COVER_MIN (200).
+      // 300px up is now within range: the floor is 0, not 120 (#993), so the
+      // cover keeps shrinking instead of stopping with most of the reclaimed
+      // space handed back.
       document.dispatchEvent(pointer('pointermove', 0)); // up 300px from start
-      expect(component.queueExtraHeightPx()).toBe(200);
-      expect(component.coverMaxPx()).toBe(120);
+      expect(component.queueExtraHeightPx()).toBe(300);
+      expect(component.coverMaxPx()).toBe(20);
 
       document.dispatchEvent(pointer('pointerup', 0));
+    });
+
+    it('collapses the cover all the way to zero, and no further', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+
+      component.onQueueResizeStart(pointer('pointerdown', 500));
+      // Far past the full 320px range.
+      document.dispatchEvent(pointer('pointermove', -400));
+      expect(component.coverMaxPx()).toBe(0);
+      expect(component.queueExtraHeightPx()).toBe(320);
+
+      document.dispatchEvent(pointer('pointerup', -400));
     });
 
     it('clamps a downward drag back to zero', () => {

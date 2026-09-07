@@ -1,4 +1,4 @@
-import { Component, inject, input, output } from '@angular/core';
+import { Component, computed, inject, input, output } from '@angular/core';
 import { PlayerService } from '../../../services/player.service';
 import { AuthService } from '../../../services/auth.service';
 import { LikeService } from '../../../services/like.service';
@@ -40,6 +40,9 @@ export class NowPlayingCoverArtComponent {
 
   readonly coverMaxPx = input<number>(320);
   readonly resizing = input(false);
+
+  /** Fully dragged away — the wrapper drops its padding so no empty band remains. */
+  readonly coverCollapsed = computed(() => this.coverMaxPx() <= 0);
 
   readonly openTrackInfo = output<string>();
   readonly titleContextMenu = output<MouseEvent>();

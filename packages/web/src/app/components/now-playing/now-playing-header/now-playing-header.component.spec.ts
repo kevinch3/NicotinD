@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NowPlayingHeaderComponent } from './now-playing-header.component';
 import { PlayerService } from '../../../services/player.service';
@@ -10,7 +11,18 @@ describe('NowPlayingHeaderComponent', () => {
     setNowPlayingOpen = vi.fn();
     TestBed.configureTestingModule({
       providers: [
-        { provide: PlayerService, useValue: { setNowPlayingOpen } },
+        {
+          provide: PlayerService,
+          // The header now reads the session's identity to name it (#996), so
+          // the stub has to carry those signals as well as the close action.
+          useValue: {
+            setNowPlayingOpen,
+            radio: signal(false),
+            radioFilter: signal(null),
+            context: signal(null),
+            currentTrack: signal(null),
+          },
+        },
         { provide: RemotePlaybackService, useValue: { remoteEnabled: () => false } },
       ],
     });

@@ -31,9 +31,11 @@
         <path d="M6 9l6 6 6-6" />
       </svg>
     </button>
-    <span class="text-xs text-theme-muted uppercase tracking-wider">{{
-      'nowPlaying.title' | t
-    }}</span>
+    <span
+      class="text-xs text-theme-muted uppercase tracking-wider truncate max-w-[60vw] px-8"
+      data-testid="now-playing-heading"
+      >{{ heading().key | t: heading().params ?? {} }}</span
+    >
     <div class="absolute right-0">
       @if (remote.remoteEnabled()) {
         <app-device-switcher placement="down" />

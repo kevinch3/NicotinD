@@ -232,7 +232,13 @@ export class NowPlayingComponent {
   // grows it). `queueExtraHeightPx` is how many px the cover has shrunk from its
   // max; persisted per-device so the chosen size survives reload.
   private static readonly COVER_MAX_PX = 320; // matches Tailwind max-w-80 (20rem)
-  private static readonly COVER_MIN_PX = 120;
+  // Zero, not 120 (#993). A floor of 120px handed most of the reclaimed space
+  // straight back on a short phone, which is the device the drag exists for —
+  // and it made the gesture feel broken rather than bounded, because the handle
+  // kept moving after the cover had stopped shrinking. The wrapper's padding
+  // collapses with it (`now-playing-cover-art`), or 32px of empty box would
+  // survive the cover it was padding.
+  private static readonly COVER_MIN_PX = 0;
   private static readonly QUEUE_EXTRA_MAX_PX =
     NowPlayingComponent.COVER_MAX_PX - NowPlayingComponent.COVER_MIN_PX;
   private static readonly QUEUE_EXTRA_STORAGE_KEY = 'nicotind:np-queue-extra';
