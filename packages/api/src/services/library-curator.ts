@@ -1,7 +1,11 @@
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import { isUnknownLike } from './audio-tags.js';
-import { looksLikeSourceWatermark, isNumericLikeName } from './library-quality.js';
+import {
+  looksLikeSourceWatermark,
+  isNumericLikeName,
+  isRealTrackTitle,
+} from './library-quality.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from './album-grouping.js';
 import { loadReleaseTypes, type ReleaseType } from './release-meta-store.js';
 import { jobAlbumPairs } from './acquisition-job-store.js';
@@ -40,6 +44,22 @@ interface AlbumRow {
 export class LibraryCurator {
   constructor(private db: Database) {}
 
+  /**
+   * Albums holding at least one real track title. One pass over `library_songs`
+   * rather than a probe per album — `classify` runs for every row on every sync.
+   */
+  private loadAlbumsWithRealTitles(): Set<string> {
+    const out = new Set<string>();
+    for (const r of this.db
+      .query<{ album_id: string; title: string | null }, []>(
+        'SELECT album_id, title FROM library_songs',
+      )
+      .all()) {
+      if (isRealTrackTitle(r.title)) out.add(r.album_id);
+    }
+    return out;
+  }
+
   reclassifyAll(): CuratorResult {
     const startedAt = Date.now();
     const rows = this.db
@@ -55,6 +75,7 @@ export class LibraryCurator {
     const protectedKeys = this.loadProtectedKeys();
     // Authoritative release types (Lidarr/MusicBrainz) override the heuristic.
     const metaTypes = loadReleaseTypes(this.db);
+    const withRealTitles = this.loadAlbumsWithRealTitles();
 
     const updateStmt = this.db.prepare(
       `UPDATE library_albums SET classification = ?, hidden = ? WHERE id = ? AND manual_override = 0`,
@@ -72,7 +93,7 @@ export class LibraryCurator {
     this.db.transaction(() => {
       for (const row of rows) {
         if (row.manual_override === 1) continue;
-        const classified = classify(row, metaTypes.get(row.id));
+        const classified = classify(row, metaTypes.get(row.id), withRealTitles.has(row.id));
         const classification = classified.classification;
         // Deliberately-hunted release → keep visible regardless of classification.
         const hidden =
@@ -172,9 +193,78 @@ export function contradictsTrackCount(metaType: ReleaseType, songCount: number):
   return songCount >= IMPLAUSIBLE_SHORT_RELEASE_TRACKS;
 }
 
+/**
+ * Re-derive one album's classification + hidden state from its CURRENT row.
+ *
+ * A rename mints a new album id (ids are name-derived), and `metadata-fix`
+ * carries the curation columns across so starred/manual choices survive. For
+ * `hidden` that is never right: the classifier's inputs are the name and the
+ * artist, which are exactly what the rename changed. So an album hidden for a
+ * watermarked name stayed hidden after being renamed to a clean one — with no
+ * error, no log line and no rule justifying it (issue #967), and renaming is the
+ * main way anyone fixes an album that was hidden for a bad name.
+ *
+ * `manual_override = 1` rows are left alone: those are deliberate human verdicts.
+ */
+export function reclassifyAlbum(db: Database, albumId: string): void {
+  const row = db
+    .query<AlbumRow, [string]>(
+      'SELECT id, name, artist, song_count, manual_override FROM library_albums WHERE id = ?',
+    )
+    .get(albumId);
+  if (!row || row.manual_override === 1) return;
+  const hasRealTitles = db
+    .query<{ title: string | null }, [string]>('SELECT title FROM library_songs WHERE album_id = ?')
+    .all(albumId)
+    .some((r) => isRealTrackTitle(r.title));
+  const c = classify(row, loadReleaseTypes(db).get(albumId), hasRealTitles);
+  db.run('UPDATE library_albums SET classification = ?, hidden = ? WHERE id = ?', [
+    c.classification,
+    c.hidden ? 1 : 0,
+    albumId,
+  ]);
+}
+
+/**
+ * Hidden albums that no hide rule justifies — `hidden = 1` with
+ * `manual_override = 0` and a classifier that, run against the row as it stands
+ * now, says otherwise.
+ *
+ * `classification.hidden` is a bare count today, so a wrongly-hidden album is
+ * indistinguishable from a correctly-hidden one without running the predicates
+ * by hand — which is how #967 was found in the first place. This turns the
+ * count into a worklist and makes the invariant cheap to assert.
+ */
+export function unjustifiedHiddenAlbums(
+  db: Database,
+): { id: string; name: string; artist: string; songCount: number }[] {
+  const rows = db
+    .query<AlbumRow, []>(
+      `SELECT id, name, artist, song_count, manual_override FROM library_albums
+        WHERE hidden = 1 AND manual_override = 0`,
+    )
+    .all();
+  if (rows.length === 0) return [];
+  const metaTypes = loadReleaseTypes(db);
+  const out: { id: string; name: string; artist: string; songCount: number }[] = [];
+  for (const row of rows) {
+    const hasRealTitles = db
+      .query<{ title: string | null }, [string]>(
+        'SELECT title FROM library_songs WHERE album_id = ?',
+      )
+      .all(row.id)
+      .some((r) => isRealTrackTitle(r.title));
+    if (classify(row, metaTypes.get(row.id), hasRealTitles).hidden) continue;
+    out.push({ id: row.id, name: row.name, artist: row.artist, songCount: row.song_count });
+  }
+  return out;
+}
+
 function classify(
   row: AlbumRow,
   metaType?: ReleaseType,
+  /** True when at least one of the album's tracks carries a real title (#962). */
+  hasRealTitles = false,
 ): { classification: Classification; hidden: boolean } {
   const nameUnknown = isUnknownLike(row.name);
   const artistUnknown = isUnknownLike(row.artist);
@@ -190,10 +280,20 @@ function classify(
   // (sanitizeArtistTag/sanitizeAlbumTag) disappears from the UI on the next scan,
   // without deleting files. The auditor's `watermark_*`/`numeric_artist` rules
   // still report it for the delete pass. (see docs/library-audit.md)
+  //
+  // Guarded by the album's own track titles (issue #962). The delete path has
+  // required this since #705 — junk metadata is not junk audio — and the hide
+  // path did not, so Coolio's real 2001 album *Coolio.com* was invisible in the
+  // UI because its title contains a domain. The guard is exactly what separates
+  // the two populations on prod: the five Tash Sultana rows that SHOULD stay
+  // hidden have the watermark as their track titles too, so they carry no real
+  // title and stay hidden; a real release whose name merely looks like a domain
+  // has nine of them.
   if (
-    looksLikeSourceWatermark(row.artist) ||
-    looksLikeSourceWatermark(row.name) ||
-    isNumericLikeName(row.artist)
+    (looksLikeSourceWatermark(row.artist) ||
+      looksLikeSourceWatermark(row.name) ||
+      isNumericLikeName(row.artist)) &&
+    !hasRealTitles
   ) {
     return { classification: 'unknown', hidden: true };
   }

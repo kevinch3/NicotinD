@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
-import { LibraryCurator } from './library-curator.js';
+import { LibraryCurator, reclassifyAlbum, unjustifiedHiddenAlbums } from './library-curator.js';
 import { setReleaseType } from './release-meta-store.js';
 
 interface AlbumSeed {
@@ -51,6 +51,14 @@ function readRow(db: Database, id: string): { hidden: number; classification: st
     .get(id)!;
 }
 
+function seedSong(db: Database, id: string, albumId: string, title: string): void {
+  db.run(
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
+     VALUES (?, ?, ?, 'a', ?, ?, 1)`,
+    [id, albumId, title, `artist-${albumId}`, `/m/${id}.mp3`],
+  );
+}
+
 describe('LibraryCurator', () => {
   let db: Database;
 
@@ -60,6 +68,36 @@ describe('LibraryCurator', () => {
   });
 
   describe('heuristic release-type bands (no metadata)', () => {
+    // Issue #962: "Coolio.com" is a real 2001 studio album. The watermark test fired
+    // on its NAME and hid 9 real tracks. The delete path already refuses to touch an
+    // album with real track titles (#705: junk metadata is not junk audio); the hide
+    // path had no such guard, so the codebase held the right idea and applied it once.
+    it('does not hide a real album whose TITLE contains a domain (issue #962)', () => {
+      seedAlbum(db, { id: 'coolio', name: '2001 - Coolio.com', artist: 'Coolio', songCount: 9 });
+      for (const [i, t] of [
+        'Right Now',
+        'The Hustler',
+        'The Partay',
+        'Dead Man Walking',
+      ].entries()) {
+        seedSong(db, `cs${i}`, 'coolio', t);
+      }
+      new LibraryCurator(db).reclassifyAll();
+      expect(readRow(db, 'coolio').hidden).toBe(0);
+    });
+
+    it('still hides a watermark album whose every track title IS the watermark (issue #962)', () => {
+      seedAlbum(db, {
+        id: 'promo',
+        name: 'www.tashsultana.com',
+        artist: 'Tash Sultana',
+        songCount: 3,
+      });
+      for (let i = 0; i < 3; i++) seedSong(db, `ps${i}`, 'promo', 'www.tashsultana.com');
+      new LibraryCurator(db).reclassifyAll();
+      expect(readRow(db, 'promo').hidden).toBe(1);
+    });
+
     it('classifies a 1-track album as a visible single', () => {
       seedAlbum(db, { id: 'a1', name: 'Mi Canción', artist: 'Alfredo Casero', songCount: 1 });
       new LibraryCurator(db).reclassifyAll();
@@ -260,5 +298,72 @@ describe('metadata vs track-count contradiction (#315)', () => {
     expect(db.query(`SELECT classification FROM library_albums WHERE id='c1'`).get()).toEqual({
       classification: 'compilation',
     });
+  });
+});
+
+describe('hide decisions are derived, not inherited', () => {
+  let db: Database;
+  beforeEach(() => {
+    db = new Database(':memory:');
+    applySchema(db);
+  });
+
+  // Issue #962: Coolio's real 2001 album is titled "Coolio.com". The delete path
+  // has had the has-real-tracks guard since #705; the hide path had not, so 9
+  // real tracks were invisible in the UI with nothing reporting it.
+  it('does not hide a real album whose TITLE contains a domain (#962)', () => {
+    seedAlbum(db, { id: 'a1', name: '2001 - Coolio.com', artist: 'Coolio', songCount: 9 });
+    ['Right Now', 'The Hustler', 'The Partay'].forEach((t, i) => seedSong(db, `s${i}`, 'a1', t));
+    new LibraryCurator(db).reclassifyAll();
+    expect(readRow(db, 'a1').hidden).toBe(0);
+  });
+
+  it('still hides a dump whose track titles ARE the watermark (#962)', () => {
+    seedAlbum(db, {
+      id: 'a2',
+      name: 'www.tashsultana.com',
+      artist: 'Tash Sultana',
+      songCount: 1,
+    });
+    seedSong(db, 's9', 'a2', 'www.tashsultana.com');
+    new LibraryCurator(db).reclassifyAll();
+    expect(readRow(db, 'a2').hidden).toBe(1);
+  });
+
+  // Issue #967, the exact round trip that failed on prod: renaming an album out
+  // of a watermark name is the MAIN way anyone fixes one that was hidden for it.
+  it("re-derives hidden when a rename changes the classifier's inputs (#967)", () => {
+    seedAlbum(db, { id: 'a3', name: 'Servicio ARG', artist: 'DJ Kairuz', songCount: 3 });
+    ['One', 'Two', 'Three'].forEach((t, i) => seedSong(db, `r${i}`, 'a3', t));
+    // Named after a watermark keyword, but its tracks are real → #962's guard
+    // keeps it visible. Give it the hidden state the old rename path carried over.
+    db.run("UPDATE library_albums SET hidden = 1, classification = 'unknown' WHERE id = 'a3'");
+    db.run("UPDATE library_albums SET name = 'Singles' WHERE id = 'a3'");
+    reclassifyAlbum(db, 'a3');
+    expect(readRow(db, 'a3')).toEqual({ hidden: 0, classification: 'ep' });
+  });
+
+  it('leaves a deliberate human verdict alone (#967)', () => {
+    seedAlbum(db, {
+      id: 'a4',
+      name: 'Clean Name',
+      artist: 'Real Artist',
+      songCount: 3,
+      hidden: true,
+      manualOverride: true,
+    });
+    reclassifyAlbum(db, 'a4');
+    expect(readRow(db, 'a4').hidden).toBe(1);
+  });
+
+  // Turns `classification.hidden` from a bare count into a worklist: a wrongly
+  // hidden album is otherwise indistinguishable from a correct one without
+  // running the predicates by hand, which is how #967 was found.
+  it('lists a hidden album that no rule justifies, and only that one (#967)', () => {
+    seedAlbum(db, { id: 'ok', name: 'www.x.com', artist: 'X', songCount: 1, hidden: true });
+    seedSong(db, 'sok', 'ok', 'www.x.com');
+    seedAlbum(db, { id: 'bad', name: 'Singles', artist: 'DJ Kairuz', songCount: 3, hidden: true });
+    ['One', 'Two', 'Three'].forEach((t, i) => seedSong(db, `b${i}`, 'bad', t));
+    expect(unjustifiedHiddenAlbums(db).map((r) => r.id)).toEqual(['bad']);
   });
 });

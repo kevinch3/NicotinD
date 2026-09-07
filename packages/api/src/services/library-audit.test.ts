@@ -6,6 +6,10 @@ import {
   summarize,
   checkMisSplitAlbums,
   checkRenderGaps,
+  checkWatermarkedTitles,
+  checkClipsIndexedAsSongs,
+  checkTrackNumbering,
+  checkBrandArtists,
   selectPollutionTargets,
   DELETABLE_RULES,
 } from './library-audit.js';
@@ -57,12 +61,23 @@ function addSong(
   artistId: string,
   title = 't',
   track: number | null = null,
-  o: { path?: string; artist?: string } = {},
+  o: { path?: string; artist?: string; duration?: number; disc?: number | null } = {},
 ): void {
   db.run(
-    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, track, path, synced_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
-    [id, albumId, title, o.artist ?? 'a', artistId, track, o.path ?? `/m/${id}.opus`],
+    `INSERT INTO library_songs
+       (id, album_id, title, artist, artist_id, track, disc, duration, path, synced_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+    [
+      id,
+      albumId,
+      title,
+      o.artist ?? 'a',
+      artistId,
+      track,
+      o.disc ?? null,
+      o.duration ?? 200,
+      o.path ?? `/m/${id}.opus`,
+    ],
   );
 }
 
@@ -91,8 +106,9 @@ function seedClean(db: Database): void {
     classification: 'album',
     year: 1992,
   });
-  addSong(db, 's1', 'al1', 'ar1');
-  addSong(db, 's2', 'al1', 'ar1');
+  // Numbered: a clean multi-track album has a running order (`untracked_album`).
+  addSong(db, 's1', 'al1', 'ar1', 't', 1);
+  addSong(db, 's2', 'al1', 'ar1', 't2', 2);
   // Mirror library_artwork so render checks pass.
   db.run(
     `INSERT INTO library_artwork (id, kind, cover_url, updated_at) VALUES ('al1','album','u',1)`,
@@ -662,5 +678,135 @@ describe('checkRenderGaps — missing_artwork measures canonical covers (issue #
       `INSERT INTO library_artwork (id, kind, cover_url, updated_at) VALUES ('al1','artist','u',1)`,
     );
     expect(rulesFor('al1')).toContain('missing_artwork');
+  });
+});
+
+describe('content rules — what is in the row, not what it is called', () => {
+  let db: Database;
+  beforeEach(() => {
+    db = new Database(':memory:');
+    applySchema(db);
+  });
+
+  // Issue #957: the album and the artist are both clean; only the titles are
+  // polluted, and titles were the one field with no rule.
+  it('reports a watermark in a song title on an otherwise clean album (#957)', () => {
+    seedClean(db);
+    addSong(db, 's3', 'al1', 'ar1', 'Rich Girl www.GrWarez.com', 3);
+    const found = checkWatermarkedTitles(db);
+    expect(found.map((f) => f.subject)).toEqual(['s3']);
+    expect(found[0]!.rule).toBe('watermark_title');
+  });
+
+  it('does not report a clean title (#957)', () => {
+    seedClean(db);
+    expect(checkWatermarkedTitles(db)).toEqual([]);
+  });
+
+  // Issue #966. `track IS NULL` is the load-bearing condition: 118 sub-45s
+  // tracks on prod DO carry one, and a rule without it reports Pink Floyd's
+  // "Speak to Me" as a clip.
+  it('reports a short untracked sole-song album as a clip (#966)', () => {
+    addArtist(db, 'arc', 'Australia', 1);
+    addAlbum(db, { id: 'alc', name: 'caption', artist: 'Australia', artistId: 'arc' });
+    addSong(db, 'sc', 'alc', 'arc', 'pre-sale tickets are onsale now', null, { duration: 24 });
+    expect(checkClipsIndexedAsSongs(db).map((f) => f.subject)).toEqual(['sc']);
+  });
+
+  it('does not report a short album interlude that carries a track number (#966)', () => {
+    addArtist(db, 'arp', 'Pink Floyd', 1);
+    addAlbum(db, {
+      id: 'alp',
+      name: 'The Dark Side of the Moon',
+      artist: 'Pink Floyd',
+      artistId: 'arp',
+      songCount: 2,
+      classification: 'album',
+    });
+    addSong(db, 'sp1', 'alp', 'arp', 'Speak to Me', 1, { duration: 67 });
+    addSong(db, 'sp2', 'alp', 'arp', 'Breathe', 2, { duration: 163 });
+    expect(checkClipsIndexedAsSongs(db)).toEqual([]);
+  });
+
+  // Issue #959. The discriminator is the titles, not the slot: a shared slot is
+  // a numbering defect 298/429 of the time and a duplicate file the rest, and
+  // the two want opposite remediations (a retag vs a delete).
+  it('reports a slot holding two DIFFERENT songs as broken numbering (#959)', () => {
+    addArtist(db, 'arb', 'The Beatles', 1);
+    addAlbum(db, {
+      id: 'alb',
+      name: 'With the Beatles',
+      artist: 'The Beatles',
+      artistId: 'arb',
+      songCount: 2,
+      classification: 'album',
+    });
+    addSong(db, 'sb1', 'alb', 'arb', "It Won't Be Long", 63);
+    addSong(db, 'sb2', 'alb', 'arb', 'All My Loving', 63);
+    const found = checkTrackNumbering(db).filter((f) => f.rule === 'track_collision');
+    expect(found.map((f) => f.subject)).toEqual(['alb']);
+  });
+
+  it('does not call a same-title slot collision a numbering defect (#959)', () => {
+    addArtist(db, 'arr', 'Pescado Rabioso', 1);
+    addAlbum(db, {
+      id: 'alr',
+      name: 'Pescado 2',
+      artist: 'Pescado Rabioso',
+      artistId: 'arr',
+      songCount: 2,
+      classification: 'album',
+    });
+    // Same album, same slot, same title: a duplicate FILE. #951's rule, not this one.
+    addSong(db, 'sr1', 'alr', 'arr', 'Iniciado del alba', 4);
+    addSong(db, 'sr2', 'alr', 'arr', 'Iniciado del Alba', 4);
+    expect(checkTrackNumbering(db).filter((f) => f.rule === 'track_collision')).toEqual([]);
+  });
+
+  it('reports a multi-track album whose songs carry no track number (#959)', () => {
+    addArtist(db, 'aru', 'A', 1);
+    addAlbum(db, { id: 'alu', name: 'N', artist: 'A', artistId: 'aru', songCount: 2 });
+    addSong(db, 'su1', 'alu', 'aru', 'one', null);
+    addSong(db, 'su2', 'alu', 'aru', 'two', 2);
+    const found = checkTrackNumbering(db).filter((f) => f.rule === 'untracked_album');
+    expect(found.map((f) => f.subject)).toEqual(['alu']);
+    expect(found[0]!.message).toContain('1 song(s)');
+  });
+
+  // Issue #963. The naive predicate ("the strings differ") is the NORMAL state
+  // of a featured artist, so provenance decides instead: a genuine credit is
+  // derived by splitting the song's own artist string and is therefore a
+  // substring of it; a folder-derived brand is a substring of none of them.
+  it('reports a download-site brand credited as a performer (#963)', () => {
+    addArtist(db, 'arw2', 'IPAUTA', 0);
+    addAlbum(db, { id: 'alw', name: 'Mas Flow', artist: 'Luny Tunes', artistId: 'arw2' });
+    const reals = ['Tego Calderón', 'Daddy Yankee', 'Don Omar', 'Wisin & Yandel', 'Héctor & Tito'];
+    reals.forEach((real, i) => {
+      addSong(db, `sw${i}`, 'alw', 'arw2', `t${i}`, i + 1, { artist: real });
+      addCredit(db, `sw${i}`, 'arw2');
+    });
+    expect(checkBrandArtists(db).map((f) => f.subject)).toEqual(['arw2']);
+  });
+
+  it('does not call a featured artist a brand — the tag names them (#963)', () => {
+    addArtist(db, 'arg', 'Gwen Stefani', 0);
+    for (let i = 0; i < 6; i++) {
+      addAlbum(db, { id: `alg${i}`, name: `N${i}`, artist: 'Gwen Stefani', artistId: 'arg' });
+      addSong(db, `sg${i}`, `alg${i}`, 'arg', `t${i}`, 1, { artist: 'Gwen Stefani ft. Eve' });
+      addCredit(db, `sg${i}`, 'arg');
+    }
+    expect(checkBrandArtists(db)).toEqual([]);
+  });
+
+  it('folds accents before deciding a credit is unmatched (#963, #720)', () => {
+    // The credit is accented and the tag is not. Folding in SQL (`lower`/`LIKE`
+    // are ASCII-only) would read this as a brand and report a real artist.
+    addArtist(db, 'art', 'Tego Calderón', 0);
+    for (let i = 0; i < 6; i++) {
+      addAlbum(db, { id: `alt${i}`, name: `N${i}`, artist: 'Tego Calderón', artistId: 'art' });
+      addSong(db, `st${i}`, `alt${i}`, 'art', `t${i}`, 1, { artist: 'Tego Calderon' });
+      addCredit(db, `st${i}`, 'art');
+    }
+    expect(checkBrandArtists(db)).toEqual([]);
   });
 });
