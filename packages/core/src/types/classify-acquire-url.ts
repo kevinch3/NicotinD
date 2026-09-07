@@ -34,6 +34,23 @@ export function urlPathSegments(input: string): string[] {
 }
 
 /**
+ * Spotify's own share sheet emits locale-prefixed links —
+ * `open.spotify.com/intl-es/album/<id>` — so the type is the *second* segment,
+ * not the first. Reading `segments[0]` classified every one of them as
+ * `unknown`: in prod all five album acquires were `intl-es` links, which is
+ * half of why one album became twelve (issue #997). The latent half is worse
+ * than the reported one — an `intl-*` playlist link would silently skip
+ * playlist generation, because that decision is keyed on this same `kind`.
+ *
+ * Matched narrowly (`intl-` plus a language subtag) so a real first segment is
+ * never mistaken for a prefix.
+ */
+function stripSpotifyLocale(segments: string[]): string[] {
+  const first = segments[0]?.toLowerCase() ?? '';
+  return /^intl-[a-z]{2}(-[a-z0-9]+)?$/.test(first) ? segments.slice(1) : segments;
+}
+
+/**
  * Classify an acquire URL by its host + path. Returns `kind: 'unknown'` for
  * anything we don't recognise (slskd-style, custom share links, …) so the
  * caller can treat it as a single-item acquire and skip playlist generation.
@@ -51,7 +68,7 @@ export function classifyAcquireUrl(input: string): ClassifyAcquireUrlResult {
   // Spotify: open.spotify.com/<type>/<id>. The host check normalizes both the
   // canonical host and any other (rare) "spotify.com" domain.
   if (host === 'open.spotify.com' || host === 'spotify.com' || host === 'www.spotify.com') {
-    const type = segments[0]?.toLowerCase();
+    const type = stripSpotifyLocale(segments)[0]?.toLowerCase();
     if (type === 'playlist') return { source: 'spotify', kind: 'playlist' };
     if (type === 'album') return { source: 'spotify', kind: 'album' };
     if (type === 'track') return { source: 'spotify', kind: 'track' };

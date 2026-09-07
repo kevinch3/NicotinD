@@ -54,6 +54,8 @@ export * from './utils/crypto.js';
 export * from './utils/errors.js';
 export * from './utils/folder-name.js';
 export * from './utils/download-title.js';
+export * from './utils/unknown-like.js';
+export * from './utils/job-album-title.js';
 export * from './utils/download-failure.js';
 export * from './utils/expand-home.js';
 
