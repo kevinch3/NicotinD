@@ -649,6 +649,45 @@ recently-played shelf would (no history, endpoint down, empty generation).
 Tapping a tile calls `startRadio(track)` on the recommendation, so the vibe
 continues past the tapped track.
 
+## Per-user exclusions ("Don't recommend this")
+
+A listener can hold a song out of every feed without touching the library:
+the song stays browsable, searchable and playable, it just stops being
+*proposed*. Two ways in, one way out, all in
+`services/recommendation/feedback-store.ts`:
+
+- **Explicit.** "Don't recommend this" on the song menu writes an `exclude`
+  row to `recommendation_feedback`; "Recommend again" writes a `restore`. The
+  latest wins, so the log is append-only and the excluded list is always
+  reconstructible from it.
+- **Derived from skips.** `SKIP_RULE`: at least 2 `skipped` play events under
+  20 s within 30 days, with no counted play after the last of them (a full
+  listen means the listener changed their mind) and no `restore` after them.
+  Derived skips ride `play_events`, which is consent-gated, so a listener with
+  history off gets only explicit exclusions.
+- **Out:** `DELETE /api/recommendations/excluded/:songId` writes a `restore`,
+  which beats both kinds. Settings → Recommendations lists everything held out
+  with its reason and is the undo for both.
+
+The set is applied at request time, per listener, as ids fed into the same
+`excludeIds` layer the client's queue uses — in the `/api/radio/next` route
+before the generators widen the set to every copy of each recording (issue
+#660), so a rejected track's twin file stays out too; in `/songs/:id/similar`
+as pre-seeded `seen` ids; in `/api/library/random` as a post-draw filter with
+the draw over-fetched by the set's size. It is deliberately not a column on
+`library_songs`: the library is shared, the rejection is one person's. Weekly
+recipe shelves and poll generation have no listener and are unaffected.
+
+The same table also stores the radio chip's variety votes (`too_similar`,
+`balanced`, `too_different`, with a free-form `context_json`) for the
+recommender to learn from later; those never exclude anything.
+
+Routes: `POST /api/recommendations/feedback`, `GET /api/recommendations/excluded`,
+`DELETE /api/recommendations/excluded/:songId` — all scoped to the caller, no
+user id parameter (`routes/recommendations.ts`). Exported with the user's data
+(`USER_TABLES`), not wiped by "delete my history": it is a preference, not a
+log (see [privacy.md](privacy.md)).
+
 ## Taste breakers (random, recency-demoted)
 
 The landing page's "Taste breakers" shelf sits directly under "Keep the vibe"
@@ -1011,6 +1050,7 @@ collapse, which it needed most (see "Same recording, multiple files").
 | `packages/api/src/services/genre-distribution.ts`                     | `artistGenreShares` — batched "how much of this artist is this genre", the artist half of station affinity (shares the radar's definition)                                                                                                                     |
 | `packages/api/src/services/embedding-store.ts`                        | `loadEmbeddings` / `embeddingModelFor` / `dominantEmbeddingModel` — pooled read of cached Essentia vectors (the last picks a station's vector space, which has no seed song to pin)                                                                            |
 | `packages/api/src/routes/radio.ts`                                    | `/api/radio/next` route (seed **and** filter paths); exports the shared generators `buildSeedRadio` / `buildFilterRadio` / `radioSongs` (pool build + rank, optional `weights` override for the dump), `toOrderable` (via `songFilterWheres` + `seedCentroid`), `stationCentroid` (the station's target, over the whole eligible set) |
+| `packages/api/src/services/recommendation/feedback-store.ts`          | **Per-user exclusions**: `recordFeedback`, `excludedSongs` / `excludedSongIds`, `SKIP_RULE` — explicit votes plus the derived early-skip rule, applied by radio / random / similar as `excludeIds`                                                                          |
 | `packages/api/src/services/recommendation/eligibility.ts`             | **Feed eligibility**: `feedEligibilitySql` / `feedEligibilityWheres` / `isFeedEligible` — the one "may this song be recommended" predicate (hidden song or album, landed, duration floor, readiness tiers), enforced by `check:feed-eligibility`                                              |
 | `packages/api/src/services/genre-split.ts`                            | `segmentConcatenatedGenre` — splits mashed genre tags feeding the genre axis (see [library-scanner.md](library-scanner.md))                                                                                                                                    |
 | `packages/api/src/scripts/dump-radio.ts`                              | Developer diagnostic dump (read-only) — see "Diagnostic dump" above; `looksConcatenatedGenre` flags un-split genre tags, `parseWeightOverrides` backs `--weights`                                                                                              |

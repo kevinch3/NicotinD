@@ -1729,6 +1729,25 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
        ON play_events (song_id, user_id) WHERE counted = 1`,
   );
 
+  // Per-listener recommendation feedback: an explicit "don't recommend this"
+  // (or its undo), and the variety votes the radio chip logs. Song-keyed like
+  // play_events; the recording-level effect comes from the radio's key lookup
+  // at query time. Cascades with the account; not part of listening history.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS recommendation_feedback (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      song_id      TEXT NOT NULL,
+      kind         TEXT NOT NULL CHECK (kind IN ('exclude','restore','too_similar','balanced','too_different')),
+      at           INTEGER NOT NULL,
+      context_json TEXT
+    )
+  `);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_reco_feedback_user_song
+       ON recommendation_feedback (user_id, song_id, at DESC)`,
+  );
+
   // One-time landing backfill (v1, historical). The landed_at column used to
   // default to NULL (quarantined) and this landed every pre-existing song once
   // when the gate first shipped. Kept so the marker semantics stay stable.

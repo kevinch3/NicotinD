@@ -12,7 +12,7 @@ its menu from the same `SongMenuService`.
 ## Common actions (always present when the data supports them)
 
 Order: Like/Unlike → Add to queue → Play next → Start radio → Go to artist* → Go to album* →
-Add to playlist → Save offline → Song info.
+Add to playlist → Save offline → Song info → Don't recommend this / Recommend again.
 (*artist/album links appear only when the song carries `artistId`/`albumId` and
 the context doesn't hide them.)
 
@@ -23,6 +23,10 @@ the context doesn't hide them.)
 - **Add to queue** appends; **Play next** = `PlayerService.queueNext(track)` (insert after current).
 - **Song info** opens the global track-info sheet via `TrackInfoService.open()`
   (sheet mounted once in the layout as `TrackInfoHost`).
+- **Don't recommend this / Recommend again** — a personal veto on the feeds, not
+  a library edit: the label reflects `RecommendationExclusionsService.isExcluded()`
+  and the actions call `exclude()` / `restore()` ([radio.md](radio.md) "Per-user
+  exclusions"). Settings → Recommendations lists what is held out.
 
 ## Contextual actions (`SongContext`)
 
