@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.3](https://github.com/kevinch3/NicotinD/compare/v0.6.2...v0.6.3) (2026-09-07)
+
+### Features
+
+* **web:** link every album and artist name to its page ([#986](https://github.com/kevinch3/NicotinD/issues/986)) ([9c78d5c](https://github.com/kevinch3/NicotinD/commit/9c78d5c0080698857249e46faac04525163669ee))
 ## [0.6.2](https://github.com/kevinch3/NicotinD/compare/v0.6.1...v0.6.2) (2026-09-07)
 
 ### Features
