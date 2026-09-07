@@ -146,6 +146,42 @@ describe('library routes', () => {
     });
   });
 
+  /**
+   * Issue #946: a split writes only the literal string `split`, so the members
+   * that DEFINE the outcome were dropped. Of 118 manual curation actions on
+   * prod, 45 were `artist.identity` — 36 of them splits, i.e. 80% of identity
+   * actions logged with no recoverable outcome, while the two shapes that DO
+   * record their destination are the rare ones. A split is the destructive one:
+   * it rewrites identity/alias rows and kicks a full rescan, and the alias table
+   * holds current state, not the decision.
+   */
+  it('POST /artists/identity records each decision shape in the audit detail', async () => {
+    async function identity(body: Record<string, unknown>): Promise<void> {
+      await app.request('/artists/identity', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    }
+    function detailFor(targetId: string): string | undefined {
+      return sharedDb
+        .query<{ detail: string }, [string]>(
+          `SELECT detail FROM audit_log WHERE action = 'artist.identity' AND target_id = ?`,
+        )
+        .get(targetId)?.detail;
+    }
+
+    await identity({ rawName: 'Audit Split', decision: 'split', members: ['A One', 'B Two'] });
+    await identity({ rawName: 'Audit Rename', rename: 'Audit Renamed' });
+    await identity({ rawName: 'Audit Merge', mergeInto: 'Audit Target' });
+    await identity({ rawName: 'Audit Single', decision: 'single' });
+
+    expect(detailFor('Audit Split')).toBe('split → A One, B Two');
+    expect(detailFor('Audit Rename')).toBe('rename → Audit Renamed');
+    expect(detailFor('Audit Merge')).toBe('merge → Audit Target');
+    expect(detailFor('Audit Single')).toBe('single');
+  });
+
   it('POST /artists/:id/genre writes a user artist override and 200s', async () => {
     sharedDb.run(
       `INSERT OR REPLACE INTO library_artists (id, name, album_count, synced_at) VALUES ('art-lar', 'Jos\u00e9 Larralde', 1, 1)`,

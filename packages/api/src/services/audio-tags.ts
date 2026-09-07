@@ -17,6 +17,8 @@ export interface AudioTags {
   album?: string;
   title?: string;
   trackNumber?: number;
+  /** Disc number (ID3 TPOS / Vorbis `DISCNUMBER`). Added with `track` for #959. */
+  discNumber?: number;
   year?: number;
   genre?: string;
   /** Beats per minute (TBPM / Vorbis `BPM`). Written by on-demand track analysis. */
@@ -367,6 +369,7 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
   if (tags.artist !== undefined) update.artist = tags.artist;
   if (tags.title !== undefined) update.title = tags.title;
   if (tags.trackNumber !== undefined) update.trackNumber = String(tags.trackNumber);
+  if (tags.discNumber !== undefined) update.partOfSet = String(tags.discNumber);
   if (tags.year !== undefined) update.year = String(tags.year);
   if (tags.genre !== undefined) update.genre = tags.genre;
   if (tags.bpm !== undefined) update.bpm = String(tags.bpm);
@@ -420,6 +423,7 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   if (tags.artist !== undefined) metaArgs.push('-metadata', `ARTIST=${tags.artist}`);
   if (tags.title !== undefined) metaArgs.push('-metadata', `TITLE=${tags.title}`);
   if (tags.trackNumber !== undefined) metaArgs.push('-metadata', `TRACK=${tags.trackNumber}`);
+  if (tags.discNumber !== undefined) metaArgs.push('-metadata', `DISC=${tags.discNumber}`);
   if (tags.year !== undefined) metaArgs.push('-metadata', `DATE=${tags.year}`);
   if (tags.genre !== undefined) metaArgs.push('-metadata', `GENRE=${tags.genre}`);
   if (tags.bpm !== undefined) metaArgs.push('-metadata', `BPM=${tags.bpm}`);

@@ -51,6 +51,15 @@ export function mutateArtistIdentity(
 ): ArtistIdentityMutateResult {
   const rawName = body.rawName?.trim();
   if (!rawName) return { ok: false, error: 'rawName required', status: 400 };
+  // The STORED display name, before trimming. "Different from the target" is
+  // judged against this, not against `rawName`: trimming first makes a
+  // whitespace-only difference vanish before the comparison, so there was no
+  // spelling of the request that could express "same name, minus the trailing
+  // space" — the call was normalised into its own rejection (issue #956).
+  // `"Nicole Moudaber "` is the same category of defect as
+  // `Héroes Del Silencio` vs `Héroes del Silencio`, which this already handles,
+  // and the album side has always been fixable via `fix_album_metadata`.
+  const storedName = body.rawName ?? '';
 
   let kind: 'renamed' | 'merged' | 'single' | 'split';
   let resultArtistId: string | null;
@@ -62,7 +71,7 @@ export function mutateArtistIdentity(
     // name via `aliasFix` on rescan. A different-normalized rename mints a
     // new id (a full rename). Same alias write either way.
     const rename = body.rename.trim();
-    if (!rename || rename === rawName) {
+    if (!rename || rename === storedName) {
       return { ok: false, error: 'rename must be a non-empty, different name', status: 400 };
     }
     upsertArtistAlias(db, {
@@ -74,7 +83,7 @@ export function mutateArtistIdentity(
     resultArtistId = artistIdFor(rename);
   } else if (body.mergeInto != null) {
     const mergeInto = body.mergeInto.trim();
-    if (!mergeInto || mergeInto === rawName) {
+    if (!mergeInto || mergeInto === storedName) {
       return { ok: false, error: 'mergeInto must be a different artist name', status: 400 };
     }
     // A same-normalized target ("Héroes Del Silencio" → "Héroes del Silencio")

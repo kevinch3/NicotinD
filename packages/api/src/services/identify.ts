@@ -18,6 +18,7 @@ export interface IdentifyApplyBody {
   albumArtist?: string;
   year?: number;
   trackNumber?: number;
+  discNumber?: number;
   acoustId?: string;
   recordingId?: string;
   releaseId?: string;
@@ -57,6 +58,9 @@ export function buildIdentifyApplyTags(body: IdentifyApplyBody): AudioTags | nul
   }
   if (Number.isInteger(body.trackNumber) && body.trackNumber! >= 1) {
     tags.trackNumber = body.trackNumber;
+  }
+  if (Number.isInteger(body.discNumber) && body.discNumber! >= 1) {
+    tags.discNumber = body.discNumber;
   }
   return Object.keys(tags).length > 0 ? tags : null;
 }

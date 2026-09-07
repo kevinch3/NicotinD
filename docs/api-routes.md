@@ -120,3 +120,23 @@ This table is an orientation aid, not an exhaustive contract — new routes land
 in `/openapi.json` automatically, and per-feature docs describe their routes in
 context (e.g. [radio.md](radio.md), [mcp-agent.md](mcp-agent.md),
 [device-pairing.md](device-pairing.md)).
+
+### Query integers are clamped by one helper, never by hand (issue #945)
+
+`Math.min(Number(c.req.query('size') ?? 60), 200)` was the idiom at **12 sites**, and it has two
+failure modes that both reach SQLite as a bound parameter:
+
+- **Non-numeric.** `Number('abc')` is `NaN`, `Math.min(NaN, 200)` is `NaN`, and `bun:sqlite` rejects
+  it with `datatype mismatch`. No handler catches it, so `?size=abc` is an unhandled **500** — which
+  also reaches Sentry as an unknown 500, turning a malformed query string into operator noise.
+- **Negative.** Passed straight through to `LIMIT`, which SQLite reads as *no limit*. `?count=-1` on
+  the cap-10000 endpoint was an **unbounded scan**, which is the more interesting half of the bug.
+
+Exactly one of the twelve already had the intended shape (`|| 200` after the `Number`), so this was
+drift from a local convention rather than a missing one — and `check:shared-helpers` exists to stop
+eleven more copies of it. `clampQueryInt(c, name, { fallback, max })` (`routes/query-params.ts`)
+returns the fallback for anything that is not a finite integer >= 1 and always clamps to `max`.
+
+Its test asserts the issue's original empirical repro against a real `bun:sqlite` database rather
+than reasoning about it, since that is what proved the bug in the first place.
+

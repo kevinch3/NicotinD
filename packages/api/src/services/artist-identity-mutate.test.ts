@@ -180,3 +180,59 @@ describe('mutateArtistIdentity — validation', () => {
     });
   });
 });
+
+/**
+ * Issue #956: an artist whose stored display name carries trailing whitespace
+ * could not be corrected from any surface. The mutation trims the input, THEN
+ * compares — so the two names are byte-identical by the time they are compared
+ * and the call can never succeed. The failure even echoed the already-trimmed
+ * `rawName`, which is the tell. The same defect on the ALBUM side is fixable
+ * with `fix_album_metadata`; artists were the one surface where it was not, and
+ * for an incidental reason rather than a deliberate one.
+ */
+describe('a whitespace-only display-name fix (issue #956)', () => {
+  let db: Database;
+  beforeEach(() => {
+    db = new Database(':memory:');
+    applySchema(db);
+  });
+
+  it('accepts a merge that only trims the stored name, and reports it as a rename', () => {
+    const result = mutateArtistIdentity(
+      db,
+      { dataDir: '/tmp' },
+      { mergeInto: 'Nicole Moudaber', rawName: 'Nicole Moudaber ' },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Same category as `Héroes Del Silencio` → `Héroes del Silencio`, which
+      // this path already handles: one artist, canonical spelling corrected.
+      expect(result.kind).toBe('renamed');
+    }
+    expect(
+      db
+        .query<{ canonical_name: string }, [string]>(
+          'SELECT canonical_name FROM library_artist_aliases WHERE alias_norm = ?',
+        )
+        .get('nicole moudaber')?.canonical_name,
+    ).toBe('Nicole Moudaber');
+  });
+
+  it('accepts the same shape through the rename decision', () => {
+    const result = mutateArtistIdentity(
+      db,
+      { dataDir: '/tmp' },
+      { rename: 'Zhamira', rawName: 'Zhamira ' },
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('still refuses a genuine no-op', () => {
+    expect(mutateArtistIdentity(db, { dataDir: '/tmp' }, { mergeInto: 'X', rawName: 'X' }).ok).toBe(
+      false,
+    );
+    expect(mutateArtistIdentity(db, { dataDir: '/tmp' }, { rename: 'X', rawName: 'X' }).ok).toBe(
+      false,
+    );
+  });
+});

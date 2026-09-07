@@ -222,3 +222,66 @@ describe('mutateSongMetadata — verifies albumArtist like every other field (#8
     });
   });
 });
+
+/**
+ * Issue #959: 101 prod albums have several DIFFERENT songs sharing one
+ * `(disc, track)` slot — all 14 tracks of *With the Beatles* are numbered 63 —
+ * and 490 songs on multi-track albums carry no number at all. A curation session
+ * could identify every case and repair none, because these two fields were
+ * simply missing from the accepted set.
+ */
+describe('mutateSongMetadata — track and disc (issue #959)', () => {
+  it('writes both to the file tag and verifies them on read-back', async () => {
+    const written: AudioTags[] = [];
+    const result = await mutateSongMetadata(
+      db,
+      {
+        musicDir,
+        writeTags: async (_abs, tags) => {
+          written.push(tags);
+          return true;
+        },
+        scanIncremental: async () => {
+          db.run('UPDATE library_songs SET track = 3, disc = 2 WHERE id = ?', ['song-yt']);
+        },
+      },
+      'song-yt',
+      { track: 3, disc: 2 },
+    );
+    expect(result.ok).toBe(true);
+    expect(written[0]).toEqual({ trackNumber: 3, discNumber: 2 });
+    if (result.ok) expect(result.applied).toMatchObject({ trackNumber: 3, discNumber: 2 });
+  });
+
+  it('reports non-persistence rather than claiming success', async () => {
+    const result = await mutateSongMetadata(
+      db,
+      {
+        musicDir,
+        writeTags: async () => true,
+        scanIncremental: async () => {
+          /* the row keeps its old numbering */
+        },
+      },
+      'song-yt',
+      { track: 3 },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBe('Tag write did not persist');
+      expect(result.actual).toEqual({ track: null });
+    }
+  });
+
+  it('still refuses a request with no applicable field', async () => {
+    // 0 is not a track number, so this must not become an empty tag write.
+    const result = await mutateSongMetadata(
+      db,
+      { musicDir, writeTags: async () => true },
+      'song-yt',
+      { track: 0 },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe('No applicable fields');
+  });
+});
