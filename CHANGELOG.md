@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.8](https://github.com/kevinch3/NicotinD/compare/v0.6.7...v0.6.8) (2026-09-07)
+
+### Bug Fixes
+
+* **web:** say what "Fetch automatically" did, and stop the queue scrolling sideways ([#1002](https://github.com/kevinch3/NicotinD/issues/1002)) ([2a4c077](https://github.com/kevinch3/NicotinD/commit/2a4c077c0a0c04641baad1e1344d45dc7f99eebb)), closes [#988](https://github.com/kevinch3/NicotinD/issues/988) [#992](https://github.com/kevinch3/NicotinD/issues/992), references [#988](https://github.com/kevinch3/NicotinD/issues/988) [#992](https://github.com/kevinch3/NicotinD/issues/992)
 ## [0.6.7](https://github.com/kevinch3/NicotinD/compare/v0.6.6...v0.6.7) (2026-09-07)
 
 ### Bug Fixes
