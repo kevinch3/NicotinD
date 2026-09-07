@@ -26,8 +26,8 @@ const EMPTY: LocalResults = { artists: [], albums: [], songs: [] };
 //
 // Lives outside library.component (already 759 lines / 7 tabs) and does no
 // matching of its own: /api/search's local lane already tokenizes, folds
-// diacritics, ANDs per token over a name+artist haystack, and excludes
-// quarantined rows. Playlists are not in that lane, so they're out of scope.
+// diacritics and ANDs per token over a name+artist haystack. Playlists are not
+// in that lane, so they're out of scope.
 @Component({
   selector: 'app-library-find',
   imports: [RouterLink, CoverArtComponent, TrackRowComponent, TranslatePipe, SkeletonComponent],

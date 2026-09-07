@@ -5,10 +5,9 @@ import {
   type ProcessingTaskId,
 } from '@nicotind/core';
 
-/** Patch shape: top-level optional, with partial nested tasks/gates (deep-merged). */
-export type ProcessingSettingsPatch = Partial<Omit<ProcessingSettings, 'tasks' | 'gates'>> & {
+/** Patch shape: top-level optional, with partial nested tasks (deep-merged). */
+export type ProcessingSettingsPatch = Partial<Omit<ProcessingSettings, 'tasks'>> & {
   tasks?: Partial<Record<ProcessingTaskId, boolean>>;
-  gates?: Partial<Record<ProcessingTaskId, boolean>>;
 };
 
 /**
@@ -54,21 +53,8 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
     // one cached MB call under the shared 1 req/s limiter, never a gate.
     'artist-origin': true,
   },
-  // Steps that must finish before a fresh download is added to the library.
-  // Fast, offline, no-sidecar analysis (bpm/key/energy) plus genre are gated by
-  // default; genre auto-skips when Lidarr is absent (never blocks). Mood/
-  // audio-features (sidecar, off on fresh installs) and per-artist artist-image
-  // are intentionally NOT gates, so nothing extra is required out of the box.
-  gates: {
-    bpm: true,
-    key: true,
-    energy: true,
-    genre: true,
-  },
   // Not paused by default; the admin "Pause now" toggle flips this at runtime.
   paused: false,
-  // Hold quarantined downloads until explicitly reviewed (issue #411).
-  holdForReview: false,
 };
 
 const LIVE_TASK_IDS = new Set<string>(PROCESSING_TASK_IDS);
@@ -77,9 +63,7 @@ const LIVE_TASK_IDS = new Set<string>(PROCESSING_TASK_IDS);
  * Keep only flags for tasks that still exist. The field-by-field read below
  * protects the TOP level from a retired key; this protects one level down,
  * where `licence` survived its own rollback and was re-persisted on every save
- * (#683 / #779). Allowlisted against the live task ids rather than against the
- * gates defaults — gating a task the defaults do not gate is a legitimate
- * admin choice, and filtering on the defaults would silently discard it.
+ * (#683 / #779). Allowlisted against the live task ids.
  */
 function liveTaskFlags(
   stored: Partial<Record<string, boolean>> | undefined,
@@ -103,13 +87,12 @@ export function getProcessingSettings(db: Database): ProcessingSettings {
     // `batchSize`/`concurrency`/`gpuBusyPercent`, and a bare spread would copy
     // them onto the result (invisible to TS as excess properties) and re-persist
     // them on the next write, so the API would keep emitting retired fields.
+    // The landing gate's `gates` / `holdForReview` keys are the latest retirees.
     return {
       enabled: parsed.enabled ?? DEFAULT_PROCESSING_SETTINGS.enabled,
       paused: parsed.paused ?? DEFAULT_PROCESSING_SETTINGS.paused,
-      holdForReview: parsed.holdForReview ?? DEFAULT_PROCESSING_SETTINGS.holdForReview,
       // Nested objects must deep-merge so an older/partial blob can't drop a field.
       tasks: { ...DEFAULT_PROCESSING_SETTINGS.tasks, ...liveTaskFlags(parsed.tasks) },
-      gates: { ...DEFAULT_PROCESSING_SETTINGS.gates, ...liveTaskFlags(parsed.gates) },
     };
   } catch {
     return clone(DEFAULT_PROCESSING_SETTINGS);
@@ -121,11 +104,12 @@ export function setProcessingSettings(
   patch: ProcessingSettingsPatch,
 ): ProcessingSettings {
   const current = getProcessingSettings(db);
+  // Field-by-field for the same reason as the reader: a client still sending
+  // a retired top-level key must not get it persisted back into the blob.
   const next: ProcessingSettings = {
-    ...current,
-    ...patch,
+    enabled: patch.enabled ?? current.enabled,
+    paused: patch.paused ?? current.paused,
     tasks: { ...current.tasks, ...liveTaskFlags(patch.tasks) },
-    gates: { ...current.gates, ...liveTaskFlags(patch.gates) },
   };
   db.run(
     `INSERT INTO app_settings (key, value) VALUES (?, ?)
@@ -136,9 +120,5 @@ export function setProcessingSettings(
 }
 
 function clone(s: ProcessingSettings): ProcessingSettings {
-  return {
-    ...s,
-    tasks: { ...s.tasks },
-    gates: { ...s.gates },
-  };
+  return { ...s, tasks: { ...s.tasks } };
 }

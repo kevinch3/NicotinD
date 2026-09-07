@@ -25,7 +25,6 @@ describe('processing-settings', () => {
       enabled: false,
       tasks: { bpm: false, genre: true },
       paused: true,
-      holdForReview: true,
     });
     expect(next.enabled).toBe(false);
     expect(getProcessingSettings(db)).toEqual(next);
@@ -47,12 +46,12 @@ describe('processing-settings', () => {
   });
 
   it('deep-merges a partial patch over current values', () => {
-    setProcessingSettings(db, { gates: { bpm: false } });
-    // Patch only one task flag — the other must survive.
+    setProcessingSettings(db, { tasks: { key: false } });
+    // Patch only one task flag — the others must survive.
     const merged = setProcessingSettings(db, { tasks: { genre: false } as never });
     expect(merged.tasks.bpm).toBe(true); // untouched default
     expect(merged.tasks.genre).toBe(false);
-    expect(merged.gates.bpm).toBe(false); // earlier patch survives
+    expect(merged.tasks.key).toBe(false); // earlier patch survives
   });
 
   it('falls back to defaults on a corrupt stored blob', () => {
@@ -67,7 +66,6 @@ describe('processing-settings', () => {
     const s = getProcessingSettings(db);
     expect(s.tasks.bpm).toBe(false); // the stored value wins
     expect(s.tasks.genre).toBe(DEFAULT_PROCESSING_SETTINGS.tasks.genre); // the rest back-fill
-    expect(s.gates).toEqual(DEFAULT_PROCESSING_SETTINGS.gates);
     expect(s.paused).toBe(DEFAULT_PROCESSING_SETTINGS.paused);
   });
 
@@ -106,69 +104,72 @@ describe('processing-settings', () => {
   });
 
   // Issue #779: the top-level fields were already read field-by-field so a
-  // retired one could not survive, but tasks/gates were bare spreads — so
-  // `licence`, rolled back in #683, was still in the persisted blob on prod and
-  // was re-written on every save.
-  it('drops a retired task from a persisted blob, in tasks and in gates', () => {
+  // retired one could not survive, but tasks was a bare spread — so `licence`,
+  // rolled back in #683, was still in the persisted blob on prod and was
+  // re-written on every save.
+  it('drops a retired task from a persisted blob', () => {
     db.run(`INSERT INTO app_settings (key, value) VALUES ('processing', ?)`, [
-      JSON.stringify({
-        enabled: true,
-        tasks: { bpm: true, licence: true },
-        gates: { bpm: true, licence: false },
-      }),
+      JSON.stringify({ enabled: true, tasks: { bpm: true, licence: true } }),
     ]);
     const s = getProcessingSettings(db);
     expect(s.tasks).not.toHaveProperty('licence');
-    expect(s.gates).not.toHaveProperty('licence');
     expect(s.tasks.bpm).toBe(true);
   });
 
   it('does not re-persist a retired task on the next write', () => {
     db.run(`INSERT INTO app_settings (key, value) VALUES ('processing', ?)`, [
-      JSON.stringify({ enabled: true, tasks: { licence: true }, gates: { licence: false } }),
+      JSON.stringify({ enabled: true, tasks: { licence: true } }),
     ]);
     setProcessingSettings(db, { paused: true });
     const stored = JSON.parse(
       db
         .query<{ value: string }, []>("SELECT value FROM app_settings WHERE key = 'processing'")
         .get()!.value,
-    ) as { tasks: Record<string, boolean>; gates: Record<string, boolean> };
+    ) as { tasks: Record<string, boolean> };
     expect(stored.tasks).not.toHaveProperty('licence');
-    expect(stored.gates).not.toHaveProperty('licence');
   });
 
-  // The filter is an allowlist of live task ids, NOT of the gates defaults —
-  // gating a task the defaults don't gate is a legitimate admin choice.
-  it('keeps a gate for a live task that the defaults do not gate', () => {
+  // The landing gate and hold-for-review were removed with instant landing.
+  // Every deployed blob still carries `gates` and `holdForReview`; they must
+  // read cleanly, never surface, and never be re-persisted.
+  it('drops the retired landing-gate keys (gates, holdForReview) from a stored blob', () => {
     db.run(`INSERT INTO app_settings (key, value) VALUES ('processing', ?)`, [
-      JSON.stringify({ enabled: true, gates: { 'audio-features': true } }),
+      JSON.stringify({
+        enabled: true,
+        tasks: { bpm: true },
+        gates: { bpm: true, key: true, energy: true, genre: true },
+        holdForReview: true,
+      }),
     ]);
-    expect(getProcessingSettings(db).gates['audio-features']).toBe(true);
+    const s = getProcessingSettings(db) as unknown as Record<string, unknown>;
+    expect(s['gates']).toBeUndefined();
+    expect(s['holdForReview']).toBeUndefined();
+    expect(s['enabled']).toBe(true);
+
+    setProcessingSettings(db, { paused: true });
+    const stored = JSON.parse(
+      db
+        .query<{ value: string }, []>("SELECT value FROM app_settings WHERE key = 'processing'")
+        .get()!.value,
+    ) as Record<string, unknown>;
+    expect(stored).not.toHaveProperty('gates');
+    expect(stored).not.toHaveProperty('holdForReview');
+  });
+
+  it('does not persist a retired top-level key a stale client still sends', () => {
+    setProcessingSettings(db, { paused: true, holdForReview: true } as never);
+    const stored = JSON.parse(
+      db
+        .query<{ value: string }, []>("SELECT value FROM app_settings WHERE key = 'processing'")
+        .get()!.value,
+    ) as Record<string, unknown>;
+    expect(stored).not.toHaveProperty('holdForReview');
+    expect(stored['paused']).toBe(true);
   });
 
   it('PROCESSING_TASK_IDS covers exactly the shipped task flags', () => {
     expect([...PROCESSING_TASK_IDS].sort()).toEqual(
       (Object.keys(DEFAULT_PROCESSING_SETTINGS.tasks) as ProcessingTaskId[]).sort(),
     );
-  });
-
-  it('back-fills the gates map from a legacy blob that predates it', () => {
-    // A blob written before the landing-gate feature has no `gates` key.
-    db.run(`INSERT INTO app_settings (key, value) VALUES ('processing', ?)`, [
-      JSON.stringify({ enabled: true, tasks: { bpm: true } }),
-    ]);
-    expect(getProcessingSettings(db).gates).toEqual(DEFAULT_PROCESSING_SETTINGS.gates);
-  });
-
-  it('deep-merges a partial gates patch without dropping other gate flags', () => {
-    const merged = setProcessingSettings(db, { gates: { bpm: false } });
-    expect(merged.gates.bpm).toBe(false); // patched
-    expect(merged.gates.key).toBe(DEFAULT_PROCESSING_SETTINGS.gates.key); // untouched default
-  });
-
-  it('holdForReview defaults false and persists', () => {
-    expect(getProcessingSettings(db).holdForReview).toBe(false);
-    setProcessingSettings(db, { holdForReview: true });
-    expect(getProcessingSettings(db).holdForReview).toBe(true);
   });
 });

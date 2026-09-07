@@ -193,7 +193,6 @@ export async function openAlbumCard(page: Page, title?: string): Promise<void> {
   // to time out on some track title three lines later (issue #784).
   await expect(
     page.getByTestId('play-album'),
-    'album detail did not load — page is likely showing album-not-found, ' +
-      'album-unavailable, or the whole-page album-processing state',
+    'album detail did not load — page is likely showing album-not-found, ' + 'album-unavailable',
   ).toBeVisible();
 }

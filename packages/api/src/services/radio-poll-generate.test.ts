@@ -172,7 +172,7 @@ describe('generatePollScenarios', () => {
 
   it('rejects a pinned seed that is missing or not playable', () => {
     seedLibrary(3);
-    seedSong({ id: 'quarantined', title: 'Q', artist: 'Q', landed: false });
+    seedSong({ id: 'hidden', title: 'H', artist: 'H', hidden: true });
     expect(() =>
       generatePollScenarios(
         db,
@@ -183,7 +183,7 @@ describe('generatePollScenarios', () => {
     expect(() =>
       generatePollScenarios(
         db,
-        { scenarioCount: 1, nextUpCount: 2, pinnedSeedIds: ['quarantined'] },
+        { scenarioCount: 1, nextUpCount: 2, pinnedSeedIds: ['hidden'] },
         weights,
       ),
     ).toThrow(RadioPollGenerationError);

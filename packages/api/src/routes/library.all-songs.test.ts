@@ -162,7 +162,7 @@ describe('library /songs (whole-library listing)', () => {
     expect((await second.json()).map((s: { id: string }) => s.id)).toEqual(['song-3']);
   });
 
-  it('excludes hidden, quarantined, and album-hidden songs', async () => {
+  it('excludes hidden and album-hidden songs', async () => {
     seedSong(testDb, {
       id: 'song-hidden',
       title: 'Hidden',
@@ -172,16 +172,6 @@ describe('library /songs (whole-library listing)', () => {
       path: 'X/HX/01.mp3',
       created: '2026-03-21T00:00:00.000Z',
       hidden: 1,
-    });
-    seedSong(testDb, {
-      id: 'song-quarantined',
-      title: 'Quarantined',
-      artist: 'Y',
-      album: 'QY',
-      albumId: 'album-qy',
-      path: 'Y/QY/01.mp3',
-      created: '2026-03-21T00:00:00.000Z',
-      landed: 0,
     });
     seedSong(testDb, {
       id: 'song-album-hidden',
@@ -198,7 +188,6 @@ describe('library /songs (whole-library listing)', () => {
     const data = (await res.json()) as Array<{ id: string }>;
     const ids = data.map((s) => s.id);
     expect(ids).not.toContain('song-hidden');
-    expect(ids).not.toContain('song-quarantined');
     expect(ids).not.toContain('song-album-hidden');
     expect(ids).toContain('song-1');
   });

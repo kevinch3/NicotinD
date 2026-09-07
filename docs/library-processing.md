@@ -29,9 +29,8 @@ continuous, hands-off background process while keeping the download pipeline fas
 | Shared types | `@nicotind/core` `types/processing.ts` (`ProcessingSettings`, `ProcessingStatus`, `ProcessingTaskId`) |
 | Settings store | `services/processing-settings.ts` (`app_settings` key `processing`) |
 | Task registry | `services/enrichment/tasks.ts` (`ENRICHMENT_TASKS`) |
-| Scheduler + landing gate | `services/library-processing.service.ts` (`LibraryProcessingService`) |
-| Per-track step state | `services/song-steps.ts` (`loadQuarantineQueue`, `computeSongSteps`) |
-| Admin routes | `routes/admin.ts` (`/api/admin/processing*`, incl. `/processing/queue`) |
+| Scheduler | `services/library-processing.service.ts` (`LibraryProcessingService`) |
+| Admin routes | `routes/admin.ts` (`/api/admin/processing*`) |
 | Web panel | `pages/admin/` (`AdminComponent`) + DI-free `lib/processing-progress.ts` |
 
 ## The task registry — the extension point
@@ -97,8 +96,8 @@ Launch tasks:
   `isRealGenre` cannot drift, and it also `TRIM`s (a whitespace-only genre used to count
   as resolved). Before this, "has any genre at all" meant done, so yt-dlp writing
   YouTube's *category* — `Music`, `Entertainment` — into the genre tag made a song
-  permanently invisible to **both** genre tasks: it satisfied `countPending`, satisfied
-  the landing gate, and no amount of waiting would improve it. Measured on prod: **803
+  permanently invisible to **both** genre tasks: it satisfied `countPending`, and no
+  amount of waiting would improve it. Measured on prod: **803
   songs across 440 albums** (of 15,939) were stuck this way — 485 `Music`, 261 `Other`,
   the rest `Genre`/`<Desconocido>`/`Entertainment`/`default`/whitespace. `Other` was
   already in `JUNK_GENRES` and ignored by radio, but the pending predicate had never
@@ -163,7 +162,7 @@ Launch tasks:
   **`/health.descriptors` flag** rather than its model status — `POST
   /descriptors` needs no model files, so a models-less build still serves it.
   Stores the 40 raw timbre/groove/band values as one JSON row; not
-  tag-mirrored, **never a landing gate** (~5 s CPU per track), concurrency
+  tag-mirrored (~5 s CPU per track), concurrency
   capped at 2, same 422-ledgered / 404-503-pending contract as audio-features.
   Bulk script: `scripts/backfill-descriptors.ts` (runs the same task body). See
   [audio-descriptors.md](audio-descriptors.md).
@@ -190,8 +189,7 @@ Launch tasks:
   written via the provenance-tagged `library_genre_overrides` path
   (`source: 'essentia'`, scope `song`) — never `appendSongGenres` — so it can
   never overwrite a `user` override and combines non-destructively with any
-  existing tag genres. **Never a landing gate** (no `satisfiedColumnSql`): a
-  weak classifier must never strand a fresh download. See
+  existing tag genres. See
   [audio-ml-enrichment.md](audio-ml-enrichment.md) and
   [library-scanner.md](library-scanner.md) "Multi-genre support".
 - **genre-discogs** (issue #194, the #187 A1 _second_ provider) — album-scoped,
@@ -206,7 +204,7 @@ Launch tasks:
   Re-query is prevented by the override-existence skip + the per-song ledger; a
   lookup that **throws** (provider outage) is separated from a confident miss
   (`erroredAlbums` in `planDiscogsAlbumGenres`) and left unledgered so it retries.
-  **Never a landing gate**, and **off by default** (`tasks['genre-discogs'] =
+  **Off by default** (`tasks['genre-discogs'] =
   false`) since it needs the consent-gated Discogs extension. Discogs' comma/slash
   top-level vocab is mapped separator-free (`discogs-genre-vocab.ts`) before it
   reaches `splitGenres`. See [discogs-plugin.md](discogs-plugin.md) "Genre
@@ -229,7 +227,7 @@ Launch tasks:
   `ctx.lookupArtistInfo(mbid)`), writes the result to `library_artist_meta` via
   `upsertArtistMeta`, or writes a tombstone (bio=NULL, urls=[]) on no MBID / no result.
   Skips `manual_override = 1` rows entirely (writes never run; pending predicate excludes
-  them). **Never a landing gate** (optional enrichment, no `satisfiedColumnSql`). See
+  them). See
   [library-scanner.md](library-scanner.md) "Artist bios".
 
 - **artist-identity** — per *compound artist string*, not per song. Resolves whether a
@@ -244,7 +242,7 @@ Launch tasks:
   members feed the confirmed set), or `unknown` (Lidarr has no confident opinion —
   recorded anyway so it drops out of the pending set until the TTL lapses; the scanner's
   library-atomic confirmation then decides). Like `artist-image` it's per-artist, so it
-  has **no `satisfiedColumnSql`** and is never a landing gate. One-shot seed:
+  has no per-song "done" column. One-shot seed:
   `scripts/resolve-artist-identity.ts` (dry-run default, `--apply`).
 
 - **popularity** (issue #220) — `WHERE popularity IS NULL`, always available (ListenBrainz
@@ -255,8 +253,8 @@ Launch tasks:
   no-MBID-tag and LB-confirmed-no-data are confident misses ledgered-not-tallied
   (`NoConfidentResultError`); a transient 429/outage (the MBID absent from the response map)
   is **not** ledgered so it retries. **Not tag-mirrored** (extrinsic + drifts), so the scanner
-  omits it from its upsert entirely and it survives rescans without a COALESCE. Default-on,
-  **never a landing gate**. Full detail in [popularity.md](popularity.md).
+  omits it from its upsert entirely and it survives rescans without a COALESCE. Default-on.
+  Full detail in [popularity.md](popularity.md).
 
 ### Durability vs. the periodic full scan
 
@@ -301,200 +299,47 @@ checkbox renders from `settings.tasks`/`status.availability`).
 Modeled on `WatchlistService` (interval + a `busy` guard so runs never overlap):
 
 - **`tick()`** (periodic, default 60 s): when disabled (`phase: disabled`) or paused
-  (`phase: paused`, see below) it skips background enrichment but **still clears
-  quarantine** (`hasQuarantined()` → the eager gate drain — issue #807 for disabled,
-  #224 for paused; the steady state pays one `EXISTS` per tick); otherwise runs
-  **one bounded batch per runnable task**. The short interval + guard make the work
-  effectively continuous. Quarantine clearing must never depend on enrichment being
-  on: the scan-seam `kickEager` doesn't check `enabled`, and before #807 a job whose
-  songs scanned with no later scan event read "Processing" forever (a cancelled
-  partial download was the reported case).
+  (`phase: paused`, see below) it does nothing; otherwise runs **one bounded batch per
+  runnable task**. The short interval + guard make the work effectively continuous.
 - **`runNow()`** (admin "Run now"): drains batches in a loop, overriding `paused`,
   until nothing is pending or a batch makes no progress.
 - **`cancelRun()`** (admin "Stop"): aborts the current run between tasks/batches
   **without** disabling the scheduler. The cancellation token is reset at the start
   of every run.
 - **`stop()`**: full shutdown (clears the interval + aborts). Wired into SIGTERM/SIGINT.
-- **`kickEager()`** (eager, out-of-band): drains **only the required gate tasks**
-  for quarantined songs then graduates — see the landing gate below.
-- **`landAlbumNow(albumId)`** (curator-approve, issue #708): like `kickEager()`
-  but bounded and album-scoped — see below.
+- **`enrichNewSongsNow()`** (eager, out-of-band): the post-scan nudge. `scanIncremental`
+  (`index.ts`) fires it fire-and-forget after every organize+scan so a new download's
+  analysis starts immediately instead of waiting for the next tick. It shares the `busy`
+  guard (no-op while a run is in flight — the tick picks the songs up), and it never
+  decides visibility: the songs are already landed.
 
-## Landing gate (process-before-landing)
+## Landing is instant; `landed_at` = first seen
 
-A freshly-downloaded song is written to `library_songs` by the scanner (so the
-enrichment tasks can operate on it) but starts **quarantined**: `landed_at IS NULL`,
-hidden from *every* library listing (see `docs/download-pipeline.md` for the listing
-coverage). It **graduates** (a `landed_at` timestamp is set) only once its required
-processing steps are done. This inverts the old flow where a download appeared
-instantly, un-enriched.
+A scanned song is in the library the moment the scanner commits it. Enrichment is
+something that happens *to* a landed song, never a condition of landing — the
+surfaces that need analysis (radio, recommendations) hold un-analysed tracks out
+themselves through the shared eligibility predicate ([radio.md](radio.md) "Feed
+eligibility"), which is a per-surface question with a per-surface answer, not a
+library-wide hold.
 
-**A partly-landed album is shown and marked, not hidden** (issue #693). Suppression
-used to drop an album from every album surface as soon as *any* one of its songs was
-un-landed. That produced the opposite of its "never show an incomplete album" intent:
-the landed siblings still appeared in the artist Songs tab, so a freshly-downloaded
-album rendered as a pile of orphan singles under a header reading "0 albums" — the
-report that opened #687. Now only an album with **nothing** landed is excluded (there
-is genuinely nothing to display, and the detail route still answers
-`ALBUM_PROCESSING`); anything with at least one landed track is listed, carrying
-`processingTracks` so the album page can say "N tracks still processing". An album row
-with no songs at all is a different condition and is untouched by either rule. The
-count is attached per page (`attachProcessingCounts`), not as a correlated subquery in
-`ALBUM_SELECT`, so a large grid doesn't pay for a number it will not show — and the
-memoized `anyQuarantined` fast path skips the query entirely when nothing is held.
-
-- **`landed_at`** (`library_songs`, `db.ts`): NULL = quarantined, timestamp = landed.
-  The scanner deliberately never writes it (omitted from `persist()`'s INSERT and
-  UPDATE), so a fresh scan mints NULL and a rescan preserves the value. The
-  processing service is the **only** writer that sets a timestamp. A one-time
-  marker-gated backfill (`library_sync_state` key `landing_backfill_v1`) lands every
-  pre-existing row so an upgrade never retroactively hides music.
-- **Per-task gate flag** (`ProcessingSettings.gates`, a sparse
-  `Partial<Record<ProcessingTaskId, boolean>>`, deep-merged like `tasks`): distinct
-  from `tasks` (background enable). Defaults: `bpm`/`key`/`energy`/`genre` gated;
-  `audio-features` (sidecar, off on fresh installs) and per-artist `artist-image`
-  are **not** gates. Admin toggles both flags per task (Admin → Library processing).
-- **`requiredGateTasks(settings)`** = tasks that are **`gateable`** **AND** `gates[id]`
-  **AND** `tasks[id]` **AND** `available(ctx)===true` **AND** have a
-  `satisfiedColumnSql`. The availability intersection is the **fresh-install /
-  sidecar-off guarantee**: an off/unavailable gated task is silently dropped from the
-  required set, so a missing tool, absent Lidarr, or a dark sidecar can never strand a
-  download. An empty required set means nothing gates landing (the pre-feature
-  behaviour).
-- **`gateable`** (per `EnrichmentTask`, issue #691): explicit opt-in to being a landing
-  gate. Eligibility used to be *implied* by owning a `satisfiedColumnSql`, which
-  silently enrolled tasks that only needed that predicate for filtering — the licence
-  task documented "never a landing gate" in its own docstring and was gateable anyway.
-  Switching it on stranded 261 songs across 220 albums on prod (#687). The rule: a task
-  is gateable only when its answer comes from the file itself and a missing answer means
-  the file isn't ready. `bpm`/`key`/`energy`/`genre`/`audio-features` are gateable;
-  `popularity` is not, because ListenBrainz can confidently have no listen data for a
-  perfectly good recording. A stored `gates` blob naming a non-gateable task is inert,
-  so no migration is needed. `ProcessingStatus.gateable` publishes the list so the Admin
-  panel hides the control instead of offering an inert — or harmful — one.
-- **`satisfiedColumnSql`** (per `EnrichmentTask`): the inverse of its `countPending`
-  NULL predicate (`bpm IS NOT NULL`, `danceability IS NOT NULL`, …). `artist-image`
-  has none → no per-song "done" answer at all. Having one is necessary but **not
-  sufficient** to gate landing; see `gateable` above.
-- **One definition of "owned"** (issue #692). Quarantine hides a song from listings,
-  so nothing may report it as owned either. `DiscographyService.fetchLocalSongs`
-  counts only landed songs and `fetchLocalAlbums` only albums with at least one
-  landed song — otherwise the two halves of the artist page contradicted each other:
-  "0 albums" in the header beside "10/10 tracks · 1 complete" in the discography
-  strip, for an album every album surface was deliberately hiding (#687). A partly
-  landed album now reads *partial*, which is the honest answer — those are the
-  tracks that exist for the user right now. Whole-library maintenance readers
-  (`library-audit`, `artwork-backfill`, `library-retag`) deliberately still see
-  quarantined rows: they operate on what is on disk, not on what the user owns.
-- **`graduatePending(settings)`** runs at the end of every batch (`processOneBatch`)
-  and inside `kickEager`. It lands songs where every required step is `satisfied OR
-  permanentlyFailed` (the ledger complement `permanentlyFailedClause`, so a corrupt
-  file the enrichment can never analyze still lands), **OR** the song has been
-  quarantined longer than `QUARANTINE_MAX_HOURS` (24h). That **safety valve** is the
-  key correctness guard: it covers the deliberately un-ledgered failure modes
-  (sidecar 404/503 mount mismatch, an env-level decode outage) that would otherwise
-  hold a download invisible forever.
-- **Eager processing**: `scanIncremental` (`index.ts`) fires a fire-and-forget
-  `processingRef.current?.kickEager()` after every organize+scan, so a new download's
-  gate steps run **immediately**, and it lands as soon as it's
-  ready. `tick()` also runs a gate-only pass whenever a quarantined
-  song exists, backstopping a missed kick (crash between scan and kick, restart
-  mid-quarantine). This is separate from full/background enrichment of the
-  existing library.
-- **`ProcessingStatus.quarantined`** counts songs awaiting their gate steps;
-  `GET /api/admin/processing/queue` (`song-steps.ts` `loadQuarantineQueue`) returns
-  them grouped by album with per-step badges (`done`/`pending`/`skipped`).
-- **Boot backlog**: `runSyncAndCurate` fires `kickEager()` after the initial
-  `scanFull`, and `tick()` runs a gate-only pass whenever a quarantined song exists,
-  so a restart processes any quarantined backlog immediately.
-- **A deep link into quarantine says so** (issue #466): the quarantine hold is
-  invisible to every listing, but `GET /api/library/albums/:id` is reachable by
-  *link* — and the Downloads card offers "Open in Library" the moment the
-  **download** completes, which is precisely the start of the quarantine window.
-  Both that hold and a genuinely absent album used to answer a bare
-  `{ error: 'Album not found' }`, so a user who clicked the button on their
-  brand-new album was told it did not exist. The status stays **404** (it really
-  isn't in the library yet — the grid agrees), but the response now carries a
-  `code`: `ALBUM_PROCESSING` vs `ALBUM_NOT_FOUND`, following the #337 typed-code
-  convention. The web client classifies it with the pure
-  `lib/album-load-state.ts` `albumLoadFailureFor` into `processing` / `missing` /
-  `unavailable` and renders a distinct state for each — the album page previously
-  `catch { /* ignore */ }`-ed **every** failure (500, 401, offline included) into
-  the same "Album not found.", which is why a server error and a processing
-  album were indistinguishable. Prod measurement that motivated this: quarantine
-  lasts ≤1 min for 4,989 of 14,974 songs but **>24 h for 7,195** (mean ~14 h), so
-  this is the common path, not an edge case.
-- **Escape hatch**: `NICOTIND_DISABLE_LANDING_GATE=1` bypasses the gate entirely
-  (`requiredGateTasks` returns `[]` → everything lands immediately). The e2e harness
-  sets it because its silent-FLAC fixtures can't yield a confident BPM/key and would
-  otherwise stay quarantined behind analysis that never completes.
-
-### Landing reads policy live, never the batch's snapshot
-
-`tick()` reads `ProcessingSettings` once and hands that object down through
-`processOneBatch`, which is right for the *work plan* — which tasks this batch runs, in
-what order — and wrong for the *landing decision*. `graduatePending` therefore takes no
-settings argument: it calls `getProcessingSettings(this.db)` itself, so every call site
-is correct by construction rather than by remembering.
-
-The bug this closes: a batch runs for as long as its analysis takes, and it ended by
-landing with the settings it had opened with. An admin who switched **hold for review**
-on while a batch was in flight had everything that scanned in during that batch land
-**unreviewed** — the setting appeared to take effect, and the next download quietly
-bypassed the inbox. In CI the same race showed up as a ~5% flake on
-`download-partial-discard.spec.ts`: the spec turns the hold on in `beforeAll`, and when
-that landed inside the 60 s scheduler tick's window the fixture track landed anyway, so
-`quarantinedCount` stayed 0 and the poll timed out.
-
-Same defect class as the #687 landing-gate strand and #894's Review/Discard gating: a
-predicate answering the question *as of an earlier moment* than the one being asked.
-"Is this allowed?" is always a question about now.
-
-### `landAlbumNow` (instant landing on approve)
-
-`POST /api/review/albums/:id/approve` ([download-review.md](download-review.md))
-needs a curator's approve to make the album visible essentially immediately,
-not just "eventually via the next tick." `kickEager()` can't do this safely: it
-silently no-ops if `busy` is already held (`if (this.busy) return`), and when it
-does run, its drain loop processes the **library-wide** pending-gate-task queue
-(oldest-first), not just the album that was just approved — so approving one
-small album could block on an unrelated, much larger backlog.
-
-`landAlbumNow(albumId)` reuses the *same* `busy` mutex (no second lock — the
-class carries significant unscoped instance state, e.g. `status`/`drained`/
-`freshProcess`, that a second concurrent drain would corrupt even over a
-disjoint row set) but changes two things:
-
-- **Waits instead of no-op'ing.** A bounded poll loop (`landAlbumPollMs`,
-  default 100ms) waits for `busy` to release, up to `landAlbumTimeoutMs`
-  (default 8s), before proceeding — closing the "resolved instantly, landed
-  nothing" failure mode `kickEager` has.
-- **Scoped to one album.** `processOneBatch` takes an optional `albumId`; when
-  present, each gate task's `run()` (and the 7 tasks with `satisfiedColumnSql`
-  all accept it — any of them can be an admin-configured gate) filters its
-  query to `AND album_id = ?` instead of the library-wide queue.
-
-The drain loop stops on whichever comes first: this album's gate tasks are all
-satisfied, a batch makes no progress (nothing left resolvable), or the
-deadline elapses — that last case is tracked separately (`hitDeadline`, inside
-`landAlbumInner`) from "stopped for a good reason," so `timedOut` in the
-result only reports a genuine timeout, not a normal empty-queue exit.
-`graduatePending()` — unchanged, still the sole writer of `landed_at`, still
-enforcing every step/valve/review condition — runs regardless of which way the
-loop stopped, so whatever *can* land, does.
-
-Returns a typed `LandAlbumResult` instead of `kickEager`'s `void`:
-`{ landed, timedOut, pendingSongCount, pendingTasks }`. `pendingTasks` empty
-while `pendingSongCount > 0` means gate tasks aren't the blocker — most likely
-`graduatePending`'s `reviewCond` (`reviewed_at >= created`) excluding a newer
-download wave that raced the approval, a legitimate "not landed" that isn't a
-timeout at all.
-
-In the common case this is genuinely fast: gate tasks run unconditionally in
-the background regardless of review-hold state, so by the time a curator
-opens the inbox and clicks Approve, they've usually already finished — the
-drain loop's first check finds nothing pending and calls `graduatePending`
-immediately (a single `UPDATE`).
+- **`landed_at`** (`library_songs`, `db.ts`): epoch ms of the song's **first scan**. The
+  scanner stamps it in `persist()`'s INSERT column list and leaves it out of the
+  `ON CONFLICT … DO UPDATE SET`, so a rescan preserves first-seen; nothing else writes
+  it. No listing filters on it. It is the `fillNewAlbumMetadata` watermark ("albums with
+  a song newer than the last pass") and the `list_recent_songs` / `/recent-songs`
+  ordering key, indexed for both.
+- **`landing_backfill_v2`** (`library_sync_state`, `applySchema`): a database written by
+  a gated build can hold rows still `NULL` at upgrade time; the marker-gated one-shot
+  stamps them once so the column has the same meaning for every row. (`landing_backfill_v1`
+  is the historical marker from when the gate first shipped; kept so marker semantics stay
+  stable.) The retired hold-for-review marker is swept in the same block.
+- **Why the gate went** (#687 strand, #466 deep links, #807 stuck cards, #901 mid-batch
+  race — one defect class each time: a visibility predicate answering an easier question
+  than "is this song in the library"). The decisive number: on prod, quarantine lasted ≤1 min
+  for 4,989 of 14,974 songs but **>24 h for 7,195** (mean ~14 h), so an invisible download
+  was the common path. Deleting the mechanism also removed the review inbox, the
+  `processing` pipeline stage, per-task gates and the escape-hatch env var — a download
+  now has nothing to be stuck *behind*.
 
 ### Failure diagnosis, feedback & Sentry
 
@@ -582,10 +427,9 @@ table (keyed `(song_id, task)`) fix that:
   `NoConfidentResultError` means "we asked, no such data exists for this recording" — a
   final answer. It sets `terminal = 1` on the ledger row, and both clauses read
   `terminal = 1 OR (fail_count >= MAX AND size matches)`, so the task settles on the first
-  answer instead of after three. This matters most for a task used as a **landing gate**:
-  before it, a track whose licence was definitively unobtainable had to fail three times
-  before it was allowed into the library, which stranded 261 songs across 220 albums on
-  prod (#687). `terminal` is deliberately *not* size-guarded — the answer is a property of
+  answer instead of after three. When the task was still a landing gate, a track whose licence was
+  definitively unobtainable had to fail three times before it was allowed into the
+  library, which stranded 261 songs across 220 albums on prod (#687). `terminal` is deliberately *not* size-guarded — the answer is a property of
   the recording, not of the bytes — and `countSkippedFiles` deliberately ignores it, since
   those files are not broken.
 - **Our own tag writes must not look like a re-download** (issue #690). Enrichment writes
@@ -661,7 +505,7 @@ service's `'status'` EventEmitter (the SSE source).
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/admin/processing` | `{ settings, status }` (status has per-task pending counts + availability reasons) |
-| PUT | `/api/admin/processing` | Update settings (enable, pause, per-task flags, landing gates, hold-for-review) |
+| PUT | `/api/admin/processing` | Update settings (enable, pause, per-task flags) |
 | POST | `/api/admin/processing/run` | `runNow()` (overrides `paused`) |
 | POST | `/api/admin/processing/stop` | `cancelRun()` |
 | GET | `/api/admin/processing/stream` | SSE status snapshots (progress bar + snippets) |
@@ -711,10 +555,9 @@ the GPU **right now**: stop the background work, but don't reconfigure the insta
 `ProcessingSettings.paused` (+ the `paused` member of `ProcessingPhase`) is that lever, and it is
 deliberately weaker than `enabled` in three ways:
 
-- **It never strands a download.** The paused branch in `tick()` sits *after* the `enabled` gate and
-  still runs `kickEagerInner()` whenever `hasQuarantined()` — a freshly-downloaded song clears its
-  landing gate and becomes visible even while paused. Only background enrichment is skipped.
-  Pausing would otherwise leave new music invisible in quarantine with no indication why.
+- **It never hides a download.** Landing is instant and independent of the scheduler, so pausing
+  skips background enrichment and nothing else — new music is visible while paused, just not yet
+  analysed.
 - **`runNow()` overrides it.** The admin override reads no pause flag, so "Run now" still drains.
   Pause throttles the *automatic* loop, not the human pressing the button.
 - **`enabled: false` wins the label.** When both are set the phase reports `disabled`, because the

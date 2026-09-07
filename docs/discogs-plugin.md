@@ -160,8 +160,7 @@ second source behind the same gate, not a replacement for MusicBrainz.
   stays `status='pending'` for curator review. The plugin already corroborates
   artist **and** album title (`selectBestRelease`), so its `confidence` *is* the
   gate signal — no second name-based gate.
-- **Never a landing gate, off by default.** `genre-discogs` is not in the default
-  `gates` set (a metadata source must never strand a fresh download) and its
+- **Off by default.** `genre-discogs`'s
   `tasks` flag defaults **false** (it needs the consent-gated Discogs extension
   configured). A lookup that **throws** (429/503/network) leaves its album
   *unledgered* so it retries — an outage can never ledger the library out of the

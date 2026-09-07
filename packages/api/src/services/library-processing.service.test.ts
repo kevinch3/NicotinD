@@ -11,9 +11,8 @@ import { getTask, type EnrichmentContext } from './enrichment/tasks.js';
 let db: Database;
 let dataDir: string;
 
-// Seeds an already-landed song (landed_at set): these tests cover windowed
-// backfill of the existing library, not the fresh-download quarantine path
-// (which lives in library-processing.landing.test.ts).
+// Seeds a scanned song (landed_at set, as the scanner always does): these tests
+// cover background enrichment of the existing library.
 function seedSong(id: string, artist = 'Artist'): void {
   db.run(
     `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, landed_at, synced_at)

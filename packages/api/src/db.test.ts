@@ -354,16 +354,70 @@ describe('applySchema — landing backfill', () => {
       db.query(`SELECT 1 FROM library_sync_state WHERE key = 'landing_backfill_v1'`).get(),
     ).not.toBeNull();
 
-    // A fresh download arrives quarantined…
+    // A row inserted with landed_at NULL after both markers are set (the
+    // scanner never does this; a raw insert stands in for one) stays NULL: the
+    // backfills are one-shot, not a per-boot sweep.
     db.run(
       `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
        VALUES ('new', 'a', 'T2', 'X', 'art', 'p2', 1)`,
     );
     expect(landed(db, 'new')).toBeNull();
-
-    // …and a second applySchema (a restart) must NOT land the in-flight download.
     applySchema(db);
     expect(landed(db, 'new')).toBeNull();
+  });
+});
+
+describe('applySchema — instant landing (landing_backfill_v2)', () => {
+  /** A database written by a gated build: v1 already ran, one song still quarantined. */
+  function gatedDb(): Database {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at, landed_at)
+       VALUES ('landed', 'a', 'T', 'X', 'art', 'p', 1, 500), ('held', 'a', 'T2', 'X', 'art', 'p2', 1, NULL)`,
+    );
+    db.run(`DELETE FROM library_sync_state WHERE key = 'landing_backfill_v2'`);
+    db.run(
+      `INSERT INTO library_sync_state (key, value, updated_at) VALUES ('review_hold_armed_v1', '1', 1)`,
+    );
+    return db;
+  }
+
+  it('stamps every NULL landed_at once, sets the marker, and sweeps the review-hold marker', () => {
+    const db = gatedDb();
+    applySchema(db);
+    expect(landed(db, 'held')).not.toBeNull();
+    expect(landed(db, 'landed')).toBe(500); // an existing first-scan stamp is preserved
+    expect(
+      db.query(`SELECT 1 FROM library_sync_state WHERE key = 'landing_backfill_v2'`).get(),
+    ).not.toBeNull();
+    expect(
+      db.query(`SELECT 1 FROM library_sync_state WHERE key = 'review_hold_armed_v1'`).get(),
+    ).toBeNull();
+  });
+
+  it('is a no-op on the second applySchema', () => {
+    const db = gatedDb();
+    applySchema(db);
+    const first = landed(db, 'held');
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
+       VALUES ('later', 'a', 'T3', 'X', 'art', 'p3', 1)`,
+    );
+    applySchema(db);
+    expect(landed(db, 'held')).toBe(first);
+    expect(landed(db, 'later')).toBeNull();
+  });
+
+  it('drops the retired download_reviews table', () => {
+    const db = new Database(':memory:');
+    db.run(`CREATE TABLE download_reviews (album_id TEXT PRIMARY KEY, state TEXT NOT NULL)`);
+    applySchema(db);
+    expect(
+      db
+        .query(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'download_reviews'`)
+        .get(),
+    ).toBeNull();
   });
 });
 
@@ -416,41 +470,6 @@ describe('applySchema — users.last_seen_at migration', () => {
         )
         .get('u1')?.last_seen_at,
     ).toBe(4242);
-  });
-});
-
-describe('applySchema — hold-for-review bootstrap exemption (#417)', () => {
-  it('arms the marker on a database that already has a landed song', () => {
-    const db = new Database(':memory:');
-    // A legacy library (no landed_at column) with one existing song — mirrors
-    // the landing-backfill test above, since that backfill is what produces
-    // the landed row this arming condition looks for.
-    db.run(`
-      CREATE TABLE library_songs (
-        id TEXT PRIMARY KEY, album_id TEXT NOT NULL, title TEXT NOT NULL, artist TEXT NOT NULL,
-        artist_id TEXT NOT NULL, duration INTEGER NOT NULL DEFAULT 0, genre TEXT, path TEXT NOT NULL,
-        hidden INTEGER NOT NULL DEFAULT 0, synced_at INTEGER NOT NULL
-      )
-    `);
-    db.run(
-      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
-       VALUES ('old', 'a', 'T', 'X', 'art', 'p', 1)`,
-    );
-
-    applySchema(db);
-
-    expect(
-      db.query(`SELECT 1 FROM library_sync_state WHERE key = 'review_hold_armed_v1'`).get(),
-    ).not.toBeNull();
-  });
-
-  it('does not arm the marker on a fresh, empty database', () => {
-    const db = new Database(':memory:');
-    applySchema(db);
-
-    expect(
-      db.query(`SELECT 1 FROM library_sync_state WHERE key = 'review_hold_armed_v1'`).get(),
-    ).toBeNull();
   });
 });
 

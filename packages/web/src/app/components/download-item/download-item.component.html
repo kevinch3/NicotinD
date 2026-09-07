@@ -108,15 +108,9 @@
           </div>
         </app-menu-panel>
       }
-      @if (showReviewHold()) {
-        <span class="flex items-center gap-2 text-xs" data-testid="download-held-review">
-          <span class="text-theme-muted">{{ 'downloads.heldForReview' | t: { count: item().quarantinedCount ?? 0 } }}</span>
-          <button
-            type="button"
-            class="underline decoration-dotted text-theme-secondary hover:text-theme-primary transition"
-            data-testid="download-review-jump"
-            (click)="reviewJump.emit()"
-          >{{ 'downloads.review' | t }}</button>
+      @if (showPartialDiscard()) {
+        <span class="flex items-center gap-2 text-xs" data-testid="download-partial-landed">
+          <span class="text-theme-muted">{{ 'downloads.partialLanded' | t: { count: item().progress?.done ?? 0 } }}</span>
           <button
             type="button"
             class="underline decoration-dotted text-status-error hover:opacity-80 transition"

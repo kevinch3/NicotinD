@@ -180,8 +180,6 @@ export interface Album {
   starred?: string;
   classification?: 'album' | 'ep' | 'single' | 'compilation' | 'unknown';
   hidden?: boolean;
-  /** Tracks still behind the landing gate; absent/0 = fully landed (issue #693). */
-  processingTracks?: number;
 }
 
 export interface AlbumDetail {
@@ -192,8 +190,6 @@ export interface AlbumDetail {
   artists?: ArtistCredit[];
   coverArt?: string;
   year?: number;
-  /** Tracks still behind the landing gate; absent/0 = fully landed (issue #693). */
-  processingTracks?: number;
   song: Array<{
     id: string;
     title: string;
@@ -475,44 +471,6 @@ export interface CatalogResolveResult {
   artistName: string;
 }
 
-/** Per-track processing-step state for the admin quarantine queue. Mirrors the
- *  API's song-steps.ts. `done` = value produced, `skipped` = permanently failed
- *  (won't block landing), `pending` = still to run. */
-export type StepState = 'done' | 'pending' | 'skipped';
-
-export interface SongSteps {
-  download: 'done';
-  bpm: StepState;
-  key: StepState;
-  energy: StepState;
-  genre: StepState;
-  mood: StepState;
-}
-
-export interface QuarantineSong {
-  id: string;
-  title: string;
-  track: number | null;
-  steps: SongSteps;
-}
-
-export interface QuarantineAlbum {
-  albumId: string;
-  albumTitle: string;
-  albumArtist: string;
-  songs: QuarantineSong[];
-}
-
-/**
- * Download inbox triage (issue #411) queue row — a `QuarantineAlbum` (shared
- * shape with the Admin processing queue) plus the release year the review
- * card surfaces. Mirrors the API's `ReviewQueueAlbum` in
- * `download-review-store.ts`.
- */
-export interface ReviewQueueAlbum extends QuarantineAlbum {
-  year: number | null;
-}
-
 // ── Device pairing (QR link) + remote access ─────────────────────────────────
 
 /** Guided remote-access state machine (Tailscale Funnel), mirrored from the
@@ -753,7 +711,6 @@ export interface ProcessingSummary {
   failed: number;
   total: number;
   skipped: number;
-  quarantined: number;
   taskPending: Record<string, number>;
   availability: Record<string, true | string>;
   startedAt: string | null;
@@ -881,12 +838,6 @@ export interface ServiceReview {
   playEvents: number;
   /** Artist-portrait coverage (issue #250). */
   artistImages: ArtistImageCoverage;
-  /**
-   * Pending hold-for-review count + oldest-waiting timestamp (issue #417) —
-   * always zeros when the gate is off or the bootstrap marker hasn't armed,
-   * so this can never disagree with the Downloads inbox itself.
-   */
-  downloadReviews: PendingReviewStats;
   auditTail: AuditEntry[];
   /** Open human-review flags (issue #682), oldest first — the curation queue. */
   reviewFlags: CurationFlag[];
@@ -984,12 +935,6 @@ export interface ListeningStats {
   topGenres: Array<{ genre: string; plays: number }>;
   /** Plays per local hour of day; always 24 buckets. */
   clock: number[];
-}
-
-/** Hold-for-review backlog snapshot (issue #417). */
-export interface PendingReviewStats {
-  pending: number;
-  oldestCreated: string | null;
 }
 
 export interface LibraryFragmentReport {

@@ -1,7 +1,7 @@
 /**
  * Types for the admin "Import music from folder" flow (docs/import.md): a
- * server-side folder is run through the same organize → scan → quarantine
- * pipeline a download takes, chunk-wise, with copy-by-default semantics.
+ * server-side folder is run through the same organize → scan pipeline a
+ * download takes, chunk-wise, with copy-by-default semantics.
  */
 import type { AcquireAlbumDestination, PipelineStage } from './acquire.js';
 

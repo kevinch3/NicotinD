@@ -9,7 +9,6 @@ import type {
   SetupResult,
   SetupBody,
   AdminUser,
-  QuarantineAlbum,
   DiskUsage,
   BackupInfo,
   UpdateCheck,
@@ -166,12 +165,6 @@ export class SystemApiService {
 
   stopProcessing() {
     return this.http.post<{ ok: boolean }>('/api/admin/processing/stop', {});
-  }
-
-  // Quarantine queue: downloads awaiting their required processing steps before
-  // they're added to the library, grouped by album with per-step badges.
-  getProcessingQueue() {
-    return this.http.get<{ albums: QuarantineAlbum[] }>('/api/admin/processing/queue');
   }
 
   // Audit log (destructive/curation actions) — admin only.

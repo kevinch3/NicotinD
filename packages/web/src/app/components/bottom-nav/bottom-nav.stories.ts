@@ -40,22 +40,20 @@ export const Listener: Story = { ...withState({ role: 'listener' }) };
 export const Acquirer: Story = { ...withState({ role: 'user' }) };
 
 /**
- * The badge sums three independent sources — slskd transfers, in-flight URL
- * acquisitions, and the download-inbox triage queue. Mobile once omitted the
- * acquire jobs, so a yt-dlp download showed a badge on desktop and none on the
- * phone; this story seeds one of each, so the number is only correct when all
- * three are counted.
+ * The badge sums two independent sources — slskd transfers and in-flight URL
+ * acquisitions. Mobile once omitted the acquire jobs, so a yt-dlp download
+ * showed a badge on desktop and none on the phone; this story seeds one of
+ * each, so the number is only correct when both are counted.
  */
 export const WithDownloadBadge: Story = {
   ...withState({
     role: 'user',
     downloadingTransfers: 2,
     activeAcquireJobs: 1,
-    pendingReviews: 3,
   }),
 };
 
 /** A listener never sees the badge, because the tab it sits on is filtered out. */
 export const ListenerIgnoresDownloads: Story = {
-  ...withState({ role: 'listener', downloadingTransfers: 2, pendingReviews: 3 }),
+  ...withState({ role: 'listener', downloadingTransfers: 2 }),
 };

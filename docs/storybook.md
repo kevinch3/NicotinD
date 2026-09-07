@@ -36,9 +36,9 @@ were the slowest half of it — see [deployment.md](deployment.md) "CI coverage"
   `menu-panel`, `recently-played`, `song-picker`, `toast-outlet`, `track-context-menu`,
   `track-row`, `tv-shell`, `update-banner`, `welcome-banner`.
 
-**Not in it (11):** `album-hunt-modal`, `artist-image-menu`, `bottom-nav`,
+**Not in it (10):** `album-hunt-modal`, `artist-image-menu`, `bottom-nav`,
 `folder-browser`, `layout`, `metadata-fix-modal`, `now-playing`,
-`player`, `review-inbox`, `track-info-sheet`. These inject 5–14 services (`layout` injects
+`player`, `track-info-sheet`. These inject 5–14 services (`layout` injects
 14). They are compositions of the app, not shared primitives, and storying them means
 reconstructing most of the service graph. See the deferred-work issues below.
 
@@ -139,13 +139,6 @@ inert: no timer to stop, no request to intercept.
 `artistImageSources` seeds `ArtistImageSourcesService.sources`, which gates "Fetch
 automatically" (issue #422): `null` is the pre-load optimistic state and `[]` means no
 provider can resolve a portrait, so the control is disabled rather than offered and failing.
-
-`reviewQueue` seeds `DownloadReviewService.queue`. The inbox's constructor calls
-`review.start()`, whose refresh 404s against the fixture transport — and *by design*
-"keeps the last-known badge/queue rather than flashing to zero/empty", so the seed survives
-through the component's real lifecycle rather than around it. Note the inbox is
-**self-gating** (`canCurate() && queue().length > 0`), so the empty and listener stories
-render nothing on purpose; that is what lets the Downloads page mount it unconditionally.
 
 (A `feedbackSheet` seed used to live on `StoryState` for the generation-feedback detail
 sheet. Both are gone with that feature. The lesson it recorded is worth keeping: a
@@ -461,7 +454,7 @@ Tracked under the `storybook` label.
 | --- | --- |
 | [#470](https://github.com/kevinch3/NicotinD/issues/470) | Story the player / now-playing / layout shell trio |
 | ~~[#471](https://github.com/kevinch3/NicotinD/issues/471)~~ | ✅ Acquisition modals storied. Its time-stepping-fixture prerequisite proved unnecessary — see above |
-| ~~[#472](https://github.com/kevinch3/NicotinD/issues/472)~~ | ✅ Review surfaces storied. Its identify-failure criterion was misattributed — those chips live in `metadata-fix-modal` (#471), not `review-inbox` |
+| ~~[#472](https://github.com/kevinch3/NicotinD/issues/472)~~ | ✅ Review surfaces storied (the inbox itself was later removed with instant landing). Its identify-failure criterion was misattributed — those chips live in `metadata-fix-modal` (#471), not `review-inbox` |
 | [#473](https://github.com/kevinch3/NicotinD/issues/473) | Visual regression on top of the stories |
 | ~~[#474](https://github.com/kevinch3/NicotinD/issues/474)~~ | ✅ `@storybook/addon-a11y` plus triage — findings became [#481](https://github.com/kevinch3/NicotinD/issues/481) / [#482](https://github.com/kevinch3/NicotinD/issues/482) |
 | ~~[#475](https://github.com/kevinch3/NicotinD/issues/475)~~ | ✅ Interaction tests for `menu-panel` + `seek-bar` (`selection-bar` deliberately excluded — see above) |

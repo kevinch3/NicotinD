@@ -38,18 +38,6 @@ export const Organizing: Story = {
   },
 };
 
-/** Scanned into the library but held behind the enrichment gates, so still not listable. */
-export const Processing: Story = {
-  args: {
-    item: {
-      ...demoDownloadItem,
-      stage: 'processing',
-      percent: 100,
-      progress: { done: 7, total: 7 },
-    },
-  },
-};
-
 export const Done: Story = {
   args: {
     item: {

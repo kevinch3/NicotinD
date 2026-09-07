@@ -156,10 +156,8 @@ target is still refused, since that is a true no-op.
 `search_library`'s missing "browse" counterpart to its "search" — a curator (or an
 agent asked to "curate the most recent downloads") had no way to list songs by
 recency at all, and no way to filter for songs missing a genre without guessing
-substring queries. Sorts by `landed_at` (indexed, "when curation actually
-finished") rather than `created` (file mtime, unindexed on songs), reusing the
-same `landed_at IS NOT NULL` quarantine-safety filter `search_library` already
-applies. `missingGenre` reuses the `WHERE (genre IS NULL OR genre = '')` idiom
+substring queries. Sorts by `landed_at` (indexed, "when the song was first
+scanned") rather than `created` (file mtime, unindexed on songs). `missingGenre` reuses the `WHERE (genre IS NULL OR genre = '')` idiom
 already used by the background genre-enrichment task. Real `limit`/`offset`
 pagination — a page shorter than `limit` means no more results, so no separate
 `COUNT(*)` call. Read-only, so (like the other 3 read tools) it does not call
@@ -265,10 +263,9 @@ in a chat transcript nobody re-reads). A flag is the third, and it is deliberate
 **inert**: it writes to `curation_flags` and changes no library data, it only
 records that a decision is owed.
 
-Why its own table rather than widening `download_reviews`: that one gates a
-download *before* it lands and its pending set is **derived** from scanner state
-(so it can never drift); this is post-landing, about identity and metadata
-ambiguity, and these rows *are* the record. A partial unique index keeps **one
+These rows *are* the record — a flag is
+about identity and metadata ambiguity on a song that is already in the library,
+not a derived status. A partial unique index keeps **one
 open flag per target**, so an agent re-running its sweep updates the reason
 instead of minting a row per pass — the failure mode that would otherwise turn a
 queue into a feed.
@@ -448,7 +445,7 @@ rule the other curate tools established.
   pointing at the song; the *name-derived* album id re-minting on rescan is
   the point — the fake single-album dissolves, merging into the real album
   when the cleaned name collides with its group key. This follows the
-  retag-vs-override doctrine ([download-review.md](download-review.md)):
+  retag-vs-override doctrine ([acoustid-identify.md](acoustid-identify.md)):
   `applyMetadataFix`/`library_metadata_overrides` stay album-scoped (they have
   no title column) and a per-song title is a file-tag fact. The tag write is
   guarded by `buildIdentifyApplyTags` — add/replace only, a value can never be
@@ -656,7 +653,7 @@ server's `requireCurator` gate on the same routes.
 `services`/`routes`: `routes/agent-tokens.test.ts` (mint/verify/list/revoke,
 hash-only storage, expiry, revocation scoping, curator-gating, mint-once) and
 `routes/mcp.test.ts` (401 without a token, initialize/tools-list/tools-call, a
-read tool, `list_recent_songs`'s recency ordering + quarantine exclusion +
+read tool, `list_recent_songs`'s recency ordering +
 `missingGenre` filter + `limit`/`offset` paging, `set_song_genre`'s append /
 `replace`-override / unknown-song / read-only-token paths, `merge_artist`'s
 batch `rawNames` form including a partial failure, the audited curate write,

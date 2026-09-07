@@ -472,40 +472,13 @@ export interface EnrichmentTask {
   /** Count of songs still needing this task — the resumable predicate. */
   countPending(db: Database): number;
   /** Process up to `limit` pending songs; persist DB + file tag. When `albumId`
-   *  is given, scope the pending set to that album only (landAlbumNow) — tasks
-   *  without `satisfiedColumnSql` never receive it, since only gate-capable
-   *  tasks are ever called album-scoped. */
+   *  is given, scope the pending set to that album only. */
   run(
     db: Database,
     ctx: EnrichmentContext,
     limit: number,
     albumId?: string,
   ): Promise<EnrichmentRunResult>;
-  /**
-   * SQL predicate (against a bare `library_songs` row) that is true once this task
-   * has produced its value for a song — the inverse of `countPending`'s NULL test.
-   * Present only on *per-song* tasks; absent (e.g. `artist-image`, which is
-   * per-artist) means the task has no per-song "done" answer at all. Also used to
-   * filter, so having one does **not** by itself make a task a landing gate — see
-   * {@link gateable}.
-   */
-  satisfiedColumnSql?: string;
-  /**
-   * May an admin require this task before a download enters the library?
-   *
-   * Explicit opt-in, because the old rule — "gate-eligible iff it has
-   * `satisfiedColumnSql`" — silently enrolled tasks that only needed that
-   * predicate for filtering. The licence task documented "never a landing gate"
-   * in its own docstring and was gateable anyway; switching it on stranded 261
-   * songs across 220 albums on prod (#687, #691).
-   *
-   * The rule: a task is gateable only when its answer is derived from the file
-   * itself and a missing answer means the file is not ready. A task reading an
-   * external source (Lidarr genre aside, which is a deliberate default) can
-   * confidently have no data for a perfectly good recording, so it must never be
-   * able to hold a download hostage — `popularity` is exactly that shape.
-   */
-  gateable?: boolean;
 }
 
 /** Build a context wired to the real primitives. */
@@ -592,8 +565,6 @@ export function makePopularityLookup(
 const bpmTask: EnrichmentTask = {
   id: 'bpm',
   label: 'BPM analysis',
-  satisfiedColumnSql: 'bpm IS NOT NULL',
-  gateable: true,
   available: (ctx) => (ctx.ffmpegAvailable() ? true : 'ffmpeg not found on PATH'),
   countPending: (db) =>
     Number(
@@ -673,8 +644,6 @@ const bpmTask: EnrichmentTask = {
 const genreTask: EnrichmentTask = {
   id: 'genre',
   label: 'Genre',
-  satisfiedColumnSql: "(genre IS NOT NULL AND genre != '')",
-  gateable: true,
   available: (ctx) => (ctx.lidarr ? true : 'Lidarr not configured'),
   countPending: (db) =>
     Number(
@@ -740,8 +709,6 @@ const genreTask: EnrichmentTask = {
 const keyTask: EnrichmentTask = {
   id: 'key',
   label: 'Musical key',
-  satisfiedColumnSql: "(key IS NOT NULL AND key != '')",
-  gateable: true,
   available: (ctx) => (ctx.ffmpegAvailable() ? true : 'ffmpeg not found on PATH'),
   countPending: (db) =>
     Number(
@@ -808,8 +775,6 @@ const keyTask: EnrichmentTask = {
 const energyTask: EnrichmentTask = {
   id: 'energy',
   label: 'Energy & loudness',
-  satisfiedColumnSql: 'energy IS NOT NULL',
-  gateable: true,
   available: (ctx) => (ctx.ffmpegAvailable() ? true : 'ffmpeg not found on PATH'),
   countPending: (db) =>
     Number(
@@ -892,8 +857,6 @@ const audioFeaturesTask: EnrichmentTask = {
   label: 'Audio features (mood/valence/danceability)',
   // `danceability` is written in the same tx as the other feature columns, so a
   // non-null danceability means the whole sidecar feature set landed for the song.
-  satisfiedColumnSql: 'danceability IS NOT NULL',
-  gateable: true,
   available: (ctx) => {
     if (!ctx.analyzeAudioFeatures) return 'analysis sidecar not configured';
     return ctx.audioFeaturesAvailable() ? true : 'analysis sidecar unreachable';
@@ -1589,8 +1552,7 @@ const genreDiscogsTask: EnrichmentTask = {
  * {@link NoConfidentResultError}, never force-written. A confident hit is
  * written via the provenance-tagged `library_genre_overrides` path
  * (`source: 'essentia'`), never `appendSongGenres` — this is the first real
- * writer of that reserved source. Never a landing gate (no
- * `satisfiedColumnSql`): a weak classifier must never strand a download.
+ * writer of that reserved source.
  */
 const genreAudioTask: EnrichmentTask = {
   id: 'genre-audio',
@@ -1760,11 +1722,6 @@ const genreAudioTask: EnrichmentTask = {
 const popularityTask: EnrichmentTask = {
   id: 'popularity',
   label: 'Popularity',
-  // Filterable per song, but deliberately NOT `gateable`: ListenBrainz can
-  // confidently have no listen data for a perfectly good recording, so requiring
-  // it before landing would strand downloads exactly as the licence gate did
-  // (#687 / #691).
-  satisfiedColumnSql: 'popularity IS NOT NULL',
   // ListenBrainz needs no credentials, so the source is always "available"; a
   // song with no recording MBID simply resolves to a confident miss.
   available: () => true,
@@ -1888,9 +1845,8 @@ const popularityTask: EnrichmentTask = {
  * version and the file size (#258), so the pending predicate re-selects a song
  * whose file changed or whose stored definition is stale.
  *
- * Never a landing gate (no `satisfiedColumnSql`): ~5 s of CPU per track must
- * not strand a fresh download. Not tag-mirrored either — 40 floats belong in
- * the store, not the file, and they are regenerable.
+ * Not tag-mirrored — 40 floats belong in the store, not the file, and they
+ * are regenerable.
  */
 const descriptorsTask: EnrichmentTask = {
   id: 'descriptors',

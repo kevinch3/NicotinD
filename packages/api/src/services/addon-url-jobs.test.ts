@@ -27,7 +27,7 @@ describe('acquireStateFor', () => {
 describe('acquireStageFor', () => {
   it('passes known stages through and nulls anything else', () => {
     expect(acquireStageFor('organizing')).toBe('organizing');
-    expect(acquireStageFor('processing')).toBe('processing');
+    expect(acquireStageFor('processing')).toBeNull(); // retired with the landing gate
     expect(acquireStageFor('nonsense')).toBeNull();
     expect(acquireStageFor(null)).toBeNull();
   });

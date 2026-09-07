@@ -75,8 +75,7 @@ high or low, it is the one knob to turn.
 `packages/api/src/services/enrichment/tasks.ts` — one `EnrichmentTask`, mirroring
 the other optional fills:
 
-- **Default-on** in `DEFAULT_PROCESSING_SETTINGS.tasks`, **never a gate**: an
-  extrinsic network signal must never hold a fresh download in quarantine.
+- **Default-on** in `DEFAULT_PROCESSING_SETTINGS.tasks`.
 - `countPending` / `run` select `WHERE popularity IS NULL` (excluding ledgered
   songs via `notPermanentlyFailedClause`).
 - **Batched**: it reads each pending song's `mbRecordingId` tag, groups songs

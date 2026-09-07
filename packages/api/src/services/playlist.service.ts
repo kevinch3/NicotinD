@@ -204,7 +204,7 @@ export class PlaylistService {
                 s.created, s.starred
          FROM library_songs s
          LEFT JOIN library_albums a ON a.id = s.album_id
-         WHERE s.hidden = 0 AND s.landed_at IS NOT NULL
+         WHERE s.hidden = 0
            ${placeholders ? `AND s.id NOT IN (${placeholders})` : ''}`,
       )
       .all(...excludeIds);
