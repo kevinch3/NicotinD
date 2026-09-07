@@ -15,6 +15,7 @@ import {
 } from '../services/transcode-cache.js';
 import { COVER_EXTS, COVER_FILE_NAMES, extractEmbeddedPicture } from '../services/cover-sources.js';
 import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js';
+import { folderArtBelongsToAlbum } from '../services/album-folder.js';
 import { bucketCoverSize, resizeCover } from '../services/cover-thumbnail.js';
 import { readArtistImageOverride } from '../services/artist-image-override.js';
 import { remoteCoverCacheKey, resolveRemoteCoverUrl } from '../services/remote-cover.js';
@@ -80,6 +81,15 @@ export function streamingRoutes(
 
   /** Resolve a library id (song id, or album id) to an absolute, in-root path. */
   function resolvePath(id: string): string | null {
+    return resolveTrack(id)?.abs ?? null;
+  }
+
+  /**
+   * As `resolvePath`, but keeps the library-relative path too — folder-art
+   * resolution needs it to ask whether the containing directory is one album's
+   * folder or a shared bucket (#978).
+   */
+  function resolveTrack(id: string): { abs: string; relPath: string } | null {
     let row = db
       .query<{ path: string }, [string]>('SELECT path FROM library_songs WHERE id = ?')
       .get(id);
@@ -111,7 +121,7 @@ export function streamingRoutes(
     const abs = resolve(join(musicRoot, row.path));
     if (abs !== musicRoot && !abs.startsWith(musicRoot + sep)) return null; // traversal guard
     if (!existsSync(abs)) return null;
-    return abs;
+    return { abs, relPath: row.path };
   }
 
   app.get('/stream/:id', async (c) => {
@@ -347,8 +357,8 @@ export function streamingRoutes(
     const cached = await readCachedCover(coverCacheDir, id);
     if (cached) return respondCover(id, cached, size);
 
-    const abs = resolvePath(id);
-    if (!abs) {
+    const track = resolveTrack(id);
+    if (!track) {
       noArtCache.set(id, Date.now() + NO_ART_TTL_MS);
       return new Response(null, {
         status: 404,
@@ -356,7 +366,7 @@ export function streamingRoutes(
       });
     }
 
-    const art = await extractCover(abs);
+    const art = await extractCover(track.abs, { db, relPath: track.relPath });
     if (!art) {
       noArtCache.set(id, Date.now() + NO_ART_TTL_MS);
       return new Response(null, {
@@ -597,10 +607,21 @@ async function cacheCover(dir: string, id: string, art: CoverArt): Promise<void>
   await writeFile(join(dir, id + extFromContentType(art.contentType)), art.data);
 }
 
-/** Prefer a folder image (cover.jpg/folder.jpg…); fall back to embedded art. */
-export async function extractCover(absPath: string): Promise<CoverArt | null> {
-  const folder = await folderCover(dirname(absPath));
-  if (folder) return folder;
+/**
+ * Prefer a folder image (cover.jpg/folder.jpg…); fall back to embedded art.
+ *
+ * `scope` is required rather than optional so a new caller has to answer the
+ * question folder art depends on — whether this track's directory is one
+ * album's folder or a shared bucket (see `folderArtBelongsToAlbum`, #978).
+ */
+export async function extractCover(
+  absPath: string,
+  scope: { db: Database; relPath: string },
+): Promise<CoverArt | null> {
+  if (folderArtBelongsToAlbum(scope.db, scope.relPath)) {
+    const folder = await folderCover(dirname(absPath));
+    if (folder) return folder;
+  }
   return extractEmbeddedPicture(absPath);
 }
 

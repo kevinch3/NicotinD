@@ -167,6 +167,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   canonical *row*, while `extractCover` serves folder image → embedded picture, so the report splits
   `missing` / `noEmbeddedArt` / `unrenderable` off `library_songs.has_embedded_art`.
   → [library-audit.md](library-audit.md)
+- **Folder art needs the folder to be the album's**: `folderArtBelongsToAlbum` rejects a shared
+  bucket by name (`isSinglesBucketDir`) and by contents before `extractCover` trusts a `cover.jpg`
+  beside a track. → [library-audit.md](library-audit.md)
 - **A cover survives the transcode as a folder image**: `preserveFolderCover` writes `cover.jpg`
   before `-vn` discards the attached picture and as the organizer lands any format — ffmpeg's Ogg
   muxer cannot carry one. `findFolderCoverName`. → [library-audit.md](library-audit.md)

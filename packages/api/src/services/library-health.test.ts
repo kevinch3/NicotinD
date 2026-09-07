@@ -472,4 +472,34 @@ describe('libraryHealth — artwork tiers (issue #952)', () => {
     expect(m.unrenderable).toBe(1);
     rmSync(dir, { recursive: true, force: true });
   });
+
+  it('still counts an album as unrenderable when the cover is a bucket stray (#978)', () => {
+    // Both albums sit in one shared bucket, so its cover.jpg is neither one's
+    // art and the cover route will not serve it. Counting them renderable is
+    // how the report came to disagree with what the app actually shows.
+    const dir = mkdtempSync(join(tmpdir(), 'health-bucket-'));
+    mkdirSync(join(dir, 'Various Artists', 'Unknown'), { recursive: true });
+    writeFileSync(join(dir, 'Various Artists', 'Unknown', 'cover.jpg'), 'x');
+
+    addArtist('ar1', 'A', 2);
+    addAlbum({ id: 'al-a', name: 'A side' });
+    addSong({
+      id: 's1',
+      albumId: 'al-a',
+      hasEmbeddedArt: 0,
+      path: 'Various Artists/Unknown/a.opus',
+    });
+    addAlbum({ id: 'al-b', name: 'B side' });
+    addSong({
+      id: 's2',
+      albumId: 'al-b',
+      hasEmbeddedArt: 0,
+      path: 'Various Artists/Unknown/b.opus',
+    });
+
+    const m = libraryHealth(db, { musicDir: dir }).dimensions.albumCovers.metric;
+    expect(m.noEmbeddedArt).toBe(2);
+    expect(m.unrenderable).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
 });

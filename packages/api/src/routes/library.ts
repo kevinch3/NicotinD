@@ -1721,7 +1721,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         .get(albumId);
       if (song) {
         const abs = resolveSongPath(md, song.path);
-        if (isUnderMusicDir(md, abs) && existsSync(abs)) bytes = await extractCover(abs);
+        if (isUnderMusicDir(md, abs) && existsSync(abs)) {
+          bytes = await extractCover(abs, { db, relPath: song.path });
+        }
       }
     }
     if (!bytes) return c.json({ error: 'That album has no cover to copy' }, 400);
