@@ -490,7 +490,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 ### Web UI patterns
 
 - **Unified song listings**: one `TrackRowComponent` + one root `SongMenuService.build(song, ctx)`
-  builds every `⋯` menu; Remove routes through `ConfirmService` → `deleteSongs` → `deletedSongIds()`;
+  builds every `⋯` menu; every album/artist name is an `EntityLinkComponent` link (span on TV for
+  artists); Remove routes through `ConfirmService` → `deleteSongs` → `deletedSongIds()`;
   multiselect is one `createSelection()` + `SelectionBarComponent` everywhere.
   → [song-actions.md](song-actions.md)
 - **Unified search**: `GET /api/search?q=` blends local library and parallel network results into one

@@ -115,6 +115,7 @@ export interface SearchResult {
       id: string;
       name: string;
       artist: string;
+      artistId?: string;
       coverArt?: string;
       songCount?: number;
       year?: number;
@@ -127,6 +128,7 @@ export interface SearchResult {
       artist: string;
       artistId?: string;
       album: string;
+      albumId?: string;
       duration?: number;
       coverArt?: string;
       track?: number;
@@ -888,7 +890,9 @@ export interface RecentPlay {
   songId: string;
   title: string | null;
   artist: string | null;
+  artistId: string | null;
   album: string | null;
+  albumId: string | null;
   duration: number | null;
   /** Live cover-art id for `/api/cover/:id` (null when the song has no cover). */
   coverArt: string | null;

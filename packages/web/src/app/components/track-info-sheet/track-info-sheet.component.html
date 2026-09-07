@@ -39,7 +39,12 @@
         <p class="text-sm font-medium text-theme-primary truncate">{{ headerTitle() }}</p>
         @if (headerArtist()) {
           <p class="text-xs text-theme-secondary truncate">
-            {{ headerArtist() }}
+            <app-artist-links
+              [artists]="effectiveSong()?.artists"
+              [fallbackArtist]="headerArtist()"
+              [fallbackArtistId]="effectiveSong()?.artistId"
+              (linkFollowed)="close.emit()"
+            />
             @if (canCurate()) {
               <button
                 type="button"
@@ -54,7 +59,9 @@
           </p>
         }
         @if (headerAlbum()) {
-          <p class="text-xs text-theme-muted truncate">{{ headerAlbum() }}</p>
+          <p class="text-xs text-theme-muted truncate">
+            <app-entity-link kind="album" [id]="effectiveSong()?.albumId" [name]="headerAlbum()" (followed)="close.emit()" />
+          </p>
         }
       </div>
       <button

@@ -206,7 +206,14 @@ describe('recentPlays', () => {
 
     const rows = recentPlays(db, 'u1', 10);
     expect(rows.map((r) => r.songId)).toEqual(['a', 'b']);
-    expect(rows[0]).toMatchObject({ title: 'A', album: 'Album', duration: 180, playedAt: 3_000 });
+    expect(rows[0]).toMatchObject({
+      title: 'A',
+      artistId: 'art',
+      album: 'Album',
+      albumId: 'al',
+      duration: 180,
+      playedAt: 3_000,
+    });
   });
 
   it('never leaks another user’s history', () => {

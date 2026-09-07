@@ -1,7 +1,7 @@
 import type { Track } from '../services/player.service';
 import type { PreserveService } from '../services/preserve.service';
 import type { PlaylistService } from '../services/playlist.service';
-import type { TrackAction } from '../components/track-row/track-row.component';
+import type { AlbumRef, TrackAction } from '../components/track-row/track-row.component';
 
 export interface BaseSong {
   id: string;
@@ -35,6 +35,16 @@ export function toTrack(song: BaseSong, fallbackAlbum?: string): Track {
     bpm: song.bpm,
     key: song.key,
   };
+}
+
+/**
+ * The `[album]` input for a `TrackRowComponent`: the album name linked to its
+ * page when the id is known, a plain name when it is not (offline metadata),
+ * `undefined` when the song has no album at all so the row renders nothing.
+ */
+export function albumRef(song: { album?: string; albumId?: string }): AlbumRef | undefined {
+  if (!song.albumId && !song.album) return undefined;
+  return { id: song.albumId || undefined, name: song.album ?? '' };
 }
 
 /**

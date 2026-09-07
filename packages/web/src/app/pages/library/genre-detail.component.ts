@@ -19,7 +19,7 @@ import { PlayerService, type Track } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
-import { toTrack } from '../../lib/track-utils';
+import { albumRef, toTrack } from '../../lib/track-utils';
 import { createSelection } from '../../lib/selection';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { IconComponent } from '../../components/icon/icon.component';
@@ -166,6 +166,7 @@ export class GenreDetailComponent implements OnInit, OnDestroy {
   }
 
   protected toTrackFn = toTrack;
+  protected albumRef = albumRef;
 
   // ─── Multi-select ─────────────────────────────────────────────────
   readonly selection = createSelection();

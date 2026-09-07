@@ -6,7 +6,7 @@ import { PlaylistService } from '../../services/playlist.service';
 import { AuthService } from '../../services/auth.service';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
-import { toTrack } from '../../lib/track-utils';
+import { albumRef, toTrack } from '../../lib/track-utils';
 import { createSelection } from '../../lib/selection';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { IconComponent } from '../../components/icon/icon.component';
@@ -232,4 +232,5 @@ export class PlaylistDetailComponent implements OnInit {
   }
 
   toTrack = toTrack;
+  readonly albumRef = albumRef;
 }

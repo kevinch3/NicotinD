@@ -10,7 +10,7 @@ import { SkeletonComponent } from '../../components/skeleton/skeleton.component'
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
-import { toTrack } from '../../lib/track-utils';
+import { albumRef, toTrack } from '../../lib/track-utils';
 import type { SearchResult } from '../../services/api/api-types';
 
 type LocalResults = SearchResult['local'];
@@ -103,4 +103,5 @@ export class LibraryFindComponent {
   }
 
   readonly toTrack = toTrack;
+  readonly albumRef = albumRef;
 }

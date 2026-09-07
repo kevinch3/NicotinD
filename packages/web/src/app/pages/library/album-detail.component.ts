@@ -3,7 +3,7 @@ import { Router, ActivatedRoute, RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
-import type { AlbumDetail } from '../../services/api/api-types';
+import type { AlbumDetail, ArtistCredit } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
@@ -213,7 +213,7 @@ export class AlbumDetailComponent implements OnInit {
     const tracks = this.albumTracks();
     const index = tracks.findIndex((t) => t.id === song.id);
     if (!album || index < 0) {
-      this.player.playSingle(toTrack(song, album?.name));
+      this.player.playSingle(this.toTrackFromSong(song));
       return;
     }
     this.player.playWithContext(tracks, index, { type: 'album', id: album.id, name: album.name });
@@ -222,14 +222,7 @@ export class AlbumDetailComponent implements OnInit {
   private albumTracks(): Track[] {
     const album = this.selectedAlbum();
     if (!album?.song?.length) return [];
-    return album.song.map((s): Track => ({
-      id: s.id,
-      title: s.title,
-      artist: s.artist,
-      album: album.name,
-      coverArt: s.coverArt,
-      duration: s.duration,
-    }));
+    return album.song.map((s) => this.toTrackFromSong(s));
   }
 
   playAlbum(): void {
@@ -297,15 +290,26 @@ export class AlbumDetailComponent implements OnInit {
     }
   }
 
+  // Album rows carry no album of their own, so the queue track is stamped with
+  // the page's album — otherwise the album name in the queue and in Now Playing
+  // has no id to link to.
   toTrackFromSong(song: {
     id: string;
     title: string;
     artist: string;
+    artistId?: string;
+    artists?: ArtistCredit[];
+    albumId?: string;
     duration?: number;
     coverArt?: string;
     bitRate?: number;
   }): Track {
-    return toTrack(song, this.selectedAlbum()?.name);
+    const album = this.selectedAlbum();
+    return {
+      ...toTrack(song, album?.name),
+      albumId: song.albumId ?? album?.id,
+      artistId: song.artistId ?? album?.artistId,
+    };
   }
 
   removeAlbum(): void {

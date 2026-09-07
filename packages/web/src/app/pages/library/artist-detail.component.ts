@@ -55,7 +55,7 @@ import {
   type LibraryFilter,
 } from '@nicotind/core';
 import { createSelection } from '../../lib/selection';
-import { toTrack } from '../../lib/track-utils';
+import { albumRef, toTrack } from '../../lib/track-utils';
 import { appendUnique } from '../../lib/append-unique';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 import { NavigationService } from '../../services/navigation.service';
@@ -347,9 +347,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     });
   }
 
-  songSubtitle(song: Song): string {
-    return song.album || song.artist;
-  }
+  readonly albumRef = albumRef;
 
   // ─── Bulk actions on the selected songs ───────────────────────────
   playSelected(): void {

@@ -32,7 +32,7 @@ import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { isEmptyLibraryFilter, type LibraryFilter } from '@nicotind/core';
 import { createSelection } from '../../lib/selection';
-import { toTrack, offlineTrackAction } from '../../lib/track-utils';
+import { albumRef, toTrack, offlineTrackAction } from '../../lib/track-utils';
 import { appendUnique } from '../../lib/append-unique';
 import type { PreservedTrackMeta } from '../../lib/preserve-store';
 
@@ -293,9 +293,7 @@ export class LibrarySongsComponent implements OnInit, OnDestroy {
     this.player.playWithContext(tracks, index, { type: 'adhoc', name: 'Songs' });
   }
 
-  songSubtitle(song: Song): string {
-    return song.album || song.artist;
-  }
+  readonly albumRef = albumRef;
 
   // ─── Bulk actions (online) ────────────────────────────────────────
   playSelected(): void {

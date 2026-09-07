@@ -1,14 +1,23 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, output, signal } from '@angular/core';
 import { PlayerService } from '../../../services/player.service';
 import { AuthService } from '../../../services/auth.service';
 import { CoverArtComponent } from '../../cover-art/cover-art.component';
+import { ArtistLinksComponent } from '../../artist-links/artist-links.component';
+import { EntityLinkComponent } from '../../entity-link/entity-link.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 
 @Component({
   selector: 'app-now-playing-queue-panel',
-  imports: [CoverArtComponent, TranslatePipe, TvNavGroupDirective, TvNavItemDirective],
+  imports: [
+    CoverArtComponent,
+    ArtistLinksComponent,
+    EntityLinkComponent,
+    TranslatePipe,
+    TvNavGroupDirective,
+    TvNavItemDirective,
+  ],
   // `display: contents` so the host doesn't break the sheet's flex column —
   // the shell's flex container needs to see this component's own top-level
   // element as the flex item, and `contents` makes the host transparent.
@@ -18,6 +27,9 @@ import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 export class NowPlayingQueuePanelComponent {
   readonly player = inject(PlayerService);
   readonly auth = inject(AuthService);
+
+  /** An artist/album link in a row was followed — the sheet should collapse. */
+  readonly linkFollowed = output<void>();
 
   readonly dragSourceIndex = signal<number | null>(null);
   readonly dropTargetIndex = signal<number | null>(null);

@@ -1,7 +1,9 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { provideRouter } from '@angular/router';
 import { TrackRowComponent } from './track-row.component';
+import { EntityLinkComponent } from '../entity-link/entity-link.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { PlayerService, type Track } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
@@ -21,11 +23,18 @@ const OTHER_TRACK: Track = { id: 't2', title: 'Song Two', artist: 'Artist B' };
  * it renders the real production template rather than a stub.
  */
 describe('TrackRowComponent — current-track indicator', () => {
-  function setup() {
+  function setup(
+    opts: {
+      album?: { id?: string; name: string };
+      subtitle?: string;
+      artists?: Array<{ id: string; name: string; role: 'primary' | 'featuring' }>;
+    } = {},
+  ) {
     TestBed.configureTestingModule({
       imports: [TrackRowComponent],
       providers: [
         PlayerService,
+        provideRouter([{ path: '**', children: [] }]),
         { provide: AuthService, useValue: { token: signal('test-token') } },
         { provide: ServerConfigService, useValue: { apiUrl: (u: string) => u } },
         { provide: LikeService, useValue: { isLiked: () => false, toggle: () => {} } },
@@ -35,6 +44,9 @@ describe('TrackRowComponent — current-track indicator', () => {
     setInputValue(fixture.componentInstance.track, ROW_TRACK);
     setInputValue(fixture.componentInstance.indexLabel, 3);
     setInputValue(fixture.componentInstance.showCover, false);
+    if (opts.album) setInputValue(fixture.componentInstance.album, opts.album);
+    if (opts.subtitle) setInputValue(fixture.componentInstance.subtitle, opts.subtitle);
+    if (opts.artists) setInputValue(fixture.componentInstance.artists, opts.artists);
     const player = TestBed.inject(PlayerService);
     player.clear();
     fixture.detectChanges();
@@ -81,6 +93,51 @@ describe('TrackRowComponent — current-track indicator', () => {
     expect(row().querySelector('.eq-bars.eq-paused')).not.toBeNull();
     const title = row().querySelector('[data-testid="track-row-title"] p') as HTMLElement;
     expect(title.classList.contains('text-theme-accent-text')).toBe(true);
+  });
+
+  // The JIT harness does not land a nested component's signal inputs (see
+  // src/testing/signal-input.ts, landmine 1), so `<app-entity-link>` renders
+  // here with its defaults — the href, the missing-id span and the click that
+  // must not bubble into `play` are asserted in entity-link.component.spec.ts,
+  // and the rendered link is exercised end to end in e2e/tests/entity-links.spec.ts.
+  // What this spec can pin is the row's wiring: the album is a nested
+  // EntityLinkComponent placed between the credits and the plain subtitle.
+  it('places the album entity link between the credits and the subtitle', () => {
+    const { row, fixture } = setup({
+      artists: [{ id: 'ar1', name: 'Artist A', role: 'primary' }],
+      album: { id: 'al1', name: 'Album One' },
+      subtitle: '2024',
+    });
+    fixture.detectChanges();
+    const line = row().querySelector('[data-testid="track-row-subtitle"]') as HTMLElement;
+    const order = Array.from(line.childNodes)
+      .map((n) => (n.nodeType === Node.ELEMENT_NODE ? (n as Element).tagName.toLowerCase() : ''))
+      .filter(Boolean);
+    expect(order).toEqual(['app-artist-links', 'span', 'app-entity-link', 'span', 'span']);
+    expect(fixture.debugElement.query(By.directive(EntityLinkComponent))).not.toBeNull();
+    expect(line.textContent!.replace(/\s+/g, ' ').trim()).toContain('· 2024');
+  });
+
+  it('with only an album, renders the entity link and no separator', () => {
+    const { row, fixture } = setup({ album: { id: 'al1', name: 'Album One' } });
+    fixture.detectChanges();
+    const line = row().querySelector('[data-testid="track-row-subtitle"]') as HTMLElement;
+    expect(line.querySelectorAll('app-entity-link').length).toBe(1);
+    expect(line.textContent).not.toContain('·');
+  });
+
+  it('a plain subtitle alone still renders as text', () => {
+    const { row, fixture } = setup({ subtitle: 'Just text' });
+    fixture.detectChanges();
+    const line = row().querySelector('[data-testid="track-row-subtitle"]') as HTMLElement;
+    expect(line.textContent!.trim()).toBe('Just text');
+    expect(line.querySelector('app-entity-link')).toBeNull();
+  });
+
+  it('renders no second line when there are no credits, album or subtitle', () => {
+    const { row, fixture } = setup();
+    fixture.detectChanges();
+    expect(row().querySelector('[data-testid="track-row-subtitle"]')).toBeNull();
   });
 
   it('the title button is a valid D-pad nav item (marked appTvNavItem)', () => {

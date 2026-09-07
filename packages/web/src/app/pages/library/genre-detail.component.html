@@ -59,7 +59,8 @@
         <app-track-row
           [track]="toTrackFn(song)"
           [artists]="song.artists"
-          [subtitle]="song.artists?.length ? song.album : (song.artist + ' · ' + song.album)"
+          [album]="albumRef(song)"
+          [subtitle]="song.artists?.length ? undefined : song.artist"
           [duration]="song.duration"
           [offline]="preserve.isPreserved(song.id)"
           [selectable]="selection.active()"

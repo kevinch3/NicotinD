@@ -2,6 +2,7 @@ import { Component, computed, inject, input, output } from '@angular/core';
 import { AuthService } from '../../services/auth.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { ArtistLinksComponent } from '../artist-links/artist-links.component';
+import { EntityLinkComponent } from '../entity-link/entity-link.component';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 import { PlayerService, type Track } from '../../services/player.service';
 import { LikeService } from '../../services/like.service';
@@ -9,6 +10,12 @@ import { rowPlaybackState } from '../../lib/row-playback-state';
 import type { ArtistCredit } from '../../services/api/api-types';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+
+/** An album name plus (when known) the id its name links to. */
+export interface AlbumRef {
+  id?: string;
+  name: string;
+}
 
 export interface TrackAction {
   label: string;
@@ -29,6 +36,7 @@ function formatDuration(seconds?: number): string {
   imports: [
     CoverArtComponent,
     ArtistLinksComponent,
+    EntityLinkComponent,
     MenuPanelComponent,
     TvNavItemDirective,
     TvNavGroupDirective,
@@ -44,6 +52,11 @@ export class TrackRowComponent {
   /** Show the like (heart) button. Hidden in offline/preserve contexts. */
   readonly showLike = input(true);
   readonly indexLabel = input<string | number>();
+  /**
+   * Album rendered as a link after the artist credits. Hosts pass this instead
+   * of folding the album into `subtitle`, which stays for non-entity text.
+   */
+  readonly album = input<AlbumRef | undefined>(undefined);
   readonly subtitle = input<string>();
   readonly duration = input<number>();
   readonly disabled = input(false);

@@ -667,6 +667,27 @@ Surfaces:
   before any bytes arrive. E2e contract: `data-testid="track-row"`,
   `data-testid="track-row-title"`,
   `data-playback-state="buffering|playing|paused"`.
+  **Second line = entity links**: the row's `artists` credits and its `album`
+  input (`AlbumRef { id?, name }`, built by `albumRef(song)` in
+  `lib/track-utils.ts`) render as `EntityLinkComponent`
+  (`components/entity-link/`, selector `app-entity-link`, inputs `kind`
+  `album|artist|genre|playlist`, `id`, `name`, output `followed`) — an
+  `<a routerLink appTvNavItem data-testid="entity-link-<kind>">` whose click
+  stops propagation so it never plays the row; `subtitle` stays for plain text
+  and reads "Artist · Album · subtitle" (`data-testid="track-row-subtitle"`).
+  The link degrades to a `<span>` when the id is missing (offline metadata) or
+  when `kind === 'artist'` on TV (`isTvBuild() || isTvUi()` — the TV route tree
+  has no artist route; the `isTvUi` half is so the e2e TV lane, which stamps the
+  class on the prod bundle, renders what a real TV renders). `ArtistLinksComponent`
+  renders its segments through the same component, so every artist name gains
+  the D-pad nav-item and the TV span rule at once. Hosts that overlay the page
+  (Now Playing: `queue-row`/`queue-row-title`, `now-playing-album`; the
+  track-info sheet) close themselves on `followed`; the Now Playing album line is
+  omitted on TV to keep the pinned root-group ArrowUp order. The queue row is a
+  `div` with the title as the jump `<button>` — an anchor may not sit inside a
+  button. Nested inputs and outputs do not land in the JIT unit harness, so the
+  rendered href / no-play / close-on-follow contracts live in
+  `e2e/tests/entity-links.spec.ts`.
 - **Seek bar**: `buffered` input renders `bufferedRanges` as a lighter band
   (`--seek-buffered-bg` gradient built by the pure `computeBufferedSegments` +
   `bufferedGradient` helpers in `lib/buffered-ranges.ts`) under the accent

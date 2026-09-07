@@ -63,6 +63,7 @@
           (openTrackInfo)="onOpenTrackInfo($event)"
           (titleContextMenu)="onTitleContextMenu($event)"
           (navigateToArtistClicked)="navigateToArtist()"
+          (navigateToAlbumClicked)="closeForNavigation()"
         />
 
         <app-now-playing-transport
@@ -124,7 +125,7 @@
               (fetchRequested)="fetchLyricsManually()"
             />
           } @else {
-            <app-now-playing-queue-panel />
+            <app-now-playing-queue-panel (linkFollowed)="closeForNavigation()" />
           }
         </div>
       }

@@ -1,5 +1,5 @@
 import { Component, input, output, computed } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { EntityLinkComponent } from '../entity-link/entity-link.component';
 import type { ArtistCredit } from '../../services/api/api-types';
 
 interface Segment {
@@ -11,7 +11,7 @@ interface Segment {
 @Component({
   selector: 'app-artist-links',
   standalone: true,
-  imports: [RouterLink],
+  imports: [EntityLinkComponent],
   templateUrl: './artist-links.component.html',
 })
 export class ArtistLinksComponent {

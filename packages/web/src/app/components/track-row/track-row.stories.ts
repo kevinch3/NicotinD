@@ -56,8 +56,9 @@ export const InAlbumContext: Story = {
   args: { indexLabel: 3, showCover: false },
 };
 
-export const WithSubtitle: Story = {
-  args: { subtitle: 'Static Bloom · 2025' },
+/** The album is an entity link (`entity-link-album`) after the credits; `subtitle` stays plain text. */
+export const WithAlbumAndSubtitle: Story = {
+  args: { album: { id: demoTrack.albumId, name: demoTrack.album ?? '' }, subtitle: '2025' },
 };
 
 export const Selectable: Story = {
