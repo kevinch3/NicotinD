@@ -179,6 +179,19 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   resolve (`repairGenreMirrorDrift`). `primaryGenreOnly` is the sanctioned narrow read; the facet
   `song_count` is a stored snapshot refreshed by `refreshGenreCounts`.
   → [genre-model.md](genre-model.md)
+- **Genre matching is bounded, storage is not**: `GENRE_SET_EXPR` reads a song's first
+  `GENRE_MATCH_POSITIONS` genres by position, so a 33-genre song stops satisfying every station
+  while every genre stays stored and displayed. → [genre-model.md](genre-model.md)
+- **A bad raw genre STRING is one alias row, not N overrides**: `upsertGenreAlias` (MCP
+  `set_genre_alias`) writes `library_genre_aliases` and re-splits only the songs carrying that
+  value, so future arrivals are clean too. → [genre-model.md](genre-model.md)
+- **Every door onto the genre store canonicalizes**: `mapDiscogsGenres` gates the `genre-audio`
+  sidecar label as well as the Discogs plugin, and route input is parsed with `parseGenreList`, never
+  the `splitStored` storage decoder. → [genre-model.md](genre-model.md)
+- **A placeholder can never key an artist alias**: `isPlaceholderAliasKey` refuses
+  `[traditional]`/`various`/`me`-shaped keys at `upsertArtistAlias`, since such a row silently
+  captures unrelated future arrivals and no audit rule can see it.
+  → [library-scanner.md](library-scanner.md)
 - **Curator-correctable genres**: `library_genre_overrides` (scope artist/album/song) is the one genre
   write that can *replace* a primary, carrying an explicit `mode`; `status` is the review queue;
   `backfillGenreOverrides`, `appendSongGenres`, `ArtistGenreModalComponent`. Both modes write the

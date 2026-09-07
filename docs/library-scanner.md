@@ -59,6 +59,24 @@ What stays pinned is **ownership**. A differing per-track artist is usually a `f
 
 **Track-number-prefix stripping in path inference** (`path-inference.ts`, `inferMetadataFromPath`): when ID3 tags are missing and a filename only splits into two `-`-delimited parts (e.g. `"01. Los Tekis - Escondiditos.mp3"`), the first part is normally used as-is for `artist`. A permissive regex strips a leading track-number token (`"01. "`, `"12) "`, `"5_"`, …) from that first part before it's assigned, mirroring the strip already applied to `title`. Without this, each track in an untagged folder mints a distinct garbled "artist" (`"01. Los Tekis"`, `"02. Los Tekis"`, …), which both pollutes the artist list with zero-album ghost rows _and_ trips the ≥3/≥5-distinct-artists compilation heuristic above, silently reclassifying a single-artist album as VA (breaking the `album_jobs` → `library_albums` `albumId` match used by the downloads-feed deep-link, since that id is a pure function of `artist`+`album` — see [download-pipeline.md](download-pipeline.md#unified-active-feed-downloaditem)).
 
+### A placeholder can never key an artist alias (issue #950)
+
+`library_artist_aliases` is durable and rescan-surviving, and `source='user'` rows are never
+overwritten by the background identity task — so a bad row does not self-correct. Two prod rows were
+keyed on a string that identifies no particular artist: `[traditional] → Luciano Pavarotti` and
+`me → &ME`.
+
+`[Traditional]` is what folk, classical and choral rips carry when there is no known composer. Any
+future file tagged that way would have been re-bucketed into Pavarotti's discography at scan time
+with no signal, and **no audit rule could see it**: the artist resolves cleanly, the album is
+well-formed, and `fragmented_artist` sees one artist rather than two. This library actively ingests
+Latin American folklore and classical, so the trigger is realistic. The `me` row is the same shape
+from the other direction — `normalizeArtistForGrouping("&ME")` strips the ampersand, leaving the bare
+English word as the key for a real artist.
+
+`upsertArtistAlias` now refuses a placeholder-shaped `alias_norm` and returns `false`. It is a
+write-time guard only; the two existing rows need a delete.
+
 **Compilations in the UI**: The main `/albums` grid excludes compilations (`classification = 'album'` only). Compilations have a dedicated `GET /api/library/compilations` endpoint and a "Compilations" tab in the library view. "Various Artists" is hidden from the `/artists` list. Artist pages show an "Appears On" tab listing compilation albums where the artist has tracks (`GET /api/library/artists/:id/appears-on`).
 
 ## Search matching (tokenized + diacritic-insensitive)

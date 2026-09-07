@@ -221,14 +221,36 @@ export const CURATED_PLAYLISTS: CuratedPlaylistDef[] = [
 // ─── Pure track selection ────────────────────────────────────────────
 
 /**
- * Full genre set of `library_songs s` as one '; '-joined string, falling back
- * to the primary column pre-first-rescan. Recipe/curated `where` fragments
- * write plain `s.genre LIKE …`; expandGenreWhere swaps this in so the
- * predicate sees EVERY genre — after the multi-genre split, s.genre alone
- * holds only the primary and would silently drop secondary-genre matches.
+ * A song's genre set as one '; '-joined string, bounded to its first
+ * `GENRE_MATCH_POSITIONS` genres and falling back to the primary column
+ * pre-first-rescan. Recipe/curated `where` fragments write plain
+ * `s.genre LIKE …`; expandGenreWhere swaps this in so the predicate sees more
+ * than the primary — after the multi-genre split, `s.genre` alone would
+ * silently drop secondary-genre matches.
  */
+/**
+ * How many of a song's genres a genre predicate may match against.
+ *
+ * Nothing caps how many genres a song accumulates — the enrichment chain
+ * (`genre` → `genre-discogs` → `genre-audio`) appends and `set_song_genre`
+ * defaults to appending — so 1,036 songs carry more than 8 against a library
+ * mean of **2.65**, and the worst carries 33 (issue #960). Matching the whole
+ * set is correct at the mean and inverts the intent in the tail: "Rumble" is a
+ * dubstep track tagged `Screamo`, `Rock` and `Country`, so it satisfies nearly
+ * every genre filter and surfaces in a Country station, a House station and a
+ * Rock station alike. Heavily-tagged songs are usually popular songs, so the
+ * tail is over-represented in selection rather than randomly distributed.
+ *
+ * Five covers 94.6% of songs entirely, and `position` already encodes
+ * primary-first ordering, so the cut is meaningful rather than arbitrary. This
+ * bounds only what MATCHING sees — every genre stays stored and displayed,
+ * because truncating the stored sets would discard real information.
+ */
+export const GENRE_MATCH_POSITIONS = 5;
+
 export const GENRE_SET_EXPR =
-  "COALESCE((SELECT GROUP_CONCAT(sg.genre, '; ') FROM library_song_genres sg WHERE sg.song_id = s.id), s.genre)";
+  "COALESCE((SELECT GROUP_CONCAT(sg.genre, '; ') FROM (SELECT genre FROM library_song_genres " +
+  `WHERE song_id = s.id ORDER BY position LIMIT ${GENRE_MATCH_POSITIONS}) sg), s.genre)`;
 
 /** Rewrite a recipe `where` fragment to match against the full genre set. */
 export function expandGenreWhere(where: string): string {

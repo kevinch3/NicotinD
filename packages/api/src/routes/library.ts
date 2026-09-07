@@ -52,7 +52,7 @@ import {
 import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './streaming.js';
 import { albumGenreDistribution, artistGenreDistribution } from '../services/genre-distribution.js';
 import { mutateArtistIdentity } from '../services/artist-identity-mutate.js';
-import { mutateSongGenre } from '../services/song-genre-mutate.js';
+import { mutateSongGenre, parseGenreList } from '../services/song-genre-mutate.js';
 import {
   createCurationFlag,
   isFlagTargetKind,
@@ -64,7 +64,6 @@ import {
   backfillGenreOverrides,
   deleteGenreOverride,
   getGenreOverride,
-  splitStored,
   upsertGenreOverride,
 } from '../services/genre-overrides.js';
 import { resizeCover } from '../services/cover-thumbnail.js';
@@ -1864,7 +1863,13 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
     type Body = { genres?: string; note?: string; mode?: string };
     const body = await c.req.json<Body>().catch(() => ({}) as Body);
-    const genres = splitStored(body.genres ?? '');
+    // `parseGenreList`, not `splitStored`: the latter is the STORAGE decoder and
+    // splits on ';' alone, so the artist scope accepted a comma-bearing genre
+    // that the song scope refuses — and `applyGenreOverride` then emitted it
+    // verbatim into library_song_genres. Caller input goes through the scanner's
+    // own SEPARATORS so a curated genre is always a value a rescan reproduces
+    // (#942). `splitStored` stays for reading rows back out.
+    const genres = parseGenreList(body.genres ?? '');
     if (genres.length === 0) return c.json({ error: 'genres is required' }, 400);
     // Default append (issue #260): replacing destroys the per-song genre sets,
     // which for most artists are more specific than an artist-scope fix can be.

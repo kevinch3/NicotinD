@@ -406,3 +406,52 @@ describe('curation review flags', () => {
     expect(res.status).toBe(400);
   });
 });
+
+/**
+ * Issue #942: the artist scope parsed CALLER input with `splitStored`, the
+ * storage decoder, whose own docstring says "stored form is a ';'-joined ordered
+ * list". It splits on ';' alone, while the song scope and MCP `set_song_genre`
+ * use `parseGenreList` — the scanner's own SEPARATORS — so that a curated genre
+ * is always a value a rescan can reproduce. The artist scope therefore accepted
+ * a genre the song scope refuses, and `applyGenreOverride` emitted it verbatim.
+ */
+describe('POST /artists/:id/genre parses caller input, not storage form', () => {
+  beforeEach(() => {
+    testDb = new Database(':memory:');
+    applySchema(testDb);
+    testDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('artist-1', 'Aphex Twin', 1, 1)`,
+    );
+  });
+  afterEach(() => testDb.close());
+
+  async function setArtistGenre(genres: string): Promise<Response> {
+    return makeApp('admin').request('/artists/artist-1/genre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ genres }),
+    });
+  }
+
+  function storedGenres(): string {
+    return (
+      testDb
+        .query<{ genres: string }, [string]>(
+          `SELECT genres FROM library_genre_overrides WHERE scope = 'artist' AND key = ?`,
+        )
+        .get('aphex twin')?.genres ?? ''
+    );
+  }
+
+  it('splits a comma-bearing body into several genres', async () => {
+    seedSong(testDb, { id: 'song-1' });
+    expect((await setArtistGenre('Electronic, IDM')).status).toBe(200);
+    expect(storedGenres()).toBe('Electronic;IDM');
+  });
+
+  it('splits on every separator the scanner does, not just the semicolon', async () => {
+    seedSong(testDb, { id: 'song-1' });
+    expect((await setArtistGenre('Electronic|IDM;Ambient')).status).toBe(200);
+    expect(storedGenres()).toBe('Electronic;IDM;Ambient');
+  });
+});

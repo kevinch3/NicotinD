@@ -1,6 +1,9 @@
 import type { Database } from 'bun:sqlite';
 import { normalizeArtistForGrouping } from './album-grouping';
 import { isAtomicArtist } from './artist-split';
+import { createLogger } from '@nicotind/core';
+
+const log = createLogger('artist-identity-store');
 
 /**
  * The two normalized sets that gate {@link splitArtists}. See {@link KnownArtistSets}.
@@ -88,11 +91,64 @@ export function loadSplitAuthority(db: Database): SplitAuthority {
   return { confirmedArtists, canonicalWhole, aliases };
 }
 
-/** Write one alias row; a task-derived ('mbid') write never clobbers a user merge. */
+/**
+ * Alias keys that identify no particular artist.
+ *
+ * `[Traditional]` is what folk, classical and choral rips carry in the artist or
+ * composer field when there is no known one — it means "unattributed", not any
+ * performer. On prod it was aliased to `Luciano Pavarotti`, almost certainly
+ * collateral from that artist's identity work, so any future file tagged
+ * `[Traditional]` would have been re-bucketed into his discography at scan time
+ * with no signal that it happened, and no audit rule able to see it: the artist
+ * resolves cleanly, the album is well-formed, and `fragmented_artist` sees one
+ * artist rather than two (issue #950).
+ *
+ * The alias table is documented as durable and rescan-surviving, and `source
+ * = 'user'` rows are never overwritten by the background identity task — so this
+ * class of row does not self-correct and has to be refused at the door.
+ *
+ * Compared after `normalizeArtistForGrouping`, which is what `alias_norm` holds:
+ * that is also why `&ME` is a problem — the fold strips the ampersand and leaves
+ * the bare English word `me` as the key for a real artist.
+ */
+const PLACEHOLDER_ALIAS_KEYS = new Set([
+  'traditional',
+  'trad',
+  'unknown',
+  'unknown artist',
+  'various',
+  'various artists',
+  'va',
+  'artist',
+  'none',
+  'me',
+]);
+
+/** True when `aliasNorm` is too generic to identify the artist it points at. */
+export function isPlaceholderAliasKey(aliasNorm: string): boolean {
+  const k = aliasNorm
+    .trim()
+    .toLowerCase()
+    .replace(/[[\]()]/g, '')
+    .replace(/\s+/g, ' ');
+  return !k || PLACEHOLDER_ALIAS_KEYS.has(k);
+}
+
+/**
+ * Write one alias row; a task-derived ('mbid') write never clobbers a user merge.
+ * Returns whether the row was written — a placeholder-shaped key is refused.
+ */
 export function upsertArtistAlias(
   db: Database,
   row: { aliasNorm: string; canonicalName: string; mbid?: string | null; source: 'mbid' | 'user' },
-): void {
+): boolean {
+  if (isPlaceholderAliasKey(row.aliasNorm)) {
+    log.warn(
+      { aliasNorm: row.aliasNorm, canonicalName: row.canonicalName },
+      'refusing a placeholder-keyed artist alias — it would capture unrelated future arrivals',
+    );
+    return false;
+  }
   db.run(
     `INSERT INTO library_artist_aliases (alias_norm, canonical_name, mbid, source, created_at)
      VALUES (?, ?, ?, ?, ?)
@@ -104,6 +160,7 @@ export function upsertArtistAlias(
      WHERE library_artist_aliases.source != 'user' OR excluded.source = 'user'`,
     [row.aliasNorm, row.canonicalName, row.mbid ?? null, row.source, Date.now()],
   );
+  return true;
 }
 
 export interface AliasProposal {

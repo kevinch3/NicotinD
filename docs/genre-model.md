@@ -7,6 +7,85 @@ reads what. **Adding a genre reader means adding a row to the table below.**
 → [library-scanner.md](library-scanner.md) for how the set is built, [genre-radar.md](genre-radar.md)
 for how it is visualised, [radio.md](radio.md) for how it is scored.
 
+## Every door onto the genre store must canonicalize (issues #941, #942)
+
+The library has one genre vocabulary and several doors onto it, and a door that
+skips canonicalization re-introduces exactly the pollution the vocabulary exists
+to keep out.
+
+**The sidecar door (#941).** `mapDiscogsGenres` (#194) keeps Discogs' separator-bearing
+top-level names out of the library, and `discogs-genre-vocab.test.ts` pins "never emits a
+hard-separator character for ANY top-level genre". It had exactly **one** non-test caller: the
+Discogs plugin. But the `genre-audio` enrichment task consumes the *same closed vocabulary* from
+the analysis sidecar — `genre_discogs400_labels.json`, 400 classes over 15 distinct genre halves,
+byte-identical to `DISCOGS_TOP_LEVEL_GENRES` — and wrote the raw label straight into
+`library_genre_overrides` with no `mode`, so it became the song's **primary** genre.
+
+Four of the 15 labels are wrong without the mapping:
+
+| label | what happened | canonical |
+| --- | --- | --- |
+| `Folk, World, & Country` | stored whole, then shattered by the file-tag mirror on the next scan into `Folk` / `World` / `& Country` | `Folk` / `World` / `Country` |
+| `Funk / Soul` | stored whole, and silently excluded from the `known` vocabulary for containing a `/` | `Funk` / `Soul` |
+| `Hip Hop` | coexisted with the library's `Hip-Hop` | `Hip-Hop` |
+| `Non-Music` | stored as a genre | dropped |
+
+The task now maps the label and skips the write when it maps to nothing — writing an empty set
+would *clear* the song's genre rather than leave it alone.
+
+**The artist-scope door (#942).** `POST /api/library/artists/:id/genre` parsed **caller input**
+with `splitStored`, whose own docstring says it is the *storage* decoder ("stored form is a
+';'-joined ordered list"). It splits on `;` alone, while the song scope and MCP `set_song_genre`
+use `parseGenreList` — the scanner's own `SEPARATORS` — so that a curated genre is always a value a
+rescan can reproduce. The artist scope therefore accepted a genre the song scope refuses, and
+`applyGenreOverride` emitted it verbatim. `splitStored` remains for reading rows back out.
+
+## An artist-wide bad string is one row, not N overrides (issue #949)
+
+`library_genre_aliases` is the only genre store whose granularity matches a catalogue-wide mistag:
+one row fixes every song carrying the value, expands one alias into many genres, and survives
+rescans without rewriting files. It was reachable only from `reclassify-genres.ts`, so a curation
+session could reach `set_song_genre` alone — a *song*-scoped override that cannot express "this raw
+string is always wrong". A 44-song artist-wide mistag cost 44 calls and still left future arrivals
+broken, because a newly-downloaded track arrives carrying the same string with no override covering
+it.
+
+`set_genre_alias` (MCP, `curate`) upserts the row and immediately re-splits the songs that carry
+that value — the same mechanism as `backfillGenresFromAliases`, narrowed from the whole library to
+the rows the alias can possibly change. Two details that are easy to get wrong:
+
+- **The canonical side goes through `parseGenreList`**, so an alias can never mint a value a rescan
+  would re-split differently. That is #942's rule applied to the alias door.
+- **The no-op check compares exact strings, not `genreKey`.** The key folds case *and* accents, and
+  the largest real instance of this class is precisely a casing repair inside an accented name —
+  `Nueva CancióN` → `Nueva Canción`, 44 rows, all at position 3. A key comparison calls that a
+  no-op and refuses the fix.
+
+Worth knowing when working the rare-genre worklist: **`get_rare_genres` counts the primary genre
+only**, so that 44-row value was invisible to it and surfaced only from a direct
+`library_song_genres` probe.
+
+## Genre bloat defeats genre selection (issue #960)
+
+Nothing caps how many genres a song accumulates — the enrichment chain (`genre` → `genre-discogs`
+→ `genre-audio`) appends, and `set_song_genre` defaults to appending — so against a library mean of
+**2.65**, 1,036 songs carry more than 8, 148 more than 16, and the worst carries 33.
+
+`expandGenreWhere` rewrites any `s.genre` predicate to match the whole set, which is correct at the
+mean and inverts the intent in the tail: *Rumble* is a dubstep track tagged `Screamo`, `Rock` and
+`Country`, so it satisfies nearly every genre filter and surfaces in a Country station, a House
+station and a Rock station alike. **Neither change is a defect on its own** — making genre matching
+see secondary genres was right, and so is storing everything a source asserts — which is why this
+never showed up as one. The effect lands where it is least wanted, too: heavily-tagged songs are
+usually popular songs, so the tail is over-represented in selection rather than randomly
+distributed.
+
+`GENRE_SET_EXPR` now reads only the first `GENRE_MATCH_POSITIONS` (5) genres by `position`, which
+already encodes primary-first ordering, so the cut is meaningful rather than arbitrary and covers
+94.6% of songs entirely. This bounds what **matching** sees; every genre stays stored and displayed,
+because truncating the stored sets would discard real information and could not be reviewed
+meaningfully.
+
 ## Two stores
 
 | Store                       | Shape                              | What it answers                       |

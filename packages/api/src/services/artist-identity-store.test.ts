@@ -3,6 +3,7 @@ import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import {
   deriveMbidAliases,
+  isPlaceholderAliasKey,
   loadSplitAuthority,
   recordAcquiredArtistIdentity,
   upsertArtistAlias,
@@ -235,5 +236,57 @@ describe('recordAcquiredArtistIdentity', () => {
         )
         .get(key),
     ).not.toBeNull();
+  });
+});
+
+/**
+ * Issue #950: `[Traditional]` is what folk, classical and choral rips carry when
+ * there is no known composer — it identifies no performer. Aliased to
+ * `Luciano Pavarotti` on prod, so any future file tagged that way would land in
+ * his discography at scan time with no signal, and no audit rule able to see it:
+ * the artist resolves cleanly and `fragmented_artist` sees one artist, not two.
+ */
+describe('placeholder-keyed artist aliases are refused at the door', () => {
+  let db: Database;
+  beforeEach(() => {
+    db = new Database(':memory:');
+    applySchema(db);
+  });
+
+  function aliasCount(): number {
+    return db.query<{ c: number }, []>('SELECT COUNT(*) c FROM library_artist_aliases').get()!.c;
+  }
+
+  it('refuses a placeholder key even from a deliberate user merge', () => {
+    expect(
+      upsertArtistAlias(db, {
+        aliasNorm: 'traditional',
+        canonicalName: 'Luciano Pavarotti',
+        source: 'user',
+      }),
+    ).toBe(false);
+    expect(aliasCount()).toBe(0);
+  });
+
+  it('refuses a key too generic to identify the artist it points at', () => {
+    // normalizeArtistForGrouping("&ME") strips the ampersand, so the key for a
+    // real artist is the bare English word "me" — correct today, and a trap for
+    // any artist genuinely named "Me".
+    for (const k of ['me', 'various', 'va', 'unknown', 'artist', '[traditional]', '']) {
+      expect(isPlaceholderAliasKey(k)).toBe(true);
+    }
+  });
+
+  it('still writes an ordinary spelling variant', () => {
+    expect(
+      upsertArtistAlias(db, {
+        aliasNorm: 'pericos',
+        canonicalName: 'Los Pericos',
+        source: 'user',
+      }),
+    ).toBe(true);
+    expect(aliasCount()).toBe(1);
+    expect(isPlaceholderAliasKey('pericos')).toBe(false);
+    expect(isPlaceholderAliasKey('metallica')).toBe(false);
   });
 });

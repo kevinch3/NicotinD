@@ -9,6 +9,7 @@ import {
 import { recordAudit } from '../services/audit-log.js';
 import { deleteAlbum, deleteOne } from '../services/library-deletion.js';
 import { mutateArtistIdentity } from '../services/artist-identity-mutate.js';
+import { upsertGenreAlias } from '../services/genre-alias-mutate.js';
 import { mutateSongGenre } from '../services/song-genre-mutate.js';
 import {
   createCurationFlag,
@@ -446,6 +447,50 @@ export const MCP_TOOLS: McpTool[] = [
   },
   // Separators mirror the scanner's own (`SEPARATORS`, genre-split.ts), so a
   // curated genre stays a value a rescan can reproduce (issues #194, #913).
+  {
+    name: 'set_genre_alias',
+    description:
+      "Repair a raw genre STRING everywhere it appears, now and in future arrivals. Writes a library_genre_aliases row (alias -> canonical) and immediately re-splits the songs carrying that value. Use this — not N set_song_genre calls — when one bad string is the defect: a no-separator concatenation ('Pop RockLatin AlternativeLatin Rock'), a malformed casing from the source tagger ('Nueva CancioN'), or a 'Rock - X' prefix. set_song_genre fixes the SONGS that exist; this fixes the VALUE, so a track downloaded tomorrow carrying the same string is clean too. Pass an empty canonical to drop a junk value outright. canonical accepts a list separated by ';', ',' or '|'. Audit-logged.",
+    access: 'curate',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        alias: {
+          type: 'string',
+          description: 'The raw genre value as stored, e.g. "Nueva CancióN".',
+        },
+        canonical: {
+          type: 'string',
+          description:
+            'What it should become — one genre or a list, primary first. Empty string drops it.',
+        },
+      },
+      required: ['alias', 'canonical'],
+    },
+    handler: ({ db, identity }, args) => {
+      const result = upsertGenreAlias(db, {
+        alias: str(args.alias),
+        canonical: str(args.canonical),
+      });
+      if (!result.ok) return JSON.stringify({ error: result.error });
+      recordAudit(
+        db,
+        { sub: identity.userId, username: `agent:${identity.tokenId}` },
+        'genre.alias',
+        {
+          targetKind: 'genre',
+          targetId: result.alias,
+          detail: `${result.alias} → ${result.canonical.join(';') || '(dropped)'} (${result.songsUpdated} songs, via MCP agent)`,
+        },
+      );
+      return JSON.stringify({
+        ok: true,
+        alias: result.alias,
+        canonical: result.canonical,
+        songsUpdated: result.songsUpdated,
+      });
+    },
+  },
   {
     name: 'set_song_genre',
     description:
