@@ -2195,3 +2195,48 @@ have caught #968 the night it started instead of a week later by hand.
 
 No writes this stretch. Recovery is a maintenance operation outside a refiner session, and
 the cause should be understood before the symptom is cleared.
+
+### Stretch 18 — tried to clear `missing_year`, found the rule cannot be cleared (#969)
+
+Picked `missing_year` (182) as a productive write lane and stopped before writing anything,
+because verifying the first four candidates showed the cheap method was the wrong one.
+
+Every one of `Escape` (Enrique Iglesias), `The Return of the Space Cowboy` (Jamiroquai),
+`Teenage Dream: The Complete Confection` (Katy Perry) and `MTV Unplugged` (Maná) holds
+**exactly one song**, and in most cases the song is not from that release: "Firework" (2010)
+filed under a 2012 reissue, "Oye Mi Amor" as **track 81** — nothing on an MTV Unplugged album
+is track 81. Dating these from their album titles writes a plausible-looking wrong year onto
+a recording, which nothing downstream would ever flag.
+
+Measured rather than assumed:
+
+```
+albums missing a year          : 182
+  single-track pseudo-albums   : 173  (95%)
+  whose SONGS carry a year     : 0    <-- nothing to derive from
+```
+
+Widening it turned a blocked lane into a structural finding:
+
+```
+visible albums   : 6914
+  single-track   : 5593  (81%)   holding 5593 of 19069 songs (29%)
+missing_artwork  : 4262   93% on single-track rows
+missing_year     : 182    95% on single-track rows
+
+of the 5593 single-track albums:
+  name == song title : 3480   the legitimate single convention
+  name <> song title : 2113   a track extracted from a larger release
+```
+
+So 71% of the music lives in 1,321 real albums while 81% of album rows are singles, and the
+two largest non-orphan audit backlogs are 93–95% findings against rows that are not releases.
+Combined with #952 (that same `missing_artwork` number is ~3x inflated because ~2,859 albums
+already render via embedded art), the headline "4,262 albums missing artwork" is close to
+useless as a backlog.
+
+Same structural cause as #966's 139 clip-albums: **anything that lands as one file becomes an
+album**, and every album-scoped rule then fires on it permanently.
+
+The honest outcome of this stretch is a rule that should be re-scoped, not 173 years written.
+A count that cannot be driven to zero is inventory, not a worklist.
