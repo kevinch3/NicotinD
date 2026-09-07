@@ -93,6 +93,9 @@ follow-up work, not part of the gate fix.
 | `GET`    | `/api/radio/next`                        | Smart radio — next track by metadata similarity             |
 | `GET`    | `/api/history/stats`                     | Listening stats (top songs/artists/albums/genres)           |
 | `POST`   | `/api/history/plays`                     | Idempotent batch play-event ingest                          |
+| `POST`   | `/api/recommendations/feedback`          | One vote: exclude / restore / variety (caller-scoped)       |
+| `GET`    | `/api/recommendations/excluded`          | Songs the feeds hold out for the caller, with reason        |
+| `DELETE` | `/api/recommendations/excluded/:songId`  | Recommend again (writes a restore)                          |
 | `GET`    | `/api/playlists`                         | List user's playlists (+ curated for all users)             |
 | `POST`   | `/api/playlists`                         | Create playlist                                             |
 | `GET`    | `/api/playlists/:id`                     | Get playlist (songs)                                        |

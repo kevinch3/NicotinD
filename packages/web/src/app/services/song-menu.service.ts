@@ -10,6 +10,7 @@ import { TransferService } from './transfer.service';
 import { TrackInfoService } from './track-info.service';
 import { ConfirmService } from './confirm.service';
 import { LikeService } from './like.service';
+import { RecommendationExclusionsService } from './recommendation-exclusions.service';
 import { resolveArtistRoute, resolveAlbumRoute } from '../lib/route-utils';
 import {
   toTrack,
@@ -49,6 +50,7 @@ export class SongMenuService {
   private readonly trackInfo = inject(TrackInfoService);
   private readonly confirm = inject(ConfirmService);
   private readonly likes = inject(LikeService);
+  private readonly exclusions = inject(RecommendationExclusionsService);
 
   build(song: BaseSong, ctx: SongContext = {}): TrackAction[] {
     const track = toTrack(song);
@@ -90,6 +92,14 @@ export class SongMenuService {
           coverArt: song.coverArt ?? null,
         }),
     });
+
+    // A personal veto on the feeds (docs/radio.md "Per-user exclusions"): the
+    // song stays in the library, it just stops being *proposed* to this listener.
+    actions.push(
+      this.exclusions.isExcluded(song.id)
+        ? { label: 'Recommend again', action: () => void this.exclusions.restore(song.id) }
+        : { label: "Don't recommend this", action: () => void this.exclusions.exclude(song.id) },
+    );
 
     if (ctx.removable && this.auth.canCurate()) {
       actions.push({

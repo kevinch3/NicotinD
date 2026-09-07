@@ -25,6 +25,7 @@ import { isRealGenre } from '../services/genre-split.js';
 import { loadDescriptors, type DescriptorFeatures } from '../services/descriptor-store.js';
 import { descriptorBlocks, meanBlock, type DescriptorBlocks } from '../services/descriptor-axes.js';
 import { feedEligibilitySql, type ReadinessTier } from '../services/recommendation/eligibility.js';
+import { excludedSongIds } from '../services/recommendation/feedback-store.js';
 
 /**
  * Descriptor blocks for one song (formula v5, issue #642), attached the way
@@ -813,6 +814,11 @@ export function radioRoutes() {
     const excludeIds = new Set(excludeRaw.split(',').filter(Boolean).slice(0, MAX_EXCLUDE_IDS));
 
     const db = getDatabase();
+    // The listener's own rejections ride the same exclusion layer as their
+    // queue: fed in here, before the generators widen the set to every copy of
+    // each excluded recording (#660), so a rejected track's twin stays out too.
+    const userId = listenerId(c);
+    if (userId) for (const id of excludedSongIds(db, userId)) excludeIds.add(id);
 
     // A seed *list* → list-seeded radio ("keep the vibe"). Takes precedence
     // over the single-seed and filter lanes. Capped at the recently-played
@@ -829,9 +835,7 @@ export function radioRoutes() {
       // Unknown ids are skipped, not fatal — the shelf's list can outlive a
       // deleted song. Only an entirely-unresolvable list is an error.
       if (seedRows.length === 0) return c.json({ error: 'No seed songs found' }, 404);
-      return c.json(
-        radioSongs(buildListRadio(db, seedRows, { count, excludeIds, userId: listenerId(c) })),
-      );
+      return c.json(radioSongs(buildListRadio(db, seedRows, { count, excludeIds, userId })));
     }
 
     // No seed song → filter-seeded radio (a mood/genre/bpm vibe). `genre` is a
@@ -844,9 +848,7 @@ export function radioRoutes() {
       if (Object.keys(filter).length === 0) {
         return c.json({ error: '"seedId" or a filter is required' }, 400);
       }
-      return c.json(
-        radioSongs(buildFilterRadio(db, filter, { count, excludeIds, userId: listenerId(c) })),
-      );
+      return c.json(radioSongs(buildFilterRadio(db, filter, { count, excludeIds, userId })));
     }
 
     const seedRow = db
@@ -854,9 +856,7 @@ export function radioRoutes() {
       .get(seedId);
     if (!seedRow) return c.json({ error: 'Seed song not found' }, 404);
 
-    return c.json(
-      radioSongs(buildSeedRadio(db, seedRow, { count, excludeIds, userId: listenerId(c) })),
-    );
+    return c.json(radioSongs(buildSeedRadio(db, seedRow, { count, excludeIds, userId })));
   });
 
   return app;

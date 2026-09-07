@@ -5,6 +5,7 @@ import { applySchema } from '../db.js';
 import { recordPlayEvents } from '../services/play-history.js';
 import { upsertArtistOrigin } from '../services/artist-origins.js';
 import { DESCRIPTOR_VERSION, upsertDescriptors } from '../services/descriptor-store.js';
+import { recordFeedback } from '../services/recommendation/feedback-store.js';
 import { radioRoutes, buildFilterRadio, stationCentroid } from './radio.js';
 
 let testDb: Database = (() => {
@@ -929,6 +930,81 @@ describe('radio /next — genre stations', () => {
  * lookup actually reaches ranking, and that an unidentified caller is
  * unaffected.
  */
+describe('radio /next — per-listener exclusions', () => {
+  function appAs(userId: string): Hono {
+    const a = new Hono();
+    a.use('*', async (c, next) => {
+      (c as unknown as { set: (k: string, v: unknown) => void }).set('user', { sub: userId });
+      await next();
+    });
+    a.route('/radio', radioRoutes());
+    return a;
+  }
+
+  beforeEach(() => {
+    testDb = createTestDb();
+    testDb.run(
+      "INSERT INTO users (id, username, password_hash) VALUES ('u1','a','x'), ('u2','b','y')",
+    );
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A',
+      albumId: 'al',
+      album: 'Al',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'rejected',
+      title: 'Rejected',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'b1',
+      album: 'B1',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    // A second file of the same recording (same artist, title, duration).
+    seedSong(testDb, {
+      id: 'rejected-twin',
+      title: 'Rejected',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'b2',
+      album: 'B2',
+      genre: 'Rock',
+      bpm: 120,
+      path: '/music/twin.mp3',
+    });
+    seedSong(testDb, {
+      id: 'fine',
+      title: 'Fine',
+      artist: 'C',
+      artistId: 'C',
+      albumId: 'c1',
+      album: 'C1',
+      genre: 'Rock',
+      bpm: 121,
+    });
+    recordFeedback(testDb, { userId: 'u1', songId: 'rejected', kind: 'exclude' });
+  });
+
+  it('never serves a song the listener excluded, nor another copy of that recording', async () => {
+    const res = await appAs('u1').request('/radio/next?seedId=seed');
+    const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+    expect(ids).toContain('fine');
+    expect(ids).not.toContain('rejected');
+    expect(ids).not.toContain('rejected-twin');
+  });
+
+  it('another listener still hears it', async () => {
+    const res = await appAs('u2').request('/radio/next?seedId=seed');
+    const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+    expect(ids.some((id) => id === 'rejected' || id === 'rejected-twin')).toBe(true);
+  });
+});
+
 describe('radio /next — recently-played demotion', () => {
   let app: Hono;
 
