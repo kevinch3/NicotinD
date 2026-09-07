@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.1](https://github.com/kevinch3/NicotinD/compare/v0.6.0...v0.6.1) (2026-09-07)
+
+### Features
+
+* **radio:** let a listener exclude tracks from every recommendation feed ([#982](https://github.com/kevinch3/NicotinD/issues/982)) ([#984](https://github.com/kevinch3/NicotinD/issues/984)) ([edc2833](https://github.com/kevinch3/NicotinD/commit/edc2833c86cd78f1b9aa1bf32ec9676e9217952e)), references [#660](https://github.com/kevinch3/NicotinD/issues/660)
 ## [0.6.0](https://github.com/kevinch3/NicotinD/compare/v0.5.88...v0.6.0) (2026-09-07)
 
 ### ⚠ BREAKING CHANGES
