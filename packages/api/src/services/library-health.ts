@@ -194,6 +194,23 @@ export interface LibraryHealthReport {
       };
       remediation: string;
     };
+    /**
+     * Disk-side facts the DB-only dimensions cannot see (issue #955). `orphan_file`
+     * and friends are produced by a walk, so they appear in `audit-library.ts`
+     * and nowhere a curation pass would look — ten stretches of health-driven
+     * curation never surfaced 393 unplayable files. The scanner already walks, so
+     * it records what it learns and this reports it, with the scan time attached
+     * so a stale number is visibly stale rather than quietly wrong.
+     */
+    disk: {
+      metric: {
+        /** scan_cache rows staged for deletion whose file is still present. */
+        wronglyOrphaned: number | null;
+        /** When the scan that produced these numbers finished. */
+        measuredAt: number | null;
+      };
+      remediation: string;
+    };
     /** Lyrics are fetched on demand by design — count only, no worklist. */
     lyrics: { metric: { songs: number; withLyrics: number } };
     flags: { metric: { open: number; oldestAt: number | null }; remediation: string };
@@ -249,6 +266,21 @@ function artworkTiers(
     if (!covered) unrenderable++;
   }
   return { missing, missingMultiTrack, noEmbeddedArt: candidates.length, unrenderable };
+}
+
+/** Disk-side facts the last full scan recorded. Nulls mean "no scan has run". */
+function diskFacts(db: Database): { wronglyOrphaned: number | null; measuredAt: number | null } {
+  const row = db
+    .query<{ value: string; updated_at: number }, [string]>(
+      'SELECT value, updated_at FROM library_sync_state WHERE key = ?',
+    )
+    .get('scan_cache_wrongly_orphaned');
+  if (!row) return { wronglyOrphaned: null, measuredAt: null };
+  const n = Number(row.value);
+  return {
+    wronglyOrphaned: Number.isFinite(n) ? n : null,
+    measuredAt: row.updated_at ?? null,
+  };
 }
 
 function count(db: Database, sql: string): number {
@@ -624,6 +656,11 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
         },
         remediation:
           'confirmed → complete_album (curator-approved, only-missing-tracks); suspected is advisory — confirm before any hunt',
+      },
+      disk: {
+        metric: diskFacts(db),
+        remediation:
+          'a non-zero count is always a bug (#968); the full worklist stays in audit-library.ts --rule=orphan_file',
       },
       lyrics: {
         metric: {

@@ -1,3 +1,6 @@
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
@@ -8,6 +11,7 @@ import {
   artistIdFor,
   isLooseSinglesBucket,
   mostCommonGenre,
+  nfc,
   LibraryScanner,
   type ScannedTrack,
 } from './library-scanner.js';
@@ -1403,3 +1407,210 @@ describe('LibraryScanner.persist — fragment_of (issue #864)', () => {
     expect(artistRow(COMPOUND)?.fragment_of).toBe(artistIdFor('Luciano Pavarotti'));
   });
 });
+
+/**
+ * Issue #958: `artist` was seeded from the first-walked track and never
+ * revisited, while every sibling field was reconciled. `readdir` imposes no
+ * order, so the displayed spelling was arbitrary — and unstable, because the
+ * incremental path re-elected it from one batch.
+ */
+describe('album artist display spelling (issue #958)', () => {
+  const spellings = ['Cafe quijano', 'Café Quijano', 'Café Quijano'];
+
+  function albumArtistFor(order: number[]): string {
+    const built = buildLibrary(
+      order.map((i) =>
+        track({
+          relPath: `Cafe Quijano/La Taberna del Buda/0${i + 1}.mp3`,
+          artist: spellings[i]!,
+          album: 'La Taberna del Buda',
+          title: `t${i}`,
+          track: i + 1,
+        }),
+      ),
+    );
+    return built.albums[0]!.artist;
+  }
+
+  it('picks one deterministic spelling regardless of walk order', () => {
+    const answers = [
+      albumArtistFor([0, 1, 2]),
+      albumArtistFor([2, 1, 0]),
+      albumArtistFor([1, 0, 2]),
+      albumArtistFor([2, 0, 1]),
+    ];
+    expect(new Set(answers).size).toBe(1);
+    expect(answers[0]).toBe('Café Quijano');
+  });
+
+  it('mints one artist id across the variants — this is display only', () => {
+    const built = buildLibrary(
+      spellings.map((artist, i) =>
+        track({
+          relPath: `Cafe Quijano/La Taberna del Buda/0${i + 1}.mp3`,
+          artist,
+          album: 'La Taberna del Buda',
+          title: `t${i}`,
+          track: i + 1,
+        }),
+      ),
+    );
+    expect(built.albums).toHaveLength(1);
+    expect(built.artists).toHaveLength(1);
+    expect(built.artists[0]!.id).toBe(artistIdFor('Café Quijano'));
+  });
+
+  it('ranks the album-primary credit above a split off a compound string', () => {
+    // The prod case: `Cultura Profetica` was named from a split credit off
+    // "Flor De Toloache; John Legend; Cultura Profetica" while all 126 of its
+    // own song tags are accented.
+    const built = buildLibrary([
+      track({
+        relPath: 'Various Artists/Comp/01.mp3',
+        artist: 'Flor De Toloache; John Legend; Cultura Profetica',
+        album: 'Comp',
+        title: 'x',
+        track: 1,
+      }),
+      track({
+        relPath: 'Cultura Profética/Sobrevolando/01.mp3',
+        artist: 'Cultura Profética',
+        album: 'Sobrevolando',
+        title: 'y',
+        track: 1,
+      }),
+    ]);
+    const cp = built.artists.find((a) => a.id === artistIdFor('Cultura Profetica'));
+    expect(cp?.name).toBe('Cultura Profética');
+  });
+});
+
+/**
+ * Issue #961: tag text was stored exactly as read. macOS decomposes, so one
+ * album entered the library as 7 NFD rows and 1 NFC — identical on screen,
+ * unequal in SQL, and invisible in every log and query result.
+ */
+describe('tag text is NFC-normalised at the read boundary (issue #961)', () => {
+  const nfd = 'Donny Bene\u0301t';
+  const composed = 'Donny Ben\u00e9t';
+
+  it('composes a decomposed name and leaves a composed one alone', () => {
+    expect(nfd).not.toBe(composed); // identical on screen, different bytes
+    expect(nfc(nfd)).toBe(composed);
+    expect(nfc(composed)).toBe(composed);
+    expect(nfc(undefined)).toBeUndefined();
+  });
+
+  it('makes the two forms compare equal, which is the whole point', () => {
+    // The defect is not a split catalogue — `normalizeArtistForGrouping` already
+    // folded both forms, which is why it stayed invisible. It is that every
+    // EXACT comparison (completeness titleMismatch, any GROUP BY artist) saw two
+    // different strings that print the same.
+    expect(nfc(nfd) === nfc(composed)).toBe(true);
+    expect(normalizeArtistForGrouping(nfd)).toBe(normalizeArtistForGrouping(composed));
+  });
+});
+
+/**
+ * Issue #968: a swallowed `readdir` error was indistinguishable from an empty
+ * directory, and the full scan's prune deletes every row whose `synced_at` is
+ * stale — so one unreadable directory silently deleted every song beneath it.
+ */
+describe('an incomplete walk must not prune (issue #968)', () => {
+  it('keeps existing rows when the walk could not read a directory', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const root = mkdtempSync(join(tmpdir(), 'scan-walk-'));
+    mkdirSync(join(root, 'Radiohead', 'Pablo Honey'), { recursive: true });
+    writeFileSync(join(root, 'Radiohead', 'Pablo Honey', '01.mp3'), 'x');
+
+    // Seed a row for a file in a directory the walk will fail to read.
+    const scanner = new LibraryScanner(root, db);
+    scanner.persist(
+      buildLibrary([
+        track({
+          relPath: 'Fred again/Actual Life/01.mp3',
+          artist: 'Fred again..',
+          album: 'Actual Life',
+          title: 'x',
+          track: 1,
+        }),
+      ]),
+      1,
+      false,
+    );
+    expect(countSongs(db)).toBe(1);
+
+    const unreadable = join(root, 'Fred again');
+    mkdirSync(unreadable, { recursive: true });
+    chmodSync(unreadable, 0o000);
+    try {
+      await scanner.scanFull();
+      // Before the fix the prune ran anyway and this row was gone.
+      expect(countSongs(db)).toBeGreaterThanOrEqual(1);
+      expect(
+        db.query("SELECT id FROM library_songs WHERE path LIKE 'Fred again/%'").get(),
+      ).not.toBeNull();
+    } finally {
+      chmodSync(unreadable, 0o755);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * The load-bearing half of #958. `scanPaths` builds from only the touched
+ * tracks, so a reduction computed inside `buildLibrary` alone is a reduction
+ * over the BATCH, not the album — a one-track incremental would still write a
+ * one-sample "mode". This is the prod case: one loose single, scanned four hours
+ * after the full scan, renamed a 23-track album to all-caps.
+ */
+describe('an incremental touch does not re-elect the album artist (issue #958)', () => {
+  it('recomputes the spelling from every song, not just the scanned batch', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const scanner = new LibraryScanner('/m', db);
+
+    const full = buildLibrary(
+      Array.from({ length: 22 }, (_, i) =>
+        track({
+          relPath: `Gigi D'Agostino/L'Amour Toujours/${i + 1}.mp3`,
+          artist: "Gigi D'Agostino",
+          album: "L'Amour Toujours",
+          title: `t${i}`,
+          track: i + 1,
+        }),
+      ),
+    );
+    scanner.persist(full, 1, false);
+    const albumId = full.albums[0]!.id;
+    expect(albumArtist(db, albumId)).toBe("Gigi D'Agostino");
+
+    // The loose single arrives, tagged in caps, and lands on the same album id.
+    const loose = buildLibrary([
+      track({
+        // A loose single: the Singles bucket makes album = title, which is how
+        // this landed on the 23-track album's id in the first place.
+        relPath: "Various Artists/Singles/01 - L'Amour Toujours.mp3",
+        artist: "GIGI D'AGOSTINO",
+        title: "L'Amour Toujours",
+        track: 1,
+      }),
+    ]);
+    expect(loose.albums[0]!.id).toBe(albumId);
+    scanner.persist(loose, 2, false);
+
+    // 22 rows say one thing and 1 says another; the album keeps the majority.
+    expect(albumArtist(db, albumId)).toBe("Gigi D'Agostino");
+  });
+});
+
+function albumArtist(db: Database, albumId: string): string {
+  return db
+    .query<{ artist: string }, [string]>('SELECT artist FROM library_albums WHERE id = ?')
+    .get(albumId)!.artist;
+}
+
+function countSongs(db: Database): number {
+  return db.query<{ c: number }, []>('SELECT COUNT(*) c FROM library_songs').get()!.c;
+}

@@ -170,6 +170,17 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **A cover survives the transcode as a folder image**: `preserveFolderCover` writes `cover.jpg`
   before `-vn` discards the attached picture and as the organizer lands any format — ffmpeg's Ogg
   muxer cannot carry one. `findFolderCoverName`. → [library-audit.md](library-audit.md)
+- **The displayed artist spelling is reduced, not first-seen**: `pickDisplayName` picks one of an
+  album's spellings (frequency → diacritics → not-shouted → explicit-locale alphabetical) and
+  `refreshAlbumArtistDisplay` re-derives it on every incremental touch, so a one-file scan cannot
+  re-elect it. `artistId` is unaffected. → [library-scanner.md](library-scanner.md)
+- **Tag text is NFC at the boundary**: `nfc()` normalises every string `parseTrack` reads, so two
+  byte-different spellings that render identically cannot reach an exact comparison.
+  → [library-scanner.md](library-scanner.md)
+- **A walk that did not finish must not prune**: `unreadableDirs` makes a swallowed `readdir` failure
+  visible, `scanFull` skips the prune when it is non-empty, and
+  `recoverPresentOrphanedCacheRows` unstamps cache rows whose file is present — surfaced as the
+  health report's `disk` dimension. → [library-scanner.md](library-scanner.md)
 - **Multi-genre support (primary + extras)**: `splitGenres` parses full tag frames into
   `library_song_genres` (position 0 = primary); human-gated `library_genre_aliases` and
   `segmentConcatenatedGenre` fix concatenations at scan time; `backfillGenresFromAliases`.
