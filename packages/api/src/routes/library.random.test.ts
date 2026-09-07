@@ -2,6 +2,8 @@ import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
+import type { AuthEnv } from '../middleware/auth.js';
+import { recordFeedback } from '../services/recommendation/feedback-store.js';
 import { libraryRoutes } from './library.js';
 
 let testDb: Database = (() => {
@@ -34,20 +36,33 @@ function seedSong(
   );
 }
 
-async function randomIds(app: Hono, size: number): Promise<string[]> {
+async function randomIds(app: Hono<AuthEnv>, size: number): Promise<string[]> {
   const res = await app.request(`/library/random?size=${size}`);
   expect(res.status).toBe(200);
   return ((await res.json()) as Array<{ id: string }>).map((s) => s.id).sort();
 }
 
 describe('GET /library/random — feed eligibility', () => {
-  let app: Hono;
+  let app: Hono<AuthEnv>;
 
   beforeEach(() => {
     testDb = new Database(':memory:');
     applySchema(testDb);
-    app = new Hono();
+    testDb.run("INSERT INTO users (id, username, password_hash) VALUES ('u1','a','x')");
+    app = new Hono<AuthEnv>();
+    app.use('*', async (c, next) => {
+      c.set('user', { sub: 'u1' } as AuthEnv['Variables']['user']);
+      await next();
+    });
     app.route('/library', libraryRoutes());
+  });
+
+  it('never draws a song the listener told us not to recommend, and still fills the batch', async () => {
+    seedSong(testDb, { id: 'v1', albumId: 'a1', analysed: true });
+    seedSong(testDb, { id: 'v2', albumId: 'a2', analysed: true });
+    seedSong(testDb, { id: 'rejected', albumId: 'a3', analysed: true });
+    recordFeedback(testDb, { userId: 'u1', songId: 'rejected', kind: 'exclude' });
+    for (let i = 0; i < 5; i++) expect(await randomIds(app, 2)).toEqual(['v1', 'v2']);
   });
 
   it('never draws a song whose album a curator hid', async () => {

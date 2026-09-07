@@ -1,0 +1,32 @@
+<div class="page-shell max-w-2xl" data-testid="recommendations-settings">
+  <a routerLink="/settings" class="text-sm text-theme-muted hover:text-theme-primary">{{
+    'common.backToSettings' | t
+  }}</a>
+  <h1 class="page-title mt-2 mb-6">{{ 'recommendations.title' | t }}</h1>
+
+  <app-settings-group groupId="recommendations-excluded" [title]="'recommendations.excludedTitle' | t">
+    <p class="text-sm text-theme-secondary mb-4">{{ 'recommendations.hint' | t }}</p>
+    @if (exclusions.loaded() && exclusions.excluded().length === 0) {
+      <p class="text-sm text-theme-muted" data-testid="recommendations-empty">
+        {{ 'recommendations.empty' | t }}
+      </p>
+    } @else {
+      <div appTvNavGroup [axis]="'vertical'" class="flex flex-col" data-testid="recommendations-excluded">
+        @for (e of exclusions.excluded(); track e.songId) {
+          <div [attr.data-song-id]="e.songId" data-testid="recommendations-excluded-row">
+            <app-track-row
+              [track]="track(e)"
+              [artists]="e.song?.artistId ? [{ id: e.song!.artistId!, name: e.song!.artist, role: 'primary' }] : undefined"
+              [subtitle]="reasonKey(e) | t: { count: e.skips ?? 0 }"
+              [duration]="e.song?.duration"
+              [showRemove]="true"
+              [showLike]="false"
+              (play)="play(e)"
+              (remove)="restore(e)"
+            />
+          </div>
+        }
+      </div>
+    }
+  </app-settings-group>
+</div>

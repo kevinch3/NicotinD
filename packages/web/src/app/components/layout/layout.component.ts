@@ -17,6 +17,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService, shuffleArray } from '../../services/player.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { LikeService } from '../../services/like.service';
+import { RecommendationExclusionsService } from '../../services/recommendation-exclusions.service';
 import { toTrack } from '../../lib/track-utils';
 import { mainBottomPadClass } from '../../lib/player-chrome';
 import { SetupService } from '../../services/setup.service';
@@ -116,6 +117,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private acquire = inject(AcquireService);
   private api = inject(LibraryApiService);
   private likes = inject(LikeService);
+  private readonly exclusions = inject(RecommendationExclusionsService);
 
   private desktopChrome = inject(DesktopChromeService);
   private readonly p2r = inject(PullToRefreshService);
@@ -279,6 +281,8 @@ export class LayoutComponent implements OnInit, OnDestroy {
     void this.acquire.refresh();
     // Hydrate the per-user "like" state so hearts reflect the DB app-wide.
     void this.likes.refresh();
+    // Same shape for the listener's recommendation exclusions (menu labels).
+    void this.exclusions.refresh();
 
     // Radio source: metadata-aware track selection so playback continues with
     // musically similar tracks. Falls back to shuffled recent songs when no seed.
