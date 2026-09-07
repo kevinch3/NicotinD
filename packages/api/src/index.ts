@@ -29,6 +29,7 @@ import { presenceRoutes } from './routes/presence.js';
 import { historyRoutes } from './routes/history.js';
 import { privacyRoutes } from './routes/privacy.js';
 import { recommendationRoutes } from './routes/recommendations.js';
+import { libraryEventRoutes } from './routes/library-events.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { radioPollAdminRoutes, radioPollPublicRoutes } from './routes/radio-polls.js';
@@ -724,6 +725,9 @@ export function createApp({
       shareRescan: new ShareRescanScheduler(notifyAddonLibraryChanged),
     }),
   );
+  // Mounted before the library routes so `/events` is not shadowed by a
+  // parameterised library path.
+  app.route('/api/library/events', libraryEventRoutes());
   app.route(
     '/api/library',
     libraryRoutes(config.musicDir, {

@@ -29,6 +29,53 @@ invalidation rule is narrow and checkable:
 | artist-image / album-cover / lyrics            | ❌ correct   | `coverArt` is id-stable; no list membership change |
 | `optimizeAlbumMetadata`, `analyze*`, reclassify-genres | ❌ correct | per-id writes, no list impact          |
 
+## Live invalidation over `/api/library/events`
+
+Everything above is about a page invalidating what *it* just wrote. The other half — a change made
+somewhere else reaching a page that is already open — used to have exactly one path: the
+`TransferService` job-feed poll, and only for jobs in that user's feed. An MCP curator's retag, a
+scan from another device, a cover replaced from the admin page: none of it reached an open tab
+until a reload.
+
+Now every library mutation announces itself on one bus, `services/library-events.ts`
+(`libraryEvents.emit`), from the **service** that made it — the scanner (`songs.landed` for
+inserted rows only, `songs.deleted` for pruned ones), `library-deletion`, `album-cover-mutate`
+(`artwork.changed`), `song-genre-mutate` / `song-metadata-mutate` (`album.changed`) and the job
+store's `recomputeStage` (`job.changed`) — so a route, the MCP agent and a CLI script all emit the
+same way. `GET /api/library/events` (`routes/library-events.ts`) streams the bus as server-sent
+events; the web `LibraryEventsService` holds one stream per visible tab and fans events out to
+signals the pages read.
+
+Three rules make it safe to rely on:
+
+- **Coalesced.** Emits of one type inside a 250 ms window merge (ids unioned; single-id types keep
+  the last per id), so a 2,000-song scan is a handful of frames.
+- **Replayable, honestly.** Every delivered event has a `seq`; the last 500 / 10 min are kept. A
+  reconnect sends `Last-Event-ID` (or `?since=`) and gets what it missed — or one `resync` event
+  when the seq fell out of the buffer, on which the client drops the cached whole-library reads and
+  bumps `resync` instead of pretending nothing happened. A hole in the sequence on the client side
+  triggers the same.
+- **Stands down like a poller.** The stream closes 30 s after the tab hides and reopens from the
+  last seq on return (#717 discipline). `TransferService` slows its poll 4× while the stream is
+  connected (10 s active / 120 s idle); the poll stays as the safety net.
+
+SSE rather than the playback WebSocket, deliberately: that socket connects only when remote
+playback is on, its frames are the core `ServerMessage` union, and its `persistentFailure` disables
+remote playback — library events there would couple two unrelated lifecycles. SSE gives reconnect
+and replay natively and already crosses the nginx edge (the admin processing stream); the 25 s
+`: ping` keeps it under the edge's 60 s read timeout.
+
+Consumers today: the Library "new album added" banner (`noteAlbumsLanded`, which lost its only
+caller when the review inbox went), deleted rows leaving every open list (`deletedSongIds`), the
+album page refetching when its album changes, and `coverBust` on the album page reading
+`artworkVersions` — so a cover set anywhere shows there at once, without the page hand-busting.
+
+| Cache                       | Invalidated by the stream                                   |
+| --------------------------- | ----------------------------------------------------------- |
+| `artistsCache`/`genresCache` | any `songs.*`, `album.changed`, `artist.changed`, `resync`  |
+| browser cover cache (24 h)  | `artwork.changed` → `&v=<version>` on the album page        |
+| an open album page          | `album.changed` / `songs.*` naming its id → refetch          |
+
 ## Structural findings — classes that cannot occur here
 
 These were on the #237 suspect list and were checked off, not skipped. Each is load-bearing: change
