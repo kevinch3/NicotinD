@@ -30,6 +30,7 @@ import {
   type OverrideIndex,
 } from '../genre-overrides.js';
 import { planDiscogsAlbumGenres, type DiscogsGenreAlbum } from '../genre-discogs.js';
+import { mapDiscogsGenres } from '../discogs-genre-vocab.js';
 import {
   countArtistsNeedingPortrait,
   fillArtistImages,
@@ -1677,10 +1678,24 @@ const genreAudioTask: EnrichmentTask = {
           continue;
         }
 
+        // The sidecar returns the raw Discogs top-level half of a
+        // `genre---style` label, from a vocabulary byte-identical to
+        // DISCOGS_TOP_LEVEL_GENRES — so it needs the same canonicalisation the
+        // Discogs plugin applies. `mapDiscogsGenres` (#194) was only ever wired
+        // to that plugin, leaving this door open: `Folk, World, & Country` was
+        // stored whole and shattered into `Folk`/`World`/`& Country` on the next
+        // scan, `Funk / Soul` was silently excluded from the known vocabulary for
+        // containing a `/`, `Hip Hop` coexisted with the library's `Hip-Hop`, and
+        // `Non-Music` was stored as a genre at all (#941).
+        const genres = mapDiscogsGenres([result.genre.label]);
+        // `Non-Music` maps to nothing: there is no genre to write, and writing
+        // an empty set would clear the song's genre rather than leave it alone.
+        if (genres.length === 0) continue;
+
         const written = upsertGenreOverride(db, {
           scope: 'song',
           key: song.id,
-          genres: [result.genre.label],
+          genres,
           source: 'essentia',
           mbid: null,
           confidence: result.genre.confidence,

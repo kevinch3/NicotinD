@@ -57,3 +57,31 @@ describe('mapDiscogsGenres', () => {
     expect(mapDiscogsGenres(['', '   ', 'Rock'])).toEqual(['Rock']);
   });
 });
+
+/**
+ * Issue #941: `mapDiscogsGenres` had exactly one non-test caller — the Discogs
+ * plugin — while the `genre-audio` enrichment task consumes the SAME closed
+ * vocabulary from the analysis sidecar (`genre_discogs400_labels.json`: 400
+ * classes over 15 distinct genre halves, byte-identical to
+ * DISCOGS_TOP_LEVEL_GENRES) and wrote the raw label straight through.
+ *
+ * These assert the four labels that are wrong without the mapping, so the second
+ * door cannot silently reopen.
+ */
+describe('the sidecar vocabulary needs the same mapping as the plugin (issue #941)', () => {
+  it('never emits a value the scanner would re-split', () => {
+    // Stored ';'-encoded and ';'-decoded, then shattered by the file-tag mirror
+    // on the next scan into Folk / World / "& Country".
+    expect(mapDiscogsGenres(['Folk, World, & Country'])).toEqual(['Folk', 'World', 'Country']);
+    // A '/' additionally excludes the value from the known vocabulary entirely.
+    expect(mapDiscogsGenres(['Funk / Soul'])).toEqual(['Funk', 'Soul']);
+  });
+
+  it("folds a label that would coexist with the library's own spelling", () => {
+    expect(mapDiscogsGenres(['Hip Hop'])).toEqual(['Hip-Hop']);
+  });
+
+  it('drops a label that is not a genre, leaving nothing to write', () => {
+    expect(mapDiscogsGenres(['Non-Music'])).toEqual([]);
+  });
+});

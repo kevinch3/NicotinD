@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'bun:test';
-import { CURATED_PLAYLISTS, selectCuratedTracks, type CandidateRow } from './curated-playlists.js';
+import { Database } from 'bun:sqlite';
+import { applySchema } from '../db.js';
+import {
+  CURATED_PLAYLISTS,
+  GENRE_MATCH_POSITIONS,
+  expandGenreWhere,
+  selectCuratedTracks,
+  type CandidateRow,
+} from './curated-playlists.js';
 
 function rows(spec: Array<[artist: string, count: number]>): CandidateRow[] {
   const out: CandidateRow[] = [];
@@ -128,5 +136,63 @@ describe('expandGenreWhere (multi-genre recipe predicates)', () => {
       )
       .all();
     expect(rows.map((r) => r.id)).toEqual(['s1']);
+  });
+});
+
+/**
+ * Issue #960: `expandGenreWhere` matching the full set is correct at the library
+ * mean of 2.65 genres and inverts the intent in the tail — 1,036 songs carry
+ * more than 8, and "Rumble" (33) is a dubstep track tagged Screamo, Rock and
+ * Country, so it satisfies nearly every genre filter. Heavily-tagged songs are
+ * usually popular songs, so the tail is over-represented in selection.
+ */
+describe('genre matching is bounded to the first positions (issue #960)', () => {
+  it('reads only the first GENRE_MATCH_POSITIONS genres', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, genre, landed_at, synced_at)
+       VALUES ('s1', 'al', 't', 'a', 'ar', '/m/s1.mp3', 'Dubstep', 1, 1)`,
+    );
+    ['Dubstep', 'Electronic', 'Trap', 'Techno', 'Bass House', 'Country', 'Screamo'].forEach(
+      (g, i) =>
+        db.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES ('s1', ?, ?)`, [
+          g,
+          i,
+        ]),
+    );
+
+    const matches = (genre: string): boolean =>
+      db
+        .query<{ id: string }, [string]>(
+          `SELECT s.id FROM library_songs s WHERE ${expandGenreWhere("s.genre LIKE '%' || ? || '%'")}`,
+        )
+        .get(genre) != null;
+
+    expect(GENRE_MATCH_POSITIONS).toBe(5);
+    // Inside the window — a real secondary genre still matches, which is the
+    // whole reason expandGenreWhere exists.
+    expect(matches('Electronic')).toBe(true);
+    expect(matches('Bass House')).toBe(true);
+    // Positions 5 and 6: the tail that made a dubstep track surface in a Country
+    // station and a Rock station alike.
+    expect(matches('Country')).toBe(false);
+    expect(matches('Screamo')).toBe(false);
+  });
+
+  it('still falls back to the primary column pre-first-rescan', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, genre, landed_at, synced_at)
+       VALUES ('s1', 'al', 't', 'a', 'ar', '/m/s1.mp3', 'Rock', 1, 1)`,
+    );
+    expect(
+      db
+        .query<{ id: string }, []>(
+          `SELECT s.id FROM library_songs s WHERE ${expandGenreWhere("s.genre = 'Rock'")}`,
+        )
+        .get(),
+    ).not.toBeNull();
   });
 });

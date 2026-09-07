@@ -75,6 +75,7 @@ audit-logged.
 | `get_artist` | read | one artist + their albums |
 | `get_album_tracks` | read | one album: header (year/classification/cover status) + songs with genre, track/disc, suffix, bitrate |
 | `set_song_genre` | curate | `services/song-genre-mutate.ts` `mutateSongGenre` + `song.genre` audit |
+| `set_genre_alias` | curate | `services/genre-alias-mutate.ts` `upsertGenreAlias` + `genre.alias` audit |
 | `lookup_song_metadata` | read | `services/candidate-sources.ts` `gatherSongCandidates` + `services/title-clean.ts` `cleanDisplayTitle` |
 | `identify_song` | read | `services/identify.ts` `identifySongById` — fpcalc + AcoustID only, the narrow fingerprint lane |
 | `fix_song_metadata` | curate | `services/song-metadata-mutate.ts` `mutateSongMetadata` + `song.metadata` audit |
@@ -163,6 +164,34 @@ already used by the background genre-enrichment task. Real `limit`/`offset`
 pagination — a page shorter than `limit` means no more results, so no separate
 `COUNT(*)` call. Read-only, so (like the other 3 read tools) it does not call
 `recordAudit`.
+
+### `set_genre_alias` (issue #949) — fix the VALUE, not the songs
+
+`set_song_genre` fixes the songs that exist. When the defect is one bad **raw string**, that is the
+wrong shape: a 44-song artist-wide mistag costs 44 calls and still leaves future arrivals broken,
+because a newly-downloaded track arrives carrying the same string with no override covering it.
+
+`library_genre_aliases` is the store whose granularity matches that defect — one row fixes every
+song carrying the value, expands one alias into many genres, and survives rescans without rewriting
+files — and it had no MCP tool, only `reclassify-genres.ts`, which ends a curation session's ability
+to finish its own worklist.
+
+Reach for it when the defect is the string itself:
+
+| shape | example (prod, 2026-09-06) | rows |
+| --- | --- | --- |
+| malformed casing from the source tagger | `Nueva CancióN` → `Nueva Canción` | 44 |
+| no-separator concatenation | `Pop RockLatin AlternativeLatin RockLatin Pop` | 15 |
+| a `X - Y` prefix family | `Rock - Alternative Rock` → `Alternative Rock;Rock` | 8 |
+| junk value | anything → `''` drops it | — |
+
+The call upserts the row and immediately re-splits the songs carrying that value, so the response's
+`songsUpdated` is the repair you can verify by reading back.
+
+**`get_rare_genres` counts the primary genre only.** `Nueva CancióN` sat at position 3 on all 44
+rows, so the largest instance of this class was invisible to the worklist a curator works from; it
+surfaced only from a direct `library_song_genres` probe. Do not read a clean rare-genre list as
+"there are no bad genre strings".
 
 ### `set_song_genre` (issue #677) — and the audit gap it exposed (#681)
 
