@@ -501,6 +501,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Now Playing names its session**: `nowPlayingHeading` resolves radio/album/playlist to a header
   label, radio winning over the context it extended; the resize notch clears 44px and `coverCollapsed`
   drops the cover padding at a zero floor. → [web-ui.md](web-ui.md)
+- **Mono waveform on the seek line**: `monoEnvelopePath` folds the min/max envelope by magnitude and
+  closes it along the baseline for a vertical gradient; `LongPress` lets hold-shuffle start a radio
+  without the release also toggling shuffle. → [web-ui.md](web-ui.md)
 
 - **Unified song listings**: one `TrackRowComponent` + one root `SongMenuService.build(song, ctx)`
   builds every `⋯` menu; every album/artist name is an `EntityLinkComponent` link (span on TV for

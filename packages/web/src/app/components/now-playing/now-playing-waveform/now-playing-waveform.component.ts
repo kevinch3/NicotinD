@@ -1,5 +1,5 @@
 import { Component, computed, input, output } from '@angular/core';
-import { envelopePath } from '../../../lib/waveform-geometry';
+import { monoEnvelopePath } from '../../../lib/waveform-geometry';
 import { seekPercent } from '../../../lib/seek-utils';
 import type { WaveformData } from '../../../../types/core';
 
@@ -47,10 +47,15 @@ export class NowPlayingWaveformComponent {
   readonly viewWidth = VIEW_WIDTH;
   readonly viewHeight = VIEW_HEIGHT;
   readonly baselineHeight = BASELINE_HEIGHT;
-  readonly baselineY = (VIEW_HEIGHT - BASELINE_HEIGHT) / 2;
+  /**
+   * The baseline sits at the very bottom now (#994): the mono envelope stands
+   * *on* the seek line rather than straddling a mid-line, so the graph reads as
+   * growing out of the progress bar instead of floating either side of it.
+   */
+  readonly baselineY = VIEW_HEIGHT - BASELINE_HEIGHT;
 
   readonly path = computed(() =>
-    envelopePath(this.waveform()?.peaks ?? [], VIEW_WIDTH, VIEW_HEIGHT, COLUMNS),
+    monoEnvelopePath(this.waveform()?.peaks ?? [], VIEW_WIDTH, VIEW_HEIGHT, COLUMNS),
   );
 
   /** Which of the two mounted layers the CSS shows. */

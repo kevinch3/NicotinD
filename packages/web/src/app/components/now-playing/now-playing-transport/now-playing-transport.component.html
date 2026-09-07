@@ -16,14 +16,25 @@
 
 <div class="flex items-center justify-center gap-6 mb-6" appTvNavGroup [axis]="'horizontal'">
   @if (!isTv) {
+    <!-- Tap toggles shuffle; hold starts a radio from this track (#995). The
+         hold is announced in the tooltip and the aria-label, because a gesture
+         nobody is told about is a gesture nobody finds. -->
     <button
       appTvNavItem
-      (click)="player.toggleShuffle()"
+      (click)="onShuffleClick()"
+      (pointerdown)="onShufflePointerDown()"
+      (pointerup)="onShufflePointerUp()"
+      (pointerleave)="onShufflePointerCancel()"
+      (pointercancel)="onShufflePointerCancel()"
       data-testid="now-playing-shuffle"
-      [attr.aria-label]="(player.shuffle() ? 'nowPlaying.shuffleOff' : 'nowPlaying.shuffleOn') | t"
+      [attr.title]="'nowPlaying.shuffleHoldHint' | t"
+      [attr.aria-label]="
+        ((player.shuffle() ? 'nowPlaying.shuffleOff' : 'nowPlaying.shuffleOn') | t) +
+        ' — ' +
+        ('nowPlaying.shuffleHoldHint' | t)
+      "
       [attr.aria-pressed]="player.shuffle()"
-      [attr.aria-pressed]="player.shuffle()"
-      [class]="'w-8 h-8 flex items-center justify-center rounded-full transition ' + (player.shuffle() ? 'text-theme-accent-text' : 'text-theme-muted hover:text-theme-secondary')"
+      [class]="'w-8 h-8 flex items-center justify-center rounded-full transition touch-none ' + (player.shuffle() ? 'text-theme-accent-text' : 'text-theme-muted hover:text-theme-secondary')"
     >
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M16 3h5v5" /><path d="M4 20 21 3" /><path d="M21 16v5h-5" /><path d="M15 15l6 6" /><path d="M4 4l5 5" />

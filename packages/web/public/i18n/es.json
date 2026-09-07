@@ -652,6 +652,7 @@
   "nowPlaying.remove": "Quitar",
   "nowPlaying.removeFromQueue": "Quitar de la cola",
   "nowPlaying.resizeQueue": "Redimensionar cola",
+  "nowPlaying.shuffleHoldHint": "Mantén pulsado para iniciar una radio desde esta canción",
   "nowPlaying.shuffleOff": "Desactivar aleatorio",
   "nowPlaying.shuffleOn": "Activar aleatorio",
   "nowPlaying.headingRadio": "Radio",
