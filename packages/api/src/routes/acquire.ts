@@ -49,7 +49,17 @@ interface SubmitBody {
  * `GET /jobs` likewise reports both paths, so the web's link card can actually
  * see the job it just started and stop offering **Get**.
  */
-export function acquireRoutes(watcher: AcquireWatcher, registry: PluginRegistry, db: Database) {
+export function acquireRoutes(
+  watcher: AcquireWatcher,
+  registry: PluginRegistry,
+  db: Database,
+  /**
+   * Resolves a pasted link's name and tracklist alongside the addon rather than
+   * after it (#989/#990). Optional so every existing caller — and every test
+   * that only cares about routing — keeps working without one.
+   */
+  prefetch?: { start(jobId: string, sourceUrl: string): void },
+) {
   const app = new Hono<AuthEnv>();
 
   // Acquisition is hidden from listeners — gate the whole group server-side.
@@ -101,6 +111,12 @@ export function acquireRoutes(watcher: AcquireWatcher, registry: PluginRegistry,
       isPlaylist: resolvedAs === 'playlist',
       files: [],
     });
+
+    // Identity does not need a download slot, so it does not wait for one. Fired
+    // before the addon call precisely because that call is the slow part — prod
+    // measured 46 s for a playlist, which is the whole window the card sat
+    // nameless in.
+    prefetch?.start(coreJobId, url);
 
     let addonJob;
     try {

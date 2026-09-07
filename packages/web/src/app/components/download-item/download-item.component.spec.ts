@@ -4,6 +4,8 @@ import { TestBed } from '@angular/core/testing';
 import {
   DOWNLOAD_ITEM_HOST_CLASS,
   DOWNLOAD_ITEM_TITLE_CLASS,
+  DOWNLOAD_ITEM_CARD_CLASS,
+  trackDetail,
   canOpenInLibrary,
   canOpenPlaylist,
   hasMultipleDestinationAlbums,
@@ -68,6 +70,46 @@ describe('download-item truncation classes', () => {
     expect(titleClasses).toContain('truncate');
     // A flex item defaults to min-width:auto; without min-w-0 truncate is inert.
     expect(titleClasses).toContain('min-w-0');
+  });
+});
+
+/**
+ * Issue #991: expanding the tracklist moved the progress bar and the × into
+ * the middle of the card. jsdom cannot measure layout, so the alignment is
+ * pinned as the class the template binds — reintroducing `items-center` here
+ * fails.
+ */
+describe('download-item card alignment', () => {
+  const cardClasses = DOWNLOAD_ITEM_CARD_CLASS.split(/\s+/);
+
+  it('top-aligns the row so a growing tracklist cannot drag the controls down', () => {
+    expect(cardClasses).toContain('items-start');
+    expect(cardClasses).not.toContain('items-center');
+  });
+
+  it('still shrinks (min-w-0) so long titles truncate rather than widen the card', () => {
+    expect(cardClasses).toContain('min-w-0');
+  });
+});
+
+describe('download-item per-track detail (issue #991)', () => {
+  it('renders what actually landed, most-identifying first', () => {
+    expect(
+      trackDetail({
+        title: 't',
+        status: 'done',
+        audioFormat: 'flac',
+        bitRate: 960,
+        sizeBytes: 8_600_000,
+      }),
+    ).toBe('FLAC · 960k · 8 MB');
+  });
+
+  it('degrades to whatever the source reported, and to nothing at all', () => {
+    expect(trackDetail({ title: 't', status: 'done', bitRate: 320 })).toBe('320k');
+    expect(trackDetail({ title: 't', status: 'pending' })).toBe('');
+    // A zero-byte item is not a fact worth printing.
+    expect(trackDetail({ title: 't', status: 'pending', sizeBytes: 0 })).toBe('');
   });
 });
 

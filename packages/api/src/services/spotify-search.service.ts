@@ -1,4 +1,9 @@
-import { createLogger, ServiceUnavailableError, type SpotifyCandidate } from '@nicotind/core';
+import {
+  createLogger,
+  ServiceUnavailableError,
+  spotifyResourceFromUrl,
+  type SpotifyCandidate,
+} from '@nicotind/core';
 
 const log = createLogger('spotify-search');
 
@@ -168,6 +173,20 @@ export function mapSearchResponse(body: SpotifySearchResponse): SpotifyCandidate
  * cached in memory until it expires. Credentials are read live from the registry
  * via the injected accessor, so an admin's config edit takes effect immediately.
  */
+type SpotifyResource = NonNullable<ReturnType<typeof spotifyResourceFromUrl>>;
+
+interface SpotifyTrackResponse {
+  name?: string;
+  artists?: { name?: string }[];
+}
+
+interface SpotifyReleaseResponse {
+  name?: string;
+  artists?: { name?: string }[];
+  /** Albums nest `items[].name`; playlists nest `items[].track.name`. */
+  tracks?: { items?: { name?: string; track?: { name?: string } }[] };
+}
+
 export class SpotifySearchService {
   private token: { value: string; expiresAt: number } | null = null;
 
@@ -215,6 +234,50 @@ export class SpotifySearchService {
       return pickSpotifyArtistImage(body.artists?.items?.[0]);
     } catch (err) {
       log.debug({ err, name }, 'Spotify artist-image lookup failed');
+      return null;
+    }
+  }
+
+  /**
+   * What a pasted Spotify link actually is: its name, its artist and its
+   * tracklist. Downloads used to learn all three from the transfer, so a queued
+   * job sat nameless with a `0 of 0` count for minutes (issue #989) and, for
+   * playlists, a denominator that climbed as items arrived (issue #990).
+   *
+   * Never throws — a resolve failure must leave the job exactly as it was, with
+   * the addon still the authority. Returns null rather than a partial guess.
+   */
+  async lookupRelease(
+    resource: SpotifyResource,
+  ): Promise<{ name: string; artist: string | null; trackTitles: string[] } | null> {
+    try {
+      const token = await this.accessToken();
+      const auth = { Authorization: `Bearer ${token}` };
+      if (resource.kind === 'track') {
+        const t = (await (
+          await this.fetchWithRetry(`${API_BASE}/tracks/${resource.id}`, { headers: auth })
+        ).json()) as SpotifyTrackResponse;
+        if (!t?.name) return null;
+        return { name: t.name, artist: t.artists?.[0]?.name ?? null, trackTitles: [t.name] };
+      }
+      const path = resource.kind === 'album' ? 'albums' : 'playlists';
+      const body = (await (
+        await this.fetchWithRetry(`${API_BASE}/${path}/${resource.id}`, { headers: auth })
+      ).json()) as SpotifyReleaseResponse;
+      if (!body?.name) return null;
+      const items = body.tracks?.items ?? [];
+      const trackTitles = items
+        .map((i) => (resource.kind === 'album' ? i.name : i.track?.name))
+        .filter((n): n is string => Boolean(n));
+      return {
+        name: body.name,
+        // A playlist's "artist" is its owner, which is not an artist at all, so
+        // only an album claims one.
+        artist: resource.kind === 'album' ? (body.artists?.[0]?.name ?? null) : null,
+        trackTitles,
+      };
+    } catch (err) {
+      log.debug({ err, resource }, 'Spotify release lookup failed');
       return null;
     }
   }

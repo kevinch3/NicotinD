@@ -416,6 +416,46 @@ replaces the `Unknown` placeholder on disk, which is what makes the rescan idemp
 classified as `unknown`. The latent half was worse than the reported one — an `intl-*` **playlist**
 link would silently skip playlist generation, which keys on the same `kind`.
 
+#### A link's identity is resolved beside the transfer, not by it (issues #989/#990)
+
+A URL job used to learn its own name and size *from the download*. The addon accepts the link, the
+row moves to `queued`, and both arrive later with the files — so five simultaneous Spotify
+submissions rendered as five identical `Spotify download · 0 of 0 · 5m ago` rows for minutes, and the
+denominator climbed as items were mirrored, making progress run backwards.
+
+`AcquireMetadataPrefetch` (`acquire-metadata-prefetch.ts`) resolves identity on its own budget.
+`startAddonUrlJob` fires it **before** the addon call — that call is the slow part (prod measured
+46 s for a playlist) and is exactly the window the card sat nameless in. It is deliberately not
+awaited (the response must not wait on Spotify) but it *is* tracked, with an `idle()` for tests:
+an untracked fire-and-forget is how a scan race became an e2e flake (#655).
+
+Two properties make it safe to run beside the addon:
+
+- **It never overwrites.** Every write is `COALESCE`-guarded, so an addon that reports real metadata
+  wins whenever it arrives.
+- **It never fails a job.** Missing credentials, a private playlist or an upstream blip leave the row
+  exactly as it was; the addon stays the authority and the card degrades to its old behaviour.
+
+`SpotifySearchService.lookupRelease` is the only lookup today — the plugin already holds
+credentials for the metadata lane, and `spotifyResourceFromUrl` reads the id off the path's *last*
+segment, which is true with or without a locale prefix or a `?si=` share token. A playlist link sets
+only `display_title`; an album link may also set `album_title`, for the reason
+`albumTitleForUrlJob` exists.
+
+**The denominator.** The tracklist is written to `canonical_tracks_json`, which the feed already
+reads as the release's committed size, so it is fixed before the first byte instead of re-derived
+from arrivals. Two consumers had to learn the difference:
+
+- `jobPercent` divided by `progress.expected` — `COUNT(*)` over mirrored items — so the fill retreated
+  each time the source enumerated more of its own tracklist. It now divides by
+  `max(expected, canonical)`.
+- `hasCommittedTotal` marks a URL job with no canonical tracklist as *uncommitted*. Those cards show
+  `N so far` and an indeterminate bar rather than a total they will have to take back. `network`
+  (a peer's folder listing) and `import` (files counted off disk) enumerate up front and are exempt.
+
+This is why yt-dlp playlists — which nothing in-repo can resolve ahead of time — get an honest
+indeterminate state instead of a moving number.
+
 #### What the addon split dropped (and where it is being put back)
 
 Both external downloader addons spawn their tool with `stdio: 'ignore'` and then

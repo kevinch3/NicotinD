@@ -1107,7 +1107,20 @@ export interface AcquisitionJobFeedItem {
    * frontend can render both uniformly. Mapped from `acquisition_job_items`
    * onto the shared `TrackStatus` union (see `itemStateToTrackStatus`).
    */
-  items: { title: string; status: TrackStatus; username: string | null; filename: string | null }[];
+  items: {
+    title: string;
+    status: TrackStatus;
+    username: string | null;
+    filename: string | null;
+    /**
+     * Per-item quality + size. Already recorded on every item row; the feed
+     * simply never selected them, so the drilldown could say a track was
+     * "done" but not what actually landed (issue #991).
+     */
+    bitRate: number | null;
+    audioFormat: string | null;
+    sizeBytes: number | null;
+  }[];
   /**
    * The peers this job pulled from, so one card can show "Sources (5)" instead
    * of the feed splitting into five (issue #261). Grouped from
@@ -1360,10 +1373,14 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
           state: string;
           username: string | null;
           filename: string | null;
+          bit_rate_kbps: number | null;
+          audio_format: string | null;
+          size_bytes: number | null;
         },
         [string]
       >(
-        `SELECT track_title, state, username, filename FROM acquisition_job_items WHERE job_id = ? ORDER BY id`,
+        `SELECT track_title, state, username, filename, bit_rate_kbps, audio_format, size_bytes
+           FROM acquisition_job_items WHERE job_id = ? ORDER BY id`,
       )
       .all(row.id);
     const bytes = byteProgress(jobByteAgg(db, row.id));
@@ -1418,6 +1435,9 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
         status: itemStateToTrackStatus(r.state),
         username: r.username,
         filename: r.filename,
+        bitRate: r.bit_rate_kbps,
+        audioFormat: r.audio_format,
+        sizeBytes: r.size_bytes,
       })),
     };
   });

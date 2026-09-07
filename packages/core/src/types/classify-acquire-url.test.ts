@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'bun:test';
-import { classifyAcquireUrl, urlPathSegments } from './classify-acquire-url';
+import {
+  classifyAcquireUrl,
+  urlPathSegments,
+  spotifyResourceFromUrl,
+} from './classify-acquire-url';
 
 describe('urlPathSegments', () => {
   it('splits a path into non-empty segments', () => {
@@ -137,5 +141,34 @@ describe('classifyAcquireUrl', () => {
         kind: 'unknown',
       });
     });
+  });
+});
+
+describe('spotifyResourceFromUrl', () => {
+  it('reads the id off a locale-prefixed album link', () => {
+    expect(
+      spotifyResourceFromUrl('https://open.spotify.com/intl-es/album/5aqBD2HHSWt6VpSjSZfiMw'),
+    ).toEqual({ kind: 'album', id: '5aqBD2HHSWt6VpSjSZfiMw' });
+  });
+  it('ignores a share token in the query', () => {
+    expect(
+      spotifyResourceFromUrl(
+        'https://open.spotify.com/intl-es/album/3B5dbgQh0IvFD47xLnDvPr?si=YR1',
+      ),
+    ).toEqual({ kind: 'album', id: '3B5dbgQh0IvFD47xLnDvPr' });
+  });
+  it('reads playlists and tracks too', () => {
+    expect(
+      spotifyResourceFromUrl('https://open.spotify.com/playlist/37i9dQZF1DWVYs6zNzJ0ci'),
+    ).toEqual({ kind: 'playlist', id: '37i9dQZF1DWVYs6zNzJ0ci' });
+    expect(spotifyResourceFromUrl('https://open.spotify.com/track/abc')).toEqual({
+      kind: 'track',
+      id: 'abc',
+    });
+  });
+  it('returns null for a non-Spotify link, and for an unnamed Spotify resource', () => {
+    expect(spotifyResourceFromUrl('https://music.youtube.com/playlist?list=X')).toBeNull();
+    expect(spotifyResourceFromUrl('https://open.spotify.com/artist/abc')).toBeNull();
+    expect(spotifyResourceFromUrl('not a url')).toBeNull();
   });
 });

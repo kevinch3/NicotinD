@@ -51,6 +51,26 @@ function stripSpotifyLocale(segments: string[]): string[] {
 }
 
 /**
+ * The Spotify resource a link points at, or null when it is not a Spotify link
+ * or names no single resource. The id is the path's **last** segment, which is
+ * true with or without a locale prefix and with a `?si=` share token attached.
+ *
+ * Exists so the acquisition lane can ask Spotify what a pasted link *is* before
+ * the download starts, instead of learning the name and track count from the
+ * transfer itself (issue #989).
+ */
+export function spotifyResourceFromUrl(
+  input: string,
+): { kind: 'album' | 'playlist' | 'track'; id: string } | null {
+  const { source, kind } = classifyAcquireUrl(input);
+  if (source !== 'spotify') return null;
+  if (kind !== 'album' && kind !== 'playlist' && kind !== 'track') return null;
+  const segments = urlPathSegments(input);
+  const id = segments[segments.length - 1];
+  return id ? { kind, id } : null;
+}
+
+/**
  * Classify an acquire URL by its host + path. Returns `kind: 'unknown'` for
  * anything we don't recognise (slskd-style, custom share links, …) so the
  * caller can treat it as a single-item acquire and skip playlist generation.
