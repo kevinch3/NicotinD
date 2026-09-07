@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.4](https://github.com/kevinch3/NicotinD/compare/v0.6.3...v0.6.4) (2026-09-07)
+
+### Features
+
+* **web:** one album grid per artist tab, not a library grid plus a discography grid ([#998](https://github.com/kevinch3/NicotinD/issues/998)) ([3925eba](https://github.com/kevinch3/NicotinD/commit/3925eba2154df36c0507e9dad31dd9169c028990)), references [706/#715](https://github.com/kevinch3/NicotinD/issues/715)
 ## [0.6.3](https://github.com/kevinch3/NicotinD/compare/v0.6.2...v0.6.3) (2026-09-07)
 
 ### Features
