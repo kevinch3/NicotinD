@@ -144,6 +144,45 @@ describe('selectAlbumTracks — with a canonical Lidarr tracklist', () => {
     t('10 - Parte 2 Jaula.m4a', 'Parte 2: Jaula', 'm4a'), // foreign
   ];
 
+  it('keeps two alternate mixes the list names separately (#1034)', () => {
+    // Prod: Carl Cox — Second Sign. The canonical list names both mixes, but
+    // `titlesOverlap` admits at 70% word overlap and these two share 8 of 11
+    // ("if i fall would you let me and"), so a first-match bind put the Drum mix
+    // on the Phats entry. Both keyed identically, the `06 -` path won the tie,
+    // and track 15 vanished from the library while staying on disk.
+    const mixes = [
+      'If I Fall (Would You Let Me?) (Phats and Small mix)',
+      'If I Fall (Would You Let Me?) (Drum and Latin version)',
+    ];
+    const kept = selectAlbumTracks(
+      [
+        t('06 - If I Fall (Would You Let Me ) (Phats and Small mix).opus', mixes[0]!, 'opus', 183),
+        t(
+          '15 - If I Fall (Would You Let Me ) (Drum and Latin version).opus',
+          mixes[1]!,
+          'opus',
+          183,
+        ),
+      ],
+      ['Room 713', ...mixes, 'Open Book'],
+    ).map((k) => k.relPath);
+    expect(kept).toHaveLength(2);
+    expect(kept.sort()).toEqual([
+      '06 - If I Fall (Would You Let Me ) (Phats and Small mix).opus',
+      '15 - If I Fall (Would You Let Me ) (Drum and Latin version).opus',
+    ]);
+  });
+
+  it('still collapses format-duplicates of one canonical track', () => {
+    // The other half of the invariant: best-match must not stop real duplicates
+    // of a single canonical entry from collapsing to one best copy.
+    const kept = selectAlbumTracks(
+      [t('05 - Room 713.mp3', 'Room 713', 'mp3', 320), t('Room 713.flac', 'Room 713', 'flac', 900)],
+      ['Room 713', 'Open Book'],
+    ).map((k) => k.relPath);
+    expect(kept).toEqual(['Room 713.flac']);
+  });
+
   it('keeps one best copy per canonical track', () => {
     const kept = selectAlbumTracks(files, canonical).map((k) => k.relPath);
     expect(kept).toContain('01 - Flora y Fauno.flac'); // flac beats mp3
