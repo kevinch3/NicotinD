@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.12](https://github.com/kevinch3/NicotinD/compare/v0.6.11...v0.6.12) (2026-09-08)
+
+### Bug Fixes
+
+* **curation:** name the right culprit when a tag write does not stick ([#1013](https://github.com/kevinch3/NicotinD/issues/1013)) ([37d88c3](https://github.com/kevinch3/NicotinD/commit/37d88c3c69d722b1ccf8b32cea277f4acc3e040a)), references [#964](https://github.com/kevinch3/NicotinD/issues/964)
 ## [0.6.11](https://github.com/kevinch3/NicotinD/compare/v0.6.10...v0.6.11) (2026-09-08)
 
 ### Bug Fixes
