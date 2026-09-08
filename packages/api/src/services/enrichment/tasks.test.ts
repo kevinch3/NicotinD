@@ -17,7 +17,7 @@ import { NoConfidentResultError } from '../track-analysis.js';
 import { AudioFileRejectedError } from '../audio-features-client.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
-import { getMbid, upsertMbid } from '../mbid-store.js';
+import { MBID_AMBIGUITY_FIX_AT, getMbid, upsertMbid, type MbidSource } from '../mbid-store.js';
 import { albumGroupKey } from '../album-grouping.js';
 import { getArtistMeta, upsertArtistMeta } from '../artist-meta-store.js';
 import { getArtistOrigin, upsertArtistOrigin } from '../artist-origins.js';
@@ -798,24 +798,132 @@ describe('artist-info task', () => {
       source: 'tag',
       confidence: 1,
     });
-    const throwingLidarr = {
+    // Counted, not thrown: `resolveMbidViaLidarr` swallows a lookup throw, so a
+    // throwing stub would let a call through and still pass.
+    let lookups = 0;
+    const countingLidarr = {
       artist: {
         list: async () => [],
         lookup: async () => {
-          throw new Error('Lidarr should not be called when an MBID is already cached');
+          lookups++;
+          return [];
         },
       },
     } as unknown as EnrichmentContext['lidarr'];
     const c = ctx({
-      lidarr: throwingLidarr,
+      lidarr: countingLidarr,
       lookupArtistInfo: async (mbid) =>
         mbid === 'mbid-cached'
           ? { bio: 'Cached-MBID bio', urls: [], source: 'discogs', confidence: 0.95 }
           : null,
     });
     const result = await artistInfo.run(db, c, 10);
+    expect(lookups).toBe(0);
     expect(result.applied).toBe(1);
     expect(getArtistMeta(db, 'a1')?.bio).toBe('Cached-MBID bio');
+  });
+
+  /**
+   * Issue #1008: prod cached the Australian Gondwana for the Chilean band the
+   * library holds — a pre-#611 coin flip that nothing ever revisited.
+   */
+  describe('stale MBID re-resolution (issue #1008)', () => {
+    const AU = '26962985-3e12-4f0b-a87e-68306e08b0b5';
+    const CL = 'c3af32d2-025b-4478-9f26-8b242f4b21cc';
+
+    const seedGondwana = (source: MbidSource, checkedAt: number): void => {
+      seedArtist('a1', { name: 'Gondwana' });
+      upsertMbid(db, { scope: 'artist', key: 'gondwana', mbid: AU, source, confidence: 0.8 });
+      db.run(
+        `UPDATE library_mbids SET checked_at = ? WHERE scope = 'artist' AND key = 'gondwana'`,
+        [checkedAt],
+      );
+    };
+
+    const bioFor =
+      (wanted: string): NonNullable<EnrichmentContext['lookupArtistInfo']> =>
+      async (mbid) =>
+        mbid === wanted
+          ? { bio: 'Chilean reggae band', urls: [], source: 'discogs', confidence: 0.95 }
+          : null;
+
+    /** Counts lookups: `resolveMbidViaLidarr` swallows a throw, so a stub that
+     *  threw would let an over-eager policy pass this suite. */
+    const countingLidarr = (): { lidarr: EnrichmentContext['lidarr']; lookups: () => number } => {
+      let lookups = 0;
+      const lidarr = {
+        artist: {
+          list: async () => [],
+          lookup: async () => {
+            lookups++;
+            return [{ artistName: 'Gondwana', foreignArtistId: CL }];
+          },
+        },
+      } as unknown as EnrichmentContext['lidarr'];
+      return { lidarr, lookups: () => lookups };
+    };
+
+    it('re-resolves a lidarr row written before the ambiguity fix', async () => {
+      seedGondwana('lidarr', MBID_AMBIGUITY_FIX_AT - 1);
+      const c = ctx({
+        lidarr: lidarrWithLookup([{ artistName: 'Gondwana', foreignArtistId: CL }]),
+        lookupArtistInfo: bioFor(CL),
+      });
+      const result = await artistInfo.run(db, c, 10);
+      expect(getMbid(db, 'artist', 'gondwana')?.mbid).toBe(CL);
+      expect(result.applied).toBe(1);
+      expect(getArtistMeta(db, 'a1')?.bio).toBe('Chilean reggae band');
+    });
+
+    it('keeps the cached id when the re-resolution cannot decide', async () => {
+      seedGondwana('lidarr', MBID_AMBIGUITY_FIX_AT - 1);
+      const c = ctx({
+        lidarr: lidarrWithLookup([
+          { artistName: 'Gondwana', foreignArtistId: CL },
+          { artistName: 'Gondwana', foreignArtistId: 'mbid-third' },
+        ]),
+        lookupArtistInfo: bioFor(AU),
+      });
+      await artistInfo.run(db, c, 10);
+      expect(getMbid(db, 'artist', 'gondwana')?.mbid).toBe(AU);
+    });
+
+    it('leaves a lidarr row written after the fix alone', async () => {
+      seedGondwana('lidarr', MBID_AMBIGUITY_FIX_AT);
+      const { lidarr, lookups } = countingLidarr();
+      await artistInfo.run(db, ctx({ lidarr, lookupArtistInfo: bioFor(AU) }), 10);
+      expect(lookups()).toBe(0);
+      expect(getMbid(db, 'artist', 'gondwana')?.mbid).toBe(AU);
+    });
+
+    it('never re-resolves a user row, however old', async () => {
+      seedGondwana('user', 0);
+      const { lidarr, lookups } = countingLidarr();
+      await artistInfo.run(db, ctx({ lidarr, lookupArtistInfo: bioFor(AU) }), 10);
+      expect(lookups()).toBe(0);
+      expect(getMbid(db, 'artist', 'gondwana')).toMatchObject({ mbid: AU, source: 'user' });
+    });
+
+    it('re-resolves a stale row once, then stops looking it up', async () => {
+      seedGondwana('lidarr', MBID_AMBIGUITY_FIX_AT - 1);
+      const { lidarr, lookups } = countingLidarr();
+      const c = ctx({ lidarr, lookupArtistInfo: bioFor(CL) });
+      await artistInfo.run(db, c, 10);
+      db.run(`DELETE FROM library_artist_meta WHERE artist_id = 'a1'`);
+      await artistInfo.run(db, c, 10);
+      expect(lookups()).toBe(1);
+    });
+
+    it('re-resolves on the artist-origin task too', async () => {
+      seedGondwana('lidarr', MBID_AMBIGUITY_FIX_AT - 1);
+      const c = ctx({
+        lidarr: lidarrWithLookup([{ artistName: 'Gondwana', foreignArtistId: CL }]),
+        lookupArtistOrigin: async (mbid) => ({ ok: true, country: mbid === CL ? 'CL' : 'AU' }),
+      });
+      await getTask('artist-origin')!.run(db, c, 10);
+      expect(getMbid(db, 'artist', 'gondwana')?.mbid).toBe(CL);
+      expect(getArtistOrigin(db, 'a1')).toMatchObject({ country: 'CL' });
+    });
   });
 });
 
