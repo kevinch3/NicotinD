@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.11](https://github.com/kevinch3/NicotinD/compare/v0.6.10...v0.6.11) (2026-09-08)
+
+### Bug Fixes
+
+* **admin:** stop the duplicate finder clustering every non-Latin song ([#1016](https://github.com/kevinch3/NicotinD/issues/1016)) ([af4cb65](https://github.com/kevinch3/NicotinD/commit/af4cb65efdc3ef67f6abea233478ddac01c13745)), references [#951](https://github.com/kevinch3/NicotinD/issues/951)
+* **deploy:** tell a bind-mount host which services need the music bind ([#1014](https://github.com/kevinch3/NicotinD/issues/1014)) ([f635c29](https://github.com/kevinch3/NicotinD/commit/f635c29b945d3aa76f833feb610cea19c3ae8f55)), closes [#1009](https://github.com/kevinch3/NicotinD/issues/1009)
+* **enrichment:** let a pre-fix artist MBID be resolved again ([#1012](https://github.com/kevinch3/NicotinD/issues/1012)) ([543fa77](https://github.com/kevinch3/NicotinD/commit/543fa77e7841adbe89763fb3be3994600766ae47)), references [#611](https://github.com/kevinch3/NicotinD/issues/611) [#1008](https://github.com/kevinch3/NicotinD/issues/1008)
+* **radio:** freeze the axes the poll actually scored on ([#1017](https://github.com/kevinch3/NicotinD/issues/1017)) ([c916d8d](https://github.com/kevinch3/NicotinD/commit/c916d8d991c2accaf0707cdd6eb1ec6a968994e2)), references [#940](https://github.com/kevinch3/NicotinD/issues/940)
 ## [0.6.10](https://github.com/kevinch3/NicotinD/compare/v0.6.9...v0.6.10) (2026-09-07)
 
 ### Features
