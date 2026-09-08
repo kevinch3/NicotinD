@@ -316,8 +316,16 @@ computed from fields every caller already holds:
   discipline `repointPlaylistsBeforePrune` states in prose, as a return type.
   Both guards fire on real data: `duration` is `NOT NULL DEFAULT 0` and
   `/songs/:id/similar` has no duration gate, so un-scanned rows reach that pool;
-  and `normalizeTitle` strips everything outside ASCII `\w\s`, so a CJK-only
-  title reduces to `""`.
+  and `normalizeTitle` returns `""` for a title made entirely of punctuation.
+  (It is Unicode-aware since the `[^\p{L}\p{N}_\s]` fold — a CJK or Cyrillic
+  title survives it intact and is *not* a null.)
+
+The admin `/duplicates` report keys on the same fold rather than its own
+(issue #951). It had a local ASCII-only copy that deleted every non-Latin
+character, so two unrelated Cyrillic songs both keyed to `"|||"` and any pair
+within the ±2 s tolerance clustered — while the panel pre-arms every non-best
+member of a group for deletion. It now folds through `normalizeTitle` and skips
+a row that folds to nothing, so an unidentifiable row groups with nothing.
 
 It is applied in three places. **`rankCandidates`** serves at most one row per
 recording and never a copy of the seed — checked *before* the artist counter, so
