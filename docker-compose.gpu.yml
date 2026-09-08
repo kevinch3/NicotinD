@@ -10,6 +10,19 @@
 #
 #   COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml
 #
+# Naming files this way ALSO switches off the automatic docker-compose.override.yml
+# merge. If you have an override (i.e. your music is a bind mount, not the named
+# volume), list it too — and list it LAST, after this overlay:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
+#     -f docker-compose.override.yml up -d
+#
+# Compose merges volumes by container target, last file wins: with the override
+# ahead of this file, the `music:/data/music` entries below replace your bind and
+# the container reads an EMPTY directory (issue #1009). If your host has no
+# override file, do not add one to the list — compose hard-errors on a named file
+# that does not exist.
+#
 # Why a separate overlay instead of the local override file: the GPU request
 # below is a *hard* device reservation — if the host's nvidia-container-runtime
 # can't satisfy the GPU injection, the analysis container fails to start (it does
@@ -30,6 +43,9 @@
 # ~14 min per song), so the published image IS the GPU build and this overlay
 # pulls it. It lives only here, never in docker-compose.yml — a CPU deploy must
 # not pull a multi-GB torch image to run a permanently-`unavailable` container.
+# Its music mount is the named volume, so a bind-mount host must also give
+# `separator` a bind block in its own override — docker-compose.override.example.yml
+# carries one, commented out, with the reason it cannot be live there.
 services:
   nicotind:
     environment:
