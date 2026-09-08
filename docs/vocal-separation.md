@@ -27,7 +27,8 @@ POST /separate  { relPath } → 200 audio/flac  (44.1 kHz stereo 16-bit instrume
                     + X-Source-Duration-Sec, X-Separator-Model
                  400 path escapes MUSIC_DIR · 404 missing file
                  422 undecodable / < 1 s / > SEPARATOR_MAX_TRACK_SEC   (deterministic)
-                 503 no CUDA / model not loadable / worker died / timeout (environmental)
+                 503 no CUDA / model not loadable / worker died / timeout,
+                     and any other fault raised inside the worker (environmental)
 ```
 
 `status: 'ok'` **includes the idle-released, cold state** (`loaded: false`) — the same
@@ -89,6 +90,14 @@ survives a torch that removed it.
 model on CPU and strict-loads the checkpoint. A torch/bs-roformer drift fails the build,
 not the first karaoke play in prod. The CI smoke build (`GPU=1`) runs the same step.
 
+It then re-runs the JIT path **as uid 65534**, because a check that runs as root cannot
+see the fault that actually shipped (issue #1020): the compose overlay runs the container
+as `user: "1000:1000"`, and under a non-root uid `HOME` is unwritable and site-packages is
+root-owned, so every numba cache locator returns `None`, librosa raises, and *every*
+`/separate` fails. `NUMBA_CACHE_DIR=/tmp/numba-cache` gives it a writable location — mode
+**1777, not 755**: the build bakes that directory into the image, and a root-owned 755 one
+reproduces the original error verbatim for the runtime uid (measured both ways).
+
 ### Torch pin and the Pascal card
 
 PyTorch removed Maxwell/Pascal (`sm_50`–`sm_61`) from its **CUDA 12.8+** wheels in torch
@@ -136,7 +145,8 @@ with `GPU=1` so the cu126 install and the
 Pascal guard are exercised before a tag ever reaches the deploy job.
 
 Runtime env: `SEPARATOR_IDLE_RELEASE_SEC` (900), `SEPARATOR_MAX_TRACK_SEC` (900),
-`SEPARATOR_ALLOW_CPU` (unset), `MUSIC_DIR`, `SEPARATOR_MODELS_DIR` (`/models`).
+`SEPARATOR_ALLOW_CPU` (unset), `MUSIC_DIR`, `SEPARATOR_MODELS_DIR` (`/models`),
+`NUMBA_CACHE_DIR` (`/tmp/numba-cache`, set in the image — see the build contract test).
 
 ## Measured
 
@@ -161,6 +171,11 @@ tree, a real 59.2 s library track, `SEPARATOR_IDLE_RELEASE_SEC=45`):**
 | VRAM during the job | separator process **2,944 MiB**; card total 5,179 MiB with the analysis sidecar's 2,150 MiB |
 | VRAM after idle release | card back to **2,235 MiB** — the separator process is gone, the CUDA context with it |
 | `/health` after idle release | `status: ok, loaded: false` (cold, still `ok` — the #539 contract) |
+
+**What that run did not measure** (2026-09-08, issue #1020): it was `docker run` as **root**,
+not the container the compose overlay actually creates (`user: "1000:1000"`). Under the real
+uid every call failed. A measurement that does not run the shipped configuration says nothing
+about it — the first prod separation, six days later, was the first honest test.
 
 The first attempt on the host also found a real defect the unit tests could not: the model
 returns `floor(n / hop) × hop` samples per chunk (865,792 for an 866,156-sample window), which

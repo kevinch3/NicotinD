@@ -39,7 +39,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-from .audio import probe_duration_sec
+from .audio import DecodeError, probe_duration_sec
 from .device import DeviceInfo, probe_device
 from .idle_release import IdleReleaseGuard
 from .model import MODEL_ID, MODEL_SOURCE, ModelLoadError, model_files, separate_file
@@ -232,10 +232,18 @@ def create_app(
             _unlink(tmp)
             log.error("separation worker fault for %s: %s", body.relPath, err)
             raise HTTPException(status_code=503, detail=str(err)) from err
-        except Exception as err:  # per-file verdict raised inside the worker
+        except DecodeError as err:  # the one per-file verdict reachable in there
             _unlink(tmp)
-            log.warning("separation failed for %s: %s", body.relPath, err)
+            log.warning("undecodable source %s: %s", body.relPath, err)
             raise HTTPException(status_code=422, detail="separation failed") from err
+        except Exception as err:
+            # Anything else is the environment, not the track. 422 would be
+            # remembered against the file until its bytes change, so a fault
+            # affecting every track would retire the whole library one call at
+            # a time (issue #1020).
+            _unlink(tmp)
+            log.error("separation fault (environmental) for %s: %s", body.relPath, err)
+            raise HTTPException(status_code=503, detail="separation fault") from err
 
         return FileResponse(
             tmp,
