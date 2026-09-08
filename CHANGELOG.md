@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.16](https://github.com/kevinch3/NicotinD/compare/v0.6.15...v0.6.16) (2026-09-08)
+
+### Performance
+
+* **library:** reclassify only the albums a scan touched ([#1030](https://github.com/kevinch3/NicotinD/issues/1030)) ([73d7c12](https://github.com/kevinch3/NicotinD/commit/73d7c121e221773c794d22a9018c6a52b1acaef8))
 ## [0.6.15](https://github.com/kevinch3/NicotinD/compare/v0.6.14...v0.6.15) (2026-09-08)
 
 ### Bug Fixes
