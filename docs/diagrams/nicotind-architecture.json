@@ -11,7 +11,7 @@
     ],
     "repository": {
       "url": "https://github.com/kevinch3/NicotinD",
-      "revision": "237a3f89eea8699893a97b5ce1d30eaff84eb36c"
+      "revision": "841aeea6f3818c6f534d71183b272c5d9f4cca89"
     },
     "views": [
       {
@@ -48,6 +48,18 @@
           "db"
         ],
         "note": "Staged files are organized onto disk, then incrementally re-scanned into the canonical catalog."
+      },
+      {
+        "id": "planned",
+        "label": "Planned work",
+        "focus": [
+          "poller",
+          "addons",
+          "organizer",
+          "scanner",
+          "db"
+        ],
+        "note": "None of it moves a box \u2014 every change is a property of an edge or a node that already exists."
       }
     ]
   },
@@ -352,7 +364,7 @@
       "id": "addons-write",
       "from": "addons",
       "to": "downloads",
-      "label": "writes finished files",
+      "label": "core fetches bytes once fileReady",
       "variant": "dashed",
       "fromSide": "right",
       "toSide": "left",
@@ -409,7 +421,8 @@
       "title": "Acquisition",
       "items": [
         "Core carries zero source-specific code \u2014 every source is an external addon",
-        "AddonJobPoller drives jobs over the addon protocol; addons drop files in the shared staging folder"
+        "AddonJobPoller drives jobs over the addon protocol; addons drop files in the shared staging folder",
+        "Planned: serialize the shared organizer (#1026), and measure fetch vs organize vs scan before adding any concurrency"
       ]
     },
     {
@@ -417,7 +430,8 @@
       "title": "Library",
       "items": [
         "Organizer names and moves files, scanner incrementally re-tags them into SQLite",
-        "Streaming reads bytes straight off the music folder; SQLite answers everything else"
+        "Streaming reads bytes straight off the music folder; SQLite answers everything else",
+        "Planned: reclassify only the albums a scan touched, not the whole library once per batch"
       ]
     },
     {
