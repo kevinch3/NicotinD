@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.19](https://github.com/kevinch3/NicotinD/compare/v0.6.18...v0.6.19) (2026-09-08)
+
+### Bug Fixes
+
+* **scanner:** bind a file to its best-matching canonical track, not the first ([#1039](https://github.com/kevinch3/NicotinD/issues/1039)) ([8c90886](https://github.com/kevinch3/NicotinD/commit/8c90886938a5a1f47c1ffbfab5c3b5e02e2045d6))
 ## [0.6.18](https://github.com/kevinch3/NicotinD/compare/v0.6.17...v0.6.18) (2026-09-08)
 
 ### Performance
