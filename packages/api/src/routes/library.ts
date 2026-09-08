@@ -367,6 +367,8 @@ export interface LibraryRoutesOptions {
   scanIncremental?: (relPaths: string[]) => Promise<void>;
   /** Overridable for tests; defaults to services/audio-tags.js `writeAudioTags`. */
   writeTags?: (abs: string, tags: AudioTags) => Promise<boolean>;
+  /** Overridable for tests; defaults to services/audio-tags.js `readAudioTags`. */
+  readTags?: (abs: string) => Promise<AudioTags>;
 }
 
 interface AlbumRow {
@@ -583,6 +585,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     mbClient,
     scanIncremental,
     writeTags,
+    readTags,
   } = options;
   // A deleted file's slskd share entry doesn't go away on its own — see
   // ShareRescanScheduler. Debounced so an album/bulk delete triggers one
@@ -2285,14 +2288,21 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const body = await c.req
       .json<SongMetadataMutateBody>()
       .catch(() => ({}) as SongMetadataMutateBody);
-    const result = await mutateSongMetadata(db, { musicDir, scanIncremental, writeTags }, id, body);
+    const result = await mutateSongMetadata(
+      db,
+      { musicDir, scanIncremental, writeTags, readTags },
+      id,
+      body,
+    );
     if (!result.ok) {
-      // A verification failure carries what the row actually holds (issue #776).
+      // A verification failure carries what the row actually holds (issue #776)
+      // and, when the write is on disk, what the FILE holds (issue #964).
       return c.json(
         {
           error: result.error,
           ...(result.requested ? { requested: result.requested } : {}),
           ...(result.actual ? { actual: result.actual } : {}),
+          ...(result.onDisk ? { onDisk: result.onDisk } : {}),
         },
         result.status,
       );

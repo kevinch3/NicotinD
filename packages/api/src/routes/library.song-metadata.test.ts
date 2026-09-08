@@ -193,4 +193,30 @@ describe('PATCH /songs/:id/metadata', () => {
     });
     expect(testDb.query('SELECT COUNT(*) AS n FROM audit_log').get()).toEqual({ n: 0 });
   });
+
+  // Issue #964: the row diverging does not prove the tag write failed. When the
+  // file carries the request, the rescan is the culprit and the response must
+  // say so, carrying the on-disk value the curator can act on.
+  it('500s naming the rescan when the file carries the request but the row does not', async () => {
+    const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-smc-'));
+    seedPollutedSong(musicDir);
+    const app = makeApp('refiner', musicDir, {
+      writeTags: async () => true,
+      // The scanner de-selected this file as a duplicate: the tag is on disk.
+      readTags: async () => ({ title: 'Pegao' }),
+      scanIncremental: async () => {},
+    });
+    const res = await app.request('/songs/song-yt/metadata', {
+      method: 'PATCH',
+      body: JSON.stringify({ title: 'Pegao' }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({
+      error: 'Tag write landed but the rescan did not apply it',
+      actual: { title: 'Pegao (Official Video)' },
+      onDisk: { title: 'Pegao' },
+    });
+    expect(testDb.query('SELECT COUNT(*) AS n FROM audit_log').get()).toEqual({ n: 0 });
+  });
 });

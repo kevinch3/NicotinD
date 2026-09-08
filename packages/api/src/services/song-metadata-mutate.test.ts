@@ -285,3 +285,112 @@ describe('mutateSongMetadata — track and disc (issue #959)', () => {
     if (!result.ok) expect(result.error).toBe('No applicable fields');
   });
 });
+
+/**
+ * Issue #964: the divergence check audited the ROW and nothing else, so every
+ * post-write divergence was blamed on the tag write — including a rescan that
+ * never ran, threw, or de-selected the file (see the `library-scanner`
+ * de-selection test). The file itself is now re-read before the report is
+ * written, so the two failures are told apart.
+ */
+describe('mutateSongMetadata — a divergence names the right culprit (#964)', () => {
+  const rowNeverRefreshed = { musicDir: '', writeTags: async () => true };
+
+  it('says the rescan did not apply it when the file already carries the request', async () => {
+    const result = await mutateSongMetadata(
+      db,
+      {
+        ...rowNeverRefreshed,
+        musicDir,
+        // The scanner de-selected this file as a duplicate: the tag is on disk,
+        // the row is a stale leftover.
+        scanIncremental: async () => {},
+        readTags: async () => ({ title: 'Pegao' }),
+      },
+      'song-yt',
+      { title: 'Pegao' },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: 'Tag write landed but the rescan did not apply it',
+      status: 500,
+      requested: { title: 'Pegao' },
+      actual: { title: 'Pegao (Official Video)' },
+      onDisk: { title: 'Pegao' },
+    });
+  });
+
+  it('still blames the tag write when the file carries the OLD value', async () => {
+    const result = await mutateSongMetadata(
+      db,
+      {
+        ...rowNeverRefreshed,
+        musicDir,
+        scanIncremental: async () => {},
+        readTags: async () => ({ title: 'Pegao (Official Video)' }),
+      },
+      'song-yt',
+      { title: 'Pegao' },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: 'Tag write did not persist',
+      actual: { title: 'Pegao (Official Video)' },
+    });
+    expect(result).not.toHaveProperty('onDisk');
+  });
+
+  it('blames the tag write when only SOME of the diverged fields reached disk', async () => {
+    const result = await mutateSongMetadata(
+      db,
+      {
+        ...rowNeverRefreshed,
+        musicDir,
+        scanIncremental: async () => {},
+        readTags: async () => ({ title: 'Pegao' }),
+      },
+      'song-yt',
+      { title: 'Pegao', albumArtist: 'Wisin & Yandel' },
+    );
+    expect(result).toMatchObject({ ok: false, error: 'Tag write did not persist' });
+  });
+
+  it('does not re-read the file when nothing diverged', async () => {
+    let reads = 0;
+    const result = await mutateSongMetadata(
+      db,
+      {
+        musicDir,
+        writeTags: async () => true,
+        scanIncremental: async () => {
+          db.run('UPDATE library_songs SET title = ? WHERE id = ?', ['Pegao', 'song-yt']);
+        },
+        readTags: async () => {
+          reads++;
+          return {};
+        },
+      },
+      'song-yt',
+      { title: 'Pegao' },
+    );
+    expect(result.ok).toBe(true);
+    expect(reads).toBe(0);
+  });
+
+  it('falls back to blaming the tag write when the file cannot be read', async () => {
+    const result = await mutateSongMetadata(
+      db,
+      {
+        ...rowNeverRefreshed,
+        musicDir,
+        scanIncremental: async () => {},
+        readTags: async () => {
+          throw new Error('unreadable');
+        },
+      },
+      'song-yt',
+      { title: 'Pegao' },
+    );
+    expect(result).toMatchObject({ ok: false, error: 'Tag write did not persist' });
+  });
+});

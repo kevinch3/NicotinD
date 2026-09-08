@@ -21,7 +21,7 @@ import { existsSync } from 'node:fs';
 import { relative } from 'node:path';
 import type { Database } from 'bun:sqlite';
 import type { AudioTags } from './audio-tags.js';
-import { writeAudioTags } from './audio-tags.js';
+import { readAudioTags, writeAudioTags } from './audio-tags.js';
 import { buildIdentifyApplyTags } from './identify.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from './song-path.js';
 import { libraryEvents } from './library-events.js';
@@ -31,6 +31,8 @@ export interface SongMetadataMutateDeps {
   scanIncremental?: (relPaths: string[]) => Promise<void>;
   /** Injectable for tests; defaults to the real tag writer. */
   writeTags?: typeof writeAudioTags;
+  /** Injectable for tests; defaults to the real tag reader. */
+  readTags?: typeof readAudioTags;
 }
 
 export interface SongMetadataMutateBody {
@@ -84,6 +86,12 @@ export type SongMetadataMutateResult =
       /** Set on a verification failure so the caller can see the divergence. */
       requested?: SongMetadataMutateBody;
       actual?: Partial<SongMetadataSnapshot>;
+      /**
+       * The diverged fields as the FILE carries them, set only when the file
+       * carries every one of them at the requested value — i.e. the tag write
+       * landed and the rescan is what did not apply it (issue #964).
+       */
+      onDisk?: Partial<SongMetadataSnapshot>;
     };
 
 interface SongRow {
@@ -176,6 +184,24 @@ export async function mutateSongMetadata(
   if (tags.discNumber !== undefined && after.disc !== tags.discNumber) diverged.disc = after.disc;
 
   if (Object.keys(diverged).length > 0) {
+    // The row diverging does not mean the write failed. Audit the FILE before
+    // naming a culprit (issue #964) — see docs/library-processing.md.
+    const onDisk = await readOnDiskConfirmation(
+      deps.readTags ?? readAudioTags,
+      abs,
+      tags,
+      diverged,
+    );
+    if (onDisk) {
+      return {
+        ok: false,
+        error: 'Tag write landed but the rescan did not apply it',
+        status: 500,
+        requested: body,
+        actual: diverged,
+        onDisk,
+      };
+    }
     return {
       ok: false,
       error: 'Tag write did not persist',
@@ -193,6 +219,45 @@ export async function mutateSongMetadata(
     rescanned: true,
     verified: true,
   };
+}
+
+/** Snapshot field → the `AudioTags` key carrying the same value. */
+const SNAPSHOT_TAG_KEYS = {
+  title: 'title',
+  artist: 'artist',
+  albumArtist: 'albumArtist',
+  album: 'album',
+  year: 'year',
+  track: 'trackNumber',
+  disc: 'discNumber',
+} as const satisfies Record<keyof SongMetadataSnapshot, keyof AudioTags>;
+
+/**
+ * The diverged fields as the file carries them, or null unless the file carries
+ * EVERY one of them at the requested value. Null is the conservative answer: a
+ * field the reader cannot see (no container's read path returns `discNumber`) reads as a
+ * write that did not land, which keeps the older, blunter error.
+ */
+async function readOnDiskConfirmation(
+  read: typeof readAudioTags,
+  abs: string,
+  tags: AudioTags,
+  diverged: Partial<SongMetadataSnapshot>,
+): Promise<Partial<SongMetadataSnapshot> | null> {
+  let file: AudioTags;
+  try {
+    file = await read(abs);
+  } catch {
+    return null;
+  }
+  const out: Record<string, unknown> = {};
+  for (const field of Object.keys(diverged) as Array<keyof SongMetadataSnapshot>) {
+    const key = SNAPSHOT_TAG_KEYS[field];
+    const value = file[key];
+    if (value === undefined || value !== tags[key]) return null;
+    out[field] = value;
+  }
+  return out as Partial<SongMetadataSnapshot>;
 }
 
 function readSnapshot(db: Database, songId: string): SongMetadataSnapshot | null {
