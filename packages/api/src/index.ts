@@ -108,6 +108,7 @@ import { reservedDirsFor } from './services/library-paths.js';
 import { sweepStaleTranscodeTemps } from './services/post-download-transcode.js';
 import { LibraryScanner } from './services/library-scanner.js';
 import { backfillAcquisitions } from './services/acquisition-backfill.js';
+import { albumIdsForPaths } from './services/album-ids-for-paths.js';
 import { LibraryCurator } from './services/library-curator.js';
 import { LibraryOrganizer } from './services/library-organizer.js';
 import { AcoustIdLookup } from './services/acoustid-lookup.js';
@@ -203,11 +204,12 @@ export function createApp({
   // async external scanner, so no scan-timing races.
   const scanIncremental = async (relPaths: string[]): Promise<void> => {
     try {
-      if (relPaths.length > 0) {
-        const albumDirs = [...new Set(relPaths.map((p) => dirname(join(expandedMusicDir, p))))];
-        await scanner.reconcileAlbums(albumDirs);
-      }
-      curator.reclassifyAll('scan-incremental');
+      // Nothing landed → nothing to reconcile and nothing to reclassify. This
+      // used to run a full-library reclassify even for an empty batch.
+      if (relPaths.length === 0) return;
+      const albumDirs = [...new Set(relPaths.map((p) => dirname(join(expandedMusicDir, p))))];
+      const touchedAlbumIds = await scanner.reconcileAlbums(albumDirs);
+      curator.reclassify(touchedAlbumIds, 'scan-incremental');
       // A scanned song is library-visible at once; this nudges enrichment (and
       // the new-album cover fill) for it now rather than at the next tick.
       // Fire-and-forget: a no-op if a run is already in flight, and never blocks
@@ -875,8 +877,11 @@ export function createApp({
     enrichSingles = async (relPaths) => {
       await enrichmentSvc.enrich(relPaths);
       // Reclassify so the freshly-written release-meta takes effect immediately
-      // (the incremental scan already ran with the heuristic).
-      curator.reclassifyAll('enrich-singles');
+      // (the incremental scan already ran with the heuristic). Scoped to the
+      // albums owning these paths — this lane has no scanner call to take ids
+      // from, and it runs straight after scanIncremental, so an unscoped sweep
+      // here made the URL-acquire path pay for the whole library twice per job.
+      curator.reclassify(albumIdsForPaths(db, relPaths), 'enrich-singles');
     };
     app.route(
       '/api/discography',

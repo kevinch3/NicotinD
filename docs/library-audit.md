@@ -246,7 +246,9 @@ that is right. For `hidden` it never is: the classifier's inputs are the name an
 are precisely what the rename changed. An album hidden for a watermarked name stayed hidden after
 being renamed to a clean one, with `manual_override = 0` and no rule justifying it — and renaming is
 the *main* way anyone fixes an album hidden for a bad name. `applyMetadataFix` now calls
-`reclassifyAlbum` after the id move; `manual_override = 1` rows are still left alone.
+`reclassifyAlbum` after the id move; `manual_override = 1` rows are still left alone. It delegates to
+`LibraryCurator.reclassify([albumId])`, so the `protectedKeys` un-hide guard applies — it did not
+before, which meant a renamed but deliberately hunted album could be auto-hidden here.
 
 `unjustifiedHiddenAlbums` asserts the invariant that follows — a `hidden = 1` /
 `manual_override = 0` row whose predicates are all false is always a bug — and the health report's

@@ -9,6 +9,7 @@ import {
 import { normalizeArtistForGrouping, normalizeForGrouping } from './album-grouping.js';
 import { loadReleaseTypes, type ReleaseType } from './release-meta-store.js';
 import { jobAlbumPairs } from './acquisition-job-store.js';
+import { SQL_PARAM_CHUNK, chunked, placeholders } from './sql-chunk.js';
 
 const log = createLogger('library-curator');
 
@@ -35,6 +36,8 @@ interface AlbumRow {
   artist: string;
   song_count: number;
   manual_override: number;
+  classification: string | null;
+  hidden: number;
 }
 
 /**
@@ -48,40 +51,97 @@ export class LibraryCurator {
    * Albums holding at least one real track title. One pass over `library_songs`
    * rather than a probe per album — `classify` runs for every row on every sync.
    */
-  private loadAlbumsWithRealTitles(): { ids: Set<string>; scanned: number } {
+  private loadAlbumsWithRealTitles(albumIds?: readonly string[]): {
+    ids: Set<string>;
+    scanned: number;
+  } {
     const out = new Set<string>();
-    const rows = this.db
-      .query<{ album_id: string; title: string | null }, []>(
-        'SELECT album_id, title FROM library_songs',
-      )
-      .all();
-    for (const r of rows) {
-      if (isRealTrackTitle(r.title)) out.add(r.album_id);
+    let scanned = 0;
+    const take = (rows: { album_id: string; title: string | null }[]) => {
+      scanned += rows.length;
+      for (const r of rows) {
+        if (isRealTrackTitle(r.title)) out.add(r.album_id);
+      }
+    };
+    if (albumIds === undefined) {
+      take(
+        this.db
+          .query<{ album_id: string; title: string | null }, []>(
+            'SELECT album_id, title FROM library_songs',
+          )
+          .all(),
+      );
+      return { ids: out, scanned };
     }
-    return { ids: out, scanned: rows.length };
+    for (const chunk of chunked(albumIds, SQL_PARAM_CHUNK)) {
+      take(
+        this.db
+          .query<{ album_id: string; title: string | null }, string[]>(
+            `SELECT album_id, title FROM library_songs WHERE album_id IN (${placeholders(chunk.length)})`,
+          )
+          .all(...chunk),
+      );
+    }
+    return { ids: out, scanned };
   }
 
+  /** Every album. Boot sweep and the explicit full-rescan routes. */
   reclassifyAll(reason = 'unspecified'): CuratorResult {
+    return this.reclassify(undefined, reason);
+  }
+
+  /**
+   * Reclassify `albumIds`, or every album when omitted.
+   *
+   * why scoping is sound: each album's verdict reads only its own row,
+   * `metaTypes.get(row.id)`, `withRealTitles.has(row.id)` and a `protectedKeys`
+   * probe into the acquisition-job tables. No album's result depends on another
+   * album's state, so a subset produces exactly the rows a full pass would have
+   * produced for those ids.
+   *
+   * why it matters: this runs at the download seam, once per ingest batch, and
+   * the unscoped form reads every row of `library_albums` plus a full pass over
+   * `library_songs`. A 12-track album arriving in four batches paid for that
+   * four times, and the cost grew with the library rather than with the work.
+   */
+  reclassify(albumIds?: readonly string[], reason = 'unspecified'): CuratorResult {
     const startedAt = Date.now();
-    const rows = this.db
-      .query<AlbumRow, []>(
-        `SELECT id, name, artist, song_count, manual_override FROM library_albums`,
-      )
-      .all();
+    if (albumIds !== undefined && albumIds.length === 0) {
+      return { hiddenAlbums: 0, singles: 0, eps: 0, compilations: 0, albums: 0, unknown: 0 };
+    }
+    const rows =
+      albumIds === undefined
+        ? this.db
+            .query<AlbumRow, []>(
+              `SELECT id, name, artist, song_count, manual_override, classification, hidden FROM library_albums`,
+            )
+            .all()
+        : chunked(albumIds, SQL_PARAM_CHUNK).flatMap((chunk) =>
+            this.db
+              .query<AlbumRow, string[]>(
+                `SELECT id, name, artist, song_count, manual_override, classification, hidden FROM library_albums WHERE id IN (${placeholders(chunk.length)})`,
+              )
+              .all(...chunk),
+          );
 
     // Releases the user deliberately hunted must never be auto-hidden, even if a
     // small/edge-case row would otherwise trip a hide rule (e.g. a 1–3 track EP
     // that landed in a thin folder). Keyed on the same normalized artist+title the
     // scanner mints album ids from, so an edition variant still matches.
+    // Deliberately NOT scoped: `jobAlbumPairs` is over the acquisition-job
+    // tables (hundreds of rows), and narrowing it would mean building keys for
+    // the in-scope albums and probing back — more code than the smallest of the
+    // three loads is worth.
     const protectedKeys = this.loadProtectedKeys();
     // Authoritative release types (Lidarr/MusicBrainz) override the heuristic.
-    const metaTypes = loadReleaseTypes(this.db);
-    const { ids: withRealTitles, scanned: songsScanned } = this.loadAlbumsWithRealTitles();
+    const metaTypes = loadReleaseTypes(this.db, albumIds);
+    const { ids: withRealTitles, scanned: songsScanned } = this.loadAlbumsWithRealTitles(albumIds);
 
     const updateStmt = this.db.prepare(
       `UPDATE library_albums SET classification = ?, hidden = ? WHERE id = ? AND manual_override = 0`,
     );
 
+    let updated = 0;
     const result: CuratorResult = {
       hiddenAlbums: 0,
       singles: 0,
@@ -101,7 +161,14 @@ export class LibraryCurator {
           classified.hidden && protectedKeys.has(albumKey(row.artist, row.name))
             ? false
             : classified.hidden;
-        updateStmt.run(classification, hidden ? 1 : 0, row.id);
+        // Skip the write when nothing changed: in the steady state almost every
+        // row already holds this verdict, and the UPDATEs are pure WAL churn.
+        // Counters below are derived from `classified`, not from the write, so
+        // they report the same numbers either way.
+        if (row.classification !== classification || (row.hidden === 1) !== hidden) {
+          updateStmt.run(classification, hidden ? 1 : 0, row.id);
+          updated++;
+        }
         if (hidden) result.hiddenAlbums++;
         if (classification === 'single') result.singles++;
         else if (classification === 'ep') result.eps++;
@@ -115,6 +182,8 @@ export class LibraryCurator {
       {
         ...result,
         reason,
+        scope: albumIds === undefined ? 'all' : albumIds.length,
+        updated,
         albumsScanned: rows.length,
         songsScanned,
         durationMs: Date.now() - startedAt,
@@ -217,22 +286,11 @@ export function contradictsTrackCount(metaType: ReleaseType, songCount: number):
  * `manual_override = 1` rows are left alone: those are deliberate human verdicts.
  */
 export function reclassifyAlbum(db: Database, albumId: string): void {
-  const row = db
-    .query<AlbumRow, [string]>(
-      'SELECT id, name, artist, song_count, manual_override FROM library_albums WHERE id = ?',
-    )
-    .get(albumId);
-  if (!row || row.manual_override === 1) return;
-  const hasRealTitles = db
-    .query<{ title: string | null }, [string]>('SELECT title FROM library_songs WHERE album_id = ?')
-    .all(albumId)
-    .some((r) => isRealTrackTitle(r.title));
-  const c = classify(row, loadReleaseTypes(db).get(albumId), hasRealTitles);
-  db.run('UPDATE library_albums SET classification = ?, hidden = ? WHERE id = ?', [
-    c.classification,
-    c.hidden ? 1 : 0,
-    albumId,
-  ]);
+  // Delegates so the `protectedKeys` un-hide guard applies here too. It did not
+  // before: this path re-implemented `classify` without it, so a deliberately
+  // hunted album that had been renamed could be auto-hidden by the very code
+  // path that exists to un-hide it.
+  new LibraryCurator(db).reclassify([albumId], 'reclassify-album');
 }
 
 /**

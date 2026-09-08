@@ -1,4 +1,5 @@
 import type { Database } from 'bun:sqlite';
+import { SQL_PARAM_CHUNK, chunked, placeholders } from './sql-chunk.js';
 
 /**
  * Authoritative release-type store (Lidarr/MusicBrainz `albumType`).
@@ -47,15 +48,34 @@ export function getReleaseType(db: Database, albumId: string): ReleaseType | nul
 }
 
 /** Read every (albumId → type) mapping; used by the curator's batch reclassify. */
-export function loadReleaseTypes(db: Database): Map<string, ReleaseType> {
-  const rows = db
-    .query<{ album_id: string; album_type: string }, []>(
-      'SELECT album_id, album_type FROM library_release_meta',
-    )
-    .all();
+export function loadReleaseTypes(
+  db: Database,
+  albumIds?: readonly string[],
+): Map<string, ReleaseType> {
   const map = new Map<string, ReleaseType>();
-  for (const r of rows) {
-    if (VALID.has(r.album_type)) map.set(r.album_id, r.album_type as ReleaseType);
+  const add = (rows: { album_id: string; album_type: string }[]) => {
+    for (const r of rows) {
+      if (VALID.has(r.album_type)) map.set(r.album_id, r.album_type as ReleaseType);
+    }
+  };
+  if (albumIds === undefined) {
+    add(
+      db
+        .query<{ album_id: string; album_type: string }, []>(
+          'SELECT album_id, album_type FROM library_release_meta',
+        )
+        .all(),
+    );
+    return map;
+  }
+  for (const chunk of chunked(albumIds, SQL_PARAM_CHUNK)) {
+    add(
+      db
+        .query<{ album_id: string; album_type: string }, string[]>(
+          `SELECT album_id, album_type FROM library_release_meta WHERE album_id IN (${placeholders(chunk.length)})`,
+        )
+        .all(...chunk),
+    );
   }
   return map;
 }
