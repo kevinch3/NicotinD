@@ -998,6 +998,65 @@ describe('LibraryOrganizer (real fs)', () => {
     );
 
     it.skipIf(!ffmpegAvailable())(
+      'encodes a multi-file batch concurrently, and every file still lands',
+      async () => {
+        // The encode is ~94% of an organize batch on prod and is pure CPU work
+        // that shares nothing between files, so it runs pooled. This asserts the
+        // overlap actually happens — a serial regression would still produce the
+        // right files, so file existence alone cannot catch it.
+        const root = tmpRoot();
+        const staging = join(root, '_staging');
+        const titles = ['One', 'Two', 'Three', 'Four'];
+        for (const [i, t] of titles.entries()) {
+          seedFlac(staging, `Artist - Album/0${i + 1} - ${t}.flac`, {
+            artist: 'Artist',
+            album: 'Album',
+            title: t,
+            trackNumber: i + 1,
+          });
+        }
+        const org = new LibraryOrganizer({
+          musicDir: root,
+          stagingDir: staging,
+          transcodeLossless: { enabled: true, bitRate: 96 },
+        });
+
+        let inFlight = 0;
+        let maxInFlight = 0;
+        const real = (org as unknown as { transcodePlacement: (p: unknown) => Promise<void> })
+          .transcodePlacement;
+        (
+          org as unknown as { transcodePlacement: (p: unknown) => Promise<void> }
+        ).transcodePlacement = async function (this: unknown, p: unknown) {
+          inFlight++;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          try {
+            return await real.call(this, p);
+          } finally {
+            inFlight--;
+          }
+        };
+
+        const result = await org.organizeBatch(
+          titles.map((t, i) => ({
+            username: 'u',
+            directory: 'Artist - Album',
+            filename: `0${i + 1} - ${t}.flac`,
+            directoryFileCount: titles.length,
+          })),
+        );
+
+        expect(result.moved).toBe(4);
+        expect(maxInFlight).toBeGreaterThan(1);
+        expect(maxInFlight).toBeLessThanOrEqual(4);
+        for (const [i, t] of titles.entries()) {
+          expect(existsSync(join(root, 'Artist', 'Album', `0${i + 1} - ${t}.opus`))).toBe(true);
+          expect(existsSync(join(root, 'Artist', 'Album', `0${i + 1} - ${t}.flac`))).toBe(false);
+        }
+      },
+    );
+
+    it.skipIf(!ffmpegAvailable())(
       'leaves lossless untouched when the hook is disabled',
       async () => {
         const root = tmpRoot();
