@@ -84,6 +84,17 @@ Files mislabeled as Singles before the original organizer fix can still be repai
 
 Shared logic lives in `packages/api/src/services/album-dedupe.ts` (`dupKey`/`pickKeeper`/`dedupeFolder`), reused by the manual `repair-album-dupes.ts` script.
 
+**One organizer, one batch at a time (#1026).** `index.ts` builds a single `LibraryOrganizer` and
+hands it to three independent lanes — the addon poller, `AcquireWatcher` and
+`LibraryImportService` — while `organizeBatch` keeps its per-batch state (`touchedAlbumDirs`, the
+album-folder cache) on the instance. That was safe until #809 moved the poller's organize out of the
+non-reentrant tick onto a background pump; after it, two lanes could interleave and share one
+`touchedAlbumDirs`. Measured, a batch came back reporting the *other* lane's album dir, which means
+the auto-dedupe pass below reconciles a folder it does not own — silently, since the files still land
+and nothing logs. `organizeBatch` now queues on an internal promise chain so batches run one at a
+time across every lane, which only makes true what the body already assumed. An empty batch skips the
+queue, and a rejected batch does not wedge the next caller.
+
 1. **Format preference** — when config `downloads.preferFlacSkipMp3` is on, `LibraryOrganizer.placeFile` drops an incoming MP3 (and removes its source) if a same-title FLAC already sits in the destination album folder.
 2. **Auto-dedupe** — after each batch, `organizeBatch` runs `dedupeFolder` on every real `<Artist>/<Album>` dir it touched (never `Singles`/unsorted), removing collision-suffix/mixed-format true copies and returning `dedupedBasenames` so `DownloadWatcher` prunes the matching `completed_downloads` rows. On by default (`autoDedupe`).
 3. **Cross-edition folder consolidation** — auto-dedupe is *per folder*, so duplicates split across sibling edition folders (`<Artist>/Ultraviolence/` + `<Artist>/Ultraviolence (JP Deluxe Edition)/`) were never collapsed: album-grouping merges them into one *card* but they stay duplicated on disk. So `placeFile` now resolves the destination through `findCanonicalAlbumFolder(artist, album)` — it reuses an existing same-album folder by the edition-collapsing `albumGroupKey` (a per-batch readdir cache covers on-disk siblings *and* dirs created earlier in the same batch; it picks the fullest match, preferring the shortest/base title on a tie). Deluxe/remaster/JP/year-tagged editions therefore land in **one** `<Artist>/<Album>` dir and layer 2 then collapses the cross-edition true-dups. The active-job canonical name (`applyJobCanonicalName`) still wins when present; the feature is gated by `dedupeAcrossEditions` (default on); `normalizeForGrouping` keeps genuinely distinct titles ("Greatest Hits" vs "II") and live albums separate. **Editions already split on disk** (acquired before this) are merged by the existing `scripts/repair-album-folders.ts` (group by `albumGroupKey` → fullest canonical → move files in → trim to the recorded Lidarr tracklist or `dupKey` → drop empty siblings; dry-run unless `--apply`).
