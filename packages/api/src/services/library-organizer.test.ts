@@ -1188,3 +1188,81 @@ describe('planOrganizeFile (dry run)', () => {
     },
   );
 });
+
+/**
+ * Issue #1026. `index.ts` hands ONE LibraryOrganizer to three independent lanes
+ * (the addon poller, AcquireWatcher, LibraryImportService), and organizeBatch
+ * opens by clearing per-batch instance state. Before #809 the poller's organize
+ * ran inside a non-reentrant tick so an overlap was impossible; now it runs on a
+ * background pump, and two lanes can interleave on the shared instance.
+ */
+describe('LibraryOrganizer concurrency (#1026)', () => {
+  it('serializes overlapping batches so one lane cannot clear the other’s touched dirs', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    seed(staging, 'A - One/01 - a.mp3', {
+      artist: 'Aaa',
+      album: 'One',
+      title: 'a',
+      trackNumber: 1,
+    });
+    seed(staging, 'B - Two/01 - b.mp3', {
+      artist: 'Bbb',
+      album: 'Two',
+      title: 'b',
+      trackNumber: 1,
+    });
+
+    // One instance, deliberately — that is the shape index.ts creates.
+    const org = makeOrg(root, staging);
+    const [ra, rb] = await Promise.all([
+      org.organizeBatch([
+        { username: 'u', directory: 'A - One', filename: '01 - a.mp3', directoryFileCount: 1 },
+      ]),
+      org.organizeBatch([
+        { username: 'u', directory: 'B - Two', filename: '01 - b.mp3', directoryFileCount: 1 },
+      ]),
+    ]);
+
+    expect(ra.moved).toBe(1);
+    expect(rb.moved).toBe(1);
+    // Each batch must report its OWN album dir. Measured before the fix, batch A
+    // came back owning BOTH — the two lanes accumulate into one shared
+    // touchedAlbumDirs, so a batch reconciles (and reports) an album folder that
+    // belongs to a different lane entirely.
+    expect(ra.affectedAlbumDirs).toEqual([join(root, 'Aaa', 'One')]);
+    expect(rb.affectedAlbumDirs).toEqual([join(root, 'Bbb', 'Two')]);
+  });
+
+  it('keeps the queue alive when a batch rejects', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    seed(staging, 'C - Three/01 - c.mp3', {
+      artist: 'Ccc',
+      album: 'Three',
+      title: 'c',
+      trackNumber: 1,
+    });
+    const org = makeOrg(root, staging);
+
+    // Reach past `private` deliberately: the serialization chain is the unit
+    // under test, and the only way one lane's rejection can reach the next lane
+    // is through it. The poller already treats a throwing organizeBatch as a
+    // real case (`'organize step failed for addon batch'`).
+    const inner = 'organizeBatchExclusive' as keyof LibraryOrganizer;
+    const real = (org as unknown as Record<string, unknown>)[inner];
+    (org as unknown as Record<string, unknown>)[inner] = async () => {
+      throw new Error('boom');
+    };
+    const failed = org.organizeBatch([
+      { username: 'u', directory: 'C - Three', filename: '01 - c.mp3', directoryFileCount: 1 },
+    ]);
+    await expect(failed).rejects.toThrow('boom');
+
+    (org as unknown as Record<string, unknown>)[inner] = real;
+    const after = await org.organizeBatch([
+      { username: 'u', directory: 'C - Three', filename: '01 - c.mp3', directoryFileCount: 1 },
+    ]);
+    expect(after.moved).toBe(1);
+  });
+});

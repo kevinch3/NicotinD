@@ -143,6 +143,19 @@ interface ResolvedFile {
   source?: CompletedDownloadFile;
 }
 
+/** A batch that did nothing: no files in, no dirs touched. */
+function emptyOrganizeResult(): OrganizeResult {
+  return {
+    moved: 0,
+    skipped: 0,
+    unsorted: 0,
+    failed: 0,
+    dedupedBasenames: [],
+    deletedRelPaths: [],
+    affectedAlbumDirs: [],
+  };
+}
+
 export class LibraryOrganizer {
   private musicDir: string;
   private stagingDir: string | undefined;
@@ -159,6 +172,8 @@ export class LibraryOrganizer {
   private canonicalTitlesLookup?: (dir: string) => readonly string[] | null;
   /** Real <Artist>/<Album> dirs written during the current batch (for dedupe). */
   private touchedAlbumDirs = new Set<string>();
+  /** Tail of the serialized organize queue; never rejects. See organizeBatch. */
+  private organizeChain: Promise<void> = Promise.resolve();
   // Per-batch counters for the organize receipt. Reset with the other per-batch
   // state in organizeBatch; the transcode is the expensive one and the reason
   // this stage is timed at all.
@@ -203,7 +218,33 @@ export class LibraryOrganizer {
    * directory, then per-directory: locate files on disk → read tags →
    * classify → move into `<musicDir>/<Artist>/<Album>/<NN - Title>.<ext>`.
    */
+  /**
+   * Organize one batch. Serialized against every other batch on this instance.
+   *
+   * why: `index.ts` hands ONE organizer to three independent lanes (the addon
+   * poller, AcquireWatcher, LibraryImportService) and the body below opens by
+   * clearing per-batch instance state. Before #809 the poller organized inside a
+   * non-reentrant tick, so an overlap could not happen; it now runs on a
+   * background pump and two lanes interleave — measured, batch A came back
+   * owning batch B's album dir (#1026). Both failures are silent: the files
+   * still land and nothing logs. Queueing here only makes true what the body
+   * already assumes.
+   */
   async organizeBatch(files: CompletedDownloadFile[]): Promise<OrganizeResult> {
+    // Cheap and state-free, so it need not wait behind another lane's batch.
+    if (files.length === 0) return emptyOrganizeResult();
+    const run = this.organizeChain.then(() => this.organizeBatchExclusive(files));
+    // The chain must survive a failed batch: the next caller still has to run,
+    // and must not inherit this one's rejection. `run` still rejects to *this*
+    // caller.
+    this.organizeChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private async organizeBatchExclusive(files: CompletedDownloadFile[]): Promise<OrganizeResult> {
     const result: OrganizeResult = {
       moved: 0,
       skipped: 0,
@@ -213,8 +254,6 @@ export class LibraryOrganizer {
       deletedRelPaths: [],
       affectedAlbumDirs: [],
     };
-    if (files.length === 0) return result;
-
     this.touchedAlbumDirs.clear();
     this.albumFolderCache.clear();
     this.batchTranscoded = 0;
