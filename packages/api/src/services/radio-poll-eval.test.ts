@@ -266,3 +266,67 @@ describe('station (filter) scenarios are measured, not skipped', () => {
     expect(result.tally.pairs).toBe(0);
   });
 });
+
+describe('descriptor axes are gradable from a snapshot (issue #940)', () => {
+  const block = (n: number, v: number): number[] => Array.from({ length: n }, () => v);
+  const seed = {
+    duration: 200,
+    artistId: 'seed-a',
+    genres: ['Rock'],
+    bpm: 120,
+    timbre: block(21, 1),
+    groove: block(8, 1),
+    bands: block(6, 1),
+  };
+
+  // The harness replays the stored features, so a snapshot without the blocks
+  // makes `--weights timbre=N` a silent no-op: blockCosineCloseness returns
+  // null and the accumulator adds neither value nor weight.
+  it('lets a timbre weight change the ordering when the blocks are present', () => {
+    const ds = dataset(seed, [
+      // timbre-identical to the seed, everything else wrong
+      {
+        features: {
+          duration: 200,
+          artistId: 'x',
+          genres: ['Salsa'],
+          bpm: 60,
+          timbre: block(21, 1),
+          groove: block(8, 1),
+          bands: block(6, 1),
+        },
+        consensus: 'good',
+      },
+      // timbre-opposed, everything else wrong too
+      {
+        features: {
+          duration: 200,
+          artistId: 'y',
+          genres: ['Salsa'],
+          bpm: 60,
+          timbre: block(21, -1),
+          groove: block(8, -1),
+          bands: block(6, -1),
+        },
+        consensus: 'bad',
+      },
+    ]);
+
+    const graded = evaluatePollAgreement(ds, onlyAxes({ timbre: 100 }));
+    expect(graded.tally.pairs).toBe(1);
+    expect(graded.tally.wins).toBe(1);
+  });
+
+  it('grades nothing on those axes when the snapshot omits the blocks', () => {
+    const bare = { duration: 200, artistId: 'seed-a', genres: ['Rock'], bpm: 120 };
+    const ds = dataset(bare, [
+      { features: { duration: 200, artistId: 'x', genres: ['Salsa'], bpm: 60 }, consensus: 'good' },
+      { features: { duration: 200, artistId: 'y', genres: ['Salsa'], bpm: 60 }, consensus: 'bad' },
+    ]);
+
+    // Every weight on descriptor axes, none of which the features carry: the
+    // pair is a tie, so no amount of re-weighting can move the measurement.
+    const result = evaluatePollAgreement(ds, onlyAxes({ timbre: 100, groove: 100 }));
+    expect(result.tally.wins).toBe(0);
+  });
+});
