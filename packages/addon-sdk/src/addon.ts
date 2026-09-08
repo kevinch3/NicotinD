@@ -213,6 +213,17 @@ export interface AddonAlbumSearchResponse {
    * trying" rather than a genuine "no results". Additive + optional.
    */
   rateLimited?: boolean;
+  /**
+   * The source could not reach its network at all — for slskd, it is running but
+   * logged out of Soulseek, so every query 409s and none of them searched
+   * anything (#1040). Distinct from `rateLimited`: throttling clears in
+   * milliseconds and the same hunt can just retry, whereas an offline source
+   * stays offline for minutes, so the host holds the work instead of spinning.
+   * Critically, it is also distinct from an honest empty result — conflating the
+   * two is what made a structural outage look like "this album isn't on
+   * Soulseek". Additive + optional.
+   */
+  sourceOffline?: boolean;
 }
 
 /* ————— Jobs ————— */

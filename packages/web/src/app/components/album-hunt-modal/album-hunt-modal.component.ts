@@ -82,6 +82,11 @@ export class AlbumHuntModalComponent implements OnInit {
   // incomplete — the empty state reads "still searching, keep trying" instead of
   // a genuine "no results". Set from the hunt response's `rateLimited`.
   readonly rateLimited = signal(false);
+  // The source is up but logged out of its network, so the queries never ran
+  // (#1040). Same empty list as a genuine miss, different truth — and a
+  // different instruction: unlike a 429 this does not clear in a moment, so the
+  // empty state says "reconnecting", not "try again now".
+  readonly sourceOffline = signal(false);
 
   // §C1/§F2 per-track fallback for the no-candidates dead-end.
   readonly trackHuntState = signal<'idle' | 'running' | 'done' | 'error'>('idle');
@@ -238,6 +243,7 @@ export class AlbumHuntModalComponent implements OnInit {
     this.selectedCandidate.set(null);
     this.errorMsg.set('');
     this.rateLimited.set(false);
+    this.sourceOffline.set(false);
 
     const artist = this.artistName();
     const album = this.album().title;
@@ -285,12 +291,14 @@ export class AlbumHuntModalComponent implements OnInit {
           // username::directory, keep the higher-scoring instance, then re-rank.
           this.candidates.set(mergeCandidates(baseResult.candidates, skewResult.candidates));
           if (skewResult.rateLimited) this.rateLimited.set(true);
+          if (skewResult.sourceOffline) this.sourceOffline.set(true);
         }
       } else if (this.skewSearch()) {
         // Base was confident — skew not needed; mark rows as skipped.
         this._setPhaseState(skewedQueries(artist, album), 'skipped');
       }
       if (baseResult.rateLimited) this.rateLimited.set(true);
+      if (baseResult.sourceOffline) this.sourceOffline.set(true);
 
       // The source throttled the search burst (slskd 429), so an empty result is
       // "still searching — keep trying", not a genuine miss. Offer a one-tap retry.
@@ -300,6 +308,18 @@ export class AlbumHuntModalComponent implements OnInit {
             'The download source is busy right now (rate-limited) — the search may be incomplete. Give it a moment and try again.',
           kind: 'info',
           actions: [{ label: 'Try again', callback: () => void this.startHunt() }],
+        });
+      }
+
+      // The source never reached its network, so this empty list is not evidence
+      // the album is unavailable. No retry action: it reconnects on its own, and
+      // offering a button that will fail for the next several minutes just
+      // teaches people to mash it.
+      if (this.candidates().length === 0 && this.sourceOffline()) {
+        this.toast.show({
+          message:
+            'The download source is offline right now — it is reconnecting, so this search never reached it. This does not mean the album is unavailable.',
+          kind: 'info',
         });
       }
 

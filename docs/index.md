@@ -32,6 +32,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `isBloatedFolder`, `FallbackHost`, `isStalled`, `stallThresholdMs` and `TransferPoller` live in the
   `kevinch3/nicotind-slskd-addon` repo, not here. Core keeps `buildSkewedQueries`/`buildTrackQueries`.
   `matchPct` is recall-only by design. → [album-hunt.md](album-hunt.md)
+- **Source-offline gate**: an addon's `ready` answers "can a hunt sent here succeed", so a source
+  that is up but logged out of its network is not mistaken for an empty result; `sourceOffline`
+  (`addonIsReady`, `sourceOffline`) makes the acquire defer instead of recording a miss; the
+  readiness probe + reconnect kick are addon-owned.
+  → [acquisition-addon-protocol.md](acquisition-addon-protocol.md)
 - **Idempotent hunt — one album = one download**: 409 guards + only-missing-tracks enqueue;
   "already have it" surfaces as a notice, not an error. → [album-hunt.md](album-hunt.md)
 - **Watchlist auto-hunt**: star a catalog album; a poller auto-hunts and downloads on a confident

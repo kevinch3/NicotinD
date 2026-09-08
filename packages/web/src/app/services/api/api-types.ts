@@ -431,6 +431,10 @@ export interface HuntResult {
   /** The source throttled the search burst (slskd 429) so the hunt may be
    *  incomplete — the modal keeps trying rather than reporting no results. */
   rateLimited?: boolean;
+  /** The queries never reached the source's network — it is up but logged out
+   *  (#1040). Also an incomplete hunt, but one that stays incomplete for
+   *  minutes, so the modal says "reconnecting", not "try again now". */
+  sourceOffline?: boolean;
 }
 
 export interface CatalogArtist {

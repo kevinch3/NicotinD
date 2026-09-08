@@ -128,6 +128,10 @@ export function discographyRoutes({
         // The source throttled the search burst (slskd 429) so the hunt may be
         // incomplete — the modal keeps trying instead of reporting no results.
         rateLimited: res.rateLimited ?? false,
+        // The queries never reached the source's network at all (#1040). Also an
+        // incomplete hunt, but one that will stay incomplete for minutes, so the
+        // modal says "offline, reconnecting" rather than "try again now".
+        sourceOffline: res.sourceOffline ?? false,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -286,6 +290,10 @@ export function discographyRoutes({
         candidates: res.candidates.map(wireCandidate),
         totalTracks: tracks.length,
         skewNeeded: false,
+        rateLimited: res.rateLimited ?? false,
+        // The queries never reached the source's network (#1040) — an empty
+        // result here is not evidence the album is unavailable.
+        sourceOffline: res.sourceOffline ?? false,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -325,6 +333,7 @@ export function discographyRoutes({
       return c.json({
         candidates: res.candidates.map(wireCandidate),
         rateLimited: res.rateLimited ?? false,
+        sourceOffline: res.sourceOffline ?? false,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

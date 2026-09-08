@@ -162,3 +162,88 @@ describe('acquireAlbum via a remote addon', () => {
     });
   });
 });
+
+// #1040. slskd's HTTP API stays healthy while its Soulseek session is down, so
+// an outage used to arrive here as an ordinary empty candidate list. Recorded as
+// 'no-candidate' it reads "this album is not obtainable" — a curator stops
+// asking, and the watchlist keeps re-deciding the same wrong thing — when the
+// truth is "we never asked Soulseek". The two outcomes differ in what a caller
+// should DO, which is the whole reason they are separate tokens.
+describe('acquireAlbum when the source is offline', () => {
+  it('reports slskd-unavailable, not no-candidate, for an offline empty hunt', async () => {
+    const h = makeDeps({
+      albumsSearch: async () => ({
+        candidates: [],
+        queries: [],
+        skewNeeded: false,
+        sourceOffline: true,
+      }),
+    });
+    const result = await acquireAlbum(h.deps, INPUT);
+    expect(result.outcome).toBe('slskd-unavailable');
+    expect(result.detail).toMatch(/offline/i);
+  });
+
+  // An empty hunt that DID reach Soulseek is still an honest miss — the flag
+  // must not become a blanket excuse that hides real absence.
+  it('still reports no-candidate when the source was reachable', async () => {
+    const h = makeDeps({
+      albumsSearch: async () => ({ candidates: [], queries: [], skewNeeded: false }),
+    });
+    expect((await acquireAlbum(h.deps, INPUT)).outcome).toBe('no-candidate');
+  });
+
+  // A partial outage that still produced a good-enough folder is an acquire, not
+  // a deferral: the candidate in hand is real.
+  it('acquires normally when a candidate cleared the bar despite the flag', async () => {
+    const h = makeDeps({
+      albumsSearch: async () => ({
+        candidates: [CANDIDATE],
+        queries: [],
+        skewNeeded: false,
+        sourceOffline: true,
+      }),
+    });
+    expect((await acquireAlbum(h.deps, INPUT)).outcome).toBe('enqueued');
+  });
+
+  // The watchlist maps 'enqueue-failed' to state='failed', which is TERMINAL.
+  // A source that went down between the hunt and the enqueue would therefore
+  // permanently kill the row over a transient outage. Ask the addon whether it
+  // is ready before calling an enqueue failure final.
+  it('defers instead of failing terminally when the enqueue died with the source down', async () => {
+    const h = makeDeps({
+      createJob: async () => {
+        throw new AddonRequestError('addon responded 502 for POST /addon/v1/jobs', 502);
+      },
+      getHealth: async () => ({ ok: true, ready: false, detail: 'Soulseek source offline' }),
+    });
+    const result = await acquireAlbum(h.deps, INPUT);
+    expect(result.outcome).toBe('slskd-unavailable');
+    expect(result.detail).toMatch(/offline/i);
+  });
+
+  it('keeps a genuine enqueue rejection terminal when the source is healthy', async () => {
+    const h = makeDeps({
+      createJob: async () => {
+        throw new AddonRequestError('addon responded 400 for POST /addon/v1/jobs', 400);
+      },
+      getHealth: async () => ({ ok: true, ready: true }),
+    });
+    expect((await acquireAlbum(h.deps, INPUT)).outcome).toBe('enqueue-failed');
+  });
+
+  // Readiness is a hint used only to downgrade a failure to a retry. If asking
+  // throws, we must not lose the original error.
+  it('falls back to enqueue-failed when readiness cannot be determined', async () => {
+    const h = makeDeps({
+      createJob: async () => {
+        throw new AddonRequestError('addon responded 502 for POST /addon/v1/jobs', 502);
+      },
+      getHealth: async () => {
+        throw new Error('unreachable');
+      },
+    });
+    expect((await acquireAlbum(h.deps, INPUT)).outcome).toBe('enqueue-failed');
+  });
+});
