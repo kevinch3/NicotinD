@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.14](https://github.com/kevinch3/NicotinD/compare/v0.6.13...v0.6.14) (2026-09-08)
+
+### Bug Fixes
+
+* **separator:** make the sidecar work as the uid it actually runs as ([#1022](https://github.com/kevinch3/NicotinD/issues/1022)) ([a060e99](https://github.com/kevinch3/NicotinD/commit/a060e990fc97e461a2cbc1efe5ffab19bc07b56a)), closes [#1020](https://github.com/kevinch3/NicotinD/issues/1020)
 ## [0.6.13](https://github.com/kevinch3/NicotinD/compare/v0.6.12...v0.6.13) (2026-09-08)
 
 ### Bug Fixes
