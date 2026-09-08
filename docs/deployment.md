@@ -544,6 +544,48 @@ images=$(docker compose config --images | grep "^ghcr\.io/kevinch3/" | sort -u)
 echo "$images" | xargs -n1 docker pull
 ```
 
+### Disk headroom is checked against the real data root (issue #1021)
+
+Before the pull, the deploy asserts at least 10 GiB free on the filesystem Docker
+actually writes to, resolved from `docker info --format '{{.DockerRootDir}}'`.
+**Never `df /var/lib/docker`**: the prod host keeps its data root on a different
+disk (`/mnt/data1tb/docker`), so that path reports an unrelated filesystem's free
+space — a check that reads green while the volume being written to is full.
+
+That is not hypothetical. On 2026-09-08 the data root reached 0 bytes free after
+789 unpruned images (470 GB) and 3,803 build-cache entries (180 GB) accumulated
+over every deploy ever made. The failure surfaced three layers away and looked
+like three unrelated bugs: Lidarr's SQLite could not write (`disk I/O error`), so
+its healthcheck went red, so the API — then still gated on
+`lidarr: service_healthy` (#1019) — would not start; and the vocal-separation
+sidecar 422'd every track because numba could not create its cache directory.
+`docker builder prune -af` + `docker image prune -af` returned 502 GiB.
+
+The host has no scheduled prune, so this will re-accumulate; the guard turns the
+next occurrence into a failed deploy step with a reclaim command instead of an
+outage with a misleading cause.
+
+### Symptom: a container sits in `created` and the API never comes back (issue #1019)
+
+```
+$ docker inspect nicotind-nicotind-1 --format "{{.State.Status}} {{.State.StartedAt}}"
+created 0001-01-01T00:00:00Z          # never started: no logs, no exit code, no restart
+```
+
+`docker compose up -d` **created** the container and refused to start it because a
+`depends_on` condition was unsatisfiable. `restart: unless-stopped` does not help —
+it applies to a container that ran, not one that never started, so nothing recovers
+on its own.
+
+The API's `depends_on` on Lidarr is `service_started` for exactly this reason: a
+sub-service that merely goes unhealthy must not decide whether the API may run,
+because `main.ts` already degrades gracefully without it. `scripts/compose-boot-gates.test.ts`
+fails if a `service_healthy` gate is reintroduced anywhere in `docker-compose.yml`.
+
+**Recovery, if you meet this on an older compose:** `docker start <container>` starts
+it directly, bypassing compose's dependency evaluation. Then fix the unhealthy
+dependency — do not leave the gate satisfied by hand.
+
 The empty-list check is load-bearing rather than defensive: the step does not set
 `pipefail`, so a pipeline's status is only its last command's. A failing
 `docker compose config` would flow an empty string into `xargs -r`, which does
