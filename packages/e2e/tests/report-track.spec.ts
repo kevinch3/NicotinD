@@ -30,9 +30,11 @@ test.describe('report a track', () => {
     await page.getByTestId('player-title').click();
     await expect(page.getByTestId('now-playing-body')).toBeVisible();
 
-    // The context menu hangs off the Now Playing title.
-    await page.getByTestId('now-playing-title').click({ button: 'right' });
-    await page.getByTestId('track-menu-report').click();
+    // One visible tap on the flag beside the like heart (issue #1038). This
+    // used to be `click({ button: 'right' })` on the title — a gesture no
+    // touch or TV user can perform, which is what made the shipped feature
+    // unreachable in the first place.
+    await page.getByTestId('now-playing-report').click();
     await expect(page.getByTestId('report-track-dialog')).toBeVisible();
   }
 
@@ -47,6 +49,19 @@ test.describe('report a track', () => {
     await openNeedsReview(page);
     await expect(page.getByText('mistagged: the year is wrong')).toBeVisible();
     await expect(page.getByTestId('flag-source-listener').first()).toBeVisible();
+  });
+
+  /**
+   * The other door: the shared `⋯` menu, which reaches the dialog with no Now
+   * Playing sheet involved. Before #1038 no track row offered the action at all.
+   */
+  test('a track row reaches the same dialog through its menu', async ({ page }) => {
+    await page.goto('/library');
+    await openAlbumCard(page, FIXTURE.album.title);
+    const row = page.getByTestId('track-row').first();
+    await row.getByTestId('track-row-menu-toggle').click();
+    await row.getByTestId('track-action-Report this track').click();
+    await expect(page.getByTestId('report-track-dialog')).toBeVisible();
   });
 
   /**

@@ -11,8 +11,6 @@ import { NowPlayingPanelTabsComponent } from './now-playing-panel-tabs/now-playi
 import { NowPlayingQueuePanelComponent } from './now-playing-queue-panel/now-playing-queue-panel.component';
 import { NowPlayingLyricsPanelComponent } from './now-playing-lyrics-panel/now-playing-lyrics-panel.component';
 import { NowPlayingKaraokeFullscreenComponent } from './now-playing-karaoke-fullscreen/now-playing-karaoke-fullscreen.component';
-import { TrackContextMenuComponent } from '../track-context-menu/track-context-menu.component';
-import { ReportTrackDialogComponent } from '../report-track-dialog/report-track-dialog.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TrackInfoService } from '../../services/track-info.service';
 import { VocalSeparationService } from '../../services/vocal-separation.service';
@@ -47,8 +45,6 @@ import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container'
     NowPlayingQueuePanelComponent,
     NowPlayingLyricsPanelComponent,
     NowPlayingKaraokeFullscreenComponent,
-    TrackContextMenuComponent,
-    ReportTrackDialogComponent,
     TranslatePipe,
     TvNavGroupDirective,
     TvNavItemDirective,
@@ -69,11 +65,6 @@ export class NowPlayingComponent {
   readonly trackInfo = inject(TrackInfoService);
   /** Karaoke ML separation (issue #603): overlay-open trigger + the mute's serve state. */
   readonly vocalSep = inject(VocalSeparationService);
-
-  // Context menu state
-  readonly contextMenu = signal<{ x: number; y: number } | null>(null);
-  /** The track whose report dialog is open (#987), or null. */
-  readonly reportTrackId = signal<string | null>(null);
 
   /** TV queue overlay opened from the Next-up chip (issue #399). */
   readonly tvQueueOpen = signal(false);
@@ -688,12 +679,7 @@ export class NowPlayingComponent {
     this.player.setNowPlayingOpen(false);
   }
 
-  onTitleContextMenu(event: MouseEvent): void {
-    this.contextMenu.set({ x: event.clientX, y: event.clientY });
-  }
-
   onOpenTrackInfo(songId: string): void {
-    this.contextMenu.set(null);
     const t = this.player.currentTrack();
     this.trackInfo.open({
       songId,

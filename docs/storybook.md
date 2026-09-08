@@ -23,18 +23,18 @@ were the slowest half of it — see [deployment.md](deployment.md) "CI coverage"
 
 ## What is in it
 
-37 components, split by how much of the app they need in order to render:
+36 components, split by how much of the app they need in order to render:
 
 - **Presentational (20)** — zero injected services: `artist-links`, `changelog-modal`,
   `confirm-dialog`, `desktop-window-controls`, `disk-pill`, `download-item`,
   `genre-distribution-strip`, `genre-radar`, `icon`, `library-filter-panel`,
   `metric-pill`, `password-field`, `pipeline-stage-badge`, `seek-bar`, `selection-bar`,
   `settings-group`, `settings-group-header`, `skeleton`, `source-chip`, `track-stats-bars`.
-- **Light-DI (17)** — one to three injected services, rendered against fixtures:
+- **Light-DI (16)** — one to three injected services, rendered against fixtures:
   `add-to-playlist`, `artist-genre-modal`, `artist-identity-modal`, `artist-info`,
   `confirm-host`, `cover-art`, `desktop-title-bar-overlay`, `device-switcher`,
-  `menu-panel`, `recently-played`, `song-picker`, `toast-outlet`, `track-context-menu`,
-  `track-row`, `tv-shell`, `update-banner`, `welcome-banner`.
+  `menu-panel`, `recently-played`, `song-picker`, `toast-outlet`, `track-row`,
+  `tv-shell`, `update-banner`, `welcome-banner`.
 
 **Not in it (10):** `album-hunt-modal`, `artist-image-menu`, `bottom-nav`,
 `folder-browser`, `layout`, `metadata-fix-modal`, `now-playing`,

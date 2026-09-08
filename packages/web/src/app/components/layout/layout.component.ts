@@ -33,6 +33,7 @@ import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 import { AddToPlaylistComponent } from '../add-to-playlist/add-to-playlist.component';
 import { ConfirmHostComponent } from '../confirm-host/confirm-host.component';
 import { TrackInfoHostComponent } from '../track-info-host/track-info-host.component';
+import { ReportTrackHostComponent } from '../report-track-host/report-track-host.component';
 import { ChangelogModalComponent } from '../changelog-modal/changelog-modal.component';
 import { DesktopWindowControlsComponent } from '../desktop-window-controls/desktop-window-controls.component';
 import { DesktopChromeService } from '../../services/desktop-chrome.service';
@@ -102,6 +103,7 @@ export function headerDisplayClass(url: string): string {
     ConfirmHostComponent,
     ChangelogModalComponent,
     TrackInfoHostComponent,
+    ReportTrackHostComponent,
     DesktopWindowControlsComponent,
     BottomChromeSafeDirective,
   ],

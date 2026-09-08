@@ -36,7 +36,7 @@
       <h2
         class="text-xl font-semibold text-theme-primary truncate select-none"
         data-testid="now-playing-title"
-        (contextmenu)="titleContextMenu.emit($event); $event.preventDefault()"
+        (contextmenu)="onTitleContextMenu($event)"
       >
         {{ track.title }}
       </h2>
@@ -61,6 +61,32 @@
             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
           </svg>
         </button>
+        <!-- Flag: the report path shipped reachable only by right-clicking the
+             title, which no touch or TV user can perform (issue #1038). One tap
+             here, the ⋯ menu carries the same action for every other surface. -->
+        <button
+          type="button"
+          (click)="report.open(track.id)"
+          data-testid="now-playing-report"
+          [attr.aria-label]="'report.menuItem' | t"
+          [attr.title]="'report.menuItem' | t"
+          class="shrink-0 p-0.5 text-theme-muted hover:text-theme-primary transition"
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+            <line x1="4" y1="22" x2="4" y2="15" />
+          </svg>
+        </button>
       }
       <!-- G4: visible affordance to open Track info (was long-press only). -->
       <button
@@ -77,6 +103,41 @@
           <line x1="12" y1="8" x2="12.01" y2="8" />
         </svg>
       </button>
+      @if (!isTv) {
+        <!-- The sheet's ⋯ renders the SAME SongMenuService.build() list every
+             track row does — the bespoke 3-item menu it replaces was the
+             per-page drift docs/song-actions.md exists to prevent. -->
+        <app-menu-panel #menu class="shrink-0" align="end" panelTestId="now-playing-menu">
+          <button
+            menuTrigger
+            type="button"
+            data-testid="now-playing-menu-toggle"
+            [attr.aria-label]="'nowPlaying.moreOptions' | t"
+            [attr.title]="'nowPlaying.moreOptions' | t"
+            class="shrink-0 p-0.5 text-theme-muted hover:text-theme-primary transition"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="12" cy="5" r="2" />
+              <circle cx="12" cy="12" r="2" />
+              <circle cx="12" cy="19" r="2" />
+            </svg>
+          </button>
+          <div menuPanel class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40">
+            @for (action of menuActions(); track action.label) {
+              <button
+                type="button"
+                [attr.data-testid]="'track-action-' + action.label"
+                class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
+                [class.text-red-400]="action.destructive"
+                [class.text-theme-secondary]="!action.destructive"
+                (click)="menu.close(); action.action()"
+              >
+                {{ action.labelKey ? (action.labelKey | t) : action.label }}
+              </button>
+            }
+          </div>
+        </app-menu-panel>
+      }
     </div>
     <p class="text-sm text-theme-secondary truncate mt-1 select-none hover:text-theme-primary transition">
       @if (track.artists?.length) {

@@ -115,7 +115,7 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   content height and overflowing unscrollably instead of filling-and-scrolling) only showed up
   looking at the whole extracted tree together, not any single component in isolation:
   - `NowPlayingHeaderComponent` — drag-to-dismiss handle + device switcher.
-  - `NowPlayingCoverArtComponent` — cover art, title/artist, track-info button, context menu trigger.
+  - `NowPlayingCoverArtComponent` — cover art, title/artist, track-info / like / report buttons, `⋯` menu.
   - `NowPlayingTransportComponent` — seek bar, transport buttons.
   - `NowPlayingPanelTabsComponent` — the **Queue/Lyrics tab switcher** (below).
   - `NowPlayingQueuePanelComponent` — the "Next up" list: Clear, drag-reorder, per-row remove.

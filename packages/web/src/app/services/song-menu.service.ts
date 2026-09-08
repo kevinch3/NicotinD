@@ -11,6 +11,7 @@ import { TrackInfoService } from './track-info.service';
 import { ConfirmService } from './confirm.service';
 import { LikeService } from './like.service';
 import { RecommendationExclusionsService } from './recommendation-exclusions.service';
+import { ReportTrackService } from './report-track.service';
 import { resolveArtistRoute, resolveAlbumRoute } from '../lib/route-utils';
 import {
   toTrack,
@@ -51,6 +52,7 @@ export class SongMenuService {
   private readonly confirm = inject(ConfirmService);
   private readonly likes = inject(LikeService);
   private readonly exclusions = inject(RecommendationExclusionsService);
+  private readonly report = inject(ReportTrackService);
 
   build(song: BaseSong, ctx: SongContext = {}): TrackAction[] {
     const track = toTrack(song);
@@ -100,6 +102,15 @@ export class SongMenuService {
         ? { label: 'Recommend again', action: () => void this.exclusions.restore(song.id) }
         : { label: "Don't recommend this", action: () => void this.exclusions.exclude(song.id) },
     );
+
+    // The other half of the pair above: the veto says nothing is wrong, the
+    // report says something is (docs/mcp-agent.md "Listeners write to the same
+    // queue"). `not_for_me` inside the dialog routes back to `exclude()`.
+    actions.push({
+      label: 'Report this track',
+      labelKey: 'report.menuItem',
+      action: () => this.report.open(song.id),
+    });
 
     if (ctx.removable && this.auth.canCurate()) {
       actions.push({

@@ -11,6 +11,7 @@ import { TrackInfoService } from './track-info.service';
 import { ConfirmService } from './confirm.service';
 import { LikeService } from './like.service';
 import { RecommendationExclusionsService } from './recommendation-exclusions.service';
+import { ReportTrackService } from './report-track.service';
 import { asRole, canCurate as canCurateRole, type Role } from '../../types/core';
 import type { BaseSong } from '../lib/track-utils';
 
@@ -51,6 +52,10 @@ function setup(role: Role = 'user', excluded = false) {
         provide: RecommendationExclusionsService,
         useValue: { isExcluded: () => excluded, exclude: vi.fn(), restore: vi.fn() },
       },
+      {
+        provide: ReportTrackService,
+        useValue: { open: vi.fn(), close: vi.fn() },
+      },
     ],
   });
   return { svc: TestBed.inject(SongMenuService), router, auth };
@@ -73,6 +78,7 @@ describe('SongMenuService.build', () => {
       'Save offline',
       'Song info',
       "Don't recommend this",
+      'Report this track',
     ]);
   });
 
@@ -98,6 +104,10 @@ describe('SongMenuService.build', () => {
         { provide: TrackInfoService, useValue: { open: vi.fn() } },
         { provide: ConfirmService, useValue: { ask: vi.fn(async () => true) } },
         { provide: LikeService, useValue: { isLiked: () => true, toggle: vi.fn() } },
+        {
+          provide: ReportTrackService,
+          useValue: { open: vi.fn(), close: vi.fn() },
+        },
       ],
     });
     const svc = TestBed.inject(SongMenuService);
@@ -168,5 +178,38 @@ describe("SongMenuService.build — Don't recommend this", () => {
       .find((a) => a.label === "Don't recommend this")!
       .action();
     expect(svcMock.exclude).toHaveBeenCalledWith('s1');
+  });
+});
+
+describe('SongMenuService.build — Report this track', () => {
+  it('offers the report beside the veto, translated through report.menuItem', () => {
+    const { svc } = setup();
+    const action = svc.build(song()).find((a) => a.label === 'Report this track')!;
+    // The testid the e2e suite selects on is built from `label`, so it must
+    // stay untranslated even though the item renders through `labelKey`.
+    expect(action.labelKey).toBe('report.menuItem');
+    expect(action.destructive).toBeUndefined();
+  });
+
+  it('opens the shared report dialog for this song', () => {
+    const { svc } = setup();
+    const report = TestBed.inject(ReportTrackService) as unknown as {
+      open: ReturnType<typeof vi.fn>;
+    };
+    svc
+      .build(song())
+      .find((a) => a.label === 'Report this track')!
+      .action();
+    expect(report.open).toHaveBeenCalledWith('s1');
+  });
+
+  it('stays ahead of the contextual actions appended last', () => {
+    const { svc } = setup();
+    const out = labels(song(), svc, {
+      onRemoveFromPlaylist: () => {},
+      extraActions: [{ label: 'X', action: () => {} }],
+    });
+    expect(out.slice(-2)).toEqual(['Remove from playlist', 'X']);
+    expect(out).toContain('Report this track');
   });
 });

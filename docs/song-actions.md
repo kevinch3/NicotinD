@@ -5,14 +5,16 @@ Every song listing draws its `⋯` menu from one root
 actions. This prevents the per-page menu drift that previously left
 "Go to album", "Start radio", "Add to queue", "Play next" and "Song info"
 missing everywhere and "Go to artist" on only some pages. Most listings render
-the menu on the shared `TrackRowComponent`; the one exception is the Downloads
-"Recently added" list, which keeps its own bespoke row markup but still builds
-its menu from the same `SongMenuService`.
+the menu on the shared `TrackRowComponent`; the Downloads "Recently added" list
+keeps its own bespoke row markup, and the **Now Playing sheet** its own `⋯`
+(`now-playing-menu-toggle`, replacing a hand-rolled 3-item context menu in issue
+#1038) — but both build from the same `SongMenuService`.
 
 ## Common actions (always present when the data supports them)
 
 Order: Like/Unlike → Add to queue → Play next → Start radio → Go to artist* → Go to album* →
-Add to playlist → Save offline → Song info → Don't recommend this / Recommend again.
+Add to playlist → Save offline → Song info → Don't recommend this / Recommend again →
+Report this track.
 (*artist/album links appear only when the song carries `artistId`/`albumId` and
 the context doesn't hide them. Since every rendered album and artist **name** is
 itself a link — `EntityLinkComponent`, see [web-ui.md](web-ui.md) "Track rows" —
@@ -30,6 +32,11 @@ not a link: TV artist names, offline rows without an id.)
   a library edit: the label reflects `RecommendationExclusionsService.isExcluded()`
   and the actions call `exclude()` / `restore()` ([radio.md](radio.md) "Per-user
   exclusions"). Settings → Recommendations lists what is held out.
+- **Report this track** — the other half of that pair: the veto says nothing is *wrong*, the report
+  says something is, and it files into the curation queue via `ReportTrackService.open()`
+  ([mcp-agent.md](mcp-agent.md) "Listeners write to the same queue"). The one reason that is pure
+  taste, `not_for_me`, routes back to `exclude()` instead of filing a flag. It is the only action
+  carrying a `labelKey`, so it renders translated while its `data-testid` stays the English `label`.
 
 ## Contextual actions (`SongContext`)
 
@@ -101,13 +108,15 @@ flags). Downloads uses `createSelection()` too (one instance per list it shows).
 ## Testing
 
 `TrackRowComponent`'s menu buttons carry `data-testid="track-action-<Label>"`
-(the exact action label, e.g. `track-action-Go to artist`), plus
+(the exact **untranslated** `label`, e.g. `track-action-Go to artist` — an action
+that renders via `labelKey` keeps the English testid, so selectors do not move
+with the UI language), plus
 `track-row-menu-toggle` (the `⋯` button) and `track-row-menu` (the open panel),
 so e2e specs can target actions without CSS/text-fragile selectors. The
 track-info sheet root carries `data-testid="track-info-sheet"`.
 `packages/e2e/tests/song-menu.spec.ts` covers, on an album detail page: the
 common-action set + "Go to album" suppression, "Song info" opening the sheet,
-and the admin "Remove from library" → `ConfirmHost` (`confirm-dialog`) →
+"Report this track", and the admin "Remove from library" → `ConfirmHost` (`confirm-dialog`) →
 `confirm-ok` → row-removal flow. That spec scopes confirm-dialog selectors to
 the `[data-testid="confirm-dialog"]` overlay (unique to the global
 `ConfirmHost`) since the legacy per-page `app-confirm-dialog` also exposes a

@@ -104,7 +104,7 @@
                 [class.text-red-400]="action.destructive"
                 [class.text-theme-secondary]="!action.destructive"
                 (click)="menu.close(); runAction(action)">
-                {{ action.label }}
+                {{ action.labelKey ? (action.labelKey | t) : action.label }}
               </button>
             }
           </div>

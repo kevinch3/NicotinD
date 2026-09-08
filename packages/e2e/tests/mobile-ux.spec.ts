@@ -116,13 +116,11 @@ test.describe('mobile UX', () => {
   // when opened from the player (where no full library Song is passed).
   test('Track-info sheet shows the song identity', async ({ page }) => {
     await openNowPlaying(page);
-    // Open the title context menu → "Track info" (scope to the menu; a visible
-    // info button with the same label also exists — see the G4 test).
-    await page.getByRole('heading', { name: 'Opening Static' }).click({ button: 'right' });
-    await page
-      .locator('app-track-context-menu')
-      .getByRole('button', { name: 'Track info' })
-      .click();
+    // Open the sheet's ⋯ menu → "Song info". The menu is the shared
+    // SongMenuService list since issue #1038, so the label is the row menu's
+    // ("Song info"), not the retired context menu's ("Track info").
+    await page.getByTestId('now-playing-menu-toggle').click();
+    await page.getByTestId('track-action-Song info').click();
 
     const identity = page.getByTestId('track-info-identity');
     await expect(identity).toBeVisible();
