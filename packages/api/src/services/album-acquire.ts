@@ -19,9 +19,18 @@ export type AcquireOutcome =
   | 'in-flight'
   /** A confident folder was found and its missing tracks were enqueued. */
   | 'enqueued'
-  /** No folder cleared the confidence threshold this pass — retry later. */
+  /**
+   * We asked the source and nothing cleared the confidence threshold — an
+   * honest "not there (yet)". Never used for a hunt that failed to reach the
+   * source at all: that is `slskd-unavailable`, because the two differ in what
+   * the caller should do (#1040).
+   */
   | 'no-candidate'
-  /** slskd isn't available right now — retry later. */
+  /**
+   * The source could not be reached or was not able to search — retry later.
+   * Also the outcome for an enqueue that died while the source was down, which
+   * must not be reported as the terminal `enqueue-failed`.
+   */
   | 'slskd-unavailable'
   /** A candidate was chosen but the enqueue call failed. */
   | 'enqueue-failed';
@@ -34,6 +43,20 @@ export type AcquireOutcome =
 export interface AcquireResult {
   outcome: AcquireOutcome;
   detail?: string;
+}
+
+/**
+ * Is the addon able to do work right now? Only ever used to soften a failure
+ * into a retry, so an unanswerable question is deliberately read as "ready":
+ * losing the real error would be worse than deferring one attempt too few.
+ */
+async function addonIsReady(addon: RemoteAddonPlugin): Promise<boolean> {
+  try {
+    const health = await addon.client.getHealth();
+    return health.ok && health.ready;
+  } catch {
+    return true;
+  }
 }
 
 /** The addon's own error text, reduced to the line a person should read. */
@@ -126,6 +149,15 @@ async function acquireViaAddon(
       canonicalTracks: titles.map((title) => ({ title })),
     });
     best = res.candidates.find((c) => c.matchPct >= minMatchPct);
+    // The hunt never reached the source's network (slskd running but logged out
+    // of Soulseek, #1040). An empty result then says nothing about the album, so
+    // it must not be recorded as 'no-candidate' — that token means "we looked and
+    // it isn't there", which stops a curator asking and makes the watchlist
+    // re-decide the same wrong thing every sweep. A candidate that *did* clear
+    // the bar is real, so a partial outage still acquires.
+    if (!best && res.sourceOffline) {
+      return { outcome: 'slskd-unavailable', detail: 'Source offline — the hunt never reached it' };
+    }
   } catch (err) {
     log.warn({ lidarrAlbumId, addonId, err }, 'Addon album search failed');
     return { outcome: 'slskd-unavailable', detail: causeOf(err) };
@@ -164,6 +196,15 @@ async function acquireViaAddon(
   } catch (err) {
     if (err instanceof AddonRequestError && err.status === 409) return { outcome: 'in-flight' };
     log.warn({ lidarrAlbumId, addonId, err }, 'Addon job creation failed');
+    // 'enqueue-failed' is terminal for the caller (the watchlist marks the row
+    // failed), so it has to mean "asking again will fail again". A source that
+    // went down between the hunt and the enqueue is the opposite of that, and
+    // used to kill the row over an outage that clears in minutes. The addon's
+    // readiness is the discriminator — and only ever downgrades a failure to a
+    // retry, so if asking throws we keep the original, harsher outcome.
+    if (!(await addonIsReady(addon))) {
+      return { outcome: 'slskd-unavailable', detail: 'Source offline — enqueue deferred' };
+    }
     return { outcome: 'enqueue-failed', detail: causeOf(err) };
   }
 

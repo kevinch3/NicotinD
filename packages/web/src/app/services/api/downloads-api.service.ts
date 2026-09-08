@@ -107,10 +107,11 @@ export class DownloadsApiService {
     lidarrAlbumId: number,
     overrides: { artistName?: string; albumTitle?: string } = {},
   ) {
-    return this.http.post<{ candidates: FolderCandidate[]; rateLimited?: boolean }>(
-      `/api/discography/albums/${lidarrAlbumId}/hunt/skew`,
-      overrides,
-    );
+    return this.http.post<{
+      candidates: FolderCandidate[];
+      rateLimited?: boolean;
+      sourceOffline?: boolean;
+    }>(`/api/discography/albums/${lidarrAlbumId}/hunt/skew`, overrides);
   }
 
   // Enqueues the chosen folder candidate and records an album job so failed

@@ -199,6 +199,16 @@
       }
 
       @if (state() === 'results') {
+        @if (sourceOffline() && candidates().length === 0) {
+          <div data-testid="hunt-source-offline" class="p-8 text-center text-theme-muted text-sm">
+            <p class="text-theme-secondary">The download source is offline right now.</p>
+            <p class="mt-1">
+              It is reconnecting, so this search never reached it — that’s not the same as the album
+              not being out there. Try again in a few minutes.
+            </p>
+          </div>
+        }
+
         @if (rateLimited() && candidates().length === 0) {
           <div data-testid="hunt-rate-limited" class="p-8 text-center text-theme-muted text-sm">
             <p class="text-theme-secondary">The download source is busy right now.</p>

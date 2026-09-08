@@ -151,6 +151,51 @@ the Acquisition group and a per-card Remove for `remote` cards; `PluginInfo` car
 `remote`/`addonUrl`. e2e: `tests/helpers/fixture-addon.ts` + `addon-registry.spec.ts` cover
 register → consent-gated enable → status panel → remove against a live in-process addon.
 
+## Readiness: `ready` means "a hunt sent here can succeed"
+
+`GET health`'s `ready` is not "the process is up". An addon can be perfectly
+reachable and still structurally unable to do any work, and a host that cannot
+tell those apart keeps dispatching hunts into a hole and reads every doomed one
+as an ordinary empty result.
+
+The slskd addon is the worked example (#1040). slskd's own HTTP API keeps
+answering while its Soulseek session is down; in that state `POST /searches`
+returns 409 and every enqueue 500s. Measured on kpc over 168 h, **1966 of 1976
+addon failures (99.5%) fell inside such a window** — one defect class, and one
+`AddonSearchProvider.isAvailable()` reported as healthy throughout.
+
+Three rules came out of it, and they generalize to any addon fronting a network
+source:
+
+- **Readiness is the session, not the socket.** For slskd that is `isLoggedIn`,
+  never `isConnected`: the TCP connect routinely succeeds and the login handshake
+  then times out after 5 s, leaving `Connected, LoggingIn` — a state in which
+  everything still fails.
+- **An empty result needs a reason.** `POST albums/search` reports `rateLimited`
+  (throttled, retry now) and `sourceOffline` (never reached the network, retry
+  when it is back) alongside `candidates`, so an empty list only ever means an
+  honest "not there". `acquireAlbum` maps `sourceOffline` to `slskd-unavailable`,
+  not `no-candidate` — the tokens differ in what the caller should *do*, and
+  `no-candidate` teaches a curator to stop asking.
+- **A terminal outcome must be earned.** `enqueue-failed` makes the watchlist
+  mark a row `failed`, permanently. An enqueue that died because the source went
+  down between the hunt and the call is the opposite of terminal, so
+  `addonIsReady` downgrades it to `slskd-unavailable`. Readiness is only ever
+  used to *soften* a failure, so an unanswerable probe is read as ready — losing
+  the real error would be worse than deferring one attempt too few.
+
+Detecting an outage is only half of it. slskd backs off 1 → 2 → 4 … → 300 s
+between login attempts, so the **backoff ladder, not the network, sets the outage
+length**: the 11 outages measured on kpc were 4.7–29.6 min, and their durations
+are ladder sums. `PUT /api/v0/server` restarts that watchdog, so the addon's
+readiness probe also kicks it (throttled), which makes a polling host the thing
+that ends the outage rather than a spectator to it.
+
+This is also why an availability number is the wrong metric here: slskd was
+logged in **98.1%** of that week, and the experience was still "fails most of the
+time, then suddenly works" — because a person who retries after a failure retries
+inside the same hole.
+
 ## Phasing — in-monorepo addon first, repo split last
 
 Each phase keeps master shippable and is its own spec→plan→PR cycle with a GH tracking

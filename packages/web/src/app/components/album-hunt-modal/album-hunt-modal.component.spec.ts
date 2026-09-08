@@ -366,4 +366,54 @@ describe('AlbumHuntModalComponent', () => {
     expect(c.rateLimited()).toBe(false);
     expect(toastShow).not.toHaveBeenCalled();
   });
+
+  // #1040: the source is up but logged out of its network, so the queries never
+  // ran. Same empty list, different truth — and a different instruction, because
+  // unlike a 429 this does not clear in a moment, so "try again now" is wrong.
+  it('flags sourceOffline on an empty result the source never searched', async () => {
+    huntAlbumBase.mockReturnValue(
+      of({ candidates: [], totalTracks: 10, skewNeeded: false, sourceOffline: true }),
+    );
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    (c as unknown as { artistName: () => string }).artistName = () => 'Test Artist';
+
+    await c.startHunt();
+
+    expect(c.sourceOffline()).toBe(true);
+    expect(c.rateLimited()).toBe(false);
+    expect(toastShow).toHaveBeenCalledWith(expect.objectContaining({ kind: 'info' }));
+  });
+
+  it('does not flag sourceOffline on a genuine empty result', async () => {
+    huntAlbumBase.mockReturnValue(of({ candidates: [], totalTracks: 10, skewNeeded: false }));
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    (c as unknown as { artistName: () => string }).artistName = () => 'Test Artist';
+
+    await c.startHunt();
+
+    expect(c.sourceOffline()).toBe(false);
+    expect(toastShow).not.toHaveBeenCalled();
+  });
+
+  // A found album is a found album — an outage flag must never suppress results.
+  it('does not raise the offline empty state when candidates came back', async () => {
+    huntAlbumBase.mockReturnValue(
+      of({
+        candidates: [candidate({ username: 'peer' })],
+        totalTracks: 10,
+        skewNeeded: false,
+        sourceOffline: true,
+      }),
+    );
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    (c as unknown as { artistName: () => string }).artistName = () => 'Test Artist';
+
+    await c.startHunt();
+
+    expect(c.candidates().length).toBeGreaterThan(0);
+    expect(toastShow).not.toHaveBeenCalled();
+  });
 });
