@@ -148,6 +148,29 @@ for the failures no `finally` can catch, which is how a truncated 2 MiB artifact
 tree for seven weeks. `sweepStaleTranscodeTemps()` runs at boot and clears leftovers, including
 ones written under the old un-hidden name (#841).
 
+**The encode runs pooled across a batch.** Measured on prod at 0.6.17 over 18 real ingests, the
+lossless→Opus encode is **94% of an organize batch** (109.3 s of 116.3 s) at a median 2.9 s per file,
+and `organizeMs` is in turn 90-95% of the whole ingest — so this one ffmpeg call is very nearly the
+entire pipeline. It is also pure CPU work that shares nothing between files: each encode reads one
+path and writes a temp keyed on that file's own stem.
+
+So `organizeGroup` runs in three phases. `placeOnDisk` is **serial** and must stay that way — it owns
+the batch-shared state (`planPlacement`'s collision-name set, `albumFolderCache`, `touchedAlbumDirs`)
+and its order decides which file gets a `(2)` suffix. `transcodePlacement` is then pooled through the
+shared `mapPool` at `TRANSCODE_CONCURRENCY = 4`. `finishPlacement` (tag rewrite, provenance record,
+source-dir prune) is serial again and runs after the encode, because it must read and write the
+*final* `.opus`.
+
+Four is a deliberate constant rather than `cpus().length`: the encode is CPU-bound, but the host also
+runs the analysis sidecar and whatever else shares it, and an organize batch should not get to take
+every core. Measured on prod (8 cores, load ~1.8), four concurrent encodes of a 3-minute FLAC took
+**3.4 s against 10.0 s serial** — most of the way to linear already, so more would mostly be taking
+cores off neighbours.
+
+This makes `transcodeSumMs` no longer the elapsed time: it sums each encode's own duration and so
+exceeds the wall clock once they overlap. `transcodeWallMs` reports the pooled phase's actual
+duration. The sum is the CPU bill, the wall is the wait.
+
 **Imperfect-but-playable sources retry leniently (issue #534)**: the first pass runs strict (`-err_detect explode -xerror` + `+discardcorrupt`) so damage fails fast; on a non-zero exit it retries once **without** the strict flags — a single corrupt frame (routine in Soulseek rips; a real prod album hit this on every track) decodes fine leniently, and rejecting it left the file un-standardized forever. The post-write duration validation still guards the lenient output, so a genuinely truncated source is rejected in both modes. ffmpeg's stderr tail is captured into the thrown error (same contract `track-analysis.ts` adopted) — the log now says `invalid sync code`, not the opaque `exited with code 183`.
 
 **Detection is codec-aware, not extension-only** (`isLosslessFile()` in

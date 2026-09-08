@@ -38,6 +38,7 @@ import { reconcileAlbumFolder } from './album-reconcile.js';
 import { albumGroupKey } from './album-grouping.js';
 import { DEFAULT_UNSORTED_DIR } from './library-paths.js';
 import { isLosslessFile, transcodeToOpus } from './post-download-transcode.js';
+import { mapPool } from './library-scanner.js';
 import { ffmpegAvailable } from './transcode.js';
 import {
   djSetArtistName,
@@ -150,6 +151,29 @@ interface ResolvedFile {
   source?: CompletedDownloadFile;
 }
 
+/**
+ * A file already moved to its destination, awaiting the transcode + tag pass.
+ * `destPath` is mutable because a lossless→Opus transcode changes the extension.
+ */
+interface PendingPlacement {
+  file: ResolvedFile;
+  plan: PlacementPlan;
+  destPath: string;
+  samePath: boolean;
+}
+
+/**
+ * How many lossless→Opus encodes may run at once within one batch.
+ *
+ * why a small constant rather than `cpus().length`: this is real CPU work, but
+ * the box also runs the analysis sidecar and whatever else shares the host, and
+ * an organize batch is not the only thing that should get to use it. Measured on
+ * prod (8 cores, load ~1.8): four concurrent encodes of a 3-minute FLAC took
+ * 3.4 s against 10.0 s serial, so the return is already most of the way to
+ * linear at four and buying more would mostly be taking cores off neighbours.
+ */
+const TRANSCODE_CONCURRENCY = 4;
+
 /** A batch that did nothing: no files in, no dirs touched. */
 function emptyOrganizeResult(): OrganizeResult {
   return {
@@ -187,6 +211,12 @@ export class LibraryOrganizer {
   // this stage is timed at all.
   private batchTranscoded = 0;
   private batchTranscodeMs = 0;
+  /**
+   * Wall-clock spent in the pooled encode phase. Distinct from
+   * `batchTranscodeMs`, which sums each encode's own duration and so exceeds the
+   * elapsed time once they overlap — the sum is the CPU bill, this is the wait.
+   */
+  private batchTranscodeWallMs = 0;
   private batchTagWrites = 0;
   /**
    * Destinations claimed by `planOrganizeFile` so far. A dry run moves nothing,
@@ -267,6 +297,7 @@ export class LibraryOrganizer {
     this.albumFolderCache.clear();
     this.batchTranscoded = 0;
     this.batchTranscodeMs = 0;
+    this.batchTranscodeWallMs = 0;
     this.batchTagWrites = 0;
     const batchStartedAt = Date.now();
 
@@ -297,6 +328,7 @@ export class LibraryOrganizer {
         ms: Date.now() - batchStartedAt,
         transcoded: this.batchTranscoded,
         transcodeSumMs: this.batchTranscodeMs,
+        transcodeWallMs: this.batchTranscodeWallMs,
         tagWrites: this.batchTagWrites,
         ...result,
       },
@@ -406,8 +438,21 @@ export class LibraryOrganizer {
       jobMeta,
     );
 
+    // Place every file serially — stage 1 owns batch-shared state and its order
+    // decides collision names — then pool only the encodes, which own nothing.
+    const pending: PendingPlacement[] = [];
     for (const r of resolved) {
-      const outcome = await this.placeFile(r, folderTags);
+      const placed = await this.placeOnDisk(r, folderTags);
+      if (placed === 'skipped') result.skipped++;
+      else if (placed === 'failed') result.failed++;
+      else pending.push(placed);
+    }
+    const transcodeWallStartedAt = Date.now();
+    await mapPool(pending, TRANSCODE_CONCURRENCY, (p) => this.transcodePlacement(p));
+    this.batchTranscodeWallMs += Date.now() - transcodeWallStartedAt;
+
+    for (const p of pending) {
+      const outcome = await this.finishPlacement(p, folderTags);
       if (outcome === 'moved') result.moved++;
       else if (outcome === 'skipped') result.skipped++;
       else if (outcome === 'unsorted') result.unsorted++;
@@ -798,9 +843,27 @@ export class LibraryOrganizer {
     file: ResolvedFile,
     folderTags: AlbumTags,
   ): Promise<'moved' | 'skipped' | 'unsorted' | 'failed'> {
+    const placed = await this.placeOnDisk(file, folderTags);
+    if (placed === 'skipped' || placed === 'failed') return placed;
+    await this.transcodePlacement(placed);
+    return this.finishPlacement(placed, folderTags);
+  }
+
+  /**
+   * Stage 1 — decide the destination and move the file there.
+   *
+   * Split out of `placeFile` because everything here touches state shared across
+   * the batch (`taken` collision names via `planPlacement`, `albumFolderCache`,
+   * `touchedAlbumDirs`) and must therefore stay strictly serial and in order.
+   * Stage 2 (the transcode) touches none of it, which is what makes it poolable.
+   */
+  private async placeOnDisk(
+    file: ResolvedFile,
+    folderTags: AlbumTags,
+  ): Promise<PendingPlacement | 'skipped' | 'failed'> {
     const plan = await this.planPlacement(file, folderTags);
     const { destDir } = plan;
-    let destPath = plan.destPath;
+    const destPath = plan.destPath;
 
     // Only real <Artist>/<Album> dirs are dedupe targets — never Singles (many
     // distinct tracks) or the unsorted bucket.
@@ -834,22 +897,40 @@ export class LibraryOrganizer {
       // survives a later transcode — so this is where a cover stops being
       // per-file and starts being the album's. No-op when the folder has one.
       await preserveFolderCover(destPath);
-
-      // Standardize lossless on Opus before the scan sees the file, so the song's
-      // stable id (derived from its final path) is computed once and storage is
-      // reclaimed. Best-effort: a transcode failure leaves the original in place.
-      if (plan.wouldTranscode) {
-        const transcodeStartedAt = Date.now();
-        try {
-          destPath = await transcodeToOpus(destPath, this.transcodeLossless.bitRate);
-          this.batchTranscoded++;
-        } catch (err) {
-          log.warn({ err, destPath }, 'lossless→opus transcode failed — keeping original');
-        } finally {
-          this.batchTranscodeMs += Date.now() - transcodeStartedAt;
-        }
-      }
     }
+
+    return { file, plan, destPath, samePath };
+  }
+
+  /**
+   * Stage 2 — standardize lossless on Opus, before the scan sees the file, so the
+   * song's stable id (derived from its final path) is computed once and storage
+   * is reclaimed. Best-effort: a failure leaves the original in place.
+   *
+   * Independent per file: it reads one path and writes a temp beside it, keyed on
+   * that file's own stem. Nothing here reads batch state, which is why
+   * `organizeGroup` may run several of these at once.
+   */
+  private async transcodePlacement(p: PendingPlacement): Promise<void> {
+    if (p.samePath || !p.plan.wouldTranscode) return;
+    const transcodeStartedAt = Date.now();
+    try {
+      p.destPath = await transcodeToOpus(p.destPath, this.transcodeLossless.bitRate);
+      this.batchTranscoded++;
+    } catch (err) {
+      log.warn({ err, destPath: p.destPath }, 'lossless→opus transcode failed — keeping original');
+    } finally {
+      this.batchTranscodeMs += Date.now() - transcodeStartedAt;
+    }
+  }
+
+  /** Stage 3 — tag rewrite, provenance record and source-dir cleanup. */
+  private async finishPlacement(
+    p: PendingPlacement,
+    folderTags: AlbumTags,
+  ): Promise<'moved' | 'skipped' | 'unsorted' | 'failed'> {
+    const { file, plan, samePath } = p;
+    const destPath = p.destPath;
 
     // Tag rewrite step — run even when the file didn't move, so junk
     // album/artist tags from a prior run get cleaned up idempotently. Loose

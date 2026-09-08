@@ -71,7 +71,7 @@ the call graph. Measurement only — nothing branches on these numbers.
 | Line | Emitted by | Fields |
 | --- | --- | --- |
 | `addon job ingest complete` | `AddonJobPoller.pumpIngest`, once per ingested job | `addonId`, `coreJobId`, `files`, `queueWaitMs`, `queueDepth`, `fetchSumMs`, `fetchMaxMs`, `fetchBytes`, `organizeMs`, `scanMs`, `totalMs` |
-| `organize batch complete` | `LibraryOrganizer.organizeBatch` | `files`, `ms`, `transcoded`, `transcodeSumMs`, `tagWrites`, plus the `OrganizeResult` counters |
+| `organize batch complete` | `LibraryOrganizer.organizeBatch` | `files`, `ms`, `transcoded`, `transcodeSumMs`, `transcodeWallMs`, `tagWrites`, plus the `OrganizeResult` counters |
 | `Curator reclassified library` | `LibraryCurator.reclassify` | the existing classification counters, plus `reason`, `scope` (`all` or the id count), `updated` (rows actually written), `albumsScanned`, `songsScanned`, `durationMs` |
 | `addon poll returned` | `AddonJobPoller.pollAddon` | `addonId`, `cursor`, `returned` |
 
@@ -85,6 +85,10 @@ Three things worth knowing before reading the numbers:
   [addon protocol](acquisition-addon-protocol.md) defines as the bytes being on the addon's
   disk. Peer slowness is absorbed addon-side and never appears here. `transcodeSumMs` is
   usually the large number.
+- **`transcodeSumMs` is a CPU bill, `transcodeWallMs` is the wait.** The encodes run pooled
+  across a batch, so the sum of their durations exceeds the elapsed time whenever more
+  than one is in flight. Compare `transcodeWallMs` against `ms` to see what share of a
+  batch the encode really cost.
 - **`addon poll returned` is silent on empty polls.** A conforming addon honours `?since=`,
   so the steady state returns nothing and logs nothing; a line on an otherwise idle system
   means the addon is ignoring the cursor.
