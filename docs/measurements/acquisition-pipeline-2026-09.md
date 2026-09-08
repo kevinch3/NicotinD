@@ -18,16 +18,35 @@ Curator reclassified library   reason=full-sync
 
 Library size at the time: 7,454 albums / 20,530 songs / 2,596 release-meta rows / 8 acquisition jobs.
 
-**179 ms is the whole-library cost**, and before this pass it was paid *once per ingest batch* at the
+The same sweep on 0.6.16, after the scoping PR landed:
+
+```
+Curator reclassified library   reason=full-sync  scope=all  updated=0
+  albumsScanned 7454   songsScanned 20502   durationMs 75
+```
+
+| full-sync boot sweep | albums | songs | `updated` | durationMs |
+| --- | --- | --- | --- | --- |
+| 0.6.15 | 7,454 | 20,504 | n/a (field did not exist) | 179 |
+| 0.6.16 | 7,454 | 20,502 | **0** | **75** |
+
+One sample each, same host and same library, so read ~2.4x as approximate. The read work is identical
+between the two rows and the only work removed is the no-op writes, so the ~104 ms belongs to them.
+
+**`updated: 0` is the finding.** Every one of the 7,454 rows already held the verdict the classifier
+re-derived for it, which is what the steady state should look like and what the guard was written
+for. Before it, that sweep issued 7,454 `UPDATE`s into the WAL to write values that were already
+there. `scope: "all"` confirms the boot sweep correctly stays unscoped.
+
+**179 ms was the whole-library cost**, and before this pass it was paid *once per ingest batch* at the
 download seam. A 12-track album arriving in four batches spent ~0.7 s re-deciding 7,454 verdicts that
 could not have changed, and the URL-acquire lane paid it twice per job. Worth stating plainly: 179 ms
 is comparable to a *single* file's ffmpeg transcode, so this is not the pipeline's dominant cost — it
 is unbounded-growth work at a per-file seam, which is why it is worth removing regardless of its
 current size. The scoped path reads on the order of 14 rows for a 12-track album.
 
-The second half of the win is not in this number: the unscoped pass also issued up to 7,454 `UPDATE`s,
-almost all writing the value already in the row. `updated` in the new log line reports how many rows
-actually changed.
+The second half of the win is not in that number, and turned out to be the larger half — see the
+0.6.16 row above.
 
 ## Local (e2e fixtures) — per-job split
 
@@ -72,8 +91,10 @@ container and peer slowness is absorbed addon-side. The original motivation for 
 slow peer blocks every other addon" — was wrong on protocol grounds before any measurement, and no
 measurement can revive it.
 
-**Neither is scheduled.** Re-measure after real acquisition traffic reaches a 0.6.15+ prod: pull
-`addon job ingest complete` from `docker logs` and append the rows here.
+**Neither is scheduled.** Re-measure after real acquisition traffic reaches prod: pull
+`addon job ingest complete` from `docker logs` and append the rows here. As of 0.6.16 being live there
+are still **zero** ingest receipts and zero scoped (`scan-incremental` / `enrich-singles`) reclassifies
+on prod, so the scoped path itself is verified by the unit and e2e suites but not yet by production.
 
 ## What shipped from this pass
 
@@ -81,4 +102,4 @@ measurement can revive it.
 | --- | --- | --- |
 | the log lines above | `chore` | rode 0.6.15 |
 | serialize the shared `LibraryOrganizer` (#1026) | `fix` | 0.6.15 |
-| reclassify only the albums a scan touched | `perf` | this PR |
+| reclassify only the albums a scan touched | `perf` | 0.6.16 |
