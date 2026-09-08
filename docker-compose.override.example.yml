@@ -16,6 +16,15 @@
 # persistenced problem can never wedge the deploy that also carries your essential
 # bind mounts below. See that file's header + docs/deployment.md.
 #
+# Enabling that overlay means naming every file yourself: `-f` (or COMPOSE_FILE)
+# switches OFF the automatic merge of this file, and it must come LAST:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
+#     -f docker-compose.override.yml up -d
+#
+# Compose merges volumes by container target, last file wins, so the reverse order
+# puts the empty `music` named volume back over your bind (#1009).
+#
 # See docker-compose.yml for the full service definitions this overrides.
 
 services:
@@ -25,10 +34,10 @@ services:
     # `build:` set, `docker compose up --build` builds and tags the result
     # under the image name.
     build: .
-    # NOTE: compose MERGES this file into docker-compose.yml, but a LIST here
-    # REPLACES the base list rather than appending to it. That is why both mounts
-    # are spelled out below even though the base file already has them — and it
-    # is why the base file's Docker-socket mount does not survive this block.
+    # NOTE: compose merges `volumes:` by container TARGET, last file wins — a list
+    # here neither appends to nor wipes the base list. That is why the bind below
+    # takes over `/data/music` from the named volume, while a base mount this block
+    # never names stays exactly as docker-compose.yml declares it.
     volumes:
       - ~/.nicotind:/data/nicotind
       - /path/to/your/music:/data/music
@@ -64,6 +73,24 @@ services:
     ports:
       - "5030:5030"
 
+  # Opt-in (`profiles: ["slskd-addon"]`) — inert unless you activate that profile,
+  # but it reads the library over the same mount, so it needs the bind too.
+  # SLSKD_ADDON_MUSIC_DIR points at /data/music; without this it resolves nothing.
+  slskd-addon:
+    volumes:
+      - slskd-addon-data:/data
+      - /path/to/your/music:/data/music:ro
+
   lidarr:
     volumes:
       - /path/to/your/music:/data/music
+
+  # The GPU vocal separator (docs/vocal-separation.md) is defined ONLY in
+  # docker-compose.gpu.yml, so this block cannot be live here: CI validates
+  # `-f docker-compose.yml -f docker-compose.override.example.yml`, and compose
+  # rejects a service the base file never defines. Uncomment it in YOUR copy when
+  # you enable that overlay — without it the separator reads the empty named
+  # volume and finds no audio (#1009).
+  # separator:
+  #   volumes:
+  #     - /path/to/your/music:/data/music:ro

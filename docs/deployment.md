@@ -182,6 +182,39 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml
 ```
 
+**If your music is a bind mount, name your override too — after the overlay.**
+Naming files with `-f` (or `COMPOSE_FILE`) switches OFF the automatic
+`docker-compose.override.yml` merge, so the file holding your bind mounts is simply
+not read unless you list it:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
+  -f docker-compose.override.yml up -d
+# or, in .env:
+COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml:docker-compose.override.yml
+```
+
+The order is load-bearing and getting it wrong is silent: compose merges `volumes:`
+by container *target*, last file wins. With the override ahead of the overlay, the
+overlay's `music:/data/music` named volume replaces your bind and the container
+starts, finds nothing, and says nothing (issue #1009). Verified both ways with
+`docker compose config`. **Skip this entirely if the host has no
+`docker-compose.override.yml`** — it is gitignored, so a named-volume host
+legitimately has none, and compose hard-errors on a listed file that does not exist
+(`stat …/docker-compose.override.yml: no such file or directory`).
+
+That override also needs a `separator:` block of its own: `separator` exists only in
+the overlay, and the overlay gives it the named volume.
+`docker-compose.override.example.yml` ships that block **commented out** — a live one
+would fail CI's `docker compose -f docker-compose.yml -f
+docker-compose.override.example.yml config -q`, because the base file does not define
+the service ("has neither an image nor a build context"). `slskd-addon` has the same
+shape from `docker-compose.yml` (opt-in `profiles: ["slskd-addon"]`, so it only bites
+a host that activates that profile) and the example carries it as a live block.
+`scripts/compose-music-mounts.test.ts` derives that list from the compose files, so a
+new service on the music volume fails the suite instead of shipping a silently empty
+mount.
+
 **Why a separate overlay, not the override file.** The device reservation below
 is a *hard* reservation: if the host can't satisfy the GPU injection the
 `analysis` container fails to start (there is no runtime-level CPU fallback — the
