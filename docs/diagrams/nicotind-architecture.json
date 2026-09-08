@@ -1,0 +1,432 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "NicotinD \u2014 Acquisition and Streaming Architecture",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1390,
+      545
+    ],
+    "repository": {
+      "url": "https://github.com/kevinch3/NicotinD",
+      "revision": "237a3f89eea8699893a97b5ce1d30eaff84eb36c"
+    },
+    "views": [
+      {
+        "id": "serve",
+        "label": "Serving a track",
+        "focus": [
+          "clients",
+          "auth",
+          "api",
+          "db",
+          "musicdir"
+        ],
+        "note": "Catalog answers come from SQLite; audio bytes are read straight off the music folder."
+      },
+      {
+        "id": "acquire",
+        "label": "Acquiring music",
+        "focus": [
+          "api",
+          "poller",
+          "addons",
+          "downloads"
+        ],
+        "note": "Core owns no source-specific code \u2014 addons run as separate services behind the addon protocol."
+      },
+      {
+        "id": "ingest",
+        "label": "Landing it in the library",
+        "focus": [
+          "downloads",
+          "organizer",
+          "musicdir",
+          "scanner",
+          "db"
+        ],
+        "note": "Staged files are organized onto disk, then incrementally re-scanned into the canonical catalog."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "mcp",
+      "type": "external",
+      "label": "MCP Curator",
+      "sublabel": "scoped agent tokens",
+      "tag": "refiner:curate",
+      "pos": [
+        30,
+        50
+      ],
+      "size": [
+        180,
+        76
+      ],
+      "sources": [
+        {
+          "path": "packages/api/src/routes/mcp.ts",
+          "label": "MCP route"
+        }
+      ]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Auth & Roles",
+      "sublabel": "JWT sessions \u00b7 agent tokens",
+      "pos": [
+        410,
+        50
+      ],
+      "size": [
+        200,
+        76
+      ],
+      "sources": [
+        {
+          "path": "packages/api/src/routes/auth.ts",
+          "label": "auth routes"
+        }
+      ]
+    },
+    {
+      "id": "clients",
+      "type": "frontend",
+      "label": "Player Clients",
+      "sublabel": "Angular SPA \u00b7 Capacitor \u00b7 Electron",
+      "tag": "one web build",
+      "pos": [
+        30,
+        200
+      ],
+      "size": [
+        220,
+        96
+      ],
+      "sources": [
+        {
+          "path": "packages/web/src/main.ts",
+          "label": "Angular v22 SPA"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "NicotinD API",
+      "sublabel": "Hono \u00b7 :8484",
+      "tag": "single Bun process",
+      "pos": [
+        400,
+        200
+      ],
+      "size": [
+        220,
+        96
+      ],
+      "sources": [
+        {
+          "path": "src/main.ts",
+          "line": 26,
+          "label": "startup"
+        },
+        {
+          "path": "packages/api/src/index.ts",
+          "line": 132,
+          "label": "createApp"
+        }
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "SQLite Library",
+      "sublabel": "canonical catalog",
+      "pos": [
+        1160,
+        200
+      ],
+      "size": [
+        200,
+        96
+      ],
+      "sources": [
+        {
+          "path": "packages/api/src/db.ts",
+          "label": "schema + queries"
+        }
+      ]
+    },
+    {
+      "id": "poller",
+      "type": "backend",
+      "label": "AddonJobPoller",
+      "sublabel": "acquisition addon protocol v1",
+      "pos": [
+        30,
+        420
+      ],
+      "size": [
+        200,
+        88
+      ],
+      "sources": [
+        {
+          "path": "packages/api/src/services/addons/job-poller.ts",
+          "line": 106,
+          "label": "AddonJobPoller"
+        }
+      ]
+    },
+    {
+      "id": "addons",
+      "type": "external",
+      "label": "Acquisition Addons",
+      "sublabel": "slskd \u00b7 archive \u00b7 ytdlp \u00b7 spotdl",
+      "tag": "own repos + images",
+      "pos": [
+        260,
+        420
+      ],
+      "size": [
+        200,
+        88
+      ],
+      "sources": [
+        {
+          "path": "packages/api/src/services/addons/client.ts",
+          "line": 115,
+          "label": "AddonClient"
+        }
+      ]
+    },
+    {
+      "id": "downloads",
+      "type": "cloud",
+      "label": "Download Staging",
+      "sublabel": "shared .downloads/ folder",
+      "pos": [
+        490,
+        420
+      ],
+      "size": [
+        190,
+        88
+      ]
+    },
+    {
+      "id": "organizer",
+      "type": "backend",
+      "label": "LibraryOrganizer",
+      "sublabel": "names + moves on disk",
+      "pos": [
+        710,
+        420
+      ],
+      "size": [
+        200,
+        88
+      ],
+      "sources": [
+        {
+          "path": "packages/api/src/services/library-organizer.ts",
+          "line": 145,
+          "label": "LibraryOrganizer"
+        }
+      ]
+    },
+    {
+      "id": "musicdir",
+      "type": "cloud",
+      "label": "Music Library",
+      "sublabel": "NICOTIND_MUSIC_DIR",
+      "pos": [
+        940,
+        420
+      ],
+      "size": [
+        190,
+        88
+      ]
+    },
+    {
+      "id": "scanner",
+      "type": "backend",
+      "label": "LibraryScanner",
+      "sublabel": "incremental tag scan",
+      "pos": [
+        1160,
+        420
+      ],
+      "size": [
+        200,
+        88
+      ],
+      "sources": [
+        {
+          "path": "packages/api/src/services/library-scanner.ts",
+          "line": 789,
+          "label": "LibraryScanner"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "Authenticated /api surface",
+      "wraps": [
+        "auth",
+        "api"
+      ],
+      "pad": 14
+    }
+  ],
+  "connections": [
+    {
+      "id": "clients-to-api",
+      "from": "clients",
+      "to": "api",
+      "label": "HTTPS \u00b7 WebSocket",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelDy": 40
+    },
+    {
+      "id": "mcp-to-api",
+      "from": "mcp",
+      "to": "api",
+      "label": "curation tools",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "auth-guard",
+      "from": "auth",
+      "to": "api",
+      "label": "verify JWT / agent token",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "api-sql",
+      "from": "api",
+      "to": "db",
+      "label": "SQL reads + writes",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "api-stream",
+      "from": "api",
+      "to": "musicdir",
+      "label": "range-streams audio bytes",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "api-schedules-poller",
+      "from": "api",
+      "to": "poller",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "poll-addons",
+      "from": "poller",
+      "to": "addons",
+      "label": "polls job status over HTTP",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelDy": -38
+    },
+    {
+      "id": "addons-write",
+      "from": "addons",
+      "to": "downloads",
+      "label": "writes finished files",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelDy": -38
+    },
+    {
+      "id": "organize",
+      "from": "downloads",
+      "to": "organizer",
+      "label": "picks up staged files",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelDy": -38
+    },
+    {
+      "id": "organized-onto-disk",
+      "from": "organizer",
+      "to": "musicdir",
+      "label": "moves into place",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelDy": -38
+    },
+    {
+      "id": "scan-disk",
+      "from": "musicdir",
+      "to": "scanner",
+      "label": "reads audio tags",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelDy": -38
+    },
+    {
+      "id": "scan-into-db",
+      "from": "scanner",
+      "to": "db",
+      "label": "upserts catalog rows",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Clients",
+      "items": [
+        "One Angular build ships as web, Capacitor mobile/TV and Electron desktop",
+        "Native shells point at any server through a runtime-configurable API base URL"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Acquisition",
+      "items": [
+        "Core carries zero source-specific code \u2014 every source is an external addon",
+        "AddonJobPoller drives jobs over the addon protocol; addons drop files in the shared staging folder"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Library",
+      "items": [
+        "Organizer names and moves files, scanner incrementally re-tags them into SQLite",
+        "Streaming reads bytes straight off the music folder; SQLite answers everything else"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Access",
+      "items": [
+        "JWT sessions for people, scoped agent tokens for MCP curation",
+        "Every /api group must make an explicit auth decision (check:route-auth)"
+      ]
+    }
+  ]
+}
