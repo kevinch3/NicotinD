@@ -51,3 +51,9 @@ packages/web/documentation.json
 # (`tar -xz actionlint`), so anyone running that step locally ends up with a 5 MB
 # executable sitting next to package.json — easy to `git add -A` by accident.
 /actionlint
+
+# Rendered archify diagrams and their verification sidecars. Only the hand-authored
+# `<name>.json` spec is tracked; the ~700 KB HTML, the visual-check screenshots and its
+# receipt are all build outputs. Rebuild per docs/diagrams/README.md.
+docs/diagrams/*.html
+docs/diagrams/*.visual-check.*
