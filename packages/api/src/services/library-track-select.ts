@@ -71,6 +71,45 @@ export interface SelectableTrack {
  * Pure and deterministic: ties break on the lexicographically smallest relPath
  * so repeated scans always keep the same file. Returns the kept tracks.
  */
+/**
+ * The canonical tracklist entry a file belongs to, or null if none matches.
+ *
+ * why not `canon.find(...)`: `titlesOverlap` admits at 70% word overlap, and two
+ * alternate mixes of one song share far more than that in boilerplate — measured
+ * on prod, "If I Fall (Would You Let Me?) (Phats and Small mix)" and the same
+ * song's "(Drum and Latin version)" share 8 of 11 words, or 0.727. `find`
+ * returned whichever entry came *first* in the list, so the Drum mix bound to the
+ * Phats mix's entry, both files keyed identically, and one of two genuinely
+ * different tracks was dropped from the library while staying on disk (#1034).
+ *
+ * An exact normalized match wins outright; otherwise the highest overlap does,
+ * ties going to the earlier entry so the choice stays deterministic. Admission is
+ * unchanged — still gated on `titlesOverlap` — so this only ever changes *which*
+ * passing entry is chosen, never whether a file is admitted.
+ *
+ * Residual limit worth knowing: when the canonical list names only one of two
+ * mixes present on disk, both still bind to that entry and one is still dropped.
+ * Fixing that needs a one-to-one assignment between files and entries, which this
+ * deliberately does not attempt.
+ */
+function canonicalEntryFor(canon: readonly string[], norm: string): string | null {
+  let best: string | null = null;
+  let bestScore = 0;
+  const fWords = new Set(norm.split(' ').filter(Boolean));
+  for (const c of canon) {
+    if (c === norm) return c;
+    if (!titlesOverlap(c, norm)) continue;
+    const cWords = c.split(' ').filter(Boolean);
+    if (cWords.length === 0) continue;
+    const score = cWords.filter((w) => fWords.has(w)).length / cWords.length;
+    if (score > bestScore) {
+      best = c;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
 export function selectAlbumTracks<T extends SelectableTrack>(
   tracks: T[],
   canonicalTitles?: readonly string[] | null,
@@ -115,7 +154,7 @@ export function selectAlbumTracksDetailed<T extends SelectableTrack>(
     // only copy of one (#968).
     const key = `${disc}:${
       useCanonical && !knownRelPaths?.has(t.relPath)
-        ? (canon.find((c) => titlesOverlap(c, norm)) ?? norm)
+        ? (canonicalEntryFor(canon, norm) ?? norm)
         : norm
     }`;
 
