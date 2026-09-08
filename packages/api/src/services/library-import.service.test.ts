@@ -80,6 +80,7 @@ function fakeOrganize(behavior: (file: CompletedDownloadFile) => FileBehavior = 
       dedupedBasenames: [],
       deletedRelPaths: [],
       affectedAlbumDirs: [],
+      supersededRelPaths: {},
     };
     for (const f of files) {
       const b = behavior(f);

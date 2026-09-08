@@ -107,6 +107,13 @@ export interface OrganizeResult {
   dedupedBasenames: string[];
   /** Music-dir-relative paths of files removed by reconciliation this batch. */
   deletedRelPaths: string[];
+  /**
+   * Music-dir-relative deleted path → the path that survived in its place.
+   * A batch file collapsed into an existing copy is a *successful* acquisition
+   * of a track the library already held; the caller needs the survivor's path
+   * so the record it keeps points at a file that exists (#1032).
+   */
+  supersededRelPaths: Record<string, string>;
   /** Absolute canonical album dirs touched this batch (for album-scoped rescan). */
   affectedAlbumDirs: string[];
 }
@@ -153,6 +160,7 @@ function emptyOrganizeResult(): OrganizeResult {
     dedupedBasenames: [],
     deletedRelPaths: [],
     affectedAlbumDirs: [],
+    supersededRelPaths: {},
   };
 }
 
@@ -251,6 +259,7 @@ export class LibraryOrganizer {
       unsorted: 0,
       failed: 0,
       dedupedBasenames: [],
+      supersededRelPaths: {},
       deletedRelPaths: [],
       affectedAlbumDirs: [],
     };
@@ -277,6 +286,7 @@ export class LibraryOrganizer {
       result.deletedRelPaths = r.deletedRelPaths;
       result.affectedAlbumDirs = r.affectedAlbumDirs;
       result.dedupedBasenames = r.deletedRelPaths.map((p) => basename(p).toLowerCase());
+      result.supersededRelPaths = r.supersededRelPaths;
     } else {
       result.affectedAlbumDirs = [...this.touchedAlbumDirs];
     }
@@ -299,18 +309,32 @@ export class LibraryOrganizer {
   async reconcileTouched(
     dirs: string[],
     canonicalTitlesLookup?: (dir: string) => readonly string[] | null,
-  ): Promise<{ deletedRelPaths: string[]; affectedAlbumDirs: string[] }> {
+  ): Promise<{
+    deletedRelPaths: string[];
+    affectedAlbumDirs: string[];
+    supersededRelPaths: Record<string, string>;
+  }> {
     const deletedRelPaths: string[] = [];
+    const supersededRelPaths: Record<string, string> = {};
+    const toRel = (dir: string, name: string) =>
+      relative(this.musicDir, join(dir, name)).split(sep).join('/');
     for (const dir of dirs) {
       const canonical = canonicalTitlesLookup?.(dir) ?? null;
-      const { deletedNames } = await reconcileAlbumFolder(dir, canonical, { apply: true });
+      const { deletedNames, supersededBy } = await reconcileAlbumFolder(dir, canonical, {
+        apply: true,
+      });
       for (const name of deletedNames) {
-        const rel = relative(this.musicDir, join(dir, name)).split(sep).join('/');
+        const rel = toRel(dir, name);
         deletedRelPaths.push(rel);
-        log.info({ dir, dropped: name }, 'Reconcile removed a duplicate copy');
+        const winner = supersededBy[name];
+        if (winner) supersededRelPaths[rel] = toRel(dir, winner);
+        log.info(
+          { dir, dropped: name, keptInstead: winner ?? null },
+          'Reconcile removed a duplicate copy',
+        );
       }
     }
-    return { deletedRelPaths, affectedAlbumDirs: dirs };
+    return { deletedRelPaths, affectedAlbumDirs: dirs, supersededRelPaths };
   }
 
   /**

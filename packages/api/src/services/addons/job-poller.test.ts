@@ -72,6 +72,8 @@ function harness(
     fetchFile?: () => Promise<Response>;
     /** Defaults to 0 so the stranded sweep runs every tick under test. */
     strandedSweepIntervalMs?: number;
+    /** Organized relPath → the copy the dedupe kept in its place (#1032). */
+    supersede?: Record<string, string>;
   } = {},
 ) {
   const db = new Database(':memory:');
@@ -107,11 +109,16 @@ function harness(
     strandedSweepIntervalMs: opts.strandedSweepIntervalMs ?? 0,
     organizer: {
       organizeBatch: async (files) => {
+        const supersededRelPaths: Record<string, string> = {};
         for (const f of files) {
           organized.push(f);
           f.relativePath = `Artist/Album/${f.filename.split('/').pop()}`;
+          // Model the real organizer: it stamps the path it wrote, then the
+          // dedupe pass may unlink that file in favour of one already held.
+          const winner = opts.supersede?.[f.relativePath];
+          if (winner) supersededRelPaths[f.relativePath] = winner;
         }
-        return {};
+        return { supersededRelPaths };
       },
     },
     scan: (relPaths) => {
@@ -225,6 +232,53 @@ describe('AddonJobPoller', () => {
 
       // Fully ingested + terminal → released addon-side.
       expect(h.deleted).toEqual(['aj-1']);
+    });
+
+    it('records the surviving copy when dedupe collapses the acquired file (#1032)', async () => {
+      // Prod shape: the album already held `01 - Song One.mp3`, so the organizer
+      // stamped the path it wrote and the dedupe pass then unlinked it. Recording
+      // the dead path stranded the item at `organized` forever, and its job at
+      // `stage=scanning`, for an acquisition that had actually succeeded.
+      h = harness(() => jobsData, undefined, {
+        supersede: { 'Artist/Album/01 Song One.mp3': 'Artist/Album/01 - Song One.mp3' },
+      });
+      await h.registry.enable('fixture-addon', 'admin');
+      jobsData = [
+        makeJob({
+          state: 'done',
+          updatedAt: 4000,
+          items: [{ ...makeJob().items[0]!, state: 'completed', fileReady: true, updatedAt: 4000 }],
+        }),
+      ];
+      await h.poller.tick();
+      await h.poller.idle();
+
+      const item = h.db
+        .query<{ state: string; relative_path: string }, []>(`SELECT * FROM acquisition_job_items`)
+        .get()!;
+      // The path that survived on disk, not the one that was deleted.
+      expect(item.relative_path).toBe('Artist/Album/01 - Song One.mp3');
+      // And the scan is asked about a file that exists, so the item can resolve.
+      expect(h.scanned[0]).toEqual(['Artist/Album/01 - Song One.mp3']);
+    });
+
+    it('leaves the recorded path alone when nothing was superseded', async () => {
+      h = harness(() => jobsData, undefined, { supersede: {} });
+      await h.registry.enable('fixture-addon', 'admin');
+      jobsData = [
+        makeJob({
+          state: 'done',
+          updatedAt: 4000,
+          items: [{ ...makeJob().items[0]!, state: 'completed', fileReady: true, updatedAt: 4000 }],
+        }),
+      ];
+      await h.poller.tick();
+      await h.poller.idle();
+
+      const item = h.db
+        .query<{ relative_path: string }, []>(`SELECT * FROM acquisition_job_items`)
+        .get()!;
+      expect(item.relative_path).toBe('Artist/Album/01 Song One.mp3');
     });
   });
 

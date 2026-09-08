@@ -79,7 +79,11 @@ export interface AddonJobPollerDeps {
   registry: PluginRegistry;
   /** Private landing area for fetched files (outside musicDir — not indexed). */
   incomingDir: string;
-  organizer: { organizeBatch: (files: CompletedDownloadFile[]) => Promise<unknown> };
+  organizer: {
+    organizeBatch: (
+      files: CompletedDownloadFile[],
+    ) => Promise<{ supersededRelPaths?: Record<string, string> }>;
+  };
   scan?: (relPaths: string[]) => Promise<void> | void;
   intervalMs?: number;
   /**
@@ -728,8 +732,15 @@ export class AddonJobPoller {
 
     if (!batch.length) return null;
     const organizeStartedAt = Date.now();
+    // Deleted path → the copy that survived in its place. The organizer stamps
+    // `file.relativePath` and only *then* collapses duplicates, so a file whose
+    // track the library already held is unlinked after its path was recorded.
+    // Discarding this map left the item pointing at a path nothing could ever
+    // resolve, stranding it at `organized` and its whole job at `stage=scanning`
+    // until the 24 h valve wrote off an acquisition that had actually succeeded.
+    let superseded: Record<string, string> = {};
     try {
-      await this.deps.organizer.organizeBatch(batch);
+      superseded = (await this.deps.organizer.organizeBatch(batch)).supersededRelPaths ?? {};
     } catch (err) {
       log.warn({ addonId, err }, 'organize step failed for addon batch');
     }
@@ -739,6 +750,14 @@ export class AddonJobPoller {
     const relPaths: string[] = [];
     for (const [i, file] of batch.entries()) {
       if (!file.relativePath) continue; // organizer mutates on success
+      const survivor = superseded[file.relativePath];
+      if (survivor) {
+        log.info(
+          { addonId, coreJobId, dropped: file.relativePath, keptInstead: survivor },
+          'acquired file collapsed into an existing copy',
+        );
+        file.relativePath = survivor;
+      }
       relPaths.push(file.relativePath);
       this.deps.db.run(
         `UPDATE acquisition_job_items SET state = 'organized', relative_path = ?, updated_at = ?

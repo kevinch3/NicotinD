@@ -30,6 +30,33 @@ describe('chooseFolderKeepers', () => {
     expect(deletedNames).toEqual(['02 - Circus.mp3']);
   });
 
+  it('reports which keeper each dropped copy lost to (#1032)', () => {
+    // The prod shape: an acquisition brought .opus copies of tracks the album
+    // already held as .mp3. Reporting only that a file was deleted left the
+    // acquisition item pointing at it, so it could never resolve.
+    const files = [
+      f('01 - Pobre angelito.mp3', 'Pobre Angelito', 'mp3', 320),
+      f('Pobre Angelito.opus', 'Pobre Angelito', 'opus', 128),
+      f('Turbulencias.opus', 'Turbulencias', 'opus', 128),
+    ];
+    const { deletedNames, supersededBy } = chooseFolderKeepers(files);
+    expect(deletedNames).toEqual(['Pobre Angelito.opus']);
+    expect(supersededBy).toEqual({ 'Pobre Angelito.opus': '01 - Pobre angelito.mp3' });
+    // The track with no rival is kept and is nobody's casualty.
+    expect(supersededBy['Turbulencias.opus']).toBeUndefined();
+  });
+
+  it('maps every casualty when three copies collapse to one', () => {
+    const files = [
+      f('a.mp3', 'Circus', 'mp3', 192),
+      f('b.flac', 'Circus', 'flac', 900),
+      f('c.mp3', 'Circus', 'mp3', 320),
+    ];
+    const { deletedNames, supersededBy } = chooseFolderKeepers(files);
+    expect(deletedNames.sort()).toEqual(['a.mp3', 'c.mp3']);
+    expect(supersededBy).toEqual({ 'a.mp3': 'b.flac', 'c.mp3': 'b.flac' });
+  });
+
   it('within one format keeps the higher bitrate', () => {
     const files = [f('a.mp3', 'Toxic', 'mp3', 192), f('b.mp3', 'Toxic', 'mp3', 320)];
     const { keptNames } = chooseFolderKeepers(files);
