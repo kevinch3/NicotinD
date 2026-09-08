@@ -109,12 +109,45 @@ carrying a second copy.
 |---|---|---|---|
 | `MAX_ENTRY_CHARS` | 440 | entries in **either** file | measured max **prose** 371 after the restructure |
 | `MAX_CLAUDE_MD_BYTES` | 20,000 | `CLAUDE.md` | the per-request cost. 12.4 KB after #934 relocated the index |
-| `MAX_INDEX_BYTES` | 60,000 | `docs/index.md` | 47.3 KB after the move; generous because the cost is paid on demand |
+| `MAX_INDEX_BYTES` | 70,000 | `docs/index.md` | raised from 60,000 on 2026-09-08 — see "When a cap is the thing that is wrong" below |
 | `MIN_PLAUSIBLE_ENTRIES` | 60 | `docs/index.md` **only** | the gate's own denominator (155 parse today) |
 
 `MIN_PLAUSIBLE_ENTRIES` is asserted against `docs/index.md`, not `CLAUDE.md`.
 Pointing it at CLAUDE.md after the relocation would make it pass vacuously:
 that file now parses a handful of Surfaces entries and is no longer an index.
+
+### When a cap is the thing that is wrong
+
+On 2026-09-07 master went red on the headroom test, and the story is worth
+keeping because neither half of it is the obvious one.
+
+**It was not the budget that failed.** `docs/index.md` was 55,186 bytes against
+a 60,000 cap — `check:claude-md` itself was green. What went red was the test
+asserting the cap keeps **>5,000 bytes of headroom**, a check on the *threshold*
+rather than on the file. That is the gate working as designed: it fires while
+there is still room, so that the fix is a decision instead of an emergency.
+
+**No single PR did it.** #1004 and #1005 each added an index entry, each trimmed
+until it fit, and each went green on its own branch. A branch measures itself
+against a master that does not yet contain the other branch's line, so a
+per-branch budget gate is structurally blind to the sum; master is the first
+place that sum exists. The 5,000-byte floor *is* the slack that absorbs this,
+which is why spending it down is not a fix.
+
+**Trimming further was the wrong answer, and that was already measured.** #1006
+reopened master by squeezing the index to 95 bytes inside the floor — a flush cap
+under a different name, one entry away from red. Meanwhile
+[claude-md-compression-2026-09.md](measurements/claude-md-compression-2026-09.md)
+had already put 55 agents over three passes on exactly this question: the best
+**correct** compression was -0.9%, and the aggressive merging that reached -32%
+invented 48 claims. At 178 entries averaging ~308 bytes against a 440-char entry
+cap, the index is at its shape, not padded. Its size is the number of mechanisms
+this repo has, and that number legitimately grows.
+
+So the cap moved to 70,000 — ~15 KB, about 48 entries of runway — in a commit
+that says why, which is exactly what the header of `check-claude-md.ts` asks for.
+`MAX_CLAUDE_MD_BYTES` was left alone: that is the per-request cost, and it is
+still the number to defend.
 
 The two byte budgets are deliberately different sizes, and the split is the
 point of the gate rather than an accident of it. `CLAUDE.md` is paid on every

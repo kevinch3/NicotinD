@@ -488,7 +488,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   instead of guessing; `curation_flags`, `createCurationFlag`, `flag_for_review`, one open flag per
   target. → [mcp-agent.md](mcp-agent.md)
 - **Listener track reports**: listeners file into that same queue; `TRACK_REPORT_REASONS`,
-  `recordListenerReport`, `curation_flag_reports`, `isTasteOnly`. → [mcp-agent.md](mcp-agent.md)
+  `recordListenerReport`, `curation_flag_reports` (the per-reporter rate limit), `isTasteOnly`.
+  → [mcp-agent.md](mcp-agent.md)
 - **Admin audit log**: `audit_log` + `recordAudit` called explicitly at destructive mutation sites,
   never as blanket middleware; entries carry `targetKind`/`targetId`/`detail`, and ledger failures
   never break the audited action. → [roles.md](roles.md)
@@ -498,8 +499,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 ### Web UI patterns
 
 - **A vertical scroller constrains both axes**: `overflow-y-auto` alone computes `overflow-x` to
-  `auto`, so a sheet scrolls sideways and `truncate` never applies.
-  → [web-ui.md](web-ui.md)
+  `auto`, so a sheet scrolls sideways and `truncate` never applies; pinned by
+  `now-playing-scroll-axes.spec.ts`. → [web-ui.md](web-ui.md)
 - **Now Playing sheet**: `nowPlayingHeading` names the session (radio wins over the context it
   extended); `coverCollapsed` drops the cover padding at the notch's zero floor; `monoEnvelopePath`
   folds the waveform onto the seek line; `LongPress` makes hold-shuffle start a radio.
