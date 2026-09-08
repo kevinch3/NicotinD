@@ -67,9 +67,13 @@ const exempt = new Map(
 );
 
 describe('every service on the music named volume has a bind counterpart (#1009)', () => {
-  test('the service list is derived from compose, and both files contribute', () => {
+  test('the service list is derived from compose, over every file that can mount music', () => {
     expect(namedVolumeServices.length).toBeGreaterThan(3);
-    expect(musicMounts(gpu).length).toBeGreaterThan(0);
+    // The GPU overlay contributes none today: `separator` was its only music
+    // mount and went with the ML removal (#1024). The overlay is still read
+    // above so a future GPU service is covered the moment it is added — which
+    // is the whole point of deriving the list instead of restating it.
+    expect(musicMounts(gpu).length).toBe(0);
   });
 
   test('each one has a bind counterpart, or a documented exemption', () => {
@@ -109,7 +113,12 @@ describe('the example override stays valid against the base file alone', () => {
 
   test('an overlay-only service is covered by commented guidance instead', () => {
     const overlayOnly = namedVolumeServices.filter((service) => !baseServices.has(service));
-    expect(overlayOnly.length).toBeGreaterThan(0);
+    // Currently empty (see above), so this loop asserts nothing today. Stated
+    // rather than guarded by a `> 0` denominator check, because that check
+    // would now fail for the honest reason and the fix would be to weaken it —
+    // the exact move docs/quality-gates.md forbids. The rule still runs the
+    // instant an overlay defines its own music-mounted service.
+    expect(overlayOnly).toEqual([]);
     for (const service of overlayOnly) {
       const covered = exampleMounts.some((m) => m.service === service && m.commented);
       expect({ service, covered: covered || exempt.has(service) }).toEqual({

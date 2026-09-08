@@ -308,9 +308,6 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   mood, vocals, acousticness and cached embeddings from the Essentia sidecar; all written to file tags
   and COALESCE-preserved columns. `library_embeddings`, `embedding-store.ts`.
   → [audio-ml-enrichment.md](audio-ml-enrichment.md), [radio.md](radio.md)
-- **Vocal-separation sidecar (GPU-only)**: `packages/separator/` mirrors the analysis sidecar;
-  `SeparationWorker`, `chunk_windows`, `arch_supported`, `ensure_sdp_kernel_shim`.
-  → [vocal-separation.md](vocal-separation.md)
 - **Audio descriptors — timbre / groove / spectral balance**: sidecar `/descriptors` + store (phase
   1), then three composite radio axes (phase 2, formula v8): `descriptorBlocks` splits a row into
   `TIMBRE_NAMES`/`GROOVE_NAMES`/`BAND_NAMES`, scored by `blockCosineCloseness` and
@@ -375,9 +372,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   above the tabs, and `lg:` is two columns. → [web-ui.md](web-ui.md)
 - **Lyrics + karaoke**: `metadata` plugin kind + `lyrics` capability (LRCLIB) in `library_lyrics`
   + file tag; karaoke panel with synced highlighting, fullscreen auto-follow, and a `?vocals=off`
-  mute that is basic center-cancel or the opt-in ML stem: `readyStemPath`,
-  `VocalSeparationService`, `shouldServeVocalsOff`.
-  → [design-patterns.md](design-patterns.md), [vocal-separation.md](vocal-separation.md)
+  center-cancel mute cached as its own `novox` transcode variant.
+  → [design-patterns.md](design-patterns.md), [vocal-isolation-spike.md](vocal-isolation-spike.md)
 - **Now Playing waveform + karaoke VFX**: rendered from a precomputed artifact.
   → [audio-ml-enrichment.md](audio-ml-enrichment.md)
 - **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a

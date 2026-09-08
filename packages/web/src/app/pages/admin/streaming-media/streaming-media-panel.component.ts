@@ -7,7 +7,6 @@ import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { SystemApiService } from '../../../services/api/system-api.service';
 import type { StreamingSettings } from '../../../services/api/api-types';
 import { TranslateService } from '../../../services/translate.service';
-import { VocalSeparationSettingsService } from '../../../services/vocal-separation-settings.service';
 
 /** Admin card for the streaming/transcode settings (docs/library-scanner.md). */
 @Component({
@@ -20,8 +19,6 @@ import { VocalSeparationSettingsService } from '../../../services/vocal-separati
 export class StreamingMediaPanelComponent implements OnInit {
   private readonly api = inject(SystemApiService);
   private readonly i18n = inject(TranslateService);
-  /** ML vocal-separation opt-in (issue #603) — shared with the processing panel's pill. */
-  protected readonly vocalSep = inject(VocalSeparationSettingsService);
 
   readonly streaming = signal<StreamingSettings | null>(null);
   readonly streamingSaving = signal(false);
@@ -29,7 +26,6 @@ export class StreamingMediaPanelComponent implements OnInit {
 
   ngOnInit(): void {
     void this.loadStreaming();
-    this.vocalSep.load();
   }
 
   private async loadStreaming(): Promise<void> {

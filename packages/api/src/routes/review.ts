@@ -119,13 +119,6 @@ export interface ServiceReview {
       /** Reachable and reporting models loaded. */
       healthy: boolean;
     };
-    /** BS-RoFormer vocal-separation sidecar, GPU-only (issue #603). */
-    separator: {
-      /** NICOTIND_SEPARATOR_URL is set (the GPU overlay is in use). */
-      configured: boolean;
-      /** Reachable and reporting `ok` (cold counts as ok, like the analysis sidecar). */
-      healthy: boolean;
-    };
   };
   /**
    * Lidarr + MusicBrainz call outcomes over a rolling window (issue #670).
@@ -174,8 +167,6 @@ export interface ReviewSubFns {
   scanStatus: () => Promise<{ scanning: boolean; count: number }>;
   /** Analysis-sidecar reachability. Default reads `deps.analysisClient`. */
   analysisStatus: () => Promise<{ configured: boolean; healthy: boolean }>;
-  /** Separator-sidecar reachability. Default reads `deps.separatorClient`. */
-  separatorStatus: () => Promise<{ configured: boolean; healthy: boolean }>;
   /** Metadata-provider counters. Default reads the process-global recorder. */
   providerHealth: () => ProviderHealthSnapshot;
   indexSongCount: () => number | Promise<number>;
@@ -211,8 +202,6 @@ export interface ReviewRoutesDeps {
   maintenance?: { getStatus: () => MaintenanceStatus } | null;
   /** Essentia sidecar client; null/absent when NICOTIND_ANALYSIS_URL is unset. */
   analysisClient?: { healthy: () => Promise<boolean> } | null;
-  /** Separator sidecar client; null/absent when NICOTIND_SEPARATOR_URL is unset. */
-  separatorClient?: { healthy: () => Promise<boolean> } | null;
   /** Collects the metrics slice. Default = `collectMetrics()`. */
   collectMetrics?: () => Promise<MetricsSnapshot>;
   /** Injected OS shim — defaults to live `node:os`. */
@@ -226,7 +215,7 @@ export interface ReviewRoutesDeps {
   now?: () => number;
 }
 
-/** Sidecar reachability (analysis and separator alike). An unconfigured
+/** Sidecar reachability. An unconfigured
  *  sidecar is not an error — it's the default deployment, so
  *  `configured: false` must never land in `errors[]`. */
 async function defaultSidecarStatus(
@@ -534,7 +523,6 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       metrics,
       scan,
       analysis,
-      separator,
       providers,
       updateCheck,
       backups,
@@ -566,12 +554,6 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
         errors,
         'analysisStatus',
         () => sub.analysisStatus?.() ?? defaultSidecarStatus(deps.analysisClient),
-        { configured: false, healthy: false },
-      ),
-      separator: safe(
-        errors,
-        'separatorStatus',
-        () => sub.separatorStatus?.() ?? defaultSidecarStatus(deps.separatorClient),
         { configured: false, healthy: false },
       ),
       providers: safe(
@@ -674,10 +656,7 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       uptimeMs: (deps.now ?? (() => Date.now() - startTime))(),
       hardware: metrics.hardware,
       load: { cpu: metrics.cpu, memory: metrics.memory, gpu: metrics.gpu },
-      services: {
-        analysis,
-        separator,
-      },
+      services: { analysis },
       providers,
       library: { scanning: scan.scanning, indexedSongCount },
       updateCheck,

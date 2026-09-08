@@ -52,12 +52,10 @@ describe('every master commit gets its own CI run (issue #906)', () => {
 });
 
 /**
- * The sidecar change filter enumerates each image's build inputs by hand and
- * omitted `app/` — the directory both Dockerfiles `COPY` (issue #880). The
- * separator's Dockerfile *executes* that source at build time (an arch guard
- * and a strict checkpoint load), so an `app/**` edit skipped the very check
- * that guards it, then failed at tag time inside `docker-separator`, which
- * gates the whole deploy.
+ * The sidecar change filter enumerates the image's build inputs by hand and
+ * omitted `app/` — the directory the Dockerfile `COPY`s (issue #880). An
+ * `app/**` edit therefore skipped the very smoke build meant to guard it, and
+ * then failed at tag time inside the deploy job that gates the whole release.
  */
 describe('the sidecar image filter sees the source the image is built from (issue #880)', () => {
   const filter = ci.jobs.docker?.steps?.find((s) => s.name?.startsWith('Detect analysis-image'));
@@ -66,7 +64,7 @@ describe('the sidecar image filter sees the source the image is built from (issu
     expect(filter?.run).toBeString();
   });
 
-  for (const pkg of ['analysis', 'separator']) {
+  for (const pkg of ['analysis']) {
     it(`treats packages/${pkg}/app/ as a build input`, () => {
       expect(filter?.run).toContain(`packages/${pkg}/app/`);
     });
@@ -75,9 +73,7 @@ describe('the sidecar image filter sees the source the image is built from (issu
       // `context: packages/<pkg>` (the build step) makes it shape what the
       // build even sees. Matched inside THAT package's alternation, so the
       // other package's entry cannot satisfy this.
-      expect(filter?.run ?? '').toMatch(
-        new RegExp(`packages/${pkg}/\\([^)]*\\\\.dockerignore`),
-      );
+      expect(filter?.run ?? '').toMatch(new RegExp(`packages/${pkg}/\\([^)]*\\\\.dockerignore`));
     });
   }
 
@@ -90,44 +86,39 @@ describe('the sidecar image filter sees the source the image is built from (issu
     const patterns = [...((filter?.run ?? '').matchAll(/grep -qE '([^']+)'/g))].map(
       (m) => new RegExp(m[1]!),
     );
-    const [analysis, separator] = patterns;
+    const [analysis] = patterns;
 
-    const CASES: Array<[string, boolean, boolean]> = [
-      // path, analysis builds?, separator builds?
-      ['packages/analysis/app/rhythm.py', true, false],
-      ['packages/separator/app/model.py', false, true],
-      ['packages/analysis/Dockerfile', true, false],
-      ['packages/separator/Dockerfile', false, true],
-      ['packages/separator/requirements-torch-cu121.txt', false, true],
-      ['packages/analysis/.dockerignore', true, false],
-      ['packages/separator/.dockerignore', false, true],
-      ['.github/workflows/ci.yml', true, true],
-      ['.github/workflows/deploy.yml', true, true],
-      // Anchoring: a backup file must not trigger either build.
-      ['packages/analysis/pyproject.toml.bak', false, false],
-      ['.github/workflows/ci.yml.orig', false, false],
+    const CASES: Array<[string, boolean]> = [
+      // path, analysis builds?
+      ['packages/analysis/app/rhythm.py', true],
+      ['packages/analysis/Dockerfile', true],
+      ['packages/analysis/.dockerignore', true],
+      ['.github/workflows/ci.yml', true],
+      ['.github/workflows/deploy.yml', true],
+      // Anchoring: a backup file must not trigger the build.
+      ['packages/analysis/pyproject.toml.bak', false],
+      ['.github/workflows/ci.yml.orig', false],
       // Ordinary source changes stay cheap.
-      ['packages/api/src/services/library-scanner.ts', false, false],
-      ['packages/web/src/app/app.ts', false, false],
+      ['packages/api/src/services/library-scanner.ts', false],
+      ['packages/web/src/app/app.ts', false],
     ];
 
-    it('extracted exactly the two image filters', () => {
-      expect(patterns).toHaveLength(2);
+    it('extracted exactly the one image filter', () => {
+      expect(patterns).toHaveLength(1);
     });
 
-    for (const [path, wantAnalysis, wantSeparator] of CASES) {
-      it(`${path} -> analysis=${wantAnalysis} separator=${wantSeparator}`, () => {
+    for (const [path, wantAnalysis] of CASES) {
+      it(`${path} -> analysis=${wantAnalysis}`, () => {
         expect(analysis!.test(path)).toBe(wantAnalysis);
-        expect(separator!.test(path)).toBe(wantSeparator);
       });
     }
   });
 
   it('anchors every alternative, so a stray backup file cannot trigger a 3 GB build', () => {
     // `Dockerfile|pyproject\.toml)$` anchors only the last alternative; a
-    // `pyproject.toml.bak` would otherwise match and rebuild the GPU image.
+    // `pyproject.toml.bak` would otherwise match and rebuild the image.
     const alternatives = (filter?.run ?? '').match(/grep -qE '[^']+'/g) ?? [];
-    expect(alternatives).toHaveLength(2);
+    expect(alternatives).toHaveLength(1);
     for (const alt of alternatives) {
       // Every non-directory branch ends in `$`; directory branches end in `/`.
       expect(alt).toMatch(/\)\$/);

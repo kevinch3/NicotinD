@@ -56,8 +56,6 @@ export class ServiceReviewService {
 
   /** Analysis-sidecar reachability — the GPU/compute tenant (issue #224). */
   readonly analysis = computed(() => this.review()?.services.analysis);
-  /** Vocal-separation sidecar reachability — the karaoke GPU tenant (issue #603). */
-  readonly separator = computed(() => this.review()?.services.separator);
 
   // Library
   readonly libraryState = computed(() => this.review()?.library);
