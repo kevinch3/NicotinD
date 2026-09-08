@@ -34,9 +34,19 @@ re-scanned — only *playback* can 404 afterwards, and the wizard treats a faile
 audio load as a note, never a broken step.
 
 Snapshot hygiene: `stripFeatures` removes `embedding` (a `Float32Array`, which
-`JSON.stringify` would mangle into an index-keyed blob) and `recentPlayFactor`
-(listener-relative) before persisting — unit-tested, because forgetting it is
-silent data corruption.
+`JSON.stringify` would mangle into an index-keyed blob), `recentPlayFactor`
+(listener-relative) and `_row` (the candidate's own DB row, file path included)
+before persisting — unit-tested, because forgetting it is silent data
+corruption.
+
+It is fed the **live scored candidate**, not a re-derivation from the DB row
+(issue #940). The descriptor blocks (`timbre`, `groove`, `bands`) are attached
+to the scored object and are not columns `RADIO_SONG_SELECT` returns, so a
+snapshot rebuilt from the row silently omitted them — and an axis missing from
+the snapshot is an axis the poll cannot grade. `blockCosineCloseness` returns
+`null` when either side lacks a block, and the accumulator adds neither value
+nor weight on a null, so `--weights timbre=N` moved nothing at all. Dropping
+`_row` inside `stripFeatures` is what makes passing the live object safe.
 
 ## Data model
 

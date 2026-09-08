@@ -12,6 +12,8 @@ import {
   stripFeatures,
 } from './radio-poll-generate.js';
 import { DEFAULT_WEIGHTS } from './radio.service.js';
+import { BAND_NAMES, GROOVE_NAMES, TIMBRE_NAMES } from './descriptor-axes.js';
+import { DESCRIPTOR_VERSION, upsertDescriptors } from './descriptor-store.js';
 
 let db: Database;
 
@@ -402,5 +404,79 @@ describe('generatePollScenarios — strategy stamping', () => {
       normalizePollSettings({ scenarioCount: 1, nextUpCount: 1, strategy: 'random' as never })
         .strategy,
     ).toBeUndefined();
+  });
+});
+
+describe('snapshot descriptor blocks (issue #940)', () => {
+  function seedDescriptors(songId: string, offset: number): void {
+    const features: Record<string, number> = {};
+    for (const [i, n] of [...TIMBRE_NAMES, ...GROOVE_NAMES, ...BAND_NAMES].entries()) {
+      features[n] = (i + offset) / 100;
+    }
+    upsertDescriptors(db, { songId, version: DESCRIPTOR_VERSION, features, fileSize: null });
+  }
+
+  beforeEach(() => {
+    for (const [i, id] of ['s1', 's2', 's3', 's4'].entries()) {
+      seedSong({
+        id,
+        title: `T${id}`,
+        artist: `A${id}`,
+        genre: 'Electronic',
+        bpm: 120,
+        landed: true,
+      });
+      seedDescriptors(id, i);
+    }
+  });
+
+  // The eval harness replays the stored snapshot, so an axis missing from it
+  // is an axis the poll cannot grade — `--weights timbre=N` silently does
+  // nothing. → docs/radio-eval-polls.md
+  it('carries the descriptor blocks the live formula scored on', () => {
+    const scenarios = generatePollScenarios(
+      db,
+      normalizePollSettings({ scenarioCount: 1, nextUpCount: 3 }),
+      mergePollWeights(undefined),
+    );
+    expect(scenarios.length).toBeGreaterThan(0);
+
+    for (const sc of scenarios) {
+      const all = [
+        ...(sc.snapshot.seed ? [sc.snapshot.seed.features] : []),
+        ...sc.snapshot.candidates.map((c) => c.features),
+      ];
+      for (const f of all) {
+        expect(f.timbre?.length).toBe(TIMBRE_NAMES.length);
+        expect(f.groove?.length).toBe(GROOVE_NAMES.length);
+        expect(f.bands?.length).toBe(BAND_NAMES.length);
+      }
+    }
+  });
+
+  // The re-derivation this replaces existed to keep `_row` (file paths) out of
+  // the snapshot. Dropping it structurally must not reintroduce that leak.
+  it('still keeps _row and embedding out of every persisted snapshot', () => {
+    const scenarios = generatePollScenarios(
+      db,
+      normalizePollSettings({ scenarioCount: 1, nextUpCount: 3 }),
+      mergePollWeights(undefined),
+    );
+    for (const sc of scenarios) {
+      const all = [
+        ...(sc.snapshot.seed ? [sc.snapshot.seed.features] : []),
+        ...sc.snapshot.candidates.map((c) => c.features),
+      ];
+      for (const f of all) {
+        expect('_row' in f).toBe(false);
+        expect('embedding' in f).toBe(false);
+        expect('recentPlayFactor' in f).toBe(false);
+        expect('recordingKey' in f).toBe(false);
+      }
+      // `song` carries `path` by design (rowToSong); the guard is that the
+      // raw row never rides along inside `features`.
+      const featureJson = JSON.stringify(all);
+      expect(featureJson).not.toContain('.mp3');
+    }
   });
 });
