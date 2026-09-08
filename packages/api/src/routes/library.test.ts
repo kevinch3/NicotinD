@@ -2703,3 +2703,71 @@ describe('multi-disc album detail (issue #747)', () => {
     expect(body.song.map((s) => s.id)).toEqual(['untagged', 'd2t1']);
   });
 });
+
+describe('GET /duplicates — grouping key (issue #951)', () => {
+  const testDb = new Database(':memory:');
+  applySchema(testDb);
+
+  beforeEach(() => {
+    testDb.run('DELETE FROM library_songs');
+    testDb.run('DELETE FROM library_albums');
+    mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
+  });
+
+  afterEach(() => {
+    mock.module('../db.js', () => ({ getDatabase: () => sharedDb, applySchema }));
+  });
+
+  function seedSong(id: string, title: string, artist: string, duration: number): void {
+    testDb.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, landed_at, synced_at)
+       VALUES (?, 'alb', ?, ?, ?, ?, ?, 1000, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1, 1)`,
+      [id, title, artist, `art-${artist}`, duration, `Music/${id}.mp3`],
+    );
+  }
+
+  async function groupsOf(): Promise<string[][]> {
+    const testApp = new Hono<AuthEnv>();
+    testApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    testApp.route('/', libraryRoutes());
+    const res = await testApp.request('/duplicates');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<Array<{ id: string }>>;
+    return body.map((g) => g.map((s) => s.id).sort());
+  }
+
+  // The admin panel PRE-ARMS every non-best member of a returned group for
+  // deletion, so a false group is a delete-the-wrong-file hazard, not a
+  // cosmetic one. → docs/library-processing.md
+  it('does not cluster unrelated non-Latin songs into one group', async () => {
+    seedSong('kino', 'Группа крови', 'Кино', 120);
+    seedSong('tsoi', 'Пачка сигарет', 'Виктор Цой', 121);
+    seedSong('yoasobi', '夜に駆ける', 'YOASOBI', 120);
+
+    expect(await groupsOf()).toEqual([]);
+  });
+
+  it('still groups a genuine duplicate pair of a non-Latin song', async () => {
+    seedSong('kino-a', 'Группа крови', 'Кино', 120);
+    seedSong('kino-b', 'Группа крови', 'Кино', 121);
+
+    expect(await groupsOf()).toEqual([['kino-a', 'kino-b']]);
+  });
+
+  it('groups a pair that differs only by internal punctuation', async () => {
+    seedSong('konga-a', 'La Konga', 'La Konga', 200);
+    seedSong('konga-b', "La K'onga", 'La Konga', 201);
+
+    expect(await groupsOf()).toEqual([['konga-a', 'konga-b']]);
+  });
+
+  it('still groups a plain ASCII duplicate pair', async () => {
+    seedSong('desp-a', 'Despacito', 'Luis Fonsi', 229);
+    seedSong('desp-b', 'Despacito', 'Luis Fonsi', 230);
+
+    expect(await groupsOf()).toEqual([['desp-a', 'desp-b']]);
+  });
+});
