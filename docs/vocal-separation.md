@@ -115,6 +115,14 @@ pulls it. A CPU deploy must not pull a multi-GB torch image to run a permanently
 `nicotind` service in the same overlay. No `depends_on` in either direction: when the
 separator is down the API falls back to the basic filter.
 
+The overlay mounts the `music` **named volume** at `/data/music`. On a host whose library
+is a bind mount, that resolves to an empty directory and does so silently — the sidecar
+starts, finds no audio and reports nothing. Such a host needs a `separator:` bind block
+in its own `docker-compose.override.yml` (`docker-compose.override.example.yml` carries one
+commented out) **and** must list the overlay *before* that override, since compose
+merges volumes by target with last file winning. → deployment.md
+"GPU passthrough — the `docker-compose.gpu.yml` overlay" (issue #1009).
+
 Image: `python:3.11-slim` + ffmpeg + the checkpoint baked at build with SHA-256
 verification (204 MB) + torch cu126 + `bs-roformer==0.4.1`. Published per release tag by
 the `docker-separator` job in `deploy.yml` (a copy of `docker-analysis`: amd64 only,

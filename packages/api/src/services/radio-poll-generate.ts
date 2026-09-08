@@ -12,7 +12,6 @@ import {
   buildFilterRadio,
   buildSeedRadio,
   rowToSong,
-  toFeatures,
   type RadioSongRow,
 } from '../routes/radio.js';
 import { feedEligibilitySql } from './recommendation/eligibility.js';
@@ -73,11 +72,16 @@ export function mergePollWeights(
  * every persisted snapshot unless it is dropped here. Its test asserts the
  * exact output shape — keep it that way.
  */
-export function stripFeatures(features: SongFeatures): RadioPollSnapshotFeatures {
-  const rest: Partial<SongFeatures> = { ...features };
+export function stripFeatures(
+  features: SongFeatures & { _row?: unknown },
+): RadioPollSnapshotFeatures {
+  const rest: Partial<SongFeatures & { _row?: unknown }> = { ...features };
   delete rest.embedding;
   delete rest.recentPlayFactor;
   delete rest.recordingKey;
+  // The scored candidate carries its own DB row (file path included). Dropping
+  // it here makes the guard structural, so a caller can pass the live object.
+  delete rest._row;
   return rest as RadioPollSnapshotFeatures;
 }
 
@@ -149,12 +153,14 @@ function seedScenario(
   if (!result.seed || result.ranked.length === 0) return null;
   const snapshot: RadioPollScenarioSnapshot = {
     kind: 'seed',
-    seed: { song: rowToSong(seedRow), features: stripFeatures(toFeatures(seedRow)) },
+    // The LIVE seed, not a re-derivation from the row: the descriptor blocks are
+    // attached to the scored object and are not columns. → docs/radio-eval-polls.md
+    seed: { song: rowToSong(seedRow), features: stripFeatures(result.seed) },
     weights: { ...weights },
     strategy: strategy.id,
     candidates: result.ranked.map((e, i) => ({
       song: rowToSong(e.song._row),
-      features: stripFeatures(toFeatures(e.song._row)),
+      features: stripFeatures(e.song),
       score: e.score,
       rank: i + 1,
       // Emulates the real queue (rank order) today; kept as its own field so an
@@ -196,16 +202,9 @@ function filterScenario(
     strategy: strategy.id,
     candidates: result.ranked.map((e, i) => ({
       song: rowToSong(e.song._row),
-      // From the row, like seedScenario — spreading the candidate itself would
-      // carry `_row` (file path included) into the snapshot and every export.
-      // The station grade is computed, not derivable from the row, so it is
-      // re-attached explicitly.
-      features: stripFeatures({
-        ...toFeatures(e.song._row),
-        ...(e.song.stationAffinity !== undefined
-          ? { stationAffinity: e.song.stationAffinity }
-          : {}),
-      }),
+      // The live candidate, like seedScenario. `stationAffinity` is computed
+      // rather than derivable from the row, and rides along on it already.
+      features: stripFeatures(e.song),
       score: e.score,
       rank: i + 1,
       displayOrder: i + 1,

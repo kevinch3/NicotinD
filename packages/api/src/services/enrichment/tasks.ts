@@ -43,7 +43,7 @@ import { splitOnDelimiters } from '../artist-split.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
 import { ListenBrainzClient, normalizePopularity } from '../listenbrainz-client.js';
-import { getMbid, libraryAlbumTitles, upsertMbid } from '../mbid-store.js';
+import { getMbid, isMbidReResolvable, libraryAlbumTitles, upsertMbid } from '../mbid-store.js';
 import { upsertArtistMeta } from '../artist-meta-store.js';
 import { upsertArtistOrigin } from '../artist-origins.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../musicbrainz-client.js';
@@ -1099,7 +1099,9 @@ const artistInfoTask: EnrichmentTask = {
       // AND the hit's `albumCount > 0` (corroboration that this is a real
       // MusicBrainz-established artist, not a stub the same-name hazard could
       // match). The widened path reports a lower confidence (0.5 vs 0.8).
-      if (!mbid && ctx.lidarr) {
+      // A pre-#611 automatic row is resolved again once (issue #1008): its 0.8
+      // could be the first of N same-name hits. → docs/library-scanner.md
+      if ((!mbid || isMbidReResolvable(mbidRow)) && ctx.lidarr) {
         const resolved = await resolveMbidViaLidarr(
           ctx.lidarr,
           artist.name,
@@ -1227,7 +1229,8 @@ const artistOriginTask: EnrichmentTask = {
     for (const artist of rows) {
       const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
       let mbid = mbidRow?.mbid ?? null;
-      if (!mbid && ctx.lidarr) {
+      // Same re-resolution policy as artistInfoTask (issue #1008).
+      if ((!mbid || isMbidReResolvable(mbidRow)) && ctx.lidarr) {
         const resolved = await resolveMbidViaLidarr(
           ctx.lidarr,
           artist.name,

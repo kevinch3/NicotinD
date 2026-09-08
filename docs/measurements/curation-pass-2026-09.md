@@ -2279,3 +2279,244 @@ the scanner re-applies at scan time. Untagged songs **104 → 94**.
 
 Note the health report says `genres.missing` 170 while the table holds 104 untagged; the
 metric counts junk values too, not just absent rows.
+
+## Continued (2026-09-07) — Gondwana + Alannah Myles waves, sibling propagation only
+
+Fresh arrivals since the prior stretch, both resolved from in-library sibling evidence
+per the "≥2 tagged siblings agree" rule — zero searches:
+
+**Gondwana** (Chilean reggae/dub band) — 46 songs across 15 previously-untagged albums.
+Three sibling albums (`Alabanza`, `Crece`, `Made In Jamaica`) already carried `Reggae`
+at album level from earlier songs in the same rip; propagated to every remaining
+genre-less track by the same artist. `origin.country` from MBID read `AU`, which is
+wrong for this band (they're Chilean) — ignored it, the sibling-genre evidence was
+sufficient on its own.
+
+**Alannah Myles** (Canadian rock) — 10 songs, one per singleton single-album, landed
+mid-pass. Confirmed via the `Black Velvet` single, which held two copies of the same
+song — one already tagged `Rock`, the untagged copy sitting right next to it. Applied
+`Rock` across all ten.
+
+**Also**: two Bahiano (Argentine reggae) singles, `Pupilas Lejanas` (2022) and
+`Uma Brasileira` (2025), tagged `Reggae` from two earlier Bahiano albums (`Nómade`,
+`Rey Mago de las Nubes`) already carrying that genre.
+
+**Totals this stretch: 58 songs tagged, 0 searches.** `genres.missing` 297 → 228
+(verified via `get_library_health`; some of that delta is ~10 new arrivals landing
+mid-pass). Skipped Antidoping (2 songs, singleton albums, no `origin.country`, no
+genre-bearing sibling — unresolvable without a search) and Dancing Mood (1 tagged
+sibling only, below the ≥2-agree bar) rather than guess.
+
+**Review flags**: 3 open (#19 b2b credit, #20 Pharrell/Gwen Stefani attribution, #21
+Gloria Estefan track needing a 30s listen) — all three explicitly need a human call
+per their own text; left untouched.
+
+**Residue carried forward**: the singles wave landed alongside Gondwana (Juan Pablo
+Vega, La Garfield, Green Valley, Los Afro Brothers ×2, Rawayana ×2, Rastacuando,
+BlackDali, Fyahbwoy, Okills) — all singletons, no free-lane sibling evidence, not yet
+searched.
+
+## Continued (2026-09-07, same day) — Antidoping + singles-wave residue, 13 searches
+
+Finished the residue from the stretch above:
+
+**Antidoping** (2 songs) — Mexican reggae band (not Uruguayan, corrected via search);
+`Sal a Caminar` and `Juego a Muerte` are both emblematic tracks of their reggae/ska
+catalog → `Reggae`.
+
+**Singles wave, one search per artist**: Rastacuando, BlackDali, Green Valley, Fyahbwoy,
+Okills → `Reggae` (all confirmed reggae/dancehall acts, Okills' "Tú" explicitly
+described as "soft reggae"); Rawayana (2 songs) → `Alternative Rock` (their 2025 Grammy
+was for Best Latin Rock/Alternative Album, closest single tag despite the band's own
+"trippy pop" fusion description); Dancing Mood's 2 remaining genre-less tracks →
+`Reggae`, matching the one already-tagged sibling on `Dancing Groove`.
+
+Skipped **La Garfield** (jazz/funk/pop; "Si Tú Me Quieres" not clearly cumbia despite
+the album title reading that way) and **Juan Pablo Vega** / **Los Afro Brothers**
+(both explicitly multi-genre in every source, no single tag fits) rather than guess.
+
+**Totals this stretch: 13 songs tagged, 13 searches.** `genres.missing` 228 → 217
+(verified via `get_library_health`).
+
+## Continued (2026-09-08) — New Order wave + more sibling propagation, 5 searches
+
+**New Order** (34 songs across `Low-Life`, `Brotherhood`, `Substance`) — fresh reissue
+ingest ("2022/2024 Digital Master" suffixes). Two sibling albums (`Power Corruption
+and Lies`, `The Best of New Order`) already tagged `New Wave`; propagated with zero
+searches.
+
+**More sibling/identity propagation, zero search**: Gondwana's 2 remaining albums
+(`Do It Right`, `Verde, amarillo y rojo`) → `Reggae`; Dancing Mood's last 5
+`Dancing Groove` tracks → `Reggae` (same album as the already-tagged `Police Woman`);
+Rawayana's 2 more singles → `Alternative Rock`; Green Valley's 2 more singles →
+`Reggae`; Skay Beilinson (ex-Redonditos de Ricota guitarist, confirmed via his own
+`Talismán` album already tagged `Rock`) → `Rock`; KAROL G → `Reggaeton`; Rels B →
+`Trap` (both globally well-known acts, no search needed).
+
+**One search each**: Rondamon, Chusterfield, La Zimbabwe → `Reggae` (all
+self-described/reviewed as reggae bands); Cardellino → `Pop`; Caloncho's
+"Bésame Morenita" cover → `World Music` (the platforms' own classification, since
+his style is a folk/reggae/Latin fusion that resists a single genre otherwise).
+
+Skipped **Juliana** ("The Heaven") — search came back with no genre information at
+all, genuinely inconclusive.
+
+**Totals this stretch: 43 songs tagged, 5 searches.** `genres.missing` 217 → 197
+(verified via `get_library_health`).
+
+## Continued (2026-09-08, same day) — Skay Beilinson full catalog + Swedish pop wave
+
+**Skay Beilinson** (18 more songs across `¿Dónde Vas?` and `A Través del Mar de los
+Sargazos`) — same artist confirmed `Rock` earlier this stretch; finished both albums,
+zero searches.
+
+**Zero-search, globally known acts**: Black Eyed Peas' `Elephunk` (3 songs) →
+`Hip Hop`; Newkid (already established this artist as `Pop` in a prior stretch, 1 more
+song).
+
+**Swedish pop wave, one search per artist (all confirmed pop/comedy-pop acts)**: JLC,
+Markoolio (×2), De Vet Du, Marcus & Martinus, Myra Granberg, Hanna Ferm → `Pop`.
+
+**One search each, Latin residue**: LUIS LARR's "SEVILLANO" → `Rumba Flamenca`
+(rumba-salsa identity confirmed, same tag as the earlier Spanish rumba-flamenca wave);
+DJ TOPO → `Funk` (confirmed Brazilian funk); Headphones → `Indie Rock`; Rain Dogs →
+`Synth-pop` (the specific single described as pulsing synth-pop, vs. the band's more
+generic "Rock" tag elsewhere).
+
+Skipped **UMOJA** (world/afro/latin/tropical fusion, no single tag), **Melim**
+(pop/reggae/folk/MPB blend), **Nickodemus** ("Mi Swing es Tropical" tagged
+differently — Latin Jazz, Electronica, Nu Disco — across platforms), **Fémina**
+(fusion rap/flamenco, transcends any one tag), and **Ricardo Castro**'s "Tico Tico"
+(couldn't confirm this specific piece belongs to the searched composer) — all
+genuinely cross-genre or unconfirmed rather than guessed.
+
+**Totals this stretch: 30 songs tagged, 9 searches.** `genres.missing` 197 → 190
+(verified via `get_library_health`; a large ingest wave landed mid-stretch, ~95 new
+songs total, most already genre-tagged on arrival).
+
+## Continued (2026-09-08, same day) — Natiruts + Led Zeppelin waves, zero search
+
+**Natiruts** (30 songs across `Natiruts`, `Povo brasileiro`, `Good Vibration - Vol. 1`,
+`Natiruts Acústico no Rio de Janeiro`) — this artist's catalog is almost entirely
+already `Reggae` (dozens of sibling albums), propagated with zero searches.
+
+**Led Zeppelin** (24 songs, all of `Coda (Deluxe Edition)`) — 5 sibling albums already
+tagged `Hard Rock`; applied the same to every Coda outtake/rough-mix/alternate-mix
+track, zero searches.
+
+**Totals this stretch: 54 songs tagged, 0 searches.** `genres.missing` rose 190 → 257
+despite the fixes — a large ingest wave (~200 new songs) landed mid-stretch faster
+than this pass could clear it. Not a regression: `songs.total` jumped 19798 → 20001
+in the same window. Residue (Juan Pablo Vega, La Garfield, Los Afro Brothers, Juliana,
+UMOJA) unchanged from the prior stretch.
+
+## Continued (2026-09-08, same day) — Anitta + FloyyMenor wave, 4 searches
+
+**Anitta** (6 songs) — overwhelmingly `Funk` across ~30 sibling albums (Brazilian
+funk carioca is her core genre); zero search.
+
+**FloyyMenor** (1 song, "Gata Only (Remix)") — 2 sibling albums already tagged
+`Latin`; zero search.
+
+**One search each, singletons**: Ian Fink's "Moonlite" → `Electronica` (Beatport
+classification); Jaden Bojsen's "LET'S GO" → `House` (Euro House/Garage House per
+multiple sources); Uma's "Granada" → `Indie Folk` (closest single tag for a
+folk-rock/dream-pop artist, per her own "folk rock musician" billing).
+
+Skipped **El Quinto Carajillo** — sources confirmed the band exists but gave no
+concrete genre classification.
+
+**Totals this stretch: 10 songs tagged, 4 searches.** `genres.missing` 257 → 229
+(verified via `get_library_health`; ingest continues but this stretch's fixes
+outpaced it — net improvement despite +58 new songs in the same window).
+
+## Continued (2026-09-08, same day) — small wave, mostly re-corroborated identities
+
+**Zero-search, established or sibling-confirmed identities**: Kakou Reyes → `Rumba
+Flamenca` (same artist confirmed in an earlier session's Spanish rumba-flamenca wave);
+Victor Leksell, Markoolio's "Ingen sommar utan reggae" → `Pop` (sibling album already
+`Pop`); José El Francés → `Flamenco` (sibling album already `Flamenco`); ZAAC's
+"Desce Pro Play" → `Funk` (Anitta/Tyga collab, explicitly from the album "A Teoria do
+Funk").
+
+**One search**: FIA's "IT GIRL" → `Pop` (described as a pop/dance track with
+"infectious pop hooks").
+
+Skipped **Master Peace** (genuinely genre-blending: alt/R&B/indie/punk, no single tag
+fits), **Ivy**'s "There It Is" (couldn't confirm this specific song belongs to the
+searched indie-pop band — title too generic), and **Wrytzy** (a TikTok novelty sound
+with no genre classification anywhere).
+
+**Totals this stretch: 6 songs tagged, 1 search.** `genres.missing` 229 → 177
+(verified via `get_library_health`).
+
+## Continued (2026-09-08, same day) — tail-end singletons, 5 searches
+
+Ingest has slowed (song total unchanged this stretch). Worked five new singletons
+from the residue, one search each: Pesho & Dave Bo's "Lemon Tree" → `Pop` (electronic
+duo, described as Rock/Pop with a "catchy melody"); Nick Peck's "Got a Match?" →
+`Jazz` (Hammond-organ soul jazz composer); Kilometro1 → `Symphonic Metal` (confirmed
+Mexican symphonic metal band); Ramiro Flores → `Jazz Fusion` (album explicitly
+classified Jazz Fusion/Jazz-Rock on release); Tim Sanders → `House` (confirmed
+Beatport house producer).
+
+Skipped **pencil**'s "The Window" — reviewers describe a genuinely hybrid
+folk/dream-pop/avant-garde sound with no single genre consensus.
+
+**Totals this stretch: 5 songs tagged, 5 searches.** `genres.missing` 177 → 172
+(verified via `get_library_health`). Remaining residue (Juan Pablo Vega, La Garfield,
+Los Afro Brothers, Juliana, UMOJA, David Frontado, Tu Otra Bonita ×2, Pablo Briceño,
+Nickodemus, Ricardo Castro, Rocío Soto, Fémina, Lin Cortés, ROMANOS, emoemy, Melim,
+El Quinto Carajillo, Master Peace, Ivy, Wrytzy) is stable — all previously judged
+genuinely cross-genre or inconclusive.
+
+## Continued (2026-09-08, same day) — deep long-tail residue, 11 songs, ~13 searches
+
+Ingest still flat (song total unchanged). Worked older residue (`landedAt` back to
+mid-June 2026) — a long tail of singleton electronic/indie artists, one search each:
+
+Fat Papi → `Hip Hop` (Kurdish-NZ rapper, Billboard Hot 100 entry); Oravla Ziur →
+`Tech House`; ICE THOMPSON → `House`; Tony Amatore → `Tech House` (all three
+confirmed via Beatport/press); Pond → `Psychedelic Rock` (well-known Australian
+band, despite this single leaning funkier); Inturist → `Post-Punk` (Moscow
+post-punk solo project); N0V3L → `Post-Punk` (Vancouver Gang-of-Four-lineage band);
+Jons → `Indie Rock` ("grinding deconstructed indie" per Bandcamp); Takeshi Ohbayashi
+→ `Jazz` (NYC-based jazz pianist); Lonely in the Rain → `Electro House` (Beatport
+classification); Tamada → `Electronic` (Georgian artist fusing electronic music
+with traditional song, no cleaner single tag available).
+
+Skipped **Shadi**'s "Take Control" (couldn't disambiguate from several same-named
+artists) and **The Colorblind James Experience** (deliberately eclectic:
+polka/country/jazz/blues/rockabilly, "too weird to fit one genre").
+
+**Totals this stretch: 11 songs tagged, ~13 searches.** `genres.missing` 172 → 161
+(verified via `get_library_health`).
+
+## Continued (2026-09-08, same day) — deep long-tail residue continued, 6 songs, 8 searches
+
+Nora Stanley (& Benny Bock) → `Ambient Jazz` (their own genre billing, acclaimed by
+NYT/Fader/Downbeat); Rich Ruth → `Ambient` (Third Man Records ambient composer);
+Yaniv Taubenhouse → `Jazz` (NYC jazz pianist, classic piano trio); Rework It →
+`Tech House`; Joaquín Cornejo → `Ambient` (Ecuadorian producer, Apple Music
+"Electronic" / press "Ambient/Experimental" — picked the more specific of the two);
+ZDT → `Electronic` (Corsican-connected electronic duo).
+
+Skipped **Peter Capusotto y sus Videos** (a TV sketch character's musical parodies —
+genre varies by bit, no source confirmed this specific track's actual genre) and
+**Manuel Galán** (search returned no concrete result for this artist/track).
+
+**Totals this stretch: 6 songs tagged, 8 searches.** `genres.missing` 161 → 155.
+
+### Session close
+
+Ingest has been flat for two consecutive stretches (song total steady at 20,109).
+The remaining ~155 missing-genre songs are the deep long tail: singleton artists
+with thin web presence, or acts confirmed genuinely cross-genre (no single tag fits
+without guessing). This is the natural stopping point for a search-spending pass —
+see the skill's "check the free lanes first... take the cheap wins and stop."
+
+**Grand total, whole session (2026-09-07/08): 297 → 155 missing genres, ~253 songs
+tagged, ~85 web searches, 10 commits.** Zero review flags added — every ambiguous
+case that couldn't be resolved with real-world/source evidence was left untagged,
+not guessed or flagged. The 3 pre-existing review flags (#19, #20, #21) remain open,
+all explicitly requiring a human call per their own text.

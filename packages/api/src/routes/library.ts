@@ -100,7 +100,7 @@ import type {
   CoverCandidatesResponse,
   ApplyCoverRequest,
 } from '@nicotind/core';
-import { parseLibraryFilter } from '@nicotind/core';
+import { normalizeTitle, parseLibraryFilter } from '@nicotind/core';
 import { getArtistOrigin, listOriginFacets } from '../services/artist-origins.js';
 import { mutateArtistOrigin } from '../services/artist-origin-mutate.js';
 import {
@@ -2786,6 +2786,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const groups = new Map<string, Song[]>();
     for (const song of allSongs) {
       const key = normalizeDupKey(song.title, song.artist);
+      if (!key) continue;
       const group = groups.get(key) ?? [];
       group.push(song);
       groups.set(key, group);
@@ -2908,14 +2909,17 @@ function normalizePath(input: string): string {
   return input.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
 }
 
-function normalizeDupKey(title: string, artist: string): string {
-  return `${title}|||${artist}`
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9|]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+/**
+ * Group key for the admin duplicate finder, or `null` when the row cannot be
+ * identified. Callers MUST treat `null` as "groups with nothing" — the panel
+ * pre-arms every non-best member of a group for deletion, so a row that folds
+ * to nothing must never join one. → docs/library-processing.md
+ */
+function normalizeDupKey(title: string, artist: string): string | null {
+  const t = normalizeTitle(title);
+  const a = normalizeTitle(artist);
+  if (!t || !a) return null;
+  return `${t}|||${a}`;
 }
 
 function qualityScore(song: Song): number {

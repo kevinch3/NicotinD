@@ -102,3 +102,45 @@ describe('pickByDiscographyOverlap', () => {
     expect(pickByDiscographyOverlap([], LIBRARY_ALBUMS)).toBeNull();
   });
 });
+
+/**
+ * Issue #1008. The row prod actually held for "Gondwana" was the AUSTRALIAN
+ * band — a pre-#611 pick, when `pickMbidHit` took index 0 of N same-name hits
+ * and stamped 0.8 on it. The library holds the Chilean reggae band, and the
+ * discography says so plainly; this fixture is the proof the tie-break was
+ * never the missing piece, the re-resolution was.
+ */
+describe('pickByDiscographyOverlap — Gondwana (issue #1008)', () => {
+  const GONDWANA_LIBRARY = ['Gondwana', 'Alabanza', 'Crece', 'Made In Jamaica'];
+
+  /** c3af32d2… — the Chilean reggae band, release groups per the issue. */
+  const GONDWANA_CL = {
+    mbid: 'c3af32d2-025b-4478-9f26-8b242f4b21cc',
+    releaseGroups: ['Gondwana', 'Alabanza', 'Made in Jamaica', 'Crece', 'Pincoya Calipso'],
+  };
+
+  /** 26962985… — the Australian band, the id that was cached. Its titles here
+   *  stand in for a separate catalogue: the fixture's claim is the zero
+   *  overlap with what the library holds, not these strings. */
+  const GONDWANA_AU = {
+    mbid: '26962985-3e12-4f0b-a87e-68306e08b0b5',
+    releaseGroups: ['Terra Australis', 'Southern Skies'],
+  };
+
+  it('picks the Chilean band the library actually holds', () => {
+    expect(pickByDiscographyOverlap([GONDWANA_AU, GONDWANA_CL], GONDWANA_LIBRARY)).toBe(
+      GONDWANA_CL.mbid,
+    );
+  });
+
+  it('picks it regardless of the order Lidarr returned the homonyms', () => {
+    expect(pickByDiscographyOverlap([GONDWANA_CL, GONDWANA_AU], GONDWANA_LIBRARY)).toBe(
+      GONDWANA_CL.mbid,
+    );
+  });
+
+  it('returns null rather than the first candidate when neither corroborates', () => {
+    const alsoUnrelated = { mbid: 'mbid-third-gondwana', releaseGroups: ['Something Else'] };
+    expect(pickByDiscographyOverlap([GONDWANA_AU, alsoUnrelated], GONDWANA_LIBRARY)).toBeNull();
+  });
+});
