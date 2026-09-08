@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.15](https://github.com/kevinch3/NicotinD/compare/v0.6.14...v0.6.15) (2026-09-08)
+
+### Bug Fixes
+
+* **downloads:** serialize the shared library organizer ([#1029](https://github.com/kevinch3/NicotinD/issues/1029)) ([a6acd54](https://github.com/kevinch3/NicotinD/commit/a6acd5430d8577ba76d7b04895a88f30f2fc8162)), closes [#1026](https://github.com/kevinch3/NicotinD/issues/1026), references [#809](https://github.com/kevinch3/NicotinD/issues/809)
 ## [0.6.14](https://github.com/kevinch3/NicotinD/compare/v0.6.13...v0.6.14) (2026-09-08)
 
 ### Bug Fixes
