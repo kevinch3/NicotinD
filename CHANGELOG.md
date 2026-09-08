@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.21](https://github.com/kevinch3/NicotinD/compare/v0.6.20...v0.6.21) (2026-09-08)
+
+### Bug Fixes
+
+* **acquire:** an offline source is not a miss, and not a terminal failure ([#1045](https://github.com/kevinch3/NicotinD/issues/1045)) ([ad95748](https://github.com/kevinch3/NicotinD/commit/ad95748a78c8a081eeff0fb7c162aa00dbdf993f)), references [#1040](https://github.com/kevinch3/NicotinD/issues/1040)
 ## [0.6.20](https://github.com/kevinch3/NicotinD/compare/v0.6.19...v0.6.20) (2026-09-08)
 
 ### Bug Fixes
