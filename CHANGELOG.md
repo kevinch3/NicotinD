@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.18](https://github.com/kevinch3/NicotinD/compare/v0.6.17...v0.6.18) (2026-09-08)
+
+### Performance
+
+* **downloads:** run the lossless→opus encode pooled across a batch ([#1036](https://github.com/kevinch3/NicotinD/issues/1036)) ([d38f916](https://github.com/kevinch3/NicotinD/commit/d38f91698ab202c34f1e1dd2e4ca430012ef92bd))
 ## [0.6.17](https://github.com/kevinch3/NicotinD/compare/v0.6.16...v0.6.17) (2026-09-08)
 
 ### Bug Fixes
