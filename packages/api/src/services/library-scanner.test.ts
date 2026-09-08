@@ -1617,3 +1617,68 @@ function albumArtist(db: Database, albumId: string): string {
 function countSongs(db: Database): number {
   return db.query<{ c: number }, []>('SELECT COUNT(*) c FROM library_songs').get()!.c;
 }
+
+/**
+ * Issue #964 — the second cause behind "Tag write did not persist".
+ *
+ * `selectAlbumTracks` keeps ONE file per `${disc}:${title}`, so retagging a
+ * file's title onto a title its neighbour already holds makes the pair collide
+ * and de-selects the loser. `reconcileAlbums` then persists with `full=false`
+ * (no prune) and `pruneAlbumOrphans` only deletes rows whose file is GONE — and
+ * the de-selected file is still on disk. Its row therefore survives, frozen at
+ * the pre-retag value, which is exactly what the mutate's read-back reports as
+ * a failed tag write.
+ */
+describe('a de-selected duplicate leaves its row behind (issue #964)', () => {
+  it('keeps the stale row of the file the tracklist did not pick', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const root = mkdtempSync(join(tmpdir(), 'scan-dedupe-'));
+    const dir = join(root, 'Wisin & Yandel', 'Los Extraterrestres');
+    mkdirSync(dir, { recursive: true });
+    // Untagged on disk, so both resolve their title through path inference and
+    // collide on `1:pegao`. The flac wins on format tier, the mp3 is dropped.
+    writeFileSync(join(dir, 'Pegao.flac'), 'x');
+    writeFileSync(join(dir, 'Pegao.mp3'), 'x');
+
+    const scanner = new LibraryScanner(root, db);
+    const relFlac = 'Wisin & Yandel/Los Extraterrestres/Pegao.flac';
+    const relMp3 = 'Wisin & Yandel/Los Extraterrestres/Pegao.mp3';
+    // Seed the state before the retag: two distinct titles, so nothing collides
+    // and both files have a row.
+    scanner.persist(
+      buildLibrary([
+        track({ relPath: relFlac, suffix: 'flac', title: 'Pegao' }),
+        track({ relPath: relMp3, suffix: 'mp3', title: 'Pegao (Official Video)' }),
+      ]),
+      1,
+      false,
+    );
+    expect(countSongs(db)).toBe(2);
+
+    try {
+      await scanner.reconcileAlbums([dir]);
+
+      // The kept file is re-indexed from disk.
+      expect(
+        db
+          .query<{ title: string }, [string]>('SELECT title FROM library_songs WHERE path = ?')
+          .get(relFlac)?.title,
+      ).toBe('Pegao');
+
+      // The de-selected file's row is NOT pruned — its file is still on disk,
+      // which is the only thing `pruneAlbumOrphans` looks at — and nothing
+      // rewrote it, so it still reads the pre-retag title. A caller that just
+      // retagged this file reads that row back and is told the tag write did
+      // not persist, when the tag is on disk and the rescan simply dropped the
+      // file from the album's tracklist.
+      const stale = db
+        .query<{ title: string }, [string]>('SELECT title FROM library_songs WHERE path = ?')
+        .get(relMp3);
+      expect(stale?.title).toBe('Pegao (Official Video)');
+      expect(countSongs(db)).toBe(2);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

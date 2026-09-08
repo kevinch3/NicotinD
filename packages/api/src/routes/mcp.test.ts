@@ -789,6 +789,30 @@ describe('song metadata tools (issue #722)', () => {
     expect(testDb.query('SELECT COUNT(*) AS n FROM audit_log').get()).toEqual({ n: 0 });
   });
 
+  // Issue #964: a diverged row used to be blamed on the tag write no matter
+  // what the file held. When the file DOES carry the request, the rescan is the
+  // culprit and the agent needs the on-disk value to see that.
+  it('fix_song_metadata distinguishes a rescan that did not apply the write', async () => {
+    seedPolluted();
+    mkdirSync(join(musicDir, 'p'), { recursive: true });
+    writeFileSync(join(musicDir, 'p/s-yt.opus'), 'x');
+    const ctx = metadataCtx('refiner:curate', {
+      musicDir,
+      writeTags: async () => true,
+      // The scanner de-selected this file as a duplicate: the tag is on disk.
+      readTags: async () => ({ title: 'Pegao' }),
+      scanIncremental: async () => {},
+    });
+    const res = await dispatchTool(ctx, 'fix_song_metadata', { songId: 's-yt', title: 'Pegao' });
+    expect(JSON.parse(res.content[0]!.text)).toMatchObject({
+      error: 'Tag write landed but the rescan did not apply it',
+      requested: { title: 'Pegao' },
+      actual: { title: 'Pegao (Official Video)' },
+      onDisk: { title: 'Pegao' },
+    });
+    expect(testDb.query('SELECT COUNT(*) AS n FROM audit_log').get()).toEqual({ n: 0 });
+  });
+
   it('fix_song_metadata surfaces mutation failures without auditing', async () => {
     const ctx = metadataCtx('refiner:curate', { musicDir });
     const unknown = await dispatchTool(ctx, 'fix_song_metadata', { songId: 'x', title: 'T' });

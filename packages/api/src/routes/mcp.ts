@@ -44,7 +44,7 @@ import type { Lidarr } from '@nicotind/lidarr-client';
 import type { ApplyMetadataRequest, MetadataReleaseType } from '@nicotind/core';
 import type { MusicBrainzClient } from '../services/musicbrainz-client.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
-import type { writeAudioTags } from '../services/audio-tags.js';
+import type { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 
 /**
  * MCP server for external LLM/agents (issue #232), served **inside the Hono app**
@@ -94,6 +94,7 @@ export interface McpToolContext {
     coverCacheDir?: string;
     scanIncremental?: (relPaths: string[]) => Promise<void>;
     writeTags?: typeof writeAudioTags;
+    readTags?: typeof readAudioTags;
   };
   /** Album-curation dependencies (issue #735) — the classification/hide curator. */
   curation: { curator?: LibraryCurator | null };
@@ -664,6 +665,7 @@ export const MCP_TOOLS: McpTool[] = [
           error: result.error,
           ...(result.requested ? { requested: result.requested } : {}),
           ...(result.actual ? { actual: result.actual } : {}),
+          ...(result.onDisk ? { onDisk: result.onDisk } : {}),
         });
       }
       const changes = (['title', 'artist', 'albumArtist', 'album', 'year'] as const)

@@ -627,6 +627,49 @@ spelling writes nothing on `.m4a`, which would make the assertion vacuous on the
 the write was never landing), and each container retags twice, since a single retag reads back
 correctly on Ogg while leaving the second comment on disk.
 
+## "The write did not land" and "the rescan did not apply it" are different bugs (issue #964)
+
+`mutateSongMetadata` writes the tag, runs an incremental rescan, then re-reads the **row** and
+reports any divergence. Everything between the successful write and that row was unaudited, so a
+single error — `Tag write did not persist` — was returned for two unrelated failures, and the one it
+names is the rarer of the two.
+
+The rescan is the other culprit, and it has at least three ways to leave the row stale:
+
+- **The file was de-selected as a duplicate.** `selectAlbumTracks` keeps one file per
+  `${disc}:${title}`, so retagging a title onto a title a neighbour already holds makes the pair
+  collide. `reconcileAlbums` persists with `full=false` (no prune) and `pruneAlbumOrphans` only
+  deletes rows whose file is **gone from disk** — the loser is still there. Its row survives frozen
+  at the pre-retag value. Pinned by *a de-selected duplicate leaves its row behind* in
+  `library-scanner.test.ts`.
+- **The rescan threw.** `scanIncremental` catches, logs and resolves normally, so a failed reconcile
+  is indistinguishable from a clean one at the call site.
+- **Path inference refilled the old value.** A file whose name carries no `" - "` takes its title
+  from the filename, so a tag the reader could not see is replaced by the name — the same shape that
+  made #760 read as a scanner bug.
+
+So the file is now re-read before the report is written. `readTags` is an injectable dep mirroring
+`writeTags`, defaulting to `readAudioTags`:
+
+| The file carries | Reported as | Carries |
+| ---------------- | ----------- | ------- |
+| the **old** value | `Tag write did not persist` (unchanged) | `requested`, `actual` |
+| the **requested** value | `Tag write landed but the rescan did not apply it` | `requested`, `actual`, `onDisk` |
+
+`onDisk` is set only when the file carries **every** diverged field at the requested value. Anything
+less keeps the older, blunter error, which makes the fallback the safe one: `readAudioTags` reads no
+`discNumber` on any container, and an unreadable file returns `{}` — both read as "the write did not
+land" rather than inventing a rescan fault. Both routes (`PATCH /api/library/songs/:id/metadata` and
+the MCP `fix_song_metadata`) forward `onDisk` when it is present.
+
+The web track-info sheet shows the reason string verbatim — `tagErrorFrom` reads the response's
+`error` field directly and does **not** go through `ERROR_CODE_I18N_KEYS` (the result carries no
+`code`), so both strings surface in English regardless of UI language, as the old one already did.
+
+**This is the report, not the repair.** A file the tracklist de-selects is still unfixable through
+this path; the honest error tells the curator that, instead of sending them to look for a tag-writing
+bug that is not there.
+
 ## One-time prod backfill
 
 For an existing library, run the manual scripts inside the container once to fill
