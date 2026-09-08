@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.17](https://github.com/kevinch3/NicotinD/compare/v0.6.16...v0.6.17) (2026-09-08)
+
+### Bug Fixes
+
+* **downloads:** record the surviving copy when dedupe collapses an acquired file ([#1033](https://github.com/kevinch3/NicotinD/issues/1033)) ([501b7be](https://github.com/kevinch3/NicotinD/commit/501b7bec168decc45d98ff51dd8c45e946eaf7ad)), references [#1032](https://github.com/kevinch3/NicotinD/issues/1032)
 ## [0.6.16](https://github.com/kevinch3/NicotinD/compare/v0.6.15...v0.6.16) (2026-09-08)
 
 ### Performance
