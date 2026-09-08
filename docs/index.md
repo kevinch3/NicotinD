@@ -155,7 +155,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `boundedEditDistance` guard provisioning. → [library-scanner.md](library-scanner.md)
 - **Artist MBID resolution + homonyms**: one `library_mbids` row per normalized name feeds every
   non-tag artist surface; `pickMbidHit` returns null on ambiguity and
-  `pickByDiscographyOverlap` breaks the tie. Curator repair is `PUT /api/library/artists/:id/mbid`.
+  `pickByDiscographyOverlap` breaks the tie. `isMbidReResolvable` re-asks a pre-fix automatic row
+  once. Curator repair is `PUT /api/library/artists/:id/mbid`.
   → [library-scanner.md](library-scanner.md)
 - **Artist bios (auto + override)**: MBID-first Discogs lookup into `library_artist_meta` with
   tombstones; auto-fetch on first artist-page visit; `formatArtistBio` strips Discogs BBCode;

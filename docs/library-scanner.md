@@ -587,6 +587,54 @@ inconclusive comparison all degrade to null, which leaves the artist
 *unresolved* rather than wrong. No bio is a better outcome than another
 artist's bio.
 
+### Stale rows re-resolve once (issue #1008)
+
+The three stages above are **forward-only**: `getMbid` returned a row and every
+caller stopped there, so an id the old picker coin-flipped stayed cached
+forever and kept feeding origin, bio, artwork and genre. `checked_at` was
+written on every upsert and read by nothing. Prod symptom: "Gondwana" cached
+the *Australian* band (`26962985-…`) for the Chilean reggae band the library
+holds (`c3af32d2-…`) — and `pickByDiscographyOverlap` would have picked the
+Chilean id all along (self-titled + `Crece` + `Made in Jamaica` clear
+`MIN_CORROBORATING_TITLES` against the Australian candidate's zero, the fixture
+in `mbid-corroboration.test.ts`). Nothing was wrong with the tie-break; nothing
+ever ran it again.
+
+`isMbidReResolvable` (`services/mbid-store.ts`) is the whole policy, and it is
+deliberately narrow — a row is resolved again only when **both** hold:
+
+- **Its source is at or below `lidarr` in `SOURCE_RANK`.** A `user` row is a
+  correction and is never re-derived; a `tag` row outranks anything a
+  re-resolution could write, so re-querying it would spend a Lidarr call to
+  change nothing.
+- **Its `checked_at` predates `MBID_AMBIGUITY_FIX_AT`** — the first UTC
+  midnight after #611 (commit `e9aa00e9`) stopped `pickMbidHit` stamping 0.8 on
+  the first of N same-name hits. Rows written after it were already decided by
+  the ambiguity guard, so re-asking would only re-roll the same answer.
+
+The enrichment tasks (`artist-info`, `artist-origin`) then resolve exactly as a
+cache miss does, and a null answer keeps the cached id rather than clearing it.
+
+**Why this is bounded, and why there is no TTL.** The population is finite and
+strictly shrinking: a successful re-resolution writes `checked_at = now`, which
+puts the row past the cutoff for good — including when it re-confirms the id it
+already had. A row that resolves therefore costs *one* extra Lidarr lookup,
+once. A row whose re-resolution answers null keeps its old `checked_at`, so it
+stays in the stale set — but the task's own pending predicate is the outer
+bound, and a stale row alone never schedules work: `artist-info` tombstones the
+artist on that pass and never revisits it, and `artist-origin` only reopens
+after `ORIGIN_RECHECK_TTL_MS` (30 days). A TTL on the id itself was considered
+and rejected: it would put every automatic row back
+through Lidarr forever, and issue #757 has origin lookups already returning 502
+under load. Re-resolution is worth one pass over a known-bad population, not a
+standing load.
+
+Two limits are deliberate. An artist whose derived surfaces are already filled
+is not pending, so this never reaches it — that is the curator route's job
+below. And when a re-resolution *does* change the id, only the task that
+changed it re-derives its own surface; the other MBID-derived rows still hold
+what the old id produced, and nothing evicts them unattended.
+
 ### Curator repair — `PUT /api/library/artists/:id/mbid`
 
 `MbidSource` always declared a `'user'` tier ranked above `tag`, but nothing

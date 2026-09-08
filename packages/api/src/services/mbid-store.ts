@@ -31,6 +31,24 @@ const SOURCE_RANK: Record<MbidSource, number> = {
 };
 
 /**
+ * Re-resolution cutoff (issue #1008): the first UTC midnight after #611
+ * (commit e9aa00e9, 2026-08-21) stopped `pickMbidHit` stamping 0.8 on the
+ * first of N same-name hits. → docs/library-scanner.md
+ */
+export const MBID_AMBIGUITY_FIX_AT = Date.UTC(2026, 7, 22);
+
+/**
+ * May an automatic id be resolved again? Only a row the ambiguity fix could
+ * have decided differently: `user` and `tag` outrank what a re-resolution
+ * could write, so they are never re-queried.
+ */
+export function isMbidReResolvable(row: MbidRow | null, cutoff = MBID_AMBIGUITY_FIX_AT): boolean {
+  if (!row) return false;
+  if ((SOURCE_RANK[row.source] ?? 0) > SOURCE_RANK.lidarr) return false;
+  return row.checkedAt < cutoff;
+}
+
+/**
  * Store an id, keeping the better-sourced one on conflict so a later fuzzy
  * `mb-search` can never downgrade an id read straight from a file's tags.
  */
