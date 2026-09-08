@@ -4,6 +4,8 @@ import { NowPlayingCoverArtComponent } from './now-playing-cover-art.component';
 import { PlayerService } from '../../../services/player.service';
 import { AuthService } from '../../../services/auth.service';
 import { LikeService } from '../../../services/like.service';
+import { ReportTrackService } from '../../../services/report-track.service';
+import { SongMenuService } from '../../../services/song-menu.service';
 import { setInputValue } from '../../../../testing/signal-input';
 import { provideRouter } from '@angular/router';
 
@@ -17,15 +19,22 @@ describe('NowPlayingCoverArtComponent', () => {
     bitRate: 320,
   };
   let likes: { isLiked: ReturnType<typeof vi.fn>; toggle: ReturnType<typeof vi.fn> };
+  let report: { open: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     likes = { isLiked: vi.fn().mockReturnValue(false), toggle: vi.fn() };
+    report = { open: vi.fn(), close: vi.fn() };
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
         { provide: PlayerService, useValue: { currentTrack: () => track } },
         { provide: AuthService, useValue: { token: () => 'tok' } },
         { provide: LikeService, useValue: likes },
+        { provide: ReportTrackService, useValue: report },
+        {
+          provide: SongMenuService,
+          useValue: { build: () => [{ label: 'Song info', action: vi.fn() }] },
+        },
       ],
     });
   });
@@ -75,6 +84,45 @@ describe('NowPlayingCoverArtComponent', () => {
       const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
       fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('[data-testid="now-playing-like"]')).toBeNull();
+    } finally {
+      document.documentElement.classList.remove('tv-build');
+    }
+  });
+
+  it('reports the current track in one tap (issue #1038)', () => {
+    const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
+    fixture.detectChanges();
+    const flag: HTMLButtonElement = fixture.nativeElement.querySelector(
+      '[data-testid="now-playing-report"]',
+    );
+    // The whole point of the issue: an affordance you can see and tap, not a
+    // right-click. So assert it is a real, labelled button.
+    expect(flag).toBeTruthy();
+    expect(flag.getAttribute('aria-label')).toBeTruthy();
+
+    flag.click();
+    expect(report.open).toHaveBeenCalledWith('t1');
+  });
+
+  it('offers the shared ⋯ menu beside it', () => {
+    const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="now-playing-menu-toggle"]'),
+    ).toBeTruthy();
+  });
+
+  it('hides the flag and the ⋯ menu on TV, like the like heart', () => {
+    // Same reason as the heart: TvNavGroupDirective orders by DOM position, so
+    // a new nav item here shifts the sheet's pinned ArrowUp chain.
+    document.documentElement.classList.add('tv-build');
+    try {
+      const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('[data-testid="now-playing-report"]')).toBeNull();
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="now-playing-menu-toggle"]'),
+      ).toBeNull();
     } finally {
       document.documentElement.classList.remove('tv-build');
     }

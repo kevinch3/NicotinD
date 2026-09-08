@@ -39,20 +39,6 @@
       }
     }
 
-    @if (contextMenu(); as pos) {
-      <app-track-context-menu
-        [artist]="track.artist"
-        [position]="pos"
-        [trackId]="track.id"
-        (close)="contextMenu.set(null)"
-        (openInfo)="onOpenTrackInfo($event)"
-        (openReport)="reportTrackId.set($event)"
-      />
-    }
-
-    @if (reportTrackId(); as id) {
-      <app-report-track-dialog [trackId]="id" (closed)="reportTrackId.set(null)" />
-    }
 
     <!-- Two-column at lg: cover/transport centered left, queue/lyrics a fixed
          right side panel (Spotify-like). The group wrappers are `contents`
@@ -66,7 +52,6 @@
           [coverMaxPx]="coverMaxPx()"
           [resizing]="resizingQueue()"
           (openTrackInfo)="onOpenTrackInfo($event)"
-          (titleContextMenu)="onTitleContextMenu($event)"
           (navigateToArtistClicked)="navigateToArtist()"
           (navigateToAlbumClicked)="closeForNavigation()"
         />

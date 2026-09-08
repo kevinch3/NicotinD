@@ -131,6 +131,9 @@
       <!-- Global track-info sheet host (renders only when a target is open) -->
       <app-track-info-host />
 
+      <!-- Global report-a-track dialog host (renders only when a target is open) -->
+      <app-report-track-host />
+
       <!-- Changelog modal (renders when version is clicked) -->
       @if (showChangelog()) {
         <app-changelog-modal (close)="showChangelog.set(false)" />

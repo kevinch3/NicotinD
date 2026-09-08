@@ -10,6 +10,7 @@ import { rowPlaybackState } from '../../lib/row-playback-state';
 import type { ArtistCredit } from '../../services/api/api-types';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 /** An album name plus (when known) the id its name links to. */
 export interface AlbumRef {
@@ -18,7 +19,12 @@ export interface AlbumRef {
 }
 
 export interface TrackAction {
+  /** Untranslated identity: the `@for` key, and the `data-testid` suffix that
+   *  e2e selects on (docs/song-actions.md). Rendered only when there is no
+   *  `labelKey` — so a testid never changes with the UI language. */
   label: string;
+  /** i18n key rendered in place of `label` when set. */
+  labelKey?: string;
   icon?: string;
   action: () => void;
   destructive?: boolean;
@@ -40,6 +46,7 @@ function formatDuration(seconds?: number): string {
     MenuPanelComponent,
     TvNavItemDirective,
     TvNavGroupDirective,
+    TranslatePipe,
   ],
   templateUrl: './track-row.component.html',
 })

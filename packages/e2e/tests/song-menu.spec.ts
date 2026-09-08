@@ -32,6 +32,7 @@ test.describe('song row menu', () => {
       'Add to playlist',
       'Save offline',
       'Song info',
+      'Report this track',
     ]) {
       await expect(row.getByTestId(`track-action-${label}`)).toBeVisible();
     }

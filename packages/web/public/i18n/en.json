@@ -628,6 +628,7 @@
   "nowPlaying.lyricsEmptyTitle": "No lyrics found",
   "nowPlaying.lyricsErrorHint": "The source may be busy — try again in a moment.",
   "nowPlaying.lyricsErrorTitle": "Couldn't reach the lyrics source",
+  "nowPlaying.moreOptions": "More options",
   "nowPlaying.muteVocals": "Mute vocals",
   "nowPlaying.next": "Next track",
   "nowPlaying.nextFrom": "Next from: {name}",

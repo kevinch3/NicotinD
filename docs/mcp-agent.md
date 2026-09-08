@@ -272,11 +272,11 @@ queue into a feed.
 
 ### Listeners write to the same queue (issue #987)
 
-`POST /api/library/songs/:id/report` lets **anyone listening** file into this queue, from the Now
-Playing context menu. It is deliberately not curator-gated: the person best placed to notice that a
-track is mistagged, misnamed or misplaced is the one hearing it, and before this that observation
-had nowhere to go — curation reached the backlog only through the MCP tools above and the audit
-predicates.
+`POST /api/library/songs/:id/report` lets **anyone listening** file into this queue, from the flag
+button in the Now Playing sheet or any track row's `⋯` menu (issue #1038). It is deliberately not
+curator-gated: the person best placed to notice that a track is mistagged, misnamed or misplaced is
+the one hearing it, and before this that observation had nowhere to go — curation reached the
+backlog only through the MCP tools above and the audit predicates.
 
 One queue, not two: a defect is a defect whoever noticed it, and a second worklist is how a backlog
 goes unread. `source` (`curator` | `listener`) says which, because the two carry different

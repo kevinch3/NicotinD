@@ -35,18 +35,10 @@ test('capture mobile screens', async ({ page }) => {
   await page.waitForTimeout(600); // slide-up transition
   await page.screenshot({ path: `${OUT}/04-player-now-playing.png`, fullPage: false });
 
-  // 4) Song details — open the track-info sheet from the Now Playing title
-  //    context menu ("Track info").
-  const title = page.getByRole('heading', { name: 'Opening Static' });
-  await title.click({ button: 'right' });
-  // Scoped to the context menu: the mini-player also has an always-present
-  // "Track info" icon button (data-testid="now-playing-info"), so the bare
-  // role locator matches both and is a strict-mode violation once the menu
-  // renders (issue #353).
-  const trackInfo = page
-    .locator('app-track-context-menu')
-    .getByRole('button', { name: 'Track info' });
-  await trackInfo.click();
+  // 4) Song details — open the track-info sheet from the Now Playing ⋯ menu
+  //    ("Song info"; the shared SongMenuService list since issue #1038).
+  await page.getByTestId('now-playing-menu-toggle').click();
+  await page.getByTestId('track-action-Song info').click();
   await page.waitForTimeout(800); // sheet open + acquisition/analysis fetches
   await page.screenshot({ path: `${OUT}/05-song-details.png`, fullPage: false });
   // Also capture the scrolled-down state of the sheet (Analysis / Acquisition).

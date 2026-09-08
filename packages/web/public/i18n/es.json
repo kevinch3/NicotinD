@@ -628,6 +628,7 @@
   "nowPlaying.lyricsEmptyTitle": "No se encontró la letra",
   "nowPlaying.lyricsErrorHint": "La fuente puede estar ocupada — intentá de nuevo en un momento.",
   "nowPlaying.lyricsErrorTitle": "No se pudo conectar con la fuente de letras",
+  "nowPlaying.moreOptions": "Más opciones",
   "nowPlaying.muteVocals": "Silenciar voz",
   "nowPlaying.next": "Pista siguiente",
   "nowPlaying.nextFrom": "Siguiente de: {name}",
