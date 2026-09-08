@@ -48,19 +48,20 @@ export class LibraryCurator {
    * Albums holding at least one real track title. One pass over `library_songs`
    * rather than a probe per album — `classify` runs for every row on every sync.
    */
-  private loadAlbumsWithRealTitles(): Set<string> {
+  private loadAlbumsWithRealTitles(): { ids: Set<string>; scanned: number } {
     const out = new Set<string>();
-    for (const r of this.db
+    const rows = this.db
       .query<{ album_id: string; title: string | null }, []>(
         'SELECT album_id, title FROM library_songs',
       )
-      .all()) {
+      .all();
+    for (const r of rows) {
       if (isRealTrackTitle(r.title)) out.add(r.album_id);
     }
-    return out;
+    return { ids: out, scanned: rows.length };
   }
 
-  reclassifyAll(): CuratorResult {
+  reclassifyAll(reason = 'unspecified'): CuratorResult {
     const startedAt = Date.now();
     const rows = this.db
       .query<AlbumRow, []>(
@@ -75,7 +76,7 @@ export class LibraryCurator {
     const protectedKeys = this.loadProtectedKeys();
     // Authoritative release types (Lidarr/MusicBrainz) override the heuristic.
     const metaTypes = loadReleaseTypes(this.db);
-    const withRealTitles = this.loadAlbumsWithRealTitles();
+    const { ids: withRealTitles, scanned: songsScanned } = this.loadAlbumsWithRealTitles();
 
     const updateStmt = this.db.prepare(
       `UPDATE library_albums SET classification = ?, hidden = ? WHERE id = ? AND manual_override = 0`,
@@ -110,7 +111,16 @@ export class LibraryCurator {
       }
     })();
 
-    log.info({ ...result, durationMs: Date.now() - startedAt }, 'Curator reclassified library');
+    log.info(
+      {
+        ...result,
+        reason,
+        albumsScanned: rows.length,
+        songsScanned,
+        durationMs: Date.now() - startedAt,
+      },
+      'Curator reclassified library',
+    );
     return result;
   }
 

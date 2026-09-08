@@ -14,6 +14,7 @@ import {
   mapAddonJob,
   parseAddonJobId,
   sanitizeAddonError,
+  type IngestReceipt,
 } from './job-poller.js';
 import { createJob, markPartialDiscarded, requestJobCancel } from '../acquisition-job-store.js';
 import type { CompletedDownloadFile } from '../path-inference.js';
@@ -98,6 +99,7 @@ function harness(
 
   const organized: CompletedDownloadFile[] = [];
   const scanned: string[][] = [];
+  const receipts: IngestReceipt[] = [];
   const poller = new AddonJobPoller({
     db,
     registry,
@@ -115,8 +117,11 @@ function harness(
     scan: (relPaths) => {
       scanned.push(relPaths);
     },
+    onIngestReceipt: (r) => {
+      receipts.push(r);
+    },
   });
-  return { db, registry, poller, organized, scanned, deleted };
+  return { db, registry, poller, organized, scanned, deleted, receipts };
 }
 
 describe('AddonJobPoller', () => {
@@ -1294,5 +1299,76 @@ describe('ingest decoupled from the tick (#809)', () => {
     await h.poller.tick();
     await h.poller.idle();
     expect(calls).toBe(2);
+  });
+});
+
+describe('ingest measurement', () => {
+  it('reports one receipt per ingested job, counting the bytes it actually fetched', async () => {
+    const base = makeJob().items[0]!;
+    const h = harness(() => [
+      makeJob({
+        state: 'done',
+        updatedAt: 4000,
+        items: [
+          { ...base, state: 'completed', fileReady: true, updatedAt: 4000 },
+          {
+            ...base,
+            itemId: 't:song two',
+            title: 'Song Two',
+            filename: 'Music\\Album\\02 Song Two.mp3',
+            state: 'completed',
+            fileReady: true,
+            updatedAt: 4000,
+          },
+        ],
+      }),
+    ]);
+    await h.registry.enable('fixture-addon', 'admin');
+    await h.poller.tick();
+    await h.poller.idle();
+
+    expect(h.receipts).toHaveLength(1);
+    const r = h.receipts[0]!;
+    expect(r.files).toBe(2);
+    // The harness serves 'audio-bytes' (11 bytes) per file. Asserting the real
+    // total is the point: a byte counter wired to the wrong variable still
+    // produces a plausible-looking log line.
+    expect(r.fetchBytes).toBe(22);
+    expect(r.addonId).toBe('fixture-addon');
+    for (const ms of [
+      r.fetchSumMs,
+      r.fetchMaxMs,
+      r.organizeMs,
+      r.scanMs,
+      r.totalMs,
+      r.queueWaitMs,
+    ]) {
+      expect(Number.isFinite(ms)).toBe(true);
+      expect(ms).toBeGreaterThanOrEqual(0);
+    }
+    expect(r.fetchMaxMs).toBeLessThanOrEqual(r.fetchSumMs);
+  });
+
+  it('reports no receipt for a job it did not ingest', async () => {
+    let jobsData = [makeJob()];
+    const h = harness(() => jobsData);
+    await h.registry.enable('fixture-addon', 'admin');
+    await h.poller.tick();
+    await h.poller.idle();
+
+    const { id } = h.db.query<{ id: string }, []>(`SELECT id FROM acquisition_jobs`).get()!;
+    markPartialDiscarded(h.db, id);
+    jobsData = [
+      makeJob({
+        state: 'done',
+        updatedAt: 4000,
+        items: [{ ...makeJob().items[0]!, state: 'completed', fileReady: true, updatedAt: 4000 }],
+      }),
+    ];
+    await h.poller.tick();
+    await h.poller.idle();
+
+    expect(h.organized).toHaveLength(0);
+    expect(h.receipts).toHaveLength(0);
   });
 });

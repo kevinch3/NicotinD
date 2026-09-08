@@ -62,6 +62,40 @@ surfaces** and inert when unconfigured.
   collapses into a single grouped issue instead of one event per file. No-op when
   Sentry is unconfigured. → [library-processing.md](library-processing.md).
 
+## Acquisition pipeline timings
+
+Structured `log.info` receipts that make the acquisition→landing pipeline's wall-clock
+readable from prod, so a throughput decision rests on measurement instead of on reading
+the call graph. Measurement only — nothing branches on these numbers.
+
+| Line | Emitted by | Fields |
+| --- | --- | --- |
+| `addon job ingest complete` | `AddonJobPoller.pumpIngest`, once per ingested job | `addonId`, `coreJobId`, `files`, `queueWaitMs`, `queueDepth`, `fetchSumMs`, `fetchMaxMs`, `fetchBytes`, `organizeMs`, `scanMs`, `totalMs` |
+| `organize batch complete` | `LibraryOrganizer.organizeBatch` | `files`, `ms`, `transcoded`, `transcodeSumMs`, `tagWrites`, plus the `OrganizeResult` counters |
+| `Curator reclassified library` | `LibraryCurator.reclassifyAll` | the existing classification counters, plus `reason`, `albumsScanned`, `songsScanned`, `durationMs` |
+| `addon poll returned` | `AddonJobPoller.pollAddon` | `addonId`, `cursor`, `returned` |
+
+Three things worth knowing before reading the numbers:
+
+- **`queueWaitMs` is the one that decides whether the ingest pump needs splitting.** The
+  pump is serial across every addon, so this is how long a job sat behind another job's
+  organize and scan. `queueDepth` is the queue length when it was enqueued.
+- **`fetchSumMs` measures a LAN fetch, not a peer download.** The poller only fetches items
+  that are already `fileReady`, which the
+  [addon protocol](acquisition-addon-protocol.md) defines as the bytes being on the addon's
+  disk. Peer slowness is absorbed addon-side and never appears here. `transcodeSumMs` is
+  usually the large number.
+- **`addon poll returned` is silent on empty polls.** A conforming addon honours `?since=`,
+  so the steady state returns nothing and logs nothing; a line on an otherwise idle system
+  means the addon is ignoring the cursor.
+- **`reason`** separates a boot sweep (`full-sync`) from the per-batch calls
+  (`scan-incremental`, `enrich-singles`) that run at the download seam.
+
+`AddonJobPollerDeps.onIngestReceipt` receives the same receipt object just before it is
+logged. It exists so the numbers can be asserted directly (`job-poller.test.ts`
+"ingest measurement") rather than parsed out of log text, and is a ready sink if these ever
+need to go somewhere other than the log.
+
 ## Metadata-provider health (Lidarr + MusicBrainz)
 
 Sentry sees only unknown 500s, so a metadata-provider outage was invisible to every
