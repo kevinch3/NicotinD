@@ -4,9 +4,10 @@ Evidence for the acquisition → landing optimization pass. The log lines this r
 [observability.md](../observability.md) "Acquisition pipeline timings"; they landed in 0.6.14
 (`chore`, no bump) and reached prod on the 0.6.15 tag.
 
-Read this before acting on any number here: **the only prod measurement is the curator's.** Prod has
-had no acquisition traffic since the deploy, so every fetch/organize/scan number below comes from the
-e2e fixture run and carries that run's distortions.
+**Settled on 2026-09-08 at 0.6.17.** Real acquisition traffic finally reached an instrumented prod and
+produced 18 ingest receipts on 13-93 MB jobs. Both throughput gates are now answered from production,
+and both are refuted. The fixture section below is kept because it was the evidence at the time, and
+because it turned out to predict the prod ratio almost exactly.
 
 ## Prod — full-library reclassify (kpc, 0.6.15, boot sweep)
 
@@ -71,19 +72,54 @@ Inside `organizeBatch`, the transcode is nearly all of it:
 | 1 | 133 | 1 | 83 | 62% |
 | 2 | 348 | 2 | 327 | 94% |
 
+## Prod — per-job split (0.6.17, 18 receipts, slskd)
+
+The measurement the whole pass was waiting on. Real album downloads, 13-93 MB of audio per job.
+
+| totalMs | fetchSumMs | fetchMaxMs | organizeMs | scanMs | MB | fetch share | sum/max |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 4555 | 876 | 876 | 3210 | 465 | 21.8 | 19.2% | 1.00 |
+| 2539 | 55 | 55 | 2049 | 432 | 13.8 | 2.2% | 1.00 |
+| 6348 | 139 | 70 | 5636 | 570 | 45.4 | 2.2% | 1.99 |
+| 8280 | 151 | 77 | 7673 | 454 | 59.3 | 1.8% | 1.96 |
+| 8709 | 146 | 68 | 8099 | 463 | 53.2 | 1.7% | 2.15 |
+| 10162 | 176 | 68 | 9542 | 440 | 62.5 | 1.7% | 2.59 |
+| 9890 | 162 | 67 | 9293 | 431 | 66.7 | 1.6% | 2.42 |
+| 11650 | 196 | 109 | 10998 | 444 | 77.1 | 1.7% | 1.80 |
+| 10368 | 237 | 99 | 9720 | 409 | 93.4 | 2.3% | 2.39 |
+| 10662 | 235 | 96 | 10066 | 359 | 91.7 | 2.2% | 2.45 |
+
+(10 of 18 shown; the rest sit inside the same range.)
+
+- **fetch share**: min 1.6%, **median 2.2%**, p90 3.5%, max 19.2%
+- **`fetchSumMs / fetchMaxMs`**: median 1.96, p90 2.45
+- **`queueWaitMs` and `queueDepth` were 0 on all 18** — no ingest ever waited behind another
+- **organize is 90-95% of every job**
+
+The single 19.2% outlier is a single-file fetch (`sum == max`), so it carries no evidence about serial
+fetches accumulating.
+
+Worth noting against the fixture section above: the loopback fixtures measured 1.5-2.8% fetch and were
+called "a floor, not an estimate" because real acquisitions move 30-50 MB per track. They do — and at
+93 MB the fetch is still 2.3%. The fixture number was not a floor; it was simply right, because
+`fileReady` means the transfer already happened addon-side and core only does a LAN read.
+
 ## Decision gates
 
 The gates were written into the instrumentation PR before any number existed, and are answered here.
 
-| Item | Gate | Status |
+| Item | Gate | Status on prod (0.6.17, n=18) |
 | --- | --- | --- |
-| parallel fetch within a job | `fetchSumMs / totalMs > 0.25` **and** `fetchSumMs / fetchMaxMs > 3` at the p90 job | **not met, not refuted** |
-| cross-job fetch pipeline | p95 `queueWaitMs > 20 s` **and** jobs actually overlap | **not met** |
+| parallel fetch within a job | `fetchSumMs / totalMs > 0.25` **and** `fetchSumMs / fetchMaxMs > 3` at the p90 job | **REFUTED** — p90 share 3.5% (needs >25%), p90 sum/max 2.45 (needs >3) |
+| cross-job fetch pipeline | p95 `queueWaitMs > 20 s` **and** jobs actually overlap | **REFUTED** — `queueWaitMs` 0 on every receipt |
 
-Neither gate is met by the evidence that exists. The fetch gate is missed by roughly 9× on share, and
-the second half of it (`fetchSumMs / fetchMaxMs > 3`) is structurally unreachable in a single-file
-job — it asks whether serial fetches of *several* files add up, and the fixture jobs have one file
-each. That is a limitation of the sample, not an answer.
+Both halves of the fetch gate fail on real multi-file jobs, and this time the sample can speak to the
+second half: `sum/max` near 2 means a multi-file job's serial fetches add up to about twice the slowest
+one, nowhere near the 3× that would make pooling them worth the concurrency. The share gate is missed
+by roughly 7× at p90.
+
+**PR 4 is cancelled, on evidence rather than on argument.** Its original motivation had already died on
+protocol grounds; this is the number that would have been needed to revive it, and it does not.
 
 What is *not* a limitation of the sample: `docs/acquisition-addon-protocol.md` defines `fileReady` as
 the bytes already being on the addon's disk, so core's fetch is a LAN `GET` against a sibling
@@ -91,10 +127,9 @@ container and peer slowness is absorbed addon-side. The original motivation for 
 slow peer blocks every other addon" — was wrong on protocol grounds before any measurement, and no
 measurement can revive it.
 
-**Neither is scheduled.** Re-measure after real acquisition traffic reaches prod: pull
-`addon job ingest complete` from `docker logs` and append the rows here. As of 0.6.16 being live there
-are still **zero** ingest receipts and zero scoped (`scan-incremental` / `enrich-singles`) reclassifies
-on prod, so the scoped path itself is verified by the unit and e2e suites but not yet by production.
+**Neither is scheduled, and neither should be revisited without a change to the pipeline's shape.**
+The place to spend effort is `organizeMs` — 90-95% of every job, dominated by the inline
+`transcodeToOpus` ffmpeg encode.
 
 ## What shipped from this pass
 
@@ -103,3 +138,4 @@ on prod, so the scoped path itself is verified by the unit and e2e suites but no
 | the log lines above | `chore` | rode 0.6.15 |
 | serialize the shared `LibraryOrganizer` (#1026) | `fix` | 0.6.15 |
 | reclassify only the albums a scan touched | `perf` | 0.6.16 |
+| record the surviving copy when dedupe collapses a file (#1032) | `fix` | 0.6.17 |
