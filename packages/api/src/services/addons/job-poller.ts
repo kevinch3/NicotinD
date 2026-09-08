@@ -29,6 +29,30 @@ import { PlaylistService } from '../playlist.service.js';
 const log = createLogger('addon-job-poller');
 
 /**
+ * Per-job stage timings for the ingest receipt. Measurement only: nothing reads
+ * these but the log line, and they exist so a decision about where this
+ * pipeline's wall-clock actually goes can be made from prod rather than from
+ * reading the call graph.
+ */
+export interface IngestTimings {
+  files: number;
+  fetchSumMs: number;
+  fetchMaxMs: number;
+  fetchBytes: number;
+  organizeMs: number;
+  scanMs: number;
+}
+
+/** {@link IngestTimings} plus the queue context only the pump knows. */
+export interface IngestReceipt extends IngestTimings {
+  addonId: string;
+  coreJobId: string;
+  queueWaitMs: number;
+  queueDepth: number;
+  totalMs: number;
+}
+
+/**
  * How long an addon job may sit `active` (unchanged) before the poller re-checks
  * it via getJob. Comfortably longer than a normal single-track resolve so a
  * slow-but-live download is never re-checked needlessly; the getJob 404 — not
@@ -67,6 +91,13 @@ export interface AddonJobPollerDeps {
   isEnabled?: () => boolean;
   /** Grace before an unacknowledged cancel is closed core-side (#806). Test seam. */
   cancelGraceMs?: number;
+  /**
+   * Called with the stage timings for each ingested job, right before they are
+   * logged. Exists so the measurement can be asserted on directly: a receipt
+   * whose numbers are only ever read out of a log line is a receipt nothing
+   * checks, and this PR's whole purpose is to be trusted enough to plan from.
+   */
+  onIngestReceipt?: (receipt: IngestReceipt) => void;
 }
 
 /** Mirror key for an addon item in `acquisition_job_items.transfer_key`. */
@@ -117,7 +148,13 @@ export class AddonJobPoller {
   // outcomes — for minutes. The queue keeps ingest strictly SERIAL (the
   // organizer and scanner were never called concurrently by the old code and
   // are not known to be safe for it) but off the tick, which stays cheap.
-  private ingestQueue: Array<{ plugin: RemoteAddonPlugin; coreJobId: string; job: AddonJob }> = [];
+  private ingestQueue: Array<{
+    plugin: RemoteAddonPlugin;
+    coreJobId: string;
+    job: AddonJob;
+    enqueuedAt: number;
+    queueDepth: number;
+  }> = [];
   private ingestQueuedJobs = new Set<string>();
   private ingestPump: Promise<void> | null = null;
   private stopped = false;
@@ -205,6 +242,11 @@ export class AddonJobPoller {
     const jobs = await plugin.client.listJobs(cursor);
     let maxUpdated = cursor ?? 0;
     const handled = new Set<string>();
+    // Only when the poll actually returned something: on a conforming addon
+    // (`?since=` honoured) the steady state is empty, so this stays quiet
+    // instead of writing 12 lines a minute per addon.
+    if (jobs.length > 0)
+      log.info({ addonId, cursor, returned: jobs.length }, 'addon poll returned');
 
     for (const job of jobs) {
       maxUpdated = Math.max(maxUpdated, job.updatedAt);
@@ -336,7 +378,13 @@ export class AddonJobPoller {
   private scheduleFinish(plugin: RemoteAddonPlugin, coreJobId: string, job: AddonJob): void {
     if (this.stopped || this.ingestQueuedJobs.has(coreJobId)) return;
     this.ingestQueuedJobs.add(coreJobId);
-    this.ingestQueue.push({ plugin, coreJobId, job });
+    this.ingestQueue.push({
+      plugin,
+      coreJobId,
+      job,
+      enqueuedAt: Date.now(),
+      queueDepth: this.ingestQueue.length,
+    });
     if (!this.ingestPump) this.ingestPump = this.pumpIngest();
   }
 
@@ -346,8 +394,25 @@ export class AddonJobPoller {
         if (this.stopped) break;
         const next = this.ingestQueue.shift();
         if (!next) break;
+        const startedAt = Date.now();
         try {
-          await this.finishJob(next.plugin, next.coreJobId, next.job);
+          const t = await this.finishJob(next.plugin, next.coreJobId, next.job);
+          // One structured receipt per ingested job. The three stages are already
+          // separated by the code; this just times them, so a decision about
+          // where the wall-clock actually goes can be made from prod rather than
+          // from reading the call graph.
+          if (t) {
+            const receipt: IngestReceipt = {
+              addonId: next.plugin.manifest.id,
+              coreJobId: next.coreJobId,
+              queueWaitMs: startedAt - next.enqueuedAt,
+              queueDepth: next.queueDepth,
+              totalMs: Date.now() - startedAt,
+              ...t,
+            };
+            this.deps.onIngestReceipt?.(receipt);
+            log.info(receipt, 'addon job ingest complete');
+          }
         } catch (err) {
           log.warn({ coreJobId: next.coreJobId, err }, 'background job finish failed');
         } finally {
@@ -371,13 +436,14 @@ export class AddonJobPoller {
     plugin: RemoteAddonPlugin,
     coreJobId: string,
     job: AddonJob,
-  ): Promise<void> {
-    await this.ingestReadyItems(plugin, coreJobId, job);
+  ): Promise<IngestTimings | null> {
+    const timings = await this.ingestReadyItems(plugin, coreJobId, job);
     this.applyAddonOutcome(coreJobId, job);
     if (job.state !== 'active') {
       materializeAddonPlaylist(this.deps.db, this.playlists, coreJobId);
     }
     await this.maybeReleaseAddonJob(plugin, coreJobId, job);
+    return timings;
   }
 
   /**
@@ -610,7 +676,7 @@ export class AddonJobPoller {
     plugin: RemoteAddonPlugin,
     coreJobId: string,
     job: AddonJob,
-  ): Promise<void> {
+  ): Promise<IngestTimings | null> {
     const { db } = this.deps;
     // Partial discarded (#810): the user threw this job's landed tracks away,
     // so a fileReady item that was still mid-flight must not land afterwards
@@ -620,10 +686,13 @@ export class AddonJobPoller {
         `SELECT partial_discarded_at FROM acquisition_jobs WHERE id = ?`,
       )
       .get(coreJobId)?.partial_discarded_at;
-    if (discarded != null) return;
+    if (discarded != null) return null;
     const addonId = plugin.manifest.id;
     const batch: CompletedDownloadFile[] = [];
     const keys: string[] = [];
+    let fetchSumMs = 0;
+    let fetchMaxMs = 0;
+    let fetchBytes = 0;
 
     for (const item of job.items) {
       if (!(item.state === 'completed' && item.fileReady)) continue;
@@ -635,28 +704,36 @@ export class AddonJobPoller {
         .get(coreJobId, key);
       if (!row || row.state !== 'completed' || row.relative_path) continue;
 
+      const fetchStartedAt = Date.now();
       try {
-        const localPath = await this.fetchToIncoming(plugin, job, item);
+        const fetched = await this.fetchToIncoming(plugin, job, item);
+        const fetchMs = Date.now() - fetchStartedAt;
+        fetchSumMs += fetchMs;
+        if (fetchMs > fetchMaxMs) fetchMaxMs = fetchMs;
+        fetchBytes += fetched.bytes;
         batch.push({
           username: item.username,
           directory: peerDirOf(item.filename) || `${job.artist ?? 'Unknown'} - ${job.album ?? ''}`,
-          filename: localPath, // absolute → organizer's locateOnDisk fast path
+          filename: fetched.path, // absolute → organizer's locateOnDisk fast path
           relativePath: null,
           directoryFileCount: job.items.length,
           jobMeta: this.jobMeta(coreJobId),
         });
         keys.push(key);
       } catch (err) {
+        fetchSumMs += Date.now() - fetchStartedAt;
         log.warn({ addonId, item: item.itemId, err }, 'file fetch from addon failed');
       }
     }
 
-    if (!batch.length) return;
+    if (!batch.length) return null;
+    const organizeStartedAt = Date.now();
     try {
       await this.deps.organizer.organizeBatch(batch);
     } catch (err) {
       log.warn({ addonId, err }, 'organize step failed for addon batch');
     }
+    const organizeMs = Date.now() - organizeStartedAt;
 
     const acquiredAt = Date.now();
     const relPaths: string[] = [];
@@ -678,7 +755,9 @@ export class AddonJobPoller {
       });
     }
 
+    let scanMs = 0;
     if (relPaths.length && this.deps.scan) {
+      const scanStartedAt = Date.now();
       try {
         await this.deps.scan(relPaths);
         const pathToSongId = new Map<string, string>();
@@ -692,8 +771,10 @@ export class AddonJobPoller {
       } catch (err) {
         log.warn({ addonId, err }, 'scan step failed for addon batch');
       }
+      scanMs = Date.now() - scanStartedAt;
     }
     recomputeStage(db, coreJobId);
+    return { files: batch.length, fetchSumMs, fetchMaxMs, fetchBytes, organizeMs, scanMs };
   }
 
   /**
@@ -814,7 +895,7 @@ export class AddonJobPoller {
     plugin: RemoteAddonPlugin,
     job: AddonJob,
     item: AddonJobItem,
-  ): Promise<string> {
+  ): Promise<{ path: string; bytes: number }> {
     // Contain the write to <incoming>/<addon>/<job>/ and reject a traversing
     // filename before opening any handle (§1 Stream 3).
     const local = safeIncomingPath(
@@ -851,7 +932,7 @@ export class AddonJobPoller {
       rmSync(local, { force: true }); // never leave a partial/oversized file behind
       throw err;
     }
-    return local;
+    return { path: local, bytes: written };
   }
 
   private jobMeta(coreJobId: string): TransferJobMeta | null {

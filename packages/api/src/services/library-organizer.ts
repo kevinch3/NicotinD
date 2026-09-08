@@ -159,6 +159,12 @@ export class LibraryOrganizer {
   private canonicalTitlesLookup?: (dir: string) => readonly string[] | null;
   /** Real <Artist>/<Album> dirs written during the current batch (for dedupe). */
   private touchedAlbumDirs = new Set<string>();
+  // Per-batch counters for the organize receipt. Reset with the other per-batch
+  // state in organizeBatch; the transcode is the expensive one and the reason
+  // this stage is timed at all.
+  private batchTranscoded = 0;
+  private batchTranscodeMs = 0;
+  private batchTagWrites = 0;
   /**
    * Destinations claimed by `planOrganizeFile` so far. A dry run moves nothing,
    * so disk alone cannot tell one planned file that another already took its
@@ -211,6 +217,10 @@ export class LibraryOrganizer {
 
     this.touchedAlbumDirs.clear();
     this.albumFolderCache.clear();
+    this.batchTranscoded = 0;
+    this.batchTranscodeMs = 0;
+    this.batchTagWrites = 0;
+    const batchStartedAt = Date.now();
 
     const groups = new Map<string, CompletedDownloadFile[]>();
     for (const file of files) {
@@ -232,6 +242,17 @@ export class LibraryOrganizer {
       result.affectedAlbumDirs = [...this.touchedAlbumDirs];
     }
 
+    log.info(
+      {
+        files: files.length,
+        ms: Date.now() - batchStartedAt,
+        transcoded: this.batchTranscoded,
+        transcodeSumMs: this.batchTranscodeMs,
+        tagWrites: this.batchTagWrites,
+        ...result,
+      },
+      'organize batch complete',
+    );
     return result;
   }
 
@@ -755,10 +776,14 @@ export class LibraryOrganizer {
       // stable id (derived from its final path) is computed once and storage is
       // reclaimed. Best-effort: a transcode failure leaves the original in place.
       if (plan.wouldTranscode) {
+        const transcodeStartedAt = Date.now();
         try {
           destPath = await transcodeToOpus(destPath, this.transcodeLossless.bitRate);
+          this.batchTranscoded++;
         } catch (err) {
           log.warn({ err, destPath }, 'lossless→opus transcode failed — keeping original');
+        } finally {
+          this.batchTranscodeMs += Date.now() - transcodeStartedAt;
         }
       }
     }
@@ -785,6 +810,7 @@ export class LibraryOrganizer {
       toWrite.trackNumber = tags.trackNumber;
     }
     if (Object.keys(toWrite).length > 0) {
+      this.batchTagWrites++;
       try {
         await writeAudioTags(destPath, toWrite);
       } catch {

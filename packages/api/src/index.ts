@@ -183,7 +183,7 @@ export function createApp({
   const runSyncAndCurate = async (): Promise<void> => {
     try {
       await scanner.scanFull();
-      curator.reclassifyAll();
+      curator.reclassifyAll('full-sync');
       // Once the library is on disk, best-effort backfill acquisition provenance
       // for songs that predate the `acquisitions` table. Runs once (guarded by a
       // library_sync_state marker); cheap no-op on subsequent boots.
@@ -207,7 +207,7 @@ export function createApp({
         const albumDirs = [...new Set(relPaths.map((p) => dirname(join(expandedMusicDir, p))))];
         await scanner.reconcileAlbums(albumDirs);
       }
-      curator.reclassifyAll();
+      curator.reclassifyAll('scan-incremental');
       // A scanned song is library-visible at once; this nudges enrichment (and
       // the new-album cover fill) for it now rather than at the next tick.
       // Fire-and-forget: a no-op if a run is already in flight, and never blocks
@@ -876,7 +876,7 @@ export function createApp({
       await enrichmentSvc.enrich(relPaths);
       // Reclassify so the freshly-written release-meta takes effect immediately
       // (the incremental scan already ran with the heuristic).
-      curator.reclassifyAll();
+      curator.reclassifyAll('enrich-singles');
     };
     app.route(
       '/api/discography',
