@@ -115,10 +115,29 @@ export const EXTERNAL_SYMBOLS = new Map<string, string>([
  * asserts both keep >5,000 bytes of headroom, so a cap can never sit flush
  * against the file it measures — a gate that fires on the next honest addition
  * gets raised reflexively.
+ *
+ * MAX_INDEX_BYTES was raised 60,000 → 70,000 on 2026-09-08, and this is the
+ * commit that says why. On 2026-09-07 two PRs each added an index entry, each
+ * trimmed to fit *on its own branch*, and their merge broke the cap on master:
+ * neither branch could see the other's line, so a per-branch gate cannot catch
+ * a budget overrun that only exists in the sum. The trim that reopened master
+ * then landed 95 bytes inside the 5,000-byte floor, which is the flush cap this
+ * very paragraph exists to forbid — one more entry and master goes red again.
+ *
+ * Trimming further is not the answer, and that is measured, not assumed:
+ * docs/measurements/claude-md-compression-2026-09.md put 55 agents over three
+ * passes on exactly this question and found the best CORRECT compression was
+ * -0.9%, while the aggressive merging that did reach -32% invented 48 claims.
+ * The index is 178 entries at ~308 bytes each against a 440-char entry cap, so
+ * it is at its shape, not padded — its size is the count of mechanisms this
+ * repo has, and that number legitimately grows. 70,000 restores ~15 KB, about
+ * 48 entries of runway, and still fires long before a return to the 186 KB
+ * that started all of this. MAX_CLAUDE_MD_BYTES is untouched: that is the
+ * per-request cost and the number actually worth defending.
  */
 export const MAX_ENTRY_CHARS = 440;
 export const MAX_CLAUDE_MD_BYTES = 20_000;
-export const MAX_INDEX_BYTES = 60_000;
+export const MAX_INDEX_BYTES = 70_000;
 
 /**
  * The gate's denominator, and the part that matters most. It is asserted
