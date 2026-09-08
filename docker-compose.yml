@@ -38,9 +38,16 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    # service_started, NOT service_healthy: this orders startup without letting
+    # Lidarr's health decide whether the API may run at all. `main.ts` already
+    # treats an unreachable Lidarr as a warning ("discography may not work until
+    # Lidarr is reachable") — the same graceful degradation the `analysis`
+    # sidecar's missing depends_on is justified by below. Under the old gate a
+    # sub-service that merely went unhealthy left the API in `created` with no
+    # logs and no restart, through a deploy with nothing else wrong (#1019).
     depends_on:
       lidarr:
-        condition: service_healthy
+        condition: service_started
     networks:
       - internal
     restart: unless-stopped

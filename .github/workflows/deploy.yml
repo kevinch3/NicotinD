@@ -853,6 +853,21 @@ jobs:
               echo "ERROR: no ghcr.io/kevinch3 images resolved from compose — refusing to deploy without pulling" >&2
               exit 1
             fi &&
+            # Headroom on the filesystem Docker ACTUALLY writes to. Resolved from
+            # DockerRootDir, never assumed to be /var/lib/docker: this host keeps
+            # its data root on another disk entirely, and a df against the wrong
+            # filesystem reads green while the real one is full — which is how a
+            # 4.2 GB pull landed on a volume at 0 bytes free, taking Lidarr (its
+            # SQLite could no longer write), the API and the separator down at
+            # once (issue #1021). The images below are multi-GB, so this refuses
+            # to start rather than half-pull into a full disk.
+            root=$(docker info --format "{{.DockerRootDir}}") &&
+            avail_kb=$(df -Pk "$root" | tail -1 | tr -s " " | cut -d" " -f4) &&
+            if [ "${avail_kb:-0}" -lt 10485760 ]; then
+              echo "::error::Docker disk is nearly full: $((${avail_kb:-0} / 1048576)) GiB free on $root, need 10 GiB. Every image for this tag is already published — reclaim space and re-run this job. Reclaim with: docker builder prune -af && docker image prune -af" >&2
+              exit 1
+            fi &&
+            echo "Docker disk: $((avail_kb / 1048576)) GiB free on $root" &&
             echo "$images" | xargs -n1 docker pull &&
             # --build is kept for any host-local override that still carries a
             # `build:` key (no-op otherwise).
