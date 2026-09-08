@@ -367,3 +367,70 @@ describe('hide decisions are derived, not inherited', () => {
     expect(unjustifiedHiddenAlbums(db).map((r) => r.id)).toEqual(['bad']);
   });
 });
+
+describe('scoped reclassify', () => {
+  let db: Database;
+  beforeEach(() => {
+    db = new Database(':memory:');
+    applySchema(db);
+  });
+
+  it('touches only the albums it was given', () => {
+    // Both would classify as `single`; only a1 is in scope.
+    seedAlbum(db, { id: 'a1', name: 'One', artist: 'A', songCount: 1 });
+    seedAlbum(db, { id: 'a2', name: 'Two', artist: 'B', songCount: 1 });
+
+    const res = new LibraryCurator(db).reclassify(['a1']);
+
+    expect(res.singles).toBe(1);
+    expect(readRow(db, 'a1').classification).toBe('single');
+    // Out of scope, so it keeps the seeded value rather than being reclassified.
+    expect(readRow(db, 'a2').classification).toBe('unknown');
+  });
+
+  it('does nothing at all for an empty id list', () => {
+    seedAlbum(db, { id: 'a1', name: 'One', artist: 'A', songCount: 1 });
+    const res = new LibraryCurator(db).reclassify([]);
+    expect(res).toEqual({
+      hiddenAlbums: 0,
+      singles: 0,
+      eps: 0,
+      compilations: 0,
+      albums: 0,
+      unknown: 0,
+    });
+    expect(readRow(db, 'a1').classification).toBe('unknown');
+  });
+
+  it('keeps a deliberately hunted album visible when reclassified by id', () => {
+    // A hide-eligible row (junk name, thin) that the user actually hunted.
+    seedAlbum(db, { id: 'a1', name: 'Unknown', artist: 'A', songCount: 1 });
+    seedJob(db, 'A', 'Unknown');
+
+    new LibraryCurator(db).reclassify(['a1']);
+
+    expect(readRow(db, 'a1').hidden).toBe(0);
+  });
+
+  it('applies that same guard through reclassifyAlbum', () => {
+    // Regression: reclassifyAlbum re-implemented classify WITHOUT the
+    // protectedKeys un-hide guard, so this row was hidden despite being hunted.
+    seedAlbum(db, { id: 'a1', name: 'Unknown', artist: 'A', songCount: 1 });
+    seedJob(db, 'A', 'Unknown');
+
+    reclassifyAlbum(db, 'a1');
+
+    expect(readRow(db, 'a1').hidden).toBe(0);
+  });
+
+  it('reports the same verdict on a second pass without rewriting the rows', () => {
+    seedAlbum(db, { id: 'a1', name: 'One', artist: 'A', songCount: 1 });
+    const curator = new LibraryCurator(db);
+    const first = curator.reclassify(['a1']);
+    const second = curator.reclassify(['a1']);
+    // Counters are derived from the classification, not from the write, so a
+    // no-op pass must still report identically.
+    expect(second).toEqual(first);
+    expect(readRow(db, 'a1').classification).toBe('single');
+  });
+});

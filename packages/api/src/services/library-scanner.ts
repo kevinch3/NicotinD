@@ -1596,14 +1596,15 @@ export class LibraryScanner {
    * disk. This is the incremental analogue of scanFull's global prune — it kills
    * cross-wave orphan rows (files the organizer just deleted) without a full walk.
    */
-  async reconcileAlbums(albumDirs: string[]): Promise<void> {
+  async reconcileAlbums(albumDirs: string[]): Promise<string[]> {
     const dirs = [...new Set(albumDirs)];
-    if (dirs.length === 0) return;
+    if (dirs.length === 0) return [];
     const abs: string[] = [];
     // Album dirs are already below the top level, so the root rule cannot apply.
     for (const d of dirs) abs.push(...(await this.walk(d, false)));
     const syncedAt = Date.now();
     const tracks = await this.readTracks(abs);
+    let touchedAlbumIds: string[] = [];
     if (tracks.length > 0) {
       const built = buildLibrary(
         tracks,
@@ -1618,12 +1619,19 @@ export class LibraryScanner {
         this.knownRelPaths(),
       );
       this.persist(built, syncedAt, false);
-      this.pruneAlbumOrphans(
-        built.albums.map((a) => a.id),
-        syncedAt,
-      );
+      // The ids the rebuild actually produced — the right set to reclassify.
+      // Deriving them from the caller's relPaths instead would miss an album
+      // whose song_count just shrank because the prune below removed rows.
+      touchedAlbumIds = built.albums.map((a) => a.id);
+      this.pruneAlbumOrphans(touchedAlbumIds, syncedAt);
     }
-    log.info({ dirs: dirs.length, files: abs.length }, 'Album-scoped reconcile complete');
+    log.info(
+      { dirs: dirs.length, files: abs.length, albums: touchedAlbumIds.length },
+      'Album-scoped reconcile complete',
+    );
+    // A pruned-away album stays in this list; reclassifying a missing row is a
+    // no-op, so callers need not filter.
+    return touchedAlbumIds;
   }
 
   /** Delete library_songs rows for the given albums whose file is gone from disk. */

@@ -72,7 +72,7 @@ the call graph. Measurement only — nothing branches on these numbers.
 | --- | --- | --- |
 | `addon job ingest complete` | `AddonJobPoller.pumpIngest`, once per ingested job | `addonId`, `coreJobId`, `files`, `queueWaitMs`, `queueDepth`, `fetchSumMs`, `fetchMaxMs`, `fetchBytes`, `organizeMs`, `scanMs`, `totalMs` |
 | `organize batch complete` | `LibraryOrganizer.organizeBatch` | `files`, `ms`, `transcoded`, `transcodeSumMs`, `tagWrites`, plus the `OrganizeResult` counters |
-| `Curator reclassified library` | `LibraryCurator.reclassifyAll` | the existing classification counters, plus `reason`, `albumsScanned`, `songsScanned`, `durationMs` |
+| `Curator reclassified library` | `LibraryCurator.reclassify` | the existing classification counters, plus `reason`, `scope` (`all` or the id count), `updated` (rows actually written), `albumsScanned`, `songsScanned`, `durationMs` |
 | `addon poll returned` | `AddonJobPoller.pollAddon` | `addonId`, `cursor`, `returned` |
 
 Three things worth knowing before reading the numbers:
@@ -88,6 +88,9 @@ Three things worth knowing before reading the numbers:
 - **`addon poll returned` is silent on empty polls.** A conforming addon honours `?since=`,
   so the steady state returns nothing and logs nothing; a line on an otherwise idle system
   means the addon is ignoring the cursor.
+
+The numbers these lines have produced so far, and the throughput decisions they settled, are recorded
+in [measurements/acquisition-pipeline-2026-09.md](measurements/acquisition-pipeline-2026-09.md).
 - **`reason`** separates a boot sweep (`full-sync`) from the per-batch calls
   (`scan-incremental`, `enrich-singles`) that run at the download seam.
 

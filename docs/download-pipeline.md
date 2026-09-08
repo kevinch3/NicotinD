@@ -40,7 +40,21 @@ The organizer **no longer force-writes `album="Singles"`** for the bucket fallba
 
 ### Metadata-first classification (`LibraryCurator`)
 
-`reclassifyAll()` runs after every scan and classifies each album:
+`LibraryCurator.reclassify(albumIds?)` classifies each album by the rules below. It runs **scoped to
+the albums a scan actually touched** at the download seam — `reconcileAlbums` returns the ids it
+rebuilt and `scanIncremental` passes them straight through — and unscoped (`reclassifyAll()`) only
+for the boot sweep and the explicit full-rescan routes.
+
+Scoping is sound because the classifier is row-local: an album's verdict reads its own row, its own
+`library_release_meta` type, whether its own songs have real titles, and a `protectedKeys` probe into
+the acquisition-job tables. No album's result depends on another album's state. Unscoped, this read
+every row of `library_albums` plus a full pass over `library_songs` **once per ingest batch**, so a
+12-track album arriving in four batches paid for the whole library four times and the cost grew with
+the library rather than with the work. A write is skipped when the row already holds the verdict, so
+the steady state stops churning the WAL; the reported counters are derived from the classification,
+not from the write, and are unchanged either way.
+
+The rules:
 
 1. `manual_override` wins (user choice sticks across rescans).
 2. **Authoritative metadata** — the Lidarr/MusicBrainz `albumType` from the `library_release_meta` side table (`release-meta-store.ts`, keyed on `albumId`, off the scanner-managed rows so it survives prunes). A known catalog release is never hidden.

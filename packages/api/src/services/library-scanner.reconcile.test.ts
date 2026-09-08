@@ -250,3 +250,26 @@ describe('reconcileAlbums — a curator genre override survives the incremental 
     expect(songOverrideKeys()).toEqual(['doomed']);
   });
 });
+
+describe('reconcileAlbums return value', () => {
+  it('returns the album ids it rebuilt, so the caller can reclassify just those', async () => {
+    const albumDir = join(musicDir, 'Artist', 'Album');
+    mkdirSync(albumDir, { recursive: true });
+    writeFileSync(join(albumDir, '01 - Kept.mp3'), Buffer.alloc(0));
+
+    const ids = await new LibraryScanner(musicDir, db).reconcileAlbums([albumDir]);
+
+    const albumId = db.query<{ id: string }, []>('SELECT id FROM library_albums LIMIT 1').get()!.id;
+    expect(ids).toEqual([albumId]);
+  });
+
+  it('returns nothing when there was nothing to reconcile', async () => {
+    const scanner = new LibraryScanner(musicDir, db);
+    // No dirs at all.
+    expect(await scanner.reconcileAlbums([])).toEqual([]);
+    // A dir that exists but holds no audio: walked, nothing built.
+    const emptyDir = join(musicDir, 'Artist', 'Empty');
+    mkdirSync(emptyDir, { recursive: true });
+    expect(await scanner.reconcileAlbums([emptyDir])).toEqual([]);
+  });
+});
