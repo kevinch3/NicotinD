@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.13](https://github.com/kevinch3/NicotinD/compare/v0.6.12...v0.6.13) (2026-09-08)
+
+### Bug Fixes
+
+* **deploy:** stop a degraded sub-service and a full disk from failing silently ([#1023](https://github.com/kevinch3/NicotinD/issues/1023)) ([84c5485](https://github.com/kevinch3/NicotinD/commit/84c5485cce55601eb6308a53ce46402cc16b7ad1)), closes [#1019](https://github.com/kevinch3/NicotinD/issues/1019) [#1021](https://github.com/kevinch3/NicotinD/issues/1021), references [#1019](https://github.com/kevinch3/NicotinD/issues/1019) [#1021](https://github.com/kevinch3/NicotinD/issues/1021)
 ## [0.6.12](https://github.com/kevinch3/NicotinD/compare/v0.6.11...v0.6.12) (2026-09-08)
 
 ### Bug Fixes
