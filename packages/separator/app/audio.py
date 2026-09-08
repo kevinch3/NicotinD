@@ -14,6 +14,14 @@ FFMPEG = "ffmpeg"
 FFPROBE = "ffprobe"
 
 
+class DecodeError(ValueError):
+    """This file cannot be decoded — a verdict on the source, mapped to 422.
+
+    The only per-file verdict the worker can reach; everything else raised in
+    there is environmental and must stay a 503 (issue #1020).
+    """
+
+
 def probe_duration_sec(path: str | Path) -> float | None:
     """Container duration, or None when ffprobe cannot read the file."""
     try:
@@ -66,7 +74,7 @@ def decode_stereo_f32(path: str | Path, sample_rate: int = SAMPLE_RATE) -> np.nd
         check=False,
     )
     if proc.returncode != 0 or not proc.stdout:
-        raise ValueError(
+        raise DecodeError(
             f"ffmpeg could not decode {path}: {proc.stderr.decode(errors='replace')[:200]}"
         )
     samples = np.frombuffer(proc.stdout, dtype=np.float32)

@@ -110,9 +110,33 @@ def test_worker_faults_are_503_not_422(tmp_path: Path) -> None:
 
 
 def test_a_per_file_failure_inside_the_worker_is_422(tmp_path: Path) -> None:
-    client = make(tmp_path, separator=FakeSeparator(fail=ValueError("undecodable")))
+    from app.audio import DecodeError
+
+    client = make(tmp_path, separator=FakeSeparator(fail=DecodeError("ffmpeg said no")))
     (tmp_path / "music" / "song.mp3").write_bytes(b"x")
     assert client.post("/separate", json={"relPath": "song.mp3"}).status_code == 422
+
+
+@pytest.mark.parametrize(
+    "err",
+    [
+        # The real one: as uid 1000 numba could not write librosa's JIT cache, so
+        # every track 422'd and the API cached each as a permanent file verdict.
+        RuntimeError("cannot cache function '__o_fold': no locator available"),
+        OSError(28, "No space left on device"),
+        MemoryError("CUDA out of memory"),
+    ],
+    ids=["numba-cache", "enospc", "cuda-oom"],
+)
+def test_an_environmental_fault_is_503_not_a_verdict_on_the_file(tmp_path: Path, err) -> None:
+    """503 is retried; 422 is remembered against the file until its bytes change.
+
+    A fault that has nothing to do with the track must never be recorded as
+    "this track cannot be separated" (issue #1020).
+    """
+    client = make(tmp_path, separator=FakeSeparator(fail=err))
+    (tmp_path / "music" / "song.mp3").write_bytes(b"x")
+    assert client.post("/separate", json={"relPath": "song.mp3"}).status_code == 503
 
 
 def test_a_model_load_failure_is_sticky_in_health(tmp_path: Path) -> None:

@@ -64,6 +64,29 @@ RUN if [ "$GPU" = "1" ]; then \
 # the first karaoke play in prod.
 RUN python -c "from app.model import load_model; m, cfg = load_model('/models', 'cpu'); print('checkpoint ok:', sum(p.numel() for p in m.parameters()) // 1_000_000, 'M params')"
 
+# librosa JIT-compiles with numba's on-disk cache. The compose overlay runs this
+# image as a NON-ROOT uid, where HOME is not writable and site-packages is
+# root-owned — so every numba cache locator fails, librosa raises, and every
+# /separate call fails (issue #1020). Point the cache somewhere any uid can
+# write: 1777, not 755, because the runtime uid is chosen by the deployment and
+# is not this build's.
+ENV NUMBA_CACHE_DIR=/tmp/numba-cache
+RUN mkdir -p /tmp/numba-cache && chmod 1777 /tmp/numba-cache
+
+# The checkpoint check above runs as root and therefore CANNOT see that fault —
+# which is how it shipped. Re-run the JIT path holding no more privilege than
+# prod's, so the image build is what catches it.
+USER 65534:65534
+RUN python -c "import os, librosa; assert librosa.hz_to_note(440.0) == 'A4'; print('numba cache ok as uid', os.getuid())"
+USER root
+
+# ...then throw away what that check wrote. numba creates its subdirectories
+# mode 755 owned by whoever compiled, so a *warm* cache in the image is worse
+# than none: uid 1000 cannot write inside uid 65534's directory and hits the
+# identical error. Measured — the check above passed while the image still
+# failed for the uid the overlay actually uses.
+RUN rm -rf /tmp/numba-cache && mkdir -p /tmp/numba-cache && chmod 1777 /tmp/numba-cache
+
 ENV SEPARATOR_MODELS_DIR=/models \
     MUSIC_DIR=/data/music \
     SEPARATOR_GPU_BUILD=$GPU
