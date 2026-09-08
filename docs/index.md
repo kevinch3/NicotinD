@@ -139,7 +139,7 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **A canonical tracklist ranks duplicates, it never deletes the only copy**: the pinned tracklist
   keys an album's files to canonical tracks so duplicates collapse; a file it does not name keys by
   its own title and survives, in the scanner and in the disk-deleting reconcile pass alike.
-  `selectAlbumTracks`, `LibraryScanner.knownRelPaths`, `chooseFolderKeepers`.
+  `selectAlbumTracks`, `selectAlbumTracksDetailed`, `LibraryScanner.knownRelPaths`, `chooseFolderKeepers`.
   → [library-scanner.md](library-scanner.md)
 - **Title cleanup runs over the existing library too**: `cleanDisplayTitle` covers reissue labels,
   and `normalize-titles.ts` applies it to stored rows through the verified retag path.

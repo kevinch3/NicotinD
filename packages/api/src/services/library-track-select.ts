@@ -76,10 +76,28 @@ export function selectAlbumTracks<T extends SelectableTrack>(
   canonicalTitles?: readonly string[] | null,
   knownRelPaths?: ReadonlySet<string>,
 ): T[] {
+  return selectAlbumTracksDetailed(tracks, canonicalTitles, knownRelPaths).kept;
+}
+
+/**
+ * {@link selectAlbumTracks} plus **which keeper each dropped track lost to**.
+ *
+ * why: a caller that deletes the losers needs to be able to say what survived in
+ * their place. Without it, an acquisition whose file was collapsed into an
+ * existing copy points at a path that no longer exists and can never resolve
+ * (issue #1032). The keeper selection is identical — this returns the same
+ * `kept` set, just without discarding the grouping that produced it.
+ */
+export function selectAlbumTracksDetailed<T extends SelectableTrack>(
+  tracks: T[],
+  canonicalTitles?: readonly string[] | null,
+  knownRelPaths?: ReadonlySet<string>,
+): { kept: T[]; supersededBy: Map<T, T> } {
   const canon = (canonicalTitles ?? []).map((c) => normalizeTitle(c)).filter((c) => c.length > 0);
   const useCanonical = canon.length > 0;
 
   const best = new Map<string, T>();
+  const groups = new Map<string, T[]>();
   for (const t of tracks) {
     const norm = normalizeTitle(t.title);
     // A track's identity within an album is (disc, title), not title. Album
@@ -101,6 +119,8 @@ export function selectAlbumTracks<T extends SelectableTrack>(
         : norm
     }`;
 
+    groups.set(key, [...(groups.get(key) ?? []), t]);
+
     const cur = best.get(key);
     if (!cur) {
       best.set(key, t);
@@ -111,5 +131,11 @@ export function selectAlbumTracks<T extends SelectableTrack>(
     if (q > cq || (q === cq && t.relPath < cur.relPath)) best.set(key, t);
   }
 
-  return [...best.values()];
+  const supersededBy = new Map<T, T>();
+  for (const [key, members] of groups) {
+    const winner = best.get(key)!;
+    for (const m of members) if (m !== winner) supersededBy.set(m, winner);
+  }
+
+  return { kept: [...best.values()], supersededBy };
 }

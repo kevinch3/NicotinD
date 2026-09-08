@@ -113,6 +113,28 @@ queue, and a rejected batch does not wedge the next caller.
 2. **Auto-dedupe** — after each batch, `organizeBatch` runs `dedupeFolder` on every real `<Artist>/<Album>` dir it touched (never `Singles`/unsorted), removing collision-suffix/mixed-format true copies and returning `dedupedBasenames` so `DownloadWatcher` prunes the matching `completed_downloads` rows. On by default (`autoDedupe`).
 3. **Cross-edition folder consolidation** — auto-dedupe is *per folder*, so duplicates split across sibling edition folders (`<Artist>/Ultraviolence/` + `<Artist>/Ultraviolence (JP Deluxe Edition)/`) were never collapsed: album-grouping merges them into one *card* but they stay duplicated on disk. So `placeFile` now resolves the destination through `findCanonicalAlbumFolder(artist, album)` — it reuses an existing same-album folder by the edition-collapsing `albumGroupKey` (a per-batch readdir cache covers on-disk siblings *and* dirs created earlier in the same batch; it picks the fullest match, preferring the shortest/base title on a tie). Deluxe/remaster/JP/year-tagged editions therefore land in **one** `<Artist>/<Album>` dir and layer 2 then collapses the cross-edition true-dups. The active-job canonical name (`applyJobCanonicalName`) still wins when present; the feature is gated by `dedupeAcrossEditions` (default on); `normalizeForGrouping` keeps genuinely distinct titles ("Greatest Hits" vs "II") and live albums separate. **Editions already split on disk** (acquired before this) are merged by the existing `scripts/repair-album-folders.ts` (group by `albumGroupKey` → fullest canonical → move files in → trim to the recorded Lidarr tracklist or `dupKey` → drop empty siblings; dry-run unless `--apply`).
 
+### A deduped acquisition still has to resolve (#1032)
+
+`organizeBatch` stamps `file.relativePath` in `organizeGroup` and **only then** runs the dedupe pass,
+so a file whose track the library already held is unlinked *after* its path was recorded. The addon
+poller wrote that path into `acquisition_job_items.relative_path` and discarded `organizeBatch`'s
+return value entirely, leaving the item pointing at a file that had just been deleted. Nothing could
+ever resolve it: the item sat at `organized`, and `recomputeStage` correctly refused to close a job
+holding a non-terminal item, so the whole job sat at `stage=scanning` until the 24 h idle valve wrote
+off an acquisition that had actually succeeded. Measured on prod at 0.6.16: **8 of 8 jobs stranded**,
+14 items, oldest 22.4 h.
+
+So `chooseFolderKeepers` now reports `supersededBy` (dropped name → the name kept in its place),
+`reconcileTouched` maps it to music-dir-relative paths as `OrganizeResult.supersededRelPaths`, and the
+poller records **the survivor's** path. The item then resolves through the normal
+`markItemsScanned` / `reresolveOrganizedItems` route to the copy the user actually has, and the job
+closes. The pairing is exact rather than inferred — `selectAlbumTracksDetailed` returns the same
+keeper set as `selectAlbumTracks` plus the grouping that produced it, so the winner each casualty lost
+to is known, not guessed at by re-matching filenames.
+
+Note what is *not* a failure here: the user asked for tracks they already owned, and the organizer was
+right to decline a second copy. Only the bookkeeping was wrong.
+
 ---
 
 ## Lossless → Opus standardization (storage + web playback)

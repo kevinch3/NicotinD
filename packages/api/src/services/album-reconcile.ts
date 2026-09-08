@@ -2,7 +2,7 @@
 import { readdirSync, statSync, unlinkSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { getMusicMetadata } from './music-metadata-loader.js';
-import { selectAlbumTracks, type SelectableTrack } from './library-track-select.js';
+import { selectAlbumTracksDetailed, type SelectableTrack } from './library-track-select.js';
 import { AUDIO_EXTENSIONS } from '@nicotind/core';
 
 /** Album folders that must never be collapsed as one album (each loose track is its own single). */
@@ -20,6 +20,11 @@ export interface ReconcileFile {
 export interface ReconcileResult {
   deletedNames: string[];
   keptNames: string[];
+  /**
+   * Deleted file name → the name that survived in its place. Lets a caller that
+   * recorded a now-deleted path re-point at the copy that replaced it (#1032).
+   */
+  supersededBy: Record<string, string>;
 }
 
 /**
@@ -44,11 +49,14 @@ export function chooseFolderKeepers(
     // This pass DELETES, so a title repeated across discs must not collide (issue #747).
     disc: x.disc ?? null,
   }));
-  const kept = new Set(selectAlbumTracks(selectable, canonicalTitles).map((t) => t.name));
+  const selection = selectAlbumTracksDetailed(selectable, canonicalTitles);
+  const kept = new Set(selection.kept.map((t) => t.name));
   const keptNames: string[] = [];
   const deletedNames: string[] = [];
   for (const x of files) (kept.has(x.name) ? keptNames : deletedNames).push(x.name);
-  return { keptNames, deletedNames };
+  const supersededBy: Record<string, string> = {};
+  for (const [loser, winner] of selection.supersededBy) supersededBy[loser.name] = winner.name;
+  return { keptNames, deletedNames, supersededBy };
 }
 
 /** Read a folder's audio files into ReconcileFile[] (title + disc via tag, fallback filename stem). */
@@ -98,7 +106,7 @@ export async function reconcileAlbumFolder(
   canonicalTitles: readonly string[] | null,
   opts: { apply?: boolean } = {},
 ): Promise<ReconcileResult> {
-  if (SINGLES_DIR_RE.test(dir)) return { deletedNames: [], keptNames: [] };
+  if (SINGLES_DIR_RE.test(dir)) return { deletedNames: [], keptNames: [], supersededBy: {} };
   const files = await readFolderTracks(dir);
   const result = chooseFolderKeepers(files, canonicalTitles);
   if (opts.apply) {
