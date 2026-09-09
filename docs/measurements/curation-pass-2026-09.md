@@ -2520,3 +2520,102 @@ tagged, ~85 web searches, 10 commits.** Zero review flags added — every ambigu
 case that couldn't be resolved with real-world/source evidence was left untagged,
 not guessed or flagged. The 3 pre-existing review flags (#19, #20, #21) remain open,
 all explicitly requiring a human call per their own text.
+
+---
+
+# 2026-09-09 — the artist field held a BPM (session 10, stretch 1)
+
+A large ingest landed between passes: **16,x?? → 21,174 songs**, 3,764 artists, 7,496 albums.
+It brought a defect class this library had not seen before, and the health report caught it as
+`numeric_artist` (severity **high**, 27 rows).
+
+## The defect
+
+A DJ-pool pack, `01 - Pop Aguante` (100 tracks, `Various Artists`, mp3 320), was tagged with the
+**BPM in the artist field** and the real credit buried in the title:
+
+| artist | title |
+| --- | --- |
+| `122` | `Bad Bunny - Dtmf - Braian Leiva` |
+| `108` | `Maria Becerra - Infinitos Como El Mar - Salsa Version Remix` |
+| `154` | `Angela Torres - Favorita - Extended Mix` |
+
+Every one of the 100 tracks. The artist values ran `090`–`154` — a BPM range, not a name, which is
+what makes the rule's `numeric_artist` predicate exactly right here.
+
+**Zero searches spent.** The title *is* the source evidence: `Artist - Title - Edit`. The fix is
+mechanical — set `artist` from the prefix, set `title` to the remainder. Nothing was invented.
+
+## What was done
+
+100 × `fix_song_metadata`, all read-back verified. Two corrections applied along the way:
+
+- Names were written in their **library-canonical** spelling, not the pack's: `KAROL G` (not
+  `Karol G`), `María Becerra`, `Beéle` (not `Beele`), `Miranda!` (not `Miranda`),
+  `Ca7riel & Paco Amoroso` (not `Catriel`), `Babasónicos`, `Arcángel`, `K4OS`. Writing the pack's
+  spelling would have minted a spelling variant per artist — the exact class
+  `curation-pass-2026-09-06` cleared to 0.
+- One title typo corrected against its own siblings in the same album: `Mistorioso Alguien` →
+  `Misterioso Alguien` (three other rows in the pack spell it correctly).
+
+## Result (re-measured, not tallied)
+
+| metric | before | after |
+| --- | --- | --- |
+| `numeric_artist` (high) | 27 | **14** |
+| genre-less songs | 324 | 312 |
+| `album_count_mismatch` (high) | 309 | 347 |
+
+13 junk artist rows gone. The 14 that remain are in **other** packs from the same ingest
+(`08 - Latin Tech . Techengue . Afro`, `Melodic Techno April 2022`) — the same fix applies.
+
+The `album_count_mismatch` rise is the expected post-write churn (#774), not new pollution.
+
+## Three things measured that are worth carrying
+
+**1. The pack's existing genres are classifier noise, and the health metric cannot see it.**
+55 of the 100 tracks already carried a genre, so they are absent from the genre worklist. Those
+genres are wrong in a way that a missing genre is not:
+
+| track | stored genre |
+| --- | --- |
+| `Miranda! - Me Gusta - Club Mix` | `Emo` |
+| `Casa De Leones - No Te Veo` (reggaetón) | `Christian Hip Hop` |
+| `Becky G Ft. Manuel Turizo - Que Haces - Merenguito Mix` | `Pop Rock` |
+| `Rels B - Tu Vas Sin - Extended` | `New Beat` |
+
+**A wrong genre scores better than a missing one on every dimension the report measures.** The
+genre metric counts absence; nothing counts implausibility. Same shape as the `numeric_artist`
+gap that #864 closed for artist names — and unlike that one, still open. Not fixed this stretch:
+re-tagging 55 rows is a judgment pass, not a mechanical one.
+
+**2. `fix_song_metadata` reports an error when the canonicalizer does its job — filed #1071.**
+Writing `artist: "Karol G"` on a library whose canonical row is `KAROL G` returns
+`{"error":"Tag write landed but the rescan did not apply it", actual:{artist:"KAROL G"}}`.
+Read-back proves the row is **correct**. The verifier compares the requested string to the stored
+string byte-for-byte and does not know about the accent/case fold the scanner just applied.
+
+This is a false negative in the one direction that matters: the standing rule is that `ok: true`
+is not proof, so an *error* is taken seriously — and the natural response is to retry, or to
+re-write the name in a spelling that makes the check pass, which mints the variant the fold
+existed to prevent.
+
+Asymmetry found in the same pass: a **compound** artist string is not folded. `"Maria Becerra"`
+became `"María Becerra"`; `"Maria Becerra, Xross"` was stored verbatim. The fold runs on the whole
+string, not per credit, so a compound is a door around it. Five rows written unfolded here and
+re-written accented before closing.
+
+**3. 20 concurrent `fix_song_metadata` calls 502 the origin; 12 do not.** Seven of twenty came
+back `origin_bad_gateway` from Cloudflare. The known concurrency ceiling (#757) was documented for
+`lookup_song_metadata`'s ~4-source fan-out — it applies to the **write** path too, which retags and
+rescans a file per call. Batches of ≤12 ran clean all pass. The writes are idempotent, so the
+retry was free, but the failure is silent about which half landed.
+
+## Open, next stretch
+
+- The remaining **14** `numeric_artist` rows, in the sibling packs from this ingest.
+- A second coherent wave from the same ingest: ~55 Chilean *cueca* / folklore singles
+  (`landedAt` 1788883785133), genre-less, one album per track. One judgment covers the wave —
+  but not blindly: `Rapanui Hinariru — Ina` is Rapa Nui and `Grupo Altamar` is cumbia, so the
+  wave is not homogeneous.
+- Flags #19/#20/#21 remain open: all three are owner decisions, correctly left alone.
