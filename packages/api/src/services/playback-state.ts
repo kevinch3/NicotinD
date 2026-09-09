@@ -67,7 +67,11 @@ export class PlaybackStateManager extends EventEmitter {
   private readonly activeGraceMs: number;
   private readonly idleReleaseMs: number;
   private lastPlayingAt = 0;
-  private pendingRelease: { id: string; timer: ReturnType<typeof setTimeout> } | null = null;
+  /** Devices whose socket is gone and whose release grace is running. Keyed
+   *  by device: a newer output dropping must not cancel an older device's
+   *  timer (a single slot did, and the older device then stayed listed until
+   *  the stale sweep). */
+  private pendingReleases = new Map<string, ReturnType<typeof setTimeout>>();
 
   private state: PlaybackState = {
     activeDeviceId: null,
@@ -104,7 +108,7 @@ export class PlaybackStateManager extends EventEmitter {
       type: d.type,
       lastSeen: d.lastSeen,
       available: d.remoteEnabled && d.activated,
-      pending: this.pendingRelease?.id === d.id,
+      pending: this.pendingReleases.has(d.id),
     }));
   }
 
@@ -115,7 +119,7 @@ export class PlaybackStateManager extends EventEmitter {
    *  tab. */
   canTarget(id: string): boolean {
     const d = this.devices.get(id);
-    return d !== undefined && d.remoteEnabled && d.activated && this.pendingRelease?.id !== id;
+    return d !== undefined && d.remoteEnabled && d.activated && !this.pendingReleases.has(id);
   }
 
   /** A device that started playing wants to be the output. Compare-and-set:
@@ -130,7 +134,7 @@ export class PlaybackStateManager extends EventEmitter {
     // A claim over a pending output leaves its release timer running: the
     // timer drops the dead device from the list and finds the session already
     // moved, so it releases nothing.
-    if (this.pendingRelease?.id === id) this.cancelPendingRelease();
+    this.cancelPendingRelease(id);
     this.updateState({ activeDeviceId: id, ...snapshot });
     return true;
   }
@@ -151,7 +155,7 @@ export class PlaybackStateManager extends EventEmitter {
     }
     if (
       this.state.activeDeviceId !== null &&
-      !this.pendingRelease &&
+      !this.pendingReleases.has(this.state.activeDeviceId) &&
       now - this.lastPlayingAt > this.idleReleaseMs
     ) {
       this.updateState({ activeDeviceId: null, isPlaying: false });
@@ -189,7 +193,7 @@ export class PlaybackStateManager extends EventEmitter {
     const activated = device.activated ?? true;
     this.devices.set(device.id, { ...device, remoteEnabled, activated, lastSeen: Date.now() });
     // The active device came back within the grace: the cast survives.
-    if (this.pendingRelease?.id === device.id) this.cancelPendingRelease();
+    this.cancelPendingRelease(device.id);
     if (!remoteEnabled) this.releaseIfActive(device.id);
     this.emit('devices_update', this.getDevices());
   }
@@ -217,7 +221,7 @@ export class PlaybackStateManager extends EventEmitter {
    *  and every command would land on a device that ignores them (#877). */
   private releaseIfActive(id: string) {
     if (this.state.activeDeviceId !== id) return;
-    this.cancelPendingRelease();
+    this.cancelPendingRelease(id);
     this.updateState({ activeDeviceId: null, isPlaying: false });
   }
 
@@ -225,10 +229,9 @@ export class PlaybackStateManager extends EventEmitter {
    *  grace so a 1s reconnect blip does not end the session (and does not make
    *  the controller fall back to local audio); release it if it stays gone. */
   private loseActiveDevice(id: string) {
-    if (this.pendingRelease?.id === id) return;
-    this.cancelPendingRelease();
+    if (this.pendingReleases.has(id)) return;
     const timer = setTimeout(() => {
-      this.pendingRelease = null;
+      this.pendingReleases.delete(id);
       this.devices.delete(id);
       if (this.state.activeDeviceId === id) {
         this.updateState({ activeDeviceId: null, isPlaying: false });
@@ -236,16 +239,17 @@ export class PlaybackStateManager extends EventEmitter {
       this.emit('devices_update', this.getDevices());
     }, this.activeGraceMs);
     timer.unref?.();
-    this.pendingRelease = { id, timer };
+    this.pendingReleases.set(id, timer);
     // Controllers must hear that the output is pending now, not when the
     // grace ends: it is what turns their next play into a claim.
     this.emit('devices_update', this.getDevices());
   }
 
-  private cancelPendingRelease() {
-    if (!this.pendingRelease) return;
-    clearTimeout(this.pendingRelease.timer);
-    this.pendingRelease = null;
+  private cancelPendingRelease(id: string) {
+    const timer = this.pendingReleases.get(id);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.pendingReleases.delete(id);
   }
 
   /** Record a beat. Returns whether the device was still known — false means

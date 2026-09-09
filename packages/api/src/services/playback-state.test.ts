@@ -438,6 +438,25 @@ describe('PlaybackStateManager', () => {
     });
   });
 
+  describe('release grace is per device', () => {
+    it('a newer output dropping does not cancel an older pending device; both are dropped', async () => {
+      const m = new PlaybackStateManager({ activeGraceMs: 30 });
+      m.registerDevice({ id: 'old', name: 'Old', type: 'web' });
+      m.registerDevice({ id: 'new', name: 'New', type: 'web' });
+      m.claimOutput('old', { track: null, trackId: null, position: 0, isPlaying: true });
+      m.unregisterDevice('old'); // pending
+      m.claimOutput('new', { track: null, trackId: null, position: 0, isPlaying: true });
+      m.unregisterDevice('new'); // pending too — used to cancel old's timer
+      expect(m.getDevices().map((d) => [d.id, d.pending])).toEqual([
+        ['old', true],
+        ['new', true],
+      ]);
+      await Bun.sleep(50);
+      expect(m.getDevices()).toHaveLength(0);
+      expect(m.getState().activeDeviceId).toBeNull();
+    });
+  });
+
   describe('canTarget', () => {
     it('only a listed, available, non-pending device is a cast target', () => {
       manager.registerDevice({ id: 'd1', name: 'A', type: 'web' });

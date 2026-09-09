@@ -106,7 +106,7 @@ class FrameLog {
 
   private push(who: string, dir: string, payload: string): void {
     const t = ((Date.now() - this.t0) / 1000).toFixed(1).padStart(6);
-    this.lines.push(`${t} ${who} ${dir} ${payload.slice(0, 300)}`);
+    this.lines.push(`${t} ${who} ${dir} ${payload.slice(0, 4000)}`);
     if (dir !== '←') return;
     try {
       const m = JSON.parse(payload) as { type: string; payload: { state?: { position?: number } } };
@@ -236,7 +236,12 @@ test.describe('remote playback', () => {
     page,
     browser,
   }, testInfo) => {
-    const { a: controller, b: receiver, frames, close } = await twoDevices(browser, page, {
+    const {
+      a: controller,
+      b: receiver,
+      frames,
+      close,
+    } = await twoDevices(browser, page, {
       a: 'e2e-rp2-c',
       b: 'e2e-rp2-r',
     });
@@ -256,7 +261,9 @@ test.describe('remote playback', () => {
 
       await expect.poll(() => audioPlaying(receiver), { timeout: 15_000 }).toBe(true);
       await expect.poll(() => audioPaused(controller), { timeout: 5_000 }).toBe(true);
-      await expect(controller.getByTestId('playing-elsewhere').first()).toContainText('Dev e2e-rp2-r');
+      await expect(controller.getByTestId('playing-elsewhere').first()).toContainText(
+        'Dev e2e-rp2-r',
+      );
 
       // The receiver's progress must reach the controller: this is the
       // connection-identity bug (#877) end-to-end, through the real adapter.
