@@ -2619,3 +2619,97 @@ retry was free, but the failure is silent about which half landed.
   but not blindly: `Rapanui Hinariru — Ina` is Rapa Nui and `Grupo Altamar` is cumbia, so the
   wave is not homogeneous.
 - Flags #19/#20/#21 remain open: all three are owner decisions, correctly left alone.
+
+## 2026-09-09, stretch 2 — the Chilean folklore wave, and a ghost I over-diagnosed
+
+### `numeric_artist` reached 0, but not the way I thought
+
+Stretch 1 left the rule at 14 after correcting 100 songs. The reason turned out to be
+`library_song_artists`: the retag rewrote `library_songs.artist` and **added** the correct credit
+edge without removing the superseded one. Proven with a controlled re-write —
+
+```
+fix_song_metadata({songId:"b927a728…", artist:"Bad Bunny"})   // already correct
+SELECT a.name FROM library_song_artists sa JOIN library_artists a …
+-> [{"name":"090"}, {"name":"Bad Bunny"}]
+```
+
+126 such edges, 126/126 sitting beside a correct credit, spanning two albums. Filed as **#1073**.
+
+**Then it cleared itself.** Re-measured ~20 minutes later with no targeted action: 126 -> 0, every
+BPM artist row pruned, `numeric_artist` 14 -> 0, high-severity 361 -> 310. A full scan had run in
+that window (an ingest was live, and `merge_artist` re-buckets on the next scan — the trigger is not
+cleanly attributable, the outcome is). Correction posted to #1073 and the severity read down: the
+stale edge persists **until the next full scan**, not forever, and no backfill is needed.
+
+Worth being precise about the error, because the controlled test was sound and the conclusion
+still wasn't. I proved the *mechanism* (the edge is added without removing its predecessor) and
+then assumed *durability* without measuring it. The evidence I leaned on hardest — a second album
+I never touched still carrying ghosts — is equally consistent with "not scanned since it was
+retagged". Same shape as the `feedback_verify_filed_diagnoses` base rate, except the filed
+diagnosis was mine.
+
+### A clean negative: `merge_artist` does not have that shape
+
+Tested against a real spelling split found in the wave, `Los Hermanos Campo` (2) vs
+`Los Hermanos Campos` (10) — one artist, two spellings:
+
+```
+merge_artist({mergeInto:"Los Hermanos Campos", rawName:"Los Hermanos Campo", confirm:true})
+-> 12/12 under the canonical name, losing row gone, zero stale edges
+```
+
+So the reconcile logic already exists and is correct on that path. The retag path can likely reuse
+it. Also: the first `merge_artist` call **timed out**, and the DB showed it had landed *nothing* —
+the retry was safe. Verified rather than assumed; one occurrence, not a guarantee.
+
+### The folklore wave — 53 genre writes, zero searches
+
+59 genre-less songs landed together (`landed_at` ≈ 1788883785133). **56 of 59 sit in
+`Various Artists/Unknown`** — the #978 shared bucket — with one single-track album each, so the
+folder carries no provenance. The 3 that escaped are in real `<Artist>/30 Cuecas` folders.
+
+Vocabulary checked before writing, which is the whole job here:
+
+| existing | count |
+| --- | --- |
+| `Folclore Argentino` | 3 |
+| `Folclore` / `Folklore` | 13 / 36 |
+| `Cumbia Chilena`, `Pop Chileno`, `Rock Chileno` | 1 / 10 / 10 |
+| `Cueca` | **0 — did not exist** |
+
+The convention is Spanish `<Genre> <Nationality>`, so **`Folclore Chileno`** follows
+`Folclore Argentino` exactly. `Cueca` is genuinely new and correct — minting a *new* accurate genre
+is fine; minting a *variant spelling* of an existing one is the sin, and `Folklore Chileno` with a
+`k` would have been exactly that.
+
+Applied, all `mode: replace` (these carried no genre, so nothing was overwritten):
+
+- **8 × `Cueca; Folclore Chileno`** — only where the title or the source folder declares it
+  (`Cueca de Campeones`, `Mi Cueca Chilena`, `Una Cueca Chilenera`, `Pura Cueca`, the `30 Cuecas`
+  folder rows, the Medley). Declared evidence, not recall.
+- **45 × `Folclore Chileno`** — where the artist name itself declares the tradition
+  (`Huasos De Algarrobal`, `Los Huasos Quincheros`, `Conjunto Tierra Chilena`, `Las Colchagüinas`,
+  `Los Reales del Valle`, `Silvia Infantas y Los Cóndores`…).
+- **6 left untagged on purpose**: `Grupo Altamar` (2), `A los 4 Vientos` (2), `Entremares` (1),
+  `Rapanui Hinariru` (1). These read as cumbia/romántica or a distinct Rapa Nui tradition rather
+  than huaso folklore, and I would have been running on recall to say which. The skill's rule is
+  that an inconclusive call leaves the song untagged and does **not** get a flag — the genre
+  worklist is already the tracker.
+
+Verified against the DB, not the return values: `Folclore Chileno` 53, `Cueca` 8, wave genre-less
+6 — exactly the 6 held back.
+
+### Deltas
+
+| metric | stretch 1 start | now |
+| --- | --- | --- |
+| audit high | 336 | **310** |
+| `numeric_artist` | 27 | **0** |
+| genre-less songs | 324 | **304** |
+| artists | 3,764 | 3,762 |
+
+Not acted on, noted: two exact duplicate titles inside the wave
+(`Conjunto Tierra Chilena — Los Lagos de Chile`, `Los Hermanos Campos — La Consentida`, twice each).
+Dedupe is destructive and an ingest is live, so it waits — `landedAt` clustering says arrivals are
+still coming.
