@@ -14,12 +14,12 @@
     "@nicotind/lidarr-client": "workspace:*",
     "@nicotind/service-manager": "workspace:*",
     "@sentry/bun": "^10.67.0",
-    "hono": "^4.12.34",
+    "hono": "^4.13.5",
     "jose": "^6.2.3",
     "music-metadata": "^11.14.0",
     "music-tempo": "^1.0.3",
     "node-id3": "^0.2.9",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.4",
     "zod": "^4.4.3"
   }
 }
