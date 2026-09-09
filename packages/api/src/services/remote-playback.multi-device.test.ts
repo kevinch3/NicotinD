@@ -80,6 +80,15 @@ class VirtualSocket {
     const f = this.last('DEVICES_SYNC');
     return f ? (f.payload['devices'] as { id: string }[]).map((d) => d.id) : undefined;
   }
+
+  /** Ids the last DEVICES_SYNC offered as targets. */
+  lastAvailable(): string[] | undefined {
+    const f = this.last('DEVICES_SYNC');
+    if (!f) return undefined;
+    return (f.payload['devices'] as { id: string; available: boolean }[])
+      .filter((d) => d.available)
+      .map((d) => d.id);
+  }
 }
 
 const open: VirtualSocket[] = [];
@@ -116,9 +125,7 @@ function castSession(opts: PlaybackStateOptions = {}) {
 }
 
 function backdate(manager: ReturnType<typeof session>['manager'], id: string, ms: number) {
-  const d = manager.getDevices().find((x) => x.id === id);
-  if (!d) throw new Error(`${id} not registered`);
-  d.lastSeen = Date.now() - ms;
+  if (!manager.markSeen(id, Date.now() - ms)) throw new Error(`${id} not registered`);
 }
 
 afterEach(() => {
@@ -201,14 +208,16 @@ describe('opting out while active', () => {
     const { controller, receiver } = castSession();
     receiver.send('UPDATE_DEVICE', { remoteEnabled: false });
     expect(controller.lastActive()).toBeNull();
-    expect(controller.lastDeviceIds()).toEqual(['controller']);
+    // Still listed — the chrome may name it — but no longer a target.
+    expect(controller.lastDeviceIds()).toEqual(['controller', 'receiver']);
+    expect(controller.lastAvailable()).toEqual(['controller']);
   });
 
   it('re-registering as not remote-enabled releases the active device', () => {
     const { controller, receiver } = castSession();
     receiver.register({ remoteEnabled: false });
     expect(controller.lastActive()).toBeNull();
-    expect(controller.lastDeviceIds()).toEqual(['controller']);
+    expect(controller.lastAvailable()).toEqual(['controller']);
   });
 });
 
@@ -262,5 +271,103 @@ describe('reconnect grace for the active device', () => {
     await Bun.sleep(40);
     expect(s.controller.lastActive()).toBe('controller');
     expect(s.manager.getState().activeDeviceId).toBe('controller');
+  });
+});
+
+describe('claim-on-play (no picker)', () => {
+  const t = { id: 't1', title: 'One', artist: 'A' };
+  const claim = (d: VirtualSocket, id = 't1') =>
+    d.send('CLAIM_OUTPUT', { track: { ...t, id }, trackId: id, position: 0, isPlaying: true });
+
+  it('the first device to play becomes the output in one broadcast that carries its track', () => {
+    const s = session();
+    const a = s.device('a');
+    const b = s.device('b');
+    a.register();
+    b.register();
+    claim(a);
+    const f = b.last('STATE_SYNC')!.payload['state'] as { activeDeviceId: string; trackId: string };
+    expect(f.activeDeviceId).toBe('a');
+    expect(f.trackId).toBe('t1');
+    expect(b.frames('STATE_SYNC')).toHaveLength(2); // its own snapshot + the claim
+  });
+
+  it('a second claim against a live output loses and is answered privately with the truth', () => {
+    const s = session();
+    const a = s.device('a');
+    const b = s.device('b');
+    a.register();
+    b.register();
+    claim(a);
+    const before = a.frames('STATE_SYNC').length;
+    claim(b, 't2');
+    expect(s.manager.getState().activeDeviceId).toBe('a');
+    expect(a.frames('STATE_SYNC')).toHaveLength(before); // nobody else heard it
+    const reply = b.last('STATE_SYNC')!;
+    expect((reply.payload['state'] as { activeDeviceId: string }).activeDeviceId).toBe('a');
+    expect(reply.payload['devices']).toBeDefined();
+  });
+
+  it('RELEASE_OUTPUT from the output frees the session at once; a bystander cannot', () => {
+    const s = session({ activeGraceMs: 10_000 });
+    const a = s.device('a');
+    const b = s.device('b');
+    a.register();
+    b.register();
+    claim(a);
+    b.send('RELEASE_OUTPUT');
+    expect(s.manager.getState().activeDeviceId).toBe('a');
+    a.send('RELEASE_OUTPUT');
+    expect(b.lastActive()).toBeNull();
+    claim(b);
+    expect(s.manager.getState().activeDeviceId).toBe('b');
+  });
+
+  it('SET_ACTIVE_DEVICE to an opted-out or unknown device is ignored', () => {
+    const s = session();
+    const a = s.device('a');
+    const b = s.device('b');
+    a.register();
+    b.register({ remoteEnabled: false });
+    a.send('SET_ACTIVE_DEVICE', { id: 'b' });
+    a.send('SET_ACTIVE_DEVICE', { id: 'ghost' });
+    expect(s.manager.getState().activeDeviceId).toBeNull();
+  });
+
+  it('an opted-out device is listed as unavailable, not hidden', () => {
+    const s = session();
+    const a = s.device('a');
+    const b = s.device('b');
+    a.register();
+    b.register({ remoteEnabled: false });
+    const list = a.last('DEVICES_SYNC')!.payload['devices'] as { id: string; available: boolean }[];
+    expect(list.map((d) => [d.id, d.available])).toEqual([
+      ['a', true],
+      ['b', false],
+    ]);
+  });
+
+  it("the output's pause report reaches the controller as a broadcast", () => {
+    const s = session();
+    const a = s.device('a');
+    const b = s.device('b');
+    a.register();
+    b.register();
+    claim(a);
+    a.send('STATE_UPDATE', { state: { isPlaying: false, position: 7 } });
+    const f = b.last('STATE_SYNC')!.payload['state'] as { isPlaying: boolean; position: number };
+    expect(f.isPlaying).toBe(false);
+    expect(f.position).toBe(7);
+  });
+
+  it("a controller's STATE_UPDATE never overwrites the output's state", () => {
+    const s = session();
+    const a = s.device('a');
+    const b = s.device('b');
+    a.register();
+    b.register();
+    claim(a);
+    b.send('STATE_UPDATE', { state: { isPlaying: false, position: 99 } });
+    expect(s.manager.getState().isPlaying).toBe(true);
   });
 });

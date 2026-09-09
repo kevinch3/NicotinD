@@ -8,6 +8,12 @@
  * simulation faithful rather than a hand-written model that drifts (#877).
  *
  * The rules, in one place:
+ * - A session exists whenever something plays. A device with no controllable
+ *   session that starts playing *claims* the output (`CLAIM_OUTPUT`); the
+ *   server applies it compare-and-set and the broadcast commits it, so a claim
+ *   is never committed optimistically here.
+ * - Only the picker moves audio. While a session names another device, picks
+ *   and transport drive that device; `castTo` is the one way to bring it here.
  * - Commands drive execution, STATE_SYNC drives UI. Only a snapshot reply (a
  *   STATE_SYNC carrying `devices`, sent on REGISTER) may load a track on the
  *   output device — that is the reconnect-while-active path.
@@ -17,6 +23,11 @@
  *   speaker because a link dropped.
  * - `null` is "no session", not "me": a stale server track is never loaded
  *   into a device that merely connected.
+ * - Mirroring is unconditional, execution is gated: a device that opted out of
+ *   being driven (`remoteEnabled: false`) still shows what plays elsewhere, but
+ *   never executes a command. A session whose output is not available (opted
+ *   out, or no user gesture yet) is not *controllable*: a play or pick on a
+ *   controller claims locally instead of driving nothing.
  */
 
 export interface RemoteTrack {
@@ -33,6 +44,11 @@ export interface RemoteDevice {
   name: string;
   type: string;
   lastSeen: number;
+  /** Can be driven: opted in and has had a user gesture. Absent = true. */
+  available?: boolean;
+  /** Its socket is gone and the release grace is running. Informational: a
+   *  blip must not make a controller's pick steal the session. Absent = false. */
+  pending?: boolean;
 }
 
 /** The server's shared state as it appears on the wire (all fields optional
@@ -53,11 +69,18 @@ export type ServerMessage =
 
 export type ClientMessage =
   | { type: 'SET_ACTIVE_DEVICE'; payload: { id: string } }
+  | {
+      type: 'CLAIM_OUTPUT';
+      payload: { track: RemoteTrack; trackId: string; position: number; isPlaying: boolean };
+    }
+  | { type: 'RELEASE_OUTPUT'; payload: Record<string, never> }
   | { type: 'COMMAND'; payload: { action: 'SET_TRACK'; track: RemoteTrack } }
   | {
       type: 'STATE_UPDATE';
       payload: {
-        state: { track: RemoteTrack; trackId: string; isPlaying: boolean; position: number };
+        state:
+          | { track: RemoteTrack; trackId: string; isPlaying: boolean; position: number }
+          | { isPlaying: boolean; position: number };
       };
     };
 
@@ -116,6 +139,60 @@ export function initialRemoteClientState(): RemoteClientState {
 /** Whether this device plays audio: no session, or a session naming it. */
 export function isAudioOutput(activeDeviceId: string | null, myId: string): boolean {
   return activeDeviceId === null || activeDeviceId === myId;
+}
+
+/** A session exists and its output can actually be driven: listed and
+ *  available. A device in its reconnect grace still counts — the session
+ *  survives a blip, so must the controller's picks. */
+export function hasControllableSession(state: RemoteClientState): boolean {
+  if (state.activeDeviceId === null) return false;
+  const d = state.devices.find((x) => x.id === state.activeDeviceId);
+  return d !== undefined && d.available !== false;
+}
+
+function targetIsCastable(state: RemoteClientState, id: string): boolean {
+  const d = state.devices.find((x) => x.id === id);
+  return d === undefined || d.available !== false;
+}
+
+/** This device wants to be the output. Nothing is committed locally: the
+ *  server applies the claim compare-and-set and its broadcast commits it. */
+export function claimOutput(
+  _state: RemoteClientState,
+  _ctx: RemoteClientContext,
+  track: RemoteTrack,
+  position: number,
+): { messages: ClientMessage[] } {
+  return {
+    messages: [
+      {
+        type: 'CLAIM_OUTPUT',
+        payload: { track, trackId: track.id, position, isPlaying: true },
+      },
+    ],
+  };
+}
+
+/** The local player started or stopped playing. The output reports it so a
+ *  controller's button stays truthful; a device with no controllable session
+ *  claims the output when it starts; a controller says nothing (its transport
+ *  already drove the output). */
+export function onLocalPlayingChanged(
+  state: RemoteClientState,
+  ctx: RemoteClientContext,
+  playing: boolean,
+  track: RemoteTrack | null,
+  position: number,
+): { messages: ClientMessage[] } {
+  if (state.activeDeviceId === ctx.myId) {
+    return {
+      messages: [{ type: 'STATE_UPDATE', payload: { state: { isPlaying: playing, position } } }],
+    };
+  }
+  if (playing && track && !hasControllableSession(state)) {
+    return claimOutput(state, ctx, track, position);
+  }
+  return { messages: [] };
 }
 
 export function reduceServerMessage(
@@ -177,9 +254,10 @@ function reduceStateSync(
     }
   }
 
-  // Controller: mirror the remote track so the player bar shows it.
+  // Controller: mirror the remote track so the player bar shows it — even on
+  // a device that opted out of being driven; its chrome still names the track.
   const hasSession = typeof next.activeDeviceId === 'string';
-  if (!amActive && hasSession && ctx.remoteEnabled && snap.track) {
+  if (!amActive && hasSession && snap.track) {
     if (snap.track.id !== ctx.localTrackId) {
       next.lastRemoteTrackId = snap.track.id;
       effects.push({ kind: 'show-track', track: snap.track });
@@ -224,9 +302,10 @@ function reduceCommand(
 }
 
 /** The local player moved to a new track. A controller forwards it to the
- *  session (unless the server just told it about that very track); the output
- *  device — or a device with no session — reports it as state so a controller
- *  can mirror it. */
+ *  session (unless the server just told it about that very track) — or claims
+ *  the output when the session's device cannot be driven; the output device —
+ *  or a device with no session — reports it as state so a controller can
+ *  mirror it. */
 export function onLocalTrackChanged(
   state: RemoteClientState,
   ctx: RemoteClientContext,
@@ -234,6 +313,7 @@ export function onLocalTrackChanged(
 ): { messages: ClientMessage[] } {
   if (!isAudioOutput(state.activeDeviceId, ctx.myId)) {
     if (track.id === state.lastRemoteTrackId) return { messages: [] };
+    if (!hasControllableSession(state)) return claimOutput(state, ctx, track, 0);
     return { messages: [{ type: 'COMMAND', payload: { action: 'SET_TRACK', track } }] };
   }
   return {
@@ -253,6 +333,9 @@ export function castTo(
   targetId: string,
   currentTrack: RemoteTrack | null,
 ): Reduction & { messages: ClientMessage[] } {
+  // A device that cannot be driven is not a target; the picker never offers
+  // it, and a stale click must not point the session at it.
+  if (!targetIsCastable(state, targetId)) return { state, effects: [], messages: [] };
   const next = { ...state, activeDeviceId: targetId };
   const messages: ClientMessage[] = [{ type: 'SET_ACTIVE_DEVICE', payload: { id: targetId } }];
 

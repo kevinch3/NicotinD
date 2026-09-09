@@ -273,9 +273,7 @@ describe('PlaybackStateManager', () => {
   describe('cleanupStaleDevices', () => {
     it('removes devices that exceeded the stale timeout', () => {
       manager.registerDevice({ id: 'd1', name: 'Stale', type: 'web' });
-      // Manually backdate lastSeen
-      const device = manager.getDevices().find((d) => d.id === 'd1')!;
-      device.lastSeen = Date.now() - 100_000; // 100s ago, exceeds 90s timeout
+      manager.markSeen('d1', Date.now() - 100_000); // exceeds the 90s timeout
 
       manager.cleanupStaleDevices();
       expect(manager.getDevices()).toHaveLength(0);
@@ -291,8 +289,7 @@ describe('PlaybackStateManager', () => {
       manager.registerDevice({ id: 'd1', name: 'Stale', type: 'web' });
       manager.registerDevice({ id: 'd2', name: 'Fresh', type: 'web' });
 
-      const stale = manager.getDevices().find((d) => d.id === 'd1')!;
-      stale.lastSeen = Date.now() - 100_000;
+      manager.markSeen('d1', Date.now() - 100_000);
 
       manager.cleanupStaleDevices();
       const remaining = manager.getDevices();
@@ -304,8 +301,7 @@ describe('PlaybackStateManager', () => {
       manager.registerDevice({ id: 'd1', name: 'Active', type: 'web' });
       manager.updateState({ activeDeviceId: 'd1', isPlaying: true });
 
-      const device = manager.getDevices().find((d) => d.id === 'd1')!;
-      device.lastSeen = Date.now() - 100_000;
+      manager.markSeen('d1', Date.now() - 100_000);
 
       manager.cleanupStaleDevices();
       expect(manager.getState().activeDeviceId).toBe('d1');
@@ -349,6 +345,131 @@ describe('PlaybackStateManager', () => {
     it('duration field is stored and retrievable', () => {
       manager.updateState({ duration: 243.5 });
       expect(manager.getState().duration).toBe(243.5);
+    });
+  });
+
+  describe('the device list is every connected device, flagged', () => {
+    it('lists an opted-out device as unavailable rather than hiding it', () => {
+      manager.registerDevice({ id: 'd1', name: 'A', type: 'web' });
+      manager.registerDevice({ id: 'd2', name: 'B', type: 'web', remoteEnabled: false });
+      expect(manager.getDevices().map((d) => [d.id, d.available])).toEqual([
+        ['d1', true],
+        ['d2', false],
+      ]);
+    });
+
+    it('a device with no user gesture yet is listed but unavailable', () => {
+      manager.registerDevice({ id: 'd1', name: 'A', type: 'web', activated: false });
+      expect(manager.getDevices()[0]!.available).toBe(false);
+      manager.updateDevice('d1', { activated: true });
+      expect(manager.getDevices()[0]!.available).toBe(true);
+    });
+
+    it('marks the active device pending while its release grace runs', () => {
+      manager.updateState({ activeDeviceId: 'd1' });
+      manager.registerDevice({ id: 'd1', name: 'A', type: 'web' });
+      manager.unregisterDevice('d1');
+      expect(manager.getDevices()[0]).toMatchObject({ id: 'd1', pending: true });
+    });
+  });
+
+  describe('claimOutput — compare-and-set', () => {
+    const t = { id: 't1', title: 'One', artist: 'A' };
+    const claim = (id: string) =>
+      manager.claimOutput(id, { track: t, trackId: 't1', position: 3, isPlaying: true });
+
+    beforeEach(() => {
+      manager.registerDevice({ id: 'd1', name: 'A', type: 'web' });
+      manager.registerDevice({ id: 'd2', name: 'B', type: 'web' });
+    });
+
+    it('with no session the claim applies and lands in ONE broadcast with the track', () => {
+      const seen: unknown[] = [];
+      manager.on('state_update', (st) => seen.push(structuredClone(st)));
+      expect(claim('d1')).toBe(true);
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({ activeDeviceId: 'd1', trackId: 't1', isPlaying: true, position: 3 });
+    });
+
+    it('a claim against a live, drivable output is refused', () => {
+      claim('d1');
+      expect(claim('d2')).toBe(false);
+      expect(manager.getState().activeDeviceId).toBe('d1');
+    });
+
+    it('the output may re-claim itself', () => {
+      claim('d1');
+      expect(claim('d1')).toBe(true);
+    });
+
+    it('a claim wins over an output that opted out', () => {
+      claim('d1');
+      manager.updateDevice('d1', { remoteEnabled: false });
+      // opting out released the session (see below), so re-arm it by hand
+      manager.updateState({ activeDeviceId: 'd1' });
+      expect(claim('d2')).toBe(true);
+      expect(manager.getState().activeDeviceId).toBe('d2');
+    });
+
+    it('a claim loses to an output in its reconnect grace — a blip changes nothing', () => {
+      claim('d1');
+      manager.unregisterDevice('d1');
+      expect(claim('d2')).toBe(false);
+      expect(manager.getState().activeDeviceId).toBe('d1');
+    });
+
+    it('an unknown claimant is refused', () => {
+      expect(claim('ghost')).toBe(false);
+    });
+  });
+
+  describe('canTarget', () => {
+    it('only a listed, available, non-pending device is a cast target', () => {
+      manager.registerDevice({ id: 'd1', name: 'A', type: 'web' });
+      manager.registerDevice({ id: 'd2', name: 'B', type: 'web', remoteEnabled: false });
+      expect(manager.canTarget('d1')).toBe(true);
+      expect(manager.canTarget('d2')).toBe(false);
+      expect(manager.canTarget('ghost')).toBe(false);
+    });
+  });
+
+  describe('releaseOutput', () => {
+    it('the output leaving (pagehide) ends the session at once, no grace', () => {
+      manager.updateState({ activeDeviceId: 'd1', isPlaying: true });
+      manager.registerDevice({ id: 'd1', name: 'A', type: 'web' });
+      manager.releaseOutput('d1');
+      expect(manager.getState().activeDeviceId).toBeNull();
+      expect(manager.getState().isPlaying).toBe(false);
+    });
+
+    it('a bystander cannot release someone else\'s session', () => {
+      manager.updateState({ activeDeviceId: 'd1', isPlaying: true });
+      manager.releaseOutput('d2');
+      expect(manager.getState().activeDeviceId).toBe('d1');
+    });
+  });
+
+  describe('idle release', () => {
+    it('a session whose output stopped reporting play past the threshold is released by the sweep', async () => {
+      const m = new PlaybackStateManager({ idleReleaseMs: 20 });
+      m.registerDevice({ id: 'd1', name: 'A', type: 'web' });
+      m.claimOutput('d1', { track: null, trackId: null, position: 0, isPlaying: true });
+      m.cleanupStaleDevices();
+      expect(m.getState().activeDeviceId).toBe('d1');
+      await Bun.sleep(30);
+      m.cleanupStaleDevices();
+      expect(m.getState().activeDeviceId).toBeNull();
+    });
+
+    it('a reporting output is never idle-released', async () => {
+      const m = new PlaybackStateManager({ idleReleaseMs: 20 });
+      m.registerDevice({ id: 'd1', name: 'A', type: 'web' });
+      m.claimOutput('d1', { track: null, trackId: null, position: 0, isPlaying: true });
+      await Bun.sleep(15);
+      m.updateState({ position: 5, isPlaying: true });
+      await Bun.sleep(15);
+      m.cleanupStaleDevices();
+      expect(m.getState().activeDeviceId).toBe('d1');
     });
   });
 });

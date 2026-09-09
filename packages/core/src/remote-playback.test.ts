@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import {
   castTo,
+  claimOutput,
+  hasControllableSession,
   initialRemoteClientState,
   isAudioOutput,
+  onLocalPlayingChanged,
   onLocalTrackChanged,
   reduceServerMessage,
   type RemoteClientContext,
@@ -250,7 +253,8 @@ describe('COMMAND', () => {
 
 describe('onLocalTrackChanged', () => {
   it('a controller forwards a new track to the session as SET_TRACK', () => {
-    const r = onLocalTrackChanged(state({ activeDeviceId: 'tv' }), ctx(), t2);
+    const listed = [{ id: 'tv', name: 'TV', type: 'web', lastSeen: 0 }];
+    const r = onLocalTrackChanged(state({ activeDeviceId: 'tv', devices: listed }), ctx(), t2);
     expect(r.messages).toEqual([{ type: 'COMMAND', payload: { action: 'SET_TRACK', track: t2 } }]);
   });
 
@@ -325,5 +329,104 @@ describe('castTo', () => {
       t1,
     );
     expect(r.effects).toEqual([{ kind: 'resume-local', position: 40, playing: false }]);
+  });
+});
+
+const tv = { id: 'tv', name: 'TV', type: 'web', lastSeen: 0 };
+
+describe('hasControllableSession', () => {
+  it('no session is not controllable', () => {
+    expect(hasControllableSession(state({ devices: [tv] }))).toBe(false);
+  });
+  it('a session naming a listed, available device is controllable', () => {
+    expect(hasControllableSession(state({ activeDeviceId: 'tv', devices: [tv] }))).toBe(true);
+    expect(
+      hasControllableSession(state({ activeDeviceId: 'tv', devices: [{ ...tv, available: true }] })),
+    ).toBe(true);
+  });
+  it('an output that opted out or is not listed cannot be driven', () => {
+    expect(
+      hasControllableSession(state({ activeDeviceId: 'tv', devices: [{ ...tv, available: false }] })),
+    ).toBe(false);
+    expect(hasControllableSession(state({ activeDeviceId: 'tv', devices: [] }))).toBe(false);
+  });
+  it('an output in its reconnect grace is still driven — a blip must not lose the picks', () => {
+    expect(
+      hasControllableSession(state({ activeDeviceId: 'tv', devices: [{ ...tv, pending: true }] })),
+    ).toBe(true);
+  });
+});
+
+describe('claimOutput', () => {
+  it('sends one CLAIM_OUTPUT carrying the track and commits nothing locally', () => {
+    const r = claimOutput(state(), ctx(), t1, 12);
+    expect(r.messages).toEqual([
+      {
+        type: 'CLAIM_OUTPUT',
+        payload: { track: t1, trackId: 't1', position: 12, isPlaying: true },
+      },
+    ]);
+  });
+});
+
+describe('onLocalPlayingChanged', () => {
+  it('with no session, starting to play claims the output', () => {
+    const r = onLocalPlayingChanged(state(), ctx(), true, t1, 0);
+    expect(r.messages.map((m) => m.type)).toEqual(['CLAIM_OUTPUT']);
+  });
+  it('with no session, pausing reports nothing', () => {
+    expect(onLocalPlayingChanged(state(), ctx(), false, t1, 0).messages).toEqual([]);
+  });
+  it('with no track there is nothing to claim', () => {
+    expect(onLocalPlayingChanged(state(), ctx(), true, null, 0).messages).toEqual([]);
+  });
+  it('the output reports its play and pause transitions as state', () => {
+    const s = state({ activeDeviceId: 'me', devices: [tv] });
+    expect(onLocalPlayingChanged(s, ctx(), false, t1, 40).messages).toEqual([
+      { type: 'STATE_UPDATE', payload: { state: { isPlaying: false, position: 40 } } },
+    ]);
+    expect(onLocalPlayingChanged(s, ctx(), true, t1, 40).messages).toEqual([
+      { type: 'STATE_UPDATE', payload: { state: { isPlaying: true, position: 40 } } },
+    ]);
+  });
+  it('a controller of a controllable session posts nothing — its transport drives the output', () => {
+    const s = state({ activeDeviceId: 'tv', devices: [tv] });
+    expect(onLocalPlayingChanged(s, ctx(), true, t1, 0).messages).toEqual([]);
+    expect(onLocalPlayingChanged(s, ctx(), false, t1, 0).messages).toEqual([]);
+  });
+  it('a controller whose output cannot be driven claims instead of sending into the void', () => {
+    const s = state({ activeDeviceId: 'tv', devices: [{ ...tv, available: false }] });
+    expect(onLocalPlayingChanged(s, ctx(), true, t1, 0).messages.map((m) => m.type)).toEqual([
+      'CLAIM_OUTPUT',
+    ]);
+  });
+});
+
+describe('onLocalTrackChanged — uncontrollable session', () => {
+  it('a pick on a controller whose output opted out claims the output', () => {
+    const s = state({ activeDeviceId: 'tv', devices: [{ ...tv, available: false }] });
+    const r = onLocalTrackChanged(s, ctx(), t2);
+    expect(r.messages.map((m) => m.type)).toEqual(['CLAIM_OUTPUT']);
+  });
+});
+
+describe('castTo — availability', () => {
+  it('refuses a target that is not available', () => {
+    const s = state({ devices: [{ ...tv, available: false }] });
+    const r = castTo(s, ctx(), 'tv', t1);
+    expect(r.messages).toEqual([]);
+    expect(r.effects).toEqual([]);
+    expect(r.state.activeDeviceId).toBeNull();
+  });
+});
+
+describe('STATE_SYNC — mirroring is unconditional', () => {
+  it('a device that opted out still mirrors the session so its chrome can name the track', () => {
+    const r = reduceServerMessage(
+      state(),
+      ctx({ remoteEnabled: false }),
+      sync({ activeDeviceId: 'tv', track: t1 }),
+    );
+    expect(kinds(r)).toEqual(['yield', 'show-track']);
   });
 });

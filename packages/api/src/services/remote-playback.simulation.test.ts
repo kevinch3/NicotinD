@@ -2,8 +2,10 @@ import { describe, expect, it } from 'bun:test';
 import type { WSContext } from 'hono/ws';
 import {
   castTo,
+  hasControllableSession,
   initialRemoteClientState,
   isAudioOutput,
+  onLocalPlayingChanged,
   onLocalTrackChanged,
   reduceServerMessage,
   type ClientMessage,
@@ -29,7 +31,9 @@ import { PlaybackStateManager, type PlaybackStateOptions } from './playback-stat
  *
  * The invariant every scenario checks: while a session exists, at most ONE
  * device is audible, and it is the one the server calls active. The three
- * user-visible symptoms behind #877 were all violations of it.
+ * user-visible symptoms behind #877 were all violations of it. Since a device
+ * claims the session the moment it plays, a session exists whenever anything
+ * plays — so the invariant now says: at most one device is ever audible.
  */
 
 type Frame = { type: string; payload: Record<string, unknown> };
@@ -51,6 +55,7 @@ class VirtualDevice {
 
   private raw: object = {};
   private previousTrackId: string | null = null;
+  private previousPlaying = false;
 
   constructor(
     private readonly handlers: Handlers,
@@ -87,6 +92,7 @@ class VirtualDevice {
       name: this.id,
       deviceType: 'web',
       remoteEnabled: this.remoteEnabled,
+      activated: true,
     });
   }
 
@@ -146,7 +152,19 @@ class VirtualDevice {
           break; // no queue in the simulation
       }
     }
+    this.playingChanged();
     this.trackChanged();
+  }
+
+  /** The `isPlaying` effect: the output reports it, a device with no
+   *  controllable session claims when it starts. */
+  private playingChanged(): void {
+    if (this.playing === this.previousPlaying) return;
+    this.previousPlaying = this.playing;
+    this.post(
+      onLocalPlayingChanged(this.client, this.ctx(), this.playing, this.track, this.position)
+        .messages,
+    );
   }
 
   /** The `currentTrack` effect: fires once per track-id change. */
@@ -164,10 +182,13 @@ class VirtualDevice {
 
   // --- user actions --------------------------------------------------------
 
+  /** A pick in the library: `player.play(track)` sets the track and
+   *  `isPlaying` together. */
   playLocally(track: RemoteTrack): void {
     this.track = track;
     this.playing = true;
     this.position = 0;
+    this.playingChanged();
     this.trackChanged();
   }
 
@@ -178,19 +199,29 @@ class VirtualDevice {
     this.applyEffects(r.effects);
   }
 
-  /** The Settings toggle: the web client sends UPDATE_DEVICE, then drops or
-   *  (re)opens the socket. */
+  /** The Settings toggle: the web client sends UPDATE_DEVICE; the socket
+   *  stays up either way (it is the account's presence channel). */
   setRemoteEnabled(on: boolean): void {
     this.remoteEnabled = on;
     this.send('UPDATE_DEVICE', { remoteEnabled: on });
-    if (on) this.connect();
-    else this.disconnect();
   }
 
-  /** `handlePlayPause` on the player bar. */
+  /** The tab closes: `pagehide` releases the output before the socket dies. */
+  closeTab(): void {
+    if (this.client.activeDeviceId === this.id) this.send('RELEASE_OUTPUT');
+    this.disconnect();
+    this.playing = false; // the tab is gone; so is its <audio>
+  }
+
+  /** `handlePlayPause` on the player bar: local on the output, a command on a
+   *  controller, a claim when the session's device cannot be driven. */
   pressPlayPause(): void {
     if (isAudioOutput(this.client.activeDeviceId, this.id)) {
       this.playing = !this.playing;
+      this.playingChanged();
+    } else if (!hasControllableSession(this.client)) {
+      this.playing = true;
+      this.playingChanged();
     } else {
       this.send('COMMAND', { action: this.client.remoteIsPlaying ? 'PAUSE' : 'PLAY' });
     }
@@ -233,6 +264,9 @@ function world(opts: PlaybackStateOptions = {}) {
     /** Every device's belief about who the output is. */
     views: () => devices.map((d) => `${d.id}:${d.client.activeDeviceId}`),
     listedOn: (d: VirtualDevice) => d.client.devices.map((x) => x.id),
+    /** What the picker on `d` offers. */
+    offeredOn: (d: VirtualDevice) =>
+      d.client.devices.filter((x) => x.available !== false).map((x) => x.id),
     /** Holds whenever a session exists. */
     assertOneOutput() {
       const active = manager.getState().activeDeviceId;
@@ -301,14 +335,16 @@ describe('simulation: cast', () => {
     w.assertOneOutput();
   });
 
-  it('a third device that was playing yields to the session', () => {
+  it('a third device that was playing is the output; a pick elsewhere goes to it, a cast moves it', () => {
     const w = world();
     const a = w.device('A');
     w.device('B');
     const c = w.device('C');
     c.playLocally(T3);
     expect(w.audible()).toEqual(['C']);
-    a.playLocally(T1);
+    a.playLocally(T1); // a pick on a controller plays on the output
+    expect(w.audible()).toEqual(['C']);
+    expect(c.track).toEqual(T1);
     a.cast('B');
     expect(w.audible()).toEqual(['B']);
     expect(w.views()).toEqual(['A:B', 'B:B', 'C:B']);
@@ -322,7 +358,8 @@ describe('simulation: the receiver opts out (symptom 3)', () => {
     w.b.setRemoteEnabled(false);
     expect(w.a.client.activeDeviceId).toBeNull();
     expect(w.a.playing).toBe(false);
-    expect(w.listedOn(w.a)).toEqual(['A']);
+    expect(w.listedOn(w.a)).toEqual(['A', 'B']);
+    expect(w.offeredOn(w.a)).toEqual(['A']);
     w.assertOneOutput();
   });
 
@@ -392,7 +429,7 @@ describe('simulation: the receiver loses its socket (symptom 1)', () => {
   it('a receiver that only reports progress is never pruned as stale', () => {
     const w = castWorld();
     for (let round = 0; round < 5; round++) {
-      w.manager.getDevices().find((d) => d.id === 'B')!.lastSeen = Date.now() - 100_000;
+      w.manager.markSeen('B', Date.now() - 100_000);
       w.b.advance(2);
       w.b.reportProgress();
       w.manager.cleanupStaleDevices();
@@ -474,5 +511,102 @@ describe('simulation: two tabs of one browser profile (issue #882)', () => {
     w.a.cast('B:t2');
     expect(w.audible()).toEqual(['B:t2']);
     w.assertOneOutput();
+  });
+});
+
+describe('simulation: claim-on-play — no picker involved', () => {
+  it('the first device to play becomes the output; a pick on another device plays there', () => {
+    const w = world();
+    const a = w.device('A');
+    const b = w.device('B');
+    a.playLocally(T1);
+    expect(w.audible()).toEqual(['A']);
+    expect(w.views()).toEqual(['A:A', 'B:A']);
+    b.playLocally(T2);
+    expect(w.audible()).toEqual(['A']);
+    expect(a.track).toEqual(T2);
+    expect(b.track).toEqual(T2);
+    expect(b.audible).toBe(false); // it was never the output; it mirrors
+    w.assertOneOutput();
+  });
+
+  it("the output's own pause reaches the controller, whose button then says play", () => {
+    const w = world();
+    const a = w.device('A');
+    const b = w.device('B');
+    a.playLocally(T1);
+    a.pressPlayPause();
+    expect(a.playing).toBe(false);
+    expect(b.client.remoteIsPlaying).toBe(false);
+    b.pressPlayPause(); // PLAY, not a second PAUSE
+    expect(a.playing).toBe(true);
+    expect(w.audible()).toEqual(['A']);
+  });
+
+  it('closing the output tab frees the session at once; the next play elsewhere claims', () => {
+    const w = world({ activeGraceMs: 10_000 });
+    const a = w.device('A');
+    const b = w.device('B');
+    a.playLocally(T1);
+    a.closeTab();
+    expect(b.client.activeDeviceId).toBeNull();
+    b.playLocally(T2);
+    expect(w.audible()).toEqual(['B']);
+    expect(w.manager.getState().activeDeviceId).toBe('B');
+  });
+
+  it('an opted-out device that plays still claims; a pick elsewhere cannot drive it, so it claims back', () => {
+    const w = world();
+    const a = w.device('A');
+    const b = w.device('B');
+    a.setRemoteEnabled(false);
+    a.playLocally(T1);
+    expect(w.audible()).toEqual(['A']);
+    expect(w.views()).toEqual(['A:A', 'B:A']);
+    expect(w.offeredOn(b)).toEqual(['B']);
+    b.playLocally(T2);
+    expect(w.audible()).toEqual(['B']);
+    expect(a.playing).toBe(false);
+    expect(w.views()).toEqual(['A:B', 'B:B']);
+    w.assertOneOutput();
+  });
+
+  it('a controller whose output cannot be driven claims on play too', () => {
+    const w = world();
+    const a = w.device('A');
+    const b = w.device('B');
+    a.setRemoteEnabled(false);
+    a.playLocally(T1);
+    b.track = T2; // something restored locally, paused
+    b.pressPlayPause();
+    expect(w.audible()).toEqual(['B']);
+  });
+
+  it('a paused output left alone releases the session; the next play elsewhere claims', async () => {
+    const w = world({ idleReleaseMs: 20 });
+    const a = w.device('A');
+    const b = w.device('B');
+    a.playLocally(T1);
+    a.pressPlayPause();
+    await Bun.sleep(30);
+    w.manager.cleanupStaleDevices();
+    expect(b.client.activeDeviceId).toBeNull();
+    expect(a.playing).toBe(false);
+    b.playLocally(T2);
+    expect(w.audible()).toEqual(['B']);
+    expect(w.views()).toEqual(['A:B', 'B:B']);
+  });
+
+  it('a controller picking during the output\'s reconnect blip does not steal the session', async () => {
+    const w = world({ activeGraceMs: 200 });
+    const a = w.device('A');
+    const b = w.device('B');
+    b.playLocally(T1);
+    b.disconnect();
+    a.playLocally(T2);
+    expect(a.audible).toBe(false);
+    b.connect();
+    expect(w.audible()).toEqual(['B']);
+    expect(b.track).toEqual(T2);
   });
 });
