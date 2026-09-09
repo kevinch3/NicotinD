@@ -4,30 +4,46 @@ NicotinD lets any logged-in browser tab or mobile device become a playback targe
 
 ## User guide
 
-### Enabling a device as a receiver
+Only one of your devices makes sound at a time. Whichever device you press play on becomes the
+**output**; every other device you are logged in on shows an accent-coloured **"Playing on
+<device>"** strip above its player and drives that output: play/pause, seek and skip in its bar,
+and any song, album or radio you pick, all happen on the output. Tapping the strip opens the
+device picker.
 
-A device must opt in before it can receive remote commands.
+### Moving the audio
 
-1. Open **Settings** on the device you want to use as a speaker.
-2. Scroll to the **Remote Playback** section.
-3. Toggle **Allow remote control** on.
-4. Optionally rename the device (e.g. "Living Room TV", "Phone") so it's easy to identify.
+1. Click the **speaker icon** in the bottom-right corner of the player bar (or in the Now Playing
+   header). The popover lists your connected devices.
+2. Pick the one you want audio on. The current track and position move there.
+3. Pick **your own device** (marked "this device") to bring the audio back.
 
-Each browser **tab** is a device: the `<audio>` element that produces sound lives in the tab, so the tab is the output. Reopening the same browser reconnects under the same name.
+The picker is the only thing that moves audio. Pressing play on another device never steals it;
+it controls the output instead.
 
-### Switching playback to another device
+### The toggle
 
-Once at least one other device has opted in and is online:
+**Settings → Remote Playback → "Let my other devices play music on this device"** is **on by
+default** on every platform. Turn it off on a device you never want driven from elsewhere (a
+kiosk, a shared TV): it disappears from the other devices' pickers and ignores their commands.
+It still shows the strip, and if you press play on it, it still becomes the output; your other
+devices then see "This device isn't accepting remote control. Play here instead" and a play there
+brings the audio back to them.
 
-1. Click the **speaker icon** (🖥️) in the bottom-right corner of the player bar — visible on all screen sizes.
-2. The popover lists all connected devices. Select the one you want audio on.
-3. The current track is sent to that device immediately. Press play — audio starts there.
+You can also rename the device here (e.g. "Living Room TV") so it is easy to spot in the picker.
 
-The controller's play/pause button, seek bar, and skip controls continue to work normally; they just send commands over the network instead of driving local audio.
+### The first tap
 
-### Switching back
+A browser will not play sound in a tab that has never been touched. A freshly opened tab is
+therefore listed but not offered as an output until you interact with it once, anywhere; after
+that it accepts a cast. Each browser **tab** is a device: the `<audio>` element that produces
+sound lives in the tab, so the tab is the output. Reopening the same browser reconnects under the
+same name.
 
-Click the speaker icon again and select **your own device** (marked "this device"). Audio returns locally.
+### When a session ends
+
+The output's session ends when its tab closes, when it opts out of remote control, or when it has
+sat paused for ten minutes. After that, the next device to press play becomes the output. A short
+connection blip (under 15 s) does not end anything.
 
 ---
 
@@ -42,15 +58,23 @@ All real-time communication uses a single persistent **WebSocket** at `GET /api/
 ### Device lifecycle
 
 ```
-Client connects
-  → sends REGISTER { id, name, deviceType }
+Client connects (whenever a token exists — the toggle does not gate the socket)
+  → sends REGISTER { id, name, deviceType, remoteEnabled, activated }
   → server adds device to in-memory Map, broadcasts DEVICES_SYNC to all
   → server replies with STATE_SYNC (current state + full device list)
 
-Client disconnects / tab closes
-  → server removes device, broadcasts DEVICES_SYNC
-  → if it was the active device, server clears activeDeviceId
+Client's first user gesture
+  → sends UPDATE_DEVICE { activated: true } — it may now play on command
+
+Client tab closes
+  → sends RELEASE_OUTPUT on `pagehide` if it is the output (session ends at once)
+  → socket closes; server removes device, broadcasts DEVICES_SYNC
+  → if it was the active device and did not release, the grace below runs
 ```
+
+The device list sent to clients is **every connected device**, each with `available` (opted in
+**and** activated — can be picked and will execute commands) and `pending` (its socket is gone and
+the release grace is running). Pickers offer only available devices; the chrome may name any.
 
 A device id is `<profileId>:<tabId>` (`resolveDeviceId`, `packages/web/src/app/lib/device-id.ts`). The profile half is minted once per browser via `crypto.randomUUID()` and persisted in `localStorage` — it survives logout and seeds the display name. The tab half lives in `sessionStorage`, so it survives a reload and an active cast is not dropped when the receiving tab refreshes, but a second tab gets its own id and is separately castable (issue #882). `profileIdOf` recovers the browser half, which is how the switcher marks a sibling tab rather than listing an anonymous twin, and how an id minted before #882 still resolves. The device name is auto-detected from the User-Agent (`"Chrome on Windows"`, `"Safari on iPhone"`, …) — except on a TV UI, where the UA reads "Chrome on Android" and says nothing a cast selector needs, so the default is `"NicotinD TV"` (issue #393) — and can be overridden by the user.
 
@@ -85,6 +109,19 @@ stays gone is `activeDeviceId` cleared. A 1-second reconnect blip is therefore i
 controller instead of collapsing the session. A device that **opts out** while active
 (`UPDATE_DEVICE { remoteEnabled: false }`, or re-registering as not remote-enabled) is released
 immediately — a controller must never point at a device the list no longer has.
+
+#### Session lifetime
+
+A session (`activeDeviceId !== null`) ends in exactly four ways:
+
+1. The output's socket stays gone past `activeGraceMs` (above).
+2. The output sends `RELEASE_OUTPUT` (its `pagehide`), so a closed laptop frees the phone at
+   once instead of after the grace. The grace remains for real blips, where nothing was sent.
+3. The output opts out (`UPDATE_DEVICE { remoteEnabled: false }` or re-registering so).
+4. Nothing has said the output is playing for `idleReleaseMs` (10 min): `lastPlayingAt` is
+   bumped by every `PROGRESS_REPORT`, `PLAY`/`SET_TRACK`, a claim and a `STATE_UPDATE
+   { isPlaying: true }`, and the 30 s sweep releases a session past it. Without this, a tab left
+   paused at home would capture every pick made on the phone forever.
 
 #### Surviving a prune and a stale close (issue #433)
 
@@ -133,6 +170,9 @@ The server (`PlaybackStateManager`) holds a single shared state object:
 }
 ```
 
+Alongside it the manager keeps `lastPlayingAt` (the idle-release clock) and, per device,
+`remoteEnabled` + `activated`, from which the advertised `available` flag is derived.
+
 State is **in-memory only** — it resets on server restart.
 
 ### Message protocol
@@ -143,18 +183,21 @@ All frames are JSON: `{ type: string, payload: object }`.
 
 | Type | Payload | Purpose |
 |------|---------|---------|
-| `REGISTER` | `{ id, name, deviceType }` | Announce this device on connect |
+| `REGISTER` | `{ id, name, deviceType, remoteEnabled, activated }` | Announce this device on connect |
 | `HEARTBEAT` | `{}` | Keep-alive every 30 s |
 | `COMMAND` | `{ action, ...args }` | Send a playback command (see actions below) |
-| `SET_ACTIVE_DEVICE` | `{ id }` | Nominate a device as the audio output |
-| `STATE_UPDATE` | `{ state }` | Report local state changes (written quietly, no re-broadcast) |
+| `SET_ACTIVE_DEVICE` | `{ id }` | Nominate a device as the audio output. Ignored unless the target is listed and available |
+| `CLAIM_OUTPUT` | `{ track, trackId, position, isPlaying }` | This device started playing and wants to be the output. Compare-and-set: applied when there is no session, the claimant holds it, or the current output is not available. A refused claim is answered with a private `STATE_SYNC` |
+| `RELEASE_OUTPUT` | `{}` | The output is leaving (`pagehide`): end the session now |
+| `STATE_UPDATE` | `{ state }` | The output reports its state. Accepted only from the output (or with no session); broadcast when the track or `isPlaying` changed, quiet otherwise |
+| `UPDATE_DEVICE` | `{ remoteEnabled?, activated?, name? }` | Preference, first gesture, rename |
 
 #### Server → All clients
 
 | Type | Payload | Purpose |
 |------|---------|---------|
-| `STATE_SYNC` | `{ state, devices? }` | Full state snapshot; sent on REGISTER and after any state change |
-| `DEVICES_SYNC` | `{ devices }` | Device list after a connect/disconnect |
+| `STATE_SYNC` | `{ state, devices? }` | Full state snapshot; sent on REGISTER (and privately to a refused claimant) and after any state change |
+| `DEVICES_SYNC` | `{ devices }` | Device list after a connect/disconnect/preference change; every device, with `available` and `pending` |
 | `COMMAND` | `{ action, ...args }` | Relay of a command to all clients |
 | `HEARTBEAT_ACK` | `{}` | Reply to every `HEARTBEAT` (sent to that client only) |
 
@@ -189,6 +232,23 @@ press ▶
 
 **Key design decisions:**
 
+- **A session exists whenever something plays.** A device with no controllable session that
+  starts playing claims the output (`onLocalPlayingChanged` → `CLAIM_OUTPUT`). The server applies
+  the claim compare-and-set and the client commits nothing until the broadcast comes back, which
+  carries the new output *and* its track in one frame — so bystanders yield and mirror at once, and
+  two devices pressing play together cannot both believe they won. That is what makes "only one
+  device is ever audible" true without a picker.
+- **Only the picker moves audio.** While a session names another device, this device's transport
+  and its picks drive that device; a pick during the output's reconnect blip still goes to the
+  output (a pending device is still controllable — the grace exists so a blip changes nothing).
+- **Mirroring is unconditional, execution is gated.** A device that opted out of being driven still
+  mirrors the session (so its strip can name the track) but never executes a `COMMAND`. A session
+  whose output is not available is not *controllable* (`hasControllableSession`): the transport on
+  a controller then acts locally, which is a claim, and the strip says so.
+- **The output reports its own play/pause.** Every local `isPlaying` transition on the output goes
+  up as `STATE_UPDATE { isPlaying }` and the server broadcasts the change; a controller's button
+  therefore says PLAY after the output paused itself instead of sending a second PAUSE. Echo-safe
+  because broadcast `STATE_SYNC`s never execute — only snapshot replies do.
 - **Commands drive execution, STATE_SYNC drives UI.** Device B executes `PLAY`/`PAUSE`/`SEEK`/`SET_TRACK` only when it receives a `COMMAND` message — not from STATE_SYNC. This avoids the echo loop that occurred when STATE_SYNC triggered a STATE_UPDATE reply that re-triggered another STATE_SYNC.
 - **STATE_UPDATE is quiet.** When a device sends `STATE_UPDATE`, the server stores it but does not re-broadcast (`updateStateQuiet`). This prevents Device B from echoing back state it received from the server.
 - **remoteIsPlaying tracks the server's believed state.** The controller reads `remoteIsPlaying` (updated from every STATE_SYNC) to decide whether pressing the button should send `PLAY` or `PAUSE`. Without this, the controller's stale local `isPlaying` caused it to always send the wrong command.
@@ -206,29 +266,37 @@ press ▶
   `remote-playback.ts` (`reduceServerMessage`, `castTo`, `onLocalTrackChanged`, `isAudioOutput`);
   `RemotePlaybackService` feeds it signals and applies its `PlayerEffect`s to `PlayerService`. The
   api-side `remote-playback.simulation.test.ts` runs the same functions for N virtual devices
-  against the real server hub, checking one invariant: while a session exists, at most one device
-  is audible and it is the one the server calls active.
+  against the real server hub, checking one invariant: at most one device is audible and it is the
+  one the server calls active — now also for scenarios where no picker was ever opened.
+- **A restored track is not a change.** `RemotePlaybackService` forwards a track change only when
+  the player is playing (a pick), so a tab that reloads with a restored, paused track never sends
+  `SET_TRACK` at the output (the #882 duplicated-tab hazard).
+- **The presence channel retries on return, not forever.** Five failed opens stop the timer-driven
+  reconnects (a proxy that drops WebSockets would otherwise be hammered), the failure shows in
+  Settings, and the next `online`, `focus` or visible-tab event tries again. The old client turned
+  the *preference* off on failure, which silently kept those users out of remote playback for good.
 
 ### Client-side code map
 
 | File | Role |
 |------|------|
-| `packages/core/src/remote-playback.ts` | The client's protocol decisions, pure: `reduceServerMessage`, `castTo`, `onLocalTrackChanged`, `isAudioOutput` |
-| `packages/web/src/app/services/playback-ws.service.ts` | Singleton WS service — connect/reconnect, per-socket handlers, heartbeat + ack watchdog, device ID/name, `sendCommand`, `setActiveDevice` |
-| `packages/web/src/app/services/remote-playback.service.ts` | Angular adapter with signals — feeds the reducer, applies `PlayerEffect`s to `PlayerService`, `switchToDevice` |
-| `packages/web/src/app/components/device-switcher/device-switcher.component.ts` | Popover UI for selecting the active output device |
-| `packages/web/src/app/pages/settings/settings.component.ts` | Remote Playback section — opt-in toggle and device rename |
-| `packages/web/src/app/components/player/player.component.ts` | Conditionally drives local audio or sends remote commands |
+| `packages/core/src/remote-playback.ts` | The client's protocol decisions, pure: `reduceServerMessage`, `castTo`, `claimOutput`, `onLocalPlayingChanged`, `onLocalTrackChanged`, `isAudioOutput`, `hasControllableSession` |
+| `packages/web/src/app/services/playback-ws.service.ts` | Singleton WS service — connect/reconnect + retry-on-return, per-socket handlers, heartbeat + ack watchdog, device ID/name, activation, `sendCommand`, `sendClaim`, `sendRelease` |
+| `packages/web/src/app/services/remote-playback.service.ts` | Angular adapter with signals — feeds the reducer, applies `PlayerEffect`s to `PlayerService`, the `outputAvailable` preference, `playingElsewhere` / `sessionControllable` for the chrome |
+| `packages/web/src/app/components/playing-elsewhere/` | The "Playing on <device>" strip; opens the switcher |
+| `packages/web/src/app/components/device-switcher/device-switcher.component.ts` | Popover UI for selecting the output; lists every device, offers the available ones |
+| `packages/web/src/app/pages/settings/settings.component.ts` | Remote Playback section — the availability toggle and device rename |
+| `packages/web/src/app/components/player/player.component.ts` | Drives local audio or sends remote commands (`drivesLocalPlayer`) |
 
 ### Server-side code map
 
 | File | Role |
 |------|------|
-| `packages/api/src/services/playback-state.ts` | In-memory state + device registry; `updateState` (broadcasts) vs `updateStateQuiet` (silent); `activeGraceMs` |
+| `packages/api/src/services/playback-state.ts` | In-memory state + device registry; `claimOutput` (compare-and-set), `canTarget`, `releaseOutput`; `updateState` (broadcasts) vs `updateStateQuiet` (silent); `activeGraceMs`, `idleReleaseMs` |
 | `packages/api/src/services/websocket.ts` | `createPlaybackHub` — connection table keyed by raw socket, message handlers, broadcast listeners |
 | `packages/api/src/services/remote-playback.multi-device.test.ts` | Server-side virtual devices: real hub + manager, a fresh `WSContext` per event |
 | `packages/api/src/services/remote-playback.simulation.test.ts` | Full simulation: N virtual devices running the core reducer against the real hub |
-| `packages/e2e/tests/remote-playback.spec.ts` | Two real browser contexts through the real adapter: cast, progress, opt-out, re-cast |
+| `packages/e2e/tests/remote-playback.spec.ts` | Two real browser contexts through the real adapter: claim-on-play, pick-goes-to-output, closed-tab release, cast + progress + self-pause, opt-out |
 | `packages/api/src/index.ts` | `GET /api/ws/playback` route registration |
 
 ---
@@ -236,6 +304,7 @@ press ▶
 ## Known limitations
 
 - **State is ephemeral.** Server restart clears the active device and playback state. All devices reconnect automatically but no track is restored.
-- **Shared library only.** Remote playback works because all devices stream from the same Navidrome instance using their own JWT tokens. External users on different NicotinD instances cannot be targeted.
-- **One active device at a time.** Only one device receives COMMAND messages at a time. Switching to a new device pauses the previous one implicitly (the server clears `isPlaying` on active-device switch).
+- **Shared library only.** Remote playback works because all devices stream from the same NicotinD instance using their own JWT tokens. External users on different NicotinD instances cannot be targeted.
+- **The TV route shows no strip.** A TV is the output in practice; when it is a controller it only has the tinted cast icon. Follow-up if anyone casts *from* a TV.
+- **Every connected tab hears every `STATE_SYNC`.** The presence socket is always up now, so the output's 2 s progress broadcast reaches every logged-in tab. Fine at household scale; a per-tab subscription would be the fix if it ever is not.
 - **No queue sync.** The queue lives in each browser's player store. Only the currently playing track is sent via `SET_TRACK`. Advancing to the next track on the receiver plays from its local queue, which may be empty.

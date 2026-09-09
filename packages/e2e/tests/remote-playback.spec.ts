@@ -12,16 +12,19 @@ import { FIXTURE, expandGroup, openAlbumCard } from '../helpers';
  * and that exactly one <audio> element plays at any point of the flow.
  *
  * Both contexts share the admin storageState but carry their own device id
- * (localStorage, seeded before the SPA boots). The target's Settings toggle
- * click doubles as the user activation Chromium needs for gesture-less play.
+ * (localStorage, seeded before the SPA boots). A device is available as an
+ * output by default, but Chromium still needs one user gesture on a tab
+ * before it may play without a click — `activate()` gives a fresh tab one.
+ *
+ * The server keeps one session per user across the tests in this file, so
+ * every test seeds its own device ids and closes its output tab at the end:
+ * `pagehide` releases the session at once, which is what the next test's
+ * first play relies on (a claim never wins against a live output).
  */
-
-const CONTROLLER_ID = 'e2e-rp-controller';
-const RECEIVER_ID = 'e2e-rp-receiver';
 
 async function seedDevice(
   context: BrowserContext,
-  opts: { id: string; name: string; remoteEnabled: boolean },
+  opts: { id: string; name: string; available?: boolean },
 ): Promise<void> {
   // Init scripts run on EVERY navigation, and the shared admin storageState
   // already carries the device id the setup run minted. Seed on the first
@@ -35,8 +38,27 @@ async function seedDevice(
     // half, so selectors match on the prefix, not the whole id.
     localStorage.setItem('nicotind_device_id', o.id);
     localStorage.setItem('nicotind_device_name', o.name);
-    localStorage.setItem('nicotind_remote_enabled', String(o.remoteEnabled));
+    if (o.available !== undefined) {
+      localStorage.setItem('nicotind_remote_available', String(o.available));
+    }
   }, opts);
+}
+
+/** Give a fresh tab the one gesture Chromium's autoplay policy wants, the way
+ *  a user does: an in-app click (the Library link), no Settings involved. */
+async function activate(page: Page): Promise<void> {
+  if (!page.url().startsWith('http')) await page.goto('/library');
+  await page.getByRole('link', { name: 'Settings' }).first().click();
+  await expect(page).toHaveURL(/\/settings/);
+}
+
+function switcherIcon(page: Page) {
+  return page.getByTestId('device-switcher-toggle').first();
+}
+
+/** The player's play/pause button reports what it believes with `data-playing`. */
+function playPauseState(page: Page): Promise<string | null> {
+  return page.getByTestId('player-playpause').first().getAttribute('data-playing');
 }
 
 /** `true` when an <audio> element on the page is advancing. */
@@ -97,7 +119,7 @@ class FrameLog {
   }
 }
 
-/** Flip *Make available* the way a user does on a running receiver: in-app
+/** Flip *Let my other devices play music on this device* the way a user does: in-app
  *  navigation, so the playback socket stays up (a `goto` would reload the SPA
  *  and turn the opt-out into a socket drop, which the server rightly holds for
  *  its reconnect grace instead of releasing). */
@@ -125,50 +147,116 @@ async function openSwitcher(page: Page) {
 test.describe('remote playback', () => {
   test.setTimeout(120_000);
 
-  test('cast, progress, opt-out and re-cast keep exactly one device playing', async ({
-    page: controller,
+  /** Two contexts sharing the admin login, each its own device. */
+  async function twoDevices(
+    browser: import('@playwright/test').Browser,
+    base: Page,
+    ids: { a: string; b: string },
+    seedB: { available?: boolean } = {},
+  ) {
+    const storageState = await base.context().storageState();
+    const ctxA = await browser.newContext({ storageState });
+    await seedDevice(ctxA, { id: ids.a, name: `Dev ${ids.a}` });
+    const ctxB = await browser.newContext({ storageState });
+    await seedDevice(ctxB, { id: ids.b, name: `Dev ${ids.b}`, ...seedB });
+    const a = await ctxA.newPage();
+    const b = await ctxB.newPage();
+    const frames = new FrameLog();
+    frames.tap(a, 'A');
+    frames.tap(b, 'B');
+    const close = async () => {
+      await a.close().catch(() => {});
+      await b.close().catch(() => {});
+      await ctxA.close().catch(() => {});
+      await ctxB.close().catch(() => {});
+    };
+    return { a, b, frames, close };
+  }
+
+  async function saveFrames(testInfo: import('@playwright/test').TestInfo, frames: FrameLog) {
+    // On disk under the test's output dir (kept on failure), not only in the
+    // report body — the list reporter does not persist body attachments.
+    const framesPath = testInfo.outputPath('frames.txt');
+    writeFileSync(framesPath, frames.lines.join('\n'));
+    await testInfo.attach('frames.txt', { path: framesPath, contentType: 'text/plain' });
+  }
+
+  async function playAlbum(page: Page): Promise<void> {
+    await page.goto('/library');
+    await openAlbumCard(page, FIXTURE.album.title);
+    await page.getByTestId('play-album').click();
+    await expect.poll(() => audioPlaying(page), { timeout: 15_000 }).toBe(true);
+  }
+
+  test('on by default: the first device to play is the output, a pick elsewhere plays there, a closed tab frees it', async ({
+    page,
     browser,
   }, testInfo) => {
-    await seedDevice(controller.context(), {
-      id: CONTROLLER_ID,
-      name: 'E2E Controller',
-      remoteEnabled: true,
+    const { a, b, frames, close } = await twoDevices(browser, page, {
+      a: 'e2e-rp1-a',
+      b: 'e2e-rp1-b',
     });
-    const frames = new FrameLog();
-    frames.tap(controller, 'C');
-    const { positions } = frames;
-
-    const receiverContext = await browser.newContext({
-      storageState: await controller.context().storageState(),
-    });
-    await seedDevice(receiverContext, {
-      id: RECEIVER_ID,
-      name: 'E2E Receiver',
-      remoteEnabled: false,
-    });
-    const receiver = await receiverContext.newPage();
-    frames.tap(receiver, 'R');
-
     try {
-      // Controller plays locally.
-      await controller.goto('/library');
-      await openAlbumCard(controller, FIXTURE.album.title);
-      await controller.getByTestId('play-album').click();
-      await expect.poll(() => audioPlaying(controller), { timeout: 15_000 }).toBe(true);
+      // A plays with nobody having touched Settings: it claims the output.
+      await playAlbum(a);
+      const first = await playerTitle(a);
 
-      // Receiver opts in through the real Settings toggle.
-      await setRemoteToggle(receiver, true);
+      // B, fresh, sees the session: the strip names A and the bar mirrors A's track.
+      await b.goto('/library');
+      const strip = b.getByTestId('playing-elsewhere').first();
+      await expect(strip).toBeVisible({ timeout: 10_000 });
+      await expect(strip).toContainText('Dev e2e-rp1-a');
+      await expect(strip).toHaveAttribute('data-controllable', 'true');
+      await expect.poll(() => playerTitle(b), { timeout: 10_000 }).toBe(first);
+      expect(await audioPaused(b)).toBe(true);
+
+      // A pick on B plays on A — only the picker moves audio.
+      await openAlbumCard(b, FIXTURE.album.title);
+      await b.getByTestId('track-row-title').filter({ hasText: 'Sixth Sense' }).click();
+      await expect.poll(() => playerTitle(a), { timeout: 10_000 }).toContain('Sixth Sense');
+      await expect.poll(() => audioPlaying(a), { timeout: 10_000 }).toBe(true);
+      expect(await audioPaused(b)).toBe(true);
+      expect(await audioPlaying(b)).toBe(false);
+
+      // A's tab closes: the session is released at once, not after the grace.
+      await a.close();
+      await expect(strip).toBeHidden({ timeout: 5_000 });
+
+      // B's play now claims the output and makes sound here.
+      await b.getByTestId('player-playpause').first().click();
+      await expect.poll(() => audioPlaying(b), { timeout: 10_000 }).toBe(true);
+      await expect(strip).toBeHidden();
+    } finally {
+      await saveFrames(testInfo, frames);
+      await close();
+    }
+  });
+
+  test('the picker moves audio; the controller drives it and stays truthful', async ({
+    page,
+    browser,
+  }, testInfo) => {
+    const { a: controller, b: receiver, frames, close } = await twoDevices(browser, page, {
+      a: 'e2e-rp2-c',
+      b: 'e2e-rp2-r',
+    });
+    const { positions } = frames;
+    try {
+      await playAlbum(controller);
+      // The receiver never opens Settings; one in-app click is its gesture.
+      await activate(receiver);
 
       // Cast.
       await openSwitcher(controller);
       const option = controller
-        .locator(`[data-testid="device-option"][data-device-id^="${RECEIVER_ID}:"]`)
+        .locator('[data-testid="device-option"][data-device-id^="e2e-rp2-r:"]')
         .first();
       await expect(option).toBeVisible({ timeout: 10_000 });
       await option.click();
 
       await expect.poll(() => audioPlaying(receiver), { timeout: 15_000 }).toBe(true);
       await expect.poll(() => audioPaused(controller), { timeout: 5_000 }).toBe(true);
+      await expect(controller.getByTestId('playing-elsewhere').first()).toContainText('Dev e2e-rp2-r');
 
       // The receiver's progress must reach the controller: this is the
       // connection-identity bug (#877) end-to-end, through the real adapter.
@@ -183,49 +271,71 @@ test.describe('remote playback', () => {
       await controller.getByTestId('player-playpause').click();
       await expect.poll(() => audioPlaying(receiver), { timeout: 6_000 }).toBe(true);
 
-      // The receiver opts out: the controller is released, shows no phantom
-      // device, and does not start playing on its own.
-      await setRemoteToggle(receiver, false);
-      await expect
-        .poll(
-          () =>
-            controller
-              .getByTestId('device-switcher-toggle')
-              .first()
-              .evaluate((el) => el.className.includes('text-status-done')),
-          { timeout: 10_000 },
-        )
-        .toBe(false);
-      const panel = await openSwitcher(controller);
-      await expect(panel.getByText('No other devices online')).toBeVisible();
-      await expect(controller.getByTestId('device-now-playing')).toHaveCount(0);
-      await controller.getByTestId('device-switcher-toggle').first().click();
-      expect(await audioPaused(controller)).toBe(true);
+      // The receiver pauses ITSELF: the controller's button must flip, so its
+      // next press is PLAY and not a second PAUSE.
+      await receiver.getByTestId('player-playpause').first().click();
+      await expect.poll(() => audioPaused(receiver), { timeout: 6_000 }).toBe(true);
+      await expect.poll(() => playPauseState(controller), { timeout: 6_000 }).toBe('false');
+      await controller.getByTestId('player-playpause').click();
+      await expect.poll(() => audioPlaying(receiver), { timeout: 6_000 }).toBe(true);
+      await expect.poll(() => playPauseState(controller), { timeout: 6_000 }).toBe('true');
 
-      // The controller moves on to another track while the receiver is out,
-      // the receiver opts back in, and a fresh cast plays THAT track there.
-      await controller.goto('/library');
-      await openAlbumCard(controller, FIXTURE.album.title);
-      await controller.getByTestId('track-row-title').filter({ hasText: 'Sixth Sense' }).click();
-      await expect.poll(() => audioPlaying(controller), { timeout: 15_000 }).toBe(true);
-      const chosen = await playerTitle(controller);
-      expect(chosen).toContain('Sixth Sense');
-
-      await setRemoteToggle(receiver, true);
+      // Take it back: audio returns to the controller, the receiver goes quiet.
       await openSwitcher(controller);
-      await expect(option).toBeVisible({ timeout: 10_000 });
-      await option.click();
-      await expect.poll(() => audioPlaying(receiver), { timeout: 15_000 }).toBe(true);
-      await expect.poll(() => audioPaused(controller), { timeout: 5_000 }).toBe(true);
-      await expect.poll(() => playerTitle(receiver), { timeout: 10_000 }).toBe(chosen);
+      await controller.getByTestId('device-option-self').first().click();
+      await expect.poll(() => audioPlaying(controller), { timeout: 15_000 }).toBe(true);
+      await expect.poll(() => audioPaused(receiver), { timeout: 5_000 }).toBe(true);
+      await expect(controller.getByTestId('playing-elsewhere').first()).toBeHidden();
     } finally {
-      // On disk under the test's output dir (kept on failure), not only in the
-      // report body — the list reporter does not persist body attachments.
-      const framesPath = testInfo.outputPath('frames.txt');
-      writeFileSync(framesPath, frames.lines.join('\n'));
-      await testInfo.attach('frames.txt', { path: framesPath, contentType: 'text/plain' });
-      await receiver.close().catch(() => {});
-      await receiverContext.close().catch(() => {});
+      await saveFrames(testInfo, frames);
+      await close();
+    }
+  });
+
+  test('opting out: the first to play, still the output; hidden from the picker; a play elsewhere claims', async ({
+    page,
+    browser,
+  }, testInfo) => {
+    const { a, b, frames, close } = await twoDevices(browser, page, {
+      a: 'e2e-rp3-a',
+      b: 'e2e-rp3-b',
+    });
+    try {
+      await activate(a);
+      // B turns the toggle off through the real Settings switch.
+      await setRemoteToggle(b, false);
+      await expect(b.getByTestId('remote-unavailable-note')).toBeVisible();
+
+      // B plays first, with no session anywhere: it still claims the output.
+      await b.goto('/library');
+      await openAlbumCard(b, FIXTURE.album.title);
+      await b.getByTestId('track-row-title').filter({ hasText: 'Sixth Sense' }).click();
+      await expect.poll(() => audioPlaying(b), { timeout: 15_000 }).toBe(true);
+
+      // A sees the session but cannot drive it: the strip says so, and the
+      // picker lists B without offering it.
+      await a.goto('/library');
+      const strip = a.getByTestId('playing-elsewhere').first();
+      await expect(strip).toBeVisible({ timeout: 10_000 });
+      await expect(strip).toHaveAttribute('data-controllable', 'false');
+      await expect(a.getByTestId('playing-elsewhere-uncontrollable').first()).toBeVisible();
+      const panel = await openSwitcher(a);
+      await expect(
+        panel.locator('[data-testid="device-option-unavailable"][data-device-id^="e2e-rp3-b:"]'),
+      ).toBeVisible({ timeout: 10_000 });
+      await expect(panel.getByTestId('device-option')).toHaveCount(0);
+      await switcherIcon(a).click();
+
+      // A play on A cannot reach B, so it claims: audio comes here, B stops —
+      // still one audible device, the opted-out one included.
+      await a.getByTestId('player-playpause').first().click();
+      await expect.poll(() => audioPlaying(a), { timeout: 10_000 }).toBe(true);
+      await expect.poll(() => audioPaused(b), { timeout: 5_000 }).toBe(true);
+      await expect(strip).toBeHidden({ timeout: 5_000 });
+      await expect(b.getByTestId('playing-elsewhere').first()).toBeVisible({ timeout: 10_000 });
+    } finally {
+      await saveFrames(testInfo, frames);
+      await close();
     }
   });
 });
