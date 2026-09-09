@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.29](https://github.com/kevinch3/NicotinD/compare/v0.6.28...v0.6.29) (2026-09-09)
+
+### Bug Fixes
+
+* **artwork:** a Lidarr remoteUrl is not always a URL ([#1062](https://github.com/kevinch3/NicotinD/issues/1062)) ([#1063](https://github.com/kevinch3/NicotinD/issues/1063)) ([65a95ea](https://github.com/kevinch3/NicotinD/commit/65a95eaa74ced707a88b2feecf18d124d4880559))
 ## [0.6.28](https://github.com/kevinch3/NicotinD/compare/v0.6.27...v0.6.28) (2026-09-09)
 
 ### Bug Fixes
