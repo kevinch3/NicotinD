@@ -127,11 +127,25 @@ export function songFilterWheres(f: LibraryFilter, alias = 's'): FilterSqlFragme
   return { wheres, params };
 }
 
-/** Any-track EXISTS over an entity, plus entity-level starred. */
+/**
+ * Any-track membership over an entity, plus entity-level starred.
+ *
+ * The song predicate reads only `ls`, never the entity row, so it must be
+ * evaluated ONCE and the entity tested for membership in the resulting id set.
+ * Written as a correlated `EXISTS (… WHERE <entity correlation> AND <song
+ * wheres>)` it instead re-derives the whole matching-song set per entity row,
+ * and a non-matching entity scans every song before it can say no. That shape
+ * measured 176s for `/artists?country=CL,AR` and 211s for `?genre=Rock` on
+ * prod (3,560 artists x 20,906 songs); as a membership test, 122ms (#1055).
+ * No index fixes the correlated form — the shape is the cost.
+ *
+ * `selectors` are `SELECT <entity id> FROM …` prefixes UNIONed together; each
+ * gets its own copy of the song wheres, so params are pushed once per selector.
+ */
 function entityFilterWheres(
   f: LibraryFilter,
   entityRef: string,
-  correlation: string,
+  selectors: string[],
 ): FilterSqlFragment {
   const wheres: string[] = [];
   const params: Array<string | number> = [];
@@ -139,24 +153,21 @@ function entityFilterWheres(
 
   const song = songFilterWheres({ ...f, starred: undefined }, 'ls');
   if (song.wheres.length === 0) return { wheres, params };
-  wheres.push(
-    `EXISTS (SELECT 1 FROM library_songs ls WHERE ${correlation} AND ls.hidden = 0 AND ${song.wheres.join(' AND ')})`,
-  );
-  params.push(...song.params);
+  const cond = `ls.hidden = 0 AND ${song.wheres.join(' AND ')}`;
+  wheres.push(`${entityRef}.id IN (${selectors.map((s) => `${s} WHERE ${cond}`).join(' UNION ')})`);
+  for (let i = 0; i < selectors.length; i++) params.push(...song.params);
   return { wheres, params };
 }
 
 /** Fragment for the album list routes (/albums, /singles, /compilations). */
 export function albumFilterWheres(f: LibraryFilter): FilterSqlFragment {
-  return entityFilterWheres(f, 'library_albums', 'ls.album_id = library_albums.id');
+  return entityFilterWheres(f, 'library_albums', ['SELECT ls.album_id FROM library_songs ls']);
 }
 
 /** Fragment for /artists, honoring multi-artist credits via the join table. */
 export function artistFilterWheres(f: LibraryFilter): FilterSqlFragment {
-  return entityFilterWheres(
-    f,
-    'library_artists',
-    '(ls.artist_id = library_artists.id OR ls.id IN ' +
-      '(SELECT song_id FROM library_song_artists WHERE artist_id = library_artists.id))',
-  );
+  return entityFilterWheres(f, 'library_artists', [
+    'SELECT ls.artist_id FROM library_songs ls',
+    'SELECT sa.artist_id FROM library_song_artists sa JOIN library_songs ls ON ls.id = sa.song_id',
+  ]);
 }
