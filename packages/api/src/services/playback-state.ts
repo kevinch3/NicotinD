@@ -127,7 +127,10 @@ export class PlaybackStateManager extends EventEmitter {
     if (!this.devices.has(id)) return false;
     const current = this.state.activeDeviceId;
     if (current !== null && current !== id && this.canTarget(current)) return false;
-    if (this.pendingRelease?.id === current) this.cancelPendingRelease();
+    // A claim over a pending output leaves its release timer running: the
+    // timer drops the dead device from the list and finds the session already
+    // moved, so it releases nothing.
+    if (this.pendingRelease?.id === id) this.cancelPendingRelease();
     this.updateState({ activeDeviceId: id, ...snapshot });
     return true;
   }
