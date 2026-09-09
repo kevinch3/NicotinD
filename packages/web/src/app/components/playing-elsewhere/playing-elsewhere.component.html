@@ -19,10 +19,10 @@
     </svg>
     <span class="truncate" data-testid="playing-elsewhere-name">{{ 'remote.playingOn' | t: { name: name() } }}</span>
     @if (reconnecting()) {
-      <span class="opacity-80 flex-shrink-0">· {{ 'remote.reconnecting' | t }}</span>
+      <span class="flex-shrink-0">· {{ 'remote.reconnecting' | t }}</span>
     }
     @if (!remote.sessionControllable()) {
-      <span class="ml-auto truncate font-normal opacity-90" data-testid="playing-elsewhere-uncontrollable">{{ 'remote.notControllable' | t }}</span>
+      <span class="ml-auto truncate" data-testid="playing-elsewhere-uncontrollable">{{ 'remote.notControllable' | t }}</span>
     }
   </button>
 }
