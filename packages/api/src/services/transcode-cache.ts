@@ -23,13 +23,9 @@ export type FileTranscoder = (
 /**
  * Which rendition of a track a cache entry holds:
  *   - `plain`: the track as-is;
- *   - `novox`: the basic center-cancel vocal mute (an ffmpeg `-af` while encoding);
- *   - `stem`: the ML instrumental (issue #603) — an encode of the separated stem
- *     FLAC from `stem-store.ts`, keyed on the ORIGINAL's identity so the source
- *     path/mtime/size still governs invalidation and `inputPath` only says what
- *     ffmpeg reads.
+ *   - `novox`: the center-cancel vocal mute (an ffmpeg `-af` while encoding).
  */
-export type TranscodeVariant = 'plain' | 'novox' | 'stem';
+export type TranscodeVariant = 'plain' | 'novox';
 
 export interface TranscodeCacheOptions {
   transcoder?: FileTranscoder;
@@ -37,8 +33,6 @@ export interface TranscodeCacheOptions {
   budgetBytes?: number;
   /** Rendition to produce and key; `plain` when omitted. */
   variant?: TranscodeVariant;
-  /** ffmpeg input when it differs from the identity source (the `stem` variant). */
-  inputPath?: string;
 }
 
 // Default disk budget for transcoded copies. They're a derived/regenerable cache,
@@ -63,11 +57,10 @@ const MIN_USABLE_OUTPUT_BYTES = 1024;
 
 /**
  * Deterministic cache id: source path + mtime + size + target format/bitrate,
- * plus a `|novox` / `|stem` marker for the two vocal-muted variants (`plain`
- * adds nothing, so a deploy never invalidates the ordinary entries). Source
- * size is part of the key so a file replacement with an unchanged mtime (a
- * 1-second resolution on some filesystems) cannot silently reuse a stale
- * transcode.
+ * plus a `|novox` marker for the vocal-muted variant (`plain` adds nothing, so
+ * a deploy never invalidates the ordinary entries). Source size is part of the
+ * key so a file replacement with an unchanged mtime (a 1-second resolution on
+ * some filesystems) cannot silently reuse a stale transcode.
  */
 export function transcodeCacheKey(
   absPath: string,
@@ -168,7 +161,6 @@ export async function getTranscodedFile(
   const transcoder = opts.transcoder ?? defaultTranscodeToFile;
   const budgetBytes = opts.budgetBytes ?? DEFAULT_BUDGET_BYTES;
   const variant = opts.variant ?? 'plain';
-  const inputPath = opts.inputPath ?? absPath;
 
   const st = statSync(absPath);
   const key = transcodeCacheKey(absPath, st.mtimeMs, st.size, format, kbps, variant);
@@ -187,8 +179,7 @@ export async function getTranscodedFile(
   if (!pending) {
     pending = (async () => {
       mkdirSync(cacheDir, { recursive: true });
-      // Only the basic variant asks ffmpeg to filter; an ML stem is already muted.
-      await transcoder(inputPath, outPath, format, kbps, variant === 'novox');
+      await transcoder(absPath, outPath, format, kbps, variant === 'novox');
       void pruneTranscodeCache(cacheDir, budgetBytes).catch((err) =>
         log.debug({ err }, 'transcode cache prune failed'),
       );

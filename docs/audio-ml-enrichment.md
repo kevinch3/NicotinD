@@ -349,10 +349,10 @@ Two things did *not* help, recorded so nobody retries them:
   upstream — Essentia publishes one for the ONNX build — if pushing below 2 GB ever matters.)
 - **`TF_GPU_ALLOCATOR=cuda_malloc_async` crashes this build** — see below.
 
-At 2.2 GB the sidecar leaves ~6 GB free, enough to co-host the ~3.0 GB BS-RoFormer separator of
-[vocal-separation.md](vocal-separation.md) (shipped, issue #603; measured together on kpc at ~5.2 GB
-during a separation, with the separator's worker stopped — 0 MiB — between karaoke sessions), i.e.
-[docs/vocal-isolation-spike.md](vocal-isolation-spike.md).
+At 2.2 GB the sidecar leaves ~6 GB free. That headroom was what made the ~3.0 GB BS-RoFormer
+vocal separator co-hostable at all (measured together on kpc at ~5.2 GB during a separation);
+that sidecar was removed in #1024, so the headroom is now spare —
+see [docs/vocal-isolation-spike.md](vocal-isolation-spike.md).
 
 ### Consequences for the existing controls
 

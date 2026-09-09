@@ -124,10 +124,11 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
     three still unit-tested in `player.service.spec.ts`); a drag dims the source row to 40% opacity
     and shows an accent top border at the drop target.
   - `NowPlayingLyricsPanelComponent` — the in-place karaoke-styled lyrics view.
-  - The fullscreen overlay's mic button carries `data-vocal-mode` (`off | pending | ml | basic`)
-    and a `vocal-mute-status` caption (ETA / queue position while a stem prepares, then which
-    mute is served) fed by `VocalSeparationService` — the mute is intent, readiness decides the
-    URL ([vocal-separation.md](vocal-separation.md), issue #603).
+  - The fullscreen overlay's mic button carries `data-vocal-mode` (`off | basic`) and a
+    `vocal-mute-status` caption naming the served mute, both derived from
+    `PlayerService.vocalsMuted` — center-cancel is a synchronous ffmpeg filter, so the flag
+    *is* the mode. It was a four-state machine while the ML stem could be pending
+    ([vocal-isolation-spike.md](vocal-isolation-spike.md), issues #603/#1024).
   - `NowPlayingKaraokeFullscreenComponent` — the fullscreen gradient overlay.
 
   The shell still owns cross-cutting state that spans multiple children (lyrics data/loading,

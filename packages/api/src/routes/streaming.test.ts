@@ -671,21 +671,16 @@ describe('GET /peaks/:id (waveform artifact, #643)', () => {
   });
 });
 
-describe('?vocals=off — ML stem vs the basic filter (issue #603)', () => {
+describe('?vocals=off — the center-cancel mute (issue #603, #1024)', () => {
   // Hermetic like the wire tests: ffmpeg is /usr/bin/true (so the route takes
-  // the transcode path) and the cache entries the route should pick are
-  // pre-seeded at their exact keys. The stems hook stands in for the
-  // separation service: it answers "is a stem FLAC ready?" synchronously.
+  // the transcode path) and the cache entry the route should pick is pre-seeded
+  // at its exact key.
   const TRUE_BIN = existsSync('/usr/bin/true') ? '/usr/bin/true' : '/bin/true';
   let prevFfmpegPath: string | undefined;
   let abs = '';
-  let stemFlac = '';
   let cacheDir = '';
-  const stemsFor = (path: string | null) => ({
-    readyStemPath: (p: string) => (path && p === abs ? path : null),
-  });
 
-  const seedEntry = (variant: 'plain' | 'novox' | 'stem', fill: number) => {
+  const seedEntry = (variant: 'plain' | 'novox', fill: number) => {
     const st = statSync(abs);
     const cachePath = join(
       cacheDir,
@@ -699,13 +694,10 @@ describe('?vocals=off — ML stem vs the basic filter (issue #603)', () => {
     prevFfmpegPath = process.env.NICOTIND_FFMPEG_PATH;
     process.env.NICOTIND_FFMPEG_PATH = TRUE_BIN;
     _resetFfmpegProbe();
-    mkdirSync(join(musicDir, 'Stem'), { recursive: true });
-    writeFileSync(join(musicDir, 'Stem', 'track.mp3'), AUDIO_BYTES);
-    seedSong('song-stem', 'Stem/track.mp3');
-    abs = resolve(join(resolve(musicDir), 'Stem/track.mp3'));
-    stemFlac = join(dataDir, 'stem-cache', 'fake-stem.flac');
-    mkdirSync(join(dataDir, 'stem-cache'), { recursive: true });
-    writeFileSync(stemFlac, new Uint8Array(4096).fill(3));
+    mkdirSync(join(musicDir, 'Novox'), { recursive: true });
+    writeFileSync(join(musicDir, 'Novox', 'track.mp3'), AUDIO_BYTES);
+    seedSong('song-novox', 'Novox/track.mp3');
+    abs = resolve(join(resolve(musicDir), 'Novox/track.mp3'));
     cacheDir = join(dataDir, 'transcode-cache');
     mkdirSync(cacheDir, { recursive: true });
     db.run(
@@ -730,51 +722,42 @@ describe('?vocals=off — ML stem vs the basic filter (issue #603)', () => {
     clearTranscodeFailures();
   });
 
-  it('serves the |stem entry and says so when the stem is ready', async () => {
-    seedEntry('stem', 9);
-    const a = new Hono();
-    a.route('/', streamingRoutes(musicDir, db, dataDir, null, { stems: stemsFor(stemFlac) }));
-    const res = await a.request('/stream/song-stem?vocals=off');
-    expect(res.status).toBe(200);
-    expect(res.headers.get('x-nicotind-vocals')).toBe('ml');
-    expect(res.headers.get('content-length')).toBe('2048');
-    expect(new Uint8Array(await res.arrayBuffer())[0]).toBe(9);
-  });
-
-  it('serves the basic |novox entry and says so when no stem exists', async () => {
+  it('serves the |novox entry and says the mute applied', async () => {
     seedEntry('novox', 5);
     const a = new Hono();
-    a.route('/', streamingRoutes(musicDir, db, dataDir, null, { stems: stemsFor(null) }));
-    const res = await a.request('/stream/song-stem?vocals=off');
+    a.route('/', streamingRoutes(musicDir, db, dataDir, null));
+    const res = await a.request('/stream/song-novox?vocals=off');
     expect(res.status).toBe(200);
     expect(res.headers.get('x-nicotind-vocals')).toBe('basic');
     expect(new Uint8Array(await res.arrayBuffer())[0]).toBe(5);
   });
 
-  it('a stem encode that fails falls back to basic in the same request and never taints the original', async () => {
+  it('a failed novox encode falls through to the unfiltered original, without the header', async () => {
     _resetTranscodeCacheForTests();
     clearTranscodeFailures();
-    // Stem is "ready" but its |stem transcode entry is absent, so the encode
-    // runs against /usr/bin/true and fails; the |novox entry is there.
+    // No |novox entry, so the encode runs against /usr/bin/true and fails. The
+    // listener gets the plain mix — and the missing header is the only thing
+    // that says so, which is why it is still set on the success path.
     const st = statSync(abs);
     rmSync(
-      join(cacheDir, `${transcodeCacheKey(abs, st.mtimeMs, st.size, 'mp3', 192, 'stem')}.mp3`),
+      join(cacheDir, `${transcodeCacheKey(abs, st.mtimeMs, st.size, 'mp3', 192, 'novox')}.mp3`),
       { force: true },
     );
-    seedEntry('novox', 5);
     const a = new Hono();
-    a.route('/', streamingRoutes(musicDir, db, dataDir, null, { stems: stemsFor(stemFlac) }));
-    const res = await a.request('/stream/song-stem?vocals=off');
+    a.route('/', streamingRoutes(musicDir, db, dataDir, null));
+    const res = await a.request('/stream/song-novox?vocals=off');
     expect(res.status).toBe(200);
-    expect(res.headers.get('x-nicotind-vocals')).toBe('basic');
-    expect(new Uint8Array(await res.arrayBuffer())[0]).toBe(5);
-    // The verdict, if any, belongs to the stem file — the original keeps its
-    // ordinary and basic transcodes.
+    expect(res.headers.get('x-nicotind-vocals')).toBeNull();
+    // Not negative-cached: a missing output is a bare Error, and issue #317's
+    // cache deliberately records only the deterministic `TranscodeOutputRejected`
+    // verdict — an ffmpeg crash, an OOM kill or a full disk must stay retryable
+    // rather than becoming a permanent no-transcode until restart.
     expect(isKnownUntranscodable(abs)).toBe(false);
   });
 
   it('a plain stream never carries the header', async () => {
-    const res = await app.request('/stream/song-stem');
+    clearTranscodeFailures();
+    const res = await app.request('/stream/song-novox');
     expect(res.status).toBe(200);
     expect(res.headers.get('x-nicotind-vocals')).toBeNull();
   });

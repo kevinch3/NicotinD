@@ -43,7 +43,6 @@ export class LibraryProcessingPanelComponent implements OnInit, OnDestroy {
   private readonly reviewSvc = inject(ServiceReviewService);
 
   readonly analysis = this.reviewSvc.analysis;
-  readonly separator = this.reviewSvc.separator;
 
   readonly processing = signal<ProcessingSettings | null>(null);
   readonly processingStarting = signal(false);

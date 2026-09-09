@@ -1,5 +1,22 @@
 # Spike: replacing the center-cancel vocal mute with real ML separation
 
+> **Removed 2026-09-08 (#1024). The model worked; the cost did not.** This was built and ran
+> in production (#603, 2026-09), and every number below held up: BS-RoFormer loses **−1.60 dB**
+> of sub-bass against center-cancel's **−9.35 dB**, and a real stem sounds like a studio
+> instrumental rather than a phase trick. It was deleted anyway, because a feature that costs
+> ~55 s of GPU per song, ~2,944 MiB of VRAM on a card already shared with Immich and the
+> analysis sidecar, a 4.2 GB image with a hard CUDA requirement, and a second compose file the
+> operator has to reason about is not something a self-hosted music server should carry for a
+> nice-to-have. The 2026-09-08 enablement was the evidence, not the model: bringing it up on
+> the documented host contributed to a full Docker data root that took Lidarr, the API and the
+> sidecar down together (#1019, #1021), and the sidecar then failed on every track (#1020).
+> None of those were the model's fault — they were the cost of *having* this much machinery.
+>
+> **This document is kept so nobody re-runs the spike.** If NicotinD ever ships a hosted tier,
+> or consumer GPUs make this effectively free, start here rather than from scratch. The
+> `?vocals=off` center-cancel mute described below is what ships today, and improving it is
+> tracked separately — the measurement bar is in §3.
+
 **Status:** research spike, 2026-08-20. **Verdict: GO on ML separation with
 `anvuew/BS-RoFormer`, on demand and GPU-only (measured RTF 0.261× / 3.0 GB VRAM on the
 P4000 — a 3.5 min song is ~55 s of GPU, and progressive separation can start playback in
@@ -182,8 +199,7 @@ So a 3.5-minute song costs **~14 minutes of CPU** and ~2.7 GB RAM. Consequences:
   2.8 onward); the **cu126** wheels stay as the legacy lane and carry Pascal `sm_60` kernels
   through torch 2.13 (SASS is forward-compatible within a major, so the cc 6.1 card runs them —
   there is no `sm_61` entry), and the prod driver (580) runs them. The shipped image pins
-  `torch==2.13.0+cu126` and asserts the arch at build — see
-  [vocal-separation.md](vocal-separation.md).
+  `torch==2.13.0+cu126` and asserted the arch at build.
 - **The card had no room — now it does (issue #605, fixed).** Measured on `kpc`: the
   sidecar reported `{"loaded": false}` (idle release _had_ fired) while still holding
   **7,626 MiB of 8,192 MiB at 0 % utilisation**. Root-causing that turned out to be the
@@ -198,11 +214,11 @@ So a 3.5-minute song costs **~14 minutes of CPU** and ~2.7 GB RAM. Consequences:
 
 ## 6. Architecture
 
-> **Shipped (2026-09, #603).** The design below is the spike's; what was built differs in one
-> decided way — **no progressive chunk serving**: the stream route is complete-then-serve by
-> contract (fixed `Content-Length`, ETag over size+mtime, iOS tail-probes), so the stem lands
-> whole and the web keeps the original mix playing until it does. The living description is
-> [vocal-separation.md](vocal-separation.md).
+> **Shipped 2026-09 (#603), removed 2026-09-08 (#1024).** The design below is the spike's;
+> what was built differed in one decided way — **no progressive chunk serving**: the stream
+> route is complete-then-serve by contract (fixed `Content-Length`, ETag over size+mtime, iOS
+> tail-probes), so the stem landed whole and the web kept the original mix playing until it
+> did. That shape is worth keeping in mind if this is ever revisited.
 
 Separation is **not** a streaming filter. Every model here needs the whole track (or
 21.8 s chunks with overlap), so `?vocals=off` stops being an ffmpeg `-af` and becomes a
@@ -277,8 +293,9 @@ Checkpoint + config:
 `huggingface_hub.hf_hub_download('anvuew/BS-RoFormer', 'bs_roformer_ft1_anvuew_sdr_12.55.ckpt')`
 and `config.yaml` from the same repo — it uses `!!python/tuple`, which one constructor on
 `yaml.SafeLoader` covers (no `UnsafeLoader` needed), and the `model` block must be
-filtered to the keys `BSRoformer.__init__` actually accepts. Both live in
-`packages/separator/app/model_config.py` now.
+filtered to the keys `BSRoformer.__init__` actually accepts. Both lived in the sidecar's
+`model_config.py`; recover it from git history (`git log -- packages/separator`) if this is
+ever revisited.
 
 **The GPU measurement is done** (§5). It was run on `kpc` like this — note the card must
 be freed first, because the analysis sidecar pins it even when idle (#605):

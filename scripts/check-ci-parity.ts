@@ -90,7 +90,6 @@ export const GATE_JOBS = [
   'e2e',
   'e2e-shard',
   'analysis',
-  'separator',
   'docker',
   'desktop-package',
 ] as const;

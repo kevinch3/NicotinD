@@ -84,13 +84,3 @@ services:
   lidarr:
     volumes:
       - /path/to/your/music:/data/music
-
-  # The GPU vocal separator (docs/vocal-separation.md) is defined ONLY in
-  # docker-compose.gpu.yml, so this block cannot be live here: CI validates
-  # `-f docker-compose.yml -f docker-compose.override.example.yml`, and compose
-  # rejects a service the base file never defines. Uncomment it in YOUR copy when
-  # you enable that overlay — without it the separator reads the empty named
-  # volume and finds no audio (#1009).
-  # separator:
-  #   volumes:
-  #     - /path/to/your/music:/data/music:ro

@@ -203,14 +203,13 @@ starts, finds nothing, and says nothing (issue #1009). Verified both ways with
 legitimately has none, and compose hard-errors on a listed file that does not exist
 (`stat …/docker-compose.override.yml: no such file or directory`).
 
-That override also needs a `separator:` block of its own: `separator` exists only in
-the overlay, and the overlay gives it the named volume.
-`docker-compose.override.example.yml` ships that block **commented out** — a live one
-would fail CI's `docker compose -f docker-compose.yml -f
-docker-compose.override.example.yml config -q`, because the base file does not define
-the service ("has neither an image nor a build context"). `slskd-addon` has the same
-shape from `docker-compose.yml` (opt-in `profiles: ["slskd-addon"]`, so it only bites
-a host that activates that profile) and the example carries it as a live block.
+A service that exists only in an overlay needs its bind block **commented out** in
+`docker-compose.override.example.yml` — a live one would fail CI's `docker compose -f
+docker-compose.yml -f docker-compose.override.example.yml config -q`, because the base
+file does not define the service ("has neither an image nor a build context"). No
+overlay defines one today. `slskd-addon` is the opposite shape: defined in
+`docker-compose.yml` behind `profiles: ["slskd-addon"]` (so it only bites a host that
+activates that profile), and the example carries it as a live block.
 `scripts/compose-music-mounts.test.ts` derives that list from the compose files, so a
 new service on the music volume fails the suite instead of shipping a silently empty
 mount.
@@ -305,21 +304,6 @@ behaviour":
   memory to the driver. **Not verified on real hardware in this repo** — it's
   a documented, commented-out override in `docker-compose.gpu.yml`; A/B it
   against a plain restart before trusting it in production.
-
-### The separator sidecar image
-
-`ghcr.io/kevinch3/nicotind-separator`, same tag semantics, published by the
-`docker-separator` job — the karaoke vocal-separation sidecar
-([vocal-separation.md](vocal-separation.md), issue #603). **GPU-only by contract**, so
-unlike the analysis image the published one *is* the GPU build (torch from the cu126
-index — the legacy lane that still ships Pascal `sm_60` kernels, which the cc 6.1 P4000 runs — plus a build-time
-strict load of the baked checkpoint), and it is **pulled, not built**, by the
-`docker-compose.gpu.yml` overlay, which is the only compose file that names it. A CPU
-deploy never pulls it: without CUDA it would only ever report `unavailable`, and the API
-keeps the basic center-cancel filter. Runtime knobs are commented in the overlay
-(`SEPARATOR_IDLE_RELEASE_SEC`, `SEPARATOR_MAX_TRACK_SEC`, `SEPARATOR_ALLOW_CPU`). Idle
-release here *stops the worker process*, so `nvidia-smi` shows 0 MiB for this container
-between karaoke sessions and ~3.0 GB during one.
 
 ### Acquisition runtime toggle (issue #235)
 
@@ -591,7 +575,8 @@ over every deploy ever made. The failure surfaced three layers away and looked
 like three unrelated bugs: Lidarr's SQLite could not write (`disk I/O error`), so
 its healthcheck went red, so the API — then still gated on
 `lidarr: service_healthy` (#1019) — would not start; and the vocal-separation
-sidecar 422'd every track because numba could not create its cache directory.
+sidecar (since removed, #1024) 422'd every track because numba could not create
+its cache directory.
 `docker builder prune -af` + `docker image prune -af` returned 502 GiB.
 
 The host has no scheduled prune, so this will re-accumulate; the guard turns the

@@ -313,7 +313,7 @@ Use read-only/login-style specs only — do not seed or destroy prod data.
 The `e2e` job in `.github/workflows/ci.yml` installs deps + the Chromium browser,
 builds web (the Hono server serves `packages/web/dist`), runs the suite, and uploads
 the Playwright HTML report on failure. `release` depends on every gate job (`ci`,
-`web-test`, `storybook`, `e2e`, `analysis`, `separator`, `docker`, `desktop-package`),
+`web-test`, `storybook`, `e2e`, `analysis`, `docker`, `desktop-package`),
 so a red e2e run blocks the deploy. `e2e` **is** in `check-ci-parity.ts`'s `GATE_JOBS`
 — that list is now *every* job in `release.needs`, enforced both ways. What is exempt is
 the one command, not the job: `--filter @nicotind/e2e test` carries an `ALLOWLIST` entry

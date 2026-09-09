@@ -28,8 +28,6 @@ function setup() {
             }),
           ),
           saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
-          getVocalSeparation: vi.fn(() => of({ enabled: false, configurable: true })),
-          setVocalSeparation: vi.fn((enabled: boolean) => of({ enabled, configurable: true })),
         },
       },
     ],
@@ -54,9 +52,10 @@ describe('StreamingMediaPanelComponent (TV D-pad navigation)', () => {
     const el: HTMLElement = fixture.nativeElement;
     const panel = el.querySelector('[data-testid="streaming-panel"]')!;
     const checkboxes = Array.from(panel.querySelectorAll('input[type="checkbox"]'));
-    // transcode on-the-fly, ML vocal separation (issue #603), and the second
-    // transcoding checkbox — every one D-pad reachable inside its own row group.
-    expect(checkboxes.length).toBe(3);
+    // transcode on-the-fly and the second transcoding checkbox — both D-pad
+    // reachable inside their own row group. Was three until the ML
+    // vocal-separation opt-in was removed (#1024).
+    expect(checkboxes.length).toBe(2);
     for (const checkbox of checkboxes) {
       expect(checkbox.hasAttribute('appTvNavItem')).toBe(true);
       expect(checkbox.closest('[appTvNavGroup]')).not.toBeNull();
