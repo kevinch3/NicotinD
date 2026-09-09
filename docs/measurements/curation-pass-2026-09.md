@@ -2882,3 +2882,91 @@ genuinely stylised title, a false positive. Genre path only.
 The principle is that majority is a tiebreak, not a rule — it decides when nothing else does, and
 it is the *wrong* tiebreak whenever the majority form is the broken one, which is exactly the case
 in #1074.
+
+## 2026-09-09/10, stretch 5 — two corrections, then the artist-name rules to their floor
+
+### Correction: the ingest had not stopped
+
+Stretch 4 recorded "ingest stopped (last arrival 20:56, count falling)". Re-measured at the start of
+this stretch: newest arrival **21:56, twelve minutes earlier**, count 21,356 -> 21,378. What I read
+as the end was a lull. Destructive work stayed suspended — which is the only reason the wrong call
+cost nothing.
+
+The lesson is in the metric I used. A *falling* song count read as "ingest finished, scan pruning",
+and it is equally the signature of a scan running *during* an ingest. `landed_at` clustering is the
+documented signal precisely because count deltas are ambiguous, and I substituted the ambiguous one.
+
+### Correction: "1,264 duplicate songs" is an upper bound, not a measurement
+
+Grouping on `LOWER(artist)` + `LOWER(title)` gives 1,128 groups / 1,264 redundant rows — about 6% of
+the library. Splitting the same groups by duration spread shows what that number actually contains:
+
+| duration spread | groups | reading |
+| --- | --- | --- |
+| ≤2s | 829 | plausibly the same recording |
+| 3–10s | 155 | uncertain |
+| >10s | **144** | **different recordings** |
+
+144 groups are disproven outright — `Pink Floyd — Comfortably Numb` at 384 / 446 / 446 / 537s is
+studio, album and live versions, not four copies. And the ≤2s bucket is not proof either: the
+Chalchaleros case already in this document has 162 vs 163 the same recording and 163 vs 225 a
+different one, while Vilma Palma's 278/278/279/282 are all one recording. **Duration is a heuristic;
+`recordingId` is the identity.** Any real dedupe pass has to fingerprint, and it is blocked on the
+ingest finishing regardless.
+
+### `brand_artist` 1 -> 0 — and the fix was an album fix
+
+`IPAUTA` (a Latin download-site brand) was credited as a performer on 56 songs. The songs' own
+`artist` was already correct — `Jamsha El PutiPuerko` on all 10 in the IPAUTA album — so the defect
+was the **album identity**, not the song tags. One `fix_album_metadata` re-attributed the album and
+moved 10 songs.
+
+**All 56 credit edges went to 0.** So `fix_album_metadata`, like `merge_artist`, reconciles
+`library_song_artists` properly. Combined with stretch 2's finding, the ghost-credit behaviour in
+#1073 is specific to the `fix_song_metadata` rescan path — two of the three write paths are clean.
+Worth knowing for whoever fixes it: the correct implementation already exists twice in the codebase.
+
+### `fragmented_artist` — 5 writer-credit strings cut, and the rest are real
+
+The rule reports at ≥2 deliberately, as advisory. Judged all 8 clusters; they split cleanly in two.
+
+**Real collaborations — left alone.** `Don Omar, Zion` · `Wisin & Yandel, Romeo Santos` ·
+`Los Ángeles Azules, NICKI NICOLE` · `Cele Arrabal, Tatto` · `Cosculluela, Chencho Corleone`. A
+comma is not a defect.
+
+**Songwriter credits leaked into the artist tag — cut.** Five strings, and the corroboration is
+decisive: each contains *the performer's own legal name* alongside their stage name.
+
+| track | was | now |
+| --- | --- | --- |
+| My Space | `Don Omar, Wisin & Yandel, Willian Omar Landron, Juan Luis Morera, Llndel Veguilla` | `Don Omar, Wisin & Yandel` |
+| Una Locura | `Ozuna, J Balvin, Chencho Corleone, ` + 10 legal names | `Ozuna, J Balvin, Chencho Corleone` |
+| El Plan | `Ozuna, Chencho Corleone, Sky Rompiendo, ` + 6 legal names | `Ozuna, Chencho Corleone, Sky Rompiendo` |
+| Me Llamas | `Cosculluela, Genio La Musa, Chencho Corleone, Darell, ` + 5 | `Cosculluela, Genio La Musa, Chencho Corleone, Darell` |
+| Podemos Repetirlo | `Don Omar, Chencho Corleone, ` + 8 legal names | `Don Omar, Chencho Corleone` |
+
+`Don Omar` **is** `Willian Omar Landron`; `Wisin` and `Yandel` are `Juan Luis Morera` and
+`Llandel Veguilla`; `Orlando Javier Valle` — Chencho Corleone — appears in four of the five. A
+credit list that names its own performers twice, once as stage name and once as legal name, is an
+ASCAP/BMI writer list, not a lineup. Same shape as the Sanampay composer-credit case at the top of
+this document, and the same rule caught it: corroborate the name against the track.
+
+Read back from `library_songs.artist`: all five correct. Four of the five legal-name artist rows are
+already pruned; one survives with a single stale edge — the #1073 ghost, which a scan clears.
+
+**The rule now sits at its floor for this library: all 8 remaining clusters are genuine
+collaborations.** Its count being non-zero is correct, not a backlog.
+
+### Deltas
+
+| rule | before | after |
+| --- | --- | --- |
+| `numeric_artist` | 0 | 0 (holding) |
+| `brand_artist` | 1 | **0** |
+| `fragmented_artist` | 8 | 8 — all judged, all real |
+| `djset_artist` | 1 | 1 — flag #19, owner's call |
+
+`album_count_mismatch` 308 -> 398 is post-write churn (#774), not new pollution.
+
+Left as-is on purpose: the album is still *titled* `IPAUTA`. Its artist is now right, but the real
+album title is unknown, and a source brand that is at least traceable beats an invented title.
