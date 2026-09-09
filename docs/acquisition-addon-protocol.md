@@ -190,6 +190,15 @@ source:
   time anyway. The addon side (waves of two, an 8 s per-search timeout, one
   `SearchLanes` queue with user hunts ahead of fallback waves) lives in the slskd
   addon's protocol doc.
+- **An addon that deletes needs somewhere it may write.** The slskd addon's
+  music mount is `:ro` on purpose — it shares those files out to the network and
+  must never rewrite the library. That also made its file deletion silently
+  inert on kpc: the code ran, the unlink threw `EROFS`, and the best-effort
+  catch swallowed it. The reserved staging dir it owns is now mounted writable
+  over the read-only parent (`subpath: .downloads`), so the addon can delete
+  exactly what it downloaded and nothing else. Verified on kpc: `/data/music`
+  `rw=false`, `/data/music/.downloads` `rw=true`.
+
 - **A terminal outcome must be earned.** `enqueue-failed` makes the watchlist
   mark a row `failed`, permanently. An enqueue that died because the source went
   down between the hunt and the call is the opposite of terminal, so

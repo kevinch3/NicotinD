@@ -80,6 +80,8 @@ services:
     volumes:
       - slskd-addon-data:/data
       - /path/to/your/music:/data/music:ro
+      # Writable staging only — see docker-compose.yml (#1052).
+      - /path/to/your/music/.downloads:/data/music/.downloads
 
   lidarr:
     volumes:
