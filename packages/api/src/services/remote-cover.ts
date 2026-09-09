@@ -34,6 +34,51 @@ const ALLOWED_COVER_HOSTS = new Set([
 const LIDARR_MEDIA_COVER_PREFIX = '/MediaCover/';
 
 /**
+ * Pure: reduce a raw Lidarr image value to something that can actually be
+ * fetched — an absolute URL, or the `/MediaCover/…` path Lidarr serves.
+ *
+ * why: Lidarr's `remoteUrl` stops being a URL once it has cached the art
+ * locally. It then reports the file's path *inside its own container*
+ * (`/config/MediaCover/1819/poster.jpg`), which `fetch()` rejects as invalid.
+ * Storing that verbatim is how half of prod's artist portraits (667 of 1,331)
+ * became rows that satisfy "this artist has a portrait" while rendering the
+ * placeholder forever (#1062). The servable path is a suffix of it, so this
+ * recovers it rather than discarding the image.
+ */
+export function lidarrCoverPath(raw: string | undefined | null): string | undefined {
+  if (!raw) return undefined;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  // Windows-hosted Lidarr reports a backslash path; the marker is the same.
+  const i = raw.replace(/\\/g, '/').indexOf(LIDARR_MEDIA_COVER_PREFIX);
+  return i === -1 ? undefined : raw.replace(/\\/g, '/').slice(i);
+}
+
+/**
+ * Pure: turn a **stored** canonical artwork value into an absolute URL the
+ * cover route can fetch.
+ *
+ * Deliberately not `resolveRemoteCoverUrl`: that one guards an *attacker*-
+ * supplied `?u=` against SSRF with a host allowlist, and the canonical store
+ * legitimately holds provider URLs outside it (discogs, theaudiodb, wikimedia).
+ * Applying the allowlist here would blank those covers; this only needs the
+ * relative→absolute half.
+ */
+export function absolutizeLidarrCoverUrl(
+  raw: string | undefined | null,
+  lidarrBaseUrl?: string | null,
+): string | null {
+  const value = lidarrCoverPath(raw);
+  if (!value) return null;
+  if (!value.startsWith(LIDARR_MEDIA_COVER_PREFIX)) return value;
+  if (!lidarrBaseUrl) return null;
+  try {
+    return new URL(value, lidarrBaseUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Pure: map a raw Lidarr cover value to a browser-resolvable proxy URL.
  *
  * Returns a relative `/api/cover/remote?...` URL — `CoverArtComponent` runs
@@ -51,12 +96,14 @@ export function proxiedCoverUrl(raw: string | undefined | null): string | undefi
 
 /** Pure: would `resolveRemoteCoverUrl` accept this value? */
 export function isProxyableCoverUrl(raw: string): boolean {
-  if (raw.startsWith(LIDARR_MEDIA_COVER_PREFIX)) return true;
+  const value = lidarrCoverPath(raw);
+  if (!value) return false;
+  if (value.startsWith(LIDARR_MEDIA_COVER_PREFIX)) return true;
   try {
     // Shared SSRF guard: enforces the cover-host allowlist AND rejects
     // private/loopback targets (a no-op for these public art CDNs, but the one
     // implementation both this proxy and addon-provided URLs go through).
-    assertFetchableUrl(raw, { allowedHosts: ALLOWED_COVER_HOSTS });
+    assertFetchableUrl(value, { allowedHosts: ALLOWED_COVER_HOSTS });
     return true;
   } catch {
     return false;
@@ -73,18 +120,19 @@ export function resolveRemoteCoverUrl(
   raw: string | undefined | null,
   lidarrBaseUrl?: string | null,
 ): string | null {
-  if (!raw) return null;
+  const value = lidarrCoverPath(raw);
+  if (!value) return null;
 
-  if (raw.startsWith(LIDARR_MEDIA_COVER_PREFIX)) {
+  if (value.startsWith(LIDARR_MEDIA_COVER_PREFIX)) {
     if (!lidarrBaseUrl) return null;
     try {
-      return new URL(raw, lidarrBaseUrl).toString();
+      return new URL(value, lidarrBaseUrl).toString();
     } catch {
       return null;
     }
   }
 
-  return isProxyableCoverUrl(raw) ? raw : null;
+  return isProxyableCoverUrl(value) ? value : null;
 }
 
 /**
