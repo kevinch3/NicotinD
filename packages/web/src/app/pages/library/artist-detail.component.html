@@ -177,6 +177,7 @@
                     [artistName]="artist()!.name"
                     [token]="auth.token()"
                     [busy]="isTileHunting(tile)"
+                    [locked]="autoHunt.anyHunting()"
                     [canAcquire]="auth.canAcquire()"
                     (acquire)="huntTile(tile)"
                   />
@@ -210,6 +211,7 @@
                     [artistName]="artist()!.name"
                     [token]="auth.token()"
                     [busy]="isTileHunting(tile)"
+                    [locked]="autoHunt.anyHunting()"
                     [canAcquire]="auth.canAcquire()"
                     (acquire)="huntTile(tile)"
                   />
@@ -243,6 +245,7 @@
                     [artistName]="'Various Artists'"
                     [token]="auth.token()"
                     [busy]="isTileHunting(tile)"
+                    [locked]="autoHunt.anyHunting()"
                     [canAcquire]="auth.canAcquire()"
                     (acquire)="huntTile(tile)"
                   />

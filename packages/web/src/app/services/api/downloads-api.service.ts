@@ -111,6 +111,8 @@ export class DownloadsApiService {
       candidates: FolderCandidate[];
       rateLimited?: boolean;
       sourceOffline?: boolean;
+      searchesFired?: number;
+      searchesAnswered?: number;
     }>(`/api/discography/albums/${lidarrAlbumId}/hunt/skew`, overrides);
   }
 

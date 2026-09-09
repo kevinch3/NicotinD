@@ -5,7 +5,11 @@ import { firstValueFrom } from 'rxjs';
 import type { ArchiveCandidate, SpotifyCandidate } from '@nicotind/core';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SearchApiService } from '../../services/api/search-api.service';
-import type { DiscographyAlbum, FolderCandidate } from '../../services/api/api-types';
+import {
+  huntCutShort,
+  type DiscographyAlbum,
+  type FolderCandidate,
+} from '../../services/api/api-types';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
@@ -87,6 +91,11 @@ export class AlbumHuntModalComponent implements OnInit {
   // different instruction: unlike a 429 this does not clear in a moment, so the
   // empty state says "reconnecting", not "try again now".
   readonly sourceOffline = signal(false);
+  // The source's search lanes were busy and some of this hunt's searches never
+  // ran (#1049): retriable right away, and not evidence about the album.
+  readonly sourceBusy = signal(false);
+  readonly searchesFired = signal(0);
+  readonly searchesAnswered = signal(0);
 
   // §C1/§F2 per-track fallback for the no-candidates dead-end.
   readonly trackHuntState = signal<'idle' | 'running' | 'done' | 'error'>('idle');
@@ -237,6 +246,12 @@ export class AlbumHuntModalComponent implements OnInit {
     return this.blendedAcquired().has(c.id);
   }
 
+  private _noteSearchCounts(res: { searchesFired?: number; searchesAnswered?: number }): void {
+    this.searchesFired.update((n) => n + (res.searchesFired ?? 0));
+    this.searchesAnswered.update((n) => n + (res.searchesAnswered ?? 0));
+    if (huntCutShort(res)) this.sourceBusy.set(true);
+  }
+
   async startHunt(): Promise<void> {
     this.state.set('searching');
     this.candidates.set([]);
@@ -244,6 +259,9 @@ export class AlbumHuntModalComponent implements OnInit {
     this.errorMsg.set('');
     this.rateLimited.set(false);
     this.sourceOffline.set(false);
+    this.sourceBusy.set(false);
+    this.searchesFired.set(0);
+    this.searchesAnswered.set(0);
 
     const artist = this.artistName();
     const album = this.album().title;
@@ -292,6 +310,7 @@ export class AlbumHuntModalComponent implements OnInit {
           this.candidates.set(mergeCandidates(baseResult.candidates, skewResult.candidates));
           if (skewResult.rateLimited) this.rateLimited.set(true);
           if (skewResult.sourceOffline) this.sourceOffline.set(true);
+          this._noteSearchCounts(skewResult);
         }
       } else if (this.skewSearch()) {
         // Base was confident — skew not needed; mark rows as skipped.
@@ -299,6 +318,7 @@ export class AlbumHuntModalComponent implements OnInit {
       }
       if (baseResult.rateLimited) this.rateLimited.set(true);
       if (baseResult.sourceOffline) this.sourceOffline.set(true);
+      this._noteSearchCounts(baseResult);
 
       // The source throttled the search burst (slskd 429), so an empty result is
       // "still searching — keep trying", not a genuine miss. Offer a one-tap retry.

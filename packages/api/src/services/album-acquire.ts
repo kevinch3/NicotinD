@@ -50,6 +50,15 @@ export interface AcquireResult {
  * into a retry, so an unanswerable question is deliberately read as "ready":
  * losing the real error would be worse than deferring one attempt too few.
  */
+/** Fewer searches answered than fired: the source cut the hunt short (#1049). */
+function huntCutShort(res: { searchesFired?: number; searchesAnswered?: number }): boolean {
+  return (
+    typeof res.searchesFired === 'number' &&
+    typeof res.searchesAnswered === 'number' &&
+    res.searchesAnswered < res.searchesFired
+  );
+}
+
 async function addonIsReady(addon: RemoteAddonPlugin): Promise<boolean> {
   try {
     const health = await addon.client.getHealth();
@@ -157,6 +166,15 @@ async function acquireViaAddon(
     // the bar is real, so a partial outage still acquires.
     if (!best && res.sourceOffline) {
       return { outcome: 'slskd-unavailable', detail: 'Source offline — the hunt never reached it' };
+    }
+    // The source's search lanes were held by other work and some of this hunt's
+    // searches never ran (#1049). Same logic: an empty result then says nothing
+    // about the album, so the caller retries instead of recording a miss.
+    if (!best && huntCutShort(res)) {
+      return {
+        outcome: 'slskd-unavailable',
+        detail: `Source busy — only ${res.searchesAnswered} of ${res.searchesFired} searches completed`,
+      };
     }
   } catch (err) {
     log.warn({ lidarrAlbumId, addonId, err }, 'Addon album search failed');

@@ -132,6 +132,10 @@ export function discographyRoutes({
         // incomplete hunt, but one that will stay incomplete for minutes, so the
         // modal says "offline, reconnecting" rather than "try again now".
         sourceOffline: res.sourceOffline ?? false,
+        // Submitted vs completed inside the hunt's deadline (#1049): fewer answered
+        // means the source's search lanes were busy and the hunt was cut short.
+        searchesFired: res.searchesFired,
+        searchesAnswered: res.searchesAnswered,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -294,6 +298,10 @@ export function discographyRoutes({
         // The queries never reached the source's network (#1040) — an empty
         // result here is not evidence the album is unavailable.
         sourceOffline: res.sourceOffline ?? false,
+        // Submitted vs completed inside the hunt's deadline (#1049): fewer answered
+        // means the source's search lanes were busy and the hunt was cut short.
+        searchesFired: res.searchesFired,
+        searchesAnswered: res.searchesAnswered,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -334,6 +342,10 @@ export function discographyRoutes({
         candidates: res.candidates.map(wireCandidate),
         rateLimited: res.rateLimited ?? false,
         sourceOffline: res.sourceOffline ?? false,
+        // Submitted vs completed inside the hunt's deadline (#1049): fewer answered
+        // means the source's search lanes were busy and the hunt was cut short.
+        searchesFired: res.searchesFired,
+        searchesAnswered: res.searchesAnswered,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

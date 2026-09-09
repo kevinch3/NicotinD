@@ -435,6 +435,20 @@ export interface HuntResult {
    *  (#1040). Also an incomplete hunt, but one that stays incomplete for
    *  minutes, so the modal says "reconnecting", not "try again now". */
   sourceOffline?: boolean;
+  /** Searches submitted vs completed inside the deadline (#1049). Fewer answered
+   *  than fired means the source's search lanes were busy and the hunt was cut
+   *  short — "source busy, retry", not "no match". */
+  searchesFired?: number;
+  searchesAnswered?: number;
+}
+
+/** True when a hunt response says the source cut the hunt short (#1049). */
+export function huntCutShort(res: { searchesFired?: number; searchesAnswered?: number }): boolean {
+  return (
+    typeof res.searchesFired === 'number' &&
+    typeof res.searchesAnswered === 'number' &&
+    res.searchesAnswered < res.searchesFired
+  );
 }
 
 export interface CatalogArtist {

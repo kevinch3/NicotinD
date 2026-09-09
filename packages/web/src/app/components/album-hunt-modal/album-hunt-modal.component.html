@@ -209,7 +209,24 @@
           </div>
         }
 
-        @if (rateLimited() && candidates().length === 0) {
+        @if (sourceBusy() && !rateLimited() && !sourceOffline() && candidates().length === 0) {
+          <div data-testid="hunt-source-busy" class="p-8 text-center text-theme-muted text-sm">
+            <p class="text-theme-secondary">The download source was busy.</p>
+            <p class="mt-1">
+              Only {{ searchesAnswered() }} of {{ searchesFired() }} searches completed before the
+              deadline — another hunt held the source’s search lanes. That’s not the same as the
+              album not being out there.
+            </p>
+            <button
+              type="button"
+              (click)="startHunt()"
+              data-testid="hunt-source-busy-retry"
+              class="mt-4 px-4 py-2 rounded-lg text-sm font-medium bg-theme-accent text-theme-on-accent hover:opacity-90"
+            >
+              Try again
+            </button>
+          </div>
+        } @else if (rateLimited() && candidates().length === 0) {
           <div data-testid="hunt-rate-limited" class="p-8 text-center text-theme-muted text-sm">
             <p class="text-theme-secondary">The download source is busy right now.</p>
             <p class="mt-1">

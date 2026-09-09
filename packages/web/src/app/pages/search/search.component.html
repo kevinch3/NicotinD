@@ -306,7 +306,8 @@
                   <button
                     appTvNavItem
                     (click)="huntCatalogAlbum(album)"
-                    [disabled]="resolvingAlbum() !== null"
+                    [disabled]="resolvingAlbum() !== null || anyHunting()"
+                    [title]="anyHunting() ? 'Another hunt is running — wait for it to finish' : ''"
                     class="group text-left rounded-lg overflow-hidden border border-zinc-800/80 transition hover:border-zinc-600 disabled:opacity-60"
                     style="background: var(--theme-surface)"
                   >

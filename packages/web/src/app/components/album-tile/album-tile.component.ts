@@ -44,6 +44,8 @@ export class AlbumTileComponent {
   readonly token = input<string | null>(null);
   /** A hunt is in flight for this album. */
   readonly busy = input(false);
+  /** A hunt is in flight for some other album — the source takes one at a time (#1049). */
+  readonly locked = input(false);
   /** Hide both actions for a listener — the acquire routes 403 for them anyway. */
   readonly canAcquire = input(false);
 

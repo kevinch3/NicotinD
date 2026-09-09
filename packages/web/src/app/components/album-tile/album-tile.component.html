@@ -29,7 +29,8 @@
         type="button"
         data-testid="album-tile-action"
         (click)="acquire.emit()"
-        [disabled]="busy()"
+        [disabled]="busy() || locked()"
+        [title]="locked() && !busy() ? 'Another hunt is running — wait for it to finish' : ''"
         class="mt-2 w-full px-2 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
       >
         @if (busy()) {
@@ -84,7 +85,8 @@
         type="button"
         data-testid="album-tile-action"
         (click)="$event.preventDefault(); $event.stopPropagation(); acquire.emit()"
-        [disabled]="busy()"
+        [disabled]="busy() || locked()"
+        [title]="locked() && !busy() ? 'Another hunt is running — wait for it to finish' : ''"
         class="mt-2 w-full px-2 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
       >
         @if (busy()) {
